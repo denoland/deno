@@ -8,6 +8,7 @@ declare namespace globalThis {
     declare var url: {
       URL: typeof URL;
       URLSearchParams: typeof URLSearchParams;
+      parseUrlEncoded(bytes: Uint8Array): [string, string][];
     };
   }
 }

@@ -12,7 +12,6 @@ use crate::ZeroCopyBuf;
 use rusty_v8 as v8;
 use serde::Serialize;
 use serde_v8::to_v8;
-use std::cell::Cell;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::io::{stdout, Write};
@@ -285,29 +284,6 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       // Should not warn. See #1272
     }
   };
-}
-
-pub(crate) unsafe fn get_backing_store_slice(
-  backing_store: &v8::SharedRef<v8::BackingStore>,
-  byte_offset: usize,
-  byte_length: usize,
-) -> &[u8] {
-  let cells: *const [Cell<u8>] =
-    &backing_store[byte_offset..byte_offset + byte_length];
-  let bytes = cells as *const [u8];
-  &*bytes
-}
-
-#[allow(clippy::mut_from_ref)]
-pub(crate) unsafe fn get_backing_store_slice_mut(
-  backing_store: &v8::SharedRef<v8::BackingStore>,
-  byte_offset: usize,
-  byte_length: usize,
-) -> &mut [u8] {
-  let cells: *const [Cell<u8>] =
-    &backing_store[byte_offset..byte_offset + byte_length];
-  let bytes = cells as *const _ as *mut [u8];
-  &mut *bytes
 }
 
 fn print(
@@ -599,14 +575,8 @@ fn decode(
     }
   };
 
-  let backing_store = view.buffer(scope).unwrap().get_backing_store();
-  let buf = unsafe {
-    get_backing_store_slice(
-      &backing_store,
-      view.byte_offset(),
-      view.byte_length(),
-    )
-  };
+  let zero_copy = ZeroCopyBuf::new(scope, view);
+  let buf = &zero_copy;
 
   // Strip BOM
   let buf =
@@ -694,14 +664,8 @@ fn deserialize(
     }
   };
 
-  let backing_store = view.buffer(scope).unwrap().get_backing_store();
-  let buf = unsafe {
-    get_backing_store_slice(
-      &backing_store,
-      view.byte_offset(),
-      view.byte_length(),
-    )
-  };
+  let zero_copy = ZeroCopyBuf::new(scope, view);
+  let buf = &zero_copy;
 
   let serialize_deserialize = Box::new(SerializeDeserialize {});
   let mut value_deserializer =

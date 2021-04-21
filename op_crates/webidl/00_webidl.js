@@ -375,40 +375,12 @@
     return V;
   }
 
-  const abByteLengthGetter = Object.getOwnPropertyDescriptor(
-    ArrayBuffer.prototype,
-    "byteLength",
-  ).get;
-
   function isNonSharedArrayBuffer(V) {
-    try {
-      // This will throw on SharedArrayBuffers, but not detached ArrayBuffers.
-      // (The spec says it should throw, but the spec conflicts with implementations: https://github.com/tc39/ecma262/issues/678)
-      abByteLengthGetter.call(V);
-
-      return true;
-    } catch {
-      return false;
-    }
+    return V instanceof ArrayBuffer;
   }
 
-  let sabByteLengthGetter;
-
   function isSharedArrayBuffer(V) {
-    // TODO(lucacasonato): vulnerable to prototype pollution. Needs to happen
-    // here because SharedArrayBuffer is not available during snapshotting.
-    if (!sabByteLengthGetter) {
-      sabByteLengthGetter = Object.getOwnPropertyDescriptor(
-        SharedArrayBuffer.prototype,
-        "byteLength",
-      ).get;
-    }
-    try {
-      sabByteLengthGetter.call(V);
-      return true;
-    } catch {
-      return false;
-    }
+    return V instanceof SharedArrayBuffer;
   }
 
   function isArrayBufferDetached(V) {
@@ -439,14 +411,8 @@
     return V;
   };
 
-  const dvByteLengthGetter = Object.getOwnPropertyDescriptor(
-    DataView.prototype,
-    "byteLength",
-  ).get;
   converters.DataView = (V, opts = {}) => {
-    try {
-      dvByteLengthGetter.call(V);
-    } catch (e) {
+    if (!(V instanceof DataView)) {
       throw makeException(TypeError, "is not a DataView", opts);
     }
 
@@ -614,10 +580,19 @@
     }
   }
 
+  function isEmptyObject(V) {
+    for (const _ in V) return false;
+    return true;
+  }
+
   function createDictionaryConverter(name, ...dictionaries) {
+    let hasRequiredKey = false;
     const allMembers = [];
     for (const members of dictionaries) {
       for (const member of members) {
+        if (member.required) {
+          hasRequiredKey = true;
+        }
         allMembers.push(member);
       }
     }
@@ -627,6 +602,29 @@
       }
       return a.key < b.key ? -1 : 1;
     });
+
+    const defaultValues = {};
+    for (const member of allMembers) {
+      if ("defaultValue" in member) {
+        const idlMemberValue = member.defaultValue;
+        const imvType = typeof idlMemberValue;
+        // Copy by value types can be directly assigned, copy by reference types
+        // need to be re-created for each allocation.
+        if (
+          imvType === "number" || imvType === "boolean" ||
+          imvType === "string" || imvType === "bigint" ||
+          imvType === "undefined"
+        ) {
+          defaultValues[member.key] = idlMemberValue;
+        } else {
+          Object.defineProperty(defaultValues, member.key, {
+            get() {
+              return member.defaultValue;
+            },
+          });
+        }
+      }
+    }
 
     return function (V, opts = {}) {
       const typeV = type(V);
@@ -644,7 +642,14 @@
       }
       const esDict = V;
 
-      const idlDict = {};
+      const idlDict = { ...defaultValues };
+
+      // NOTE: fast path Null and Undefined and empty objects.
+      if (
+        (V === undefined || V === null || isEmptyObject(V)) && !hasRequiredKey
+      ) {
+        return idlDict;
+      }
 
       for (const member of allMembers) {
         const key = member.key;
@@ -656,20 +661,12 @@
           esMemberValue = esDict[key];
         }
 
-        const context = `'${key}' of '${name}'${
-          opts.context ? ` (${opts.context})` : ""
-        }`;
-
         if (esMemberValue !== undefined) {
+          const context = `'${key}' of '${name}'${
+            opts.context ? ` (${opts.context})` : ""
+          }`;
           const converter = member.converter;
-          const idlMemberValue = converter(esMemberValue, {
-            ...opts,
-            context,
-          });
-          idlDict[key] = idlMemberValue;
-        } else if ("defaultValue" in member) {
-          const defaultValue = member.defaultValue;
-          const idlMemberValue = defaultValue;
+          const idlMemberValue = converter(esMemberValue, { ...opts, context });
           idlDict[key] = idlMemberValue;
         } else if (member.required) {
           throw makeException(
@@ -764,12 +761,16 @@
           opts,
         );
       }
+      const keys = Reflect.ownKeys(V);
       const result = {};
-      for (const key of V) {
-        const typedKey = keyConverter(key, opts);
-        const value = V[key];
-        const typedValue = valueConverter(value, opts);
-        result[typedKey] = typedValue;
+      for (const key of keys) {
+        const desc = Object.getOwnPropertyDescriptor(V, key);
+        if (desc !== undefined && desc.enumerable === true) {
+          const typedKey = keyConverter(key, opts);
+          const value = V[key];
+          const typedValue = valueConverter(value, opts);
+          result[typedKey] = typedValue;
+        }
       }
       return result;
     };
@@ -802,29 +803,81 @@
     throw new TypeError("Illegal constructor");
   }
 
+  function define(target, source) {
+    for (const key of Reflect.ownKeys(source)) {
+      const descriptor = Reflect.getOwnPropertyDescriptor(source, key);
+      if (descriptor && !Reflect.defineProperty(target, key, descriptor)) {
+        throw new TypeError(`Cannot redefine property: ${String(key)}`);
+      }
+    }
+  }
+
+  const _iteratorInternal = Symbol("iterator internal");
+
+  const globalIteratorPrototype = Object.getPrototypeOf(Object.getPrototypeOf(
+    [][Symbol.iterator](),
+  ));
+
   function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
-    const methods = {
-      *entries() {
-        assertBranded(this, prototype);
-        for (const entry of this[dataSymbol]) {
-          yield [entry[keyKey], entry[valueKey]];
+    const iteratorPrototype = Object.create(globalIteratorPrototype, {
+      [Symbol.toStringTag]: { configurable: true, value: `${name} Iterator` },
+    });
+    define(iteratorPrototype, {
+      next() {
+        const internal = this && this[_iteratorInternal];
+        if (!internal) {
+          throw new TypeError(
+            `next() called on a value that is not a ${name} iterator object`,
+          );
         }
+        const { target, kind, index } = internal;
+        const values = target[dataSymbol];
+        const len = values.length;
+        if (index >= len) {
+          return { value: undefined, done: true };
+        }
+        const pair = values[index];
+        internal.index = index + 1;
+        let result;
+        switch (kind) {
+          case "key":
+            result = pair[keyKey];
+            break;
+          case "value":
+            result = pair[valueKey];
+            break;
+          case "key+value":
+            result = [pair[keyKey], pair[valueKey]];
+            break;
+        }
+        return { value: result, done: false };
+      },
+    });
+    function createDefaultIterator(target, kind) {
+      const iterator = Object.create(iteratorPrototype);
+      Object.defineProperty(iterator, _iteratorInternal, {
+        value: { target, kind, index: 0 },
+        configurable: true,
+      });
+      return iterator;
+    }
+
+    const methods = {
+      entries() {
+        assertBranded(this, prototype);
+        return createDefaultIterator(this, "key+value");
       },
       [Symbol.iterator]() {
         assertBranded(this, prototype);
-        return this.entries();
+        return createDefaultIterator(this, "key+value");
       },
-      *keys() {
+      keys() {
         assertBranded(this, prototype);
-        for (const entry of this[dataSymbol]) {
-          yield entry[keyKey];
-        }
+        return createDefaultIterator(this, "key");
       },
-      *values() {
+      values() {
         assertBranded(this, prototype);
-        for (const entry of this[dataSymbol]) {
-          yield entry[valueKey];
-        }
+        return createDefaultIterator(this, "value");
       },
       forEach(idlCallback, thisArg) {
         assertBranded(this, prototype);

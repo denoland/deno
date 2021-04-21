@@ -4,7 +4,6 @@ use crate::error::bad_resource_id;
 use crate::error::type_error;
 use crate::error::AnyError;
 use crate::gotham_state::GothamState;
-use crate::minvalue::SerializablePkg;
 use crate::resources::ResourceId;
 use crate::resources::ResourceTable;
 use crate::runtime::GetErrorClassFn;
@@ -76,7 +75,7 @@ pub enum Op {
 }
 
 pub enum OpResult {
-  Ok(SerializablePkg),
+  Ok(serde_v8::SerializablePkg),
   Err(OpError),
 }
 

@@ -124,10 +124,7 @@ impl DocumentCache {
   }
 
   pub fn close(&mut self, specifier: &ModuleSpecifier) {
-    if let Some(mut doc) = self.docs.get_mut(specifier) {
-      doc.version = None;
-      doc.dependencies = None;
-    }
+    self.docs.remove(specifier);
   }
 
   pub fn contains_key(&self, specifier: &ModuleSpecifier) -> bool {
@@ -200,6 +197,10 @@ impl DocumentCache {
         ),
       ))
     }
+  }
+
+  pub fn specifiers(&self) -> Vec<ModuleSpecifier> {
+    self.docs.keys().cloned().collect()
   }
 
   pub fn version(&self, specifier: &ModuleSpecifier) -> Option<i32> {
