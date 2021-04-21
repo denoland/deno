@@ -7,7 +7,6 @@ use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op_sync;
 use deno_core::Extension;
-use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use rand::rngs::StdRng;
