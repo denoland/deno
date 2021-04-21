@@ -45,7 +45,16 @@ pub fn op_webstorage_open(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
   let connection = if persistent {
-    let path = state.borrow::<LocationDataDir>().0.as_ref().unwrap();
+    let path =
+      state
+        .borrow::<LocationDataDir>()
+        .0
+        .as_ref()
+        .ok_or_else(|| {
+          DomExceptionNotSupportedError::new(
+            "LocalStorage is not supported in this context.",
+          )
+        })?;
     std::fs::create_dir_all(&path)?;
     Connection::open(path.join("local_storage"))?
   } else {
@@ -256,7 +265,37 @@ impl fmt::Display for DomExceptionQuotaExceededError {
 
 impl std::error::Error for DomExceptionQuotaExceededError {}
 
-pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
+pub fn get_quota_exceeded_error_class_name(
+  e: &AnyError,
+) -> Option<&'static str> {
   e.downcast_ref::<DomExceptionQuotaExceededError>()
     .map(|_| "DOMExceptionQuotaExceededError")
+}
+
+#[derive(Debug)]
+pub struct DomExceptionNotSupportedError {
+  pub msg: String,
+}
+
+impl DomExceptionNotSupportedError {
+  pub fn new(msg: &str) -> Self {
+    DomExceptionNotSupportedError {
+      msg: msg.to_string(),
+    }
+  }
+}
+
+impl fmt::Display for DomExceptionNotSupportedError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.pad(&self.msg)
+  }
+}
+
+impl std::error::Error for DomExceptionNotSupportedError {}
+
+pub fn get_not_supported_error_class_name(
+  e: &AnyError,
+) -> Option<&'static str> {
+  e.downcast_ref::<DomExceptionNotSupportedError>()
+    .map(|_| "DOMExceptionNotSupportedError")
 }

@@ -203,6 +203,11 @@ delete Object.prototype.__proto__;
       DOMException,
       ["QuotaExceededError"],
     );
+    core.registerErrorClass(
+      "DOMExceptionNotSupported",
+      DOMException,
+      ["NotSupported"],
+    );
   }
 
   class Navigator {
