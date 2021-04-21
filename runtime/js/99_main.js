@@ -422,7 +422,6 @@ delete Object.prototype.__proto__;
 
     if (locationHref != null) {
       location.setLocationHref(locationHref);
-      fetch.setBaseUrl(locationHref);
     }
 
     registerErrors();
@@ -489,7 +488,6 @@ delete Object.prototype.__proto__;
       runtimeOptions;
 
     location.setLocationHref(locationHref);
-    fetch.setBaseUrl(locationHref);
     registerErrors();
 
     const internalSymbol = Symbol("Deno.internal");

@@ -15,63 +15,8 @@
     HTTP_WHITESPACE_SUFFIX_RE,
     HTTP_QUOTED_STRING_TOKEN_POINT_RE,
     HTTP_TOKEN_CODE_POINT_RE,
+    collectHttpQuotedString,
   } = window.__bootstrap.infra;
-
-  /**
-   * https://fetch.spec.whatwg.org/#collect-an-http-quoted-string
-   * @param {string} input
-   * @param {number} position
-   * @param {boolean} extractValue
-   * @returns {{result: string, position: number}}
-   */
-  function collectHttpQuotedString(input, position, extractValue) {
-    // 1.
-    const positionStart = position;
-    // 2.
-    let value = "";
-    // 3.
-    if (input[position] !== "\u0022") throw new Error('must be "');
-    // 4.
-    position++;
-    // 5.
-    while (true) {
-      // 5.1.
-      const res = collectSequenceOfCodepoints(
-        input,
-        position,
-        (c) => c !== "\u0022" && c !== "\u005C",
-      );
-      value += res.result;
-      position = res.position;
-      // 5.2.
-      if (position >= input.length) break;
-      // 5.3.
-      const quoteOrBackslash = input[position];
-      // 5.4.
-      position++;
-      // 5.5.
-      if (quoteOrBackslash === "\u005C") {
-        // 5.5.1.
-        if (position >= input.length) {
-          value += "\u005C";
-          break;
-        }
-        // 5.5.2.
-        value += input[position];
-        // 5.5.3.
-        position++;
-      } else { // 5.6.
-        // 5.6.1
-        if (input[position] !== "\u0022") throw new Error('must be "');
-        // 5.6.2
-        break;
-      }
-    }
-    // 6.
-    if (extractValue) return { result: value, position };
-    // 7.
-    return { result: input.substring(positionStart, position + 1), position };
-  }
 
   /**
    * @typedef MimeType 
@@ -172,7 +117,7 @@
       let parameterValue = null;
 
       // 11.8.
-      if (input[position] == "\u0022") {
+      if (input[position] === "\u0022") {
         // 11.8.1.
         const res = collectHttpQuotedString(input, position, true);
         parameterValue = res.result;
@@ -214,5 +159,32 @@
     return mimeType;
   }
 
-  window.__bootstrap.mimesniff = { parseMimeType };
+  /**
+   * @param {MimeType} mimeType 
+   * @returns {string}
+   */
+  function essence(mimeType) {
+    return `${mimeType.type}/${mimeType.subtype}`;
+  }
+
+  /**
+   * @param {MimeType} mimeType 
+   * @returns {string}
+   */
+  function serializeMimeType(mimeType) {
+    let serialization = essence(mimeType);
+    for (const param of mimeType.parameters) {
+      serialization += `;${param[0]}=`;
+      let value = param[1];
+      if (!HTTP_TOKEN_CODE_POINT_RE.test(value)) {
+        value = value.replaceAll("\\", "\\\\");
+        value = value.replaceAll('"', '\\"');
+        value = `"${value}"`;
+      }
+      serialization += value;
+    }
+    return serialization;
+  }
+
+  window.__bootstrap.mimesniff = { parseMimeType, essence, serializeMimeType };
 })(this);

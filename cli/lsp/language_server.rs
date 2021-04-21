@@ -725,7 +725,7 @@ impl Inner {
     if !self.enabled() {
       return Ok(None);
     }
-    let mark = self.performance.mark("selection_range");
+    let mark = self.performance.mark("document_symbol");
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
 
     let line_index =
@@ -2477,7 +2477,7 @@ impl Inner {
   - <details><summary>Sources in memory: {}</summary>
 
     - {}
-  
+
   </details>
 
   - <details><summary>Performance measures: {}</summary>

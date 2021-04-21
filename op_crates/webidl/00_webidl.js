@@ -375,40 +375,12 @@
     return V;
   }
 
-  const abByteLengthGetter = Object.getOwnPropertyDescriptor(
-    ArrayBuffer.prototype,
-    "byteLength",
-  ).get;
-
   function isNonSharedArrayBuffer(V) {
-    try {
-      // This will throw on SharedArrayBuffers, but not detached ArrayBuffers.
-      // (The spec says it should throw, but the spec conflicts with implementations: https://github.com/tc39/ecma262/issues/678)
-      abByteLengthGetter.call(V);
-
-      return true;
-    } catch {
-      return false;
-    }
+    return V instanceof ArrayBuffer;
   }
 
-  let sabByteLengthGetter;
-
   function isSharedArrayBuffer(V) {
-    // TODO(lucacasonato): vulnerable to prototype pollution. Needs to happen
-    // here because SharedArrayBuffer is not available during snapshotting.
-    if (!sabByteLengthGetter) {
-      sabByteLengthGetter = Object.getOwnPropertyDescriptor(
-        SharedArrayBuffer.prototype,
-        "byteLength",
-      ).get;
-    }
-    try {
-      sabByteLengthGetter.call(V);
-      return true;
-    } catch {
-      return false;
-    }
+    return V instanceof SharedArrayBuffer;
   }
 
   function isArrayBufferDetached(V) {
@@ -439,14 +411,8 @@
     return V;
   };
 
-  const dvByteLengthGetter = Object.getOwnPropertyDescriptor(
-    DataView.prototype,
-    "byteLength",
-  ).get;
   converters.DataView = (V, opts = {}) => {
-    try {
-      dvByteLengthGetter.call(V);
-    } catch (e) {
+    if (!(V instanceof DataView)) {
       throw makeException(TypeError, "is not a DataView", opts);
     }
 
@@ -614,10 +580,19 @@
     }
   }
 
+  function isEmptyObject(V) {
+    for (const _ in V) return false;
+    return true;
+  }
+
   function createDictionaryConverter(name, ...dictionaries) {
+    let hasRequiredKey = false;
     const allMembers = [];
     for (const members of dictionaries) {
       for (const member of members) {
+        if (member.required) {
+          hasRequiredKey = true;
+        }
         allMembers.push(member);
       }
     }
@@ -627,6 +602,29 @@
       }
       return a.key < b.key ? -1 : 1;
     });
+
+    const defaultValues = {};
+    for (const member of allMembers) {
+      if ("defaultValue" in member) {
+        const idlMemberValue = member.defaultValue;
+        const imvType = typeof idlMemberValue;
+        // Copy by value types can be directly assigned, copy by reference types
+        // need to be re-created for each allocation.
+        if (
+          imvType === "number" || imvType === "boolean" ||
+          imvType === "string" || imvType === "bigint" ||
+          imvType === "undefined"
+        ) {
+          defaultValues[member.key] = idlMemberValue;
+        } else {
+          Object.defineProperty(defaultValues, member.key, {
+            get() {
+              return member.defaultValue;
+            },
+          });
+        }
+      }
+    }
 
     return function (V, opts = {}) {
       const typeV = type(V);
@@ -644,7 +642,14 @@
       }
       const esDict = V;
 
-      const idlDict = {};
+      const idlDict = { ...defaultValues };
+
+      // NOTE: fast path Null and Undefined and empty objects.
+      if (
+        (V === undefined || V === null || isEmptyObject(V)) && !hasRequiredKey
+      ) {
+        return idlDict;
+      }
 
       for (const member of allMembers) {
         const key = member.key;
@@ -656,20 +661,12 @@
           esMemberValue = esDict[key];
         }
 
-        const context = `'${key}' of '${name}'${
-          opts.context ? ` (${opts.context})` : ""
-        }`;
-
         if (esMemberValue !== undefined) {
+          const context = `'${key}' of '${name}'${
+            opts.context ? ` (${opts.context})` : ""
+          }`;
           const converter = member.converter;
-          const idlMemberValue = converter(esMemberValue, {
-            ...opts,
-            context,
-          });
-          idlDict[key] = idlMemberValue;
-        } else if ("defaultValue" in member) {
-          const defaultValue = member.defaultValue;
-          const idlMemberValue = defaultValue;
+          const idlMemberValue = converter(esMemberValue, { ...opts, context });
           idlDict[key] = idlMemberValue;
         } else if (member.required) {
           throw makeException(
