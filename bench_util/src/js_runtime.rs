@@ -20,7 +20,6 @@ pub fn create_js_runtime(setup: impl FnOnce(&mut JsRuntime)) -> JsRuntime {
     "init",
     r#"
       Deno.core.ops();
-      Deno.core.registerErrorClass('Error', Error);
     "#,
   )
   .unwrap();
