@@ -16,7 +16,6 @@ pub fn init(rt: &mut deno_core::JsRuntime, main_module: ModuleSpecifier) {
     state.put::<ModuleSpecifier>(main_module);
   }
   super::reg_sync(rt, "op_main_module", op_main_module);
-  super::reg_sync(rt, "op_metrics", op_metrics);
 }
 
 fn op_main_module(
