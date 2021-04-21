@@ -2,7 +2,7 @@ use rusty_v8 as v8;
 use std::cell::RefCell;
 
 pub struct SerializedValue {
-  pub buf: RefCell<Vec<u8>>
+  pub buf: RefCell<Vec<u8>>,
 }
 
 impl serde_v8::Deserializable for SerializedValue {
@@ -26,10 +26,12 @@ impl serde_v8::Serializable for SerializedValue {
   ) -> Result<v8::Local<'a, v8::Value>, serde_v8::Error> {
     let buf = self.buf.take();
     let val = deserialize(scope, buf);
-    
+
     match val {
       Some(val) => Ok(val),
-      None => Err(serde_v8::Error::Message("invalid SerializedValue".to_string()))
+      None => Err(serde_v8::Error::Message(
+        "invalid SerializedValue".to_string(),
+      )),
     }
   }
 }
@@ -57,10 +59,10 @@ fn serialize(
 ) -> Option<Vec<u8>> {
   let sd = Box::new(SerializeDeserialize {});
   let mut vs = v8::ValueSerializer::new(scope, sd);
-  
+
   match vs.write_value(scope.get_current_context(), value) {
     Some(true) => Some(vs.release()),
-    _ => None
+    _ => None,
   }
 }
 
@@ -71,6 +73,6 @@ fn deserialize<'a>(
 ) -> Option<v8::Local<'a, v8::Value>> {
   let sd = Box::new(SerializeDeserialize {});
   let mut vd = v8::ValueDeserializer::new(scope, sd, &buf);
-  
+
   vd.read_value(scope.get_current_context())
 }
