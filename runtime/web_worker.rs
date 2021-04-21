@@ -194,6 +194,7 @@ impl WebWorker {
       ),
       deno_crypto::init(options.seed),
       deno_webgpu::init(options.unstable),
+      deno_timers::init<Permissions>();
       // Metrics
       metrics::init(),
     ];
@@ -253,7 +254,6 @@ impl WebWorker {
 
       ops::web_worker::init(js_runtime, sender.clone(), handle);
       ops::runtime::init(js_runtime, main_module.clone());
-      ops::timers::init(js_runtime);
       ops::worker_host::init(
         js_runtime,
         Some(sender),

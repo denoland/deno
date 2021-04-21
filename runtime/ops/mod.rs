@@ -13,7 +13,6 @@ pub mod plugin;
 pub mod process;
 pub mod runtime;
 pub mod signal;
-pub mod timers;
 pub mod tls;
 pub mod tty;
 mod utils;

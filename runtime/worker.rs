@@ -96,6 +96,7 @@ impl MainWorker {
       ),
       deno_crypto::init(options.seed),
       deno_webgpu::init(options.unstable),
+      deno_timers::init<Permissions>(),
       // Metrics
       metrics::init(),
     ];
@@ -142,7 +143,6 @@ impl MainWorker {
       js_runtime.init_extension_ops().unwrap();
 
       ops::runtime::init(js_runtime, main_module);
-      ops::timers::init(js_runtime);
       ops::worker_host::init(
         js_runtime,
         None,
