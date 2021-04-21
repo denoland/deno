@@ -634,21 +634,15 @@ fn declare_webgpu_ops() -> Vec<(&'static str, Box<OpFn>)> {
     ),
     (
       "op_webgpu_command_encoder_begin_render_pass",
-      op_sync(
-        command_encoder::op_webgpu_command_encoder_begin_render_pass,
-      ),
+      op_sync(command_encoder::op_webgpu_command_encoder_begin_render_pass),
     ),
     (
       "op_webgpu_command_encoder_begin_compute_pass",
-      op_sync(
-        command_encoder::op_webgpu_command_encoder_begin_compute_pass,
-      ),
+      op_sync(command_encoder::op_webgpu_command_encoder_begin_compute_pass),
     ),
     (
       "op_webgpu_command_encoder_copy_buffer_to_buffer",
-      op_sync(
-        command_encoder::op_webgpu_command_encoder_copy_buffer_to_buffer,
-      ),
+      op_sync(command_encoder::op_webgpu_command_encoder_copy_buffer_to_buffer),
     ),
     (
       "op_webgpu_command_encoder_copy_buffer_to_texture",
@@ -678,9 +672,7 @@ fn declare_webgpu_ops() -> Vec<(&'static str, Box<OpFn>)> {
     ),
     (
       "op_webgpu_command_encoder_insert_debug_marker",
-      op_sync(
-        command_encoder::op_webgpu_command_encoder_insert_debug_marker,
-      ),
+      op_sync(command_encoder::op_webgpu_command_encoder_insert_debug_marker),
     ),
     (
       "op_webgpu_command_encoder_write_timestamp",
@@ -688,9 +680,7 @@ fn declare_webgpu_ops() -> Vec<(&'static str, Box<OpFn>)> {
     ),
     (
       "op_webgpu_command_encoder_resolve_query_set",
-      op_sync(
-        command_encoder::op_webgpu_command_encoder_resolve_query_set,
-      ),
+      op_sync(command_encoder::op_webgpu_command_encoder_resolve_query_set),
     ),
     (
       "op_webgpu_command_encoder_finish",
@@ -721,9 +711,7 @@ fn declare_webgpu_ops() -> Vec<(&'static str, Box<OpFn>)> {
     ),
     (
       "op_webgpu_render_pass_end_pipeline_statistics_query",
-      op_sync(
-        render_pass::op_webgpu_render_pass_end_pipeline_statistics_query,
-      ),
+      op_sync(render_pass::op_webgpu_render_pass_end_pipeline_statistics_query),
     ),
     (
       "op_webgpu_render_pass_write_timestamp",

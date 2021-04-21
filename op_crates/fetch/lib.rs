@@ -74,18 +74,9 @@ pub fn init<P: FetchPermissions + 'static>(
     vec![
       ("op_fetch", op_sync(op_fetch::<P>)),
       ("op_fetch_send", op_async(op_fetch_send)),
-      (
-        "op_fetch_request_write",
-        op_async(op_fetch_request_write),
-      ),
-      (
-        "op_fetch_response_read",
-        op_async(op_fetch_response_read),
-      ),
-      (
-        "op_create_http_client",
-        op_sync(op_create_http_client::<P>),
-      ),
+      ("op_fetch_request_write", op_async(op_fetch_request_write)),
+      ("op_fetch_response_read", op_async(op_fetch_response_read)),
+      ("op_create_http_client", op_sync(op_create_http_client::<P>)),
     ],
     Some(Box::new(move |state| {
       state.put::<reqwest::Client>({
