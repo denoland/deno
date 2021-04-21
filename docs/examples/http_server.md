@@ -37,10 +37,9 @@ for await (const conn of server) {
     for await (const requestEvent of httpConn) {
       // The native HTTP server uses the web standard `Request` and `Response`
       // objects.
-      const body =
-        `Your user-agent is:\n\n${requestEvent.request.headers.get(
-          "user-agent",
-        ) ?? "Unknown"}`;
+      const body = `Your user-agent is:\n\n${requestEvent.request.headers.get(
+        "user-agent",
+      ) ?? "Unknown"}`;
       // The requestEvent's `.respondWith()` method is how we send the response
       // back to the client.
       requestEvent.respondWith(
