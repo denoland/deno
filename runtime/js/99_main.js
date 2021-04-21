@@ -189,8 +189,8 @@ delete Object.prototype.__proto__;
     core.registerErrorClass(
       "DOMExceptionOperationError",
       function DOMExceptionOperationError(msg) {
-        this = new DOMException(msg, "OperationError")
-      }
+        this = new DOMException(msg, "OperationError");
+      },
     );
   }
 
