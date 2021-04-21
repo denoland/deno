@@ -21,12 +21,18 @@ pub fn init() -> Extension {
   )
 }
 
+#[derive(serde::Serialize)]
+struct MetricsReturn {
+  combined: OpMetrics,
+  ops: Value,
+}
+
 #[allow(clippy::unnecessary_wraps)]
 fn op_metrics(
   state: &mut OpState,
-  _args: Value,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _args: (),
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<MetricsReturn, AnyError> {
   let m = state.borrow::<RuntimeMetrics>();
   let combined = m.combined_metrics();
   let unstable_checker = state.borrow::<UnstableChecker>();
@@ -35,9 +41,11 @@ fn op_metrics(
   } else {
     None
   };
-  Ok(json!({ "combined": combined, "ops": maybe_ops }))
+  Ok(MetricsReturn {
+    combined,
+    ops: json!(maybe_ops),
+  })
 }
-
 #[derive(Default, Debug)]
 pub struct RuntimeMetrics {
   pub ops: HashMap<&'static str, OpMetrics>,

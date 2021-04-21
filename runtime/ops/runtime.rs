@@ -3,8 +3,6 @@
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -35,12 +33,6 @@ fn op_main_module(
       .check_blind(&main_path, "main_module")?;
   }
   Ok(main)
-}
-
-#[derive(serde::Serialize)]
-struct MetricsReturn {
-  combined: OpMetrics,
-  ops: Value,
 }
 
 pub fn ppid() -> i64 {

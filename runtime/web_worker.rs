@@ -183,7 +183,10 @@ impl WebWorker {
       deno_console::init(),
       deno_url::init(),
       deno_web::init(),
-      deno_file::init(options.blob_url_store.clone(), Some(main_module)),
+      deno_file::init(
+        options.blob_url_store.clone(),
+        Some(main_module.clone()),
+      ),
       deno_fetch::init::<Permissions>(
         options.user_agent.clone(),
         options.ca_data.clone(),
@@ -253,7 +256,7 @@ impl WebWorker {
       js_runtime.init_extension_ops().unwrap();
 
       ops::web_worker::init(js_runtime, sender.clone(), handle);
-      ops::runtime::init(js_runtime, main_module.clone());
+      ops::runtime::init(js_runtime, main_module);
       ops::worker_host::init(
         js_runtime,
         Some(sender),
