@@ -9,6 +9,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
+use deno_core::OpState;
 use log::debug;
 use std::collections::HashSet;
 use std::fmt;
@@ -965,6 +966,16 @@ impl deno_fetch::FetchPermissions for Permissions {
 
   fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
     self.read.check(path)
+  }
+}
+
+impl deno_timers::TimersPermission for Permissions {
+  fn allow_hrtime(&mut self) -> bool {
+    self.hrtime.check().is_ok()
+  }
+
+  fn check_unstable(&self, state: &OpState, api_name: &'static str) {
+    crate::ops::check_unstable(state, api_name);
   }
 }
 

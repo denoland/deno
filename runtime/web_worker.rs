@@ -67,6 +67,14 @@ impl WebWorkerHandle {
   /// Post message to worker as a host.
   pub fn post_message(&self, buf: Box<[u8]>) -> Result<(), AnyError> {
     let mut sender = self.sender.clone();
+    // If the channel is closed,
+    // the worker must have terminated but the termination message has not yet been recieved.
+    //
+    // Therefore just treat it as if the worker has terminated and return.
+    if sender.is_closed() {
+      self.terminated.store(true, Ordering::SeqCst);
+      return Ok(());
+    }
     sender.try_send(buf)?;
     Ok(())
   }
@@ -253,6 +261,7 @@ impl WebWorker {
         ops::fs::init(js_runtime);
         ops::net::init(js_runtime);
         ops::os::init(js_runtime);
+        ops::http::init(js_runtime);
         ops::permissions::init(js_runtime);
         ops::plugin::init(js_runtime);
         ops::process::init(js_runtime);

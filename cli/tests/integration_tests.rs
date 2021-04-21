@@ -2509,6 +2509,12 @@ console.log("finish");
     exit_code: 1,
   });
 
+  itest!(nonexistent_worker {
+    args: "run --allow-read workers/nonexistent_worker.ts",
+    output: "workers/nonexistent_worker.out",
+    exit_code: 1,
+  });
+
   #[test]
   fn compiler_api() {
     let status = util::deno_cmd()

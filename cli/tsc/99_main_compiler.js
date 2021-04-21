@@ -660,6 +660,16 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "getEncodedSemanticClassifications": {
+        return respond(
+          id,
+          languageService.getEncodedSemanticClassifications(
+            request.specifier,
+            request.span,
+            ts.SemanticClassificationFormat.TwentyTwenty,
+          ),
+        );
+      }
       case "getImplementation": {
         return respond(
           id,
@@ -724,6 +734,33 @@ delete Object.prototype.__proto__;
         return respond(
           id,
           ts.getSupportedCodeFixes(),
+        );
+      }
+      case "prepareCallHierarchy": {
+        return respond(
+          id,
+          languageService.prepareCallHierarchy(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
+      case "provideCallHierarchyIncomingCalls": {
+        return respond(
+          id,
+          languageService.provideCallHierarchyIncomingCalls(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
+      case "provideCallHierarchyOutgoingCalls": {
+        return respond(
+          id,
+          languageService.provideCallHierarchyOutgoingCalls(
+            request.specifier,
+            request.position,
+          ),
         );
       }
       default:

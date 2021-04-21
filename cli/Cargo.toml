@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.9.0"
+version = "1.9.1"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -24,8 +24,8 @@ harness = false
 path = "./bench/main.rs"
 
 [build-dependencies]
-deno_core = { path = "../core", version = "0.84.0" }
-deno_runtime = { path = "../runtime", version = "0.11.0" }
+deno_core = { path = "../core", version = "0.85.0" }
+deno_runtime = { path = "../runtime", version = "0.12.0" }
 regex = "1.4.3"
 serde = { version = "1.0.125", features = ["derive"] }
 
@@ -34,10 +34,10 @@ winapi = "0.3.9"
 winres = "0.1.11"
 
 [dependencies]
-deno_core = { path = "../core", version = "0.84.0" }
-deno_doc = "0.2.1"
-deno_lint = "0.3.0"
-deno_runtime = { path = "../runtime", version = "0.11.0" }
+deno_core = { path = "../core", version = "0.85.0" }
+deno_doc = "0.3.0"
+deno_lint = "0.4.0"
+deno_runtime = { path = "../runtime", version = "0.12.0" }
 
 atty = "0.2.14"
 base64 = "0.13.0"
@@ -58,7 +58,7 @@ lazy_static = "1.4.0"
 libc = "0.2.93"
 log = { version = "0.4.14", features = ["serde"] }
 lspower = "1.0.0"
-notify = "5.0.0-pre.6"
+notify = "5.0.0-pre.7"
 percent-encoding = "2.1.0"
 pin-project = "1.0.6"
 regex = "1.4.3"

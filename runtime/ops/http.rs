@@ -32,6 +32,7 @@ use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::future::Future;
+use std::net::SocketAddr;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Context;
@@ -48,7 +49,7 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_async(rt, "op_http_request_next", op_http_request_next);
   super::reg_async(rt, "op_http_request_read", op_http_request_read);
 
-  super::reg_sync(rt, "op_http_response", op_http_response);
+  super::reg_async(rt, "op_http_response", op_http_response);
   super::reg_async(rt, "op_http_response_write", op_http_response_write);
   super::reg_async(rt, "op_http_response_close", op_http_response_close);
 }
@@ -100,6 +101,7 @@ enum ConnType {
 struct ConnResource {
   hyper_connection: ConnType,
   deno_service: Service,
+  addr: SocketAddr,
 }
 
 impl ConnResource {
@@ -190,7 +192,23 @@ async fn op_http_request_next(
         headers.push((name, value));
       }
 
-      let url = req.uri().to_string();
+      let url = {
+        let scheme = {
+          match conn_resource.hyper_connection {
+            ConnType::Tcp(_) => "http",
+            ConnType::Tls(_) => "https",
+          }
+        };
+        let host: Cow<str> = if let Some(host) = req.uri().host() {
+          Cow::Borrowed(host)
+        } else if let Some(host) = req.headers().get("HOST") {
+          Cow::Borrowed(host.to_str()?)
+        } else {
+          Cow::Owned(conn_resource.addr.to_string())
+        };
+        let path = req.uri().path_and_query().unwrap();
+        format!("{}://{}{}", scheme, host, path)
+      };
 
       let has_body = if let Some(exact_size) = req.size_hint().exact() {
         exact_size > 0
@@ -267,12 +285,14 @@ fn op_http_start(
       .expect("Only a single use of this resource should happen");
     let (read_half, write_half) = resource.into_inner();
     let tcp_stream = read_half.reunite(write_half)?;
+    let addr = tcp_stream.local_addr()?;
     let hyper_connection = Http::new()
       .with_executor(LocalExecutor)
       .serve_connection(tcp_stream, deno_service.clone());
     let conn_resource = ConnResource {
       hyper_connection: ConnType::Tcp(Rc::new(RefCell::new(hyper_connection))),
       deno_service,
+      addr,
     };
     let rid = state.resource_table.add(conn_resource);
     return Ok(rid);
@@ -286,6 +306,7 @@ fn op_http_start(
       .expect("Only a single use of this resource should happen");
     let (read_half, write_half) = resource.into_inner();
     let tls_stream = read_half.unsplit(write_half);
+    let addr = tls_stream.get_ref().0.local_addr()?;
 
     let hyper_connection = Http::new()
       .with_executor(LocalExecutor)
@@ -293,6 +314,7 @@ fn op_http_start(
     let conn_resource = ConnResource {
       hyper_connection: ConnType::Tls(Rc::new(RefCell::new(hyper_connection))),
       deno_service,
+      addr,
     };
     let rid = state.resource_table.add(conn_resource);
     return Ok(rid);
@@ -309,19 +331,18 @@ struct RespondArgs(
   // status:
   u16,
   // headers:
-  Vec<String>,
+  Vec<(String, String)>,
 );
 
-fn op_http_response(
-  state: &mut OpState,
+async fn op_http_response(
+  state: Rc<RefCell<OpState>>,
   args: RespondArgs,
   data: Option<ZeroCopyBuf>,
 ) -> Result<Option<ResourceId>, AnyError> {
-  let rid = args.0;
-  let status = args.1;
-  let headers = args.2;
+  let RespondArgs(rid, status, headers) = args;
 
   let response_sender = state
+    .borrow_mut()
     .resource_table
     .take::<ResponseSenderResource>(rid)
     .ok_or_else(bad_resource_id)?;
@@ -329,13 +350,17 @@ fn op_http_response(
     .ok()
     .expect("multiple op_http_respond ongoing");
 
+  let conn_resource = state
+    .borrow()
+    .resource_table
+    .get::<ConnResource>(response_sender.conn_rid)
+    .ok_or_else(bad_resource_id)?;
+
   let mut builder = Response::builder().status(status);
 
-  debug_assert_eq!(headers.len() % 2, 0);
-  let headers_count = headers.len() / 2;
-  builder.headers_mut().unwrap().reserve(headers_count);
-  for i in 0..headers_count {
-    builder = builder.header(&headers[2 * i], &headers[2 * i + 1]);
+  builder.headers_mut().unwrap().reserve(headers.len());
+  for (key, value) in &headers {
+    builder = builder.header(key, value);
   }
 
   let res;
@@ -348,11 +373,12 @@ fn op_http_response(
     let (sender, body) = Body::channel();
     res = builder.body(body)?;
 
-    let response_body_rid = state.resource_table.add(ResponseBodyResource {
-      body: AsyncRefCell::new(sender),
-      cancel: CancelHandle::default(),
-      conn_rid: response_sender.conn_rid,
-    });
+    let response_body_rid =
+      state.borrow_mut().resource_table.add(ResponseBodyResource {
+        body: AsyncRefCell::new(sender),
+        cancel: CancelHandle::default(),
+        conn_rid: response_sender.conn_rid,
+      });
 
     Some(response_body_rid)
   };
@@ -363,6 +389,12 @@ fn op_http_response(
   if response_sender.sender.send(res).is_err() {
     return Err(type_error("internal communication error"));
   }
+
+  poll_fn(|cx| match conn_resource.poll(cx) {
+    Poll::Ready(x) => Poll::Ready(x),
+    Poll::Pending => Poll::Ready(Ok(())),
+  })
+  .await?;
 
   Ok(maybe_response_body_rid)
 }
