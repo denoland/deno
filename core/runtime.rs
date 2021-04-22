@@ -368,7 +368,8 @@ impl JsRuntime {
     for m in extensions.iter_mut() {
       let js_files = m.init_js();
       for (filename, source) in js_files {
-        self.execute_static(filename, source)?;
+        // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
+        self.execute(filename, source)?;
       }
     }
     self.extensions = extensions;
@@ -433,40 +434,6 @@ impl JsRuntime {
     &mut self,
     js_filename: &str,
     js_source: &str,
-  ) -> Result<(), AnyError> {
-    let context = self.global_context();
-
-    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
-
-    let source = v8::String::new(scope, js_source).unwrap();
-    let name = v8::String::new(scope, js_filename).unwrap();
-    let origin = bindings::script_origin(scope, name);
-
-    let tc_scope = &mut v8::TryCatch::new(scope);
-
-    let script = match v8::Script::compile(tc_scope, source, Some(&origin)) {
-      Some(script) => script,
-      None => {
-        let exception = tc_scope.exception().unwrap();
-        return exception_to_err_result(tc_scope, exception, false);
-      }
-    };
-
-    match script.run(tc_scope) {
-      Some(_) => Ok(()),
-      None => {
-        assert!(tc_scope.has_caught());
-        let exception = tc_scope.exception().unwrap();
-        exception_to_err_result(tc_scope, exception, false)
-      }
-    }
-  }
-
-  // same as execute() but for internal JS code
-  fn execute_static(
-    &mut self,
-    js_filename: &'static str,
-    js_source: &'static str,
   ) -> Result<(), AnyError> {
     let context = self.global_context();
 
