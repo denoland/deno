@@ -122,8 +122,6 @@ mod tests {
         r#"
     // First we initialize the ops cache. This maps op names to their id's.
     Deno.core.ops();
-    // Register the error class.
-    Deno.core.registerErrorClass('Error', Error);
 
     async function f1() {
       await Deno.core.opAsync('op_throw', 'hello');
