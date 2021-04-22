@@ -282,7 +282,7 @@ pub async fn op_ws_close(
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(tag = "kind", content = "value", rename_all = "camelCase")]
 pub enum NextEventResponse {
   String(String),
   Binary(Vec<u8>),
