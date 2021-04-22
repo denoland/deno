@@ -3,8 +3,7 @@
 
 ((window) => {
   // Available on start due to bindings.
-  const core = window.Deno.core;
-  const { recv, send } = core;
+  const { send } = window.Deno.core;
 
   let opsCache = {};
   const errorMap = {};
@@ -13,10 +12,6 @@
   const RING_SIZE = 4 * 1024;
   const NO_PROMISE = null; // Alias to null is faster than plain nulls
   const promiseRing = new Array(RING_SIZE).fill(NO_PROMISE);
-
-  function init() {
-    recv(handleAsyncMsgFromRust);
-  }
 
   function setPromise(promiseId) {
     const idx = promiseId % RING_SIZE;
@@ -131,6 +126,6 @@
     close,
     resources,
     registerErrorClass,
-    init,
+    handleAsyncMsgFromRust,
   });
 })(this);

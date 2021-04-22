@@ -305,9 +305,8 @@ impl JsRuntime {
     if !has_startup_snapshot {
       js_runtime.js_init();
     }
-
     if !options.will_snapshot {
-      js_runtime.core_js_init();
+      js_runtime.init_recv_cb();
     }
 
     js_runtime
@@ -352,14 +351,22 @@ impl JsRuntime {
       .unwrap();
   }
 
-  /// Executes JavaScript code to initialize core.js,
-  /// specifically the js_recv_cb setter
-  ///
-  /// This function mustn't be called during snapshotting.
-  fn core_js_init(&mut self) {
-    self
-      .execute("deno:core/init.js", "Deno.core.init()")
-      .unwrap();
+  /// Grabs a reference to core.js' handleAsyncMsgFromRust
+  fn init_recv_cb(&mut self) {
+    let context = self.global_context();
+    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+
+    // Get Deno.core.handleAsyncMsgFromRust
+    let code =
+      v8::String::new(scope, "Deno.core.handleAsyncMsgFromRust").unwrap();
+    let script = v8::Script::compile(scope, code, None).unwrap();
+    let v8_value = script.run(scope).unwrap();
+
+    // Put global handle in state.js_recv_cb
+    let state_rc = JsRuntime::state(scope);
+    let mut state = state_rc.borrow_mut();
+    let cb = v8::Local::<v8::Function>::try_from(v8_value).unwrap();
+    state.js_recv_cb.replace(v8::Global::new(scope, cb));
   }
 
   /// Returns the runtime's op state, which can be used to maintain ops
@@ -1393,14 +1400,7 @@ impl JsRuntime {
       return Ok(());
     }
 
-    // FIXME(bartlomieju): without check above this call would panic
-    // because of lazy initialization in core.js. It seems this lazy initialization
-    // hides unnecessary complexity.
-    let js_recv_cb_handle = state_rc
-      .borrow()
-      .js_recv_cb
-      .clone()
-      .expect("Deno.core.recv has not been called.");
+    let js_recv_cb_handle = state_rc.borrow().js_recv_cb.clone().unwrap();
 
     let context = self.global_context();
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
