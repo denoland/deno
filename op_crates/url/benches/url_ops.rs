@@ -25,7 +25,6 @@ fn create_js_runtime() -> JsRuntime {
       "init",
       r#"
       Deno.core.ops();
-      Deno.core.registerErrorClass('Error', Error);
     "#,
     )
     .unwrap();

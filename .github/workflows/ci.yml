@@ -175,9 +175,9 @@ jobs:
             ~/.cargo/registry
             ./target
           key:
-            c-${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
+            d-${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            c-${{ matrix.os }}-${{ matrix.kind }}-
+            d-${{ matrix.os }}-${{ matrix.kind }}-
 
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
@@ -354,3 +354,12 @@ jobs:
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
           draft: true
+
+      - name: Clean before cache
+        shell: bash
+        run: |
+          rm -f target/*/deno target/*/denort target/*/test_server
+          rm -rf target/*/examples/
+          rm -rf target/*/gn_out/
+          rm -rf target/*/*.zip
+

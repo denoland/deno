@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 const listener = Deno.listen({ hostname: "127.0.0.1", port: 4500 });
+postMessage("ready");
 for await (const conn of listener) {
   (async () => {
     const requests = Deno.serveHttp(conn);
