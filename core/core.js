@@ -76,7 +76,8 @@
   }
 
   function dispatch(opName, promiseId, control, zeroCopy) {
-    return opcall(opsCache[opName], promiseId, control, zeroCopy);
+    const opId = typeof opName === "string" ? opsCache[opName] : opName;
+    return opcall(opId, promiseId, control, zeroCopy);
   }
 
   function registerErrorClass(className, errorClass) {
@@ -124,8 +125,6 @@
   Object.assign(window.Deno.core, {
     opAsync,
     opSync,
-    dispatch: opcall,
-    dispatchByName: dispatch,
     ops,
     close,
     resources,
