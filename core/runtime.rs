@@ -1572,9 +1572,9 @@ pub mod tests {
         "filename.js",
         r#"
         let control = 42;
-        Deno.core.send(1, null, control);
+        Deno.core.opcall(1, null, control);
         async function main() {
-          Deno.core.send(1, null, control);
+          Deno.core.opcall(1, null, control);
         }
         main();
         "#,
@@ -1590,7 +1590,7 @@ pub mod tests {
       .execute(
         "filename.js",
         r#"
-        Deno.core.send(1);
+        Deno.core.opcall(1);
         "#,
       )
       .unwrap();
@@ -1605,7 +1605,7 @@ pub mod tests {
         "filename.js",
         r#"
         let zero_copy_a = new Uint8Array([0]);
-        Deno.core.send(1, null, null, zero_copy_a);
+        Deno.core.opcall(1, null, null, zero_copy_a);
         "#,
       )
       .unwrap();
@@ -1636,7 +1636,7 @@ pub mod tests {
           r#"
          assert(nrecv == 0);
          let control = 42;
-         Deno.core.send(1, null, control);
+         Deno.core.opcall(1, null, control);
          assert(nrecv == 0);
          "#,
         )
@@ -1649,7 +1649,7 @@ pub mod tests {
           "check2.js",
           r#"
          assert(nrecv == 1);
-         Deno.core.send(1, null, control);
+         Deno.core.opcall(1, null, control);
          assert(nrecv == 1);
          "#,
         )
@@ -1677,7 +1677,7 @@ pub mod tests {
             assert(false);
           });
           let control = 42;
-          Deno.core.send(1, null, control);
+          Deno.core.opcall(1, null, control);
         "#,
         )
         .unwrap();
@@ -2010,7 +2010,7 @@ pub mod tests {
         import { b } from './b.js'
         if (b() != 'b') throw Error();
         let control = 42;
-        Deno.core.send(1, null, control);
+        Deno.core.opcall(1, null, control);
       "#,
       )
       .unwrap();
