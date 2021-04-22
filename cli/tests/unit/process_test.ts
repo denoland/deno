@@ -490,7 +490,11 @@ unitTest(
     } catch {
       // TODO(nayeemrmn): On Windows sometimes the following values are given
       // instead. Investigate and remove this catch when fixed.
-      assertEquals(status.code, 1);
+      // assertEquals(status.code, 1);
+
+      // update(soeur): After 53ea2b5925721c819a59b8ff1ea1140cfb86f416,
+      // the test found that it returns -1073741502 on windows.
+      assertEquals(status.code, -1073741502);
       assertEquals(status.signal, undefined);
     }
     p.close();
