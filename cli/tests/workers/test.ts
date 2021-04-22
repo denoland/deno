@@ -701,6 +701,7 @@ Deno.test({
 Deno.test({
   name: "Worker with native HTTP",
   fn: async function () {
+    const result = deferred();
     const worker = new Worker(
       new URL(
         "./http_worker.js",
@@ -714,6 +715,10 @@ Deno.test({
         },
       },
     );
+    worker.onmessage = () => {
+      result.resolve();
+    };
+    await result;
 
     assert(worker);
     const response = await fetch("http://localhost:4500");
