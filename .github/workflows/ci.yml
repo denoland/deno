@@ -176,7 +176,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key:
-            a-cargo-home-${{ hashFiles('Cargo.lock') }}
+            a-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       - name: Cache build output
         uses: actions/cache@v2
