@@ -3,7 +3,7 @@
 
 ((window) => {
   // Available on start due to bindings.
-  const { send } = window.Deno.core;
+  const { opcall } = window.Deno.core;
 
   let opsCache = {};
   const errorMap = {
@@ -61,7 +61,7 @@
 
   function ops() {
     // op id 0 is a special value to retrieve the map of registered ops.
-    const newOpsCache = Object.fromEntries(send(0));
+    const newOpsCache = Object.fromEntries(opcall(0));
     opsCache = Object.freeze(newOpsCache);
     return opsCache;
   }
@@ -76,7 +76,7 @@
   }
 
   function dispatch(opName, promiseId, control, zeroCopy) {
-    return send(opsCache[opName], promiseId, control, zeroCopy);
+    return opcall(opsCache[opName], promiseId, control, zeroCopy);
   }
 
   function registerErrorClass(className, errorClass) {
@@ -124,7 +124,7 @@
   Object.assign(window.Deno.core, {
     opAsync,
     opSync,
-    dispatch: send,
+    dispatch: opcall,
     dispatchByName: dispatch,
     ops,
     close,

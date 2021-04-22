@@ -26,7 +26,7 @@ lazy_static::lazy_static! {
         function: print.map_fn_to()
       },
       v8::ExternalReference {
-        function: send.map_fn_to()
+        function: opcall.map_fn_to()
       },
       v8::ExternalReference {
         function: set_macrotask_callback.map_fn_to()
@@ -119,7 +119,7 @@ pub fn initialize_context<'s>(
 
   // Bind functions to Deno.core.*
   set_func(scope, core_val, "print", print);
-  set_func(scope, core_val, "send", send);
+  set_func(scope, core_val, "opcall", opcall);
   set_func(
     scope,
     core_val,
@@ -317,7 +317,7 @@ fn print(
   }
 }
 
-fn send<'s>(
+fn opcall<'s>(
   scope: &mut v8::HandleScope<'s>,
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
@@ -336,7 +336,7 @@ fn send<'s>(
     }
   };
 
-  // send(0) returns obj of all ops, handle as special case
+  // opcall(0) returns obj of all ops, handle as special case
   if op_id == 0 {
     // TODO: Serialize as HashMap when serde_v8 supports maps ...
     let ops = OpTable::op_entries(state.op_state.clone());
