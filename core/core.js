@@ -3,20 +3,23 @@
 
 ((window) => {
   // Available on start due to bindings.
-  const core = window.Deno.core;
-  const { recv, send } = core;
+  const { send } = window.Deno.core;
 
   let opsCache = {};
-  const errorMap = {};
+  const errorMap = {
+    // Builtin v8 / JS errors
+    Error,
+    RangeError,
+    ReferenceError,
+    SyntaxError,
+    TypeError,
+    URIError,
+  };
   let nextPromiseId = 1;
   const promiseMap = new Map();
   const RING_SIZE = 4 * 1024;
   const NO_PROMISE = null; // Alias to null is faster than plain nulls
   const promiseRing = new Array(RING_SIZE).fill(NO_PROMISE);
-
-  function init() {
-    recv(handleAsyncMsgFromRust);
-  }
 
   function setPromise(promiseId) {
     const idx = promiseId % RING_SIZE;
@@ -76,28 +79,24 @@
     return send(opsCache[opName], promiseId, control, zeroCopy);
   }
 
-  function registerErrorClass(errorName, className, args) {
-    if (typeof errorMap[errorName] !== "undefined") {
-      throw new TypeError(`Error class for "${errorName}" already registered`);
+  function registerErrorClass(className, errorClass) {
+    if (typeof errorMap[className] !== "undefined") {
+      throw new TypeError(`Error class for "${className}" already registered`);
     }
-    errorMap[errorName] = [className, args ?? []];
-  }
-
-  function getErrorClassAndArgs(errorName) {
-    return errorMap[errorName] ?? [undefined, []];
+    errorMap[className] = errorClass;
   }
 
   function unwrapOpResult(res) {
     // .$err_class_name is a special key that should only exist on errors
     if (res?.$err_class_name) {
       const className = res.$err_class_name;
-      const [ErrorClass, args] = getErrorClassAndArgs(className);
+      const ErrorClass = errorMap[className];
       if (!ErrorClass) {
         throw new Error(
           `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
         );
       }
-      throw new ErrorClass(res.message, ...args);
+      throw new ErrorClass(res.message);
     }
     return res;
   }
@@ -131,6 +130,6 @@
     close,
     resources,
     registerErrorClass,
-    init,
+    handleAsyncMsgFromRust,
   });
 })(this);

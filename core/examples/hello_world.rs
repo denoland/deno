@@ -74,10 +74,6 @@ const _newline = new Uint8Array([10]);
 function print(value) {
   Deno.core.dispatchByName('op_print', 0, value.toString(), _newline);
 }
-
-// Finally we register the error class used by op_sum
-// so that it throws the correct class.
-Deno.core.registerErrorClass('Error', Error);
 "#,
     )
     .unwrap();
