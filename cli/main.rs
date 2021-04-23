@@ -148,6 +148,7 @@ fn create_web_worker_callback(
       if args.use_deno_namespace {
         ops::runtime_compiler::init(js_runtime);
       }
+      js_runtime.sync_ops_cache();
     }
     worker.bootstrap(&options);
 
