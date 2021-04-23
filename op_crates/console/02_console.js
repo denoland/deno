@@ -911,7 +911,6 @@
 
   function inspectObject(
     value,
-    consoleContext,
     level,
     inspectOptions,
   ) {
@@ -938,7 +937,7 @@
     if (value instanceof Error) {
       return String(value.stack);
     } else if (Array.isArray(value)) {
-      return inspectArray(value, consoleContext, level, inspectOptions);
+      return inspectArray(value, level, inspectOptions);
     } else if (value instanceof Number) {
       return inspectNumberObject(value, inspectOptions);
     } else if (value instanceof Boolean) {
@@ -946,15 +945,15 @@
     } else if (value instanceof String) {
       return inspectStringObject(value, inspectOptions);
     } else if (value instanceof Promise) {
-      return inspectPromise(value, consoleContext, level, inspectOptions);
+      return inspectPromise(value, level, inspectOptions);
     } else if (value instanceof RegExp) {
       return inspectRegExp(value, inspectOptions);
     } else if (value instanceof Date) {
       return inspectDate(value, inspectOptions);
     } else if (value instanceof Set) {
-      return inspectSet(value, consoleContext, level, inspectOptions);
+      return inspectSet(value, level, inspectOptions);
     } else if (value instanceof Map) {
-      return inspectMap(value, consoleContext, level, inspectOptions);
+      return inspectMap(value, level, inspectOptions);
     } else if (value instanceof WeakSet) {
       return inspectWeakSet(inspectOptions);
     } else if (value instanceof WeakMap) {
@@ -963,13 +962,12 @@
       return inspectTypedArray(
         Object.getPrototypeOf(value).constructor.name,
         value,
-        consoleContext,
         level,
         inspectOptions,
       );
     } else {
       // Otherwise, default object formatting
-      return inspectRawObject(value, consoleContext, level, inspectOptions);
+      return inspectRawObject(value, level, inspectOptions);
     }
   }
 
