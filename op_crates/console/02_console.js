@@ -914,7 +914,6 @@
     level,
     inspectOptions,
   ) {
-    // Track object
     ctxAdd(value);
 
     if (customInspect in value && typeof value[customInspect] === "function") {
