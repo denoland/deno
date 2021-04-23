@@ -138,8 +138,6 @@ pub fn op_webgpu_render_bundle_encoder_set_bind_group(
   args: RenderBundleEncoderSetBindGroupArgs,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<WebGpuResult, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
-
   let bind_group_resource = state
     .resource_table
     .get::<super::binding::WebGpuBindGroup>(args.bind_group)
@@ -165,6 +163,7 @@ pub fn op_webgpu_render_bundle_encoder_set_bind_group(
       );
     },
     None => {
+      let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
       let (prefix, data, suffix) = unsafe { zero_copy.align_to::<u32>() };
       assert!(prefix.is_empty());
       assert!(suffix.is_empty());
