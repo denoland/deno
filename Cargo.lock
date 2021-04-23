@@ -516,6 +516,7 @@ dependencies = [
  "byteorder",
  "chrono",
  "clap",
+ "data-url",
  "deno_core",
  "deno_doc",
  "deno_lint",
