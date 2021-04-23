@@ -441,10 +441,10 @@ declare namespace Deno {
    */
   export interface EmitOptions {
     /** Indicate that the source code should be emitted to a single file
-     * JavaScript bundle that is a single ES module (`"esm"`) or a single file
-     * self contained script we executes in an immediately invoked function
-     * when loaded (`"iife"`). */
-    bundle?: "esm" | "iife";
+     * JavaScript bundle that is a single ES module (`"module"`) or a single
+     * file self contained script we executes in an immediately invoked function
+     * when loaded (`"classic"`). */
+    bundle?: "module" | "classic";
     /** If `true` then the sources will be typed checked, returning any
      * diagnostic errors in the result.  If `false` type checking will be
      * skipped.  Defaults to `true`.

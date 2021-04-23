@@ -23,10 +23,10 @@ The emit options are defined in the `Deno` namespace as:
 ```ts
 interface EmitOptions {
   /** Indicate that the source code should be emitted to a single file
-    * JavaScript bundle that is a single ES module (`"esm"`) or a single file
-    * self contained script we executes in an immediately invoked function
-    * when loaded (`"iife"`). */
-  bundle?: "esm" | "iife";
+    * JavaScript bundle that is a single ES module (`"module"`) or a single
+    * file self contained script we executes in an immediately invoked function
+    * when loaded (`"classic"`). */
+  bundle?: "module" | "classic";
   /** If `true` then the sources will be typed checked, returning any
     * diagnostic errors in the result.  If `false` type checking will be
     * skipped.  Defaults to `true`.
@@ -181,13 +181,13 @@ if (diagnostics.length) {
 ### Bundling
 
 `Deno.emit()` is also capable of providing output similar to `deno bundle` on
-the command line. This is enabled by setting the _bundle_ option to `"esm"` or
-`"iife"`. Currently Deno supports bundling as a single file ES module (`"esm"`)
-or a single file self contained legacy script (`"iife"`).
+the command line. This is enabled by setting the _bundle_ option to `"module"`
+or `"classic"`. Currently Deno supports bundling as a single file ES module
+(`"module"`) or a single file self contained legacy script (`"classic"`).
 
 ```ts
 const { files, diagnostics } = await Deno.emit("./mod.ts", {
-  bundle: "esm",
+  bundle: "module",
 });
 ```
 
@@ -215,7 +215,7 @@ version of _lodash_ I am using with my project. I could do the following:
 
 ```ts
 const { files } = await Deno.emit("mod.ts", {
-  bundle: "esm",
+  bundle: "module",
   importMap: {
     imports: {
       "lodash": "https://deno.land/x/lodash",
