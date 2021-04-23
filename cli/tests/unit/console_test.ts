@@ -342,6 +342,14 @@ unitTest(function consoleTestStringifyCircular(): void {
     stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
     'TAG { str: 1, [Symbol(sym)]: 2, [Symbol(Symbol.toStringTag)]: "TAG" }',
   );
+  assertEquals(
+    stringify({
+      [Deno.customInspect]: function () {
+        return Deno.inspect(this);
+      },
+    }),
+    "[Circular]",
+  );
   // test inspect is working the same
   assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
 });
