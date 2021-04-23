@@ -559,7 +559,8 @@
     CTX_STACK[CTX_STACK.length - 1].delete(x);
   }
   function ctxHas(x) {
-    return CTX_STACK.some((ctx) => ctx.has(x));
+    // Only check parent contexts
+    return CTX_STACK.slice(0, CTX_STACK.length - 1).some((ctx) => ctx.has(x));
   }
   function ctxEnter() {
     CTX_STACK.push(new Set());
