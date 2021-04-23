@@ -167,17 +167,24 @@ jobs:
           brew install gnu-tar
           echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
 
-      - name: Cache
+      - name: Cache Cargo home
+        uses: actions/cache@v2
+        with:
+          # See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key:
+            a-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: Cache build output
         uses: actions/cache@v2
         with:
           path: |
-            ~/.cargo/git
-            ~/.cargo/registry
             ./target
           key:
-            d-${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            d-${{ matrix.os }}-${{ matrix.kind }}-
+            d-${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}-${{ hashFiles('Cargo.lock') }}
 
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
