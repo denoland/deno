@@ -171,7 +171,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key:
-            a-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+            cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       - name: Cache build output
         uses: actions/cache@v2
@@ -179,7 +179,7 @@ jobs:
           path: |
             ./target
           key:
-            d-${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}-${{ hashFiles('Cargo.lock') }}
+            cargo-target-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
