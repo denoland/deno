@@ -73,9 +73,9 @@ struct IsolateAllocations {
 /// The JsRuntime future completes when there is an error or when all
 /// pending ops have completed.
 ///
-/// Ops are created in JavaScript by calling Deno.core.dispatch(), and in Rust
-/// by implementing dispatcher function that takes control buffer and optional zero copy buffer
-/// as arguments. An async Op corresponds exactly to a Promise in JavaScript.
+/// Pending ops are created in JavaScript by calling Deno.core.opAsync(), and in Rust
+/// by implementing an async function that takes a serde::Deserialize "control argument"
+/// and an optional zero copy buffer, each async Op is tied to a Promise in JavaScript.
 pub struct JsRuntime {
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
   // an safety issue with SnapshotCreator. See JsRuntime::drop.
@@ -1572,9 +1572,9 @@ pub mod tests {
         "filename.js",
         r#"
         let control = 42;
-        Deno.core.send(1, null, control);
+        Deno.core.opcall(1, null, control);
         async function main() {
-          Deno.core.send(1, null, control);
+          Deno.core.opcall(1, null, control);
         }
         main();
         "#,
@@ -1590,7 +1590,7 @@ pub mod tests {
       .execute(
         "filename.js",
         r#"
-        Deno.core.send(1);
+        Deno.core.opcall(1);
         "#,
       )
       .unwrap();
@@ -1605,7 +1605,7 @@ pub mod tests {
         "filename.js",
         r#"
         let zero_copy_a = new Uint8Array([0]);
-        Deno.core.send(1, null, null, zero_copy_a);
+        Deno.core.opcall(1, null, null, zero_copy_a);
         "#,
       )
       .unwrap();
@@ -1673,7 +1673,7 @@ pub mod tests {
           r#"
           let thrown;
           try {
-            Deno.core.dispatch(100);
+            Deno.core.opSync(100);
           } catch (e) {
             thrown = e;
           }
@@ -1934,7 +1934,7 @@ pub mod tests {
         import { b } from './b.js'
         if (b() != 'b') throw Error();
         let control = 42;
-        Deno.core.send(1, null, control);
+        Deno.core.opcall(1, null, control);
       "#,
       )
       .unwrap();
@@ -2304,7 +2304,7 @@ main();
     let error = runtime
       .execute(
         "core_js_stack_frame.js",
-        "Deno.core.dispatchByName('non_existent');",
+        "Deno.core.opSync('non_existent');",
       )
       .unwrap_err();
     let error_string = error.to_string();
