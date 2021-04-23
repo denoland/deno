@@ -552,7 +552,7 @@
   const CTX_STACK = [];
   function ctxHas(x) {
     // Only check parent contexts
-    return CTX_STACK.slice(0, CTX_STACK.length - 1).some((p) => p === x);
+    return CTX_STACK.slice(0, CTX_STACK.length - 1).includes(x);
   }
 
   // Print strings when they are inside of arrays or objects with quotes
