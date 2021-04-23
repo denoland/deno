@@ -250,7 +250,6 @@
     if (level >= inspectOptions.depth) {
       return cyan(`[${options.typeName}]`);
     }
-    ctxAdd(value);
 
     const entries = [];
 
@@ -272,7 +271,6 @@
       }
       entriesLength++;
     }
-    ctxDelete(value);
 
     if (options.sort) {
       entries.sort();
@@ -486,9 +484,9 @@
     level,
     inspectOptions,
   ) {
-    ctxEnter();
+    CTX_STACK.push(value);
     const x = _inspectValue(value, level, inspectOptions);
-    ctxExit();
+    CTX_STACK.pop();
     return x;
   }
 
@@ -552,21 +550,9 @@
   }
 
   const CTX_STACK = [];
-  function ctxAdd(x) {
-    CTX_STACK[CTX_STACK.length - 1].add(x);
-  }
-  function ctxDelete(x) {
-    CTX_STACK[CTX_STACK.length - 1].delete(x);
-  }
   function ctxHas(x) {
     // Only check parent contexts
-    return CTX_STACK.slice(0, CTX_STACK.length - 1).some((ctx) => ctx.has(x));
-  }
-  function ctxEnter() {
-    CTX_STACK.push(new Set());
-  }
-  function ctxExit() {
-    CTX_STACK.pop();
+    return CTX_STACK.slice(0, CTX_STACK.length - 1).some((p) => p === x);
   }
 
   // Print strings when they are inside of arrays or objects with quotes
@@ -888,8 +874,6 @@
     const totalLength = entries.length + level +
       colors.stripColor(entries.join("")).length;
 
-    ctxDelete(value);
-
     if (entries.length === 0) {
       baseString = "{}";
     } else if (totalLength > LINE_BREAKING_LENGTH || !inspectOptions.compact) {
@@ -914,8 +898,6 @@
     level,
     inspectOptions,
   ) {
-    ctxAdd(value);
-
     if (customInspect in value && typeof value[customInspect] === "function") {
       return String(value[customInspect]());
     }
