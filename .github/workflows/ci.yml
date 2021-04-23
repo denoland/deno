@@ -382,4 +382,5 @@ jobs:
           rm -rf target/*/examples/
           rm -rf target/*/gn_out/
           rm -rf target/*/*.zip
-
+          cargo install cargo-cache --no-default-features --features ci-autoclean cargo-cache
+          cargo-cache
