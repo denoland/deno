@@ -3401,6 +3401,7 @@ mod tests {
   }
 
   #[tokio::test]
+  #[ignore]
   async fn test_large_doc_change() {
     let mut harness = LspTestHarness::new(vec![
       (
