@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 jobs:
   build:
-    name: ${{ matrix.kind }} ${{ matrix.os }}
+    name: ${{ matrix.kind }} ${{ matrix.profile }} ${{ matrix.os }}
     if: |
       github.event_name == 'push' ||
       !startsWith(github.event.pull_request.head.label, 'denoland:')
