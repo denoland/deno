@@ -272,7 +272,7 @@
       }
       entriesLength++;
     }
-    ctx.delete(value);
+    ctxDelete(value);
 
     if (options.sort) {
       entries.sort();
@@ -554,6 +554,9 @@
   const CTX_STACK = [];
   function ctxAdd(x) {
     CTX_STACK[CTX_STACK.length - 1].add(x);
+  }
+  function ctxDelete(x) {
+    CTX_STACK[CTX_STACK.length - 1].delete(x);
   }
   function ctxHas(x) {
     return CTX_STACK.some((ctx) => ctx.has(x));
@@ -884,7 +887,7 @@
     const totalLength = entries.length + level +
       colors.stripColor(entries.join("")).length;
 
-    ctx.delete(value);
+    ctxDelete(value);
 
     if (entries.length === 0) {
       baseString = "{}";
