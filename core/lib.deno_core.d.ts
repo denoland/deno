@@ -7,18 +7,18 @@
 
 declare namespace Deno {
   declare namespace core {
-    /** Send a JSON op to Rust, and synchronously receive the result. */
-    function jsonOpSync(
+    /** Call an op in Rust, and synchronously receive the result. */
+    function opSync(
       opName: string,
       args?: any,
-      ...zeroCopy: Uint8Array[]
+      zeroCopy?: Uint8Array,
     ): any;
 
-    /** Send a JSON op to Rust, and asynchronously receive the result. */
-    function jsonOpAsync(
+    /** Call an op in Rust, and asynchronously receive the result. */
+    function opAsync(
       opName: string,
       args?: any,
-      ...zeroCopy: Uint8Array[]
+      zeroCopy?: Uint8Array,
     ): Promise<any>;
 
     /**
@@ -35,5 +35,8 @@ declare namespace Deno {
 
     /** Close the resource with the specified op id. */
     function close(rid: number): void;
+
+    /** Get heap stats for current isolate/worker */
+    function heapStats(): Record<string, number>;
   }
 }

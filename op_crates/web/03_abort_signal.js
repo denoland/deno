@@ -2,6 +2,7 @@
 "use strict";
 
 ((window) => {
+  const webidl = window.__bootstrap.webidl;
   const { setIsTrusted } = window.__bootstrap.event;
 
   const add = Symbol("add");
@@ -13,6 +14,12 @@
   class AbortSignal extends EventTarget {
     #aborted = false;
     #abortAlgorithms = new Set();
+
+    static abort() {
+      const signal = new AbortSignal(illegalConstructorKey);
+      signal[signalAbort]();
+      return signal;
+    }
 
     [add](algorithm) {
       this.#abortAlgorithms.add(algorithm);
@@ -41,6 +48,7 @@
         throw new TypeError("Illegal constructor.");
       }
       super();
+      this[webidl.brand] = webidl.brand;
     }
 
     get aborted() {
@@ -104,6 +112,11 @@
       enumerable: true,
     });
   }
+
+  webidl.converters["AbortSignal"] = webidl.createInterfaceConverter(
+    "AbortSignal",
+    AbortSignal,
+  );
 
   window.AbortSignal = AbortSignal;
   window.AbortController = AbortController;

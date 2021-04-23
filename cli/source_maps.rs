@@ -48,11 +48,7 @@ pub fn apply_source_map<G: SourceMapGetter>(
   // source file map.
   let end_column = match js_error.end_column {
     Some(ec) => {
-      if let Some(sc) = start_column {
-        Some(ec - (js_error.start_column.unwrap() - sc))
-      } else {
-        None
-      }
+      start_column.map(|sc| ec - (js_error.start_column.unwrap() - sc))
     }
     _ => None,
   };
@@ -146,6 +142,7 @@ pub fn get_orig_position<G: SourceMapGetter>(
               // around it. Use the `file_name` we get from V8 if
               // `source_file_name` does not parse as a URL.
               let file_name = match deno_core::resolve_url(source_file_name) {
+                Ok(m) if m.scheme() == "blob" => file_name,
                 Ok(m) => m.to_string(),
                 Err(_) => file_name,
               };

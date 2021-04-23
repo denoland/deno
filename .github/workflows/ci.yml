@@ -16,7 +16,6 @@ jobs:
           - macos-10.15
 
     env:
-      CARGO_INCREMENTAL: 0
       RUST_BACKTRACE: full
       CARGO_TERM_COLOR: always
 
@@ -63,7 +62,7 @@ jobs:
         with:
           default: true
           override: true
-          toolchain: 1.50.0
+          toolchain: 1.51.0
 
       - name: Configure Canary
         shell: bash
@@ -193,7 +192,7 @@ jobs:
         with:
           default: true
           override: true
-          toolchain: 1.50.0
+          toolchain: 1.51.0
 
       - name: Setup Deno
         run: |
@@ -209,7 +208,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v2
         with:
-          node-version: "14"
+          node-version: "16"
           check-latest: true
 
       - name: Remove Unused Python
@@ -319,7 +318,7 @@ jobs:
       - name: Setup Rust
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: 1.50.0
+          toolchain: 1.51.0
           default: true
           override: true
           components: rustfmt, clippy
@@ -362,7 +361,7 @@ jobs:
         with:
           default: true
           override: true
-          toolchain: 1.50.0
+          toolchain: 1.51.0
 
       - name: Setup Deno
         run: |
@@ -492,3 +491,11 @@ jobs:
             stable/lib.deno.d.ts
             stable/deno_src.tar.gz
           draft: true
+
+      - name: Clean before cache
+        shell: bash
+        run: |
+          rm -f target/*/deno target/*/denort target/*/test_server
+          rm -rf target/*/examples/
+          rm -rf target/*/gn_out/
+          rm -rf target/*/*.zip

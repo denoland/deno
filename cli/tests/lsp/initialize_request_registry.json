@@ -1,0 +1,63 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "processId": 0,
+    "clientInfo": {
+      "name": "test-harness",
+      "version": "1.0.0"
+    },
+    "rootUri": null,
+    "initializationOptions": {
+      "enable": true,
+      "codeLens": {
+        "implementations": true,
+        "references": true
+      },
+      "importMap": null,
+      "lint": true,
+      "suggest": {
+        "autoImports": true,
+        "completeFunctionCalls": false,
+        "names": true,
+        "paths": true,
+        "imports": {
+          "hosts": {
+            "http://localhost:4545/": true
+          }
+        }
+      },
+      "unstable": false
+    },
+    "capabilities": {
+      "textDocument": {
+        "codeAction": {
+          "codeActionLiteralSupport": {
+            "codeActionKind": {
+              "valueSet": [
+                "quickfix"
+              ]
+            }
+          },
+          "isPreferredSupport": true,
+          "dataSupport": true,
+          "resolveSupport": {
+            "properties": [
+              "edit"
+            ]
+          }
+        },
+        "foldingRange": {
+          "lineFoldingOnly": true
+        },
+        "synchronization": {
+          "dynamicRegistration": true,
+          "willSave": true,
+          "willSaveWaitUntil": true,
+          "didSave": true
+        }
+      }
+    }
+  }
+}

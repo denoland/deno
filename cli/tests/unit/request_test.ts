@@ -15,17 +15,6 @@ unitTest(async function fromInit(): Promise<void> {
   assertEquals(req.headers.get("test-header"), "value");
 });
 
-unitTest(async function fromRequest(): Promise<void> {
-  const r = new Request("http://foo/", { body: "ahoyhoy" });
-  r.headers.set("test-header", "value");
-
-  const req = new Request(r);
-
-  assertEquals(await r.text(), await req.text());
-  assertEquals(req.url, r.url);
-  assertEquals(req.headers.get("test-header"), r.headers.get("test-header"));
-});
-
 unitTest(function requestNonString(): void {
   const nonString = {
     toString() {
@@ -50,9 +39,11 @@ unitTest(function requestRelativeUrl(): void {
 
 unitTest(async function cloneRequestBodyStream(): Promise<void> {
   // hack to get a stream
-  const stream = new Request("http://foo/", { body: "a test body" }).body;
+  const stream =
+    new Request("http://foo/", { body: "a test body", method: "POST" }).body;
   const r1 = new Request("http://foo/", {
     body: stream,
+    method: "POST",
   });
 
   const r2 = r1.clone();

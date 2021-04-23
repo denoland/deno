@@ -16,6 +16,8 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
+use log::debug;
+use log::info;
 use std::fs;
 use std::io::stdin;
 use std::io::stdout;

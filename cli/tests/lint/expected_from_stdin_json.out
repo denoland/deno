@@ -4,13 +4,13 @@
       "range": {
         "start": {
           "line": 1,
-          "col": 7,
-          "bytePos": 7
+          "col": 8,
+          "bytePos": 8
         },
         "end": {
           "line": 1,
-          "col": 10,
-          "bytePos": 10
+          "col": 11,
+          "bytePos": 11
         }
       },
       "filename": "_stdin.ts",

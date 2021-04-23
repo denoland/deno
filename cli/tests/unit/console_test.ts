@@ -853,7 +853,7 @@ unitTest(async function consoleTestStringifyPromises(): Promise<void> {
       rej(Error("Whoops"));
     });
     await rejectedPromise;
-  } catch (err) {
+  } catch (_err) {
     // pass
   }
   const strLines = stringify(rejectedPromise).split("\n");
@@ -1469,6 +1469,39 @@ unitTest(function consoleTable(): void {
 `,
     );
   });
+  mockConsole((console, out) => {
+    console.table([{ a: 0 }, { a: 1, b: 1 }, { a: 2 }, { a: 3, b: 3 }]);
+    assertEquals(
+      stripColor(out.toString()),
+      `┌───────┬───┬───┐
+│ (idx) │ a │ b │
+├───────┼───┼───┤
+│   0   │ 0 │   │
+│   1   │ 1 │ 1 │
+│   2   │ 2 │   │
+│   3   │ 3 │ 3 │
+└───────┴───┴───┘
+`,
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(
+      [{ a: 0 }, { a: 1, c: 1 }, { a: 2 }, { a: 3, c: 3 }],
+      ["a", "b", "c"],
+    );
+    assertEquals(
+      stripColor(out.toString()),
+      `┌───────┬───┬───┬───┐
+│ (idx) │ a │ b │ c │
+├───────┼───┼───┼───┤
+│   0   │ 0 │   │   │
+│   1   │ 1 │   │ 1 │
+│   2   │ 2 │   │   │
+│   3   │ 3 │   │ 3 │
+└───────┴───┴───┴───┘
+`,
+    );
+  });
 });
 
 // console.log(Error) test
@@ -1478,7 +1511,7 @@ unitTest(function consoleLogShouldNotThrowError(): void {
     try {
       console.log(new Error("foo"));
       result = 1;
-    } catch (e) {
+    } catch (_e) {
       result = 2;
     }
     assertEquals(result, 1);

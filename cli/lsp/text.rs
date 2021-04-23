@@ -20,7 +20,7 @@ where
   P: FnMut(&T) -> bool,
 {
   let mut left = 0;
-  let mut right = slice.len();
+  let mut right = slice.len() - 1;
 
   while left != right {
     let mid = left + (right - left) / 2;
@@ -31,7 +31,7 @@ where
     // In both cases left <= right is satisfied.
     // Therefore if left < right in a step,
     // left <= right is satisfied in the next step.
-    // Therefore as long as left != right, 0 <= left < right <= len is satisfied
+    // Therefore as long as left != right, 0 <= left < right < len is satisfied
     // and if this case 0 <= mid < len is satisfied too.
     let value = unsafe { slice.get_unchecked(mid) };
     if predicate(value) {
@@ -109,6 +109,10 @@ impl LineIndex {
       curr_col += c_len;
     }
 
+    // utf8_offsets and utf16_offsets length is equal to (# of lines + 1)
+    utf8_offsets.push(curr_row);
+    utf16_offsets.push(curr_offset_u16);
+
     if !utf16_chars.is_empty() {
       utf16_lines.insert(line, utf16_chars);
     }
@@ -183,6 +187,10 @@ impl LineIndex {
       line: line as u32,
       character: col.into(),
     }
+  }
+
+  pub fn text_content_length_utf16(&self) -> TextSize {
+    *self.utf16_offsets.last().unwrap()
   }
 
   fn utf16_to_utf8_col(&self, line: u32, mut col: u32) -> TextSize {

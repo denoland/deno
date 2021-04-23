@@ -112,7 +112,7 @@ impl InspectorInfo {
       "faviconUrl": "https://deno.land/favicon.ico",
       "id": self.uuid.to_string(),
       "title": self.get_title(),
-      "type": "deno",
+      "type": "node",
       // TODO(ry): "url": "file://",
       "webSocketDebuggerUrl": self.get_websocket_debugger_url(),
     })
@@ -124,7 +124,7 @@ impl InspectorInfo {
 
   fn get_frontend_url(&self) -> String {
     format!(
-      "devtools://devtools/bundled/inspector.html?v8only=true&ws={}/ws/{}",
+      "devtools://devtools/bundled/js_app.html?ws={}/ws/{}&experiments=true&v8only=true",
       &self.host, &self.uuid
     )
   }

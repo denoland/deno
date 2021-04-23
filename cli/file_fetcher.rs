@@ -10,8 +10,6 @@ use crate::http_util::FetchOnceResult;
 use crate::media_type::MediaType;
 use crate::text_encoding;
 use crate::version::get_user_agent;
-use deno_runtime::permissions::Permissions;
-
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::uri_error;
@@ -20,6 +18,11 @@ use deno_core::futures;
 use deno_core::futures::future::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_fetch::reqwest;
+use deno_runtime::deno_file::BlobUrlStore;
+use deno_runtime::permissions::Permissions;
+use log::debug;
+use log::info;
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -31,7 +34,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 static DENO_AUTH_TOKENS: &str = "DENO_AUTH_TOKENS";
-pub const SUPPORTED_SCHEMES: [&str; 4] = ["data", "file", "http", "https"];
+pub const SUPPORTED_SCHEMES: [&str; 5] =
+  ["data", "blob", "file", "http", "https"];
 
 /// A structure representing a source file.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -54,7 +58,7 @@ pub struct File {
 
 /// Simple struct implementing in-process caching to prevent multiple
 /// fs reads/net fetches for same file.
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 struct FileCache(Arc<Mutex<HashMap<ModuleSpecifier, File>>>);
 
 impl FileCache {
@@ -223,8 +227,8 @@ pub fn map_content_type(
       | "application/node" => {
         map_js_like_extension(specifier, MediaType::JavaScript)
       }
-      "text/jsx" => MediaType::JSX,
-      "text/tsx" => MediaType::TSX,
+      "text/jsx" => MediaType::Jsx,
+      "text/tsx" => MediaType::Tsx,
       "application/json" | "text/json" => MediaType::Json,
       "application/wasm" => MediaType::Wasm,
       // Handle plain and possibly webassembly
@@ -264,8 +268,8 @@ fn map_js_like_extension(
     None => default,
     Some(os_str) => match os_str.to_str() {
       None => default,
-      Some("jsx") => MediaType::JSX,
-      Some("tsx") => MediaType::TSX,
+      Some("jsx") => MediaType::Jsx,
+      Some("tsx") => MediaType::Tsx,
       // Because DTS files do not have a separate media type, or a unique
       // extension, we have to "guess" at those things that we consider that
       // look like TypeScript, and end with `.d.ts` are DTS files.
@@ -308,7 +312,7 @@ fn strip_shebang(mut value: String) -> String {
 }
 
 /// A structure for resolving, fetching and caching source files.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct FileFetcher {
   auth_tokens: AuthTokens,
   allow_remote: bool,
@@ -316,6 +320,7 @@ pub struct FileFetcher {
   cache_setting: CacheSetting,
   http_cache: HttpCache,
   http_client: reqwest::Client,
+  blob_url_store: BlobUrlStore,
 }
 
 impl FileFetcher {
@@ -324,6 +329,7 @@ impl FileFetcher {
     cache_setting: CacheSetting,
     allow_remote: bool,
     ca_data: Option<Vec<u8>>,
+    blob_url_store: BlobUrlStore,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       auth_tokens: AuthTokens::new(env::var(DENO_AUTH_TOKENS).ok()),
@@ -332,6 +338,7 @@ impl FileFetcher {
       cache_setting,
       http_cache,
       http_client: create_http_client(get_user_agent(), ca_data)?,
+      blob_url_store,
     })
   }
 
@@ -445,6 +452,62 @@ impl FileFetcher {
     })
   }
 
+  /// Get a blob URL.
+  fn fetch_blob_url(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<File, AnyError> {
+    debug!("FileFetcher::fetch_blob_url() - specifier: {}", specifier);
+    match self.fetch_cached(specifier, 0) {
+      Ok(Some(file)) => return Ok(file),
+      Ok(None) => {}
+      Err(err) => return Err(err),
+    }
+
+    if self.cache_setting == CacheSetting::Only {
+      return Err(custom_error(
+        "NotFound",
+        format!(
+          "Specifier not found in cache: \"{}\", --cached-only is specified.",
+          specifier
+        ),
+      ));
+    }
+
+    let blob_url_storage = self.blob_url_store.borrow();
+    let blob = blob_url_storage.get(specifier.clone())?.ok_or_else(|| {
+      custom_error(
+        "NotFound",
+        format!("Blob URL not found: \"{}\".", specifier),
+      )
+    })?;
+
+    let content_type = blob.media_type;
+
+    let (media_type, maybe_charset) =
+      map_content_type(specifier, Some(content_type.clone()));
+    let source =
+      strip_shebang(get_source_from_bytes(blob.data, maybe_charset)?);
+
+    let local =
+      self
+        .http_cache
+        .get_cache_filename(specifier)
+        .ok_or_else(|| {
+          generic_error("Cannot convert specifier to cached filename.")
+        })?;
+    let mut headers = HashMap::new();
+    headers.insert("content-type".to_string(), content_type);
+    self.http_cache.set(specifier, headers, source.as_bytes())?;
+
+    Ok(File {
+      local,
+      maybe_types: None,
+      media_type,
+      source,
+      specifier: specifier.clone(),
+    })
+  }
   /// Asynchronously fetch remote source file specified by the URL following
   /// redirects.
   ///
@@ -453,7 +516,7 @@ impl FileFetcher {
   fn fetch_remote(
     &self,
     specifier: &ModuleSpecifier,
-    permissions: &Permissions,
+    permissions: &mut Permissions,
     redirect_limit: i64,
   ) -> Pin<Box<dyn Future<Output = Result<File, AnyError>> + Send>> {
     debug!("FileFetcher::fetch_remote() - specifier: {}", specifier);
@@ -497,7 +560,7 @@ impl FileFetcher {
     };
     let maybe_auth_token = self.auth_tokens.get(&specifier);
     let specifier = specifier.clone();
-    let permissions = permissions.clone();
+    let mut permissions = permissions.clone();
     let client = self.http_client.clone();
     let file_fetcher = self.clone();
     // A single pass of fetch either yields code or yields a redirect.
@@ -517,7 +580,7 @@ impl FileFetcher {
         FetchOnceResult::Redirect(redirect_url, headers) => {
           file_fetcher.http_cache.set(&specifier, headers, &[])?;
           file_fetcher
-            .fetch_remote(&redirect_url, &permissions, redirect_limit - 1)
+            .fetch_remote(&redirect_url, &mut permissions, redirect_limit - 1)
             .await
         }
         FetchOnceResult::Code(bytes, headers) => {
@@ -537,7 +600,7 @@ impl FileFetcher {
   pub async fn fetch(
     &self,
     specifier: &ModuleSpecifier,
-    permissions: &Permissions,
+    permissions: &mut Permissions,
   ) -> Result<File, AnyError> {
     debug!("FileFetcher::fetch() - specifier: {}", specifier);
     let scheme = get_validated_scheme(specifier)?;
@@ -550,6 +613,12 @@ impl FileFetcher {
       fetch_local(specifier)
     } else if scheme == "data" {
       let result = self.fetch_data_url(specifier);
+      if let Ok(file) = &result {
+        self.cache.insert(specifier.clone(), file.clone());
+      }
+      result
+    } else if scheme == "blob" {
+      let result = self.fetch_blob_url(specifier);
       if let Ok(file) = &result {
         self.cache.insert(specifier.clone(), file.clone());
       }
@@ -603,6 +672,7 @@ mod tests {
   use deno_core::error::get_custom_error_class;
   use deno_core::resolve_url;
   use deno_core::resolve_url_or_path;
+  use deno_runtime::deno_file::Blob;
   use std::rc::Rc;
   use tempfile::TempDir;
 
@@ -610,14 +680,29 @@ mod tests {
     cache_setting: CacheSetting,
     maybe_temp_dir: Option<Rc<TempDir>>,
   ) -> (FileFetcher, Rc<TempDir>) {
+    let (file_fetcher, temp_dir, _) =
+      setup_with_blob_url_store(cache_setting, maybe_temp_dir);
+    (file_fetcher, temp_dir)
+  }
+
+  fn setup_with_blob_url_store(
+    cache_setting: CacheSetting,
+    maybe_temp_dir: Option<Rc<TempDir>>,
+  ) -> (FileFetcher, Rc<TempDir>, BlobUrlStore) {
     let temp_dir = maybe_temp_dir.unwrap_or_else(|| {
       Rc::new(TempDir::new().expect("failed to create temp directory"))
     });
     let location = temp_dir.path().join("deps");
-    let file_fetcher =
-      FileFetcher::new(HttpCache::new(&location), cache_setting, true, None)
-        .expect("setup failed");
-    (file_fetcher, temp_dir)
+    let blob_url_store = BlobUrlStore::default();
+    let file_fetcher = FileFetcher::new(
+      HttpCache::new(&location),
+      cache_setting,
+      true,
+      None,
+      blob_url_store.clone(),
+    )
+    .expect("setup failed");
+    (file_fetcher, temp_dir, blob_url_store)
   }
 
   macro_rules! file_url {
@@ -633,7 +718,7 @@ mod tests {
   async fn test_fetch(specifier: &ModuleSpecifier) -> (File, FileFetcher) {
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result = file_fetcher
-      .fetch(specifier, &Permissions::allow_all())
+      .fetch(specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     (result.unwrap(), file_fetcher)
@@ -645,7 +730,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result: Result<File, AnyError> = file_fetcher
-      .fetch_remote(specifier, &Permissions::allow_all(), 1)
+      .fetch_remote(specifier, &mut Permissions::allow_all(), 1)
       .await;
     assert!(result.is_ok());
     let (_, headers) = file_fetcher.http_cache.get(specifier).unwrap();
@@ -685,8 +770,8 @@ mod tests {
       ("data:text/plain,Hello%2C%20Deno!", true, MediaType::Unknown, "text/plain", "Hello, Deno!"),
       ("data:,Hello%2C%20Deno!", true, MediaType::Unknown, "", "Hello, Deno!"),
       ("data:application/javascript,console.log(\"Hello, Deno!\");%0A", true, MediaType::JavaScript, "application/javascript", "console.log(\"Hello, Deno!\");\n"),
-      ("data:text/jsx;base64,ZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24oKSB7CiAgcmV0dXJuIDxkaXY+SGVsbG8gRGVubyE8L2Rpdj4KfQo=", true, MediaType::JSX, "text/jsx;base64", "export default function() {\n  return <div>Hello Deno!</div>\n}\n"),
-      ("data:text/tsx;base64,ZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24oKSB7CiAgcmV0dXJuIDxkaXY+SGVsbG8gRGVubyE8L2Rpdj4KfQo=", true, MediaType::TSX, "text/tsx;base64", "export default function() {\n  return <div>Hello Deno!</div>\n}\n"),
+      ("data:text/jsx;base64,ZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24oKSB7CiAgcmV0dXJuIDxkaXY+SGVsbG8gRGVubyE8L2Rpdj4KfQo=", true, MediaType::Jsx, "text/jsx;base64", "export default function() {\n  return <div>Hello Deno!</div>\n}\n"),
+      ("data:text/tsx;base64,ZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24oKSB7CiAgcmV0dXJuIDxkaXY+SGVsbG8gRGVubyE8L2Rpdj4KfQo=", true, MediaType::Tsx, "text/tsx;base64", "export default function() {\n  return <div>Hello Deno!</div>\n}\n"),
     ];
 
     for (
@@ -744,10 +829,10 @@ mod tests {
     let fixtures = vec![
       // Extension only
       (file_url!("/foo/bar.ts"), None, MediaType::TypeScript, None),
-      (file_url!("/foo/bar.tsx"), None, MediaType::TSX, None),
+      (file_url!("/foo/bar.tsx"), None, MediaType::Tsx, None),
       (file_url!("/foo/bar.d.ts"), None, MediaType::Dts, None),
       (file_url!("/foo/bar.js"), None, MediaType::JavaScript, None),
-      (file_url!("/foo/bar.jsx"), None, MediaType::JSX, None),
+      (file_url!("/foo/bar.jsx"), None, MediaType::Jsx, None),
       (file_url!("/foo/bar.json"), None, MediaType::Json, None),
       (file_url!("/foo/bar.wasm"), None, MediaType::Wasm, None),
       (file_url!("/foo/bar.cjs"), None, MediaType::JavaScript, None),
@@ -823,13 +908,13 @@ mod tests {
       (
         "https://deno.land/x/mod",
         Some("text/jsx".to_string()),
-        MediaType::JSX,
+        MediaType::Jsx,
         None,
       ),
       (
         "https://deno.land/x/mod",
         Some("text/tsx".to_string()),
-        MediaType::TSX,
+        MediaType::Tsx,
         None,
       ),
       (
@@ -860,25 +945,25 @@ mod tests {
       (
         "https://deno.land/x/mod.tsx",
         Some("application/typescript".to_string()),
-        MediaType::TSX,
+        MediaType::Tsx,
         None,
       ),
       (
         "https://deno.land/x/mod.tsx",
         Some("application/javascript".to_string()),
-        MediaType::TSX,
+        MediaType::Tsx,
         None,
       ),
       (
         "https://deno.land/x/mod.jsx",
         Some("application/javascript".to_string()),
-        MediaType::JSX,
+        MediaType::Jsx,
         None,
       ),
       (
         "https://deno.land/x/mod.jsx",
         Some("application/x-typescript".to_string()),
-        MediaType::JSX,
+        MediaType::Jsx,
         None,
       ),
       (
@@ -926,7 +1011,7 @@ mod tests {
     file_fetcher.insert_cached(file.clone());
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let result_file = result.unwrap();
@@ -943,7 +1028,7 @@ mod tests {
     .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -974,7 +1059,37 @@ mod tests {
     let specifier = resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
+      .await;
+    assert!(result.is_ok());
+    let file = result.unwrap();
+    assert_eq!(
+      file.source,
+      "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"
+    );
+    assert_eq!(file.media_type, MediaType::TypeScript);
+    assert_eq!(file.maybe_types, None);
+    assert_eq!(file.specifier, specifier);
+  }
+
+  #[tokio::test]
+  async fn test_fetch_blob_url() {
+    let (file_fetcher, _, blob_url_store) =
+      setup_with_blob_url_store(CacheSetting::Use, None);
+
+    let specifier = blob_url_store.insert(
+      Blob {
+        data:
+          "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"
+            .as_bytes()
+            .to_vec(),
+        media_type: "application/typescript".to_string(),
+      },
+      None,
+    );
+
+    let result = file_fetcher
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -998,7 +1113,7 @@ mod tests {
         .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1021,7 +1136,7 @@ mod tests {
     metadata.write(&cache_filename).unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1042,7 +1157,7 @@ mod tests {
     metadata.write(&cache_filename).unwrap();
 
     let result = file_fetcher_02
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1060,10 +1175,11 @@ mod tests {
       CacheSetting::ReloadAll,
       true,
       None,
+      BlobUrlStore::default(),
     )
     .expect("setup failed");
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1086,6 +1202,7 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
+      BlobUrlStore::default(),
     )
     .expect("could not create file fetcher");
     let specifier =
@@ -1097,7 +1214,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1113,10 +1230,11 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
+      BlobUrlStore::default(),
     )
     .expect("could not create file fetcher");
     let result = file_fetcher_02
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1155,7 +1273,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1216,7 +1334,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1273,6 +1391,7 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
+      BlobUrlStore::default(),
     )
     .expect("could not create file fetcher");
     let specifier =
@@ -1287,7 +1406,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1303,10 +1422,11 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
+      BlobUrlStore::default(),
     )
     .expect("could not create file fetcher");
     let result = file_fetcher_02
-      .fetch(&redirected_specifier, &Permissions::allow_all())
+      .fetch(&redirected_specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1333,12 +1453,12 @@ mod tests {
     .unwrap();
 
     let result = file_fetcher
-      .fetch_remote(&specifier, &Permissions::allow_all(), 2)
+      .fetch_remote(&specifier, &mut Permissions::allow_all(), 2)
       .await;
     assert!(result.is_ok());
 
     let result = file_fetcher
-      .fetch_remote(&specifier, &Permissions::allow_all(), 1)
+      .fetch_remote(&specifier, &mut Permissions::allow_all(), 1)
       .await;
     assert!(result.is_err());
 
@@ -1371,7 +1491,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1412,13 +1532,14 @@ mod tests {
       CacheSetting::Use,
       false,
       None,
+      BlobUrlStore::default(),
     )
     .expect("could not create file fetcher");
     let specifier =
       resolve_url("http://localhost:4545/cli/tests/002_hello.ts").unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -1438,6 +1559,7 @@ mod tests {
       CacheSetting::Only,
       true,
       None,
+      BlobUrlStore::default(),
     )
     .expect("could not create file fetcher");
     let file_fetcher_02 = FileFetcher::new(
@@ -1445,13 +1567,14 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
+      BlobUrlStore::default(),
     )
     .expect("could not create file fetcher");
     let specifier =
       resolve_url("http://localhost:4545/cli/tests/002_hello.ts").unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -1459,12 +1582,12 @@ mod tests {
     assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/cli/tests/002_hello.ts\", --cached-only is specified.");
 
     let result = file_fetcher_02
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
     let result = file_fetcher_01
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1482,7 +1605,7 @@ mod tests {
     fs::write(fixture_path.clone(), r#"console.log("hello deno");"#)
       .expect("could not write file");
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1491,7 +1614,7 @@ mod tests {
     fs::write(fixture_path, r#"console.log("goodbye deno");"#)
       .expect("could not write file");
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();

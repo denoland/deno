@@ -21,9 +21,7 @@ function to trigger the "dispatch" callback in Rust. The user is responsible for
 encoding both the request and response into a Uint8Array.
 
 Documentation for this crate is thin at the moment. Please see
-[http_bench_bin_ops.rs](https://github.com/denoland/deno/blob/main/core/examples/http_bench_bin_ops.rs)
-and
-[http_bench_json_ops.rs](https://github.com/denoland/deno/blob/main/core/examples/http_bench_json_ops.rs)
+[http_bench_ops.rs](https://github.com/denoland/deno/blob/main/core/examples/http_bench_ops.rs)
 as a simple example of usage.
 
 TypeScript support and a lot of other functionality is not available at this

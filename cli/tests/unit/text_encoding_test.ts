@@ -34,7 +34,7 @@ unitTest(function atobThrows(): void {
   let threw = false;
   try {
     atob("aGVsbG8gd29ybGQ==");
-  } catch (e) {
+  } catch (_e) {
     threw = true;
   }
   assert(threw);
@@ -44,7 +44,7 @@ unitTest(function atobThrows2(): void {
   let threw = false;
   try {
     atob("aGVsbG8gd29ybGQ===");
-  } catch (e) {
+  } catch (_e) {
     threw = true;
   }
   assert(threw);

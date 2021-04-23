@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::io::BufRead;
 use std::io::Read;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::Path;
 use std::process::ChildStdin;
 use std::process::ChildStdout;
 use std::process::Command;
@@ -135,7 +135,7 @@ impl Drop for LspClient {
 }
 
 impl LspClient {
-  fn new(deno_exe: &PathBuf) -> Result<Self, AnyError> {
+  fn new(deno_exe: &Path) -> Result<Self, AnyError> {
     let mut child = Command::new(deno_exe)
       .arg("lsp")
       .stdin(Stdio::piped())
@@ -244,7 +244,7 @@ impl LspClient {
 /// A benchmark that opens a 8000+ line TypeScript document, adds a function to
 /// the end of the document and does a level of hovering and gets quick fix
 /// code actions.
-fn bench_big_file_edits(deno_exe: &PathBuf) -> Result<Duration, AnyError> {
+fn bench_big_file_edits(deno_exe: &Path) -> Result<Duration, AnyError> {
   let mut client = LspClient::new(deno_exe)?;
 
   let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
@@ -302,7 +302,7 @@ fn bench_big_file_edits(deno_exe: &PathBuf) -> Result<Duration, AnyError> {
 }
 
 /// A test that starts up the LSP, opens a single line document, and exits.
-fn bench_startup_shutdown(deno_exe: &PathBuf) -> Result<Duration, AnyError> {
+fn bench_startup_shutdown(deno_exe: &Path) -> Result<Duration, AnyError> {
   let mut client = LspClient::new(deno_exe)?;
 
   let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
@@ -338,7 +338,7 @@ fn bench_startup_shutdown(deno_exe: &PathBuf) -> Result<Duration, AnyError> {
 
 /// Generate benchmarks for the LSP server.
 pub(crate) fn benchmarks(
-  deno_exe: &PathBuf,
+  deno_exe: &Path,
 ) -> Result<HashMap<String, u64>, AnyError> {
   println!("-> Start benchmarking lsp");
   let mut exec_times = HashMap::new();

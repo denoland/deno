@@ -39,7 +39,7 @@
    * @returns {Promise<OpEmitResponse>}
    */
   function opEmit(request) {
-    return core.jsonOpAsync("op_emit", request);
+    return core.opAsync("op_emit", request);
   }
 
   /**

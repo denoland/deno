@@ -77,3 +77,21 @@ unitTest({ perms: { read: true } }, function readFileSyncLoop(): void {
     Deno.readFileSync("cli/tests/fixture.json");
   }
 });
+
+unitTest(
+  { perms: { read: true } },
+  async function readFileDoesNotLeakResources(): Promise<void> {
+    const resourcesBefore = Deno.resources();
+    await assertThrowsAsync(async () => await Deno.readFile("cli"));
+    assertEquals(resourcesBefore, Deno.resources());
+  },
+);
+
+unitTest(
+  { perms: { read: true } },
+  function readFileSyncDoesNotLeakResources(): void {
+    const resourcesBefore = Deno.resources();
+    assertThrows(() => Deno.readFileSync("cli"));
+    assertEquals(resourcesBefore, Deno.resources());
+  },
+);

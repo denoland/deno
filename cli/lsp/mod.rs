@@ -5,11 +5,15 @@ use lspower::Server;
 
 mod analysis;
 mod capabilities;
+mod completions;
 mod config;
 mod diagnostics;
 mod documents;
-mod language_server;
+pub(crate) mod language_server;
+mod path_to_regex;
 mod performance;
+mod registries;
+mod semantic_tokens;
 mod sources;
 mod text;
 mod tsc;

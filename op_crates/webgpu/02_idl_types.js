@@ -105,6 +105,22 @@
       "pipeline-statistics-query",
       "texture-compression-bc",
       "timestamp-query",
+      // extended from spec
+      "mappable-primary-buffers",
+      "sampled-texture-binding-array",
+      "sampled-texture-array-dynamic-indexing",
+      "sampled-texture-array-non-uniform-indexing",
+      "unsized-binding-array",
+      "multi-draw-indirect",
+      "multi-draw-indirect-count",
+      "push-constants",
+      "address-mode-clamp-to-border",
+      "non-fill-polygon-mode",
+      "texture-compression-etc2",
+      "texture-compression-astc-ldr",
+      "texture-adapter-specific-format-features",
+      "shader-float64",
+      "vertex-attribute-64bit",
     ],
   );
 
@@ -119,7 +135,9 @@
       converter: webidl.createSequenceConverter(
         webidl.converters["GPUFeatureName"],
       ),
-      defaultValue: [],
+      get defaultValue() {
+        return [];
+      },
     },
     {
       key: "nonGuaranteedLimits",
@@ -127,7 +145,9 @@
         webidl.converters["DOMString"],
         webidl.converters["GPUSize32"],
       ),
-      defaultValue: {},
+      get defaultValue() {
+        return {};
+      },
     },
   ];
   webidl.converters["GPUDeviceDescriptor"] = webidl.createDictionaryConverter(
@@ -1030,7 +1050,9 @@
           webidl.converters["GPUVertexBufferLayout"],
         ),
       ),
-      defaultValue: [],
+      get defaultValue() {
+        return [];
+      },
     },
   ];
   webidl.converters["GPUVertexState"] = webidl.createDictionaryConverter(
@@ -1171,12 +1193,16 @@
     {
       key: "stencilFront",
       converter: webidl.converters["GPUStencilFaceState"],
-      defaultValue: {},
+      get defaultValue() {
+        return {};
+      },
     },
     {
       key: "stencilBack",
       converter: webidl.converters["GPUStencilFaceState"],
-      defaultValue: {},
+      get defaultValue() {
+        return {};
+      },
     },
     {
       key: "stencilReadMask",
@@ -1363,7 +1389,9 @@
     {
       key: "primitive",
       converter: webidl.converters["GPUPrimitiveState"],
-      defaultValue: {},
+      get defaultValue() {
+        return {};
+      },
     },
     {
       key: "depthStencil",
@@ -1372,7 +1400,9 @@
     {
       key: "multisample",
       converter: webidl.converters["GPUMultisampleState"],
-      defaultValue: {},
+      get defaultValue() {
+        return {};
+      },
     },
     { key: "fragment", converter: webidl.converters["GPUFragmentState"] },
   ];
@@ -1514,7 +1544,9 @@
     {
       key: "origin",
       converter: webidl.converters["GPUOrigin3D"],
-      defaultValue: {},
+      get defaultValue() {
+        return {};
+      },
     },
     {
       key: "aspect",
@@ -1777,7 +1809,9 @@
       converter: webidl.createSequenceConverter(
         webidl.converters["GPUPipelineStatisticName"],
       ),
-      defaultValue: [],
+      get defaultValue() {
+        return [];
+      },
     },
   ];
   webidl.converters["GPUQuerySetDescriptor"] = webidl.createDictionaryConverter(
