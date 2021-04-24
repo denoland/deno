@@ -1124,7 +1124,7 @@ declare namespace Deno {
    * Deno.sleepSync(10);
    * ```
    */
-  export function sleepSync(millis: number): Promise<void>;
+  export function sleepSync(millis: number): void;
 
   export interface Metrics extends OpMetrics {
     ops: Record<string, OpMetrics>;
