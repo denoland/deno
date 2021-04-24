@@ -371,9 +371,7 @@ impl JsRuntime {
 
   /// Ensures core.js has the latest op-name to op-id mappings
   pub fn sync_ops_cache(&mut self) {
-    self
-      .execute("<anon>", "Deno.core.syncOpsCache()")
-      .unwrap()
+    self.execute("<anon>", "Deno.core.syncOpsCache()").unwrap()
   }
 
   /// Returns the runtime's op state, which can be used to maintain ops
