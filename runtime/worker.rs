@@ -8,6 +8,7 @@ use crate::metrics::RuntimeMetrics;
 use crate::ops;
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
+use deno_core::error::Context as ErrorContext;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
@@ -201,7 +202,9 @@ impl MainWorker {
 
   /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
   pub fn execute(&mut self, js_source: &str) -> Result<(), AnyError> {
-    let path = env::current_dir().unwrap().join("__anonymous__");
+    let path = env::current_dir()
+      .context("Failed to get current working directory")?
+      .join("__anonymous__");
     let url = Url::from_file_path(path).unwrap();
     self.js_runtime.execute(url.as_str(), js_source)
   }

@@ -21,6 +21,7 @@
       "program_lifecycle": "Program lifecycle",
       "permission_apis": "Permission APIs",
       "web_platform_apis": "Web Platform APIs",
+      "http_server_apis": "HTTP Server APIs",
       "location_api": "Location API",
       "workers": "Workers"
     }

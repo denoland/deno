@@ -2497,6 +2497,12 @@ console.log("finish");
     exit_code: 1,
   });
 
+  itest!(nonexistent_worker {
+    args: "run --allow-read workers/nonexistent_worker.ts",
+    output: "workers/nonexistent_worker.out",
+    exit_code: 1,
+  });
+
   #[test]
   fn compiler_api() {
     let status = util::deno_cmd()
@@ -5136,6 +5142,25 @@ console.log("finish");
     assert!(!output.status.success());
     let stderr = std::str::from_utf8(&output.stderr).unwrap().trim();
     assert!(stderr.contains("BadResource"));
+  }
+
+  #[cfg(not(windows))]
+  #[test]
+  fn should_not_panic_on_not_found_cwd() {
+    let output = util::deno_cmd()
+      .current_dir(util::root_path())
+      .arg("run")
+      .arg("--allow-write")
+      .arg("--allow-read")
+      .arg("cli/tests/dont_panic_not_found_cwd.ts")
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(!output.status.success());
+    let stderr = std::str::from_utf8(&output.stderr).unwrap().trim();
+    assert!(stderr.contains("Failed to get current working directory"));
   }
 
   #[cfg(windows)]

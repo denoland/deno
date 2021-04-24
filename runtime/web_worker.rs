@@ -8,6 +8,7 @@ use crate::ops;
 use crate::permissions::Permissions;
 use crate::tokio_util::create_basic_runtime;
 use deno_core::error::AnyError;
+use deno_core::error::Context as ErrorContext;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
@@ -67,6 +68,14 @@ impl WebWorkerHandle {
   /// Post message to worker as a host.
   pub fn post_message(&self, buf: Box<[u8]>) -> Result<(), AnyError> {
     let mut sender = self.sender.clone();
+    // If the channel is closed,
+    // the worker must have terminated but the termination message has not yet been recieved.
+    //
+    // Therefore just treat it as if the worker has terminated and return.
+    if sender.is_closed() {
+      self.terminated.store(true, Ordering::SeqCst);
+      return Ok(());
+    }
     sender.try_send(buf)?;
     Ok(())
   }
@@ -253,6 +262,7 @@ impl WebWorker {
         ops::fs::init(js_runtime);
         ops::net::init(js_runtime);
         ops::os::init(js_runtime);
+        ops::http::init(js_runtime);
         ops::permissions::init(js_runtime);
         ops::plugin::init(js_runtime);
         ops::process::init(js_runtime);
@@ -311,7 +321,9 @@ impl WebWorker {
 
   /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
   pub fn execute(&mut self, js_source: &str) -> Result<(), AnyError> {
-    let path = env::current_dir().unwrap().join("__anonymous__");
+    let path = env::current_dir()
+      .context("Failed to get current working directory")?
+      .join("__anonymous__");
     let url = Url::from_file_path(path).unwrap();
     self.js_runtime.execute(url.as_str(), js_source)
   }

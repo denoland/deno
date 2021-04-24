@@ -6,6 +6,38 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.9.2 / 2021.04.23
+
+- fix: parse websocket messages correctly (#10318)
+- fix: standalone bin corruption on M1 (#10311)
+- fix: don't gray-out internal error frames (#10293)
+- fix(op_crates/fetch): Response inspect regression (#10295)
+- fix(runtime): do not panic on not found cwd (#10238)
+- fix(op_crates/webgpu): move non-null op buffer arg check when needed (#10319)
+- fix(lsp): document symbol performance mark (#10264)
+
+Release notes for std version 0.95.0:
+https://github.com/denoland/deno_std/releases/tag/0.95.0
+
+### 1.9.1 / 2021.04.20
+
+- feat(lsp, unstable): Implement textDocument/documentSymbol (#9981)
+- feat(lsp, unstable): implement textDocument/prepareCallHierarchy (#10061)
+- feat(lsp, unstable): Implement textDocument/semanticTokens/full (#10233)
+- feat(lsp, unstable): improve diagnostic status page (#10253)
+- fix: revert changes to Deno.Conn type (#10255)
+- fix(lsp): handle x-typescript-types header on type only imports properly
+  (#10261)
+- fix(lsp): remove documents when closed (#10254)
+- fix(runtime): correct URL in Request (#10256)
+- fix(runtime): handle race condition in postMessage where worker has terminated
+  (#10239)
+- fix(runtime): hang during HTTP server response (#10197)
+- fix(runtime): include HTTP ops in WebWorker scope (#10207)
+
+Release notes for std version 0.94.0:
+https://github.com/denoland/deno_std/releases/tag/0.94.0
+
 ### 1.9.0 / 2021.04.13
 
 - feat: blob URL support (#10045)

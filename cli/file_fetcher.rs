@@ -10,6 +10,7 @@ use crate::http_util::FetchOnceResult;
 use crate::media_type::MediaType;
 use crate::text_encoding;
 use crate::version::get_user_agent;
+use data_url::DataUrl;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::uri_error;
@@ -151,40 +152,6 @@ pub fn get_source_from_bytes(
   };
 
   Ok(source)
-}
-
-fn get_source_from_data_url(
-  specifier: &ModuleSpecifier,
-) -> Result<(String, MediaType, String), AnyError> {
-  if specifier.scheme() != "data" {
-    return Err(custom_error(
-      "BadScheme",
-      format!("Unexpected scheme of \"{}\"", specifier.scheme()),
-    ));
-  }
-  let path = specifier.path();
-  let mut parts = path.splitn(2, ',');
-  let media_type_part =
-    percent_encoding::percent_decode_str(parts.next().unwrap())
-      .decode_utf8()?;
-  let data_part = if let Some(data) = parts.next() {
-    data
-  } else {
-    return Err(custom_error(
-      "BadUrl",
-      "The data URL is badly formed, missing a comma.",
-    ));
-  };
-  let (media_type, maybe_charset) =
-    map_content_type(specifier, Some(media_type_part.to_string()));
-  let is_base64 = media_type_part.rsplit(';').any(|p| p == "base64");
-  let bytes = if is_base64 {
-    base64::decode(data_part)?
-  } else {
-    percent_encoding::percent_decode_str(data_part).collect()
-  };
-  let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
-  Ok((source, media_type, media_type_part.to_string()))
 }
 
 /// Return a validated scheme for a given module specifier.
@@ -430,8 +397,18 @@ impl FileFetcher {
       ));
     }
 
-    let (source, media_type, content_type) =
-      get_source_from_data_url(specifier)?;
+    let data_url = DataUrl::process(specifier.as_str())
+      .map_err(|e| uri_error(format!("{:?}", e)))?;
+    let mime = data_url.mime_type();
+    let charset = mime.get_parameter("charset").map(|v| v.to_string());
+    let (bytes, _) = data_url
+      .decode_to_vec()
+      .map_err(|e| uri_error(format!("{:?}", e)))?;
+    let source = strip_shebang(get_source_from_bytes(bytes, charset)?);
+    let content_type = format!("{}", mime);
+    let (media_type, _) =
+      map_content_type(specifier, Some(content_type.clone()));
+
     let local =
       self
         .http_cache
@@ -760,39 +737,6 @@ mod tests {
     let specifier = resolve_url_or_path(p.to_str().unwrap()).unwrap();
     let (file, _) = test_fetch(&specifier).await;
     assert_eq!(file.source, expected);
-  }
-
-  #[test]
-  fn test_get_source_from_data_url() {
-    let fixtures = vec![
-      ("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=", true, MediaType::TypeScript, "application/typescript;base64", "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"),
-      ("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=?a=b&b=c", true, MediaType::TypeScript, "application/typescript;base64", "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"),
-      ("data:text/plain,Hello%2C%20Deno!", true, MediaType::Unknown, "text/plain", "Hello, Deno!"),
-      ("data:,Hello%2C%20Deno!", true, MediaType::Unknown, "", "Hello, Deno!"),
-      ("data:application/javascript,console.log(\"Hello, Deno!\");%0A", true, MediaType::JavaScript, "application/javascript", "console.log(\"Hello, Deno!\");\n"),
-      ("data:text/jsx;base64,ZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24oKSB7CiAgcmV0dXJuIDxkaXY+SGVsbG8gRGVubyE8L2Rpdj4KfQo=", true, MediaType::Jsx, "text/jsx;base64", "export default function() {\n  return <div>Hello Deno!</div>\n}\n"),
-      ("data:text/tsx;base64,ZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24oKSB7CiAgcmV0dXJuIDxkaXY+SGVsbG8gRGVubyE8L2Rpdj4KfQo=", true, MediaType::Tsx, "text/tsx;base64", "export default function() {\n  return <div>Hello Deno!</div>\n}\n"),
-    ];
-
-    for (
-      url_str,
-      expected_ok,
-      expected_media_type,
-      expected_media_type_str,
-      expected,
-    ) in fixtures
-    {
-      let specifier = resolve_url(url_str).unwrap();
-      let actual = get_source_from_data_url(&specifier);
-      assert_eq!(actual.is_ok(), expected_ok);
-      if expected_ok {
-        let (actual, actual_media_type, actual_media_type_str) =
-          actual.unwrap();
-        assert_eq!(actual, expected);
-        assert_eq!(actual_media_type, expected_media_type);
-        assert_eq!(actual_media_type_str, expected_media_type_str);
-      }
-    }
   }
 
   #[test]
