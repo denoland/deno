@@ -372,7 +372,7 @@ impl JsRuntime {
   /// Ensures core.js has the latest op-name to op-id mappings
   pub fn sync_ops_cache(&mut self) {
     self
-      .execute("deno:core/internals", "Deno.core.syncOpsCache()")
+      .execute("<anon>", "Deno.core.syncOpsCache()")
       .unwrap()
   }
 
