@@ -2,9 +2,12 @@
 
 //! This module provides feature to upgrade deno executable
 
+use bytes::Bytes;
 use deno_core::error::AnyError;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::Client;
+use futures_util::StreamExt;
+use pbr::{ProgressBar, Units};
 use semver_parser::version::parse as semver_parse;
 use std::fs;
 use std::path::Path;
@@ -167,7 +170,23 @@ async fn download_package(
 
   if res.status().is_success() {
     println!("Download has been found");
-    Ok(res.bytes().await?.to_vec())
+
+    let length = res.content_length().unwrap_or_default();
+    let mut data = Vec::with_capacity(length as usize);
+    let mut pb = ProgressBar::new(length);
+
+    pb.set_units(Units::Bytes);
+    pb.format("╢=🦕-╟");
+
+    let mut stream = res.bytes_stream();
+    while let Some(item) = stream.next().await {
+      let item: Bytes = item?;
+      pb.add(item.len() as u64);
+      data.extend(item);
+    }
+    pb.finish();
+    assert_eq!(length, data.len() as u64, "Download data is corrupted!");
+    Ok(data)
   } else {
     println!("Download could not be found, aborting");
     std::process::exit(1)
