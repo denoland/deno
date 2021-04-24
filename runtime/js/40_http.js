@@ -236,7 +236,48 @@
         },
       });
 
-      return { response };
+      const ws = {
+        async *[Symbol.asyncIterator]() {
+          let { kind, value } = await core.opAsync(
+            "op_http_ws_next_event",
+            rid,
+          );
+
+          if (Array.isArray(value)) {
+            value = new Uint8Array(value);
+          }
+
+          yield { kind, value };
+        },
+        async send(kind, data) {
+          switch (kind) {
+            case "text":
+              await core.opAsync("op_http_ws_close", {
+                rid,
+                kind,
+                text: data,
+              });
+              break;
+            case "binary":
+            case "pong":
+            case "ping":
+              await core.opAsync("op_http_ws_close", {
+                rid,
+                kind,
+              }, data);
+              break;
+          }
+        },
+        async close(code, reason) {
+          await core.opAsync("op_http_ws_close", {
+            rid,
+            code,
+            reason,
+          });
+        },
+      };
+
+      return { response, ws };
     };
   }
 

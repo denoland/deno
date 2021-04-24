@@ -29,6 +29,8 @@ use std::io::Cursor;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
 use tokio_rustls::{rustls::ClientConfig, TlsConnector};
 use tokio_tungstenite::tungstenite::Error as TungsteniteError;
@@ -39,8 +41,6 @@ use tokio_tungstenite::tungstenite::{
 use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::{client_async, WebSocketStream};
 use webpki::DNSNameRef;
-use tokio::io::AsyncRead;
-use tokio::io::AsyncWrite;
 
 pub use tokio_tungstenite; // Re-export tokio_tungstenite
 
@@ -234,8 +234,8 @@ pub async fn op_ws_send<T: AsyncRead + AsyncWrite>(
   let msg = match args.kind.as_str() {
     "text" => Message::Text(args.text.unwrap()),
     "binary" => Message::Binary(buf.ok_or_else(null_opbuf)?.to_vec()),
-    "pong" => Message::Pong(vec![]),
-    "ping" => Message::Ping(vec![]),
+    "pong" => Message::Pong(buf.ok_or_else(null_opbuf)?.to_vec()),
+    "ping" => Message::Ping(buf.ok_or_else(null_opbuf)?.to_vec()),
     _ => unreachable!(),
   };
   let rid = args.rid;

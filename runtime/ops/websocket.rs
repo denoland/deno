@@ -6,8 +6,8 @@ use deno_websocket::op_ws_create;
 use deno_websocket::op_ws_next_event;
 use deno_websocket::op_ws_send;
 use deno_websocket::WsCaData;
-use deno_websocket::WsUserAgent;
 use deno_websocket::WsStream;
+use deno_websocket::WsUserAgent;
 
 pub fn init(
   rt: &mut deno_core::JsRuntime,

@@ -7,6 +7,7 @@ use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
+use deno_core::futures::stream::SplitStream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
@@ -19,11 +20,15 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+use deno_websocket::tokio_tungstenite::tungstenite::Message;
+use deno_websocket::tokio_tungstenite::WebSocketStream;
+use deno_websocket::WsStreamResource;
 use hyper::body::HttpBody;
 use hyper::http;
 use hyper::server::conn::Connection;
 use hyper::server::conn::Http;
 use hyper::service::Service as HyperService;
+use hyper::upgrade::Upgraded;
 use hyper::Body;
 use hyper::Request;
 use hyper::Response;
@@ -42,11 +47,6 @@ use tokio::net::TcpStream;
 use tokio::sync::oneshot;
 use tokio_rustls::server::TlsStream;
 use tokio_util::io::StreamReader;
-use deno_websocket::tokio_tungstenite::tungstenite::Message;
-use deno_websocket::tokio_tungstenite::WebSocketStream;
-use deno_core::futures::stream::SplitStream;
-use hyper::upgrade::Upgraded;
-use deno_websocket::WsStreamResource;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_sync(rt, "op_http_start", op_http_start);
@@ -57,6 +57,23 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_async(rt, "op_http_response", op_http_response);
   super::reg_async(rt, "op_http_response_write", op_http_response_write);
   super::reg_async(rt, "op_http_response_close", op_http_response_close);
+
+  super::reg_async(rt, "op_http_upgrade_websocket", op_http_upgrade_websocket);
+  super::reg_async(
+    rt,
+    "op_http_ws_send",
+    deno_websocket::op_ws_send::<WebSocketStream<Upgraded>>,
+  );
+  super::reg_async(
+    rt,
+    "op_http_ws_close",
+    deno_websocket::op_ws_close::<WebSocketStream<Upgraded>>,
+  );
+  super::reg_async(
+    rt,
+    "op_http_ws_next_event",
+    deno_websocket::op_ws_next_event::<WebSocketStream<Upgraded>>,
+  );
 }
 
 struct ServiceInner {
@@ -529,7 +546,11 @@ async fn op_http_upgrade_websocket(
 
   let service = conn_resource.deno_service.inner.borrow_mut().ok_or("")?; // TODO
 
-  let key = service.request.headers().get(http::header::SEC_WEBSOCKET_KEY).ok_or("failed to read ws key from headers")?; // TODO
+  let key = service
+    .request
+    .headers()
+    .get(http::header::SEC_WEBSOCKET_KEY)
+    .ok_or("failed to read ws key from headers")?; // TODO
   let key = key.to_str()?.to_string();
   /* TODO:
    For this header field, the server has to take the value (as present
@@ -544,27 +565,23 @@ async fn op_http_upgrade_websocket(
   */
 
   let upgraded = service.request.on_upgrade().await?;
-  let stream = deno_websocket::tokio_tungstenite::WebSocketStream::from_raw_socket(
-    upgraded,
-    deno_websocket::tokio_tungstenite::tungstenite::protocol::Role::Server,
-    None,
-  ).await;
+  let stream =
+    deno_websocket::tokio_tungstenite::WebSocketStream::from_raw_socket(
+      upgraded,
+      deno_websocket::tokio_tungstenite::tungstenite::protocol::Role::Server,
+      None,
+    )
+    .await;
 
   let (ws_tx, ws_rx) = stream.split();
 
-  let rid = state
-    .borrow_mut()
-    .resource_table
-    .add(WsStreamResource {
-      rx: AsyncRefCell::new(ws_rx),
-      tx: AsyncRefCell::new(ws_tx),
-      cancel: Default::default(),
-    });
+  let rid = state.borrow_mut().resource_table.add(WsStreamResource {
+    rx: AsyncRefCell::new(ws_rx),
+    tx: AsyncRefCell::new(ws_tx),
+    cancel: Default::default(),
+  });
 
-  Ok(HttpUpgradeWebsocketResponse {
-    key,
-    rid,
-  })
+  Ok(HttpUpgradeWebsocketResponse { key, rid })
 }
 
 type BytesStream =
