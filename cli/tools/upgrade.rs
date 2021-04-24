@@ -167,8 +167,6 @@ async fn download_package(
   let res = client.get(download_url).send().await?;
 
   if res.status().is_success() {
-    println!("Download has been found");
-
     let total_size = res.content_length().unwrap() as f64;
     let mut current_size = 0.0;
     let mut data = Vec::with_capacity(total_size as usize);
@@ -177,10 +175,11 @@ async fn download_package(
       let bytes = item?;
       current_size += bytes.len() as f64;
       data.extend_from_slice(&bytes);
+      const MEGABYTE: f64 = 1024.0 * 1024.0;
       print!(
         "\r{:0>4.1} MiB / {:.1} MiB ({:0>5.1}%)",
-        current_size / 1048576.0,
-        total_size / 1048576.0,
+        current_size / MEGABYTE,
+        total_size / MEGABYTE,
         (current_size / total_size) * 100.0,
       );
     }
