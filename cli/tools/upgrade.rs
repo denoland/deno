@@ -171,7 +171,7 @@ async fn download_package(
 
     let total_size = res.content_length().unwrap() as f64;
     let mut current_size = 0.0;
-    let mut data = vec![];
+    let mut data = Vec::with_capacity(total_size as usize);
     let mut stream = res.bytes_stream();
     while let Some(item) = stream.next().await {
       let bytes = item?;
