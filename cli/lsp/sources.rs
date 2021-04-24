@@ -197,6 +197,10 @@ impl Sources {
     self.0.lock().unwrap().get_source(specifier)
   }
 
+  pub fn len(&self) -> usize {
+    self.0.lock().unwrap().metadata.len()
+  }
+
   pub fn resolve_import(
     &self,
     specifier: &str,
@@ -206,14 +210,7 @@ impl Sources {
   }
 
   pub fn specifiers(&self) -> Vec<ModuleSpecifier> {
-    self
-      .0
-      .lock()
-      .unwrap()
-      .metadata
-      .iter()
-      .map(|(s, _)| s.clone())
-      .collect()
+    self.0.lock().unwrap().metadata.keys().cloned().collect()
   }
 }
 
@@ -318,7 +315,7 @@ impl Inner {
       &media_type,
       &self.maybe_import_map,
     );
-    if metadata.maybe_types.is_none() {
+    if maybe_types.is_some() {
       metadata.maybe_types = maybe_types;
     }
     self.metadata.insert(specifier.clone(), metadata.clone());
@@ -386,7 +383,22 @@ impl Inner {
       if let analysis::ResolvedDependency::Resolved(resolved_specifier) =
         type_dependency
       {
-        self.resolution_result(resolved_specifier)
+        // even if we have a module in the maybe_types slot, it doesn't mean
+        // that it is the actual module we should be using based on headers,
+        // so we check here and update properly.
+        if let Some(type_dependency) = self.get_maybe_types(resolved_specifier)
+        {
+          self.set_maybe_type(specifier, &referrer, &type_dependency);
+          if let analysis::ResolvedDependency::Resolved(type_specifier) =
+            type_dependency
+          {
+            self.resolution_result(&type_specifier)
+          } else {
+            self.resolution_result(resolved_specifier)
+          }
+        } else {
+          self.resolution_result(resolved_specifier)
+        }
       } else {
         None
       }
@@ -494,6 +506,39 @@ mod tests {
         &specifier_type,
         Default::default(),
         b"export const a: number;",
+      )
+      .unwrap();
+    let actual =
+      sources.resolve_import("https://deno.land/x/lib.js", &specifier_dep);
+    assert_eq!(actual, Some((specifier_type, MediaType::Dts)))
+  }
+
+  #[test]
+  /// This is a regression test for https://github.com/denoland/deno/issues/10031
+  fn test_resolve_dependency_import_types() {
+    let (sources, location) = setup();
+    let cache = HttpCache::new(&location);
+    let specifier_dep = resolve_url("https://deno.land/x/mod.ts").unwrap();
+    cache
+      .set(
+        &specifier_dep,
+        Default::default(),
+        b"import type { A } from \"https://deno.land/x/lib.js\";\nconst a: A = { a: \"a\" };",
+      )
+      .unwrap();
+    let specifier_code = resolve_url("https://deno.land/x/lib.js").unwrap();
+    let mut headers_code = HashMap::new();
+    headers_code
+      .insert("x-typescript-types".to_string(), "./lib.d.ts".to_string());
+    cache
+      .set(&specifier_code, headers_code, b"export const a = 1;")
+      .unwrap();
+    let specifier_type = resolve_url("https://deno.land/x/lib.d.ts").unwrap();
+    cache
+      .set(
+        &specifier_type,
+        Default::default(),
+        b"export const a: number;\nexport interface A { a: number; }\n",
       )
       .unwrap();
     let actual =

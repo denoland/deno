@@ -73,9 +73,9 @@ struct IsolateAllocations {
 /// The JsRuntime future completes when there is an error or when all
 /// pending ops have completed.
 ///
-/// Ops are created in JavaScript by calling Deno.core.dispatch(), and in Rust
-/// by implementing dispatcher function that takes control buffer and optional zero copy buffer
-/// as arguments. An async Op corresponds exactly to a Promise in JavaScript.
+/// Pending ops are created in JavaScript by calling Deno.core.opAsync(), and in Rust
+/// by implementing an async function that takes a serde::Deserialize "control argument"
+/// and an optional zero copy buffer, each async Op is tied to a Promise in JavaScript.
 pub struct JsRuntime {
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
   // an safety issue with SnapshotCreator. See JsRuntime::drop.
@@ -305,9 +305,8 @@ impl JsRuntime {
     if !has_startup_snapshot {
       js_runtime.js_init();
     }
-
     if !options.will_snapshot {
-      js_runtime.core_js_init();
+      js_runtime.init_recv_cb();
     }
 
     js_runtime
@@ -352,14 +351,22 @@ impl JsRuntime {
       .unwrap();
   }
 
-  /// Executes JavaScript code to initialize core.js,
-  /// specifically the js_recv_cb setter
-  ///
-  /// This function mustn't be called during snapshotting.
-  fn core_js_init(&mut self) {
-    self
-      .execute("deno:core/init.js", "Deno.core.init()")
-      .unwrap();
+  /// Grabs a reference to core.js' handleAsyncMsgFromRust
+  fn init_recv_cb(&mut self) {
+    let context = self.global_context();
+    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+
+    // Get Deno.core.handleAsyncMsgFromRust
+    let code =
+      v8::String::new(scope, "Deno.core.handleAsyncMsgFromRust").unwrap();
+    let script = v8::Script::compile(scope, code, None).unwrap();
+    let v8_value = script.run(scope).unwrap();
+
+    // Put global handle in state.js_recv_cb
+    let state_rc = JsRuntime::state(scope);
+    let mut state = state_rc.borrow_mut();
+    let cb = v8::Local::<v8::Function>::try_from(v8_value).unwrap();
+    state.js_recv_cb.replace(v8::Global::new(scope, cb));
   }
 
   /// Returns the runtime's op state, which can be used to maintain ops
@@ -1393,14 +1400,7 @@ impl JsRuntime {
       return Ok(());
     }
 
-    // FIXME(bartlomieju): without check above this call would panic
-    // because of lazy initialization in core.js. It seems this lazy initialization
-    // hides unnecessary complexity.
-    let js_recv_cb_handle = state_rc
-      .borrow()
-      .js_recv_cb
-      .clone()
-      .expect("Deno.core.recv has not been called.");
+    let js_recv_cb_handle = state_rc.borrow().js_recv_cb.clone().unwrap();
 
     let context = self.global_context();
     let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
@@ -1572,9 +1572,9 @@ pub mod tests {
         "filename.js",
         r#"
         let control = 42;
-        Deno.core.send(1, null, control);
+        Deno.core.opcall(1, null, control);
         async function main() {
-          Deno.core.send(1, null, control);
+          Deno.core.opcall(1, null, control);
         }
         main();
         "#,
@@ -1590,7 +1590,7 @@ pub mod tests {
       .execute(
         "filename.js",
         r#"
-        Deno.core.send(1);
+        Deno.core.opcall(1);
         "#,
       )
       .unwrap();
@@ -1605,87 +1605,11 @@ pub mod tests {
         "filename.js",
         r#"
         let zero_copy_a = new Uint8Array([0]);
-        Deno.core.send(1, null, null, zero_copy_a);
+        Deno.core.opcall(1, null, null, zero_copy_a);
         "#,
       )
       .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-  }
-
-  #[test]
-  #[ignore] // TODO(ry) re-enable? setAsyncHandler has been removed
-  fn test_poll_async_delayed_ops() {
-    run_in_task(|cx| {
-      let (mut runtime, dispatch_count) = setup(Mode::Async);
-
-      runtime
-        .execute(
-          "setup2.js",
-          r#"
-         let nrecv = 0;
-         Deno.core.setAsyncHandler(1, (buf) => {
-           nrecv++;
-         });
-         "#,
-        )
-        .unwrap();
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
-      runtime
-        .execute(
-          "check1.js",
-          r#"
-         assert(nrecv == 0);
-         let control = 42;
-         Deno.core.send(1, null, control);
-         assert(nrecv == 0);
-         "#,
-        )
-        .unwrap();
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      assert!(matches!(runtime.poll_event_loop(cx), Poll::Ready(Ok(_))));
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      runtime
-        .execute(
-          "check2.js",
-          r#"
-         assert(nrecv == 1);
-         Deno.core.send(1, null, control);
-         assert(nrecv == 1);
-         "#,
-        )
-        .unwrap();
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
-      assert!(matches!(runtime.poll_event_loop(cx), Poll::Ready(Ok(_))));
-      runtime.execute("check3.js", "assert(nrecv == 2)").unwrap();
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 2);
-      // We are idle, so the next poll should be the last.
-      assert!(matches!(runtime.poll_event_loop(cx), Poll::Ready(Ok(_))));
-    });
-  }
-
-  #[test]
-  #[ignore] // TODO(ry) re-enable? setAsyncHandler has been removed
-  fn test_poll_async_optional_ops() {
-    run_in_task(|cx| {
-      let (mut runtime, dispatch_count) = setup(Mode::AsyncUnref);
-      runtime
-        .execute(
-          "check1.js",
-          r#"
-          Deno.core.setAsyncHandler(1, (buf) => {
-            // This handler will never be called
-            assert(false);
-          });
-          let control = 42;
-          Deno.core.send(1, null, control);
-        "#,
-        )
-        .unwrap();
-      assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
-      // The above op never finish, but runtime can finish
-      // because the op is an unreffed async op.
-      assert!(matches!(runtime.poll_event_loop(cx), Poll::Ready(Ok(_))));
-    })
   }
 
   #[test]
@@ -1749,7 +1673,7 @@ pub mod tests {
           r#"
           let thrown;
           try {
-            Deno.core.dispatch(100);
+            Deno.core.opSync(100);
           } catch (e) {
             thrown = e;
           }
@@ -2010,7 +1934,7 @@ pub mod tests {
         import { b } from './b.js'
         if (b() != 'b') throw Error();
         let control = 42;
-        Deno.core.send(1, null, control);
+        Deno.core.opcall(1, null, control);
       "#,
       )
       .unwrap();
@@ -2380,7 +2304,7 @@ main();
     let error = runtime
       .execute(
         "core_js_stack_frame.js",
-        "Deno.core.dispatchByName('non_existent');",
+        "Deno.core.opSync('non_existent');",
       )
       .unwrap_err();
     let error_string = error.to_string();

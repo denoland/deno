@@ -19,8 +19,8 @@ fn main() {
   // The second one just transforms some input and returns it to JavaScript.
 
   // Register the op for outputting a string to stdout.
-  // It can be invoked with Deno.core.dispatch and the id this method returns
-  // or Deno.core.dispatchByName and the name provided.
+  // It can be invoked with Deno.core.opcall and the id this method returns
+  // or Deno.core.opSync   and the name provided.
   runtime.register_op(
     "op_print",
     // The op_fn callback takes a state object OpState,
@@ -72,12 +72,8 @@ Deno.core.ops();
 // our op_print op to display the stringified argument.
 const _newline = new Uint8Array([10]);
 function print(value) {
-  Deno.core.dispatchByName('op_print', 0, value.toString(), _newline);
+  Deno.core.opSync('op_print', value.toString(), _newline);
 }
-
-// Finally we register the error class used by op_sum
-// so that it throws the correct class.
-Deno.core.registerErrorClass('Error', Error);
 "#,
     )
     .unwrap();

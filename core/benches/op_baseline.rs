@@ -27,7 +27,6 @@ fn create_js_runtime() -> JsRuntime {
       "init",
       r#"
       Deno.core.ops();
-      Deno.core.registerErrorClass('Error', Error);
     "#,
     )
     .unwrap();
@@ -82,7 +81,7 @@ fn bench_op_nop(b: &mut Bencher) {
   bench_runtime_js(
     b,
     r#"for(let i=0; i < 1e3; i++) {
-      Deno.core.dispatchByName("nop", null, null, null);
+      Deno.core.opSync("nop", null, null, null);
     }"#,
   );
 }

@@ -186,16 +186,11 @@ delete Object.prototype.__proto__;
     core.registerErrorClass("Http", errors.Http);
     core.registerErrorClass("Busy", errors.Busy);
     core.registerErrorClass("NotSupported", errors.NotSupported);
-    core.registerErrorClass("Error", Error);
-    core.registerErrorClass("RangeError", RangeError);
-    core.registerErrorClass("ReferenceError", ReferenceError);
-    core.registerErrorClass("SyntaxError", SyntaxError);
-    core.registerErrorClass("TypeError", TypeError);
-    core.registerErrorClass("URIError", URIError);
     core.registerErrorClass(
       "DOMExceptionOperationError",
-      DOMException,
-      "OperationError",
+      function DOMExceptionOperationError(msg) {
+        DOMException.prototype.constructor.call(this, msg, "OperationError");
+      },
     );
   }
 
@@ -421,7 +416,6 @@ delete Object.prototype.__proto__;
 
     if (locationHref != null) {
       location.setLocationHref(locationHref);
-      fetch.setBaseUrl(locationHref);
     }
 
     registerErrors();
@@ -488,7 +482,6 @@ delete Object.prototype.__proto__;
       runtimeOptions;
 
     location.setLocationHref(locationHref);
-    fetch.setBaseUrl(locationHref);
     registerErrors();
 
     const internalSymbol = Symbol("Deno.internal");
