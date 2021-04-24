@@ -48,6 +48,7 @@ deno_webidl = { path = "../op_crates/webidl", version = "0.5.0" }
 deno_websocket = { path = "../op_crates/websocket", version = "0.10.0" }
 
 atty = "0.2.14"
+base64 = "0.13.0"
 bytes = "1"
 dlopen = "0.1.8"
 encoding_rs = "0.8.28"

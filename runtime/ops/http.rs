@@ -531,8 +531,6 @@ pub struct HttpUpgradeWebsocketResponse {
   key: String,
 }
 
-const GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-
 async fn op_http_upgrade_websocket(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
@@ -551,18 +549,11 @@ async fn op_http_upgrade_websocket(
     .headers()
     .get(http::header::SEC_WEBSOCKET_KEY)
     .ok_or("failed to read ws key from headers")?; // TODO
-  let key = key.to_str()?.to_string();
-  /* TODO:
-   For this header field, the server has to take the value (as present
-   in the header field, e.g., the base64-encoded [RFC4648] version minus
-   any leading and trailing whitespace) and concatenate this with the
-   Globally Unique Identifier (GUID, [RFC4122]) "258EAFA5-E914-47DA-
-   95CA-C5AB0DC85B11" in string form, which is unlikely to be used by
-   network endpoints that do not understand the WebSocket Protocol.  A
-   SHA-1 hash (160 bits) [FIPS.180-3], base64-encoded (see Section 4 of
-   [RFC4648]), of this concatenation is then returned in the server's
-   handshake.
-  */
+  let digest = ring::digest::digest(
+    &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
+    format!("{}258EAFA5-E914-47DA-95CA-C5AB0DC85B11", key.to_str()?).as_bytes(),
+  );
+  let return_key = base64::encode(digest);
 
   let upgraded = service.request.on_upgrade().await?;
   let stream =
@@ -581,7 +572,10 @@ async fn op_http_upgrade_websocket(
     cancel: Default::default(),
   });
 
-  Ok(HttpUpgradeWebsocketResponse { key, rid })
+  Ok(HttpUpgradeWebsocketResponse {
+    key: return_key,
+    rid,
+  })
 }
 
 type BytesStream =

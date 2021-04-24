@@ -669,6 +669,7 @@ name = "deno_runtime"
 version = "0.13.0"
 dependencies = [
  "atty",
+ "base64 0.13.0",
  "bytes",
  "deno_console",
  "deno_core",
