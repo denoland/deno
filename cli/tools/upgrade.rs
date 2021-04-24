@@ -3,6 +3,7 @@
 //! This module provides feature to upgrade deno executable
 
 use deno_core::error::AnyError;
+use deno_core::futures::StreamExt;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::Client;
 use semver_parser::version::parse as semver_parse;
@@ -167,7 +168,25 @@ async fn download_package(
 
   if res.status().is_success() {
     println!("Download has been found");
-    Ok(res.bytes().await?.to_vec())
+
+    let total_size = res.content_length().unwrap() as f64;
+    let mut current_size = 0.0;
+    let mut data = vec![];
+    let mut stream = res.bytes_stream();
+    while let Some(item) = stream.next().await {
+      let bytes = item?;
+      current_size += bytes.len() as f64;
+      data.extend_from_slice(&bytes);
+      print!(
+        "\r{:0>4.1} MiB / {:.1} MiB ({:0>5.1}%)",
+        current_size / 1048576.0,
+        total_size / 1048576.0,
+        (current_size / total_size) * 100.0,
+      );
+    }
+    println!();
+
+    Ok(data)
   } else {
     println!("Download could not be found, aborting");
     std::process::exit(1)
