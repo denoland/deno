@@ -4,6 +4,19 @@
 ((window) => {
   const core = window.Deno.core;
 
+  function requiredArguments(
+    name,
+    length,
+    required,
+  ) {
+    if (length < required) {
+      const errMsg = `${name} requires at least ${required} argument${
+        required === 1 ? "" : "s"
+      }, but only ${length} present`;
+      throw new TypeError(errMsg);
+    }
+  }
+
   /** @template T */
   class Deferred {
     /** @type {Promise<T>} */
