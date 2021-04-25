@@ -367,6 +367,11 @@ impl JsRuntime {
     state.js_recv_cb.replace(v8::Global::new(scope, cb));
   }
 
+  /// Ensures core.js has the latest op-name to op-id mappings
+  pub fn sync_ops_cache(&mut self) {
+    self.execute("<anon>", "Deno.core.syncOpsCache()").unwrap()
+  }
+
   /// Returns the runtime's op state, which can be used to maintain ops
   /// and access resources between op calls.
   pub fn op_state(&mut self) -> Rc<RefCell<OpState>> {
@@ -2140,6 +2145,7 @@ pub mod tests {
         module_loader: Some(loader),
         ..Default::default()
       });
+      runtime.sync_ops_cache();
       runtime
         .execute(
           "file:///dyn_import3.js",
@@ -2149,8 +2155,6 @@ pub mod tests {
             if (mod.b() !== 'b') {
               throw Error("bad");
             }
-            // Now do any op
-            Deno.core.ops();
           })();
           "#,
         )

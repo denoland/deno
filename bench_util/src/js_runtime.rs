@@ -16,13 +16,7 @@ pub fn create_js_runtime(setup: impl FnOnce(&mut JsRuntime)) -> JsRuntime {
   setup(&mut rt);
 
   // Init ops
-  rt.execute(
-    "init",
-    r#"
-      Deno.core.ops();
-    "#,
-  )
-  .unwrap();
+  rt.sync_ops_cache();
 
   rt
 }
