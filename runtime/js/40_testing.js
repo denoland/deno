@@ -298,8 +298,9 @@ finishing test case.`;
             endMessage.error = err;
             this.stats.failed++;
           } finally {
-            // Permissions must always be restored, otherwise the sandbox can be altered in
-            // ways that we do not allow outside of tests.
+            // Permissions must always be restored for a clean environment,
+            // otherwise the process can end up dropping permissions
+            // until there are none left.
             if (token) {
               restoreTestPermissions(token);
             }
