@@ -1195,6 +1195,8 @@ declare namespace Deno {
       * If set to `"inherit"`, the current `env` permission will be inherited.
       * If set to `true`, the global `net` permission will be requested.
       * If set to `false`, the global `net` permission will be revoked.
+      *
+      * Defaults to "inherit".
       */
       env?: "inherit" | boolean;
 
@@ -1202,6 +1204,8 @@ declare namespace Deno {
       * If set to `"inherit"`, the current `hrtime` permission will be inherited.
       * If set to `true`, the global `hrtime` permission will be requested.
       * If set to `false`, the global `hrtime` permission will be revoked.
+      *
+      * Defaults to "inherit".
       */
       hrtime?: "inherit" | boolean;
 
