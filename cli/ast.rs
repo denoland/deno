@@ -275,7 +275,7 @@ fn strip_config_from_emit_options(
 /// processing.
 #[derive(Clone)]
 pub struct ParsedModule {
-  comments: SingleThreadedComments,
+  pub comments: SingleThreadedComments,
   leading_comments: Vec<Comment>,
   pub module: Module,
   pub source_map: Rc<SourceMap>,
@@ -295,7 +295,10 @@ impl fmt::Debug for ParsedModule {
 impl ParsedModule {
   /// Return a vector of dependencies for the module.
   pub fn analyze_dependencies(&self) -> Vec<DependencyDescriptor> {
-    analyze_dependencies(&self.module, &self.source_map, &self.comments)
+    let mut descs =
+      analyze_dependencies(&self.module, &self.source_map, &self.comments);
+    descs.retain(|desc| !desc.is_dynamic);
+    descs
   }
 
   /// Get the module's leading comments, where triple slash directives might
@@ -641,30 +644,17 @@ mod tests {
     let actual = parsed_module.analyze_dependencies();
     assert_eq!(
       actual,
-      vec![
-        DependencyDescriptor {
-          kind: DependencyKind::Import,
-          is_dynamic: false,
-          leading_comments: Vec::new(),
-          col: 0,
-          line: 1,
-          specifier: "./test.ts".into(),
-          specifier_col: 21,
-          specifier_line: 1,
-          import_assertions: HashMap::default(),
-        },
-        DependencyDescriptor {
-          kind: DependencyKind::Import,
-          is_dynamic: true,
-          leading_comments: Vec::new(),
-          col: 22,
-          line: 2,
-          specifier: "./foo.ts".into(),
-          specifier_col: 29,
-          specifier_line: 2,
-          import_assertions: HashMap::default(),
-        }
-      ]
+      vec![DependencyDescriptor {
+        kind: DependencyKind::Import,
+        is_dynamic: false,
+        leading_comments: Vec::new(),
+        col: 0,
+        line: 1,
+        specifier: "./test.ts".into(),
+        specifier_col: 21,
+        specifier_line: 1,
+        import_assertions: HashMap::default(),
+      }]
     );
   }
 

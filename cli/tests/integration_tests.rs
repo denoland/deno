@@ -2907,6 +2907,12 @@ console.log("finish");
     exit_code: 1,
   });
 
+  // Regression test for https://github.com/denoland/deno/issues/10168.
+  itest!(_092_import_map_no_dynamic_dependency_analysis {
+    args: "run --import-map import_maps/import_map.json 092_import_map_no_dynamic_dependency_analysis.ts",
+    output_str: Some("[WILDCARD]"),
+  });
+
   itest!(js_import_detect {
     args: "run --quiet --reload js_import_detect.ts",
     output: "js_import_detect.ts.out",

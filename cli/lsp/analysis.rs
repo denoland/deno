@@ -27,6 +27,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
+use swc_ecmascript::dep_graph::analyze_dependencies as swc_analyze_dependencies;
 
 lazy_static::lazy_static! {
   /// Diagnostic error codes which actually are the same, and so when grouping
@@ -287,7 +288,11 @@ pub fn analyze_dependencies(
   }
 
   // Parse ES and type only imports
-  let descriptors = parsed_module.analyze_dependencies();
+  let descriptors = swc_analyze_dependencies(
+    &parsed_module.module,
+    &parsed_module.source_map,
+    &parsed_module.comments,
+  );
   for desc in descriptors.into_iter().filter(|desc| {
     desc.kind != swc_ecmascript::dep_graph::DependencyKind::Require
   }) {
