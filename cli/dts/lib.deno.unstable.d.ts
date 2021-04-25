@@ -1233,7 +1233,7 @@ declare namespace Deno {
       * If set to `"inherit"`, the current `read` permission will be inherited.
       * If set to `true`, the global `read` permission will be requested.
       * If set to `false`, the global `read` permission will be revoked.
-      * If set to `array<string | url>`, the `read` permission will be requested with the
+      * If set to `Array<string | URL>`, the `read` permission will be requested with the
       * specified file paths.
       *
       * Defaults to "inherit".
@@ -1253,7 +1253,7 @@ declare namespace Deno {
       * If set to `"inherit"`, the current `write` permission will be inherited.
       * If set to `true`, the global `write` permission will be requested.
       * If set to `false`, the global `write` permission will be revoked.
-      * If set to `array<string | url>`, the `write` permission will be requested with the
+      * If set to `Array<string | URL>`, the `write` permission will be requested with the
       * specified file paths.
       *
       * Defaults to "inherit".
