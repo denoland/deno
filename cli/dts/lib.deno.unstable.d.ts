@@ -1153,9 +1153,44 @@ declare namespace Deno {
 
   export function memoryUsage(): MemoryUsage;
 
+  export interface WebSocketConnEventString {
+    kind: "text";
+    value: string;
+  }
+
+  export interface WebSocketConnEventUint8Array {
+    kind: "binary" | "pong" | "ping";
+    value: Uint8Array;
+  }
+
+  export interface WebSocketConnEventClose {
+    kind: "close";
+    value: { code: number; reason: string };
+  }
+
+  export type WebSocketConnEvent =
+    | WebSocketConnEventString
+    | WebSocketConnEventUint8Array
+    | WebSocketConnEventClose;
+
+  export interface WebSocketConn extends AsyncIterable<WebSocketConnEvent> {
+    send(kind: "text", data: string): Promise<void>;
+    send(kind: "binary", data: Uint8Array): Promise<void>;
+    send(kind: "pong", data: Uint8Array): Promise<void>;
+    send(kind: "ping", data: Uint8Array): Promise<void>;
+
+    close(code?: number, reason?: string): Promise<void>;
+  }
+
+  export interface WebSocketUpgrade {
+    response: Response;
+    ws: WebSocketConn;
+  }
+
   export interface RequestEvent {
     readonly request: Request;
     respondWith(r: Response | Promise<Response>): Promise<void>;
+    upgradeWebsocket(): Promise<WebSocketUpgrade>;
   }
 
   export interface HttpConn extends AsyncIterable<RequestEvent> {

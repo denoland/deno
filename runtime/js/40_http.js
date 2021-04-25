@@ -222,7 +222,7 @@
 
   function createUpgradeWebsocket(rid) {
     return async function upgradeWebsocket() {
-      const { key, rid } = await Deno.core.opAsync(
+      const { key, rid } = await core.opAsync(
         "op_http_upgrade_websocket",
         rid,
       );
@@ -238,16 +238,20 @@
 
       const ws = {
         async *[Symbol.asyncIterator]() {
-          let { kind, value } = await core.opAsync(
+          let data = await core.opAsync(
             "op_http_ws_next_event",
             rid,
           );
 
-          if (Array.isArray(value)) {
-            value = new Uint8Array(value);
+          if (data.kind === "close") {
+            return data;
           }
 
-          yield { kind, value };
+          if (Array.isArray(data.value)) {
+            data.value = new Uint8Array(data.value);
+          }
+
+          yield data;
         },
         async send(kind, data) {
           switch (kind) {
