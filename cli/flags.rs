@@ -1237,6 +1237,7 @@ fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
     .arg(
       Arg::with_name("inspect-break")
         .long("inspect-break")
+        .alias("inspect-brk")
         .value_name("HOST:PORT")
         .help(
           "Activate inspector on host:port and break at start of user script",
