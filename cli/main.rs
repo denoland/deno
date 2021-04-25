@@ -175,7 +175,7 @@ pub fn create_main_worker(
     || program_state.coverage_dir.is_some();
   let maybe_inspector_server = program_state.maybe_inspector_server.clone();
   let should_break_on_first_statement =
-    program_state.flags.inspect_brk.is_some();
+    program_state.flags.inspect_break.is_some();
 
   let create_web_worker_cb = create_web_worker_callback(program_state.clone());
 
@@ -420,7 +420,7 @@ async fn install_command(
 ) -> Result<(), AnyError> {
   let mut preload_flags = flags.clone();
   preload_flags.inspect = None;
-  preload_flags.inspect_brk = None;
+  preload_flags.inspect_break = None;
   let permissions = Permissions::from_options(&preload_flags.clone().into());
   let program_state = ProgramState::build(preload_flags).await?;
   let main_module = resolve_url_or_path(&module_url)?;

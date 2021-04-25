@@ -218,7 +218,7 @@ pub fn compile_to_runtime_flags(
     ignore: vec![],
     import_map_path: None,
     inspect: None,
-    inspect_brk: None,
+    inspect_break: None,
     location: flags.location,
     lock: None,
     lock_write: false,

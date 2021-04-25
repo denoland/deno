@@ -6,10 +6,10 @@ It's possible to debug Deno programs using Chrome Devtools or other clients that
 support the protocol (eg. VSCode).
 
 To activate debugging capabilities run Deno with the `--inspect` or
-`--inspect-brk` flags.
+`--inspect-break` flags.
 
 The `--inspect` flag allows attaching the debugger at any point in time, while
-`--inspect-brk` will wait for the debugger to attach and will pause execution on
+`--inspect-break` will wait for the debugger to attach and will pause execution on
 the first line of code.
 
 ### Chrome Devtools
@@ -18,10 +18,10 @@ Let's try debugging a program using Chrome Devtools. For this, we'll use
 [file_server.ts](https://deno.land/std@$STD_VERSION/http/file_server.ts) from
 `std`, a static file server.
 
-Use the `--inspect-brk` flag to break execution on the first line:
+Use the `--inspect-break` flag to break execution on the first line:
 
 ```shell
-$ deno run --inspect-brk --allow-read --allow-net https://deno.land/std@$STD_VERSION/http/file_server.ts
+$ deno run --inspect-break --allow-read --allow-net https://deno.land/std@$STD_VERSION/http/file_server.ts
 Debugger listening on ws://127.0.0.1:9229/ws/1e82c406-85a9-44ab-86b6-7341583480b1
 Download https://deno.land/std@$STD_VERSION/http/file_server.ts
 Compile https://deno.land/std@$STD_VERSION/http/file_server.ts
@@ -97,7 +97,7 @@ config:
       "request": "launch",
       "cwd": "${workspaceFolder}",
       "runtimeExecutable": "deno",
-      "runtimeArgs": ["run", "--inspect-brk", "-A", "${file}"],
+      "runtimeArgs": ["run", "--inspect-break", "-A", "${file}"],
       "attachSimplePort": 9229
     }
   ]

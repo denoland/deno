@@ -144,7 +144,7 @@ pub struct Flags {
   pub ignore: Vec<PathBuf>,
   pub import_map_path: Option<String>,
   pub inspect: Option<SocketAddr>,
-  pub inspect_brk: Option<SocketAddr>,
+  pub inspect_break: Option<SocketAddr>,
   pub lock: Option<PathBuf>,
   pub lock_write: bool,
   pub log_level: Option<Level>,
@@ -954,7 +954,7 @@ fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(
       watch_arg()
         .conflicts_with("inspect")
-        .conflicts_with("inspect-brk"),
+        .conflicts_with("inspect-break"),
     )
     .setting(AppSettings::TrailingVarArg)
     .arg(script_arg().required(true))
@@ -1022,7 +1022,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(true)
         .requires("unstable")
         .conflicts_with("inspect")
-        .conflicts_with("inspect-brk")
+        .conflicts_with("inspect-break")
         .help("Collect coverage profile data"),
     )
     .arg(
@@ -1235,8 +1235,8 @@ fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .validator(inspect_arg_validate),
     )
     .arg(
-      Arg::with_name("inspect-brk")
-        .long("inspect-brk")
+      Arg::with_name("inspect-break")
+        .long("inspect-break")
         .value_name("HOST:PORT")
         .help(
           "Activate inspector on host:port and break at start of user script",
@@ -1832,8 +1832,8 @@ fn inspect_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   } else {
     None
   };
-  flags.inspect_brk = if matches.is_present("inspect-brk") {
-    if let Some(host) = matches.value_of("inspect-brk") {
+  flags.inspect_break = if matches.is_present("inspect-break") {
+    if let Some(host) = matches.value_of("inspect-break") {
       Some(host.parse().unwrap())
     } else {
       Some(default())

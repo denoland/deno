@@ -4657,7 +4657,7 @@ console.log("finish");
       let script = util::tests_path().join("inspector2.js");
       let mut child = util::deno_cmd()
         .arg("run")
-        .arg(inspect_flag_with_unique_port("--inspect-brk"))
+        .arg(inspect_flag_with_unique_port("--inspect-break"))
         .arg(script)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -4836,7 +4836,7 @@ console.log("finish");
       let script = util::tests_path().join("inspector3.js");
       let mut child = util::deno_cmd()
         .arg("run")
-        .arg(inspect_flag_with_unique_port("--inspect-brk"))
+        .arg(inspect_flag_with_unique_port("--inspect-break"))
         .env("NO_COLOR", "1")
         .arg(script)
         .stdout(std::process::Stdio::piped())
@@ -4918,7 +4918,7 @@ console.log("finish");
     }
 
     #[tokio::test]
-    async fn inspector_without_brk_runs_code() {
+    async fn inspector_without_break_runs_code() {
       let script = util::tests_path().join("inspector4.js");
       let mut child = util::deno_cmd()
         .arg("run")

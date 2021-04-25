@@ -116,7 +116,7 @@ impl ProgramState {
         }
       };
 
-    let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
+    let maybe_inspect_host = flags.inspect.or(flags.inspect_break);
     let maybe_inspector_server = maybe_inspect_host.map(|host| {
       Arc::new(InspectorServer::new(host, version::get_user_agent()))
     });
