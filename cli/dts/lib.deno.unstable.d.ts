@@ -1288,5 +1288,5 @@ declare class WebSocketStream {
   url: string;
   connection: Promise<WebSocketConnection>;
   closed: Promise<WebSocketCloseInfo>;
-  close(closeInfo: WebSocketCloseInfo): void;
+  close(closeInfo?: WebSocketCloseInfo): void;
 }
