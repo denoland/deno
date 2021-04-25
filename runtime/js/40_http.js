@@ -243,15 +243,17 @@
             rid,
           );
 
-          if (data.kind === "close") {
+          if (data.kind === "error") {
+            throw new Error(data.value); // TODO
+          } else if (data.kind === "close") {
             return data;
-          }
+          } else {
+            if (Array.isArray(data.value)) {
+              data.value = new Uint8Array(data.value);
+            }
 
-          if (Array.isArray(data.value)) {
-            data.value = new Uint8Array(data.value);
+            yield data;
           }
-
-          yield data;
         },
         async send(kind, data) {
           switch (kind) {

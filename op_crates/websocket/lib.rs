@@ -290,7 +290,7 @@ pub enum NextEventResponse {
   Close { code: u16, reason: String },
   Ping(Vec<u8>),
   Pong(Vec<u8>),
-  Error,
+  Error(String),
   Closed,
 }
 
@@ -324,7 +324,7 @@ pub async fn op_ws_next_event<T: AsyncRead + AsyncWrite>(
     },
     Some(Ok(Message::Ping(v))) => NextEventResponse::Ping(v),
     Some(Ok(Message::Pong(v))) => NextEventResponse::Pong(v),
-    Some(Err(_)) => NextEventResponse::Error,
+    Some(Err(e)) => NextEventResponse::Error(e.to_string()),
     None => {
       state.borrow_mut().resource_table.close(rid).unwrap();
       NextEventResponse::Closed
