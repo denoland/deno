@@ -89,8 +89,7 @@ declare namespace Deno {
   /** The current process id of the runtime. */
   export const pid: number;
 
-  /** If the ENV contained `NO_COLOR` with any value at the initial
-   * initial runtime, then set to true. Otherwise, this is false.
+  /** Reflects the `NO_COLOR` environment variable at program start.
    *
    * See: https://no-color.org/ */
   export const noColor: boolean;
