@@ -267,7 +267,8 @@ pub fn install(
   }
 
   if let Some(inspect_break) = flags.inspect_break {
-    executable_args.push(format!("--inspect-break={}", inspect_break.to_string()));
+    executable_args
+      .push(format!("--inspect-break={}", inspect_break.to_string()));
   }
 
   if let Some(import_map_path) = flags.import_map_path {

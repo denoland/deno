@@ -9,8 +9,8 @@ To activate debugging capabilities run Deno with the `--inspect` or
 `--inspect-break` flags.
 
 The `--inspect` flag allows attaching the debugger at any point in time, while
-`--inspect-break` will wait for the debugger to attach and will pause execution on
-the first line of code.
+`--inspect-break` will wait for the debugger to attach and will pause execution
+on the first line of code.
 
 ### Chrome Devtools
 
