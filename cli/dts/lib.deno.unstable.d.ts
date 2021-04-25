@@ -1209,14 +1209,68 @@ declare namespace Deno {
       */
       hrtime?: "inherit" | boolean;
 
-      /** specifies if the `net` permission should be requested or revoked.
+      /** Specifies if the `net` permission should be requested or revoked.
       * if set to `"inherit"`, the current `net` permission will be inherited.
       * if set to `true`, the global `net` permission will be requested.
       * if set to `false`, the global `net` permission will be revoked.
       * if set to `string[]`, the `net` permission will be requested with the
-      * specified strings with the format `<host>:<port>`.
+      * specified host strings with the format `"<host>[:<port>]`.
       *
       * Defaults to "inherit".
+      *
+      * Examples:
+      *
+      * ```
+      * Deno.test({
+      *   name: "inherit",
+      *   permissions: {
+      *     net: "inherit",
+      *   },
+      *   async fn() {
+      *     const status = Deno.permissions.query({ name: "net" })
+      *     assertEquals(status.state, "granted");
+      *   },
+      * };
+      * ```
+      *
+      * ```
+      * Deno.test({
+      *   name: "true",
+      *   permissions: {
+      *     net: true,
+      *   },
+      *   async fn() {
+      *     const status = Deno.permissions.query({ name: "net" });
+      *     assertEquals(status.state, "granted");
+      *   },
+      * };
+      * ```
+      *
+      * ```
+      * Deno.test({
+      *   name: "false",
+      *   permissions: {
+      *     net: false,
+      *   },
+      *   async fn() {
+      *     const status = Deno.permissions.query({ name: "net" });
+      *     assertEquals(status.state, "denied");
+      *   },
+      * };
+      * ```
+      *
+      * ```
+      * Deno.test({
+      *   name: "localhost:8080",
+      *   permissions: {
+      *     net: ["localhost:8080"],
+      *   },
+      *   async fn() {
+      *     const status = Deno.permissions.query({ name: "net", host: "localhost:8080" });
+      *     assertEquals(status.state, "granted");
+      *   },
+      * };
+      * ```
       */
       net?: "inherit" | boolean | string[];
 
