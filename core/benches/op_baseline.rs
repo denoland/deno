@@ -20,16 +20,7 @@ fn create_js_runtime() -> JsRuntime {
   runtime.register_op("nop", |state, _, _| {
     Op::Sync(serialize_op_result(Ok(9), state))
   });
-
-  // Init ops
-  runtime
-    .execute(
-      "init",
-      r#"
-      Deno.core.ops();
-    "#,
-    )
-    .unwrap();
+  runtime.sync_ops_cache();
 
   runtime
 }

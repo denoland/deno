@@ -305,9 +305,7 @@ impl JsRuntime {
     if !has_startup_snapshot {
       js_runtime.js_init();
     }
-    if !options.will_snapshot {
-      js_runtime.init_recv_cb();
-    }
+    js_runtime.init_recv_cb();
 
     js_runtime
   }
@@ -367,6 +365,11 @@ impl JsRuntime {
     let mut state = state_rc.borrow_mut();
     let cb = v8::Local::<v8::Function>::try_from(v8_value).unwrap();
     state.js_recv_cb.replace(v8::Global::new(scope, cb));
+  }
+
+  /// Ensures core.js has the latest op-name to op-id mappings
+  pub fn sync_ops_cache(&mut self) {
+    self.execute("<anon>", "Deno.core.syncOpsCache()").unwrap()
   }
 
   /// Returns the runtime's op state, which can be used to maintain ops
@@ -432,7 +435,9 @@ impl JsRuntime {
     // TODO(piscisaureus): The rusty_v8 type system should enforce this.
     state.borrow_mut().global_context.take();
 
+    // Drop v8::Global handles before snapshotting
     std::mem::take(&mut state.borrow_mut().module_map);
+    std::mem::take(&mut state.borrow_mut().js_recv_cb);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator
@@ -2140,6 +2145,7 @@ pub mod tests {
         module_loader: Some(loader),
         ..Default::default()
       });
+      runtime.sync_ops_cache();
       runtime
         .execute(
           "file:///dyn_import3.js",
@@ -2149,8 +2155,6 @@ pub mod tests {
             if (mod.b() !== 'b') {
               throw Error("bad");
             }
-            // Now do any op
-            Deno.core.ops();
           })();
           "#,
         )

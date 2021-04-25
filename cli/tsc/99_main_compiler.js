@@ -778,7 +778,6 @@ delete Object.prototype.__proto__;
     }
     hasStarted = true;
     languageService = ts.createLanguageService(host);
-    core.ops();
     setLogDebug(debugFlag, "TSLS");
     debug("serverInit()");
   }
@@ -793,12 +792,8 @@ delete Object.prototype.__proto__;
       throw new Error("The compiler runtime already started.");
     }
     hasStarted = true;
-    core.ops();
     setLogDebug(!!debugFlag, "TS");
   }
-
-  // Setup the compiler runtime during the build process.
-  core.ops();
 
   // A build time only op that provides some setup information that is used to
   // ensure the snapshot is setup properly.

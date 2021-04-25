@@ -15,6 +15,7 @@ fn create_js_runtime() -> JsRuntime {
     "op_url_stringify_search_params",
     op_sync(deno_url::op_url_stringify_search_params),
   );
+  runtime.sync_ops_cache();
 
   runtime
     .execute(
@@ -23,14 +24,6 @@ fn create_js_runtime() -> JsRuntime {
     )
     .unwrap();
   deno_url::init(&mut runtime);
-  runtime
-    .execute(
-      "init",
-      r#"
-      Deno.core.ops();
-    "#,
-    )
-    .unwrap();
   runtime
     .execute("setup", "const { URL } = globalThis.__bootstrap.url;")
     .unwrap();
