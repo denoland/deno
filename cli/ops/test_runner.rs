@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -58,7 +59,8 @@ pub fn op_restore_test_permissions(
 
     let permissions = permissions_holder.1;
     state.put::<Permissions>(permissions);
+    Ok(json!({}))
+  } else {
+    Err(generic_error("no permissions to restore"))
   }
-
-  Ok(json!({}))
 }
