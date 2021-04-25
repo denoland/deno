@@ -305,9 +305,7 @@ impl JsRuntime {
     if !has_startup_snapshot {
       js_runtime.js_init();
     }
-    if !options.will_snapshot {
-      js_runtime.init_recv_cb();
-    }
+    js_runtime.init_recv_cb();
 
     js_runtime
   }
@@ -432,7 +430,9 @@ impl JsRuntime {
     // TODO(piscisaureus): The rusty_v8 type system should enforce this.
     state.borrow_mut().global_context.take();
 
+    // Drop v8::Global handles before snapshotting
     std::mem::take(&mut state.borrow_mut().module_map);
+    std::mem::take(&mut state.borrow_mut().js_recv_cb);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator
