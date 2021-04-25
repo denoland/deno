@@ -2187,7 +2187,7 @@ declare namespace Deno {
     | HrtimePermissionDescriptor;
 
   export interface PermissionStatusEventMap {
-    change: Event;
+    "change": Event;
   }
 
   export class PermissionStatus extends EventTarget {
