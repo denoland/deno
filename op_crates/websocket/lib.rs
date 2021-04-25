@@ -289,7 +289,7 @@ pub enum NextEventResponse {
   Close { code: u16, reason: String },
   Ping,
   Pong,
-  Error,
+  Error(String),
   Closed,
 }
 
@@ -323,7 +323,7 @@ pub async fn op_ws_next_event(
     },
     Some(Ok(Message::Ping(_))) => NextEventResponse::Ping,
     Some(Ok(Message::Pong(_))) => NextEventResponse::Pong,
-    Some(Err(_)) => NextEventResponse::Error,
+    Some(Err(e)) => NextEventResponse::Error(e.to_string()),
     None => {
       state.borrow_mut().resource_table.close(rid).unwrap();
       NextEventResponse::Closed
@@ -334,12 +334,19 @@ pub async fn op_ws_next_event(
 
 /// Load and execute the javascript code.
 pub fn init(isolate: &mut JsRuntime) {
-  isolate
-    .execute(
+  let files = vec![
+    (
       "deno:op_crates/websocket/01_websocket.js",
       include_str!("01_websocket.js"),
-    )
-    .unwrap();
+    ),
+    (
+      "deno:op_crates/websocket/02_websocketstream.js",
+      include_str!("02_websocketstream.js"),
+    ),
+  ];
+  for (url, source_code) in files {
+    isolate.execute(url, source_code).unwrap();
+  }
 }
 
 pub fn get_declaration() -> PathBuf {

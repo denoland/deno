@@ -277,6 +277,7 @@ delete Object.prototype.__proto__;
     URL: util.nonEnumerable(url.URL),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
+    WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
     Worker: util.nonEnumerable(worker.Worker),
     WritableStream: util.nonEnumerable(streams.WritableStream),
     WritableStreamDefaultWriter: util.nonEnumerable(
