@@ -38,6 +38,8 @@ pub fn op_pledge_test_permissions(
   };
 
   state.put::<PermissionsHolder>(PermissionsHolder(token, parent_permissions));
+
+  // NOTE: This call overrides current permission set for the worker
   state.put::<Permissions>(worker_permissions);
 
   Ok(token)
