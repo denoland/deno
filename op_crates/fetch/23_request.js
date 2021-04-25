@@ -392,7 +392,7 @@
         headers: this.headers,
         method: this.method,
         redirect: this.redirect,
-        url: this.url(),
+        url: this.url,
       };
       return `Request ${inspect(inner)}`;
     }
