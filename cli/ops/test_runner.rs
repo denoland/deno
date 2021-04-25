@@ -28,7 +28,7 @@ pub fn op_pledge_test_permissions(
   state: &mut OpState,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<Uuid, AnyError> {
   deno_runtime::ops::check_unstable(state, "Deno.test.permissions");
 
   let token = Uuid::new_v4();
@@ -41,18 +41,17 @@ pub fn op_pledge_test_permissions(
   state.put::<PermissionsHolder>(PermissionsHolder(token, parent_permissions));
   state.put::<Permissions>(worker_permissions);
 
-  Ok(json!(token))
+  Ok(token)
 }
 
 pub fn op_restore_test_permissions(
   state: &mut OpState,
-  args: Value,
+  token: Uuid,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   deno_runtime::ops::check_unstable(state, "Deno.test.permissions");
 
   if let Some(permissions_holder) = state.try_take::<PermissionsHolder>() {
-    let token: Uuid = serde_json::from_value(args)?;
     if token != permissions_holder.0 {
       panic!("restore test permissions token does not match the stored token");
     }
