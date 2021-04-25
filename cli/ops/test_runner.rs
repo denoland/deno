@@ -3,7 +3,6 @@
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -48,7 +47,7 @@ pub fn op_restore_test_permissions(
   state: &mut OpState,
   token: Uuid,
   _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
+) -> Result<(), AnyError> {
   deno_runtime::ops::check_unstable(state, "Deno.test.permissions");
 
   if let Some(permissions_holder) = state.try_take::<PermissionsHolder>() {
@@ -58,7 +57,7 @@ pub fn op_restore_test_permissions(
 
     let permissions = permissions_holder.1;
     state.put::<Permissions>(permissions);
-    Ok(json!({}))
+    Ok(())
   } else {
     Err(generic_error("no permissions to restore"))
   }
