@@ -42,4 +42,3 @@ compilation target.
 
 If the `--lite` CLI flag is passed, `deno compile` will use a slimmed-down
 runtime-only binary.
-
