@@ -35,11 +35,8 @@ use trust_dns_resolver::config::ResolverOpts;
 use trust_dns_resolver::system_conf;
 use trust_dns_resolver::AsyncResolver;
 
-#[cfg(unix)]
 use super::net_unix;
-#[cfg(unix)]
 use crate::ops::io::UnixStreamResource;
-#[cfg(unix)]
 use std::path::Path;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
@@ -64,9 +61,7 @@ pub struct OpConn {
 pub enum OpAddr {
   Tcp(IpAddr),
   Udp(IpAddr),
-  #[cfg(unix)]
   Unix(net_unix::UnixAddr),
-  #[cfg(unix)]
   UnixPacket(net_unix::UnixAddr),
 }
 
@@ -142,7 +137,6 @@ async fn op_accept(
 ) -> Result<OpConn, AnyError> {
   match args.transport.as_str() {
     "tcp" => accept_tcp(state, args, _buf).await,
-    #[cfg(unix)]
     "unix" => net_unix::accept_unix(state, args, _buf).await,
     other => Err(bad_transport(other)),
   }
@@ -195,7 +189,6 @@ async fn op_datagram_receive(
 ) -> Result<OpPacket, AnyError> {
   match args.transport.as_str() {
     "udp" => receive_udp(state, args, zero_copy).await,
-    #[cfg(unix)]
     "unixpacket" => net_unix::receive_unix_packet(state, args, zero_copy).await,
     other => Err(bad_transport(other)),
   }
@@ -243,7 +236,6 @@ async fn op_datagram_send(
       let byte_length = socket.send_to(&zero_copy, &addr).await?;
       Ok(byte_length)
     }
-    #[cfg(unix)]
     SendArgs {
       rid,
       transport,
@@ -319,7 +311,6 @@ async fn op_connect(
         })),
       })
     }
-    #[cfg(unix)]
     ConnectArgs {
       transport,
       transport_args: ArgsEnum::Unix(args),
@@ -399,7 +390,6 @@ struct IpListenArgs {
 #[serde(untagged)]
 enum ArgsEnum {
   Ip(IpListenArgs),
-  #[cfg(unix)]
   Unix(net_unix::UnixListenArgs),
 }
 
@@ -492,7 +482,6 @@ fn op_listen(
         remote_addr: None,
       })
     }
-    #[cfg(unix)]
     ListenArgs {
       transport,
       transport_args: ArgsEnum::Unix(args),
@@ -533,7 +522,6 @@ fn op_listen(
         remote_addr: None,
       })
     }
-    #[cfg(unix)]
     _ => Err(type_error("Wrong argument format!")),
   }
 }
