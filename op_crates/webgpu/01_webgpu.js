@@ -119,6 +119,19 @@
     }
   }
 
+  let cleanupRegistry;
+  function initRegistry() {
+    if (cleanupRegistry === undefined) {
+      cleanupRegistry = new FinalizationRegistry((rid) => {
+        try {
+          core.close(rid);
+        } catch {
+          // ignore error - was already destroyed manually
+        }
+      });
+    }
+  }
+
   class GPUOutOfMemoryError extends Error {
     constructor() {
       super();
@@ -193,10 +206,12 @@
     const adapter = webidl.createBranded(GPUAdapter);
     adapter[_name] = name;
     adapter[_adapter] = {
-      ...inner,
+      rid: inner.rid,
       features: createGPUAdapterFeatures(inner.features),
       limits: createGPUAdapterLimits(inner.limits),
     };
+    initRegistry();
+    cleanupRegistry.register(adapter, inner.rid, adapter);
     return adapter;
   }
 
@@ -633,6 +648,7 @@
     device[_label] = label;
     device[_device] = inner;
     device[_queue] = queue;
+    cleanupRegistry.register(inner, inner.rid, inner);
     return device;
   }
 
@@ -659,6 +675,7 @@
         /** @type {number | undefined} */
         device.rid = undefined;
       }
+      cleanupRegistry.unregister(device);
     }
 
     get adapter() {
@@ -1522,6 +1539,7 @@
     buffer[_mappingRange] = options.mappingRange;
     buffer[_mappedRanges] = options.mappedRanges;
     buffer[_state] = options.state;
+    cleanupRegistry.register(buffer, rid, buffer);
     return buffer;
   }
 
@@ -1566,6 +1584,7 @@
         /** @type {number | undefined} */
         this[_rid] = undefined;
       }
+      cleanupRegistry.unregister(this);
       this[_state] = "destroy";
     }
 
@@ -1899,6 +1918,7 @@
     texture[_device] = device;
     texture[_rid] = rid;
     texture[_views] = [];
+    cleanupRegistry.register(texture, rid, texture);
     return texture;
   }
 
@@ -1924,6 +1944,7 @@
         /** @type {number | undefined} */
         this[_rid] = undefined;
       }
+      cleanupRegistry.unregister(this);
     }
 
     constructor() {
@@ -2009,6 +2030,7 @@
     textureView[_label] = label;
     textureView[_texture] = texture;
     textureView[_rid] = rid;
+    cleanupRegistry.register(textureView, rid, textureView);
     return textureView;
   }
   class GPUTextureView {
@@ -2024,6 +2046,7 @@
         /** @type {number | undefined} */
         this[_rid] = undefined;
       }
+      cleanupRegistry.unregister(this);
     }
 
     constructor() {
@@ -2052,6 +2075,7 @@
     sampler[_label] = label;
     sampler[_device] = device;
     sampler[_rid] = rid;
+    cleanupRegistry.register(sampler, rid, sampler);
     return sampler;
   }
   class GPUSampler {
@@ -2067,6 +2091,7 @@
         /** @type {number | undefined} */
         this[_rid] = undefined;
       }
+      cleanupRegistry.unregister(this);
     }
 
     constructor() {
@@ -2095,6 +2120,7 @@
     bindGroupLayout[_label] = label;
     bindGroupLayout[_device] = device;
     bindGroupLayout[_rid] = rid;
+    cleanupRegistry.register(bindGroupLayout, rid, bindGroupLayout);
     return bindGroupLayout;
   }
   class GPUBindGroupLayout {
@@ -2110,6 +2136,7 @@
         /** @type {number | undefined} */
         this[_rid] = undefined;
       }
+      cleanupRegistry.unregister(this);
     }
 
     constructor() {
@@ -2138,6 +2165,7 @@
     pipelineLayout[_label] = label;
     pipelineLayout[_device] = device;
     pipelineLayout[_rid] = rid;
+    cleanupRegistry.register(pipelineLayout, rid, pipelineLayout);
     return pipelineLayout;
   }
   class GPUPipelineLayout {
@@ -2153,6 +2181,7 @@
         /** @type {number | undefined} */
         this[_rid] = undefined;
       }
+      cleanupRegistry.unregister(this);
     }
 
     constructor() {
@@ -2181,6 +2210,7 @@
     bindGroup[_label] = label;
     bindGroup[_device] = device;
     bindGroup[_rid] = rid;
+    cleanupRegistry.register(bindGroup, rid, bindGroup);
     return bindGroup;
   }
   class GPUBindGroup {
@@ -2196,6 +2226,7 @@
         /** @type {number | undefined} */
         this[_rid] = undefined;
       }
+      cleanupRegistry.unregister(this);
     }
 
     constructor() {
@@ -2220,11 +2251,12 @@
    */
   function createGPUShaderModule(label, device, rid) {
     /** @type {GPUShaderModule} */
-    const bindGroup = webidl.createBranded(GPUShaderModule);
-    bindGroup[_label] = label;
-    bindGroup[_device] = device;
-    bindGroup[_rid] = rid;
-    return bindGroup;
+    const shaderModule = webidl.createBranded(GPUShaderModule);
+    shaderModule[_label] = label;
+    shaderModule[_device] = device;
+    shaderModule[_rid] = rid;
+    cleanupRegistry.register(shaderModule, rid, shaderModule);
+    return shaderModule;
   }
   class GPUShaderModule {
     /** @type {InnerGPUDevice} */
@@ -2239,6 +2271,7 @@
         /** @type {number | undefined} */
         this[_rid] = undefined;
       }
+      cleanupRegistry.unregister(this);
     }
 
     constructor() {
@@ -2289,6 +2322,7 @@
     pipeline[_label] = label;
     pipeline[_device] = device;
     pipeline[_rid] = rid;
+    cleanupRegistry.register(pipeline, rid, pipeline);
     return pipeline;
   }
   class GPUComputePipeline {
@@ -2304,6 +2338,7 @@
         /** @type {number | undefined} */
         this[_rid] = undefined;
       }
+      cleanupRegistry.unregister(this);
     }
 
     constructor() {
@@ -2365,6 +2400,7 @@
     pipeline[_label] = label;
     pipeline[_device] = device;
     pipeline[_rid] = rid;
+    cleanupRegistry.register(pipeline, rid, pipeline);
     return pipeline;
   }
   class GPURenderPipeline {
@@ -2380,6 +2416,7 @@
         /** @type {number | undefined} */
         this[_rid] = undefined;
       }
+      cleanupRegistry.unregister(this);
     }
 
     constructor() {
@@ -2465,6 +2502,7 @@
     encoder[_device] = device;
     encoder[_rid] = rid;
     encoder[_encoders] = [];
+    cleanupRegistry.register(encoder, rid, encoder);
     return encoder;
   }
   class GPUCommandEncoder {
@@ -2489,6 +2527,7 @@
         /** @type {number | undefined} */
         this[_rid] = undefined;
       }
+      cleanupRegistry.unregister(this);
     }
 
     constructor() {
@@ -3205,6 +3244,7 @@
     passEncoder[_label] = label;
     passEncoder[_encoder] = encoder;
     passEncoder[_rid] = rid;
+    cleanupRegistry.register(passEncoder, rid, passEncoder);
     return passEncoder;
   }
 
@@ -3221,6 +3261,7 @@
         /** @type {number | undefined} */
         this[_rid] = undefined;
       }
+      cleanupRegistry.unregister(this);
     }
 
     constructor() {
@@ -4019,6 +4060,7 @@
     computePassEncoder[_label] = label;
     computePassEncoder[_encoder] = encoder;
     computePassEncoder[_rid] = rid;
+    cleanupRegistry.register(computePassEncoder, rid, computePassEncoder);
     return computePassEncoder;
   }
 
@@ -4036,6 +4078,7 @@
         /** @type {number | undefined} */
         this[_rid] = undefined;
       }
+      cleanupRegistry.unregister(this);
     }
 
     constructor() {
@@ -4422,6 +4465,7 @@
     commandBuffer[_label] = label;
     commandBuffer[_device] = device;
     commandBuffer[_rid] = rid;
+    cleanupRegistry.register(commandBuffer, rid, commandBuffer);
     return commandBuffer;
   }
 
@@ -4438,6 +4482,7 @@
         /** @type {number | undefined} */
         this[_rid] = undefined;
       }
+      cleanupRegistry.unregister(this);
     }
 
     constructor() {
@@ -4471,6 +4516,7 @@
     bundleEncoder[_label] = label;
     bundleEncoder[_device] = device;
     bundleEncoder[_rid] = rid;
+    cleanupRegistry.register(bundleEncoder, rid, bundleEncoder);
     return bundleEncoder;
   }
 
@@ -4487,6 +4533,7 @@
         /** @type {number | undefined} */
         this[_rid] = undefined;
       }
+      cleanupRegistry.unregister(this);
     }
 
     constructor() {
@@ -4926,6 +4973,7 @@
     bundle[_label] = label;
     bundle[_device] = device;
     bundle[_rid] = rid;
+    cleanupRegistry.register(bundle, rid, bundle);
     return bundle;
   }
 
@@ -4942,6 +4990,7 @@
         /** @type {number | undefined} */
         this[_rid] = undefined;
       }
+      cleanupRegistry.unregister(this);
     }
 
     constructor() {
@@ -4968,12 +5017,13 @@
    */
   function createGPUQuerySet(label, device, rid, descriptor) {
     /** @type {GPUQuerySet} */
-    const queue = webidl.createBranded(GPUQuerySet);
-    queue[_label] = label;
-    queue[_device] = device;
-    queue[_rid] = rid;
-    queue[_descriptor] = descriptor;
-    return queue;
+    const querySet = webidl.createBranded(GPUQuerySet);
+    querySet[_label] = label;
+    querySet[_device] = device;
+    querySet[_rid] = rid;
+    querySet[_descriptor] = descriptor;
+    cleanupRegistry.register(querySet, rid, querySet);
+    return querySet;
   }
 
   class GPUQuerySet {
@@ -4991,6 +5041,7 @@
         /** @type {number | undefined} */
         this[_rid] = undefined;
       }
+      cleanupRegistry.unregister(this);
     }
 
     constructor() {
