@@ -5637,17 +5637,6 @@ console.log("finish");
       .contains("PermissionDenied: Requires write access"));
   }
 
-  #[test]
-  fn denort_direct_use_error() {
-    let status = Command::new(util::denort_exe_path())
-      .current_dir(util::root_path())
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
-    assert!(!status.success());
-  }
-
   #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
   async fn test_resolve_dns() {
     use std::collections::BTreeMap;
