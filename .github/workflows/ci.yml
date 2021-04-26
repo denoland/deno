@@ -14,28 +14,28 @@ jobs:
       matrix:
         include:
           # TODO(ry) Rename 'kind' to 'job'?
-          - os: macos-10.15
-            kind: test
-            profile: release
+          # - os: macos-10.15
+          #   kind: test
+          #   profile: release
           - os: windows-2019
             kind: test
-            profile: release
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
-            kind: bench
-            profile: release
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
-            kind: lint
             profile: debug
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
-            kind: test
-            profile: debug
+          # - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
+          #   kind: bench
+          #   profile: release
+          # - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
+          #   kind: lint
+          #   profile: debug
+          # - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
+          #   kind: test
+          #   profile: debug
           # Warning: Do not upgrade test_release to newer version of ubuntu
           # runners. We need to link against older version of glibc in order to
           # run on older systems. glibc in 20.04 is not compatible with 18.04.
           # See #9484.
-          - os: ubuntu-18.04
-            kind: test
-            profile: release
+          # - os: ubuntu-18.04
+          #   kind: test
+          #   profile: release
 
       # Always run main branch builds to completion. This allows the cache to
       # stay mostly up-to-date in situations where a single job fails due to
@@ -208,11 +208,11 @@ jobs:
 
       - name: Build release
         if: (matrix.kind == 'test' || matrix.kind == 'bench') && matrix.profile == 'release'
-        run: cargo build --release --locked --all-targets -vv
+        run: cargo build --release --locked -p deno -vv
 
       - name: Build debug
         if: (matrix.kind == 'test' || matrix.kind == 'bench') && matrix.profile == 'debug'
-        run: cargo build --locked --all-targets
+        run: cargo build --locked -p deno
 
       - name: Pre-release (linux)
         if: |
@@ -273,7 +273,8 @@ jobs:
 
       - name: Test release
         if: matrix.kind == 'test' && matrix.profile == 'release'
-        run: cargo test --release --locked --all-targets
+        # run: cargo test --release --locked --all-targets
+        run: target/debug/deno test --unstable -A cli/tests/unit/webgpu_test.ts
 
       - name: Test debug
         if: matrix.kind == 'test' && matrix.profile == 'debug'
