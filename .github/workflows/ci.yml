@@ -48,6 +48,8 @@ jobs:
     env:
       RUST_BACKTRACE: full
       CARGO_TERM_COLOR: always
+      # TODO(ry) Enable error on warning after fixing https://github.com/denoland/deno/issues/10378
+      # RUSTFLAGS: -D warnings
 
     steps:
       - name: Configure git
