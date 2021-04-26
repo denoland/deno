@@ -124,6 +124,7 @@
     if (cleanupRegistry === undefined) {
       cleanupRegistry = new FinalizationRegistry((rid) => {
         try {
+          console.log("fr close");
           core.close(rid);
         } catch {
           // ignore error - was already destroyed manually
@@ -661,16 +662,20 @@
     [_queue];
 
     [_cleanup]() {
+      console.log("clean up GPUDevice");
       const device = this[_device];
       const resources = device.resources;
       while (resources.length > 0) {
+        console.log("resource");
         const resource = resources.pop()?.deref();
         if (resource) {
+          console.log("cleanup");
           resource[_cleanup]();
         }
       }
       const rid = device.rid;
       if (rid !== undefined) {
+        console.log("close");
         core.close(rid);
         /** @type {number | undefined} */
         device.rid = undefined;
@@ -1569,17 +1574,22 @@
     [_mapMode];
 
     [_cleanup]() {
+      console.log("clean up GPUBuffer");
       const mappedRanges = this[_mappedRanges];
       if (mappedRanges) {
         while (mappedRanges.length > 0) {
+          console.log("mappedRange");
           const mappedRange = mappedRanges.pop();
           if (mappedRange !== undefined) {
+            console.log("cleanup");
+            console.log("mr close");
             core.close(mappedRange[1]);
           }
         }
       }
       const rid = this[_rid];
       if (rid !== undefined) {
+        console.log("close");
         core.close(rid);
         /** @type {number | undefined} */
         this[_rid] = undefined;
@@ -1931,15 +1941,19 @@
     [_views];
 
     [_cleanup]() {
+      console.log("clean up GPUTexture");
       const views = this[_views];
       while (views.length > 0) {
+        console.log("view");
         const view = views.pop()?.deref();
         if (view) {
+          console.log("cleanup");
           view[_cleanup]();
         }
       }
       const rid = this[_rid];
       if (rid !== undefined) {
+        console.log("close");
         core.close(rid);
         /** @type {number | undefined} */
         this[_rid] = undefined;
@@ -2040,8 +2054,10 @@
     [_rid];
 
     [_cleanup]() {
+      console.log("clean up GPUTextureView");
       const rid = this[_rid];
       if (rid !== undefined) {
+        console.log("close");
         core.close(rid);
         /** @type {number | undefined} */
         this[_rid] = undefined;
@@ -2085,8 +2101,10 @@
     [_rid];
 
     [_cleanup]() {
+      console.log("clean up GPUSampler");
       const rid = this[_rid];
       if (rid !== undefined) {
+        console.log("close");
         core.close(rid);
         /** @type {number | undefined} */
         this[_rid] = undefined;
@@ -2130,8 +2148,10 @@
     [_rid];
 
     [_cleanup]() {
+      console.log("clean up GPUBindGroupLayout");
       const rid = this[_rid];
       if (rid !== undefined) {
+        console.log("close");
         core.close(rid);
         /** @type {number | undefined} */
         this[_rid] = undefined;
@@ -2175,8 +2195,10 @@
     [_rid];
 
     [_cleanup]() {
+      console.log("clean up GPUPipelineLayout");
       const rid = this[_rid];
       if (rid !== undefined) {
+        console.log("close");
         core.close(rid);
         /** @type {number | undefined} */
         this[_rid] = undefined;
@@ -2220,8 +2242,10 @@
     [_rid];
 
     [_cleanup]() {
+      console.log("clean up GPUBindGroup");
       const rid = this[_rid];
       if (rid !== undefined) {
+        console.log("close");
         core.close(rid);
         /** @type {number | undefined} */
         this[_rid] = undefined;
@@ -2265,8 +2289,10 @@
     [_rid];
 
     [_cleanup]() {
+      console.log("clean up GPUShaderModule");
       const rid = this[_rid];
       if (rid !== undefined) {
+        console.log("close");
         core.close(rid);
         /** @type {number | undefined} */
         this[_rid] = undefined;
@@ -2332,8 +2358,10 @@
     [_rid];
 
     [_cleanup]() {
+      console.log("clean up GPUComputePipeline");
       const rid = this[_rid];
       if (rid !== undefined) {
+        console.log("close");
         core.close(rid);
         /** @type {number | undefined} */
         this[_rid] = undefined;
@@ -2410,8 +2438,10 @@
     [_rid];
 
     [_cleanup]() {
+      console.log("clean up GPURenderPipeline");
       const rid = this[_rid];
       if (rid !== undefined) {
+        console.log("close");
         core.close(rid);
         /** @type {number | undefined} */
         this[_rid] = undefined;
@@ -2514,15 +2544,19 @@
     [_encoders];
 
     [_cleanup]() {
+      console.log("clean up GPUCommandEncoder");
       const encoders = this[_encoders];
       while (encoders.length > 0) {
+        console.log("encoder");
         const encoder = encoders.pop()?.deref();
         if (encoder) {
+          console.log("cleanup");
           encoder[_cleanup]();
         }
       }
       const rid = this[_rid];
       if (rid !== undefined) {
+        console.log("close");
         core.close(rid);
         /** @type {number | undefined} */
         this[_rid] = undefined;
@@ -3255,8 +3289,10 @@
     [_rid];
 
     [_cleanup]() {
+      console.log("clean up GPURenderPassEncoder");
       const rid = this[_rid];
       if (rid !== undefined) {
+        console.log("close");
         core.close(rid);
         /** @type {number | undefined} */
         this[_rid] = undefined;
@@ -4072,8 +4108,10 @@
     [_rid];
 
     [_cleanup]() {
+      console.log("clean up GPUComputePassEncoder");
       const rid = this[_rid];
       if (rid !== undefined) {
+        console.log("close");
         core.close(rid);
         /** @type {number | undefined} */
         this[_rid] = undefined;
@@ -4476,8 +4514,10 @@
     [_rid];
 
     [_cleanup]() {
+      console.log("clean up GPUCommandBuffer");
       const rid = this[_rid];
       if (rid !== undefined) {
+        console.log("close");
         core.close(rid);
         /** @type {number | undefined} */
         this[_rid] = undefined;
@@ -4527,8 +4567,10 @@
     [_rid];
 
     [_cleanup]() {
+      console.log("clean up GPURenderBundleEncoder");
       const rid = this[_rid];
       if (rid !== undefined) {
+        console.log("close");
         core.close(rid);
         /** @type {number | undefined} */
         this[_rid] = undefined;
@@ -4984,8 +5026,10 @@
     [_rid];
 
     [_cleanup]() {
+      console.log("clean up GPURenderBundle");
       const rid = this[_rid];
       if (rid !== undefined) {
+        console.log("close");
         core.close(rid);
         /** @type {number | undefined} */
         this[_rid] = undefined;
@@ -5035,8 +5079,10 @@
     [_descriptor];
 
     [_cleanup]() {
+      console.log("clean up GPUQuerySet");
       const rid = this[_rid];
       if (rid !== undefined) {
+        console.log("close");
         core.close(rid);
         /** @type {number | undefined} */
         this[_rid] = undefined;
