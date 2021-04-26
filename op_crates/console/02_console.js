@@ -485,8 +485,12 @@
     inspectOptions,
   ) {
     CTX_STACK.push(value);
-    const x = _inspectValue(value, level, inspectOptions);
-    CTX_STACK.pop();
+    let x;
+    try {
+      x = _inspectValue(value, level, inspectOptions);
+    } finally {
+      CTX_STACK.pop();
+    }
     return x;
   }
 
