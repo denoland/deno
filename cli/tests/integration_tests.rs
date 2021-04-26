@@ -3446,6 +3446,11 @@ console.log("finish");
     output: "wasm.ts.out",
   });
 
+  itest!(wasm_shared {
+    args: "run --quiet wasm_shared.ts",
+    output: "wasm_shared.out",
+  });
+
   itest!(wasm_async {
     args: "run wasm_async.js",
     output: "wasm_async.out",

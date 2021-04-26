@@ -160,6 +160,7 @@ fn v8_init(v8_platform: Option<v8::UniquePtr<v8::Platform>>) {
     // remove this to make it work asynchronously too. But that requires getting
     // PumpMessageLoop and RunMicrotasks setup correctly.
     // See https://github.com/denoland/deno/issues/2544
+    " --experimental-wasm-threads",
     " --no-wasm-async-compilation",
     " --harmony-top-level-await",
     " --harmony-import-assertions",
