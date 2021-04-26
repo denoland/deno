@@ -2395,6 +2395,18 @@ mod integration {
       output: "test/deno_test.out",
     });
 
+    itest!(allow_all {
+      args: "test --unstable --allow-all test/allow_all.ts",
+      exit_code: 0,
+      output: "test/allow_all.out",
+    });
+
+    itest!(allow_none {
+      args: "test --unstable test/allow_none.ts",
+      exit_code: 1,
+      output: "test/allow_none.out",
+    });
+
     itest!(fail_fast {
       args: "test --fail-fast test/test_runner_test.ts",
       exit_code: 1,
@@ -5142,6 +5154,25 @@ console.log("finish");
     assert!(!output.status.success());
     let stderr = std::str::from_utf8(&output.stderr).unwrap().trim();
     assert!(stderr.contains("BadResource"));
+  }
+
+  #[cfg(not(windows))]
+  #[test]
+  fn should_not_panic_on_not_found_cwd() {
+    let output = util::deno_cmd()
+      .current_dir(util::root_path())
+      .arg("run")
+      .arg("--allow-write")
+      .arg("--allow-read")
+      .arg("cli/tests/dont_panic_not_found_cwd.ts")
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(!output.status.success());
+    let stderr = std::str::from_utf8(&output.stderr).unwrap().trim();
+    assert!(stderr.contains("Failed to get current working directory"));
   }
 
   #[cfg(windows)]

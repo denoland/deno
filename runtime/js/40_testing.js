@@ -4,6 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
   const colors = window.__bootstrap.colors;
+  const { parsePermissions } = window.__bootstrap.worker;
   const { setExitHandler, exit } = window.__bootstrap.os;
   const { Console, inspectArgs } = window.__bootstrap.console;
   const { stdout } = window.__bootstrap.files;
@@ -121,6 +122,7 @@ finishing test case.`;
       sanitizeOps: true,
       sanitizeResources: true,
       sanitizeExit: true,
+      permissions: null,
     };
 
     if (typeof t === "string") {
@@ -226,6 +228,17 @@ finishing test case.`;
     }
   }
 
+  function pledgeTestPermissions(permissions) {
+    return core.opSync(
+      "op_pledge_test_permissions",
+      parsePermissions(permissions),
+    );
+  }
+
+  function restoreTestPermissions(token) {
+    core.opSync("op_restore_test_permissions", token);
+  }
+
   // TODO(bartlomieju): already implements AsyncGenerator<RunTestsMessage>, but add as "implements to class"
   // TODO(bartlomieju): implements PromiseLike<RunTestsEndResult>
   class TestRunner {
@@ -257,6 +270,7 @@ finishing test case.`;
 
       const results = [];
       const suiteStart = +new Date();
+
       for (const test of this.testsToRun) {
         const endMessage = {
           name: test.name,
@@ -268,15 +282,30 @@ finishing test case.`;
           this.stats.ignored++;
         } else {
           const start = +new Date();
+
+          let token;
           try {
+            if (test.permissions) {
+              token = pledgeTestPermissions(test.permissions);
+            }
+
             await test.fn();
+
             endMessage.status = "passed";
             this.stats.passed++;
           } catch (err) {
             endMessage.status = "failed";
             endMessage.error = err;
             this.stats.failed++;
+          } finally {
+            // Permissions must always be restored for a clean environment,
+            // otherwise the process can end up dropping permissions
+            // until there are none left.
+            if (token) {
+              restoreTestPermissions(token);
+            }
           }
+
           endMessage.duration = +new Date() - start;
         }
         results.push(endMessage);

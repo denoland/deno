@@ -210,6 +210,8 @@ fn create_compiler_snapshot(
       }
     }),
   );
+  js_runtime.sync_ops_cache();
+
   create_snapshot(js_runtime, snapshot_path, files);
 }
 

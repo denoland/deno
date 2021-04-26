@@ -142,8 +142,6 @@ delete Object.prototype.__proto__;
   }
 
   function runtimeStart(runtimeOptions, source) {
-    core.ops();
-
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
     version.setVersions(
       runtimeOptions.denoVersion,
@@ -186,16 +184,11 @@ delete Object.prototype.__proto__;
     core.registerErrorClass("Http", errors.Http);
     core.registerErrorClass("Busy", errors.Busy);
     core.registerErrorClass("NotSupported", errors.NotSupported);
-    core.registerErrorClass("Error", Error);
-    core.registerErrorClass("RangeError", RangeError);
-    core.registerErrorClass("ReferenceError", ReferenceError);
-    core.registerErrorClass("SyntaxError", SyntaxError);
-    core.registerErrorClass("TypeError", TypeError);
-    core.registerErrorClass("URIError", URIError);
     core.registerErrorClass(
       "DOMExceptionOperationError",
-      DOMException,
-      "OperationError",
+      function DOMExceptionOperationError(msg) {
+        DOMException.prototype.constructor.call(this, msg, "OperationError");
+      },
     );
   }
 

@@ -3,8 +3,8 @@ class C {
 }
 const mod = function() {
     return {
-        c: c,
-        default: C
+        default: C,
+        c: c
     };
 }();
 const b = "b";
