@@ -45,7 +45,6 @@ pub enum DenoSubcommand {
     output: Option<PathBuf>,
     args: Vec<String>,
     target: Option<String>,
-    lite: bool,
   },
   Completions {
     buf: Box<[u8]>,
@@ -483,18 +482,12 @@ fn compile_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(true)
         .possible_values(&["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "x86_64-apple-darwin", "aarch64-apple-darwin"])
     )
-    .arg(
-      Arg::with_name("lite")
-        .long("lite")
-        .help("Use lite runtime")
-    )
     .about("UNSTABLE: Compile the script into a self contained executable")
     .long_about(
       "UNSTABLE: Compiles the given script into a self contained executable.
 
   deno compile -A https://deno.land/std/http/file_server.ts
   deno compile --output /usr/local/bin/color_util https://deno.land/std/examples/colors.ts
-  deno compile --lite --target x86_64-unknown-linux-gnu -A https://deno.land/std/http/file_server.ts
 
 Any flags passed which affect runtime behavior, such as '--unstable',
 '--allow-*', '--v8-flags', etc. are encoded into the output executable and used
@@ -511,9 +504,6 @@ The executable name is inferred by default:
 This commands supports cross-compiling to different target architectures using `--target` flag.
 On the first invocation with deno will download proper binary and cache it in $DENO_DIR. The
 aarch64-apple-darwin target is not supported in canary.
-
-It is possible to use \"lite\" binaries when compiling by passing `--lite` flag; these are stripped down versions
-of the deno binary that do not contain built-in tooling (eg. formatter, linter). This feature is experimental.
 ",
     )
 }
@@ -1440,14 +1430,12 @@ fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let args = script.split_off(1);
   let source_file = script[0].to_string();
   let output = matches.value_of("output").map(PathBuf::from);
-  let lite = matches.is_present("lite");
   let target = matches.value_of("target").map(String::from);
 
   flags.subcommand = DenoSubcommand::Compile {
     source_file,
     output,
     args,
-    lite,
     target,
   };
 }
@@ -3559,7 +3547,6 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "compile",
-      "--lite",
       "https://deno.land/std/examples/colors.ts"
     ]);
     assert_eq!(
@@ -3570,7 +3557,6 @@ mod tests {
           output: None,
           args: vec![],
           target: None,
-          lite: true,
         },
         ..Flags::default()
       }
@@ -3589,7 +3575,6 @@ mod tests {
           output: Some(PathBuf::from("colors")),
           args: svec!["foo", "bar"],
           target: None,
-          lite: false,
         },
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
