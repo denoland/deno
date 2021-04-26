@@ -1118,43 +1118,42 @@ impl JsRuntime {
   fn evaluate_pending_module(&mut self) {
     let state_rc = Self::state(self.v8_isolate());
 
+    let maybe_module_evaluation =
+      state_rc.borrow_mut().pending_mod_evaluate.take();
+
+    if maybe_module_evaluation.is_none() {
+      return;
+    }
+
+    let module_evaluation = maybe_module_evaluation.unwrap();
     let context = self.global_context();
-    {
-      let scope =
-        &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
-      let mut state = state_rc.borrow_mut();
+    let promise = module_evaluation.promise.get(scope);
+    let mut sender = module_evaluation.sender.clone();
+    let promise_state = promise.state();
 
-      if let Some(module_evaluation) = state.pending_mod_evaluate.as_ref() {
-        let promise = module_evaluation.promise.get(scope);
-        let mut sender = module_evaluation.sender.clone();
-        let promise_state = promise.state();
-
-        match promise_state {
-          v8::PromiseState::Pending => {
-            // pass, poll_event_loop will decide if
-            // runtime would be woken soon
-          }
-          v8::PromiseState::Fulfilled => {
-            state.pending_mod_evaluate.take();
-            scope.perform_microtask_checkpoint();
-            // Receiver end might have been already dropped, ignore the result
-            let _ = sender.try_send(Ok(()));
-          }
-          v8::PromiseState::Rejected => {
-            let exception = promise.result(scope);
-            state.pending_mod_evaluate.take();
-            drop(state);
-            scope.perform_microtask_checkpoint();
-            let err1 = exception_to_err_result::<()>(scope, exception, false)
-              .map_err(|err| attach_handle_to_error(scope, err, exception))
-              .unwrap_err();
-            // Receiver end might have been already dropped, ignore the result
-            let _ = sender.try_send(Err(err1));
-          }
-        }
+    match promise_state {
+      v8::PromiseState::Pending => {
+        // NOTE: `poll_event_loop` will decide if
+        // runtime would be woken soon
+        state_rc.borrow_mut().pending_mod_evaluate = Some(module_evaluation);
       }
-    };
+      v8::PromiseState::Fulfilled => {
+        scope.perform_microtask_checkpoint();
+        // Receiver end might have been already dropped, ignore the result
+        let _ = sender.try_send(Ok(()));
+      }
+      v8::PromiseState::Rejected => {
+        let exception = promise.result(scope);
+        scope.perform_microtask_checkpoint();
+        let err1 = exception_to_err_result::<()>(scope, exception, false)
+          .map_err(|err| attach_handle_to_error(scope, err, exception))
+          .unwrap_err();
+        // Receiver end might have been already dropped, ignore the result
+        let _ = sender.try_send(Err(err1));
+      }
+    }
   }
 
   fn evaluate_dyn_imports(&mut self) {
@@ -1162,39 +1161,41 @@ impl JsRuntime {
 
     loop {
       let context = self.global_context();
+      let maybe_pending_dyn_evaluate =
+        state_rc.borrow_mut().pending_dyn_mod_evaluate.pop_front();
+
+      if maybe_pending_dyn_evaluate.is_none() {
+        break;
+      }
+
       let maybe_result = {
         let scope =
           &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+        let pending_dyn_evaluate = maybe_pending_dyn_evaluate.unwrap();
 
-        let maybe_pending_dyn_evaluate =
-          state_rc.borrow_mut().pending_dyn_mod_evaluate.pop_front();
-        if let Some(pending_dyn_evaluate) = maybe_pending_dyn_evaluate {
-          let module_id = pending_dyn_evaluate.module_id;
-          let promise = pending_dyn_evaluate.promise.get(scope);
-          let _module = pending_dyn_evaluate.module.get(scope);
-          let promise_state = promise.state();
+        let module_id = pending_dyn_evaluate.module_id;
+        let promise = pending_dyn_evaluate.promise.get(scope);
+        let _module = pending_dyn_evaluate.module.get(scope);
+        let promise_state = promise.state();
 
-          match promise_state {
-            v8::PromiseState::Pending => {
-              state_rc
-                .borrow_mut()
-                .pending_dyn_mod_evaluate
-                .push_back(pending_dyn_evaluate);
-              None
-            }
-            v8::PromiseState::Fulfilled => {
-              Some(Ok((pending_dyn_evaluate.load_id, module_id)))
-            }
-            v8::PromiseState::Rejected => {
-              let exception = promise.result(scope);
-              let err1 = exception_to_err_result::<()>(scope, exception, false)
-                .map_err(|err| attach_handle_to_error(scope, err, exception))
-                .unwrap_err();
-              Some(Err((pending_dyn_evaluate.load_id, err1)))
-            }
+        match promise_state {
+          v8::PromiseState::Pending => {
+            state_rc
+              .borrow_mut()
+              .pending_dyn_mod_evaluate
+              .push_back(pending_dyn_evaluate);
+            None
           }
-        } else {
-          None
+          v8::PromiseState::Fulfilled => {
+            Some(Ok((pending_dyn_evaluate.load_id, module_id)))
+          }
+          v8::PromiseState::Rejected => {
+            let exception = promise.result(scope);
+            let err1 = exception_to_err_result::<()>(scope, exception, false)
+              .map_err(|err| attach_handle_to_error(scope, err, exception))
+              .unwrap_err();
+            Some(Err((pending_dyn_evaluate.load_id, err1)))
+          }
         }
       };
 
