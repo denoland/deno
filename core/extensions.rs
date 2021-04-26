@@ -16,6 +16,7 @@ pub struct Extension {
   ops: Option<Vec<OpPair>>,
   opstate_fn: Option<Box<OpStateFn>>,
   middleware_fn: Option<Box<OpMiddlewareFn>>,
+  initialized: bool,
 }
 
 impl Extension {
@@ -30,6 +31,7 @@ impl Extension {
       ops,
       opstate_fn,
       middleware_fn,
+      initialized: false,
     }
   }
 
@@ -60,8 +62,12 @@ impl Extension {
 
   /// Called at JsRuntime startup to initialize ops in the isolate.
   pub(crate) fn init_ops(&mut self, registrar: RcOpRegistrar) {
-    // NOTE: not idempotent
-    // TODO: fail if called twice ?
+    // TODO(@AaronO): maybe make op registration idempotent
+    if self.initialized {
+      panic!("init_ops called twice: not idempotent or correct");
+    }
+    self.initialized = true;
+
     if let Some(ops) = self.ops.take() {
       for (name, opfn) in ops {
         registrar.borrow_mut().register_op(name, opfn);
