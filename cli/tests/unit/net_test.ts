@@ -36,7 +36,7 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
+  { perms: { read: true, write: true } },
   function netUnixListenClose(): void {
     const filePath = Deno.makeTempFileSync();
     const socket = Deno.listen({
@@ -50,7 +50,7 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
+  { perms: { read: true, write: true } },
   function netUnixPacketListenClose(): void {
     const filePath = Deno.makeTempFileSync();
     const socket = Deno.listenDatagram({
@@ -64,7 +64,7 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true } },
+  { perms: { read: true } },
   function netUnixListenWritePermission(): void {
     assertThrows(() => {
       const filePath = Deno.makeTempFileSync();
@@ -80,7 +80,7 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true } },
+  { perms: { read: true } },
   function netUnixPacketListenWritePermission(): void {
     assertThrows(() => {
       const filePath = Deno.makeTempFileSync();
@@ -114,7 +114,7 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
+  { perms: { read: true, write: true } },
   async function netUnixCloseWhileAccept(): Promise<void> {
     const filePath = await Deno.makeTempFile();
     const listener = Deno.listen({
@@ -219,7 +219,7 @@ unitTest({ perms: { net: true } }, async function netTcpDialListen(): Promise<
 });
 
 unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
+  { perms: { read: true, write: true } },
   async function netUnixDialListen(): Promise<void> {
     const filePath = await Deno.makeTempFile();
     const listener = Deno.listen({ path: filePath, transport: "unix" });
@@ -324,7 +324,7 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
+  { perms: { read: true, write: true } },
   async function netUnixPacketSendReceive(): Promise<void> {
     const filePath = await Deno.makeTempFile();
     const alice = Deno.listenDatagram({
@@ -448,7 +448,7 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
+  { perms: { read: true, write: true } },
   async function netUnixListenCloseWhileIterating(): Promise<void> {
     const filePath = Deno.makeTempFileSync();
     const socket = Deno.listen({ path: filePath, transport: "unix" });
@@ -462,7 +462,7 @@ unitTest(
 );
 
 unitTest(
-  { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
+  { perms: { read: true, write: true } },
   async function netUnixPacketListenCloseWhileIterating(): Promise<void> {
     const filePath = Deno.makeTempFileSync();
     const socket = Deno.listenDatagram({
