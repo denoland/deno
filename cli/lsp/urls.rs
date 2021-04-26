@@ -3,6 +3,8 @@
 use crate::file_fetcher::map_content_type;
 use crate::media_type::MediaType;
 
+use data_url::DataUrl;
+use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::url::Position;
 use deno_core::url::Url;
@@ -49,17 +51,6 @@ fn hash_data_specifier(specifier: &ModuleSpecifier) -> String {
   crate::checksum::gen(&[file_name_str.as_bytes()])
 }
 
-fn data_url_media_type(specifier: &ModuleSpecifier) -> MediaType {
-  let path = specifier.path();
-  let mut parts = path.splitn(2, ',');
-  let media_type_part =
-    percent_encoding::percent_decode_str(parts.next().unwrap())
-      .decode_utf8_lossy();
-  let (media_type, _) =
-    map_content_type(specifier, Some(media_type_part.into()));
-  media_type
-}
-
 /// A bi-directional map of URLs sent to the LSP client and internal module
 /// specifiers.  We need to map internal specifiers into `deno:` schema URLs
 /// to allow the Deno language server to manage these as virtual documents.
@@ -96,7 +87,11 @@ impl LspUrlMap {
         specifier.clone()
       } else {
         let specifier_str = if specifier.scheme() == "data" {
-          let media_type = data_url_media_type(specifier);
+          let data_url = DataUrl::process(specifier.as_str())
+            .map_err(|e| uri_error(format!("{:?}", e)))?;
+          let mime = data_url.mime_type();
+          let (media_type, _) =
+            map_content_type(specifier, Some(format!("{}", mime)));
           let extension = if media_type == MediaType::Unknown {
             ""
           } else {
@@ -157,21 +152,6 @@ mod tests {
       actual,
       "c21c7fc382b2b0553dc0864aa81a3acacfb7b3d1285ab5ae76da6abec213fb37"
     );
-  }
-
-  #[test]
-  fn test_data_url_media_type() {
-    let fixture = resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
-    let actual = data_url_media_type(&fixture);
-    assert_eq!(actual, MediaType::TypeScript);
-
-    let fixture = resolve_url("data:application/javascript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
-    let actual = data_url_media_type(&fixture);
-    assert_eq!(actual, MediaType::JavaScript);
-
-    let fixture = resolve_url("data:text/plain;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
-    let actual = data_url_media_type(&fixture);
-    assert_eq!(actual, MediaType::Unknown);
   }
 
   #[test]
