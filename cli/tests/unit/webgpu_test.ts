@@ -218,10 +218,6 @@ unitTest({
   // TODO(lucacasonato): webgpu spec should add a explicit destroy method for
   // adapters.
   let resources = Object.keys(Deno.resources());
-
-  console.log("RESOURCES");
-  console.log(resources);
-
   Deno.close(Number(resources[resources.length - 1]));
 
   resources = Object.keys(Deno.resources());
