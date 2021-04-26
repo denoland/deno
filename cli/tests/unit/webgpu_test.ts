@@ -119,7 +119,9 @@ unitTest({
 // yet, and skip on macOS because these do not have virtual GPUs.
 unitTest({
   perms: { read: true, env: true },
-  ignore: (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI,
+  ignore: true,
+  // TODO(caspervonb) re-enable when webgpu isn't leaking resources.
+  // ignore: (Deno.build.os === "linux" || Deno.build.os === "darwin") && isCI,
 }, async function webgpuHelloTriangle() {
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
