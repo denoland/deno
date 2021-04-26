@@ -1495,7 +1495,6 @@ pub mod tests {
 
   enum Mode {
     Async,
-    AsyncUnref,
     AsyncZeroCopy(bool),
   }
 
@@ -1519,16 +1518,6 @@ pub mod tests {
         assert_eq!(control, 42);
         let resp = (0, serialize_op_result(Ok(43), rc_op_state));
         Op::Async(Box::pin(futures::future::ready(resp)))
-      }
-      Mode::AsyncUnref => {
-        let control: u8 = payload.deserialize().unwrap();
-        assert_eq!(control, 42);
-        let fut = async {
-          // This future never finish.
-          futures::future::pending::<()>().await;
-          (0, serialize_op_result(Ok(43), rc_op_state))
-        };
-        Op::AsyncUnref(Box::pin(fut))
       }
       Mode::AsyncZeroCopy(has_buffer) => {
         assert_eq!(buf.is_some(), has_buffer);
