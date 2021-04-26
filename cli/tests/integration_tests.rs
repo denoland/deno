@@ -3447,6 +3447,11 @@ console.log("finish");
     output: "wasm.ts.out",
   });
 
+  itest!(wasm_shared {
+    args: "run --quiet wasm_shared.ts",
+    output: "wasm_shared.out",
+  });
+
   itest!(wasm_async {
     args: "run wasm_async.js",
     output: "wasm_async.out",
@@ -5385,8 +5390,7 @@ console.log("finish");
       .wait_with_output()
       .unwrap();
     assert!(output.status.success());
-    let exists = std::path::Path::new(&exe).exists();
-    assert!(exists, true);
+    assert!(std::path::Path::new(&exe).exists());
   }
 
   #[test]
@@ -5632,17 +5636,6 @@ console.log("finish");
     let stderr_str = String::from_utf8(output.stderr).unwrap();
     assert!(util::strip_ansi_codes(&stderr_str)
       .contains("PermissionDenied: Requires write access"));
-  }
-
-  #[test]
-  fn denort_direct_use_error() {
-    let status = Command::new(util::denort_exe_path())
-      .current_dir(util::root_path())
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
-    assert!(!status.success());
   }
 
   #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
