@@ -886,11 +886,18 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
     }
   }
 
+  const a = new A();
   assertThrows(
-    () => stringify(new A()),
+    () => stringify(a),
     Error,
     "BOOM",
     "Custom inspect won't attempt to parse if user defined function throws",
+  );
+  assertThrows(
+    () => stringify(a),
+    Error,
+    "BOOM",
+    "Inpsect should fail and maintain a clear CTX_STACK",
   );
 });
 
