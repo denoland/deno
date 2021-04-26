@@ -192,7 +192,7 @@ jobs:
           path: |
             ./target
           key:
-            a-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ hashFiles('Cargo.lock') }}
+            b-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ hashFiles('Cargo.lock') }}
 
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
@@ -209,12 +209,16 @@ jobs:
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
 
       - name: Build release
-        if: (matrix.kind == 'test' || matrix.kind == 'bench') && matrix.profile == 'release'
-        run: cargo build --release --locked --all-targets -vv
+        if: (matrix.kind == 'test') && matrix.profile == 'release'
+        run: cargo build --release --locked --bin deno --bin test_server -vv
+
+      - name: Build bench release
+        if: (matrix.kind == 'bench') && matrix.profile == 'release'
+        run: cargo build --release --locked --all-targets
 
       - name: Build debug
-        if: (matrix.kind == 'test' || matrix.kind == 'bench') && matrix.profile == 'debug'
-        run: cargo build --locked --all-targets
+        if: (matrix.kind == 'test') && matrix.profile == 'debug'
+        run: cargo build --locked --bin deno --bin test_server --tests
 
       - name: Pre-release (linux)
         if: |
@@ -272,13 +276,13 @@ jobs:
 
       - name: Test release
         if: matrix.kind == 'test' && matrix.profile == 'release'
-        run: cargo test --release --locked --all-targets
+        run: cargo test --release --locked --bins --lib --tests
 
       - name: Test debug
         if: matrix.kind == 'test' && matrix.profile == 'debug'
         run: |
           cargo test --locked --doc
-          cargo test --locked --all-targets
+          cargo test --locked --bins --lib --tests
 
       # TODO(ry) Because CI is so slow on for OSX and Windows, we currently only run WPT on Linux.
       - name: Configure hosts file for WPT (linux)
