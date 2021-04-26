@@ -47,7 +47,7 @@ impl Extension {
 }
 
 // Note: this used to be a trait, but we "downgraded" it to a single concrete type
-// for the initial iteration, it will like become a trait in the future
+// for the initial iteration, it will likely become a trait in the future
 impl Extension {
   /// returns JS source code to be loaded into the isolate (either at snapshotting,
   /// or at startup).  as a vector of a tuple of the file name, and the source code.
