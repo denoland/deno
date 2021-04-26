@@ -36,6 +36,7 @@ use log::debug;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::convert::TryFrom;
 use std::ffi::c_void;
 use std::mem::forget;
@@ -86,6 +87,7 @@ pub struct JsRuntime {
 }
 
 struct DynImportModEvaluate {
+  load_id: ModuleLoadId,
   module_id: ModuleId,
   promise: v8::Global<v8::Promise>,
   module: v8::Global<v8::Module>,
@@ -104,7 +106,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
-  pending_dyn_mod_evaluate: HashMap<ModuleLoadId, DynImportModEvaluate>,
+  pending_dyn_mod_evaluate: VecDeque<DynImportModEvaluate>,
   pending_mod_evaluate: Option<ModEvaluate>,
   pub(crate) js_error_create_fn: Rc<JsErrorCreateFn>,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
@@ -278,7 +280,7 @@ impl JsRuntime {
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
       global_context: Some(global_context),
       pending_promise_exceptions: HashMap::new(),
-      pending_dyn_mod_evaluate: HashMap::new(),
+      pending_dyn_mod_evaluate: VecDeque::new(),
       pending_mod_evaluate: None,
       js_recv_cb: None,
       js_macrotask_cb: None,
@@ -842,6 +844,7 @@ impl JsRuntime {
       let module_global = v8::Global::new(scope, module);
 
       let dyn_import_mod_evaluate = DynImportModEvaluate {
+        load_id,
         module_id: id,
         promise: promise_global,
         module: module_global,
@@ -849,7 +852,7 @@ impl JsRuntime {
 
       state
         .pending_dyn_mod_evaluate
-        .insert(load_id, dyn_import_mod_evaluate);
+        .push_back(dyn_import_mod_evaluate);
     } else {
       assert!(status == v8::ModuleStatus::Errored);
     }
@@ -1163,20 +1166,12 @@ impl JsRuntime {
         let scope =
           &mut v8::HandleScope::with_context(self.v8_isolate(), context);
 
-        let mut state = state_rc.borrow_mut();
-        if let Some(&dyn_import_id) =
-          state.pending_dyn_mod_evaluate.keys().next()
-        {
-          let handle = state
-            .pending_dyn_mod_evaluate
-            .remove(&dyn_import_id)
-            .unwrap();
-          drop(state);
-
-          let module_id = handle.module_id;
-          let promise = handle.promise.get(scope);
-          let _module = handle.module.get(scope);
-
+        let maybe_pending_dyn_evaluate =
+          state_rc.borrow_mut().pending_dyn_mod_evaluate.pop_front();
+        if let Some(pending_dyn_evaluate) = maybe_pending_dyn_evaluate {
+          let module_id = pending_dyn_evaluate.module_id;
+          let promise = pending_dyn_evaluate.promise.get(scope);
+          let _module = pending_dyn_evaluate.module.get(scope);
           let promise_state = promise.state();
 
           match promise_state {
@@ -1184,16 +1179,18 @@ impl JsRuntime {
               state_rc
                 .borrow_mut()
                 .pending_dyn_mod_evaluate
-                .insert(dyn_import_id, handle);
+                .push_back(pending_dyn_evaluate);
               None
             }
-            v8::PromiseState::Fulfilled => Some(Ok((dyn_import_id, module_id))),
+            v8::PromiseState::Fulfilled => {
+              Some(Ok((pending_dyn_evaluate.load_id, module_id)))
+            }
             v8::PromiseState::Rejected => {
               let exception = promise.result(scope);
               let err1 = exception_to_err_result::<()>(scope, exception, false)
                 .map_err(|err| attach_handle_to_error(scope, err, exception))
                 .unwrap_err();
-              Some(Err((dyn_import_id, err1)))
+              Some(Err((pending_dyn_evaluate.load_id, err1)))
             }
           }
         } else {
