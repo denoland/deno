@@ -1,7 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-#![deny(warnings)]
-
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::JsRuntime;
