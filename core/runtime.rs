@@ -322,6 +322,11 @@ impl JsRuntime {
     self.v8_isolate.as_mut().unwrap()
   }
 
+  pub fn handle_scope(&mut self) -> v8::HandleScope {
+    let context = self.global_context();
+    v8::HandleScope::with_context(self.v8_isolate(), context)
+  }
+
   fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
     isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
     isolate.set_promise_reject_callback(bindings::promise_reject_callback);
@@ -353,8 +358,7 @@ impl JsRuntime {
 
   /// Grabs a reference to core.js' handleAsyncMsgFromRust
   fn init_recv_cb(&mut self) {
-    let context = self.global_context();
-    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+    let scope = &mut self.handle_scope();
 
     // Get Deno.core.handleAsyncMsgFromRust
     let code =
@@ -395,9 +399,7 @@ impl JsRuntime {
     js_filename: &str,
     js_source: &str,
   ) -> Result<(), AnyError> {
-    let context = self.global_context();
-
-    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+    let scope = &mut self.handle_scope();
 
     let source = v8::String::new(scope, js_source).unwrap();
     let name = v8::String::new(scope, js_filename).unwrap();
@@ -688,8 +690,7 @@ impl JsRuntime {
     source: &str,
   ) -> Result<ModuleId, AnyError> {
     let state_rc = Self::state(self.v8_isolate());
-    let context = self.global_context();
-    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+    let scope = &mut self.handle_scope();
 
     let name_str = v8::String::new(scope, name).unwrap();
     let source_str = v8::String::new(scope, source).unwrap();
@@ -746,9 +747,7 @@ impl JsRuntime {
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), AnyError> {
     let state_rc = Self::state(self.v8_isolate());
-    let context = self.global_context();
-
-    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+    let scope = &mut self.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
 
     let module = state_rc
@@ -787,8 +786,6 @@ impl JsRuntime {
     id: ModuleId,
   ) -> Result<(), AnyError> {
     let state_rc = Self::state(self.v8_isolate());
-    let context = self.global_context();
-    let context1 = self.global_context();
 
     let module_handle = state_rc
       .borrow()
@@ -797,8 +794,7 @@ impl JsRuntime {
       .expect("ModuleInfo not found");
 
     let status = {
-      let scope =
-        &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+      let scope = &mut self.handle_scope();
       let module = module_handle.get(scope);
       module.get_status()
     };
@@ -819,7 +815,7 @@ impl JsRuntime {
     // For more details see:
     // https://github.com/denoland/deno/issues/4908
     // https://v8.dev/features/top-level-await#module-execution-order
-    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context1);
+    let scope = &mut self.handle_scope();
     let module = v8::Local::new(scope, &module_handle);
     let maybe_value = module.evaluate(scope);
 
@@ -877,9 +873,7 @@ impl JsRuntime {
     id: ModuleId,
   ) -> mpsc::Receiver<Result<(), AnyError>> {
     let state_rc = Self::state(self.v8_isolate());
-    let context = self.global_context();
-
-    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+    let scope = &mut self.handle_scope();
 
     let module = state_rc
       .borrow()
@@ -943,9 +937,7 @@ impl JsRuntime {
 
   fn dyn_import_error(&mut self, id: ModuleLoadId, err: AnyError) {
     let state_rc = Self::state(self.v8_isolate());
-    let context = self.global_context();
-
-    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+    let scope = &mut self.handle_scope();
 
     let resolver_handle = state_rc
       .borrow_mut()
@@ -969,10 +961,7 @@ impl JsRuntime {
 
   fn dyn_import_done(&mut self, id: ModuleLoadId, mod_id: ModuleId) {
     let state_rc = Self::state(self.v8_isolate());
-    let context = self.global_context();
-
-    debug!("dyn_import_done {} {:?}", id, mod_id);
-    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+    let scope = &mut self.handle_scope();
 
     let resolver_handle = state_rc
       .borrow_mut()
@@ -1126,8 +1115,7 @@ impl JsRuntime {
     }
 
     let module_evaluation = maybe_module_evaluation.unwrap();
-    let context = self.global_context();
-    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+    let scope = &mut self.handle_scope();
 
     let promise = module_evaluation.promise.get(scope);
     let mut sender = module_evaluation.sender.clone();
@@ -1160,7 +1148,6 @@ impl JsRuntime {
     let state_rc = Self::state(self.v8_isolate());
 
     loop {
-      let context = self.global_context();
       let maybe_pending_dyn_evaluate =
         state_rc.borrow_mut().pending_dyn_mod_evaluate.pop_front();
 
@@ -1169,8 +1156,7 @@ impl JsRuntime {
       }
 
       let maybe_result = {
-        let scope =
-          &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+        let scope = &mut self.handle_scope();
         let pending_dyn_evaluate = maybe_pending_dyn_evaluate.unwrap();
 
         let module_id = pending_dyn_evaluate.module_id;
@@ -1388,9 +1374,7 @@ impl JsRuntime {
     let handle = state.pending_promise_exceptions.remove(&key).unwrap();
     drop(state);
 
-    let context = self.global_context();
-    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
-
+    let scope = &mut self.handle_scope();
     let exception = v8::Local::new(scope, handle);
     exception_to_err_result(scope, exception, true)
   }
@@ -1409,8 +1393,7 @@ impl JsRuntime {
 
     let js_recv_cb_handle = state_rc.borrow().js_recv_cb.clone().unwrap();
 
-    let context = self.global_context();
-    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+    let scope = &mut self.handle_scope();
 
     // We return async responses to JS in unbounded batches (may change),
     // each batch is a flat vector of tuples:
@@ -1450,8 +1433,7 @@ impl JsRuntime {
         None => return Ok(()),
       };
 
-    let context = self.global_context();
-    let scope = &mut v8::HandleScope::with_context(self.v8_isolate(), context);
+    let scope = &mut self.handle_scope();
     let js_macrotask_cb = js_macrotask_cb_handle.get(scope);
 
     // Repeatedly invoke macrotask callback until it returns true (done),
