@@ -274,13 +274,11 @@ jobs:
       - name: Test release
         if: matrix.kind == 'test' && matrix.profile == 'release'
         # run: cargo test --release --locked --all-targets
-        run: target/debug/deno test --unstable -A cli/tests/unit/webgpu_test.ts
+        run: target/release/deno test --unstable -A cli/tests/unit/webgpu_test.ts
 
       - name: Test debug
         if: matrix.kind == 'test' && matrix.profile == 'debug'
-        run: |
-          cargo test --locked --doc
-          cargo test --locked --all-targets
+        run: target/debug/deno test --unstable -A cli/tests/unit/webgpu_test.ts
 
       # TODO(ry) Because CI is so slow on for OSX and Windows, we currently only run WPT on Linux.
       - name: Configure hosts file for WPT (linux)
