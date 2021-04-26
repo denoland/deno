@@ -198,30 +198,3 @@ pub fn op_signal_unbind(
     .ok_or_else(bad_resource_id)?;
   Ok(())
 }
-
-#[cfg(all(not(unix), not(windows)))]
-pub fn op_signal_bind(
-  _state: &mut OpState,
-  _args: (),
-  _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<(), AnyError> {
-  unimplemented!();
-}
-
-#[cfg(all(not(unix), not(windows)))]
-fn op_signal_unbind(
-  _state: &mut OpState,
-  _args: (),
-  _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<(), AnyError> {
-  unimplemented!();
-}
-
-#[cfg(all(not(unix), not(windows)))]
-async fn op_signal_poll(
-  _state: Rc<RefCell<OpState>>,
-  _args: (),
-  _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<(), AnyError> {
-  unimplemented!();
-}
