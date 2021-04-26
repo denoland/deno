@@ -293,6 +293,7 @@ impl WebWorker {
           t.add(stream);
         }
       }
+      js_runtime.sync_ops_cache();
 
       worker
     }

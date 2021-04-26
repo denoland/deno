@@ -2,5 +2,6 @@
 
 pub mod errors;
 pub mod runtime_compiler;
+pub mod test_runner;
 
 pub use deno_runtime::ops::{reg_async, reg_sync};

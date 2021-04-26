@@ -19,15 +19,8 @@ fn create_js_runtime() -> JsRuntime {
 
   runtime.init_extension_js().unwrap();
   runtime.init_extension_ops().unwrap();
+  runtime.sync_ops_cache();
 
-  runtime
-    .execute(
-      "init",
-      r#"
-      Deno.core.ops();
-    "#,
-    )
-    .unwrap();
   runtime
     .execute("setup", "const { URL } = globalThis.__bootstrap.url;")
     .unwrap();

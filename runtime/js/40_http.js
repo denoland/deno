@@ -136,40 +136,51 @@
         respBody = new Uint8Array(0);
       }
 
-      const responseBodyRid = await Deno.core.opAsync("op_http_response", [
-        responseSenderRid,
-        innerResp.status ?? 200,
-        innerResp.headerList,
-      ], respBody instanceof Uint8Array ? respBody : null);
+      let responseBodyRid;
+      try {
+        responseBodyRid = await Deno.core.opAsync("op_http_response", [
+          responseSenderRid,
+          innerResp.status ?? 200,
+          innerResp.headerList,
+        ], respBody instanceof Uint8Array ? respBody : null);
+      } catch (error) {
+        if (respBody !== null && respBody instanceof ReadableStream) {
+          await respBody.cancel(error);
+        }
+        throw error;
+      }
 
       // If `respond` returns a responseBodyRid, we should stream the body
       // to that resource.
       if (responseBodyRid !== null) {
-        if (respBody === null || !(respBody instanceof ReadableStream)) {
-          throw new TypeError("Unreachable");
-        }
-        const reader = respBody.getReader();
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          if (!(value instanceof Uint8Array)) {
-            await reader.cancel("value not a Uint8Array");
-            break;
+        try {
+          if (respBody === null || !(respBody instanceof ReadableStream)) {
+            throw new TypeError("Unreachable");
           }
-          try {
-            await Deno.core.opAsync(
-              "op_http_response_write",
-              responseBodyRid,
-              value,
-            );
-          } catch (err) {
-            await reader.cancel(err);
-            break;
+          const reader = respBody.getReader();
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            if (!(value instanceof Uint8Array)) {
+              await reader.cancel(new TypeError("Value not a Uint8Array"));
+              break;
+            }
+            try {
+              await Deno.core.opAsync(
+                "op_http_response_write",
+                responseBodyRid,
+                value,
+              );
+            } catch (error) {
+              await reader.cancel(error);
+              throw error;
+            }
           }
+        } finally {
+          // Once all chunks are sent, and the request body is closed, we can
+          // close the response body.
+          await Deno.core.opAsync("op_http_response_close", responseBodyRid);
         }
-        // Once all chunks are sent, and the request body is closed, we can close
-        // the response body.
-        await Deno.core.opAsync("op_http_response_close", responseBodyRid);
       }
     };
   }

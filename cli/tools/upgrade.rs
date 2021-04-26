@@ -3,10 +3,12 @@
 //! This module provides feature to upgrade deno executable
 
 use deno_core::error::AnyError;
+use deno_core::futures::StreamExt;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::Client;
 use semver_parser::version::parse as semver_parse;
 use std::fs;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -166,8 +168,43 @@ async fn download_package(
   let res = client.get(download_url).send().await?;
 
   if res.status().is_success() {
-    println!("Download has been found");
-    Ok(res.bytes().await?.to_vec())
+    let total_size = res.content_length().unwrap() as f64;
+    let mut current_size = 0.0;
+    let mut data = Vec::with_capacity(total_size as usize);
+    let mut stream = res.bytes_stream();
+    let mut skip_print = 0;
+    let is_tty = atty::is(atty::Stream::Stdout);
+    const MEBIBYTE: f64 = 1024.0 * 1024.0;
+    while let Some(item) = stream.next().await {
+      let bytes = item?;
+      current_size += bytes.len() as f64;
+      data.extend_from_slice(&bytes);
+      if skip_print == 0 {
+        if is_tty {
+          print!("\u{001b}[1G\u{001b}[2K");
+        }
+        print!(
+          "{:0>4.1} MiB / {:.1} MiB ({:0>5.1}%)",
+          current_size / MEBIBYTE,
+          total_size / MEBIBYTE,
+          (current_size / total_size) * 100.0,
+        );
+        std::io::stdout().flush()?;
+        skip_print = 10;
+      } else {
+        skip_print -= 1;
+      }
+    }
+    if is_tty {
+      print!("\u{001b}[1G\u{001b}[2K");
+    }
+    println!(
+      "{:.1} MiB / {:.1} MiB (100.0%)",
+      current_size / MEBIBYTE,
+      total_size / MEBIBYTE
+    );
+
+    Ok(data)
   } else {
     println!("Download could not be found, aborting");
     std::process::exit(1)
