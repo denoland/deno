@@ -6,7 +6,6 @@ use crate::{OpFn, OpId, OpState};
 
 pub type SourcePair = (&'static str, &'static str);
 pub type OpPair = (&'static str, Box<OpFn>);
-pub type RcOpRegistrar = Rc<RefCell<dyn OpRegistrar>>;
 pub type OpMiddlewareFn = dyn Fn(&'static str, Box<OpFn>) -> Box<OpFn>;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), AnyError>;
 
@@ -61,7 +60,7 @@ impl Extension {
   }
 
   /// Called at JsRuntime startup to initialize ops in the isolate.
-  pub(crate) fn init_ops(&mut self, registrar: RcOpRegistrar) {
+  pub(crate) fn init_ops(&mut self, registrar: Rc<RefCell<dyn OpRegistrar>>) {
     // TODO(@AaronO): maybe make op registration idempotent
     if self.initialized {
       panic!("init_ops called twice: not idempotent or correct");
@@ -86,8 +85,8 @@ impl Extension {
   /// init_registrar lets us middleware op registrations, it's called before init_ops
   pub(crate) fn init_registrar(
     &mut self,
-    registrar: RcOpRegistrar,
-  ) -> RcOpRegistrar {
+    registrar: Rc<RefCell<dyn OpRegistrar>>,
+  ) -> Rc<RefCell<dyn OpRegistrar>> {
     match self.middleware_fn.take() {
       Some(middleware_fn) => Rc::new(RefCell::new(OpMiddleware {
         registrar,
@@ -107,7 +106,7 @@ pub trait OpRegistrar {
 
 /// OpMiddleware wraps an original OpRegistrar with an OpMiddlewareFn
 pub struct OpMiddleware {
-  registrar: RcOpRegistrar,
+  registrar: Rc<RefCell<dyn OpRegistrar>>,
   middleware_fn: Box<OpMiddlewareFn>,
 }
 

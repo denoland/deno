@@ -26,7 +26,6 @@ use crate::OpRegistrar;
 use crate::OpResponse;
 use crate::OpState;
 use crate::PromiseId;
-use crate::RcOpRegistrar;
 use crate::ZeroCopyBuf;
 use futures::channel::mpsc;
 use futures::future::poll_fn;
@@ -379,7 +378,7 @@ impl JsRuntime {
   pub fn init_extension_ops(&mut self) -> Result<(), AnyError> {
     let op_state = self.op_state();
     // Original OpRegistrar
-    let mut registrar: RcOpRegistrar =
+    let mut registrar: Rc<RefCell<dyn OpRegistrar>> =
       Rc::new(RefCell::new(JsRuntimeOpRegistrar(op_state.clone())));
 
     // Wrap registrar

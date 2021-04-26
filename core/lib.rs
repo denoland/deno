@@ -79,7 +79,6 @@ pub use crate::runtime::Snapshot;
 // pub use crate::runtime_modules::include_js_files!;
 pub use crate::extensions::Extension;
 pub use crate::extensions::OpRegistrar;
-pub use crate::extensions::RcOpRegistrar;
 pub use crate::zero_copy_buf::ZeroCopyBuf;
 
 pub fn v8_version() -> &'static str {
