@@ -594,7 +594,15 @@ impl JsRuntime {
       if has_pending_ops || has_pending_dyn_imports {
         // pass, will be polled again
       } else {
-        let msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promise.";
+        let mut msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promise.
+Pending dynamic modules:\n".to_string();
+        for pending_evaluate in &state.pending_dyn_mod_evaluate {
+          let module_info = state
+            .module_map
+            .get_info_by_id(&pending_evaluate.module_id)
+            .unwrap();
+          msg.push_str(&format!("- {}", module_info.name.as_str()));
+        }
         return Poll::Ready(Err(generic_error(msg)));
       }
     }
