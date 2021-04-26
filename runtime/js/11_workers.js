@@ -333,6 +333,7 @@
   defineEventHandler(Worker.prototype, "messageerror");
 
   window.__bootstrap.worker = {
+    parsePermissions,
     Worker,
   };
 })(this);

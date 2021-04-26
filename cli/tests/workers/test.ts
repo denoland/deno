@@ -697,3 +697,32 @@ Deno.test({
     worker.terminate();
   },
 });
+
+Deno.test({
+  name: "Worker with native HTTP",
+  fn: async function () {
+    const result = deferred();
+    const worker = new Worker(
+      new URL(
+        "./http_worker.js",
+        import.meta.url,
+      ).href,
+      {
+        type: "module",
+        deno: {
+          namespace: true,
+          permissions: "inherit",
+        },
+      },
+    );
+    worker.onmessage = () => {
+      result.resolve();
+    };
+    await result;
+
+    assert(worker);
+    const response = await fetch("http://localhost:4500");
+    assert(await response.arrayBuffer());
+    worker.terminate();
+  },
+});
