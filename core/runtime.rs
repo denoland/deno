@@ -386,11 +386,14 @@ impl JsRuntime {
     for e in self.extensions.iter_mut() {
       registrar = e.init_registrar(registrar.clone());
     }
-
+    // Register ops
     for e in self.extensions.iter_mut() {
       e.init_state(&mut op_state.borrow_mut())?;
       e.init_ops(registrar.clone());
     }
+    // Sync ops cache
+    self.sync_ops_cache();
+
     Ok(())
   }
 
