@@ -993,30 +993,32 @@ impl JsRuntime {
     }
 
     loop {
-      let r = {
-        let mut state = state_rc.borrow_mut();
-        state.preparing_dyn_imports.poll_next_unpin(cx)
-      };
-      match r {
-        Poll::Pending | Poll::Ready(None) => {
-          // There are no active dynamic import loaders, or none are ready.
-          return Poll::Ready(Ok(()));
-        }
-        Poll::Ready(Some(prepare_poll)) => {
-          let dyn_import_id = prepare_poll.0;
-          let prepare_result = prepare_poll.1;
+      let poll_result = state_rc
+        .borrow_mut()
+        .preparing_dyn_imports
+        .poll_next_unpin(cx);
 
-          match prepare_result {
-            Ok(load) => {
-              let state = state_rc.borrow_mut();
-              state.pending_dyn_imports.push(load.into_future());
-            }
-            Err(err) => {
-              self.dyn_import_error(dyn_import_id, err);
-            }
+      if let Poll::Ready(Some(prepare_poll)) = poll_result {
+        let dyn_import_id = prepare_poll.0;
+        let prepare_result = prepare_poll.1;
+
+        match prepare_result {
+          Ok(load) => {
+            state_rc
+              .borrow_mut()
+              .pending_dyn_imports
+              .push(load.into_future());
+          }
+          Err(err) => {
+            self.dyn_import_error(dyn_import_id, err);
           }
         }
+        // Continue polling for more prepared dynamic imports.
+        continue;
       }
+
+      // There are no active dynamic import loads, or none are ready.
+      return Poll::Ready(Ok(()));
     }
   }
 
@@ -1031,55 +1033,57 @@ impl JsRuntime {
     }
 
     loop {
-      let poll_result = {
-        let mut state = state_rc.borrow_mut();
-        state.pending_dyn_imports.poll_next_unpin(cx)
-      };
+      let poll_result = state_rc
+        .borrow_mut()
+        .pending_dyn_imports
+        .poll_next_unpin(cx);
 
-      match poll_result {
-        Poll::Pending | Poll::Ready(None) => {
-          // There are no active dynamic import loaders, or none are ready.
-          return Poll::Ready(Ok(()));
-        }
-        Poll::Ready(Some(load_stream_poll)) => {
-          let maybe_result = load_stream_poll.0;
-          let mut load = load_stream_poll.1;
-          let dyn_import_id = load.id;
+      if let Poll::Ready(Some(load_stream_poll)) = poll_result {
+        let maybe_result = load_stream_poll.0;
+        let mut load = load_stream_poll.1;
+        let dyn_import_id = load.id;
 
-          if let Some(load_stream_result) = maybe_result {
-            match load_stream_result {
-              Ok(info) => {
-                // A module (not necessarily the one dynamically imported) has been
-                // fetched. Create and register it, and if successful, poll for the
-                // next recursive-load event related to this dynamic import.
-                match self.register_during_load(info, &mut load) {
-                  Ok(()) => {
-                    // Keep importing until it's fully drained
-                    let state = state_rc.borrow_mut();
-                    state.pending_dyn_imports.push(load.into_future());
-                  }
-                  Err(err) => self.dyn_import_error(dyn_import_id, err),
+        if let Some(load_stream_result) = maybe_result {
+          match load_stream_result {
+            Ok(info) => {
+              // A module (not necessarily the one dynamically imported) has been
+              // fetched. Create and register it, and if successful, poll for the
+              // next recursive-load event related to this dynamic import.
+              match self.register_during_load(info, &mut load) {
+                Ok(()) => {
+                  // Keep importing until it's fully drained
+                  state_rc
+                    .borrow_mut()
+                    .pending_dyn_imports
+                    .push(load.into_future());
                 }
-              }
-              Err(err) => {
-                // A non-javascript error occurred; this could be due to a an invalid
-                // module specifier, or a problem with the source map, or a failure
-                // to fetch the module source code.
-                self.dyn_import_error(dyn_import_id, err)
+                Err(err) => self.dyn_import_error(dyn_import_id, err),
               }
             }
-          } else {
-            // The top-level module from a dynamic import has been instantiated.
-            // Load is done.
-            let module_id = load.root_module_id.unwrap();
-            let result = self.mod_instantiate(module_id);
-            if let Err(err) = result {
-              self.dyn_import_error(dyn_import_id, err);
+            Err(err) => {
+              // A non-javascript error occurred; this could be due to a an invalid
+              // module specifier, or a problem with the source map, or a failure
+              // to fetch the module source code.
+              self.dyn_import_error(dyn_import_id, err)
             }
-            self.dyn_mod_evaluate(dyn_import_id, module_id)?;
           }
+        } else {
+          // The top-level module from a dynamic import has been instantiated.
+          // Load is done.
+          let module_id = load.root_module_id.unwrap();
+          let result = self.mod_instantiate(module_id);
+          if let Err(err) = result {
+            self.dyn_import_error(dyn_import_id, err);
+          }
+          self.dyn_mod_evaluate(dyn_import_id, module_id)?;
         }
+
+        // Continue polling for more ready dynamic imports.
+        continue;
       }
+
+      // There are no active dynamic import loads, or none are ready.
+      return Poll::Ready(Ok(()));
     }
   }
 
