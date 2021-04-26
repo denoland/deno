@@ -26,10 +26,7 @@ lazy_static::lazy_static! {
         function: print.map_fn_to()
       },
       v8::ExternalReference {
-        function: recv.map_fn_to()
-      },
-      v8::ExternalReference {
-        function: send.map_fn_to()
+        function: opcall.map_fn_to()
       },
       v8::ExternalReference {
         function: set_macrotask_callback.map_fn_to()
@@ -122,8 +119,7 @@ pub fn initialize_context<'s>(
 
   // Bind functions to Deno.core.*
   set_func(scope, core_val, "print", print);
-  set_func(scope, core_val, "recv", recv);
-  set_func(scope, core_val, "send", send);
+  set_func(scope, core_val, "opcall", opcall);
   set_func(
     scope,
     core_val,
@@ -321,28 +317,7 @@ fn print(
   }
 }
 
-fn recv(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  _rv: v8::ReturnValue,
-) {
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
-
-  let cb = match v8::Local::<v8::Function>::try_from(args.get(0)) {
-    Ok(cb) => cb,
-    Err(err) => return throw_type_error(scope, err.to_string()),
-  };
-
-  let slot = match &mut state.js_recv_cb {
-    slot @ None => slot,
-    _ => return throw_type_error(scope, "Deno.core.recv() already called"),
-  };
-
-  slot.replace(v8::Global::new(scope, cb));
-}
-
-fn send<'s>(
+fn opcall<'s>(
   scope: &mut v8::HandleScope<'s>,
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
@@ -361,7 +336,7 @@ fn send<'s>(
     }
   };
 
-  // send(0) returns obj of all ops, handle as special case
+  // opcall(0) returns obj of all ops, handle as special case
   if op_id == 0 {
     // TODO: Serialize as HashMap when serde_v8 supports maps ...
     let ops = OpTable::op_entries(state.op_state.clone());

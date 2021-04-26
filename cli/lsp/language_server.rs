@@ -3401,6 +3401,7 @@ mod tests {
   }
 
   #[tokio::test]
+  #[ignore] // TODO(ry) Re-enable. Flaky on ubuntu-latest-xl.
   async fn test_large_doc_change() {
     let mut harness = LspTestHarness::new(vec![
       (

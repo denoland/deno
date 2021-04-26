@@ -116,6 +116,7 @@ fn create_js_runtime() -> JsRuntime {
   runtime.register_op("accept", deno_core::op_async(op_accept));
   runtime.register_op("read", deno_core::op_async(op_read));
   runtime.register_op("write", deno_core::op_async(op_write));
+  runtime.sync_ops_cache();
   runtime
 }
 

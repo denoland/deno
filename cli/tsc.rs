@@ -496,6 +496,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   runtime.register_op("op_load", op(load));
   runtime.register_op("op_resolve", op(resolve));
   runtime.register_op("op_respond", op(respond));
+  runtime.sync_ops_cache();
 
   let startup_source = "globalThis.startup({ legacyFlag: false })";
   let request_value = json!({

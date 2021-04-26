@@ -357,7 +357,7 @@
         redirected: this.redirected,
         status: this.status,
         statusText: this.statusText,
-        url: this.url(),
+        url: this.url,
       };
       return `Response ${inspect(inner)}`;
     }
