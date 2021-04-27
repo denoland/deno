@@ -43,12 +43,7 @@ fn js_unit_tests() {
     .arg("--unstable")
     .arg("--location=http://js-unit-tests/foo/bar")
     .arg("-A")
-    .arg(
-      util::root_path()
-        .join("cli/tests/unit")
-        .canonicalize()
-        .unwrap(),
-    )
+    .arg("cli/tests/unit")
     .spawn()
     .expect("failed to spawn script");
 
@@ -2405,13 +2400,13 @@ mod integration {
     });
 
     itest!(allow_all {
-      args: "test --allow-all test/allow_all.ts",
+      args: "test --unstable --allow-all test/allow_all.ts",
       exit_code: 0,
       output: "test/allow_all.out",
     });
 
     itest!(allow_none {
-      args: "test test/allow_none.ts",
+      args: "test --unstable test/allow_none.ts",
       exit_code: 1,
       output: "test/allow_none.out",
     });
@@ -2529,6 +2524,12 @@ console.log("finish");
   itest!(worker_nested_error {
     args: "run -A workers/worker_nested_error.ts",
     output: "workers/worker_nested_error.ts.out",
+    exit_code: 1,
+  });
+
+  itest!(nonexistent_worker {
+    args: "run --allow-read workers/nonexistent_worker.ts",
+    output: "workers/nonexistent_worker.out",
     exit_code: 1,
   });
 
@@ -3461,6 +3462,11 @@ console.log("finish");
   itest!(wasm {
     args: "run --quiet wasm.ts",
     output: "wasm.ts.out",
+  });
+
+  itest!(wasm_shared {
+    args: "run --quiet wasm_shared.ts",
+    output: "wasm_shared.out",
   });
 
   itest!(wasm_async {
@@ -5173,6 +5179,25 @@ console.log("finish");
     assert!(stderr.contains("BadResource"));
   }
 
+  #[cfg(not(windows))]
+  #[test]
+  fn should_not_panic_on_not_found_cwd() {
+    let output = util::deno_cmd()
+      .current_dir(util::root_path())
+      .arg("run")
+      .arg("--allow-write")
+      .arg("--allow-read")
+      .arg("cli/tests/dont_panic_not_found_cwd.ts")
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(!output.status.success());
+    let stderr = std::str::from_utf8(&output.stderr).unwrap().trim();
+    assert!(stderr.contains("Failed to get current working directory"));
+  }
+
   #[cfg(windows)]
   // Clippy suggests to remove the `NoStd` prefix from all variants. I disagree.
   #[allow(clippy::enum_variant_names)]
@@ -5382,8 +5407,7 @@ console.log("finish");
       .wait_with_output()
       .unwrap();
     assert!(output.status.success());
-    let exists = std::path::Path::new(&exe).exists();
-    assert!(exists, true);
+    assert!(std::path::Path::new(&exe).exists());
   }
 
   #[test]
@@ -5629,17 +5653,6 @@ console.log("finish");
     let stderr_str = String::from_utf8(output.stderr).unwrap();
     assert!(util::strip_ansi_codes(&stderr_str)
       .contains("PermissionDenied: Requires write access"));
-  }
-
-  #[test]
-  fn denort_direct_use_error() {
-    let status = Command::new(util::denort_exe_path())
-      .current_dir(util::root_path())
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
-    assert!(!status.success());
   }
 
   #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

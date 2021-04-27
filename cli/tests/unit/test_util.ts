@@ -77,7 +77,7 @@ export function unitTest(
     fn,
     ignore: !!options.ignore,
     only: !!options.only,
-    permissions: options.perms ?? {
+    permissions: Object.assign({
       read: false,
       write: false,
       net: false,
@@ -85,7 +85,7 @@ export function unitTest(
       run: false,
       plugin: false,
       hrtime: false,
-    },
+    }, options.perms),
   };
 
   Deno.test(testDefinition);

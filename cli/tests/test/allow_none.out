@@ -11,31 +11,31 @@ test hrtime ... FAILED [WILDCARD]
 failures:
 
 read
-PermissionDenied: Requires read access, run test again with the --allow-read flag
+PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
 write
-PermissionDenied: Requires write access, run test again with the --allow-write flag
+PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
 net
-PermissionDenied: Requires net access, run test again with the --allow-net flag
+PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
 env
-PermissionDenied: Requires env access, run test again with the --allow-env flag
+PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
 run
-PermissionDenied: Requires run access, run test again with the --allow-run flag
+PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
 plugin
-PermissionDenied: Requires plugin access, run test again with the --allow-plugin flag
+PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
 hrtime
-PermissionDenied: Requires hrtime access, run test again with the --allow-hrtime flag
+PermissionDenied: Can't escalate parent thread permissions
 [WILDCARD]
 
 failures:

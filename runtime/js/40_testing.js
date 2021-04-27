@@ -3,6 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const { parsePermissions } = window.__bootstrap.worker;
   const { setExitHandler, exit } = window.__bootstrap.os;
   const { Console, inspectArgs } = window.__bootstrap.console;
   const { metrics } = window.__bootstrap.metrics;
@@ -161,44 +162,18 @@ finishing test case.`;
   }
 
   function pledgeTestPermissions(permissions) {
-    if (permissions.read === true) {
-      permissions.read = [];
-    } else if (permissions.read === false) {
-      permissions.read = null;
-    }
-
-    if (permissions.write === true) {
-      permissions.write = [];
-    } else if (permissions.write === false) {
-      permissions.write = null;
-    }
-
-    if (permissions.net === true) {
-      permissions.net = [];
-    } else if (permissions.net === false) {
-      permissions.net = null;
-    }
-
-    if (permissions.env === true) {
-      permissions.env = [];
-    } else if (permissions.env === false) {
-      permissions.env = null;
-    }
-
-    if (permissions.run === true) {
-      permissions.run = [];
-    } else if (permissions.run === false) {
-      permissions.run = null;
-    }
-
-    core.opSync("op_pledge_test_permissions", permissions);
+    return core.opSync(
+      "op_pledge_test_permissions",
+      parsePermissions(permissions),
+    );
   }
 
-  function restoreTestPermissions() {
-    core.opSync("op_restore_test_permissions");
+  function restoreTestPermissions(token) {
+    core.opSync("op_restore_test_permissions", token);
   }
 
   async function runTest({ name, ignore, fn, permissions }) {
+    let token = null;
     const time = Date.now();
 
     try {
@@ -207,7 +182,7 @@ finishing test case.`;
       });
 
       if (permissions) {
-        pledgeTestPermissions(permissions);
+        token = pledgeTestPermissions(permissions);
       }
 
       if (ignore) {
@@ -240,8 +215,8 @@ finishing test case.`;
         },
       });
     } finally {
-      if (permissions) {
-        restoreTestPermissions();
+      if (token) {
+        restoreTestPermissions(token);
       }
     }
   }

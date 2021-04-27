@@ -56,6 +56,7 @@ declare global {
     | GetDefinitionRequest
     | GetDiagnosticsRequest
     | GetDocumentHighlightsRequest
+    | GetEncodedSemanticClassifications
     | GetImplementationRequest
     | GetNavigationTree
     | GetOutliningSpans
@@ -63,7 +64,10 @@ declare global {
     | GetReferencesRequest
     | GetSignatureHelpItemsRequest
     | GetSmartSelectionRange
-    | GetSupportedCodeFixes;
+    | GetSupportedCodeFixes
+    | PrepareCallHierarchy
+    | ProvideCallHierarchyIncomingCalls
+    | ProvideCallHierarchyOutgoingCalls;
 
   interface BaseLanguageServerRequest {
     id: number;
@@ -141,6 +145,13 @@ declare global {
     filesToSearch: string[];
   }
 
+  interface GetEncodedSemanticClassifications
+    extends BaseLanguageServerRequest {
+    method: "getEncodedSemanticClassifications";
+    specifier: string;
+    span: ts.TextSpan;
+  }
+
   interface GetImplementationRequest extends BaseLanguageServerRequest {
     method: "getImplementation";
     specifier: string;
@@ -184,5 +195,25 @@ declare global {
 
   interface GetSupportedCodeFixes extends BaseLanguageServerRequest {
     method: "getSupportedCodeFixes";
+  }
+
+  interface PrepareCallHierarchy extends BaseLanguageServerRequest {
+    method: "prepareCallHierarchy";
+    specifier: string;
+    position: number;
+  }
+
+  interface ProvideCallHierarchyIncomingCalls
+    extends BaseLanguageServerRequest {
+    method: "provideCallHierarchyIncomingCalls";
+    specifier: string;
+    position: number;
+  }
+
+  interface ProvideCallHierarchyOutgoingCalls
+    extends BaseLanguageServerRequest {
+    method: "provideCallHierarchyOutgoingCalls";
+    specifier: string;
+    position: number;
   }
 }

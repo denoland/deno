@@ -1,29 +1,29 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::module_graph;
-use crate::tokio_util;
-use deno_core::ModuleSpecifier;
-use std::sync::mpsc::channel;
-use crate::flags::Flags;
-use std::sync::mpsc::Sender;
-use std::sync::Arc;
-use deno_runtime::permissions::Permissions;
-use crate::program_state::ProgramState;
-use deno_core::serde_json::json;
 use crate::create_main_worker;
+use crate::flags::Flags;
 use crate::fs_util;
-use crate::tools::installer::is_remote_url;
-use crate::tools::coverage::CoverageCollector;
-use deno_core::error::AnyError;
-use deno_core::url::Url;
-use std::path::Path;
+use crate::module_graph;
+use crate::program_state::ProgramState;
 use crate::test_dispatcher::TestMessage;
 use crate::test_dispatcher::TestResult;
+use crate::tokio_util;
+use crate::tools::coverage::CoverageCollector;
+use crate::tools::installer::is_remote_url;
+use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::StreamExt;
+use deno_core::serde_json::json;
+use deno_core::url::Url;
+use deno_core::ModuleSpecifier;
+use deno_runtime::permissions::Permissions;
+use std::path::Path;
 use std::path::PathBuf;
+use std::sync::mpsc::channel;
+use std::sync::mpsc::Sender;
+use std::sync::Arc;
 
 fn is_supported(p: &Path) -> bool {
   use std::path::Component;
@@ -100,17 +100,18 @@ pub async fn run_test(
       .put::<Sender<TestMessage>>(channel.clone());
   }
 
-  let mut maybe_coverage_collector =
-    if let Some(ref coverage_dir) = program_state.coverage_dir {
-      let session = worker.create_inspector_session();
-      let coverage_dir = PathBuf::from(coverage_dir);
-      let mut coverage_collector = CoverageCollector::new(coverage_dir, session);
-      coverage_collector.start_collecting().await?;
+  let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
+    program_state.coverage_dir
+  {
+    let session = worker.create_inspector_session();
+    let coverage_dir = PathBuf::from(coverage_dir);
+    let mut coverage_collector = CoverageCollector::new(coverage_dir, session);
+    coverage_collector.start_collecting().await?;
 
-      Some(coverage_collector)
-    } else {
-      None
-    };
+    Some(coverage_collector)
+  } else {
+    None
+  };
 
   let options = json!({
     "filter": filter,
@@ -133,7 +134,6 @@ pub async fn run_test(
   Ok(())
 }
 
-
 #[allow(clippy::too_many_arguments)]
 pub async fn run_tests(
   flags: Flags,
@@ -144,7 +144,7 @@ pub async fn run_tests(
   allow_none: bool,
   filter: Option<String>,
   concurrent_jobs: usize,
-  ) -> Result<(), AnyError> {
+) -> Result<(), AnyError> {
   let program_state = ProgramState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let cwd = std::env::current_dir().expect("No current directory");

@@ -12,43 +12,24 @@ const permissions: Deno.PermissionName[] = [
 
 for (const name of permissions) {
   Deno.test({
-    name,
-    async fn() {
-      const status = await Deno.permissions.query({ name });
-      assertEquals(status.state, "granted");
-    },
-  });
-
-  Deno.test({
-    name: `${name}False`,
+    name: `${name} false`,
     permissions: {
       [name]: false,
     },
     async fn() {
       const status = await Deno.permissions.query({ name });
-      assertEquals(status.state, "prompt");
+      assertEquals(status.state, "denied");
     },
   });
 
   Deno.test({
-    name: `${name}True`,
+    name: `${name} true`,
     permissions: {
       [name]: true,
     },
     async fn() {
       const status = await Deno.permissions.query({ name });
       assertEquals(status.state, "granted");
-    },
-  });
-
-  Deno.test({
-    name: `${name}Null`,
-    permissions: {
-      [name]: null,
-    },
-    async fn() {
-      const status = await Deno.permissions.query({ name });
-      assertEquals(status.state, "prompt");
     },
   });
 }

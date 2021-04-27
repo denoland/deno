@@ -10,6 +10,7 @@ members = [
   "test_util",
   "op_crates/crypto",
   "op_crates/fetch",
+  "op_crates/timers",
   "op_crates/url",
   "op_crates/web",
   "op_crates/webgpu",
