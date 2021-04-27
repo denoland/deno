@@ -48,6 +48,8 @@ jobs:
     env:
       RUST_BACKTRACE: full
       CARGO_TERM_COLOR: always
+      # TODO(ry) Enable error on warning after fixing https://github.com/denoland/deno/issues/10378
+      # RUSTFLAGS: -D warnings
 
     steps:
       - name: Configure git
@@ -222,7 +224,6 @@ jobs:
         run: |
           cd target/release
           zip -r deno-x86_64-unknown-linux-gnu.zip deno
-          zip -r denort-x86_64-unknown-linux-gnu.zip denort
           ./deno types > lib.deno.d.ts
 
       - name: Pre-release (mac)
@@ -233,7 +234,6 @@ jobs:
         run: |
           cd target/release
           zip -r deno-x86_64-apple-darwin.zip deno
-          zip -r denort-x86_64-apple-darwin.zip denort
 
       - name: Pre-release (windows)
         if: |
@@ -242,7 +242,6 @@ jobs:
           matrix.profile == 'release'
         run: |
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
-          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-x86_64-pc-windows-msvc.zip
 
       - name: Upload canary to dl.deno.land (unix)
         if: |
@@ -374,7 +373,7 @@ jobs:
       - name: Clean before cache
         shell: bash
         run: |
-          rm -f target/*/deno target/*/denort target/*/test_server
+          rm -f target/*/deno target/*/test_server
           rm -rf target/*/examples/
           rm -rf target/*/gn_out/
           rm -rf target/*/*.zip

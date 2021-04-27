@@ -1,7 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-#![deny(warnings)]
-
 mod ast;
 mod auth_tokens;
 mod checksum;
@@ -321,7 +319,6 @@ async fn compile_command(
   output: Option<PathBuf>,
   args: Vec<String>,
   target: Option<String>,
-  lite: bool,
 ) -> Result<(), AnyError> {
   if !flags.unstable {
     exit_unstable("compile");
@@ -362,9 +359,9 @@ async fn compile_command(
     module_specifier.to_string()
   );
 
-  // Select base binary based on `target` and `lite` arguments
+  // Select base binary based on target
   let original_binary =
-    tools::standalone::get_base_binary(deno_dir, target.clone(), lite).await?;
+    tools::standalone::get_base_binary(deno_dir, target.clone()).await?;
 
   let final_bin = tools::standalone::create_standalone_binary(
     original_binary,
@@ -1098,10 +1095,10 @@ fn get_subcommand(
       source_file,
       output,
       args,
-      lite,
       target,
-    } => compile_command(flags, source_file, output, args, target, lite)
-      .boxed_local(),
+    } => {
+      compile_command(flags, source_file, output, args, target).boxed_local()
+    }
     DenoSubcommand::Coverage {
       files,
       ignore,

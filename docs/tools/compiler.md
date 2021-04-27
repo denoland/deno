@@ -37,8 +37,3 @@ You can compile binaries for other platforms by adding the `--target` CLI flag.
 Deno currently supports compiling to Windows x64, macOS x64, macOS ARM and Linux
 x64. Use `deno compile --help` to list the full values for each compilation
 target.
-
-### Generating Smaller Binaries
-
-If the `--lite` CLI flag is passed, `deno compile` will use a slimmed-down
-runtime-only binary.
