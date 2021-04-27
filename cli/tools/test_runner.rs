@@ -207,18 +207,9 @@ pub async fn run_tests(
     "filter": filter,
   });
 
-  let mut test_source = String::new();
-
-  for test_module in &test_modules {
-    test_source.push_str(&format!("// {}\n", test_module));
-  }
-
-  test_source.push_str(&format!(
-    "await Deno[Deno.internal].runTests({});\n",
-    test_options
-  ));
-
   let test_module = deno_core::resolve_path("$deno$test.js")?;
+  let test_source =
+    format!("await Deno[Deno.internal].runTests({});", test_options);
   let test_file = File {
     local: test_module.to_file_path().unwrap(),
     maybe_types: None,
