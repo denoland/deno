@@ -232,11 +232,11 @@ pub async fn run_tests(
     tokio::task::spawn_blocking(move || {
       let join_handle = std::thread::spawn(move || {
         let future = run_test(
-          program_state.clone(),
-          main_module.clone(),
-          test_module.clone(),
-          permissions.clone(),
-          sender.clone(),
+          program_state,
+          main_module,
+          test_module,
+          permissions,
+          sender,
         );
 
         tokio_util::run_basic(future)
