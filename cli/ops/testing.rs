@@ -1,14 +1,14 @@
 use crate::tools::test_runner::TestMessage;
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
-use deno_core::error::AnyError;
-use deno_core::error::generic_error;
-use deno_core::serde_json::Value;
-use deno_core::serde_json::json;
-use deno_core::serde_json;
-use deno_runtime::ops::worker_host::PermissionsArg;
 use deno_runtime::ops::worker_host::create_worker_permissions;
+use deno_runtime::ops::worker_host::PermissionsArg;
 use deno_runtime::permissions::Permissions;
 use serde::Deserialize;
 use std::sync::mpsc::Sender;
@@ -89,4 +89,3 @@ fn op_send_test_message(
     Ok(json!(true))
   }
 }
-

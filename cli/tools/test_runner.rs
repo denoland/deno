@@ -331,7 +331,7 @@ pub async fn run_tests(
       // planned.
       // In that case we mark it as an error so that it will be reported as failed.
       if planned > passed + ignored + failed {
-          has_error = true;
+        has_error = true;
       }
 
       if !failures.is_empty() {
