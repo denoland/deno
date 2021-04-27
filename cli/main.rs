@@ -29,7 +29,6 @@ mod program_state;
 mod source_maps;
 mod specifier_handler;
 mod standalone;
-mod test_dispatcher;
 mod text_encoding;
 mod tokio_util;
 mod tools;

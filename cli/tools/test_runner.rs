@@ -6,8 +6,6 @@ use crate::flags::Flags;
 use crate::fs_util;
 use crate::module_graph;
 use crate::program_state::ProgramState;
-use crate::test_dispatcher::TestMessage;
-use crate::test_dispatcher::TestResult;
 use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
 use crate::tools::installer::is_remote_url;
@@ -24,6 +22,33 @@ use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
+use serde::Deserialize;
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TestResult {
+  Ok,
+  Ignored,
+  Failed(String),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", content = "data", rename_all = "camelCase")]
+pub enum TestMessage {
+  Plan {
+    pending: usize,
+    filtered: usize,
+    only: bool,
+  },
+  Wait {
+    name: String,
+  },
+  Result {
+    name: String,
+    duration: usize,
+    result: TestResult,
+  },
+}
 
 fn is_supported(p: &Path) -> bool {
   use std::path::Component;

@@ -1,4 +1,4 @@
-use crate::test_dispatcher::TestMessage;
+use crate::tools::test_runner::TestMessage;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
