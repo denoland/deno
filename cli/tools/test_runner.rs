@@ -218,7 +218,7 @@ pub async fn run_tests(
     test_options
   ));
 
-  let test_module = deno_core::resolve_path("$deno$test.ts")?;
+  let test_module = deno_core::resolve_path("$deno$test.js")?;
   let test_file = File {
     local: test_module.to_file_path().unwrap(),
     maybe_types: None,
