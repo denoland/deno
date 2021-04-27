@@ -142,8 +142,8 @@ finishing test case.`;
     tests.push(testDef);
   }
 
-  function sendTestMessage(kind, data) {
-    return core.opSync("op_send_test_message", { message: { kind, data } });
+  function postTestMessage(kind, data) {
+    return core.opSync("op_post_test_message", { message: { kind, data } });
   }
 
   function createTestFilter(filter) {
@@ -177,7 +177,7 @@ finishing test case.`;
     const time = Date.now();
 
     try {
-      sendTestMessage("wait", {
+      postTestMessage("wait", {
         name,
       });
 
@@ -187,7 +187,7 @@ finishing test case.`;
 
       if (ignore) {
         const duration = Date.now() - time;
-        sendTestMessage("result", {
+        postTestMessage("result", {
           name,
           duration,
           result: "ignored",
@@ -199,7 +199,7 @@ finishing test case.`;
       await fn();
 
       const duration = Date.now() - time;
-      sendTestMessage("result", {
+      postTestMessage("result", {
         name,
         duration,
         result: "ok",
@@ -207,7 +207,7 @@ finishing test case.`;
     } catch (error) {
       const duration = Date.now() - time;
 
-      sendTestMessage("result", {
+      postTestMessage("result", {
         name,
         duration,
         result: {
@@ -234,7 +234,7 @@ finishing test case.`;
     const pending = (only.length > 0 ? only : tests).filter(
       createTestFilter(filter),
     );
-    sendTestMessage("plan", {
+    postTestMessage("plan", {
       filtered: tests.length - pending.length,
       pending: pending.length,
       only: only.length > 0,

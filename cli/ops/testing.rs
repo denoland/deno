@@ -21,7 +21,7 @@ pub fn init(rt: &mut JsRuntime) {
     "op_restore_test_permissions",
     op_restore_test_permissions,
   );
-  super::reg_sync(rt, "op_send_test_message", op_send_test_message);
+  super::reg_sync(rt, "op_post_test_message", op_post_test_message);
 }
 
 #[derive(Clone)]
@@ -71,16 +71,16 @@ pub fn op_restore_test_permissions(
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SendTestMessageArgs {
+struct PostTestMessageArgs {
   message: TestMessage,
 }
 
-fn op_send_test_message(
+fn op_post_test_message(
   state: &mut OpState,
   args: Value,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let args: SendTestMessageArgs = serde_json::from_value(args)?;
+  let args: PostTestMessageArgs = serde_json::from_value(args)?;
   let sender = state.borrow::<Sender<TestMessage>>().clone();
 
   if sender.send(args.message).is_err() {
