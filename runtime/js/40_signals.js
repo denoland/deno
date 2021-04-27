@@ -18,6 +18,19 @@
     core.opSync("op_signal_unbind", rid);
   }
 
+  // only support ctrl-c/ctrl-break
+  const WindowsSignal = {
+    2: "SIGINT",
+    SIGINT: 2,
+    // https://github.com/libuv/libuv/blob/v1.x/include/uv/win.h#L80
+    21: "SIGBREAK",
+    SIGBREAK: 21,
+
+    // Solve the error because of runKillAfterStatus test. It requires SIGTERM!
+    15: "SIGTERM",
+    SIGTERM: 15,
+  };
+
   // From `kill -l`
   const LinuxSignal = {
     1: "SIGHUP",
@@ -155,14 +168,21 @@
   function setSignals() {
     if (build.os === "darwin") {
       Object.assign(Signal, MacOSSignal);
+    } else if (build.os === "windows") {
+      Object.assign(Signal, WindowsSignal);
     } else {
       Object.assign(Signal, LinuxSignal);
     }
   }
 
   function signal(signo) {
-    if (build.os === "windows") {
-      throw new Error("not implemented!");
+    if (
+      build.os === "windows" &&
+      !(signo === WindowsSignal.SIGINT || signo === WindowsSignal.SIGBREAK)
+    ) {
+      throw new Error(
+        "Windows only supports ctrl-c(SIGINT) and ctrl-break(SIGBREAK)!",
+      );
     }
     return new SignalStream(signo);
   }

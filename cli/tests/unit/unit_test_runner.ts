@@ -182,10 +182,22 @@ async function runTestsForPermissionSet(
   };
 }
 
+interface SignalStream {
+  dispose(): void;
+}
+
 async function masterRunnerMain(
   verbose: boolean,
   filter?: string,
 ): Promise<void> {
+  let signal;
+  if (Deno.build.os === "windows") {
+    // Windows' GenerateConsoleCtrlEvent will send ctrl-c to the entire process group,
+    // so when the worker is running the signal test,
+    // the master process also captures this event to prevent it from exiting.
+    // If you need to exit during the running test, use ctrl-break.
+    signal = Deno.signal(Deno.Signal.SIGINT) as unknown as SignalStream;
+  }
   console.log(
     "Discovered permission combinations for tests:",
     permissionCombinations.size,
@@ -234,6 +246,10 @@ async function masterRunnerMain(
       `\n${colors.red("FAILED")} because the "only" option was used`,
     );
     Deno.exit(1);
+  }
+
+  if (Deno.build.os === "windows" && signal) {
+    signal.dispose();
   }
 }
 

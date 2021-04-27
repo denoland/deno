@@ -584,6 +584,8 @@ declare namespace Deno {
     SIGIO = 29,
     SIGPWR = 30,
     SIGSYS = 31,
+
+    SIGBREAK = 0,
   }
   enum MacOSSignal {
     SIGHUP = 1,
@@ -617,12 +619,53 @@ declare namespace Deno {
     SIGINFO = 29,
     SIGUSR1 = 30,
     SIGUSR2 = 31,
+
+    SIGBREAK = 0,
   }
 
+  enum WindowsSignal {
+    SIGINT = 2,
+    SIGBREAK = 21,
+
+    // If the content of the `WindowsSignal` is different from that of `Linux/MacOSSignal`, it cannot pass the check
+    SIGHUP = 0,
+    SIGQUIT = 0,
+    SIGILL = 0,
+    SIGTRAP = 0,
+    SIGABRT = 0,
+    SIGEMT = 0,
+    SIGFPE = 0,
+    SIGKILL = 0,
+    SIGBUS = 0,
+    SIGSEGV = 0,
+    SIGSYS = 0,
+    SIGPIPE = 0,
+    SIGALRM = 0,
+    SIGTERM = 0,
+    SIGURG = 0,
+    SIGSTOP = 0,
+    SIGTSTP = 0,
+    SIGCONT = 0,
+    SIGCHLD = 0,
+    SIGTTIN = 0,
+    SIGTTOU = 0,
+    SIGIO = 0,
+    SIGXCPU = 0,
+    SIGXFSZ = 0,
+    SIGVTALRM = 0,
+    SIGPROF = 0,
+    SIGWINCH = 0,
+    SIGINFO = 0,
+    SIGUSR1 = 0,
+    SIGUSR2 = 0,
+  }
   /** **UNSTABLE**: Further changes required to make platform independent.
    *
    * Signals numbers. This is platform dependent. */
-  export const Signal: typeof MacOSSignal | typeof LinuxSignal;
+  export const Signal:
+    | typeof MacOSSignal
+    | typeof LinuxSignal
+    | typeof WindowsSignal;
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *

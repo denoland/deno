@@ -42,6 +42,7 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "SystemMemoryInfo",
   "UnixConnectOptions",
   "UnixListenOptions",
+  "WindowsSignal",
   "applySourceMap",
   "connect",
   "consoleSize",
