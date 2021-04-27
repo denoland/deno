@@ -205,7 +205,8 @@ unitTest({
     dimensions,
   );
 
-  device.queue.submit([encoder.finish()]);
+  const bundle = encoder.finish();
+  device.queue.submit([bundle]);
 
   await outputBuffer.mapAsync(1);
   const data = new Uint8Array(outputBuffer.getMappedRange());
