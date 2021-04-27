@@ -60,10 +60,12 @@
   }
 
   function ops() {
-    // op id 0 is a special value to retrieve the map of registered ops.
-    const newOpsCache = Object.fromEntries(opcall(0));
-    opsCache = Object.freeze(newOpsCache);
     return opsCache;
+  }
+
+  function syncOpsCache() {
+    // op id 0 is a special value to retrieve the map of registered ops.
+    opsCache = Object.freeze(Object.fromEntries(opcall(0)));
   }
 
   function handleAsyncMsgFromRust() {
@@ -130,5 +132,6 @@
     resources,
     registerErrorClass,
     handleAsyncMsgFromRust,
+    syncOpsCache,
   });
 })(this);

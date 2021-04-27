@@ -2122,6 +2122,7 @@ pub fn start(debug: bool) -> Result<JsRuntime, AnyError> {
   runtime.register_op("op_respond", op(respond));
   runtime.register_op("op_script_names", op(script_names));
   runtime.register_op("op_script_version", op(script_version));
+  runtime.sync_ops_cache();
 
   let init_config = json!({ "debug": debug });
   let init_src = format!("globalThis.serverInit({});", init_config);

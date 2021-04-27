@@ -2395,6 +2395,18 @@ mod integration {
       output: "test/deno_test.out",
     });
 
+    itest!(allow_all {
+      args: "test --unstable --allow-all test/allow_all.ts",
+      exit_code: 0,
+      output: "test/allow_all.out",
+    });
+
+    itest!(allow_none {
+      args: "test --unstable test/allow_none.ts",
+      exit_code: 1,
+      output: "test/allow_none.out",
+    });
+
     itest!(fail_fast {
       args: "test --fail-fast test/test_runner_test.ts",
       exit_code: 1,
@@ -3432,6 +3444,11 @@ console.log("finish");
   itest!(wasm {
     args: "run --quiet wasm.ts",
     output: "wasm.ts.out",
+  });
+
+  itest!(wasm_shared {
+    args: "run --quiet wasm_shared.ts",
+    output: "wasm_shared.out",
   });
 
   itest!(wasm_async {
@@ -5372,8 +5389,7 @@ console.log("finish");
       .wait_with_output()
       .unwrap();
     assert!(output.status.success());
-    let exists = std::path::Path::new(&exe).exists();
-    assert!(exists, true);
+    assert!(std::path::Path::new(&exe).exists());
   }
 
   #[test]
@@ -5619,17 +5635,6 @@ console.log("finish");
     let stderr_str = String::from_utf8(output.stderr).unwrap();
     assert!(util::strip_ansi_codes(&stderr_str)
       .contains("PermissionDenied: Requires write access"));
-  }
-
-  #[test]
-  fn denort_direct_use_error() {
-    let status = Command::new(util::denort_exe_path())
-      .current_dir(util::root_path())
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
-    assert!(!status.success());
   }
 
   #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

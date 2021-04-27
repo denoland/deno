@@ -53,3 +53,17 @@ unitTest(async function cloneRequestBodyStream(): Promise<void> {
 
   assertEquals(b1, b2);
 });
+
+unitTest(function customInspectFunction(): void {
+  const request = new Request("https://example.com");
+  assertEquals(
+    Deno.inspect(request),
+    `Request {
+  bodyUsed: false,
+  headers: Headers {},
+  method: "GET",
+  redirect: "follow",
+  url: "https://example.com/"
+}`,
+  );
+});
