@@ -280,45 +280,53 @@ pub async fn run_tests(
             filtered_out += filtered;
           }
 
+          TestMessage::Wait { name } => {
+            if concurrent_jobs == 1 {
+              print!("test {} ...", name);
+            }
+          }
+
           TestMessage::Result {
             name,
             duration,
             result,
-          } => match result {
-            TestResult::Ok => {
-              println!(
-                "test {} ... {} {}",
-                name,
-                colors::green("ok"),
-                colors::gray(format!("({}ms)", duration))
-              );
-
-              passed += 1;
+          } => {
+            if concurrent_jobs != 1 {
+              print!("test {} ...", name);
             }
-            TestResult::Ignored => {
-              println!(
-                "test {} ... {} {}",
-                name,
-                colors::yellow("ignored"),
-                colors::gray(format!("({}ms)", duration))
-              );
 
-              ignored += 1;
-            }
-            TestResult::Failed(error) => {
-              println!(
-                "test {} ... {} {}",
-                name,
-                colors::red("FAILED"),
-                colors::gray(format!("({}ms)", duration))
-              );
+            match result {
+              TestResult::Ok => {
+                println!(
+                  " {} {}",
+                  colors::green("ok"),
+                  colors::gray(format!("({}ms)", duration))
+                );
 
-              failed += 1;
-              failures.push((name, error));
-              has_error = true;
+                passed += 1;
+              }
+              TestResult::Ignored => {
+                println!(
+                  " {} {}",
+                  colors::yellow("ignored"),
+                  colors::gray(format!("({}ms)", duration))
+                );
+
+                ignored += 1;
+              }
+              TestResult::Failed(error) => {
+                println!(
+                  " {} {}",
+                  colors::red("FAILED"),
+                  colors::gray(format!("({}ms)", duration))
+                );
+
+                failed += 1;
+                failures.push((name, error));
+                has_error = true;
+              }
             }
-          },
-          _ => {}
+          }
         }
 
         if has_error && fail_fast {
