@@ -222,11 +222,11 @@ finishing test case.`;
   }
 
   async function runTests({
-    quiet = false,
+    disableLog = false,
     filter = null,
   } = {}) {
     const originalConsole = globalThis.console;
-    if (quiet) {
+    if (disableLog) {
       globalThis.console = new Console(() => {});
     }
 
@@ -244,7 +244,7 @@ finishing test case.`;
       await runTest(test);
     }
 
-    if (quiet) {
+    if (disableLog) {
       globalThis.console = originalConsole;
     }
   }

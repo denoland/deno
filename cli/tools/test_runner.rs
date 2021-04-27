@@ -114,8 +114,8 @@ pub async fn run_test(
   };
 
   let options = json!({
+    "disableLog": quiet,
     "filter": filter,
-    "quiet": quiet,
   });
 
   let execute_result = worker.execute_module(&main_module).await;
