@@ -148,7 +148,6 @@ pub async fn run_test_file(
 
   worker.run_event_loop().await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
-  worker.run_event_loop().await?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     coverage_collector.stop_collecting().await?;
