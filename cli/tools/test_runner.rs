@@ -259,6 +259,7 @@ pub async fn run_tests(
       let mut passed = 0;
       let measured = 0;
 
+      let mut planned = 0;
       let mut used_only = false;
       let mut has_error = false;
       let mut failures: Vec<(String, String)> = Vec::new();
@@ -276,6 +277,7 @@ pub async fn run_tests(
               used_only = true;
             }
 
+            planned += pending;
             filtered_out += filtered;
           }
 
@@ -325,6 +327,13 @@ pub async fn run_tests(
         }
       }
 
+      // If one of the workers panic then we can end up with less test results than what was
+      // planned.
+      // In that case we mark it as an error so that it will be reported as failed.
+      if planned > passed + ignored + failed {
+          has_error = true;
+      }
+
       if !failures.is_empty() {
         println!("\nfailures:\n");
         for (name, error) in &failures {
@@ -339,10 +348,10 @@ pub async fn run_tests(
         }
       }
 
-      let status = if failures.is_empty() {
-        colors::green("ok").to_string()
-      } else {
+      let status = if has_error {
         colors::red("FAILED").to_string()
+      } else {
+        colors::green("ok").to_string()
       };
 
       println!(
@@ -378,13 +387,13 @@ pub async fn run_tests(
       .flatten()
   });
 
-  if result.unwrap_or(false) {
-    std::process::exit(1);
-  }
-
   if let Some(e) = join_errors.next() {
     Err(e)
   } else {
+    if result.unwrap_or(false) {
+      std::process::exit(1);
+    }
+
     Ok(())
   }
 }
