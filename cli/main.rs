@@ -219,8 +219,7 @@ pub fn create_main_worker(
     ops::runtime_compiler::init(js_runtime);
 
     if enable_testing {
-      ops::test_dispatcher::init(js_runtime);
-      ops::test_runner::init(js_runtime);
+      ops::testing::init(js_runtime);
     }
 
     js_runtime.sync_ops_cache();
