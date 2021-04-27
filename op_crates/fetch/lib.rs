@@ -1,8 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-#![deny(warnings)]
-
-use data_url::DataUrl;
 use deno_core::error::bad_resource_id;
 use deno_core::error::generic_error;
 use deno_core::error::null_opbuf;
@@ -23,6 +20,8 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 
+use data_url::DataUrl;
+use deno_file::BlobUrlStore;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -58,10 +57,6 @@ pub fn init(isolate: &mut JsRuntime) {
       include_str!("01_fetch_util.js"),
     ),
     (
-      "deno:op_crates/fetch/03_dom_iterable.js",
-      include_str!("03_dom_iterable.js"),
-    ),
-    (
       "deno:op_crates/fetch/11_streams.js",
       include_str!("11_streams.js"),
     ),
@@ -70,12 +65,32 @@ pub fn init(isolate: &mut JsRuntime) {
       include_str!("20_headers.js"),
     ),
     (
+      "deno:op_crates/fetch/21_formdata.js",
+      include_str!("21_formdata.js"),
+    ),
+    (
+      "deno:op_crates/fetch/22_body.js",
+      include_str!("22_body.js"),
+    ),
+    (
+      "deno:op_crates/fetch/22_http_client.js",
+      include_str!("22_http_client.js"),
+    ),
+    (
+      "deno:op_crates/fetch/23_request.js",
+      include_str!("23_request.js"),
+    ),
+    (
+      "deno:op_crates/fetch/23_response.js",
+      include_str!("23_response.js"),
+    ),
+    (
       "deno:op_crates/fetch/26_fetch.js",
       include_str!("26_fetch.js"),
     ),
   ];
   for (url, source_code) in files {
-    isolate.execute(url, source_code).unwrap();
+    isolate.execute(url, source_code).expect(url);
   }
 }
 
@@ -85,19 +100,19 @@ pub struct HttpClientDefaults {
 }
 
 pub trait FetchPermissions {
-  fn check_net_url(&self, _url: &Url) -> Result<(), AnyError>;
-  fn check_read(&self, _p: &Path) -> Result<(), AnyError>;
+  fn check_net_url(&mut self, _url: &Url) -> Result<(), AnyError>;
+  fn check_read(&mut self, _p: &Path) -> Result<(), AnyError>;
 }
 
 /// For use with `op_fetch` when the user does not want permissions.
 pub struct NoFetchPermissions;
 
 impl FetchPermissions for NoFetchPermissions {
-  fn check_net_url(&self, _url: &Url) -> Result<(), AnyError> {
+  fn check_net_url(&mut self, _url: &Url) -> Result<(), AnyError> {
     Ok(())
   }
 
-  fn check_read(&self, _p: &Path) -> Result<(), AnyError> {
+  fn check_read(&mut self, _p: &Path) -> Result<(), AnyError> {
     Ok(())
   }
 }
@@ -109,9 +124,8 @@ pub fn get_declaration() -> PathBuf {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchArgs {
-  method: Option<String>,
+  method: String,
   url: String,
-  base_url: Option<String>,
   headers: Vec<(String, String)>,
   client_rid: Option<u32>,
   has_body: bool,
@@ -143,24 +157,14 @@ where
     client.clone()
   };
 
-  let method = match args.method {
-    Some(method_str) => Method::from_bytes(method_str.as_bytes())?,
-    None => Method::GET,
-  };
-
-  let base_url = match args.base_url {
-    Some(base_url) => Some(Url::parse(&base_url)?),
-    _ => None,
-  };
-  let url = Url::options()
-    .base_url(base_url.as_ref())
-    .parse(&args.url)?;
+  let method = Method::from_bytes(args.method.as_bytes())?;
+  let url = Url::parse(&args.url)?;
 
   // Check scheme before asking for net permission
   let scheme = url.scheme();
   let (request_rid, request_body_rid) = match scheme {
     "http" | "https" => {
-      let permissions = state.borrow::<FP>();
+      let permissions = state.borrow_mut::<FP>();
       permissions.check_net_url(&url)?;
 
       let mut request = client.request(method, url);
@@ -216,6 +220,34 @@ where
         .status(http::StatusCode::OK)
         .header(http::header::CONTENT_TYPE, data_url.mime_type().to_string())
         .body(reqwest::Body::from(body))?;
+
+      let fut = async move { Ok(Response::from(response)) };
+
+      let request_rid = state
+        .resource_table
+        .add(FetchRequestResource(Box::pin(fut)));
+
+      (request_rid, None)
+    }
+    "blob" => {
+      let blob_url_storage =
+        state.try_borrow::<BlobUrlStore>().ok_or_else(|| {
+          type_error("Blob URLs are not supported in this context.")
+        })?;
+
+      let blob = blob_url_storage
+        .get(url)?
+        .ok_or_else(|| type_error("Blob for the given URL not found."))?;
+
+      if method != "GET" {
+        return Err(type_error("Blob URL fetch only supports GET method."));
+      }
+
+      let response = http::Response::builder()
+        .status(http::StatusCode::OK)
+        .header(http::header::CONTENT_LENGTH, blob.data.len())
+        .header(http::header::CONTENT_TYPE, blob.media_type)
+        .body(reqwest::Body::from(blob.data))?;
 
       let fut = async move { Ok(Response::from(response)) };
 
@@ -413,7 +445,7 @@ where
   FP: FetchPermissions + 'static,
 {
   if let Some(ca_file) = args.ca_file.clone() {
-    let permissions = state.borrow::<FP>();
+    let permissions = state.borrow_mut::<FP>();
     permissions.check_read(&PathBuf::from(ca_file))?;
   }
 

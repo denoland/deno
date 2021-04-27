@@ -20,19 +20,19 @@ pub fn init(
       ca_data,
     });
   }
-  super::reg_json_sync(rt, "op_fetch", deno_fetch::op_fetch::<Permissions>);
-  super::reg_json_async(rt, "op_fetch_send", deno_fetch::op_fetch_send);
-  super::reg_json_async(
+  super::reg_sync(rt, "op_fetch", deno_fetch::op_fetch::<Permissions>);
+  super::reg_async(rt, "op_fetch_send", deno_fetch::op_fetch_send);
+  super::reg_async(
     rt,
     "op_fetch_request_write",
     deno_fetch::op_fetch_request_write,
   );
-  super::reg_json_async(
+  super::reg_async(
     rt,
     "op_fetch_response_read",
     deno_fetch::op_fetch_response_read,
   );
-  super::reg_json_sync(
+  super::reg_sync(
     rt,
     "op_create_http_client",
     deno_fetch::op_create_http_client::<Permissions>,

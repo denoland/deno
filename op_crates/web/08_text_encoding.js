@@ -4212,25 +4212,8 @@
   class TextEncoder {
     encoding = "utf-8";
     encode(input = "") {
-      input = String(input);
       // Deno.core.encode() provides very efficient utf-8 encoding
-      if (this.encoding === "utf-8") {
-        return core.encode(input);
-      }
-
-      const encoder = new UTF8Encoder();
-      const inputStream = new Stream(stringToCodePoints(input));
-      const output = [];
-
-      while (true) {
-        const result = encoder.handler(inputStream.read());
-        if (result === "finished") {
-          break;
-        }
-        output.push(...result);
-      }
-
-      return new Uint8Array(output);
+      return core.encode(String(input));
     }
     encodeInto(input, dest) {
       if (!(dest instanceof Uint8Array)) {

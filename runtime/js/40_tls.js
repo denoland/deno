@@ -8,19 +8,19 @@
   function opConnectTls(
     args,
   ) {
-    return core.jsonOpAsync("op_connect_tls", args);
+    return core.opAsync("op_connect_tls", args);
   }
 
   function opAcceptTLS(rid) {
-    return core.jsonOpAsync("op_accept_tls", rid);
+    return core.opAsync("op_accept_tls", rid);
   }
 
   function opListenTls(args) {
-    return core.jsonOpSync("op_listen_tls", args);
+    return core.opSync("op_listen_tls", args);
   }
 
   function opStartTls(args) {
-    return core.jsonOpAsync("op_start_tls", args);
+    return core.opAsync("op_start_tls", args);
   }
 
   async function connectTls({

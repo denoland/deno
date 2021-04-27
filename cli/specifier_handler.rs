@@ -257,7 +257,7 @@ impl SpecifierHandler for FetchHandler {
     // When the module graph fetches dynamic modules, the set of dynamic
     // permissions need to be applied.  Other static imports have all
     // permissions.
-    let permissions = if is_dynamic {
+    let mut permissions = if is_dynamic {
       self.runtime_permissions.clone()
     } else {
       Permissions::allow_all()
@@ -267,7 +267,7 @@ impl SpecifierHandler for FetchHandler {
 
     async move {
       let source_file = file_fetcher
-        .fetch(&requested_specifier, &permissions)
+        .fetch(&requested_specifier, &mut permissions)
         .await
         .map_err(|err| {
           let err = if let Some(e) = err.downcast_ref::<std::io::Error>() {

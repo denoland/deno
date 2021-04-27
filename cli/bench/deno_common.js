@@ -1,3 +1,4 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Run with: deno run -A ./cli/bench/deno_common.js
 function benchSync(name, n, innerLoop) {
   const t1 = Date.now();

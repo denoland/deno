@@ -31,7 +31,7 @@
       prefix,
     });
 
-    const url = core.jsonOpSync(
+    const url = core.opSync(
       "op_file_create_object_url",
       blob.type,
       blob[_byteSequence],
@@ -52,7 +52,7 @@
       prefix,
     });
 
-    core.jsonOpSync(
+    core.opSync(
       "op_file_revoke_object_url",
       url,
     );

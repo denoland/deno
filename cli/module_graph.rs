@@ -606,11 +606,11 @@ pub struct CheckOptions {
 pub enum BundleType {
   /// Return the emitted contents of the program as a single "flattened" ES
   /// module.
-  Esm,
+  Module,
   /// Return the emitted contents of the program as a single script that
   /// executes the program using an immediately invoked function execution
   /// (IIFE).
-  Iife,
+  Classic,
   /// Do not bundle the emit, instead returning each of the modules that are
   /// part of the program as individual files.
   None,
@@ -776,8 +776,11 @@ impl Graph {
     let maybe_ignored_options =
       ts_config.merge_tsconfig(options.maybe_config_path)?;
 
-    let s =
-      self.emit_bundle(&root_specifier, &ts_config.into(), &BundleType::Esm)?;
+    let s = self.emit_bundle(
+      &root_specifier,
+      &ts_config.into(),
+      &BundleType::Module,
+    )?;
     let stats = Stats(vec![
       ("Files".to_string(), self.modules.len() as u32),
       ("Total time".to_string(), start.elapsed().as_millis() as u32),
@@ -952,7 +955,7 @@ impl Graph {
       "useDefineForClassFields": true,
     }));
     let opts = match options.bundle_type {
-      BundleType::Esm | BundleType::Iife => json!({
+      BundleType::Module | BundleType::Classic => json!({
         "noEmit": true,
       }),
       BundleType::None => json!({
@@ -993,7 +996,7 @@ impl Graph {
 
       let graph = graph.lock().unwrap();
       match options.bundle_type {
-        BundleType::Esm | BundleType::Iife => {
+        BundleType::Module | BundleType::Classic => {
           assert!(
             response.emitted_files.is_empty(),
             "No files should have been emitted from tsc."
@@ -1049,7 +1052,7 @@ impl Graph {
       let start = Instant::now();
       let mut emit_count = 0_u32;
       match options.bundle_type {
-        BundleType::Esm | BundleType::Iife => {
+        BundleType::Module | BundleType::Classic => {
           assert_eq!(
             self.roots.len(),
             1,
@@ -1122,8 +1125,8 @@ impl Graph {
     let loader = BundleLoader::new(self, emit_options, &globals, cm.clone());
     let hook = Box::new(BundleHook);
     let module = match bundle_type {
-      BundleType::Esm => swc_bundler::ModuleType::Es,
-      BundleType::Iife => swc_bundler::ModuleType::Iife,
+      BundleType::Module => swc_bundler::ModuleType::Es,
+      BundleType::Classic => swc_bundler::ModuleType::Iife,
       _ => unreachable!("invalid bundle type"),
     };
     let bundler = swc_bundler::Bundler::new(
@@ -2381,7 +2384,7 @@ pub mod tests {
     let (emitted_files, result_info) = graph
       .emit(EmitOptions {
         check: true,
-        bundle_type: BundleType::Esm,
+        bundle_type: BundleType::Module,
         debug: false,
         maybe_user_config: None,
       })

@@ -2,7 +2,7 @@
 //!  This example shows you how to define ops in Rust and then call them from
 //!  JavaScript.
 
-use deno_core::json_op_sync;
+use deno_core::op_sync;
 use deno_core::JsRuntime;
 use std::io::Write;
 
@@ -19,14 +19,14 @@ fn main() {
   // The second one just transforms some input and returns it to JavaScript.
 
   // Register the op for outputting a string to stdout.
-  // It can be invoked with Deno.core.dispatch and the id this method returns
-  // or Deno.core.dispatchByName and the name provided.
+  // It can be invoked with Deno.core.opcall and the id this method returns
+  // or Deno.core.opSync   and the name provided.
   runtime.register_op(
     "op_print",
     // The op_fn callback takes a state object OpState,
     // a structured arg of type `T` and an optional ZeroCopyBuf,
     // a mutable reference to a JavaScript ArrayBuffer
-    json_op_sync(|_state, msg: Option<String>, zero_copy| {
+    op_sync(|_state, msg: Option<String>, zero_copy| {
       let mut out = std::io::stdout();
 
       // Write msg to stdout
@@ -46,16 +46,17 @@ fn main() {
   // Register the JSON op for summing a number array.
   runtime.register_op(
     "op_sum",
-    // The json_op_sync function automatically deserializes
+    // The op_sync function automatically deserializes
     // the first ZeroCopyBuf and serializes the return value
     // to reduce boilerplate
-    json_op_sync(|_state, nums: Vec<f64>, _| {
+    op_sync(|_state, nums: Vec<f64>, _| {
       // Sum inputs
       let sum = nums.iter().fold(0.0, |a, v| a + v);
       // return as a Result<f64, AnyError>
       Ok(sum)
     }),
   );
+  runtime.sync_ops_cache();
 
   // Now we see how to invoke the ops we just defined. The runtime automatically
   // contains a Deno.core object with several functions for interacting with it.
@@ -64,20 +65,12 @@ fn main() {
     .execute(
       "<init>",
       r#"
-// First we initialize the ops cache.
-// This maps op names to their id's.
-Deno.core.ops();
-
-// Then we define a print function that uses
+// Define a print function that uses
 // our op_print op to display the stringified argument.
 const _newline = new Uint8Array([10]);
 function print(value) {
-  Deno.core.dispatchByName('op_print', 0, value.toString(), _newline);
+  Deno.core.opSync('op_print', value.toString(), _newline);
 }
-
-// Finally we register the error class used by op_sum
-// so that it throws the correct class.
-Deno.core.registerErrorClass('Error', Error);
 "#,
     )
     .unwrap();
@@ -91,11 +84,11 @@ const arr = [1, 2, 3];
 print("The sum of");
 print(arr);
 print("is");
-print(Deno.core.jsonOpSync('op_sum', arr));
+print(Deno.core.opSync('op_sum', arr));
 
 // And incorrect usage
 try {
-  print(Deno.core.jsonOpSync('op_sum', 0));
+  print(Deno.core.opSync('op_sum', 0));
 } catch(e) {
   print('Exception:');
   print(e);
