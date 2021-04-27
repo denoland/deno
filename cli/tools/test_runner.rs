@@ -210,10 +210,13 @@ pub async fn run_tests(
   let mut test_source = String::new();
 
   for test_module in &test_modules {
-      test_source.push_str(&format!("// {}\n", test_module));
+    test_source.push_str(&format!("// {}\n", test_module));
   }
 
-  test_source.push_str(&format!("await Deno[Deno.internal].runTests({});\n", test_options));
+  test_source.push_str(&format!(
+    "await Deno[Deno.internal].runTests({});\n",
+    test_options
+  ));
 
   let test_module = deno_core::resolve_path("$deno$test.ts")?;
   let test_file = File {
