@@ -108,7 +108,7 @@ pub fn collect_test_module_specifiers(
   Ok(prepared)
 }
 
-pub async fn run_test(
+pub async fn run_test_file(
   program_state: Arc<ProgramState>,
   main_module: ModuleSpecifier,
   test_module: ModuleSpecifier,
@@ -231,7 +231,7 @@ pub async fn run_tests(
 
     tokio::task::spawn_blocking(move || {
       let join_handle = std::thread::spawn(move || {
-        let future = run_test(
+        let future = run_test_file(
           program_state,
           main_module,
           test_module,
