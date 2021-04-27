@@ -37,7 +37,7 @@
 
     [aborted] = false;
 
-    /** 
+    /**
      * @param {Blob} blob
      * @param {{kind: "ArrayBuffer" | "Text" | "DataUrl" | "BinaryString", encoding?: string}} readtype
      */
@@ -309,7 +309,7 @@
       this.#readOperation(blob, { kind: "DataUrl" });
     }
 
-    /** 
+    /**
      * @param {Blob} blob
      * @param {string} [encoding]
     */
