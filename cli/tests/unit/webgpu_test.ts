@@ -179,10 +179,11 @@ unitTest({
   });
 
   const encoder = device.createCommandEncoder();
+  const view = texture.createView();
   const renderPass = encoder.beginRenderPass({
     colorAttachments: [
       {
-        view: texture.createView(),
+        view,
         storeOp: "store",
         loadValue: [0, 1, 0, 1],
       },
