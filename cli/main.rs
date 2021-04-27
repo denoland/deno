@@ -44,7 +44,6 @@ use crate::flags::Flags;
 use crate::fmt_errors::PrettyJsError;
 use crate::media_type::MediaType;
 use crate::module_loader::CliModuleLoader;
-use crate::program_state::exit_unstable;
 use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
 use crate::specifier_handler::FetchHandler;
@@ -320,10 +319,6 @@ async fn compile_command(
   args: Vec<String>,
   target: Option<String>,
 ) -> Result<(), AnyError> {
-  if !flags.unstable {
-    exit_unstable("compile");
-  }
-
   let debug = flags.log_level == Some(log::Level::Debug);
 
   let run_flags =
@@ -382,9 +377,6 @@ async fn info_command(
   maybe_specifier: Option<String>,
   json: bool,
 ) -> Result<(), AnyError> {
-  if json && !flags.unstable {
-    exit_unstable("--json");
-  }
   let program_state = ProgramState::build(flags).await?;
   if let Some(specifier) = maybe_specifier {
     let specifier = resolve_url_or_path(&specifier)?;
@@ -441,16 +433,12 @@ async fn lsp_command() -> Result<(), AnyError> {
 }
 
 async fn lint_command(
-  flags: Flags,
+  _flags: Flags,
   files: Vec<PathBuf>,
   list_rules: bool,
   ignore: Vec<PathBuf>,
   json: bool,
 ) -> Result<(), AnyError> {
-  if !flags.unstable {
-    exit_unstable("lint");
-  }
-
   if list_rules {
     tools::lint::print_rules_list(json);
     return Ok(());
@@ -898,10 +886,6 @@ async fn coverage_command(
   exclude: Vec<String>,
   lcov: bool,
 ) -> Result<(), AnyError> {
-  if !flags.unstable {
-    exit_unstable("coverage");
-  }
-
   if files.is_empty() {
     println!("No matching coverage profiles found");
     std::process::exit(1);

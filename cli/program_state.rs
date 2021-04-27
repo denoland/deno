@@ -34,14 +34,6 @@ use std::fs::read;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-pub fn exit_unstable(api_name: &str) {
-  eprintln!(
-    "Unstable API '{}'. The --unstable flag must be provided.",
-    api_name
-  );
-  std::process::exit(70);
-}
-
 /// This structure represents state of single "deno" program.
 ///
 /// It is shared by all created workers (thus V8 isolates).
