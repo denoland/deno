@@ -2,8 +2,10 @@
 
 use crate::colors;
 use crate::create_main_worker;
+use crate::file_fetcher::File;
 use crate::flags::Flags;
 use crate::fs_util;
+use crate::media_type::MediaType;
 use crate::module_graph;
 use crate::program_state::ProgramState;
 use crate::tokio_util;
@@ -17,12 +19,12 @@ use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
+use serde::Deserialize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
-use serde::Deserialize;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -109,10 +111,9 @@ pub fn collect_test_module_specifiers(
 pub async fn run_test(
   program_state: Arc<ProgramState>,
   main_module: ModuleSpecifier,
+  test_module: ModuleSpecifier,
   permissions: Permissions,
   channel: Sender<TestMessage>,
-  quiet: bool,
-  filter: Option<String>,
 ) -> Result<(), AnyError> {
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions, true);
@@ -138,15 +139,12 @@ pub async fn run_test(
     None
   };
 
-  let options = json!({
-    "disableLog": quiet,
-    "filter": filter,
-  });
-
   let execute_result = worker.execute_module(&main_module).await;
   execute_result?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
-  worker.execute(&format!("Deno[Deno.internal].runTests({})", options))?;
+
+  let execute_result = worker.execute_module(&test_module).await;
+  execute_result?;
 
   worker.run_event_loop().await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
@@ -203,24 +201,42 @@ pub async fn run_tests(
     return Ok(());
   }
 
+  // Because scripts, and therefore worker.execute cannot detect unresolved promises at the moment
+  // we generate a module for the actual test execution.
+  let test_options = json!({
+    "disableLog": quiet,
+    "filter": filter,
+  });
+  let test_source =
+    format!("await Deno[Deno.internal].runTests({});", test_options);
+  let test_module = deno_core::resolve_path("$deno$test.ts")?;
+  let test_file = File {
+    local: test_module.to_file_path().unwrap(),
+    maybe_types: None,
+    media_type: MediaType::JavaScript,
+    source: test_source.clone(),
+    specifier: test_module.clone(),
+  };
+
+  program_state.file_fetcher.insert_cached(test_file);
+
   let (sender, receiver) = channel::<TestMessage>();
 
-  let join_handles = test_modules.iter().map(move |module_specifier| {
+  let join_handles = test_modules.iter().map(move |main_module| {
     let program_state = program_state.clone();
-    let module_specifier = module_specifier.clone();
+    let main_module = main_module.clone();
+    let test_module = test_module.clone();
     let permissions = permissions.clone();
     let sender = sender.clone();
-    let filter = filter.clone();
 
     tokio::task::spawn_blocking(move || {
       let join_handle = std::thread::spawn(move || {
         let future = run_test(
           program_state.clone(),
-          module_specifier.clone(),
+          main_module.clone(),
+          test_module.clone(),
           permissions.clone(),
           sender.clone(),
-          quiet,
-          filter,
         );
 
         tokio_util::run_basic(future)
