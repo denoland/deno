@@ -12,7 +12,6 @@ use crate::ZeroCopyBuf;
 use rusty_v8 as v8;
 use serde::Serialize;
 use serde_v8::to_v8;
-use std::cell::Cell;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::io::{stdout, Write};
@@ -27,10 +26,7 @@ lazy_static::lazy_static! {
         function: print.map_fn_to()
       },
       v8::ExternalReference {
-        function: recv.map_fn_to()
-      },
-      v8::ExternalReference {
-        function: send.map_fn_to()
+        function: opcall.map_fn_to()
       },
       v8::ExternalReference {
         function: set_macrotask_callback.map_fn_to()
@@ -60,7 +56,7 @@ lazy_static::lazy_static! {
         function: get_proxy_details.map_fn_to()
       },
       v8::ExternalReference {
-        function: heap_stats.map_fn_to(),
+        function: memory_usage.map_fn_to(),
       },
     ]);
 }
@@ -123,8 +119,7 @@ pub fn initialize_context<'s>(
 
   // Bind functions to Deno.core.*
   set_func(scope, core_val, "print", print);
-  set_func(scope, core_val, "recv", recv);
-  set_func(scope, core_val, "send", send);
+  set_func(scope, core_val, "opcall", opcall);
   set_func(
     scope,
     core_val,
@@ -138,7 +133,7 @@ pub fn initialize_context<'s>(
   set_func(scope, core_val, "deserialize", deserialize);
   set_func(scope, core_val, "getPromiseDetails", get_promise_details);
   set_func(scope, core_val, "getProxyDetails", get_proxy_details);
-  set_func(scope, core_val, "heapStats", heap_stats);
+  set_func(scope, core_val, "memoryUsage", memory_usage);
 
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
@@ -287,29 +282,6 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   };
 }
 
-pub(crate) unsafe fn get_backing_store_slice(
-  backing_store: &v8::SharedRef<v8::BackingStore>,
-  byte_offset: usize,
-  byte_length: usize,
-) -> &[u8] {
-  let cells: *const [Cell<u8>] =
-    &backing_store[byte_offset..byte_offset + byte_length];
-  let bytes = cells as *const [u8];
-  &*bytes
-}
-
-#[allow(clippy::mut_from_ref)]
-pub(crate) unsafe fn get_backing_store_slice_mut(
-  backing_store: &v8::SharedRef<v8::BackingStore>,
-  byte_offset: usize,
-  byte_length: usize,
-) -> &mut [u8] {
-  let cells: *const [Cell<u8>] =
-    &backing_store[byte_offset..byte_offset + byte_length];
-  let bytes = cells as *const _ as *mut [u8];
-  &mut *bytes
-}
-
 fn print(
   scope: &mut v8::HandleScope,
   args: v8::FunctionCallbackArguments,
@@ -345,28 +317,7 @@ fn print(
   }
 }
 
-fn recv(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  _rv: v8::ReturnValue,
-) {
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
-
-  let cb = match v8::Local::<v8::Function>::try_from(args.get(0)) {
-    Ok(cb) => cb,
-    Err(err) => return throw_type_error(scope, err.to_string()),
-  };
-
-  let slot = match &mut state.js_recv_cb {
-    slot @ None => slot,
-    _ => return throw_type_error(scope, "Deno.core.recv() already called"),
-  };
-
-  slot.replace(v8::Global::new(scope, cb));
-}
-
-fn send<'s>(
+fn opcall<'s>(
   scope: &mut v8::HandleScope<'s>,
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
@@ -385,7 +336,7 @@ fn send<'s>(
     }
   };
 
-  // send(0) returns obj of all ops, handle as special case
+  // opcall(0) returns obj of all ops, handle as special case
   if op_id == 0 {
     // TODO: Serialize as HashMap when serde_v8 supports maps ...
     let ops = OpTable::op_entries(state.op_state.clone());
@@ -599,14 +550,8 @@ fn decode(
     }
   };
 
-  let backing_store = view.buffer(scope).unwrap().get_backing_store();
-  let buf = unsafe {
-    get_backing_store_slice(
-      &backing_store,
-      view.byte_offset(),
-      view.byte_length(),
-    )
-  };
+  let zero_copy = ZeroCopyBuf::new(scope, view);
+  let buf = &zero_copy;
 
   // Strip BOM
   let buf =
@@ -694,14 +639,8 @@ fn deserialize(
     }
   };
 
-  let backing_store = view.buffer(scope).unwrap().get_backing_store();
-  let buf = unsafe {
-    get_backing_store_slice(
-      &backing_store,
-      view.byte_offset(),
-      view.byte_length(),
-    )
-  };
+  let zero_copy = ZeroCopyBuf::new(scope, view);
+  let buf = &zero_copy;
 
   let serialize_deserialize = Box::new(SerializeDeserialize {});
   let mut value_deserializer =
@@ -862,50 +801,35 @@ fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
   scope.throw_exception(exception);
 }
 
-fn heap_stats(
+fn memory_usage(
   scope: &mut v8::HandleScope,
   _args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let stats = get_heap_stats(scope);
+  let stats = get_memory_usage(scope);
   rv.set(to_v8(scope, stats).unwrap());
 }
 
 // HeapStats stores values from a isolate.get_heap_statistics() call
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct HeapStats {
-  total_heap_size: usize,
-  total_heap_size_executable: usize,
-  total_physical_size: usize,
-  total_available_size: usize,
-  total_global_handles_size: usize,
-  used_global_handles_size: usize,
-  used_heap_size: usize,
-  heap_size_limit: usize,
-  malloced_memory: usize,
-  external_memory: usize,
-  peak_malloced_memory: usize,
-  number_of_native_contexts: usize,
-  number_of_detached_contexts: usize,
+struct MemoryUsage {
+  rss: usize,
+  heap_total: usize,
+  heap_used: usize,
+  external: usize,
+  // TODO: track ArrayBuffers, would require using a custom allocator to track
+  // but it's otherwise a subset of external so can be indirectly tracked
+  // array_buffers: usize,
 }
-fn get_heap_stats(isolate: &mut v8::Isolate) -> HeapStats {
+fn get_memory_usage(isolate: &mut v8::Isolate) -> MemoryUsage {
   let mut s = v8::HeapStatistics::default();
   isolate.get_heap_statistics(&mut s);
 
-  HeapStats {
-    total_heap_size: s.total_heap_size(),
-    total_heap_size_executable: s.total_heap_size_executable(),
-    total_physical_size: s.total_physical_size(),
-    total_available_size: s.total_available_size(),
-    total_global_handles_size: s.total_global_handles_size(),
-    used_global_handles_size: s.used_global_handles_size(),
-    used_heap_size: s.used_heap_size(),
-    heap_size_limit: s.heap_size_limit(),
-    malloced_memory: s.malloced_memory(),
-    external_memory: s.external_memory(),
-    peak_malloced_memory: s.peak_malloced_memory(),
-    number_of_native_contexts: s.number_of_native_contexts(),
-    number_of_detached_contexts: s.number_of_detached_contexts(),
+  MemoryUsage {
+    rss: s.total_physical_size(),
+    heap_total: s.total_heap_size(),
+    heap_used: s.used_heap_size(),
+    external: s.external_memory(),
   }
 }

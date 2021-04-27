@@ -37,8 +37,3 @@ You can use cross compilation by adding `--target` CLI argument, benefiting that
 you can create binaries for other platforms in single CI machine. Deno supports
 compiling to Windows x64, macOS x64, macOS ARM and Linux x64 currently. Use
 `deno compile --help` to get the full list about compilation targets.
-
-### Generating smaller binaries
-
-Once `--lite` argument is passed, `deno compile` will use a slimmed-down
-runtime-only binary.

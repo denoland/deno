@@ -9,7 +9,7 @@ declare namespace globalThis {
       Blob: typeof Blob & {
         [globalThis.__bootstrap.file._byteSequence]: Uint8Array;
       };
-      _byteSequence: unique symbol;
+      readonly _byteSequence: unique symbol;
       File: typeof File & {
         [globalThis.__bootstrap.file._byteSequence]: Uint8Array;
       };

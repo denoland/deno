@@ -13,4 +13,4 @@ pub use error::{Error, Result};
 pub use keys::KeyCache;
 pub use magic::Value;
 pub use ser::{to_v8, Serializer};
-pub use serializable::Serializable;
+pub use serializable::{Serializable, SerializablePkg};

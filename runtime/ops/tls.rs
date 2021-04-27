@@ -13,6 +13,7 @@ use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
+use deno_core::error::invalid_hostname;
 use deno_core::error::AnyError;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
@@ -71,10 +72,10 @@ impl StoresClientSessions for ClientSessionMemoryCache {
 }
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_async(rt, "op_start_tls", op_start_tls);
-  super::reg_json_async(rt, "op_connect_tls", op_connect_tls);
-  super::reg_json_sync(rt, "op_listen_tls", op_listen_tls);
-  super::reg_json_async(rt, "op_accept_tls", op_accept_tls);
+  super::reg_async(rt, "op_start_tls", op_start_tls);
+  super::reg_async(rt, "op_connect_tls", op_connect_tls);
+  super::reg_sync(rt, "op_listen_tls", op_listen_tls);
+  super::reg_async(rt, "op_accept_tls", op_accept_tls);
 }
 
 #[derive(Deserialize)]
@@ -107,8 +108,8 @@ async fn op_start_tls(
   }
   {
     super::check_unstable2(&state, "Deno.startTls");
-    let s = state.borrow();
-    let permissions = s.borrow::<Permissions>();
+    let mut s = state.borrow_mut();
+    let permissions = s.borrow_mut::<Permissions>();
     permissions.net.check(&(&domain, Some(0)))?;
     if let Some(path) = &args.cert_file {
       permissions.read.check(Path::new(&path))?;
@@ -139,8 +140,8 @@ async fn op_start_tls(
   }
 
   let tls_connector = TlsConnector::from(Arc::new(config));
-  let dnsname = DNSNameRef::try_from_ascii_str(&domain)
-    .map_err(|_| generic_error("Invalid DNS lookup"))?;
+  let dnsname = DNSNameRef::try_from_ascii_str(domain)
+    .map_err(|_| invalid_hostname(domain))?;
   let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
 
   let rid = {
@@ -169,20 +170,22 @@ async fn op_connect_tls(
 ) -> Result<OpConn, AnyError> {
   assert_eq!(args.transport, "tcp");
 
-  {
-    let s = state.borrow();
-    let permissions = s.borrow::<Permissions>();
-    permissions.net.check(&(&args.hostname, Some(args.port)))?;
-    if let Some(path) = &args.cert_file {
-      permissions.read.check(Path::new(&path))?;
-    }
-  }
   let mut domain = args.hostname.as_str();
   if domain.is_empty() {
     domain = "localhost";
   }
+  {
+    let mut s = state.borrow_mut();
+    let permissions = s.borrow_mut::<Permissions>();
+    permissions.net.check(&(domain, Some(args.port)))?;
+    if let Some(path) = &args.cert_file {
+      permissions.read.check(Path::new(&path))?;
+    }
+  }
 
-  let addr = resolve_addr(&args.hostname, args.port)
+  let dnsname = DNSNameRef::try_from_ascii_str(domain)
+    .map_err(|_| invalid_hostname(domain))?;
+  let addr = resolve_addr(domain, args.port)
     .await?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
@@ -200,8 +203,6 @@ async fn op_connect_tls(
     config.root_store.add_pem_file(reader).unwrap();
   }
   let tls_connector = TlsConnector::from(Arc::new(config));
-  let dnsname = DNSNameRef::try_from_ascii_str(&domain)
-    .map_err(|_| generic_error("Invalid DNS lookup"))?;
   let tls_stream = tls_connector.connect(dnsname, tcp_stream).await?;
   let rid = {
     let mut state_ = state.borrow_mut();
@@ -313,7 +314,7 @@ fn op_listen_tls(
   let cert_file = args.cert_file;
   let key_file = args.key_file;
   {
-    let permissions = state.borrow::<Permissions>();
+    let permissions = state.borrow_mut::<Permissions>();
     permissions.net.check(&(&args.hostname, Some(args.port)))?;
     permissions.read.check(Path::new(&cert_file))?;
     permissions.read.check(Path::new(&key_file))?;

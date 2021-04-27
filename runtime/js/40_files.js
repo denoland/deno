@@ -4,6 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
   const { read, readSync, write, writeSync } = window.__bootstrap.io;
+  const { ftruncate, ftruncateSync, fstat, fstatSync } = window.__bootstrap.fs;
   const { pathFromURL } = window.__bootstrap.util;
 
   function seekSync(
@@ -11,7 +12,7 @@
     offset,
     whence,
   ) {
-    return core.jsonOpSync("op_seek_sync", { rid, offset, whence });
+    return core.opSync("op_seek_sync", { rid, offset, whence });
   }
 
   function seek(
@@ -19,7 +20,7 @@
     offset,
     whence,
   ) {
-    return core.jsonOpAsync("op_seek_async", { rid, offset, whence });
+    return core.opAsync("op_seek_async", { rid, offset, whence });
   }
 
   function openSync(
@@ -28,7 +29,7 @@
   ) {
     checkOpenOptions(options);
     const mode = options?.mode;
-    const rid = core.jsonOpSync(
+    const rid = core.opSync(
       "op_open_sync",
       { path: pathFromURL(path), options, mode },
     );
@@ -42,7 +43,7 @@
   ) {
     checkOpenOptions(options);
     const mode = options?.mode;
-    const rid = await core.jsonOpAsync(
+    const rid = await core.opAsync(
       "op_open_async",
       { path: pathFromURL(path), options, mode },
     );
@@ -87,6 +88,14 @@
       return writeSync(this.rid, p);
     }
 
+    truncate(len) {
+      return ftruncate(this.rid, len);
+    }
+
+    truncateSync(len) {
+      return ftruncateSync(this.rid, len);
+    }
+
     read(p) {
       return read(this.rid, p);
     }
@@ -101,6 +110,14 @@
 
     seekSync(offset, whence) {
       return seekSync(this.rid, offset, whence);
+    }
+
+    stat() {
+      return fstat(this.rid);
+    }
+
+    statSync() {
+      return fstatSync(this.rid);
     }
 
     close() {
