@@ -528,8 +528,7 @@ impl JsRuntime {
 
     // Ops
     {
-      let async_responses = self.poll_pending_ops(cx);
-      self.async_op_response(async_responses)?;
+      self.drain_async_ops(cx)?;
       self.drain_macrotasks()?;
       self.check_promise_exceptions()?;
     }
@@ -1334,17 +1333,31 @@ impl JsRuntime {
   fn poll_pending_ops(
     &mut self,
     cx: &mut Context,
-  ) -> Vec<(PromiseId, OpResponse)> {
+    async_responses: &mut Vec<(PromiseId, OpResponse)>,
+  ) {
     let state_rc = Self::state(self.v8_isolate());
-    let mut async_responses: Vec<(PromiseId, OpResponse)> = Vec::new();
-
     let mut state = state_rc.borrow_mut();
 
     // Now handle actual ops.
     state.have_unpolled_ops = false;
 
+    Self::poll_op_futures(cx, &mut state.pending_ops, async_responses);
+    Self::poll_op_futures(cx, &mut state.pending_unref_ops, async_responses);
+  }
+
+  fn poll_op_futures(
+    cx: &mut Context,
+    futures: &mut FuturesUnordered<PendingOpFuture>,
+    async_responses: &mut Vec<(PromiseId, OpResponse)>,
+  ) {
+    let capacity = async_responses.capacity();
+
     loop {
-      let pending_r = state.pending_ops.poll_next_unpin(cx);
+      if async_responses.len() >= capacity {
+        break;
+      }
+
+      let pending_r = futures.poll_next_unpin(cx);
       match pending_r {
         Poll::Ready(None) => break,
         Poll::Pending => break,
@@ -1353,19 +1366,6 @@ impl JsRuntime {
         }
       };
     }
-
-    loop {
-      let unref_r = state.pending_unref_ops.poll_next_unpin(cx);
-      match unref_r {
-        Poll::Ready(None) => break,
-        Poll::Pending => break,
-        Poll::Ready(Some((promise_id, resp))) => {
-          async_responses.push((promise_id, resp));
-        }
-      };
-    }
-
-    async_responses
   }
 
   fn check_promise_exceptions(&mut self) -> Result<(), AnyError> {
@@ -1394,10 +1394,31 @@ impl JsRuntime {
     exception_to_err_result(scope, exception, true)
   }
 
+  /// Returns async op results in batches to JS (calling handleAsyncMsgFromRust)
+  /// we return them in batches to avoid overflowing the stack
+  fn drain_async_ops(&mut self, cx: &mut Context) -> Result<(), AnyError> {
+    let batch_size = 2 << 12; // 4k
+    let mut async_responses = Vec::with_capacity(batch_size);
+
+    // Flush all pending ops
+    loop {
+      self.poll_pending_ops(cx, &mut async_responses);
+      let full_batch = async_responses.len() == batch_size;
+      self.async_op_response(&mut async_responses)?; // Drains vec
+
+      // Loop again if batch was full, potentially more ops pending
+      if !full_batch {
+        break;
+      }
+    }
+
+    Ok(())
+  }
+
   // Send finished responses to JS
   fn async_op_response(
     &mut self,
-    async_responses: Vec<(PromiseId, OpResponse)>,
+    async_responses: &mut Vec<(PromiseId, OpResponse)>,
   ) -> Result<(), AnyError> {
     let state_rc = Self::state(self.v8_isolate());
 
@@ -1420,7 +1441,7 @@ impl JsRuntime {
     // and then each tuple is used to resolve or reject promises
     let mut args: Vec<v8::Local<v8::Value>> =
       Vec::with_capacity(2 * async_responses_size);
-    for overflown_response in async_responses {
+    for overflown_response in async_responses.drain(..) {
       let (promise_id, resp) = overflown_response;
       args.push(v8::Integer::new(scope, promise_id as i32).into());
       args.push(match resp {
