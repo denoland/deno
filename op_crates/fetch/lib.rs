@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::declare_ops;
 use deno_core::error::bad_resource_id;
 use deno_core::error::generic_error;
 use deno_core::error::null_opbuf;
@@ -9,8 +10,6 @@ use deno_core::futures::Future;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
@@ -69,13 +68,17 @@ pub fn init<P: FetchPermissions + 'static>(
       "23_response.js",
       "26_fetch.js",
     ))
-    .ops(vec![
-      ("op_fetch", op_sync(op_fetch::<P>)),
-      ("op_fetch_send", op_async(op_fetch_send)),
-      ("op_fetch_request_write", op_async(op_fetch_request_write)),
-      ("op_fetch_response_read", op_async(op_fetch_response_read)),
-      ("op_create_http_client", op_sync(op_create_http_client::<P>)),
-    ])
+    .ops(declare_ops!(
+      sync[
+        op_fetch::<P>,
+        op_create_http_client::<P>,
+      ],
+      async[
+        op_fetch_send,
+        op_fetch_request_write,
+        op_fetch_response_read,
+      ],
+    ))
     .state(move |state| {
       state.put::<reqwest::Client>({
         create_http_client(user_agent.clone(), ca_data.clone()).unwrap()
