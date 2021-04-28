@@ -21,8 +21,8 @@ use crate::modules::PrepareLoadFuture;
 use crate::modules::RecursiveModuleLoad;
 use crate::ops::*;
 use crate::Extension;
+use crate::OpMiddlewareFn;
 use crate::OpPayload;
-use crate::OpRegistrar;
 use crate::OpResponse;
 use crate::OpState;
 use crate::PromiseId;
@@ -361,7 +361,7 @@ impl JsRuntime {
   // NOTE: this will probably change when streamlining snapshot flow
   pub fn init_extension_js(&mut self) -> Result<(), AnyError> {
     // Take extensions to avoid double-borrow
-    let mut extensions: Vec<Extension> = self.extensions.drain(..).collect();
+    let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
     for m in extensions.iter_mut() {
       let js_files = m.init_js();
       for (filename, source) in js_files {
@@ -369,7 +369,9 @@ impl JsRuntime {
         self.execute(filename, source)?;
       }
     }
+    // Restore extensions
     self.extensions = extensions;
+
     Ok(())
   }
 
@@ -377,21 +379,31 @@ impl JsRuntime {
   // NOTE: this will probably change when streamlining snapshot flow
   pub fn init_extension_ops(&mut self) -> Result<(), AnyError> {
     let op_state = self.op_state();
-    // Original OpRegistrar
-    let mut registrar: Rc<RefCell<dyn OpRegistrar>> =
-      Rc::new(RefCell::new(JsRuntimeOpRegistrar(op_state.clone())));
+    // Take extensions to avoid double-borrow
+    let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
 
-    // Wrap registrar
-    for e in self.extensions.iter_mut() {
-      registrar = e.init_registrar(registrar.clone());
-    }
+    // Middleware
+    let middleware: Vec<Box<OpMiddlewareFn>> = extensions
+      .iter_mut()
+      .filter_map(|e| e.init_middleware())
+      .collect();
+    // macroware wraps an opfn in all the middleware
+    let macroware =
+      move |name, opfn| middleware.iter().fold(opfn, |opfn, m| m(name, opfn));
+
     // Register ops
-    for e in self.extensions.iter_mut() {
+    for e in extensions.iter_mut() {
       e.init_state(&mut op_state.borrow_mut())?;
-      e.init_ops(registrar.clone());
+      // Register each op after middlewaring it
+      let mut ops = e.init_ops().unwrap_or_default();
+      for (name, opfn) in ops {
+        self.register_op(name, macroware(name, opfn));
+      }
     }
     // Sync ops cache
     self.sync_ops_cache();
+    // Restore extensions
+    self.extensions = extensions;
 
     Ok(())
   }
@@ -1518,14 +1530,6 @@ impl JsRuntime {
     }
 
     Ok(())
-  }
-}
-
-struct JsRuntimeOpRegistrar(Rc<RefCell<OpState>>);
-
-impl OpRegistrar for JsRuntimeOpRegistrar {
-  fn register_op(&mut self, name: &str, op_fn: Box<OpFn>) -> OpId {
-    self.0.borrow_mut().op_table.register_op(name, op_fn)
   }
 }
 

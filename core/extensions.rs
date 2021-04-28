@@ -1,8 +1,5 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use crate::error::AnyError;
-use crate::{OpFn, OpId, OpState};
+use crate::{OpFn, OpState};
 
 pub type SourcePair = (&'static str, &'static str);
 pub type OpPair = (&'static str, Box<OpFn>);
@@ -60,18 +57,14 @@ impl Extension {
   }
 
   /// Called at JsRuntime startup to initialize ops in the isolate.
-  pub(crate) fn init_ops(&mut self, registrar: Rc<RefCell<dyn OpRegistrar>>) {
+  pub(crate) fn init_ops(&mut self) -> Option<Vec<OpPair>> {
     // TODO(@AaronO): maybe make op registration idempotent
     if self.initialized {
       panic!("init_ops called twice: not idempotent or correct");
     }
     self.initialized = true;
 
-    if let Some(ops) = self.ops.take() {
-      for (name, opfn) in ops {
-        registrar.borrow_mut().register_op(name, opfn);
-      }
-    }
+    self.ops.take()
   }
 
   /// Allows setting up the initial op-state of an isolate at startup.
@@ -82,38 +75,9 @@ impl Extension {
     }
   }
 
-  /// init_registrar lets us middleware op registrations, it's called before init_ops
-  pub(crate) fn init_registrar(
-    &mut self,
-    registrar: Rc<RefCell<dyn OpRegistrar>>,
-  ) -> Rc<RefCell<dyn OpRegistrar>> {
-    match self.middleware_fn.take() {
-      Some(middleware_fn) => Rc::new(RefCell::new(OpMiddleware {
-        registrar,
-        middleware_fn,
-      })),
-      None => registrar,
-    }
-  }
-}
-
-/// The OpRegistrar trait allows building op "middleware" such as:
-/// OpMetrics, OpTracing or OpDisabler that wrap OpFns for profiling, debugging, etc...
-/// JsRuntime is itself an OpRegistrar
-pub trait OpRegistrar {
-  fn register_op(&mut self, name: &'static str, op_fn: Box<OpFn>) -> OpId;
-}
-
-/// OpMiddleware wraps an original OpRegistrar with an OpMiddlewareFn
-pub struct OpMiddleware {
-  registrar: Rc<RefCell<dyn OpRegistrar>>,
-  middleware_fn: Box<OpMiddlewareFn>,
-}
-
-impl OpRegistrar for OpMiddleware {
-  fn register_op(&mut self, name: &'static str, op_fn: Box<OpFn>) -> OpId {
-    let new_op = (self.middleware_fn)(name, op_fn);
-    self.registrar.borrow_mut().register_op(name, new_op)
+  /// init_middleware lets us middleware op registrations, it's called before init_ops
+  pub(crate) fn init_middleware(&mut self) -> Option<Box<OpMiddlewareFn>> {
+    self.middleware_fn.take()
   }
 }
 
