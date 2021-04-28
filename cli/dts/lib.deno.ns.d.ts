@@ -1925,6 +1925,12 @@ declare namespace Deno {
    */
   export function resources(): ResourceMap;
 
+  export class FsWatcher implements AsyncIterableIterator<FsEvent> {
+    readonly rid: number;
+    next(): Promise<IteratorResult<FsEvent>>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<FsEvent>;
+  }
+
   export interface FsEvent {
     kind: "any" | "access" | "create" | "modify" | "remove";
     paths: string[];
@@ -1947,11 +1953,21 @@ declare namespace Deno {
    *```
    *
    * Requires `allow-read` permission.
+   *
+   * Call `Deno.close(watcher.rid)` to stop watching.
+   *
+   * ```ts
+   * const watcher = Deno.watchFs("/");
+   * setTimeout(() => { Deno.close(watcher.rid); }, 5000);
+   * for await (const event of watcher) {
+   *    console.log(">>>> event", event);
+   * }
+   * ```
    */
   export function watchFs(
     paths: string | string[],
     options?: { recursive: boolean },
-  ): AsyncIterableIterator<FsEvent>;
+  ): FsWatcher;
 
   export class Process<T extends RunOptions = RunOptions> {
     readonly rid: number;
