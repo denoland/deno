@@ -1947,6 +1947,16 @@ declare namespace Deno {
    *```
    *
    * Requires `allow-read` permission.
+   *
+   * Call `watcher.return()` to stop watching.
+   *
+   * ```ts
+   * const watcher = Deno.watchFs("/");
+   * setTimeout(() => { watcher.return(); }, 5000);
+   * for await (const event of watcher) {
+   *    console.log(">>>> event", event);
+   * }
+   * ```
    */
   export function watchFs(
     paths: string | string[],

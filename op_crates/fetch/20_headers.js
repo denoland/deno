@@ -39,7 +39,7 @@
    */
 
   /**
-   * @param {string} potentialValue 
+   * @param {string} potentialValue
    * @returns {string}
    */
   function normalizeHeaderValue(potentialValue) {
@@ -72,8 +72,8 @@
   /**
    * https://fetch.spec.whatwg.org/#concept-headers-append
    * @param {Headers} headers
-   * @param {string} name 
-   * @param {string} value 
+   * @param {string} name
+   * @param {string} value
    */
   function appendHeader(headers, name, value) {
     // 1.
@@ -224,8 +224,8 @@
     }
 
     /**
-     * @param {string} name 
-     * @param {string} value 
+     * @param {string} name
+     * @param {string} value
      */
     append(name, value) {
       webidl.assertBranded(this, Headers);
@@ -243,7 +243,7 @@
     }
 
     /**
-     * @param {string} name 
+     * @param {string} name
      */
     delete(name) {
       const prefix = "Failed to execute 'delete' on 'Headers'";
@@ -271,7 +271,7 @@
     }
 
     /**
-     * @param {string} name 
+     * @param {string} name
      */
     get(name) {
       const prefix = "Failed to execute 'get' on 'Headers'";
@@ -290,7 +290,7 @@
     }
 
     /**
-     * @param {string} name 
+     * @param {string} name
      */
     has(name) {
       const prefix = "Failed to execute 'has' on 'Headers'";
@@ -315,8 +315,8 @@
     }
 
     /**
-     * @param {string} name 
-     * @param {string} value 
+     * @param {string} name
+     * @param {string} value
      */
     set(name, value) {
       webidl.assertBranded(this, Headers);

@@ -53,7 +53,7 @@
 
   /**
    * @param {number} status
-   * @returns {boolean} 
+   * @returns {boolean}
    */
   function nullBodyStatus(status) {
     return status === 101 || status === 204 || status === 205 || status === 304;
@@ -61,7 +61,7 @@
 
   /**
    * @param {number} status
-   * @returns {boolean} 
+   * @returns {boolean}
    */
   function redirectStatus(status) {
     return status === 301 || status === 302 || status === 303 ||
@@ -70,7 +70,7 @@
 
   /**
    * https://fetch.spec.whatwg.org/#concept-response-clone
-   * @param {InnerResponse} response 
+   * @param {InnerResponse} response
    * @returns {InnerResponse}
    */
   function cloneInnerResponse(response) {
@@ -220,8 +220,8 @@
     }
 
     /**
-     * @param {BodyInit | null} body 
-     * @param {ResponseInit} init 
+     * @param {BodyInit | null} body
+     * @param {ResponseInit} init
      */
     constructor(body = null, init = {}) {
       const prefix = "Failed to construct 'Response'";

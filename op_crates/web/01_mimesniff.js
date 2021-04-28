@@ -19,7 +19,7 @@
   } = window.__bootstrap.infra;
 
   /**
-   * @typedef MimeType 
+   * @typedef MimeType
    * @property {string} type
    * @property {string} subtype
    * @property {Map<string,string>} parameters
@@ -160,7 +160,7 @@
   }
 
   /**
-   * @param {MimeType} mimeType 
+   * @param {MimeType} mimeType
    * @returns {string}
    */
   function essence(mimeType) {
@@ -168,7 +168,7 @@
   }
 
   /**
-   * @param {MimeType} mimeType 
+   * @param {MimeType} mimeType
    * @returns {string}
    */
   function serializeMimeType(mimeType) {
