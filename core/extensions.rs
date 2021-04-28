@@ -126,3 +126,65 @@ macro_rules! include_js_files {
     ]
   };
 }
+
+// declare_ops! helps declare ops for an extension.
+// Example:
+// ```
+// declare_ops!(
+//   sync[
+//     op_foo,
+//     op_bar,
+//   ],
+//   async[
+//     op_write,
+//     op_read,
+//   ],
+// )
+// ```
+#[macro_export]
+macro_rules! declare_ops {
+  // A flattened group of async[] & sync[] subgroups
+  ($($wrapper:ident[$($opfn:expr,)+],)+) => {
+    vec![
+      $(declare_ops!($wrapper[$($opfn,)+]),)+
+    ].into_iter().flatten().collect()
+  };
+
+  // Async group
+  (async[$($opfn:expr,)+]) => {
+    vec![$((
+      $crate::extensions::op_ident(stringify!($opfn)),
+      $crate::op_async($opfn),
+    ),)+]
+  };
+
+  // Sync group
+  (sync[$($opfn:expr,)+]) => {
+    vec![$((
+      $crate::extensions::op_ident(stringify!($opfn)),
+      $crate::op_sync($opfn),
+    ),)+]
+  };
+}
+
+/// transforms a stringified identifier path into an op_name
+/// it also enforces that all op_names must start with "op_"
+/// ```
+/// stringify!(foo::op_bar<X>) => "foo :: op_bar < X >"
+/// op_ident(stringify!(foo::op_bar<X>)) => "op_bar"
+/// ```
+pub fn op_ident(ident_path: &'static str) -> &'static str {
+  let end = ident_path.rfind("::<").unwrap_or_else(|| ident_path.len());
+  let ident_path = ident_path.get(0..end).unwrap();
+  let start = ident_path.rfind("::").unwrap_or(0);
+  let name = ident_path.get(start..ident_path.len()).unwrap();
+
+  // Assert op_ prefix
+  assert!(
+    name.starts_with("op_"),
+    "Op '{}' missing 'op_' prefix",
+    name
+  );
+
+  name
+}
