@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
+use deno_core::error::invalid_hostname;
 use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -175,8 +176,8 @@ where
       }
 
       let tls_connector = TlsConnector::from(Arc::new(config));
-      let dnsname =
-        DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
+      let dnsname = DNSNameRef::try_from_ascii_str(domain)
+        .map_err(|_| invalid_hostname(domain))?;
       let tls_socket = tls_connector.connect(dnsname, tcp_socket).await?;
       MaybeTlsStream::Rustls(tls_socket)
     }

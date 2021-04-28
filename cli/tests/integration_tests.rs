@@ -33,16 +33,17 @@ fn js_unit_tests_lint() {
 #[test]
 fn js_unit_tests() {
   let _g = util::http_server();
+
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
-    .arg("run")
+    .arg("test")
     .arg("--unstable")
+    .arg("--location=http://js-unit-tests/foo/bar")
     .arg("-A")
-    .arg("cli/tests/unit/unit_test_runner.ts")
-    .arg("--master")
-    .arg("--verbose")
+    .arg("cli/tests/unit")
     .spawn()
     .expect("failed to spawn script");
+
   let status = deno.wait().expect("failed to wait for the child process");
   assert_eq!(Some(0), status.code());
   assert!(status.success());
@@ -3446,6 +3447,11 @@ console.log("finish");
     output: "wasm.ts.out",
   });
 
+  itest!(wasm_shared {
+    args: "run --quiet wasm_shared.ts",
+    output: "wasm_shared.out",
+  });
+
   itest!(wasm_async {
     args: "run wasm_async.js",
     output: "wasm_async.out",
@@ -5630,17 +5636,6 @@ console.log("finish");
     let stderr_str = String::from_utf8(output.stderr).unwrap();
     assert!(util::strip_ansi_codes(&stderr_str)
       .contains("PermissionDenied: Requires write access"));
-  }
-
-  #[test]
-  fn denort_direct_use_error() {
-    let status = Command::new(util::denort_exe_path())
-      .current_dir(util::root_path())
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
-    assert!(!status.success());
   }
 
   #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

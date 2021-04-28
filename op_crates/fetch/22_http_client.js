@@ -25,7 +25,7 @@
 
   class HttpClient {
     /**
-     * @param {number} rid 
+     * @param {number} rid
      */
     constructor(rid) {
       this.rid = rid;

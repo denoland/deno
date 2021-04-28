@@ -120,9 +120,9 @@
   }
 
   /**
-   * @param {any} prototype 
-   * @param {symbol} bodySymbol 
-   * @param {symbol} mimeTypeSymbol 
+   * @param {any} prototype
+   * @param {symbol} bodySymbol
+   * @param {symbol} mimeTypeSymbol
    * @returns {void}
    */
   function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {

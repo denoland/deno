@@ -1947,6 +1947,16 @@ declare namespace Deno {
    *```
    *
    * Requires `allow-read` permission.
+   *
+   * Call `watcher.return()` to stop watching.
+   *
+   * ```ts
+   * const watcher = Deno.watchFs("/");
+   * setTimeout(() => { watcher.return(); }, 5000);
+   * for await (const event of watcher) {
+   *    console.log(">>>> event", event);
+   * }
+   * ```
    */
   export function watchFs(
     paths: string | string[],
@@ -2357,9 +2367,10 @@ declare namespace Deno {
    * Deno.ftruncateSync(file.rid);
    *
    * // truncate part of the file
-   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
-   * Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
    * Deno.ftruncateSync(file.rid, 7);
+   * Deno.seekSync(file.rid, 0, Deno.SeekMode.Start);
    * const data = new Uint8Array(32);
    * Deno.readSync(file.rid, data);
    * console.log(new TextDecoder().decode(data)); // Hello W

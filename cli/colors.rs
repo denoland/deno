@@ -1,8 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-// allow(dead_code) because denort does not use this.
-#![allow(dead_code)]
-
 use regex::Regex;
 use std::fmt;
 use std::io::Write;
@@ -125,15 +122,6 @@ pub fn bold<S: AsRef<str>>(s: S) -> impl fmt::Display {
 pub fn gray<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Ansi256(8)));
-  style(s, style_spec)
-}
-
-pub fn italic_bold_gray<S: AsRef<str>>(s: S) -> impl fmt::Display {
-  let mut style_spec = ColorSpec::new();
-  style_spec
-    .set_fg(Some(Ansi256(8)))
-    .set_bold(true)
-    .set_italic(true);
   style(s, style_spec)
 }
 

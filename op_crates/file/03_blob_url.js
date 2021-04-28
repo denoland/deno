@@ -19,7 +19,7 @@
   const { _byteSequence } = window.__bootstrap.file;
   const { URL } = window.__bootstrap.url;
 
-  /** 
+  /**
    * @param {Blob} blob
    * @returns {string}
    */
@@ -40,7 +40,7 @@
     return url;
   }
 
-  /** 
+  /**
    * @param {string} url
    * @returns {void}
    */
