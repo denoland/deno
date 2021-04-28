@@ -403,7 +403,7 @@ impl JsRuntime {
     for e in extensions.iter_mut() {
       e.init_state(&mut op_state.borrow_mut())?;
       // Register each op after middlewaring it
-      let mut ops = e.init_ops().unwrap_or_default();
+      let ops = e.init_ops().unwrap_or_default();
       for (name, opfn) in ops {
         self.register_op(name, macroware(name, opfn));
       }
