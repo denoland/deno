@@ -10,15 +10,14 @@ use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 
 pub fn init() -> Extension {
-  Extension::new(
-    None,
-    Some(vec![("op_metrics", op_sync(op_metrics))]),
-    Some(Box::new(|state| {
+  Extension::builder()
+    .ops(vec![("op_metrics", op_sync(op_metrics))])
+    .state(|state| {
       state.put(RuntimeMetrics::default());
       Ok(())
-    })),
-    Some(Box::new(metrics_op)),
-  )
+    })
+    .middleware(metrics_op)
+    .build()
 }
 
 #[derive(serde::Serialize)]

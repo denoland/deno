@@ -16,22 +16,22 @@ use std::path::PathBuf;
 pub use rand; // Re-export rand
 
 pub fn init(maybe_seed: Option<u64>) -> Extension {
-  Extension::with_ops(
-    include_js_files!(
+  Extension::builder()
+    .js(include_js_files!(
       prefix "deno:op_crates/crypto",
       "01_crypto.js",
-    ),
-    vec![(
+    ))
+    .ops(vec![(
       "op_crypto_get_random_values",
       op_sync(op_crypto_get_random_values),
-    )],
-    Some(Box::new(move |state| {
+    )])
+    .state(move |state| {
       if let Some(seed) = maybe_seed {
         state.put(StdRng::seed_from_u64(seed));
       }
       Ok(())
-    })),
-  )
+    })
+    .build()
 }
 
 pub fn op_crypto_get_random_values(

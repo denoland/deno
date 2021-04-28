@@ -56,8 +56,8 @@ pub fn init<P: FetchPermissions + 'static>(
   user_agent: String,
   ca_data: Option<Vec<u8>>,
 ) -> Extension {
-  Extension::with_ops(
-    include_js_files!(
+  Extension::builder()
+    .js(include_js_files!(
       prefix "deno:op_crates/fetch",
       "01_fetch_util.js",
       "11_streams.js",
@@ -68,15 +68,15 @@ pub fn init<P: FetchPermissions + 'static>(
       "23_request.js",
       "23_response.js",
       "26_fetch.js",
-    ),
-    vec![
+    ))
+    .ops(vec![
       ("op_fetch", op_sync(op_fetch::<P>)),
       ("op_fetch_send", op_async(op_fetch_send)),
       ("op_fetch_request_write", op_async(op_fetch_request_write)),
       ("op_fetch_response_read", op_async(op_fetch_response_read)),
       ("op_create_http_client", op_sync(op_create_http_client::<P>)),
-    ],
-    Some(Box::new(move |state| {
+    ])
+    .state(move |state| {
       state.put::<reqwest::Client>({
         create_http_client(user_agent.clone(), ca_data.clone()).unwrap()
       });
@@ -85,8 +85,8 @@ pub fn init<P: FetchPermissions + 'static>(
         user_agent: user_agent.clone(),
       });
       Ok(())
-    })),
-  )
+    })
+    .build()
 }
 
 pub struct HttpClientDefaults {

@@ -88,14 +88,14 @@ pub fn init(
   blob_url_store: BlobUrlStore,
   maybe_location: Option<Url>,
 ) -> Extension {
-  Extension::with_ops(
-    include_js_files!(
+  Extension::builder()
+    .js(include_js_files!(
       prefix "deno:op_crates/file",
       "01_file.js",
       "02_filereader.js",
       "03_blob_url.js",
-    ),
-    vec![
+    ))
+    .ops(vec![
       (
         "op_file_create_object_url",
         op_sync(op_file_create_object_url),
@@ -104,15 +104,15 @@ pub fn init(
         "op_file_revoke_object_url",
         op_sync(op_file_revoke_object_url),
       ),
-    ],
-    Some(Box::new(move |state| {
+    ])
+    .state(move |state| {
       state.put(blob_url_store.clone());
       if let Some(location) = maybe_location.clone() {
         state.put(Location(location));
       }
       Ok(())
-    })),
-  )
+    })
+    .build()
 }
 
 pub fn get_declaration() -> PathBuf {

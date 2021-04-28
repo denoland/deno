@@ -5,11 +5,13 @@ use deno_core::Extension;
 use std::path::PathBuf;
 
 pub fn init() -> Extension {
-  Extension::pure_js(include_js_files!(
-    prefix "deno:op_crates/console",
-    "01_colors.js",
-    "02_console.js",
-  ))
+  Extension::builder()
+    .js(include_js_files!(
+      prefix "deno:op_crates/console",
+      "01_colors.js",
+      "02_console.js",
+    ))
+    .build()
 }
 
 pub fn get_declaration() -> PathBuf {

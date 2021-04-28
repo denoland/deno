@@ -340,12 +340,12 @@ pub fn init<P: WebSocketPermissions + 'static>(
   user_agent: String,
   ca_data: Option<Vec<u8>>,
 ) -> Extension {
-  Extension::with_ops(
-    include_js_files!(
+  Extension::builder()
+    .js(include_js_files!(
       prefix "deno:op_crates/websocket",
       "01_websocket.js",
-    ),
-    vec![
+    ))
+    .ops(vec![
       (
         "op_ws_check_permission",
         op_sync(op_ws_check_permission::<P>),
@@ -354,15 +354,15 @@ pub fn init<P: WebSocketPermissions + 'static>(
       ("op_ws_send", op_async(op_ws_send)),
       ("op_ws_close", op_async(op_ws_close)),
       ("op_ws_next_event", op_async(op_ws_next_event)),
-    ],
-    Some(Box::new(move |state| {
+    ])
+    .state(move |state| {
       state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));
       if let Some(ca_data) = ca_data.clone() {
         state.put::<WsCaData>(WsCaData(ca_data));
       }
       Ok(())
-    })),
-  )
+    })
+    .build()
 }
 
 pub fn get_declaration() -> PathBuf {

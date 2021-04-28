@@ -15,38 +15,13 @@ pub struct Extension {
   initialized: bool,
 }
 
-impl Extension {
-  pub fn new(
-    js_files: Option<Vec<SourcePair>>,
-    ops: Option<Vec<OpPair>>,
-    opstate_fn: Option<Box<OpStateFn>>,
-    middleware_fn: Option<Box<OpMiddlewareFn>>,
-  ) -> Self {
-    Self {
-      js_files,
-      ops,
-      opstate_fn,
-      middleware_fn,
-      initialized: false,
-    }
-  }
-
-  pub fn pure_js(js_files: Vec<SourcePair>) -> Self {
-    Self::new(Some(js_files), None, None, None)
-  }
-
-  pub fn with_ops(
-    js_files: Vec<SourcePair>,
-    ops: Vec<OpPair>,
-    opstate_fn: Option<Box<OpStateFn>>,
-  ) -> Self {
-    Self::new(Some(js_files), Some(ops), opstate_fn, None)
-  }
-}
-
 // Note: this used to be a trait, but we "downgraded" it to a single concrete type
 // for the initial iteration, it will likely become a trait in the future
 impl Extension {
+  pub fn builder() -> ExtensionBuilder {
+    Default::default()
+  }
+
   /// returns JS source code to be loaded into the isolate (either at snapshotting,
   /// or at startup).  as a vector of a tuple of the file name, and the source code.
   pub(crate) fn init_js(&self) -> Vec<SourcePair> {
@@ -81,6 +56,54 @@ impl Extension {
   }
 }
 
+// Provides a convenient builder pattern to declare Extensions
+#[derive(Default)]
+pub struct ExtensionBuilder {
+  js: Vec<SourcePair>,
+  ops: Vec<OpPair>,
+  state: Option<Box<OpStateFn>>,
+  middleware: Option<Box<OpMiddlewareFn>>,
+}
+
+impl ExtensionBuilder {
+  pub fn js(&mut self, js_files: Vec<SourcePair>) -> &mut Self {
+    self.js.extend(js_files);
+    self
+  }
+
+  pub fn ops(&mut self, ops: Vec<OpPair>) -> &mut Self {
+    self.ops.extend(ops);
+    self
+  }
+
+  pub fn state<F>(&mut self, opstate_fn: F) -> &mut Self
+  where
+    F: Fn(&mut OpState) -> Result<(), AnyError> + 'static,
+  {
+    self.state = Some(Box::new(opstate_fn));
+    self
+  }
+
+  pub fn middleware<F>(&mut self, middleware_fn: F) -> &mut Self
+  where
+    F: Fn(&'static str, Box<OpFn>) -> Box<OpFn> + 'static,
+  {
+    self.middleware = Some(Box::new(middleware_fn));
+    self
+  }
+
+  pub fn build(&mut self) -> Extension {
+    let js_files = Some(std::mem::take(&mut self.js));
+    let ops = Some(std::mem::take(&mut self.ops));
+    Extension {
+      js_files,
+      ops,
+      opstate_fn: self.state.take(),
+      middleware_fn: self.middleware.take(),
+      initialized: false,
+    }
+  }
+}
 /// Helps embed JS files in an extension. Returns Vec<(&'static str, &'static str)>
 /// representing the filename and source code.
 ///

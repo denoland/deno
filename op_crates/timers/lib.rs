@@ -13,6 +13,7 @@ use deno_core::futures;
 use deno_core::futures::channel::oneshot;
 use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
+use deno_core::include_js_files;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::Extension;
@@ -41,24 +42,24 @@ impl TimersPermission for NoTimersPermission {
 }
 
 pub fn init<P: TimersPermission + 'static>() -> Extension {
-  Extension::with_ops(
-    vec![(
-      "deno:op_crates/timers/01_timers.js",
-      include_str!("01_timers.js"),
-    )],
-    vec![
+  Extension::builder()
+    .js(include_js_files!(
+      prefix "deno:op_crates/timers",
+      "01_timers.js",
+    ))
+    .ops(vec![
       ("op_global_timer_stop", op_sync(op_global_timer_stop)),
       ("op_global_timer_start", op_sync(op_global_timer_start)),
       ("op_global_timer", op_async(op_global_timer)),
       ("op_now", op_sync(op_now::<P>)),
       ("op_sleep_sync", op_sync(op_sleep_sync::<P>)),
-    ],
-    Some(Box::new(|state| {
+    ])
+    .state(|state| {
       state.put(GlobalTimer::default());
       state.put(StartTime::now());
       Ok(())
-    })),
-  )
+    })
+    .build()
 }
 
 pub type StartTime = Instant;

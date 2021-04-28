@@ -17,12 +17,12 @@ use std::panic::catch_unwind;
 use std::path::PathBuf;
 
 pub fn init() -> Extension {
-  Extension::with_ops(
-    include_js_files!(
+  Extension::builder()
+    .js(include_js_files!(
       prefix "deno:op_crates/url",
       "00_url.js",
-    ),
-    vec![
+    ))
+    .ops(vec![
       ("op_url_parse", op_sync(op_url_parse)),
       (
         "op_url_parse_search_params",
@@ -32,9 +32,8 @@ pub fn init() -> Extension {
         "op_url_stringify_search_params",
         op_sync(op_url_stringify_search_params),
       ),
-    ],
-    None,
-  )
+    ])
+    .build()
 }
 
 #[derive(Deserialize)]
