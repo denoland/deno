@@ -58,11 +58,11 @@
   };
 
   /**
-   * @param {string} method 
-   * @param {string} url 
-   * @param {[string, string][]} headerList 
-   * @param {InnerBody} body 
-   * @returns 
+   * @param {string} method
+   * @param {string} url
+   * @param {[string, string][]} headerList
+   * @param {InnerBody} body
+   * @returns
    */
   function newInnerRequest(method, url, headerList = [], body = null) {
     return {
@@ -76,7 +76,7 @@
 
   /**
    * https://fetch.spec.whatwg.org/#concept-request-clone
-   * @param {InnerRequest} request 
+   * @param {InnerRequest} request
    * @returns {InnerRequest}
    */
   function cloneInnerRequest(request) {
@@ -185,8 +185,8 @@
 
     /**
      * https://fetch.spec.whatwg.org/#dom-request
-     * @param {RequestInfo} input 
-     * @param {RequestInit} init 
+     * @param {RequestInfo} input
+     * @param {RequestInit} init
      */
     constructor(input, init = {}) {
       const prefix = "Failed to construct 'Request'";

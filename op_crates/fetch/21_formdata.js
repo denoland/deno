@@ -63,8 +63,8 @@
     }
 
     /**
-     * @param {string} name 
-     * @param {string | Blob} valueOrBlobValue 
+     * @param {string} name
+     * @param {string | Blob} valueOrBlobValue
      * @param {string} [filename]
      * @returns {void}
      */
@@ -101,7 +101,7 @@
     }
 
     /**
-     * @param {string} name 
+     * @param {string} name
      * @returns {void}
      */
     delete(name) {
@@ -124,7 +124,7 @@
     }
 
     /**
-     * @param {string} name 
+     * @param {string} name
      * @returns {FormDataEntryValue | null}
      */
     get(name) {
@@ -144,7 +144,7 @@
     }
 
     /**
-     * @param {string} name 
+     * @param {string} name
      * @returns {FormDataEntryValue[]}
      */
     getAll(name) {
@@ -165,7 +165,7 @@
     }
 
     /**
-     * @param {string} name 
+     * @param {string} name
      * @returns {boolean}
      */
     has(name) {
@@ -185,8 +185,8 @@
     }
 
     /**
-     * @param {string} name 
-     * @param {string | Blob} valueOrBlobValue 
+     * @param {string} name
+     * @param {string | Blob} valueOrBlobValue
      * @param {string} [filename]
      * @returns {void}
      */
@@ -244,7 +244,7 @@
 
   class MultipartBuilder {
     /**
-     * @param {FormData} formData 
+     * @param {FormData} formData
      */
     constructor(formData) {
       this.entryList = formData[entryList];
@@ -253,14 +253,14 @@
       this.chunks = [];
     }
 
-    /** 
+    /**
      * @returns {string}
      */
     getContentType() {
       return `multipart/form-data; boundary=${this.boundary}`;
     }
 
-    /** 
+    /**
      * @returns {Uint8Array}
      */
     getBody() {
@@ -296,7 +296,7 @@
       );
     };
 
-    /** 
+    /**
      * @param {[string, string][]} headers
      * @returns {void}
      */
@@ -312,7 +312,7 @@
       this.chunks.push(encoder.encode(buf));
     };
 
-    /** 
+    /**
      * @param {string} field
      * @param {string} filename
      * @param {string} [type]
@@ -366,7 +366,7 @@
   }
 
   /**
-   * @param {FormData} formdata 
+   * @param {FormData} formdata
    * @returns {{body: Uint8Array, contentType: string}}
    */
   function encodeFormData(formdata) {
@@ -401,8 +401,8 @@
 
   class MultipartParser {
     /**
-     * @param {Uint8Array} body 
-     * @param {string | undefined} boundary 
+     * @param {Uint8Array} body
+     * @param {string | undefined} boundary
      */
     constructor(body, boundary) {
       if (!boundary) {
@@ -521,7 +521,7 @@
   }
 
   /**
-   * @param {Uint8Array} body 
+   * @param {Uint8Array} body
    * @param {string | undefined} boundary
    * @returns {FormData}
    */
@@ -532,7 +532,7 @@
 
   /**
    * @param {FormDataEntry[]} entries
-   * @returns {FormData} 
+   * @returns {FormData}
    */
   function formDataFromEntries(entries) {
     const fd = new FormData();

@@ -4529,7 +4529,7 @@
   };
 
   /**
-   * @param {Uint8Array} bytes 
+   * @param {Uint8Array} bytes
    */
   function decode(bytes, encoding) {
     const BOMEncoding = BOMSniff(bytes);
@@ -4543,7 +4543,7 @@
   }
 
   /**
-   * @param {Uint8Array} bytes 
+   * @param {Uint8Array} bytes
    */
   function BOMSniff(bytes) {
     const BOM = bytes.subarray(0, 3);
