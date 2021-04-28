@@ -2,25 +2,36 @@
 
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
-use deno_core::JsRuntime;
+use deno_core::include_js_files;
+use deno_core::op_sync;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use rand::rngs::StdRng;
 use rand::thread_rng;
 use rand::Rng;
+use rand::SeedableRng;
 use std::path::PathBuf;
 
 pub use rand; // Re-export rand
 
-/// Execute this crates' JS source files.
-pub fn init(isolate: &mut JsRuntime) {
-  let files = vec![(
-    "deno:op_crates/crypto/01_crypto.js",
-    include_str!("01_crypto.js"),
-  )];
-  for (url, source_code) in files {
-    isolate.execute(url, source_code).unwrap();
-  }
+pub fn init(maybe_seed: Option<u64>) -> Extension {
+  Extension::with_ops(
+    include_js_files!(
+      prefix "deno:op_crates/crypto",
+      "01_crypto.js",
+    ),
+    vec![(
+      "op_crypto_get_random_values",
+      op_sync(op_crypto_get_random_values),
+    )],
+    Some(Box::new(move |state| {
+      if let Some(seed) = maybe_seed {
+        state.put(StdRng::seed_from_u64(seed));
+      }
+      Ok(())
+    })),
+  )
 }
 
 pub fn op_crypto_get_random_values(

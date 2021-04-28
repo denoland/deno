@@ -3,6 +3,7 @@ mod async_cancel;
 mod async_cell;
 mod bindings;
 pub mod error;
+mod extensions;
 mod flags;
 mod gotham_state;
 mod module_specifier;
@@ -75,6 +76,9 @@ pub use crate::runtime::JsErrorCreateFn;
 pub use crate::runtime::JsRuntime;
 pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::Snapshot;
+// pub use crate::runtime_modules::include_js_files!;
+pub use crate::extensions::Extension;
+pub use crate::extensions::OpMiddlewareFn;
 pub use crate::zero_copy_buf::ZeroCopyBuf;
 
 pub fn v8_version() -> &'static str {

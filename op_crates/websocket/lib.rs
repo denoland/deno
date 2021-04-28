@@ -9,11 +9,14 @@ use deno_core::futures::stream::SplitSink;
 use deno_core::futures::stream::SplitStream;
 use deno_core::futures::SinkExt;
 use deno_core::futures::StreamExt;
+use deno_core::include_js_files;
+use deno_core::op_async;
+use deno_core::op_sync;
 use deno_core::url;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
-use deno_core::JsRuntime;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -333,14 +336,33 @@ pub async fn op_ws_next_event(
   Ok(res)
 }
 
-/// Load and execute the javascript code.
-pub fn init(isolate: &mut JsRuntime) {
-  isolate
-    .execute(
-      "deno:op_crates/websocket/01_websocket.js",
-      include_str!("01_websocket.js"),
-    )
-    .unwrap();
+pub fn init<P: WebSocketPermissions + 'static>(
+  user_agent: String,
+  ca_data: Option<Vec<u8>>,
+) -> Extension {
+  Extension::with_ops(
+    include_js_files!(
+      prefix "deno:op_crates/websocket",
+      "01_websocket.js",
+    ),
+    vec![
+      (
+        "op_ws_check_permission",
+        op_sync(op_ws_check_permission::<P>),
+      ),
+      ("op_ws_create", op_async(op_ws_create::<P>)),
+      ("op_ws_send", op_async(op_ws_send)),
+      ("op_ws_close", op_async(op_ws_close)),
+      ("op_ws_next_event", op_async(op_ws_next_event)),
+    ],
+    Some(Box::new(move |state| {
+      state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));
+      if let Some(ca_data) = ca_data.clone() {
+        state.put::<WsCaData>(WsCaData(ca_data));
+      }
+      Ok(())
+    })),
+  )
 }
 
 pub fn get_declaration() -> PathBuf {

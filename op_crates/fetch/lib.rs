@@ -8,12 +8,15 @@ use deno_core::error::AnyError;
 use deno_core::futures::Future;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
+use deno_core::include_js_files;
+use deno_core::op_async;
+use deno_core::op_sync;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::JsRuntime;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -49,49 +52,41 @@ use tokio_util::io::StreamReader;
 
 pub use reqwest; // Re-export reqwest
 
-/// Execute this crates' JS source files.
-pub fn init(isolate: &mut JsRuntime) {
-  let files = vec![
-    (
-      "deno:op_crates/fetch/01_fetch_util.js",
-      include_str!("01_fetch_util.js"),
+pub fn init<P: FetchPermissions + 'static>(
+  user_agent: String,
+  ca_data: Option<Vec<u8>>,
+) -> Extension {
+  Extension::with_ops(
+    include_js_files!(
+      prefix "deno:op_crates/fetch",
+      "01_fetch_util.js",
+      "11_streams.js",
+      "20_headers.js",
+      "21_formdata.js",
+      "22_body.js",
+      "22_http_client.js",
+      "23_request.js",
+      "23_response.js",
+      "26_fetch.js",
     ),
-    (
-      "deno:op_crates/fetch/11_streams.js",
-      include_str!("11_streams.js"),
-    ),
-    (
-      "deno:op_crates/fetch/20_headers.js",
-      include_str!("20_headers.js"),
-    ),
-    (
-      "deno:op_crates/fetch/21_formdata.js",
-      include_str!("21_formdata.js"),
-    ),
-    (
-      "deno:op_crates/fetch/22_body.js",
-      include_str!("22_body.js"),
-    ),
-    (
-      "deno:op_crates/fetch/22_http_client.js",
-      include_str!("22_http_client.js"),
-    ),
-    (
-      "deno:op_crates/fetch/23_request.js",
-      include_str!("23_request.js"),
-    ),
-    (
-      "deno:op_crates/fetch/23_response.js",
-      include_str!("23_response.js"),
-    ),
-    (
-      "deno:op_crates/fetch/26_fetch.js",
-      include_str!("26_fetch.js"),
-    ),
-  ];
-  for (url, source_code) in files {
-    isolate.execute(url, source_code).expect(url);
-  }
+    vec![
+      ("op_fetch", op_sync(op_fetch::<P>)),
+      ("op_fetch_send", op_async(op_fetch_send)),
+      ("op_fetch_request_write", op_async(op_fetch_request_write)),
+      ("op_fetch_response_read", op_async(op_fetch_response_read)),
+      ("op_create_http_client", op_sync(op_create_http_client::<P>)),
+    ],
+    Some(Box::new(move |state| {
+      state.put::<reqwest::Client>({
+        create_http_client(user_agent.clone(), ca_data.clone()).unwrap()
+      });
+      state.put::<HttpClientDefaults>(HttpClientDefaults {
+        ca_data: ca_data.clone(),
+        user_agent: user_agent.clone(),
+      });
+      Ok(())
+    })),
+  )
 }
 
 pub struct HttpClientDefaults {

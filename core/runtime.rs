@@ -20,6 +20,8 @@ use crate::modules::NoopModuleLoader;
 use crate::modules::PrepareLoadFuture;
 use crate::modules::RecursiveModuleLoad;
 use crate::ops::*;
+use crate::Extension;
+use crate::OpMiddlewareFn;
 use crate::OpPayload;
 use crate::OpResponse;
 use crate::OpState;
@@ -84,6 +86,7 @@ pub struct JsRuntime {
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
   allocations: IsolateAllocations,
+  extensions: Vec<Extension>,
 }
 
 struct DynImportModEvaluate {
@@ -188,6 +191,10 @@ pub struct RuntimeOptions {
   /// If not provided runtime will error if code being
   /// executed tries to load modules.
   pub module_loader: Option<Rc<dyn ModuleLoader>>,
+
+  /// JsRuntime extensions, not to be confused with ES modules
+  /// these are sets of ops and other JS code to be initialized.
+  pub extensions: Vec<Extension>,
 
   /// V8 snapshot that should be loaded on startup.
   ///
@@ -303,6 +310,7 @@ impl JsRuntime {
       snapshot_creator: maybe_snapshot_creator,
       has_snapshotted: false,
       allocations: IsolateAllocations::default(),
+      extensions: options.extensions,
     };
 
     if !has_startup_snapshot {
@@ -355,6 +363,57 @@ impl JsRuntime {
     self
       .execute("deno:core/error.js", include_str!("error.js"))
       .unwrap();
+  }
+
+  /// Initializes JS of provided Extensions
+  // NOTE: this will probably change when streamlining snapshot flow
+  pub fn init_extension_js(&mut self) -> Result<(), AnyError> {
+    // Take extensions to avoid double-borrow
+    let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
+    for m in extensions.iter_mut() {
+      let js_files = m.init_js();
+      for (filename, source) in js_files {
+        // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
+        self.execute(filename, source)?;
+      }
+    }
+    // Restore extensions
+    self.extensions = extensions;
+
+    Ok(())
+  }
+
+  /// Initializes ops of provided Extensions
+  // NOTE: this will probably change when streamlining snapshot flow
+  pub fn init_extension_ops(&mut self) -> Result<(), AnyError> {
+    let op_state = self.op_state();
+    // Take extensions to avoid double-borrow
+    let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
+
+    // Middleware
+    let middleware: Vec<Box<OpMiddlewareFn>> = extensions
+      .iter_mut()
+      .filter_map(|e| e.init_middleware())
+      .collect();
+    // macroware wraps an opfn in all the middleware
+    let macroware =
+      move |name, opfn| middleware.iter().fold(opfn, |opfn, m| m(name, opfn));
+
+    // Register ops
+    for e in extensions.iter_mut() {
+      e.init_state(&mut op_state.borrow_mut())?;
+      // Register each op after middlewaring it
+      let mut ops = e.init_ops().unwrap_or_default();
+      for (name, opfn) in ops {
+        self.register_op(name, macroware(name, opfn));
+      }
+    }
+    // Sync ops cache
+    self.sync_ops_cache();
+    // Restore extensions
+    self.extensions = extensions;
+
+    Ok(())
   }
 
   /// Grabs a reference to core.js' handleAsyncMsgFromRust
