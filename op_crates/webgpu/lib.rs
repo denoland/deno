@@ -95,22 +95,22 @@ impl Resource for WebGpuQuerySet {
 }
 
 pub fn init(unstable: bool) -> Extension {
-  Extension::with_ops(
-    include_js_files!(
+  Extension::builder()
+    .js(include_js_files!(
       prefix "deno:op_crates/webgpu",
       "01_webgpu.js",
       "02_idl_types.js",
-    ),
-    declare_webgpu_ops(),
-    Some(Box::new(move |state| {
+    ))
+    .ops(declare_webgpu_ops())
+    .state(move |state| {
       // TODO: check & possibly streamline this
       // Unstable might be able to be OpMiddleware
       // let unstable_checker = state.borrow::<super::UnstableChecker>();
       // let unstable = unstable_checker.unstable;
       state.put(Unstable(unstable));
       Ok(())
-    })),
-  )
+    })
+    .build()
 }
 
 pub fn get_declaration() -> PathBuf {
