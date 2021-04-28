@@ -92,7 +92,8 @@ jobs:
           echo "$HOME/.deno/bin" >> $GITHUB_PATH
 
       - name: Error on Warning
-        if: !startsWith(matrix.os, 'windows')
+        if: |
+          !startsWith(matrix.os, 'windows')
         run: |-
           # TODO(ry) Enable on all OSes https://github.com/denoland/deno/issues/10378
           echo "RUSTFLAGS=-D warnings" >> $GITHUB_ENV
