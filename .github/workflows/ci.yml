@@ -48,8 +48,6 @@ jobs:
     env:
       RUST_BACKTRACE: full
       CARGO_TERM_COLOR: always
-      # TODO(ry) Enable error on warning after fixing https://github.com/denoland/deno/issues/10378
-      # RUSTFLAGS: -D warnings
 
     steps:
       - name: Configure git
@@ -92,6 +90,13 @@ jobs:
         run: |-
           curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
           echo "$HOME/.deno/bin" >> $GITHUB_PATH
+
+      - name: Error on Warning
+        if: |
+          !startsWith(matrix.os, 'windows')
+        run: |-
+          # TODO(ry) Enable on all OSes https://github.com/denoland/deno/issues/10378
+          echo "RUSTFLAGS=-D warnings" >> $GITHUB_ENV
 
       - name: Install Deno (Windows)
         if: startsWith(matrix.os, 'windows')
