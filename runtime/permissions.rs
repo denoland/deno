@@ -888,13 +888,29 @@ impl Permissions {
     state: &Option<Vec<String>>,
     prompt: bool,
   ) -> UnaryPermission<RunDescriptor> {
+    let path_var = std::env::var_os("PATH");
     UnaryPermission::<RunDescriptor> {
       name: "run",
       description: "run a subprocess",
       global_state: global_state_from_option(state),
       granted_list: state
         .as_ref()
-        .map(|v| v.iter().map(|x| RunDescriptor(x.clone())).collect())
+        .map(|v| {
+          v.iter()
+            .flat_map(|cmd| {
+              let mut vec = vec![RunDescriptor(cmd.clone())];
+              if let Some(path) = path_var.clone().and_then(|path_var| {
+                std::env::split_paths(&path_var)
+                  .find(|path| path.join(cmd).exists())
+              }) {
+                vec.push(RunDescriptor(
+                  path.join(cmd).into_os_string().into_string().unwrap(),
+                ));
+              }
+              vec
+            })
+            .collect()
+        })
         .unwrap_or_else(HashSet::new),
       denied_list: Default::default(),
       prompt,
