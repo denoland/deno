@@ -1,11 +1,56 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::colors;
+use crate::create_main_worker;
+use crate::file_fetcher::File;
+use crate::flags::Flags;
 use crate::fs_util;
+use crate::media_type::MediaType;
+use crate::module_graph;
+use crate::program_state::ProgramState;
+use crate::tokio_util;
+use crate::tools::coverage::CoverageCollector;
 use crate::tools::installer::is_remote_url;
 use deno_core::error::AnyError;
+use deno_core::futures::future;
+use deno_core::futures::stream;
+use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
+use deno_core::ModuleSpecifier;
+use deno_runtime::permissions::Permissions;
+use serde::Deserialize;
 use std::path::Path;
+use std::path::PathBuf;
+use std::sync::mpsc::channel;
+use std::sync::mpsc::Sender;
+use std::sync::Arc;
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TestResult {
+  Ok,
+  Ignored,
+  Failed(String),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", content = "data", rename_all = "camelCase")]
+pub enum TestMessage {
+  Plan {
+    pending: usize,
+    filtered: usize,
+    only: bool,
+  },
+  Wait {
+    name: String,
+  },
+  Result {
+    name: String,
+    duration: usize,
+    result: TestResult,
+  },
+}
 
 fn is_supported(p: &Path) -> bool {
   use std::path::Component;
@@ -31,7 +76,7 @@ fn is_supported(p: &Path) -> bool {
   }
 }
 
-pub fn prepare_test_modules_urls(
+pub fn collect_test_module_specifiers(
   include: Vec<String>,
   root_path: &Path,
 ) -> Result<Vec<Url>, AnyError> {
@@ -63,32 +108,302 @@ pub fn prepare_test_modules_urls(
   Ok(prepared)
 }
 
-pub fn render_test_file(
-  modules: Vec<Url>,
-  fail_fast: bool,
-  quiet: bool,
-  filter: Option<String>,
-) -> String {
-  let mut test_file = "".to_string();
+pub async fn run_test_file(
+  program_state: Arc<ProgramState>,
+  main_module: ModuleSpecifier,
+  test_module: ModuleSpecifier,
+  permissions: Permissions,
+  channel: Sender<TestMessage>,
+) -> Result<(), AnyError> {
+  let mut worker =
+    create_main_worker(&program_state, main_module.clone(), permissions, true);
 
-  for module in modules {
-    test_file.push_str(&format!("import \"{}\";\n", module.to_string()));
+  {
+    let js_runtime = &mut worker.js_runtime;
+    js_runtime
+      .op_state()
+      .borrow_mut()
+      .put::<Sender<TestMessage>>(channel.clone());
   }
 
-  let options = if let Some(filter) = filter {
-    json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet, "filter": filter })
+  let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
+    program_state.coverage_dir
+  {
+    let session = worker.create_inspector_session();
+    let coverage_dir = PathBuf::from(coverage_dir);
+    let mut coverage_collector = CoverageCollector::new(coverage_dir, session);
+    coverage_collector.start_collecting().await?;
+
+    Some(coverage_collector)
   } else {
-    json!({ "failFast": fail_fast, "reportToConsole": !quiet, "disableLog": quiet })
+    None
   };
 
-  test_file.push_str("// @ts-ignore\n");
+  let execute_result = worker.execute_module(&main_module).await;
+  execute_result?;
+  worker.execute("window.dispatchEvent(new Event('load'))")?;
 
-  test_file.push_str(&format!(
-    "await Deno[Deno.internal].runTests({});\n",
-    options
-  ));
+  let execute_result = worker.execute_module(&test_module).await;
+  execute_result?;
 
-  test_file
+  worker.run_event_loop().await?;
+  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+
+  if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
+    coverage_collector.stop_collecting().await?;
+  }
+
+  Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn run_tests(
+  flags: Flags,
+  include: Option<Vec<String>>,
+  no_run: bool,
+  fail_fast: bool,
+  quiet: bool,
+  allow_none: bool,
+  filter: Option<String>,
+  concurrent_jobs: usize,
+) -> Result<(), AnyError> {
+  let program_state = ProgramState::build(flags.clone()).await?;
+  let permissions = Permissions::from_options(&flags.clone().into());
+  let cwd = std::env::current_dir().expect("No current directory");
+  let include = include.unwrap_or_else(|| vec![".".to_string()]);
+  let test_modules = collect_test_module_specifiers(include, &cwd)?;
+
+  if test_modules.is_empty() {
+    println!("No matching test modules found");
+    if !allow_none {
+      std::process::exit(1);
+    }
+    return Ok(());
+  }
+
+  let lib = if flags.unstable {
+    module_graph::TypeLib::UnstableDenoWindow
+  } else {
+    module_graph::TypeLib::DenoWindow
+  };
+
+  program_state
+    .prepare_module_graph(
+      test_modules.clone(),
+      lib.clone(),
+      permissions.clone(),
+      program_state.maybe_import_map.clone(),
+    )
+    .await?;
+
+  if no_run {
+    return Ok(());
+  }
+
+  // Because scripts, and therefore worker.execute cannot detect unresolved promises at the moment
+  // we generate a module for the actual test execution.
+  let test_options = json!({
+    "disableLog": quiet,
+    "filter": filter,
+  });
+
+  let test_module = deno_core::resolve_path("$deno$test.js")?;
+  let test_source =
+    format!("await Deno[Deno.internal].runTests({});", test_options);
+  let test_file = File {
+    local: test_module.to_file_path().unwrap(),
+    maybe_types: None,
+    media_type: MediaType::JavaScript,
+    source: test_source.clone(),
+    specifier: test_module.clone(),
+  };
+
+  program_state.file_fetcher.insert_cached(test_file);
+
+  let (sender, receiver) = channel::<TestMessage>();
+
+  let join_handles = test_modules.iter().map(move |main_module| {
+    let program_state = program_state.clone();
+    let main_module = main_module.clone();
+    let test_module = test_module.clone();
+    let permissions = permissions.clone();
+    let sender = sender.clone();
+
+    tokio::task::spawn_blocking(move || {
+      let join_handle = std::thread::spawn(move || {
+        let future = run_test_file(
+          program_state,
+          main_module,
+          test_module,
+          permissions,
+          sender,
+        );
+
+        tokio_util::run_basic(future)
+      });
+
+      join_handle.join().unwrap()
+    })
+  });
+
+  let join_futures = stream::iter(join_handles)
+    .buffer_unordered(concurrent_jobs)
+    .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
+
+  let handler = {
+    tokio::task::spawn_blocking(move || {
+      let time = std::time::Instant::now();
+      let mut failed = 0;
+      let mut filtered_out = 0;
+      let mut ignored = 0;
+      let mut passed = 0;
+      let measured = 0;
+
+      let mut planned = 0;
+      let mut used_only = false;
+      let mut has_error = false;
+      let mut failures: Vec<(String, String)> = Vec::new();
+
+      for message in receiver.iter() {
+        match message {
+          TestMessage::Plan {
+            pending,
+            filtered,
+            only,
+          } => {
+            println!("running {} tests", pending);
+
+            if only {
+              used_only = true;
+            }
+
+            planned += pending;
+            filtered_out += filtered;
+          }
+
+          TestMessage::Wait { name } => {
+            if concurrent_jobs == 1 {
+              print!("test {} ...", name);
+            }
+          }
+
+          TestMessage::Result {
+            name,
+            duration,
+            result,
+          } => {
+            if concurrent_jobs != 1 {
+              print!("test {} ...", name);
+            }
+
+            match result {
+              TestResult::Ok => {
+                println!(
+                  " {} {}",
+                  colors::green("ok"),
+                  colors::gray(format!("({}ms)", duration))
+                );
+
+                passed += 1;
+              }
+              TestResult::Ignored => {
+                println!(
+                  " {} {}",
+                  colors::yellow("ignored"),
+                  colors::gray(format!("({}ms)", duration))
+                );
+
+                ignored += 1;
+              }
+              TestResult::Failed(error) => {
+                println!(
+                  " {} {}",
+                  colors::red("FAILED"),
+                  colors::gray(format!("({}ms)", duration))
+                );
+
+                failed += 1;
+                failures.push((name, error));
+                has_error = true;
+              }
+            }
+          }
+        }
+
+        if has_error && fail_fast {
+          break;
+        }
+      }
+
+      // If one of the workers panic then we can end up with less test results than what was
+      // planned.
+      // In that case we mark it as an error so that it will be reported as failed.
+      if planned > passed + ignored + failed {
+        has_error = true;
+      }
+
+      if !failures.is_empty() {
+        println!("\nfailures:\n");
+        for (name, error) in &failures {
+          println!("{}", name);
+          println!("{}", error);
+          println!();
+        }
+
+        println!("failures:\n");
+        for (name, _) in &failures {
+          println!("\t{}", name);
+        }
+      }
+
+      let status = if has_error {
+        colors::red("FAILED").to_string()
+      } else {
+        colors::green("ok").to_string()
+      };
+
+      println!(
+        "\ntest result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
+        status,
+        passed,
+        failed,
+        ignored,
+        measured,
+        filtered_out,
+        colors::gray(format!("({}ms)", time.elapsed().as_millis())),
+      );
+
+      if used_only {
+        println!(
+          "{} because the \"only\" option was used\n",
+          colors::red("FAILED")
+        );
+
+        has_error = true;
+      }
+
+      has_error
+    })
+  };
+
+  let (result, join_results) = future::join(handler, join_futures).await;
+
+  let mut join_errors = join_results.into_iter().filter_map(|join_result| {
+    join_result
+      .ok()
+      .map(|handle_result| handle_result.err())
+      .flatten()
+  });
+
+  if let Some(e) = join_errors.next() {
+    Err(e)
+  } else {
+    if result.unwrap_or(false) {
+      std::process::exit(1);
+    }
+
+    Ok(())
+  }
 }
 
 #[cfg(test)]
@@ -96,9 +411,9 @@ mod tests {
   use super::*;
 
   #[test]
-  fn test_prepare_test_modules_urls() {
+  fn test_collect_test_module_specifiers() {
     let test_data_path = test_util::root_path().join("cli/tests/subdir");
-    let mut matched_urls = prepare_test_modules_urls(
+    let mut matched_urls = collect_test_module_specifiers(
       vec![
         "https://example.com/colors_test.ts".to_string(),
         "./mod1.ts".to_string(),
@@ -156,7 +471,7 @@ mod tests {
       .join("http");
     println!("root {:?}", root);
     let mut matched_urls =
-      prepare_test_modules_urls(vec![".".to_string()], &root).unwrap();
+      collect_test_module_specifiers(vec![".".to_string()], &root).unwrap();
     matched_urls.sort();
     let root_url = Url::from_file_path(root).unwrap().to_string();
     println!("root_url {}", root_url);

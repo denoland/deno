@@ -34,6 +34,9 @@ fn js_unit_tests_lint() {
 fn js_unit_tests() {
   let _g = util::http_server();
 
+  // Note that the unit tests are not safe for concurrency and must be run with a concurrency limit
+  // of one because there are some chdir tests in there.
+  // TODO(caspervonb) split these tests into two groups: parallel and serial.
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("test")
@@ -2438,10 +2441,22 @@ mod integration {
       output: "test/deno_test_unresolved_promise.out",
     });
 
+    itest!(unhandled_rejection {
+      args: "test test/unhandled_rejection.ts",
+      exit_code: 1,
+      output: "test/unhandled_rejection.out",
+    });
+
     itest!(exit_sanitizer {
       args: "test test/exit_sanitizer_test.ts",
       output: "test/exit_sanitizer_test.out",
       exit_code: 1,
+    });
+
+    itest!(quiet {
+      args: "test --quiet test/quiet_test.ts",
+      exit_code: 0,
+      output: "test/quiet_test.out",
     });
   }
 

@@ -1,23 +1,27 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
+use crate::tools::test_runner::TestMessage;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use deno_runtime::ops::worker_host::create_worker_permissions;
 use deno_runtime::ops::worker_host::PermissionsArg;
 use deno_runtime::permissions::Permissions;
+use serde::Deserialize;
+use std::sync::mpsc::Sender;
 use uuid::Uuid;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
+pub fn init(rt: &mut JsRuntime) {
   super::reg_sync(rt, "op_pledge_test_permissions", op_pledge_test_permissions);
   super::reg_sync(
     rt,
     "op_restore_test_permissions",
     op_restore_test_permissions,
   );
+  super::reg_sync(rt, "op_post_test_message", op_post_test_message);
 }
 
 #[derive(Clone)]
@@ -62,5 +66,26 @@ pub fn op_restore_test_permissions(
     Ok(())
   } else {
     Err(generic_error("no permissions to restore"))
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PostTestMessageArgs {
+  message: TestMessage,
+}
+
+fn op_post_test_message(
+  state: &mut OpState,
+  args: Value,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<Value, AnyError> {
+  let args: PostTestMessageArgs = serde_json::from_value(args)?;
+  let sender = state.borrow::<Sender<TestMessage>>().clone();
+
+  if sender.send(args.message).is_err() {
+    Ok(json!(false))
+  } else {
+    Ok(json!(true))
   }
 }
