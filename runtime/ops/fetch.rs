@@ -20,7 +20,7 @@ pub fn init(
       ca_data,
     });
   }
-  super::reg_sync(rt, "op_fetch", deno_fetch::op_fetch::<Permissions>);
+  super::reg_sync(rt, "op_fetch", deno_fetch::op_fetch::<Permissions, ()>);
   super::reg_async(rt, "op_fetch_send", deno_fetch::op_fetch_send);
   super::reg_async(
     rt,

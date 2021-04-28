@@ -96,6 +96,21 @@ pub fn init(isolate: &mut JsRuntime) {
   }
 }
 
+pub type SendRequestFuture =
+  Pin<Box<dyn Future<Output = Result<reqwest::Response, AnyError>>>>;
+
+pub trait SendRequest {
+  fn send(
+    &mut self,
+    _client: reqwest::Client,
+    builder: reqwest::RequestBuilder,
+  ) -> SendRequestFuture {
+    Box::pin(async move { builder.send().await.map_err(|err| err.into()) })
+  }
+}
+
+impl SendRequest for () {}
+
 pub struct HttpClientDefaults {
   pub user_agent: String,
   pub ca_data: Option<Vec<u8>>,
@@ -140,13 +155,14 @@ pub struct FetchReturn {
   request_body_rid: Option<ResourceId>,
 }
 
-pub fn op_fetch<FP>(
+pub fn op_fetch<FP, SR>(
   state: &mut OpState,
   args: FetchArgs,
   data: Option<ZeroCopyBuf>,
 ) -> Result<FetchReturn, AnyError>
 where
   FP: FetchPermissions + 'static,
+  SR: SendRequest + 'static,
 {
   let client = if let Some(rid) = args.client_rid {
     let r = state
@@ -202,11 +218,13 @@ where
         request = request.header(name, v);
       }
 
-      let fut = request.send();
+      let fut = state
+        .try_borrow_mut::<SR>()
+        .map(|sr| sr as &mut dyn SendRequest)
+        .unwrap_or(&mut ())
+        .send(client, request);
 
-      let request_rid = state
-        .resource_table
-        .add(FetchRequestResource(Box::pin(fut)));
+      let request_rid = state.resource_table.add(FetchRequestResource(fut));
 
       (request_rid, request_body_rid)
     }
@@ -380,7 +398,7 @@ pub async fn op_fetch_response_read(
 }
 
 struct FetchRequestResource(
-  Pin<Box<dyn Future<Output = Result<Response, reqwest::Error>>>>,
+  Pin<Box<dyn Future<Output = Result<Response, AnyError>>>>,
 );
 
 impl Resource for FetchRequestResource {
