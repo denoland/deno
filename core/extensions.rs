@@ -169,10 +169,8 @@ macro_rules! declare_ops {
 
 /// transforms a stringified identifier path into an op_name
 /// it also enforces that all op_names must start with "op_"
-/// ```
-/// stringify!(foo::op_bar<X>) => "foo :: op_bar < X >"
-/// op_ident(stringify!(foo::op_bar<X>)) => "op_bar"
-/// ```
+// stringify!(foo::op_bar<X>) => "foo :: op_bar < X >"
+// op_ident(stringify!(foo::op_bar<X>)) => "op_bar"
 pub fn op_ident(ident_path: &'static str) -> &'static str {
   let end = ident_path.rfind("::<").unwrap_or_else(|| ident_path.len());
   let ident_path = ident_path.get(0..end).unwrap();
