@@ -30,6 +30,9 @@ pub struct CodeLensSettings {
   /// an impact, the `references` flag needs to be `true`.
   #[serde(default)]
   pub references_all_functions: bool,
+  // Flag for providing information about tests.
+  #[serde(default)]
+  pub tests: bool,
 }
 
 impl Default for CodeLensSettings {
@@ -38,6 +41,7 @@ impl Default for CodeLensSettings {
       implementations: false,
       references: false,
       references_all_functions: false,
+      tests: false,
     }
   }
 }

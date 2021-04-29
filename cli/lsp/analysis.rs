@@ -338,6 +338,8 @@ pub enum CodeLensSource {
   Implementations,
   #[serde(rename = "references")]
   References,
+  #[serde(rename = "tests")]
+  Tests,
 }
 
 #[derive(Debug, Deserialize)]

@@ -285,6 +285,22 @@ impl Inner {
     }
   }
 
+  async fn get_test_blocks(
+    &mut self,
+    specifier: &ModuleSpecifier
+  ) -> Result<Vec<tsc::TestClodeBlock>, AnyError> {
+    let mark = self.performance.mark("get_test_blocks");
+    let blocks: Vec<tsc::TestClodeBlock> = self
+      .ts_server
+      .request(
+        self.snapshot(),
+        tsc::RequestMethod::GetTestBlocks(specifier.clone())
+      )
+      .await?;
+    self.performance.measure(mark);
+    Ok(blocks)
+  }
+
   pub(crate) fn snapshot(&self) -> StateSnapshot {
     StateSnapshot {
       assets: self.assets.clone(),
@@ -1023,6 +1039,22 @@ impl Inner {
     let mark = self.performance.mark("code_lens");
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
     let line_index = self.get_line_index_sync(&specifier).unwrap();
+
+    let mut lenses = Vec::new();
+    if self.config.settings.code_lens.tests {
+      let blocks = self.get_test_blocks(&specifier).await.map_err(|err| {
+        error!("Failed to retrieve test blocks: {}", err);
+        LspError::invalid_request()
+      })?;
+      let source = CodeLensSource::Tests;
+      let run = tsc::TestRunType::Run;
+      let debug = tsc::TestRunType::Debug;
+      for v in blocks {
+        lenses.push(v.to_code_lens(&specifier, &source, &run));
+        lenses.push(v.to_code_lens(&specifier, &source, &debug));
+      }
+    }
+
     let navigation_tree =
       self.get_navigation_tree(&specifier).await.map_err(|err| {
         error!("Failed to retrieve nav tree: {}", err);
@@ -1032,10 +1064,9 @@ impl Inner {
     // because we have to use this as a mutable in a closure, the compiler
     // can't be sure when the vector will be mutated, and so a RefCell is
     // required to "protect" the vector.
-    let cl = Rc::new(RefCell::new(Vec::new()));
+    let cl = Rc::new(RefCell::new(lenses));
     navigation_tree.walk(&|i, mp| {
       let mut code_lenses = cl.borrow_mut();
-
       // TSC Implementations Code Lens
       if self.config.settings.code_lens.implementations {
         let source = CodeLensSource::Implementations;
@@ -1304,6 +1335,9 @@ impl Inner {
               data: None,
             }
           }
+        }
+        CodeLensSource::Tests => {
+          params
         }
       };
       self.performance.measure(mark);

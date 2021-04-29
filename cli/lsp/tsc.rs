@@ -2264,6 +2264,45 @@ impl From<CompletionItemData> for GetCompletionDetailsArgs {
   }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub enum TestRunType {
+  #[serde(rename = "run")]
+  Run,
+  #[serde(rename = "debug")]
+  Debug,
+}
+
+#[derive(Debug, Serialize,Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestClodeBlock {
+  pub start: lsp::Position,
+  pub end: lsp::Position,
+  pub test_name: String,
+}
+
+impl TestClodeBlock {
+  pub fn to_code_lens(
+    &self,
+    specifier: &ModuleSpecifier,
+    source: &CodeLensSource,
+    run_type: &TestRunType
+  ) -> lsp::CodeLens {
+    let range = lsp::Range::new(
+      self.start, self.end,
+    );
+    lsp::CodeLens {
+      range,
+      command: None,
+      data: Some(json!({
+        "specifier": specifier,
+        "source": source,
+        "test_name": self.test_name,
+        "run_type": run_type
+      }))
+    }
+  }
+}
+
 /// Methods that are supported by the Language Service in the compiler isolate.
 #[derive(Debug)]
 pub enum RequestMethod {
@@ -2305,6 +2344,8 @@ pub enum RequestMethod {
   GetSmartSelectionRange((ModuleSpecifier, u32)),
   /// Get the diagnostic codes that support some form of code fix.
   GetSupportedCodeFixes,
+  // Get top-level test code blocks
+  GetTestBlocks(ModuleSpecifier),
   /// Resolve a call hierarchy item for a specific position.
   PrepareCallHierarchy((ModuleSpecifier, u32)),
   /// Resolve incoming call hierarchy items for a specific position.
@@ -2449,6 +2490,13 @@ impl RequestMethod {
           "method": "getSmartSelectionRange",
           "specifier": specifier,
           "position": position
+        })
+      }
+      RequestMethod::GetTestBlocks(specifier) => {
+        json!({
+          "id": id,
+          "method": "getTestBlocks",
+          "specifier": specifier,
         })
       }
       RequestMethod::GetSupportedCodeFixes => json!({
