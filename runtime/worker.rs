@@ -140,8 +140,6 @@ impl MainWorker {
         });
       }
 
-      js_runtime.init_extension_ops().unwrap();
-
       ops::runtime::init(js_runtime, main_module);
       ops::worker_host::init(
         js_runtime,

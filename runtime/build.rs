@@ -14,8 +14,6 @@ fn create_snapshot(
   snapshot_path: &Path,
   files: Vec<PathBuf>,
 ) {
-  js_runtime.init_extension_js().unwrap();
-
   // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
   // workspace root.
   let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
