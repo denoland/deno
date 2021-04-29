@@ -1,16 +1,16 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use std::rc::Rc;
-use std::cell::RefCell;
 use std::borrow::Cow;
+use std::cell::RefCell;
+use std::rc::Rc;
 
-use deno_core::{ResourceId, error::AnyError};
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
+use deno_core::{error::AnyError, ResourceId};
 
 #[no_mangle]
 pub fn init() -> Extension {
@@ -18,8 +18,14 @@ pub fn init() -> Extension {
     .ops(vec![
       ("op_test_sync", op_sync(op_test_sync)),
       ("op_test_async", op_async(op_test_async)),
-      ("op_test_resource_table_add", op_sync(op_test_resource_table_add)),
-      ("op_test_resource_table_get", op_sync(op_test_resource_table_get)),
+      (
+        "op_test_resource_table_add",
+        op_sync(op_test_resource_table_add),
+      ),
+      (
+        "op_test_resource_table_get",
+        op_sync(op_test_resource_table_get),
+      ),
     ])
     .build()
 }
@@ -85,5 +91,12 @@ fn op_test_resource_table_get(
 ) -> Result<String, AnyError> {
   println!("Hello from resource_table.get plugin op.");
 
-  Ok(state.resource_table.get::<TestResource>(rid).unwrap().0.clone())
+  Ok(
+    state
+      .resource_table
+      .get::<TestResource>(rid)
+      .unwrap()
+      .0
+      .clone(),
+  )
 }
