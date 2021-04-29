@@ -6,15 +6,15 @@
   const { opcall } = window.Deno.core;
 
   let opsCache = {};
-  const errorMap = {
-    // Builtin v8 / JS errors
-    Error,
-    RangeError,
-    ReferenceError,
-    SyntaxError,
-    TypeError,
-    URIError,
-  };
+  const errorMap = {};
+  // Builtin v8 / JS errors
+  registerErrorClass("Error", Error);
+  registerErrorClass("RangeError", RangeError);
+  registerErrorClass("ReferenceError", ReferenceError);
+  registerErrorClass("SyntaxError", SyntaxError);
+  registerErrorClass("TypeError", TypeError);
+  registerErrorClass("URIError", URIError);
+
   let nextPromiseId = 1;
   const promiseMap = new Map();
   const RING_SIZE = 4 * 1024;
@@ -97,13 +97,13 @@
     // .$err_class_name is a special key that should only exist on errors
     if (res?.$err_class_name) {
       const className = res.$err_class_name;
-      const ErrorClass = errorMap[className];
-      if (!ErrorClass) {
+      const errorBuilder = errorMap[className];
+      if (!errorBuilder) {
         throw new Error(
           `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
         );
       }
-      throw new ErrorClass(res.message);
+      throw errorBuilder(res.message);
     }
     return res;
   }
