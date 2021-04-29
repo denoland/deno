@@ -154,19 +154,6 @@ pub fn set_func(
   obj.set(scope, key.into(), val.into());
 }
 
-pub fn boxed_slice_to_uint8array<'sc>(
-  scope: &mut v8::HandleScope<'sc>,
-  buf: Box<[u8]>,
-) -> v8::Local<'sc, v8::Uint8Array> {
-  assert!(!buf.is_empty());
-  let buf_len = buf.len();
-  let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
-  let backing_store_shared = backing_store.make_shared();
-  let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
-  v8::Uint8Array::new(scope, ab, 0, buf_len)
-    .expect("Failed to create UintArray8")
-}
-
 pub extern "C" fn host_import_module_dynamically_callback(
   context: v8::Local<v8::Context>,
   referrer: v8::Local<v8::ScriptOrModule>,
@@ -521,20 +508,8 @@ fn encode(
   let text_str = text.to_rust_string_lossy(scope);
   let text_bytes = text_str.as_bytes().to_vec().into_boxed_slice();
 
-  let buf = if text_bytes.is_empty() {
-    let ab = v8::ArrayBuffer::new(scope, 0);
-    v8::Uint8Array::new(scope, ab, 0, 0).expect("Failed to create UintArray8")
-  } else {
-    let buf_len = text_bytes.len();
-    let backing_store =
-      v8::ArrayBuffer::new_backing_store_from_boxed_slice(text_bytes);
-    let backing_store_shared = backing_store.make_shared();
-    let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
-    v8::Uint8Array::new(scope, ab, 0, buf_len)
-      .expect("Failed to create UintArray8")
-  };
-
-  rv.set(buf.into())
+  let zbuf: ZeroCopyBuf = text_bytes.into();
+  rv.set(to_v8(scope, zbuf).unwrap())
 }
 
 fn decode(
@@ -542,15 +517,13 @@ fn decode(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let view = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(0)) {
+  let zero_copy: ZeroCopyBuf = serde_v8::from_v8(scope, args.get(0)) {
     Ok(view) => view,
     Err(_) => {
       throw_type_error(scope, "Invalid argument");
       return;
     }
   };
-
-  let zero_copy = ZeroCopyBuf::new(scope, view);
   let buf = &zero_copy;
 
   // Strip BOM
@@ -606,19 +579,8 @@ fn serialize(
   match value_serializer.write_value(scope.get_current_context(), args.get(0)) {
     Some(true) => {
       let vector = value_serializer.release();
-      let buf = {
-        let buf_len = vector.len();
-        let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(
-          vector.into_boxed_slice(),
-        );
-        let backing_store_shared = backing_store.make_shared();
-        let ab =
-          v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
-        v8::Uint8Array::new(scope, ab, 0, buf_len)
-          .expect("Failed to create UintArray8")
-      };
-
-      rv.set(buf.into());
+      let zbuf: ZeroCopyBuf = vector.into();
+      rv.set(to_v8(scope, zbuf).unwrap());
     }
     _ => {
       throw_type_error(scope, "Invalid argument");
@@ -631,15 +593,13 @@ fn deserialize(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let view = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(0)) {
+  let zero_copy: ZeroCopyBuf = serde_v8::from_v8(scope, args.get(0)) {
     Ok(view) => view,
     Err(_) => {
       throw_type_error(scope, "Invalid argument");
       return;
     }
   };
-
-  let zero_copy = ZeroCopyBuf::new(scope, view);
   let buf = &zero_copy;
 
   let serialize_deserialize = Box::new(SerializeDeserialize {});
