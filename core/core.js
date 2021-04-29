@@ -83,10 +83,10 @@
   }
 
   function registerErrorClass(className, errorClass) {
-    registerError(className, (msg) => new errorClass(msg));
+    registerErrorBuilder(className, (msg) => new errorClass(msg));
   }
 
-  function registerError(className, errorBuilder) {
+  function registerErrorBuilder(className, errorBuilder) {
     if (typeof errorMap[className] !== "undefined") {
       throw new TypeError(`Error class for "${className}" already registered`);
     }
@@ -134,7 +134,7 @@
     ops,
     close,
     resources,
-    registerError,
+    registerErrorBuilder,
     registerErrorClass,
     handleAsyncMsgFromRust,
     syncOpsCache,
