@@ -8,14 +8,13 @@
 //! only need to be able to start, cancel and await a single timer (or Delay, as Tokio
 //! calls it) for an entire Isolate. This is what is implemented here.
 
+use deno_core::declare_ops;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::channel::oneshot;
 use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -47,13 +46,17 @@ pub fn init<P: TimersPermission + 'static>() -> Extension {
       prefix "deno:op_crates/timers",
       "01_timers.js",
     ))
-    .ops(vec![
-      ("op_global_timer_stop", op_sync(op_global_timer_stop)),
-      ("op_global_timer_start", op_sync(op_global_timer_start)),
-      ("op_global_timer", op_async(op_global_timer)),
-      ("op_now", op_sync(op_now::<P>)),
-      ("op_sleep_sync", op_sync(op_sleep_sync::<P>)),
-    ])
+    .ops(declare_ops!(
+      sync[
+        op_global_timer_stop,
+        op_global_timer_start,
+        op_now::<P>,
+        op_sleep_sync::<P>,
+      ],
+      async[
+        op_global_timer,
+      ],
+    ))
     .state(|state| {
       state.put(GlobalTimer::default());
       state.put(StartTime::now());

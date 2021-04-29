@@ -1,9 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::declare_ops;
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
-use deno_core::op_sync;
 use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
@@ -95,16 +95,10 @@ pub fn init(
       "02_filereader.js",
       "03_blob_url.js",
     ))
-    .ops(vec![
-      (
-        "op_file_create_object_url",
-        op_sync(op_file_create_object_url),
-      ),
-      (
-        "op_file_revoke_object_url",
-        op_sync(op_file_revoke_object_url),
-      ),
-    ])
+    .ops(declare_ops!(sync[
+      op_file_create_object_url,
+      op_file_revoke_object_url,
+    ]))
     .state(move |state| {
       state.put(blob_url_store.clone());
       if let Some(location) = maybe_location.clone() {

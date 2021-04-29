@@ -1,11 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::declare_ops;
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
-use deno_core::op_sync;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
@@ -22,17 +22,11 @@ pub fn init() -> Extension {
       prefix "deno:op_crates/url",
       "00_url.js",
     ))
-    .ops(vec![
-      ("op_url_parse", op_sync(op_url_parse)),
-      (
-        "op_url_parse_search_params",
-        op_sync(op_url_parse_search_params),
-      ),
-      (
-        "op_url_stringify_search_params",
-        op_sync(op_url_stringify_search_params),
-      ),
-    ])
+    .ops(declare_ops!(sync[
+      op_url_parse,
+      op_url_parse_search_params,
+      op_url_stringify_search_params,
+    ]))
     .build()
 }
 

@@ -1,9 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::declare_ops;
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
-use deno_core::op_sync;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -21,10 +21,9 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       prefix "deno:op_crates/crypto",
       "01_crypto.js",
     ))
-    .ops(vec![(
-      "op_crypto_get_random_values",
-      op_sync(op_crypto_get_random_values),
-    )])
+    .ops(declare_ops!(sync[
+      op_crypto_get_random_values,
+    ]))
     .state(move |state| {
       if let Some(seed) = maybe_seed {
         state.put(StdRng::seed_from_u64(seed));

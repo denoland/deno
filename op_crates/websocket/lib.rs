@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::declare_ops;
 use deno_core::error::bad_resource_id;
 use deno_core::error::invalid_hostname;
 use deno_core::error::null_opbuf;
@@ -10,8 +11,6 @@ use deno_core::futures::stream::SplitStream;
 use deno_core::futures::SinkExt;
 use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
-use deno_core::op_async;
-use deno_core::op_sync;
 use deno_core::url;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
@@ -345,16 +344,17 @@ pub fn init<P: WebSocketPermissions + 'static>(
       prefix "deno:op_crates/websocket",
       "01_websocket.js",
     ))
-    .ops(vec![
-      (
-        "op_ws_check_permission",
-        op_sync(op_ws_check_permission::<P>),
-      ),
-      ("op_ws_create", op_async(op_ws_create::<P>)),
-      ("op_ws_send", op_async(op_ws_send)),
-      ("op_ws_close", op_async(op_ws_close)),
-      ("op_ws_next_event", op_async(op_ws_next_event)),
-    ])
+    .ops(declare_ops!(
+      sync[
+        op_ws_check_permission::<P>,
+      ],
+      async[
+        op_ws_create::<P>,
+        op_ws_send,
+        op_ws_close,
+        op_ws_next_event,
+      ],
+    ))
     .state(move |state| {
       state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));
       if let Some(ca_data) = ca_data.clone() {
