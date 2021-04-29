@@ -19,7 +19,7 @@ use std::path::PathBuf;
 #[derive(Clone)]
 struct LocationDataDir(PathBuf);
 
-pub fn init(deno_dir: Option<PathBuf>) -> Extension {
+pub fn init(location_data_dir: Option<PathBuf>) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:op_crates/webstorage",
@@ -32,14 +32,15 @@ pub fn init(deno_dir: Option<PathBuf>) -> Extension {
       ("op_webstorage_set", op_sync(op_webstorage_set)),
       ("op_webstorage_get", op_sync(op_webstorage_get)),
       ("op_webstorage_remove", op_sync(op_webstorage_remove)),
+      ("op_webstorage_clear", op_sync(op_webstorage_clear)),
       (
         "op_webstorage_iterate_keys",
         op_sync(op_webstorage_iterate_keys),
       ),
     ])
     .state(move |state| {
-      if let Some(deno_dir) = deno_dir.clone() {
-        state.put(LocationDataDir(deno_dir));
+      if let Some(location_data_dir) = location_data_dir.clone() {
+        state.put(LocationDataDir(location_data_dir));
       }
       Ok(())
     })

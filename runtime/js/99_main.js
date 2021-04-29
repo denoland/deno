@@ -193,7 +193,7 @@ delete Object.prototype.__proto__;
     );
     core.registerErrorClass(
       "DOMExceptionQuotaExceededError",
-      function DOMExceptionOperationError(msg) {
+      function DOMExceptionQuotaExceededError(msg) {
         DOMException.prototype.constructor.call(
           this,
           msg,
@@ -203,7 +203,7 @@ delete Object.prototype.__proto__;
     );
     core.registerErrorClass(
       "DOMExceptionNotSupportedError",
-      function DOMExceptionOperationError(msg) {
+      function DOMExceptionNotSupportedError(msg) {
         DOMException.prototype.constructor.call(this, msg, "NotSupported");
       },
     );
