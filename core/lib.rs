@@ -60,7 +60,7 @@ pub use crate::ops::OpAsyncFuture;
 pub use crate::ops::OpFn;
 pub use crate::ops::OpId;
 pub use crate::ops::OpPayload;
-pub use crate::ops::OpResponse;
+pub use crate::ops::OpResult;
 pub use crate::ops::OpState;
 pub use crate::ops::OpTable;
 pub use crate::ops::PromiseId;
