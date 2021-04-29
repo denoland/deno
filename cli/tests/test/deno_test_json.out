@@ -1,0 +1,74 @@
+{
+  "messages": [
+    {
+      "kind": "plan",
+      "data": {
+        "pending": 4,
+        "filtered": 0,
+        "only": false
+      }
+    },
+    {
+      "kind": "wait",
+      "data": {
+        "name": "fail1"
+      }
+    },
+    {
+      "kind": "result",
+      "data": {
+        "name": "fail1",
+        "duration": [WILDCARD],
+        "result": {
+          "failed": "[WILDCARD]"
+        }
+      }
+    },
+    {
+      "kind": "wait",
+      "data": {
+        "name": "fail2"
+      }
+    },
+    {
+      "kind": "result",
+      "data": {
+        "name": "fail2",
+        "duration": [WILDCARD],
+        "result": {
+          "failed": "[WILDCARD]"
+        }
+      }
+    },
+    {
+      "kind": "wait",
+      "data": {
+        "name": "success1"
+      }
+    },
+    {
+      "kind": "result",
+      "data": {
+        "name": "success1",
+        "duration": [WILDCARD],
+        "result": "ok"
+      }
+    },
+    {
+      "kind": "wait",
+      "data": {
+        "name": "fail3"
+      }
+    },
+    {
+      "kind": "result",
+      "data": {
+        "name": "fail3",
+        "duration": [WILDCARD],
+        "result": {
+          "failed": "[WILDCARD]"
+        }
+      }
+    }
+  ]
+}

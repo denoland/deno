@@ -15,11 +15,13 @@ use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::StreamExt;
+use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use serde::Deserialize;
+use serde::Serialize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
@@ -27,7 +29,7 @@ use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Instant;
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestResult {
   Ok,
@@ -35,7 +37,7 @@ pub enum TestResult {
   Failed(String),
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "data", rename_all = "camelCase")]
 pub enum TestMessage {
   Plan {
@@ -53,9 +55,38 @@ pub enum TestMessage {
   },
 }
 
+enum TestReporterKind {
+  Json,
+  Pretty,
+}
+
 trait TestReporter {
   fn visit_message(&mut self, message: TestMessage);
   fn done(&mut self);
+}
+
+#[derive(Serialize)]
+struct JsonTestReporter {
+  messages: Vec<TestMessage>,
+}
+
+impl JsonTestReporter {
+  fn new() -> JsonTestReporter {
+    JsonTestReporter {
+      messages: Vec::new(),
+    }
+  }
+}
+
+impl TestReporter for JsonTestReporter {
+  fn visit_message(&mut self, message: TestMessage) {
+    self.messages.push(message);
+  }
+
+  fn done(&mut self) {
+    let json = serde_json::to_string_pretty(&self);
+    println!("{}", json.unwrap());
+  }
 }
 
 struct PrettyTestReporter {
@@ -184,8 +215,14 @@ impl TestReporter for PrettyTestReporter {
   }
 }
 
-fn create_reporter(concurrent: bool) -> Box<dyn TestReporter + Send> {
-  Box::new(PrettyTestReporter::new(concurrent))
+fn create_reporter(
+  kind: TestReporterKind,
+  concurrent: bool,
+) -> Box<dyn TestReporter + Send> {
+  match kind {
+    TestReporterKind::Pretty => Box::new(PrettyTestReporter::new(concurrent)),
+    TestReporterKind::Json => Box::new(JsonTestReporter::new()),
+  }
 }
 
 fn is_supported(p: &Path) -> bool {
@@ -300,6 +337,7 @@ pub async fn run_tests(
   no_run: bool,
   fail_fast: bool,
   quiet: bool,
+  json: bool,
   allow_none: bool,
   filter: Option<String>,
   concurrent_jobs: usize,
@@ -387,7 +425,13 @@ pub async fn run_tests(
     .buffer_unordered(concurrent_jobs)
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
-  let mut reporter = create_reporter(concurrent_jobs > 1);
+  let reporter_kind = if json {
+    TestReporterKind::Json
+  } else {
+    TestReporterKind::Pretty
+  };
+
+  let mut reporter = create_reporter(reporter_kind, concurrent_jobs > 1);
   let handler = {
     tokio::task::spawn_blocking(move || {
       let mut used_only = false;

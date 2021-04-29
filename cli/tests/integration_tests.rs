@@ -2399,6 +2399,12 @@ mod integration {
       output: "test/deno_test.out",
     });
 
+    itest!(all_json {
+      args: "test --quiet --json test/test_runner_test.ts",
+      exit_code: 1,
+      output: "test/deno_test_json.out",
+    });
+
     itest!(allow_all {
       args: "test --unstable --allow-all test/allow_all.ts",
       exit_code: 0,

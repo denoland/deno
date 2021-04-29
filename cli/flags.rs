@@ -99,6 +99,7 @@ pub enum DenoSubcommand {
     no_run: bool,
     fail_fast: bool,
     quiet: bool,
+    json: bool,
     allow_none: bool,
     include: Option<Vec<String>>,
     filter: Option<String>,
@@ -1005,6 +1006,12 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .help("Run tests with this string or pattern in the test name"),
     )
     .arg(
+      Arg::with_name("json")
+        .long("json")
+        .help("Output test result in JSON format")
+        .takes_value(false),
+    )
+    .arg(
       Arg::with_name("coverage")
         .long("coverage")
         .require_equals(true)
@@ -1044,7 +1051,11 @@ report results to standard output:
 Directory arguments are expanded to all contained files matching the glob
 {*_,*.,}test.{js,mjs,ts,jsx,tsx}:
 
-  deno test src/",
+  deno test src/
+
+Print result as JSON:
+
+  deno test --json",
     )
 }
 
@@ -1665,6 +1676,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let fail_fast = matches.is_present("fail-fast");
   let allow_none = matches.is_present("allow-none");
   let quiet = matches.is_present("quiet");
+  let json = matches.is_present("json");
   let filter = matches.value_of("filter").map(String::from);
 
   if matches.is_present("script_arg") {
@@ -1707,6 +1719,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     no_run,
     fail_fast,
     quiet,
+    json,
     include,
     filter,
     allow_none,
@@ -3355,6 +3368,7 @@ mod tests {
           filter: Some("- foo".to_string()),
           allow_none: true,
           quiet: false,
+          json: false,
           include: Some(svec!["dir1/", "dir2/"]),
           concurrent_jobs: 1,
         },
