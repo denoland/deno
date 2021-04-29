@@ -24,7 +24,7 @@ impl Extension {
 
   /// returns JS source code to be loaded into the isolate (either at snapshotting,
   /// or at startup).  as a vector of a tuple of the file name, and the source code.
-  pub(crate) fn init_js(&self) -> Vec<SourcePair> {
+  pub fn init_js(&self) -> Vec<SourcePair> {
     match &self.js_files {
       Some(files) => files.clone(),
       None => vec![],
@@ -32,7 +32,7 @@ impl Extension {
   }
 
   /// Called at JsRuntime startup to initialize ops in the isolate.
-  pub(crate) fn init_ops(&mut self) -> Option<Vec<OpPair>> {
+  pub fn init_ops(&mut self) -> Option<Vec<OpPair>> {
     // TODO(@AaronO): maybe make op registration idempotent
     if self.initialized {
       panic!("init_ops called twice: not idempotent or correct");
@@ -43,7 +43,7 @@ impl Extension {
   }
 
   /// Allows setting up the initial op-state of an isolate at startup.
-  pub(crate) fn init_state(&self, state: &mut OpState) -> Result<(), AnyError> {
+  pub fn init_state(&self, state: &mut OpState) -> Result<(), AnyError> {
     match &self.opstate_fn {
       Some(ofn) => ofn(state),
       None => Ok(()),
@@ -51,7 +51,7 @@ impl Extension {
   }
 
   /// init_middleware lets us middleware op registrations, it's called before init_ops
-  pub(crate) fn init_middleware(&mut self) -> Option<Box<OpMiddlewareFn>> {
+  pub fn init_middleware(&mut self) -> Option<Box<OpMiddlewareFn>> {
     self.middleware_fn.take()
   }
 }
