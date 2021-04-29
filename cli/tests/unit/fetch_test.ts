@@ -449,6 +449,21 @@ unitTest(
 
 unitTest(
   { perms: { net: true } },
+  async function fetchSeparateInit(): Promise<void> {
+    // related to: https://github.com/denoland/deno/issues/10396
+    const req = new Request("http://localhost:4545/cli/tests/001_hello.js");
+    const init = {
+      method: "GET",
+    };
+    req.headers.set("foo", "bar");
+    const res = await fetch(req, init);
+    assertEquals(res.status, 200);
+    await res.text();
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
   async function fetchInitTypedArrayBody(): Promise<void> {
     const data = "Hello World";
     const response = await fetch("http://localhost:4545/echo_server", {
