@@ -44,7 +44,6 @@
   window.crypto = {
     getRandomValues,
   };
-  window.__bootstrap = window.__bootstrap || {};
   window.__bootstrap.crypto = {
     getRandomValues,
   };
