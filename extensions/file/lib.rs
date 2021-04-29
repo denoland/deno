@@ -90,7 +90,7 @@ pub fn init(
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
-      prefix "deno:op_crates/file",
+      prefix "deno:extensions/file",
       "01_file.js",
       "02_filereader.js",
       "03_blob_url.js",
