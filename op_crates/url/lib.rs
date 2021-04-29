@@ -4,15 +4,37 @@ use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
+use deno_core::include_js_files;
+use deno_core::op_sync;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
-use deno_core::JsRuntime;
+use deno_core::Extension;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
 use std::panic::catch_unwind;
 use std::path::PathBuf;
+
+pub fn init() -> Extension {
+  Extension::builder()
+    .js(include_js_files!(
+      prefix "deno:op_crates/url",
+      "00_url.js",
+    ))
+    .ops(vec![
+      ("op_url_parse", op_sync(op_url_parse)),
+      (
+        "op_url_parse_search_params",
+        op_sync(op_url_parse_search_params),
+      ),
+      (
+        "op_url_stringify_search_params",
+        op_sync(op_url_stringify_search_params),
+      ),
+    ])
+    .build()
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -144,14 +166,6 @@ pub fn op_url_stringify_search_params(
     .extend_pairs(args)
     .finish();
   Ok(search)
-}
-
-/// Load and execute the javascript code.
-pub fn init(isolate: &mut JsRuntime) {
-  let files = vec![("deno:op_crates/url/00_url.js", include_str!("00_url.js"))];
-  for (url, source_code) in files {
-    isolate.execute(url, source_code).unwrap();
-  }
 }
 
 pub fn get_declaration() -> PathBuf {

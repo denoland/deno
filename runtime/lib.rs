@@ -1,7 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-#![deny(warnings)]
-
 pub use deno_console;
 pub use deno_crypto;
 pub use deno_fetch;

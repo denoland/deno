@@ -16,14 +16,7 @@ pub fn create_js_runtime(setup: impl FnOnce(&mut JsRuntime)) -> JsRuntime {
   setup(&mut rt);
 
   // Init ops
-  rt.execute(
-    "init",
-    r#"
-      Deno.core.ops();
-      Deno.core.registerErrorClass('Error', Error);
-    "#,
-  )
-  .unwrap();
+  rt.sync_ops_cache();
 
   rt
 }
@@ -38,8 +31,7 @@ pub fn bench_js_sync(
   setup: impl FnOnce(&mut JsRuntime),
 ) {
   let mut runtime = create_js_runtime(setup);
-  let context = runtime.global_context();
-  let scope = &mut v8::HandleScope::with_context(runtime.v8_isolate(), context);
+  let scope = &mut runtime.handle_scope();
 
   // Increase JS iterations if profiling for nicer flamegraphs
   let inner_iters = 1000 * if is_profiling() { 10000 } else { 1 };

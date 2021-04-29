@@ -20,17 +20,7 @@ fn create_js_runtime() -> JsRuntime {
   runtime.register_op("nop", |state, _, _| {
     Op::Sync(serialize_op_result(Ok(9), state))
   });
-
-  // Init ops
-  runtime
-    .execute(
-      "init",
-      r#"
-      Deno.core.ops();
-      Deno.core.registerErrorClass('Error', Error);
-    "#,
-    )
-    .unwrap();
+  runtime.sync_ops_cache();
 
   runtime
 }
@@ -46,8 +36,7 @@ async fn op_pi_async(
 
 pub fn bench_runtime_js(b: &mut Bencher, src: &str) {
   let mut runtime = create_js_runtime();
-  let context = runtime.global_context();
-  let scope = &mut v8::HandleScope::with_context(runtime.v8_isolate(), context);
+  let scope = &mut runtime.handle_scope();
   let code = v8::String::new(scope, src).unwrap();
   let script = v8::Script::compile(scope, code, None).unwrap();
   b.iter(|| {
@@ -82,7 +71,7 @@ fn bench_op_nop(b: &mut Bencher) {
   bench_runtime_js(
     b,
     r#"for(let i=0; i < 1e3; i++) {
-      Deno.core.dispatchByName("nop", null, null, null);
+      Deno.core.opSync("nop", null, null, null);
     }"#,
   );
 }

@@ -200,7 +200,7 @@
     return inspectOptions.colors ? fn : (s) => s;
   }
 
-  function inspectFunction(value, ctx, level, inspectOptions) {
+  function inspectFunction(value, level, inspectOptions) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
     if (customInspect in value && typeof value[customInspect] === "function") {
       return String(value[customInspect]());
@@ -222,7 +222,7 @@
       Object.keys(value).length > 0 ||
       Object.getOwnPropertySymbols(value).length > 0
     ) {
-      const propString = inspectRawObject(value, ctx, level, inspectOptions);
+      const propString = inspectRawObject(value, level, inspectOptions);
       // Filter out the empty string for the case we only have
       // non-enumerable symbols.
       if (
@@ -242,7 +242,6 @@
 
   function inspectIterable(
     value,
-    ctx,
     level,
     options,
     inspectOptions,
@@ -251,7 +250,6 @@
     if (level >= inspectOptions.depth) {
       return cyan(`[${options.typeName}]`);
     }
-    ctx.add(value);
 
     const entries = [];
 
@@ -265,7 +263,6 @@
         entries.push(
           options.entryHandler(
             el,
-            ctx,
             level + 1,
             inspectOptions,
             next.bind(iter),
@@ -274,7 +271,6 @@
       }
       entriesLength++;
     }
-    ctx.delete(value);
 
     if (options.sort) {
       entries.sort();
@@ -427,17 +423,16 @@
     return entries;
   }
 
-  function inspectValue(
+  function _inspectValue(
     value,
-    ctx,
     level,
     inspectOptions,
   ) {
     const proxyDetails = core.getProxyDetails(value);
     if (proxyDetails != null) {
       return inspectOptions.showProxy
-        ? inspectProxy(proxyDetails, ctx, level, inspectOptions)
-        : inspectValue(proxyDetails[0], ctx, level, inspectOptions);
+        ? inspectProxy(proxyDetails, level, inspectOptions)
+        : inspectValue(proxyDetails[0], level, inspectOptions);
     }
 
     const green = maybeColor(colors.green, inspectOptions);
@@ -462,27 +457,41 @@
       case "bigint": // Bigints are yellow
         return yellow(`${value}n`);
       case "function": // Function string is cyan
-        if (ctx.has(value)) {
+        if (ctxHas(value)) {
           // Circular string is cyan
           return cyan("[Circular]");
         }
 
-        return inspectFunction(value, ctx, level, inspectOptions);
+        return inspectFunction(value, level, inspectOptions);
       case "object": // null is bold
         if (value === null) {
           return bold("null");
         }
 
-        if (ctx.has(value)) {
+        if (ctxHas(value)) {
           // Circular string is cyan
           return cyan("[Circular]");
         }
-
-        return inspectObject(value, ctx, level, inspectOptions);
+        return inspectObject(value, level, inspectOptions);
       default:
         // Not implemented is red
         return red("[Not Implemented]");
     }
+  }
+
+  function inspectValue(
+    value,
+    level,
+    inspectOptions,
+  ) {
+    CTX_STACK.push(value);
+    let x;
+    try {
+      x = _inspectValue(value, level, inspectOptions);
+    } finally {
+      CTX_STACK.pop();
+    }
+    return x;
   }
 
   // We can match Node's quoting behavior exactly by swapping the double quote and
@@ -544,10 +553,15 @@
     return `Symbol(${quoteString(symbol.description)})`;
   }
 
+  const CTX_STACK = [];
+  function ctxHas(x) {
+    // Only check parent contexts
+    return CTX_STACK.slice(0, CTX_STACK.length - 1).includes(x);
+  }
+
   // Print strings when they are inside of arrays or objects with quotes
   function inspectValueWithQuotes(
     value,
-    ctx,
     level,
     inspectOptions,
   ) {
@@ -560,13 +574,12 @@
         return green(quoteString(trunc)); // Quoted strings are green
       }
       default:
-        return inspectValue(value, ctx, level, inspectOptions);
+        return inspectValue(value, level, inspectOptions);
     }
   }
 
   function inspectArray(
     value,
-    ctx,
     level,
     inspectOptions,
   ) {
@@ -575,7 +588,7 @@
       typeName: "Array",
       displayName: "",
       delims: ["[", "]"],
-      entryHandler: (entry, ctx, level, inspectOptions, next) => {
+      entryHandler: (entry, level, inspectOptions, next) => {
         const [index, val] = entry;
         let i = index;
         if (!value.hasOwnProperty(i)) {
@@ -588,19 +601,18 @@
           const ending = emptyItems > 1 ? "s" : "";
           return dim(`<${emptyItems} empty item${ending}>`);
         } else {
-          return inspectValueWithQuotes(val, ctx, level, inspectOptions);
+          return inspectValueWithQuotes(val, level, inspectOptions);
         }
       },
       group: inspectOptions.compact,
       sort: false,
     };
-    return inspectIterable(value, ctx, level, options, inspectOptions);
+    return inspectIterable(value, level, options, inspectOptions);
   }
 
   function inspectTypedArray(
     typedArrayName,
     value,
-    ctx,
     level,
     inspectOptions,
   ) {
@@ -609,19 +621,18 @@
       typeName: typedArrayName,
       displayName: `${typedArrayName}(${valueLength})`,
       delims: ["[", "]"],
-      entryHandler: (entry, ctx, level, inspectOptions) => {
+      entryHandler: (entry, level, inspectOptions) => {
         const val = entry[1];
-        return inspectValueWithQuotes(val, ctx, level + 1, inspectOptions);
+        return inspectValueWithQuotes(val, level + 1, inspectOptions);
       },
       group: inspectOptions.compact,
       sort: false,
     };
-    return inspectIterable(value, ctx, level, options, inspectOptions);
+    return inspectIterable(value, level, options, inspectOptions);
   }
 
   function inspectSet(
     value,
-    ctx,
     level,
     inspectOptions,
   ) {
@@ -629,19 +640,18 @@
       typeName: "Set",
       displayName: "Set",
       delims: ["{", "}"],
-      entryHandler: (entry, ctx, level, inspectOptions) => {
+      entryHandler: (entry, level, inspectOptions) => {
         const val = entry[1];
-        return inspectValueWithQuotes(val, ctx, level + 1, inspectOptions);
+        return inspectValueWithQuotes(val, level + 1, inspectOptions);
       },
       group: false,
       sort: inspectOptions.sorted,
     };
-    return inspectIterable(value, ctx, level, options, inspectOptions);
+    return inspectIterable(value, level, options, inspectOptions);
   }
 
   function inspectMap(
     value,
-    ctx,
     level,
     inspectOptions,
   ) {
@@ -649,23 +659,21 @@
       typeName: "Map",
       displayName: "Map",
       delims: ["{", "}"],
-      entryHandler: (entry, ctx, level, inspectOptions) => {
+      entryHandler: (entry, level, inspectOptions) => {
         const [key, val] = entry;
         return `${
           inspectValueWithQuotes(
             key,
-            ctx,
             level + 1,
             inspectOptions,
           )
-        } => ${inspectValueWithQuotes(val, ctx, level + 1, inspectOptions)}`;
+        } => ${inspectValueWithQuotes(val, level + 1, inspectOptions)}`;
       },
       group: false,
       sort: inspectOptions.sorted,
     };
     return inspectIterable(
       value,
-      ctx,
       level,
       options,
       inspectOptions,
@@ -716,7 +724,6 @@
 
   function inspectPromise(
     value,
-    ctx,
     level,
     inspectOptions,
   ) {
@@ -736,7 +743,6 @@
     const str = `${prefix}${
       inspectValueWithQuotes(
         result,
-        ctx,
         level + 1,
         inspectOptions,
       )
@@ -751,18 +757,14 @@
 
   function inspectProxy(
     targetAndHandler,
-    ctx,
     level,
     inspectOptions,
   ) {
-    return `Proxy ${
-      inspectArray(targetAndHandler, ctx, level, inspectOptions)
-    }`;
+    return `Proxy ${inspectArray(targetAndHandler, level, inspectOptions)}`;
   }
 
   function inspectRawObject(
     value,
-    ctx,
     level,
     inspectOptions,
   ) {
@@ -771,7 +773,6 @@
     if (level >= inspectOptions.depth) {
       return cyan("[Object]"); // wrappers are in cyan
     }
-    ctx.add(value);
 
     let baseString;
 
@@ -812,7 +813,6 @@
         const inspectedValue = error == null
           ? inspectValueWithQuotes(
             propertyValue,
-            ctx,
             level + 1,
             inspectOptions,
           )
@@ -827,7 +827,7 @@
         } else {
           entries.push(
             `${maybeQuoteString(key)}: ${
-              inspectValueWithQuotes(value[key], ctx, level + 1, inspectOptions)
+              inspectValueWithQuotes(value[key], level + 1, inspectOptions)
             }`,
           );
         }
@@ -853,7 +853,6 @@
         const inspectedValue = error == null
           ? inspectValueWithQuotes(
             propertyValue,
-            ctx,
             level + 1,
             inspectOptions,
           )
@@ -868,7 +867,7 @@
         } else {
           entries.push(
             `[${maybeQuoteSymbol(key)}]: ${
-              inspectValueWithQuotes(value[key], ctx, level + 1, inspectOptions)
+              inspectValueWithQuotes(value[key], level + 1, inspectOptions)
             }`,
           );
         }
@@ -878,8 +877,6 @@
     // Making sure color codes are ignored when calculating the total length
     const totalLength = entries.length + level +
       colors.stripColor(entries.join("")).length;
-
-    ctx.delete(value);
 
     if (entries.length === 0) {
       baseString = "{}";
@@ -902,7 +899,6 @@
 
   function inspectObject(
     value,
-    consoleContext,
     level,
     inspectOptions,
   ) {
@@ -927,7 +923,7 @@
     if (value instanceof Error) {
       return String(value.stack);
     } else if (Array.isArray(value)) {
-      return inspectArray(value, consoleContext, level, inspectOptions);
+      return inspectArray(value, level, inspectOptions);
     } else if (value instanceof Number) {
       return inspectNumberObject(value, inspectOptions);
     } else if (value instanceof Boolean) {
@@ -935,15 +931,15 @@
     } else if (value instanceof String) {
       return inspectStringObject(value, inspectOptions);
     } else if (value instanceof Promise) {
-      return inspectPromise(value, consoleContext, level, inspectOptions);
+      return inspectPromise(value, level, inspectOptions);
     } else if (value instanceof RegExp) {
       return inspectRegExp(value, inspectOptions);
     } else if (value instanceof Date) {
       return inspectDate(value, inspectOptions);
     } else if (value instanceof Set) {
-      return inspectSet(value, consoleContext, level, inspectOptions);
+      return inspectSet(value, level, inspectOptions);
     } else if (value instanceof Map) {
-      return inspectMap(value, consoleContext, level, inspectOptions);
+      return inspectMap(value, level, inspectOptions);
     } else if (value instanceof WeakSet) {
       return inspectWeakSet(inspectOptions);
     } else if (value instanceof WeakMap) {
@@ -952,13 +948,12 @@
       return inspectTypedArray(
         Object.getPrototypeOf(value).constructor.name,
         value,
-        consoleContext,
         level,
         inspectOptions,
       );
     } else {
       // Otherwise, default object formatting
-      return inspectRawObject(value, consoleContext, level, inspectOptions);
+      return inspectRawObject(value, level, inspectOptions);
     }
   }
 
@@ -1408,7 +1403,6 @@
               // Format as an object.
               formattedArg = inspectValue(
                 args[a++],
-                new Set(),
                 0,
                 rInspectOptions,
               );
@@ -1451,7 +1445,7 @@
         string += args[a];
       } else {
         // Use default maximum depth for null or undefined arguments.
-        string += inspectValue(args[a], new Set(), 0, rInspectOptions);
+        string += inspectValue(args[a], 0, rInspectOptions);
       }
     }
 
@@ -1615,7 +1609,7 @@
       }
 
       const stringifyValue = (value) =>
-        inspectValueWithQuotes(value, new Set(), 0, {
+        inspectValueWithQuotes(value, 0, {
           ...DEFAULT_INSPECT_OPTIONS,
           depth: 1,
         });
@@ -1774,7 +1768,7 @@
     value,
     inspectOptions = {},
   ) {
-    return inspectValue(value, new Set(), 0, {
+    return inspectValue(value, 0, {
       ...DEFAULT_INSPECT_OPTIONS,
       ...inspectOptions,
       // TODO(nayeemrmn): Indent level is not supported.

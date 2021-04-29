@@ -1,20 +1,14 @@
 use bencher::{benchmark_group, benchmark_main, Bencher};
 
-use deno_core::op_sync;
 use deno_core::v8;
 use deno_core::JsRuntime;
+use deno_core::RuntimeOptions;
 
 fn create_js_runtime() -> JsRuntime {
-  let mut runtime = JsRuntime::new(Default::default());
-  runtime.register_op("op_url_parse", op_sync(deno_url::op_url_parse));
-  runtime.register_op(
-    "op_url_parse_search_params",
-    op_sync(deno_url::op_url_parse_search_params),
-  );
-  runtime.register_op(
-    "op_url_stringify_search_params",
-    op_sync(deno_url::op_url_stringify_search_params),
-  );
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![deno_url::init()],
+    ..Default::default()
+  });
 
   runtime
     .execute(
@@ -22,16 +16,10 @@ fn create_js_runtime() -> JsRuntime {
       "globalThis.__bootstrap = (globalThis.__bootstrap || {});",
     )
     .unwrap();
-  deno_url::init(&mut runtime);
-  runtime
-    .execute(
-      "init",
-      r#"
-      Deno.core.ops();
-      Deno.core.registerErrorClass('Error', Error);
-    "#,
-    )
-    .unwrap();
+
+  runtime.init_extension_js().unwrap();
+  runtime.init_extension_ops().unwrap();
+
   runtime
     .execute("setup", "const { URL } = globalThis.__bootstrap.url;")
     .unwrap();
@@ -41,8 +29,7 @@ fn create_js_runtime() -> JsRuntime {
 
 pub fn bench_runtime_js(b: &mut Bencher, src: &str) {
   let mut runtime = create_js_runtime();
-  let context = runtime.global_context();
-  let scope = &mut v8::HandleScope::with_context(runtime.v8_isolate(), context);
+  let scope = &mut runtime.handle_scope();
   let code = v8::String::new(scope, src).unwrap();
   let script = v8::Script::compile(scope, code, None).unwrap();
   b.iter(|| {

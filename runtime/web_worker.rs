@@ -3,11 +3,12 @@ use crate::colors;
 use crate::inspector::DenoInspector;
 use crate::inspector::InspectorServer;
 use crate::js;
-use crate::metrics::RuntimeMetrics;
+use crate::metrics;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::tokio_util::create_basic_runtime;
 use deno_core::error::AnyError;
+use deno_core::error::Context as ErrorContext;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
@@ -17,6 +18,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::v8;
+use deno_core::Extension;
 use deno_core::GetErrorClassFn;
 use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
@@ -175,11 +177,37 @@ impl WebWorker {
     worker_id: u32,
     options: &WebWorkerOptions,
   ) -> Self {
+    let extensions: Vec<Extension> = vec![
+      // Web APIs
+      deno_webidl::init(),
+      deno_console::init(),
+      deno_url::init(),
+      deno_web::init(),
+      deno_file::init(
+        options.blob_url_store.clone(),
+        Some(main_module.clone()),
+      ),
+      deno_fetch::init::<Permissions>(
+        options.user_agent.clone(),
+        options.ca_data.clone(),
+      ),
+      deno_websocket::init::<Permissions>(
+        options.user_agent.clone(),
+        options.ca_data.clone(),
+      ),
+      deno_crypto::init(options.seed),
+      deno_webgpu::init(options.unstable),
+      deno_timers::init::<Permissions>(),
+      // Metrics
+      metrics::init(),
+    ];
+
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(js::deno_isolate_init()),
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
+      extensions,
       ..Default::default()
     });
 
@@ -219,21 +247,16 @@ impl WebWorker {
       {
         let op_state = js_runtime.op_state();
         let mut op_state = op_state.borrow_mut();
-        op_state.put(RuntimeMetrics::default());
         op_state.put::<Permissions>(permissions);
         op_state.put(ops::UnstableChecker {
           unstable: options.unstable,
         });
       }
 
+      js_runtime.init_extension_ops().unwrap();
+
       ops::web_worker::init(js_runtime, sender.clone(), handle);
-      ops::runtime::init(js_runtime, main_module.clone());
-      ops::fetch::init(
-        js_runtime,
-        options.user_agent.clone(),
-        options.ca_data.clone(),
-      );
-      ops::timers::init(js_runtime);
+      ops::runtime::init(js_runtime, main_module);
       ops::worker_host::init(
         js_runtime,
         Some(sender),
@@ -241,20 +264,7 @@ impl WebWorker {
       );
       ops::reg_sync(js_runtime, "op_close", deno_core::op_close);
       ops::reg_sync(js_runtime, "op_resources", deno_core::op_resources);
-      ops::url::init(js_runtime);
-      ops::file::init(
-        js_runtime,
-        options.blob_url_store.clone(),
-        Some(main_module),
-      );
       ops::io::init(js_runtime);
-      ops::webgpu::init(js_runtime);
-      ops::websocket::init(
-        js_runtime,
-        options.user_agent.clone(),
-        options.ca_data.clone(),
-      );
-      ops::crypto::init(js_runtime, options.seed);
 
       if options.use_deno_namespace {
         ops::fs_events::init(js_runtime);
@@ -283,6 +293,7 @@ impl WebWorker {
           t.add(stream);
         }
       }
+      js_runtime.sync_ops_cache();
 
       worker
     }
@@ -320,7 +331,9 @@ impl WebWorker {
 
   /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
   pub fn execute(&mut self, js_source: &str) -> Result<(), AnyError> {
-    let path = env::current_dir().unwrap().join("__anonymous__");
+    let path = env::current_dir()
+      .context("Failed to get current working directory")?
+      .join("__anonymous__");
     let url = Url::from_file_path(path).unwrap();
     self.js_runtime.execute(url.as_str(), js_source)
   }

@@ -1,47 +1,24 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::JsRuntime;
+use deno_core::include_js_files;
+use deno_core::Extension;
 use std::path::PathBuf;
 
 /// Load and execute the javascript code.
-pub fn init(isolate: &mut JsRuntime) {
-  let files = vec![
-    (
-      "deno:op_crates/web/00_infra.js",
-      include_str!("00_infra.js"),
-    ),
-    (
-      "deno:op_crates/web/01_dom_exception.js",
-      include_str!("01_dom_exception.js"),
-    ),
-    (
-      "deno:op_crates/web/01_mimesniff.js",
-      include_str!("01_mimesniff.js"),
-    ),
-    (
-      "deno:op_crates/web/02_event.js",
-      include_str!("02_event.js"),
-    ),
-    (
-      "deno:op_crates/web/03_abort_signal.js",
-      include_str!("03_abort_signal.js"),
-    ),
-    (
-      "deno:op_crates/web/04_global_interfaces.js",
-      include_str!("04_global_interfaces.js"),
-    ),
-    (
-      "deno:op_crates/web/08_text_encoding.js",
-      include_str!("08_text_encoding.js"),
-    ),
-    (
-      "deno:op_crates/web/12_location.js",
-      include_str!("12_location.js"),
-    ),
-  ];
-  for (url, source_code) in files {
-    isolate.execute(url, source_code).unwrap();
-  }
+pub fn init() -> Extension {
+  Extension::builder()
+    .js(include_js_files!(
+      prefix "deno:op_crates/web",
+      "00_infra.js",
+      "01_dom_exception.js",
+      "01_mimesniff.js",
+      "02_event.js",
+      "03_abort_signal.js",
+      "04_global_interfaces.js",
+      "08_text_encoding.js",
+      "12_location.js",
+    ))
+    .build()
 }
 
 pub fn get_declaration() -> PathBuf {

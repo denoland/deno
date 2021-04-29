@@ -2,7 +2,9 @@
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
-use deno_core::JsRuntime;
+use deno_core::include_js_files;
+use deno_core::op_sync;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
@@ -15,16 +17,33 @@ use std::fmt;
 use std::path::PathBuf;
 
 #[derive(Clone)]
-pub struct LocationDataDir(pub Option<PathBuf>);
+struct LocationDataDir(PathBuf);
 
-/// Load and execute the javascript code.
-pub fn init(isolate: &mut JsRuntime) {
-  isolate
-    .execute(
-      "deno:op_crates/webstorage/01_webstorage.js",
-      include_str!("01_webstorage.js"),
-    )
-    .unwrap();
+pub fn init(deno_dir: Option<PathBuf>) -> Extension {
+  Extension::builder()
+    .js(include_js_files!(
+      prefix "deno:op_crates/webstorage",
+      "01_webstorage.js",
+    ))
+    .ops(vec![
+      ("op_webstorage_open", op_sync(op_webstorage_open)),
+      ("op_webstorage_length", op_sync(op_webstorage_length)),
+      ("op_webstorage_key", op_sync(op_webstorage_key)),
+      ("op_webstorage_set", op_sync(op_webstorage_set)),
+      ("op_webstorage_get", op_sync(op_webstorage_get)),
+      ("op_webstorage_remove", op_sync(op_webstorage_remove)),
+      (
+        "op_webstorage_iterate_keys",
+        op_sync(op_webstorage_iterate_keys),
+      ),
+    ])
+    .state(move |state| {
+      if let Some(deno_dir) = deno_dir.clone() {
+        state.put(LocationDataDir(deno_dir));
+      }
+      Ok(())
+    })
+    .build()
 }
 
 pub fn get_declaration() -> PathBuf {
@@ -45,18 +64,13 @@ pub fn op_webstorage_open(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
   let connection = if persistent {
-    let path =
-      state
-        .borrow::<LocationDataDir>()
-        .0
-        .as_ref()
-        .ok_or_else(|| {
-          DomExceptionNotSupportedError::new(
-            "LocalStorage is not supported in this context.",
-          )
-        })?;
-    std::fs::create_dir_all(&path)?;
-    Connection::open(path.join("local_storage"))?
+    let path = state.try_borrow::<LocationDataDir>().ok_or_else(|| {
+      DomExceptionNotSupportedError::new(
+        "LocalStorage is not supported in this context.",
+      )
+    })?;
+    std::fs::create_dir_all(&path.0)?;
+    Connection::open(path.0.join("local_storage"))?
   } else {
     Connection::open_in_memory()?
   };

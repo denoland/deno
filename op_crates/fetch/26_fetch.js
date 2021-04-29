@@ -32,8 +32,8 @@
   ];
 
   /**
-   * @param {{ method: string, url: string, headers: [string, string][], clientRid: number | null, hasBody: boolean }} args 
-   * @param {Uint8Array | null} body 
+   * @param {{ method: string, url: string, headers: [string, string][], clientRid: number | null, hasBody: boolean }} args
+   * @param {Uint8Array | null} body
    * @returns {{ requestRid: number, requestBodyRid: number | null }}
    */
   function opFetch(args, body) {
@@ -41,7 +41,7 @@
   }
 
   /**
-   * @param {number} rid 
+   * @param {number} rid
    * @returns {Promise<{ status: number, statusText: string, headers: [string, string][], url: string, responseRid: number }>}
    */
   function opFetchSend(rid) {
@@ -49,8 +49,8 @@
   }
 
   /**
-   * @param {number} rid 
-   * @param {Uint8Array} body 
+   * @param {number} rid
+   * @param {Uint8Array} body
    * @returns {Promise<void>}
    */
   function opFetchRequestWrite(rid, body) {
@@ -58,8 +58,8 @@
   }
 
   /**
-   * @param {number} rid 
-   * @param {Uint8Array} body 
+   * @param {number} rid
+   * @param {Uint8Array} body
    * @returns {Promise<number>}
    */
   function opFetchResponseRead(rid, body) {
@@ -105,7 +105,7 @@
   }
 
   /**
-   * @param {InnerRequest} req 
+   * @param {InnerRequest} req
    * @param {boolean} recursive
    * @returns {Promise<InnerResponse>}
    */
@@ -268,8 +268,8 @@
   }
 
   /**
-   * @param {RequestInfo} input 
-   * @param {RequestInit} init 
+   * @param {RequestInfo} input
+   * @param {RequestInit} init
    */
   async function fetch(input, init = {}) {
     const prefix = "Failed to call 'fetch'";
