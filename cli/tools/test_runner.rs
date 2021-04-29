@@ -53,8 +53,14 @@ pub enum TestMessage {
   },
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct TestEvent {
+  pub origin: String,
+  pub message: TestMessage,
+}
+
 trait TestReporter {
-  fn visit_message(&mut self, message: TestMessage);
+  fn visit_event(&mut self, event: TestEvent);
   fn done(&mut self);
 }
 
@@ -87,14 +93,14 @@ impl PrettyTestReporter {
 }
 
 impl TestReporter for PrettyTestReporter {
-  fn visit_message(&mut self, message: TestMessage) {
-    match &message {
+  fn visit_event(&mut self, event: TestEvent) {
+    match &event.message {
       TestMessage::Plan {
         pending,
         filtered,
         only: _,
       } => {
-        println!("running {} tests", pending);
+        println!("running {} tests from {}", pending, event.origin);
         self.pending += pending;
         self.filtered_out += filtered;
       }
@@ -249,7 +255,7 @@ pub async fn run_test_file(
   main_module: ModuleSpecifier,
   test_module: ModuleSpecifier,
   permissions: Permissions,
-  channel: Sender<TestMessage>,
+  channel: Sender<TestEvent>,
 ) -> Result<(), AnyError> {
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions, true);
@@ -259,7 +265,7 @@ pub async fn run_test_file(
     js_runtime
       .op_state()
       .borrow_mut()
-      .put::<Sender<TestMessage>>(channel.clone());
+      .put::<Sender<TestEvent>>(channel.clone());
   }
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
@@ -357,7 +363,7 @@ pub async fn run_tests(
 
   program_state.file_fetcher.insert_cached(test_file);
 
-  let (sender, receiver) = channel::<TestMessage>();
+  let (sender, receiver) = channel::<TestEvent>();
 
   let join_handles = test_modules.iter().map(move |main_module| {
     let program_state = program_state.clone();
@@ -395,8 +401,8 @@ pub async fn run_tests(
       let mut planned = 0;
       let mut reported = 0;
 
-      for message in receiver.iter() {
-        match message.clone() {
+      for event in receiver.iter() {
+        match event.message.clone() {
           TestMessage::Plan {
             pending,
             filtered: _,
@@ -422,7 +428,7 @@ pub async fn run_tests(
           _ => {}
         }
 
-        reporter.visit_message(message);
+        reporter.visit_event(event);
 
         if has_error && fail_fast {
           break;
