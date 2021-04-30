@@ -227,7 +227,7 @@ fn op<F>(op_fn: F) -> Box<OpFn>
 where
   F: Fn(&mut State, Value) -> Result<Value, AnyError> + 'static,
 {
-  op_sync(move |s, args, _bufs| {
+  op_sync(move |s, args, _: ()| {
     let state = s.borrow_mut::<State>();
     op_fn(state, args)
   })

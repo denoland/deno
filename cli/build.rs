@@ -156,7 +156,7 @@ fn create_compiler_snapshot(
   });
   js_runtime.register_op(
     "op_build_info",
-    op_sync(move |_state, _args: Value, _bufs| {
+    op_sync(move |_state, _args: Value, _: ()| {
       Ok(json!({
         "buildSpecifier": build_specifier,
         "libs": build_libs,
@@ -167,7 +167,7 @@ fn create_compiler_snapshot(
   // files, but a slightly different implementation at build time.
   js_runtime.register_op(
     "op_load",
-    op_sync(move |_state, args, _bufs| {
+    op_sync(move |_state, args, _: ()| {
       let v: LoadArgs = serde_json::from_value(args)?;
       // we need a basic file to send to tsc to warm it up.
       if v.specifier == build_specifier {

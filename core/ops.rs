@@ -5,7 +5,6 @@ use crate::error::AnyError;
 use crate::gotham_state::GothamState;
 use crate::resources::ResourceTable;
 use crate::runtime::GetErrorClassFn;
-use crate::ZeroCopyBuf;
 use futures::Future;
 use indexmap::IndexMap;
 use rusty_v8 as v8;
@@ -20,41 +19,28 @@ use std::rc::Rc;
 
 pub type PromiseId = u64;
 pub type OpAsyncFuture = Pin<Box<dyn Future<Output = (PromiseId, OpResult)>>>;
-pub type OpFn =
-  dyn Fn(Rc<RefCell<OpState>>, OpPayload, Option<ZeroCopyBuf>) -> Op + 'static;
+pub type OpFn = dyn Fn(Rc<RefCell<OpState>>, OpPayload) -> Op + 'static;
 pub type OpId = usize;
 
 pub struct OpPayload<'a, 'b, 'c> {
-  pub(crate) scope: Option<&'a mut v8::HandleScope<'b>>,
-  pub(crate) value: Option<v8::Local<'c, v8::Value>>,
+  pub(crate) scope: &'a mut v8::HandleScope<'b>,
+  pub(crate) a: v8::Local<'c, v8::Value>,
+  pub(crate) b: v8::Local<'c, v8::Value>,
   pub(crate) promise_id: PromiseId,
 }
 
 impl<'a, 'b, 'c> OpPayload<'a, 'b, 'c> {
-  pub fn new(
-    scope: &'a mut v8::HandleScope<'b>,
-    value: v8::Local<'c, v8::Value>,
-    promise_id: PromiseId,
-  ) -> Self {
-    Self {
-      scope: Some(scope),
-      value: Some(value),
-      promise_id,
-    }
-  }
-
-  pub fn empty() -> Self {
-    Self {
-      scope: None,
-      value: None,
-      promise_id: 0,
-    }
-  }
-
-  pub fn deserialize<T: DeserializeOwned>(self) -> Result<T, AnyError> {
-    serde_v8::from_v8(self.scope.unwrap(), self.value.unwrap())
+  pub fn deserialize<T: DeserializeOwned, U: DeserializeOwned>(
+    self,
+  ) -> Result<(T, U), AnyError> {
+    let a: T = serde_v8::from_v8(self.scope, self.a)
       .map_err(AnyError::from)
-      .map_err(|e| type_error(format!("Error parsing args: {}", e)))
+      .map_err(|e| type_error(format!("Error parsing args: {}", e)))?;
+
+    let b: U = serde_v8::from_v8(self.scope, self.b)
+      .map_err(AnyError::from)
+      .map_err(|e| type_error(format!("Error parsing args: {}", e)))?;
+    Ok((a, b))
   }
 }
 
@@ -145,7 +131,7 @@ pub struct OpTable(IndexMap<String, Rc<OpFn>>);
 impl OpTable {
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(Rc<RefCell<OpState>>, OpPayload, Option<ZeroCopyBuf>) -> Op + 'static,
+    F: Fn(Rc<RefCell<OpState>>, OpPayload) -> Op + 'static,
   {
     let (op_id, prev) = self.0.insert_full(name.to_owned(), Rc::new(op_fn));
     assert!(prev.is_none());
@@ -160,7 +146,6 @@ impl OpTable {
     op_id: OpId,
     state: Rc<RefCell<OpState>>,
     payload: OpPayload,
-    buf: Option<ZeroCopyBuf>,
   ) -> Op {
     let op_fn = state
       .borrow()
@@ -169,7 +154,7 @@ impl OpTable {
       .get_index(op_id)
       .map(|(_, op_fn)| op_fn.clone());
     match op_fn {
-      Some(f) => (f)(state, payload, buf),
+      Some(f) => (f)(state, payload),
       None => Op::NotFound,
     }
   }
@@ -177,11 +162,7 @@ impl OpTable {
 
 impl Default for OpTable {
   fn default() -> Self {
-    fn dummy(
-      _state: Rc<RefCell<OpState>>,
-      _p: OpPayload,
-      _b: Option<ZeroCopyBuf>,
-    ) -> Op {
+    fn dummy(_state: Rc<RefCell<OpState>>, _p: OpPayload) -> Op {
       unreachable!()
     }
     Self(once(("ops".to_owned(), Rc::new(dummy) as _)).collect())
@@ -200,11 +181,11 @@ mod tests {
     let bar_id;
     {
       let op_table = &mut state.borrow_mut().op_table;
-      foo_id = op_table
-        .register_op("foo", |_, _, _| Op::Sync(OpResult::Ok(321.into())));
+      foo_id =
+        op_table.register_op("foo", |_, _| Op::Sync(OpResult::Ok(321.into())));
       assert_eq!(foo_id, 1);
-      bar_id = op_table
-        .register_op("bar", |_, _, _| Op::Sync(OpResult::Ok(123.into())));
+      bar_id =
+        op_table.register_op("bar", |_, _| Op::Sync(OpResult::Ok(123.into())));
       assert_eq!(bar_id, 2);
     }
 
