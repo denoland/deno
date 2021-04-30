@@ -153,19 +153,6 @@ pub fn set_func(
   obj.set(scope, key.into(), val.into());
 }
 
-pub fn boxed_slice_to_uint8array<'sc>(
-  scope: &mut v8::HandleScope<'sc>,
-  buf: Box<[u8]>,
-) -> v8::Local<'sc, v8::Uint8Array> {
-  assert!(!buf.is_empty());
-  let buf_len = buf.len();
-  let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
-  let backing_store_shared = backing_store.make_shared();
-  let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
-  v8::Uint8Array::new(scope, ab, 0, buf_len)
-    .expect("Failed to create UintArray8")
-}
-
 pub extern "C" fn host_import_module_dynamically_callback(
   context: v8::Local<v8::Context>,
   referrer: v8::Local<v8::ScriptOrModule>,
