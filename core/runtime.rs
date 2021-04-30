@@ -313,9 +313,16 @@ impl JsRuntime {
       extensions: options.extensions,
     };
 
+    // TODO(@AaronO): diff extensions inited in snapshot and those provided
+    // for now we assume that snapshot and extensions always match
     if !has_startup_snapshot {
       js_runtime.js_init();
+      js_runtime.init_extension_js().unwrap();
     }
+    // Init extension ops
+    js_runtime.init_extension_ops().unwrap();
+    js_runtime.sync_ops_cache();
+    // Init async ops callback
     js_runtime.init_recv_cb();
 
     js_runtime
@@ -366,8 +373,7 @@ impl JsRuntime {
   }
 
   /// Initializes JS of provided Extensions
-  // NOTE: this will probably change when streamlining snapshot flow
-  pub fn init_extension_js(&mut self) -> Result<(), AnyError> {
+  fn init_extension_js(&mut self) -> Result<(), AnyError> {
     // Take extensions to avoid double-borrow
     let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
     for m in extensions.iter_mut() {
@@ -384,8 +390,7 @@ impl JsRuntime {
   }
 
   /// Initializes ops of provided Extensions
-  // NOTE: this will probably change when streamlining snapshot flow
-  pub fn init_extension_ops(&mut self) -> Result<(), AnyError> {
+  fn init_extension_ops(&mut self) -> Result<(), AnyError> {
     let op_state = self.op_state();
     // Take extensions to avoid double-borrow
     let mut extensions: Vec<Extension> = std::mem::take(&mut self.extensions);
