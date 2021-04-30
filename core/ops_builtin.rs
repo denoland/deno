@@ -50,11 +50,10 @@ pub fn op_close(
 /// This op must be wrapped in `op_sync`.
 pub fn op_print(
   _state: &mut OpState,
-  args: (String, Option<u8>),
+  args: (String, bool),
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
-  let (msg, channel) = args;
-  let is_err = channel.unwrap_or_default() != 0;
+  let (msg, is_err) = args;
   if is_err {
     eprint!("{}", msg);
     stdout().flush().unwrap();
