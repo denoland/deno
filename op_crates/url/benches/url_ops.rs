@@ -11,13 +11,6 @@ fn create_js_runtime() -> JsRuntime {
   });
 
   runtime
-    .execute(
-      "bootstrap",
-      "globalThis.__bootstrap = (globalThis.__bootstrap || {});",
-    )
-    .unwrap();
-
-  runtime
     .execute("setup", "const { URL } = globalThis.__bootstrap.url;")
     .unwrap();
 
