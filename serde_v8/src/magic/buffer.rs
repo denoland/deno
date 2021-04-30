@@ -7,7 +7,7 @@ use std::ops::DerefMut;
 
 use super::zero_copy_buf::ZeroCopyBuf;
 
-// An asymetric wrapper around ZeroCopyBuf,
+// An asymmetric wrapper around ZeroCopyBuf,
 // allowing us to use a single type for familiarity
 pub enum MagicBuffer {
   FromV8(ZeroCopyBuf),
