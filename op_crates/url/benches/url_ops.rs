@@ -10,13 +10,6 @@ fn create_js_runtime() -> JsRuntime {
     ..Default::default()
   });
 
-  runtime
-    .execute(
-      "bootstrap",
-      "globalThis.__bootstrap = (globalThis.__bootstrap || {});",
-    )
-    .unwrap();
-
   runtime.init_extension_js().unwrap();
   runtime.init_extension_ops().unwrap();
 

@@ -309,6 +309,16 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       return visitor.visit_u64(hack);
     }
 
+    // Magic Buffer
+    if name == magic::buffer::BUF_NAME {
+      let zero_copy_buf =
+        v8::Local::<v8::ArrayBufferView>::try_from(self.input)
+          .map(|view| magic::zero_copy_buf::ZeroCopyBuf::new(self.scope, view))
+          .map_err(|_| Error::ExpectedArray)?;
+      let data: [u8; 32] = unsafe { std::mem::transmute(zero_copy_buf) };
+      return visitor.visit_bytes(&data);
+    }
+
     // Regular struct
     let obj = v8::Local::<v8::Object>::try_from(self.input).unwrap();
     let map = ObjectAccess {
