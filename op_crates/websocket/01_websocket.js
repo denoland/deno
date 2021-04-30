@@ -118,44 +118,32 @@
         url: wsURL.href,
         protocols: protocols.join(", "),
       }).then((create) => {
-        if (create.success) {
-          this.#rid = create.rid;
-          this.#extensions = create.extensions;
-          this.#protocol = create.protocol;
+        this.#rid = create.rid;
+        this.#extensions = create.extensions;
+        this.#protocol = create.protocol;
 
-          if (this.#readyState === CLOSING) {
-            core.opAsync("op_ws_close", {
-              rid: this.#rid,
-            }).then(() => {
-              this.#readyState = CLOSED;
+        if (this.#readyState === CLOSING) {
+          core.opAsync("op_ws_close", {
+            rid: this.#rid,
+          }).then(() => {
+            this.#readyState = CLOSED;
 
-              const errEvent = new ErrorEvent("error");
-              errEvent.target = this;
-              this.dispatchEvent(errEvent);
+            const errEvent = new ErrorEvent("error");
+            errEvent.target = this;
+            this.dispatchEvent(errEvent);
 
-              const event = new CloseEvent("close");
-              event.target = this;
-              this.dispatchEvent(event);
-              tryClose(this.#rid);
-            });
-          } else {
-            this.#readyState = OPEN;
-            const event = new Event("open");
+            const event = new CloseEvent("close");
             event.target = this;
             this.dispatchEvent(event);
-
-            this.#eventLoop();
-          }
+            tryClose(this.#rid);
+          });
         } else {
-          this.#readyState = CLOSED;
+          this.#readyState = OPEN;
+          const event = new Event("open");
+          event.target = this;
+          this.dispatchEvent(event);
 
-          const errEvent = new ErrorEvent("error");
-          errEvent.target = this;
-          this.dispatchEvent(errEvent);
-
-          const closeEvent = new CloseEvent("close");
-          closeEvent.target = this;
-          this.dispatchEvent(closeEvent);
+          this.#eventLoop();
         }
       }).catch((err) => {
         this.#readyState = CLOSED;
@@ -362,7 +350,9 @@
           case "error": {
             this.#readyState = CLOSED;
 
-            const errorEv = new ErrorEvent("error");
+            const errorEv = new ErrorEvent("error", {
+              message: value,
+            });
             errorEv.target = this;
             this.dispatchEvent(errorEv);
 
