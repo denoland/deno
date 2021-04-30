@@ -23,16 +23,14 @@ use crate::standalone::MAGIC_TRAILER;
 pub async fn get_base_binary(
   deno_dir: &DenoDir,
   target: Option<String>,
-  lite: bool,
 ) -> Result<Vec<u8>, AnyError> {
-  if target.is_none() && !lite {
+  if target.is_none() {
     let path = std::env::current_exe()?;
     return Ok(tokio::fs::read(path).await?);
   }
 
   let target = target.unwrap_or_else(|| env!("TARGET").to_string());
-  let exe_name = if lite { "denort" } else { "deno" };
-  let binary_name = format!("{}-{}.zip", exe_name, target);
+  let binary_name = format!("deno-{}.zip", target);
 
   let binary_path_suffix = if crate::version::is_canary() {
     format!("canary/{}/{}", crate::version::GIT_COMMIT_HASH, binary_name)
@@ -50,7 +48,7 @@ pub async fn get_base_binary(
   let archive_data = tokio::fs::read(binary_path).await?;
   let base_binary_path = crate::tools::upgrade::unpack(
     archive_data,
-    exe_name,
+    "deno",
     target.contains("windows"),
   )?;
   let base_binary = tokio::fs::read(base_binary_path).await?;

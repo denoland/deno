@@ -69,7 +69,7 @@
 
   /**
    * @param  {...Uint8Array} bytesArrays
-   * @returns {Uint8Array} 
+   * @returns {Uint8Array}
    */
   function concatUint8Arrays(...bytesArrays) {
     let byteLength = 0;
@@ -90,7 +90,7 @@
 
   /** @typedef {BufferSource | Blob | string} BlobPart */
 
-  /** 
+  /**
      * @param {BlobPart[]} parts
      * @param {string} endings
      * @returns {Uint8Array}
@@ -125,7 +125,7 @@
   }
 
   /**
-   * @param {string} str 
+   * @param {string} str
    * @returns {string}
    */
   function normalizeType(str) {
@@ -186,7 +186,7 @@
       return this.#type;
     }
 
-    /** 
+    /**
      * @param {number} [start]
      * @param {number} [end]
      * @param {string} [contentType]
@@ -346,9 +346,9 @@
     [_LastModfied];
 
     /**
-     * @param {BlobPart[]} fileBits 
-     * @param {string} fileName 
-     * @param {FilePropertyBag} options 
+     * @param {BlobPart[]} fileBits
+     * @param {string} fileName
+     * @param {FilePropertyBag} options
      */
     constructor(fileBits, fileName, options = {}) {
       const prefix = "Failed to construct 'File'";

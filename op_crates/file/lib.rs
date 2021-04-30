@@ -2,8 +2,10 @@
 
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
+use deno_core::include_js_files;
+use deno_core::op_sync;
 use deno_core::url::Url;
-use deno_core::JsRuntime;
+use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::ZeroCopyBuf;
 use std::collections::HashMap;
@@ -82,22 +84,35 @@ pub fn op_file_revoke_object_url(
   Ok(())
 }
 
-/// Load and execute the javascript code.
-pub fn init(isolate: &mut JsRuntime) {
-  let files = vec![
-    ("deno:op_crates/file/01_file.js", include_str!("01_file.js")),
-    (
-      "deno:op_crates/file/02_filereader.js",
-      include_str!("02_filereader.js"),
-    ),
-    (
-      "deno:op_crates/file/03_blob_url.js",
-      include_str!("03_blob_url.js"),
-    ),
-  ];
-  for (url, source_code) in files {
-    isolate.execute(url, source_code).unwrap();
-  }
+pub fn init(
+  blob_url_store: BlobUrlStore,
+  maybe_location: Option<Url>,
+) -> Extension {
+  Extension::builder()
+    .js(include_js_files!(
+      prefix "deno:op_crates/file",
+      "01_file.js",
+      "02_filereader.js",
+      "03_blob_url.js",
+    ))
+    .ops(vec![
+      (
+        "op_file_create_object_url",
+        op_sync(op_file_create_object_url),
+      ),
+      (
+        "op_file_revoke_object_url",
+        op_sync(op_file_revoke_object_url),
+      ),
+    ])
+    .state(move |state| {
+      state.put(blob_url_store.clone());
+      if let Some(location) = maybe_location.clone() {
+        state.put(Location(location));
+      }
+      Ok(())
+    })
+    .build()
 }
 
 pub fn get_declaration() -> PathBuf {

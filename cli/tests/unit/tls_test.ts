@@ -32,7 +32,7 @@ unitTest(
 
     await assertThrowsAsync(async () => {
       await Deno.connectTls({ hostname: "127.0.0.1", port: 3567 });
-    }, Error);
+    }, TypeError);
 
     listener.close();
   },

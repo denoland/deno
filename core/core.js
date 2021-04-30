@@ -60,10 +60,12 @@
   }
 
   function ops() {
-    // op id 0 is a special value to retrieve the map of registered ops.
-    const newOpsCache = Object.fromEntries(opcall(0));
-    opsCache = Object.freeze(newOpsCache);
     return opsCache;
+  }
+
+  function syncOpsCache() {
+    // op id 0 is a special value to retrieve the map of registered ops.
+    opsCache = Object.freeze(Object.fromEntries(opcall(0)));
   }
 
   function handleAsyncMsgFromRust() {
@@ -122,6 +124,9 @@
     opSync("op_close", rid);
   }
 
+  // Provide bootstrap namespace
+  window.__bootstrap = {};
+  // Extra Deno.core.* exports
   Object.assign(window.Deno.core, {
     opAsync,
     opSync,
@@ -130,5 +135,6 @@
     resources,
     registerErrorClass,
     handleAsyncMsgFromRust,
+    syncOpsCache,
   });
 })(this);

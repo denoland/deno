@@ -4529,7 +4529,7 @@
   };
 
   /**
-   * @param {Uint8Array} bytes 
+   * @param {Uint8Array} bytes
    */
   function decode(bytes, encoding) {
     const BOMEncoding = BOMSniff(bytes);
@@ -4543,7 +4543,7 @@
   }
 
   /**
-   * @param {Uint8Array} bytes 
+   * @param {Uint8Array} bytes
    */
   function BOMSniff(bytes) {
     const BOM = bytes.subarray(0, 3);
@@ -4559,7 +4559,6 @@
   window.TextDecoder = TextDecoder;
   window.atob = atob;
   window.btoa = btoa;
-  window.__bootstrap = window.__bootstrap || {};
   window.__bootstrap.encoding = { decode };
   window.__bootstrap.base64 = base64;
 })(this);

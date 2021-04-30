@@ -13,6 +13,10 @@ use deno_core::futures;
 use deno_core::futures::channel::oneshot;
 use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
+use deno_core::include_js_files;
+use deno_core::op_async;
+use deno_core::op_sync;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;
@@ -28,12 +32,34 @@ pub trait TimersPermission {
   fn check_unstable(&self, state: &OpState, api_name: &'static str);
 }
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  rt.execute(
-    "deno:op_crates/timers/01_timers.js",
-    include_str!("01_timers.js"),
-  )
-  .unwrap();
+pub struct NoTimersPermission;
+
+impl TimersPermission for NoTimersPermission {
+  fn allow_hrtime(&mut self) -> bool {
+    false
+  }
+  fn check_unstable(&self, _: &OpState, _: &'static str) {}
+}
+
+pub fn init<P: TimersPermission + 'static>() -> Extension {
+  Extension::builder()
+    .js(include_js_files!(
+      prefix "deno:op_crates/timers",
+      "01_timers.js",
+    ))
+    .ops(vec![
+      ("op_global_timer_stop", op_sync(op_global_timer_stop)),
+      ("op_global_timer_start", op_sync(op_global_timer_start)),
+      ("op_global_timer", op_async(op_global_timer)),
+      ("op_now", op_sync(op_now::<P>)),
+      ("op_sleep_sync", op_sync(op_sleep_sync::<P>)),
+    ])
+    .state(|state| {
+      state.put(GlobalTimer::default());
+      state.put(StartTime::now());
+      Ok(())
+    })
+    .build()
 }
 
 pub type StartTime = Instant;

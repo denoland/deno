@@ -1,6 +1,50 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+use crate::ops::UnstableChecker;
+use deno_core::error::AnyError;
+use deno_core::op_sync;
 use deno_core::serde::Serialize;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
+use deno_core::Extension;
+use deno_core::OpState;
+use deno_core::ZeroCopyBuf;
 
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![("op_metrics", op_sync(op_metrics))])
+    .state(|state| {
+      state.put(RuntimeMetrics::default());
+      Ok(())
+    })
+    .middleware(metrics_op)
+    .build()
+}
+
+#[derive(serde::Serialize)]
+struct MetricsReturn {
+  combined: OpMetrics,
+  ops: Value,
+}
+
+#[allow(clippy::unnecessary_wraps)]
+fn op_metrics(
+  state: &mut OpState,
+  _args: (),
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<MetricsReturn, AnyError> {
+  let m = state.borrow::<RuntimeMetrics>();
+  let combined = m.combined_metrics();
+  let unstable_checker = state.borrow::<UnstableChecker>();
+  let maybe_ops = if unstable_checker.unstable {
+    Some(&m.ops)
+  } else {
+    None
+  };
+  Ok(MetricsReturn {
+    combined,
+    ops: json!(maybe_ops),
+  })
+}
 #[derive(Default, Debug)]
 pub struct RuntimeMetrics {
   pub ops: HashMap<&'static str, OpMetrics>,

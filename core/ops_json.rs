@@ -25,15 +25,15 @@ use std::rc::Rc;
 /// ```ignore
 /// let mut runtime = JsRuntime::new(...);
 /// runtime.register_op("hello", deno_core::op_sync(Self::hello_op));
+/// runtime.sync_ops_cache();
 /// ```
 ///
 /// ...it can be invoked from JS using the provided name, for example:
 /// ```js
-/// Deno.core.ops();
 /// let result = Deno.core.opSync("function_name", args);
 /// ```
 ///
-/// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
+/// `runtime.sync_ops_cache()` must be called after registering new ops
 /// A more complete example is available in the examples directory.
 pub fn op_sync<F, V, R>(op_fn: F) -> Box<OpFn>
 where
@@ -63,15 +63,15 @@ where
 /// ```ignore
 /// let mut runtime = JsRuntime::new(...);
 /// runtime.register_op("hello", deno_core::op_async(Self::hello_op));
+/// runtime.sync_ops_cache();
 /// ```
 ///
 /// ...it can be invoked from JS using the provided name, for example:
 /// ```js
-/// Deno.core.ops();
 /// let future = Deno.core.opAsync("function_name", args);
 /// ```
 ///
-/// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
+/// `runtime.sync_ops_cache()` must be called after registering new ops
 /// A more complete example is available in the examples directory.
 pub fn op_async<F, V, R, RV>(op_fn: F) -> Box<OpFn>
 where
@@ -116,13 +116,11 @@ mod tests {
     }
 
     runtime.register_op("op_throw", op_async(op_throw));
+    runtime.sync_ops_cache();
     runtime
       .execute(
         "<init>",
         r#"
-    // First we initialize the ops cache. This maps op names to their id's.
-    Deno.core.ops();
-
     async function f1() {
       await Deno.core.opAsync('op_throw', 'hello');
     }

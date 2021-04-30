@@ -1,4 +1,4 @@
-Check [WILDCARD]/$deno$test.ts
+Check [WILDCARD]/test_finally_cleartimeout.ts
 running 2 tests
 test error ... FAILED ([WILDCARD])
 test success ... ok ([WILDCARD])

@@ -1,10 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::error::bad_resource_id;
 use crate::error::type_error;
 use crate::error::AnyError;
 use crate::gotham_state::GothamState;
-use crate::resources::ResourceId;
 use crate::resources::ResourceTable;
 use crate::runtime::GetErrorClassFn;
 use crate::ZeroCopyBuf;
@@ -21,7 +19,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 
 pub type PromiseId = u64;
-pub type OpAsyncFuture = Pin<Box<dyn Future<Output = (PromiseId, OpResponse)>>>;
+pub type OpAsyncFuture = Pin<Box<dyn Future<Output = (PromiseId, OpResult)>>>;
 pub type OpFn =
   dyn Fn(Rc<RefCell<OpState>>, OpPayload, Option<ZeroCopyBuf>) -> Op + 'static;
 pub type OpId = usize;
@@ -60,13 +58,8 @@ impl<'a, 'b, 'c> OpPayload<'a, 'b, 'c> {
   }
 }
 
-pub enum OpResponse {
-  Value(OpResult),
-  Buffer(Box<[u8]>),
-}
-
 pub enum Op {
-  Sync(OpResponse),
+  Sync(OpResult),
   Async(OpAsyncFuture),
   /// AsyncUnref is the variation of Async, which doesn't block the program
   /// exiting.
@@ -102,14 +95,14 @@ pub struct OpError {
 pub fn serialize_op_result<R: Serialize + 'static>(
   result: Result<R, AnyError>,
   state: Rc<RefCell<OpState>>,
-) -> OpResponse {
-  OpResponse::Value(match result {
+) -> OpResult {
+  match result {
     Ok(v) => OpResult::Ok(v.into()),
     Err(err) => OpResult::Err(OpError {
       class_name: (state.borrow().get_error_class_fn)(&err),
       message: err.to_string(),
     }),
-  })
+  }
 }
 
 /// Maintains the resources and ops inside a JS runtime.
@@ -195,41 +188,6 @@ impl Default for OpTable {
   }
 }
 
-/// Return map of resources with id as key
-/// and string representation as value.
-///
-/// This op must be wrapped in `op_sync`.
-pub fn op_resources(
-  state: &mut OpState,
-  _args: (),
-  _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Vec<(ResourceId, String)>, AnyError> {
-  let serialized_resources = state
-    .resource_table
-    .names()
-    .map(|(rid, name)| (rid, name.to_string()))
-    .collect();
-  Ok(serialized_resources)
-}
-
-/// Remove a resource from the resource table.
-///
-/// This op must be wrapped in `op_sync`.
-pub fn op_close(
-  state: &mut OpState,
-  rid: Option<ResourceId>,
-  _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<(), AnyError> {
-  // TODO(@AaronO): drop Option after improving type-strictness balance in serde_v8
-  let rid = rid.ok_or_else(|| type_error("missing or invalid `rid`"))?;
-  state
-    .resource_table
-    .close(rid)
-    .ok_or_else(bad_resource_id)?;
-
-  Ok(())
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -242,34 +200,13 @@ mod tests {
     let bar_id;
     {
       let op_table = &mut state.borrow_mut().op_table;
-      foo_id = op_table.register_op("foo", |_, _, _| {
-        Op::Sync(OpResponse::Buffer(b"oof!"[..].into()))
-      });
+      foo_id = op_table
+        .register_op("foo", |_, _, _| Op::Sync(OpResult::Ok(321.into())));
       assert_eq!(foo_id, 1);
-      bar_id = op_table.register_op("bar", |_, _, _| {
-        Op::Sync(OpResponse::Buffer(b"rab!"[..].into()))
-      });
+      bar_id = op_table
+        .register_op("bar", |_, _, _| Op::Sync(OpResult::Ok(123.into())));
       assert_eq!(bar_id, 2);
     }
-
-    let foo_res = OpTable::route_op(
-      foo_id,
-      state.clone(),
-      OpPayload::empty(),
-      Default::default(),
-    );
-    assert!(
-      matches!(foo_res, Op::Sync(OpResponse::Buffer(buf)) if &*buf == b"oof!")
-    );
-    let bar_res = OpTable::route_op(
-      bar_id,
-      state.clone(),
-      OpPayload::empty(),
-      Default::default(),
-    );
-    assert!(
-      matches!(bar_res, Op::Sync(OpResponse::Buffer(buf)) if &*buf == b"rab!")
-    );
 
     let mut catalog_entries = OpTable::op_entries(state);
     catalog_entries.sort_by(|(_, id1), (_, id2)| id1.partial_cmp(id2).unwrap());

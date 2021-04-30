@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
+use deno_core::error::invalid_hostname;
 use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -8,11 +9,14 @@ use deno_core::futures::stream::SplitSink;
 use deno_core::futures::stream::SplitStream;
 use deno_core::futures::SinkExt;
 use deno_core::futures::StreamExt;
+use deno_core::include_js_files;
+use deno_core::op_async;
+use deno_core::op_sync;
 use deno_core::url;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
-use deno_core::JsRuntime;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -175,8 +179,8 @@ where
       }
 
       let tls_connector = TlsConnector::from(Arc::new(config));
-      let dnsname =
-        DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
+      let dnsname = DNSNameRef::try_from_ascii_str(domain)
+        .map_err(|_| invalid_hostname(domain))?;
       let tls_socket = tls_connector.connect(dnsname, tcp_socket).await?;
       MaybeTlsStream::Rustls(tls_socket)
     }
@@ -285,7 +289,7 @@ pub async fn op_ws_close(
 #[serde(tag = "kind", content = "value", rename_all = "camelCase")]
 pub enum NextEventResponse {
   String(String),
-  Binary(Vec<u8>),
+  Binary(ZeroCopyBuf),
   Close { code: u16, reason: String },
   Ping,
   Pong,
@@ -309,10 +313,7 @@ pub async fn op_ws_next_event(
   let val = rx.next().or_cancel(cancel).await?;
   let res = match val {
     Some(Ok(Message::Text(text))) => NextEventResponse::String(text),
-    Some(Ok(Message::Binary(data))) => {
-      // TODO(ry): don't use json to send binary data.
-      NextEventResponse::Binary(data)
-    }
+    Some(Ok(Message::Binary(data))) => NextEventResponse::Binary(data.into()),
     Some(Ok(Message::Close(Some(frame)))) => NextEventResponse::Close {
       code: frame.code.into(),
       reason: frame.reason.to_string(),
@@ -332,21 +333,34 @@ pub async fn op_ws_next_event(
   Ok(res)
 }
 
-/// Load and execute the javascript code.
-pub fn init(isolate: &mut JsRuntime) {
-  let files = vec![
-    (
-      "deno:op_crates/websocket/01_websocket.js",
-      include_str!("01_websocket.js"),
-    ),
-    (
-      "deno:op_crates/websocket/02_websocketstream.js",
-      include_str!("02_websocketstream.js"),
-    ),
-  ];
-  for (url, source_code) in files {
-    isolate.execute(url, source_code).unwrap();
-  }
+pub fn init<P: WebSocketPermissions + 'static>(
+  user_agent: String,
+  ca_data: Option<Vec<u8>>,
+) -> Extension {
+  Extension::builder()
+    .js(include_js_files!(
+      prefix "deno:op_crates/websocket",
+      "01_websocket.js",
+      "02_websocketstream.js",
+    ))
+    .ops(vec![
+      (
+        "op_ws_check_permission",
+        op_sync(op_ws_check_permission::<P>),
+      ),
+      ("op_ws_create", op_async(op_ws_create::<P>)),
+      ("op_ws_send", op_async(op_ws_send)),
+      ("op_ws_close", op_async(op_ws_close)),
+      ("op_ws_next_event", op_async(op_ws_next_event)),
+    ])
+    .state(move |state| {
+      state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));
+      if let Some(ca_data) = ca_data.clone() {
+        state.put::<WsCaData>(WsCaData(ca_data));
+      }
+      Ok(())
+    })
+    .build()
 }
 
 pub fn get_declaration() -> PathBuf {

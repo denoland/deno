@@ -67,7 +67,7 @@
 
   /**
    * Turn a string of chars into a regex safe matcher.
-   * @param {string[]} chars 
+   * @param {string[]} chars
    * @returns {string}
    */
   function regexMatcher(chars) {
