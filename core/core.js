@@ -124,8 +124,8 @@
     opSync("op_close", rid);
   }
 
-  function print(str, ioChannel) {
-    opSync("op_print", [str, ioChannel]);
+  function print(str, isErr) {
+    opSync("op_print", [str, isErr]);
   }
 
   Object.assign(window.Deno.core, {
