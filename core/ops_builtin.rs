@@ -4,6 +4,7 @@ use crate::error::AnyError;
 use crate::resources::ResourceId;
 use crate::OpState;
 use crate::ZeroCopyBuf;
+use std::io::{stdout, Write};
 
 // TODO(@AaronO): provide these ops grouped as a runtime extension
 // e.g:
@@ -41,5 +42,25 @@ pub fn op_close(
     .close(rid)
     .ok_or_else(bad_resource_id)?;
 
+  Ok(())
+}
+
+/// Builtin utility to print to stdout/stderr
+///
+/// This op must be wrapped in `op_sync`.
+pub fn op_print(
+  _state: &mut OpState,
+  args: (String, Option<u8>),
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
+  let (msg, channel) = args;
+  let is_err = channel.unwrap_or_default() != 0;
+  if is_err {
+    eprint!("{}", msg);
+    stdout().flush().unwrap();
+  } else {
+    print!("{}", msg);
+    stdout().flush().unwrap();
+  }
   Ok(())
 }
