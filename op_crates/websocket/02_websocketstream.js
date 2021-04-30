@@ -157,8 +157,9 @@
                   break;
                 }
                 case "error": {
-                  this.#closed.reject();
-                  controller.error(value);
+                  let err = new Error(value);
+                  this.#closed.reject(err);
+                  controller.error(err);
                   tryClose(this.#rid);
                   break;
                 }
@@ -198,9 +199,13 @@
             protocol: create.protocol ?? "",
           });
         } else {
-          this.#connection.reject();
-          this.#closed.reject();
+          const err = new Error(create.error);
+          this.#connection.reject(err);
+          this.#closed.reject(err);
         }
+      }).catch((err) => {
+        this.#connection.reject(err);
+        this.#closed.reject(err);
       });
     }
 
@@ -251,6 +256,8 @@
             code: closeInfo?.code ?? 1005,
             reason: closeInfo?.reason,
           });
+        }).catch((err) => {
+          this.#closed.reject(err);
         });
       }
     }

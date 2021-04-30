@@ -111,6 +111,7 @@ pub struct CreateArgs {
 #[serde(rename_all = "camelCase")]
 pub struct CreateResponse {
   success: bool,
+  error: Option<String>,
   rid: Option<ResourceId>,
   protocol: Option<String>,
   extensions: Option<String>,
@@ -155,9 +156,10 @@ where
   let try_socket = TcpStream::connect(addr).await;
   let tcp_socket = match try_socket.map_err(TungsteniteError::Io) {
     Ok(socket) => socket,
-    Err(_) => {
+    Err(e) => {
       return Ok(CreateResponse {
         success: false,
+        error: Some(e.to_string()),
         rid: None,
         protocol: None,
         extensions: None,
@@ -216,6 +218,7 @@ where
     .collect::<String>();
   Ok(CreateResponse {
     success: true,
+    error: None,
     rid: Some(rid),
     protocol: Some(protocol.to_string()),
     extensions: Some(extensions),
