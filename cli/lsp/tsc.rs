@@ -1832,7 +1832,7 @@ where
   })
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SourceSnapshotArgs {
   specifier: String,
@@ -1846,14 +1846,17 @@ fn op_dispose(
   state: &mut State,
   args: SourceSnapshotArgs,
 ) -> Result<bool, AnyError> {
-  let mark = state.state_snapshot.performance.mark("op_dispose");
+  let mark = state
+    .state_snapshot
+    .performance
+    .mark("op_dispose", Some(&args));
   let specifier = resolve_url(&args.specifier)?;
   state.snapshots.remove(&(specifier, args.version.into()));
   state.state_snapshot.performance.measure(mark);
   Ok(true)
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct GetChangeRangeArgs {
   specifier: String,
@@ -1868,7 +1871,10 @@ fn op_get_change_range(
   state: &mut State,
   args: GetChangeRangeArgs,
 ) -> Result<Value, AnyError> {
-  let mark = state.state_snapshot.performance.mark("op_get_change_range");
+  let mark = state
+    .state_snapshot
+    .performance
+    .mark("op_get_change_range", Some(&args));
   let specifier = resolve_url(&args.specifier)?;
   cache_snapshot(state, &specifier, args.version.clone())?;
   if let Some(current) = state
@@ -1912,7 +1918,10 @@ fn op_get_length(
   state: &mut State,
   args: SourceSnapshotArgs,
 ) -> Result<usize, AnyError> {
-  let mark = state.state_snapshot.performance.mark("op_get_length");
+  let mark = state
+    .state_snapshot
+    .performance
+    .mark("op_get_length", Some(&args));
   let specifier = resolve_url(&args.specifier)?;
   if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier) {
     Ok(asset.length)
@@ -1927,7 +1936,7 @@ fn op_get_length(
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct GetTextArgs {
   specifier: String,
@@ -1940,7 +1949,10 @@ fn op_get_text(
   state: &mut State,
   args: GetTextArgs,
 ) -> Result<String, AnyError> {
-  let mark = state.state_snapshot.performance.mark("op_get_text");
+  let mark = state
+    .state_snapshot
+    .performance
+    .mark("op_get_text", Some(&args));
   let specifier = resolve_url(&args.specifier)?;
   let content =
     if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
@@ -1961,7 +1973,10 @@ fn op_resolve(
   state: &mut State,
   args: ResolveArgs,
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
-  let mark = state.state_snapshot.performance.mark("op_resolve");
+  let mark = state
+    .state_snapshot
+    .performance
+    .mark("op_resolve", Some(&args));
   let mut resolved = Vec::new();
   let referrer = resolve_url(&args.base)?;
   let sources = &mut state.state_snapshot.sources;
@@ -2069,7 +2084,7 @@ fn op_script_names(
   )
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ScriptVersionArgs {
   specifier: String,
@@ -2079,7 +2094,10 @@ fn op_script_version(
   state: &mut State,
   args: ScriptVersionArgs,
 ) -> Result<Option<String>, AnyError> {
-  let mark = state.state_snapshot.performance.mark("op_script_version");
+  let mark = state
+    .state_snapshot
+    .performance
+    .mark("op_script_version", Some(&args));
   let specifier = resolve_url(&args.specifier)?;
   if specifier.scheme() == "asset" {
     return if state.state_snapshot.assets.contains_key(&specifier) {

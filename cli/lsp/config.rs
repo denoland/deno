@@ -113,17 +113,18 @@ pub struct WorkspaceSettings {
   /// Code lens specific settings for the workspace.
   #[serde(default)]
   pub code_lens: CodeLensSettings,
-  #[serde(default)]
-
-  /// Suggestion (auto-completion) settings for the workspace.
-  pub suggest: CompletionSettings,
 
   /// A flag that indicates if linting is enabled for the workspace.
+  pub internal_debug: bool,
+
   #[serde(default)]
   pub lint: bool,
 
   /// A flag that indicates if Dene should validate code against the unstable
   /// APIs for the workspace.
+  #[serde(default)]
+  pub suggest: CompletionSettings,
+
   #[serde(default)]
   pub unstable: bool,
 }
