@@ -15,13 +15,13 @@ mod ops_json;
 pub mod plugin_api;
 mod resources;
 mod runtime;
-mod zero_copy_buf;
 
 // Re-exports
 pub use futures;
 pub use rusty_v8 as v8;
 pub use serde;
 pub use serde_json;
+pub use serde_v8::Buffer as ZeroCopyBuf;
 pub use url;
 
 pub use crate::async_cancel::CancelFuture;
@@ -60,7 +60,7 @@ pub use crate::ops::OpAsyncFuture;
 pub use crate::ops::OpFn;
 pub use crate::ops::OpId;
 pub use crate::ops::OpPayload;
-pub use crate::ops::OpResponse;
+pub use crate::ops::OpResult;
 pub use crate::ops::OpState;
 pub use crate::ops::OpTable;
 pub use crate::ops::PromiseId;
@@ -79,7 +79,6 @@ pub use crate::runtime::Snapshot;
 // pub use crate::runtime_modules::include_js_files!;
 pub use crate::extensions::Extension;
 pub use crate::extensions::OpMiddlewareFn;
-pub use crate::zero_copy_buf::ZeroCopyBuf;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()
