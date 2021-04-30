@@ -19,7 +19,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 
 pub type PromiseId = u64;
-pub type OpAsyncFuture = Pin<Box<dyn Future<Output = (PromiseId, OpResponse)>>>;
+pub type OpAsyncFuture = Pin<Box<dyn Future<Output = (PromiseId, OpResult)>>>;
 pub type OpFn =
   dyn Fn(Rc<RefCell<OpState>>, OpPayload, Option<ZeroCopyBuf>) -> Op + 'static;
 pub type OpId = usize;
@@ -58,13 +58,8 @@ impl<'a, 'b, 'c> OpPayload<'a, 'b, 'c> {
   }
 }
 
-pub enum OpResponse {
-  Value(OpResult),
-  Buffer(Box<[u8]>),
-}
-
 pub enum Op {
-  Sync(OpResponse),
+  Sync(OpResult),
   Async(OpAsyncFuture),
   /// AsyncUnref is the variation of Async, which doesn't block the program
   /// exiting.
@@ -100,14 +95,14 @@ pub struct OpError {
 pub fn serialize_op_result<R: Serialize + 'static>(
   result: Result<R, AnyError>,
   state: Rc<RefCell<OpState>>,
-) -> OpResponse {
-  OpResponse::Value(match result {
+) -> OpResult {
+  match result {
     Ok(v) => OpResult::Ok(v.into()),
     Err(err) => OpResult::Err(OpError {
       class_name: (state.borrow().get_error_class_fn)(&err),
       message: err.to_string(),
     }),
-  })
+  }
 }
 
 /// Maintains the resources and ops inside a JS runtime.
@@ -205,34 +200,13 @@ mod tests {
     let bar_id;
     {
       let op_table = &mut state.borrow_mut().op_table;
-      foo_id = op_table.register_op("foo", |_, _, _| {
-        Op::Sync(OpResponse::Buffer(b"oof!"[..].into()))
-      });
+      foo_id = op_table
+        .register_op("foo", |_, _, _| Op::Sync(OpResult::Ok(321.into())));
       assert_eq!(foo_id, 1);
-      bar_id = op_table.register_op("bar", |_, _, _| {
-        Op::Sync(OpResponse::Buffer(b"rab!"[..].into()))
-      });
+      bar_id = op_table
+        .register_op("bar", |_, _, _| Op::Sync(OpResult::Ok(123.into())));
       assert_eq!(bar_id, 2);
     }
-
-    let foo_res = OpTable::route_op(
-      foo_id,
-      state.clone(),
-      OpPayload::empty(),
-      Default::default(),
-    );
-    assert!(
-      matches!(foo_res, Op::Sync(OpResponse::Buffer(buf)) if &*buf == b"oof!")
-    );
-    let bar_res = OpTable::route_op(
-      bar_id,
-      state.clone(),
-      OpPayload::empty(),
-      Default::default(),
-    );
-    assert!(
-      matches!(bar_res, Op::Sync(OpResponse::Buffer(buf)) if &*buf == b"rab!")
-    );
 
     let mut catalog_entries = OpTable::op_entries(state);
     catalog_entries.sort_by(|(_, id1), (_, id2)| id1.partial_cmp(id2).unwrap());

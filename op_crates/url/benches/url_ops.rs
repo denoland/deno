@@ -10,9 +10,6 @@ fn create_js_runtime() -> JsRuntime {
     ..Default::default()
   });
 
-  runtime.init_extension_js().unwrap();
-  runtime.init_extension_ops().unwrap();
-
   runtime
     .execute("setup", "const { URL } = globalThis.__bootstrap.url;")
     .unwrap();
