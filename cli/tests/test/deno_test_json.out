@@ -1,72 +1,99 @@
 {
-  "messages": [
+  "events": [
     {
-      "kind": "plan",
-      "data": {
-        "pending": 4,
-        "filtered": 0,
-        "only": false
-      }
-    },
-    {
-      "kind": "wait",
-      "data": {
-        "name": "fail1"
-      }
-    },
-    {
-      "kind": "result",
-      "data": {
-        "name": "fail1",
-        "duration": [WILDCARD],
-        "result": {
-          "failed": "[WILDCARD]"
+      "origin": "file:///home/caspervonb/deno/cli/tests/test/test_runner_test.ts",
+      "message": {
+        "kind": "plan",
+        "data": {
+          "pending": 4,
+          "filtered": 0,
+          "only": false
         }
       }
     },
     {
-      "kind": "wait",
-      "data": {
-        "name": "fail2"
-      }
-    },
-    {
-      "kind": "result",
-      "data": {
-        "name": "fail2",
-        "duration": [WILDCARD],
-        "result": {
-          "failed": "[WILDCARD]"
+      "origin": "file:///home/caspervonb/deno/cli/tests/test/test_runner_test.ts",
+      "message": {
+        "kind": "wait",
+        "data": {
+          "name": "fail1"
         }
       }
     },
     {
-      "kind": "wait",
-      "data": {
-        "name": "success1"
+      "origin": "file:///home/caspervonb/deno/cli/tests/test/test_runner_test.ts",
+      "message": {
+        "kind": "result",
+        "data": {
+          "name": "fail1",
+          "duration": [WILDCARD],
+          "result": {
+            "failed": "[WILDCARD]"
+          }
+        }
       }
     },
     {
-      "kind": "result",
-      "data": {
-        "name": "success1",
-        "duration": [WILDCARD],
-        "result": "ok"
+      "origin": "file:///home/caspervonb/deno/cli/tests/test/test_runner_test.ts",
+      "message": {
+        "kind": "wait",
+        "data": {
+          "name": "fail2"
+        }
       }
     },
     {
-      "kind": "wait",
-      "data": {
-        "name": "fail3"
+      "origin": "file:///home/caspervonb/deno/cli/tests/test/test_runner_test.ts",
+      "message": {
+        "kind": "result",
+        "data": {
+          "name": "fail2",
+          "duration": [WILDCARD],
+          "result": {
+            "failed": "[WILDCARD]"
+          }
+        }
       }
     },
     {
-      "kind": "result",
-      "data": {
-        "name": "fail3",
-        "duration": [WILDCARD],
-        "result": {
-          "failed": "[WILDCARD]"
+      "origin": "file:///home/caspervonb/deno/cli/tests/test/test_runner_test.ts",
+      "message": {
+        "kind": "wait",
+        "data": {
+          "name": "success1"
+        }
+      }
+    },
+    {
+      "origin": "file:///home/caspervonb/deno/cli/tests/test/test_runner_test.ts",
+      "message": {
+        "kind": "result",
+        "data": {
+          "name": "success1",
+          "duration": [WILDCARD],
+          "result": "ok"
+        }
+      }
+    },
+    {
+      "origin": "file:///home/caspervonb/deno/cli/tests/test/test_runner_test.ts",
+      "message": {
+        "kind": "wait",
+        "data": {
+          "name": "fail3"
+        }
+      }
+    },
+    {
+      "origin": "file:///home/caspervonb/deno/cli/tests/test/test_runner_test.ts",
+      "message": {
+        "kind": "result",
+        "data": {
+          "name": "fail3",
+          "duration": [WILDCARD],
+          "result": {
+            "failed": "[WILDCARD]"
+          }
         }
       }
     }

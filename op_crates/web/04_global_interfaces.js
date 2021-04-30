@@ -44,7 +44,6 @@
     }
   }
 
-  window.__bootstrap = (window.__bootstrap || {});
   window.__bootstrap.globalInterfaces = {
     DedicatedWorkerGlobalScope,
     Window,

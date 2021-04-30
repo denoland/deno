@@ -247,11 +247,14 @@
 
       // 31.
       if (Object.keys(init).length > 0) {
-        let headers = headerListFromHeaders(this[_headers]);
+        let headers = headerListFromHeaders(this[_headers]).slice(
+          0,
+          headerListFromHeaders(this[_headers]).length,
+        );
         if (init.headers !== undefined) {
           headers = init.headers;
         }
-        headerListFromHeaders(this[_headers]).slice(
+        headerListFromHeaders(this[_headers]).splice(
           0,
           headerListFromHeaders(this[_headers]).length,
         );

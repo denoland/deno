@@ -348,7 +348,6 @@
     workerLocation = new WorkerLocation(href, locationConstructorKey);
   }
 
-  window.__bootstrap = (window.__bootstrap || {});
   window.__bootstrap.location = {
     locationConstructorDescriptor: {
       value: Location,
