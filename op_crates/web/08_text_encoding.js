@@ -4559,7 +4559,6 @@
   window.TextDecoder = TextDecoder;
   window.atob = atob;
   window.btoa = btoa;
-  window.__bootstrap = window.__bootstrap || {};
   window.__bootstrap.encoding = { decode };
   window.__bootstrap.base64 = base64;
 })(this);
