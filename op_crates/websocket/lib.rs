@@ -289,7 +289,7 @@ pub async fn op_ws_close(
 #[serde(tag = "kind", content = "value", rename_all = "camelCase")]
 pub enum NextEventResponse {
   String(String),
-  Binary(Vec<u8>),
+  Binary(ZeroCopyBuf),
   Close { code: u16, reason: String },
   Ping,
   Pong,
@@ -313,10 +313,7 @@ pub async fn op_ws_next_event(
   let val = rx.next().or_cancel(cancel).await?;
   let res = match val {
     Some(Ok(Message::Text(text))) => NextEventResponse::String(text),
-    Some(Ok(Message::Binary(data))) => {
-      // TODO(ry): don't use json to send binary data.
-      NextEventResponse::Binary(data)
-    }
+    Some(Ok(Message::Binary(data))) => NextEventResponse::Binary(data.into()),
     Some(Ok(Message::Close(Some(frame)))) => NextEventResponse::Close {
       code: frame.code.into(),
       reason: frame.reason.to_string(),
