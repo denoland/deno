@@ -23,7 +23,7 @@ use crate::ops::*;
 use crate::Extension;
 use crate::OpMiddlewareFn;
 use crate::OpPayload;
-use crate::OpResponse;
+use crate::OpResult;
 use crate::OpState;
 use crate::PromiseId;
 use crate::ZeroCopyBuf;
@@ -49,7 +49,7 @@ use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
 
-type PendingOpFuture = Pin<Box<dyn Future<Output = (PromiseId, OpResponse)>>>;
+type PendingOpFuture = Pin<Box<dyn Future<Output = (PromiseId, OpResult)>>>;
 
 pub enum Snapshot {
   Static(&'static [u8]),
@@ -1394,9 +1394,9 @@ impl JsRuntime {
   fn poll_pending_ops(
     &mut self,
     cx: &mut Context,
-  ) -> Vec<(PromiseId, OpResponse)> {
+  ) -> Vec<(PromiseId, OpResult)> {
     let state_rc = Self::state(self.v8_isolate());
-    let mut async_responses: Vec<(PromiseId, OpResponse)> = Vec::new();
+    let mut async_responses: Vec<(PromiseId, OpResult)> = Vec::new();
 
     let mut state = state_rc.borrow_mut();
 
@@ -1455,7 +1455,7 @@ impl JsRuntime {
   // Send finished responses to JS
   fn async_op_response(
     &mut self,
-    async_responses: Vec<(PromiseId, OpResponse)>,
+    async_responses: Vec<(PromiseId, OpResult)>,
   ) -> Result<(), AnyError> {
     let state_rc = Self::state(self.v8_isolate());
 
@@ -1480,12 +1480,7 @@ impl JsRuntime {
     for overflown_response in async_responses {
       let (promise_id, resp) = overflown_response;
       args.push(v8::Integer::new(scope, promise_id as i32).into());
-      args.push(match resp {
-        OpResponse::Value(value) => value.to_v8(scope).unwrap(),
-        OpResponse::Buffer(buf) => {
-          bindings::boxed_slice_to_uint8array(scope, buf).into()
-        }
-      });
+      args.push(resp.to_v8(scope).unwrap());
     }
 
     let tc_scope = &mut v8::TryCatch::new(scope);
