@@ -124,7 +124,7 @@
     opSync("op_close", rid);
   }
 
-  function print(str, isErr) {
+  function print(str, isErr = false) {
     opSync("op_print", [str, isErr]);
   }
 
