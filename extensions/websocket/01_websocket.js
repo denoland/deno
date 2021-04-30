@@ -326,9 +326,9 @@
             let data;
 
             if (this.binaryType === "blob") {
-              data = new Blob([new Uint8Array(value)]);
+              data = new Blob([value]);
             } else {
-              data = new Uint8Array(value).buffer;
+              data = value.buffer;
             }
 
             const event = new MessageEvent("message", {
