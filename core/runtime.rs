@@ -305,6 +305,11 @@ impl JsRuntime {
       waker: AtomicWaker::new(),
     })));
 
+    // Add builtins extension
+    options
+      .extensions
+      .insert(0, crate::ops_builtin::init_builtins());
+
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
       snapshot_creator: maybe_snapshot_creator,
@@ -316,7 +321,6 @@ impl JsRuntime {
     // TODO(@AaronO): diff extensions inited in snapshot and those provided
     // for now we assume that snapshot and extensions always match
     if !has_startup_snapshot {
-      js_runtime.js_init();
       js_runtime.init_extension_js().unwrap();
     }
     // Init extension ops
@@ -358,18 +362,6 @@ impl JsRuntime {
   pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
     let s = isolate.get_slot::<Rc<RefCell<JsRuntimeState>>>().unwrap();
     s.clone()
-  }
-
-  /// Executes a JavaScript code to provide Deno.core and error reporting.
-  ///
-  /// This function can be called during snapshotting.
-  fn js_init(&mut self) {
-    self
-      .execute("deno:core/core.js", include_str!("core.js"))
-      .unwrap();
-    self
-      .execute("deno:core/error.js", include_str!("error.js"))
-      .unwrap();
   }
 
   /// Initializes JS of provided Extensions
