@@ -1584,7 +1584,8 @@ pub mod tests {
       dispatch_count: dispatch_count.clone(),
     });
 
-    runtime.register_op("test", dispatch);
+    runtime.register_op("op_test", dispatch);
+    runtime.sync_ops_cache();
 
     runtime
       .execute(
@@ -1610,9 +1611,9 @@ pub mod tests {
         "filename.js",
         r#"
         let control = 42;
-        Deno.core.opcall(1, null, control);
+        Deno.core.opAsync("op_test", control);
         async function main() {
-          Deno.core.opcall(1, null, control);
+          Deno.core.opAsync("op_test", control);
         }
         main();
         "#,
@@ -1628,7 +1629,7 @@ pub mod tests {
       .execute(
         "filename.js",
         r#"
-        Deno.core.opcall(1);
+        Deno.core.opAsync("op_test");
         "#,
       )
       .unwrap();
@@ -1643,7 +1644,7 @@ pub mod tests {
         "filename.js",
         r#"
         let zero_copy_a = new Uint8Array([0]);
-        Deno.core.opcall(1, null, null, zero_copy_a);
+        Deno.core.opAsync("op_test", null, zero_copy_a);
         "#,
       )
       .unwrap();
@@ -1946,7 +1947,8 @@ pub mod tests {
       module_loader: Some(loader),
       ..Default::default()
     });
-    runtime.register_op("test", dispatcher);
+    runtime.register_op("op_test", dispatcher);
+    runtime.sync_ops_cache();
 
     runtime
       .execute(
@@ -1972,7 +1974,7 @@ pub mod tests {
         import { b } from './b.js'
         if (b() != 'b') throw Error();
         let control = 42;
-        Deno.core.opcall(1, null, control);
+        Deno.core.opAsync("op_test", control);
       "#,
       )
       .unwrap();
