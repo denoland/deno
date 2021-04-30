@@ -8,7 +8,7 @@ use std::path::PathBuf;
 pub fn init() -> Extension {
   Extension::builder()
     .js(include_js_files!(
-      prefix "deno:op_crates/web",
+      prefix "deno:extensions/web",
       "00_infra.js",
       "01_dom_exception.js",
       "01_mimesniff.js",

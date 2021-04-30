@@ -7,7 +7,7 @@ use deno_core::Extension;
 pub fn init() -> Extension {
   Extension::builder()
     .js(include_js_files!(
-      prefix "deno:op_crates/webidl",
+      prefix "deno:extensions/webidl",
       "00_webidl.js",
     ))
     .build()

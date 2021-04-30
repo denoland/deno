@@ -4,7 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
 
-  // Shamelessly cribbed from op_crates/fetch/11_streams.js
+  // Shamelessly cribbed from extensions/fetch/11_streams.js
   class AssertionError extends Error {
     constructor(msg) {
       super(msg);

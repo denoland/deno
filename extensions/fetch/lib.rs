@@ -58,7 +58,7 @@ pub fn init<P: FetchPermissions + 'static>(
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
-      prefix "deno:op_crates/fetch",
+      prefix "deno:extensions/fetch",
       "01_fetch_util.js",
       "11_streams.js",
       "20_headers.js",
