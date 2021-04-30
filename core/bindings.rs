@@ -517,8 +517,8 @@ fn decode(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let zero_copy: ZeroCopyBuf = serde_v8::from_v8(scope, args.get(0)) {
-    Ok(view) => view,
+  let zero_copy: ZeroCopyBuf = match serde_v8::from_v8(scope, args.get(0)) {
+    Ok(zbuf) => zbuf,
     Err(_) => {
       throw_type_error(scope, "Invalid argument");
       return;
@@ -593,8 +593,8 @@ fn deserialize(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let zero_copy: ZeroCopyBuf = serde_v8::from_v8(scope, args.get(0)) {
-    Ok(view) => view,
+  let zero_copy: ZeroCopyBuf = match serde_v8::from_v8(scope, args.get(0)) {
+    Ok(zbuf) => zbuf,
     Err(_) => {
       throw_type_error(scope, "Invalid argument");
       return;
