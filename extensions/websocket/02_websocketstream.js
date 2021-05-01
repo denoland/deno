@@ -3,19 +3,36 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const webidl = window.__bootstrap.webidl;
 
-  function requiredArguments(
-    name,
-    length,
-    required,
-  ) {
-    if (length < required) {
-      const errMsg = `${name} requires at least ${required} argument${
-        required === 1 ? "" : "s"
-      }, but only ${length} present`;
-      throw new TypeError(errMsg);
-    }
-  }
+  webidl.converters["sequence<USVString>"] = webidl.createSequenceConverter(
+    webidl.converters["USVString"],
+  );
+  webidl.converters.AbortSignal = webidl.createInterfaceConverter(
+    "AbortSignal",
+    AbortSignal
+  )
+  webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter("WebSocketStreamOptions", [
+    {
+      key: "protocols",
+      converter: webidl.converters["sequence<USVString>"],
+    },
+    {
+      key: "signal",
+      converter: webidl.converters.AbortSignal,
+    },
+  ]);
+  webidl.converters.WebSocketCloseInfo = webidl.createDictionaryConverter("WebSocketStreamOptions", [
+    {
+      key: "code",
+      converter: webidl.converters["unsigned short"],
+    },
+    {
+      key: "reason",
+      converter: webidl.converters.USVString,
+      defaultValue: "",
+    },
+  ]);
 
   /** @template T */
   class Deferred {
@@ -79,16 +96,29 @@
     }
   }
 
+  const _rid = Symbol("[[rid]]");
+  const _url = Symbol("[[url]]");
+  const _connection = Symbol("[[connection]]");
+  const _closed = Symbol("[[_closed]]");
   class WebSocketStream {
-    #rid;
+    [_rid];
 
-    #url;
+    [_url];
     get url() {
-      return this.#url;
+      return this[_url];
     }
 
     constructor(url, options) {
-      requiredArguments("WebSocket", arguments.length, 1);
+      const prefix = "Failed to construct 'WebSocketStream'";
+      webidl.requiredArguments(arguments.length, 1, {prefix});
+      url = webidl.converters.USVString(url, {
+        prefix,
+        context: "Argument 1",
+      });
+      options = webidl.converters.WebSocketStreamOptions(options, {
+        prefix,
+        context: "Argument 1",
+      });
 
       const wsURL = new URL(url);
 
@@ -106,9 +136,9 @@
         );
       }
 
-      this.#url = wsURL.href;
+      this[_url] = wsURL.href;
 
-      core.opSync("op_ws_check_permission", this.#url);
+      core.opSync("op_ws_check_permission", this[_url]);
 
       if (
         options?.protocols?.some((x) =>
@@ -125,101 +155,95 @@
         url: wsURL.href,
         protocols: options?.protocols?.join(", "),
       }).then((create) => {
-        if (create.success) {
-          options.abort.addEventListener("abort", () => this.close());
+        options.abort.addEventListener("abort", () => this.close());
 
-          const readable = new ReadableStream({
-            pull: async (controller) => {
-              const { kind, value } = await core.opAsync(
-                "op_ws_next_event",
-                this.#rid,
-              );
+        this[_rid] = create.rid;
+        const readable = new ReadableStream({
+          pull: async (controller) => {
+            const { kind, value } = await core.opAsync(
+              "op_ws_next_event",
+              this[_rid],
+            );
 
-              switch (kind) {
-                case "string": {
-                  controller.enqueue(value);
-                  break;
-                }
-                case "binary": {
-                  controller.enqueue(new Uint8Array(value));
-                  break;
-                }
-                case "ping": {
-                  core.opAsync("op_ws_send", {
-                    rid: this.#rid,
-                    kind: "pong",
-                  });
-                  break;
-                }
-                case "close": {
-                  this.#closed.resolve(value);
-                  tryClose(this.#rid);
-                  break;
-                }
-                case "error": {
-                  let err = new Error(value);
-                  this.#closed.reject(err);
-                  controller.error(err);
-                  tryClose(this.#rid);
-                  break;
-                }
+            switch (kind) {
+              case "string": {
+                controller.enqueue(value);
+                break;
               }
-            },
-            cancel: (reason) => {
-              this.close(reason);
-            },
-          });
-          const writable = new WritableStream({
-            write: async (chunk) => {
-              if (typeof chunk === "string") {
-                await core.opAsync("op_ws_send", {
-                  rid: this.#rid,
-                  kind: "text",
-                  text: chunk,
+              case "binary": {
+                controller.enqueue(value);
+                break;
+              }
+              case "ping": {
+                core.opAsync("op_ws_send", {
+                  rid: this[_rid],
+                  kind: "pong",
                 });
-              } else if (chunk instanceof Uint8Array) {
-                await core.opAsync("op_ws_send", {
-                  rid: this.#rid,
-                  kind: "binary",
-                }, chunk);
+                break;
               }
-            },
-            cancel: (reason) => {
-              this.close(reason);
-            },
-            abort: (reason) => {
-              this.close(reason);
-            },
-          });
+              case "close": {
+                this[_closed].resolve(value);
+                tryClose(this[_rid]);
+                break;
+              }
+              case "error": {
+                let err = new Error(value);
+                this[_closed].reject(err);
+                controller.error(err);
+                tryClose(this[_rid]);
+                break;
+              }
+            }
+          },
+          cancel: (reason) => this.close(reason),
+        });
+        const writable = new WritableStream({
+          write: async (chunk) => {
+            if (typeof chunk === "string") {
+              await core.opAsync("op_ws_send", {
+                rid: this[_rid],
+                kind: "text",
+                text: chunk,
+              });
+            } else if (chunk instanceof Uint8Array) {
+              await core.opAsync("op_ws_send", {
+                rid: this[_rid],
+                kind: "binary",
+              }, chunk);
+            }
+          },
+          cancel: (reason) => this.close(reason),
+          abort: (reason) => this.close(reason),
+        });
 
-          this.#connection.resolve({
-            readable,
-            writable,
-            extensions: create.extensions ?? "",
-            protocol: create.protocol ?? "",
-          });
-        } else {
-          const err = new Error(create.error);
-          this.#connection.reject(err);
-          this.#closed.reject(err);
-        }
+        this[_connection].resolve({
+          readable,
+          writable,
+          extensions: create.extensions ?? "",
+          protocol: create.protocol ?? "",
+        });
       }).catch((err) => {
-        this.#connection.reject(err);
-        this.#closed.reject(err);
+        this[_connection].reject(err);
+        this[_closed].reject(err);
       });
     }
 
-    #connection = new Deferred();
+    [_connection] = new Deferred();
     get connection() {
-      return this.#connection.promise;
+      return this[_connection].promise;
     }
 
-    #closed = new Deferred();
+    [_closed] = new Deferred();
     get closed() {
-      return this.#closed.promise;
+      return this[_closed].promise;
     }
 
     close(closeInfo) {
+      closeInfo = webidl.converters.WebSocketStreamOptions(closeInfo, {
+        prefix: "Failed to execute 'close' on 'WebSocketStream'",
+        context: "Argument 1",
+      });
+
       if (
         closeInfo?.code &&
         !(closeInfo.code === 1000 ||
@@ -246,18 +270,18 @@
         code = 1000;
       }
 
-      if (this.#closed.state === "pending") {
+      if (this[_closed].state === "pending") {
         core.opAsync("op_ws_close", {
-          rid: this.#rid,
+          rid: this[_rid],
           code,
           reason: closeInfo?.reason,
         }).then(() => {
-          this.#closed.resolve({
-            code: closeInfo?.code ?? 1005,
+          this[_closed].resolve({
+            code: closeInfo?.code,
             reason: closeInfo?.reason,
           });
         }).catch((err) => {
-          this.#closed.reject(err);
+          this[_closed].reject(err);
         });
       }
     }
