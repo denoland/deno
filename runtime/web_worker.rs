@@ -263,31 +263,19 @@ impl WebWorker {
       ops::io::init(js_runtime);
 
       if options.use_deno_namespace {
-        ops::fs_events::init(js_runtime);
-        ops::fs::init(js_runtime);
-        ops::net::init(js_runtime);
-        ops::os::init(js_runtime);
-        ops::http::init(js_runtime);
-        ops::permissions::init(js_runtime);
-        ops::plugin::init(js_runtime);
-        ops::process::init(js_runtime);
-        ops::signal::init(js_runtime);
-        ops::tls::init(js_runtime);
-        ops::tty::init(js_runtime);
+        ops::fs_events::init();
+        ops::fs::init();
+        ops::net::init();
+        ops::os::init();
+        ops::http::init();
+        ops::permissions::init();
+        ops::plugin::init();
+        ops::process::init();
+        ops::signal::init();
+        ops::tls::init();
+        ops::tty::init();
 
-        let op_state = js_runtime.op_state();
-        let mut op_state = op_state.borrow_mut();
-        let t = &mut op_state.resource_table;
-        let (stdin, stdout, stderr) = ops::io::get_stdio();
-        if let Some(stream) = stdin {
-          t.add(stream);
-        }
-        if let Some(stream) = stdout {
-          t.add(stream);
-        }
-        if let Some(stream) = stderr {
-          t.add(stream);
-        }
+        ops::io::init_stdio();
       }
       js_runtime.sync_ops_cache();
 
