@@ -31,6 +31,7 @@
       {
         key: "code",
         converter: webidl.converters["unsigned short"],
+        defaultValue: undefined,
       },
       {
         key: "reason",
