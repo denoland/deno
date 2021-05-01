@@ -45,7 +45,7 @@ fn get_windows_handle(
   Ok(handle)
 }
 
-pub fn init() -> Exntension {
+pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
       ("op_set_raw", op_sync(op_set_raw)),

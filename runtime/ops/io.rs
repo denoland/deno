@@ -11,7 +11,6 @@ use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Extension;
-use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -111,19 +110,22 @@ pub fn init() -> Extension {
 }
 
 pub fn init_stdio() -> Extension {
-  Extension::builder().state(|state| {
-    let t = &mut state.resource_table;
-    let (stdin, stdout, stderr) = ops::io::get_stdio();
-    if let Some(stream) = stdin {
-      t.add(stream);
-    }
-    if let Some(stream) = stdout {
-      t.add(stream);
-    }
-    if let Some(stream) = stderr {
-      t.add(stream);
-    }
-  })
+  Extension::builder()
+    .state(|state| {
+      let t = &mut state.resource_table;
+      let (stdin, stdout, stderr) = get_stdio();
+      if let Some(stream) = stdin {
+        t.add(stream);
+      }
+      if let Some(stream) = stdout {
+        t.add(stream);
+      }
+      if let Some(stream) = stderr {
+        t.add(stream);
+      }
+      Ok(())
+    })
+    .build()
 }
 
 pub fn get_stdio() -> (

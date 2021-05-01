@@ -72,7 +72,7 @@ pub type WorkersTable = HashMap<u32, WorkerThread>;
 pub type WorkerId = u32;
 
 pub fn init(
-  sender: Option<mpsc::Sender<WorkerEvent>>,
+  is_main_worker: bool,
   create_web_worker_cb: Arc<CreateWebWorkerCb>,
 ) -> Extension {
   Extension::builder()
@@ -80,7 +80,8 @@ pub fn init(
       state.put::<WorkersTable>(WorkersTable::default());
       state.put::<WorkerId>(WorkerId::default());
 
-      let create_module_loader = CreateWebWorkerCbHolder(create_web_worker_cb);
+      let create_module_loader =
+        CreateWebWorkerCbHolder(create_web_worker_cb.clone());
       state.put::<CreateWebWorkerCbHolder>(create_module_loader);
 
       Ok(())
@@ -95,15 +96,16 @@ pub fn init(
       ("op_host_get_message", op_async(op_host_get_message)),
       (
         "op_host_unhandled_error",
-        op_sync(move |_, message: String, _| {
-          if let Some(mut sender) = sender.clone() {
-            sender
-              .try_send(WorkerEvent::Error(generic_error(message)))
-              .expect("Failed to propagate error event to parent worker");
-            Ok(true)
-          } else {
-            Err(generic_error("Cannot be called from main worker."))
+        op_sync(move |state, message: String, _| {
+          if is_main_worker {
+            return Err(generic_error("Cannot be called from main worker."));
           }
+
+          let mut sender = state.borrow::<mpsc::Sender<WorkerEvent>>().clone();
+          sender
+            .try_send(WorkerEvent::Error(generic_error(message)))
+            .expect("Failed to propagate error event to parent worker");
+          Ok(true)
         }),
       ),
     ])

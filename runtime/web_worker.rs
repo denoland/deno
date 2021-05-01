@@ -178,17 +178,16 @@ impl WebWorker {
     options: &WebWorkerOptions,
   ) -> Self {
     // Permissions: many ops depend on this
+    let unstable = options.unstable;
     let perm_ext = Extension::builder()
       .state(move |state| {
-        state.put::<Permissions>(permissions);
-        state.put(ops::UnstableChecker {
-          unstable: options.unstable,
-        });
+        state.put::<Permissions>(permissions.clone());
+        state.put(ops::UnstableChecker { unstable });
         Ok(())
       })
       .build();
 
-    let extensions: Vec<Extension> = vec![
+    let mut extensions: Vec<Extension> = vec![
       // Web APIs
       deno_webidl::init(),
       deno_console::init(),
@@ -217,12 +216,9 @@ impl WebWorker {
 
     // Runtime ops that are always initialized for WebWorkers
     let runtime_exts = vec![
-      ops::web_worker::init(sender.clone(), handle),
-      ops::runtime::init(main_module),
-      ops::worker_host::init(
-        Some(sender),
-        options.create_web_worker_cb.clone(),
-      ),
+      ops::web_worker::init(),
+      ops::runtime::init(main_module.clone()),
+      ops::worker_host::init(false, options.create_web_worker_cb.clone()),
       ops::io::init(),
     ];
 

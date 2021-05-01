@@ -6,7 +6,6 @@ use deno_core::futures::prelude::*;
 use deno_core::op_sync;
 use deno_core::plugin_api;
 use deno_core::Extension;
-use deno_core::JsRuntime;
 use deno_core::Op;
 use deno_core::OpAsyncFuture;
 use deno_core::OpFn;
@@ -24,7 +23,7 @@ use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 
-pub fn init(rt: &mut JsRuntime) -> Extension {
+pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![("op_open_plugin", op_sync(op_open_plugin))])
     .build()

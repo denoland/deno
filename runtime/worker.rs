@@ -70,7 +70,6 @@ pub struct WorkerOptions {
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub location: Option<Url>,
   pub blob_url_store: BlobUrlStore,
-  pub will_snapshot: bool,
 }
 
 impl MainWorker {
@@ -80,12 +79,11 @@ impl MainWorker {
     options: &WorkerOptions,
   ) -> Self {
     // Permissions: many ops depend on this
+    let unstable = options.unstable;
     let perm_ext = Extension::builder()
       .state(move |state| {
-        state.put::<Permissions>(permissions);
-        state.put(ops::UnstableChecker {
-          unstable: options.unstable,
-        });
+        state.put::<Permissions>(permissions.clone());
+        state.put(ops::UnstableChecker { unstable });
         Ok(())
       })
       .build();
@@ -113,7 +111,7 @@ impl MainWorker {
       metrics::init(),
       // Runtime ops
       ops::runtime::init(main_module),
-      ops::worker_host::init(None, options.create_web_worker_cb.clone()),
+      ops::worker_host::init(true, options.create_web_worker_cb.clone()),
       ops::fs_events::init(),
       ops::fs::init(),
       ops::http::init(),
@@ -152,7 +150,7 @@ impl MainWorker {
     let should_break_on_first_statement =
       inspector.is_some() && options.should_break_on_first_statement;
 
-    let mut worker = Self {
+    let worker = Self {
       inspector,
       js_runtime,
       should_break_on_first_statement,

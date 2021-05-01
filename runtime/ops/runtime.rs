@@ -13,7 +13,7 @@ pub fn init(main_module: ModuleSpecifier) -> Extension {
   Extension::builder()
     .ops(vec![("op_main_module", op_sync(op_main_module))])
     .state(move |state| {
-      state.put::<ModuleSpecifier>(main_module);
+      state.put::<ModuleSpecifier>(main_module.clone());
       Ok(())
     })
     .build()
