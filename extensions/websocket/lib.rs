@@ -35,7 +35,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio_rustls::{rustls::ClientConfig, TlsConnector};
-use tokio_tungstenite::tungstenite::Error as TungsteniteError;
 use tokio_tungstenite::tungstenite::{
   handshake::client::Response, protocol::frame::coding::CloseCode,
   protocol::CloseFrame, Message,
@@ -110,11 +109,9 @@ pub struct CreateArgs {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateResponse {
-  success: bool,
-  error: Option<String>,
-  rid: Option<ResourceId>,
-  protocol: Option<String>,
-  extensions: Option<String>,
+  rid: ResourceId,
+  protocol: String,
+  extensions: String,
 }
 
 pub async fn op_ws_create<WP>(
@@ -153,19 +150,7 @@ where
     _ => unreachable!(),
   });
   let addr = format!("{}:{}", domain, port);
-  let try_socket = TcpStream::connect(addr).await;
-  let tcp_socket = match try_socket.map_err(TungsteniteError::Io) {
-    Ok(socket) => socket,
-    Err(e) => {
-      return Ok(CreateResponse {
-        success: false,
-        error: Some(e.to_string()),
-        rid: None,
-        protocol: None,
-        extensions: None,
-      })
-    }
-  };
+  let tcp_socket = TcpStream::connect(addr).await?;
 
   let socket: MaybeTlsStream<TcpStream> = match uri.scheme_str() {
     Some("ws") => MaybeTlsStream::Plain(tcp_socket),
@@ -217,11 +202,9 @@ where
     .map(|header| header.to_str().unwrap())
     .collect::<String>();
   Ok(CreateResponse {
-    success: true,
-    error: None,
-    rid: Some(rid),
-    protocol: Some(protocol.to_string()),
-    extensions: Some(extensions),
+    rid,
+    protocol: protocol.to_string(),
+    extensions,
   })
 }
 
