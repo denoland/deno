@@ -79,7 +79,7 @@ impl MainWorker {
     permissions: Permissions,
     options: &WorkerOptions,
   ) -> Self {
-    // Permissions: all ops registered in this function depend on these
+    // Permissions: many ops depend on this
     let perm_ext = Extension::builder()
       .state(move |state| {
         state.put::<Permissions>(permissions);
@@ -157,9 +157,6 @@ impl MainWorker {
       js_runtime,
       should_break_on_first_statement,
     };
-
-    let js_runtime = &mut worker.js_runtime;
-    js_runtime.sync_ops_cache();
 
     worker
   }
