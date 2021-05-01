@@ -70,7 +70,7 @@ unitTest(
   },
 );
 
-// Test that ops from op_crates have metrics (via OpMiddleware)
+// Test that ops from extensions have metrics (via OpMiddleware)
 unitTest(function metricsForOpCrates(): void {
   const _ = new URL("https://deno.land");
 

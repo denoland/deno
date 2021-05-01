@@ -18,7 +18,7 @@ pub use rand; // Re-export rand
 pub fn init(maybe_seed: Option<u64>) -> Extension {
   Extension::builder()
     .js(include_js_files!(
-      prefix "deno:op_crates/crypto",
+      prefix "deno:extensions/crypto",
       "01_crypto.js",
     ))
     .ops(vec![(

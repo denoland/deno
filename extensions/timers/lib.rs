@@ -44,7 +44,7 @@ impl TimersPermission for NoTimersPermission {
 pub fn init<P: TimersPermission + 'static>() -> Extension {
   Extension::builder()
     .js(include_js_files!(
-      prefix "deno:op_crates/timers",
+      prefix "deno:extensions/timers",
       "01_timers.js",
     ))
     .ops(vec![

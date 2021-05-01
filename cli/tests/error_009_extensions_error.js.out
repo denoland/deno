@@ -2,5 +2,5 @@
 new Event();
 ^
     at [WILDCARD]
-    at new Event (deno:op_crates/web/[WILDCARD])
+    at new Event (deno:extensions/web/[WILDCARD])
     at [WILDCARD]
