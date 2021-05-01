@@ -3109,9 +3109,9 @@ console.log("finish");
     output: "error_008_checkjs.js.out",
   });
 
-  itest!(error_009_op_crates_error {
-    args: "run error_009_op_crates_error.js",
-    output: "error_009_op_crates_error.js.out",
+  itest!(error_009_extensions_error {
+    args: "run error_009_extensions_error.js",
+    output: "error_009_extensions_error.js.out",
     exit_code: 1,
   });
 
