@@ -20,7 +20,7 @@ globalThis.document = {
   // document.body shim for FileAPI/file/File-constructor.any.js test
   body: {
     toString() {
-      return '[object HTMLBodyElement]';
-    }
-  }
+      return "[object HTMLBodyElement]";
+    },
+  },
 };
