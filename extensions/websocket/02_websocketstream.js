@@ -159,10 +159,10 @@
       }
 
       core.opAsync("op_ws_create", {
-        url: wsURL.href,
-        protocols: options?.protocols?.join(", "),
+        url: this[_url],
+        protocols: options?.protocols?.join(", ") ?? "",
       }).then((create) => {
-        options.abort.addEventListener("abort", () => this.close());
+        options?.abort?.addEventListener("abort", () => this.close());
 
         this[_rid] = create.rid;
         const readable = new ReadableStream({
@@ -246,7 +246,7 @@
     }
 
     close(closeInfo) {
-      closeInfo = webidl.converters.WebSocketStreamOptions(closeInfo, {
+      closeInfo = webidl.converters.WebSocketCloseInfo(closeInfo, {
         prefix: "Failed to execute 'close' on 'WebSocketStream'",
         context: "Argument 1",
       });
@@ -283,11 +283,13 @@
           code,
           reason: closeInfo?.reason,
         }).then(() => {
+          tryClose(this[_rid]);
           this[_closed].resolve({
             code: closeInfo?.code,
             reason: closeInfo?.reason,
           });
         }).catch((err) => {
+          tryClose(this[_rid]);
           this[_closed].reject(err);
         });
       }
