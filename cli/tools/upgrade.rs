@@ -184,7 +184,7 @@ pub fn unpack(
   // to the newly uncompressed file without fear of the tempdir being deleted.
   let temp_dir = TempDir::new()?.into_path();
   let exe_ext = if is_windows { "exe" } else { "" };
-  let archive_path = temp_dir.join(exe_name).with_extension(".zip");
+  let archive_path = temp_dir.join(exe_name).with_extension("zip");
   let exe_path = temp_dir.join(exe_name).with_extension(exe_ext);
   assert!(!exe_path.exists());
 

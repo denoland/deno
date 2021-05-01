@@ -614,6 +614,18 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       );
       Ok(res)
     }
+    (_, "/.well-known/deno-import-intellisense.json") => {
+      let file_path = root_path()
+        .join("cli/tests/lsp/registries/deno-import-intellisense.json");
+      if let Ok(body) = tokio::fs::read(file_path).await {
+        Ok(custom_headers(
+          "/.well-known/deno-import-intellisense.json",
+          body,
+        ))
+      } else {
+        Ok(Response::new(Body::empty()))
+      }
+    }
     _ => {
       let mut file_path = root_path();
       file_path.push(&req.uri().path()[1..]);

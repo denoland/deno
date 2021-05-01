@@ -14,6 +14,7 @@ use crate::module_graph::TypeLib;
 use crate::source_maps::SourceMapGetter;
 use crate::specifier_handler::FetchHandler;
 use crate::version;
+use deno_runtime::deno_file::BlobUrlStore;
 use deno_runtime::inspector::InspectorServer;
 use deno_runtime::permissions::Permissions;
 
@@ -56,6 +57,7 @@ pub struct ProgramState {
   pub maybe_import_map: Option<ImportMap>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub ca_data: Option<Vec<u8>>,
+  pub blob_url_store: BlobUrlStore,
 }
 
 impl ProgramState {
@@ -80,11 +82,14 @@ impl ProgramState {
       CacheSetting::Use
     };
 
+    let blob_url_store = BlobUrlStore::default();
+
     let file_fetcher = FileFetcher::new(
       http_cache,
       cache_usage,
       !flags.no_remote,
       ca_data.clone(),
+      blob_url_store.clone(),
     )?;
 
     let lockfile = if let Some(filename) = &flags.lock {
@@ -103,7 +108,7 @@ impl ProgramState {
               format!("Bad URL (\"{}\") for import map.", import_map_url),
             )?;
           let file = file_fetcher
-            .fetch(&import_map_specifier, &Permissions::allow_all())
+            .fetch(&import_map_specifier, &mut Permissions::allow_all())
             .await?;
           let import_map =
             ImportMap::from_json(import_map_specifier.as_str(), &file.source)?;
@@ -131,6 +136,7 @@ impl ProgramState {
       maybe_import_map,
       maybe_inspector_server,
       ca_data,
+      blob_url_store,
     };
     Ok(Arc::new(program_state))
   }
@@ -143,7 +149,7 @@ impl ProgramState {
     self: &Arc<Self>,
     specifier: ModuleSpecifier,
     lib: TypeLib,
-    runtime_permissions: Permissions,
+    mut runtime_permissions: Permissions,
     is_dynamic: bool,
     maybe_import_map: Option<ImportMap>,
   ) -> Result<(), AnyError> {
@@ -257,7 +263,7 @@ impl ProgramState {
     match url.scheme() {
       // we should only be looking for emits for schemes that denote external
       // modules, which the disk_cache supports
-      "wasm" | "file" | "http" | "https" | "data" => (),
+      "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
       _ => {
         return None;
       }

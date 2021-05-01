@@ -48,6 +48,7 @@ use super::diagnostics;
 use super::diagnostics::DiagnosticSource;
 use super::documents::DocumentCache;
 use super::performance::Performance;
+use super::registries;
 use super::sources;
 use super::sources::Sources;
 use super::text;
@@ -57,6 +58,9 @@ use super::tsc::AssetDocument;
 use super::tsc::Assets;
 use super::tsc::TsServer;
 use super::urls;
+
+pub const REGISTRIES_PATH: &str = "registries";
+const SOURCES_PATH: &str = "deps";
 
 lazy_static::lazy_static! {
   static ref ABSTRACT_MODIFIER: Regex = Regex::new(r"\babstract\b").unwrap();
@@ -71,6 +75,7 @@ pub struct StateSnapshot {
   pub assets: Assets,
   pub config: Config,
   pub documents: DocumentCache,
+  pub module_registries: registries::ModuleRegistry,
   pub performance: Performance,
   pub sources: Sources,
 }
@@ -87,6 +92,10 @@ pub(crate) struct Inner {
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The "in-memory" documents in the editor which can be updated and changed.
   documents: DocumentCache,
+  /// Handles module registries, which allow discovery of modules
+  module_registries: registries::ModuleRegistry,
+  /// The path to the module registries cache
+  module_registries_location: PathBuf,
   /// An optional URL which provides the location of a TypeScript configuration
   /// file which will be used by the Deno LSP.
   maybe_config_uri: Option<Url>,
@@ -119,8 +128,11 @@ impl Inner {
     let maybe_custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(maybe_custom_root)
       .expect("could not access DENO_DIR");
-    let location = dir.root.join("deps");
-    let sources = Sources::new(&location);
+    let module_registries_location = dir.root.join(REGISTRIES_PATH);
+    let module_registries =
+      registries::ModuleRegistry::new(&module_registries_location);
+    let sources_location = dir.root.join(SOURCES_PATH);
+    let sources = Sources::new(&sources_location);
     let ts_server = Arc::new(TsServer::new());
     let performance = Performance::default();
     let diagnostics_server = diagnostics::DiagnosticsServer::new();
@@ -134,6 +146,8 @@ impl Inner {
       maybe_config_uri: Default::default(),
       maybe_import_map: Default::default(),
       maybe_import_map_uri: Default::default(),
+      module_registries,
+      module_registries_location,
       navigation_trees: Default::default(),
       performance,
       sources,
@@ -228,6 +242,25 @@ impl Inner {
     maybe_line_index
   }
 
+  // TODO(@kitsonk) we really should find a better way to just return the
+  // content as a `&str`, or be able to get the byte at a particular offset
+  // which is all that this API that is consuming it is trying to do at the
+  // moment
+  /// Searches already cached assets and documents and returns its text
+  /// content. If not found, `None` is returned.
+  fn get_text_content(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    if specifier.scheme() == "asset" {
+      self
+        .assets
+        .get(specifier)
+        .map(|o| o.clone().map(|a| a.text))?
+    } else if self.documents.contains_key(specifier) {
+      self.documents.content(specifier).unwrap()
+    } else {
+      self.sources.get_source(specifier)
+    }
+  }
+
   async fn get_navigation_tree(
     &mut self,
     specifier: &ModuleSpecifier,
@@ -257,6 +290,7 @@ impl Inner {
       assets: self.assets.clone(),
       config: self.config.clone(),
       documents: self.documents.clone(),
+      module_registries: self.module_registries.clone(),
       performance: self.performance.clone(),
       sources: self.sources.clone(),
     }
@@ -309,6 +343,22 @@ impl Inner {
     Ok(())
   }
 
+  async fn update_registries(&mut self) -> Result<(), AnyError> {
+    let mark = self.performance.mark("update_registries");
+    for (registry, enabled) in self.config.settings.suggest.imports.hosts.iter()
+    {
+      if *enabled {
+        info!("Enabling auto complete registry for: {}", registry);
+        self.module_registries.enable(registry).await?;
+      } else {
+        info!("Disabling auto complete registry for: {}", registry);
+        self.module_registries.disable(registry).await?;
+      }
+    }
+    self.performance.measure(mark);
+    Ok(())
+  }
+
   async fn update_tsconfig(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_tsconfig");
     let mut tsconfig = TsConfig::new(json!({
@@ -322,6 +372,7 @@ impl Inner {
       "noEmit": true,
       "strict": true,
       "target": "esnext",
+      "useDefineForClassFields": true,
     }));
     let (maybe_config, maybe_root_uri) = {
       let config = &self.config;
@@ -476,6 +527,13 @@ impl Inner {
         .show_message(MessageType::Warning, err.to_string())
         .await;
     }
+    // Check to see if we need to setup any module registries
+    if let Err(err) = self.update_registries().await {
+      self
+        .client
+        .show_message(MessageType::Warning, err.to_string())
+        .await;
+    }
 
     if self
       .config
@@ -609,6 +667,12 @@ impl Inner {
           .show_message(MessageType::Warning, err.to_string())
           .await;
       }
+      if let Err(err) = self.update_registries().await {
+        self
+          .client
+          .show_message(MessageType::Warning, err.to_string())
+          .await;
+      }
       if let Err(err) = self.update_tsconfig().await {
         self
           .client
@@ -652,6 +716,49 @@ impl Inner {
       }
     }
     self.performance.measure(mark);
+  }
+
+  async fn document_symbol(
+    &self,
+    params: DocumentSymbolParams,
+  ) -> LspResult<Option<DocumentSymbolResponse>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("document_symbol");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let req = tsc::RequestMethod::GetNavigationTree(specifier);
+    let navigation_tree: tsc::NavigationTree = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })?;
+
+    let response = if let Some(child_items) = navigation_tree.child_items {
+      let mut document_symbols = Vec::<DocumentSymbol>::new();
+      for item in child_items {
+        item.collect_document_symbols(&line_index, &mut document_symbols);
+      }
+      Some(DocumentSymbolResponse::Nested(document_symbols))
+    } else {
+      None
+    };
+    self.performance.measure(mark);
+    Ok(response)
   }
 
   async fn formatting(
@@ -814,12 +921,17 @@ impl Inner {
             codes,
           ));
           let actions: Vec<tsc::CodeFixAction> =
-            self.ts_server.request(self.snapshot(), req).await.map_err(
-              |err| {
+            match self.ts_server.request(self.snapshot(), req).await {
+              Ok(items) => items,
+              Err(err) => {
+                // sometimes tsc reports errors when retrieving code actions
+                // because they don't reflect the current state of the document
+                // so we will log them to the output, but we won't send an error
+                // message back to the client.
                 error!("Error getting actions from TypeScript: {}", err);
-                LspError::internal_error()
-              },
-            )?;
+                Vec::new()
+              }
+            };
           for action in actions {
             code_actions
               .add_ts_fix_action(&action, diagnostic, self)
@@ -1370,7 +1482,9 @@ impl Inner {
       &specifier,
       &params.text_document_position.position,
       &self.snapshot(),
-    ) {
+    )
+    .await
+    {
       Some(response)
     } else {
       let line_index =
@@ -1515,6 +1629,249 @@ impl Inner {
     Ok(result)
   }
 
+  async fn folding_range(
+    &self,
+    params: FoldingRangeParams,
+  ) -> LspResult<Option<Vec<FoldingRange>>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("folding_range");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let req = tsc::RequestMethod::GetOutliningSpans(specifier.clone());
+    let outlining_spans: Vec<tsc::OutliningSpan> = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })?;
+
+    let response = if !outlining_spans.is_empty() {
+      let text_content =
+        self.get_text_content(&specifier).ok_or_else(|| {
+          LspError::invalid_params(format!(
+            "An unexpected specifier ({}) was provided.",
+            specifier
+          ))
+        })?;
+      Some(
+        outlining_spans
+          .iter()
+          .map(|span| {
+            span.to_folding_range(
+              &line_index,
+              text_content.as_str().as_bytes(),
+              self.config.client_capabilities.line_folding_only,
+            )
+          })
+          .collect::<Vec<FoldingRange>>(),
+      )
+    } else {
+      None
+    };
+    self.performance.measure(mark);
+    Ok(response)
+  }
+
+  async fn incoming_calls(
+    &mut self,
+    params: CallHierarchyIncomingCallsParams,
+  ) -> LspResult<Option<Vec<CallHierarchyIncomingCall>>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("incoming_calls");
+    let specifier = self.url_map.normalize_url(&params.item.uri);
+
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let req = tsc::RequestMethod::ProvideCallHierarchyIncomingCalls((
+      specifier.clone(),
+      line_index.offset_tsc(params.item.selection_range.start)?,
+    ));
+    let incoming_calls: Vec<tsc::CallHierarchyIncomingCall> = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })?;
+
+    let maybe_root_path_owned = self
+      .config
+      .root_uri
+      .as_ref()
+      .and_then(|uri| uri.to_file_path().ok());
+    let mut resolved_items = Vec::<CallHierarchyIncomingCall>::new();
+    for item in incoming_calls.iter() {
+      if let Some(resolved) = item
+        .try_resolve_call_hierarchy_incoming_call(
+          self,
+          maybe_root_path_owned.as_deref(),
+        )
+        .await
+      {
+        resolved_items.push(resolved);
+      }
+    }
+    self.performance.measure(mark);
+    Ok(Some(resolved_items))
+  }
+
+  async fn outgoing_calls(
+    &mut self,
+    params: CallHierarchyOutgoingCallsParams,
+  ) -> LspResult<Option<Vec<CallHierarchyOutgoingCall>>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("outgoing_calls");
+    let specifier = self.url_map.normalize_url(&params.item.uri);
+
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let req = tsc::RequestMethod::ProvideCallHierarchyOutgoingCalls((
+      specifier.clone(),
+      line_index.offset_tsc(params.item.selection_range.start)?,
+    ));
+    let outgoing_calls: Vec<tsc::CallHierarchyOutgoingCall> = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })?;
+
+    let maybe_root_path_owned = self
+      .config
+      .root_uri
+      .as_ref()
+      .and_then(|uri| uri.to_file_path().ok());
+    let mut resolved_items = Vec::<CallHierarchyOutgoingCall>::new();
+    for item in outgoing_calls.iter() {
+      if let Some(resolved) = item
+        .try_resolve_call_hierarchy_outgoing_call(
+          &line_index,
+          self,
+          maybe_root_path_owned.as_deref(),
+        )
+        .await
+      {
+        resolved_items.push(resolved);
+      }
+    }
+    self.performance.measure(mark);
+    Ok(Some(resolved_items))
+  }
+
+  async fn prepare_call_hierarchy(
+    &mut self,
+    params: CallHierarchyPrepareParams,
+  ) -> LspResult<Option<Vec<CallHierarchyItem>>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("prepare_call_hierarchy");
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
+
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let req = tsc::RequestMethod::PrepareCallHierarchy((
+      specifier.clone(),
+      line_index.offset_tsc(params.text_document_position_params.position)?,
+    ));
+    let maybe_one_or_many: Option<tsc::OneOrMany<tsc::CallHierarchyItem>> =
+      self
+        .ts_server
+        .request(self.snapshot(), req)
+        .await
+        .map_err(|err| {
+          error!("Failed to request to tsserver {}", err);
+          LspError::invalid_request()
+        })?;
+
+    let response = if let Some(one_or_many) = maybe_one_or_many {
+      let maybe_root_path_owned = self
+        .config
+        .root_uri
+        .as_ref()
+        .and_then(|uri| uri.to_file_path().ok());
+      let mut resolved_items = Vec::<CallHierarchyItem>::new();
+      match one_or_many {
+        tsc::OneOrMany::One(item) => {
+          if let Some(resolved) = item
+            .try_resolve_call_hierarchy_item(
+              self,
+              maybe_root_path_owned.as_deref(),
+            )
+            .await
+          {
+            resolved_items.push(resolved)
+          }
+        }
+        tsc::OneOrMany::Many(items) => {
+          for item in items.iter() {
+            if let Some(resolved) = item
+              .try_resolve_call_hierarchy_item(
+                self,
+                maybe_root_path_owned.as_deref(),
+              )
+              .await
+            {
+              resolved_items.push(resolved);
+            }
+          }
+        }
+      }
+      Some(resolved_items)
+    } else {
+      None
+    };
+    self.performance.measure(mark);
+    Ok(response)
+  }
+
   async fn rename(
     &mut self,
     params: RenameParams,
@@ -1578,16 +1935,12 @@ impl Inner {
   ) -> LspResult<Option<Value>> {
     match method {
       "deno/cache" => match params.map(serde_json::from_value) {
-        Some(Ok(params)) => Ok(Some(
-          serde_json::to_value(self.cache(params).await?).map_err(|err| {
-            error!("Failed to serialize cache response: {}", err);
-            LspError::internal_error()
-          })?,
-        )),
+        Some(Ok(params)) => self.cache(params).await,
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
         None => Err(LspError::invalid_params("Missing parameters")),
       },
       "deno/performance" => Ok(Some(self.get_performance())),
+      "deno/reloadImportRegistries" => self.reload_import_registries().await,
       "deno/virtualTextDocument" => match params.map(serde_json::from_value) {
         Some(Ok(params)) => Ok(Some(
           serde_json::to_value(self.virtual_text_document(params).await?)
@@ -1649,6 +2002,99 @@ impl Inner {
     }
     self.performance.measure(mark);
     Ok(Some(selection_ranges))
+  }
+
+  async fn semantic_tokens_full(
+    &self,
+    params: SemanticTokensParams,
+  ) -> LspResult<Option<SemanticTokensResult>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("semantic_tokens_full");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let req = tsc::RequestMethod::GetEncodedSemanticClassifications((
+      specifier.clone(),
+      tsc::TextSpan {
+        start: 0,
+        length: line_index.text_content_length_utf16().into(),
+      },
+    ));
+    let semantic_classification: tsc::Classifications = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })?;
+
+    let semantic_tokens: SemanticTokens =
+      semantic_classification.to_semantic_tokens(&line_index);
+    let response = if !semantic_tokens.data.is_empty() {
+      Some(SemanticTokensResult::Tokens(semantic_tokens))
+    } else {
+      None
+    };
+    self.performance.measure(mark);
+    Ok(response)
+  }
+
+  async fn semantic_tokens_range(
+    &self,
+    params: SemanticTokensRangeParams,
+  ) -> LspResult<Option<SemanticTokensRangeResult>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("semantic_tokens_range");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
+
+    let line_index =
+      if let Some(line_index) = self.get_line_index_sync(&specifier) {
+        line_index
+      } else {
+        return Err(LspError::invalid_params(format!(
+          "An unexpected specifier ({}) was provided.",
+          specifier
+        )));
+      };
+
+    let start = line_index.offset_tsc(params.range.start)?;
+    let length = line_index.offset_tsc(params.range.end)? - start;
+    let req = tsc::RequestMethod::GetEncodedSemanticClassifications((
+      specifier.clone(),
+      tsc::TextSpan { start, length },
+    ));
+    let semantic_classification: tsc::Classifications = self
+      .ts_server
+      .request(self.snapshot(), req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })?;
+
+    let semantic_tokens: SemanticTokens =
+      semantic_classification.to_semantic_tokens(&line_index);
+    let response = if !semantic_tokens.data.is_empty() {
+      Some(SemanticTokensRangeResult::Tokens(semantic_tokens))
+    } else {
+      None
+    };
+    self.performance.measure(mark);
+    Ok(response)
   }
 
   async fn signature_help(
@@ -1762,6 +2208,13 @@ impl lspower::LanguageServer for LanguageServer {
     self.0.lock().await.did_change_watched_files(params).await
   }
 
+  async fn document_symbol(
+    &self,
+    params: DocumentSymbolParams,
+  ) -> LspResult<Option<DocumentSymbolResponse>> {
+    self.0.lock().await.document_symbol(params).await
+  }
+
   async fn formatting(
     &self,
     params: DocumentFormattingParams,
@@ -1840,6 +2293,34 @@ impl lspower::LanguageServer for LanguageServer {
     self.0.lock().await.goto_implementation(params).await
   }
 
+  async fn folding_range(
+    &self,
+    params: FoldingRangeParams,
+  ) -> LspResult<Option<Vec<FoldingRange>>> {
+    self.0.lock().await.folding_range(params).await
+  }
+
+  async fn incoming_calls(
+    &self,
+    params: CallHierarchyIncomingCallsParams,
+  ) -> LspResult<Option<Vec<CallHierarchyIncomingCall>>> {
+    self.0.lock().await.incoming_calls(params).await
+  }
+
+  async fn outgoing_calls(
+    &self,
+    params: CallHierarchyOutgoingCallsParams,
+  ) -> LspResult<Option<Vec<CallHierarchyOutgoingCall>>> {
+    self.0.lock().await.outgoing_calls(params).await
+  }
+
+  async fn prepare_call_hierarchy(
+    &self,
+    params: CallHierarchyPrepareParams,
+  ) -> LspResult<Option<Vec<CallHierarchyItem>>> {
+    self.0.lock().await.prepare_call_hierarchy(params).await
+  }
+
   async fn rename(
     &self,
     params: RenameParams,
@@ -1860,6 +2341,20 @@ impl lspower::LanguageServer for LanguageServer {
     params: SelectionRangeParams,
   ) -> LspResult<Option<Vec<SelectionRange>>> {
     self.0.lock().await.selection_range(params).await
+  }
+
+  async fn semantic_tokens_full(
+    &self,
+    params: SemanticTokensParams,
+  ) -> LspResult<Option<SemanticTokensResult>> {
+    self.0.lock().await.semantic_tokens_full(params).await
+  }
+
+  async fn semantic_tokens_range(
+    &self,
+    params: SemanticTokensRangeParams,
+  ) -> LspResult<Option<SemanticTokensRangeResult>> {
+    self.0.lock().await.semantic_tokens_range(params).await
   }
 
   async fn signature_help(
@@ -1891,7 +2386,7 @@ struct VirtualTextDocumentParams {
 impl Inner {
   /// Similar to `deno cache` on the command line, where modules will be cached
   /// in the Deno cache, including any of their dependencies.
-  async fn cache(&mut self, params: CacheParams) -> LspResult<bool> {
+  async fn cache(&mut self, params: CacheParams) -> LspResult<Option<Value>> {
     let mark = self.performance.mark("cache");
     let referrer = self.url_map.normalize_url(&params.referrer.uri);
     if !params.uris.is_empty() {
@@ -1932,12 +2427,28 @@ impl Inner {
       LspError::internal_error()
     })?;
     self.performance.measure(mark);
-    Ok(true)
+    Ok(Some(json!(true)))
   }
 
   fn get_performance(&self) -> Value {
     let averages = self.performance.averages();
     json!({ "averages": averages })
+  }
+
+  async fn reload_import_registries(&mut self) -> LspResult<Option<Value>> {
+    fs::remove_dir_all(&self.module_registries_location)
+      .await
+      .map_err(|err| {
+        error!("Unable to remove registries cache: {}", err);
+        LspError::internal_error()
+      })?;
+    self.module_registries =
+      registries::ModuleRegistry::new(&self.module_registries_location);
+    self.update_registries().await.map_err(|err| {
+      error!("Unable to update registries: {}", err);
+      LspError::internal_error()
+    })?;
+    Ok(Some(json!(true)))
   }
 
   async fn virtual_text_document(
@@ -1948,18 +2459,59 @@ impl Inner {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
     let contents = if specifier.as_str() == "deno:/status.md" {
       let mut contents = String::new();
+      let mut documents_specifiers = self.documents.specifiers();
+      documents_specifiers.sort();
+      let mut sources_specifiers = self.sources.specifiers();
+      sources_specifiers.sort();
+      let measures = self.performance.to_vec();
 
       contents.push_str(&format!(
         r#"# Deno Language Server Status
 
-  - Documents in memory: {}
+  - <details><summary>Documents in memory: {}</summary>
+
+    - {}
+
+  </details>
+
+  - <details><summary>Sources in memory: {}</summary>
+
+    - {}
+
+  </details>
+
+  - <details><summary>Performance measures: {}</summary>
+
+    - {}
+
+  </details>
 "#,
-        self.documents.len()
+        self.documents.len(),
+        documents_specifiers
+          .into_iter()
+          .map(|s| s.to_string())
+          .collect::<Vec<String>>()
+          .join("\n    - "),
+        self.sources.len(),
+        sources_specifiers
+          .into_iter()
+          .map(|s| s.to_string())
+          .collect::<Vec<String>>()
+          .join("\n    - "),
+        measures.len(),
+        measures
+          .iter()
+          .map(|m| m.to_string())
+          .collect::<Vec<String>>()
+          .join("\n    - ")
       ));
-      contents.push_str("\n## Performance\n\n");
-      for average in self.performance.averages() {
+      contents
+        .push_str("\n## Performance\n\n|Name|Duration|Count|\n|---|---|---|\n");
+      let mut averages = self.performance.averages();
+      averages.sort();
+      for average in averages {
         contents.push_str(&format!(
-          "  - {}: {}ms ({})\n",
+          "|{}|{}ms|{}|\n",
           average.name, average.average_duration, average.count
         ));
       }
@@ -1982,7 +2534,7 @@ impl Inner {
           if let Some(source) = self.sources.get_source(&specifier) {
             Some(source)
           } else {
-            error!("The cached sources was not found: {}", specifier);
+            error!("The cached source was not found: {}", specifier);
             None
           }
         }
@@ -2003,6 +2555,7 @@ mod tests {
   use std::fs;
   use std::task::Poll;
   use std::time::Instant;
+  use tempfile::TempDir;
   use tower_test::mock::Spawn;
 
   enum LspResponse<V>
@@ -2017,7 +2570,13 @@ mod tests {
     RequestFixture(u64, String),
   }
 
-  type LspTestHarnessRequest = (&'static str, LspResponse<fn(Value)>);
+  enum LspFixture {
+    None,
+    Path(&'static str),
+    Value(Value),
+  }
+
+  type LspTestHarnessRequest = (LspFixture, LspResponse<fn(Value)>);
 
   struct LspTestHarness {
     requests: Vec<LspTestHarnessRequest>,
@@ -2032,19 +2591,25 @@ mod tests {
     }
 
     async fn run(&mut self) {
-      for (req_path_str, expected) in self.requests.iter() {
+      for (value_or_str, expected) in self.requests.iter() {
         assert_eq!(self.service.poll_ready(), Poll::Ready(Ok(())));
         let fixtures_path = test_util::root_path().join("cli/tests/lsp");
         assert!(fixtures_path.is_dir());
         let response: Result<Option<jsonrpc::Outgoing>, ExitedError> =
-          if req_path_str.is_empty() {
-            Ok(None)
-          } else {
-            let req_path = fixtures_path.join(req_path_str);
-            let req_str = fs::read_to_string(req_path).unwrap();
-            let req: jsonrpc::Incoming =
-              serde_json::from_str(&req_str).unwrap();
-            self.service.call(req).await
+          match value_or_str {
+            LspFixture::None => Ok(None),
+            LspFixture::Path(req_path_str) => {
+              let req_path = fixtures_path.join(req_path_str);
+              let req_str = fs::read_to_string(req_path).unwrap();
+              let req: jsonrpc::Incoming =
+                serde_json::from_str(&req_str).unwrap();
+              self.service.call(req).await
+            }
+            LspFixture::Value(value) => {
+              let req: jsonrpc::Incoming =
+                serde_json::from_value(value.clone()).unwrap();
+              self.service.call(req).await
+            }
           };
         match response {
           Ok(result) => match expected {
@@ -2092,13 +2657,22 @@ mod tests {
   #[tokio::test]
   async fn test_startup_shutdown() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
       (
-        "shutdown_request.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2106,11 +2680,20 @@ mod tests {
   #[tokio::test]
   async fn test_hover() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification.json", LspResponse::None),
       (
-        "hover_request.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("hover_request.json"),
         LspResponse::Request(
           2,
           json!({
@@ -2135,10 +2718,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2146,16 +2732,28 @@ mod tests {
   #[tokio::test]
   async fn test_hover_asset() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_asset.json", LspResponse::None),
-      ("definition_request_asset.json", LspResponse::RequestAny),
       (
-        "virtual_text_document_request.json",
+        LspFixture::Path("initialize_request.json"),
         LspResponse::RequestAny,
       ),
       (
-        "hover_request_asset.json",
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_asset.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("definition_request_asset.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("virtual_text_document_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("hover_request_asset.json"),
         LspResponse::Request(
           5,
           json!({
@@ -2180,10 +2778,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2191,15 +2792,30 @@ mod tests {
   #[tokio::test]
   async fn test_hover_disabled() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request_disabled.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification.json", LspResponse::None),
-      ("hover_request.json", LspResponse::Request(2, json!(null))),
       (
-        "shutdown_request.json",
+        LspFixture::Path("initialize_request_disabled.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("hover_request.json"),
+        LspResponse::Request(2, json!(null)),
+      ),
+      (
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2207,11 +2823,20 @@ mod tests {
   #[tokio::test]
   async fn test_hover_unstable_disabled() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_unstable.json", LspResponse::None),
       (
-        "hover_request.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_unstable.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("hover_request.json"),
         LspResponse::Request(
           2,
           json!({
@@ -2235,10 +2860,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2246,11 +2874,20 @@ mod tests {
   #[tokio::test]
   async fn test_hover_unstable_enabled() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request_unstable.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_unstable.json", LspResponse::None),
       (
-        "hover_request.json",
+        LspFixture::Path("initialize_request_unstable.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_unstable.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("hover_request.json"),
         LspResponse::Request(
           2,
           json!({
@@ -2275,10 +2912,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2286,12 +2926,24 @@ mod tests {
   #[tokio::test]
   async fn test_hover_change_mbc() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_mbc.json", LspResponse::None),
-      ("did_change_notification_mbc.json", LspResponse::None),
       (
-        "hover_request_mbc.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_mbc.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_change_notification_mbc.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("hover_request_mbc.json"),
         LspResponse::Request(
           2,
           json!({
@@ -2316,10 +2968,347 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
+    ]);
+    harness.run().await;
+  }
+
+  #[derive(Deserialize)]
+  struct HoverResponse {
+    pub result: Option<Hover>,
+  }
+
+  #[tokio::test]
+  async fn test_hover_closed_document() {
+    let temp_dir = TempDir::new()
+      .expect("could not create temp dir")
+      .into_path();
+    let a_path = temp_dir.join("a.ts");
+    fs::write(a_path, r#"export const a = "a";"#)
+      .expect("could not write file");
+    let b_path = temp_dir.join("b.ts");
+    fs::write(&b_path, r#"export * from "./a.ts";"#)
+      .expect("could not write file");
+    let b_specifier =
+      Url::from_file_path(b_path).expect("could not convert path");
+    let c_path = temp_dir.join("c.ts");
+    fs::write(&c_path, "import { a } from \"./b.ts\";\nconsole.log(a);\n")
+      .expect("could not write file");
+    let c_specifier =
+      Url::from_file_path(c_path).expect("could not convert path");
+
+    let mut harness = LspTestHarness::new(vec![
+      (
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Value(json!({
+          "jsonrpc": "2.0",
+          "method": "textDocument/didOpen",
+          "params": {
+            "textDocument": {
+              "uri": b_specifier,
+              "languageId": "typescript",
+              "version": 1,
+              "text": r#"export * from "./a.ts";"#
+            }
+          }
+        })),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Value(json!({
+          "jsonrpc": "2.0",
+          "method": "textDocument/didOpen",
+          "params": {
+            "textDocument": {
+              "uri": c_specifier,
+              "languageId": "typescript",
+              "version": 1,
+              "text": "import { a } from \"./b.ts\";\nconsole.log(a);\n",
+            }
+          }
+        })),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Value(json!({
+          "jsonrpc": "2.0",
+          "id": 2,
+          "method": "textDocument/hover",
+          "params": {
+            "textDocument": {
+              "uri": c_specifier,
+            },
+            "position": {
+              "line": 0,
+              "character": 10
+            }
+          }
+        })),
+        LspResponse::RequestAssert(|value| {
+          let resp: HoverResponse = serde_json::from_value(value).unwrap();
+          if let Some(hover) = resp.result {
+            assert_eq!(
+              hover,
+              Hover {
+                contents: HoverContents::Array(vec![
+                  MarkedString::LanguageString(LanguageString {
+                    language: "typescript".to_string(),
+                    value: "(alias) const a: \"a\"\nimport a".to_string()
+                  }),
+                  MarkedString::String("".to_string()),
+                ]),
+                range: Some(Range {
+                  start: Position {
+                    line: 0,
+                    character: 9,
+                  },
+                  end: Position {
+                    line: 0,
+                    character: 10,
+                  }
+                }),
+              }
+            );
+          } else {
+            panic!("no response");
+          }
+        }),
+      ),
+      (
+        LspFixture::Value(json!({
+          "jsonrpc": "2.0",
+          "method": "textDocument/didClose",
+          "params": {
+            "textDocument": {
+              "uri": b_specifier,
+            }
+          }
+        })),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Value(json!({
+          "jsonrpc": "2.0",
+          "id": 4,
+          "method": "textDocument/hover",
+          "params": {
+            "textDocument": {
+              "uri": c_specifier,
+            },
+            "position": {
+              "line": 0,
+              "character": 10
+            }
+          }
+        })),
+        LspResponse::RequestAssert(|value| {
+          let resp: HoverResponse = serde_json::from_value(value).unwrap();
+          if let Some(hover) = resp.result {
+            assert_eq!(
+              hover,
+              Hover {
+                contents: HoverContents::Array(vec![
+                  MarkedString::LanguageString(LanguageString {
+                    language: "typescript".to_string(),
+                    value: "(alias) const a: \"a\"\nimport a".to_string()
+                  }),
+                  MarkedString::String("".to_string()),
+                ]),
+                range: Some(Range {
+                  start: Position {
+                    line: 0,
+                    character: 9,
+                  },
+                  end: Position {
+                    line: 0,
+                    character: 10,
+                  }
+                }),
+              }
+            );
+          } else {
+            panic!("no response");
+          }
+        }),
+      ),
+      (
+        LspFixture::Path("shutdown_request.json"),
+        LspResponse::Request(3, json!(null)),
+      ),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_call_hierarchy() {
+    let mut harness = LspTestHarness::new(vec![
+      (
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("prepare_call_hierarchy_did_open_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("prepare_call_hierarchy_request.json"),
+        LspResponse::Request(
+          2,
+          json!([
+            {
+              "name": "baz",
+              "kind": 6,
+              "detail": "Bar",
+              "uri": "file:///a/file.ts",
+              "range": {
+                "start": {
+                  "line": 5,
+                  "character": 2
+                },
+                "end": {
+                  "line": 7,
+                  "character": 3
+                }
+              },
+              "selectionRange": {
+                "start": {
+                  "line": 5,
+                  "character": 2
+                },
+                "end": {
+                  "line": 5,
+                  "character": 5
+                }
+              }
+            }
+          ]),
+        ),
+      ),
+      (
+        LspFixture::Path("incoming_calls_request.json"),
+        LspResponse::Request(
+          4,
+          json!([
+            {
+              "from": {
+                "name": "main",
+                "kind": 12,
+                "detail": "",
+                "uri": "file:///a/file.ts",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 1
+                  }
+                },
+                "selectionRange": {
+                  "start": {
+                    "line": 10,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 10,
+                    "character": 13
+                  }
+                }
+              },
+              "fromRanges": [
+                {
+                  "start": {
+                    "line": 12,
+                    "character": 6
+                  },
+                  "end": {
+                    "line": 12,
+                    "character": 9
+                  }
+                }
+              ]
+            }
+          ]),
+        ),
+      ),
+      (
+        LspFixture::Path("outgoing_calls_request.json"),
+        LspResponse::Request(
+          5,
+          json!([
+            {
+              "to": {
+                "name": "foo",
+                "kind": 12,
+                "detail": "",
+                "uri": "file:///a/file.ts",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 1
+                  }
+                },
+                "selectionRange": {
+                  "start": {
+                    "line": 0,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 12
+                  }
+                }
+              },
+              "fromRanges": [
+                {
+                  "start": {
+                    "line": 6,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 14
+                  }
+                }
+              ]
+            }
+          ]),
+        ),
+      ),
+      (
+        LspFixture::Path("shutdown_request.json"),
+        LspResponse::Request(3, json!(null)),
+      ),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2327,11 +3316,20 @@ mod tests {
   #[tokio::test]
   async fn test_format_mbc() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_mbc_fmt.json", LspResponse::None),
       (
-        "formatting_request_mbc_fmt.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_mbc_fmt.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("formatting_request_mbc_fmt.json"),
         LspResponse::Request(
           2,
           json!([
@@ -2391,10 +3389,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2402,20 +3403,50 @@ mod tests {
   #[tokio::test]
   async fn test_large_doc_change() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_large.json", LspResponse::None),
-      ("did_change_notification_large.json", LspResponse::None),
-      ("did_change_notification_large_02.json", LspResponse::None),
-      ("did_change_notification_large_03.json", LspResponse::None),
-      ("hover_request_large_01.json", LspResponse::RequestAny),
-      ("hover_request_large_02.json", LspResponse::RequestAny),
-      ("hover_request_large_03.json", LspResponse::RequestAny),
       (
-        "shutdown_request.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_large.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_change_notification_large.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_change_notification_large_02.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_change_notification_large_03.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("hover_request_large_01.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("hover_request_large_02.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("hover_request_large_03.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     let time = Instant::now();
     harness.run().await;
@@ -2426,13 +3457,483 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn test_document_symbol() {
+    let mut harness = LspTestHarness::new(vec![
+      (
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("document_symbol_did_open_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("document_symbol_request.json"),
+        LspResponse::Request(
+          2,
+          json!([
+            {
+              "name": "bar",
+              "kind": 13,
+              "range": {
+                "start": {
+                  "line": 17,
+                  "character": 4
+                },
+                "end": {
+                  "line": 17,
+                  "character": 26
+                }
+              },
+              "selectionRange": {
+                "start": {
+                  "line": 17,
+                  "character": 4
+                },
+                "end": {
+                  "line": 17,
+                  "character": 7
+                }
+              }
+            },
+            {
+              "name": "Bar",
+              "kind": 5,
+              "range": {
+                "start": {
+                  "line": 4,
+                  "character": 0
+                },
+                "end": {
+                  "line": 13,
+                  "character": 1
+                }
+              },
+              "selectionRange": {
+                "start": {
+                  "line": 4,
+                  "character": 6
+                },
+                "end": {
+                  "line": 4,
+                  "character": 9
+                }
+              },
+              "children": [
+                {
+                  "name": "constructor",
+                  "kind": 9,
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 35
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 5,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 35
+                    }
+                  }
+                },
+                {
+                  "name": "baz",
+                  "kind": 6,
+                  "tags": [
+                    1
+                  ],
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 25
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 8,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 5
+                    }
+                  }
+                },
+                {
+                  "name": "foo",
+                  "kind": 6,
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 24
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 6,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 5
+                    }
+                  }
+                },
+                {
+                  "name": "getStaticBar",
+                  "kind": 6,
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 57
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 12,
+                      "character": 17
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 29
+                    }
+                  }
+                },
+                {
+                  "name": "staticBar",
+                  "kind": 7,
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 32
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 11,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 18
+                    }
+                  }
+                },
+                {
+                  "name": "value",
+                  "kind": 7,
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 35
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 9,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 11
+                    }
+                  }
+                },
+                {
+                  "name": "value",
+                  "kind": 7,
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 42
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 10,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 11
+                    }
+                  }
+                },
+                {
+                  "name": "x",
+                  "kind": 7,
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 30
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 5,
+                      "character": 21
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 22
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "name": "IFoo",
+              "kind": 11,
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 0
+                },
+                "end": {
+                  "line": 2,
+                  "character": 1
+                }
+              },
+              "selectionRange": {
+                "start": {
+                  "line": 0,
+                  "character": 10
+                },
+                "end": {
+                  "line": 0,
+                  "character": 14
+                }
+              },
+              "children": [
+                {
+                  "name": "foo",
+                  "kind": 6,
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 17
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 1,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 5
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Values",
+              "kind": 10,
+              "range": {
+                "start": {
+                  "line": 15,
+                  "character": 0
+                },
+                "end": {
+                  "line": 15,
+                  "character": 30
+                }
+              },
+              "selectionRange": {
+                "start": {
+                  "line": 15,
+                  "character": 5
+                },
+                "end": {
+                  "line": 15,
+                  "character": 11
+                }
+              },
+              "children": [
+                {
+                  "name": "value1",
+                  "kind": 13,
+                  "range": {
+                    "start": {
+                      "line": 15,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 20
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 15,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 20
+                    }
+                  }
+                },
+                {
+                  "name": "value2",
+                  "kind": 13,
+                  "range": {
+                    "start": {
+                      "line": 15,
+                      "character": 22
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 28
+                    }
+                  },
+                  "selectionRange": {
+                    "start": {
+                      "line": 15,
+                      "character": 22
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 28
+                    }
+                  }
+                }
+              ]
+            }
+          ]),
+        ),
+      ),
+      (
+        LspFixture::Path("shutdown_request.json"),
+        LspResponse::Request(3, json!(null)),
+      ),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_folding_range() {
+    let mut harness = LspTestHarness::new(vec![
+      (
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("folding_range_did_open_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("folding_range_request.json"),
+        LspResponse::Request(
+          2,
+          json!([
+            {
+              "startLine": 0,
+              "endLine": 12,
+              "kind": "region"
+            },
+            {
+              "startLine": 1,
+              "endLine": 3,
+              "kind": "comment"
+            },
+            {
+              "startLine": 4,
+              "endLine": 10
+            },
+            {
+              "startLine": 5,
+              "endLine": 9
+            },
+            {
+              "startLine": 6,
+              "endLine": 7
+            }
+          ]),
+        ),
+      ),
+      (
+        LspFixture::Path("shutdown_request.json"),
+        LspResponse::Request(3, json!(null)),
+      ),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
   async fn test_rename() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("rename_did_open_notification.json", LspResponse::None),
       (
-        "rename_request.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("rename_did_open_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("rename_request.json"),
         LspResponse::Request(
           2,
           json!({
@@ -2471,10 +3972,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2482,14 +3986,20 @@ mod tests {
   #[tokio::test]
   async fn test_selection_range() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
       (
-        "selection_range_did_open_notification.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
         LspResponse::None,
       ),
       (
-        "selection_range_request.json",
+        LspFixture::Path("selection_range_did_open_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("selection_range_request.json"),
         LspResponse::Request(
           2,
           json!([{
@@ -2579,10 +4089,50 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  #[rustfmt::skip]
+  async fn test_semantic_tokens() {
+    let mut harness = LspTestHarness::new(vec![
+      (LspFixture::Path("initialize_request.json"), LspResponse::RequestAny),
+      (LspFixture::Path("initialized_notification.json"), LspResponse::None),
+      (
+        LspFixture::Path("semantic_tokens_did_open_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("semantic_tokens_full_request.json"),
+        LspResponse::Request(
+          2,
+          json!({
+            "data": [0, 5, 6, 1, 1, 0, 9, 6, 8, 9, 0, 8, 6, 8, 9, 2, 15 ,3, 10 ,5, 0, 4, 1, 6, 1, 0, 12 ,7, 2, 16 ,1, 8, 1, 7, 41 ,0, 4, 1, 6, 0, 0, 2, 5, 11 ,16 ,1, 9, 1, 7, 40 ,3, 10 ,4, 2, 1, 1, 11 ,1, 9, 9, 1, 2, 3, 11 ,1, 3, 6, 3, 0, 1, 0, 15 ,4, 2, 0, 1, 30 ,1, 6, 9, 1, 2, 3, 11 ,1, 1, 9, 9, 9, 3, 0, 16 ,3, 0, 0, 1, 17 ,12 ,11 ,3, 0, 24 ,3, 0, 0, 0, 4, 9, 9, 2]
+          }),
+        ),
+      ),
+      (
+        LspFixture::Path("semantic_tokens_range_request.json"),
+        LspResponse::Request(
+          4,
+          json!({
+            "data": [0, 5, 6, 1, 1, 0, 9, 6, 8, 9, 0, 8, 6, 8, 9, 2, 15 ,3, 10 ,5, 0, 4, 1, 6, 1, 0, 12 ,7, 2, 16 ,1, 8, 1, 7, 41 ,0, 4, 1, 6, 0, 0, 2, 5, 11 ,16 ,1, 9, 1, 7, 40]
+          }),
+        ),
+      ),
+      (
+        LspFixture::Path("shutdown_request.json"),
+        LspResponse::Request(3, json!(null)),
+      ),
+      (LspFixture::Path("exit_notification.json"), LspResponse::None),
     ]);
     harness.run().await;
   }
@@ -2590,14 +4140,20 @@ mod tests {
   #[tokio::test]
   async fn test_code_lens_request() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
       (
-        "did_open_notification_cl_references.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
         LspResponse::None,
       ),
       (
-        "code_lens_request.json",
+        LspFixture::Path("did_open_notification_cl_references.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("code_lens_request.json"),
         LspResponse::Request(
           2,
           json!([
@@ -2637,7 +4193,7 @@ mod tests {
         ),
       ),
       (
-        "code_lens_resolve_request.json",
+        LspFixture::Path("code_lens_resolve_request.json"),
         LspResponse::Request(
           4,
           json!({
@@ -2681,10 +4237,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2692,14 +4251,20 @@ mod tests {
   #[tokio::test]
   async fn test_signature_help() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
       (
-        "signature_help_did_open_notification.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
         LspResponse::None,
       ),
       (
-        "signature_help_request_01.json",
+        LspFixture::Path("signature_help_did_open_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("signature_help_request_01.json"),
         LspResponse::Request(
           1,
           json!({
@@ -2725,11 +4290,11 @@ mod tests {
         ),
       ),
       (
-        "signature_help_did_change_notification.json",
+        LspFixture::Path("signature_help_did_change_notification.json"),
         LspResponse::None,
       ),
       (
-        "signature_help_request_02.json",
+        LspFixture::Path("signature_help_request_02.json"),
         LspResponse::Request(
           2,
           json!({
@@ -2755,10 +4320,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2766,11 +4334,20 @@ mod tests {
   #[tokio::test]
   async fn test_code_lens_impl_request() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_cl_impl.json", LspResponse::None),
       (
-        "code_lens_request.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_cl_impl.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("code_lens_request.json"),
         LspResponse::Request(
           2,
           json!([
@@ -2826,7 +4403,7 @@ mod tests {
         ),
       ),
       (
-        "code_lens_resolve_request_impl.json",
+        LspFixture::Path("code_lens_resolve_request_impl.json"),
         LspResponse::Request(
           4,
           json!({
@@ -2870,10 +4447,13 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2891,16 +4471,28 @@ mod tests {
   #[tokio::test]
   async fn test_code_lens_non_doc_nav_tree() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_asset.json", LspResponse::None),
-      ("references_request_asset.json", LspResponse::RequestAny),
       (
-        "virtual_text_document_request.json",
+        LspFixture::Path("initialize_request.json"),
         LspResponse::RequestAny,
       ),
       (
-        "code_lens_request_asset.json",
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_asset.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("references_request_asset.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("virtual_text_document_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("code_lens_request_asset.json"),
         LspResponse::RequestAssert(|value| {
           let resp: CodeLensResponse = serde_json::from_value(value).unwrap();
           let lenses = resp.result.unwrap();
@@ -2908,7 +4500,7 @@ mod tests {
         }),
       ),
       (
-        "code_lens_resolve_request_asset.json",
+        LspFixture::Path("code_lens_resolve_request_asset.json"),
         LspResponse::RequestAssert(|value| {
           let resp: CodeLensResolveResponse =
             serde_json::from_value(value).unwrap();
@@ -2916,10 +4508,13 @@ mod tests {
         }),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2927,26 +4522,38 @@ mod tests {
   #[tokio::test]
   async fn test_code_actions() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_code_action.json", LspResponse::None),
-      ("", LspResponse::Delay(500)),
       (
-        "code_action_request.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_code_action.json"),
+        LspResponse::None,
+      ),
+      (LspFixture::None, LspResponse::Delay(500)),
+      (
+        LspFixture::Path("code_action_request.json"),
         LspResponse::RequestFixture(2, "code_action_response.json".to_string()),
       ),
       (
-        "code_action_resolve_request.json",
+        LspFixture::Path("code_action_resolve_request.json"),
         LspResponse::RequestFixture(
           4,
           "code_action_resolve_request_response.json".to_string(),
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2954,21 +4561,33 @@ mod tests {
   #[tokio::test]
   async fn test_code_actions_deno_cache() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_cache.json", LspResponse::None),
       (
-        "code_action_request_cache.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_cache.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("code_action_request_cache.json"),
         LspResponse::RequestFixture(
           2,
           "code_action_response_cache.json".to_string(),
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -2981,11 +4600,20 @@ mod tests {
   #[tokio::test]
   async fn test_completions() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification_completions.json", LspResponse::None),
       (
-        "completion_request.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_completions.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("completion_request.json"),
         LspResponse::RequestAssert(|value| {
           let response: CompletionResult =
             serde_json::from_value(value).unwrap();
@@ -3000,7 +4628,7 @@ mod tests {
         }),
       ),
       (
-        "completion_resolve_request.json",
+        LspFixture::Path("completion_resolve_request.json"),
         LspResponse::Request(
           4,
           json!({
@@ -3017,10 +4645,223 @@ mod tests {
         ),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_completions_optional() {
+    let mut harness = LspTestHarness::new(vec![
+      (
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_completion_optional.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("completion_request_optional.json"),
+        LspResponse::Request(
+          2,
+          json!({
+            "isIncomplete": false,
+            "items": [
+              {
+                "label": "b?",
+                "kind": 5,
+                "sortText": "1",
+                "filterText": "b",
+                "insertText": "b",
+                "data": {
+                  "tsc": {
+                    "specifier": "file:///a/file.ts",
+                    "position": 79,
+                    "name": "b",
+                    "useCodeSnippet": false
+                  }
+                }
+              }
+            ]
+          }),
+        ),
+      ),
+      (
+        LspFixture::Path("completion_resolve_request_optional.json"),
+        LspResponse::Request(
+          4,
+          json!({
+            "label": "b?",
+            "kind": 5,
+            "detail": "(property) A.b?: string | undefined",
+            "documentation": {
+              "kind": "markdown",
+              "value": ""
+            },
+            "sortText": "1",
+            "filterText": "b",
+            "insertText": "b"
+          }),
+        ),
+      ),
+      (
+        LspFixture::Path("shutdown_request.json"),
+        LspResponse::Request(3, json!(null)),
+      ),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_completions_registry() {
+    let _g = test_util::http_server();
+    let mut harness = LspTestHarness::new(vec![
+      (
+        LspFixture::Path("initialize_request_registry.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_completion_registry.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("completion_request_registry.json"),
+        LspResponse::RequestAssert(|value| {
+          let response: CompletionResult =
+            serde_json::from_value(value).unwrap();
+          let result = response.result.unwrap();
+          if let CompletionResponse::List(list) = result {
+            assert_eq!(list.items.len(), 3);
+          } else {
+            panic!("unexpected result");
+          }
+        }),
+      ),
+      (
+        LspFixture::Path("completion_resolve_request_registry.json"),
+        LspResponse::Request(
+          4,
+          json!({
+            "label": "v2.0.0",
+            "kind": 19,
+            "detail": "(version)",
+            "sortText": "0000000003",
+            "filterText": "http://localhost:4545/x/a@v2.0.0",
+            "textEdit": {
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 20
+                },
+                "end": {
+                  "line": 0,
+                  "character": 46
+                }
+              },
+              "newText": "http://localhost:4545/x/a@v2.0.0"
+            }
+          }),
+        ),
+      ),
+      (
+        LspFixture::Path("shutdown_request.json"),
+        LspResponse::Request(3, json!(null)),
+      ),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
+    ]);
+    harness.run().await;
+  }
+
+  #[tokio::test]
+  async fn test_completion_registry_empty_specifier() {
+    let _g = test_util::http_server();
+    let mut harness = LspTestHarness::new(vec![
+      (
+        LspFixture::Path("initialize_request_registry.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification_completion_registry_02.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("completion_request_registry_02.json"),
+        LspResponse::Request(
+          2,
+          json!({
+            "isIncomplete": false,
+            "items": [
+              {
+                "label": ".",
+                "kind": 19,
+                "detail": "(local)",
+                "sortText": "1",
+                "insertText": "."
+              },
+              {
+                "label": "..",
+                "kind": 19,
+                "detail": "(local)",
+                "sortText": "1",
+                "insertText": ".."
+              },
+              {
+                "label": "http://localhost:4545",
+                "kind": 19,
+                "detail": "(registry)",
+                "sortText": "2",
+                "textEdit": {
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 20
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 20
+                    }
+                  },
+                  "newText": "http://localhost:4545"
+                }
+              }
+            ]
+          }),
+        ),
+      ),
+      (
+        LspFixture::Path("shutdown_request.json"),
+        LspResponse::Request(3, json!(null)),
+      ),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }
@@ -3037,11 +4878,20 @@ mod tests {
   #[tokio::test]
   async fn test_deno_performance_request() {
     let mut harness = LspTestHarness::new(vec![
-      ("initialize_request.json", LspResponse::RequestAny),
-      ("initialized_notification.json", LspResponse::None),
-      ("did_open_notification.json", LspResponse::None),
       (
-        "hover_request.json",
+        LspFixture::Path("initialize_request.json"),
+        LspResponse::RequestAny,
+      ),
+      (
+        LspFixture::Path("initialized_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("did_open_notification.json"),
+        LspResponse::None,
+      ),
+      (
+        LspFixture::Path("hover_request.json"),
         LspResponse::Request(
           2,
           json!({
@@ -3066,7 +4916,7 @@ mod tests {
         ),
       ),
       (
-        "performance_request.json",
+        LspFixture::Path("performance_request.json"),
         LspResponse::RequestAssert(|value| {
           let resp: PerformanceResponse =
             serde_json::from_value(value).unwrap();
@@ -3077,10 +4927,13 @@ mod tests {
         }),
       ),
       (
-        "shutdown_request.json",
+        LspFixture::Path("shutdown_request.json"),
         LspResponse::Request(3, json!(null)),
       ),
-      ("exit_notification.json", LspResponse::None),
+      (
+        LspFixture::Path("exit_notification.json"),
+        LspResponse::None,
+      ),
     ]);
     harness.run().await;
   }

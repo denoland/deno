@@ -1,9 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
@@ -11,7 +10,7 @@ use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 
-use super::error::WebGpuError;
+use super::error::WebGpuResult;
 
 pub(crate) struct WebGpuRenderPass(
   pub(crate) RefCell<wgpu_core::command::RenderPass>,
@@ -37,8 +36,8 @@ pub struct RenderPassSetViewportArgs {
 pub fn op_webgpu_render_pass_set_viewport(
   state: &mut OpState,
   args: RenderPassSetViewportArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(args.render_pass_rid)
@@ -54,7 +53,7 @@ pub fn op_webgpu_render_pass_set_viewport(
     args.max_depth,
   );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
@@ -70,8 +69,8 @@ pub struct RenderPassSetScissorRectArgs {
 pub fn op_webgpu_render_pass_set_scissor_rect(
   state: &mut OpState,
   args: RenderPassSetScissorRectArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(args.render_pass_rid)
@@ -85,7 +84,7 @@ pub fn op_webgpu_render_pass_set_scissor_rect(
     args.height,
   );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
@@ -107,8 +106,8 @@ pub struct RenderPassSetBlendColorArgs {
 pub fn op_webgpu_render_pass_set_blend_color(
   state: &mut OpState,
   args: RenderPassSetBlendColorArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(args.render_pass_rid)
@@ -124,7 +123,7 @@ pub fn op_webgpu_render_pass_set_blend_color(
     },
   );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
@@ -137,8 +136,8 @@ pub struct RenderPassSetStencilReferenceArgs {
 pub fn op_webgpu_render_pass_set_stencil_reference(
   state: &mut OpState,
   args: RenderPassSetStencilReferenceArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(args.render_pass_rid)
@@ -149,7 +148,7 @@ pub fn op_webgpu_render_pass_set_stencil_reference(
     args.reference,
   );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
@@ -163,8 +162,8 @@ pub struct RenderPassBeginPipelineStatisticsQueryArgs {
 pub fn op_webgpu_render_pass_begin_pipeline_statistics_query(
   state: &mut OpState,
   args: RenderPassBeginPipelineStatisticsQueryArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(args.render_pass_rid)
@@ -180,7 +179,7 @@ pub fn op_webgpu_render_pass_begin_pipeline_statistics_query(
     args.query_index,
   );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
@@ -192,8 +191,8 @@ pub struct RenderPassEndPipelineStatisticsQueryArgs {
 pub fn op_webgpu_render_pass_end_pipeline_statistics_query(
   state: &mut OpState,
   args: RenderPassEndPipelineStatisticsQueryArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(args.render_pass_rid)
@@ -203,7 +202,7 @@ pub fn op_webgpu_render_pass_end_pipeline_statistics_query(
     &mut render_pass_resource.0.borrow_mut(),
   );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
@@ -217,8 +216,8 @@ pub struct RenderPassWriteTimestampArgs {
 pub fn op_webgpu_render_pass_write_timestamp(
   state: &mut OpState,
   args: RenderPassWriteTimestampArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(args.render_pass_rid)
@@ -234,7 +233,7 @@ pub fn op_webgpu_render_pass_write_timestamp(
     args.query_index,
   );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
@@ -247,8 +246,8 @@ pub struct RenderPassExecuteBundlesArgs {
 pub fn op_webgpu_render_pass_execute_bundles(
   state: &mut OpState,
   args: RenderPassExecuteBundlesArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let mut render_bundle_ids = vec![];
 
   for rid in &args.bundles {
@@ -272,7 +271,7 @@ pub fn op_webgpu_render_pass_execute_bundles(
     );
   }
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
@@ -285,8 +284,8 @@ pub struct RenderPassEndPassArgs {
 pub fn op_webgpu_render_pass_end_pass(
   state: &mut OpState,
   args: RenderPassEndPassArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let command_encoder_resource = state
     .resource_table
     .get::<super::command_encoder::WebGpuCommandEncoder>(
@@ -303,7 +302,7 @@ pub fn op_webgpu_render_pass_end_pass(
 
   let maybe_err =  gfx_select!(command_encoder => instance.command_encoder_run_render_pass(command_encoder, render_pass)).err();
 
-  Ok(json!({ "err": maybe_err.map(WebGpuError::from) }))
+  Ok(WebGpuResult::maybe_err(maybe_err))
 }
 
 #[derive(Deserialize)]
@@ -320,8 +319,9 @@ pub struct RenderPassSetBindGroupArgs {
 pub fn op_webgpu_render_pass_set_bind_group(
   state: &mut OpState,
   args: RenderPassSetBindGroupArgs,
-  zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
+  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let bind_group_resource = state
     .resource_table
     .get::<super::binding::WebGpuBindGroup>(args.bind_group)
@@ -347,7 +347,7 @@ pub fn op_webgpu_render_pass_set_bind_group(
       );
     },
     None => {
-      let (prefix, data, suffix) = unsafe { zero_copy[0].align_to::<u32>() };
+      let (prefix, data, suffix) = unsafe { zero_copy.align_to::<u32>() };
       assert!(prefix.is_empty());
       assert!(suffix.is_empty());
       unsafe {
@@ -362,7 +362,7 @@ pub fn op_webgpu_render_pass_set_bind_group(
     }
   };
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
@@ -375,8 +375,8 @@ pub struct RenderPassPushDebugGroupArgs {
 pub fn op_webgpu_render_pass_push_debug_group(
   state: &mut OpState,
   args: RenderPassPushDebugGroupArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(args.render_pass_rid)
@@ -391,7 +391,7 @@ pub fn op_webgpu_render_pass_push_debug_group(
     );
   }
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
@@ -403,8 +403,8 @@ pub struct RenderPassPopDebugGroupArgs {
 pub fn op_webgpu_render_pass_pop_debug_group(
   state: &mut OpState,
   args: RenderPassPopDebugGroupArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(args.render_pass_rid)
@@ -414,7 +414,7 @@ pub fn op_webgpu_render_pass_pop_debug_group(
     &mut render_pass_resource.0.borrow_mut(),
   );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
@@ -427,8 +427,8 @@ pub struct RenderPassInsertDebugMarkerArgs {
 pub fn op_webgpu_render_pass_insert_debug_marker(
   state: &mut OpState,
   args: RenderPassInsertDebugMarkerArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(args.render_pass_rid)
@@ -443,7 +443,7 @@ pub fn op_webgpu_render_pass_insert_debug_marker(
     );
   }
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
@@ -456,8 +456,8 @@ pub struct RenderPassSetPipelineArgs {
 pub fn op_webgpu_render_pass_set_pipeline(
   state: &mut OpState,
   args: RenderPassSetPipelineArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let render_pipeline_resource = state
     .resource_table
     .get::<super::pipeline::WebGpuRenderPipeline>(args.pipeline)
@@ -472,7 +472,7 @@ pub fn op_webgpu_render_pass_set_pipeline(
     render_pipeline_resource.0,
   );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
@@ -488,8 +488,8 @@ pub struct RenderPassSetIndexBufferArgs {
 pub fn op_webgpu_render_pass_set_index_buffer(
   state: &mut OpState,
   args: RenderPassSetIndexBufferArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGpuBuffer>(args.buffer)
@@ -506,7 +506,7 @@ pub fn op_webgpu_render_pass_set_index_buffer(
     std::num::NonZeroU64::new(args.size),
   );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
@@ -522,8 +522,8 @@ pub struct RenderPassSetVertexBufferArgs {
 pub fn op_webgpu_render_pass_set_vertex_buffer(
   state: &mut OpState,
   args: RenderPassSetVertexBufferArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGpuBuffer>(args.buffer)
@@ -541,7 +541,7 @@ pub fn op_webgpu_render_pass_set_vertex_buffer(
     std::num::NonZeroU64::new(args.size),
   );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
@@ -557,8 +557,8 @@ pub struct RenderPassDrawArgs {
 pub fn op_webgpu_render_pass_draw(
   state: &mut OpState,
   args: RenderPassDrawArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(args.render_pass_rid)
@@ -572,7 +572,7 @@ pub fn op_webgpu_render_pass_draw(
     args.first_instance,
   );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
@@ -589,8 +589,8 @@ pub struct RenderPassDrawIndexedArgs {
 pub fn op_webgpu_render_pass_draw_indexed(
   state: &mut OpState,
   args: RenderPassDrawIndexedArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(args.render_pass_rid)
@@ -605,7 +605,7 @@ pub fn op_webgpu_render_pass_draw_indexed(
     args.first_instance,
   );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
@@ -619,8 +619,8 @@ pub struct RenderPassDrawIndirectArgs {
 pub fn op_webgpu_render_pass_draw_indirect(
   state: &mut OpState,
   args: RenderPassDrawIndirectArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGpuBuffer>(args.indirect_buffer)
@@ -636,7 +636,7 @@ pub fn op_webgpu_render_pass_draw_indirect(
     args.indirect_offset,
   );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }
 
 #[derive(Deserialize)]
@@ -650,8 +650,8 @@ pub struct RenderPassDrawIndexedIndirectArgs {
 pub fn op_webgpu_render_pass_draw_indexed_indirect(
   state: &mut OpState,
   args: RenderPassDrawIndexedIndirectArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table
     .get::<super::buffer::WebGpuBuffer>(args.indirect_buffer)
@@ -667,5 +667,5 @@ pub fn op_webgpu_render_pass_draw_indexed_indirect(
     args.indirect_offset,
   );
 
-  Ok(json!({}))
+  Ok(WebGpuResult::empty())
 }

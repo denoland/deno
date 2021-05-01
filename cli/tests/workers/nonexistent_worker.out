@@ -1,0 +1,3 @@
+[WILDCARD]error: Uncaught (in worker "") Cannot resolve module "file:///[WILDCARD]cli/tests/workers/doesnt_exist.js".
+error: Uncaught (in promise) Error: Unhandled error event reached main worker.
+    at Worker.#poll ([WILDCARD])

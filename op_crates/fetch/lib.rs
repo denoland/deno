@@ -4,16 +4,14 @@
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::generic_error;
+use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::Future;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
@@ -24,6 +22,8 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 
+use data_url::DataUrl;
+use deno_file::BlobUrlStore;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -34,6 +34,7 @@ use reqwest::Client;
 use reqwest::Method;
 use reqwest::Response;
 use serde::Deserialize;
+use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::From;
@@ -58,10 +59,6 @@ pub fn init(isolate: &mut JsRuntime) {
       include_str!("01_fetch_util.js"),
     ),
     (
-      "deno:op_crates/fetch/03_dom_iterable.js",
-      include_str!("03_dom_iterable.js"),
-    ),
-    (
       "deno:op_crates/fetch/11_streams.js",
       include_str!("11_streams.js"),
     ),
@@ -70,8 +67,24 @@ pub fn init(isolate: &mut JsRuntime) {
       include_str!("20_headers.js"),
     ),
     (
-      "deno:op_crates/fetch/21_file.js",
-      include_str!("21_file.js"),
+      "deno:op_crates/fetch/21_formdata.js",
+      include_str!("21_formdata.js"),
+    ),
+    (
+      "deno:op_crates/fetch/22_body.js",
+      include_str!("22_body.js"),
+    ),
+    (
+      "deno:op_crates/fetch/22_http_client.js",
+      include_str!("22_http_client.js"),
+    ),
+    (
+      "deno:op_crates/fetch/23_request.js",
+      include_str!("23_request.js"),
+    ),
+    (
+      "deno:op_crates/fetch/23_response.js",
+      include_str!("23_response.js"),
     ),
     (
       "deno:op_crates/fetch/26_fetch.js",
@@ -79,7 +92,7 @@ pub fn init(isolate: &mut JsRuntime) {
     ),
   ];
   for (url, source_code) in files {
-    isolate.execute(url, source_code).unwrap();
+    isolate.execute(url, source_code).expect(url);
   }
 }
 
@@ -89,19 +102,19 @@ pub struct HttpClientDefaults {
 }
 
 pub trait FetchPermissions {
-  fn check_net_url(&self, _url: &Url) -> Result<(), AnyError>;
-  fn check_read(&self, _p: &Path) -> Result<(), AnyError>;
+  fn check_net_url(&mut self, _url: &Url) -> Result<(), AnyError>;
+  fn check_read(&mut self, _p: &Path) -> Result<(), AnyError>;
 }
 
 /// For use with `op_fetch` when the user does not want permissions.
 pub struct NoFetchPermissions;
 
 impl FetchPermissions for NoFetchPermissions {
-  fn check_net_url(&self, _url: &Url) -> Result<(), AnyError> {
+  fn check_net_url(&mut self, _url: &Url) -> Result<(), AnyError> {
     Ok(())
   }
 
-  fn check_read(&self, _p: &Path) -> Result<(), AnyError> {
+  fn check_read(&mut self, _p: &Path) -> Result<(), AnyError> {
     Ok(())
   }
 }
@@ -113,19 +126,25 @@ pub fn get_declaration() -> PathBuf {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchArgs {
-  method: Option<String>,
+  method: String,
   url: String,
-  base_url: Option<String>,
   headers: Vec<(String, String)>,
   client_rid: Option<u32>,
   has_body: bool,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchReturn {
+  request_rid: ResourceId,
+  request_body_rid: Option<ResourceId>,
+}
+
 pub fn op_fetch<FP>(
   state: &mut OpState,
   args: FetchArgs,
-  data: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError>
+  data: Option<ZeroCopyBuf>,
+) -> Result<FetchReturn, AnyError>
 where
   FP: FetchPermissions + 'static,
 {
@@ -140,89 +159,134 @@ where
     client.clone()
   };
 
-  let method = match args.method {
-    Some(method_str) => Method::from_bytes(method_str.as_bytes())?,
-    None => Method::GET,
-  };
-
-  let base_url = match args.base_url {
-    Some(base_url) => Some(Url::parse(&base_url)?),
-    _ => None,
-  };
-  let url = Url::options()
-    .base_url(base_url.as_ref())
-    .parse(&args.url)?;
+  let method = Method::from_bytes(args.method.as_bytes())?;
+  let url = Url::parse(&args.url)?;
 
   // Check scheme before asking for net permission
   let scheme = url.scheme();
-  if scheme != "http" && scheme != "https" {
-    return Err(type_error(format!("scheme '{}' not supported", scheme)));
-  }
+  let (request_rid, request_body_rid) = match scheme {
+    "http" | "https" => {
+      let permissions = state.borrow_mut::<FP>();
+      permissions.check_net_url(&url)?;
 
-  let permissions = state.borrow::<FP>();
-  permissions.check_net_url(&url)?;
+      let mut request = client.request(method, url);
 
-  let mut request = client.request(method, url);
+      let request_body_rid = if args.has_body {
+        match data {
+          None => {
+            // If no body is passed, we return a writer for streaming the body.
+            let (tx, rx) = mpsc::channel::<std::io::Result<Vec<u8>>>(1);
+            request = request.body(Body::wrap_stream(ReceiverStream::new(rx)));
 
-  let maybe_request_body_rid = if args.has_body {
-    match data.len() {
-      0 => {
-        // If no body is passed, we return a writer for streaming the body.
-        let (tx, rx) = mpsc::channel::<std::io::Result<Vec<u8>>>(1);
-        request = request.body(Body::wrap_stream(ReceiverStream::new(rx)));
+            let request_body_rid =
+              state.resource_table.add(FetchRequestBodyResource {
+                body: AsyncRefCell::new(tx),
+                cancel: CancelHandle::default(),
+              });
 
-        let request_body_rid =
-          state.resource_table.add(FetchRequestBodyResource {
-            body: AsyncRefCell::new(tx),
-            cancel: CancelHandle::default(),
-          });
-
-        Some(request_body_rid)
-      }
-      1 => {
-        // If a body is passed, we use it, and don't return a body for streaming.
-        request = request.body(Vec::from(&*data[0]));
+            Some(request_body_rid)
+          }
+          Some(data) => {
+            // If a body is passed, we use it, and don't return a body for streaming.
+            request = request.body(Vec::from(&*data));
+            None
+          }
+        }
+      } else {
         None
+      };
+
+      for (key, value) in args.headers {
+        let name = HeaderName::from_bytes(key.as_bytes()).unwrap();
+        let v = HeaderValue::from_str(&value).unwrap();
+        request = request.header(name, v);
       }
-      _ => panic!("Invalid number of arguments"),
+
+      let fut = request.send();
+
+      let request_rid = state
+        .resource_table
+        .add(FetchRequestResource(Box::pin(fut)));
+
+      (request_rid, request_body_rid)
     }
-  } else {
-    None
+    "data" => {
+      let data_url = DataUrl::process(url.as_str())
+        .map_err(|e| type_error(format!("{:?}", e)))?;
+
+      let (body, _) = data_url
+        .decode_to_vec()
+        .map_err(|e| type_error(format!("{:?}", e)))?;
+
+      let response = http::Response::builder()
+        .status(http::StatusCode::OK)
+        .header(http::header::CONTENT_TYPE, data_url.mime_type().to_string())
+        .body(reqwest::Body::from(body))?;
+
+      let fut = async move { Ok(Response::from(response)) };
+
+      let request_rid = state
+        .resource_table
+        .add(FetchRequestResource(Box::pin(fut)));
+
+      (request_rid, None)
+    }
+    "blob" => {
+      let blob_url_storage =
+        state.try_borrow::<BlobUrlStore>().ok_or_else(|| {
+          type_error("Blob URLs are not supported in this context.")
+        })?;
+
+      let blob = blob_url_storage
+        .get(url)?
+        .ok_or_else(|| type_error("Blob for the given URL not found."))?;
+
+      if method != "GET" {
+        return Err(type_error("Blob URL fetch only supports GET method."));
+      }
+
+      let response = http::Response::builder()
+        .status(http::StatusCode::OK)
+        .header(http::header::CONTENT_LENGTH, blob.data.len())
+        .header(http::header::CONTENT_TYPE, blob.media_type)
+        .body(reqwest::Body::from(blob.data))?;
+
+      let fut = async move { Ok(Response::from(response)) };
+
+      let request_rid = state
+        .resource_table
+        .add(FetchRequestResource(Box::pin(fut)));
+
+      (request_rid, None)
+    }
+    _ => return Err(type_error(format!("scheme '{}' not supported", scheme))),
   };
 
-  for (key, value) in args.headers {
-    let name = HeaderName::from_bytes(key.as_bytes()).unwrap();
-    let v = HeaderValue::from_str(&value).unwrap();
-    request = request.header(name, v);
-  }
-
-  let fut = request.send();
-
-  let request_rid = state
-    .resource_table
-    .add(FetchRequestResource(Box::pin(fut)));
-
-  Ok(json!({
-    "requestRid": request_rid,
-    "requestBodyRid": maybe_request_body_rid
-  }))
+  Ok(FetchReturn {
+    request_rid,
+    request_body_rid,
+  })
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FetchSendArgs {
-  rid: ResourceId,
+pub struct FetchResponse {
+  status: u16,
+  status_text: String,
+  headers: Vec<(String, String)>,
+  url: String,
+  response_rid: ResourceId,
 }
 
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
-  args: FetchSendArgs,
-  _data: BufVec,
-) -> Result<Value, AnyError> {
+  rid: ResourceId,
+  _data: Option<ZeroCopyBuf>,
+) -> Result<FetchResponse, AnyError> {
   let request = state
     .borrow_mut()
     .resource_table
-    .take::<FetchRequestResource>(args.rid)
+    .take::<FetchRequestResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
   let request = Rc::try_unwrap(request)
@@ -267,32 +331,22 @@ pub async fn op_fetch_send(
       cancel: CancelHandle::default(),
     });
 
-  Ok(json!({
-    "status": status.as_u16(),
-    "statusText": status.canonical_reason().unwrap_or(""),
-    "headers": res_headers,
-    "url": url,
-    "responseRid": rid,
-  }))
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FetchRequestWriteArgs {
-  rid: ResourceId,
+  Ok(FetchResponse {
+    status: status.as_u16(),
+    status_text: status.canonical_reason().unwrap_or("").to_string(),
+    headers: res_headers,
+    url,
+    response_rid: rid,
+  })
 }
 
 pub async fn op_fetch_request_write(
   state: Rc<RefCell<OpState>>,
-  args: FetchRequestWriteArgs,
-  data: BufVec,
-) -> Result<Value, AnyError> {
-  let rid = args.rid;
-
-  let buf = match data.len() {
-    1 => Vec::from(&*data[0]),
-    _ => panic!("Invalid number of arguments"),
-  };
+  rid: ResourceId,
+  data: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
+  let data = data.ok_or_else(null_opbuf)?;
+  let buf = Vec::from(&*data);
 
   let resource = state
     .borrow()
@@ -303,25 +357,15 @@ pub async fn op_fetch_request_write(
   let cancel = RcRef::map(resource, |r| &r.cancel);
   body.send(Ok(buf)).or_cancel(cancel).await??;
 
-  Ok(json!({}))
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FetchResponseReadArgs {
-  rid: ResourceId,
+  Ok(())
 }
 
 pub async fn op_fetch_response_read(
   state: Rc<RefCell<OpState>>,
-  args: FetchResponseReadArgs,
-  data: BufVec,
-) -> Result<Value, AnyError> {
-  let rid = args.rid;
-
-  if data.len() != 1 {
-    panic!("Invalid number of arguments");
-  }
+  rid: ResourceId,
+  data: Option<ZeroCopyBuf>,
+) -> Result<usize, AnyError> {
+  let data = data.ok_or_else(null_opbuf)?;
 
   let resource = state
     .borrow()
@@ -330,9 +374,9 @@ pub async fn op_fetch_response_read(
     .ok_or_else(bad_resource_id)?;
   let mut reader = RcRef::map(&resource, |r| &r.reader).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
-  let mut buf = data[0].clone();
+  let mut buf = data.clone();
   let read = reader.read(&mut buf).try_or_cancel(cancel).await?;
-  Ok(json!({ "read": read }))
+  Ok(read)
 }
 
 struct FetchRequestResource(
@@ -397,13 +441,13 @@ pub struct CreateHttpClientOptions {
 pub fn op_create_http_client<FP>(
   state: &mut OpState,
   args: CreateHttpClientOptions,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError>
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<ResourceId, AnyError>
 where
   FP: FetchPermissions + 'static,
 {
   if let Some(ca_file) = args.ca_file.clone() {
-    let permissions = state.borrow::<FP>();
+    let permissions = state.borrow_mut::<FP>();
     permissions.check_read(&PathBuf::from(ca_file))?;
   }
 
@@ -418,7 +462,7 @@ where
   .unwrap();
 
   let rid = state.resource_table.add(HttpClientResource::new(client));
-  Ok(json!(rid))
+  Ok(rid)
 }
 
 fn get_cert_data(

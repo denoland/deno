@@ -1,17 +1,15 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
+use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::SplitSink;
 use deno_core::futures::stream::SplitStream;
 use deno_core::futures::SinkExt;
 use deno_core::futures::StreamExt;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::url;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::JsRuntime;
@@ -23,6 +21,7 @@ use deno_core::ZeroCopyBuf;
 
 use http::{Method, Request, Uri};
 use serde::Deserialize;
+use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::io::BufReader;
@@ -32,12 +31,12 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio_rustls::{rustls::ClientConfig, TlsConnector};
-use tokio_tungstenite::stream::Stream as StreamSwitcher;
 use tokio_tungstenite::tungstenite::Error as TungsteniteError;
 use tokio_tungstenite::tungstenite::{
   handshake::client::Response, protocol::frame::coding::CloseCode,
   protocol::CloseFrame, Message,
 };
+use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::{client_async, WebSocketStream};
 use webpki::DNSNameRef;
 
@@ -49,22 +48,19 @@ pub struct WsCaData(pub Vec<u8>);
 pub struct WsUserAgent(pub String);
 
 pub trait WebSocketPermissions {
-  fn check_net_url(&self, _url: &url::Url) -> Result<(), AnyError>;
+  fn check_net_url(&mut self, _url: &url::Url) -> Result<(), AnyError>;
 }
 
 /// For use with `op_websocket_*` when the user does not want permissions.
 pub struct NoWebSocketPermissions;
 
 impl WebSocketPermissions for NoWebSocketPermissions {
-  fn check_net_url(&self, _url: &url::Url) -> Result<(), AnyError> {
+  fn check_net_url(&mut self, _url: &url::Url) -> Result<(), AnyError> {
     Ok(())
   }
 }
 
-type MaybeTlsStream =
-  StreamSwitcher<TcpStream, tokio_rustls::client::TlsStream<TcpStream>>;
-
-type WsStream = WebSocketStream<MaybeTlsStream>;
+type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 struct WsStreamResource {
   tx: AsyncRefCell<SplitSink<WsStream, Message>>,
   rx: AsyncRefCell<SplitStream<WsStream>>,
@@ -82,28 +78,22 @@ impl Resource for WsStreamResource {
 
 impl WsStreamResource {}
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CheckPermissionArgs {
-  url: String,
-}
-
 // This op is needed because creating a WS instance in JavaScript is a sync
 // operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
 pub fn op_ws_check_permission<WP>(
   state: &mut OpState,
-  args: CheckPermissionArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError>
+  url: String,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError>
 where
   WP: WebSocketPermissions + 'static,
 {
   state
-    .borrow::<WP>()
-    .check_net_url(&url::Url::parse(&args.url)?)?;
+    .borrow_mut::<WP>()
+    .check_net_url(&url::Url::parse(&url)?)?;
 
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -113,17 +103,26 @@ pub struct CreateArgs {
   protocols: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateResponse {
+  success: bool,
+  rid: Option<ResourceId>,
+  protocol: Option<String>,
+  extensions: Option<String>,
+}
+
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
   args: CreateArgs,
-  _bufs: BufVec,
-) -> Result<Value, AnyError>
+  _bufs: Option<ZeroCopyBuf>,
+) -> Result<CreateResponse, AnyError>
 where
   WP: WebSocketPermissions + 'static,
 {
   {
-    let s = state.borrow();
-    s.borrow::<WP>()
+    let mut s = state.borrow_mut();
+    s.borrow_mut::<WP>()
       .check_net_url(&url::Url::parse(&args.url)?)
       .expect(
         "Permission check should have been done in op_ws_check_permission",
@@ -152,11 +151,18 @@ where
   let try_socket = TcpStream::connect(addr).await;
   let tcp_socket = match try_socket.map_err(TungsteniteError::Io) {
     Ok(socket) => socket,
-    Err(_) => return Ok(json!({ "success": false })),
+    Err(_) => {
+      return Ok(CreateResponse {
+        success: false,
+        rid: None,
+        protocol: None,
+        extensions: None,
+      })
+    }
   };
 
-  let socket: MaybeTlsStream = match uri.scheme_str() {
-    Some("ws") => StreamSwitcher::Plain(tcp_socket),
+  let socket: MaybeTlsStream<TcpStream> = match uri.scheme_str() {
+    Some("ws") => MaybeTlsStream::Plain(tcp_socket),
     Some("wss") => {
       let mut config = ClientConfig::new();
       config
@@ -172,7 +178,7 @@ where
       let dnsname =
         DNSNameRef::try_from_ascii_str(&domain).expect("Invalid DNS lookup");
       let tls_socket = tls_connector.connect(dnsname, tcp_socket).await?;
-      StreamSwitcher::Tls(tls_socket)
+      MaybeTlsStream::Rustls(tls_socket)
     }
     _ => unreachable!(),
   };
@@ -204,12 +210,12 @@ where
     .iter()
     .map(|header| header.to_str().unwrap())
     .collect::<String>();
-  Ok(json!({
-    "success": true,
-    "rid": rid,
-    "protocol": protocol,
-    "extensions": extensions
-  }))
+  Ok(CreateResponse {
+    success: true,
+    rid: Some(rid),
+    protocol: Some(protocol.to_string()),
+    extensions: Some(extensions),
+  })
 }
 
 #[derive(Deserialize)]
@@ -223,11 +229,11 @@ pub struct SendArgs {
 pub async fn op_ws_send(
   state: Rc<RefCell<OpState>>,
   args: SendArgs,
-  bufs: BufVec,
-) -> Result<Value, AnyError> {
+  buf: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
   let msg = match args.kind.as_str() {
     "text" => Message::Text(args.text.unwrap()),
-    "binary" => Message::Binary(bufs[0].to_vec()),
+    "binary" => Message::Binary(buf.ok_or_else(null_opbuf)?.to_vec()),
     "pong" => Message::Pong(vec![]),
     _ => unreachable!(),
   };
@@ -240,7 +246,7 @@ pub async fn op_ws_send(
     .ok_or_else(bad_resource_id)?;
   let mut tx = RcRef::map(&resource, |r| &r.tx).borrow_mut().await;
   tx.send(msg).await?;
-  Ok(json!({}))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -254,8 +260,8 @@ pub struct CloseArgs {
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
   args: CloseArgs,
-  _bufs: BufVec,
-) -> Result<Value, AnyError> {
+  _bufs: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
   let rid = args.rid;
   let msg = Message::Close(args.code.map(|c| CloseFrame {
     code: CloseCode::from(c),
@@ -272,61 +278,55 @@ pub async fn op_ws_close(
     .ok_or_else(bad_resource_id)?;
   let mut tx = RcRef::map(&resource, |r| &r.tx).borrow_mut().await;
   tx.send(msg).await?;
-  Ok(json!({}))
+  Ok(())
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct NextEventArgs {
-  rid: ResourceId,
+pub enum NextEventResponse {
+  String(String),
+  Binary(Vec<u8>),
+  Close { code: u16, reason: String },
+  Ping,
+  Pong,
+  Error,
+  Closed,
 }
 
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
-  args: NextEventArgs,
-  _bufs: BufVec,
-) -> Result<Value, AnyError> {
+  rid: ResourceId,
+  _bufs: Option<ZeroCopyBuf>,
+) -> Result<NextEventResponse, AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<WsStreamResource>(args.rid)
+    .get::<WsStreamResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
   let mut rx = RcRef::map(&resource, |r| &r.rx).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let val = rx.next().or_cancel(cancel).await?;
   let res = match val {
-    Some(Ok(Message::Text(text))) => json!({
-      "kind": "string",
-      "data": text
-    }),
+    Some(Ok(Message::Text(text))) => NextEventResponse::String(text),
     Some(Ok(Message::Binary(data))) => {
       // TODO(ry): don't use json to send binary data.
-      json!({
-        "kind": "binary",
-        "data": data
-      })
+      NextEventResponse::Binary(data)
     }
-    Some(Ok(Message::Close(Some(frame)))) => json!({
-      "kind": "close",
-      "data": {
-        "code": u16::from(frame.code),
-        "reason": frame.reason.as_ref()
-      }
-    }),
-    Some(Ok(Message::Close(None))) => json!({
-      "kind": "close",
-      "data": {
-        "code": 1005,
-        "reason": ""
-      }
-    }),
-    Some(Ok(Message::Ping(_))) => json!({ "kind": "ping" }),
-    Some(Ok(Message::Pong(_))) => json!({ "kind": "pong" }),
-    Some(Err(_)) => json!({ "kind": "error" }),
+    Some(Ok(Message::Close(Some(frame)))) => NextEventResponse::Close {
+      code: frame.code.into(),
+      reason: frame.reason.to_string(),
+    },
+    Some(Ok(Message::Close(None))) => NextEventResponse::Close {
+      code: 1005,
+      reason: String::new(),
+    },
+    Some(Ok(Message::Ping(_))) => NextEventResponse::Ping,
+    Some(Ok(Message::Pong(_))) => NextEventResponse::Pong,
+    Some(Err(_)) => NextEventResponse::Error,
     None => {
-      state.borrow_mut().resource_table.close(args.rid).unwrap();
-      json!({ "kind": "closed" })
+      state.borrow_mut().resource_table.close(rid).unwrap();
+      NextEventResponse::Closed
     }
   };
   Ok(res)

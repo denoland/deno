@@ -155,7 +155,7 @@
         context: "Argument 1",
       });
 
-      const { err, ...data } = await core.jsonOpAsync(
+      const { err, ...data } = await core.opAsync(
         "op_webgpu_request_adapter",
         { ...options },
       );
@@ -248,7 +248,7 @@
       const nonGuaranteedLimits = descriptor.nonGuaranteedLimits;
       // TODO(lucacasonato): validate nonGuaranteedLimits
 
-      const { rid, features, limits } = await core.jsonOpAsync(
+      const { rid, features, limits } = await core.opAsync(
         "op_webgpu_request_device",
         {
           adapterRid: this[_adapter].rid,
@@ -705,7 +705,7 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.jsonOpSync("op_webgpu_create_buffer", {
+      const { rid, err } = core.opSync("op_webgpu_create_buffer", {
         deviceRid: device.rid,
         ...descriptor,
       });
@@ -752,7 +752,7 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.jsonOpSync("op_webgpu_create_texture", {
+      const { rid, err } = core.opSync("op_webgpu_create_texture", {
         deviceRid: device.rid,
         ...descriptor,
         size: normalizeGPUExtent3D(descriptor.size),
@@ -780,7 +780,7 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.jsonOpSync("op_webgpu_create_sampler", {
+      const { rid, err } = core.opSync("op_webgpu_create_sampler", {
         deviceRid: device.rid,
         ...descriptor,
       });
@@ -820,7 +820,7 @@
         }
       }
 
-      const { rid, err } = core.jsonOpSync(
+      const { rid, err } = core.opSync(
         "op_webgpu_create_bind_group_layout",
         {
           deviceRid: device.rid,
@@ -863,7 +863,7 @@
           return rid;
         },
       );
-      const { rid, err } = core.jsonOpSync("op_webgpu_create_pipeline_layout", {
+      const { rid, err } = core.opSync("op_webgpu_create_pipeline_layout", {
         deviceRid: device.rid,
         label: descriptor.label,
         bindGroupLayouts,
@@ -955,7 +955,7 @@
         }
       });
 
-      const { rid, err } = core.jsonOpSync("op_webgpu_create_bind_group", {
+      const { rid, err } = core.opSync("op_webgpu_create_bind_group", {
         deviceRid: device.rid,
         label: descriptor.label,
         layout,
@@ -984,7 +984,7 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.jsonOpSync(
+      const { rid, err } = core.opSync(
         "op_webgpu_create_shader_module",
         {
           deviceRid: device.rid,
@@ -1042,7 +1042,7 @@
         selfContext: "this",
       });
 
-      const { rid, err } = core.jsonOpSync(
+      const { rid, err } = core.opSync(
         "op_webgpu_create_compute_pipeline",
         {
           deviceRid: device.rid,
@@ -1115,7 +1115,7 @@
         };
       }
 
-      const { rid, err } = core.jsonOpSync("op_webgpu_create_render_pipeline", {
+      const { rid, err } = core.opSync("op_webgpu_create_render_pipeline", {
         deviceRid: device.rid,
         label: descriptor.label,
         layout,
@@ -1162,7 +1162,7 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.jsonOpSync("op_webgpu_create_command_encoder", {
+      const { rid, err } = core.opSync("op_webgpu_create_command_encoder", {
         deviceRid: device.rid,
         ...descriptor,
       });
@@ -1194,7 +1194,7 @@
         },
       );
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.jsonOpSync(
+      const { rid, err } = core.opSync(
         "op_webgpu_create_render_bundle_encoder",
         {
           deviceRid: device.rid,
@@ -1228,7 +1228,7 @@
         },
       );
       const device = assertDevice(this, { prefix, context: "this" });
-      const { rid, err } = core.jsonOpSync("op_webgpu_create_query_set", {
+      const { rid, err } = core.opSync("op_webgpu_create_query_set", {
         deviceRid: device.rid,
         ...descriptor,
       });
@@ -1350,7 +1350,7 @@
         });
         return rid;
       });
-      const { err } = core.jsonOpSync("op_webgpu_queue_submit", {
+      const { err } = core.opSync("op_webgpu_queue_submit", {
         queueRid: device.rid,
         commandBuffers: commandBufferRids,
       });
@@ -1405,7 +1405,7 @@
         selfContext: "this",
         resourceContext: "Argument 1",
       });
-      const { err } = core.jsonOpSync(
+      const { err } = core.opSync(
         "op_webgpu_write_buffer",
         {
           queueRid: device.rid,
@@ -1455,7 +1455,7 @@
         selfContext: "this",
         resourceContext: "texture",
       });
-      const { err } = core.jsonOpSync(
+      const { err } = core.opSync(
         "op_webgpu_write_texture",
         {
           queueRid: device.rid,
@@ -1655,7 +1655,7 @@
 
       this[_mapMode] = mode;
       this[_state] = "mapping pending";
-      const { err } = await core.jsonOpAsync(
+      const { err } = await core.opAsync(
         "op_webgpu_buffer_get_map_async",
         {
           bufferRid,
@@ -1717,7 +1717,7 @@
       }
 
       const buffer = new ArrayBuffer(rangeSize);
-      const { rid } = core.jsonOpSync(
+      const { rid } = core.opSync(
         "op_webgpu_buffer_get_mapped_range",
         {
           bufferRid,
@@ -1774,7 +1774,7 @@
           throw new DOMException(`${prefix}: invalid state.`, "OperationError");
         }
         for (const [buffer, mappedRid] of mappedRanges) {
-          const { err } = core.jsonOpSync("op_webgpu_buffer_unmap", {
+          const { err } = core.opSync("op_webgpu_buffer_unmap", {
             bufferRid,
             mappedRid,
           }, ...(write ? [new Uint8Array(buffer)] : []));
@@ -1912,7 +1912,7 @@
       });
       const device = assertDevice(this, { prefix, context: "this" });
       const textureRid = assertResource(this, { prefix, context: "this" });
-      const { rid, err } = core.jsonOpSync("op_webgpu_create_texture_view", {
+      const { rid, err } = core.opSync("op_webgpu_create_texture_view", {
         textureRid,
         ...descriptor,
       });
@@ -2297,7 +2297,7 @@
         prefix,
         context: "this",
       });
-      const { rid, label, err } = core.jsonOpSync(
+      const { rid, label, err } = core.opSync(
         "op_webgpu_compute_pipeline_get_bind_group_layout",
         { computePipelineRid, index },
       );
@@ -2372,7 +2372,7 @@
         prefix,
         context: "this",
       });
-      const { rid, label, err } = core.jsonOpSync(
+      const { rid, label, err } = core.opSync(
         "op_webgpu_render_pipeline_get_bind_group_layout",
         { renderPipelineRid, index },
       );
@@ -2597,7 +2597,7 @@
         },
       );
 
-      const { rid } = core.jsonOpSync(
+      const { rid } = core.opSync(
         "op_webgpu_command_encoder_begin_render_pass",
         {
           commandEncoderRid,
@@ -2634,7 +2634,7 @@
         context: "this",
       });
 
-      const { rid } = core.jsonOpSync(
+      const { rid } = core.opSync(
         "op_webgpu_command_encoder_begin_compute_pass",
         {
           commandEncoderRid,
@@ -2713,7 +2713,7 @@
         selfContext: "this",
       });
 
-      const { err } = core.jsonOpSync(
+      const { err } = core.opSync(
         "op_webgpu_command_encoder_copy_buffer_to_buffer",
         {
           commandEncoderRid,
@@ -2773,7 +2773,7 @@
         selfContext: "this",
       });
 
-      const { err } = core.jsonOpSync(
+      const { err } = core.opSync(
         "op_webgpu_command_encoder_copy_buffer_to_texture",
         {
           commandEncoderRid,
@@ -2839,7 +2839,7 @@
         resourceContext: "buffer in Argument 2",
         selfContext: "this",
       });
-      const { err } = core.jsonOpSync(
+      const { err } = core.opSync(
         "op_webgpu_command_encoder_copy_texture_to_buffer",
         {
           commandEncoderRid,
@@ -2905,7 +2905,7 @@
         resourceContext: "texture in Argument 2",
         selfContext: "this",
       });
-      const { err } = core.jsonOpSync(
+      const { err } = core.opSync(
         "op_webgpu_command_encoder_copy_texture_to_texture",
         {
           commandEncoderRid,
@@ -2946,7 +2946,7 @@
         prefix,
         context: "this",
       });
-      const { err } = core.jsonOpSync(
+      const { err } = core.opSync(
         "op_webgpu_command_encoder_push_debug_group",
         {
           commandEncoderRid,
@@ -2964,7 +2964,7 @@
         prefix,
         context: "this",
       });
-      const { err } = core.jsonOpSync(
+      const { err } = core.opSync(
         "op_webgpu_command_encoder_pop_debug_group",
         {
           commandEncoderRid,
@@ -2990,7 +2990,7 @@
         prefix,
         context: "this",
       });
-      const { err } = core.jsonOpSync(
+      const { err } = core.opSync(
         "op_webgpu_command_encoder_insert_debug_marker",
         {
           commandEncoderRid,
@@ -3031,7 +3031,7 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      const { err } = core.jsonOpSync(
+      const { err } = core.opSync(
         "op_webgpu_command_encoder_write_timestamp",
         {
           commandEncoderRid,
@@ -3103,7 +3103,7 @@
         resourceContext: "Argument 3",
         selfContext: "this",
       });
-      const { err } = core.jsonOpSync(
+      const { err } = core.opSync(
         "op_webgpu_command_encoder_resolve_query_set",
         {
           commandEncoderRid,
@@ -3133,7 +3133,7 @@
         prefix,
         context: "this",
       });
-      const { rid, err } = core.jsonOpSync("op_webgpu_command_encoder_finish", {
+      const { rid, err } = core.opSync("op_webgpu_command_encoder_finish", {
         commandEncoderRid,
         ...descriptor,
       });
@@ -3233,7 +3233,7 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.jsonOpSync("op_webgpu_render_pass_set_viewport", {
+      core.opSync("op_webgpu_render_pass_set_viewport", {
         renderPassRid,
         x,
         y,
@@ -3281,7 +3281,7 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.jsonOpSync("op_webgpu_render_pass_set_scissor_rect", {
+      core.opSync("op_webgpu_render_pass_set_scissor_rect", {
         renderPassRid,
         x,
         y,
@@ -3311,7 +3311,7 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.jsonOpSync("op_webgpu_render_pass_set_blend_color", {
+      core.opSync("op_webgpu_render_pass_set_blend_color", {
         renderPassRid,
         color: normalizeGPUColor(color),
       });
@@ -3338,7 +3338,7 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.jsonOpSync("op_webgpu_render_pass_set_stencil_reference", {
+      core.opSync("op_webgpu_render_pass_set_stencil_reference", {
         renderPassRid,
         reference,
       });
@@ -3387,7 +3387,7 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.jsonOpSync("op_webgpu_render_pass_begin_pipeline_statistics_query", {
+      core.opSync("op_webgpu_render_pass_begin_pipeline_statistics_query", {
         renderPassRid,
         querySet: querySetRid,
         queryIndex,
@@ -3407,7 +3407,7 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.jsonOpSync("op_webgpu_render_pass_end_pipeline_statistics_query", {
+      core.opSync("op_webgpu_render_pass_end_pipeline_statistics_query", {
         renderPassRid,
       });
     }
@@ -3447,7 +3447,7 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.jsonOpSync("op_webgpu_render_pass_write_timestamp", {
+      core.opSync("op_webgpu_render_pass_write_timestamp", {
         renderPassRid,
         querySet: querySetRid,
         queryIndex,
@@ -3485,7 +3485,7 @@
         });
         return rid;
       });
-      core.jsonOpSync("op_webgpu_render_pass_execute_bundles", {
+      core.opSync("op_webgpu_render_pass_execute_bundles", {
         renderPassRid,
         bundles: bundleRids,
       });
@@ -3503,7 +3503,7 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      const { err } = core.jsonOpSync("op_webgpu_render_pass_end_pass", {
+      const { err } = core.opSync("op_webgpu_render_pass_end_pass", {
         commandEncoderRid,
         renderPassRid,
       });
@@ -3541,7 +3541,7 @@
         selfContext: "this",
       });
       if (dynamicOffsetsData instanceof Uint32Array) {
-        core.jsonOpSync(
+        core.opSync(
           "op_webgpu_render_pass_set_bind_group",
           {
             renderPassRid,
@@ -3554,7 +3554,7 @@
         );
       } else {
         dynamicOffsetsData ??= [];
-        core.jsonOpSync("op_webgpu_render_pass_set_bind_group", {
+        core.opSync("op_webgpu_render_pass_set_bind_group", {
           renderPassRid,
           index,
           bindGroup: bindGroupRid,
@@ -3586,7 +3586,7 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.jsonOpSync("op_webgpu_render_pass_push_debug_group", {
+      core.opSync("op_webgpu_render_pass_push_debug_group", {
         renderPassRid,
         groupLabel,
       });
@@ -3605,7 +3605,7 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.jsonOpSync("op_webgpu_render_pass_pop_debug_group", {
+      core.opSync("op_webgpu_render_pass_pop_debug_group", {
         renderPassRid,
       });
     }
@@ -3631,7 +3631,7 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.jsonOpSync("op_webgpu_render_pass_insert_debug_marker", {
+      core.opSync("op_webgpu_render_pass_insert_debug_marker", {
         renderPassRid,
         markerLabel,
       });
@@ -3667,7 +3667,7 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.jsonOpSync("op_webgpu_render_pass_set_pipeline", {
+      core.opSync("op_webgpu_render_pass_set_pipeline", {
         renderPassRid,
         pipeline: pipelineRid,
       });
@@ -3718,7 +3718,7 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.jsonOpSync("op_webgpu_render_pass_set_index_buffer", {
+      core.opSync("op_webgpu_render_pass_set_index_buffer", {
         renderPassRid,
         buffer: bufferRid,
         indexFormat,
@@ -3772,7 +3772,7 @@
         resourceContext: "Argument 2",
         selfContext: "this",
       });
-      core.jsonOpSync("op_webgpu_render_pass_set_vertex_buffer", {
+      core.opSync("op_webgpu_render_pass_set_vertex_buffer", {
         renderPassRid,
         slot,
         buffer: bufferRid,
@@ -3816,7 +3816,7 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.jsonOpSync("op_webgpu_render_pass_draw", {
+      core.opSync("op_webgpu_render_pass_draw", {
         renderPassRid,
         vertexCount,
         instanceCount,
@@ -3872,7 +3872,7 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.jsonOpSync("op_webgpu_render_pass_draw_indexed", {
+      core.opSync("op_webgpu_render_pass_draw_indexed", {
         renderPassRid,
         indexCount,
         instanceCount,
@@ -3917,7 +3917,7 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.jsonOpSync("op_webgpu_render_pass_draw_indirect", {
+      core.opSync("op_webgpu_render_pass_draw_indirect", {
         renderPassRid,
         indirectBuffer: indirectBufferRid,
         indirectOffset,
@@ -3959,7 +3959,7 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.jsonOpSync("op_webgpu_render_pass_draw_indexed_indirect", {
+      core.opSync("op_webgpu_render_pass_draw_indexed_indirect", {
         renderPassRid,
         indirectBuffer: indirectBufferRid,
         indirectOffset,
@@ -4041,7 +4041,7 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.jsonOpSync("op_webgpu_compute_pass_set_pipeline", {
+      core.opSync("op_webgpu_compute_pass_set_pipeline", {
         computePassRid,
         pipeline: pipelineRid,
       });
@@ -4068,7 +4068,7 @@
         context: "encoder referenced by this",
       });
       const computePassRid = assertResource(this, { prefix, context: "this" });
-      core.jsonOpSync("op_webgpu_compute_pass_dispatch", {
+      core.opSync("op_webgpu_compute_pass_dispatch", {
         computePassRid,
         x,
         y,
@@ -4111,7 +4111,7 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.jsonOpSync("op_webgpu_compute_pass_dispatch_indirect", {
+      core.opSync("op_webgpu_compute_pass_dispatch_indirect", {
         computePassRid: computePassRid,
         indirectBuffer: indirectBufferRid,
         indirectOffset,
@@ -4153,7 +4153,7 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.jsonOpSync(
+      core.opSync(
         "op_webgpu_compute_pass_begin_pipeline_statistics_query",
         {
           computePassRid,
@@ -4176,7 +4176,7 @@
         context: "encoder referenced by this",
       });
       const computePassRid = assertResource(this, { prefix, context: "this" });
-      core.jsonOpSync("op_webgpu_compute_pass_end_pipeline_statistics_query", {
+      core.opSync("op_webgpu_compute_pass_end_pipeline_statistics_query", {
         computePassRid,
       });
     }
@@ -4216,7 +4216,7 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.jsonOpSync("op_webgpu_compute_pass_write_timestamp", {
+      core.opSync("op_webgpu_compute_pass_write_timestamp", {
         computePassRid,
         querySet: querySetRid,
         queryIndex,
@@ -4235,7 +4235,7 @@
         context: "encoder referenced by this",
       });
       const computePassRid = assertResource(this, { prefix, context: "this" });
-      const { err } = core.jsonOpSync("op_webgpu_compute_pass_end_pass", {
+      const { err } = core.opSync("op_webgpu_compute_pass_end_pass", {
         commandEncoderRid,
         computePassRid,
       });
@@ -4273,7 +4273,7 @@
         selfContext: "this",
       });
       if (dynamicOffsetsData instanceof Uint32Array) {
-        core.jsonOpSync(
+        core.opSync(
           "op_webgpu_compute_pass_set_bind_group",
           {
             computePassRid,
@@ -4286,7 +4286,7 @@
         );
       } else {
         dynamicOffsetsData ??= [];
-        core.jsonOpSync("op_webgpu_compute_pass_set_bind_group", {
+        core.opSync("op_webgpu_compute_pass_set_bind_group", {
           computePassRid,
           index,
           bindGroup: bindGroupRid,
@@ -4318,7 +4318,7 @@
         context: "encoder referenced by this",
       });
       const computePassRid = assertResource(this, { prefix, context: "this" });
-      core.jsonOpSync("op_webgpu_compute_pass_push_debug_group", {
+      core.opSync("op_webgpu_compute_pass_push_debug_group", {
         computePassRid,
         groupLabel,
       });
@@ -4337,7 +4337,7 @@
         context: "encoder referenced by this",
       });
       const computePassRid = assertResource(this, { prefix, context: "this" });
-      core.jsonOpSync("op_webgpu_compute_pass_pop_debug_group", {
+      core.opSync("op_webgpu_compute_pass_pop_debug_group", {
         computePassRid,
       });
     }
@@ -4363,7 +4363,7 @@
         context: "encoder referenced by this",
       });
       const computePassRid = assertResource(this, { prefix, context: "this" });
-      core.jsonOpSync("op_webgpu_compute_pass_insert_debug_marker", {
+      core.opSync("op_webgpu_compute_pass_insert_debug_marker", {
         computePassRid,
         markerLabel,
       });
@@ -4477,7 +4477,7 @@
         prefix,
         context: "this",
       });
-      const { rid, err } = core.jsonOpSync(
+      const { rid, err } = core.opSync(
         "op_webgpu_render_bundle_encoder_finish",
         {
           renderBundleEncoderRid,
@@ -4522,7 +4522,7 @@
         selfContext: "this",
       });
       if (dynamicOffsetsData instanceof Uint32Array) {
-        core.jsonOpSync(
+        core.opSync(
           "op_webgpu_render_bundle_encoder_set_bind_group",
           {
             renderBundleEncoderRid,
@@ -4535,7 +4535,7 @@
         );
       } else {
         dynamicOffsetsData ??= [];
-        core.jsonOpSync("op_webgpu_render_bundle_encoder_set_bind_group", {
+        core.opSync("op_webgpu_render_bundle_encoder_set_bind_group", {
           renderBundleEncoderRid,
           index,
           bindGroup: bindGroupRid,
@@ -4563,7 +4563,7 @@
         prefix,
         context: "this",
       });
-      core.jsonOpSync("op_webgpu_render_bundle_encoder_push_debug_group", {
+      core.opSync("op_webgpu_render_bundle_encoder_push_debug_group", {
         renderBundleEncoderRid,
         groupLabel,
       });
@@ -4578,7 +4578,7 @@
         prefix,
         context: "this",
       });
-      core.jsonOpSync("op_webgpu_render_bundle_encoder_pop_debug_group", {
+      core.opSync("op_webgpu_render_bundle_encoder_pop_debug_group", {
         renderBundleEncoderRid,
       });
     }
@@ -4600,7 +4600,7 @@
         prefix,
         context: "this",
       });
-      core.jsonOpSync("op_webgpu_render_bundle_encoder_push_debug_group", {
+      core.opSync("op_webgpu_render_bundle_encoder_push_debug_group", {
         renderBundleEncoderRid,
         markerLabel,
       });
@@ -4632,7 +4632,7 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.jsonOpSync("op_webgpu_render_bundle_encoder_set_pipeline", {
+      core.opSync("op_webgpu_render_bundle_encoder_set_pipeline", {
         renderBundleEncoderRid,
         pipeline: pipelineRid,
       });
@@ -4679,7 +4679,7 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.jsonOpSync("op_webgpu_render_bundle_encoder_set_index_buffer", {
+      core.opSync("op_webgpu_render_bundle_encoder_set_index_buffer", {
         renderBundleEncoderRid,
         buffer: bufferRid,
         indexFormat,
@@ -4729,7 +4729,7 @@
         resourceContext: "Argument 2",
         selfContext: "this",
       });
-      core.jsonOpSync("op_webgpu_render_bundle_encoder_set_vertex_buffer", {
+      core.opSync("op_webgpu_render_bundle_encoder_set_vertex_buffer", {
         renderBundleEncoderRid,
         slot,
         buffer: bufferRid,
@@ -4769,7 +4769,7 @@
         prefix,
         context: "this",
       });
-      core.jsonOpSync("op_webgpu_render_bundle_encoder_draw", {
+      core.opSync("op_webgpu_render_bundle_encoder_draw", {
         renderBundleEncoderRid,
         vertexCount,
         instanceCount,
@@ -4821,7 +4821,7 @@
         prefix,
         context: "this",
       });
-      core.jsonOpSync("op_webgpu_render_bundle_encoder_draw_indexed", {
+      core.opSync("op_webgpu_render_bundle_encoder_draw_indexed", {
         renderBundleEncoderRid,
         indexCount,
         instanceCount,
@@ -4862,7 +4862,7 @@
         resourceContext: "Argument 1",
         selfContext: "this",
       });
-      core.jsonOpSync("op_webgpu_render_bundle_encoder_draw_indirect", {
+      core.opSync("op_webgpu_render_bundle_encoder_draw_indirect", {
         renderBundleEncoderRid,
         indirectBuffer: indirectBufferRid,
         indirectOffset,

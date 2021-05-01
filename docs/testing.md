@@ -3,6 +3,12 @@
 Deno has a built-in test runner that you can use for testing JavaScript or
 TypeScript code.
 
+`deno test` will search in `./*` and `./**/*` recursively, for test files:
+
+- named `test.{ts, tsx, js, mjs, jsx}`,
+- or ending with `.test.{ts, tsx, js, mjs, jsx}`,
+- or ending with `_test.{ts, tsx, js, mjs, jsx}`
+
 ## Writing tests
 
 To define a test you need to call `Deno.test` with a name and function to be

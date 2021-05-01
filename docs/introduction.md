@@ -17,7 +17,7 @@ It's built on V8, Rust, and Tokio.
   [a set of reviewed (audited) standard
   modules](https://github.com/denoland/deno_std) that are guaranteed to work
   with Deno.
-- Scripts can be bundled into a single JavaScript file.
+- Can bundle scripts into a single JavaScript file.
 
 ## Philosophy
 
@@ -35,7 +35,7 @@ have been historically written with Bash or Python.
 
 ## Goals
 
-- Only ship a single executable (`deno`).
+- Ship as just a single executable (`deno`).
 - Provide secure defaults.
   - Unless specifically allowed, scripts can't access files, the environment, or
     the network.
@@ -45,7 +45,7 @@ have been historically written with Bash or Python.
     also be able to be run in a modern web browser without change.
 - Provide built-in tooling to improve developer experience.
   - E.g. unit testing, code formatting, and linting.
-- Not leak V8 concepts into user land.
+- Keep V8 concepts out of user land.
 - Serve HTTP efficiently.
 
 ## Comparison to Node.js
@@ -57,8 +57,8 @@ have been historically written with Bash or Python.
   than Node.
 - Deno requires explicit permissions for file, network, and environment access.
 - Deno always dies on uncaught errors.
-- Uses "ES Modules" and does not support `require()`. Third party modules are
-  imported via URLs:
+- Deno uses "ES Modules" and does not support `require()`. Third party modules
+  are imported via URLs:
 
   ```javascript
   import * as log from "https://deno.land/std@$STD_VERSION/log/mod.ts";
@@ -66,7 +66,7 @@ have been historically written with Bash or Python.
 
 ## Other key behaviors
 
-- Remote code is fetched and cached on first execution, and never updated until
+- Fetch and cache remote code upon first execution, and never update it until
   the code is run with the `--reload` flag. (So, this will still work on an
   airplane.)
 - Modules/files loaded from remote URLs are intended to be immutable and

@@ -1,17 +1,17 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::AnyError;
-use crate::runtime::JsRuntimeState;
 use crate::JsRuntime;
 use crate::Op;
 use crate::OpId;
+use crate::OpPayload;
+use crate::OpResponse;
 use crate::OpTable;
+use crate::PromiseId;
 use crate::ZeroCopyBuf;
-use futures::future::FutureExt;
 use rusty_v8 as v8;
 use serde::Serialize;
 use serde_v8::to_v8;
-use std::cell::Cell;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::io::{stdout, Write};
@@ -26,9 +26,6 @@ lazy_static::lazy_static! {
         function: print.map_fn_to()
       },
       v8::ExternalReference {
-        function: recv.map_fn_to()
-      },
-      v8::ExternalReference {
         function: send.map_fn_to()
       },
       v8::ExternalReference {
@@ -36,9 +33,6 @@ lazy_static::lazy_static! {
       },
       v8::ExternalReference {
         function: eval_context.map_fn_to()
-      },
-      v8::ExternalReference {
-        getter: shared_getter.map_fn_to()
       },
       v8::ExternalReference {
         function: queue_microtask.map_fn_to()
@@ -62,7 +56,7 @@ lazy_static::lazy_static! {
         function: get_proxy_details.map_fn_to()
       },
       v8::ExternalReference {
-        function: heap_stats.map_fn_to(),
+        function: memory_usage.map_fn_to(),
       },
     ]);
 }
@@ -125,7 +119,6 @@ pub fn initialize_context<'s>(
 
   // Bind functions to Deno.core.*
   set_func(scope, core_val, "print", print);
-  set_func(scope, core_val, "recv", recv);
   set_func(scope, core_val, "send", send);
   set_func(
     scope,
@@ -140,10 +133,7 @@ pub fn initialize_context<'s>(
   set_func(scope, core_val, "deserialize", deserialize);
   set_func(scope, core_val, "getPromiseDetails", get_promise_details);
   set_func(scope, core_val, "getProxyDetails", get_proxy_details);
-  set_func(scope, core_val, "heapStats", heap_stats);
-
-  let shared_key = v8::String::new(scope, "shared").unwrap();
-  core_val.set_accessor(scope, shared_key.into(), shared_getter);
+  set_func(scope, core_val, "memoryUsage", memory_usage);
 
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
@@ -292,29 +282,6 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   };
 }
 
-pub(crate) unsafe fn get_backing_store_slice(
-  backing_store: &v8::SharedRef<v8::BackingStore>,
-  byte_offset: usize,
-  byte_length: usize,
-) -> &[u8] {
-  let cells: *const [Cell<u8>] =
-    &backing_store[byte_offset..byte_offset + byte_length];
-  let bytes = cells as *const [u8];
-  &*bytes
-}
-
-#[allow(clippy::mut_from_ref)]
-pub(crate) unsafe fn get_backing_store_slice_mut(
-  backing_store: &v8::SharedRef<v8::BackingStore>,
-  byte_offset: usize,
-  byte_length: usize,
-) -> &mut [u8] {
-  let cells: *const [Cell<u8>] =
-    &backing_store[byte_offset..byte_offset + byte_length];
-  let bytes = cells as *const _ as *mut [u8];
-  &mut *bytes
-}
-
 fn print(
   scope: &mut v8::HandleScope,
   args: v8::FunctionCallbackArguments,
@@ -350,27 +317,6 @@ fn print(
   }
 }
 
-fn recv(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  _rv: v8::ReturnValue,
-) {
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
-
-  let cb = match v8::Local::<v8::Function>::try_from(args.get(0)) {
-    Ok(cb) => cb,
-    Err(err) => return throw_type_error(scope, err.to_string()),
-  };
-
-  let slot = match &mut state.js_recv_cb {
-    slot @ None => slot,
-    _ => return throw_type_error(scope, "Deno.core.recv() already called"),
-  };
-
-  slot.replace(v8::Global::new(scope, cb));
-}
-
 fn send<'s>(
   scope: &mut v8::HandleScope<'s>,
   args: v8::FunctionCallbackArguments,
@@ -380,59 +326,84 @@ fn send<'s>(
   let mut state = state_rc.borrow_mut();
 
   let op_id = match v8::Local::<v8::Integer>::try_from(args.get(0))
+    .map(|l| l.value() as OpId)
     .map_err(AnyError::from)
-    .and_then(|l| OpId::try_from(l.value()).map_err(AnyError::from))
   {
     Ok(op_id) => op_id,
     Err(err) => {
-      let msg = format!("invalid op id: {}", err);
-      let msg = v8::String::new(scope, &msg).unwrap();
-      let exc = v8::Exception::type_error(scope, msg);
-      scope.throw_exception(exc);
+      throw_type_error(scope, format!("invalid op id: {}", err));
       return;
     }
   };
 
-  let buf_iter = (1..args.length()).map(|idx| {
-    v8::Local::<v8::ArrayBufferView>::try_from(args.get(idx))
+  // send(0) returns obj of all ops, handle as special case
+  if op_id == 0 {
+    // TODO: Serialize as HashMap when serde_v8 supports maps ...
+    let ops = OpTable::op_entries(state.op_state.clone());
+    rv.set(to_v8(scope, ops).unwrap());
+    return;
+  }
+
+  // PromiseId
+  let arg1 = args.get(1);
+  let promise_id = if arg1.is_null_or_undefined() {
+    Ok(0) // Accept null or undefined as 0
+  } else {
+    // Otherwise expect int
+    v8::Local::<v8::Integer>::try_from(arg1)
+      .map(|l| l.value() as PromiseId)
+      .map_err(AnyError::from)
+  };
+  // Fail if promise id invalid (not null/undefined or int)
+  let promise_id: PromiseId = match promise_id {
+    Ok(promise_id) => promise_id,
+    Err(err) => {
+      throw_type_error(scope, format!("invalid promise id: {}", err));
+      return;
+    }
+  };
+
+  // Structured args
+  let v = args.get(2);
+
+  // Buf arg (optional)
+  let arg3 = args.get(3);
+  let buf: Option<ZeroCopyBuf> = if arg3.is_null_or_undefined() {
+    None
+  } else {
+    match v8::Local::<v8::ArrayBufferView>::try_from(arg3)
       .map(|view| ZeroCopyBuf::new(scope, view))
-      .map_err(|err| {
-        let msg = format!("Invalid argument at position {}: {}", idx, err);
-        let msg = v8::String::new(scope, &msg).unwrap();
-        v8::Exception::type_error(scope, msg)
-      })
-  });
-
-  let bufs = match buf_iter.collect::<Result<_, _>>() {
-    Ok(bufs) => bufs,
-    Err(exc) => {
-      scope.throw_exception(exc);
-      return;
+      .map_err(AnyError::from)
+    {
+      Ok(buf) => Some(buf),
+      Err(err) => {
+        throw_type_error(scope, format!("Err with buf arg: {}", err));
+        return;
+      }
     }
   };
 
-  let op = OpTable::route_op(op_id, state.op_state.clone(), bufs);
-  assert_eq!(state.shared.size(), 0);
+  let payload = OpPayload::new(scope, v, promise_id);
+  let op = OpTable::route_op(op_id, state.op_state.clone(), payload, buf);
   match op {
-    Op::Sync(buf) if !buf.is_empty() => {
-      rv.set(boxed_slice_to_uint8array(scope, buf).into());
-    }
-    Op::Sync(_) => {}
+    Op::Sync(resp) => match resp {
+      OpResponse::Value(v) => {
+        rv.set(v.to_v8(scope).unwrap());
+      }
+      OpResponse::Buffer(buf) => {
+        rv.set(boxed_slice_to_uint8array(scope, buf).into());
+      }
+    },
     Op::Async(fut) => {
-      let fut2 = fut.map(move |buf| (op_id, buf));
-      state.pending_ops.push(fut2.boxed_local());
+      state.pending_ops.push(fut);
       state.have_unpolled_ops = true;
     }
     Op::AsyncUnref(fut) => {
-      let fut2 = fut.map(move |buf| (op_id, buf));
-      state.pending_unref_ops.push(fut2.boxed_local());
+      state.pending_unref_ops.push(fut);
       state.have_unpolled_ops = true;
     }
     Op::NotFound => {
-      let msg = format!("Unknown op id: {}", op_id);
-      let msg = v8::String::new(scope, &msg).unwrap();
-      let exc = v8::Exception::type_error(scope, msg);
-      scope.throw_exception(exc);
+      throw_type_error(scope, format!("Unknown op id: {}", op_id));
     }
   }
 }
@@ -579,14 +550,8 @@ fn decode(
     }
   };
 
-  let backing_store = view.buffer(scope).unwrap().get_backing_store();
-  let buf = unsafe {
-    get_backing_store_slice(
-      &backing_store,
-      view.byte_offset(),
-      view.byte_length(),
-    )
-  };
+  let zero_copy = ZeroCopyBuf::new(scope, view);
+  let buf = &zero_copy;
 
   // Strip BOM
   let buf =
@@ -674,14 +639,8 @@ fn deserialize(
     }
   };
 
-  let backing_store = view.buffer(scope).unwrap().get_backing_store();
-  let buf = unsafe {
-    get_backing_store_slice(
-      &backing_store,
-      view.byte_offset(),
-      view.byte_length(),
-    )
-  };
+  let zero_copy = ZeroCopyBuf::new(scope, view);
+  let buf = &zero_copy;
 
   let serialize_deserialize = Box::new(SerializeDeserialize {});
   let mut value_deserializer =
@@ -709,33 +668,6 @@ fn queue_microtask(
       throw_type_error(scope, "Invalid argument");
     }
   };
-}
-
-fn shared_getter(
-  scope: &mut v8::HandleScope,
-  _name: v8::Local<v8::Name>,
-  _args: v8::PropertyCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
-  let state_rc = JsRuntime::state(scope);
-  let mut state = state_rc.borrow_mut();
-  let JsRuntimeState {
-    shared_ab, shared, ..
-  } = &mut *state;
-
-  // Lazily initialize the persistent external ArrayBuffer.
-  let shared_ab = match shared_ab {
-    Some(ref ab) => v8::Local::new(scope, ab),
-    slot @ None => {
-      let ab = v8::SharedArrayBuffer::with_backing_store(
-        scope,
-        shared.get_backing_store(),
-      );
-      slot.replace(v8::Global::new(scope, ab));
-      ab
-    }
-  };
-  rv.set(shared_ab.into())
 }
 
 // Called by V8 during `Isolate::mod_instantiate`.
@@ -869,50 +801,35 @@ fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
   scope.throw_exception(exception);
 }
 
-fn heap_stats(
+fn memory_usage(
   scope: &mut v8::HandleScope,
   _args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let stats = get_heap_stats(scope);
+  let stats = get_memory_usage(scope);
   rv.set(to_v8(scope, stats).unwrap());
 }
 
 // HeapStats stores values from a isolate.get_heap_statistics() call
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct HeapStats {
-  total_heap_size: usize,
-  total_heap_size_executable: usize,
-  total_physical_size: usize,
-  total_available_size: usize,
-  total_global_handles_size: usize,
-  used_global_handles_size: usize,
-  used_heap_size: usize,
-  heap_size_limit: usize,
-  malloced_memory: usize,
-  external_memory: usize,
-  peak_malloced_memory: usize,
-  number_of_native_contexts: usize,
-  number_of_detached_contexts: usize,
+struct MemoryUsage {
+  rss: usize,
+  heap_total: usize,
+  heap_used: usize,
+  external: usize,
+  // TODO: track ArrayBuffers, would require using a custom allocator to track
+  // but it's otherwise a subset of external so can be indirectly tracked
+  // array_buffers: usize,
 }
-fn get_heap_stats(isolate: &mut v8::Isolate) -> HeapStats {
+fn get_memory_usage(isolate: &mut v8::Isolate) -> MemoryUsage {
   let mut s = v8::HeapStatistics::default();
   isolate.get_heap_statistics(&mut s);
 
-  HeapStats {
-    total_heap_size: s.total_heap_size(),
-    total_heap_size_executable: s.total_heap_size_executable(),
-    total_physical_size: s.total_physical_size(),
-    total_available_size: s.total_available_size(),
-    total_global_handles_size: s.total_global_handles_size(),
-    used_global_handles_size: s.used_global_handles_size(),
-    used_heap_size: s.used_heap_size(),
-    heap_size_limit: s.heap_size_limit(),
-    malloced_memory: s.malloced_memory(),
-    external_memory: s.external_memory(),
-    peak_malloced_memory: s.peak_malloced_memory(),
-    number_of_native_contexts: s.number_of_native_contexts(),
-    number_of_detached_contexts: s.number_of_detached_contexts(),
+  MemoryUsage {
+    rss: s.total_physical_size(),
+    heap_total: s.total_heap_size(),
+    heap_used: s.used_heap_size(),
+    external: s.external_memory(),
   }
 }

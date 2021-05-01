@@ -44,7 +44,6 @@ jobs:
         'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) }}
 
     env:
-      CARGO_INCREMENTAL: 0
       RUST_BACKTRACE: full
       CARGO_TERM_COLOR: always
 
@@ -59,7 +58,7 @@ jobs:
           # other commits have landed it will become impossible to rebuild if
           # the checkout is too shallow.
           fetch-depth: 5
-          submodules: true
+          submodules: recursive
 
       - name: Create source tarballs (release, linux)
         if: |
@@ -104,7 +103,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v2
         with:
-          node-version: "14"
+          node-version: "16"
           check-latest: true
 
       - name: Remove unused versions of Python
@@ -159,6 +158,38 @@ jobs:
           rustc --version
           cargo --version
           deno --version
+
+      # Work around https://github.com/actions/cache/issues/403 by using GNU tar
+      # instead of BSD tar.
+      - name: Install GNU tar
+        if: matrix.os == 'macos-10.15'
+        run: |
+          brew install gnu-tar
+          echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
+
+      - name: Cache Cargo home
+        uses: actions/cache@v2
+        with:
+          # See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key:
+            a-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: Cache build output
+        uses: actions/cache@v2
+        with:
+          path: |
+            ./target
+          key:
+            d-${{ matrix.os }}-${{ matrix.kind }}-${{ hashFiles('Cargo.lock') }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: Apply and update mtime cache
+        uses: ./.github/mtime_cache
+        with:
+          cache-path: ./target
 
       - name: test_format.js
         if: matrix.kind == 'lint'
@@ -330,3 +361,12 @@ jobs:
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
           draft: true
+
+      - name: Clean before cache
+        shell: bash
+        run: |
+          rm -f target/*/deno target/*/denort target/*/test_server
+          rm -rf target/*/examples/
+          rm -rf target/*/gn_out/
+          rm -rf target/*/*.zip
+
