@@ -35,7 +35,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio_rustls::{rustls::ClientConfig, TlsConnector};
-use tokio_tungstenite::tungstenite::Error as TungsteniteError;
 use tokio_tungstenite::tungstenite::{
   handshake::client::Response, protocol::frame::coding::CloseCode,
   protocol::CloseFrame, Message,
@@ -110,10 +109,9 @@ pub struct CreateArgs {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateResponse {
-  success: bool,
-  rid: Option<ResourceId>,
-  protocol: Option<String>,
-  extensions: Option<String>,
+  rid: ResourceId,
+  protocol: String,
+  extensions: String,
 }
 
 pub async fn op_ws_create<WP>(
@@ -152,18 +150,7 @@ where
     _ => unreachable!(),
   });
   let addr = format!("{}:{}", domain, port);
-  let try_socket = TcpStream::connect(addr).await;
-  let tcp_socket = match try_socket.map_err(TungsteniteError::Io) {
-    Ok(socket) => socket,
-    Err(_) => {
-      return Ok(CreateResponse {
-        success: false,
-        rid: None,
-        protocol: None,
-        extensions: None,
-      })
-    }
-  };
+  let tcp_socket = TcpStream::connect(addr).await?;
 
   let socket: MaybeTlsStream<TcpStream> = match uri.scheme_str() {
     Some("ws") => MaybeTlsStream::Plain(tcp_socket),
@@ -215,10 +202,9 @@ where
     .map(|header| header.to_str().unwrap())
     .collect::<String>();
   Ok(CreateResponse {
-    success: true,
-    rid: Some(rid),
-    protocol: Some(protocol.to_string()),
-    extensions: Some(extensions),
+    rid,
+    protocol: protocol.to_string(),
+    extensions,
   })
 }
 
@@ -293,7 +279,7 @@ pub enum NextEventResponse {
   Close { code: u16, reason: String },
   Ping,
   Pong,
-  Error,
+  Error(String),
   Closed,
 }
 
@@ -324,7 +310,7 @@ pub async fn op_ws_next_event(
     },
     Some(Ok(Message::Ping(_))) => NextEventResponse::Ping,
     Some(Ok(Message::Pong(_))) => NextEventResponse::Pong,
-    Some(Err(_)) => NextEventResponse::Error,
+    Some(Err(e)) => NextEventResponse::Error(e.to_string()),
     None => {
       state.borrow_mut().resource_table.close(rid).unwrap();
       NextEventResponse::Closed
