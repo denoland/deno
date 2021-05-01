@@ -18,6 +18,7 @@ pub(crate) fn init_builtins() -> Extension {
     ))
     .ops(vec![
       ("op_close", op_sync(op_close)),
+      ("op_print", op_sync(op_print)),
       ("op_resources", op_sync(op_resources)),
     ])
     .build()
@@ -55,8 +56,6 @@ pub fn op_close(
 }
 
 /// Builtin utility to print to stdout/stderr
-///
-/// This op must be wrapped in `op_sync`.
 pub fn op_print(
   _state: &mut OpState,
   args: (String, bool),
