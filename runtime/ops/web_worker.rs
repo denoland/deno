@@ -15,9 +15,8 @@ pub fn init() -> Extension {
         op_sync(move |state, _args: (), buf| {
           let buf = buf.ok_or_else(null_opbuf)?;
           let msg_buf: Box<[u8]> = (*buf).into();
-          let sender = state.borrow::<mpsc::Sender<WorkerEvent>>().clone();
+          let mut sender = state.borrow::<mpsc::Sender<WorkerEvent>>().clone();
           sender
-            .clone()
             .try_send(WorkerEvent::Message(msg_buf))
             .expect("Failed to post message to host");
           Ok(())
@@ -28,8 +27,8 @@ pub fn init() -> Extension {
         "op_worker_close",
         op_sync(move |state, _args: (), _bufs| {
           // Notify parent that we're finished
-          let sender = state.borrow::<mpsc::Sender<WorkerEvent>>().clone();
-          sender.clone().close_channel();
+          let mut sender = state.borrow::<mpsc::Sender<WorkerEvent>>().clone();
+          sender.close_channel();
           // Terminate execution of current worker
           let handle = state.borrow::<WebWorkerHandle>();
           handle.terminate();

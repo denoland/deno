@@ -150,13 +150,11 @@ impl MainWorker {
     let should_break_on_first_statement =
       inspector.is_some() && options.should_break_on_first_statement;
 
-    let worker = Self {
+    Self {
       inspector,
       js_runtime,
       should_break_on_first_statement,
-    };
-
-    worker
+    }
   }
 
   pub fn bootstrap(&mut self, options: &WorkerOptions) {

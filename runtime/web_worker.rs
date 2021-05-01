@@ -280,7 +280,7 @@ impl WebWorker {
       terminate_rx,
       handle,
       use_deno_namespace: options.use_deno_namespace,
-      main_module: main_module.clone(),
+      main_module,
     };
 
     // Setup worker-dependant OpState and return worker
@@ -293,7 +293,7 @@ impl WebWorker {
 
       // Required by runtime::ops::worker_host/web_worker
       op_state.put(handle);
-      op_state.put(sender.clone());
+      op_state.put(sender);
 
       worker
     }
