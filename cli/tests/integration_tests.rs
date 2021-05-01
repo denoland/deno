@@ -5384,7 +5384,6 @@ console.log("finish");
   }
 
   #[test]
-  #[ignore]
   #[cfg(windows)]
   // https://github.com/denoland/deno/issues/9667
   fn compile_windows_ext() {
