@@ -540,6 +540,7 @@ dependencies = [
  "lspower",
  "nix",
  "notify",
+ "num_cpus",
  "os_pipe",
  "percent-encoding",
  "pin-project",

@@ -128,6 +128,9 @@
     opSync("op_print", [str, isErr]);
   }
 
+  // Provide bootstrap namespace
+  window.__bootstrap = {};
+  // Extra Deno.core.* exports
   Object.assign(window.Deno.core, {
     opAsync,
     opSync,
