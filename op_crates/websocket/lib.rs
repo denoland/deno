@@ -35,7 +35,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio_rustls::{rustls::ClientConfig, TlsConnector};
-use tokio_tungstenite::tungstenite::Error as TungsteniteError;
 use tokio_tungstenite::tungstenite::{
   handshake::client::Response, protocol::frame::coding::CloseCode,
   protocol::CloseFrame, Message,
@@ -151,8 +150,7 @@ where
     _ => unreachable!(),
   });
   let addr = format!("{}:{}", domain, port);
-  let try_socket = TcpStream::connect(addr).await;
-  let tcp_socket = try_socket.map_err(TungsteniteError::Io)?;
+  let tcp_socket = TcpStream::connect(addr).await?;
 
   let socket: MaybeTlsStream<TcpStream> = match uri.scheme_str() {
     Some("ws") => MaybeTlsStream::Plain(tcp_socket),
