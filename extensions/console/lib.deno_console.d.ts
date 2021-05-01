@@ -23,7 +23,6 @@ declare interface Console {
   time(label?: string): void;
   timeEnd(label?: string): void;
   timeLog(label?: string, ...data: any[]): void;
-  timeStamp(label?: string): void;
   trace(...data: any[]): void;
   warn(...data: any[]): void;
 }
