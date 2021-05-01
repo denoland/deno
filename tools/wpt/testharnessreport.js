@@ -15,3 +15,12 @@ window.add_completion_callback((tests, harnessStatus) => {
   Deno.exit(0);
 });
 */
+
+globalThis.document = {
+  // document.body shim for FileAPI/file/File-constructor.any.js test
+  body: {
+    toString() {
+      return '[object HTMLBodyElement]';
+    }
+  }
+};

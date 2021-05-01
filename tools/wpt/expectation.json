@@ -981,7 +981,7 @@
       "Blob-slice.any.js": true
     },
     "file": {
-      "File-constructor.any.js": false
+      "File-constructor.any.js": true
     },
     "fileReader.any.js": true,
     "url": {
