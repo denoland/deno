@@ -6,6 +6,19 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.9.2 / 2021.04.23
+
+- fix: parse websocket messages correctly (#10318)
+- fix: standalone bin corruption on M1 (#10311)
+- fix: don't gray-out internal error frames (#10293)
+- fix(op_crates/fetch): Response inspect regression (#10295)
+- fix(runtime): do not panic on not found cwd (#10238)
+- fix(op_crates/webgpu): move non-null op buffer arg check when needed (#10319)
+- fix(lsp): document symbol performance mark (#10264)
+
+Release notes for std version 0.95.0:
+https://github.com/denoland/deno_std/releases/tag/0.95.0
+
 ### 1.9.1 / 2021.04.20
 
 - feat(lsp, unstable): Implement textDocument/documentSymbol (#9981)

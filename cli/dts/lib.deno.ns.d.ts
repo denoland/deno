@@ -89,7 +89,7 @@ declare namespace Deno {
   /** The current process id of the runtime. */
   export const pid: number;
 
-  /** Reflects the `NO_COLOR` environment variable.
+  /** Reflects the `NO_COLOR` environment variable at program start.
    *
    * See: https://no-color.org/ */
   export const noColor: boolean;
@@ -426,7 +426,7 @@ declare namespace Deno {
 
   /**
    * @deprecated Use iter from https://deno.land/std/io/util.ts instead. Deno.iter will be removed in Deno 2.0.
-   * 
+   *
    * Turns a Reader, `r`, into an async iterator.
    *
    * ```ts
@@ -465,7 +465,7 @@ declare namespace Deno {
 
   /**
    * @deprecated Use iterSync from https://deno.land/std/io/util.ts instead. Deno.iterSync will be removed in Deno 2.0.
-   * 
+   *
    * Turns a ReaderSync, `r`, into an iterator.
    *
    * ```ts
@@ -781,8 +781,8 @@ declare namespace Deno {
     constructor(rid: number);
     write(p: Uint8Array): Promise<number>;
     writeSync(p: Uint8Array): number;
-    truncate(len?: number): void;
-    truncateSync(len?: number): Promise<void>;
+    truncate(len?: number): Promise<void>;
+    truncateSync(len?: number): void;
     read(p: Uint8Array): Promise<number | null>;
     readSync(p: Uint8Array): number | null;
     seek(offset: number, whence: SeekMode): Promise<number>;
@@ -851,7 +851,7 @@ declare namespace Deno {
 
   /**
    * @deprecated Use Buffer from https://deno.land/std/io/buffer.ts instead. Deno.Buffer will be removed in Deno 2.0.
-   * 
+   *
    * A variable-sized buffer of bytes with `read()` and `write()` methods.
    *
    * Deno.Buffer is almost always used with some I/O like files and sockets. It
@@ -934,7 +934,7 @@ declare namespace Deno {
 
   /**
    * @deprecated Use readAll from https://deno.land/std/io/util.ts instead. Deno.readAll will be removed in Deno 2.0.
-   * 
+   *
    * Read Reader `r` until EOF (`null`) and resolve to the content as
    * Uint8Array`.
    *
@@ -958,7 +958,7 @@ declare namespace Deno {
 
   /**
    * @deprecated Use readAllSync from https://deno.land/std/io/util.ts instead. Deno.readAllSync will be removed in Deno 2.0.
-   * 
+   *
    * Synchronously reads Reader `r` until EOF (`null`) and returns the content
    * as `Uint8Array`.
    *
@@ -982,7 +982,7 @@ declare namespace Deno {
 
   /**
    * @deprecated Use writeAll from https://deno.land/std/io/util.ts instead. Deno.readAll will be removed in Deno 2.0.
-   * 
+   *
    * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
    * ```ts
@@ -1007,7 +1007,7 @@ declare namespace Deno {
 
   /**
    * @deprecated Use writeAllSync from https://deno.land/std/io/util.ts instead. Deno.writeAllSync will be removed in Deno 2.0.
-   * 
+   *
    * Synchronously write all the content of the array buffer (`arr`) to the
    * writer (`w`).
    *
@@ -1947,6 +1947,16 @@ declare namespace Deno {
    *```
    *
    * Requires `allow-read` permission.
+   *
+   * Call `watcher.return()` to stop watching.
+   *
+   * ```ts
+   * const watcher = Deno.watchFs("/");
+   * setTimeout(() => { watcher.return(); }, 5000);
+   * for await (const event of watcher) {
+   *    console.log(">>>> event", event);
+   * }
+   * ```
    */
   export function watchFs(
     paths: string | string[],
@@ -2350,16 +2360,17 @@ declare namespace Deno {
    * if the file previously was larger than this new length, the extra  data  is  lost.
    *
    * if  the  file  previously  was shorter, it is extended, and the extended part reads as null bytes ('\0').
-   * 
+   *
    * ```ts
    * // truncate the entire file
    * const file = Deno.open("my_file.txt", { read: true, write: true, truncate: true, create: true });
    * Deno.ftruncateSync(file.rid);
    *
    * // truncate part of the file
-   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
-   * Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
    * Deno.ftruncateSync(file.rid, 7);
+   * Deno.seekSync(file.rid, 0, Deno.SeekMode.Start);
    * const data = new Uint8Array(32);
    * Deno.readSync(file.rid, data);
    * console.log(new TextDecoder().decode(data)); // Hello W
@@ -2392,7 +2403,7 @@ declare namespace Deno {
    */
   export function ftruncate(rid: number, len?: number): Promise<void>;
 
-  /** 
+  /**
    * Synchronously returns a `Deno.FileInfo` for the given file stream.
    *
    * ```ts

@@ -17,7 +17,7 @@
 
   /**
    * @typedef {object} OpEmitRequest
-   * @property {"esm"=} bundle
+   * @property {"module" | "classic"=} bundle
    * @property {boolean=} check
    * @property {Record<string, any>=} compilerOptions
    * @property {ImportMap=} importMap
@@ -35,7 +35,7 @@
    */
 
   /**
-   * @param {OpEmitRequest} request 
+   * @param {OpEmitRequest} request
    * @returns {Promise<OpEmitResponse>}
    */
   function opEmit(request) {
@@ -43,7 +43,7 @@
   }
 
   /**
-   * @param {string} specifier 
+   * @param {string} specifier
    * @returns {string}
    */
   function checkRelative(specifier) {
@@ -54,7 +54,7 @@
 
   /**
    * @typedef {object} EmitOptions
-   * @property {"esm"=} bundle
+   * @property {"module" | "classic"=} bundle
    * @property {boolean=} check
    * @property {Record<string, any>=} compilerOptions
    * @property {ImportMap=} importMap
@@ -63,9 +63,9 @@
    */
 
   /**
-   * @param {string | URL} rootSpecifier 
+   * @param {string | URL} rootSpecifier
    * @param {EmitOptions=} options
-   * @returns {Promise<OpEmitResponse>} 
+   * @returns {Promise<OpEmitResponse>}
    */
   function emit(rootSpecifier, options = {}) {
     util.log(`Deno.emit`, { rootSpecifier });

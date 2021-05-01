@@ -2,7 +2,7 @@
 
 use deno_core::plugin_api::Interface;
 use deno_core::plugin_api::Op;
-use deno_core::plugin_api::OpResponse;
+use deno_core::plugin_api::OpResult;
 use deno_core::plugin_api::ZeroCopyBuf;
 use futures::future::FutureExt;
 
@@ -25,7 +25,7 @@ fn op_test_sync(
   }
   let result = b"test";
   let result_box: Box<[u8]> = Box::new(*result);
-  Op::Sync(OpResponse::Buffer(result_box))
+  Op::Sync(OpResult::Ok(result_box.into()))
 }
 
 fn op_test_async(
@@ -48,7 +48,7 @@ fn op_test_async(
     assert!(rx.await.is_ok());
     let result = b"test";
     let result_box: Box<[u8]> = Box::new(*result);
-    (0, OpResponse::Buffer(result_box))
+    (0, OpResult::Ok(result_box.into()))
   };
 
   Op::Async(fut.boxed())

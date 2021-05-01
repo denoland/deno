@@ -1,8 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-pub mod crypto;
-pub mod fetch;
-pub mod file;
 pub mod fs;
 pub mod fs_events;
 pub mod http;
@@ -16,14 +13,10 @@ pub mod plugin;
 pub mod process;
 pub mod runtime;
 pub mod signal;
-pub mod timers;
 pub mod tls;
 pub mod tty;
-pub mod url;
 mod utils;
 pub mod web_worker;
-pub mod webgpu;
-pub mod websocket;
 pub mod worker_host;
 
 use crate::metrics::metrics_op;

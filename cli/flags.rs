@@ -45,7 +45,6 @@ pub enum DenoSubcommand {
     output: Option<PathBuf>,
     args: Vec<String>,
     target: Option<String>,
-    lite: bool,
   },
   Completions {
     buf: Box<[u8]>,
@@ -103,6 +102,7 @@ pub enum DenoSubcommand {
     allow_none: bool,
     include: Option<Vec<String>>,
     filter: Option<String>,
+    concurrent_jobs: usize,
   },
   Types,
   Upgrade {
@@ -483,18 +483,12 @@ fn compile_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(true)
         .possible_values(&["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "x86_64-apple-darwin", "aarch64-apple-darwin"])
     )
-    .arg(
-      Arg::with_name("lite")
-        .long("lite")
-        .help("Use lite runtime")
-    )
-    .about("Compile the script into a self contained executable")
+    .about("UNSTABLE: Compile the script into a self contained executable")
     .long_about(
-      "Compiles the given script into a self contained executable.
+      "UNSTABLE: Compiles the given script into a self contained executable.
 
-  deno compile --unstable -A https://deno.land/std/http/file_server.ts
-  deno compile --unstable --output /usr/local/bin/color_util https://deno.land/std/examples/colors.ts
-  deno compile --unstable --lite --target x86_64-unknown-linux-gnu -A https://deno.land/std/http/file_server.ts
+  deno compile -A https://deno.land/std/http/file_server.ts
+  deno compile --output /usr/local/bin/color_util https://deno.land/std/examples/colors.ts
 
 Any flags passed which affect runtime behavior, such as '--unstable',
 '--allow-*', '--v8-flags', etc. are encoded into the output executable and used
@@ -511,9 +505,6 @@ The executable name is inferred by default:
 This commands supports cross-compiling to different target architectures using `--target` flag.
 On the first invocation with deno will download proper binary and cache it in $DENO_DIR. The
 aarch64-apple-darwin target is not supported in canary.
-
-It is possible to use \"lite\" binaries when compiling by passing `--lite` flag; these are stripped down versions
-of the deno binary that do not contain built-in tooling (eg. formatter, linter). This feature is experimental.
 ",
     )
 }
@@ -761,7 +752,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
-        .help("Ignore formatting particular source files. Use with --unstable"),
+        .help("Ignore formatting particular source files"),
     )
     .arg(
       Arg::with_name("files")
@@ -805,7 +796,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     .arg(
       Arg::with_name("json")
         .long("json")
-        .help("Outputs the information in JSON format")
+        .help("UNSTABLE: Outputs the information in JSON format")
         .takes_value(false),
     )
 }
@@ -883,25 +874,25 @@ https://deno.land/manual/getting_started/setup_your_environment#editors-and-ides
 
 fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("lint")
-    .about("Lint source files")
+    .about("UNSTABLE: Lint source files")
     .long_about(
-      "Lint JavaScript/TypeScript source code.
+      "UNSTABLE: Lint JavaScript/TypeScript source code.
 
-  deno lint --unstable
-  deno lint --unstable myfile1.ts myfile2.js
+  deno lint
+  deno lint myfile1.ts myfile2.js
 
 Print result as JSON:
 
-  deno lint --unstable --json
+  deno lint --json
 
 Read from stdin:
 
-  cat file.ts | deno lint --unstable -
-  cat file.ts | deno lint --unstable --json -
+  cat file.ts | deno lint -
+  cat file.ts | deno lint --json -
 
 List available rules:
 
-  deno lint --unstable --rules
+  deno lint --rules
 
 Ignore diagnostics on the next line by preceding it with an ignore comment and
 rule name:
@@ -924,7 +915,6 @@ Ignore linting a file by adding an ignore comment at the top of the file:
     .arg(
       Arg::with_name("ignore")
         .long("ignore")
-        .requires("unstable")
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
@@ -992,8 +982,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("no-run")
         .long("no-run")
         .help("Cache test modules, but don't run tests")
-        .takes_value(false)
-        .requires("unstable"),
+        .takes_value(false),
     )
     .arg(
       Arg::with_name("fail-fast")
@@ -1020,10 +1009,21 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .long("coverage")
         .require_equals(true)
         .takes_value(true)
-        .requires("unstable")
         .conflicts_with("inspect")
         .conflicts_with("inspect-brk")
-        .help("Collect coverage profile data"),
+        .help("UNSTABLE: Collect coverage profile data"),
+    )
+    .arg(
+      Arg::with_name("jobs")
+        .short("j")
+        .long("jobs")
+        .min_values(0)
+        .max_values(1)
+        .takes_value(true)
+        .validator(|val: String| match val.parse::<usize>() {
+          Ok(_) => Ok(()),
+          Err(_) => Err("jobs should be a number".to_string()),
+        }),
     )
     .arg(
       Arg::with_name("files")
@@ -1343,11 +1343,10 @@ fn seed_arg<'a, 'b>() -> Arg<'a, 'b> {
 
 fn watch_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("watch")
-    .requires("unstable")
     .long("watch")
-    .help("Watch for file changes and restart process automatically")
+    .help("UNSTABLE: Watch for file changes and restart process automatically")
     .long_help(
-      "Watch for file changes and restart process automatically.
+      "UNSTABLE: Watch for file changes and restart process automatically.
 Only local files from entry point module graph are watched.",
     )
 }
@@ -1444,14 +1443,12 @@ fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let args = script.split_off(1);
   let source_file = script[0].to_string();
   let output = matches.value_of("output").map(PathBuf::from);
-  let lite = matches.is_present("lite");
   let target = matches.value_of("target").map(String::from);
 
   flags.subcommand = DenoSubcommand::Compile {
     source_file,
     output,
     args,
-    lite,
     target,
   };
 }
@@ -1682,6 +1679,17 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     }
   }
 
+  let concurrent_jobs = if matches.is_present("jobs") {
+    if let Some(value) = matches.value_of("jobs") {
+      value.parse().unwrap()
+    } else {
+      // TODO(caspervonb) drop the dependency on num_cpus when https://doc.rust-lang.org/std/thread/fn.available_concurrency.html becomes stable.
+      num_cpus::get()
+    }
+  } else {
+    1
+  };
+
   let include = if matches.is_present("files") {
     let files: Vec<String> = matches
       .values_of("files")
@@ -1701,6 +1709,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     include,
     filter,
     allow_none,
+    concurrent_jobs,
   };
 }
 
@@ -2022,13 +2031,7 @@ mod tests {
 
   #[test]
   fn run_watch() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--unstable",
-      "--watch",
-      "script.ts"
-    ]);
+    let r = flags_from_vec(svec!["deno", "run", "--watch", "script.ts"]);
     let flags = r.unwrap();
     assert_eq!(
       flags,
@@ -2037,7 +2040,6 @@ mod tests {
           script: "script.ts".to_string(),
         },
         watch: true,
-        unstable: true,
         ..Flags::default()
       }
     );
@@ -2240,7 +2242,7 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "fmt", "--watch", "--unstable"]);
+    let r = flags_from_vec(svec!["deno", "fmt", "--watch"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2251,7 +2253,6 @@ mod tests {
           ext: "ts".to_string(),
         },
         watch: true,
-        unstable: true,
         ..Flags::default()
       }
     );
@@ -2261,7 +2262,6 @@ mod tests {
       "fmt",
       "--check",
       "--watch",
-      "--unstable",
       "foo.ts",
       "--ignore=bar.js"
     ]);
@@ -2275,7 +2275,6 @@ mod tests {
           ext: "ts".to_string(),
         },
         watch: true,
-        unstable: true,
         ..Flags::default()
       }
     );
@@ -2295,13 +2294,7 @@ mod tests {
 
   #[test]
   fn lint() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "lint",
-      "--unstable",
-      "script_1.ts",
-      "script_2.ts"
-    ]);
+    let r = flags_from_vec(svec!["deno", "lint", "script_1.ts", "script_2.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2314,17 +2307,12 @@ mod tests {
           json: false,
           ignore: vec![],
         },
-        unstable: true,
         ..Flags::default()
       }
     );
 
-    let r = flags_from_vec(svec![
-      "deno",
-      "lint",
-      "--unstable",
-      "--ignore=script_1.ts,script_2.ts"
-    ]);
+    let r =
+      flags_from_vec(svec!["deno", "lint", "--ignore=script_1.ts,script_2.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2337,12 +2325,11 @@ mod tests {
             PathBuf::from("script_2.ts")
           ],
         },
-        unstable: true,
         ..Flags::default()
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "lint", "--unstable", "--rules"]);
+    let r = flags_from_vec(svec!["deno", "lint", "--rules"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2352,18 +2339,11 @@ mod tests {
           json: false,
           ignore: vec![],
         },
-        unstable: true,
         ..Flags::default()
       }
     );
 
-    let r = flags_from_vec(svec![
-      "deno",
-      "lint",
-      "--unstable",
-      "--json",
-      "script_1.ts"
-    ]);
+    let r = flags_from_vec(svec!["deno", "lint", "--json", "script_1.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2373,7 +2353,6 @@ mod tests {
           json: true,
           ignore: vec![],
         },
-        unstable: true,
         ..Flags::default()
       }
     );
@@ -2906,13 +2885,7 @@ mod tests {
 
   #[test]
   fn bundle_watch() {
-    let r = flags_from_vec(svec![
-      "deno",
-      "bundle",
-      "--watch",
-      "--unstable",
-      "source.ts"
-    ]);
+    let r = flags_from_vec(svec!["deno", "bundle", "--watch", "source.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2921,7 +2894,6 @@ mod tests {
           out_file: None,
         },
         watch: true,
-        unstable: true,
         ..Flags::default()
       }
     )
@@ -3383,6 +3355,7 @@ mod tests {
           allow_none: true,
           quiet: false,
           include: Some(svec!["dir1/", "dir2/"]),
+          concurrent_jobs: 1,
         },
         unstable: true,
         coverage_dir: Some("cov".to_string()),
@@ -3600,7 +3573,6 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "compile",
-      "--lite",
       "https://deno.land/std/examples/colors.ts"
     ]);
     assert_eq!(
@@ -3611,7 +3583,6 @@ mod tests {
           output: None,
           args: vec![],
           target: None,
-          lite: true,
         },
         ..Flags::default()
       }
@@ -3630,7 +3601,6 @@ mod tests {
           output: Some(PathBuf::from("colors")),
           args: svec!["foo", "bar"],
           target: None,
-          lite: false,
         },
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,

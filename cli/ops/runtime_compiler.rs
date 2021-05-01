@@ -33,10 +33,10 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 
 #[derive(Debug, Deserialize)]
 enum RuntimeBundleType {
-  #[serde(rename = "esm")]
-  Esm,
-  #[serde(rename = "iife")]
-  Iife,
+  #[serde(rename = "module")]
+  Module,
+  #[serde(rename = "classic")]
+  Classic,
 }
 
 #[derive(Debug, Deserialize)]
@@ -108,8 +108,8 @@ async fn op_emit(
       ))
     })?;
   let bundle_type = match args.bundle {
-    Some(RuntimeBundleType::Esm) => BundleType::Esm,
-    Some(RuntimeBundleType::Iife) => BundleType::Iife,
+    Some(RuntimeBundleType::Module) => BundleType::Module,
+    Some(RuntimeBundleType::Classic) => BundleType::Classic,
     None => BundleType::None,
   };
   let graph = builder.get_graph();
