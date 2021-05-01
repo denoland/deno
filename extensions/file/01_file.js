@@ -371,7 +371,7 @@
       super(fileBits, options);
 
       /** @type {string} */
-      this[_Name] = fileName.replaceAll("/", ":");
+      this[_Name] = fileName;
       if (options.lastModified === undefined) {
         /** @type {number} */
         this[_LastModfied] = new Date().getTime();
