@@ -89,7 +89,7 @@ unitTest(function fileUsingFileName(): void {
 });
 
 unitTest(function fileUsingSpecialCharacterInFileName(): void {
-  testSecondArgument("dummy/foo", "dummy:foo");
+  testSecondArgument("dummy/foo", "dummy/foo");
 });
 
 unitTest(function fileUsingNullFileName(): void {
