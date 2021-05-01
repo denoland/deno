@@ -98,14 +98,14 @@ pub struct GpuColor {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RenderPassSetBlendColorArgs {
+pub struct RenderPassSetBlendConstantArgs {
   render_pass_rid: ResourceId,
   color: GpuColor,
 }
 
-pub fn op_webgpu_render_pass_set_blend_color(
+pub fn op_webgpu_render_pass_set_blend_constant(
   state: &mut OpState,
-  args: RenderPassSetBlendColorArgs,
+  args: RenderPassSetBlendConstantArgs,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
@@ -113,7 +113,7 @@ pub fn op_webgpu_render_pass_set_blend_color(
     .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
-  wgpu_core::command::render_ffi::wgpu_render_pass_set_blend_color(
+  wgpu_core::command::render_ffi::wgpu_render_pass_set_blend_constant(
     &mut render_pass_resource.0.borrow_mut(),
     &wgpu_types::Color {
       r: args.color.r,

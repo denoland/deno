@@ -97,17 +97,17 @@ fn serialize_blend_factor(blend_factor: &str) -> wgpu_types::BlendFactor {
   match blend_factor {
     "zero" => wgpu_types::BlendFactor::Zero,
     "one" => wgpu_types::BlendFactor::One,
-    "src-color" => wgpu_types::BlendFactor::SrcColor,
-    "one-minus-src-color" => wgpu_types::BlendFactor::OneMinusSrcColor,
+    "src" => wgpu_types::BlendFactor::Src,
+    "one-minus-src" => wgpu_types::BlendFactor::OneMinusSrc,
     "src-alpha" => wgpu_types::BlendFactor::SrcAlpha,
     "one-minus-src-alpha" => wgpu_types::BlendFactor::OneMinusSrcAlpha,
-    "dst-color" => wgpu_types::BlendFactor::DstColor,
-    "one-minus-dst-color" => wgpu_types::BlendFactor::OneMinusDstColor,
+    "dst" => wgpu_types::BlendFactor::Dst,
+    "one-minus-dst" => wgpu_types::BlendFactor::OneMinusDst,
     "dst-alpha" => wgpu_types::BlendFactor::DstAlpha,
     "one-minus-dst-alpha" => wgpu_types::BlendFactor::OneMinusDstAlpha,
     "src-alpha-saturated" => wgpu_types::BlendFactor::SrcAlphaSaturated,
-    "blend-color" => wgpu_types::BlendFactor::BlendColor,
-    "one-minus-blend-color" => wgpu_types::BlendFactor::OneMinusBlendColor,
+    "constant" => wgpu_types::BlendFactor::Constant,
+    "one-minus-constant" => wgpu_types::BlendFactor::OneMinusConstant,
     _ => unreachable!(),
   }
 }
@@ -208,7 +208,7 @@ pub fn op_webgpu_create_compute_pipeline(
     }),
   };
 
-  let (compute_pipeline, _, maybe_err) = gfx_select!(device => instance.device_create_compute_pipeline(
+  let (compute_pipeline, maybe_err) = gfx_select!(device => instance.device_create_compute_pipeline(
     device,
     &descriptor,
     std::marker::PhantomData,
@@ -271,6 +271,7 @@ struct GpuPrimitiveState {
   strip_index_format: Option<String>,
   front_face: Option<String>,
   cull_mode: Option<String>,
+  clamp_depth: bool,
 }
 
 #[derive(Deserialize, Clone)]
@@ -318,7 +319,6 @@ struct GpuDepthStencilState {
   depth_bias: Option<i32>,
   depth_bias_slope_scale: Option<f32>,
   depth_bias_clamp: Option<f32>,
-  clamp_depth: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -556,6 +556,7 @@ pub fn op_webgpu_create_render_pipeline(
         },
         polygon_mode: Default::default(), // native-only
         conservative: false,              // native-only
+        clamp_depth: primitive.clamp_depth,
       }
     }),
     depth_stencil: args.depth_stencil.map(|depth_stencil| {
@@ -584,7 +585,6 @@ pub fn op_webgpu_create_render_pipeline(
           slope_scale: depth_stencil.depth_bias_slope_scale.unwrap_or(0.0),
           clamp: depth_stencil.depth_bias_clamp.unwrap_or(0.0),
         },
-        clamp_depth: depth_stencil.clamp_depth.unwrap_or(false),
       }
     }),
     multisample: args.multisample.map_or(Default::default(), |multisample| {
@@ -636,7 +636,7 @@ pub fn op_webgpu_create_render_pipeline(
     }),
   };
 
-  let (render_pipeline, _, maybe_err) = gfx_select!(device => instance.device_create_render_pipeline(
+  let (render_pipeline, maybe_err) = gfx_select!(device => instance.device_create_render_pipeline(
     device,
     &descriptor,
     std::marker::PhantomData,

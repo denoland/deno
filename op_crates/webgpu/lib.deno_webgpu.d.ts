@@ -35,7 +35,7 @@ declare class GPUAdapterLimits {
   maxVertexBufferArrayStride?: number;
 }
 
-declare class GPUAdapterFeatures {
+declare class GPUSupportedFeatures {
   forEach(
     callbackfn: (
       value: GPUFeatureName,
@@ -69,7 +69,7 @@ declare type GPUPowerPreference = "low-power" | "high-performance";
 
 declare class GPUAdapter {
   readonly name: string;
-  readonly features: GPUAdapterFeatures;
+  readonly features: GPUSupportedFeatures;
   readonly limits: GPUAdapterLimits;
 
   requestDevice(descriptor?: GPUDeviceDescriptor): Promise<GPUDevice>;
@@ -514,6 +514,7 @@ declare interface GPUPrimitiveState {
   stripIndexFormat?: GPUIndexFormat;
   frontFace?: GPUFrontFace;
   cullMode?: GPUCullMode;
+  clampDepth?: boolean;
 }
 
 declare type GPUFrontFace = "ccw" | "cw";
@@ -560,17 +561,17 @@ declare interface GPUBlendComponent {
 declare type GPUBlendFactor =
   | "zero"
   | "one"
-  | "src-color"
-  | "one-minus-src-color"
+  | "src"
+  | "one-minus-src"
   | "src-alpha"
   | "one-minus-src-alpha"
-  | "dst-color"
-  | "one-minus-dst-color"
+  | "dst"
+  | "one-minus-dst"
   | "dst-alpha"
   | "one-minus-dst-alpha"
   | "src-alpha-saturated"
-  | "blend-color"
-  | "one-minus-blend-color";
+  | "constant"
+  | "one-minus-constant";
 
 declare type GPUBlendOperation =
   | "add"
@@ -594,8 +595,6 @@ declare interface GPUDepthStencilState {
   depthBias?: number;
   depthBiasSlopeScale?: number;
   depthBiasClamp?: number;
-
-  clampDepth?: boolean;
 }
 
 declare interface GPUStencilFaceState {
@@ -908,7 +907,7 @@ declare class GPURenderPassEncoder
     height: number,
   ): undefined;
 
-  setBlendColor(color: GPUColor): undefined;
+  setBlendConstant(color: GPUColor): undefined;
   setStencilReference(reference: number): undefined;
 
   beginOcclusionQuery(queryIndex: number): undefined;

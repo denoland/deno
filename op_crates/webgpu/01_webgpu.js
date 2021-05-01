@@ -179,7 +179,7 @@
   /**
    * @typedef InnerGPUAdapter
    * @property {number} rid
-   * @property {GPUAdapterFeatures} features
+   * @property {GPUSupportedFeatures} features
    * @property {GPUAdapterLimits} limits
    */
 
@@ -194,7 +194,7 @@
     adapter[_name] = name;
     adapter[_adapter] = {
       ...inner,
-      features: createGPUAdapterFeatures(inner.features),
+      features: createGPUSupportedFeatures(inner.features),
       limits: createGPUAdapterLimits(inner.limits),
     };
     return adapter;
@@ -211,7 +211,7 @@
       webidl.assertBranded(this, GPUAdapter);
       return this[_name];
     }
-    /** @returns {GPUAdapterFeatures} */
+    /** @returns {GPUSupportedFeatures} */
     get features() {
       webidl.assertBranded(this, GPUAdapter);
       return this[_adapter].features;
@@ -395,14 +395,14 @@
 
   const _features = Symbol("[[features]]");
 
-  function createGPUAdapterFeatures(features) {
-    /** @type {GPUAdapterFeatures} */
-    const adapterFeatures = webidl.createBranded(GPUAdapterFeatures);
+  function createGPUSupportedFeatures(features) {
+    /** @type {GPUSupportedFeatures} */
+    const adapterFeatures = webidl.createBranded(GPUSupportedFeatures);
     adapterFeatures[_features] = new Set(features);
     return adapterFeatures;
   }
 
-  class GPUAdapterFeatures {
+  class GPUSupportedFeatures {
     /** @type {Set<string>} */
     [_features];
 
@@ -412,42 +412,42 @@
 
     /** @return {IterableIterator<[string, string]>} */
     entries() {
-      webidl.assertBranded(this, GPUAdapterFeatures);
+      webidl.assertBranded(this, GPUSupportedFeatures);
       return this[_features].entries();
     }
 
     /** @return {void} */
     forEach(callbackfn, thisArg) {
-      webidl.assertBranded(this, GPUAdapterFeatures);
+      webidl.assertBranded(this, GPUSupportedFeatures);
       this[_features].forEach(callbackfn, thisArg);
     }
 
     /** @return {boolean} */
     has(value) {
-      webidl.assertBranded(this, GPUAdapterFeatures);
+      webidl.assertBranded(this, GPUSupportedFeatures);
       return this[_features].has(value);
     }
 
     /** @return {IterableIterator<string>} */
     keys() {
-      webidl.assertBranded(this, GPUAdapterFeatures);
+      webidl.assertBranded(this, GPUSupportedFeatures);
       return this[_features].keys();
     }
 
     /** @return {IterableIterator<string>} */
     values() {
-      webidl.assertBranded(this, GPUAdapterFeatures);
+      webidl.assertBranded(this, GPUSupportedFeatures);
       return this[_features].values();
     }
 
     /** @return {number} */
     get size() {
-      webidl.assertBranded(this, GPUAdapterFeatures);
+      webidl.assertBranded(this, GPUSupportedFeatures);
       return this[_features].size;
     }
 
     [Symbol.iterator]() {
-      webidl.assertBranded(this, GPUAdapterFeatures);
+      webidl.assertBranded(this, GPUSupportedFeatures);
       return this[_features][Symbol.iterator]();
     }
 
@@ -3293,10 +3293,10 @@
     /**
      * @param {GPUColor} color
      */
-    setBlendColor(color) {
+    setBlendConstant(color) {
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
-        "Failed to execute 'setBlendColor' on 'GPUComputePassEncoder'";
+        "Failed to execute 'setBlendConstant' on 'GPUComputePassEncoder'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       color = webidl.converters.GPUColor(color, {
         prefix,
@@ -3311,7 +3311,7 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      core.opSync("op_webgpu_render_pass_set_blend_color", {
+      core.opSync("op_webgpu_render_pass_set_blend_constant", {
         renderPassRid,
         color: normalizeGPUColor(color),
       });
@@ -4986,7 +4986,7 @@
     GPU,
     GPUAdapter,
     GPUAdapterLimits,
-    GPUAdapterFeatures,
+    GPUSupportedFeatures,
     GPUDevice,
     GPUQueue,
     GPUBuffer,

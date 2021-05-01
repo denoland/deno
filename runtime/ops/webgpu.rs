@@ -181,8 +181,8 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
     );
     super::reg_sync(
       rt,
-      "op_webgpu_render_pass_set_blend_color",
-      render_pass::op_webgpu_render_pass_set_blend_color,
+      "op_webgpu_render_pass_set_blend_constant",
+      render_pass::op_webgpu_render_pass_set_blend_constant,
     );
     super::reg_sync(
       rt,
