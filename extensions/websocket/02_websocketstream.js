@@ -10,29 +10,35 @@
   );
   webidl.converters.AbortSignal = webidl.createInterfaceConverter(
     "AbortSignal",
-    AbortSignal
-  )
-  webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter("WebSocketStreamOptions", [
-    {
-      key: "protocols",
-      converter: webidl.converters["sequence<USVString>"],
-    },
-    {
-      key: "signal",
-      converter: webidl.converters.AbortSignal,
-    },
-  ]);
-  webidl.converters.WebSocketCloseInfo = webidl.createDictionaryConverter("WebSocketStreamOptions", [
-    {
-      key: "code",
-      converter: webidl.converters["unsigned short"],
-    },
-    {
-      key: "reason",
-      converter: webidl.converters.USVString,
-      defaultValue: "",
-    },
-  ]);
+    AbortSignal,
+  );
+  webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
+    "WebSocketStreamOptions",
+    [
+      {
+        key: "protocols",
+        converter: webidl.converters["sequence<USVString>"],
+      },
+      {
+        key: "signal",
+        converter: webidl.converters.AbortSignal,
+      },
+    ],
+  );
+  webidl.converters.WebSocketCloseInfo = webidl.createDictionaryConverter(
+    "WebSocketStreamOptions",
+    [
+      {
+        key: "code",
+        converter: webidl.converters["unsigned short"],
+      },
+      {
+        key: "reason",
+        converter: webidl.converters.USVString,
+        defaultValue: "",
+      },
+    ],
+  );
 
   /** @template T */
   class Deferred {
@@ -110,7 +116,7 @@
 
     constructor(url, options) {
       const prefix = "Failed to construct 'WebSocketStream'";
-      webidl.requiredArguments(arguments.length, 1, {prefix});
+      webidl.requiredArguments(arguments.length, 1, { prefix });
       url = webidl.converters.USVString(url, {
         prefix,
         context: "Argument 1",
@@ -187,7 +193,7 @@
                 break;
               }
               case "error": {
-                let err = new Error(value);
+                const err = new Error(value);
                 this[_closed].reject(err);
                 controller.error(err);
                 tryClose(this[_rid]);
