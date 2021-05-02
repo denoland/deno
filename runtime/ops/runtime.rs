@@ -3,17 +3,20 @@
 use crate::permissions::Permissions;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
+use deno_core::op_sync;
+use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 
-pub fn init(rt: &mut deno_core::JsRuntime, main_module: ModuleSpecifier) {
-  {
-    let op_state = rt.op_state();
-    let mut state = op_state.borrow_mut();
-    state.put::<ModuleSpecifier>(main_module);
-  }
-  super::reg_sync(rt, "op_main_module", op_main_module);
+pub fn init(main_module: ModuleSpecifier) -> Extension {
+  Extension::builder()
+    .ops(vec![("op_main_module", op_sync(op_main_module))])
+    .state(move |state| {
+      state.put::<ModuleSpecifier>(main_module.clone());
+      Ok(())
+    })
+    .build()
 }
 
 fn op_main_module(

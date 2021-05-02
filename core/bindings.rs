@@ -13,7 +13,6 @@ use serde::Serialize;
 use serde_v8::to_v8;
 use std::convert::TryFrom;
 use std::convert::TryInto;
-use std::io::{stdout, Write};
 use std::option::Option;
 use url::Url;
 use v8::MapFnTo;
@@ -21,9 +20,6 @@ use v8::MapFnTo;
 lazy_static::lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
     v8::ExternalReferences::new(&[
-      v8::ExternalReference {
-        function: print.map_fn_to()
-      },
       v8::ExternalReference {
         function: opcall.map_fn_to()
       },
@@ -117,7 +113,6 @@ pub fn initialize_context<'s>(
   deno_val.set(scope, core_key.into(), core_val.into());
 
   // Bind functions to Deno.core.*
-  set_func(scope, core_val, "print", print);
   set_func(scope, core_val, "opcall", opcall);
   set_func(
     scope,
@@ -266,41 +261,6 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       // Should not warn. See #1272
     }
   };
-}
-
-fn print(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  _rv: v8::ReturnValue,
-) {
-  let arg_len = args.length();
-  if !(0..=2).contains(&arg_len) {
-    return throw_type_error(scope, "Expected a maximum of 2 arguments.");
-  }
-
-  let obj = args.get(0);
-  let is_err_arg = args.get(1);
-
-  let mut is_err = false;
-  if arg_len == 2 {
-    let int_val = match is_err_arg.integer_value(scope) {
-      Some(v) => v,
-      None => return throw_type_error(scope, "Invalid argument. Argument 2 should indicate whether or not to print to stderr."),
-    };
-    is_err = int_val != 0;
-  };
-  let tc_scope = &mut v8::TryCatch::new(scope);
-  let str_ = match obj.to_string(tc_scope) {
-    Some(s) => s,
-    None => v8::String::new(tc_scope, "").unwrap(),
-  };
-  if is_err {
-    eprint!("{}", str_.to_rust_string_lossy(tc_scope));
-    stdout().flush().unwrap();
-  } else {
-    print!("{}", str_.to_rust_string_lossy(tc_scope));
-    stdout().flush().unwrap();
-  }
 }
 
 fn opcall<'s>(
