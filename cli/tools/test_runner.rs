@@ -100,7 +100,12 @@ impl TestReporter for PrettyTestReporter {
         filtered,
         only: _,
       } => {
-        println!("running {} tests from {}", pending, event.origin);
+        if *pending == 1 {
+          println!("running {} test from {}", pending, event.origin);
+        } else {
+          println!("running {} tests from {}", pending, event.origin);
+        }
+
         self.pending += pending;
         self.filtered_out += filtered;
       }
