@@ -1,5 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertThrows, assertThrowsAsync } from "../../test_util/std/testing/asserts.ts";
+import {
+  assertEquals,
+  assertThrows,
+  assertThrowsAsync,
+} from "../../test_util/std/testing/asserts.ts";
 
 Deno.test("invalid scheme", () => {
   assertThrows(() => new WebSocketStream("foo://localhost:4242"));
@@ -11,16 +15,17 @@ Deno.test("fragment", () => {
 });
 
 Deno.test("duplicate protocols", () => {
-  assertThrows(() => new WebSocketStream("ws://localhost:4242", {
-    protocols: ["foo", "foo"],
-  }));
+  assertThrows(() =>
+    new WebSocketStream("ws://localhost:4242", {
+      protocols: ["foo", "foo"],
+    })
+  );
 });
 
-/*Deno.test("invalid server", async () => {
+Deno.test("invalid server", async () => {
   const ws = new WebSocketStream("ws://localhost:2121");
-  console.log("foo");
   await assertThrowsAsync(async () => await ws.connection);
-});*/
+});
 
 Deno.test("connect & close", async () => {
   const ws = new WebSocketStream("ws://localhost:4242");
@@ -29,7 +34,6 @@ Deno.test("connect & close", async () => {
   await ws.closed;
 });
 
-/*
 Deno.test("connect & abort", async () => {
   const ws = new WebSocketStream("ws://localhost:4242");
   ws.close();
@@ -38,19 +42,18 @@ Deno.test("connect & abort", async () => {
     assertThrowsAsync(async () => ws.closed),
   ]);
 });
-*/
 
 Deno.test("connect & close custom valid code", async () => {
   const ws = new WebSocketStream("ws://localhost:4242");
   await ws.connection;
-  ws.close({code: 1000});
+  ws.close({ code: 1000 });
   await ws.closed;
 });
 
 Deno.test("connect & close custom invalid code", async () => {
   const ws = new WebSocketStream("ws://localhost:4242");
   await ws.connection;
-  assertThrows(() => ws.close({code: 1001}));
+  assertThrows(() => ws.close({ code: 1001 }));
   ws.close();
   await ws.closed;
 });
@@ -58,14 +61,14 @@ Deno.test("connect & close custom invalid code", async () => {
 Deno.test("connect & close custom valid reason", async () => {
   const ws = new WebSocketStream("ws://localhost:4242");
   await ws.connection;
-  ws.close({code: 1000, reason: "foo"});
+  ws.close({ code: 1000, reason: "foo" });
   await ws.closed;
 });
 
 Deno.test("connect & close custom invalid reason", async () => {
   const ws = new WebSocketStream("ws://localhost:4242");
   await ws.connection;
-  assertThrows(() => ws.close({code: 1000, reason: "".padEnd(124, "o")}));
+  assertThrows(() => ws.close({ code: 1000, reason: "".padEnd(124, "o") }));
   ws.close();
   await ws.closed;
 });
@@ -92,7 +95,11 @@ Deno.test("echo string tls", async () => {
 
 Deno.test("websocket error", async () => {
   const ws = new WebSocketStream("wss://localhost:4242");
-  await assertThrowsAsync(async () => ws.connection, Error, "UnexpectedEof: tls handshake eof");
+  await assertThrowsAsync(
+    async () => ws.connection,
+    Error,
+    "UnexpectedEof: tls handshake eof",
+  );
 });
 
 Deno.test("echo uint8array", async () => {

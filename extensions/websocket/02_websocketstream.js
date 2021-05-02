@@ -18,10 +18,12 @@
       {
         key: "protocols",
         converter: webidl.converters["sequence<USVString>"],
+        defaultValue: [],
       },
       {
         key: "signal",
         converter: webidl.converters.AbortSignal,
+        defaultValue: undefined,
       },
     ],
   );
@@ -148,7 +150,7 @@
       core.opSync("op_ws_check_permission", this[_url]);
 
       if (
-        options?.protocols?.some((x) =>
+        options.protocols.some((x) =>
           options.protocols.indexOf(x) !== options.protocols.lastIndexOf(x)
         )
       ) {
@@ -160,9 +162,9 @@
 
       core.opAsync("op_ws_create", {
         url: this[_url],
-        protocols: options?.protocols?.join(", ") ?? "",
+        protocols: options.protocols.join(", "),
       }).then((create) => {
-        options?.abort?.addEventListener("abort", () => this.close());
+        options.abort?.addEventListener("abort", () => this.close());
 
         this[_rid] = create.rid;
         const readable = new ReadableStream({
