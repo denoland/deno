@@ -1,0 +1,24 @@
+# Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_snapshots"
+version = "0.0.0"
+license = "MIT"
+authors = ["the Deno authors"]
+edition = "2018"
+description = "Provides snapshots of TSC & Deno (runtime+web+core)"
+repository = "https://github.com/denoland/deno"
+
+[lib]
+name = "deno_snapshots"
+path = "lib.rs"
+
+[dependencies]
+deno_core = { path = "../core", version = "0.86.0" }
+
+[build-dependencies]
+# Shared
+deno_core = { path = "../core", version = "0.86.0" }
+deno_runtime = { path = "../runtime", version = "0.13.0" }
+regex = "1.4.3"
+serde = { version = "1.0.125", features = ["derive"] }

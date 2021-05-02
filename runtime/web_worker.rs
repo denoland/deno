@@ -2,7 +2,7 @@
 use crate::colors;
 use crate::inspector::DenoInspector;
 use crate::inspector::InspectorServer;
-use crate::js;
+// use crate::js;
 use crate::metrics;
 use crate::ops;
 use crate::permissions::Permissions;
@@ -167,6 +167,8 @@ pub struct WebWorkerOptions {
   pub no_color: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub blob_url_store: BlobUrlStore,
+  // Snapshot passed to JsRuntime
+  pub startup_snapshot: Option<deno_core::Snapshot>,
 }
 
 impl WebWorker {
@@ -204,7 +206,7 @@ impl WebWorker {
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: Some(js::deno_isolate_init()),
+      startup_snapshot: options.startup_snapshot.clone(),
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
       extensions,

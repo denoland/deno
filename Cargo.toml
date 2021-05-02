@@ -6,6 +6,7 @@ members = [
   "core",
   "runtime",
   "serde_v8",
+  "snapshots",
   "test_plugin",
   "test_util",
   "extensions/crypto",
