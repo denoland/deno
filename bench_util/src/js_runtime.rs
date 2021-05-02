@@ -8,10 +8,6 @@ use crate::profiling::is_profiling;
 pub fn create_js_runtime(setup: impl FnOnce(&mut JsRuntime)) -> JsRuntime {
   let mut rt = JsRuntime::new(Default::default());
 
-  // Setup bootstrap namespace
-  rt.execute("bootstrap", "globalThis.__bootstrap = {};")
-    .unwrap();
-
   // Caller provided setup
   setup(&mut rt);
 

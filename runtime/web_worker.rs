@@ -253,8 +253,6 @@ impl WebWorker {
         });
       }
 
-      js_runtime.init_extension_ops().unwrap();
-
       ops::web_worker::init(js_runtime, sender.clone(), handle);
       ops::runtime::init(js_runtime, main_module);
       ops::worker_host::init(
@@ -262,8 +260,6 @@ impl WebWorker {
         Some(sender),
         options.create_web_worker_cb.clone(),
       );
-      ops::reg_sync(js_runtime, "op_close", deno_core::op_close);
-      ops::reg_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::io::init(js_runtime);
 
       if options.use_deno_namespace {

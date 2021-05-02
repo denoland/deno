@@ -25,6 +25,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
+use std::time::Instant;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -50,6 +51,152 @@ pub enum TestMessage {
     duration: usize,
     result: TestResult,
   },
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TestEvent {
+  pub origin: String,
+  pub message: TestMessage,
+}
+
+trait TestReporter {
+  fn visit_event(&mut self, event: TestEvent);
+  fn done(&mut self);
+}
+
+struct PrettyTestReporter {
+  time: Instant,
+  failed: usize,
+  filtered_out: usize,
+  ignored: usize,
+  passed: usize,
+  measured: usize,
+  pending: usize,
+  failures: Vec<(String, String)>,
+  concurrent: bool,
+}
+
+impl PrettyTestReporter {
+  fn new(concurrent: bool) -> PrettyTestReporter {
+    PrettyTestReporter {
+      time: Instant::now(),
+      failed: 0,
+      filtered_out: 0,
+      ignored: 0,
+      passed: 0,
+      measured: 0,
+      pending: 0,
+      failures: Vec::new(),
+      concurrent,
+    }
+  }
+}
+
+impl TestReporter for PrettyTestReporter {
+  fn visit_event(&mut self, event: TestEvent) {
+    match &event.message {
+      TestMessage::Plan {
+        pending,
+        filtered,
+        only: _,
+      } => {
+        if *pending == 1 {
+          println!("running {} test from {}", pending, event.origin);
+        } else {
+          println!("running {} tests from {}", pending, event.origin);
+        }
+
+        self.pending += pending;
+        self.filtered_out += filtered;
+      }
+
+      TestMessage::Wait { name } => {
+        if !self.concurrent {
+          print!("test {} ...", name);
+        }
+      }
+
+      TestMessage::Result {
+        name,
+        duration,
+        result,
+      } => {
+        self.pending -= 1;
+
+        if self.concurrent {
+          print!("test {} ...", name);
+        }
+
+        match result {
+          TestResult::Ok => {
+            println!(
+              " {} {}",
+              colors::green("ok"),
+              colors::gray(format!("({}ms)", duration))
+            );
+
+            self.passed += 1;
+          }
+          TestResult::Ignored => {
+            println!(
+              " {} {}",
+              colors::yellow("ignored"),
+              colors::gray(format!("({}ms)", duration))
+            );
+
+            self.ignored += 1;
+          }
+          TestResult::Failed(error) => {
+            println!(
+              " {} {}",
+              colors::red("FAILED"),
+              colors::gray(format!("({}ms)", duration))
+            );
+
+            self.failed += 1;
+            self.failures.push((name.to_string(), error.to_string()));
+          }
+        }
+      }
+    }
+  }
+
+  fn done(&mut self) {
+    if !self.failures.is_empty() {
+      println!("\nfailures:\n");
+      for (name, error) in &self.failures {
+        println!("{}", name);
+        println!("{}", error);
+        println!();
+      }
+
+      println!("failures:\n");
+      for (name, _) in &self.failures {
+        println!("\t{}", name);
+      }
+    }
+
+    let status = if self.pending > 0 || !self.failures.is_empty() {
+      colors::red("FAILED").to_string()
+    } else {
+      colors::green("ok").to_string()
+    };
+
+    println!(
+        "\ntest result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
+        status,
+        self.passed,
+        self.failed,
+        self.ignored,
+        self.measured,
+        self.filtered_out,
+        colors::gray(format!("({}ms)", self.time.elapsed().as_millis())),
+      );
+  }
+}
+
+fn create_reporter(concurrent: bool) -> Box<dyn TestReporter + Send> {
+  Box::new(PrettyTestReporter::new(concurrent))
 }
 
 fn is_supported(p: &Path) -> bool {
@@ -113,7 +260,7 @@ pub async fn run_test_file(
   main_module: ModuleSpecifier,
   test_module: ModuleSpecifier,
   permissions: Permissions,
-  channel: Sender<TestMessage>,
+  channel: Sender<TestEvent>,
 ) -> Result<(), AnyError> {
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions, true);
@@ -123,7 +270,7 @@ pub async fn run_test_file(
     js_runtime
       .op_state()
       .borrow_mut()
-      .put::<Sender<TestMessage>>(channel.clone());
+      .put::<Sender<TestEvent>>(channel.clone());
   }
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
@@ -141,6 +288,7 @@ pub async fn run_test_file(
 
   let execute_result = worker.execute_module(&main_module).await;
   execute_result?;
+
   worker.execute("window.dispatchEvent(new Event('load'))")?;
 
   let execute_result = worker.execute_module(&test_module).await;
@@ -220,7 +368,7 @@ pub async fn run_tests(
 
   program_state.file_fetcher.insert_cached(test_file);
 
-  let (sender, receiver) = channel::<TestMessage>();
+  let (sender, receiver) = channel::<TestEvent>();
 
   let join_handles = test_modules.iter().map(move |main_module| {
     let program_state = program_state.clone();
@@ -250,128 +398,57 @@ pub async fn run_tests(
     .buffer_unordered(concurrent_jobs)
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
+  let mut reporter = create_reporter(concurrent_jobs > 1);
   let handler = {
     tokio::task::spawn_blocking(move || {
-      let time = std::time::Instant::now();
-      let mut failed = 0;
-      let mut filtered_out = 0;
-      let mut ignored = 0;
-      let mut passed = 0;
-      let measured = 0;
-
-      let mut planned = 0;
       let mut used_only = false;
       let mut has_error = false;
-      let mut failures: Vec<(String, String)> = Vec::new();
+      let mut planned = 0;
+      let mut reported = 0;
 
-      for message in receiver.iter() {
-        match message {
+      for event in receiver.iter() {
+        match event.message.clone() {
           TestMessage::Plan {
             pending,
-            filtered,
+            filtered: _,
             only,
           } => {
-            println!("running {} tests", pending);
-
             if only {
               used_only = true;
             }
 
             planned += pending;
-            filtered_out += filtered;
           }
-
-          TestMessage::Wait { name } => {
-            if concurrent_jobs == 1 {
-              print!("test {} ...", name);
-            }
-          }
-
           TestMessage::Result {
-            name,
-            duration,
+            name: _,
+            duration: _,
             result,
           } => {
-            if concurrent_jobs != 1 {
-              print!("test {} ...", name);
-            }
+            reported += 1;
 
-            match result {
-              TestResult::Ok => {
-                println!(
-                  " {} {}",
-                  colors::green("ok"),
-                  colors::gray(format!("({}ms)", duration))
-                );
-
-                passed += 1;
-              }
-              TestResult::Ignored => {
-                println!(
-                  " {} {}",
-                  colors::yellow("ignored"),
-                  colors::gray(format!("({}ms)", duration))
-                );
-
-                ignored += 1;
-              }
-              TestResult::Failed(error) => {
-                println!(
-                  " {} {}",
-                  colors::red("FAILED"),
-                  colors::gray(format!("({}ms)", duration))
-                );
-
-                failed += 1;
-                failures.push((name, error));
-                has_error = true;
-              }
+            if let TestResult::Failed(_) = result {
+              has_error = true;
             }
           }
+          _ => {}
         }
+
+        reporter.visit_event(event);
 
         if has_error && fail_fast {
           break;
         }
       }
 
-      // If one of the workers panic then we can end up with less test results than what was
-      // planned.
-      // In that case we mark it as an error so that it will be reported as failed.
-      if planned > passed + ignored + failed {
+      if planned > reported {
         has_error = true;
       }
 
-      if !failures.is_empty() {
-        println!("\nfailures:\n");
-        for (name, error) in &failures {
-          println!("{}", name);
-          println!("{}", error);
-          println!();
-        }
+      reporter.done();
 
-        println!("failures:\n");
-        for (name, _) in &failures {
-          println!("\t{}", name);
-        }
+      if planned > reported {
+        has_error = true;
       }
-
-      let status = if has_error {
-        colors::red("FAILED").to_string()
-      } else {
-        colors::green("ok").to_string()
-      };
-
-      println!(
-        "\ntest result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
-        status,
-        passed,
-        failed,
-        ignored,
-        measured,
-        filtered_out,
-        colors::gray(format!("({}ms)", time.elapsed().as_millis())),
-      );
 
       if used_only {
         println!(

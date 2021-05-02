@@ -1,5 +1,5 @@
 [WILDCARD]
-running 7 tests
+running 7 tests from [WILDCARD]
 test read ... FAILED [WILDCARD]
 test write ... FAILED [WILDCARD]
 test net ... FAILED [WILDCARD]

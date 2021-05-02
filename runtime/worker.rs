@@ -140,16 +140,12 @@ impl MainWorker {
         });
       }
 
-      js_runtime.init_extension_ops().unwrap();
-
       ops::runtime::init(js_runtime, main_module);
       ops::worker_host::init(
         js_runtime,
         None,
         options.create_web_worker_cb.clone(),
       );
-      ops::reg_sync(js_runtime, "op_close", deno_core::op_close);
-      ops::reg_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::fs_events::init(js_runtime);
       ops::fs::init(js_runtime);
       ops::http::init(js_runtime);

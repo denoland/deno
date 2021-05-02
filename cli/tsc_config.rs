@@ -147,16 +147,17 @@ pub fn json_merge(a: &mut Value, b: &Value) {
   }
 }
 
+/// A structure for deserializing a `tsconfig.json` file for the purposes of
+/// being used internally within Deno.
+///
+/// The only key in the JSON object that Deno cares about is the
+/// `compilerOptions` property. A valid `tsconfig.json` file can also contain
+/// the keys `exclude`, `extends`, `files`, `include`, `references`, and
+/// `typeAcquisition` which are all "ignored" by Deno.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TsConfigJson {
   compiler_options: Option<HashMap<String, Value>>,
-  exclude: Option<Vec<String>>,
-  extends: Option<String>,
-  files: Option<Vec<String>>,
-  include: Option<Vec<String>>,
-  references: Option<Value>,
-  type_acquisition: Option<Value>,
 }
 
 fn parse_compiler_options(

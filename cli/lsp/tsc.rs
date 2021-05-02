@@ -1842,7 +1842,7 @@ struct SourceSnapshotArgs {
 /// The language service is dropping a reference to a source file snapshot, and
 /// we can drop our version of that document.
 #[allow(clippy::unnecessary_wraps)]
-fn dispose(
+fn op_dispose(
   state: &mut State,
   args: SourceSnapshotArgs,
 ) -> Result<bool, AnyError> {
@@ -1864,7 +1864,7 @@ struct GetChangeRangeArgs {
 
 /// The language service wants to compare an old snapshot with a new snapshot to
 /// determine what source has changed.
-fn get_change_range(
+fn op_get_change_range(
   state: &mut State,
   args: GetChangeRangeArgs,
 ) -> Result<Value, AnyError> {
@@ -1908,7 +1908,7 @@ fn get_change_range(
   }
 }
 
-fn get_length(
+fn op_get_length(
   state: &mut State,
   args: SourceSnapshotArgs,
 ) -> Result<usize, AnyError> {
@@ -1936,7 +1936,10 @@ struct GetTextArgs {
   end: usize,
 }
 
-fn get_text(state: &mut State, args: GetTextArgs) -> Result<String, AnyError> {
+fn op_get_text(
+  state: &mut State,
+  args: GetTextArgs,
+) -> Result<String, AnyError> {
   let mark = state.state_snapshot.performance.mark("op_get_text");
   let specifier = resolve_url(&args.specifier)?;
   let content =
@@ -1954,7 +1957,7 @@ fn get_text(state: &mut State, args: GetTextArgs) -> Result<String, AnyError> {
   Ok(text::slice(&content, args.start..args.end).to_string())
 }
 
-fn resolve(
+fn op_resolve(
   state: &mut State,
   args: ResolveArgs,
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
@@ -2045,13 +2048,13 @@ fn resolve(
 }
 
 #[allow(clippy::unnecessary_wraps)]
-fn respond(state: &mut State, args: Response) -> Result<bool, AnyError> {
+fn op_respond(state: &mut State, args: Response) -> Result<bool, AnyError> {
   state.response = Some(args);
   Ok(true)
 }
 
 #[allow(clippy::unnecessary_wraps)]
-fn script_names(
+fn op_script_names(
   state: &mut State,
   _args: Value,
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
@@ -2072,7 +2075,7 @@ struct ScriptVersionArgs {
   specifier: String,
 }
 
-fn script_version(
+fn op_script_version(
   state: &mut State,
   args: ScriptVersionArgs,
 ) -> Result<Option<String>, AnyError> {
@@ -2114,14 +2117,14 @@ pub fn start(debug: bool) -> Result<JsRuntime, AnyError> {
     op_state.put(State::new(StateSnapshot::default()));
   }
 
-  runtime.register_op("op_dispose", op(dispose));
-  runtime.register_op("op_get_change_range", op(get_change_range));
-  runtime.register_op("op_get_length", op(get_length));
-  runtime.register_op("op_get_text", op(get_text));
-  runtime.register_op("op_resolve", op(resolve));
-  runtime.register_op("op_respond", op(respond));
-  runtime.register_op("op_script_names", op(script_names));
-  runtime.register_op("op_script_version", op(script_version));
+  runtime.register_op("op_dispose", op(op_dispose));
+  runtime.register_op("op_get_change_range", op(op_get_change_range));
+  runtime.register_op("op_get_length", op(op_get_length));
+  runtime.register_op("op_get_text", op(op_get_text));
+  runtime.register_op("op_resolve", op(op_resolve));
+  runtime.register_op("op_respond", op(op_respond));
+  runtime.register_op("op_script_names", op(op_script_names));
+  runtime.register_op("op_script_version", op(op_script_version));
   runtime.sync_ops_cache();
 
   let init_config = json!({ "debug": debug });
@@ -3089,7 +3092,7 @@ mod tests {
     assert!(result.is_ok());
     let response: CompletionInfo =
       serde_json::from_value(result.unwrap()).unwrap();
-    assert_eq!(response.entries.len(), 20);
+    assert_eq!(response.entries.len(), 19);
     let result = request(
       &mut runtime,
       state_snapshot,

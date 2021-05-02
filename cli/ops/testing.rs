@@ -1,3 +1,4 @@
+use crate::tools::test_runner::TestEvent;
 use crate::tools::test_runner::TestMessage;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -5,6 +6,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::JsRuntime;
+use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use deno_runtime::ops::worker_host::create_worker_permissions;
@@ -81,9 +83,14 @@ fn op_post_test_message(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
   let args: PostTestMessageArgs = serde_json::from_value(args)?;
-  let sender = state.borrow::<Sender<TestMessage>>().clone();
+  let origin = state.borrow::<ModuleSpecifier>().to_string();
+  let message = args.message;
 
-  if sender.send(args.message).is_err() {
+  let event = TestEvent { origin, message };
+
+  let sender = state.borrow::<Sender<TestEvent>>().clone();
+
+  if sender.send(event).is_err() {
     Ok(json!(false))
   } else {
     Ok(json!(true))

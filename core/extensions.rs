@@ -110,7 +110,7 @@ impl ExtensionBuilder {
 /// Example:
 /// ```ignore
 /// include_js_files!(
-///   prefix "deno:op_crates/hello",
+///   prefix "deno:extensions/hello",
 ///   "01_hello.js",
 ///   "02_goodbye.js",
 /// )
