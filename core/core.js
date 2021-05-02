@@ -124,6 +124,10 @@
     opSync("op_close", rid);
   }
 
+  function print(str, isErr = false) {
+    opSync("op_print", [str, isErr]);
+  }
+
   // Provide bootstrap namespace
   window.__bootstrap = {};
   // Extra Deno.core.* exports
@@ -132,6 +136,7 @@
     opSync,
     ops,
     close,
+    print,
     resources,
     registerErrorClass,
     handleAsyncMsgFromRust,
