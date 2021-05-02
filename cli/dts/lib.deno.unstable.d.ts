@@ -441,10 +441,10 @@ declare namespace Deno {
    */
   export interface EmitOptions {
     /** Indicate that the source code should be emitted to a single file
-     * JavaScript bundle that is a single ES module (`"esm"`) or a single file
-     * self contained script we executes in an immediately invoked function
-     * when loaded (`"iife"`). */
-    bundle?: "esm" | "iife";
+     * JavaScript bundle that is a single ES module (`"module"`) or a single
+     * file self contained script we executes in an immediately invoked function
+     * when loaded (`"classic"`). */
+    bundle?: "module" | "classic";
     /** If `true` then the sources will be typed checked, returning any
      * diagnostic errors in the result.  If `false` type checking will be
      * skipped.  Defaults to `true`.
@@ -1181,6 +1181,140 @@ declare namespace Deno {
    * then the underlying HttpConn resource is closed automatically.
    */
   export function serveHttp(conn: Conn): HttpConn;
+
+  /** **UNSTABLE**: New option, yet to be vetted. */
+  export interface TestDefinition {
+    /** Specifies the permissions that should be used to run the test.
+     * Set this to "inherit" to keep the calling thread's permissions.
+     * Set this to "none" to revoke all permissions.
+     *
+     * Defaults to "inherit".
+    */
+    permissions?: "inherit" | "none" | {
+      /** Specifies if the `net` permission should be requested or revoked.
+      * If set to `"inherit"`, the current `env` permission will be inherited.
+      * If set to `true`, the global `net` permission will be requested.
+      * If set to `false`, the global `net` permission will be revoked.
+      *
+      * Defaults to "inherit".
+      */
+      env?: "inherit" | boolean;
+
+      /** Specifies if the `hrtime` permission should be requested or revoked.
+      * If set to `"inherit"`, the current `hrtime` permission will be inherited.
+      * If set to `true`, the global `hrtime` permission will be requested.
+      * If set to `false`, the global `hrtime` permission will be revoked.
+      *
+      * Defaults to "inherit".
+      */
+      hrtime?: "inherit" | boolean;
+
+      /** Specifies if the `net` permission should be requested or revoked.
+      * if set to `"inherit"`, the current `net` permission will be inherited.
+      * if set to `true`, the global `net` permission will be requested.
+      * if set to `false`, the global `net` permission will be revoked.
+      * if set to `string[]`, the `net` permission will be requested with the
+      * specified host strings with the format `"<host>[:<port>]`.
+      *
+      * Defaults to "inherit".
+      *
+      * Examples:
+      *
+      * ```
+      * Deno.test({
+      *   name: "inherit",
+      *   permissions: {
+      *     net: "inherit",
+      *   },
+      *   async fn() {
+      *     const status = await Deno.permissions.query({ name: "net" })
+      *     assertEquals(status.state, "granted");
+      *   },
+      * };
+      * ```
+      *
+      * ```
+      * Deno.test({
+      *   name: "true",
+      *   permissions: {
+      *     net: true,
+      *   },
+      *   async fn() {
+      *     const status = await Deno.permissions.query({ name: "net" });
+      *     assertEquals(status.state, "granted");
+      *   },
+      * };
+      * ```
+      *
+      * ```
+      * Deno.test({
+      *   name: "false",
+      *   permissions: {
+      *     net: false,
+      *   },
+      *   async fn() {
+      *     const status = await Deno.permissions.query({ name: "net" });
+      *     assertEquals(status.state, "denied");
+      *   },
+      * };
+      * ```
+      *
+      * ```
+      * Deno.test({
+      *   name: "localhost:8080",
+      *   permissions: {
+      *     net: ["localhost:8080"],
+      *   },
+      *   async fn() {
+      *     const status = await Deno.permissions.query({ name: "net", host: "localhost:8080" });
+      *     assertEquals(status.state, "granted");
+      *   },
+      * };
+      * ```
+      */
+      net?: "inherit" | boolean | string[];
+
+      /** Specifies if the `plugin` permission should be requested or revoked.
+      * If set to `"inherit"`, the current `plugin` permission will be inherited.
+      * If set to `true`, the global `plugin` permission will be requested.
+      * If set to `false`, the global `plugin` permission will be revoked.
+      *
+      * Defaults to "inherit".
+      */
+      plugin?: "inherit" | boolean;
+
+      /** Specifies if the `read` permission should be requested or revoked.
+      * If set to `"inherit"`, the current `read` permission will be inherited.
+      * If set to `true`, the global `read` permission will be requested.
+      * If set to `false`, the global `read` permission will be revoked.
+      * If set to `Array<string | URL>`, the `read` permission will be requested with the
+      * specified file paths.
+      *
+      * Defaults to "inherit".
+      */
+      read?: "inherit" | boolean | Array<string | URL>;
+
+      /** Specifies if the `run` permission should be requested or revoked.
+      * If set to `"inherit"`, the current `run` permission will be inherited.
+      * If set to `true`, the global `run` permission will be requested.
+      * If set to `false`, the global `run` permission will be revoked.
+      *
+      * Defaults to "inherit".
+      */
+      run?: "inherit" | boolean;
+
+      /** Specifies if the `write` permission should be requested or revoked.
+      * If set to `"inherit"`, the current `write` permission will be inherited.
+      * If set to `true`, the global `write` permission will be requested.
+      * If set to `false`, the global `write` permission will be revoked.
+      * If set to `Array<string | URL>`, the `write` permission will be requested with the
+      * specified file paths.
+      *
+      * Defaults to "inherit".
+      */
+      write?: "inherit" | boolean | Array<string | URL>;
+    };
+  }
 }
 
 declare function fetch(

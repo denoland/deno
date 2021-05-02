@@ -281,16 +281,7 @@ impl Visit for ImportLocator {
       let start = self.source_map.lookup_char_pos(node.src.span.lo);
       let end = self.source_map.lookup_char_pos(node.src.span.hi);
       if span_includes_pos(&self.position, &start, &end) {
-        self.maybe_range = Some(lsp::Range {
-          start: lsp::Position {
-            line: (start.line - 1) as u32,
-            character: (start.col_display + 1) as u32,
-          },
-          end: lsp::Position {
-            line: (end.line - 1) as u32,
-            character: (end.col_display - 1) as u32,
-          },
-        });
+        self.maybe_range = Some(get_range_from_loc(&start, &end));
         self.maybe_specifier = Some(node.src.value.to_string());
       }
     }
@@ -306,6 +297,7 @@ impl Visit for ImportLocator {
         let start = self.source_map.lookup_char_pos(src.span.lo);
         let end = self.source_map.lookup_char_pos(src.span.hi);
         if span_includes_pos(&self.position, &start, &end) {
+          self.maybe_range = Some(get_range_from_loc(&start, &end));
           self.maybe_specifier = Some(src.value.to_string());
         }
       }
@@ -321,6 +313,7 @@ impl Visit for ImportLocator {
       let start = self.source_map.lookup_char_pos(node.src.span.lo);
       let end = self.source_map.lookup_char_pos(node.src.span.hi);
       if span_includes_pos(&self.position, &start, &end) {
+        self.maybe_range = Some(get_range_from_loc(&start, &end));
         self.maybe_specifier = Some(node.src.value.to_string());
       }
     }
@@ -335,9 +328,24 @@ impl Visit for ImportLocator {
       let start = self.source_map.lookup_char_pos(node.arg.span.lo);
       let end = self.source_map.lookup_char_pos(node.arg.span.hi);
       if span_includes_pos(&self.position, &start, &end) {
+        self.maybe_range = Some(get_range_from_loc(&start, &end));
         self.maybe_specifier = Some(node.arg.value.to_string());
       }
     }
+  }
+}
+
+/// Get LSP range from the provided SWC start and end locations.
+fn get_range_from_loc(start: &Loc, end: &Loc) -> lsp::Range {
+  lsp::Range {
+    start: lsp::Position {
+      line: (start.line - 1) as u32,
+      character: (start.col_display + 1) as u32,
+    },
+    end: lsp::Position {
+      line: (end.line - 1) as u32,
+      character: (end.col_display - 1) as u32,
+    },
   }
 }
 
@@ -643,12 +651,13 @@ mod tests {
   #[test]
   fn test_is_module_specifier_position() {
     let specifier = resolve_url("file:///a/b/c.ts").unwrap();
-    let source = r#"import * as a from """#;
+    let import_source = r#"import * as a from """#;
+    let export_source = r#"export * as a from """#;
     let media_type = MediaType::TypeScript;
     assert_eq!(
       is_module_specifier_position(
         &specifier,
-        source,
+        import_source,
         &media_type,
         &lsp::Position {
           line: 0,
@@ -660,7 +669,31 @@ mod tests {
     assert_eq!(
       is_module_specifier_position(
         &specifier,
-        source,
+        import_source,
+        &media_type,
+        &lsp::Position {
+          line: 0,
+          character: 20
+        }
+      ),
+      Some((
+        "".to_string(),
+        lsp::Range {
+          start: lsp::Position {
+            line: 0,
+            character: 20
+          },
+          end: lsp::Position {
+            line: 0,
+            character: 20
+          }
+        }
+      ))
+    );
+    assert_eq!(
+      is_module_specifier_position(
+        &specifier,
+        export_source,
         &media_type,
         &lsp::Position {
           line: 0,
