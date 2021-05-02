@@ -44,7 +44,6 @@ use crate::flags::Flags;
 use crate::fmt_errors::PrettyJsError;
 use crate::media_type::MediaType;
 use crate::module_loader::CliModuleLoader;
-use crate::program_state::exit_unstable;
 use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
 use crate::specifier_handler::FetchHandler;
@@ -220,7 +219,7 @@ pub fn create_main_worker(
     ops::runtime_compiler::init(js_runtime);
 
     if enable_testing {
-      ops::test_runner::init(js_runtime);
+      ops::testing::init(js_runtime);
     }
 
     js_runtime.sync_ops_cache();
@@ -320,10 +319,6 @@ async fn compile_command(
   args: Vec<String>,
   target: Option<String>,
 ) -> Result<(), AnyError> {
-  if !flags.unstable {
-    exit_unstable("compile");
-  }
-
   let debug = flags.log_level == Some(log::Level::Debug);
 
   let run_flags =
@@ -382,9 +377,6 @@ async fn info_command(
   maybe_specifier: Option<String>,
   json: bool,
 ) -> Result<(), AnyError> {
-  if json && !flags.unstable {
-    exit_unstable("--json");
-  }
   let program_state = ProgramState::build(flags).await?;
   if let Some(specifier) = maybe_specifier {
     let specifier = resolve_url_or_path(&specifier)?;
@@ -441,16 +433,12 @@ async fn lsp_command() -> Result<(), AnyError> {
 }
 
 async fn lint_command(
-  flags: Flags,
+  _flags: Flags,
   files: Vec<PathBuf>,
   list_rules: bool,
   ignore: Vec<PathBuf>,
   json: bool,
 ) -> Result<(), AnyError> {
-  if !flags.unstable {
-    exit_unstable("lint");
-  }
-
   if list_rules {
     tools::lint::print_rules_list(json);
     return Ok(());
@@ -898,10 +886,6 @@ async fn coverage_command(
   exclude: Vec<String>,
   lcov: bool,
 ) -> Result<(), AnyError> {
-  if !flags.unstable {
-    exit_unstable("coverage");
-  }
-
   if files.is_empty() {
     println!("No matching coverage profiles found");
     std::process::exit(1);
@@ -918,6 +902,7 @@ async fn coverage_command(
   .await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn test_command(
   flags: Flags,
   include: Option<Vec<String>>,
@@ -926,87 +911,23 @@ async fn test_command(
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
+  concurrent_jobs: usize,
 ) -> Result<(), AnyError> {
-  let program_state = ProgramState::build(flags.clone()).await?;
-  let permissions = Permissions::from_options(&flags.clone().into());
-  let cwd = std::env::current_dir().expect("No current directory");
-  let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let test_modules =
-    tools::test_runner::prepare_test_modules_urls(include, &cwd)?;
-
-  if test_modules.is_empty() {
-    println!("No matching test modules found");
-    if !allow_none {
-      std::process::exit(1);
-    }
-    return Ok(());
-  }
-  let main_module = deno_core::resolve_path("$deno$test.ts")?;
-  // Create a dummy source file.
-  let source_file = File {
-    local: main_module.to_file_path().unwrap(),
-    maybe_types: None,
-    media_type: MediaType::TypeScript,
-    source: tools::test_runner::render_test_file(
-      test_modules.clone(),
-      fail_fast,
-      quiet,
-      filter,
-    ),
-    specifier: main_module.clone(),
-  };
-  // Save our fake file into file fetcher cache
-  // to allow module access by TS compiler
-  program_state.file_fetcher.insert_cached(source_file);
-
-  if no_run {
-    let lib = if flags.unstable {
-      module_graph::TypeLib::UnstableDenoWindow
-    } else {
-      module_graph::TypeLib::DenoWindow
-    };
-    program_state
-      .prepare_module_load(
-        main_module.clone(),
-        lib,
-        Permissions::allow_all(),
-        false,
-        program_state.maybe_import_map.clone(),
-      )
-      .await?;
-    return Ok(());
-  }
-
-  let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, true);
-
   if let Some(ref coverage_dir) = flags.coverage_dir {
     env::set_var("DENO_UNSTABLE_COVERAGE_DIR", coverage_dir);
   }
 
-  let mut maybe_coverage_collector =
-    if let Some(ref coverage_dir) = program_state.coverage_dir {
-      let session = worker.create_inspector_session();
-      let coverage_dir = PathBuf::from(coverage_dir);
-      let mut coverage_collector =
-        tools::coverage::CoverageCollector::new(coverage_dir, session);
-      coverage_collector.start_collecting().await?;
-
-      Some(coverage_collector)
-    } else {
-      None
-    };
-
-  let execute_result = worker.execute_module(&main_module).await;
-  execute_result?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
-  worker.run_event_loop().await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
-  worker.run_event_loop().await?;
-
-  if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-    coverage_collector.stop_collecting().await?;
-  }
+  tools::test_runner::run_tests(
+    flags,
+    include,
+    no_run,
+    fail_fast,
+    quiet,
+    allow_none,
+    filter,
+    concurrent_jobs,
+  )
+  .await?;
 
   Ok(())
 }
@@ -1141,10 +1062,18 @@ fn get_subcommand(
       include,
       allow_none,
       filter,
-    } => {
-      test_command(flags, include, no_run, fail_fast, quiet, allow_none, filter)
-        .boxed_local()
-    }
+      concurrent_jobs,
+    } => test_command(
+      flags,
+      include,
+      no_run,
+      fail_fast,
+      quiet,
+      allow_none,
+      filter,
+      concurrent_jobs,
+    )
+    .boxed_local(),
     DenoSubcommand::Completions { buf } => {
       if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
         eprintln!("{}", e);

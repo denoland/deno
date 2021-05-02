@@ -224,9 +224,55 @@ impl<'a> ser::SerializeStruct for MagicSerializer<'a> {
   }
 }
 
+// TODO(@AaronO): refactor this and streamline how we transmute values
+pub struct MagicBufferSerializer<'a, 'b, 'c> {
+  scope: ScopePtr<'a, 'b, 'c>,
+  f1: u64,
+  f2: u64,
+}
+
+impl<'a, 'b, 'c> MagicBufferSerializer<'a, 'b, 'c> {
+  pub fn new(scope: ScopePtr<'a, 'b, 'c>) -> Self {
+    Self {
+      scope,
+      f1: 0,
+      f2: 0,
+    }
+  }
+}
+
+impl<'a, 'b, 'c> ser::SerializeStruct for MagicBufferSerializer<'a, 'b, 'c> {
+  type Ok = JsValue<'a>;
+  type Error = Error;
+
+  fn serialize_field<T: ?Sized + Serialize>(
+    &mut self,
+    key: &'static str,
+    value: &T,
+  ) -> Result<()> {
+    // Get u64 chunk
+    let transmuted: u64 = value.serialize(magic::FieldSerializer {})?;
+    match key {
+      magic::buffer::BUF_FIELD_1 => self.f1 = transmuted,
+      magic::buffer::BUF_FIELD_2 => self.f2 = transmuted,
+      _ => unreachable!(),
+    }
+    Ok(())
+  }
+
+  fn end(self) -> JsResult<'a> {
+    let x: [usize; 2] = [self.f1 as usize, self.f2 as usize];
+    let buf: Box<[u8]> = unsafe { std::mem::transmute(x) };
+    let scope = &mut *self.scope.borrow_mut();
+    let v8_value = boxed_slice_to_uint8array(scope, buf);
+    Ok(v8_value.into())
+  }
+}
+
 // Dispatches between magic and regular struct serializers
 pub enum StructSerializers<'a, 'b, 'c> {
   Magic(MagicSerializer<'a>),
+  MagicBuffer(MagicBufferSerializer<'a, 'b, 'c>),
   Regular(ObjectSerializer<'a, 'b, 'c>),
 }
 
@@ -241,6 +287,7 @@ impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
   ) -> Result<()> {
     match self {
       StructSerializers::Magic(s) => s.serialize_field(key, value),
+      StructSerializers::MagicBuffer(s) => s.serialize_field(key, value),
       StructSerializers::Regular(s) => s.serialize_field(key, value),
     }
   }
@@ -248,6 +295,7 @@ impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
   fn end(self) -> JsResult<'a> {
     match self {
       StructSerializers::Magic(s) => s.end(),
+      StructSerializers::MagicBuffer(s) => s.end(),
       StructSerializers::Regular(s) => s.end(),
     }
   }
@@ -463,12 +511,20 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
     name: &'static str,
     _len: usize,
   ) -> Result<Self::SerializeStruct> {
-    if name == magic::NAME {
-      let m: MagicSerializer<'a> = MagicSerializer { v8_value: None };
-      return Ok(StructSerializers::Magic(m));
+    match name {
+      magic::NAME => {
+        let m: MagicSerializer<'a> = MagicSerializer { v8_value: None };
+        Ok(StructSerializers::Magic(m))
+      }
+      magic::buffer::BUF_NAME => {
+        let m = MagicBufferSerializer::new(self.scope);
+        Ok(StructSerializers::MagicBuffer(m))
+      }
+      _ => {
+        let o = ObjectSerializer::new(self.scope);
+        Ok(StructSerializers::Regular(o))
+      }
     }
-    let o = ObjectSerializer::new(self.scope);
-    Ok(StructSerializers::Regular(o))
   }
 
   fn serialize_struct_variant(
@@ -482,4 +538,22 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
     let x = self.serialize_struct(variant, len)?;
     Ok(VariantSerializer::new(scope, variant, x))
   }
+}
+
+// Used to map MagicBuffers to v8
+pub fn boxed_slice_to_uint8array<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  buf: Box<[u8]>,
+) -> v8::Local<'a, v8::Uint8Array> {
+  if buf.is_empty() {
+    let ab = v8::ArrayBuffer::new(scope, 0);
+    return v8::Uint8Array::new(scope, ab, 0, 0)
+      .expect("Failed to create UintArray8");
+  }
+  let buf_len = buf.len();
+  let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
+  let backing_store_shared = backing_store.make_shared();
+  let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
+  v8::Uint8Array::new(scope, ab, 0, buf_len)
+    .expect("Failed to create UintArray8")
 }

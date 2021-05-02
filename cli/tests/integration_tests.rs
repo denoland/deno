@@ -33,16 +33,20 @@ fn js_unit_tests_lint() {
 #[test]
 fn js_unit_tests() {
   let _g = util::http_server();
+
+  // Note that the unit tests are not safe for concurrency and must be run with a concurrency limit
+  // of one because there are some chdir tests in there.
+  // TODO(caspervonb) split these tests into two groups: parallel and serial.
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
-    .arg("run")
+    .arg("test")
     .arg("--unstable")
+    .arg("--location=http://js-unit-tests/foo/bar")
     .arg("-A")
-    .arg("cli/tests/unit/unit_test_runner.ts")
-    .arg("--master")
-    .arg("--verbose")
+    .arg("cli/tests/unit")
     .spawn()
     .expect("failed to spawn script");
+
   let status = deno.wait().expect("failed to wait for the child process");
   assert_eq!(Some(0), status.code());
   assert!(status.success());
@@ -2437,10 +2441,22 @@ mod integration {
       output: "test/deno_test_unresolved_promise.out",
     });
 
+    itest!(unhandled_rejection {
+      args: "test test/unhandled_rejection.ts",
+      exit_code: 1,
+      output: "test/unhandled_rejection.out",
+    });
+
     itest!(exit_sanitizer {
       args: "test test/exit_sanitizer_test.ts",
       output: "test/exit_sanitizer_test.out",
       exit_code: 1,
+    });
+
+    itest!(quiet {
+      args: "test --quiet test/quiet_test.ts",
+      exit_code: 0,
+      output: "test/quiet_test.out",
     });
   }
 
@@ -3093,9 +3109,9 @@ console.log("finish");
     output: "error_008_checkjs.js.out",
   });
 
-  itest!(error_009_op_crates_error {
-    args: "run error_009_op_crates_error.js",
-    output: "error_009_op_crates_error.js.out",
+  itest!(error_009_extensions_error {
+    args: "run error_009_extensions_error.js",
+    output: "error_009_extensions_error.js.out",
     exit_code: 1,
   });
 
@@ -5368,7 +5384,6 @@ console.log("finish");
   }
 
   #[test]
-  #[ignore]
   #[cfg(windows)]
   // https://github.com/denoland/deno/issues/9667
   fn compile_windows_ext() {
