@@ -24,21 +24,12 @@ use deno_runtime::deno_websocket;
 fn create_snapshot(
   mut js_runtime: JsRuntime,
   snapshot_path: &Path,
-  files: Vec<PathBuf>,
+  js_deps: Vec<PathBuf>,
 ) {
   // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
   // workspace root.
-  let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-  for file in files {
+  for file in js_deps {
     println!("cargo:rerun-if-changed={}", file.display());
-    let display_path = file.strip_prefix(display_root).unwrap();
-    let display_path_str = display_path.display().to_string();
-    js_runtime
-      .execute(
-        &("deno:".to_string() + &display_path_str.replace('\\', "/")),
-        &std::fs::read_to_string(&file).unwrap(),
-      )
-      .unwrap();
   }
 
   let snapshot = js_runtime.snapshot();
@@ -48,8 +39,9 @@ fn create_snapshot(
   println!("Snapshot written to: {} ", snapshot_path.display());
 }
 
-fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
+fn create_runtime_snapshot(snapshot_path: &Path) {
   let extensions: Vec<Extension> = vec![
+    // Web extensions
     deno_webidl::init(),
     deno_console::init(),
     deno_url::init(),
@@ -63,14 +55,18 @@ fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
     deno_crypto::init(None),
     deno_webgpu::init(false),
     deno_timers::init::<deno_timers::NoTimersPermission>(),
+    // Runtime JS
+    deno_runtime::js::init(),
   ];
+  let js_deps = get_js_deps(&extensions);
 
   let js_runtime = JsRuntime::new(RuntimeOptions {
     will_snapshot: true,
     extensions,
     ..Default::default()
   });
-  create_snapshot(js_runtime, snapshot_path, files);
+
+  create_snapshot(js_runtime, snapshot_path, js_deps);
 }
 
 pub fn main() {
@@ -89,25 +85,35 @@ pub fn main() {
   // Main snapshot
   let runtime_snapshot_path = o.join("CLI_SNAPSHOT.bin");
 
-  let js_files = get_js_files("js");
-  create_runtime_snapshot(&runtime_snapshot_path, js_files);
+  create_runtime_snapshot(&runtime_snapshot_path);
 }
 
-fn get_js_files(d: &str) -> Vec<PathBuf> {
+fn get_js_deps(extensions: &[Extension]) -> Vec<PathBuf> {
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-  let js_dir = manifest_dir
-    .join("../runtime")
-    .join(d)
-    .canonicalize()
-    .unwrap();
-  println!("manifest_dir: {:?}", manifest_dir);
-  let mut js_files = std::fs::read_dir(js_dir.clone())
-    .unwrap()
-    .map(|dir_entry| {
-      let file = dir_entry.unwrap();
-      js_dir.join(file.path())
+  let root = manifest_dir.join("..").canonicalize().unwrap();
+
+  let mut js_files = extensions
+    .iter()
+    .map(|e| e.init_js())
+    .flatten()
+    .map(|(path, _src)| {
+      let path = path.strip_prefix("deno:").unwrap();
+      let fullpath = root.join(path);
+
+      let finalpath = if fullpath.exists() {
+        fullpath
+      } else {
+        // Fallback to extensions/
+        root.join("extensions").join(path)
+      };
+
+      assert!(
+        finalpath.exists(),
+        "Expected {} to exist",
+        finalpath.to_str().unwrap()
+      );
+      finalpath
     })
-    .filter(|path| path.extension().unwrap_or_default() == "js")
     .collect::<Vec<PathBuf>>();
   js_files.sort();
   js_files

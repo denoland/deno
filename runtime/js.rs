@@ -1,36 +1,45 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-// use deno_core::Snapshot;
-// use log::debug;
+use deno_core::include_js_files;
+use deno_core::Extension;
 
-// pub static CLI_SNAPSHOT: &[u8] =
-//   include_bytes!(concat!(env!("OUT_DIR"), "/CLI_SNAPSHOT.bin"));
-
-// pub fn deno_isolate_init() -> Snapshot {
-//   debug!("Deno isolate init with snapshots.");
-//   let data = CLI_SNAPSHOT;
-//   Snapshot::Static(data)
-// }
-
-// #[cfg(test)]
-// mod tests {
-//   use super::*;
-
-//   #[test]
-//   fn cli_snapshot() {
-//     let mut js_runtime = deno_core::JsRuntime::new(deno_core::RuntimeOptions {
-//       startup_snapshot: Some(deno_isolate_init()),
-//       ..Default::default()
-//     });
-//     js_runtime
-//       .execute(
-//         "<anon>",
-//         r#"
-//       if (!(bootstrap.mainRuntime && bootstrap.workerRuntime)) {
-//         throw Error("bad");
-//       }
-//       console.log("we have console.log!!!");
-//     "#,
-//       )
-//       .unwrap();
-//   }
-// }
+pub fn init() -> Extension {
+  Extension::builder()
+    .js(include_js_files!(
+      prefix "deno:runtime",
+      // Generated with:
+      // bash -c "cd runtime && ls js/*.js | sort"
+      "js/01_build.js",
+      "js/01_errors.js",
+      "js/01_version.js",
+      "js/01_web_util.js",
+      "js/06_util.js",
+      "js/11_workers.js",
+      "js/12_io.js",
+      "js/13_buffer.js",
+      "js/30_fs.js",
+      "js/30_metrics.js",
+      "js/30_net.js",
+      "js/30_os.js",
+      "js/40_compiler_api.js",
+      "js/40_diagnostics.js",
+      "js/40_error_stack.js",
+      "js/40_files.js",
+      "js/40_fs_events.js",
+      "js/40_http.js",
+      "js/40_net_unstable.js",
+      "js/40_performance.js",
+      "js/40_permissions.js",
+      "js/40_plugins.js",
+      "js/40_process.js",
+      "js/40_read_file.js",
+      "js/40_signals.js",
+      "js/40_testing.js",
+      "js/40_tls.js",
+      "js/40_tty.js",
+      "js/40_write_file.js",
+      "js/41_prompt.js",
+      "js/90_deno_ns.js",
+      "js/99_main.js",
+    ))
+    .build()
+}

@@ -15,3 +15,25 @@ pub fn deno_isolate_init() -> Snapshot {
   let data = CLI_SNAPSHOT;
   Snapshot::Static(data)
 }
+
+#[cfg(test)]
+mod tests {
+  #[test]
+  fn cli_snapshot() {
+    let mut js_runtime = deno_core::JsRuntime::new(deno_core::RuntimeOptions {
+      startup_snapshot: Some(crate::deno_isolate_init()),
+      ..Default::default()
+    });
+    js_runtime
+      .execute(
+        "<anon>",
+        r#"
+      if (!(bootstrap.mainRuntime && bootstrap.workerRuntime)) {
+        throw Error("bad");
+      }
+      console.log("we have console.log!!!");
+    "#,
+      )
+      .unwrap();
+  }
+}

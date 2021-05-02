@@ -2,7 +2,7 @@
 use crate::colors;
 use crate::inspector::DenoInspector;
 use crate::inspector::InspectorServer;
-// use crate::js;
+use crate::js;
 use crate::metrics;
 use crate::ops;
 use crate::permissions::Permissions;
@@ -202,6 +202,8 @@ impl WebWorker {
       deno_timers::init::<Permissions>(),
       // Metrics
       metrics::init(),
+      // Runtime JS
+      js::init(),
     ];
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
