@@ -78,6 +78,16 @@ impl MainWorker {
     permissions: Permissions,
     options: &WorkerOptions,
   ) -> Self {
+    // Permissions: many ops depend on this
+    let unstable = options.unstable;
+    let perm_ext = Extension::builder()
+      .state(move |state| {
+        state.put::<Permissions>(permissions.clone());
+        state.put(ops::UnstableChecker { unstable });
+        Ok(())
+      })
+      .build();
+
     // Internal modules
     let extensions: Vec<Extension> = vec![
       // Web APIs
@@ -99,6 +109,24 @@ impl MainWorker {
       deno_timers::init::<Permissions>(),
       // Metrics
       metrics::init(),
+      // Runtime ops
+      ops::runtime::init(main_module),
+      ops::worker_host::init(true, options.create_web_worker_cb.clone()),
+      ops::fs_events::init(),
+      ops::fs::init(),
+      ops::http::init(),
+      ops::io::init(),
+      ops::io::init_stdio(),
+      ops::net::init(),
+      ops::os::init(),
+      ops::permissions::init(),
+      ops::plugin::init(),
+      ops::process::init(),
+      ops::signal::init(),
+      ops::tls::init(),
+      ops::tty::init(),
+      // Permissions ext (worker specific state)
+      perm_ext,
     ];
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
@@ -122,61 +150,11 @@ impl MainWorker {
     let should_break_on_first_statement =
       inspector.is_some() && options.should_break_on_first_statement;
 
-    let mut worker = Self {
+    Self {
       inspector,
       js_runtime,
       should_break_on_first_statement,
-    };
-
-    let js_runtime = &mut worker.js_runtime;
-    {
-      // All ops registered in this function depend on these
-      {
-        let op_state = js_runtime.op_state();
-        let mut op_state = op_state.borrow_mut();
-        op_state.put::<Permissions>(permissions);
-        op_state.put(ops::UnstableChecker {
-          unstable: options.unstable,
-        });
-      }
-
-      ops::runtime::init(js_runtime, main_module);
-      ops::worker_host::init(
-        js_runtime,
-        None,
-        options.create_web_worker_cb.clone(),
-      );
-      ops::fs_events::init(js_runtime);
-      ops::fs::init(js_runtime);
-      ops::http::init(js_runtime);
-      ops::io::init(js_runtime);
-      ops::net::init(js_runtime);
-      ops::os::init(js_runtime);
-      ops::permissions::init(js_runtime);
-      ops::plugin::init(js_runtime);
-      ops::process::init(js_runtime);
-      ops::signal::init(js_runtime);
-      ops::tls::init(js_runtime);
-      ops::tty::init(js_runtime);
     }
-    {
-      let op_state = js_runtime.op_state();
-      let mut op_state = op_state.borrow_mut();
-      let t = &mut op_state.resource_table;
-      let (stdin, stdout, stderr) = ops::io::get_stdio();
-      if let Some(stream) = stdin {
-        t.add(stream);
-      }
-      if let Some(stream) = stdout {
-        t.add(stream);
-      }
-      if let Some(stream) = stderr {
-        t.add(stream);
-      }
-    }
-    js_runtime.sync_ops_cache();
-
-    worker
   }
 
   pub fn bootstrap(&mut self, options: &WorkerOptions) {
