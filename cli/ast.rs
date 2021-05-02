@@ -304,6 +304,22 @@ impl ParsedModule {
     self.leading_comments.clone()
   }
 
+  /// Get the module's comments.
+  pub fn get_comments(&self) -> Vec<Comment> {
+    let mut comments = Vec::new();
+    let (leading_comments, trailing_comments) = self.comments.borrow_all();
+
+    for value in leading_comments.values() {
+      comments.append(&mut value.clone());
+    }
+
+    for value in trailing_comments.values() {
+      comments.append(&mut value.clone());
+    }
+
+    comments
+  }
+
   /// Get a location for a given span within the module.
   pub fn get_location(&self, span: &Span) -> Location {
     self.source_map.lookup_char_pos(span.lo).into()

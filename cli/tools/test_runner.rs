@@ -1,10 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::ast;
 use crate::colors;
 use crate::create_main_worker;
 use crate::file_fetcher::File;
 use crate::flags::Flags;
-use crate::fs_util;
+use crate::fs_util::collect_files;
+use crate::fs_util::is_supported_ext;
+use crate::fs_util::normalize_path;
 use crate::media_type::MediaType;
 use crate::module_graph;
 use crate::program_state::ProgramState;
@@ -26,6 +29,7 @@ use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Instant;
+use swc_common::comments::CommentKind;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -233,9 +237,9 @@ pub fn collect_test_module_specifiers(
   let mut prepared = vec![];
 
   for path in include_paths {
-    let p = fs_util::normalize_path(&root_path.join(path));
+    let p = normalize_path(&root_path.join(path));
     if p.is_dir() {
-      let test_files = fs_util::collect_files(&[p], &[], is_supported).unwrap();
+      let test_files = collect_files(&[p], &[], is_supported_ext).unwrap();
       let test_files_as_urls = test_files
         .iter()
         .map(|f| Url::from_file_path(f).unwrap())
@@ -309,6 +313,7 @@ pub async fn run_tests(
   flags: Flags,
   include: Option<Vec<String>>,
   no_run: bool,
+  docs: bool,
   fail_fast: bool,
   quiet: bool,
   allow_none: bool,
@@ -319,7 +324,10 @@ pub async fn run_tests(
   let permissions = Permissions::from_options(&flags.clone().into());
   let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let test_modules = collect_test_module_specifiers(include, &cwd)?;
+
+  // TODO(caspervonb) revert collection change and split into test modules and modules to scan for
+  // documentation tests.
+  let mut test_modules = collect_test_module_specifiers(include, &cwd)?;
 
   if test_modules.is_empty() {
     println!("No matching test modules found");
@@ -344,6 +352,121 @@ pub async fn run_tests(
     )
     .await?;
 
+  if docs {
+    let mut new_modules = Vec::new();
+
+    for test_module in &test_modules {
+      let media_type = MediaType::from(test_module);
+
+      let file = program_state.file_fetcher.get_source(&test_module).unwrap();
+      let parsed_module =
+        ast::parse(&test_module.as_str(), &file.source, &media_type)?;
+      let comments = parsed_module.get_comments();
+
+      let mut output = String::new();
+      let mut counter = 1;
+
+      // TODO(caspervonb) retain spans when parsing and apply source maps to generated modules.
+      for comment in comments {
+        if comment.kind != CommentKind::Block {
+          continue;
+        }
+
+        if !comment.text.starts_with('*') {
+          continue;
+        }
+
+        let lines = comment.text.lines().map(|line| {
+          let line = line.trim_start();
+          let line = line.strip_prefix('*').unwrap_or(line);
+          let line = line.strip_prefix(' ').unwrap_or(line);
+
+          line
+        });
+
+        let sources = {
+          let mut sources = Vec::new();
+          let mut maybe_source = None;
+
+          for line in lines {
+            if line.starts_with("```") {
+              if maybe_source.is_some() {
+                sources.push(maybe_source.take().unwrap());
+              } else {
+                maybe_source = Some("".to_string())
+              }
+            } else if let Some(source) = &mut maybe_source {
+              source.push_str(&format!("{}\n", line));
+            }
+          }
+
+          sources
+        };
+
+        for source in sources {
+          // TODO(caspervonb) quick and dirty module specifier to make it run, needs more consideration
+          // if this is the what we want to do with.
+          //
+          // Line range it was extracted from seems appropriate for these modules.
+          let specifier = deno_core::resolve_url_or_path(&format!(
+            "{}.{}",
+            test_module.as_str(),
+            counter
+          ))?;
+
+          let file = File {
+            local: specifier.to_file_path().unwrap(),
+            maybe_types: None,
+            media_type: MediaType::TypeScript, // media_type.clone(),
+            source: source.clone(),
+            specifier: specifier.clone(),
+          };
+
+          program_state.file_fetcher.insert_cached(file);
+
+          // println!("{}", source);
+          program_state
+            .prepare_module_load(
+            specifier.clone(),
+            lib.clone(),
+            Permissions::allow_all(),
+            false,
+            program_state.maybe_import_map.clone(),
+          )
+          .await?;
+
+          // TODO(caspervonb) don't use import here, but delegate to an op instead.
+          // Implement it as `Deno.internal.runExamples` instead of hooking into tests here (tests
+          // are for unit tests).
+          output.push_str(&format!(
+            "Deno.test(\"{}\", async function() {{ await import(\"{}\"); }});",
+            specifier.as_str(),
+            specifier.as_str(),
+          ));
+
+          counter += 1;
+        }
+      }
+
+      // TODO(caspervonb) quick and dirty module specifier to make it run, needs more consideration
+      // if this is the what we want to do with.
+      let specifier = deno_core::resolve_url_or_path(&format!("{}.doc", test_module.as_str()))?;
+
+      let file = File {
+        local: specifier.to_file_path().unwrap(),
+        maybe_types: None,
+        media_type: MediaType::JavaScript,
+        source: output.clone(),
+        specifier: specifier.clone(),
+      };
+
+      program_state.file_fetcher.insert_cached(file);
+      new_modules.push(specifier.clone());
+    }
+
+    test_modules.append(&mut new_modules);
+  }
+
   if no_run {
     return Ok(());
   }
@@ -351,8 +474,8 @@ pub async fn run_tests(
   // Because scripts, and therefore worker.execute cannot detect unresolved promises at the moment
   // we generate a module for the actual test execution.
   let test_options = json!({
-    "disableLog": quiet,
-    "filter": filter,
+      "disableLog": quiet,
+      "filter": filter,
   });
 
   let test_module = deno_core::resolve_path("$deno$test.js")?;
