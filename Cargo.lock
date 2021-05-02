@@ -523,6 +523,7 @@ dependencies = [
  "deno_doc",
  "deno_lint",
  "deno_runtime",
+ "deno_snapshots",
  "dissimilar",
  "dprint-plugin-json",
  "dprint-plugin-markdown",

@@ -546,6 +546,7 @@ mod tests {
       no_color: true,
       get_error_class_fn: None,
       blob_url_store: BlobUrlStore::default(),
+      startup_snapshot: None,
     };
 
     let mut worker = WebWorker::from_options(

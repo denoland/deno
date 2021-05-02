@@ -192,6 +192,7 @@ pub async fn run(
     get_error_class_fn: Some(&get_error_class_name),
     location: metadata.location,
     blob_url_store,
+    startup_snapshot: Some(deno_snapshots::deno_isolate_init()),
   };
   let mut worker =
     MainWorker::from_options(main_module.clone(), permissions, &options);

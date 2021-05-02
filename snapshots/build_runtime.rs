@@ -8,16 +8,16 @@ use std::path::Path;
 use std::path::PathBuf;
 
 // extensions/
-use deno_runtime::deno_webidl;
 use deno_runtime::deno_console;
+use deno_runtime::deno_crypto;
+use deno_runtime::deno_fetch;
+use deno_runtime::deno_file;
+use deno_runtime::deno_timers;
 use deno_runtime::deno_url;
 use deno_runtime::deno_web;
-use deno_runtime::deno_file;
-use deno_runtime::deno_fetch;
-use deno_runtime::deno_websocket;
-use deno_runtime::deno_crypto;
 use deno_runtime::deno_webgpu;
-use deno_runtime::deno_timers;
+use deno_runtime::deno_webidl;
+use deno_runtime::deno_websocket;
 
 // TODO(bartlomieju): this module contains a lot of duplicated
 // logic with `cli/build.rs`, factor out to `deno_core`.

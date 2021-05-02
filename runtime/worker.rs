@@ -316,6 +316,7 @@ mod tests {
       get_error_class_fn: None,
       location: None,
       blob_url_store: BlobUrlStore::default(),
+      startup_snapshot: None,
     };
 
     MainWorker::from_options(main_module, permissions, &options)

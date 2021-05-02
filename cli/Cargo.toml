@@ -19,6 +19,9 @@ name = "deno_bench"
 harness = false
 path = "./bench/main.rs"
 
+[build-dependencies]
+deno_runtime = { path = "../runtime", version = "0.13.0" }
+
 [target.'cfg(windows)'.build-dependencies]
 winapi = "0.3.9"
 winres = "0.1.11"
@@ -28,6 +31,7 @@ deno_core = { path = "../core", version = "0.86.0" }
 deno_doc = "0.3.0"
 deno_lint = "0.4.0"
 deno_runtime = { path = "../runtime", version = "0.13.0" }
+deno_snapshots = { path = "../snapshots", version = "0.0.0" }
 
 atty = "0.2.14"
 base64 = "0.13.0"

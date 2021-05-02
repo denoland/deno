@@ -41,6 +41,7 @@ async fn main() -> Result<(), AnyError> {
     get_error_class_fn: Some(&get_error_class_name),
     location: None,
     blob_url_store: BlobUrlStore::default(),
+    startup_snapshot: None,
   };
 
   let js_path =

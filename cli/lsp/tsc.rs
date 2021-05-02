@@ -2107,7 +2107,7 @@ fn op_script_version(
 /// server.
 pub fn start(debug: bool) -> Result<JsRuntime, AnyError> {
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    startup_snapshot: Some(tsc::compiler_snapshot()),
+    startup_snapshot: Some(deno_snapshots::compiler_snapshot()),
     ..Default::default()
   });
 
