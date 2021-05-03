@@ -5,7 +5,6 @@ use crate::JsRuntime;
 use crate::Op;
 use crate::OpId;
 use crate::OpPayload;
-use crate::OpResponse;
 use crate::OpTable;
 use crate::PromiseId;
 use crate::ZeroCopyBuf;
@@ -14,7 +13,6 @@ use serde::Serialize;
 use serde_v8::to_v8;
 use std::convert::TryFrom;
 use std::convert::TryInto;
-use std::io::{stdout, Write};
 use std::option::Option;
 use url::Url;
 use v8::MapFnTo;
@@ -22,9 +20,6 @@ use v8::MapFnTo;
 lazy_static::lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
     v8::ExternalReferences::new(&[
-      v8::ExternalReference {
-        function: print.map_fn_to()
-      },
       v8::ExternalReference {
         function: opcall.map_fn_to()
       },
@@ -118,7 +113,6 @@ pub fn initialize_context<'s>(
   deno_val.set(scope, core_key.into(), core_val.into());
 
   // Bind functions to Deno.core.*
-  set_func(scope, core_val, "print", print);
   set_func(scope, core_val, "opcall", opcall);
   set_func(
     scope,
@@ -152,19 +146,6 @@ pub fn set_func(
   let tmpl = v8::FunctionTemplate::new(scope, callback);
   let val = tmpl.get_function(scope).unwrap();
   obj.set(scope, key.into(), val.into());
-}
-
-pub fn boxed_slice_to_uint8array<'sc>(
-  scope: &mut v8::HandleScope<'sc>,
-  buf: Box<[u8]>,
-) -> v8::Local<'sc, v8::Uint8Array> {
-  assert!(!buf.is_empty());
-  let buf_len = buf.len();
-  let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
-  let backing_store_shared = backing_store.make_shared();
-  let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
-  v8::Uint8Array::new(scope, ab, 0, buf_len)
-    .expect("Failed to create UintArray8")
 }
 
 pub extern "C" fn host_import_module_dynamically_callback(
@@ -282,41 +263,6 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
   };
 }
 
-fn print(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  _rv: v8::ReturnValue,
-) {
-  let arg_len = args.length();
-  if !(0..=2).contains(&arg_len) {
-    return throw_type_error(scope, "Expected a maximum of 2 arguments.");
-  }
-
-  let obj = args.get(0);
-  let is_err_arg = args.get(1);
-
-  let mut is_err = false;
-  if arg_len == 2 {
-    let int_val = match is_err_arg.integer_value(scope) {
-      Some(v) => v,
-      None => return throw_type_error(scope, "Invalid arugment. Argument 2 should indicate wheter or not to print to stderr."),
-    };
-    is_err = int_val != 0;
-  };
-  let tc_scope = &mut v8::TryCatch::new(scope);
-  let str_ = match obj.to_string(tc_scope) {
-    Some(s) => s,
-    None => v8::String::new(tc_scope, "").unwrap(),
-  };
-  if is_err {
-    eprint!("{}", str_.to_rust_string_lossy(tc_scope));
-    stdout().flush().unwrap();
-  } else {
-    print!("{}", str_.to_rust_string_lossy(tc_scope));
-    stdout().flush().unwrap();
-  }
-}
-
 fn opcall<'s>(
   scope: &mut v8::HandleScope<'s>,
   args: v8::FunctionCallbackArguments,
@@ -368,32 +314,20 @@ fn opcall<'s>(
 
   // Buf arg (optional)
   let arg3 = args.get(3);
-  let buf: Option<ZeroCopyBuf> = if arg3.is_null_or_undefined() {
-    None
-  } else {
-    match v8::Local::<v8::ArrayBufferView>::try_from(arg3)
-      .map(|view| ZeroCopyBuf::new(scope, view))
-      .map_err(AnyError::from)
-    {
-      Ok(buf) => Some(buf),
-      Err(err) => {
-        throw_type_error(scope, format!("Err with buf arg: {}", err));
-        return;
-      }
+  let buf: Option<ZeroCopyBuf> = match serde_v8::from_v8(scope, arg3) {
+    Ok(buf) => buf,
+    Err(err) => {
+      throw_type_error(scope, format!("Err with buf arg: {}", err));
+      return;
     }
   };
 
   let payload = OpPayload::new(scope, v, promise_id);
   let op = OpTable::route_op(op_id, state.op_state.clone(), payload, buf);
   match op {
-    Op::Sync(resp) => match resp {
-      OpResponse::Value(v) => {
-        rv.set(v.to_v8(scope).unwrap());
-      }
-      OpResponse::Buffer(buf) => {
-        rv.set(boxed_slice_to_uint8array(scope, buf).into());
-      }
-    },
+    Op::Sync(result) => {
+      rv.set(result.to_v8(scope).unwrap());
+    }
     Op::Async(fut) => {
       state.pending_ops.push(fut);
       state.have_unpolled_ops = true;
@@ -521,20 +455,8 @@ fn encode(
   let text_str = text.to_rust_string_lossy(scope);
   let text_bytes = text_str.as_bytes().to_vec().into_boxed_slice();
 
-  let buf = if text_bytes.is_empty() {
-    let ab = v8::ArrayBuffer::new(scope, 0);
-    v8::Uint8Array::new(scope, ab, 0, 0).expect("Failed to create UintArray8")
-  } else {
-    let buf_len = text_bytes.len();
-    let backing_store =
-      v8::ArrayBuffer::new_backing_store_from_boxed_slice(text_bytes);
-    let backing_store_shared = backing_store.make_shared();
-    let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
-    v8::Uint8Array::new(scope, ab, 0, buf_len)
-      .expect("Failed to create UintArray8")
-  };
-
-  rv.set(buf.into())
+  let zbuf: ZeroCopyBuf = text_bytes.into();
+  rv.set(to_v8(scope, zbuf).unwrap())
 }
 
 fn decode(
@@ -542,15 +464,13 @@ fn decode(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let view = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(0)) {
-    Ok(view) => view,
+  let zero_copy: ZeroCopyBuf = match serde_v8::from_v8(scope, args.get(0)) {
+    Ok(zbuf) => zbuf,
     Err(_) => {
       throw_type_error(scope, "Invalid argument");
       return;
     }
   };
-
-  let zero_copy = ZeroCopyBuf::new(scope, view);
   let buf = &zero_copy;
 
   // Strip BOM
@@ -606,19 +526,8 @@ fn serialize(
   match value_serializer.write_value(scope.get_current_context(), args.get(0)) {
     Some(true) => {
       let vector = value_serializer.release();
-      let buf = {
-        let buf_len = vector.len();
-        let backing_store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(
-          vector.into_boxed_slice(),
-        );
-        let backing_store_shared = backing_store.make_shared();
-        let ab =
-          v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
-        v8::Uint8Array::new(scope, ab, 0, buf_len)
-          .expect("Failed to create UintArray8")
-      };
-
-      rv.set(buf.into());
+      let zbuf: ZeroCopyBuf = vector.into();
+      rv.set(to_v8(scope, zbuf).unwrap());
     }
     _ => {
       throw_type_error(scope, "Invalid argument");
@@ -631,15 +540,13 @@ fn deserialize(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let view = match v8::Local::<v8::ArrayBufferView>::try_from(args.get(0)) {
-    Ok(view) => view,
+  let zero_copy: ZeroCopyBuf = match serde_v8::from_v8(scope, args.get(0)) {
+    Ok(zbuf) => zbuf,
     Err(_) => {
       throw_type_error(scope, "Invalid argument");
       return;
     }
   };
-
-  let zero_copy = ZeroCopyBuf::new(scope, view);
   let buf = &zero_copy;
 
   let serialize_deserialize = Box::new(SerializeDeserialize {});

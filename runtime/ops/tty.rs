@@ -5,6 +5,8 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::not_supported;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
+use deno_core::op_sync;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::ResourceId;
@@ -43,10 +45,14 @@ fn get_windows_handle(
   Ok(handle)
 }
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_sync(rt, "op_set_raw", op_set_raw);
-  super::reg_sync(rt, "op_isatty", op_isatty);
-  super::reg_sync(rt, "op_console_size", op_console_size);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_set_raw", op_sync(op_set_raw)),
+      ("op_isatty", op_sync(op_isatty)),
+      ("op_console_size", op_sync(op_console_size)),
+    ])
+    .build()
 }
 
 #[derive(Deserialize)]

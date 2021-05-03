@@ -185,26 +185,22 @@ delete Object.prototype.__proto__;
     core.registerErrorClass("Http", errors.Http);
     core.registerErrorClass("Busy", errors.Busy);
     core.registerErrorClass("NotSupported", errors.NotSupported);
-    core.registerErrorClass(
+    core.registerErrorBuilder(
       "DOMExceptionOperationError",
       function DOMExceptionOperationError(msg) {
-        DOMException.prototype.constructor.call(this, msg, "OperationError");
+        return new DOMException(msg, "OperationError");
       },
     );
-    core.registerErrorClass(
+    core.registerErrorBuilder(
       "DOMExceptionQuotaExceededError",
       function DOMExceptionQuotaExceededError(msg) {
-        DOMException.prototype.constructor.call(
-          this,
-          msg,
-          "QuotaExceededError",
-        );
+        return new DOMException(msg, "QuotaExceededError",);
       },
     );
-    core.registerErrorClass(
+    core.registerErrorBuilder(
       "DOMExceptionNotSupportedError",
       function DOMExceptionNotSupportedError(msg) {
-        DOMException.prototype.constructor.call(this, msg, "NotSupported");
+        return new DOMException(msg, "NotSupported");
       },
     );
   }

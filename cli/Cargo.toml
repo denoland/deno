@@ -56,6 +56,7 @@ libc = "0.2.93"
 log = { version = "0.4.14", features = ["serde"] }
 lspower = "1.0.0"
 notify = "5.0.0-pre.7"
+num_cpus = "1.13.0"
 percent-encoding = "2.1.0"
 pin-project = "1.0.6"
 regex = "1.4.3"
