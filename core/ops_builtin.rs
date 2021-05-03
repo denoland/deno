@@ -7,7 +7,7 @@ use crate::resources::ResourceId;
 use crate::Extension;
 use crate::OpState;
 use crate::ZeroCopyBuf;
-use std::io::{stdout, stderr, Write};
+use std::io::{stderr, stdout, Write};
 
 pub(crate) fn init_builtins() -> Extension {
   Extension::builder()
