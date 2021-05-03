@@ -14,7 +14,7 @@ if (Deno.build.os === "darwin") {
   filenameSuffix = ".dylib";
 }
 
-const filename = `./target/${
+const filename = `../target/${
   Deno.args[0]
 }/${filenamePrefix}${filenameBase}${filenameSuffix}`;
 
@@ -105,12 +105,12 @@ function runTestOpCount() {
   if (end.opsCompleted - start.opsCompleted !== 1) {
     throw new Error("The opsCompleted metric is not correct!");
   }
-  console.log("Ops completed count!");
+  console.log("Ops completed count is correct!");
 
   if (end.opsDispatched - start.opsDispatched !== 1) {
     throw new Error("The opsDispatched metric is not correct!");
   }
-  console.log("Ops dispatched count!");
+  console.log("Ops dispatched count is correct!");
 }
 
 function runTestPluginClose() {

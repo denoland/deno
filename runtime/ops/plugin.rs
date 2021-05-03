@@ -35,21 +35,16 @@ pub fn op_open_plugin(
   debug!("Loading Plugin: {:#?}", filename);
   let plugin_lib = Library::open(filename).map(Rc::new)?;
   let plugin_resource = PluginResource::new(&plugin_lib);
-
-  let rid;
-  let init;
-  {
-    rid = state.resource_table.add(plugin_resource);
-    init = *unsafe {
-      state
-        .resource_table
-        .get::<PluginResource>(rid)
-        .unwrap()
-        .lib
-        .symbol::<InitFn>("init")
-        .unwrap()
-    };
-  }
+  let rid = state.resource_table.add(plugin_resource);
+  let init = *unsafe {
+    state
+      .resource_table
+      .get::<PluginResource>(rid)
+      .unwrap()
+      .lib
+      .symbol::<InitFn>("init")
+      .unwrap()
+  };
 
   let mut extension = init();
 

@@ -34,7 +34,7 @@ fn basic() {
     println!("stderr {}", stderr);
   }
   assert!(output.status.success());
-  let expected = "Plugin rid: 3\nSynced ops cache\nHello from sync plugin op.\nzero_copy: test\nop_test_sync returned: test\nHello from async plugin op.\nzero_copy: 123\nop_test_async returned: test\nHello from resource_table.add plugin op.\nTestResource rid: 4\nHello from resource_table.get plugin op.\nTestResource get value: hello plugin!\nHello from sync plugin op.\nOps completed count!\nOps dispatched count!\n";
+  let expected = "Plugin rid: 3\nSynced ops cache\nHello from sync plugin op.\nzero_copy: test\nop_test_sync returned: test\nHello from async plugin op.\nzero_copy: 123\nop_test_async returned: test\nHello from resource_table.add plugin op.\nTestResource rid: 4\nHello from resource_table.get plugin op.\nTestResource get value: hello plugin!\nHello from sync plugin op.\nOps completed count is correct!\nOps dispatched count is correct!\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
 }
