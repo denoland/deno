@@ -55,7 +55,7 @@ async fn op_test_async(
   println!("Hello from async plugin op.");
 
   if let Some(buf) = zero_copy {
-    let buf_str = std::str::from_utf8(&buf[..]).unwrap();
+    let buf_str = std::str::from_utf8(&buf[..])?;
     println!("zero_copy: {}", buf_str);
   }
 
