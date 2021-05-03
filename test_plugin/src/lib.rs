@@ -4,13 +4,15 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use deno_core::error::anyhow;
+use deno_core::error::AnyError;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
+use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
-use deno_core::{error::AnyError, ResourceId};
 
 #[no_mangle]
 pub fn init() -> Extension {
@@ -38,7 +40,7 @@ fn op_test_sync(
   println!("Hello from sync plugin op.");
 
   if let Some(buf) = zero_copy {
-    let buf_str = std::str::from_utf8(&buf[..]).unwrap();
+    let buf_str = std::str::from_utf8(&buf[..])?;
     println!("zero_copy: {}", buf_str);
   }
 
@@ -74,6 +76,7 @@ impl Resource for TestResource {
   }
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn op_test_resource_table_add(
   state: &mut OpState,
   text: String,
@@ -91,12 +94,9 @@ fn op_test_resource_table_get(
 ) -> Result<String, AnyError> {
   println!("Hello from resource_table.get plugin op.");
 
-  Ok(
-    state
-      .resource_table
-      .get::<TestResource>(rid)
-      .unwrap()
-      .0
-      .clone(),
-  )
+  if let Some(resource) = state.resource_table.get::<TestResource>(rid) {
+    Ok(resource.0.clone())
+  } else {
+    Err(anyhow!("Could not find TestResource with id {}", rid))
+  }
 }
