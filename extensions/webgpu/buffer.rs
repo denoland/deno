@@ -60,15 +60,11 @@ pub fn op_webgpu_create_buffer(
     mapped_at_creation: args.mapped_at_creation.unwrap_or(false),
   };
 
-  let (buffer, maybe_err) = gfx_select!(device => instance.device_create_buffer(
+  gfx_put!(device => instance.device_create_buffer(
     device,
     &descriptor,
     std::marker::PhantomData
-  ));
-
-  let rid = state.resource_table.add(WebGpuBuffer(buffer));
-
-  Ok(WebGpuResult::rid_err(rid, maybe_err))
+  ) => state, WebGpuBuffer)
 }
 
 #[derive(Deserialize)]
@@ -233,7 +229,5 @@ pub fn op_webgpu_buffer_unmap(
     slice.copy_from_slice(&buffer);
   }
 
-  let maybe_err = gfx_select!(buffer => instance.buffer_unmap(buffer)).err();
-
-  Ok(WebGpuResult::maybe_err(maybe_err))
+  gfx_ok!(buffer => instance.buffer_unmap(buffer))
 }

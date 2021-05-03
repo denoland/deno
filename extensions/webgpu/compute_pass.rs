@@ -227,14 +227,10 @@ pub fn op_webgpu_compute_pass_end_pass(
   let compute_pass = &compute_pass_resource.0.borrow();
   let instance = state.borrow::<super::Instance>();
 
-  let maybe_err =
-    gfx_select!(command_encoder => instance.command_encoder_run_compute_pass(
-      command_encoder,
-      compute_pass
-    ))
-    .err();
-
-  Ok(WebGpuResult::maybe_err(maybe_err))
+  gfx_ok!(command_encoder => instance.command_encoder_run_compute_pass(
+    command_encoder,
+    compute_pass
+  ))
 }
 
 #[derive(Deserialize)]

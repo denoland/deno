@@ -176,15 +176,11 @@ pub fn op_webgpu_create_texture(
     usage: wgpu_types::TextureUsage::from_bits(args.usage).unwrap(),
   };
 
-  let (texture, maybe_err) = gfx_select!(device => instance.device_create_texture(
+  gfx_put!(device => instance.device_create_texture(
     device,
     &descriptor,
     std::marker::PhantomData
-  ));
-
-  let rid = state.resource_table.add(WebGpuTexture(texture));
-
-  Ok(WebGpuResult::rid_err(rid, maybe_err))
+  ) => state, WebGpuTexture)
 }
 
 #[derive(Deserialize)]
@@ -237,13 +233,9 @@ pub fn op_webgpu_create_texture_view(
     ),
   };
 
-  let (texture_view, maybe_err) = gfx_select!(texture => instance.texture_create_view(
+  gfx_put!(texture => instance.texture_create_view(
     texture,
     &descriptor,
     std::marker::PhantomData
-  ));
-
-  let rid = state.resource_table.add(WebGpuTextureView(texture_view));
-
-  Ok(WebGpuResult::rid_err(rid, maybe_err))
+  ) => state, WebGpuTextureView)
 }
