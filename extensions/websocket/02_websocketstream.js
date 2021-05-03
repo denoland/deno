@@ -24,7 +24,7 @@
     ],
   );
   webidl.converters.WebSocketCloseInfo = webidl.createDictionaryConverter(
-    "WebSocketStreamOptions",
+    "WebSocketCloseInfo",
     [
       {
         key: "code",
