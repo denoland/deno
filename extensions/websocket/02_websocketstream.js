@@ -183,7 +183,7 @@
                 break;
               }
               case "ping": {
-                core.opAsync("op_ws_send", {
+                await core.opAsync("op_ws_send", {
                   rid: this[_rid],
                   kind: "pong",
                 });
