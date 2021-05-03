@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use crate::permissions::Permissions;
-use deno_core::error::AnyError;
+use deno_core::error::{AnyError, anyhow};
 use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::OpState;
@@ -50,6 +50,14 @@ pub fn op_open_plugin(
   }
 
   let mut extension = init();
+
+  if !extension.init_js().is_empty() {
+    return Err(anyhow!("Plugins do not support loading js"));
+  }
+
+  if extension.init_middleware().is_some() {
+    return Err(anyhow!("Plugins do not support middleware"));
+  }
 
   extension.init_state(state)?;
   let ops = extension.init_ops().unwrap_or_default();
