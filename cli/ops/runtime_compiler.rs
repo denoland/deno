@@ -33,10 +33,10 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 
 #[derive(Debug, Deserialize)]
 enum RuntimeBundleType {
-  #[serde(rename = "esm")]
-  Esm,
-  #[serde(rename = "iife")]
-  Iife,
+  #[serde(rename = "module")]
+  Module,
+  #[serde(rename = "classic")]
+  Classic,
 }
 
 #[derive(Debug, Deserialize)]
@@ -88,7 +88,7 @@ async fn op_emit(
         .file_fetcher
         .fetch(&import_map_specifier, &mut runtime_permissions)
         .await
-        .map_err(|_| Err("Unable to load import map file."));
+        .map_err(|_| Err("Unable to load import map file."))?;
       ImportMap::from_json(import_map_specifier.as_str(), &file.source)?
     };
     Some(import_map)
