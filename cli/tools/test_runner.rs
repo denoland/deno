@@ -78,9 +78,7 @@ struct JsonTestReporter {
 
 impl JsonTestReporter {
   fn new() -> JsonTestReporter {
-    JsonTestReporter {
-      events: Vec::new(),
-    }
+    JsonTestReporter { events: Vec::new() }
   }
 }
 
