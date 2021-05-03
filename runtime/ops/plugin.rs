@@ -15,8 +15,10 @@ use std::rc::Rc;
 
 pub type InitFn = fn() -> Extension;
 
-pub fn init(rt: &mut JsRuntime) {
-  super::reg_sync(rt, "op_open_plugin", op_open_plugin);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![("op_open_plugin", op_sync(op_open_plugin))])
+    .build()
 }
 
 pub fn op_open_plugin(

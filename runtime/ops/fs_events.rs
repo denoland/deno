@@ -12,6 +12,9 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 
+use deno_core::op_async;
+use deno_core::op_sync;
+use deno_core::Extension;
 use notify::event::Event as NotifyEvent;
 use notify::Error as NotifyError;
 use notify::EventKind;
@@ -27,9 +30,13 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use tokio::sync::mpsc;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_sync(rt, "op_fs_events_open", op_fs_events_open);
-  super::reg_async(rt, "op_fs_events_poll", op_fs_events_poll);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_fs_events_open", op_sync(op_fs_events_open)),
+      ("op_fs_events_poll", op_async(op_fs_events_poll)),
+    ])
+    .build()
 }
 
 struct FsEventsResource {
