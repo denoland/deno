@@ -21,17 +21,7 @@ use deno_runtime::deno_websocket;
 
 // TODO(bartlomieju): this module contains a lot of duplicated
 // logic with `cli/build.rs`, factor out to `deno_core`.
-fn create_snapshot(
-  mut js_runtime: JsRuntime,
-  snapshot_path: &Path,
-  js_deps: Vec<PathBuf>,
-) {
-  // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
-  // workspace root.
-  for file in js_deps {
-    println!("cargo:rerun-if-changed={}", file.display());
-  }
-
+fn create_snapshot(mut js_runtime: JsRuntime, snapshot_path: &Path) {
   let snapshot = js_runtime.snapshot();
   let snapshot_slice: &[u8] = &*snapshot;
   println!("Snapshot size: {}", snapshot_slice.len());
@@ -58,7 +48,6 @@ fn create_runtime_snapshot(snapshot_path: &Path) {
     // Runtime JS
     deno_runtime::js::init(),
   ];
-  let js_deps = get_js_deps(&extensions);
 
   let js_runtime = JsRuntime::new(RuntimeOptions {
     will_snapshot: true,
@@ -66,7 +55,7 @@ fn create_runtime_snapshot(snapshot_path: &Path) {
     ..Default::default()
   });
 
-  create_snapshot(js_runtime, snapshot_path, js_deps);
+  create_snapshot(js_runtime, snapshot_path);
 }
 
 pub fn main() {
@@ -86,22 +75,4 @@ pub fn main() {
   let runtime_snapshot_path = o.join("CLI_SNAPSHOT.bin");
 
   create_runtime_snapshot(&runtime_snapshot_path);
-}
-
-fn get_js_deps(extensions: &[Extension]) -> Vec<PathBuf> {
-  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-  let root = manifest_dir.join("..").canonicalize().unwrap();
-
-  let mut js_files = extensions
-    .iter()
-    .map(|e| e.init_js())
-    .flatten()
-    .map(|(path, _src)| {
-      let path: PathBuf =
-        path.strip_prefix("deno:").unwrap().split('/').collect();
-      root.join(path).canonicalize().unwrap()
-    })
-    .collect::<Vec<PathBuf>>();
-  js_files.sort();
-  js_files
 }
