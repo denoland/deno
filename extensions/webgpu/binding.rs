@@ -131,7 +131,7 @@ pub fn op_webgpu_create_bind_group_layout(
               comparison: false,
             },
             "comparison" => wgpu_types::BindingType::Sampler {
-              filtering: false,
+              filtering: true,
               comparison: true,
             },
             _ => unreachable!(),
