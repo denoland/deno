@@ -98,14 +98,7 @@ fn get_js_deps(extensions: &[Extension]) -> Vec<PathBuf> {
     .flatten()
     .map(|(path, _src)| {
       let path = path.strip_prefix("deno:").unwrap();
-      let fullpath = root.join(path).canonicalize();
-
-      assert!(
-        finalpath.exists(),
-        "Expected {} to exist",
-        finalpath.to_str().unwrap()
-      );
-      finalpath
+      root.join(path).canonicalize().unwrap()
     })
     .collect::<Vec<PathBuf>>();
   js_files.sort();
