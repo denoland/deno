@@ -230,7 +230,9 @@ pub fn op_webgpu_create_texture_view(
       None => wgpu_types::TextureAspect::All,
     },
     base_mip_level: args.base_mip_level.unwrap_or(0),
-    mip_level_count: std::num::NonZeroU32::new(args.mip_level_count.unwrap_or(0)),
+    mip_level_count: std::num::NonZeroU32::new(
+      args.mip_level_count.unwrap_or(0),
+    ),
     base_array_layer: args.base_array_layer.unwrap_or(0),
     array_layer_count: std::num::NonZeroU32::new(
       args.array_layer_count.unwrap_or(0),

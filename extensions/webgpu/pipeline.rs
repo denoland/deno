@@ -324,14 +324,14 @@ struct GpuDepthStencilState {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GpuVertexAttribute {
-  format: GPUVertexFormat,
+  format: GpuVertexFormat,
   offset: u64,
   shader_location: u32,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
-enum GPUVertexFormat {
+enum GpuVertexFormat {
   Uint8x2,
   Uint8x4,
   Sint8x2,
