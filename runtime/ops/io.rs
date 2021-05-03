@@ -4,11 +4,13 @@ use deno_core::error::null_opbuf;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
 use deno_core::error::{bad_resource_id, not_supported};
+use deno_core::op_async;
+use deno_core::op_sync;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::JsRuntime;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -95,14 +97,35 @@ lazy_static::lazy_static! {
   };
 }
 
-pub fn init(rt: &mut JsRuntime) {
-  super::reg_async(rt, "op_read_async", op_read_async);
-  super::reg_async(rt, "op_write_async", op_write_async);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_read_async", op_async(op_read_async)),
+      ("op_write_async", op_async(op_write_async)),
+      ("op_read_sync", op_sync(op_read_sync)),
+      ("op_write_sync", op_sync(op_write_sync)),
+      ("op_shutdown", op_async(op_shutdown)),
+    ])
+    .build()
+}
 
-  super::reg_sync(rt, "op_read_sync", op_read_sync);
-  super::reg_sync(rt, "op_write_sync", op_write_sync);
-
-  super::reg_async(rt, "op_shutdown", op_shutdown);
+pub fn init_stdio() -> Extension {
+  Extension::builder()
+    .state(|state| {
+      let t = &mut state.resource_table;
+      let (stdin, stdout, stderr) = get_stdio();
+      if let Some(stream) = stdin {
+        t.add(stream);
+      }
+      if let Some(stream) = stdout {
+        t.add(stream);
+      }
+      if let Some(stream) = stderr {
+        t.add(stream);
+      }
+      Ok(())
+    })
+    .build()
 }
 
 pub fn get_stdio() -> (

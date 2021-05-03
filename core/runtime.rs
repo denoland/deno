@@ -304,6 +304,11 @@ impl JsRuntime {
       waker: AtomicWaker::new(),
     })));
 
+    // Add builtins extension
+    options
+      .extensions
+      .insert(0, crate::ops_builtin::init_builtins());
+
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
       snapshot_creator: maybe_snapshot_creator,
@@ -315,7 +320,6 @@ impl JsRuntime {
     // TODO(@AaronO): diff extensions inited in snapshot and those provided
     // for now we assume that snapshot and extensions always match
     if !has_startup_snapshot {
-      js_runtime.js_init();
       js_runtime.init_extension_js().unwrap();
     }
     // Init extension ops
@@ -357,18 +361,6 @@ impl JsRuntime {
   pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
     let s = isolate.get_slot::<Rc<RefCell<JsRuntimeState>>>().unwrap();
     s.clone()
-  }
-
-  /// Executes a JavaScript code to provide Deno.core and error reporting.
-  ///
-  /// This function can be called during snapshotting.
-  fn js_init(&mut self) {
-    self
-      .execute("deno:core/core.js", include_str!("core.js"))
-      .unwrap();
-    self
-      .execute("deno:core/error.js", include_str!("error.js"))
-      .unwrap();
   }
 
   /// Initializes JS of provided Extensions
@@ -1528,7 +1520,9 @@ impl JsRuntime {
 #[cfg(test)]
 pub mod tests {
   use super::*;
+  use crate::error::custom_error;
   use crate::modules::ModuleSourceFuture;
+  use crate::op_sync;
   use crate::ZeroCopyBuf;
   use futures::future::lazy;
   use futures::FutureExt;
@@ -1589,7 +1583,8 @@ pub mod tests {
       dispatch_count: dispatch_count.clone(),
     });
 
-    runtime.register_op("test", dispatch);
+    runtime.register_op("op_test", dispatch);
+    runtime.sync_ops_cache();
 
     runtime
       .execute(
@@ -1615,9 +1610,9 @@ pub mod tests {
         "filename.js",
         r#"
         let control = 42;
-        Deno.core.opcall(1, null, control);
+        Deno.core.opAsync("op_test", control);
         async function main() {
-          Deno.core.opcall(1, null, control);
+          Deno.core.opAsync("op_test", control);
         }
         main();
         "#,
@@ -1633,7 +1628,7 @@ pub mod tests {
       .execute(
         "filename.js",
         r#"
-        Deno.core.opcall(1);
+        Deno.core.opAsync("op_test");
         "#,
       )
       .unwrap();
@@ -1648,7 +1643,7 @@ pub mod tests {
         "filename.js",
         r#"
         let zero_copy_a = new Uint8Array([0]);
-        Deno.core.opcall(1, null, null, zero_copy_a);
+        Deno.core.opAsync("op_test", null, zero_copy_a);
         "#,
       )
       .unwrap();
@@ -1764,6 +1759,39 @@ pub mod tests {
         .execute(
           "serialize_deserialize_test.js",
           include_str!("serialize_deserialize_test.js"),
+        )
+        .unwrap();
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx) {
+        unreachable!();
+      }
+    });
+  }
+
+  #[test]
+  fn test_error_builder() {
+    fn op_err(
+      _: &mut OpState,
+      _: (),
+      _: Option<ZeroCopyBuf>,
+    ) -> Result<(), AnyError> {
+      Err(custom_error("DOMExceptionOperationError", "abc"))
+    }
+
+    pub fn get_error_class_name(_: &AnyError) -> &'static str {
+      "DOMExceptionOperationError"
+    }
+
+    run_in_task(|mut cx| {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        get_error_class_fn: Some(&get_error_class_name),
+        ..Default::default()
+      });
+      runtime.register_op("op_err", op_sync(op_err));
+      runtime.sync_ops_cache();
+      runtime
+        .execute(
+          "error_builder_test.js",
+          include_str!("error_builder_test.js"),
         )
         .unwrap();
       if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx) {
@@ -1951,7 +1979,8 @@ pub mod tests {
       module_loader: Some(loader),
       ..Default::default()
     });
-    runtime.register_op("test", dispatcher);
+    runtime.register_op("op_test", dispatcher);
+    runtime.sync_ops_cache();
 
     runtime
       .execute(
@@ -1977,7 +2006,7 @@ pub mod tests {
         import { b } from './b.js'
         if (b() != 'b') throw Error();
         let control = 42;
-        Deno.core.opcall(1, null, control);
+        Deno.core.opAsync("op_test", control);
       "#,
       )
       .unwrap();
