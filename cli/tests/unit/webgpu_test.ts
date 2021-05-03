@@ -18,8 +18,6 @@ unitTest({
 
   const numbers = [1, 4, 3, 295];
 
-  const OVERFLOW = 0xffffffff;
-
   const device = await adapter.requestDevice();
   assert(device);
 
