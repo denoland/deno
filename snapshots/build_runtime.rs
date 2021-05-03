@@ -97,7 +97,8 @@ fn get_js_deps(extensions: &[Extension]) -> Vec<PathBuf> {
     .map(|e| e.init_js())
     .flatten()
     .map(|(path, _src)| {
-      let path = path.strip_prefix("deno:").unwrap();
+      let path: PathBuf =
+        path.strip_prefix("deno:").unwrap().split('/').collect();
       root.join(path).canonicalize().unwrap()
     })
     .collect::<Vec<PathBuf>>();
