@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use crate::permissions::Permissions;
-use deno_core::error::{anyhow, AnyError};
+use deno_core::error::AnyError;
+use deno_core::op_sync;
 use deno_core::Extension;
-use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
