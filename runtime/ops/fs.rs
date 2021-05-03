@@ -8,6 +8,9 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::op_async;
+use deno_core::op_sync;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::ResourceId;
@@ -33,80 +36,60 @@ use deno_core::error::generic_error;
 #[cfg(not(unix))]
 use deno_core::error::not_supported;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_sync(rt, "op_open_sync", op_open_sync);
-  super::reg_async(rt, "op_open_async", op_open_async);
-
-  super::reg_sync(rt, "op_seek_sync", op_seek_sync);
-  super::reg_async(rt, "op_seek_async", op_seek_async);
-
-  super::reg_sync(rt, "op_fdatasync_sync", op_fdatasync_sync);
-  super::reg_async(rt, "op_fdatasync_async", op_fdatasync_async);
-
-  super::reg_sync(rt, "op_fsync_sync", op_fsync_sync);
-  super::reg_async(rt, "op_fsync_async", op_fsync_async);
-
-  super::reg_sync(rt, "op_fstat_sync", op_fstat_sync);
-  super::reg_async(rt, "op_fstat_async", op_fstat_async);
-
-  super::reg_sync(rt, "op_umask", op_umask);
-  super::reg_sync(rt, "op_chdir", op_chdir);
-
-  super::reg_sync(rt, "op_mkdir_sync", op_mkdir_sync);
-  super::reg_async(rt, "op_mkdir_async", op_mkdir_async);
-
-  super::reg_sync(rt, "op_chmod_sync", op_chmod_sync);
-  super::reg_async(rt, "op_chmod_async", op_chmod_async);
-
-  super::reg_sync(rt, "op_chown_sync", op_chown_sync);
-  super::reg_async(rt, "op_chown_async", op_chown_async);
-
-  super::reg_sync(rt, "op_remove_sync", op_remove_sync);
-  super::reg_async(rt, "op_remove_async", op_remove_async);
-
-  super::reg_sync(rt, "op_copy_file_sync", op_copy_file_sync);
-  super::reg_async(rt, "op_copy_file_async", op_copy_file_async);
-
-  super::reg_sync(rt, "op_stat_sync", op_stat_sync);
-  super::reg_async(rt, "op_stat_async", op_stat_async);
-
-  super::reg_sync(rt, "op_realpath_sync", op_realpath_sync);
-  super::reg_async(rt, "op_realpath_async", op_realpath_async);
-
-  super::reg_sync(rt, "op_read_dir_sync", op_read_dir_sync);
-  super::reg_async(rt, "op_read_dir_async", op_read_dir_async);
-
-  super::reg_sync(rt, "op_rename_sync", op_rename_sync);
-  super::reg_async(rt, "op_rename_async", op_rename_async);
-
-  super::reg_sync(rt, "op_link_sync", op_link_sync);
-  super::reg_async(rt, "op_link_async", op_link_async);
-
-  super::reg_sync(rt, "op_symlink_sync", op_symlink_sync);
-  super::reg_async(rt, "op_symlink_async", op_symlink_async);
-
-  super::reg_sync(rt, "op_read_link_sync", op_read_link_sync);
-  super::reg_async(rt, "op_read_link_async", op_read_link_async);
-
-  super::reg_sync(rt, "op_ftruncate_sync", op_ftruncate_sync);
-  super::reg_async(rt, "op_ftruncate_async", op_ftruncate_async);
-
-  super::reg_sync(rt, "op_truncate_sync", op_truncate_sync);
-  super::reg_async(rt, "op_truncate_async", op_truncate_async);
-
-  super::reg_sync(rt, "op_make_temp_dir_sync", op_make_temp_dir_sync);
-  super::reg_async(rt, "op_make_temp_dir_async", op_make_temp_dir_async);
-
-  super::reg_sync(rt, "op_make_temp_file_sync", op_make_temp_file_sync);
-  super::reg_async(rt, "op_make_temp_file_async", op_make_temp_file_async);
-
-  super::reg_sync(rt, "op_cwd", op_cwd);
-
-  super::reg_sync(rt, "op_futime_sync", op_futime_sync);
-  super::reg_async(rt, "op_futime_async", op_futime_async);
-
-  super::reg_sync(rt, "op_utime_sync", op_utime_sync);
-  super::reg_async(rt, "op_utime_async", op_utime_async);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_open_sync", op_sync(op_open_sync)),
+      ("op_open_async", op_async(op_open_async)),
+      ("op_seek_sync", op_sync(op_seek_sync)),
+      ("op_seek_async", op_async(op_seek_async)),
+      ("op_fdatasync_sync", op_sync(op_fdatasync_sync)),
+      ("op_fdatasync_async", op_async(op_fdatasync_async)),
+      ("op_fsync_sync", op_sync(op_fsync_sync)),
+      ("op_fsync_async", op_async(op_fsync_async)),
+      ("op_fstat_sync", op_sync(op_fstat_sync)),
+      ("op_fstat_async", op_async(op_fstat_async)),
+      ("op_umask", op_sync(op_umask)),
+      ("op_chdir", op_sync(op_chdir)),
+      ("op_mkdir_sync", op_sync(op_mkdir_sync)),
+      ("op_mkdir_async", op_async(op_mkdir_async)),
+      ("op_chmod_sync", op_sync(op_chmod_sync)),
+      ("op_chmod_async", op_async(op_chmod_async)),
+      ("op_chown_sync", op_sync(op_chown_sync)),
+      ("op_chown_async", op_async(op_chown_async)),
+      ("op_remove_sync", op_sync(op_remove_sync)),
+      ("op_remove_async", op_async(op_remove_async)),
+      ("op_copy_file_sync", op_sync(op_copy_file_sync)),
+      ("op_copy_file_async", op_async(op_copy_file_async)),
+      ("op_stat_sync", op_sync(op_stat_sync)),
+      ("op_stat_async", op_async(op_stat_async)),
+      ("op_realpath_sync", op_sync(op_realpath_sync)),
+      ("op_realpath_async", op_async(op_realpath_async)),
+      ("op_read_dir_sync", op_sync(op_read_dir_sync)),
+      ("op_read_dir_async", op_async(op_read_dir_async)),
+      ("op_rename_sync", op_sync(op_rename_sync)),
+      ("op_rename_async", op_async(op_rename_async)),
+      ("op_link_sync", op_sync(op_link_sync)),
+      ("op_link_async", op_async(op_link_async)),
+      ("op_symlink_sync", op_sync(op_symlink_sync)),
+      ("op_symlink_async", op_async(op_symlink_async)),
+      ("op_read_link_sync", op_sync(op_read_link_sync)),
+      ("op_read_link_async", op_async(op_read_link_async)),
+      ("op_ftruncate_sync", op_sync(op_ftruncate_sync)),
+      ("op_ftruncate_async", op_async(op_ftruncate_async)),
+      ("op_truncate_sync", op_sync(op_truncate_sync)),
+      ("op_truncate_async", op_async(op_truncate_async)),
+      ("op_make_temp_dir_sync", op_sync(op_make_temp_dir_sync)),
+      ("op_make_temp_dir_async", op_async(op_make_temp_dir_async)),
+      ("op_make_temp_file_sync", op_sync(op_make_temp_file_sync)),
+      ("op_make_temp_file_async", op_async(op_make_temp_file_async)),
+      ("op_cwd", op_sync(op_cwd)),
+      ("op_futime_sync", op_sync(op_futime_sync)),
+      ("op_futime_async", op_async(op_futime_async)),
+      ("op_utime_sync", op_sync(op_utime_sync)),
+      ("op_utime_async", op_async(op_utime_async)),
+    ])
+    .build()
 }
 
 #[derive(Deserialize)]

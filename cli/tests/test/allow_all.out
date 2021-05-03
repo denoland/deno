@@ -1,5 +1,5 @@
 [WILDCARD]
-running 14 tests
+running 14 tests from [WILDCARD]
 test read false ... ok [WILDCARD]
 test read true ... ok [WILDCARD]
 test write false ... ok [WILDCARD]
