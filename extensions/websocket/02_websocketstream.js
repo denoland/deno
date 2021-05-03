@@ -126,7 +126,7 @@
       });
       options = webidl.converters.WebSocketStreamOptions(options, {
         prefix,
-        context: "Argument 1",
+        context: "Argument 2",
       });
 
       const wsURL = new URL(url);
