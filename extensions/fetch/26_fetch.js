@@ -273,6 +273,7 @@
    */
   async function fetch(input, init = {}) {
     const prefix = "Failed to call 'fetch'";
+    webidl.requiredArguments(arguments.length, 1, { prefix });
     input = webidl.converters["RequestInfo"](input, {
       prefix,
       context: "Argument 1",
