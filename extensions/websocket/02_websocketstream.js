@@ -8,10 +8,6 @@
   webidl.converters["sequence<USVString>"] = webidl.createSequenceConverter(
     webidl.converters["USVString"],
   );
-  webidl.converters.AbortSignal = webidl.createInterfaceConverter(
-    "AbortSignal",
-    AbortSignal,
-  );
   webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
     "WebSocketStreamOptions",
     [
@@ -254,7 +250,7 @@
       });
 
       if (
-        closeInfo?.code &&
+        closeInfo.code &&
         !(closeInfo.code === 1000 ||
           (3000 <= closeInfo.code && closeInfo.code < 5000))
       ) {
@@ -266,7 +262,7 @@
 
       const encoder = new TextEncoder();
       if (
-        closeInfo?.reason && encoder.encode(closeInfo.reason).byteLength > 123
+        closeInfo.reason && encoder.encode(closeInfo.reason).byteLength > 123
       ) {
         throw new DOMException(
           "The close reason may not be longer than 123 bytes.",
@@ -274,8 +270,8 @@
         );
       }
 
-      let code = closeInfo?.code;
-      if (closeInfo?.reason && code === undefined) {
+      let code = closeInfo.code;
+      if (closeInfo.reason && code === undefined) {
         code = 1000;
       }
 
@@ -283,12 +279,12 @@
         core.opAsync("op_ws_close", {
           rid: this[_rid],
           code,
-          reason: closeInfo?.reason,
+          reason: closeInfo.reason,
         }).then(() => {
           tryClose(this[_rid]);
           this[_closed].resolve({
-            code: closeInfo?.code,
-            reason: closeInfo?.reason,
+            code: closeInfo.code,
+            reason: closeInfo.reason,
           });
         }).catch((err) => {
           tryClose(this[_rid]);
