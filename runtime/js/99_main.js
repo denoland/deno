@@ -194,7 +194,7 @@ delete Object.prototype.__proto__;
     core.registerErrorBuilder(
       "DOMExceptionQuotaExceededError",
       function DOMExceptionQuotaExceededError(msg) {
-        return new DOMException(msg, "QuotaExceededError",);
+        return new DOMException(msg, "QuotaExceededError");
       },
     );
     core.registerErrorBuilder(
