@@ -1521,7 +1521,9 @@ impl JsRuntime {
 #[cfg(test)]
 pub mod tests {
   use super::*;
+  use crate::error::custom_error;
   use crate::modules::ModuleSourceFuture;
+  use crate::op_sync;
   use futures::future::lazy;
   use futures::FutureExt;
   use std::io;
@@ -1760,6 +1762,39 @@ pub mod tests {
         .execute(
           "serialize_deserialize_test.js",
           include_str!("serialize_deserialize_test.js"),
+        )
+        .unwrap();
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx) {
+        unreachable!();
+      }
+    });
+  }
+
+  #[test]
+  fn test_error_builder() {
+    fn op_err(
+      _: &mut OpState,
+      _: (),
+      _: Option<ZeroCopyBuf>,
+    ) -> Result<(), AnyError> {
+      Err(custom_error("DOMExceptionOperationError", "abc"))
+    }
+
+    pub fn get_error_class_name(_: &AnyError) -> &'static str {
+      "DOMExceptionOperationError"
+    }
+
+    run_in_task(|mut cx| {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        get_error_class_fn: Some(&get_error_class_name),
+        ..Default::default()
+      });
+      runtime.register_op("op_err", op_sync(op_err));
+      runtime.sync_ops_cache();
+      runtime
+        .execute(
+          "error_builder_test.js",
+          include_str!("error_builder_test.js"),
         )
         .unwrap();
       if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx) {
