@@ -8,10 +8,6 @@ window.add_result_callback(({ message, name, stack, status }) => {
   );
 });
 
-// TODO(kt3k): Enable the below hook and timers test when #10445 is fixed
-// ref: https://github.com/denoland/deno/issues/10445
-/*
 window.add_completion_callback((tests, harnessStatus) => {
-  Deno.exit(0);
+  window.close();
 });
-*/
