@@ -215,6 +215,8 @@
                 rid: this[_rid],
                 kind: "binary",
               }, chunk);
+            } else {
+              throw new TypeError("A chunk may only be either a string or an Uint8Array");
             }
           },
           cancel: (reason) => this.close(reason),
