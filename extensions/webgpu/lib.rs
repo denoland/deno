@@ -295,44 +295,44 @@ struct GpuLimits {
   max_vertex_buffer_array_stride: Option<u32>,
 }
 
-impl Into<wgpu_types::Limits> for GpuLimits {
-  fn into(self) -> wgpu_types::Limits {
+impl From<GpuLimits> for wgpu_types::Limits {
+  fn from(limits: GpuLimits) -> wgpu_types::Limits {
     wgpu_types::Limits {
-      max_texture_dimension_1d: self.max_texture_dimension_1d.unwrap_or(8192),
-      max_texture_dimension_2d: self.max_texture_dimension_2d.unwrap_or(8192),
-      max_texture_dimension_3d: self.max_texture_dimension_3d.unwrap_or(2048),
-      max_texture_array_layers: self.max_texture_array_layers.unwrap_or(2048),
-      max_bind_groups: self.max_bind_groups.unwrap_or(4),
-      max_dynamic_uniform_buffers_per_pipeline_layout: self
+      max_texture_dimension_1d: limits.max_texture_dimension_1d.unwrap_or(8192),
+      max_texture_dimension_2d: limits.max_texture_dimension_2d.unwrap_or(8192),
+      max_texture_dimension_3d: limits.max_texture_dimension_3d.unwrap_or(2048),
+      max_texture_array_layers: limits.max_texture_array_layers.unwrap_or(2048),
+      max_bind_groups: limits.max_bind_groups.unwrap_or(4),
+      max_dynamic_uniform_buffers_per_pipeline_layout: limits
         .max_dynamic_uniform_buffers_per_pipeline_layout
         .unwrap_or(8),
-      max_dynamic_storage_buffers_per_pipeline_layout: self
+      max_dynamic_storage_buffers_per_pipeline_layout: limits
         .max_dynamic_storage_buffers_per_pipeline_layout
         .unwrap_or(4),
-      max_sampled_textures_per_shader_stage: self
+      max_sampled_textures_per_shader_stage: limits
         .max_sampled_textures_per_shader_stage
         .unwrap_or(16),
-      max_samplers_per_shader_stage: self
+      max_samplers_per_shader_stage: limits
         .max_samplers_per_shader_stage
         .unwrap_or(16),
-      max_storage_buffers_per_shader_stage: self
+      max_storage_buffers_per_shader_stage: limits
         .max_storage_buffers_per_shader_stage
         .unwrap_or(4),
-      max_storage_textures_per_shader_stage: self
+      max_storage_textures_per_shader_stage: limits
         .max_storage_textures_per_shader_stage
         .unwrap_or(4),
-      max_uniform_buffers_per_shader_stage: self
+      max_uniform_buffers_per_shader_stage: limits
         .max_uniform_buffers_per_shader_stage
         .unwrap_or(12),
-      max_uniform_buffer_binding_size: self
+      max_uniform_buffer_binding_size: limits
         .max_uniform_buffer_binding_size
         .unwrap_or(16384),
-      max_storage_buffer_binding_size: self
+      max_storage_buffer_binding_size: limits
         .max_storage_buffer_binding_size
         .unwrap_or(134217728),
-      max_vertex_buffers: self.max_vertex_buffers.unwrap_or(8),
-      max_vertex_attributes: self.max_vertex_attributes.unwrap_or(16),
-      max_vertex_buffer_array_stride: self
+      max_vertex_buffers: limits.max_vertex_buffers.unwrap_or(8),
+      max_vertex_attributes: limits.max_vertex_attributes.unwrap_or(16),
+      max_vertex_buffer_array_stride: limits
         .max_vertex_buffer_array_stride
         .unwrap_or(2048),
       max_push_constant_size: 0,
