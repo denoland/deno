@@ -4,8 +4,8 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::error::anyhow;
 use deno_core::error::AnyError;
+use deno_core::error::bad_resource_id;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::Extension;
@@ -94,9 +94,12 @@ fn op_test_resource_table_get(
 ) -> Result<String, AnyError> {
   println!("Hello from resource_table.get plugin op.");
 
-  if let Some(resource) = state.resource_table.get::<TestResource>(rid) {
-    Ok(resource.0.clone())
-  } else {
-    Err(anyhow!("Could not find TestResource with id {}", rid))
-  }
+  Ok(
+    state
+      .resource_table
+      .get::<TestResource>(rid)
+      .ok_or_else(bad_resource_id)?
+      .0
+      .clone(),
+  )
 }
