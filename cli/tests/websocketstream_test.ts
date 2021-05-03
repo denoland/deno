@@ -24,7 +24,10 @@ Deno.test("duplicate protocols", () => {
 
 Deno.test("invalid server", async () => {
   const ws = new WebSocketStream("ws://localhost:2121");
-  await assertThrowsAsync(async () => await ws.connection);
+  await Promise.all([
+    assertThrowsAsync(() => ws.connection),
+    assertThrowsAsync(() => ws.closed),
+  ]);
 });
 
 Deno.test("connect & close", async () => {
@@ -32,15 +35,6 @@ Deno.test("connect & close", async () => {
   await ws.connection;
   ws.close();
   await ws.closed;
-});
-
-Deno.test("connect & abort", async () => {
-  const ws = new WebSocketStream("ws://localhost:4242");
-  ws.close();
-  await Promise.all([
-    assertThrowsAsync(async () => ws.connection),
-    assertThrowsAsync(async () => ws.closed),
-  ]);
 });
 
 Deno.test("connect & close custom valid code", async () => {
@@ -95,11 +89,18 @@ Deno.test("echo string tls", async () => {
 
 Deno.test("websocket error", async () => {
   const ws = new WebSocketStream("wss://localhost:4242");
-  await assertThrowsAsync(
-    async () => ws.connection,
-    Error,
-    "UnexpectedEof: tls handshake eof",
-  );
+  await Promise.all([
+    assertThrowsAsync(
+      () => ws.connection,
+      Error,
+      "UnexpectedEof: tls handshake eof",
+    ),
+    assertThrowsAsync(
+      () => ws.closed,
+      Error,
+      "UnexpectedEof: tls handshake eof",
+    ),
+  ]);
 });
 
 Deno.test("echo uint8array", async () => {

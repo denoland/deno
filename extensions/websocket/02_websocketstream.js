@@ -19,7 +19,6 @@
       {
         key: "signal",
         converter: webidl.converters.AbortSignal,
-        defaultValue: undefined,
       },
     ],
   );
@@ -29,7 +28,6 @@
       {
         key: "code",
         converter: webidl.converters["unsigned short"],
-        defaultValue: undefined,
       },
       {
         key: "reason",
@@ -146,7 +144,7 @@
       core.opSync("op_ws_check_permission", this[_url]);
 
       if (
-        options.protocols.some((x) =>
+        options.protocols?.some((x) =>
           options.protocols.indexOf(x) !== options.protocols.lastIndexOf(x)
         )
       ) {
@@ -158,12 +156,17 @@
 
       core.opAsync("op_ws_create", {
         url: this[_url],
-        protocols: options.protocols.join(", "),
+        protocols: options.protocols?.join(", ") ?? "",
       }).then((create) => {
         options.abort?.addEventListener("abort", () => this.close());
 
         this[_rid] = create.rid;
         const readable = new ReadableStream({
+          start: async (controller) => {
+            await this.closed;
+            controller.close();
+            writable.close();
+          },
           pull: async (controller) => {
             const { kind, value } = await core.opAsync(
               "op_ws_next_event",
@@ -216,7 +219,9 @@
                 kind: "binary",
               }, chunk);
             } else {
-              throw new TypeError("A chunk may only be either a string or an Uint8Array");
+              throw new TypeError(
+                "A chunk may only be either a string or an Uint8Array",
+              );
             }
           },
           cancel: (reason) => this.close(reason),
@@ -285,11 +290,11 @@
         }).then(() => {
           tryClose(this[_rid]);
           this[_closed].resolve({
-            code: closeInfo.code,
+            code,
             reason: closeInfo.reason,
           });
         }).catch((err) => {
-          tryClose(this[_rid]);
+          this[_rid] && tryClose(this[_rid]);
           this[_closed].reject(err);
         });
       }
