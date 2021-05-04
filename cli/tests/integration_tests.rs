@@ -3841,6 +3841,17 @@ console.log("finish");
     http_server: true,
   });
 
+  // This test ensures that a descriptive error is shown when we're unable to load
+  // the import map. Even though this tests only the `run` subcommand, we can be sure
+  // that the error message is similar for other subcommands as they all use
+  // `program_state.maybe_import_map` to access the import map underneath.
+  itest!(error_import_map_unable_to_load {
+    args:
+      "run --import-map=import_maps/does_not_exist.json import_maps/test.ts",
+    output: "error_import_map_unable_to_load.out",
+    exit_code: 1,
+  });
+
   #[test]
   fn no_validate_asm() {
     let output = util::deno_cmd()

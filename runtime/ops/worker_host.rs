@@ -21,12 +21,15 @@ use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
+use deno_core::op_async;
+use deno_core::op_sync;
 use deno_core::serde::de;
 use deno_core::serde::de::SeqAccess;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -69,37 +72,44 @@ pub type WorkersTable = HashMap<u32, WorkerThread>;
 pub type WorkerId = u32;
 
 pub fn init(
-  rt: &mut deno_core::JsRuntime,
-  sender: Option<mpsc::Sender<WorkerEvent>>,
+  is_main_worker: bool,
   create_web_worker_cb: Arc<CreateWebWorkerCb>,
-) {
-  {
-    let op_state = rt.op_state();
-    let mut state = op_state.borrow_mut();
-    state.put::<WorkersTable>(WorkersTable::default());
-    state.put::<WorkerId>(WorkerId::default());
+) -> Extension {
+  Extension::builder()
+    .state(move |state| {
+      state.put::<WorkersTable>(WorkersTable::default());
+      state.put::<WorkerId>(WorkerId::default());
 
-    let create_module_loader = CreateWebWorkerCbHolder(create_web_worker_cb);
-    state.put::<CreateWebWorkerCbHolder>(create_module_loader);
-  }
-  super::reg_sync(rt, "op_create_worker", op_create_worker);
-  super::reg_sync(rt, "op_host_terminate_worker", op_host_terminate_worker);
-  super::reg_sync(rt, "op_host_post_message", op_host_post_message);
-  super::reg_async(rt, "op_host_get_message", op_host_get_message);
-  super::reg_sync(
-    rt,
-    "op_host_unhandled_error",
-    move |_state, message: String, _zero_copy| {
-      if let Some(mut sender) = sender.clone() {
-        sender
-          .try_send(WorkerEvent::Error(generic_error(message)))
-          .expect("Failed to propagate error event to parent worker");
-        Ok(true)
-      } else {
-        Err(generic_error("Cannot be called from main worker."))
-      }
-    },
-  );
+      let create_module_loader =
+        CreateWebWorkerCbHolder(create_web_worker_cb.clone());
+      state.put::<CreateWebWorkerCbHolder>(create_module_loader);
+
+      Ok(())
+    })
+    .ops(vec![
+      ("op_create_worker", op_sync(op_create_worker)),
+      (
+        "op_host_terminate_worker",
+        op_sync(op_host_terminate_worker),
+      ),
+      ("op_host_post_message", op_sync(op_host_post_message)),
+      ("op_host_get_message", op_async(op_host_get_message)),
+      (
+        "op_host_unhandled_error",
+        op_sync(move |state, message: String, _| {
+          if is_main_worker {
+            return Err(generic_error("Cannot be called from main worker."));
+          }
+
+          let mut sender = state.borrow::<mpsc::Sender<WorkerEvent>>().clone();
+          sender
+            .try_send(WorkerEvent::Error(generic_error(message)))
+            .expect("Failed to propagate error event to parent worker");
+          Ok(true)
+        }),
+      ),
+    ])
+    .build()
 }
 
 fn merge_boolean_permission(

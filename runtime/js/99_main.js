@@ -184,10 +184,10 @@ delete Object.prototype.__proto__;
     core.registerErrorClass("Http", errors.Http);
     core.registerErrorClass("Busy", errors.Busy);
     core.registerErrorClass("NotSupported", errors.NotSupported);
-    core.registerErrorClass(
+    core.registerErrorBuilder(
       "DOMExceptionOperationError",
       function DOMExceptionOperationError(msg) {
-        DOMException.prototype.constructor.call(this, msg, "OperationError");
+        return new DOMException(msg, "OperationError");
       },
     );
   }

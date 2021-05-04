@@ -177,7 +177,17 @@ impl WebWorker {
     worker_id: u32,
     options: &WebWorkerOptions,
   ) -> Self {
-    let extensions: Vec<Extension> = vec![
+    // Permissions: many ops depend on this
+    let unstable = options.unstable;
+    let perm_ext = Extension::builder()
+      .state(move |state| {
+        state.put::<Permissions>(permissions.clone());
+        state.put(ops::UnstableChecker { unstable });
+        Ok(())
+      })
+      .build();
+
+    let mut extensions: Vec<Extension> = vec![
       // Web APIs
       deno_webidl::init(),
       deno_console::init(),
@@ -200,7 +210,41 @@ impl WebWorker {
       deno_timers::init::<Permissions>(),
       // Metrics
       metrics::init(),
+      // Permissions ext (worker specific state)
+      perm_ext,
     ];
+
+    // Runtime ops that are always initialized for WebWorkers
+    let runtime_exts = vec![
+      ops::web_worker::init(),
+      ops::runtime::init(main_module.clone()),
+      ops::worker_host::init(false, options.create_web_worker_cb.clone()),
+      ops::io::init(),
+    ];
+
+    // Extensions providing Deno.* features
+    let deno_ns_exts = if options.use_deno_namespace {
+      vec![
+        ops::fs_events::init(),
+        ops::fs::init(),
+        ops::net::init(),
+        ops::os::init(),
+        ops::http::init(),
+        ops::permissions::init(),
+        ops::plugin::init(),
+        ops::process::init(),
+        ops::signal::init(),
+        ops::tls::init(),
+        ops::tty::init(),
+        ops::io::init_stdio(),
+      ]
+    } else {
+      vec![]
+    };
+
+    // Append exts
+    extensions.extend(runtime_exts);
+    extensions.extend(deno_ns_exts); // May be empty
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
@@ -236,60 +280,20 @@ impl WebWorker {
       terminate_rx,
       handle,
       use_deno_namespace: options.use_deno_namespace,
-      main_module: main_module.clone(),
+      main_module,
     };
 
+    // Setup worker-dependant OpState and return worker
     {
       let handle = worker.thread_safe_handle();
       let sender = worker.internal_channels.sender.clone();
       let js_runtime = &mut worker.js_runtime;
-      // All ops registered in this function depend on these
-      {
-        let op_state = js_runtime.op_state();
-        let mut op_state = op_state.borrow_mut();
-        op_state.put::<Permissions>(permissions);
-        op_state.put(ops::UnstableChecker {
-          unstable: options.unstable,
-        });
-      }
+      let op_state = js_runtime.op_state();
+      let mut op_state = op_state.borrow_mut();
 
-      ops::web_worker::init(js_runtime, sender.clone(), handle);
-      ops::runtime::init(js_runtime, main_module);
-      ops::worker_host::init(
-        js_runtime,
-        Some(sender),
-        options.create_web_worker_cb.clone(),
-      );
-      ops::io::init(js_runtime);
-
-      if options.use_deno_namespace {
-        ops::fs_events::init(js_runtime);
-        ops::fs::init(js_runtime);
-        ops::net::init(js_runtime);
-        ops::os::init(js_runtime);
-        ops::http::init(js_runtime);
-        ops::permissions::init(js_runtime);
-        ops::plugin::init(js_runtime);
-        ops::process::init(js_runtime);
-        ops::signal::init(js_runtime);
-        ops::tls::init(js_runtime);
-        ops::tty::init(js_runtime);
-
-        let op_state = js_runtime.op_state();
-        let mut op_state = op_state.borrow_mut();
-        let t = &mut op_state.resource_table;
-        let (stdin, stdout, stderr) = ops::io::get_stdio();
-        if let Some(stream) = stdin {
-          t.add(stream);
-        }
-        if let Some(stream) = stdout {
-          t.add(stream);
-        }
-        if let Some(stream) = stderr {
-          t.add(stream);
-        }
-      }
-      js_runtime.sync_ops_cache();
+      // Required by runtime::ops::worker_host/web_worker
+      op_state.put(handle);
+      op_state.put(sender);
 
       worker
     }

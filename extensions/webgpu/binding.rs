@@ -195,17 +195,11 @@ pub fn op_webgpu_create_bind_group_layout(
     entries: Cow::from(entries),
   };
 
-  let (bind_group_layout, maybe_err) = gfx_select!(device => instance.device_create_bind_group_layout(
+  gfx_put!(device => instance.device_create_bind_group_layout(
     device,
     &descriptor,
     std::marker::PhantomData
-  ));
-
-  let rid = state
-    .resource_table
-    .add(WebGpuBindGroupLayout(bind_group_layout));
-
-  Ok(WebGpuResult::rid_err(rid, maybe_err))
+  ) => state, WebGpuBindGroupLayout)
 }
 
 #[derive(Deserialize)]
@@ -244,17 +238,11 @@ pub fn op_webgpu_create_pipeline_layout(
     push_constant_ranges: Default::default(),
   };
 
-  let (pipeline_layout, maybe_err) = gfx_select!(device => instance.device_create_pipeline_layout(
+  gfx_put!(device => instance.device_create_pipeline_layout(
     device,
     &descriptor,
     std::marker::PhantomData
-  ));
-
-  let rid = state
-    .resource_table
-    .add(super::pipeline::WebGpuPipelineLayout(pipeline_layout));
-
-  Ok(WebGpuResult::rid_err(rid, maybe_err))
+  ) => state, super::pipeline::WebGpuPipelineLayout)
 }
 
 #[derive(Deserialize)]
@@ -340,13 +328,9 @@ pub fn op_webgpu_create_bind_group(
     entries: Cow::from(entries),
   };
 
-  let (bind_group, maybe_err) = gfx_select!(device => instance.device_create_bind_group(
+  gfx_put!(device => instance.device_create_bind_group(
     device,
     &descriptor,
     std::marker::PhantomData
-  ));
-
-  let rid = state.resource_table.add(WebGpuBindGroup(bind_group));
-
-  Ok(WebGpuResult::rid_err(rid, maybe_err))
+  ) => state, WebGpuBindGroup)
 }

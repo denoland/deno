@@ -87,7 +87,13 @@ async fn op_emit(
       let file = program_state
         .file_fetcher
         .fetch(&import_map_specifier, &mut runtime_permissions)
-        .await?;
+        .await
+        .map_err(|e| {
+          generic_error(format!(
+            "Unable to load '{}' import map: {}",
+            import_map_specifier, e
+          ))
+        })?;
       ImportMap::from_json(import_map_specifier.as_str(), &file.source)?
     };
     Some(import_map)
