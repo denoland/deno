@@ -230,19 +230,22 @@ fn is_supported(p: &Path) -> bool {
   }
 }
 
-pub fn collect_test_module_specifiers(
+pub fn collect_test_module_specifiers<P>(
   include: Vec<String>,
   root_path: &Path,
-) -> Result<Vec<Url>, AnyError> {
+  predicate: P,
+) -> Result<Vec<Url>, AnyError>
+where
+  P: Fn(&Path) -> bool,
+{
   let (include_paths, include_urls): (Vec<String>, Vec<String>) =
     include.into_iter().partition(|n| !is_remote_url(n));
-
   let mut prepared = vec![];
 
   for path in include_paths {
     let p = normalize_path(&root_path.join(path));
     if p.is_dir() {
-      let test_files = collect_files(&[p], &[], is_supported_ext).unwrap();
+      let test_files = collect_files(&[p], &[], &predicate).unwrap();
       let test_files_as_urls = test_files
         .iter()
         .map(|f| Url::from_file_path(f).unwrap())
@@ -330,7 +333,7 @@ pub async fn run_tests(
 
   // TODO(caspervonb) revert collection change and split into test modules and modules to scan for
   // documentation tests.
-  let mut test_modules = collect_test_module_specifiers(include, &cwd)?;
+  let mut test_modules = collect_test_module_specifiers(include.clone(), &cwd, is_supported)?;
 
   if test_modules.is_empty() {
     println!("No matching test modules found");
@@ -356,24 +359,16 @@ pub async fn run_tests(
     .await?;
 
   if docs {
-    let mut new_modules = Vec::new();
-
-    for test_module in &test_modules {
-      let media_type = MediaType::from(test_module);
-
-      let file = program_state.file_fetcher.get_source(&test_module).unwrap();
-      let parsed_module =
-        ast::parse(&test_module.as_str(), &file.source, &media_type)?;
+    let parse_modules = collect_test_module_specifiers(include, &cwd, is_supported_ext)?;
+    for parse_module in &parse_modules {
+      let file = program_state.file_fetcher.get_source(&parse_module).unwrap();
+      let parsed_module = ast::parse(&file.specifier.as_str(), &file.source, &file.media_type)?;
       let comments = parsed_module.get_comments();
 
-      let mut source = String::new();
+      let mut test_source = String::new();
 
       for comment in comments {
-        if comment.kind != CommentKind::Block {
-          continue;
-        }
-
-        if !comment.text.starts_with('*') {
+        if comment.kind != CommentKind::Block || !comment.text.starts_with('*') {
           continue;
         }
 
@@ -439,7 +434,7 @@ pub async fn run_tests(
 
           program_state.file_fetcher.insert_cached(file.clone());
 
-          source.push_str(&format!(
+          test_source.push_str(&format!(
             "Deno.test(\"{}\", async function() {{ await import(\"{}\"); }});",
             file.specifier.as_str(),
             file.specifier.as_str(),
@@ -459,24 +454,22 @@ pub async fn run_tests(
 
       // TODO(caspervonb) quick and dirty module specifier to make it run, needs more consideration
       // if this is the what we want to do with.
-      let specifier = deno_core::resolve_url_or_path(&format!(
+      let test_specifier = deno_core::resolve_url_or_path(&format!(
         "{}.doc",
-        test_module.as_str()
+        file.specifier.as_str()
       ))?;
 
-      let file = File {
-        local: specifier.to_file_path().unwrap(),
+      let test_file = File {
+        local: test_specifier.to_file_path().unwrap(),
         maybe_types: None,
         media_type: MediaType::JavaScript,
-        source: source.clone(),
-        specifier: specifier.clone(),
+        source: test_source.clone(),
+        specifier: test_specifier.clone(),
       };
 
-      program_state.file_fetcher.insert_cached(file);
-      new_modules.push(specifier.clone());
+      program_state.file_fetcher.insert_cached(test_file);
+      test_modules.push(test_specifier.clone());
     }
-
-    test_modules.append(&mut new_modules);
   }
 
   if no_run {
