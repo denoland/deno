@@ -513,18 +513,11 @@ delete Object.prototype.__proto__;
     debug("<<< exec stop");
   }
 
-  // interface TestBlock {
-  //   startLine: number,
-  //   startCharacter: number,
-  //   endLine: number,
-  //   endCharacter: number;
-  //   testName: string;
-  // }
   /** Extract top-level call expression of Deno.test()
    * @param {ts.SourceFile} src
    **/
   function extractTestBlocks(src) {
-    const list  = [];
+    const list = [];
     const visit = (node) => {
       if (ts.isCallExpression(node)) {
         const expr = node.expression;
@@ -803,7 +796,7 @@ delete Object.prototype.__proto__;
         );
         return respond(
           id,
-          sourceFile && extractTestBlocks(sourceFile)
+          sourceFile && extractTestBlocks(sourceFile),
         );
       }
       case "prepareCallHierarchy": {
