@@ -36,7 +36,7 @@ declare global {
     // deno-lint-ignore no-explicit-any
     opSync<T>(name: string, params: T): any;
     ops(): void;
-    print(msg: string, code?: number): void;
+    print(msg: string, stderr: bool): void;
     registerErrorClass(
       name: string,
       Ctor: typeof Error,

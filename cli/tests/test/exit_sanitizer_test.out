@@ -1,5 +1,5 @@
 Check [WILDCARD]/exit_sanitizer_test.ts
-running 3 tests
+running 3 tests from [WILDCARD]
 test exit(0) ... FAILED ([WILDCARD])
 test exit(1) ... FAILED ([WILDCARD])
 test exit(2) ... FAILED ([WILDCARD])

@@ -9,9 +9,12 @@ use deno_core::error::generic_error;
 use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::op_async;
+use deno_core::op_sync;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -42,13 +45,17 @@ use crate::ops::io::UnixStreamResource;
 #[cfg(unix)]
 use std::path::Path;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_async(rt, "op_accept", op_accept);
-  super::reg_async(rt, "op_connect", op_connect);
-  super::reg_sync(rt, "op_listen", op_listen);
-  super::reg_async(rt, "op_datagram_receive", op_datagram_receive);
-  super::reg_async(rt, "op_datagram_send", op_datagram_send);
-  super::reg_async(rt, "op_dns_resolve", op_dns_resolve);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_accept", op_async(op_accept)),
+      ("op_connect", op_async(op_connect)),
+      ("op_listen", op_sync(op_listen)),
+      ("op_datagram_receive", op_async(op_datagram_receive)),
+      ("op_datagram_send", op_async(op_datagram_send)),
+      ("op_dns_resolve", op_async(op_dns_resolve)),
+    ])
+    .build()
 }
 
 #[derive(Serialize)]

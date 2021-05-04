@@ -8,8 +8,11 @@ use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::op_async;
+use deno_core::op_sync;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -25,10 +28,14 @@ use tokio::process::Command;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_sync(rt, "op_run", op_run);
-  super::reg_async(rt, "op_run_status", op_run_status);
-  super::reg_sync(rt, "op_kill", op_kill);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_run", op_sync(op_run)),
+      ("op_run_status", op_async(op_run_status)),
+      ("op_kill", op_sync(op_kill)),
+    ])
+    .build()
 }
 
 fn clone_file(
