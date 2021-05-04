@@ -7,6 +7,7 @@ use crate::resources::ResourceId;
 use crate::Extension;
 use crate::OpState;
 use crate::ZeroCopyBuf;
+use std::io::{stderr, stdout, Write};
 
 pub(crate) fn init_builtins() -> Extension {
   Extension::builder()
@@ -17,6 +18,7 @@ pub(crate) fn init_builtins() -> Extension {
     ))
     .ops(vec![
       ("op_close", op_sync(op_close)),
+      ("op_print", op_sync(op_print)),
       ("op_resources", op_sync(op_resources)),
     ])
     .build()
@@ -50,5 +52,22 @@ pub fn op_close(
     .close(rid)
     .ok_or_else(bad_resource_id)?;
 
+  Ok(())
+}
+
+/// Builtin utility to print to stdout/stderr
+pub fn op_print(
+  _state: &mut OpState,
+  args: (String, bool),
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
+  let (msg, is_err) = args;
+  if is_err {
+    eprint!("{}", msg);
+    stderr().flush().unwrap();
+  } else {
+    print!("{}", msg);
+    stdout().flush().unwrap();
+  }
   Ok(())
 }

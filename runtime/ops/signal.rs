@@ -1,5 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::AnyError;
+use deno_core::op_async;
+use deno_core::op_sync;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;
@@ -24,10 +27,14 @@ use std::borrow::Cow;
 #[cfg(unix)]
 use tokio::signal::unix::{signal, Signal, SignalKind};
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_sync(rt, "op_signal_bind", op_signal_bind);
-  super::reg_sync(rt, "op_signal_unbind", op_signal_unbind);
-  super::reg_async(rt, "op_signal_poll", op_signal_poll);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_signal_bind", op_sync(op_signal_bind)),
+      ("op_signal_unbind", op_sync(op_signal_unbind)),
+      ("op_signal_poll", op_async(op_signal_poll)),
+    ])
+    .build()
 }
 
 #[cfg(unix)]

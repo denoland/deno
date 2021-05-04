@@ -1014,7 +1014,6 @@
         "Response interface: operation json()",
         "Response interface: operation text()",
         "Response interface: calling redirect(USVString, optional unsigned short) on new Response() with too few arguments must throw TypeError",
-        "Window interface: calling fetch(RequestInfo, optional RequestInit) on window with too few arguments must throw TypeError",
         "Window interface: operation fetch(RequestInfo, optional RequestInit)"
       ]
     },
