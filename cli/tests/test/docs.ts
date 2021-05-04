@@ -25,4 +25,3 @@
  * throw new Error("fail");
  * ```
  */
-

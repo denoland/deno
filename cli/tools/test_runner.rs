@@ -30,6 +30,9 @@ use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Instant;
 use swc_common::comments::CommentKind;
+use swc_common::SourceFile;
+use swc_common::SourceMap;
+use swc_common::Span;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -363,10 +366,8 @@ pub async fn run_tests(
         ast::parse(&test_module.as_str(), &file.source, &media_type)?;
       let comments = parsed_module.get_comments();
 
-      let mut output = String::new();
-      let mut counter = 1;
+      let mut source = String::new();
 
-      // TODO(caspervonb) retain spans when parsing and apply source maps to generated modules.
       for comment in comments {
         if comment.kind != CommentKind::Block {
           continue;
@@ -376,87 +377,98 @@ pub async fn run_tests(
           continue;
         }
 
-        let lines = comment.text.lines().map(|line| {
-          let line = line.trim_start();
-          let line = line.strip_prefix('*').unwrap_or(line);
-          let line = line.strip_prefix(' ').unwrap_or(line);
+        let indices: Vec<usize> = comment
+          .text
+          .match_indices("```")
+          .map(|(i, _)| i as usize)
+          .collect();
 
-          line
-        });
+        let blocks: Vec<(String, Span)> = indices
+          .chunks(2)
+          .filter_map(|chunk| {
+            if chunk.len() == 2 {
+                let start = chunk[0] + 3;
+                let end = chunk[1];
 
-        let sources = {
-          let mut sources = Vec::new();
-          let mut maybe_source = None;
-
-          for line in lines {
-            if line.starts_with("```") {
-              if maybe_source.is_some() {
-                sources.push(maybe_source.take().unwrap());
-              } else {
-                maybe_source = Some("".to_string())
-              }
-            } else if let Some(source) = &mut maybe_source {
-              source.push_str(&format!("{}\n", line));
+              Some((
+                      comment.text[start..end].to_string(),
+                      comment.span.from_inner_byte_pos(start, end)
+                    ))
+            } else {
+              None
             }
-          }
+          })
+          .collect();
 
-          sources
-        };
+        for (slice, span) in blocks {
+          let (file, tags) = {
+            let location = parsed_module.get_location(&span);
+            let specifier = deno_core::resolve_url_or_path(&format!(
+              "{}.{}",
+              location.filename, location.line,
+            ))?;
 
-        for source in sources {
-          // TODO(caspervonb) quick and dirty module specifier to make it run, needs more consideration
-          // if this is the what we want to do with.
-          //
-          // Line range it was extracted from seems appropriate for these modules.
-          let specifier = deno_core::resolve_url_or_path(&format!(
-            "{}.{}",
-            test_module.as_str(),
-            counter
-          ))?;
+            let mut source = String::new();
+            let mut lines = slice.split('\n');
 
-          let file = File {
-            local: specifier.to_file_path().unwrap(),
-            maybe_types: None,
-            media_type: MediaType::TypeScript, // media_type.clone(),
-            source: source.clone(),
-            specifier: specifier.clone(),
+            // Tags are always on the first line, so that gets eaten.
+            let tags = lines
+                .next()
+                .unwrap()
+                .split_whitespace();
+
+            // TODO(caspervonb) generate an inline source map
+            for line in lines {
+              let line = line.trim_start();
+              let line = line.strip_prefix('*').unwrap_or(line);
+              let line = line.strip_prefix(' ').unwrap_or(line);
+
+              source.push_str(line);
+            }
+
+            let file = File {
+              local: specifier.to_file_path().unwrap(),
+              maybe_types: None,
+              media_type: MediaType::TypeScript, // media_type.clone(),
+              source: source.clone(),
+              specifier: specifier.clone(),
+            };
+
+            (file, tags)
           };
 
-          program_state.file_fetcher.insert_cached(file);
+          program_state.file_fetcher.insert_cached(file.clone());
 
-          // println!("{}", source);
+          source.push_str(&format!(
+            "Deno.test(\"{}\", async function() {{ await import(\"{}\"); }});",
+            file.specifier.as_str(),
+            file.specifier.as_str(),
+          ));
+
           program_state
             .prepare_module_load(
-            specifier.clone(),
+            file.specifier.clone(),
             lib.clone(),
             Permissions::allow_all(),
             false,
             program_state.maybe_import_map.clone(),
           )
           .await?;
-
-          // TODO(caspervonb) don't use import here, but delegate to an op instead.
-          // Implement it as `Deno.internal.runExamples` instead of hooking into tests here (tests
-          // are for unit tests).
-          output.push_str(&format!(
-            "Deno.test(\"{}\", async function() {{ await import(\"{}\"); }});",
-            specifier.as_str(),
-            specifier.as_str(),
-          ));
-
-          counter += 1;
         }
       }
 
       // TODO(caspervonb) quick and dirty module specifier to make it run, needs more consideration
       // if this is the what we want to do with.
-      let specifier = deno_core::resolve_url_or_path(&format!("{}.doc", test_module.as_str()))?;
+      let specifier = deno_core::resolve_url_or_path(&format!(
+        "{}.doc",
+        test_module.as_str()
+      ))?;
 
       let file = File {
         local: specifier.to_file_path().unwrap(),
         maybe_types: None,
         media_type: MediaType::JavaScript,
-        source: output.clone(),
+        source: source.clone(),
         specifier: specifier.clone(),
       };
 
