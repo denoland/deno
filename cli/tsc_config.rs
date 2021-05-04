@@ -194,30 +194,12 @@ fn parse_compiler_options(
 pub fn parse_compiler_options_from_config_file(
   config_file: &ConfigFile,
 ) -> Result<(Value, Option<IgnoredCompilerOptions>), AnyError> {
-  // TODO(bartlomieju): maybe this should be validated in ConfigFile?
+  // TODO(bartlomieju): in future this validation could be part of ConfigFile
   if let Some(compiler_options) = config_file.json.compiler_options.clone() {
     let options: HashMap<String, Value> =
       serde_json::from_value(compiler_options)
         .context("compilerOptions should be an object")?;
     parse_compiler_options(&options, Some(config_file.path.to_owned()), false)
-  } else {
-    Ok((json!({}), None))
-  }
-}
-
-/// Take a string of JSONC, parse it and return a serde `Value` of the text.
-/// The result also contains any options that were ignored.
-#[allow(unused)]
-pub fn parse_config(
-  config_text: &str,
-  path: &Path,
-) -> Result<(Value, Option<IgnoredCompilerOptions>), AnyError> {
-  assert!(!config_text.is_empty());
-  let jsonc = jsonc_parser::parse_to_serde_value(config_text)?.unwrap();
-  let config: TsConfigJson = serde_json::from_value(jsonc)?;
-
-  if let Some(compiler_options) = config.compiler_options {
-    parse_compiler_options(&compiler_options, Some(path.to_owned()), false)
   } else {
     Ok((json!({}), None))
   }
