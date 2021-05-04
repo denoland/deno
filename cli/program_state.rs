@@ -20,6 +20,7 @@ use deno_runtime::inspector::InspectorServer;
 use deno_runtime::permissions::Permissions;
 
 use deno_core::error::anyhow;
+use deno_core::error::generic_error;
 use deno_core::error::get_custom_error_class;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
@@ -100,10 +101,15 @@ impl ProgramState {
         None
       };
 
-    let maybe_import_map: Option<ImportMap> =
-      match flags.import_map_path.as_ref() {
-        None => None,
-        Some(import_map_url) => {
+    let mut maybe_import_map = None;
+
+    if let Some(config_file) = &maybe_config_file {
+      if let Some(import_map_value) = &config_file.json.import_map {
+        if flags.import_map_path.is_some() {
+          return Err(generic_error("--import-map flag was used while configuration file provides an import map."));
+        }
+
+        if let Some(import_map_url) = import_map_value.as_str() {
           let import_map_specifier =
             deno_core::resolve_url_or_path(&import_map_url).context(
               format!("Bad URL (\"{}\") for import map.", import_map_url),
@@ -117,9 +123,31 @@ impl ProgramState {
             ))?;
           let import_map =
             ImportMap::from_json(import_map_specifier.as_str(), &file.source)?;
-          Some(import_map)
+          maybe_import_map = Some(import_map);
+        } else {
+          let import_map = ImportMap::from_value(
+            &config_file.path.to_string_lossy(),
+            import_map_value.clone(),
+          )?;
+          maybe_import_map = Some(import_map);
         }
-      };
+      }
+    } else if let Some(import_map_url) = flags.import_map_path.as_ref() {
+      let import_map_specifier = deno_core::resolve_url_or_path(
+        &import_map_url,
+      )
+      .context(format!("Bad URL (\"{}\") for import map.", import_map_url))?;
+      let file = file_fetcher
+        .fetch(&import_map_specifier, &mut Permissions::allow_all())
+        .await
+        .context(format!(
+          "Unable to load '{}' import map",
+          import_map_specifier
+        ))?;
+      let import_map =
+        ImportMap::from_json(import_map_specifier.as_str(), &file.source)?;
+      maybe_import_map = Some(import_map);
+    }
 
     let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
     let maybe_inspector_server = maybe_inspect_host.map(|host| {

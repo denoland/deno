@@ -44,19 +44,7 @@ pub struct ImportMap {
 }
 
 impl ImportMap {
-  pub fn from_json(
-    base_url: &str,
-    json_string: &str,
-  ) -> Result<Self, ImportMapError> {
-    let v: Value = match serde_json::from_str(json_string) {
-      Ok(v) => v,
-      Err(_) => {
-        return Err(ImportMapError(
-          "Unable to parse import map JSON".to_string(),
-        ));
-      }
-    };
-
+  pub fn from_value(base_url: &str, v: Value) -> Result<Self, ImportMapError> {
     match v {
       Value::Object(_) => {}
       _ => {
@@ -121,6 +109,22 @@ impl ImportMap {
     }
 
     Ok(import_map)
+  }
+
+  pub fn from_json(
+    base_url: &str,
+    json_string: &str,
+  ) -> Result<Self, ImportMapError> {
+    let v: Value = match serde_json::from_str(json_string) {
+      Ok(v) => v,
+      Err(_) => {
+        return Err(ImportMapError(
+          "Unable to parse import map JSON".to_string(),
+        ));
+      }
+    };
+
+    Self::from_value(base_url, v)
   }
 
   fn try_url_like_specifier(specifier: &str, base: &str) -> Option<Url> {
