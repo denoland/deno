@@ -2363,7 +2363,7 @@ declare namespace Deno {
    *
    * ```ts
    * // truncate the entire file
-   * const file = Deno.open("my_file.txt", { read: true, write: true, truncate: true, create: true });
+   * const file = Deno.openSync("my_file.txt", { read: true, write: true, truncate: true, create: true });
    * Deno.ftruncateSync(file.rid);
    *
    * // truncate part of the file
