@@ -349,6 +349,11 @@ pub fn init<P: WebSocketPermissions + 'static>(
     .build()
 }
 
-pub fn get_declaration() -> PathBuf {
+pub fn get_websocket_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_websocket.d.ts")
+}
+
+pub fn get_websocketstream_declaration() -> PathBuf {
+  PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    .join("lib.deno_websocketstream.d.ts")
 }

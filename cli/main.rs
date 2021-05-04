@@ -306,7 +306,11 @@ pub fn get_types(unstable: bool) -> String {
   );
 
   if unstable {
-    types.push_str(&format!("\n{}", crate::tsc::UNSTABLE_NS_LIB,));
+    types.push_str(&format!(
+      "\n{}\n{}",
+      crate::tsc::UNSTABLE_NS_LIB,
+      crate::tsc::DENO_WEBSOCKETSTREAM_LIB
+    ));
   }
 
   types
