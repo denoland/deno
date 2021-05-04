@@ -1,13 +1,10 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use log::info;
 use lspower::jsonrpc::Error as LSPError;
 use lspower::jsonrpc::Result as LSPResult;
 use lspower::lsp;
@@ -23,7 +20,7 @@ pub struct ClientCapabilities {
   pub line_folding_only: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeLensSettings {
   /// Flag for providing implementation code lenses.
@@ -48,7 +45,7 @@ impl Default for CodeLensSettings {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionSettings {
   #[serde(default)]
@@ -75,7 +72,7 @@ impl Default for CompletionSettings {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportCompletionSettings {
   #[serde(default)]
@@ -90,7 +87,7 @@ impl Default for ImportCompletionSettings {
   }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
   pub enable: bool,
@@ -174,7 +171,6 @@ impl Config {
   ) -> LSPResult<()> {
     let settings: Settings = serde_json::from_value(value)
       .map_err(|err| LSPError::invalid_params(err.to_string()))?;
-    info!("update_specifier: {} {}", specifier, json!(settings));
     self.specifier_settings.insert(specifier, settings);
     Ok(())
   }
