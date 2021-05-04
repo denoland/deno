@@ -396,7 +396,7 @@ pub async fn run_tests(
           .collect();
 
         for (slice, span) in blocks {
-          let (file, tags) = {
+          let (file, no_run) = {
             let location = parsed_module.get_location(&span);
             let specifier = deno_core::resolve_url_or_path(&format!(
               "{}.{}",
@@ -407,10 +407,11 @@ pub async fn run_tests(
             let mut lines = slice.split('\n');
 
             // Tags are always on the first line, so that gets eaten.
-            let tags = lines
+            let tags: Vec<&str> = lines
                 .next()
                 .unwrap()
-                .split_whitespace();
+                .split_whitespace()
+                .collect();
 
             // TODO(caspervonb) generate an inline source map
             for line in lines {
@@ -429,16 +430,18 @@ pub async fn run_tests(
               specifier: specifier.clone(),
             };
 
-            (file, tags)
+            (file, tags.contains(&"no_run"))
           };
 
           program_state.file_fetcher.insert_cached(file.clone());
 
-          test_source.push_str(&format!(
-            "Deno.test(\"{}\", async function() {{ await import(\"{}\"); }});",
-            file.specifier.as_str(),
-            file.specifier.as_str(),
-          ));
+          if !no_run {
+              test_source.push_str(&format!(
+                "Deno.test(\"{}\", async function() {{ await import(\"{}\"); }});",
+                file.specifier.as_str(),
+                file.specifier.as_str(),
+              ));
+          }
 
           program_state
             .prepare_module_load(
