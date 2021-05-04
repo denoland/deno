@@ -287,14 +287,14 @@ impl Inner {
 
   async fn get_test_blocks(
     &mut self,
-    specifier: &ModuleSpecifier
+    specifier: &ModuleSpecifier,
   ) -> Result<Vec<tsc::TestClodeBlock>, AnyError> {
     let mark = self.performance.mark("get_test_blocks");
     let blocks: Vec<tsc::TestClodeBlock> = self
       .ts_server
       .request(
         self.snapshot(),
-        tsc::RequestMethod::GetTestBlocks(specifier.clone())
+        tsc::RequestMethod::GetTestBlocks(specifier.clone()),
       )
       .await?;
     self.performance.measure(mark);
@@ -1040,21 +1040,6 @@ impl Inner {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
     let line_index = self.get_line_index_sync(&specifier).unwrap();
 
-    let mut lenses = Vec::new();
-    if self.config.settings.code_lens.tests {
-      let blocks = self.get_test_blocks(&specifier).await.map_err(|err| {
-        error!("Failed to retrieve test blocks: {}", err);
-        LspError::invalid_request()
-      })?;
-      let source = CodeLensSource::Tests;
-      let run = tsc::TestRunType::Run;
-      let debug = tsc::TestRunType::Debug;
-      for v in blocks {
-        lenses.push(v.to_code_lens(&specifier, &source, &run));
-        lenses.push(v.to_code_lens(&specifier, &source, &debug));
-      }
-    }
-
     let navigation_tree =
       self.get_navigation_tree(&specifier).await.map_err(|err| {
         error!("Failed to retrieve nav tree: {}", err);
@@ -1064,7 +1049,7 @@ impl Inner {
     // because we have to use this as a mutable in a closure, the compiler
     // can't be sure when the vector will be mutated, and so a RefCell is
     // required to "protect" the vector.
-    let cl = Rc::new(RefCell::new(lenses));
+    let cl = Rc::new(RefCell::new(Vec::new()));
     navigation_tree.walk(&|i, mp| {
       let mut code_lenses = cl.borrow_mut();
       // TSC Implementations Code Lens
@@ -1336,9 +1321,7 @@ impl Inner {
             }
           }
         }
-        CodeLensSource::Tests => {
-          params
-        }
+        CodeLensSource::Tests => params,
       };
       self.performance.measure(mark);
       Ok(code_lens)
@@ -1347,6 +1330,30 @@ impl Inner {
       Err(LspError::invalid_params(
         "Code lens is missing the \"data\" property.",
       ))
+    }
+  }
+
+  async fn test_code_lens(
+    &mut self,
+    params: CodeLensParams,
+  ) -> LspResult<Option<Vec<CodeLens>>> {
+    if self.config.settings.code_lens.tests {
+      let mut lenses = Vec::new();
+      let specifier = self.url_map.normalize_url(&params.text_document.uri);
+      let blocks = self.get_test_blocks(&specifier).await.map_err(|err| {
+        error!("Failed to retrieve test blocks: {}", err);
+        LspError::invalid_request()
+      })?;
+      let source = CodeLensSource::Tests;
+      let run = tsc::TestRunType::Run;
+      let debug = tsc::TestRunType::Debug;
+      for v in blocks {
+        lenses.push(v.to_code_lens(&specifier, &source, &run));
+        lenses.push(v.to_code_lens(&specifier, &source, &debug));
+      }
+      Ok(Some(lenses))
+    } else {
+      Ok(None)
     }
   }
 
@@ -1985,6 +1992,18 @@ impl Inner {
               );
               LspError::internal_error()
             })?,
+        )),
+        Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+        None => Err(LspError::invalid_params("Missing parameters")),
+      },
+      "deno/testCodeLens" => match params.map(serde_json::from_value) {
+        Some(Ok(params)) => Ok(Some(
+          serde_json::to_value(self.test_code_lens(params).await?).map_err(
+            |err| {
+              error!("Failed to serialize test_code_lens response: {}", err);
+              LspError::internal_error()
+            },
+          )?,
         )),
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
         None => Err(LspError::invalid_params("Missing parameters")),

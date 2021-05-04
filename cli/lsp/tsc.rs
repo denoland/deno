@@ -2275,7 +2275,7 @@ pub enum TestRunType {
   Debug,
 }
 
-#[derive(Debug, Serialize,Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestClodeBlock {
   pub start: lsp::Position,
@@ -2288,20 +2288,32 @@ impl TestClodeBlock {
     &self,
     specifier: &ModuleSpecifier,
     source: &CodeLensSource,
-    run_type: &TestRunType
+    run_type: &TestRunType,
   ) -> lsp::CodeLens {
-    let range = lsp::Range::new(
-      self.start, self.end,
-    );
+    let range = lsp::Range::new(self.start, self.end);
+    let command = match run_type {
+      TestRunType::Run => lsp::Command {
+        title: "Run".to_string(),
+        command: "deno.runTest".to_string(),
+        arguments: Some(vec![
+          serde_json::to_value(self.test_name.to_string()).unwrap()
+        ]),
+      },
+      TestRunType::Debug => lsp::Command {
+        title: "Debug".to_string(),
+        command: "deno.debugTest".to_string(),
+        arguments: Some(vec![
+          serde_json::to_value(self.test_name.to_string()).unwrap()
+        ]),
+      },
+    };
     lsp::CodeLens {
       range,
-      command: None,
+      command: Some(command),
       data: Some(json!({
         "specifier": specifier,
         "source": source,
-        "test_name": self.test_name,
-        "run_type": run_type
-      }))
+      })),
     }
   }
 }
