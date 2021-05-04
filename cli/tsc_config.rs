@@ -12,7 +12,6 @@ use deno_core::serde_json::Value;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
-use std::path::Path;
 use std::path::PathBuf;
 
 /// The transpile options that are significant out of a user provided tsconfig

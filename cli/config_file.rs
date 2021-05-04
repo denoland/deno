@@ -13,7 +13,6 @@ use std::path::PathBuf;
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
-  pub import_map: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -66,6 +65,5 @@ mod tests {
     let config_file = ConfigFile::read("tests/module_graph/tsconfig.json")
       .expect("Failed to load config file");
     assert!(config_file.json.compiler_options.is_some());
-    assert!(config_file.json.import_map.is_none());
   }
 }
