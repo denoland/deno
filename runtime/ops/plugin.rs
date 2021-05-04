@@ -35,7 +35,7 @@ pub fn op_open_plugin(
   debug!("Loading Plugin: {:#?}", filename);
   let plugin_lib = Library::open(filename).map(Rc::new)?;
   let plugin_resource = PluginResource::new(&plugin_lib);
-  let init = *unsafe { plugin_resource.lib.symbol::<InitFn>("init") }?;
+  let init = *unsafe { plugin_resource.0.symbol::<InitFn>("init") }?;
   let rid = state.resource_table.add(plugin_resource);
   let mut extension = init();
 
@@ -56,9 +56,7 @@ pub fn op_open_plugin(
   Ok(rid)
 }
 
-struct PluginResource {
-  lib: Rc<Library>,
-}
+struct PluginResource(Rc<Library>);
 
 impl Resource for PluginResource {
   fn name(&self) -> Cow<str> {
@@ -68,6 +66,6 @@ impl Resource for PluginResource {
 
 impl PluginResource {
   fn new(lib: &Rc<Library>) -> Self {
-    Self { lib: lib.clone() }
+    Self(lib.clone())
   }
 }
