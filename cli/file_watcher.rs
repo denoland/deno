@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
 use deno_core::futures::ready;
 use deno_core::futures::stream::{Stream, StreamExt};
@@ -138,6 +139,7 @@ pub enum ModuleResolutionResult<T> {
   Success {
     paths_to_watch: Vec<PathBuf>,
     module_info: T,
+    program_state: Arc<ProgramState>,
   },
   Fail {
     source_path: PathBuf,
@@ -171,7 +173,7 @@ pub async fn watch_func_with_module_resolution<F, G, T>(
 ) -> Result<(), AnyError>
 where
   F: Fn() -> FileWatcherFuture<ModuleResolutionResult<T>>,
-  G: Fn(T) -> FileWatcherFuture<Result<(), AnyError>>,
+  G: Fn(Arc<ProgramState>, T) -> FileWatcherFuture<Result<(), AnyError>>,
   T: Clone,
 {
   let debounce = Debounce::new();
@@ -181,15 +183,18 @@ where
   // continue watching files using these data.
   let mut paths = Vec::new();
   let mut module = None;
+  let mut pstate = None;
 
   loop {
     match module_resolver().await {
       ModuleResolutionResult::Success {
         paths_to_watch,
         module_info,
+        program_state,
       } => {
         paths = paths_to_watch;
         module = Some(module_info);
+        pstate = Some(program_state);
       }
       ModuleResolutionResult::Fail { source_path, error } => {
         if paths.is_empty() {
@@ -204,7 +209,8 @@ where
     let _watcher = new_watcher(&paths, &debounce)?;
 
     if let Some(module) = &module {
-      let func = error_handler(operation(module.clone()));
+      let func =
+        error_handler(operation(pstate.clone().unwrap(), module.clone()));
       let mut is_file_changed = false;
       select! {
         _ = debounce.next() => {

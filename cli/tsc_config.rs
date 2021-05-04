@@ -1,7 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::fs_util::canonicalize_path;
+use crate::config_file::ConfigFile;
 use deno_core::error::AnyError;
+use deno_core::error::Context;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
@@ -188,8 +189,25 @@ fn parse_compiler_options(
   Ok((value, maybe_ignored_options))
 }
 
+/// Take a reference to `ConfigFile`, parse `compilerOptions` and return a serde `Value` of the text.
+/// The result also contains any options that were ignored.
+pub fn parse_compiler_options_from_config_file(
+  config_file: &ConfigFile,
+) -> Result<(Value, Option<IgnoredCompilerOptions>), AnyError> {
+  // TODO(bartlomieju): maybe this should be validated in ConfigFile?
+  if let Some(compiler_options) = config_file.json.compiler_options.clone() {
+    let options: HashMap<String, Value> =
+      serde_json::from_value(compiler_options)
+        .context("compilerOptions should be an object")?;
+    parse_compiler_options(&options, Some(config_file.path.to_owned()), false)
+  } else {
+    Ok((json!({}), None))
+  }
+}
+
 /// Take a string of JSONC, parse it and return a serde `Value` of the text.
 /// The result also contains any options that were ignored.
+#[allow(unused)]
 pub fn parse_config(
   config_text: &str,
   path: &Path,
@@ -245,38 +263,22 @@ impl TsConfig {
     json_merge(&mut self.0, value);
   }
 
-  /// Take an optional string representing a user provided TypeScript config file
-  /// which was passed in via the `--config` compiler option and merge it with
+  /// Take a user provided config file
+  /// which was passed in via the `--config` flag and merge `compilerOptions` with
   /// the configuration.  Returning the result which optionally contains any
   /// compiler options that were ignored.
   ///
   /// When there are options ignored out of the file, a warning will be written
   /// to stderr regarding the options that were ignored.
-  pub fn merge_tsconfig(
+  pub fn merge_tsconfig_from_config_file(
     &mut self,
-    maybe_path: Option<String>,
+    config_file: &ConfigFile,
   ) -> Result<Option<IgnoredCompilerOptions>, AnyError> {
-    if let Some(path) = maybe_path {
-      let cwd = std::env::current_dir()?;
-      let config_file = cwd.join(path);
-      let config_path = canonicalize_path(&config_file).map_err(|_| {
-        std::io::Error::new(
-          std::io::ErrorKind::InvalidInput,
-          format!(
-            "Could not find the config file: {}",
-            config_file.to_string_lossy()
-          ),
-        )
-      })?;
-      let config_text = std::fs::read_to_string(config_path.clone())?;
-      let (value, maybe_ignored_options) =
-        parse_config(&config_text, &config_path)?;
-      json_merge(&mut self.0, &value);
+    let (value, maybe_ignored_options) =
+      parse_compiler_options_from_config_file(config_file)?;
+    json_merge(&mut self.0, &value);
 
-      Ok(maybe_ignored_options)
-    } else {
-      Ok(None)
-    }
+    Ok(maybe_ignored_options)
   }
 
   /// Take a map of compiler options, filtering out any that are ignored, then
@@ -339,8 +341,10 @@ mod tests {
       }
     }"#;
     let config_path = PathBuf::from("/deno/tsconfig.json");
+    let config_file = ConfigFile::new(config_text, &config_path).unwrap();
     let (options_value, ignored) =
-      parse_config(config_text, &config_path).expect("error parsing");
+      parse_compiler_options_from_config_file(&config_file)
+        .expect("error parsing");
     assert!(options_value.is_object());
     let options = options_value.as_object().unwrap();
     assert!(options.contains_key("strict"));

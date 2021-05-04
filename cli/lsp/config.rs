@@ -88,6 +88,7 @@ impl Default for ImportCompletionSettings {
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSettings {
   pub enable: bool,
+  // Path to config file
   pub config: Option<String>,
   pub import_map: Option<String>,
   #[serde(default)]

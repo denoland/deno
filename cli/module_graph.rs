@@ -7,6 +7,7 @@ use crate::ast::Location;
 use crate::ast::ParsedModule;
 use crate::checksum;
 use crate::colors;
+use crate::config_file::ConfigFile;
 use crate::diagnostics::Diagnostics;
 use crate::import_map::ImportMap;
 use crate::info;
@@ -579,10 +580,10 @@ impl Serialize for TypeLib {
 pub struct BundleOptions {
   /// If `true` then debug logging will be output from the isolate.
   pub debug: bool,
-  /// An optional string that points to a user supplied TypeScript configuration
-  /// file that augments the the default configuration passed to the TypeScript
+  /// An optional config file with user supplied TypeScript configuration
+  /// that augments the the default configuration passed to the TypeScript
   /// compiler.
-  pub maybe_config_path: Option<String>,
+  pub maybe_config_file: Option<ConfigFile>,
 }
 
 #[derive(Debug, Default)]
@@ -593,10 +594,10 @@ pub struct CheckOptions {
   pub emit: bool,
   /// The base type libraries that should be used when type checking.
   pub lib: TypeLib,
-  /// An optional string that points to a user supplied TypeScript configuration
-  /// file that augments the the default configuration passed to the TypeScript
+  /// An optional config file with user supplied TypeScript configuration
+  /// that augments the the default configuration passed to the TypeScript
   /// compiler.
-  pub maybe_config_path: Option<String>,
+  pub maybe_config_file: Option<ConfigFile>,
   /// Ignore any previously emits and ensure that all files are emitted from
   /// source.
   pub reload: bool,
@@ -642,10 +643,10 @@ pub struct EmitOptions {
 pub struct TranspileOptions {
   /// If `true` then debug logging will be output from the isolate.
   pub debug: bool,
-  /// An optional string that points to a user supplied TypeScript configuration
-  /// file that augments the the default configuration passed to the TypeScript
+  /// An optional config file with user supplied TypeScript configuration
+  /// that augments the the default configuration passed to the TypeScript
   /// compiler.
-  pub maybe_config_path: Option<String>,
+  pub maybe_config_file: Option<ConfigFile>,
   /// Ignore any previously emits and ensure that all files are emitted from
   /// source.
   pub reload: bool,
@@ -774,7 +775,11 @@ impl Graph {
       "jsxFragmentFactory": "React.Fragment",
     }));
     let maybe_ignored_options =
-      ts_config.merge_tsconfig(options.maybe_config_path)?;
+      if let Some(config_file) = options.maybe_config_file.as_ref() {
+        ts_config.merge_tsconfig_from_config_file(config_file)?
+      } else {
+        None
+      };
 
     let s = self.emit_bundle(
       &root_specifier,
@@ -824,7 +829,11 @@ impl Graph {
       }));
     }
     let maybe_ignored_options =
-      config.merge_tsconfig(options.maybe_config_path)?;
+      if let Some(config_file) = options.maybe_config_file.as_ref() {
+        config.merge_tsconfig_from_config_file(config_file)?
+      } else {
+        None
+      };
 
     // Short circuit if none of the modules require an emit, or all of the
     // modules that require an emit have a valid emit.  There is also an edge
@@ -1599,7 +1608,11 @@ impl Graph {
     }));
 
     let maybe_ignored_options =
-      ts_config.merge_tsconfig(options.maybe_config_path)?;
+      if let Some(config_file) = options.maybe_config_file.as_ref() {
+        ts_config.merge_tsconfig_from_config_file(config_file)?
+      } else {
+        None
+      };
 
     let config = ts_config.as_bytes();
     let emit_options: ast::EmitOptions = ts_config.into();
@@ -2166,7 +2179,7 @@ pub mod tests {
         debug: false,
         emit: true,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: None,
+        maybe_config_file: None,
         reload: false,
       })
       .expect("should have checked");
@@ -2188,7 +2201,7 @@ pub mod tests {
         debug: false,
         emit: false,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: None,
+        maybe_config_file: None,
         reload: false,
       })
       .expect("should have checked");
@@ -2205,7 +2218,7 @@ pub mod tests {
         debug: false,
         emit: true,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: None,
+        maybe_config_file: None,
         reload: false,
       })
       .expect("should have checked");
@@ -2229,7 +2242,7 @@ pub mod tests {
         debug: false,
         emit: false,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: None,
+        maybe_config_file: None,
         reload: false,
       })
       .expect("should have checked");
@@ -2251,7 +2264,7 @@ pub mod tests {
         debug: false,
         emit: true,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: None,
+        maybe_config_file: None,
         reload: false,
       })
       .expect("should have checked");
@@ -2272,7 +2285,7 @@ pub mod tests {
         debug: false,
         emit: false,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: None,
+        maybe_config_file: None,
         reload: false,
       })
       .expect("should have checked");
@@ -2284,14 +2297,14 @@ pub mod tests {
     let specifier = resolve_url_or_path("file:///tests/checkwithconfig.ts")
       .expect("could not resolve module");
     let (graph, handler) = setup(specifier.clone()).await;
+    let config_file =
+      ConfigFile::read("tests/module_graph/tsconfig_01.json").unwrap();
     let result_info = graph
       .check(CheckOptions {
         debug: false,
         emit: true,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: Some(
-          "tests/module_graph/tsconfig_01.json".to_string(),
-        ),
+        maybe_config_file: Some(config_file),
         reload: true,
       })
       .expect("should have checked");
@@ -2305,14 +2318,14 @@ pub mod tests {
 
     // let's do it all over again to ensure that the versions are determinstic
     let (graph, handler) = setup(specifier).await;
+    let config_file =
+      ConfigFile::read("tests/module_graph/tsconfig_01.json").unwrap();
     let result_info = graph
       .check(CheckOptions {
         debug: false,
         emit: true,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: Some(
-          "tests/module_graph/tsconfig_01.json".to_string(),
-        ),
+        maybe_config_file: Some(config_file),
         reload: true,
       })
       .expect("should have checked");
@@ -2533,10 +2546,12 @@ pub mod tests {
     let specifier = resolve_url_or_path("https://deno.land/x/transpile.tsx")
       .expect("could not resolve module");
     let (mut graph, handler) = setup(specifier).await;
+    let config_file =
+      ConfigFile::read("tests/module_graph/tsconfig.json").unwrap();
     let result_info = graph
       .transpile(TranspileOptions {
         debug: false,
-        maybe_config_path: Some("tests/module_graph/tsconfig.json".to_string()),
+        maybe_config_file: Some(config_file),
         reload: false,
       })
       .unwrap();

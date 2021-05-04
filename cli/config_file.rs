@@ -5,15 +5,18 @@ use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
+#[cfg(test)]
+use std::path::Path;
 use std::path::PathBuf;
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
   pub import_map: Option<Value>,
 }
 
+#[derive(Clone, Debug)]
 pub struct ConfigFile {
   pub path: PathBuf,
   pub json: ConfigFileJson,
@@ -38,6 +41,17 @@ impl ConfigFile {
 
     Ok(Self {
       path: config_path,
+      json,
+    })
+  }
+
+  #[cfg(test)]
+  pub fn new(text: &str, path: &Path) -> Result<Self, AnyError> {
+    let jsonc = jsonc_parser::parse_to_serde_value(text)?.unwrap();
+    let json: ConfigFileJson = serde_json::from_value(jsonc)?;
+
+    Ok(Self {
+      path: path.to_owned(),
       json,
     })
   }
