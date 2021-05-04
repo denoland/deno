@@ -1,13 +1,19 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
 use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
+use deno_core::ModuleSpecifier;
+use log::info;
 use lspower::jsonrpc::Error as LSPError;
 use lspower::jsonrpc::Result as LSPResult;
 use lspower::lsp;
 use std::collections::HashMap;
+
+pub const SETTINGS_SECTION: &'static str = "deno";
 
 #[derive(Debug, Clone, Default)]
 pub struct ClientCapabilities {
@@ -17,7 +23,7 @@ pub struct ClientCapabilities {
   pub line_folding_only: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeLensSettings {
   /// Flag for providing implementation code lenses.
@@ -42,7 +48,7 @@ impl Default for CodeLensSettings {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionSettings {
   #[serde(default)]
@@ -69,7 +75,7 @@ impl Default for CompletionSettings {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportCompletionSettings {
   #[serde(default)]
@@ -84,9 +90,9 @@ impl Default for ImportCompletionSettings {
   }
 }
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WorkspaceSettings {
+pub struct Settings {
   pub enable: bool,
   pub config: Option<String>,
   pub import_map: Option<String>,
@@ -101,7 +107,7 @@ pub struct WorkspaceSettings {
   pub unstable: bool,
 }
 
-impl WorkspaceSettings {
+impl Settings {
   /// Determine if any code lenses are enabled at all.  This allows short
   /// circuiting when there are no code lenses enabled.
   pub fn enabled_code_lens(&self) -> bool {
@@ -113,15 +119,21 @@ impl WorkspaceSettings {
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
   pub root_uri: Option<Url>,
-  pub settings: WorkspaceSettings,
+  specifier_settings: HashMap<ModuleSpecifier, Settings>,
+  pub workspace_settings: Settings,
 }
 
 impl Config {
-  pub fn update(&mut self, value: Value) -> LSPResult<()> {
-    let settings: WorkspaceSettings = serde_json::from_value(value)
-      .map_err(|err| LSPError::invalid_params(err.to_string()))?;
-    self.settings = settings;
-    Ok(())
+  pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
+    self.specifier_settings.contains_key(specifier)
+  }
+
+  pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
+    if let Some(settings) = self.specifier_settings.get(specifier) {
+      settings.enable
+    } else {
+      self.workspace_settings.enable
+    }
   }
 
   #[allow(clippy::redundant_closure_call)]
@@ -153,5 +165,25 @@ impl Config {
         .and_then(|it| it.line_folding_only)
         .unwrap_or(false);
     }
+  }
+
+  pub fn update_specifier(
+    &mut self,
+    specifier: ModuleSpecifier,
+    value: Value,
+  ) -> LSPResult<()> {
+    let settings: Settings = serde_json::from_value(value)
+      .map_err(|err| LSPError::invalid_params(err.to_string()))?;
+    info!("update_specifier: {} {}", specifier, json!(settings));
+    self.specifier_settings.insert(specifier, settings);
+    Ok(())
+  }
+
+  pub fn update_workspace(&mut self, value: Value) -> LSPResult<()> {
+    let settings: Settings = serde_json::from_value(value)
+      .map_err(|err| LSPError::invalid_params(err.to_string()))?;
+    self.workspace_settings = settings;
+    self.specifier_settings = HashMap::new();
+    Ok(())
   }
 }
