@@ -7,7 +7,7 @@ use crate::resources::ResourceId;
 use crate::Extension;
 use crate::OpState;
 use crate::ZeroCopyBuf;
-use std::io::{stdout, Write};
+use std::io::{stderr, stdout, Write};
 
 pub(crate) fn init_builtins() -> Extension {
   Extension::builder()
@@ -64,7 +64,7 @@ pub fn op_print(
   let (msg, is_err) = args;
   if is_err {
     eprint!("{}", msg);
-    stdout().flush().unwrap();
+    stderr().flush().unwrap();
   } else {
     print!("{}", msg);
     stdout().flush().unwrap();

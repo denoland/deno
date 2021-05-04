@@ -28,19 +28,34 @@ mod macros {
   macro_rules! gfx_select {
     ($id:expr => $global:ident.$method:ident( $($param:expr),* )) => {
       match $id.backend() {
-        #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "ios", target_os = "macos"))))]
+        #[cfg(not(target_os = "macos"))]
         wgpu_types::Backend::Vulkan => $global.$method::<wgpu_core::backend::Vulkan>( $($param),* ),
-        #[cfg(all(not(target_arch = "wasm32"), any(target_os = "ios", target_os = "macos")))]
+        #[cfg(target_os = "macos")]
         wgpu_types::Backend::Metal => $global.$method::<wgpu_core::backend::Metal>( $($param),* ),
-        #[cfg(all(not(target_arch = "wasm32"), windows))]
+        #[cfg(windows)]
         wgpu_types::Backend::Dx12 => $global.$method::<wgpu_core::backend::Dx12>( $($param),* ),
-        #[cfg(all(not(target_arch = "wasm32"), windows))]
+        #[cfg(windows)]
         wgpu_types::Backend::Dx11 => $global.$method::<wgpu_core::backend::Dx11>( $($param),* ),
-        #[cfg(any(target_arch = "wasm32", all(unix, not(any(target_os = "ios", target_os = "macos")))))]
+        #[cfg(all(unix, not(target_os = "macos")))]
         wgpu_types::Backend::Gl => $global.$method::<wgpu_core::backend::Gl>( $($param),+ ),
         other => panic!("Unexpected backend {:?}", other),
       }
     };
+  }
+
+  macro_rules! gfx_put {
+    ($id:expr => $global:ident.$method:ident( $($param:expr),* ) => $state:expr, $rc:expr) => {{
+      let (val, maybe_err) = gfx_select!($id => $global.$method($($param),*));
+      let rid = $state.resource_table.add($rc(val));
+      Ok(WebGpuResult::rid_err(rid, maybe_err))
+    }};
+  }
+
+  macro_rules! gfx_ok {
+    ($id:expr => $global:ident.$method:ident( $($param:expr),* )) => {{
+      let maybe_err = gfx_select!($id => $global.$method($($param),*)).err();
+      Ok(WebGpuResult::maybe_err(maybe_err))
+    }};
   }
 }
 
@@ -534,15 +549,11 @@ pub fn op_webgpu_create_query_set(
     count: args.count,
   };
 
-  let (query_set, maybe_err) = gfx_select!(device => instance.device_create_query_set(
+  gfx_put!(device => instance.device_create_query_set(
     device,
     &descriptor,
     std::marker::PhantomData
-  ));
-
-  let rid = state.resource_table.add(WebGpuQuerySet(query_set));
-
-  Ok(WebGpuResult::rid_err(rid, maybe_err))
+  ) => state, WebGpuQuerySet)
 }
 
 fn declare_webgpu_ops() -> Vec<(&'static str, Box<OpFn>)> {

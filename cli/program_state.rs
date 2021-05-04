@@ -101,7 +101,11 @@ impl ProgramState {
             )?;
           let file = file_fetcher
             .fetch(&import_map_specifier, &mut Permissions::allow_all())
-            .await?;
+            .await
+            .context(format!(
+              "Unable to load '{}' import map",
+              import_map_specifier
+            ))?;
           let import_map =
             ImportMap::from_json(import_map_specifier.as_str(), &file.source)?;
           Some(import_map)
