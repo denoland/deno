@@ -22,7 +22,7 @@ struct LocationDataDir(PathBuf);
 pub fn init(location_data_dir: Option<PathBuf>) -> Extension {
   Extension::builder()
     .js(include_js_files!(
-      prefix "deno:op_crates/webstorage",
+      prefix "deno:extensions/webstorage",
       "01_webstorage.js",
     ))
     .ops(vec![
