@@ -34,15 +34,16 @@ delete Object.prototype.__proto__;
     }
   }
 
+  function printStderr(msg) {
+    core.print(msg, true);
+  }
+
   function debug(...args) {
     if (logDebug) {
       const stringifiedArgs = args.map((arg) =>
         typeof arg === "string" ? arg : JSON.stringify(arg)
       ).join(" ");
-      // adding a non-zero integer value to the end of the debug string causes
-      // the message to be printed to stderr instead of stdout, which is better
-      // aligned to the behaviour of debug messages
-      core.print(`DEBUG ${logSource} - ${stringifiedArgs}\n`, 1);
+      printStderr(`DEBUG ${logSource} - ${stringifiedArgs}\n`);
     }
   }
 
@@ -52,7 +53,7 @@ delete Object.prototype.__proto__;
         ? String(arg)
         : JSON.stringify(arg)
     ).join(" ");
-    core.print(`ERROR ${logSource} = ${stringifiedArgs}\n`, 1);
+    printStderr(`ERROR ${logSource} = ${stringifiedArgs}\n`);
   }
 
   class AssertionError extends Error {
@@ -660,6 +661,16 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "getEncodedSemanticClassifications": {
+        return respond(
+          id,
+          languageService.getEncodedSemanticClassifications(
+            request.specifier,
+            request.span,
+            ts.SemanticClassificationFormat.TwentyTwenty,
+          ),
+        );
+      }
       case "getImplementation": {
         return respond(
           id,
@@ -726,6 +737,33 @@ delete Object.prototype.__proto__;
           ts.getSupportedCodeFixes(),
         );
       }
+      case "prepareCallHierarchy": {
+        return respond(
+          id,
+          languageService.prepareCallHierarchy(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
+      case "provideCallHierarchyIncomingCalls": {
+        return respond(
+          id,
+          languageService.provideCallHierarchyIncomingCalls(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
+      case "provideCallHierarchyOutgoingCalls": {
+        return respond(
+          id,
+          languageService.provideCallHierarchyOutgoingCalls(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
       default:
         throw new TypeError(
           // @ts-ignore exhausted case statement sets type to never
@@ -741,7 +779,6 @@ delete Object.prototype.__proto__;
     }
     hasStarted = true;
     languageService = ts.createLanguageService(host);
-    core.ops();
     setLogDebug(debugFlag, "TSLS");
     debug("serverInit()");
   }
@@ -756,13 +793,8 @@ delete Object.prototype.__proto__;
       throw new Error("The compiler runtime already started.");
     }
     hasStarted = true;
-    core.ops();
     setLogDebug(!!debugFlag, "TS");
   }
-
-  // Setup the compiler runtime during the build process.
-  core.ops();
-  core.registerErrorClass("Error", Error);
 
   // A build time only op that provides some setup information that is used to
   // ensure the snapshot is setup properly.

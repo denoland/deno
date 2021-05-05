@@ -3,11 +3,12 @@ use crate::colors;
 use crate::inspector::DenoInspector;
 use crate::inspector::InspectorServer;
 use crate::js;
-use crate::metrics::RuntimeMetrics;
+use crate::metrics;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::tokio_util::create_basic_runtime;
 use deno_core::error::AnyError;
+use deno_core::error::Context as ErrorContext;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
@@ -17,6 +18,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::v8;
+use deno_core::Extension;
 use deno_core::GetErrorClassFn;
 use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
@@ -67,6 +69,14 @@ impl WebWorkerHandle {
   /// Post message to worker as a host.
   pub fn post_message(&self, buf: Box<[u8]>) -> Result<(), AnyError> {
     let mut sender = self.sender.clone();
+    // If the channel is closed,
+    // the worker must have terminated but the termination message has not yet been recieved.
+    //
+    // Therefore just treat it as if the worker has terminated and return.
+    if sender.is_closed() {
+      self.terminated.store(true, Ordering::SeqCst);
+      return Ok(());
+    }
     sender.try_send(buf)?;
     Ok(())
   }
@@ -167,11 +177,81 @@ impl WebWorker {
     worker_id: u32,
     options: &WebWorkerOptions,
   ) -> Self {
+    // Permissions: many ops depend on this
+    let unstable = options.unstable;
+    let perm_ext = Extension::builder()
+      .state(move |state| {
+        state.put::<Permissions>(permissions.clone());
+        state.put(ops::UnstableChecker { unstable });
+        Ok(())
+      })
+      .build();
+
+    let mut extensions: Vec<Extension> = vec![
+      // Web APIs
+      deno_webidl::init(),
+      deno_console::init(),
+      deno_url::init(),
+      deno_web::init(),
+      deno_file::init(
+        options.blob_url_store.clone(),
+        Some(main_module.clone()),
+      ),
+      deno_fetch::init::<Permissions>(
+        options.user_agent.clone(),
+        options.ca_data.clone(),
+      ),
+      deno_websocket::init::<Permissions>(
+        options.user_agent.clone(),
+        options.ca_data.clone(),
+      ),
+      deno_crypto::init(options.seed),
+      deno_webgpu::init(options.unstable),
+      deno_timers::init::<Permissions>(),
+      // Metrics
+      metrics::init(),
+      // Permissions ext (worker specific state)
+      perm_ext,
+    ];
+
+    // Runtime ops that are always initialized for WebWorkers
+    let runtime_exts = vec![
+      ops::web_worker::init(),
+      ops::runtime::init(main_module.clone()),
+      ops::worker_host::init(false, options.create_web_worker_cb.clone()),
+      ops::io::init(),
+    ];
+
+    // Extensions providing Deno.* features
+    let deno_ns_exts = if options.use_deno_namespace {
+      vec![
+        ops::fs_events::init(),
+        ops::fs::init(),
+        ops::net::init(),
+        ops::os::init(),
+        ops::http::init(),
+        ops::permissions::init(),
+        ops::plugin::init(),
+        ops::process::init(),
+        ops::signal::init(),
+        ops::tls::init(),
+        ops::tty::init(),
+        ops::io::init_stdio(),
+      ]
+    } else {
+      vec![]
+    };
+
+    // Append exts
+    extensions.extend(runtime_exts);
+    extensions.extend(deno_ns_exts); // May be empty
+
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(js::deno_isolate_init()),
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
+      extensions,
       ..Default::default()
     });
 
@@ -200,80 +280,20 @@ impl WebWorker {
       terminate_rx,
       handle,
       use_deno_namespace: options.use_deno_namespace,
-      main_module: main_module.clone(),
+      main_module,
     };
 
+    // Setup worker-dependant OpState and return worker
     {
       let handle = worker.thread_safe_handle();
       let sender = worker.internal_channels.sender.clone();
       let js_runtime = &mut worker.js_runtime;
-      // All ops registered in this function depend on these
-      {
-        let op_state = js_runtime.op_state();
-        let mut op_state = op_state.borrow_mut();
-        op_state.put(RuntimeMetrics::default());
-        op_state.put::<Permissions>(permissions);
-        op_state.put(ops::UnstableChecker {
-          unstable: options.unstable,
-        });
-      }
+      let op_state = js_runtime.op_state();
+      let mut op_state = op_state.borrow_mut();
 
-      ops::web_worker::init(js_runtime, sender.clone(), handle);
-      ops::runtime::init(js_runtime, main_module.clone());
-      ops::fetch::init(
-        js_runtime,
-        options.user_agent.clone(),
-        options.ca_data.clone(),
-      );
-      ops::timers::init(js_runtime);
-      ops::worker_host::init(
-        js_runtime,
-        Some(sender),
-        options.create_web_worker_cb.clone(),
-      );
-      ops::reg_sync(js_runtime, "op_close", deno_core::op_close);
-      ops::reg_sync(js_runtime, "op_resources", deno_core::op_resources);
-      ops::url::init(js_runtime);
-      ops::file::init(
-        js_runtime,
-        options.blob_url_store.clone(),
-        Some(main_module),
-      );
-      ops::io::init(js_runtime);
-      ops::webgpu::init(js_runtime);
-      ops::websocket::init(
-        js_runtime,
-        options.user_agent.clone(),
-        options.ca_data.clone(),
-      );
-      ops::crypto::init(js_runtime, options.seed);
-
-      if options.use_deno_namespace {
-        ops::fs_events::init(js_runtime);
-        ops::fs::init(js_runtime);
-        ops::net::init(js_runtime);
-        ops::os::init(js_runtime);
-        ops::permissions::init(js_runtime);
-        ops::plugin::init(js_runtime);
-        ops::process::init(js_runtime);
-        ops::signal::init(js_runtime);
-        ops::tls::init(js_runtime);
-        ops::tty::init(js_runtime);
-
-        let op_state = js_runtime.op_state();
-        let mut op_state = op_state.borrow_mut();
-        let t = &mut op_state.resource_table;
-        let (stdin, stdout, stderr) = ops::io::get_stdio();
-        if let Some(stream) = stdin {
-          t.add(stream);
-        }
-        if let Some(stream) = stdout {
-          t.add(stream);
-        }
-        if let Some(stream) = stderr {
-          t.add(stream);
-        }
-      }
+      // Required by runtime::ops::worker_host/web_worker
+      op_state.put(handle);
+      op_state.put(sender);
 
       worker
     }
@@ -311,7 +331,9 @@ impl WebWorker {
 
   /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
   pub fn execute(&mut self, js_source: &str) -> Result<(), AnyError> {
-    let path = env::current_dir().unwrap().join("__anonymous__");
+    let path = env::current_dir()
+      .context("Failed to get current working directory")?
+      .join("__anonymous__");
     let url = Url::from_file_path(path).unwrap();
     self.js_runtime.execute(url.as_str(), js_source)
   }

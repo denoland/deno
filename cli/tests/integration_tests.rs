@@ -33,16 +33,20 @@ fn js_unit_tests_lint() {
 #[test]
 fn js_unit_tests() {
   let _g = util::http_server();
+
+  // Note that the unit tests are not safe for concurrency and must be run with a concurrency limit
+  // of one because there are some chdir tests in there.
+  // TODO(caspervonb) split these tests into two groups: parallel and serial.
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
-    .arg("run")
+    .arg("test")
     .arg("--unstable")
+    .arg("--location=http://js-unit-tests/foo/bar")
     .arg("-A")
-    .arg("cli/tests/unit/unit_test_runner.ts")
-    .arg("--master")
-    .arg("--verbose")
+    .arg("cli/tests/unit")
     .spawn()
     .expect("failed to spawn script");
+
   let status = deno.wait().expect("failed to wait for the child process");
   assert_eq!(Some(0), status.code());
   assert!(status.success());
@@ -2395,6 +2399,18 @@ mod integration {
       output: "test/deno_test.out",
     });
 
+    itest!(allow_all {
+      args: "test --unstable --allow-all test/allow_all.ts",
+      exit_code: 0,
+      output: "test/allow_all.out",
+    });
+
+    itest!(allow_none {
+      args: "test --unstable test/allow_none.ts",
+      exit_code: 1,
+      output: "test/allow_none.out",
+    });
+
     itest!(fail_fast {
       args: "test --fail-fast test/test_runner_test.ts",
       exit_code: 1,
@@ -2425,10 +2441,22 @@ mod integration {
       output: "test/deno_test_unresolved_promise.out",
     });
 
+    itest!(unhandled_rejection {
+      args: "test test/unhandled_rejection.ts",
+      exit_code: 1,
+      output: "test/unhandled_rejection.out",
+    });
+
     itest!(exit_sanitizer {
       args: "test test/exit_sanitizer_test.ts",
       output: "test/exit_sanitizer_test.out",
       exit_code: 1,
+    });
+
+    itest!(quiet {
+      args: "test --quiet test/quiet_test.ts",
+      exit_code: 0,
+      output: "test/quiet_test.out",
     });
   }
 
@@ -2494,6 +2522,12 @@ console.log("finish");
   itest!(worker_nested_error {
     args: "run -A workers/worker_nested_error.ts",
     output: "workers/worker_nested_error.ts.out",
+    exit_code: 1,
+  });
+
+  itest!(nonexistent_worker {
+    args: "run --allow-read workers/nonexistent_worker.ts",
+    output: "workers/nonexistent_worker.out",
     exit_code: 1,
   });
 
@@ -3075,9 +3109,9 @@ console.log("finish");
     output: "error_008_checkjs.js.out",
   });
 
-  itest!(error_009_op_crates_error {
-    args: "run error_009_op_crates_error.js",
-    output: "error_009_op_crates_error.js.out",
+  itest!(error_009_extensions_error {
+    args: "run error_009_extensions_error.js",
+    output: "error_009_extensions_error.js.out",
     exit_code: 1,
   });
 
@@ -3426,6 +3460,11 @@ console.log("finish");
   itest!(wasm {
     args: "run --quiet wasm.ts",
     output: "wasm.ts.out",
+  });
+
+  itest!(wasm_shared {
+    args: "run --quiet wasm_shared.ts",
+    output: "wasm_shared.out",
   });
 
   itest!(wasm_async {
@@ -3800,6 +3839,17 @@ console.log("finish");
     output: "inline_js_source_map_with_contents_from_graph.js.out",
     exit_code: 1,
     http_server: true,
+  });
+
+  // This test ensures that a descriptive error is shown when we're unable to load
+  // the import map. Even though this tests only the `run` subcommand, we can be sure
+  // that the error message is similar for other subcommands as they all use
+  // `program_state.maybe_import_map` to access the import map underneath.
+  itest!(error_import_map_unable_to_load {
+    args:
+      "run --import-map=import_maps/does_not_exist.json import_maps/test.ts",
+    output: "error_import_map_unable_to_load.out",
+    exit_code: 1,
   });
 
   #[test]
@@ -5138,6 +5188,25 @@ console.log("finish");
     assert!(stderr.contains("BadResource"));
   }
 
+  #[cfg(not(windows))]
+  #[test]
+  fn should_not_panic_on_not_found_cwd() {
+    let output = util::deno_cmd()
+      .current_dir(util::root_path())
+      .arg("run")
+      .arg("--allow-write")
+      .arg("--allow-read")
+      .arg("cli/tests/dont_panic_not_found_cwd.ts")
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(!output.status.success());
+    let stderr = std::str::from_utf8(&output.stderr).unwrap().trim();
+    assert!(stderr.contains("Failed to get current working directory"));
+  }
+
   #[cfg(windows)]
   // Clippy suggests to remove the `NoStd` prefix from all variants. I disagree.
   #[allow(clippy::enum_variant_names)]
@@ -5326,7 +5395,6 @@ console.log("finish");
   }
 
   #[test]
-  #[ignore]
   #[cfg(windows)]
   // https://github.com/denoland/deno/issues/9667
   fn compile_windows_ext() {
@@ -5341,14 +5409,15 @@ console.log("finish");
       .arg("--target")
       .arg("x86_64-unknown-linux-gnu")
       .arg("./test_util/std/examples/welcome.ts")
-      .stdout(std::process::Stdio::piped())
+      // TODO(kt3k): Prints command output to the test log for debugging purpose.
+      // Uncomment this line when this test become stable.
+      //.stdout(std::process::Stdio::piped())
       .spawn()
       .unwrap()
       .wait_with_output()
       .unwrap();
     assert!(output.status.success());
-    let exists = std::path::Path::new(&exe).exists();
-    assert!(exists, true);
+    assert!(std::path::Path::new(&exe).exists());
   }
 
   #[test]
@@ -5594,17 +5663,6 @@ console.log("finish");
     let stderr_str = String::from_utf8(output.stderr).unwrap();
     assert!(util::strip_ansi_codes(&stderr_str)
       .contains("PermissionDenied: Requires write access"));
-  }
-
-  #[test]
-  fn denort_direct_use_error() {
-    let status = Command::new(util::denort_exe_path())
-      .current_dir(util::root_path())
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
-    assert!(!status.success());
   }
 
   #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
