@@ -220,7 +220,7 @@
     });
   }
 
-  function createUpgradeWebsocket(rid) {
+  function createUpgradeWebSocket(rid) {
     return async function upgradeWebSocket() {
       const { key, rid } = await core.opAsync(
         "op_http_upgrade_websocket",
