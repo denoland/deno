@@ -67,7 +67,7 @@
       const request = fromInnerRequest(innerRequest, "immutable");
 
       const respondWith = createRespondWith(responseSenderRid, this.#rid);
-      const upgradeWebSocket = createUpgradeWebsocket(requestBodyRid);
+      const upgradeWebSocket = createUpgradeWebSocket(requestBodyRid);
 
       return { request, respondWith, upgradeWebSocket };
     }
