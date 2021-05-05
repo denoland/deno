@@ -143,7 +143,9 @@ pub fn op_webstorage_set(
     );
   }
 
-  resource.0.insert(args.key_name, args.key_value.as_bytes())?;
+  resource
+    .0
+    .insert(args.key_name, args.key_value.as_bytes())?;
 
   Ok(())
 }
