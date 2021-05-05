@@ -11,10 +11,13 @@ use deno_core::futures::stream::SplitStream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
+use deno_core::op_async;
+use deno_core::op_sync;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -48,32 +51,21 @@ use tokio::sync::oneshot;
 use tokio_rustls::server::TlsStream;
 use tokio_util::io::StreamReader;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_sync(rt, "op_http_start", op_http_start);
-
-  super::reg_async(rt, "op_http_request_next", op_http_request_next);
-  super::reg_async(rt, "op_http_request_read", op_http_request_read);
-
-  super::reg_async(rt, "op_http_response", op_http_response);
-  super::reg_async(rt, "op_http_response_write", op_http_response_write);
-  super::reg_async(rt, "op_http_response_close", op_http_response_close);
-
-  super::reg_async(rt, "op_http_upgrade_websocket", op_http_upgrade_websocket);
-  super::reg_async(
-    rt,
-    "op_http_ws_send",
-    deno_websocket::op_ws_send::<WebSocketStream<Upgraded>>,
-  );
-  super::reg_async(
-    rt,
-    "op_http_ws_close",
-    deno_websocket::op_ws_close::<WebSocketStream<Upgraded>>,
-  );
-  super::reg_async(
-    rt,
-    "op_http_ws_next_event",
-    deno_websocket::op_ws_next_event::<WebSocketStream<Upgraded>>,
-  );
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_http_start", op_sync(op_http_start)),
+      ("op_http_request_next", op_async(op_http_request_next)),
+      ("op_http_request_read", op_async(op_http_request_read)),
+      ("op_http_response", op_async(op_http_response)),
+      ("op_http_response_write", op_async(op_http_response_write)),
+      ("op_http_response_close", op_async(op_http_response_close)),
+      ("op_http_upgrade_websocket", op_async(op_http_upgrade_websocket)),
+      ("op_http_ws_send", op_async(deno_websocket::op_ws_send::<WebSocketStream<Upgraded>>)),
+      ("op_http_ws_close", op_async(deno_websocket::op_ws_close::<WebSocketStream<Upgraded>>)),
+      ("op_http_ws_next_event", op_async(deno_websocket::op_ws_next_event::<WebSocketStream<Upgraded>>)),
+    ])
+    .build()
 }
 
 struct ServiceInner {

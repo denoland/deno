@@ -33,10 +33,10 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 
 #[derive(Debug, Deserialize)]
 enum RuntimeBundleType {
-  #[serde(rename = "esm")]
-  Esm,
-  #[serde(rename = "iife")]
-  Iife,
+  #[serde(rename = "module")]
+  Module,
+  #[serde(rename = "classic")]
+  Classic,
 }
 
 #[derive(Debug, Deserialize)]
@@ -87,7 +87,13 @@ async fn op_emit(
       let file = program_state
         .file_fetcher
         .fetch(&import_map_specifier, &mut runtime_permissions)
-        .await?;
+        .await
+        .map_err(|e| {
+          generic_error(format!(
+            "Unable to load '{}' import map: {}",
+            import_map_specifier, e
+          ))
+        })?;
       ImportMap::from_json(import_map_specifier.as_str(), &file.source)?
     };
     Some(import_map)
@@ -108,8 +114,8 @@ async fn op_emit(
       ))
     })?;
   let bundle_type = match args.bundle {
-    Some(RuntimeBundleType::Esm) => BundleType::Esm,
-    Some(RuntimeBundleType::Iife) => BundleType::Iife,
+    Some(RuntimeBundleType::Module) => BundleType::Module,
+    Some(RuntimeBundleType::Classic) => BundleType::Classic,
     None => BundleType::None,
   };
   let graph = builder.get_graph();

@@ -8,14 +8,14 @@ members = [
   "serde_v8",
   "test_plugin",
   "test_util",
-  "op_crates/crypto",
-  "op_crates/fetch",
-  "op_crates/timers",
-  "op_crates/url",
-  "op_crates/web",
-  "op_crates/webgpu",
-  "op_crates/webidl",
-  "op_crates/websocket",
+  "extensions/crypto",
+  "extensions/fetch",
+  "extensions/timers",
+  "extensions/url",
+  "extensions/web",
+  "extensions/webgpu",
+  "extensions/webidl",
+  "extensions/websocket",
 ]
 exclude = [
   "std/hash/_wasm"
