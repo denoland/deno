@@ -1158,8 +1158,8 @@ declare namespace Deno {
     value: string;
   }
 
-  export interface WebSocketConnEventUint8Array {
-    kind: "binary" | "pong" | "ping";
+  export interface WebSocketConnEventBinary {
+    kind: "binary";
     value: Uint8Array;
   }
 
@@ -1170,14 +1170,12 @@ declare namespace Deno {
 
   export type WebSocketConnEvent =
     | WebSocketConnEventString
-    | WebSocketConnEventUint8Array
+    | WebSocketConnEventBinary
     | WebSocketConnEventClose;
 
   export interface WebSocketConn extends AsyncIterable<WebSocketConnEvent> {
     send(kind: "text", data: string): Promise<void>;
     send(kind: "binary", data: Uint8Array): Promise<void>;
-    send(kind: "pong", data: Uint8Array): Promise<void>;
-    send(kind: "ping", data: Uint8Array): Promise<void>;
 
     close(code?: number, reason?: string): Promise<void>;
   }
