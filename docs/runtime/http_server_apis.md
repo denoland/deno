@@ -74,7 +74,7 @@ There is also the `.accept()` method on the listener which can be used:
 const server = Deno.listen({ port: 8080 });
 
 while (true) {
-  const conn = server.accept();
+  const conn = await server.accept();
   if (conn) {
     // ... handle the connection ...
   } else {
@@ -122,7 +122,7 @@ await the next request. It would look something like this:
 const server = Deno.listen({ port: 8080 });
 
 while (true) {
-  const conn = server.accept();
+  const conn = await server.accept();
   if (conn) {
     (async () => {
       const httpConn = Deno.serveHttp(conn);
