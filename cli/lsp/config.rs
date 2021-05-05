@@ -10,7 +10,7 @@ use lspower::jsonrpc::Result as LSPResult;
 use lspower::lsp;
 use std::collections::HashMap;
 
-pub const SETTINGS_SECTION: &'static str = "deno";
+pub const SETTINGS_SECTION: &str = "deno";
 
 #[derive(Debug, Clone, Default)]
 pub struct ClientCapabilities {
@@ -181,5 +181,50 @@ impl Config {
     self.workspace_settings = settings;
     self.specifier_settings = HashMap::new();
     Ok(())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use deno_core::resolve_url;
+  use deno_core::serde_json::json;
+
+  #[test]
+  fn test_config_contains() {
+    let mut config = Config::default();
+    let specifier = resolve_url("https://deno.land/x/a.ts").unwrap();
+    assert!(!config.contains(&specifier));
+    config
+      .update_specifier(
+        specifier.clone(),
+        json!({
+          "enable": true
+        }),
+      )
+      .expect("could not update specifier");
+    assert!(config.contains(&specifier));
+  }
+
+  #[test]
+  fn test_config_specifier_enabled() {
+    let mut config = Config::default();
+    let specifier = resolve_url("file:///a.ts").unwrap();
+    assert!(!config.specifier_enabled(&specifier));
+    config
+      .update_workspace(json!({
+        "enable": true
+      }))
+      .expect("could not update");
+    assert!(config.specifier_enabled(&specifier));
+    config
+      .update_specifier(
+        specifier.clone(),
+        json!({
+          "enable": false
+        }),
+      )
+      .expect("could not update");
+    assert!(!config.specifier_enabled(&specifier));
   }
 }

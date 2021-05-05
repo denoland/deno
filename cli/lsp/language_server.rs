@@ -205,12 +205,10 @@ impl Inner {
             self.config.update_specifier(specifier.clone(), value)
           {
             warn!("An error occurred getting configuration: {}", err);
-            return false;
           }
         }
         Err(err) => {
           warn!("An error occurred getting configuration: {}", err);
-          return false;
         }
       }
     }
