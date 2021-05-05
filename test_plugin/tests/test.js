@@ -23,9 +23,6 @@ const resourcesPre = Deno.resources();
 const pluginRid = Deno.openPlugin(filename);
 console.log(`Plugin rid: ${pluginRid}`);
 
-Deno.core.syncOpsCache();
-console.log("Synced ops cache");
-
 const {
   op_test_sync,
   op_test_async,
