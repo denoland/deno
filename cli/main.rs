@@ -50,6 +50,7 @@ use crate::specifier_handler::FetchHandler;
 use crate::tools::installer::infer_name_from_url;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::futures::future;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::resolve_url_or_path;
@@ -76,6 +77,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
+use tools::test_runner;
 
 fn create_web_worker_callback(
   program_state: Arc<ProgramState>,
@@ -901,19 +903,141 @@ async fn test_command(
     env::set_var("DENO_UNSTABLE_COVERAGE_DIR", coverage_dir);
   }
 
-  tools::test_runner::run_tests(
-    flags,
-    include,
-    no_run,
-    fail_fast,
-    quiet,
-    allow_none,
-    filter,
-    concurrent_jobs,
-  )
-  .await?;
+  let program_state = ProgramState::build(flags.clone()).await?;
 
-  Ok(())
+  let include = include.unwrap_or_else(|| vec![".".to_string()]);
+  let cwd = std::env::current_dir().expect("No current directory");
+
+  if flags.watch {
+    let handler = Arc::new(Mutex::new(FetchHandler::new(
+      &program_state,
+      Permissions::allow_all(),
+    )?));
+
+    let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
+
+    let resolver = |changed: Option<Vec<PathBuf>>| {
+      let test_modules_result =
+        test_runner::collect_test_module_specifiers(include.clone(), &cwd);
+      let paths_to_watch = paths_to_watch.clone();
+      let paths_to_watch_clone = paths_to_watch.clone();
+
+      let handler = handler.clone();
+      let program_state = program_state.clone();
+      let files_changed = changed.is_some();
+      async move {
+        let test_modules = test_modules_result?;
+
+        let mut paths_to_watch = paths_to_watch_clone;
+        let mut modules_to_reload = if files_changed {
+          Vec::new()
+        } else {
+          test_modules
+            .iter()
+            .filter_map(|url| deno_core::resolve_url(url.as_str()).ok())
+            .collect()
+        };
+
+        let graphs = future::join_all(test_modules.into_iter().map(|module| {
+          let handler = handler.clone();
+          let maybe_import_map = program_state.maybe_import_map.clone();
+          let lockfile = program_state.lockfile.clone();
+          async move {
+            let mut builder = module_graph::GraphBuilder::new(
+              handler,
+              maybe_import_map,
+              lockfile,
+            );
+            let module_specifier = deno_core::resolve_url(module.as_str())?;
+            builder.add(&module_specifier, false).await?;
+            Ok::<module_graph::Graph, AnyError>(builder.get_graph())
+          }
+        }))
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()?;
+
+        for graph in graphs {
+          let root = graph.info()?.root;
+          let modules = graph.get_modules();
+
+          paths_to_watch.extend(
+            modules
+              .iter()
+              .filter_map(|specifier| specifier.to_file_path().ok()),
+          );
+
+          if let Some(changed) = &changed {
+            for path in changed.iter().filter_map(|path| {
+              deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
+            }) {
+              if modules.contains(&path) {
+                modules_to_reload.push(root);
+                break;
+              }
+            }
+          }
+        }
+
+        Ok((paths_to_watch, modules_to_reload))
+      }
+      .map(move |result| {
+        if files_changed
+          && matches!(result, Ok((_, ref modules)) if modules.is_empty())
+        {
+          ResolutionResult::Ignore
+        } else {
+          match result {
+            Ok((paths_to_watch, modules_to_reload)) => {
+              ResolutionResult::Restart {
+                paths_to_watch,
+                result: Ok(modules_to_reload),
+              }
+            }
+            Err(e) => ResolutionResult::Restart {
+              paths_to_watch,
+              result: Err(e),
+            },
+          }
+        }
+      })
+    };
+
+    file_watcher::watch_func(
+      resolver,
+      |modules_to_reload| {
+        test_runner::run_tests(
+          program_state.clone(),
+          flags.clone(),
+          modules_to_reload,
+          no_run,
+          fail_fast,
+          quiet,
+          allow_none,
+          filter.clone(),
+          concurrent_jobs,
+        )
+      },
+      "Test",
+    )
+    .await
+  } else {
+    let test_modules =
+      test_runner::collect_test_module_specifiers(include, &cwd)?;
+
+    test_runner::run_tests(
+      program_state.clone(),
+      flags,
+      test_modules,
+      no_run,
+      fail_fast,
+      quiet,
+      allow_none,
+      filter,
+      concurrent_jobs,
+    )
+    .await
+  }
 }
 
 fn init_v8_flags(v8_flags: &[String]) {

@@ -3,21 +3,17 @@
 use crate::colors;
 use crate::create_main_worker;
 use crate::file_fetcher::File;
-use crate::file_watcher;
-use crate::file_watcher::ResolutionResult;
 use crate::flags::Flags;
 use crate::fs_util;
 use crate::media_type::MediaType;
 use crate::module_graph;
 use crate::program_state::ProgramState;
-use crate::specifier_handler::FetchHandler;
 use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
 use crate::tools::installer::is_remote_url;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
-use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
@@ -29,7 +25,6 @@ use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::Instant;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -311,8 +306,9 @@ pub async fn run_test_file(
 
 #[allow(clippy::too_many_arguments)]
 pub async fn run_tests(
+  program_state: Arc<ProgramState>,
   flags: Flags,
-  include: Option<Vec<String>>,
+  test_modules: Vec<ModuleSpecifier>,
   no_run: bool,
   fail_fast: bool,
   quiet: bool,
@@ -320,17 +316,34 @@ pub async fn run_tests(
   filter: Option<String>,
   concurrent_jobs: usize,
 ) -> Result<(), AnyError> {
-  let program_state = ProgramState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
-  let cwd = std::env::current_dir().expect("No current directory");
-  let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
+
+  if test_modules.is_empty() {
+    println!("No matching test modules found");
+    if !allow_none {
+      std::process::exit(1);
+    }
+    return Ok(());
+  }
 
   let lib = if flags.unstable {
     module_graph::TypeLib::UnstableDenoWindow
   } else {
     module_graph::TypeLib::DenoWindow
   };
+
+  program_state
+    .prepare_module_graph(
+      test_modules.clone(),
+      lib.clone(),
+      permissions.clone(),
+      program_state.maybe_import_map.clone(),
+    )
+    .await?;
+
+  if no_run {
+    return Ok(());
+  }
 
   // Because scripts, and therefore worker.execute cannot detect unresolved promises at the moment
   // we generate a module for the actual test execution.
@@ -352,247 +365,118 @@ pub async fn run_tests(
 
   program_state.file_fetcher.insert_cached(test_file);
 
-  let handler = Arc::new(Mutex::new(FetchHandler::new(
-    &program_state,
-    Permissions::allow_all(),
-  )?));
+  let (sender, receiver) = channel::<TestEvent>();
 
-  let resolver = |changed: Option<Vec<PathBuf>>| {
-    let test_modules_result =
-      collect_test_module_specifiers(include.clone(), &cwd.clone());
-    let paths_to_watch = paths_to_watch.clone();
-    let paths_to_watch_clone = paths_to_watch.clone();
-
-    let handler = handler.clone();
+  let join_handles = test_modules.iter().map(move |main_module| {
     let program_state = program_state.clone();
-    let files_changed = changed.is_some();
-    async move {
-      let test_modules = test_modules_result?;
+    let main_module = main_module.clone();
+    let test_module = test_module.clone();
+    let permissions = permissions.clone();
+    let sender = sender.clone();
 
-      let mut paths_to_watch = paths_to_watch_clone;
-      let mut modules_to_reload = if files_changed {
-        Vec::new()
-      } else {
-        test_modules
-          .iter()
-          .filter_map(|url| deno_core::resolve_url(url.as_str()).ok())
-          .collect()
-      };
-
-      let graphs = future::join_all(test_modules.into_iter().map(|module| {
-        let handler = handler.clone();
-        let maybe_import_map = program_state.maybe_import_map.clone();
-        let lockfile = program_state.lockfile.clone();
-        async move {
-          let mut builder = module_graph::GraphBuilder::new(
-            handler,
-            maybe_import_map,
-            lockfile,
-          );
-          let module_specifier = deno_core::resolve_url(module.as_str())?;
-          builder.add(&module_specifier, false).await?;
-          Ok::<module_graph::Graph, AnyError>(builder.get_graph())
-        }
-      }))
-      .await
-      .into_iter()
-      .collect::<Result<Vec<_>, _>>()?;
-
-      for graph in graphs {
-        let root = graph.info()?.root;
-        let modules = graph.get_modules();
-
-        paths_to_watch.extend(
-          modules
-            .iter()
-            .filter_map(|specifier| specifier.to_file_path().ok()),
+    tokio::task::spawn_blocking(move || {
+      let join_handle = std::thread::spawn(move || {
+        let future = run_test_file(
+          program_state,
+          main_module,
+          test_module,
+          permissions,
+          sender,
         );
 
-        if let Some(changed) = &changed {
-          for path in changed.iter().filter_map(|path| {
-            deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
-          }) {
-            if modules.contains(&path) {
-              modules_to_reload.push(root);
-              break;
+        tokio_util::run_basic(future)
+      });
+
+      join_handle.join().unwrap()
+    })
+  });
+
+  let join_futures = stream::iter(join_handles)
+    .buffer_unordered(concurrent_jobs)
+    .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
+
+  let mut reporter = create_reporter(concurrent_jobs > 1);
+  let handler = {
+    tokio::task::spawn_blocking(move || {
+      let mut used_only = false;
+      let mut has_error = false;
+      let mut planned = 0;
+      let mut reported = 0;
+
+      for event in receiver.iter() {
+        match event.message.clone() {
+          TestMessage::Plan {
+            pending,
+            filtered: _,
+            only,
+          } => {
+            if only {
+              used_only = true;
+            }
+
+            planned += pending;
+          }
+          TestMessage::Result {
+            name: _,
+            duration: _,
+            result,
+          } => {
+            reported += 1;
+
+            if let TestResult::Failed(_) = result {
+              has_error = true;
             }
           }
+          _ => {}
+        }
+
+        reporter.visit_event(event);
+
+        if has_error && fail_fast {
+          break;
         }
       }
 
-      Ok((paths_to_watch, modules_to_reload))
-    }
-    .map(move |result| {
-      if files_changed
-        && matches!(result, Ok((_, ref modules)) if modules.is_empty())
-      {
-        ResolutionResult::Ignore
-      } else {
-        match result {
-          Ok((paths_to_watch, modules_to_reload)) => {
-            ResolutionResult::Restart {
-              paths_to_watch,
-              result: Ok(modules_to_reload),
-            }
-          }
-          Err(e) => ResolutionResult::Restart {
-            paths_to_watch,
-            result: Err(e),
-          },
-        }
+      if planned > reported {
+        has_error = true;
       }
+
+      reporter.done();
+
+      if planned > reported {
+        has_error = true;
+      }
+
+      if used_only {
+        println!(
+          "{} because the \"only\" option was used\n",
+          colors::red("FAILED")
+        );
+
+        has_error = true;
+      }
+
+      has_error
     })
   };
 
-  let operation = |test_modules: Vec<ModuleSpecifier>| {
-    let program_state = program_state.clone();
-    let test_module = test_module.clone();
-    let permissions = permissions.clone();
-    async move {
-      let (sender, receiver) = channel::<TestEvent>();
+  let (result, join_results) = future::join(handler, join_futures).await;
 
-      let join_handles = test_modules.iter().map(move |main_module| {
-        let program_state = program_state.clone();
-        let main_module = main_module.clone();
-        let test_module = test_module.clone();
-        let permissions = permissions.clone();
-        let sender = sender.clone();
+  let mut join_errors = join_results.into_iter().filter_map(|join_result| {
+    join_result
+      .ok()
+      .map(|handle_result| handle_result.err())
+      .flatten()
+  });
 
-        tokio::task::spawn_blocking(move || {
-          let join_handle = std::thread::spawn(move || {
-            let future = run_test_file(
-              program_state,
-              main_module,
-              test_module,
-              permissions,
-              sender,
-            );
-
-            tokio_util::run_basic(future)
-          });
-
-          join_handle.join().unwrap()
-        })
-      });
-
-      let join_futures = stream::iter(join_handles)
-        .buffer_unordered(concurrent_jobs)
-        .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
-
-      let mut reporter = create_reporter(concurrent_jobs > 1);
-      let handler = {
-        tokio::task::spawn_blocking(move || {
-          let mut used_only = false;
-          let mut has_error = false;
-          let mut planned = 0;
-          let mut reported = 0;
-
-          for event in receiver.iter() {
-            match event.message.clone() {
-              TestMessage::Plan {
-                pending,
-                filtered: _,
-                only,
-              } => {
-                if only {
-                  used_only = true;
-                }
-
-                planned += pending;
-              }
-              TestMessage::Result {
-                name: _,
-                duration: _,
-                result,
-              } => {
-                reported += 1;
-
-                if let TestResult::Failed(_) = result {
-                  has_error = true;
-                }
-              }
-              _ => {}
-            }
-
-            reporter.visit_event(event);
-
-            if has_error && fail_fast {
-              break;
-            }
-          }
-
-          if planned > reported {
-            has_error = true;
-          }
-
-          reporter.done();
-
-          if planned > reported {
-            has_error = true;
-          }
-
-          if used_only {
-            println!(
-              "{} because the \"only\" option was used\n",
-              colors::red("FAILED")
-            );
-
-            has_error = true;
-          }
-
-          has_error
-        })
-      };
-
-      let (result, join_results) = future::join(handler, join_futures).await;
-
-      let mut join_errors =
-        join_results.into_iter().filter_map(|join_result| {
-          join_result
-            .ok()
-            .map(|handle_result| handle_result.err())
-            .flatten()
-        });
-
-      if let Some(e) = join_errors.next() {
-        Err(e)
-      } else {
-        if result.unwrap_or(false) {
-          std::process::exit(1);
-        }
-
-        Ok(())
-      }
-    }
-  };
-
-  if flags.watch {
-    file_watcher::watch_func(resolver, operation, "Test").await
+  if let Some(e) = join_errors.next() {
+    Err(e)
   } else {
-    let test_modules = collect_test_module_specifiers(include, &cwd)?;
-
-    if test_modules.is_empty() {
-      println!("No matching test modules found");
-      if !allow_none {
-        std::process::exit(1);
-      }
-      return Ok(());
+    if result.unwrap_or(false) {
+      std::process::exit(1);
     }
 
-    program_state
-      .prepare_module_graph(
-        test_modules.clone(),
-        lib.clone(),
-        permissions.clone(),
-        program_state.maybe_import_map.clone(),
-      )
-      .await?;
-
-    if no_run {
-      return Ok(());
-    }
-
-    operation(test_modules).await
+    Ok(())
   }
 }
 
