@@ -2365,7 +2365,9 @@ declare namespace Deno {
    * // truncate the entire file
    * const file = Deno.openSync("my_file.txt", { read: true, write: true, truncate: true, create: true });
    * Deno.ftruncateSync(file.rid);
+   * ```
    *
+   * ```ts
    * // truncate part of the file
    * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
    * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
@@ -2391,7 +2393,9 @@ declare namespace Deno {
    * // truncate the entire file
    * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
    * await Deno.ftruncate(file.rid);
+   * ```
    *
+   * ```ts
    * // truncate part of the file
    * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
    * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
