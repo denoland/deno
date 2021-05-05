@@ -114,8 +114,8 @@ function runTestOpCount() {
 }
 
 function runTestPluginClose() {
-  // Closing does not yet work, should it even?
-  Deno.close(rid);
+  // Closing does not yet work
+  Deno.close(pluginRid);
 
   const resourcesPost = Deno.resources();
 

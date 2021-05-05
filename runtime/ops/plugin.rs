@@ -10,6 +10,7 @@ use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use log::debug;
 use std::borrow::Cow;
+use std::mem;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -35,6 +36,8 @@ pub fn op_open_plugin(
   debug!("Loading Plugin: {:#?}", filename);
   let plugin_lib = Library::open(filename).map(Rc::new)?;
   let plugin_resource = PluginResource::new(&plugin_lib);
+  mem::forget(plugin_lib);
+
   let init = *unsafe { plugin_resource.0.symbol::<InitFn>("init") }?;
   let rid = state.resource_table.add(plugin_resource);
   let mut extension = init();
@@ -61,6 +64,10 @@ struct PluginResource(Rc<Library>);
 impl Resource for PluginResource {
   fn name(&self) -> Cow<str> {
     "plugin".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    unimplemented!();
   }
 }
 
