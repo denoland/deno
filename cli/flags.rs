@@ -938,7 +938,7 @@ fn run_subcommand<'a>() -> App<'a> {
     .arg(
       watch_arg()
         .conflicts_with("inspect")
-        .conflicts_with("inspect-brk")
+        .conflicts_with("inspect-brk"),
     )
     .setting(AppSettings::TrailingVarArg)
     .arg(script_arg().required(true))
