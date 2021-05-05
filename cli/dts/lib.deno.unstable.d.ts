@@ -1190,7 +1190,7 @@ declare namespace Deno {
   export interface RequestEvent {
     readonly request: Request;
     respondWith(r: Response | Promise<Response>): Promise<void>;
-    upgradeWebsocket(): Promise<WebSocketUpgrade>;
+    upgradeWebSocket(): Promise<WebSocketUpgrade>;
   }
 
   export interface HttpConn extends AsyncIterable<RequestEvent> {
