@@ -2,6 +2,7 @@
 import {
   assert,
   assertEquals,
+  assertStringIncludes,
   assertThrowsAsync,
 } from "../../test_util/std/testing/asserts.ts";
 
@@ -355,5 +356,45 @@ Deno.test({
       Error,
       "Unable to load 'file:///import_map_does_not_exist.json' import map",
     );
+  },
+});
+
+Deno.test({
+  name: `Deno.emit() - support source maps with bundle option`,
+  async fn() {
+    {
+      const { diagnostics, files } = await Deno.emit("/a.ts", {
+        bundle: "classic",
+        sources: {
+          "/a.ts": `import { b } from "./b.ts";
+          console.log(b);`,
+          "/b.ts": `export const b = "b";`,
+        },
+        compilerOptions: {
+          inlineSourceMap: true,
+        },
+      });
+      assert(diagnostics);
+      assertEquals(diagnostics.length, 0);
+      assertEquals(Object.keys(files).length, 1);
+      assertStringIncludes(files["deno:///bundle.js"], "sourceMappingURL");
+    }
+
+    const { diagnostics, files } = await Deno.emit("/a.ts", {
+      bundle: "classic",
+      sources: {
+        "/a.ts": `import { b } from "./b.ts";
+        console.log(b);`,
+        "/b.ts": `export const b = "b";`,
+      },
+      compilerOptions: {
+        sourceMap: true,
+      },
+    });
+    assert(diagnostics);
+    assertEquals(diagnostics.length, 0);
+    assertEquals(Object.keys(files).length, 2);
+    assert(files["deno:///bundle.js"]);
+    assert(files["deno:///bundle.js.map"]);
   },
 });
