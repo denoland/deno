@@ -1027,6 +1027,7 @@ declare namespace Deno {
    * const file = Deno.openSync('test.file', {write: true});
    * Deno.writeAllSync(file, contentBytes);
    * Deno.close(file.rid);
+   * ```
    *
    * ```ts
    * // Example writing to buffer
