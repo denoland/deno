@@ -15,5 +15,5 @@ path = "lib.rs"
 
 [dependencies]
 deno_core = { version = "0.86.0", path = "../../core" }
-rusqlite = { version = "0.25.0", features = ["unlock_notify", "bundled"] }
 serde = { version = "1.0.125", features = ["derive"] }
+sled = "0.34.6"
