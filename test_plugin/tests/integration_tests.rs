@@ -10,6 +10,11 @@ const BUILD_VARIANT: &str = "debug";
 const BUILD_VARIANT: &str = "release";
 
 #[test]
+// TODO: re-enable after adapting plugins to new op-layer
+// see:
+// - https://github.com/denoland/deno/pull/9843
+// - https://github.com/denoland/deno/pull/9850
+#[ignore]
 fn basic() {
   let mut build_plugin_base = Command::new("cargo");
   let mut build_plugin =

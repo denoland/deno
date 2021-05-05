@@ -15,6 +15,7 @@ use deno_runtime::deno_fetch::reqwest::header::USER_AGENT;
 use deno_runtime::deno_fetch::reqwest::redirect::Policy;
 use deno_runtime::deno_fetch::reqwest::Client;
 use deno_runtime::deno_fetch::reqwest::StatusCode;
+use log::debug;
 use std::collections::HashMap;
 
 /// Create new instance of async reqwest::Client. This client supports

@@ -34,10 +34,15 @@ declare global {
 
   interface DenoCore {
     // deno-lint-ignore no-explicit-any
-    jsonOpSync<T>(name: string, params: T): any;
+    opSync<T>(name: string, params: T): any;
     ops(): void;
-    print(msg: string, code?: number): void;
-    registerErrorClass(name: string, Ctor: typeof Error): void;
+    print(msg: string, stderr: bool): void;
+    registerErrorClass(
+      name: string,
+      Ctor: typeof Error,
+      // deno-lint-ignore no-explicit-any
+      ...args: any[]
+    ): void;
   }
 
   type LanguageServerRequest =
@@ -46,16 +51,23 @@ declare global {
     | GetAsset
     | GetCodeFixes
     | GetCombinedCodeFix
+    | GetCompletionDetails
     | GetCompletionsRequest
     | GetDefinitionRequest
     | GetDiagnosticsRequest
     | GetDocumentHighlightsRequest
+    | GetEncodedSemanticClassifications
     | GetImplementationRequest
     | GetNavigationTree
+    | GetOutliningSpans
     | GetQuickInfoRequest
     | GetReferencesRequest
     | GetSignatureHelpItemsRequest
-    | GetSupportedCodeFixes;
+    | GetSmartSelectionRange
+    | GetSupportedCodeFixes
+    | PrepareCallHierarchy
+    | ProvideCallHierarchyIncomingCalls
+    | ProvideCallHierarchyOutgoingCalls;
 
   interface BaseLanguageServerRequest {
     id: number;
@@ -97,11 +109,22 @@ declare global {
     fixId: {};
   }
 
+  interface GetCompletionDetails extends BaseLanguageServerRequest {
+    method: "getCompletionDetails";
+    args: {
+      specifier: string;
+      position: number;
+      name: string;
+      source?: string;
+      data?: unknown;
+    };
+  }
+
   interface GetCompletionsRequest extends BaseLanguageServerRequest {
     method: "getCompletions";
     specifier: string;
     position: number;
-    preferences: ts.UserPreferences;
+    preferences: ts.GetCompletionsAtPositionOptions;
   }
 
   interface GetDiagnosticsRequest extends BaseLanguageServerRequest {
@@ -122,6 +145,13 @@ declare global {
     filesToSearch: string[];
   }
 
+  interface GetEncodedSemanticClassifications
+    extends BaseLanguageServerRequest {
+    method: "getEncodedSemanticClassifications";
+    specifier: string;
+    span: ts.TextSpan;
+  }
+
   interface GetImplementationRequest extends BaseLanguageServerRequest {
     method: "getImplementation";
     specifier: string;
@@ -130,6 +160,11 @@ declare global {
 
   interface GetNavigationTree extends BaseLanguageServerRequest {
     method: "getNavigationTree";
+    specifier: string;
+  }
+
+  interface GetOutliningSpans extends BaseLanguageServerRequest {
+    method: "getOutliningSpans";
     specifier: string;
   }
 
@@ -152,7 +187,33 @@ declare global {
     options: ts.SignatureHelpItemsOptions;
   }
 
+  interface GetSmartSelectionRange extends BaseLanguageServerRequest {
+    method: "getSmartSelectionRange";
+    specifier: string;
+    position: number;
+  }
+
   interface GetSupportedCodeFixes extends BaseLanguageServerRequest {
     method: "getSupportedCodeFixes";
+  }
+
+  interface PrepareCallHierarchy extends BaseLanguageServerRequest {
+    method: "prepareCallHierarchy";
+    specifier: string;
+    position: number;
+  }
+
+  interface ProvideCallHierarchyIncomingCalls
+    extends BaseLanguageServerRequest {
+    method: "provideCallHierarchyIncomingCalls";
+    specifier: string;
+    position: number;
+  }
+
+  interface ProvideCallHierarchyOutgoingCalls
+    extends BaseLanguageServerRequest {
+    method: "provideCallHierarchyOutgoingCalls";
+    specifier: string;
+    position: number;
   }
 }

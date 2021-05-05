@@ -6,6 +6,184 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.9.2 / 2021.04.23
+
+- fix: parse websocket messages correctly (#10318)
+- fix: standalone bin corruption on M1 (#10311)
+- fix: don't gray-out internal error frames (#10293)
+- fix(op_crates/fetch): Response inspect regression (#10295)
+- fix(runtime): do not panic on not found cwd (#10238)
+- fix(op_crates/webgpu): move non-null op buffer arg check when needed (#10319)
+- fix(lsp): document symbol performance mark (#10264)
+
+Release notes for std version 0.95.0:
+https://github.com/denoland/deno_std/releases/tag/0.95.0
+
+### 1.9.1 / 2021.04.20
+
+- feat(lsp, unstable): Implement textDocument/documentSymbol (#9981)
+- feat(lsp, unstable): implement textDocument/prepareCallHierarchy (#10061)
+- feat(lsp, unstable): Implement textDocument/semanticTokens/full (#10233)
+- feat(lsp, unstable): improve diagnostic status page (#10253)
+- fix: revert changes to Deno.Conn type (#10255)
+- fix(lsp): handle x-typescript-types header on type only imports properly
+  (#10261)
+- fix(lsp): remove documents when closed (#10254)
+- fix(runtime): correct URL in Request (#10256)
+- fix(runtime): handle race condition in postMessage where worker has terminated
+  (#10239)
+- fix(runtime): hang during HTTP server response (#10197)
+- fix(runtime): include HTTP ops in WebWorker scope (#10207)
+
+Release notes for std version 0.94.0:
+https://github.com/denoland/deno_std/releases/tag/0.94.0
+
+### 1.9.0 / 2021.04.13
+
+- feat: blob URL support (#10045)
+- feat: blob URL support in fetch (#10120)
+- feat: data URL support in fetch (#10054)
+- feat: native HTTP bindings (#9935)
+- feat: raise file descriptor limit on startup (#10162)
+- feat: set useDefineForClassFields to true (#10119)
+- feat: stabilize Deno.ftruncate and Deno.ftruncateSync (#10126)
+- feat: stricter typings for Listener & Conn (#10012)
+- feat(lsp): add import completions (#9821)
+- feat(lsp): add registry import auto-complete (#9934)
+- feat(lsp): implement textDocument/foldingRange (#9900)
+- feat(lsp): implement textDocument/selectionRange (#9845)
+- feat(permissions): allow env permission to take values (#9825)
+- feat(permissions): allow run permission to take values (#9833)
+- feat(runtime): add stat and statSync methods to Deno.File (#10107)
+- feat(runtime): add truncate and truncateSync methods to Deno.File (#10130)
+- feat(runtime): stabilize Deno.fstat and Deno.fstatSync (#10108)
+- feat(runtime/permissions): prompt fallback (#9376)
+- feat(unstable): Add Deno.memoryUsage() (#9986)
+- feat(unstable): ALPN config in listenTls (#10065)
+- fix: include deno.crypto in "deno types" (#9863)
+- fix: Properly await already evaluating dynamic imports (#9984)
+- fix(lsp): don't error on tsc debug failures for code actions (#10047)
+- fix(lsp): ensure insert_text is passed back on completions (#9951)
+- fix(lsp): folding range adjustment panic (#10030)
+- fix(lsp): normalize windows file URLs properly (#10034)
+- fix(lsp): properly handle encoding URLs from lsp client (#10033)
+- fix(op_crates/console): console.table value misalignment with varying keys
+  (#10127)
+- fix(permissions): don't panic when no input is given (#9894)
+- fix(runtime/js/timers): Use (0, eval) instead of eval() (#10103)
+- fix(runtime/readFile*): close resources on error during read (#10059)
+- fix(websocket): ignore resource close error (#9755)
+
+Release notes for std version 0.93.0:
+https://github.com/denoland/deno_std/releases/tag/0.93.0
+
+### 1.8.3 / 2021.04.02
+
+- feat(lsp): add import completions (#9821)
+- feat(lsp): implement textDocument/selectionRange (#9845)
+- fix(websocket): ignore resource close error (#9755)
+- fix(lsp): ensure insert_text is passed back on completions (#9951)
+- fix(web): add AbortController.abort() (#9907)
+- fix(crypto): include deno.crypto in `deno types` (#9863)
+- fix(cli): re-add dom.asynciterable lib (#9888)
+
+Release notes for std version 0.92.0:
+https://github.com/denoland/deno_std/releases/tag/0.92.0
+
+### 1.8.2 / 2021.03.21
+
+- fix: fallback to default UA and CA data for Deno.createHttpClient() (#9830)
+- fix: getBindGroupLayout always illegal invocation (#9684)
+- fix(cli/bundle): display anyhow error chain (#9822)
+- fix(core): don't panic on invalid arguments for Deno.core.print (#9834)
+- fix(doc): update example for sub processes (#9798)
+- fix(fmt): Correctly format hard breaks in markdown (#9742)
+- fix(lsp): allow on disk files to change (#9746)
+- fix(lsp): diagnostics use own thread and debounce (#9572)
+- fix(op_crates/webgpu): create instance only when required (#9771)
+- fix(runtime): do not require deno namespace in workers for crypto (#9784)
+- refactor: enforce type ResourceId across codebase (#9837, #9832)
+- refactor: Clean up permission handling (#9367)
+- refactor: Move bin ops to deno_core and unify logic with json ops (#9457)
+- refactor: Move Console to op_crates/console (#9770)
+- refactor: Split web op crate (#9635)
+- refactor: Simplify icu data alignment (#9766)
+- refactor: Update minimal ops & rename to buffer ops (#9719)
+- refactor: Use serde ops more (#9817, #9828)
+- refactor(lsp): refactor completions and add tests (#9789)
+- refactor(lsp): slightly reorganize diagnostics debounce logic (#9796)
+- upgrade: rusty_v8 0.21.0 (#9725)
+- upgrade: tokio 1.4.0 (#9842)
+
+Release notes for std version 0.91.0:
+https://github.com/denoland/deno_std/releases/tag/0.91.0
+
+### 1.8.1 / 2021.03.09
+
+- fix(cli/ast): Pass importsNotUsedAsValues to swc (#9714)
+- fix(cli/compile): Do not append .exe depending on target (#9668)
+- fix(cli/coverage): Ensure single line functions don't yield false positives
+  (#9717)
+- fix(core): Shared queue assertion failure in case of js error (#9721)
+- fix(runtime): Add navigator interface objects (#9685)
+- fix(runtime/web_worker): Don't block self.onmessage with TLA (#9619)
+- fix(webgpu): Add Uint32Array type for code in ShaderModuleDescriptor (#9730)
+- fix(webgpu): Add webidl records and simple unions (#9698)
+
+Release notes for std version 0.90.0:
+https://github.com/denoland/deno_std/releases/tag/0.90.0
+
+### 1.8.0 / 2021.03.02
+
+https://deno.land/posts/v1.8
+
+- feat: Align import map to spec and stabilize (#9616, #9526)
+- feat: Deno.emit supports bundling as IIFE (#9291)
+- feat: Use top user frame for error source lines (#9604)
+- feat: WebGPU API (#7977)
+- feat: add "deno coverage" subcommand (#8664)
+- feat: add --ext flag to deno eval (#9295)
+- feat: add exit sanitizer to Deno.test (#9529)
+- feat: add json(c) support to deno fmt (#9292)
+- feat: add structured cloning to Deno.core (#9458)
+- feat: per op metrics (unstable) (#9240)
+- feat: represent type dependencies in info (#9630)
+- feat: stabilize Deno.permissions (#9573)
+- feat: stabilize Deno.link and Deno.linkSync (#9417)
+- feat: stabilize Deno.symlink and Deno.symlinkSync (#9226)
+- feat: support auth tokens for accessing private modules (#9508)
+- feat: support loading import map from URL (#9519)
+- feat: use type definitions "deno doc" if available (#8459)
+- fix(core): Add stacks for dynamic import resolution errors (#9562)
+- fix(core): Fix dynamic imports for already rejected modules (#9559)
+- fix(lsp): improve exception handling on tsc snapshots (#9628)
+- fix(repl): filter out symbol candidates (#9555)
+- fix(runtime): do not panic on irregular dir entries (#9579)
+- fix(runtime/testing): false positive for timers when an error is thrown
+  (#9553)
+- fix(websocket): default to close code 1005 (#9339)
+- fix: lint and fmt error if no target files are found (#9527)
+- fix: panic caused by Deno.env.set("", "") (#9583)
+- fix: typo in coverage exit_unstable (#9626)
+- upgrade: TypeScript 4.2 (#9341)
+- upgrade: rusty_v8 (V8 9.0.257.3) (#9605)
+
+Release notes for std version 0.89.0:
+https://github.com/denoland/deno_std/releases/tag/0.89.0
+
+### 1.7.5 / 2021.02.19
+
+- fix: align btoa to spec (#9053)
+- fix: Don't use file names from source maps (#9462)
+- fix: Make dynamic import async errors catchable (#9505)
+- fix: webidl utils and align `Event` to spec (#9470)
+- fix(lsp): document spans use original range (#9525)
+- fix(lsp): handle cached type dependencies properly (#9500)
+- fix(lsp): handle data URLs properly (#9522)
+
+Release notes for std version 0.88.0:
+https://github.com/denoland/deno_std/releases/tag/0.88.0
+
 ### 1.7.4 / 2021.02.13
 
 - feat(unstable, lsp): add deno cache code actions (#9471)

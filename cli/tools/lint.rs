@@ -19,6 +19,8 @@ use deno_lint::linter::Linter;
 use deno_lint::linter::LinterBuilder;
 use deno_lint::rules;
 use deno_lint::rules::LintRule;
+use log::debug;
+use log::info;
 use serde::Serialize;
 use std::fs;
 use std::io::{stdin, Read};

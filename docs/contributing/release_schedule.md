@@ -1,12 +1,14 @@
 ## Release Schedule
 
-A new minor release for the `deno` cli is released every 6 weeks. A new patch
-version is released weekly, except in the week before a new minor release.
+A new minor release for the `deno` cli is released every 6 weeks. After 1.9.0 we
+will be switching to a 4 week release cycle. A new patch version is released
+weekly, as necessary.
 
 The release dates for the upcoming minor releases are:
 
-- 1.8.0: March 2nd, 2021
 - 1.9.0: April 13, 2021
+- 1.10.0: May 11, 2021
+- 1.11.0: June 8, 2021
 
 Stable releases can be found on the
 [GitHub releases page](https://github.com/denoland/deno/releases).

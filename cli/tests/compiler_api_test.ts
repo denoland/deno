@@ -173,12 +173,12 @@ Deno.test({
 });
 
 Deno.test({
-  name: "Deno.emit() - bundle esm - with sources",
+  name: "Deno.emit() - bundle as module script - with sources",
   async fn() {
     const { diagnostics, files, ignoredOptions, stats } = await Deno.emit(
       "/foo.ts",
       {
-        bundle: "esm",
+        bundle: "module",
         sources: {
           "/foo.ts": `export * from "./bar.ts";\n`,
           "/bar.ts": `export const bar = "bar";\n`,
@@ -194,12 +194,12 @@ Deno.test({
 });
 
 Deno.test({
-  name: "Deno.emit() - bundle esm - no sources",
+  name: "Deno.emit() - bundle as module script - no sources",
   async fn() {
     const { diagnostics, files, ignoredOptions, stats } = await Deno.emit(
       "./subdir/mod1.ts",
       {
-        bundle: "esm",
+        bundle: "module",
       },
     );
     assertEquals(diagnostics.length, 0);
@@ -211,12 +211,12 @@ Deno.test({
 });
 
 Deno.test({
-  name: "Deno.emit() - bundle esm - include js modules",
+  name: "Deno.emit() - bundle as module script - include js modules",
   async fn() {
     const { diagnostics, files, ignoredOptions, stats } = await Deno.emit(
       "/foo.js",
       {
-        bundle: "esm",
+        bundle: "module",
         sources: {
           "/foo.js": `export * from "./bar.js";\n`,
           "/bar.js": `export const bar = "bar";\n`,
@@ -321,10 +321,10 @@ Deno.test({
 });
 
 Deno.test({
-  name: `Deno.emit() - bundle supports iife`,
+  name: `Deno.emit() - bundle as classic script iife`,
   async fn() {
     const { diagnostics, files } = await Deno.emit("/a.ts", {
-      bundle: "iife",
+      bundle: "classic",
       sources: {
         "/a.ts": `import { b } from "./b.ts";
           console.log(b);`,
@@ -336,5 +336,24 @@ Deno.test({
     assertEquals(Object.keys(files).length, 1);
     assert(files["deno:///bundle.js"].startsWith("(function() {\n"));
     assert(files["deno:///bundle.js"].endsWith("})();\n"));
+  },
+});
+
+Deno.test({
+  name: `Deno.emit() - throws descriptive error when unable to load import map`,
+  async fn() {
+    await assertThrowsAsync(
+      async () => {
+        await Deno.emit("/a.ts", {
+          bundle: "classic",
+          sources: {
+            "/a.ts": `console.log("hello");`,
+          },
+          importMapPath: "file:///import_map_does_not_exist.json",
+        });
+      },
+      Error,
+      "Unable to load 'file:///import_map_does_not_exist.json' import map",
+    );
   },
 });

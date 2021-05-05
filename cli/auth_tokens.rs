@@ -1,6 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::ModuleSpecifier;
+use log::debug;
+use log::error;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

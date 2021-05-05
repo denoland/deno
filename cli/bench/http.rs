@@ -1,9 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use super::Result;
-use std::{
-  collections::HashMap, path::PathBuf, process::Command, time::Duration,
-};
+use std::{collections::HashMap, path::Path, process::Command, time::Duration};
 pub use test_util::{parse_wrk_output, WrkOutput as HttpBenchmarkResult};
 
 // Some of the benchmarks in this file have been renamed. In case the history
@@ -15,16 +13,13 @@ pub use test_util::{parse_wrk_output, WrkOutput as HttpBenchmarkResult};
 const DURATION: &str = "20s";
 
 pub(crate) fn benchmark(
-  target_path: &PathBuf,
+  target_path: &Path,
 ) -> Result<HashMap<String, HttpBenchmarkResult>> {
   let deno_exe = test_util::deno_exe_path();
   let deno_exe = deno_exe.to_str().unwrap();
 
   let hyper_hello_exe = target_path.join("test_server");
   let hyper_hello_exe = hyper_hello_exe.to_str().unwrap();
-
-  let core_http_bin_ops_exe = target_path.join("examples/http_bench_bin_ops");
-  let core_http_bin_ops_exe = core_http_bin_ops_exe.to_str().unwrap();
 
   let core_http_json_ops_exe = target_path.join("examples/http_bench_json_ops");
   let core_http_json_ops_exe = core_http_json_ops_exe.to_str().unwrap();
@@ -35,18 +30,15 @@ pub(crate) fn benchmark(
   res.insert("deno_tcp".to_string(), deno_tcp(deno_exe)?);
   // res.insert("deno_udp".to_string(), deno_udp(deno_exe)?);
   res.insert("deno_http".to_string(), deno_http(deno_exe)?);
+  res.insert("deno_http_native".to_string(), deno_http_native(deno_exe)?);
   // TODO(ry) deno_proxy disabled to make fetch() standards compliant.
   // res.insert("deno_proxy".to_string(), deno_http_proxy(deno_exe) hyper_hello_exe))
   res.insert(
     "deno_proxy_tcp".to_string(),
     deno_tcp_proxy(deno_exe, hyper_hello_exe)?,
   );
-  // "core_http_bin_ops" was once called "deno_core_single"
-  // "core_http_bin_ops" was once called "deno_core_http_bench"
-  res.insert(
-    "core_http_bin_ops".to_string(),
-    core_http_bin_ops(core_http_bin_ops_exe)?,
-  );
+  // "core_http_json_ops" previously had a "bin op" counterpart called "core_http_bin_ops",
+  // which was previously also called "deno_core_http_bench", "deno_core_single"
   res.insert(
     "core_http_json_ops".to_string(),
     core_http_json_ops(core_http_json_ops_exe)?,
@@ -108,6 +100,8 @@ fn run(
   ];
   println!("{}", wrk_cmd.join(" "));
   let output = test_util::run_collect(wrk_cmd, None, None, None, true).0;
+
+  std::thread::sleep(Duration::from_secs(1)); // wait to capture failure. TODO racy.
 
   println!("{}", output);
   assert!(
@@ -200,6 +194,25 @@ fn deno_http(deno_exe: &str) -> Result<HttpBenchmarkResult> {
   )
 }
 
+fn deno_http_native(deno_exe: &str) -> Result<HttpBenchmarkResult> {
+  let port = get_port();
+  println!("http_benchmark testing DENO using native bindings.");
+  run(
+    &[
+      deno_exe,
+      "run",
+      "--allow-net",
+      "--reload",
+      "--unstable",
+      "cli/bench/deno_http_native.js",
+      &server_addr(port),
+    ],
+    port,
+    None,
+    None,
+  )
+}
+
 #[allow(dead_code)]
 fn deno_http_proxy(
   deno_exe: &str,
@@ -224,11 +237,6 @@ fn deno_http_proxy(
     None,
     Some(&[hyper_exe, &origin_port.to_string()]),
   )
-}
-
-fn core_http_bin_ops(exe: &str) -> Result<HttpBenchmarkResult> {
-  println!("http_benchmark testing CORE http_bench_bin_ops");
-  run(&[exe], 4544, None, None)
 }
 
 fn core_http_json_ops(exe: &str) -> Result<HttpBenchmarkResult> {

@@ -1,4 +1,6 @@
 [WILDCARD]CustomError: custom error
     at [WILDCARD]tests/error_022_stack_custom_error.ts:[WILDCARD]
 error: Uncaught CustomError: custom error
+const error = new CustomError();
+              ^
     at [WILDCARD]tests/error_022_stack_custom_error.ts:[WILDCARD]

@@ -4,6 +4,7 @@ use crate::colors;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::{Stream, StreamExt};
 use deno_core::futures::Future;
+use log::info;
 use notify::event::Event as NotifyEvent;
 use notify::event::EventKind;
 use notify::Config;
@@ -27,8 +28,6 @@ use tokio::time::Instant;
 use tokio::time::Sleep;
 
 const DEBOUNCE_INTERVAL: Duration = Duration::from_millis(200);
-
-type FileWatcherFuture<T> = Pin<Box<dyn Future<Output = T>>>;
 
 #[pin_project(project = DebounceProjection)]
 struct Debounce {
@@ -69,7 +68,10 @@ impl Stream for Debounce {
   }
 }
 
-async fn error_handler(watch_future: FileWatcherFuture<Result<(), AnyError>>) {
+async fn error_handler<F>(watch_future: F)
+where
+  F: Future<Output = Result<(), AnyError>>,
+{
   let result = watch_future.await;
   if let Err(err) = result {
     let msg = format!("{}: {}", colors::red_bold("error"), err.to_string(),);
@@ -85,18 +87,19 @@ pub enum ResolutionResult<T> {
   Ignore,
 }
 
-async fn next_restart<F, T>(
-  resolver: &mut F,
+async fn next_restart<R, T, F>(
+  resolver: &mut R,
   debounce: &mut Pin<&mut Debounce>,
 ) -> (Vec<PathBuf>, Result<T, AnyError>)
 where
-  F: FnMut(Option<Vec<PathBuf>>) -> FileWatcherFuture<ResolutionResult<T>>,
+  R: FnMut(Option<Vec<PathBuf>>) -> F,
+  F: Future<Output = ResolutionResult<T>>,
 {
   loop {
     let changed = debounce.next().await;
     match resolver(changed).await {
       ResolutionResult::Ignore => {
-        debug!("File change ignored")
+        log::debug!("File change ignored")
       }
       ResolutionResult::Restart {
         paths_to_watch,
@@ -124,14 +127,16 @@ where
 /// have the logic for it like bundling the code.
 ///
 /// - `job_name` is just used for printing watcher status to terminal.
-pub async fn watch_func<F, G, T>(
-  mut resolver: F,
-  mut operation: G,
+pub async fn watch_func<R, O, T, F1, F2>(
+  mut resolver: R,
+  mut operation: O,
   job_name: &str,
 ) -> Result<(), AnyError>
 where
-  F: FnMut(Option<Vec<PathBuf>>) -> FileWatcherFuture<ResolutionResult<T>>,
-  G: FnMut(T) -> FileWatcherFuture<Result<(), AnyError>>,
+  R: FnMut(Option<Vec<PathBuf>>) -> F1,
+  O: FnMut(T) -> F2,
+  F1: Future<Output = ResolutionResult<T>>,
+  F2: Future<Output = Result<(), AnyError>>,
 {
   let debounce = Debounce::new();
   pin!(debounce);

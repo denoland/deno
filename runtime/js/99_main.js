@@ -11,7 +11,6 @@ delete Object.prototype.__proto__;
   const eventTarget = window.__bootstrap.eventTarget;
   const globalInterfaces = window.__bootstrap.globalInterfaces;
   const location = window.__bootstrap.location;
-  const dispatchMinimal = window.__bootstrap.dispatchMinimal;
   const build = window.__bootstrap.build;
   const version = window.__bootstrap.version;
   const errorStack = window.__bootstrap.errorStack;
@@ -20,20 +19,23 @@ delete Object.prototype.__proto__;
   const Console = window.__bootstrap.console.Console;
   const worker = window.__bootstrap.worker;
   const signals = window.__bootstrap.signals;
-  const { internalSymbol, internalObject } = window.__bootstrap.internals;
+  const internals = window.__bootstrap.internals;
   const performance = window.__bootstrap.performance;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
   const headers = window.__bootstrap.headers;
   const streams = window.__bootstrap.streams;
   const fileReader = window.__bootstrap.fileReader;
+  const webgpu = window.__bootstrap.webgpu;
   const webSocket = window.__bootstrap.webSocket;
   const file = window.__bootstrap.file;
+  const formData = window.__bootstrap.formData;
   const fetch = window.__bootstrap.fetch;
   const prompt = window.__bootstrap.prompt;
   const denoNs = window.__bootstrap.denoNs;
   const denoNsUnstable = window.__bootstrap.denoNsUnstable;
   const errors = window.__bootstrap.errors.errors;
+  const webidl = window.__bootstrap.webidl;
   const { defineEventHandler } = window.__bootstrap.webUtil;
 
   let windowIsClosing = false;
@@ -128,25 +130,18 @@ delete Object.prototype.__proto__;
   }
 
   function opPostMessage(data) {
-    core.jsonOpSync("op_worker_post_message", {}, data);
+    core.opSync("op_worker_post_message", null, data);
   }
 
   function opCloseWorker() {
-    core.jsonOpSync("op_worker_close");
+    core.opSync("op_worker_close");
   }
 
   function opMainModule() {
-    return core.jsonOpSync("op_main_module");
+    return core.opSync("op_main_module");
   }
 
   function runtimeStart(runtimeOptions, source) {
-    const opsMap = core.ops();
-    for (const [name, opId] of Object.entries(opsMap)) {
-      if (name === "op_write" || name === "op_read") {
-        core.setAsyncHandler(opId, dispatchMinimal.asyncMsgFromRust);
-      }
-    }
-
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
     version.setVersions(
       runtimeOptions.denoVersion,
@@ -189,13 +184,59 @@ delete Object.prototype.__proto__;
     core.registerErrorClass("Http", errors.Http);
     core.registerErrorClass("Busy", errors.Busy);
     core.registerErrorClass("NotSupported", errors.NotSupported);
-    core.registerErrorClass("Error", Error);
-    core.registerErrorClass("RangeError", RangeError);
-    core.registerErrorClass("ReferenceError", ReferenceError);
-    core.registerErrorClass("SyntaxError", SyntaxError);
-    core.registerErrorClass("TypeError", TypeError);
-    core.registerErrorClass("URIError", URIError);
+    core.registerErrorBuilder(
+      "DOMExceptionOperationError",
+      function DOMExceptionOperationError(msg) {
+        return new DOMException(msg, "OperationError");
+      },
+    );
   }
+
+  class Navigator {
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({})}`;
+    }
+  }
+
+  const navigator = webidl.createBranded(Navigator);
+
+  Object.defineProperties(Navigator.prototype, {
+    gpu: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, Navigator);
+        return webgpu.gpu;
+      },
+    },
+  });
+
+  class WorkerNavigator {
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({})}`;
+    }
+  }
+
+  const workerNavigator = webidl.createBranded(WorkerNavigator);
+
+  Object.defineProperties(WorkerNavigator.prototype, {
+    gpu: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, WorkerNavigator);
+        return webgpu.gpu;
+      },
+    },
+  });
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
   const windowOrWorkerGlobalScope = {
@@ -214,7 +255,7 @@ delete Object.prototype.__proto__;
     EventTarget: util.nonEnumerable(EventTarget),
     File: util.nonEnumerable(file.File),
     FileReader: util.nonEnumerable(fileReader.FileReader),
-    FormData: util.nonEnumerable(fetch.FormData),
+    FormData: util.nonEnumerable(formData.FormData),
     Headers: util.nonEnumerable(headers.Headers),
     MessageEvent: util.nonEnumerable(MessageEvent),
     Performance: util.nonEnumerable(performance.Performance),
@@ -243,12 +284,45 @@ delete Object.prototype.__proto__;
     btoa: util.writable(btoa),
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
-    console: util.writable(new Console(core.print)),
+    console: util.writable(
+      new Console((msg, level) => core.print(msg, level > 1)),
+    ),
     crypto: util.readOnly(crypto),
     fetch: util.writable(fetch.fetch),
     performance: util.writable(performance.performance),
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
+
+    GPU: util.nonEnumerable(webgpu.GPU),
+    GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
+    GPUAdapterLimits: util.nonEnumerable(webgpu.GPUAdapterLimits),
+    GPUAdapterFeatures: util.nonEnumerable(webgpu.GPUAdapterFeatures),
+    GPUDevice: util.nonEnumerable(webgpu.GPUDevice),
+    GPUQueue: util.nonEnumerable(webgpu.GPUQueue),
+    GPUBuffer: util.nonEnumerable(webgpu.GPUBuffer),
+    GPUBufferUsage: util.nonEnumerable(webgpu.GPUBufferUsage),
+    GPUMapMode: util.nonEnumerable(webgpu.GPUMapMode),
+    GPUTexture: util.nonEnumerable(webgpu.GPUTexture),
+    GPUTextureUsage: util.nonEnumerable(webgpu.GPUTextureUsage),
+    GPUTextureView: util.nonEnumerable(webgpu.GPUTextureView),
+    GPUSampler: util.nonEnumerable(webgpu.GPUSampler),
+    GPUBindGroupLayout: util.nonEnumerable(webgpu.GPUBindGroupLayout),
+    GPUPipelineLayout: util.nonEnumerable(webgpu.GPUPipelineLayout),
+    GPUBindGroup: util.nonEnumerable(webgpu.GPUBindGroup),
+    GPUShaderModule: util.nonEnumerable(webgpu.GPUShaderModule),
+    GPUShaderStage: util.nonEnumerable(webgpu.GPUShaderStage),
+    GPUComputePipeline: util.nonEnumerable(webgpu.GPUComputePipeline),
+    GPURenderPipeline: util.nonEnumerable(webgpu.GPURenderPipeline),
+    GPUColorWrite: util.nonEnumerable(webgpu.GPUColorWrite),
+    GPUCommandEncoder: util.nonEnumerable(webgpu.GPUCommandEncoder),
+    GPURenderPassEncoder: util.nonEnumerable(webgpu.GPURenderPassEncoder),
+    GPUComputePassEncoder: util.nonEnumerable(webgpu.GPUComputePassEncoder),
+    GPUCommandBuffer: util.nonEnumerable(webgpu.GPUCommandBuffer),
+    GPURenderBundleEncoder: util.nonEnumerable(webgpu.GPURenderBundleEncoder),
+    GPURenderBundle: util.nonEnumerable(webgpu.GPURenderBundle),
+    GPUQuerySet: util.nonEnumerable(webgpu.GPUQuerySet),
+    GPUOutOfMemoryError: util.nonEnumerable(webgpu.GPUOutOfMemoryError),
+    GPUValidationError: util.nonEnumerable(webgpu.GPUValidationError),
   };
 
   // The console seems to be the only one that should be writable and non-enumerable
@@ -262,6 +336,12 @@ delete Object.prototype.__proto__;
     Window: globalInterfaces.windowConstructorDescriptor,
     window: util.readOnly(globalThis),
     self: util.readOnly(globalThis),
+    Navigator: util.nonEnumerable(Navigator),
+    navigator: {
+      configurable: true,
+      enumerable: true,
+      get: () => navigator,
+    },
     // TODO(bartlomieju): from MDN docs (https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope)
     // it seems those two properties should be available to workers as well
     onload: util.writable(null),
@@ -279,6 +359,12 @@ delete Object.prototype.__proto__;
     WorkerGlobalScope: globalInterfaces.workerGlobalScopeConstructorDescriptor,
     DedicatedWorkerGlobalScope:
       globalInterfaces.dedicatedWorkerGlobalScopeConstructorDescriptor,
+    WorkerNavigator: util.nonEnumerable(WorkerNavigator),
+    navigator: {
+      configurable: true,
+      enumerable: true,
+      get: () => workerNavigator,
+    },
     self: util.readOnly(globalThis),
     onmessage: util.writable(onmessage),
     onerror: util.writable(onerror),
@@ -328,17 +414,19 @@ delete Object.prototype.__proto__;
 
     if (locationHref != null) {
       location.setLocationHref(locationHref);
-      fetch.setBaseUrl(locationHref);
     }
 
     registerErrors();
 
+    const internalSymbol = Symbol("Deno.internal");
+
     const finalDenoNs = {
       core,
       internal: internalSymbol,
-      [internalSymbol]: internalObject,
+      [internalSymbol]: internals,
       resources: core.resources,
       close: core.close,
+      memoryUsage: core.memoryUsage,
       ...denoNs,
     };
     Object.defineProperties(finalDenoNs, {
@@ -392,13 +480,14 @@ delete Object.prototype.__proto__;
       runtimeOptions;
 
     location.setLocationHref(locationHref);
-    fetch.setBaseUrl(locationHref);
     registerErrors();
+
+    const internalSymbol = Symbol("Deno.internal");
 
     const finalDenoNs = {
       core,
       internal: internalSymbol,
-      [internalSymbol]: internalObject,
+      [internalSymbol]: internals,
       resources: core.resources,
       close: core.close,
       ...denoNs,
