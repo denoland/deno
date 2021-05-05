@@ -871,13 +871,6 @@
         "header-value-null-byte.any.js": true,
         "historical.any.js": true,
         "http-response-code.any.js": true,
-        "integrity.sub.any.js": [
-          "Invalid integrity",
-          "Multiple integrities: invalid stronger than valid",
-          "Multiple integrities: both are invalid",
-          "CORS invalid integrity",
-          "Empty string integrity for opaque response"
-        ],
         "request-upload.any.js": [
           "Fetch with POST with ReadableStream",
           "Fetch with POST with ReadableStream containing String",
@@ -890,10 +883,19 @@
         "response-url.sub.any.js": true,
         "scheme-about.any.js": true,
         "scheme-blob.sub.any.js": true,
-        "scheme-data.any.js": false,
+        "scheme-data.any.js": [
+          "Fetching [HEAD] data:,response%27s%20body is OK"
+        ],
         "scheme-others.sub.any.js": true,
         "stream-response.any.js": true,
-        "stream-safe-creation.any.js": false
+        "stream-safe-creation.any.js": [
+          "throwing Object.prototype.start accessor should not affect stream creation by 'fetch'",
+          "Object.prototype.start accessor returning invalid value should not affect stream creation by 'fetch'",
+          "throwing Object.prototype.size accessor should not affect stream creation by 'fetch'",
+          "Object.prototype.size accessor returning invalid value should not affect stream creation by 'fetch'",
+          "throwing Object.prototype.highWaterMark accessor should not affect stream creation by 'fetch'",
+          "Object.prototype.highWaterMark accessor returning invalid value should not affect stream creation by 'fetch'"
+        ]
       },
       "response": {
         "json.any.js": true,
