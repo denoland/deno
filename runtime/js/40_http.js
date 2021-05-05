@@ -67,9 +67,9 @@
       const request = fromInnerRequest(innerRequest, "immutable");
 
       const respondWith = createRespondWith(responseSenderRid, this.#rid);
-      const upgradeWebsocket = createUpgradeWebsocket(requestBodyRid);
+      const upgradeWebSocket = createUpgradeWebsocket(requestBodyRid);
 
-      return { request, respondWith, upgradeWebsocket };
+      return { request, respondWith, upgradeWebSocket };
     }
 
     /** @returns {void} */
@@ -221,7 +221,7 @@
   }
 
   function createUpgradeWebsocket(rid) {
-    return async function upgradeWebsocket() {
+    return async function upgradeWebSocket() {
       const { key, rid } = await core.opAsync(
         "op_http_upgrade_websocket",
         rid,
