@@ -156,11 +156,17 @@
   }
 
   function renameSync(oldpath, newpath) {
-    core.opSync("op_rename_sync", { oldpath, newpath });
+    core.opSync("op_rename_sync", {
+      oldpath: pathFromURL(oldpath),
+      newpath: pathFromURL(newpath),
+    });
   }
 
   async function rename(oldpath, newpath) {
-    await core.opAsync("op_rename_async", { oldpath, newpath });
+    await core.opAsync("op_rename_async", {
+      oldpath: pathFromURL(oldpath),
+      newpath: pathFromURL(newpath),
+    });
   }
 
   function parseFileInfo(response) {
