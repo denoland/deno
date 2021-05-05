@@ -2401,13 +2401,13 @@ declare namespace Deno {
    *
    * ```ts
    * // truncate the entire file
-   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
    * await Deno.ftruncate(file.rid);
    * ```
    *
    * ```ts
    * // truncate part of the file
-   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
    * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
    * await Deno.ftruncate(file.rid, 7);
    * const data = new Uint8Array(32);
