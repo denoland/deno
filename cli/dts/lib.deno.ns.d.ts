@@ -1575,6 +1575,7 @@ declare namespace Deno {
    * what it points to..
    *
    * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
    * const fileInfo = Deno.lstatSync("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -2247,6 +2248,7 @@ declare namespace Deno {
     /** Revokes a permission, and resolves to the state of the permission.
      *
      * ```ts
+     * import { assert } from "https://deno.land/std/testing/asserts.ts";
      * const status = await Deno.permissions.revoke({ name: "run" });
      * assert(status.state !== "granted")
      * ```
@@ -2411,6 +2413,7 @@ declare namespace Deno {
    * Synchronously returns a `Deno.FileInfo` for the given file stream.
    *
    * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
    * const file = Deno.openSync("file.txt", { read: true });
    * const fileInfo = Deno.fstatSync(file.rid);
    * assert(fileInfo.isFile);
@@ -2422,6 +2425,7 @@ declare namespace Deno {
    * Returns a `Deno.FileInfo` for the given file stream.
    *
    * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
    * const file = await Deno.open("file.txt", { read: true });
    * const fileInfo = await Deno.fstat(file.rid);
    * assert(fileInfo.isFile);
