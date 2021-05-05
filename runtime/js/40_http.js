@@ -244,34 +244,27 @@
           );
 
           if (data.kind === "error") {
-            throw new Error(data.value); // TODO
+            throw new Error(data.value);
           } else if (data.kind === "close") {
             return data;
           } else {
-            if (Array.isArray(data.value)) {
-              data.value = new Uint8Array(data.value);
-            }
-
             yield data;
           }
         },
-        async send(kind, data) {
-          switch (kind) {
-            case "text":
-              await core.opAsync("op_http_ws_close", {
-                rid,
-                kind,
-                text: data,
-              });
-              break;
-            case "binary":
-            case "pong":
-            case "ping":
-              await core.opAsync("op_http_ws_close", {
-                rid,
-                kind,
-              }, data);
-              break;
+        async send(data) {
+          if (typeof data === "string") {
+            await core.opAsync("op_http_ws_close", {
+              rid,
+              kind: "text",
+              text: data,
+            });
+          } else if (data instanceof Uint8Array) {
+            await core.opAsync("op_http_ws_close", {
+              rid,
+              kind: "binary",
+            }, data);
+          } else {
+            throw new TypeError("Only string or Uint8Array can be sent");
           }
         },
         async close(code, reason) {

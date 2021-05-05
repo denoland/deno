@@ -60,10 +60,22 @@ pub fn init() -> Extension {
       ("op_http_response", op_async(op_http_response)),
       ("op_http_response_write", op_async(op_http_response_write)),
       ("op_http_response_close", op_async(op_http_response_close)),
-      ("op_http_upgrade_websocket", op_async(op_http_upgrade_websocket)),
-      ("op_http_ws_send", op_async(deno_websocket::op_ws_send::<WebSocketStream<Upgraded>>)),
-      ("op_http_ws_close", op_async(deno_websocket::op_ws_close::<WebSocketStream<Upgraded>>)),
-      ("op_http_ws_next_event", op_async(deno_websocket::op_ws_next_event::<WebSocketStream<Upgraded>>)),
+      (
+        "op_http_upgrade_websocket",
+        op_async(op_http_upgrade_websocket),
+      ),
+      (
+        "op_http_ws_send",
+        op_async(deno_websocket::op_ws_send::<WebSocketStream<Upgraded>>),
+      ),
+      (
+        "op_http_ws_close",
+        op_async(deno_websocket::op_ws_close::<WebSocketStream<Upgraded>>),
+      ),
+      (
+        "op_http_ws_next_event",
+        op_async(deno_websocket::op_ws_next_event::<WebSocketStream<Upgraded>>),
+      ),
     ])
     .build()
 }
