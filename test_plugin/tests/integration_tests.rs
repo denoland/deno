@@ -1,7 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-// To run this test manually:
-//   cd test_plugin
-//   ../target/debug/deno run --unstable --allow-plugin tests/test.js debug
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use std::process::Command;
 use test_util::deno_cmd;
@@ -13,6 +10,11 @@ const BUILD_VARIANT: &str = "debug";
 const BUILD_VARIANT: &str = "release";
 
 #[test]
+// TODO: re-enable after adapting plugins to new op-layer
+// see:
+// - https://github.com/denoland/deno/pull/9843
+// - https://github.com/denoland/deno/pull/9850
+#[ignore]
 fn basic() {
   let mut build_plugin_base = Command::new("cargo");
   let mut build_plugin =
@@ -37,7 +39,7 @@ fn basic() {
     println!("stderr {}", stderr);
   }
   assert!(output.status.success());
-  let expected = "Hello from plugin.\nzero_copy[0]: test\nzero_copy[1]: 123\nzero_copy[2]: cba\nPlugin Sync Response: test\nHello from plugin.\nzero_copy[0]: test\nzero_copy[1]: 123\nPlugin Async Response: test\n";
+  let expected = "Hello from plugin.\nzero_copy[0]: test\nzero_copy[1]: 123\nzero_copy[2]: cba\nPlugin Sync Response: test\nHello from plugin.\nzero_copy[0]: test\nzero_copy[1]: 123\nzero_copy[2]: cba\nPlugin Async Response: test\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
 }

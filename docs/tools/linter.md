@@ -2,18 +2,15 @@
 
 Deno ships with a built in code linter for JavaScript and TypeScript.
 
-**Note: linter is a new feature and still unstable thus it requires `--unstable`
-flag**
-
 ```shell
 # lint all JS/TS files in the current directory and subdirectories
-deno lint --unstable
+deno lint
 # lint specific files
-deno lint --unstable myfile1.ts myfile2.ts
+deno lint myfile1.ts myfile2.ts
 # print result as JSON
-deno lint --unstable --json
+deno lint --json
 # read from stdin
-cat file.ts | deno lint --unstable -
+cat file.ts | deno lint -
 ```
 
 For more detail, run `deno lint --help`.
@@ -24,6 +21,7 @@ For more detail, run `deno lint --help`.
 - `ban-ts-comment`
 - `ban-types`
 - `ban-untagged-ignore`
+- `camelcase`
 - `constructor-super`
 - `for-direction`
 - `getter-return`
@@ -80,11 +78,15 @@ For more detail, run `deno lint --help`.
 - `no-unused-labels`
 - `no-with`
 - `prefer-as-const`
+- `prefer-const`
 - `prefer-namespace-keyword`
+- `require-await`
 - `require-yield`
-- `triple-slash-reference`
 - `use-isnan`
 - `valid-typeof`
+
+For more detail about each rule, visit
+[the deno_lint rule documentation](https://lint.deno.land).
 
 ### Ignore directives
 
@@ -101,7 +103,7 @@ function foo(): any {
 }
 ```
 
-Ignore directive must be placed before first stament or declaration:
+Ignore directive must be placed before first statement or declaration:
 
 ```ts
 // Copyright 2020 the Deno authors. All rights reserved. MIT license.

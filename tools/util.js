@@ -1,11 +1,13 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   dirname,
   fromFileUrl,
   join,
-} from "https://deno.land/std@0.76.0/path/mod.ts";
+} from "https://deno.land/std@0.84.0/path/mod.ts";
 export { dirname, join };
-export { existsSync } from "https://deno.land/std@0.76.0/fs/mod.ts";
+export { existsSync } from "https://deno.land/std@0.84.0/fs/mod.ts";
+export { readLines } from "https://deno.land/std@0.84.0/io/mod.ts";
+export { delay } from "https://deno.land/std@0.84.0/async/delay.ts";
 
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
 
@@ -67,7 +69,7 @@ function gitStaged(baseDir, patterns) {
   return getFilesFromGit(baseDir, cmd);
 }
 
-/** 
+/**
  *  Recursively list all files in (a subdirectory of) a git worktree.
  *    * Optionally, glob patterns may be specified to e.g. only list files with a
  *      certain extension.
@@ -75,7 +77,7 @@ function gitStaged(baseDir, patterns) {
  *    * Directory names themselves are not listed (but the files inside are).
  *    * Submodules and their contents are ignored entirely.
  *    * This function fails if the query matches no files.
- * 
+ *
  * If --staged argument was provided when program is run
  * only staged sources will be returned.
  */

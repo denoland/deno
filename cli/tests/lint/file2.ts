@@ -1,6 +1,6 @@
 try {
   await Deno.open("./some/file.txt");
-} catch (e) {}
+} catch (_e) {}
 
-// deno-lint-ignore no-explicit-any require-await
-function foo(): any {}
+// deno-lint-ignore no-explicit-any
+function _foo(): any {}

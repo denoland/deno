@@ -1,0 +1,25 @@
+{
+  "jsonrpc": "2.0",
+  "method": "textDocument/didChange",
+  "params": {
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "version": 2
+    },
+    "contentChanges": [
+      {
+        "range": {
+          "start": {
+            "line": 9,
+            "character": 4
+          },
+          "end": {
+            "line": 9,
+            "character": 4
+          }
+        },
+        "text": "123, "
+      }
+    ]
+  }
+}

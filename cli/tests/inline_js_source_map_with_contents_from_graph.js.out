@@ -1,0 +1,4 @@
+error: Uncaught Error: Hello world!
+// throw new Error("Hello world!" as string);
+      ^
+    at http://localhost:4545/cli/tests/inline_js_source_map.ts:6:7

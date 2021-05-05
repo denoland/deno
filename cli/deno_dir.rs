@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::disk_cache::DiskCache;
 use std::path::PathBuf;
@@ -71,7 +71,7 @@ mod dirs {
   // The same code is used by the dirs crate
   unsafe fn fallback() -> Option<std::ffi::OsString> {
     let amt = match libc::sysconf(libc::_SC_GETPW_R_SIZE_MAX) {
-      n if n < 0 => 512 as usize,
+      n if n < 0 => 512_usize,
       n => n as usize,
     };
     let mut buf = Vec::with_capacity(amt);

@@ -1,6 +1,5 @@
 <!--
-Before submitting a PR, please read
-https://github.com/denoland/deno/blob/master/docs/contributing.md
+Before submitting a PR, please read http://deno.land/manual/contributing
 
 1. Give the PR a descriptive title.
 

@@ -1,14 +1,21 @@
-# Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 [workspace]
 members = [
   "cli",
   "core",
+  "runtime",
+  "serde_v8",
   "test_plugin",
   "test_util",
-  "op_crates/fetch",
-  "op_crates/web",
-  "op_crates/crypto"
+  "extensions/crypto",
+  "extensions/fetch",
+  "extensions/timers",
+  "extensions/url",
+  "extensions/web",
+  "extensions/webgpu",
+  "extensions/webidl",
+  "extensions/websocket",
 ]
 exclude = [
   "std/hash/_wasm"
@@ -17,10 +24,36 @@ exclude = [
 
 [profile.release]
 codegen-units = 1
+incremental = true
 lto = true
 opt-level = 'z' # Optimize for size
 
 [profile.bench]
 codegen-units = 1
+incremental = true
 lto = true
 opt-level = 'z' # Optimize for size
+
+# Optimize these packages for perf
+[profile.release.package.rand]
+opt-level = 3
+[profile.release.package.flate2]
+opt-level = 3
+[profile.release.package.brotli]
+opt-level = 3
+[profile.release.package.miniz_oxide]
+opt-level = 3
+[profile.release.package.async-compression]
+opt-level = 3
+[profile.release.package.brotli-decompressor]
+opt-level = 3
+[profile.release.package.deno_core]
+opt-level = 3
+[profile.release.package.deno_runtime]
+opt-level = 3
+[profile.release.package.rusty_v8]
+opt-level = 3
+[profile.release.package.serde_v8]
+opt-level = 3
+[profile.release.package.serde]
+opt-level = 3

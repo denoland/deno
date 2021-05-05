@@ -1,12 +1,14 @@
-const [errors, program] = await Deno.compile(
+const { diagnostics, files } = await Deno.emit(
   "/main.ts",
   {
-    "/main.ts": `document.getElementById("foo");`,
-  },
-  {
-    lib: ["dom", "esnext"],
+    sources: {
+      "/main.ts": `document.getElementById("foo");`,
+    },
+    compilerOptions: {
+      lib: ["dom", "esnext"],
+    },
   },
 );
 
-console.log(errors);
-console.log(Object.keys(program).sort());
+console.log(diagnostics);
+console.log(Object.keys(files).sort());

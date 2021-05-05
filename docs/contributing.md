@@ -45,14 +45,6 @@ Examples of bad PR title:
 5. Ensure `./tools/format.js` passes without changing files.
 6. Ensure `./tools/lint.js` passes.
 
-## Changes to `third_party`
-
-[`deno_third_party`](https://github.com/denoland/deno_third_party) contains most
-of the external code that Deno depends on, so that we know exactly what we are
-executing at any given time. It is carefully maintained with a mixture of manual
-labor and private scripts. It's likely you will need help from @ry or
-@piscisaureus to make changes.
-
 ## Adding Ops (aka bindings)
 
 We are very concerned about making mistakes when adding new APIs. When adding an

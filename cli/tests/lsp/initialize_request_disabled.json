@@ -1,0 +1,29 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "processId": 0,
+    "clientInfo": {
+      "name": "test-harness",
+      "version": "1.0.0"
+    },
+    "rootUri": null,
+    "initializationOptions": {
+      "enable": false,
+      "lint": true,
+      "importMap": null,
+      "unstable": false
+    },
+    "capabilities": {
+      "textDocument": {
+        "synchronization": {
+          "dynamicRegistration": true,
+          "willSave": true,
+          "willSaveWaitUntil": true,
+          "didSave": true
+        }
+      }
+    }
+  }
+}

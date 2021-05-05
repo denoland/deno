@@ -1,0 +1,44 @@
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "textDocument/codeAction",
+  "params": {
+    "textDocument": {
+      "uri": "file:///a/file.ts"
+    },
+    "range": {
+      "start": {
+        "line": 1,
+        "character": 2
+      },
+      "end": {
+        "line": 1,
+        "character": 7
+      }
+    },
+    "context": {
+      "diagnostics": [
+        {
+          "range": {
+            "start": {
+              "line": 1,
+              "character": 2
+            },
+            "end": {
+              "line": 1,
+              "character": 7
+            }
+          },
+          "severity": 1,
+          "code": 1308,
+          "source": "deno-ts",
+          "message": "'await' expressions are only allowed within async functions and at the top levels of modules.",
+          "relatedInformation": []
+        }
+      ],
+      "only": [
+        "quickfix"
+      ]
+    }
+  }
+}

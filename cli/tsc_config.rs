@@ -1,20 +1,18 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::fs_util::canonicalize_path;
 use deno_core::error::AnyError;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
+use deno_core::serde::Serializer;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use jsonc_parser::JsonValue;
-use serde::Deserialize;
-use serde::Serialize;
-use serde::Serializer;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 /// The transpile options that are significant out of a user provided tsconfig
 /// file, that we want to deserialize out of the final config for a transpile.
@@ -23,6 +21,7 @@ use std::str::FromStr;
 pub struct EmitConfigOptions {
   pub check_js: bool,
   pub emit_decorator_metadata: bool,
+  pub imports_not_used_as_values: String,
   pub inline_source_map: bool,
   pub jsx: String,
   pub jsx_factory: String,
@@ -49,10 +48,19 @@ impl fmt::Display for IgnoredCompilerOptions {
   }
 }
 
+impl Serialize for IgnoredCompilerOptions {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    Serialize::serialize(&self.items, serializer)
+  }
+}
+
 /// A static slice of all the compiler options that should be ignored that
 /// either have no effect on the compilation or would cause the emit to not work
 /// in Deno.
-const IGNORED_COMPILER_OPTIONS: &[&str] = &[
+pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "allowSyntheticDefaultImports",
   "allowUmdGlobalAccess",
   "baseUrl",
@@ -64,9 +72,9 @@ const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "importHelpers",
   "inlineSourceMap",
   "inlineSources",
-  // TODO(nayeemrmn): Add "isolatedModules" here for 1.6.0.
   "module",
   "noEmitHelpers",
+  "noErrorTruncation",
   "noLib",
   "noResolve",
   "outDir",
@@ -83,7 +91,7 @@ const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "useDefineForClassFields",
 ];
 
-const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
+pub const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
   "assumeChangesOnlyAffectDirectDependencies",
   "build",
   "charset",
@@ -97,6 +105,7 @@ const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
   "help",
   "incremental",
   "init",
+  "isolatedModules",
   "listEmittedFiles",
   "listFiles",
   "mapRoot",
@@ -119,6 +128,7 @@ const IGNORED_RUNTIME_COMPILER_OPTIONS: &[&str] = &[
   "traceResolution",
   "tsBuildInfoFile",
   "typeRoots",
+  "useDefineForClassFields",
   "version",
   "watch",
 ];
@@ -137,41 +147,17 @@ pub fn json_merge(a: &mut Value, b: &Value) {
   }
 }
 
-/// Convert a jsonc libraries `JsonValue` to a serde `Value`.
-fn jsonc_to_serde(j: JsonValue) -> Value {
-  match j {
-    JsonValue::Array(arr) => {
-      let vec = arr.into_iter().map(jsonc_to_serde).collect();
-      Value::Array(vec)
-    }
-    JsonValue::Boolean(bool) => Value::Bool(bool),
-    JsonValue::Null => Value::Null,
-    JsonValue::Number(num) => {
-      let number =
-        serde_json::Number::from_str(&num).expect("could not parse number");
-      Value::Number(number)
-    }
-    JsonValue::Object(obj) => {
-      let mut map = serde_json::map::Map::new();
-      for (key, json_value) in obj.into_iter() {
-        map.insert(key, jsonc_to_serde(json_value));
-      }
-      Value::Object(map)
-    }
-    JsonValue::String(str) => Value::String(str),
-  }
-}
-
+/// A structure for deserializing a `tsconfig.json` file for the purposes of
+/// being used internally within Deno.
+///
+/// The only key in the JSON object that Deno cares about is the
+/// `compilerOptions` property. A valid `tsconfig.json` file can also contain
+/// the keys `exclude`, `extends`, `files`, `include`, `references`, and
+/// `typeAcquisition` which are all "ignored" by Deno.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct TSConfigJson {
+struct TsConfigJson {
   compiler_options: Option<HashMap<String, Value>>,
-  exclude: Option<Vec<String>>,
-  extends: Option<String>,
-  files: Option<Vec<String>>,
-  include: Option<Vec<String>>,
-  references: Option<Value>,
-  type_acquisition: Option<Value>,
 }
 
 fn parse_compiler_options(
@@ -209,8 +195,8 @@ pub fn parse_config(
   path: &Path,
 ) -> Result<(Value, Option<IgnoredCompilerOptions>), AnyError> {
   assert!(!config_text.is_empty());
-  let jsonc = jsonc_parser::parse_to_value(config_text)?.unwrap();
-  let config: TSConfigJson = serde_json::from_value(jsonc_to_serde(jsonc))?;
+  let jsonc = jsonc_parser::parse_to_serde_value(config_text)?.unwrap();
+  let config: TsConfigJson = serde_json::from_value(jsonc)?;
 
   if let Some(compiler_options) = config.compiler_options {
     parse_compiler_options(&compiler_options, Some(path.to_owned()), false)
@@ -241,6 +227,14 @@ impl TsConfig {
   pub fn get_check_js(&self) -> bool {
     if let Some(check_js) = self.0.get("checkJs") {
       check_js.as_bool().unwrap_or(false)
+    } else {
+      false
+    }
+  }
+
+  pub fn get_declaration(&self) -> bool {
+    if let Some(declaration) = self.0.get("declaration") {
+      declaration.as_bool().unwrap_or(false)
     } else {
       false
     }

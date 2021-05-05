@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Used for benchmarking Deno's tcp proxy performance.
 const addr = Deno.args[0] || "127.0.0.1:4500";
 const originAddr = Deno.args[1] || "127.0.0.1:4501";
@@ -15,14 +15,16 @@ async function handle(conn: Deno.Conn): Promise<void> {
   });
   try {
     await Promise.all([Deno.copy(conn, origin), Deno.copy(origin, conn)]);
-  } catch (err) {
-    if (err.message !== "read error" && err.message !== "write error") {
-      throw err;
+  } catch (e) {
+    if (
+      !(e instanceof Deno.errors.BrokenPipe) &&
+      !(e instanceof Deno.errors.ConnectionReset)
+    ) {
+      throw e;
     }
-  } finally {
-    conn.close();
-    origin.close();
   }
+  conn.close();
+  origin.close();
 }
 
 console.log(`Proxy listening on http://${addr}/`);

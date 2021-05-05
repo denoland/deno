@@ -1,19 +1,19 @@
-const _i = function() {
-    function a(...d) {
-        return d.join(" ");
-    }
+function a3(...d) {
+    return d.join(" ");
+}
+const mod = function() {
     return {
-        a
+        a: a3
     };
 }();
-const _j = function() {
-    function a(...d) {
-        return d.join("/");
-    }
+function a1(...d) {
+    return d.join("/");
+}
+const mod1 = function() {
     return {
-        a
+        a: a1
     };
 }();
-const k = globalThis.value ? _i : _j;
-const { a ,  } = k;
-export { a };
+const k = globalThis.value ? mod : mod1;
+const { a: a2 ,  } = k;
+export { a2 as a };

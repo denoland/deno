@@ -1,5 +1,0 @@
-deno = "is"
-not = "[node]"
-regex = '<\i\c*\s*>'
-NANI = '何?!'
-comment = "Comment inside # the comment" # Comment

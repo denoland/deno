@@ -1,12 +1,29 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
+use deno_core::error::Context;
 pub use deno_core::normalize_path;
+use deno_runtime::deno_crypto::rand;
 use std::env::current_dir;
 use std::fs::OpenOptions;
 use std::io::{Error, Write};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+
+pub fn atomic_write_file<T: AsRef<[u8]>>(
+  filename: &Path,
+  data: T,
+  mode: u32,
+) -> std::io::Result<()> {
+  let rand: String = (0..4)
+    .map(|_| format!("{:02x}", rand::random::<u8>()))
+    .collect();
+  let extension = format!("{}.tmp", rand);
+  let tmp_file = filename.with_extension(extension);
+  write_file(&tmp_file, data, mode)?;
+  std::fs::rename(tmp_file, filename)?;
+  Ok(())
+}
 
 pub fn write_file<T: AsRef<[u8]>>(
   filename: &Path,
@@ -65,7 +82,8 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
   let resolved_path = if path.is_absolute() {
     path.to_owned()
   } else {
-    let cwd = current_dir().unwrap();
+    let cwd =
+      current_dir().context("Failed to get current working directory")?;
     cwd.join(path)
   };
 
@@ -74,22 +92,39 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
 
 /// Checks if the path has extension Deno supports.
 pub fn is_supported_ext(path: &Path) -> bool {
-  let lowercase_ext = path
-    .extension()
-    .and_then(|e| e.to_str())
-    .map(|e| e.to_lowercase());
-  if let Some(ext) = lowercase_ext {
-    ext == "ts" || ext == "tsx" || ext == "js" || ext == "jsx" || ext == "mjs"
+  if let Some(ext) = get_extension(path) {
+    matches!(ext.as_str(), "ts" | "tsx" | "js" | "jsx" | "mjs")
   } else {
     false
   }
 }
 
+/// This function is similar to is_supported_ext but adds additional extensions
+/// supported by `deno fmt`.
+pub fn is_supported_ext_fmt(path: &Path) -> bool {
+  if let Some(ext) = get_extension(path) {
+    matches!(
+      ext.as_str(),
+      "ts" | "tsx" | "js" | "jsx" | "mjs" | "md" | "json" | "jsonc"
+    )
+  } else {
+    false
+  }
+}
+
+/// Get the extension of a file in lowercase.
+pub fn get_extension(file_path: &Path) -> Option<String> {
+  return file_path
+    .extension()
+    .and_then(|e| e.to_str())
+    .map(|e| e.to_lowercase());
+}
+
 /// Collects file paths that satisfy the given predicate, by recursively walking `files`.
 /// If the walker visits a path that is listed in `ignore`, it skips descending into the directory.
 pub fn collect_files<P>(
-  files: Vec<PathBuf>,
-  ignore: Vec<PathBuf>,
+  files: &[PathBuf],
+  ignore: &[PathBuf],
   predicate: P,
 ) -> Result<Vec<PathBuf>, AnyError>
 where
@@ -99,15 +134,12 @@ where
 
   // retain only the paths which exist and ignore the rest
   let canonicalized_ignore: Vec<PathBuf> = ignore
-    .into_iter()
+    .iter()
     .filter_map(|i| i.canonicalize().ok())
     .collect();
 
-  let files = if files.is_empty() {
-    vec![std::env::current_dir()?]
-  } else {
-    files
-  };
+  let cur_dir = [std::env::current_dir()?];
+  let files = if files.is_empty() { &cur_dir } else { files };
 
   for file in files {
     for entry in WalkDir::new(file)
@@ -195,8 +227,30 @@ mod tests {
   }
 
   #[test]
+  fn test_is_supported_ext_fmt() {
+    assert!(!is_supported_ext_fmt(Path::new("tests/subdir/redirects")));
+    assert!(is_supported_ext_fmt(Path::new("README.md")));
+    assert!(is_supported_ext_fmt(Path::new("readme.MD")));
+    assert!(is_supported_ext_fmt(Path::new("lib/typescript.d.ts")));
+    assert!(is_supported_ext_fmt(Path::new("cli/tests/001_hello.js")));
+    assert!(is_supported_ext_fmt(Path::new("cli/tests/002_hello.ts")));
+    assert!(is_supported_ext_fmt(Path::new("foo.jsx")));
+    assert!(is_supported_ext_fmt(Path::new("foo.tsx")));
+    assert!(is_supported_ext_fmt(Path::new("foo.TS")));
+    assert!(is_supported_ext_fmt(Path::new("foo.TSX")));
+    assert!(is_supported_ext_fmt(Path::new("foo.JS")));
+    assert!(is_supported_ext_fmt(Path::new("foo.JSX")));
+    assert!(is_supported_ext_fmt(Path::new("foo.mjs")));
+    assert!(!is_supported_ext_fmt(Path::new("foo.mjsx")));
+    assert!(is_supported_ext_fmt(Path::new("foo.jsonc")));
+    assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
+    assert!(is_supported_ext_fmt(Path::new("foo.json")));
+    assert!(is_supported_ext_fmt(Path::new("foo.JsON")));
+  }
+
+  #[test]
   fn test_collect_files() {
-    fn create_files(dir_path: &PathBuf, files: &[&str]) {
+    fn create_files(dir_path: &Path, files: &[&str]) {
       std::fs::create_dir(dir_path).expect("Failed to create directory");
       for f in files {
         let path = dir_path.join(f);
@@ -232,15 +286,14 @@ mod tests {
     let ignore_dir_files = ["g.d.ts", ".gitignore"];
     create_files(&ignore_dir_path, &ignore_dir_files);
 
-    let result =
-      collect_files(vec![root_dir_path], vec![ignore_dir_path], |path| {
-        // exclude dotfiles
-        path
-          .file_name()
-          .and_then(|f| f.to_str())
-          .map_or(false, |f| !f.starts_with('.'))
-      })
-      .unwrap();
+    let result = collect_files(&[root_dir_path], &[ignore_dir_path], |path| {
+      // exclude dotfiles
+      path
+        .file_name()
+        .and_then(|f| f.to_str())
+        .map_or(false, |f| !f.starts_with('.'))
+    })
+    .unwrap();
     let expected = [
       "a.ts",
       "b.js",

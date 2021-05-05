@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 const filenameBase = "test_plugin";
 
@@ -53,6 +53,7 @@ function runTestAsync() {
     testAsync,
     new Uint8Array([116, 101, 115, 116]),
     new Uint8Array([49, 50, 51]),
+    new Uint8Array([99, 98, 97]),
   );
 
   if (response != null || response != undefined) {

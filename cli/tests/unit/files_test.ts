@@ -1,4 +1,7 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-deprecated-deno-api
+
 import {
   assert,
   assertEquals,
@@ -322,7 +325,7 @@ unitTest(
         // deno-lint-ignore no-explicit-any
         await file.write(null as any);
       },
-    ); // TODO: Check error kind when dispatch_minimal pipes errors properly
+    ); // TODO(bartlomieju): Check error kind when dispatch_minimal pipes errors properly
     file.close();
     await Deno.remove(tempDir, { recursive: true });
   },
@@ -349,7 +352,7 @@ unitTest(
       // deno-lint-ignore no-explicit-any
       await file.read(null as any);
     }, TypeError);
-    // TODO: Check error kind when dispatch_minimal pipes errors properly
+    // TODO(bartlomieju): Check error kind when dispatch_minimal pipes errors properly
 
     file.close();
     await Deno.remove(tempDir, { recursive: true });
@@ -382,7 +385,7 @@ unitTest(
     assert(fileInfo.size === 5);
     f.close();
 
-    // TODO: test different modes
+    // TODO(bartlomieju): test different modes
     await Deno.remove(tempDir, { recursive: true });
   },
 );
@@ -425,7 +428,7 @@ unitTest(
     assert(fileInfo.size === 5);
     f.close();
 
-    // TODO: test different modes
+    // TODO(bartlomieju): test different modes
     await Deno.remove(tempDir, { recursive: true });
   },
 );
@@ -477,7 +480,7 @@ unitTest(
     try {
       const buf = new Uint8Array(20);
       await file.read(buf);
-    } catch (e) {
+    } catch (_e) {
       thrown = true;
     } finally {
       assert(thrown, "'w' mode shouldn't allow to read file");

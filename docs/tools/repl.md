@@ -24,7 +24,7 @@ up program state in the global context.
 | Ctrl-R                | Reverse Search history (Ctrl-S forward, Ctrl-G cancel)                                           |
 | Ctrl-T                | Transpose previous character with current character                                              |
 | Ctrl-U                | Delete from start of line to cursor                                                              |
-| Ctrl-V                | Insert any special character without performing its associated action (#65)                      |
+| Ctrl-V                | Insert any special character without performing its associated action                            |
 | Ctrl-W                | Delete word leading up to cursor (using white space as a word boundary)                          |
 | Ctrl-X Ctrl-U         | Undo                                                                                             |
 | Ctrl-Y                | Paste from Yank buffer                                                                           |

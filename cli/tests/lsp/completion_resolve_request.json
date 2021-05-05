@@ -1,0 +1,19 @@
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "completionItem/resolve",
+  "params": {
+    "label": "build",
+    "kind": 6,
+    "sortText": "1",
+    "insertTextFormat": 1,
+    "data": {
+      "tsc": {
+        "specifier": "file:///a/file.ts",
+        "position": 5,
+        "name": "build",
+        "useCodeSnippet": false
+      }
+    }
+  }
+}

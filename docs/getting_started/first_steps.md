@@ -17,7 +17,7 @@ Browser compatibility means a `Hello World` program in Deno is the same as the
 one you can run in the browser:
 
 ```ts
-console.log("Welcome to Deno 🦕");
+console.log("Welcome to Deno!");
 ```
 
 Try the program:

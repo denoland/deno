@@ -1,236 +1,54 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-/*
-SharedQueue Binary Layout
-+-------------------------------+-------------------------------+
-|                        NUM_RECORDS (32)                       |
-+---------------------------------------------------------------+
-|                        NUM_SHIFTED_OFF (32)                   |
-+---------------------------------------------------------------+
-|                        HEAD (32)                              |
-+---------------------------------------------------------------+
-|                        OFFSETS (32)                           |
-+---------------------------------------------------------------+
-|                        RECORD_ENDS (*MAX_RECORDS)           ...
-+---------------------------------------------------------------+
-|                        RECORDS (*MAX_RECORDS)               ...
-+---------------------------------------------------------------+
- */
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+"use strict";
 
 ((window) => {
-  const MAX_RECORDS = 100;
-  const INDEX_NUM_RECORDS = 0;
-  const INDEX_NUM_SHIFTED_OFF = 1;
-  const INDEX_HEAD = 2;
-  const INDEX_OFFSETS = 3;
-  const INDEX_RECORDS = INDEX_OFFSETS + 2 * MAX_RECORDS;
-  const HEAD_INIT = 4 * INDEX_RECORDS;
-
   // Available on start due to bindings.
-  const core = window.Deno.core;
-  const { recv, send } = core;
+  const { opcall } = window.Deno.core;
 
-  let sharedBytes;
-  let shared32;
-
-  let asyncHandlers;
-
-  let initialized = false;
   let opsCache = {};
   const errorMap = {};
-
-  function maybeInit() {
-    if (!initialized) {
-      init();
-      initialized = true;
-    }
-  }
-
-  function init() {
-    const shared = core.shared;
-    assert(shared.byteLength > 0);
-    assert(sharedBytes == null);
-    assert(shared32 == null);
-    sharedBytes = new Uint8Array(shared);
-    shared32 = new Int32Array(shared);
-    asyncHandlers = [];
-    // Callers should not call core.recv, use setAsyncHandler.
-    recv(handleAsyncMsgFromRust);
-  }
-
-  function ops() {
-    // op id 0 is a special value to retrieve the map of registered ops.
-    const opsMapBytes = send(0);
-    const opsMapJson = String.fromCharCode.apply(null, opsMapBytes);
-    opsCache = JSON.parse(opsMapJson);
-    return { ...opsCache };
-  }
-
-  function assert(cond) {
-    if (!cond) {
-      throw Error("assert");
-    }
-  }
-
-  function reset() {
-    maybeInit();
-    shared32[INDEX_NUM_RECORDS] = 0;
-    shared32[INDEX_NUM_SHIFTED_OFF] = 0;
-    shared32[INDEX_HEAD] = HEAD_INIT;
-  }
-
-  function head() {
-    maybeInit();
-    return shared32[INDEX_HEAD];
-  }
-
-  function numRecords() {
-    return shared32[INDEX_NUM_RECORDS];
-  }
-
-  function size() {
-    return shared32[INDEX_NUM_RECORDS] - shared32[INDEX_NUM_SHIFTED_OFF];
-  }
-
-  function setMeta(index, end, opId) {
-    shared32[INDEX_OFFSETS + 2 * index] = end;
-    shared32[INDEX_OFFSETS + 2 * index + 1] = opId;
-  }
-
-  function getMeta(index) {
-    if (index < numRecords()) {
-      const buf = shared32[INDEX_OFFSETS + 2 * index];
-      const opId = shared32[INDEX_OFFSETS + 2 * index + 1];
-      return [opId, buf];
-    } else {
-      return null;
-    }
-  }
-
-  function getOffset(index) {
-    if (index < numRecords()) {
-      if (index == 0) {
-        return HEAD_INIT;
-      } else {
-        const prevEnd = shared32[INDEX_OFFSETS + 2 * (index - 1)];
-        return (prevEnd + 3) & ~3;
-      }
-    } else {
-      return null;
-    }
-  }
-
-  function push(opId, buf) {
-    const off = head();
-    const end = off + buf.byteLength;
-    const alignedEnd = (end + 3) & ~3;
-    const index = numRecords();
-    if (alignedEnd > shared32.byteLength || index >= MAX_RECORDS) {
-      // console.log("shared_queue.js push fail");
-      return false;
-    }
-    setMeta(index, end, opId);
-    assert(alignedEnd % 4 === 0);
-    assert(end - off == buf.byteLength);
-    sharedBytes.set(buf, off);
-    shared32[INDEX_NUM_RECORDS] += 1;
-    shared32[INDEX_HEAD] = alignedEnd;
-    return true;
-  }
-
-  /// Returns null if empty.
-  function shift() {
-    const i = shared32[INDEX_NUM_SHIFTED_OFF];
-    if (size() == 0) {
-      assert(i == 0);
-      return null;
-    }
-
-    const off = getOffset(i);
-    const [opId, end] = getMeta(i);
-
-    if (size() > 1) {
-      shared32[INDEX_NUM_SHIFTED_OFF] += 1;
-    } else {
-      reset();
-    }
-
-    assert(off != null);
-    assert(end != null);
-    const buf = sharedBytes.subarray(off, end);
-    return [opId, buf];
-  }
-
-  function setAsyncHandler(opId, cb) {
-    maybeInit();
-    assert(opId != null);
-    asyncHandlers[opId] = cb;
-  }
-
-  function handleAsyncMsgFromRust(opId, buf) {
-    if (buf) {
-      // This is the overflow_response case of deno::JsRuntime::poll().
-      asyncHandlers[opId](buf);
-    } else {
-      while (true) {
-        const opIdBuf = shift();
-        if (opIdBuf == null) {
-          break;
-        }
-        assert(asyncHandlers[opIdBuf[0]] != null);
-        asyncHandlers[opIdBuf[0]](opIdBuf[1]);
-      }
-    }
-  }
-
-  function dispatch(opName, control, ...zeroCopy) {
-    return send(opsCache[opName], control, ...zeroCopy);
-  }
-
-  function registerErrorClass(errorName, className) {
-    if (typeof errorMap[errorName] !== "undefined") {
-      throw new TypeError(`Error class for "${errorName}" already registered`);
-    }
-    errorMap[errorName] = className;
-  }
-
-  function getErrorClass(errorName) {
-    return errorMap[errorName];
-  }
-
-  // Returns Uint8Array
-  function encodeJson(args) {
-    const s = JSON.stringify(args);
-    return core.encode(s);
-  }
-
-  function decodeJson(ui8) {
-    const s = core.decode(ui8);
-    return JSON.parse(s);
-  }
+  // Builtin v8 / JS errors
+  registerErrorClass("Error", Error);
+  registerErrorClass("RangeError", RangeError);
+  registerErrorClass("ReferenceError", ReferenceError);
+  registerErrorClass("SyntaxError", SyntaxError);
+  registerErrorClass("TypeError", TypeError);
+  registerErrorClass("URIError", URIError);
 
   let nextPromiseId = 1;
-  const promiseTable = {};
+  const promiseMap = new Map();
+  const RING_SIZE = 4 * 1024;
+  const NO_PROMISE = null; // Alias to null is faster than plain nulls
+  const promiseRing = new Array(RING_SIZE).fill(NO_PROMISE);
 
-  function processResponse(res) {
-    if ("ok" in res) {
-      return res.ok;
-    } else {
-      const ErrorClass = getErrorClass(res.err.className);
-      if (!ErrorClass) {
-        throw new Error(
-          `Unregistered error class: "${res.err.className}"\n  ${res.err.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
-        );
-      }
-      throw new ErrorClass(res.err.message);
+  function setPromise(promiseId) {
+    const idx = promiseId % RING_SIZE;
+    // Move old promise from ring to map
+    const oldPromise = promiseRing[idx];
+    if (oldPromise !== NO_PROMISE) {
+      const oldPromiseId = promiseId - RING_SIZE;
+      promiseMap.set(oldPromiseId, oldPromise);
     }
+    // Set new promise
+    return promiseRing[idx] = newPromise();
   }
 
-  async function jsonOpAsync(opName, args = {}, ...zeroCopy) {
-    setAsyncHandler(opsCache[opName], jsonOpAsyncHandler);
+  function getPromise(promiseId) {
+    // Check if out of ring bounds, fallback to map
+    const outOfBounds = promiseId < nextPromiseId - RING_SIZE;
+    if (outOfBounds) {
+      const promise = promiseMap.get(promiseId);
+      promiseMap.delete(promiseId);
+      return promise;
+    }
+    // Otherwise take from ring
+    const idx = promiseId % RING_SIZE;
+    const promise = promiseRing[idx];
+    promiseRing[idx] = NO_PROMISE;
+    return promise;
+  }
 
-    args.promiseId = nextPromiseId++;
-    const argsBuf = encodeJson(args);
-    dispatch(opName, argsBuf, ...zeroCopy);
+  function newPromise() {
     let resolve, reject;
     const promise = new Promise((resolve_, reject_) => {
       resolve = resolve_;
@@ -238,52 +56,95 @@ SharedQueue Binary Layout
     });
     promise.resolve = resolve;
     promise.reject = reject;
-    promiseTable[args.promiseId] = promise;
-    return processResponse(await promise);
+    return promise;
   }
 
-  function jsonOpSync(opName, args = {}, ...zeroCopy) {
-    const argsBuf = encodeJson(args);
-    const res = dispatch(opName, argsBuf, ...zeroCopy);
-    return processResponse(decodeJson(res));
+  function ops() {
+    return opsCache;
   }
 
-  function jsonOpAsyncHandler(buf) {
-    // Json Op.
-    const res = decodeJson(buf);
-    const promise = promiseTable[res.promiseId];
-    delete promiseTable[res.promiseId];
-    promise.resolve(res);
+  function syncOpsCache() {
+    // op id 0 is a special value to retrieve the map of registered ops.
+    opsCache = Object.freeze(Object.fromEntries(opcall(0)));
+  }
+
+  function handleAsyncMsgFromRust() {
+    for (let i = 0; i < arguments.length; i += 2) {
+      const promiseId = arguments[i];
+      const res = arguments[i + 1];
+      const promise = getPromise(promiseId);
+      promise.resolve(res);
+    }
+  }
+
+  function dispatch(opName, promiseId, control, zeroCopy) {
+    const opId = typeof opName === "string" ? opsCache[opName] : opName;
+    return opcall(opId, promiseId, control, zeroCopy);
+  }
+
+  function registerErrorClass(className, errorClass) {
+    registerErrorBuilder(className, (msg) => new errorClass(msg));
+  }
+
+  function registerErrorBuilder(className, errorBuilder) {
+    if (typeof errorMap[className] !== "undefined") {
+      throw new TypeError(`Error class for "${className}" already registered`);
+    }
+    errorMap[className] = errorBuilder;
+  }
+
+  function unwrapOpResult(res) {
+    // .$err_class_name is a special key that should only exist on errors
+    if (res?.$err_class_name) {
+      const className = res.$err_class_name;
+      const errorBuilder = errorMap[className];
+      if (!errorBuilder) {
+        throw new Error(
+          `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
+        );
+      }
+      throw errorBuilder(res.message);
+    }
+    return res;
+  }
+
+  function opAsync(opName, args = null, zeroCopy = null) {
+    const promiseId = nextPromiseId++;
+    const maybeError = dispatch(opName, promiseId, args, zeroCopy);
+    // Handle sync error (e.g: error parsing args)
+    if (maybeError) return unwrapOpResult(maybeError);
+    return setPromise(promiseId).then(unwrapOpResult);
+  }
+
+  function opSync(opName, args = null, zeroCopy = null) {
+    return unwrapOpResult(dispatch(opName, null, args, zeroCopy));
   }
 
   function resources() {
-    return jsonOpSync("op_resources");
+    return Object.fromEntries(opSync("op_resources"));
   }
 
   function close(rid) {
-    jsonOpSync("op_close", { rid });
+    opSync("op_close", rid);
   }
 
+  function print(str, isErr = false) {
+    opSync("op_print", [str, isErr]);
+  }
+
+  // Provide bootstrap namespace
+  window.__bootstrap = {};
+  // Extra Deno.core.* exports
   Object.assign(window.Deno.core, {
-    jsonOpAsync,
-    jsonOpSync,
-    setAsyncHandler,
-    dispatch: send,
-    dispatchByName: dispatch,
+    opAsync,
+    opSync,
     ops,
     close,
+    print,
     resources,
+    registerErrorBuilder,
     registerErrorClass,
-    getErrorClass,
-    // sharedQueue is private but exposed for testing.
-    sharedQueue: {
-      MAX_RECORDS,
-      head,
-      numRecords,
-      size,
-      push,
-      reset,
-      shift,
-    },
+    handleAsyncMsgFromRust,
+    syncOpsCache,
   });
 })(this);

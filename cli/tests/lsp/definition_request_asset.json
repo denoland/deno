@@ -1,0 +1,14 @@
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "textDocument/definition",
+  "params": {
+    "textDocument": {
+      "uri": "file:///a/file.ts"
+    },
+    "position": {
+      "line": 0,
+      "character": 14
+    }
+  }
+}

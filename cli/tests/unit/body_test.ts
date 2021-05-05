@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, unitTest } from "./test_util.ts";
 
 // just a hack to get a body object
@@ -7,6 +7,7 @@ function buildBody(body: any, headers?: Headers): Body {
   const stub = new Request("http://foo/", {
     body: body,
     headers,
+    method: "POST",
   });
   return stub as Body;
 }

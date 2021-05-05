@@ -1,12 +1,23 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
-  assertThrows,
   assertThrowsAsync,
   fail,
+  unimplemented,
   unitTest,
 } from "./test_util.ts";
+import { Buffer } from "../../../test_util/std/io/buffer.ts";
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchRequiresOneArgument(): Promise<void> {
+    await assertThrowsAsync(
+      fetch as unknown as () => Promise<void>,
+      TypeError,
+    );
+  },
+);
 
 unitTest({ perms: { net: true } }, async function fetchProtocolError(): Promise<
   void
@@ -20,15 +31,65 @@ unitTest({ perms: { net: true } }, async function fetchProtocolError(): Promise<
   );
 });
 
+function findClosedPortInRange(
+  minPort: number,
+  maxPort: number,
+): number | never {
+  let port = minPort;
+
+  // If we hit the return statement of this loop
+  // that means that we did not throw an
+  // AddrInUse error when we executed Deno.listen.
+  while (port < maxPort) {
+    try {
+      const listener = Deno.listen({ port });
+      listener.close();
+      return port;
+    } catch (_e) {
+      port++;
+    }
+  }
+
+  unimplemented(
+    `No available ports between ${minPort} and ${maxPort} to test fetch`,
+  );
+}
+
 unitTest(
   { perms: { net: true } },
   async function fetchConnectionError(): Promise<void> {
+    const port = findClosedPortInRange(4000, 9999);
     await assertThrowsAsync(
       async (): Promise<void> => {
-        await fetch("http://localhost:4000");
+        await fetch(`http://localhost:${port}`);
       },
-      Deno.errors.Http,
+      TypeError,
       "error trying to connect",
+    );
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchDnsError(): Promise<void> {
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await fetch("http://nil/");
+      },
+      TypeError,
+      "error trying to connect",
+    );
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchInvalidUriError(): Promise<void> {
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await fetch("http://<invalid>/");
+      },
+      TypeError,
     );
   },
 );
@@ -76,19 +137,6 @@ unitTest({ perms: { net: true } }, async function fetchBlob(): Promise<void> {
   const blob = await response.blob();
   assertEquals(blob.type, headers.get("Content-Type"));
   assertEquals(blob.size, Number(headers.get("Content-Length")));
-});
-
-unitTest({ perms: { net: true } }, async function fetchBodyUsed(): Promise<
-  void
-> {
-  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
-  assertEquals(response.bodyUsed, false);
-  assertThrows((): void => {
-    // deno-lint-ignore no-explicit-any
-    (response as any).bodyUsed = true;
-  });
-  await response.blob();
-  assertEquals(response.bodyUsed, true);
 });
 
 unitTest(
@@ -196,14 +244,6 @@ unitTest({ perms: { net: true } }, async function responseClone(): Promise<
   }
 });
 
-unitTest({ perms: { net: true } }, async function fetchEmptyInvalid(): Promise<
-  void
-> {
-  await assertThrowsAsync(async () => {
-    await fetch("");
-  }, URIError);
-});
-
 unitTest(
   { perms: { net: true } },
   async function fetchMultipartFormDataSuccess(): Promise<void> {
@@ -218,6 +258,24 @@ unitTest(
     assertEquals(file.name, "file.js");
 
     assertEquals(await file.text(), `console.log("Hi")`);
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchMultipartFormBadContentType(): Promise<void> {
+    const response = await fetch(
+      "http://localhost:4545/multipart_form_bad_content_type",
+    );
+    assert(response.body !== null);
+
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await response.formData();
+      },
+      TypeError,
+      "Invalid form data",
+    );
   },
 );
 
@@ -363,10 +421,11 @@ unitTest(
     perms: { net: true },
   },
   async function fetchWithInfRedirection(): Promise<void> {
-    const response = await fetch("http://localhost:4549/cli/tests"); // will redirect to the same place
-    assertEquals(response.status, 0); // network error
-    assertEquals(response.type, "error");
-    assertEquals(response.ok, false);
+    await assertThrowsAsync(
+      () => fetch("http://localhost:4549/cli/tests"),
+      TypeError,
+      "redirect",
+    );
   },
 );
 
@@ -395,6 +454,21 @@ unitTest(
     const response = await fetch(req);
     const text = await response.text();
     assertEquals(text, data);
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchSeparateInit(): Promise<void> {
+    // related to: https://github.com/denoland/deno/issues/10396
+    const req = new Request("http://localhost:4545/cli/tests/001_hello.js");
+    const init = {
+      method: "GET",
+    };
+    req.headers.set("foo", "bar");
+    const res = await fetch(req, init);
+    assertEquals(res.status, 200);
+    await res.text();
   },
 );
 
@@ -552,13 +626,13 @@ unitTest({ perms: { net: true } }, async function fetchUserAgent(): Promise<
 //     at Object.assertEquals (file:///C:/deno/js/testing/util.ts:29:11)
 //     at fetchPostBodyString (file
 
-function bufferServer(addr: string): Deno.Buffer {
+function bufferServer(addr: string): Buffer {
   const [hostname, port] = addr.split(":");
   const listener = Deno.listen({
     hostname,
     port: Number(port),
   }) as Deno.Listener;
-  const buf = new Deno.Buffer();
+  const buf = new Buffer();
   listener.accept().then(async (conn: Deno.Conn) => {
     const p1 = buf.readFrom(conn);
     const p2 = conn.write(
@@ -689,22 +763,29 @@ unitTest(
   {
     perms: { net: true },
   },
+  async function fetchWithNonAsciiRedirection(): Promise<void> {
+    const response = await fetch("http://localhost:4545/non_ascii_redirect", {
+      redirect: "manual",
+    });
+    assertEquals(response.status, 301);
+    assertEquals(response.headers.get("location"), "/redirect®");
+    await response.text();
+  },
+);
+
+unitTest(
+  {
+    perms: { net: true },
+  },
   async function fetchWithManualRedirection(): Promise<void> {
     const response = await fetch("http://localhost:4546/", {
       redirect: "manual",
     }); // will redirect to http://localhost:4545/
-    assertEquals(response.status, 0);
-    assertEquals(response.statusText, "");
-    assertEquals(response.url, "");
-    assertEquals(response.type, "opaqueredirect");
-    try {
-      await response.text();
-      fail(
-        "Reponse.text() didn't throw on a filtered response without a body (type opaqueredirect)",
-      );
-    } catch (e) {
-      return;
-    }
+    assertEquals(response.status, 301);
+    assertEquals(response.url, "http://localhost:4546/");
+    assertEquals(response.type, "basic");
+    assertEquals(response.headers.get("Location"), "http://localhost:4545/");
+    await response.body!.cancel();
   },
 );
 
@@ -713,21 +794,14 @@ unitTest(
     perms: { net: true },
   },
   async function fetchWithErrorRedirection(): Promise<void> {
-    const response = await fetch("http://localhost:4546/", {
-      redirect: "error",
-    }); // will redirect to http://localhost:4545/
-    assertEquals(response.status, 0);
-    assertEquals(response.statusText, "");
-    assertEquals(response.url, "");
-    assertEquals(response.type, "error");
-    try {
-      await response.text();
-      fail(
-        "Reponse.text() didn't throw on a filtered response without a body (type error)",
-      );
-    } catch (e) {
-      return;
-    }
+    await assertThrowsAsync(
+      () =>
+        fetch("http://localhost:4546/", {
+          redirect: "error",
+        }),
+      TypeError,
+      "redirect",
+    );
   },
 );
 
@@ -736,7 +810,10 @@ unitTest(function responseRedirect(): void {
   assertEquals(redir.status, 301);
   assertEquals(redir.statusText, "");
   assertEquals(redir.url, "");
-  assertEquals(redir.headers.get("Location"), "example.com/newLocation");
+  assertEquals(
+    redir.headers.get("Location"),
+    "http://js-unit-tests/foo/example.com/newLocation",
+  );
   assertEquals(redir.type, "default");
 });
 
@@ -866,8 +943,14 @@ unitTest(
   },
 );
 
+// FIXME(bartlomieju): for reasons unknown after working for
+// a few months without a problem; this test started failing
+// consistently on Windows CI with following error:
+// TypeError: error sending request for url (http://localhost:4545/echo_server):
+// connection error: An established connection was aborted by
+// the software in your host machine. (os error 10053)
 unitTest(
-  { perms: { net: true } },
+  { perms: { net: true }, ignore: Deno.build.os == "windows" },
   async function fetchNullBodyStatus(): Promise<void> {
     const nullBodyStatus = [101, 204, 205, 304];
 
@@ -931,10 +1014,7 @@ unitTest(function fetchResponseConstructorInvalidStatus(): void {
       fail(`Invalid status: ${status}`);
     } catch (e) {
       assert(e instanceof RangeError);
-      assertEquals(
-        e.message,
-        `The status provided (${status}) is outside the range [200, 599]`,
-      );
+      assert(e.message.endsWith("is outside the range [200, 599]."));
     }
   }
 });
@@ -951,13 +1031,35 @@ unitTest(function fetchResponseEmptyConstructor(): void {
   assertEquals([...response.headers], []);
 });
 
+// TODO(lucacasonato): reenable this test
 unitTest(
-  { perms: { net: true, read: true } },
-  async function fetchCustomHttpClientSuccess(): Promise<
+  { perms: { net: true }, ignore: true },
+  async function fetchCustomHttpClientParamCertificateSuccess(): Promise<
     void
   > {
     const client = Deno.createHttpClient(
-      { caFile: "./cli/tests/tls/RootCA.crt" },
+      {
+        caData: `-----BEGIN CERTIFICATE-----
+MIIDIzCCAgugAwIBAgIJAMKPPW4tsOymMA0GCSqGSIb3DQEBCwUAMCcxCzAJBgNV
+BAYTAlVTMRgwFgYDVQQDDA9FeGFtcGxlLVJvb3QtQ0EwIBcNMTkxMDIxMTYyODIy
+WhgPMjExODA5MjcxNjI4MjJaMCcxCzAJBgNVBAYTAlVTMRgwFgYDVQQDDA9FeGFt
+cGxlLVJvb3QtQ0EwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDMH/IO
+2qtHfyBKwANNPB4K0q5JVSg8XxZdRpTTlz0CwU0oRO3uHrI52raCCfVeiQutyZop
+eFZTDWeXGudGAFA2B5m3orWt0s+touPi8MzjsG2TQ+WSI66QgbXTNDitDDBtTVcV
+5G3Ic+3SppQAYiHSekLISnYWgXLl+k5CnEfTowg6cjqjVr0KjL03cTN3H7b+6+0S
+ws4rYbW1j4ExR7K6BFNH6572yq5qR20E6GqlY+EcOZpw4CbCk9lS8/CWuXze/vMs
+OfDcc6K+B625d27wyEGZHedBomT2vAD7sBjvO8hn/DP1Qb46a8uCHR6NSfnJ7bXO
+G1igaIbgY1zXirNdAgMBAAGjUDBOMB0GA1UdDgQWBBTzut+pwwDfqmMYcI9KNWRD
+hxcIpTAfBgNVHSMEGDAWgBTzut+pwwDfqmMYcI9KNWRDhxcIpTAMBgNVHRMEBTAD
+AQH/MA0GCSqGSIb3DQEBCwUAA4IBAQB9AqSbZ+hEglAgSHxAMCqRFdhVu7MvaQM0
+P090mhGlOCt3yB7kdGfsIrUW6nQcTz7PPQFRaJMrFHPvFvPootkBUpTYR4hTkdce
+H6RCRu2Jxl4Y9bY/uezd9YhGCYfUtfjA6/TH9FcuZfttmOOlxOt01XfNvVMIR6RM
+z/AYhd+DeOXjr35F/VHeVpnk+55L0PYJsm1CdEbOs5Hy1ecR7ACuDkXnbM4fpz9I
+kyIWJwk2zJReKcJMgi1aIinDM9ao/dca1G99PHOw8dnr4oyoTiv8ao6PWiSRHHMi
+MNf4EgWfK+tZMnuqfpfO9740KzfcVoMNo4QJD4yn5YxroUOO/Azi
+-----END CERTIFICATE-----
+`,
+      },
     );
     const response = await fetch(
       "https://localhost:5545/cli/tests/fixture.json",
@@ -966,5 +1068,74 @@ unitTest(
     const json = await response.json();
     assertEquals(json.name, "deno");
     client.close();
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchCustomClientUserAgent(): Promise<
+    void
+  > {
+    const data = "Hello World";
+    const client = Deno.createHttpClient({});
+    const response = await fetch("http://localhost:4545/echo_server", {
+      client,
+      method: "POST",
+      body: new TextEncoder().encode(data),
+    });
+    assertEquals(
+      response.headers.get("user-agent"),
+      `Deno/${Deno.version.deno}`,
+    );
+    await response.text();
+    client.close();
+  },
+);
+
+unitTest(
+  {
+    perms: { net: true },
+  },
+  async function fetchPostBodyReadableStream(): Promise<void> {
+    const addr = "127.0.0.1:4502";
+    const buf = bufferServer(addr);
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
+    // transformer writes don't resolve until they are read, so awaiting these
+    // will cause the transformer to hang, as the suspend the transformer, it
+    // is also illogical to await for the reads, as that is the whole point of
+    // streams is to have a "queue" which gets drained...
+    writer.write(new TextEncoder().encode("hello "));
+    writer.write(new TextEncoder().encode("world"));
+    writer.close();
+    const response = await fetch(`http://${addr}/blah`, {
+      method: "POST",
+      headers: [
+        ["Hello", "World"],
+        ["Foo", "Bar"],
+      ],
+      body: stream.readable,
+    });
+    await response.arrayBuffer();
+    assertEquals(response.status, 404);
+    assertEquals(response.headers.get("Content-Length"), "2");
+
+    const actual = new TextDecoder().decode(buf.bytes());
+    const expected = [
+      "POST /blah HTTP/1.1\r\n",
+      "hello: World\r\n",
+      "foo: Bar\r\n",
+      "accept: */*\r\n",
+      `user-agent: Deno/${Deno.version.deno}\r\n`,
+      "accept-encoding: gzip, br\r\n",
+      `host: ${addr}\r\n`,
+      `transfer-encoding: chunked\r\n\r\n`,
+      "6\r\n",
+      "hello \r\n",
+      "5\r\n",
+      "world\r\n",
+      "0\r\n\r\n",
+    ].join("");
+    assertEquals(actual, expected);
   },
 );

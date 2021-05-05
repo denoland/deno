@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, unitTest } from "./test_util.ts";
 
 unitTest(function fileReaderConstruct(): void {
@@ -228,7 +228,7 @@ unitTest(
       fr.addEventListener("loadend", () => {
         out += "1";
       });
-      fr.onloadend = (ev): void => {
+      fr.onloadend = (_ev): void => {
         out += "2";
       };
       fr.addEventListener("loadend", () => {

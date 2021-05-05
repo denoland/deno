@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Note: this is a keep-alive server.
 const { Server } = require("net");
 const port = process.argv[2] || "4544";

@@ -1,0 +1,10 @@
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "deno/virtualTextDocument",
+  "params": {
+    "textDocument": {
+      "uri": "deno:/asset//lib.deno.shared_globals.d.ts"
+    }
+  }
+}

@@ -1,18 +1,60 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
   assertNotEquals,
-  createResolvable,
+  Deferred,
+  deferred,
   unitTest,
 } from "./test_util.ts";
 
-function waitForMs(ms: number): Promise<number> {
-  return new Promise((resolve: () => void): number => setTimeout(resolve, ms));
+function waitForMs(ms: number): Promise<void> {
+  return new Promise((resolve): number => setTimeout(resolve, ms));
 }
 
+unitTest(async function functionParameterBindingSuccess(): Promise<void> {
+  const promise = deferred();
+  let count = 0;
+
+  const nullProto = (newCount: number): void => {
+    count = newCount;
+    promise.resolve();
+  };
+
+  Reflect.setPrototypeOf(nullProto, null);
+
+  setTimeout(nullProto, 500, 1);
+  await promise;
+  // count should be reassigned
+  assertEquals(count, 1);
+});
+
+unitTest(async function stringifyAndEvalNonFunctions(): Promise<void> {
+  // eval can only access global scope
+  const global = globalThis as unknown as {
+    globalPromise: ReturnType<typeof deferred>;
+    globalCount: number;
+  };
+  global.globalPromise = deferred();
+  global.globalCount = 0;
+
+  const notAFunction =
+    "globalThis.globalCount++; globalThis.globalPromise.resolve();" as unknown as () =>
+      void;
+
+  setTimeout(notAFunction, 500);
+
+  await global.globalPromise;
+
+  // count should be incremented
+  assertEquals(global.globalCount, 1);
+
+  Reflect.deleteProperty(global, "globalPromise");
+  Reflect.deleteProperty(global, "globalCount");
+});
+
 unitTest(async function timeoutSuccess(): Promise<void> {
-  const promise = createResolvable();
+  const promise = deferred();
   let count = 0;
   setTimeout((): void => {
     count++;
@@ -23,8 +65,29 @@ unitTest(async function timeoutSuccess(): Promise<void> {
   assertEquals(count, 1);
 });
 
+unitTest(async function timeoutEvalNoScopeLeak(): Promise<void> {
+  // eval can only access global scope
+  const global = globalThis as unknown as {
+    globalPromise: Deferred<Error>;
+  };
+  global.globalPromise = deferred();
+  setTimeout(
+    `
+    try {
+      console.log(core);
+      globalThis.globalPromise.reject(new Error("Didn't throw."));
+    } catch (error) {
+      globalThis.globalPromise.resolve(error);
+    }` as unknown as () => void,
+    0,
+  );
+  const error = await global.globalPromise;
+  assertEquals(error.name, "ReferenceError");
+  Reflect.deleteProperty(global, "globalPromise");
+});
+
 unitTest(async function timeoutArgs(): Promise<void> {
-  const promise = createResolvable();
+  const promise = deferred();
   const arg = 1;
   setTimeout(
     (a, b, c): void => {
@@ -79,8 +142,9 @@ unitTest(async function timeoutCancelMultiple(): Promise<void> {
 
 unitTest(async function timeoutCancelInvalidSilentFail(): Promise<void> {
   // Expect no panic
-  const promise = createResolvable();
+  const promise = deferred();
   let count = 0;
+  // deno-lint-ignore no-unused-vars
   const id = setTimeout((): void => {
     count++;
     // Should have no effect
@@ -95,7 +159,7 @@ unitTest(async function timeoutCancelInvalidSilentFail(): Promise<void> {
 });
 
 unitTest(async function intervalSuccess(): Promise<void> {
-  const promise = createResolvable();
+  const promise = deferred();
   let count = 0;
   const id = setInterval((): void => {
     count++;
@@ -155,7 +219,7 @@ unitTest(async function fireCallbackImmediatelyWhenDelayOverMaxValue(): Promise<
 });
 
 unitTest(async function timeoutCallbackThis(): Promise<void> {
-  const promise = createResolvable();
+  const promise = deferred();
   const obj = {
     foo(): void {
       assertEquals(this, window);
@@ -182,7 +246,7 @@ unitTest(async function timeoutBindThis(): Promise<void> {
   ];
 
   for (const thisArg of thisCheckPassed) {
-    const resolvable = createResolvable();
+    const resolvable = deferred();
     let hasThrown = 0;
     try {
       setTimeout.call(thisArg, () => resolvable.resolve(), 1);
@@ -286,7 +350,7 @@ unitTest(async function timerMaxCpuBug(): Promise<void> {
 unitTest(async function timerBasicMicrotaskOrdering(): Promise<void> {
   let s = "";
   let count = 0;
-  const promise = createResolvable();
+  const promise = deferred();
   setTimeout(() => {
     Promise.resolve().then(() => {
       count++;
@@ -309,7 +373,7 @@ unitTest(async function timerBasicMicrotaskOrdering(): Promise<void> {
 
 unitTest(async function timerNestedMicrotaskOrdering(): Promise<void> {
   let s = "";
-  const promise = createResolvable();
+  const promise = deferred();
   s += "0";
   setTimeout(() => {
     s += "4";
@@ -349,7 +413,7 @@ unitTest(function testQueueMicrotask() {
 
 unitTest(async function timerIgnoresDateOverride(): Promise<void> {
   const OriginalDate = Date;
-  const promise = createResolvable();
+  const promise = deferred();
   let hasThrown = 0;
   try {
     const overrideCalled: () => number = () => {

@@ -36,13 +36,6 @@ rustc -V
 cargo -V
 ```
 
-### Setup rust targets and components
-
-```shell
-rustup target add wasm32-unknown-unknown
-rustup target add wasm32-wasi
-```
-
 ### Building Deno
 
 The easiest way to build Deno is by using a precompiled version of V8:
@@ -103,7 +96,7 @@ Build with Cargo:
 # Build:
 cargo build -vv
 
-# Build errors?  Ensure you have latest master and try building again, or if that doesn't work try:
+# Build errors?  Ensure you have latest main and try building again, or if that doesn't work try:
 cargo clean && cargo build -vv
 
 # Run:

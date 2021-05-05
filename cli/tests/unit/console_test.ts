@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // TODO(ry) The unit test functions in this module are too coarse. They should
 // be broken up into smaller bits.
@@ -12,9 +12,10 @@ import {
   assert,
   assertEquals,
   assertStringIncludes,
+  assertThrows,
   unitTest,
 } from "./test_util.ts";
-import { stripColor } from "../../../std/fmt/colors.ts";
+import { stripColor } from "../../../test_util/std/fmt/colors.ts";
 
 const customInspect = Deno.customInspect;
 const {
@@ -309,18 +310,18 @@ unitTest(function consoleTestStringifyCircular(): void {
   assertEquals(stringify(nestedObj), nestedObjExpected);
   assertEquals(
     stringify(JSON),
-    'JSON { [Symbol(Symbol.toStringTag)]: "JSON" }',
+    "JSON {}",
   );
   assertEquals(
     stringify(console),
-    `{
+    `console {
   log: [Function: log],
-  debug: [Function: log],
-  info: [Function: log],
+  debug: [Function: debug],
+  info: [Function: info],
   dir: [Function: dir],
   dirxml: [Function: dir],
   warn: [Function: warn],
-  error: [Function: warn],
+  error: [Function: error],
   assert: [Function: assert],
   count: [Function: count],
   countReset: [Function: countReset],
@@ -341,6 +342,14 @@ unitTest(function consoleTestStringifyCircular(): void {
     stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
     'TAG { str: 1, [Symbol(sym)]: 2, [Symbol(Symbol.toStringTag)]: "TAG" }',
   );
+  assertEquals(
+    stringify({
+      [Deno.customInspect]: function () {
+        return Deno.inspect(this);
+      },
+    }),
+    "[Circular]",
+  );
   // test inspect is working the same
   assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
 });
@@ -358,6 +367,50 @@ unitTest(function consoleTestStringifyFunctionWithPrototypeRemoved(): void {
   const agf = async function* agf() {};
   Reflect.setPrototypeOf(agf, null);
   assertEquals(stringify(agf), "[Function: agf]");
+});
+
+unitTest(function consoleTestStringifyFunctionWithProperties(): void {
+  const f = () => "test";
+  f.x = () => "foo";
+  f.y = 3;
+  f.z = () => "baz";
+  f.b = function bar() {};
+  f.a = new Map();
+  assertEquals(
+    stringify({ f }),
+    `{
+  f: [Function: f] { x: [Function], y: 3, z: [Function], b: [Function: bar], a: Map {} }
+}`,
+  );
+
+  const t = () => {};
+  t.x = f;
+  f.s = f;
+  f.t = t;
+  assertEquals(
+    stringify({ f }),
+    `{
+  f: [Function: f] {
+    x: [Function],
+    y: 3,
+    z: [Function],
+    b: [Function: bar],
+    a: Map {},
+    s: [Circular],
+    t: [Function: t] { x: [Circular] }
+  }
+}`,
+  );
+
+  assertEquals(
+    stringify(Array),
+    `[Function: Array]`,
+  );
+
+  assertEquals(
+    stripColor(Deno.inspect(Array, { showHidden: true })),
+    `[Function: Array] { [Symbol(Symbol.species)]: [Getter] }`,
+  );
 });
 
 unitTest(function consoleTestStringifyWithDepth(): void {
@@ -808,7 +861,7 @@ unitTest(async function consoleTestStringifyPromises(): Promise<void> {
       rej(Error("Whoops"));
     });
     await rejectedPromise;
-  } catch (err) {
+  } catch (_err) {
     // pass
   }
   const strLines = stringify(rejectedPromise).split("\n");
@@ -833,19 +886,18 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
     }
   }
 
-  assertEquals(stringify(new A()), "A {}");
-
-  class B {
-    constructor(public field: { a: string }) {}
-    [customInspect](): string {
-      return this.field.a;
-    }
-  }
-
-  assertEquals(stringify(new B({ a: "a" })), "a");
-  assertEquals(
-    stringify(B.prototype),
-    "B { [Symbol(Deno.customInspect)]: [Function: [Deno.customInspect]] }",
+  const a = new A();
+  assertThrows(
+    () => stringify(a),
+    Error,
+    "BOOM",
+    "Custom inspect won't attempt to parse if user defined function throws",
+  );
+  assertThrows(
+    () => stringify(a),
+    Error,
+    "BOOM",
+    "Inpsect should fail and maintain a clear CTX_STACK",
   );
 });
 
@@ -1154,9 +1206,9 @@ function mockConsole(f: ConsoleExamineFunc): void {
   const err = new StringBuffer();
   const both = new StringBuffer();
   const csl = new Console(
-    (x: string, isErr: boolean, printsNewLine: boolean): void => {
+    (x: string, level: number, printsNewLine: boolean): void => {
       const content = x + (printsNewLine ? "\n" : "");
-      const buf = isErr ? err : out;
+      const buf = level > 1 ? err : out;
       buf.add(content);
       both.add(content);
     },
@@ -1432,6 +1484,39 @@ unitTest(function consoleTable(): void {
 `,
     );
   });
+  mockConsole((console, out) => {
+    console.table([{ a: 0 }, { a: 1, b: 1 }, { a: 2 }, { a: 3, b: 3 }]);
+    assertEquals(
+      stripColor(out.toString()),
+      `┌───────┬───┬───┐
+│ (idx) │ a │ b │
+├───────┼───┼───┤
+│   0   │ 0 │   │
+│   1   │ 1 │ 1 │
+│   2   │ 2 │   │
+│   3   │ 3 │ 3 │
+└───────┴───┴───┘
+`,
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(
+      [{ a: 0 }, { a: 1, c: 1 }, { a: 2 }, { a: 3, c: 3 }],
+      ["a", "b", "c"],
+    );
+    assertEquals(
+      stripColor(out.toString()),
+      `┌───────┬───┬───┬───┐
+│ (idx) │ a │ b │ c │
+├───────┼───┼───┼───┤
+│   0   │ 0 │   │   │
+│   1   │ 1 │   │ 1 │
+│   2   │ 2 │   │   │
+│   3   │ 3 │   │ 3 │
+└───────┴───┴───┴───┘
+`,
+    );
+  });
 });
 
 // console.log(Error) test
@@ -1441,7 +1526,7 @@ unitTest(function consoleLogShouldNotThrowError(): void {
     try {
       console.log(new Error("foo"));
       result = 1;
-    } catch (e) {
+    } catch (_e) {
       result = 2;
     }
     assertEquals(result, 1);

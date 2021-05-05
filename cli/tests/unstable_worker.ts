@@ -1,8 +1,10 @@
 const w = new Worker(
-  new URL("subdir/worker_unstable.ts", import.meta.url).href,
+  new URL("workers/worker_unstable.ts", import.meta.url).href,
   {
     type: "module",
-    deno: true,
+    deno: {
+      namespace: true,
+    },
     name: "Unstable Worker",
   },
 );

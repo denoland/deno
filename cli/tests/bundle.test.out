@@ -8,16 +8,20 @@ function returnsFoo() {
 function printHello2() {
     printHello();
 }
-export function returnsHi() {
+function returnsHi1() {
     return "Hi";
 }
-export function returnsFoo2() {
+function returnsFoo21() {
     return returnsFoo();
 }
-export function printHello3() {
+function printHello31() {
     printHello2();
 }
-export function throwsError() {
+function throwsError1() {
     throw Error("exception from mod1");
 }
-[WILDCARD]
+export { returnsHi1 as returnsHi };
+export { returnsFoo21 as returnsFoo2 };
+export { printHello31 as printHello3 };
+export { throwsError1 as throwsError };
+

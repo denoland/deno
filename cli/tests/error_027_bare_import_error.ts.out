@@ -1,0 +1,8 @@
+[WILDCARD]error: Unable to output bundle during Graph::bundle().
+
+Caused by:
+    0: load_transformed failed
+    1: failed to analyze module
+    2: failed to resolve foo from <file:///[WILDCARD]/error_027_bare_import_error.ts>
+    3: The graph is missing a dependency.
+         Specifier: foo from file:///[WILDCARD]/error_027_bare_import_error.ts

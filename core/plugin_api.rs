@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // This file defines the public interface for dynamically loaded plugins.
 
@@ -10,11 +10,12 @@
 
 pub use crate::Op;
 pub use crate::OpId;
+pub use crate::OpResult;
 pub use crate::ZeroCopyBuf;
 
 pub type InitFn = fn(&mut dyn Interface);
 
-pub type DispatchOpFn = fn(&mut dyn Interface, &mut [ZeroCopyBuf]) -> Op;
+pub type DispatchOpFn = fn(&mut dyn Interface, Option<ZeroCopyBuf>) -> Op;
 
 pub trait Interface {
   fn register_op(&mut self, name: &str, dispatcher: DispatchOpFn) -> OpId;

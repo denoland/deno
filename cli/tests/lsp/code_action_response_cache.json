@@ -1,0 +1,36 @@
+[
+  {
+    "title": "Cache \"https://deno.land/x/a/mod.ts\" and its dependencies.",
+    "kind": "quickfix",
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 19
+          },
+          "end": {
+            "line": 0,
+            "character": 49
+          }
+        },
+        "severity": 1,
+        "code": "no-cache",
+        "source": "deno",
+        "message": "Unable to load the remote module: \"https://deno.land/x/a/mod.ts\".",
+        "data": {
+          "specifier": "https://deno.land/x/a/mod.ts"
+        }
+      }
+    ],
+    "command": {
+      "title": "",
+      "command": "deno.cache",
+      "arguments": [
+        [
+          "https://deno.land/x/a/mod.ts"
+        ]
+      ]
+    }
+  }
+]

@@ -5,7 +5,7 @@ developer experience.
 
 It's built on V8, Rust, and Tokio.
 
-## Feature Highlights
+## Feature highlights
 
 - Secure by default. No file, network, or environment access (unless explicitly
   enabled).
@@ -15,9 +15,9 @@ It's built on V8, Rust, and Tokio.
   formatter (`deno fmt`).
 - Has
   [a set of reviewed (audited) standard
-  modules](https://github.com/denoland/deno/tree/master/std) that are guaranteed
-  to work with Deno.
-- Scripts can be bundled into a single JavaScript file.
+  modules](https://github.com/denoland/deno_std) that are guaranteed to work
+  with Deno.
+- Can bundle scripts into a single JavaScript file.
 
 ## Philosophy
 
@@ -26,26 +26,27 @@ programmer.
 
 Deno will always be distributed as a single executable. Given a URL to a Deno
 program, it is runnable with nothing more than
-[the ~15 megabyte zipped executable](https://github.com/denoland/deno/releases).
+[the ~25 megabyte zipped executable](https://github.com/denoland/deno/releases).
 Deno explicitly takes on the role of both runtime and package manager. It uses a
 standard browser-compatible protocol for loading modules: URLs.
 
 Among other things, Deno is a great replacement for utility scripts that may
-have been historically written with bash or python.
+have been historically written with Bash or Python.
 
 ## Goals
 
-- Only ship a single executable (`deno`).
-- Provide Secure Defaults.
+- Ship as just a single executable (`deno`).
+- Provide secure defaults.
   - Unless specifically allowed, scripts can't access files, the environment, or
     the network.
-- Browser compatible: The subset of Deno programs which are written completely
-  in JavaScript and do not use the global `Deno` namespace (or feature test for
-  it), ought to also be able to be run in a modern web browser without change.
-- Provide built-in tooling like unit testing, code formatting, and linting to
-  improve developer experience.
-- Does not leak V8 concepts into user land.
-- Be able to serve HTTP efficiently.
+- Be browser-compatible.
+  - The subset of Deno programs which are written completely in JavaScript and
+    do not use the global `Deno` namespace (or feature test for it), ought to
+    also be able to be run in a modern web browser without change.
+- Provide built-in tooling to improve developer experience.
+  - E.g. unit testing, code formatting, and linting.
+- Keep V8 concepts out of user land.
+- Serve HTTP efficiently.
 
 ## Comparison to Node.js
 
@@ -56,8 +57,8 @@ have been historically written with bash or python.
   than Node.
 - Deno requires explicit permissions for file, network, and environment access.
 - Deno always dies on uncaught errors.
-- Uses "ES Modules" and does not support `require()`. Third party modules are
-  imported via URLs:
+- Deno uses "ES Modules" and does not support `require()`. Third party modules
+  are imported via URLs:
 
   ```javascript
   import * as log from "https://deno.land/std@$STD_VERSION/log/mod.ts";
@@ -65,7 +66,7 @@ have been historically written with bash or python.
 
 ## Other key behaviors
 
-- Remote code is fetched and cached on first execution, and never updated until
+- Fetch and cache remote code upon first execution, and never update it until
   the code is run with the `--reload` flag. (So, this will still work on an
   airplane.)
 - Modules/files loaded from remote URLs are intended to be immutable and

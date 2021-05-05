@@ -1,11 +1,11 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
   assertThrows,
-  createResolvable,
   fail,
-} from "./unit/test_util.ts";
+} from "../../test_util/std/testing/asserts.ts";
+import { deferred } from "../../test_util/std/async/deferred.ts";
 
 Deno.test("invalid scheme", () => {
   assertThrows(() => new WebSocket("foo://localhost:4242"));
@@ -21,7 +21,7 @@ Deno.test("duplicate protocols", () => {
 });
 
 Deno.test("invalid server", async () => {
-  const promise = createResolvable();
+  const promise = deferred();
   const ws = new WebSocket("ws://localhost:2121");
   let err = false;
   ws.onerror = (): void => {
@@ -39,7 +39,7 @@ Deno.test("invalid server", async () => {
 });
 
 Deno.test("connect & close", async () => {
-  const promise = createResolvable();
+  const promise = deferred();
   const ws = new WebSocket("ws://localhost:4242");
   ws.onerror = (): void => fail();
   ws.onopen = (): void => {
@@ -52,7 +52,7 @@ Deno.test("connect & close", async () => {
 });
 
 Deno.test("connect & abort", async () => {
-  const promise = createResolvable();
+  const promise = deferred();
   const ws = new WebSocket("ws://localhost:4242");
   ws.close();
   let err = false;
@@ -71,7 +71,7 @@ Deno.test("connect & abort", async () => {
 });
 
 Deno.test("connect & close custom valid code", async () => {
-  const promise = createResolvable();
+  const promise = deferred();
   const ws = new WebSocket("ws://localhost:4242");
   ws.onerror = (): void => fail();
   ws.onopen = (): void => ws.close(1000);
@@ -82,7 +82,7 @@ Deno.test("connect & close custom valid code", async () => {
 });
 
 Deno.test("connect & close custom invalid code", async () => {
-  const promise = createResolvable();
+  const promise = deferred();
   const ws = new WebSocket("ws://localhost:4242");
   ws.onerror = (): void => fail();
   ws.onopen = (): void => {
@@ -96,7 +96,7 @@ Deno.test("connect & close custom invalid code", async () => {
 });
 
 Deno.test("connect & close custom valid reason", async () => {
-  const promise = createResolvable();
+  const promise = deferred();
   const ws = new WebSocket("ws://localhost:4242");
   ws.onerror = (): void => fail();
   ws.onopen = (): void => ws.close(1000, "foo");
@@ -107,7 +107,7 @@ Deno.test("connect & close custom valid reason", async () => {
 });
 
 Deno.test("connect & close custom invalid reason", async () => {
-  const promise = createResolvable();
+  const promise = deferred();
   const ws = new WebSocket("ws://localhost:4242");
   ws.onerror = (): void => fail();
   ws.onopen = (): void => {
@@ -121,7 +121,7 @@ Deno.test("connect & close custom invalid reason", async () => {
 });
 
 Deno.test("echo string", async () => {
-  const promise = createResolvable();
+  const promise = deferred();
   const ws = new WebSocket("ws://localhost:4242");
   ws.onerror = (): void => fail();
   ws.onopen = (): void => ws.send("foo");
@@ -136,8 +136,8 @@ Deno.test("echo string", async () => {
 });
 
 Deno.test("echo string tls", async () => {
-  const promise1 = createResolvable();
-  const promise2 = createResolvable();
+  const promise1 = deferred();
+  const promise2 = deferred();
   const ws = new WebSocket("wss://localhost:4243");
   ws.onerror = (): void => fail();
   ws.onopen = (): void => ws.send("foo");
@@ -154,19 +154,21 @@ Deno.test("echo string tls", async () => {
 });
 
 Deno.test("websocket error", async () => {
-  const promise1 = createResolvable();
+  const promise1 = deferred();
   const ws = new WebSocket("wss://localhost:4242");
   ws.onopen = () => fail();
   ws.onerror = (err): void => {
     assert(err instanceof ErrorEvent);
-    assertEquals(err.message, "InvalidData: received corrupt message");
+
+    // Error message got changed because we don't use warp in test_util
+    assertEquals(err.message, "UnexpectedEof: tls handshake eof");
     promise1.resolve();
   };
   await promise1;
 });
 
 Deno.test("echo blob with binaryType blob", async () => {
-  const promise = createResolvable();
+  const promise = deferred();
   const ws = new WebSocket("ws://localhost:4242");
   const blob = new Blob(["foo"]);
   ws.onerror = (): void => fail();
@@ -186,7 +188,7 @@ Deno.test("echo blob with binaryType blob", async () => {
 });
 
 Deno.test("echo blob with binaryType arraybuffer", async () => {
-  const promise = createResolvable();
+  const promise = deferred();
   const ws = new WebSocket("ws://localhost:4242");
   ws.binaryType = "arraybuffer";
   const blob = new Blob(["foo"]);
@@ -205,7 +207,7 @@ Deno.test("echo blob with binaryType arraybuffer", async () => {
 });
 
 Deno.test("echo uint8array with binaryType blob", async () => {
-  const promise = createResolvable();
+  const promise = deferred();
   const ws = new WebSocket("ws://localhost:4242");
   const uint = new Uint8Array([102, 111, 111]);
   ws.onerror = (): void => fail();
@@ -223,7 +225,7 @@ Deno.test("echo uint8array with binaryType blob", async () => {
 });
 
 Deno.test("echo uint8array with binaryType arraybuffer", async () => {
-  const promise = createResolvable();
+  const promise = deferred();
   const ws = new WebSocket("ws://localhost:4242");
   ws.binaryType = "arraybuffer";
   const uint = new Uint8Array([102, 111, 111]);
@@ -240,7 +242,7 @@ Deno.test("echo uint8array with binaryType arraybuffer", async () => {
 });
 
 Deno.test("echo arraybuffer with binaryType blob", async () => {
-  const promise = createResolvable();
+  const promise = deferred();
   const ws = new WebSocket("ws://localhost:4242");
   const buffer = new ArrayBuffer(3);
   ws.onerror = (): void => fail();
@@ -258,7 +260,7 @@ Deno.test("echo arraybuffer with binaryType blob", async () => {
 });
 
 Deno.test("echo arraybuffer with binaryType arraybuffer", async () => {
-  const promise = createResolvable();
+  const promise = deferred();
   const ws = new WebSocket("ws://localhost:4242");
   ws.binaryType = "arraybuffer";
   const buffer = new ArrayBuffer(3);
@@ -275,7 +277,7 @@ Deno.test("echo arraybuffer with binaryType arraybuffer", async () => {
 });
 
 Deno.test("Event Handlers order", async () => {
-  const promise = createResolvable();
+  const promise = deferred();
   const ws = new WebSocket("ws://localhost:4242");
   const arr: number[] = [];
   ws.onerror = (): void => fail();
@@ -289,6 +291,17 @@ Deno.test("Event Handlers order", async () => {
   ws.onmessage = () => arr.push(2);
   ws.onopen = (): void => ws.send("Echo");
   ws.onclose = (): void => {
+    promise.resolve();
+  };
+  await promise;
+});
+
+Deno.test("Close without frame", async () => {
+  const promise = deferred();
+  const ws = new WebSocket("ws://localhost:4244");
+  ws.onerror = (): void => fail();
+  ws.onclose = (e): void => {
+    assertEquals(e.code, 1005);
     promise.resolve();
   };
   await promise;

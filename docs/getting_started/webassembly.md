@@ -1,8 +1,10 @@
 ## WebAssembly support
 
-Deno can execute [WebAssembly](https://webassembly.org/) binaries.
+Deno can execute [WebAssembly](https://webassembly.org/) modules with the same
+interfaces that
+[browsers provide](https://developer.mozilla.org/en-US/docs/WebAssembly).
 
-<!-- dprint-ignore -->
+<!-- deno-fmt-ignore -->
 
 ```ts
 const wasmCode = new Uint8Array([
@@ -16,5 +18,15 @@ const wasmCode = new Uint8Array([
 const wasmModule = new WebAssembly.Module(wasmCode);
 const wasmInstance = new WebAssembly.Instance(wasmModule);
 const main = wasmInstance.exports.main as CallableFunction
+console.log(main().toString());
+```
+
+And for files:
+
+```ts
+const wasmCode = await Deno.readFile("main.wasm");
+const wasmModule = new WebAssembly.Module(wasmCode);
+const wasmInstance = new WebAssembly.Instance(wasmModule);
+const main = wasmInstance.exports.main as CallableFunction;
 console.log(main().toString());
 ```

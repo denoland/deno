@@ -1,6 +1,6 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
-import { serve, ServerRequest } from "../../std/http/server.ts";
-import { assertEquals } from "../../std/testing/asserts.ts";
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+import { serve, ServerRequest } from "../../test_util/std/http/server.ts";
+import { assertEquals } from "../../test_util/std/testing/asserts.ts";
 
 const addr = Deno.args[1] || "127.0.0.1:4555";
 
@@ -54,7 +54,7 @@ async function testModuleDownload(): Promise<void> {
       "cache",
       "--reload",
       "--quiet",
-      "http://localhost:4545/std/examples/colors.ts",
+      "http://localhost:4545/test_util/std/examples/colors.ts",
     ],
     stdout: "piped",
     env: {
@@ -96,7 +96,7 @@ async function testModuleDownloadNoProxy(): Promise<void> {
       "cache",
       "--reload",
       "--quiet",
-      "http://localhost:4545/std/examples/colors.ts",
+      "http://localhost:4545/test_util/std/examples/colors.ts",
     ],
     stdout: "piped",
     env: {

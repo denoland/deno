@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, unitTest } from "./test_util.ts";
 
 unitTest(async function responseText() {
@@ -37,7 +37,8 @@ unitTest(async function responseBlob() {
   assertEquals(blob, new Blob([new Uint8Array([1, 2, 3])]));
 });
 
-unitTest(async function responseFormData() {
+// TODO(lucacasonato): re-enable test once #10002 is fixed.
+unitTest({ ignore: true }, async function responseFormData() {
   const input = new FormData();
   input.append("hello", "world");
   const response = new Response(input, {
@@ -48,4 +49,21 @@ unitTest(async function responseFormData() {
   const formData = await formDataPromise;
   assert(formData instanceof FormData);
   assertEquals(formData, input);
+});
+
+unitTest(function customInspectFunction(): void {
+  const response = new Response();
+  assertEquals(
+    Deno.inspect(response),
+    `Response {
+  body: null,
+  bodyUsed: false,
+  headers: Headers {},
+  ok: true,
+  redirected: false,
+  status: 200,
+  statusText: "",
+  url: ""
+}`,
+  );
 });

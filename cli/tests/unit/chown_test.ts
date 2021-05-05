@@ -1,4 +1,4 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assertEquals,
   assertThrows,
@@ -12,11 +12,11 @@ async function getUidAndGid(): Promise<{ uid: number; gid: number }> {
   // get the user ID and group ID of the current process
   const uidProc = Deno.run({
     stdout: "piped",
-    cmd: ["python", "-c", "import os; print(os.getuid())"],
+    cmd: ["id", "-u"],
   });
   const gidProc = Deno.run({
     stdout: "piped",
-    cmd: ["python", "-c", "import os; print(os.getgid())"],
+    cmd: ["id", "-g"],
   });
 
   assertEquals((await uidProc.status()).code, 0);
@@ -96,7 +96,7 @@ unitTest(
 unitTest(
   { perms: { run: true, write: true }, ignore: Deno.build.os == "windows" },
   async function chownSyncSucceed(): Promise<void> {
-    // TODO: when a file's owner is actually being changed,
+    // TODO(bartlomieju): when a file's owner is actually being changed,
     // chown only succeeds if run under priviledged user (root)
     // The test script has no such privilege, so need to find a better way to test this case
     const { uid, gid } = await getUidAndGid();
@@ -152,7 +152,7 @@ unitTest(
 unitTest(
   { perms: { run: true, write: true }, ignore: Deno.build.os == "windows" },
   async function chownWithUrl(): Promise<void> {
-    // TODO: same as chownSyncSucceed
+    // TODO(bartlomieju): same as chownSyncSucceed
     const { uid, gid } = await getUidAndGid();
 
     const enc = new TextEncoder();

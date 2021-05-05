@@ -1,6 +1,6 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Used for benchmarking Deno's networking.
-// TODO Replace this with a real HTTP server once
+// TODO(bartlomieju): Replace this with a real HTTP server once
 // https://github.com/denoland/deno/issues/726 is completed.
 // Note: this is a keep-alive server.
 const addr = Deno.args[0] || "127.0.0.1:4500";
@@ -13,15 +13,18 @@ async function handle(conn: Deno.Conn): Promise<void> {
   const buffer = new Uint8Array(1024);
   try {
     while (true) {
-      const r = await conn.read(buffer);
-      if (r === null) {
-        break;
-      }
+      await conn.read(buffer);
       await conn.write(response);
     }
-  } finally {
-    conn.close();
+  } catch (e) {
+    if (
+      !(e instanceof Deno.errors.BrokenPipe) &&
+      !(e instanceof Deno.errors.ConnectionReset)
+    ) {
+      throw e;
+    }
   }
+  conn.close();
 }
 
 console.log("Listening on", addr);

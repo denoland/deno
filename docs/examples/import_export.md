@@ -63,7 +63,7 @@ from a locally stored arithmetic module. The same functionality can be created
 by importing `add` and `multiply` methods from a remote module too.
 
 In this case the Ramda module is referenced, including the version number. Also
-note a JavaScript module is imported directly into a TypeSript module, Deno has
+note a JavaScript module is imported directly into a TypeScript module, Deno has
 no problem handling this.
 
 **Command:** `deno run ./remote.ts`

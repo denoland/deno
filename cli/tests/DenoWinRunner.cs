@@ -31,7 +31,7 @@ public class DenoWinRunner
     /// </summary>
     /// <param name="pathToDenoExe">Path to the Deno.exe file. Can be absolute or relative</param>
     /// <param name="pathToTestScript">Path to the script file Deno should run.</param>
-    /// <param name="constraints">The contrainsts to apply to the Deno process</param>
+    /// <param name="constraints">The constraints to apply to the Deno process</param>
     /// <param name="timeoutMilliseconds">How long to wait for the Deno process to exit</param>
     /// <returns>The deno.exe exit code, or an exit code provided by the test runner</returns>
     public static int RunDenoScript(string pathToDenoExe, string pathToTestScript, DenoConstraints constraints, uint timeoutMilliseconds = 1000)
@@ -66,7 +66,7 @@ public class DenoWinRunner
             {
                 SetStdHandle(STD_INPUT_HANDLE, (IntPtr)null);
             }
-            
+
             if (constraints.HasFlag(DenoConstraints.NoStdout))
             {
                 SetStdHandle(STD_OUTPUT_HANDLE, (IntPtr)null);
@@ -76,13 +76,13 @@ public class DenoWinRunner
             {
                 SetStdHandle(STD_ERROR_HANDLE, (IntPtr)null);
             }
-            
+
             Process process = new Process { StartInfo = startInfo };
             process.Start();
 
-            Task<string> stdErrTask = startInfo.RedirectStandardError ? 
+            Task<string> stdErrTask = startInfo.RedirectStandardError ?
                 process.StandardError.ReadToEndAsync() : Task.FromResult<string>(null);
-            Task<string> stdOutTask = startInfo.RedirectStandardOutput ? 
+            Task<string> stdOutTask = startInfo.RedirectStandardOutput ?
                 process.StandardOutput.ReadToEndAsync() : Task.FromResult<string>(null);
 
             if (!process.WaitForExit((int)timeoutMilliseconds))

@@ -1,16 +1,16 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
   assertThrows,
-  createResolvable,
+  deferred,
   unitTest,
 } from "./test_util.ts";
 
 unitTest({ perms: { hrtime: false } }, async function performanceNow(): Promise<
   void
 > {
-  const resolvable = createResolvable();
+  const resolvable = deferred();
   const start = performance.now();
   setTimeout((): void => {
     const end = performance.now();
