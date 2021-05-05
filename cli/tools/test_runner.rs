@@ -419,7 +419,7 @@ pub async fn run_tests(
               let line = line.strip_prefix('*').unwrap_or(line);
               let line = line.strip_prefix(' ').unwrap_or(line);
 
-              source.push_str(line);
+              source.push_str(&format!("{}\n", line));
             }
 
             let file = File {
@@ -630,6 +630,7 @@ mod tests {
         "http://example.com/printf_test.ts".to_string(),
       ],
       &test_data_path,
+      is_supported,
     )
     .unwrap();
     let test_data_url =
@@ -679,7 +680,7 @@ mod tests {
       .join("http");
     println!("root {:?}", root);
     let mut matched_urls =
-      collect_test_module_specifiers(vec![".".to_string()], &root).unwrap();
+      collect_test_module_specifiers(vec![".".to_string()], &root, is_supported).unwrap();
     matched_urls.sort();
     let root_url = Url::from_file_path(root).unwrap().to_string();
     println!("root_url {}", root_url);
