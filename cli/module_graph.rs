@@ -8,6 +8,8 @@ use crate::ast::ParsedModule;
 use crate::checksum;
 use crate::colors;
 use crate::config_file::ConfigFile;
+use crate::config_file::IgnoredCompilerOptions;
+use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
 use crate::import_map::ImportMap;
 use crate::info;
@@ -20,8 +22,6 @@ use crate::specifier_handler::Emit;
 use crate::specifier_handler::FetchFuture;
 use crate::specifier_handler::SpecifierHandler;
 use crate::tsc;
-use crate::tsc_config::IgnoredCompilerOptions;
-use crate::tsc_config::TsConfig;
 use crate::version;
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
@@ -774,12 +774,8 @@ impl Graph {
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
     }));
-    let maybe_ignored_options =
-      if let Some(config_file) = options.maybe_config_file.as_ref() {
-        ts_config.merge_tsconfig_from_config_file(config_file)?
-      } else {
-        None
-      };
+    let maybe_ignored_options = ts_config
+      .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
 
     let s = self.emit_bundle(
       &root_specifier,
@@ -828,12 +824,8 @@ impl Graph {
         "noEmit": true,
       }));
     }
-    let maybe_ignored_options =
-      if let Some(config_file) = options.maybe_config_file.as_ref() {
-        config.merge_tsconfig_from_config_file(config_file)?
-      } else {
-        None
-      };
+    let maybe_ignored_options = config
+      .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
 
     // Short circuit if none of the modules require an emit, or all of the
     // modules that require an emit have a valid emit.  There is also an edge
@@ -1607,12 +1599,8 @@ impl Graph {
       "jsxFragmentFactory": "React.Fragment",
     }));
 
-    let maybe_ignored_options =
-      if let Some(config_file) = options.maybe_config_file.as_ref() {
-        ts_config.merge_tsconfig_from_config_file(config_file)?
-      } else {
-        None
-      };
+    let maybe_ignored_options = ts_config
+      .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
 
     let config = ts_config.as_bytes();
     let emit_options: ast::EmitOptions = ts_config.into();

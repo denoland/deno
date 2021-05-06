@@ -34,7 +34,6 @@ mod text_encoding;
 mod tokio_util;
 mod tools;
 mod tsc;
-mod tsc_config;
 mod unix_util;
 mod version;
 

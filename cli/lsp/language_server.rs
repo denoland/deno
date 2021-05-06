@@ -30,11 +30,10 @@ use std::sync::Arc;
 use tokio::fs;
 
 use crate::config_file::ConfigFile;
+use crate::config_file::TsConfig;
 use crate::deno_dir;
 use crate::import_map::ImportMap;
 use crate::media_type::MediaType;
-use crate::tsc_config::parse_compiler_options_from_config_file;
-use crate::tsc_config::TsConfig;
 
 use super::analysis;
 use super::analysis::ts_changes_to_edit;
@@ -407,8 +406,7 @@ impl Inner {
 
       let config_file = ConfigFile::read(config_url.as_str())
         .context("Failed to load configuration file")?;
-      let (value, maybe_ignored_options) =
-        parse_compiler_options_from_config_file(&config_file)?;
+      let (value, maybe_ignored_options) = config_file.as_compiler_options()?;
       tsconfig.merge(&value);
       self.maybe_config_uri = Some(config_url);
       if let Some(ignored_options) = maybe_ignored_options {
