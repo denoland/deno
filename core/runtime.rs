@@ -757,6 +757,7 @@ impl JsRuntime {
     let state_rc = Self::state(self.v8_isolate());
     let scope = &mut self.handle_scope();
 
+    eprintln!("mod_new {}", name);
     let name_str = v8::String::new(scope, name).unwrap();
     let source_str = v8::String::new(scope, source).unwrap();
 
@@ -814,6 +815,16 @@ impl JsRuntime {
     let state_rc = Self::state(self.v8_isolate());
     let scope = &mut self.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
+
+    {
+      let s = state_rc
+      .borrow();
+      let module_info = s
+      .module_map
+      .get_info_by_id(&id)
+      .expect("ModuleInfo not found");
+    eprintln!("module info {} {}", id, module_info.name);
+    }
 
     let module = state_rc
       .borrow()
@@ -1140,6 +1151,7 @@ impl JsRuntime {
           // The top-level module from a dynamic import has been instantiated.
           // Load is done.
           let module_id = load.root_module_id.unwrap();
+          eprintln!("dynamic import done {} {}", module_id, dyn_import_id);
           let result = self.mod_instantiate(module_id);
           if let Err(err) = result {
             self.dyn_import_error(dyn_import_id, err);
@@ -2397,7 +2409,7 @@ main();
         &self,
         _op_state: Rc<RefCell<OpState>>,
         specifier: &ModuleSpecifier,
-        _maybe_referrer: Option<ModuleSpecifier>,
+        maybe_referrer: Option<ModuleSpecifier>,
         _is_dyn_import: bool,
       ) -> Pin<Box<ModuleSourceFuture>> {
         self.load_count.fetch_add(1, Ordering::Relaxed);
@@ -2406,7 +2418,7 @@ main();
           .unwrap()
           .to_string_lossy()
           .to_string();
-        eprintln!("{}", filename.as_str());
+        eprintln!("{} from {:?}", filename.as_str(), maybe_referrer);
         let code = match filename.as_str() {
           "a.js" => "import './b.js';",
           "b.js" => "import './c.js';\nimport './a.js';",

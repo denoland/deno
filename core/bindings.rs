@@ -608,6 +608,7 @@ pub fn module_resolve_callback<'s>(
     )
     .expect("Module should have been already resolved");
 
+  eprintln!("module_resolve_callback {} {:?}", resolved_specifier, state.module_map.get_id(resolved_specifier.as_str()));
   if let Some(id) = state.module_map.get_id(resolved_specifier.as_str()) {
     if let Some(handle) = state.module_map.get_handle(id) {
       return Some(v8::Local::new(scope, handle));
@@ -619,6 +620,7 @@ pub fn module_resolve_callback<'s>(
     specifier_str, referrer_name
   );
   throw_type_error(scope, msg);
+  eprintln!("throwing error!");
   None
 }
 
