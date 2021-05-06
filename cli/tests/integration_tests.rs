@@ -5409,7 +5409,9 @@ console.log("finish");
       .arg("--target")
       .arg("x86_64-unknown-linux-gnu")
       .arg("./test_util/std/examples/welcome.ts")
-      .stdout(std::process::Stdio::piped())
+      // TODO(kt3k): Prints command output to the test log for debugging purpose.
+      // Uncomment this line when this test become stable.
+      //.stdout(std::process::Stdio::piped())
       .spawn()
       .unwrap()
       .wait_with_output()
