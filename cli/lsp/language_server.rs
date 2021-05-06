@@ -692,17 +692,15 @@ impl Inner {
           }
         }
       }
-    } else {
-      if let Some(config) = params
-        .settings
-        .as_object()
-        .map(|settings| settings.get(SETTINGS_SECTION))
-        .flatten()
-        .cloned()
-      {
-        if let Err(err) = self.config.update_workspace(config) {
-          error!("failed to update settings: {}", err);
-        }
+    } else if let Some(config) = params
+      .settings
+      .as_object()
+      .map(|settings| settings.get(SETTINGS_SECTION))
+      .flatten()
+      .cloned()
+    {
+      if let Err(err) = self.config.update_workspace(config) {
+        error!("failed to update settings: {}", err);
       }
     }
 
