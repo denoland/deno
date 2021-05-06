@@ -177,12 +177,12 @@ declare namespace Deno {
   export function exit(code?: number): never;
 
   export const env: {
-    /** Retrieve the value of an environment variable. Returns undefined if that
+    /** Retrieve the value of an environment variable. Returns `undefined` if that
      * key doesn't exist.
      *
      * ```ts
      * console.log(Deno.env.get("HOME"));  // e.g. outputs "/home/alice"
-     * console.log(Deno.env.get("MADE_UP_VAR"));  // outputs "Undefined"
+     * console.log(Deno.env.get("MADE_UP_VAR"));  // outputs "undefined"
      * ```
      * Requires `allow-env` permission. */
     get(key: string): string | undefined;
@@ -201,7 +201,7 @@ declare namespace Deno {
      *
      * ```ts
      * Deno.env.set("SOME_VAR", "Value");
-     * Deno.env.delete("SOME_VAR");  // outputs "Undefined"
+     * Deno.env.delete("SOME_VAR");  // outputs "undefined"
      * ```
      *
      * Requires `allow-env` permission. */

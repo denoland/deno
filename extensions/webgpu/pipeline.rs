@@ -97,25 +97,32 @@ fn serialize_blend_factor(blend_factor: &str) -> wgpu_types::BlendFactor {
   match blend_factor {
     "zero" => wgpu_types::BlendFactor::Zero,
     "one" => wgpu_types::BlendFactor::One,
-    "src-color" => wgpu_types::BlendFactor::SrcColor,
-    "one-minus-src-color" => wgpu_types::BlendFactor::OneMinusSrcColor,
+    "src" => wgpu_types::BlendFactor::Src,
+    "one-minus-src" => wgpu_types::BlendFactor::OneMinusSrc,
     "src-alpha" => wgpu_types::BlendFactor::SrcAlpha,
     "one-minus-src-alpha" => wgpu_types::BlendFactor::OneMinusSrcAlpha,
-    "dst-color" => wgpu_types::BlendFactor::DstColor,
-    "one-minus-dst-color" => wgpu_types::BlendFactor::OneMinusDstColor,
+    "dst" => wgpu_types::BlendFactor::Dst,
+    "one-minus-dst" => wgpu_types::BlendFactor::OneMinusDst,
     "dst-alpha" => wgpu_types::BlendFactor::DstAlpha,
     "one-minus-dst-alpha" => wgpu_types::BlendFactor::OneMinusDstAlpha,
     "src-alpha-saturated" => wgpu_types::BlendFactor::SrcAlphaSaturated,
-    "blend-color" => wgpu_types::BlendFactor::BlendColor,
-    "one-minus-blend-color" => wgpu_types::BlendFactor::OneMinusBlendColor,
+    "constant" => wgpu_types::BlendFactor::Constant,
+    "one-minus-constant" => wgpu_types::BlendFactor::OneMinusConstant,
     _ => unreachable!(),
+  }
+}
+
+fn serialize_blend_state(state: GpuBlendState) -> wgpu_types::BlendState {
+  wgpu_types::BlendState {
+    alpha: serialize_blend_component(state.alpha),
+    color: serialize_blend_component(state.color),
   }
 }
 
 fn serialize_blend_component(
   blend: GpuBlendComponent,
-) -> wgpu_types::BlendState {
-  wgpu_types::BlendState {
+) -> wgpu_types::BlendComponent {
+  wgpu_types::BlendComponent {
     src_factor: blend
       .src_factor
       .as_ref()
@@ -201,7 +208,7 @@ pub fn op_webgpu_create_compute_pipeline(
     }),
   };
 
-  let (compute_pipeline, _, maybe_err) = gfx_select!(device => instance.device_create_compute_pipeline(
+  let (compute_pipeline, maybe_err) = gfx_select!(device => instance.device_create_compute_pipeline(
     device,
     &descriptor,
     std::marker::PhantomData,
@@ -264,6 +271,7 @@ struct GpuPrimitiveState {
   strip_index_format: Option<String>,
   front_face: Option<String>,
   cull_mode: Option<String>,
+  clamp_depth: bool,
 }
 
 #[derive(Deserialize, Clone)]
@@ -311,15 +319,95 @@ struct GpuDepthStencilState {
   depth_bias: Option<i32>,
   depth_bias_slope_scale: Option<f32>,
   depth_bias_clamp: Option<f32>,
-  clamp_depth: Option<bool>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GpuVertexAttribute {
-  format: String,
+  format: GpuVertexFormat,
   offset: u64,
   shader_location: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum GpuVertexFormat {
+  Uint8x2,
+  Uint8x4,
+  Sint8x2,
+  Sint8x4,
+  Unorm8x2,
+  Unorm8x4,
+  Snorm8x2,
+  Snorm8x4,
+  Uint16x2,
+  Uint16x4,
+  Sint16x2,
+  Sint16x4,
+  Unorm16x2,
+  Unorm16x4,
+  Snorm16x2,
+  Snorm16x4,
+  Float16x2,
+  Float16x4,
+  Float32,
+  Float32x2,
+  Float32x3,
+  Float32x4,
+  Uint32,
+  Uint32x2,
+  Uint32x3,
+  Uint32x4,
+  Sint32,
+  Sint32x2,
+  Sint32x3,
+  Sint32x4,
+  Float64,
+  Float64x2,
+  Float64x3,
+  Float64x4,
+}
+
+impl From<GpuVertexFormat> for wgpu_types::VertexFormat {
+  fn from(vf: GpuVertexFormat) -> wgpu_types::VertexFormat {
+    use wgpu_types::VertexFormat;
+    match vf {
+      GpuVertexFormat::Uint8x2 => VertexFormat::Uint8x2,
+      GpuVertexFormat::Uint8x4 => VertexFormat::Uint8x4,
+      GpuVertexFormat::Sint8x2 => VertexFormat::Sint8x2,
+      GpuVertexFormat::Sint8x4 => VertexFormat::Sint8x4,
+      GpuVertexFormat::Unorm8x2 => VertexFormat::Unorm8x2,
+      GpuVertexFormat::Unorm8x4 => VertexFormat::Unorm8x4,
+      GpuVertexFormat::Snorm8x2 => VertexFormat::Snorm8x2,
+      GpuVertexFormat::Snorm8x4 => VertexFormat::Snorm8x4,
+      GpuVertexFormat::Uint16x2 => VertexFormat::Uint16x2,
+      GpuVertexFormat::Uint16x4 => VertexFormat::Uint16x4,
+      GpuVertexFormat::Sint16x2 => VertexFormat::Sint16x2,
+      GpuVertexFormat::Sint16x4 => VertexFormat::Sint16x4,
+      GpuVertexFormat::Unorm16x2 => VertexFormat::Unorm16x2,
+      GpuVertexFormat::Unorm16x4 => VertexFormat::Unorm16x4,
+      GpuVertexFormat::Snorm16x2 => VertexFormat::Snorm16x2,
+      GpuVertexFormat::Snorm16x4 => VertexFormat::Snorm16x4,
+      GpuVertexFormat::Float16x2 => VertexFormat::Float16x2,
+      GpuVertexFormat::Float16x4 => VertexFormat::Float16x4,
+      GpuVertexFormat::Float32 => VertexFormat::Float32,
+      GpuVertexFormat::Float32x2 => VertexFormat::Float32x2,
+      GpuVertexFormat::Float32x3 => VertexFormat::Float32x3,
+      GpuVertexFormat::Float32x4 => VertexFormat::Float32x4,
+      GpuVertexFormat::Uint32 => VertexFormat::Uint32,
+      GpuVertexFormat::Uint32x2 => VertexFormat::Uint32x2,
+      GpuVertexFormat::Uint32x3 => VertexFormat::Uint32x3,
+      GpuVertexFormat::Uint32x4 => VertexFormat::Uint32x4,
+      GpuVertexFormat::Sint32 => VertexFormat::Sint32,
+      GpuVertexFormat::Sint32x2 => VertexFormat::Sint32x2,
+      GpuVertexFormat::Sint32x3 => VertexFormat::Sint32x3,
+      GpuVertexFormat::Sint32x4 => VertexFormat::Sint32x4,
+      GpuVertexFormat::Float64 => VertexFormat::Float64,
+      GpuVertexFormat::Float64x2 => VertexFormat::Float64x2,
+      GpuVertexFormat::Float64x3 => VertexFormat::Float64x3,
+      GpuVertexFormat::Float64x4 => VertexFormat::Float64x4,
+    }
+  }
 }
 
 #[derive(Deserialize)]
@@ -418,41 +506,9 @@ pub fn op_webgpu_create_render_pipeline(
             attributes: Cow::from(
               buffer
                 .attributes
-                .iter()
+                .into_iter()
                 .map(|attribute| wgpu_types::VertexAttribute {
-                  format: match attribute.format.as_str() {
-                    "uchar2" => wgpu_types::VertexFormat::Uchar2,
-                    "uchar4" => wgpu_types::VertexFormat::Uchar4,
-                    "char2" => wgpu_types::VertexFormat::Char2,
-                    "char4" => wgpu_types::VertexFormat::Char4,
-                    "uchar2norm" => wgpu_types::VertexFormat::Uchar2Norm,
-                    "uchar4norm" => wgpu_types::VertexFormat::Uchar4,
-                    "char2norm" => wgpu_types::VertexFormat::Char2Norm,
-                    "char4norm" => wgpu_types::VertexFormat::Char4Norm,
-                    "ushort2" => wgpu_types::VertexFormat::Ushort2,
-                    "ushort4" => wgpu_types::VertexFormat::Ushort4,
-                    "short2" => wgpu_types::VertexFormat::Short2,
-                    "short4" => wgpu_types::VertexFormat::Short4,
-                    "ushort2norm" => wgpu_types::VertexFormat::Ushort2Norm,
-                    "ushort4norm" => wgpu_types::VertexFormat::Ushort4Norm,
-                    "short2norm" => wgpu_types::VertexFormat::Short2Norm,
-                    "short4norm" => wgpu_types::VertexFormat::Short4Norm,
-                    "half2" => wgpu_types::VertexFormat::Half2,
-                    "half4" => wgpu_types::VertexFormat::Half4,
-                    "float" => wgpu_types::VertexFormat::Float,
-                    "float2" => wgpu_types::VertexFormat::Float2,
-                    "float3" => wgpu_types::VertexFormat::Float3,
-                    "float4" => wgpu_types::VertexFormat::Float4,
-                    "uint" => wgpu_types::VertexFormat::Uint,
-                    "uint2" => wgpu_types::VertexFormat::Uint2,
-                    "uint3" => wgpu_types::VertexFormat::Uint3,
-                    "uint4" => wgpu_types::VertexFormat::Uint4,
-                    "int" => wgpu_types::VertexFormat::Int,
-                    "int2" => wgpu_types::VertexFormat::Int2,
-                    "int3" => wgpu_types::VertexFormat::Int3,
-                    "int4" => wgpu_types::VertexFormat::Int4,
-                    _ => unreachable!(),
-                  },
+                  format: attribute.format.into(),
                   offset: attribute.offset,
                   shader_location: attribute.shader_location,
                 })
@@ -491,14 +547,16 @@ pub fn op_webgpu_create_render_pipeline(
         },
         cull_mode: match primitive.cull_mode {
           Some(cull_mode) => match cull_mode.as_str() {
-            "none" => wgpu_types::CullMode::None,
-            "front" => wgpu_types::CullMode::Front,
-            "back" => wgpu_types::CullMode::Back,
+            "none" => None,
+            "front" => Some(wgpu_types::Face::Front),
+            "back" => Some(wgpu_types::Face::Back),
             _ => unreachable!(),
           },
-          None => wgpu_types::CullMode::None,
+          None => None,
         },
         polygon_mode: Default::default(), // native-only
+        conservative: false,              // native-only
+        clamp_depth: primitive.clamp_depth,
       }
     }),
     depth_stencil: args.depth_stencil.map(|depth_stencil| {
@@ -527,7 +585,6 @@ pub fn op_webgpu_create_render_pipeline(
           slope_scale: depth_stencil.depth_bias_slope_scale.unwrap_or(0.0),
           clamp: depth_stencil.depth_bias_clamp.unwrap_or(0.0),
         },
-        clamp_depth: depth_stencil.clamp_depth.unwrap_or(false),
       }
     }),
     multisample: args.multisample.map_or(Default::default(), |multisample| {
@@ -554,31 +611,16 @@ pub fn op_webgpu_create_render_pipeline(
         targets: Cow::from(
           fragment
             .targets
-            .iter()
-            .map(|target| {
-              let blends = target.blend.clone().map(|blend| {
-                (
-                  serialize_blend_component(blend.alpha),
-                  serialize_blend_component(blend.color),
-                )
-              });
-
-              wgpu_types::ColorTargetState {
-                format: super::texture::serialize_texture_format(
-                  &target.format,
-                )
+            .into_iter()
+            .map(|target| wgpu_types::ColorTargetState {
+              format: super::texture::serialize_texture_format(&target.format)
                 .unwrap(),
-                alpha_blend: blends
-                  .clone()
-                  .map_or(Default::default(), |states| states.0),
-                color_blend: blends
-                  .map_or(Default::default(), |states| states.1),
-                write_mask: target
-                  .write_mask
-                  .map_or(Default::default(), |mask| {
-                    wgpu_types::ColorWrite::from_bits(mask).unwrap()
-                  }),
-              }
+              blend: target.blend.map(serialize_blend_state),
+              write_mask: target
+                .write_mask
+                .map_or(Default::default(), |mask| {
+                  wgpu_types::ColorWrite::from_bits(mask).unwrap()
+                }),
             })
             .collect::<Vec<wgpu_types::ColorTargetState>>(),
         ),
@@ -594,7 +636,7 @@ pub fn op_webgpu_create_render_pipeline(
     }),
   };
 
-  let (render_pipeline, _, maybe_err) = gfx_select!(device => instance.device_create_render_pipeline(
+  let (render_pipeline, maybe_err) = gfx_select!(device => instance.device_create_render_pipeline(
     device,
     &descriptor,
     std::marker::PhantomData,
