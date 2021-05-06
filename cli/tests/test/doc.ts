@@ -13,7 +13,7 @@
  *
  */
 export function ok() {
- // no-op
+  // no-op
 }
 
 /**

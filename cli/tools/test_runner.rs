@@ -331,9 +331,8 @@ pub async fn run_tests(
   let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
 
-  // TODO(caspervonb) revert collection change and split into test modules and modules to scan for
-  // documentation tests.
-  let mut test_modules = collect_test_module_specifiers(include.clone(), &cwd, is_supported)?;
+  let mut test_modules =
+    collect_test_module_specifiers(include.clone(), &cwd, is_supported)?;
 
   if test_modules.is_empty() {
     println!("No matching test modules found");
@@ -359,16 +358,22 @@ pub async fn run_tests(
     .await?;
 
   if docs {
-    let parse_modules = collect_test_module_specifiers(include, &cwd, is_supported_ext)?;
+    let parse_modules =
+      collect_test_module_specifiers(include, &cwd, is_supported_ext)?;
     for parse_module in &parse_modules {
-      let file = program_state.file_fetcher.get_source(&parse_module).unwrap();
-      let parsed_module = ast::parse(&file.specifier.as_str(), &file.source, &file.media_type)?;
+      let file = program_state
+        .file_fetcher
+        .get_source(&parse_module)
+        .unwrap();
+      let parsed_module =
+        ast::parse(&file.specifier.as_str(), &file.source, &file.media_type)?;
       let comments = parsed_module.get_comments();
 
       let mut test_source = String::new();
 
       for comment in comments {
-        if comment.kind != CommentKind::Block || !comment.text.starts_with('*') {
+        if comment.kind != CommentKind::Block || !comment.text.starts_with('*')
+        {
           continue;
         }
 
@@ -382,13 +387,13 @@ pub async fn run_tests(
           .chunks(2)
           .filter_map(|chunk| {
             if chunk.len() == 2 {
-                let start = chunk[0] + 3;
-                let end = chunk[1];
+              let start = chunk[0] + 3;
+              let end = chunk[1];
 
               Some((
-                      comment.text[start..end].to_string(),
-                      comment.span.from_inner_byte_pos(start, end)
-                    ))
+                comment.text[start..end].to_string(),
+                comment.span.from_inner_byte_pos(start, end),
+              ))
             } else {
               None
             }
@@ -399,9 +404,7 @@ pub async fn run_tests(
           let (specifier, no_run) = {
             let mut source = String::new();
             let mut lines = slice.split('\n');
-            let tags = lines
-                .next()
-                .unwrap_or("");
+            let tags = lines.next().unwrap_or("");
 
             // TODO(caspervonb) generate an inline source map
             for line in lines {
@@ -434,7 +437,7 @@ pub async fn run_tests(
           };
 
           if !no_run {
-              test_source.push_str(&format!(
+            test_source.push_str(&format!(
                 "Deno.test(\"{}\", async function() {{ await import(\"{}\"); }});",
                 specifier.as_str(),
                 specifier.as_str(),
@@ -443,33 +446,35 @@ pub async fn run_tests(
 
           program_state
             .prepare_module_load(
-            specifier.clone(),
-            lib.clone(),
-            Permissions::allow_all(),
-            false,
-            program_state.maybe_import_map.clone(),
-          )
-          .await?;
+              specifier.clone(),
+              lib.clone(),
+              Permissions::allow_all(),
+              false,
+              program_state.maybe_import_map.clone(),
+            )
+            .await?;
         }
       }
 
       // TODO(caspervonb) quick and dirty module specifier to make it run, needs more consideration
       // if this is the what we want to do with.
-      let test_specifier = deno_core::resolve_url_or_path(&format!(
-        "{}.doc",
-        file.specifier.as_str()
-      ))?;
+      if !test_source.is_empty() {
+        let test_specifier = deno_core::resolve_url_or_path(&format!(
+          "{}.doc",
+          file.specifier.as_str()
+        ))?;
 
-      let test_file = File {
-        local: test_specifier.to_file_path().unwrap(),
-        maybe_types: None,
-        media_type: MediaType::JavaScript,
-        source: test_source.clone(),
-        specifier: test_specifier.clone(),
-      };
+        let test_file = File {
+          local: test_specifier.to_file_path().unwrap(),
+          maybe_types: None,
+          media_type: MediaType::JavaScript,
+          source: test_source.clone(),
+          specifier: test_specifier.clone(),
+        };
 
-      program_state.file_fetcher.insert_cached(test_file);
-      test_modules.push(test_specifier.clone());
+        program_state.file_fetcher.insert_cached(test_file);
+        test_modules.push(test_specifier.clone());
+      }
     }
   }
 
@@ -677,8 +682,12 @@ mod tests {
       .join("std")
       .join("http");
     println!("root {:?}", root);
-    let mut matched_urls =
-      collect_test_module_specifiers(vec![".".to_string()], &root, is_supported).unwrap();
+    let mut matched_urls = collect_test_module_specifiers(
+      vec![".".to_string()],
+      &root,
+      is_supported,
+    )
+    .unwrap();
     matched_urls.sort();
     let root_url = Url::from_file_path(root).unwrap().to_string();
     println!("root_url {}", root_url);
