@@ -191,7 +191,7 @@ jobs:
             a-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       - name: Cache build output
-        uses: actions/cache@v2
+        uses: actions/cache@03e00da99d75a2204924908e1cca7902cafce66b
         with:
           path: |
             ./target
