@@ -14,6 +14,13 @@ use std::mem;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+/// A default `init` function for plugins which mimics the way the internal
+/// extensions are initalized. Plugins currently do not support all extension
+/// features and are most likely not going to in the future. Currently only
+/// `init_state` and `init_ops` are supported while `init_middleware` and `init_js`
+/// are not. Currently the `PluginResource` does not support being closed due to
+/// certain risks in unloading the dynamic library without unloading dependent
+/// functions and resources.
 pub type InitFn = fn() -> Extension;
 
 pub fn init() -> Extension {
@@ -36,6 +43,8 @@ pub fn op_open_plugin(
   debug!("Loading Plugin: {:#?}", filename);
   let plugin_lib = Library::open(filename).map(Rc::new)?;
   let plugin_resource = PluginResource::new(&plugin_lib);
+
+  // Forgets the plugin_lib value to prevent segfaults when the process exits
   mem::forget(plugin_lib);
 
   let init = *unsafe { plugin_resource.0.symbol::<InitFn>("init") }?;
