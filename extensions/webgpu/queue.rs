@@ -1,5 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use std::num::NonZeroU32;
+
 use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
@@ -124,7 +126,7 @@ pub fn op_webgpu_write_texture(
     .ok_or_else(bad_resource_id)?;
   let queue = queue_resource.0;
 
-  let destination = wgpu_core::command::TextureCopyView {
+  let destination = wgpu_core::command::ImageCopyTexture {
     texture: texture_resource.0,
     mip_level: args.destination.mip_level.unwrap_or(0),
     origin: args
@@ -136,10 +138,12 @@ pub fn op_webgpu_write_texture(
         z: origin.z.unwrap_or(0),
       }),
   };
-  let data_layout = wgpu_types::TextureDataLayout {
+  let data_layout = wgpu_types::ImageDataLayout {
     offset: args.data_layout.offset.unwrap_or(0),
-    bytes_per_row: args.data_layout.bytes_per_row.unwrap_or(0),
-    rows_per_image: args.data_layout.rows_per_image.unwrap_or(0),
+    bytes_per_row: NonZeroU32::new(args.data_layout.bytes_per_row.unwrap_or(0)),
+    rows_per_image: NonZeroU32::new(
+      args.data_layout.rows_per_image.unwrap_or(0),
+    ),
   };
 
   gfx_ok!(queue => instance.queue_write_texture(
@@ -150,7 +154,7 @@ pub fn op_webgpu_write_texture(
     &wgpu_types::Extent3d {
       width: args.size.width.unwrap_or(1),
       height: args.size.height.unwrap_or(1),
-      depth: args.size.depth.unwrap_or(1),
+      depth_or_array_layers: args.size.depth_or_array_layers.unwrap_or(1),
     }
   ))
 }
