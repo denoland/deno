@@ -908,6 +908,13 @@ async fn test_command(
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
   let cwd = std::env::current_dir().expect("No current directory");
 
+  let permissions = Permissions::from_options(&flags.clone().into());
+  let lib = if flags.unstable {
+    module_graph::TypeLib::UnstableDenoWindow
+  } else {
+    module_graph::TypeLib::DenoWindow
+  };
+
   if flags.watch {
     let handler = Arc::new(Mutex::new(FetchHandler::new(
       &program_state,
@@ -1008,7 +1015,8 @@ async fn test_command(
       |modules_to_reload| {
         test_runner::run_tests(
           program_state.clone(),
-          flags.clone(),
+          permissions.clone(),
+          lib.clone(),
           modules_to_reload,
           no_run,
           fail_fast,
@@ -1027,7 +1035,8 @@ async fn test_command(
 
     test_runner::run_tests(
       program_state.clone(),
-      flags,
+      permissions,
+      lib,
       test_modules,
       no_run,
       fail_fast,

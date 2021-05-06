@@ -307,7 +307,8 @@ pub async fn run_test_file(
 #[allow(clippy::too_many_arguments)]
 pub async fn run_tests(
   program_state: Arc<ProgramState>,
-  flags: Flags,
+  permissions: Permissions,
+  lib: module_graph::TypeLib,
   test_modules: Vec<ModuleSpecifier>,
   no_run: bool,
   fail_fast: bool,
@@ -316,8 +317,6 @@ pub async fn run_tests(
   filter: Option<String>,
   concurrent_jobs: usize,
 ) -> Result<(), AnyError> {
-  let permissions = Permissions::from_options(&flags.clone().into());
-
   if test_modules.is_empty() {
     println!("No matching test modules found");
     if !allow_none {
@@ -325,12 +324,6 @@ pub async fn run_tests(
     }
     return Ok(());
   }
-
-  let lib = if flags.unstable {
-    module_graph::TypeLib::UnstableDenoWindow
-  } else {
-    module_graph::TypeLib::DenoWindow
-  };
 
   program_state
     .prepare_module_graph(
