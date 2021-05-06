@@ -3,7 +3,7 @@
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
-use log::info;
+use log::debug;
 use std::cmp;
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -74,7 +74,6 @@ impl From<PerformanceMark> for PerformanceMeasure {
 #[derive(Debug, Clone)]
 pub struct Performance {
   counts: Arc<Mutex<HashMap<String, u32>>>,
-  logging_enabled: bool,
   max_size: usize,
   measures: Arc<Mutex<VecDeque<PerformanceMeasure>>>,
 }
@@ -83,7 +82,6 @@ impl Default for Performance {
   fn default() -> Self {
     Self {
       counts: Default::default(),
-      logging_enabled: false,
       max_size: 1_000,
       measures: Default::default(),
     }
@@ -133,10 +131,6 @@ impl Performance {
       .collect()
   }
 
-  pub fn do_logging(&mut self, enable: bool) {
-    self.logging_enabled = enable;
-  }
-
   /// Marks the start of a measurement which returns a performance mark
   /// structure, which is then passed to `.measure()` to finalize the duration
   /// and add it to the internal buffer.
@@ -149,22 +143,20 @@ impl Performance {
     let mut counts = self.counts.lock().unwrap();
     let count = counts.entry(name.to_string()).or_insert(0);
     *count += 1;
-    if self.logging_enabled {
-      let msg = if let Some(args) = maybe_args {
-        json!({
-          "type": "mark",
-          "name": name,
-          "count": count,
-          "args": args,
-        })
-      } else {
-        json!({
-          "type": "mark",
-          "name": name,
-        })
-      };
-      info!("{},", msg);
-    }
+    let msg = if let Some(args) = maybe_args {
+      json!({
+        "type": "mark",
+        "name": name,
+        "count": count,
+        "args": args,
+      })
+    } else {
+      json!({
+        "type": "mark",
+        "name": name,
+      })
+    };
+    debug!("{},", msg);
     PerformanceMark {
       name: name.to_string(),
       count: *count,
@@ -177,17 +169,15 @@ impl Performance {
   /// measurement to the internal buffer.
   pub fn measure(&self, mark: PerformanceMark) -> Duration {
     let measure = PerformanceMeasure::from(mark);
-    if self.logging_enabled {
-      info!(
-        "{},",
-        json!({
-          "type": "measure",
-          "name": measure.name,
-          "count": measure.count,
-          "duration": measure.duration.as_millis() as u32,
-        })
-      );
-    }
+    debug!(
+      "{},",
+      json!({
+        "type": "measure",
+        "name": measure.name,
+        "count": measure.count,
+        "duration": measure.duration.as_millis() as u32,
+      })
+    );
     let duration = measure.duration;
     let mut measures = self.measures.lock().unwrap();
     measures.push_front(measure);

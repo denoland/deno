@@ -1877,7 +1877,7 @@ fn op_get_change_range(
     .mark("op_get_change_range", Some(&args));
   let specifier = resolve_url(&args.specifier)?;
   cache_snapshot(state, &specifier, args.version.clone())?;
-  if let Some(current) = state
+  let r = if let Some(current) = state
     .snapshots
     .get(&(specifier.clone(), args.version.clone().into()))
   {
@@ -1885,11 +1885,9 @@ fn op_get_change_range(
       .snapshots
       .get(&(specifier, args.old_version.clone().into()))
     {
-      state.state_snapshot.performance.measure(mark);
       Ok(text::get_range_change(prev, current))
     } else {
       let new_length = current.encode_utf16().count();
-      state.state_snapshot.performance.measure(mark);
       // when a local file is opened up in the editor, the compiler might
       // already have a snapshot of it in memory, and will request it, but we
       // now are working off in memory versions of the document, and so need
@@ -1903,7 +1901,6 @@ fn op_get_change_range(
       }))
     }
   } else {
-    state.state_snapshot.performance.measure(mark);
     Err(custom_error(
       "MissingSnapshot",
       format!(
@@ -1911,7 +1908,10 @@ fn op_get_change_range(
         args
       ),
     ))
-  }
+  };
+
+  state.state_snapshot.performance.measure(mark);
+  r
 }
 
 fn op_get_length(
@@ -1923,7 +1923,8 @@ fn op_get_length(
     .performance
     .mark("op_get_length", Some(&args));
   let specifier = resolve_url(&args.specifier)?;
-  if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier) {
+  let r = if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier)
+  {
     Ok(asset.length)
   } else {
     cache_snapshot(state, &specifier, args.version.clone())?;
@@ -1931,9 +1932,10 @@ fn op_get_length(
       .snapshots
       .get(&(specifier, args.version.into()))
       .unwrap();
-    state.state_snapshot.performance.measure(mark);
     Ok(content.encode_utf16().count())
-  }
+  };
+  state.state_snapshot.performance.measure(mark);
+  r
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -2099,25 +2101,27 @@ fn op_script_version(
     .performance
     .mark("op_script_version", Some(&args));
   let specifier = resolve_url(&args.specifier)?;
-  if specifier.scheme() == "asset" {
-    return if state.state_snapshot.assets.contains_key(&specifier) {
+  let r = if specifier.scheme() == "asset" {
+    if state.state_snapshot.assets.contains_key(&specifier) {
       Ok(Some("1".to_string()))
     } else {
       Ok(None)
-    };
+    }
   } else if let Some(version) =
     state.state_snapshot.documents.version(&specifier)
   {
-    return Ok(Some(version.to_string()));
+    Ok(Some(version.to_string()))
   } else {
     let sources = &mut state.state_snapshot.sources;
     if let Some(version) = sources.get_script_version(&specifier) {
-      return Ok(Some(version));
+      Ok(Some(version))
+    } else {
+      Ok(None)
     }
-  }
+  };
 
   state.state_snapshot.performance.measure(mark);
-  Ok(None)
+  r
 }
 
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the

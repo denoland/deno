@@ -26,6 +26,8 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::fs;
 
@@ -92,6 +94,7 @@ pub(crate) struct Inner {
   client: Client,
   /// Configuration information.
   config: Config,
+  debug_flag: Arc<AtomicBool>,
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The "in-memory" documents in the editor which can be updated and changed.
   documents: DocumentCache,
@@ -121,13 +124,16 @@ pub(crate) struct Inner {
 }
 
 impl LanguageServer {
-  pub fn new(client: Client) -> Self {
-    Self(Arc::new(tokio::sync::Mutex::new(Inner::new(client))))
+  pub fn new(client: Client, lsp_debug_flag: Arc<AtomicBool>) -> Self {
+    Self(Arc::new(tokio::sync::Mutex::new(Inner::new(
+      client,
+      lsp_debug_flag,
+    ))))
   }
 }
 
 impl Inner {
-  fn new(client: Client) -> Self {
+  fn new(client: Client, debug_flag: Arc<AtomicBool>) -> Self {
     let maybe_custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(maybe_custom_root)
       .expect("could not access DENO_DIR");
@@ -144,6 +150,7 @@ impl Inner {
       assets: Default::default(),
       client,
       config: Default::default(),
+      debug_flag,
       diagnostics_server,
       documents: Default::default(),
       maybe_config_uri: Default::default(),
@@ -354,10 +361,16 @@ impl Inner {
     Ok(())
   }
 
-  pub fn update_performance(&mut self) {
+  pub fn update_debug_flag(&self) -> bool {
     self
-      .performance
-      .do_logging(self.config.workspace_settings.internal_debug);
+      .debug_flag
+      .compare_exchange(
+        !self.config.workspace_settings.internal_debug,
+        self.config.workspace_settings.internal_debug,
+        Ordering::Acquire,
+        Ordering::Relaxed,
+      )
+      .is_ok()
   }
 
   async fn update_registries(&mut self) -> Result<(), AnyError> {
@@ -506,7 +519,7 @@ impl Inner {
       config.update_capabilities(&params.capabilities);
     }
 
-    self.update_performance();
+    self.update_debug_flag();
     if let Err(err) = self.update_tsconfig().await {
       warn!("Updating tsconfig has errored: {}", err);
     }
@@ -709,6 +722,7 @@ impl Inner {
       }
     }
 
+    self.update_debug_flag();
     if let Err(err) = self.update_import_map().await {
       self
         .client
@@ -2644,7 +2658,9 @@ mod tests {
 
   impl LspTestHarness {
     pub fn new(requests: Vec<LspTestHarnessRequest>) -> Self {
-      let (service, _) = LspService::new(LanguageServer::new);
+      let lsp_debug_flag = Arc::new(AtomicBool::new(false));
+      let (service, _) =
+        LspService::new(|client| LanguageServer::new(client, lsp_debug_flag));
       let service = Spawn::new(service);
       Self { requests, service }
     }
