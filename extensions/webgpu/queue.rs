@@ -140,9 +140,7 @@ pub fn op_webgpu_write_texture(
   };
   let data_layout = wgpu_types::ImageDataLayout {
     offset: args.data_layout.offset.unwrap_or(0),
-    // TODO(lucacasonato): check with spec if non zero is correct here
     bytes_per_row: NonZeroU32::new(args.data_layout.bytes_per_row.unwrap_or(0)),
-    // TODO(lucacasonato): check with spec if non zero is correct here
     rows_per_image: NonZeroU32::new(
       args.data_layout.rows_per_image.unwrap_or(0),
     ),

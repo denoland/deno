@@ -58,7 +58,7 @@ pub fn op_webgpu_create_shader_module(
 
   let descriptor = wgpu_core::pipeline::ShaderModuleDescriptor {
     label: args.label.map(Cow::from),
-    flags: wgpu_types::ShaderFlags::default(),
+    flags: wgpu_types::ShaderFlags::all(),
   };
 
   let (shader_module, maybe_err) = gfx_select!(device => instance.device_create_shader_module(

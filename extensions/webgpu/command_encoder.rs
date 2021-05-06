@@ -374,9 +374,7 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
     buffer: source_buffer_resource.0,
     layout: wgpu_types::ImageDataLayout {
       offset: args.source.offset.unwrap_or(0),
-      // TODO(lucacasonato): check with spec if non zero is correct here
       bytes_per_row: NonZeroU32::new(args.source.bytes_per_row.unwrap_or(0)),
-      // TODO(lucacasonato): check with spec if non zero is correct here
       rows_per_image: NonZeroU32::new(args.source.rows_per_image.unwrap_or(0)),
     },
   };
@@ -450,11 +448,9 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
     buffer: destination_buffer_resource.0,
     layout: wgpu_types::ImageDataLayout {
       offset: args.destination.offset.unwrap_or(0),
-      // TODO(lucacasonato): check with spec if non zero is correct here
       bytes_per_row: NonZeroU32::new(
         args.destination.bytes_per_row.unwrap_or(0),
       ),
-      // TODO(lucacasonato): check with spec if non zero is correct here
       rows_per_image: NonZeroU32::new(
         args.destination.rows_per_image.unwrap_or(0),
       ),
