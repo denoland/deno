@@ -116,7 +116,7 @@ impl Settings {
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
   pub root_uri: Option<Url>,
-  specifier_settings: HashMap<ModuleSpecifier, Settings>,
+  pub specifier_settings: HashMap<ModuleSpecifier, Settings>,
   pub workspace_settings: Settings,
 }
 
