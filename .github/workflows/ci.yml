@@ -180,7 +180,7 @@ jobs:
           echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
 
       - name: Cache Cargo home
-        uses: actions/cache@v2
+        uses: actions/cache@03e00da99d75a2204924908e1cca7902cafce66b
         with:
           # See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
           path: |
