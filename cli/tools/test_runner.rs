@@ -348,18 +348,10 @@ pub async fn run_tests(
     module_graph::TypeLib::DenoWindow
   };
 
-  program_state
-    .prepare_module_graph(
-      test_modules.clone(),
-      lib.clone(),
-      permissions.clone(),
-      program_state.maybe_import_map.clone(),
-    )
-    .await?;
-
   if docs {
     let parse_modules =
       collect_test_module_specifiers(include, &cwd, is_supported_ext)?;
+
     for parse_module in &parse_modules {
       let file = program_state
         .file_fetcher
@@ -476,6 +468,15 @@ pub async fn run_tests(
       }
     }
   }
+
+  program_state
+    .prepare_module_graph(
+      test_modules.clone(),
+      lib.clone(),
+      permissions.clone(),
+      program_state.maybe_import_map.clone(),
+    )
+    .await?;
 
   if no_run {
     return Ok(());
