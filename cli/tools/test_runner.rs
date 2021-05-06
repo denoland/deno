@@ -396,22 +396,12 @@ pub async fn run_tests(
           .collect();
 
         for (slice, span) in blocks {
-          let (file, no_run) = {
-            let location = parsed_module.get_location(&span);
-            let specifier = deno_core::resolve_url_or_path(&format!(
-              "{}.{}",
-              location.filename, location.line,
-            ))?;
-
+          let (specifier, no_run) = {
             let mut source = String::new();
             let mut lines = slice.split('\n');
-
-            // Tags are always on the first line, so that gets eaten.
-            let tags: Vec<&str> = lines
+            let tags = lines
                 .next()
-                .unwrap()
-                .split_whitespace()
-                .collect();
+                .unwrap_or("");
 
             // TODO(caspervonb) generate an inline source map
             for line in lines {
@@ -422,6 +412,14 @@ pub async fn run_tests(
               source.push_str(&format!("{}\n", line));
             }
 
+            let location = parsed_module.get_location(&span);
+            let specifier = deno_core::resolve_url_or_path(&format!(
+              "{}:{}-{}",
+              location.filename,
+              location.line,
+              location.line + slice.split('\n').count(),
+            ))?;
+
             let file = File {
               local: specifier.to_file_path().unwrap(),
               maybe_types: None,
@@ -430,22 +428,22 @@ pub async fn run_tests(
               specifier: specifier.clone(),
             };
 
-            (file, tags.contains(&"no_run"))
-          };
+            program_state.file_fetcher.insert_cached(file.clone());
 
-          program_state.file_fetcher.insert_cached(file.clone());
+            (specifier, tags.contains(&"no_run"))
+          };
 
           if !no_run {
               test_source.push_str(&format!(
                 "Deno.test(\"{}\", async function() {{ await import(\"{}\"); }});",
-                file.specifier.as_str(),
-                file.specifier.as_str(),
+                specifier.as_str(),
+                specifier.as_str(),
               ));
           }
 
           program_state
             .prepare_module_load(
-            file.specifier.clone(),
+            specifier.clone(),
             lib.clone(),
             Permissions::allow_all(),
             false,
