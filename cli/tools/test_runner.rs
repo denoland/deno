@@ -437,6 +437,7 @@ pub async fn run_tests(
           };
 
           if !no_run {
+            // TODO(caspervonb) import requires read access, we don't want that.
             test_source.push_str(&format!(
                 "Deno.test(\"{}\", async function() {{ await import(\"{}\"); }});",
                 specifier.as_str(),
@@ -456,8 +457,6 @@ pub async fn run_tests(
         }
       }
 
-      // TODO(caspervonb) quick and dirty module specifier to make it run, needs more consideration
-      // if this is the what we want to do with.
       if !test_source.is_empty() {
         let test_specifier = deno_core::resolve_url_or_path(&format!(
           "{}.doc",
