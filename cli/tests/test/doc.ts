@@ -1,0 +1,34 @@
+/**
+ * ```js
+ * import { ok } from "./doc.ts";
+ *
+ * ok();
+ * ```
+ *
+ * ```ts
+ * import { ok } from "./doc.ts";
+ *
+ * ok();
+ * ```
+ *
+ */
+export function ok() {
+ // no-op
+}
+
+/**
+ * ```js
+ * import { fail } from "./doc.ts";
+ *
+ * fail();
+ * ```
+ *
+ * ```ts
+ * import { fail } from "./doc.ts";
+ *
+ * fail();
+ * ```
+ */
+export function fail() {
+  throw new Error();
+}
