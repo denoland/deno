@@ -104,9 +104,10 @@ impl<'a> plugin_api::Interface for PluginInterface<'a> {
     dispatch_op_fn: plugin_api::DispatchOpFn,
   ) -> OpId {
     let plugin_lib = self.plugin_lib.clone();
-    let plugin_op_fn: Box<OpFn> = Box::new(move |state_rc, _payload, buf| {
+    let plugin_op_fn: Box<OpFn> = Box::new(move |state_rc, payload| {
       let mut state = state_rc.borrow_mut();
       let mut interface = PluginInterface::new(&mut state, &plugin_lib);
+      let (_, buf): ((), Option<ZeroCopyBuf>) = payload.deserialize().unwrap();
       let op = dispatch_op_fn(&mut interface, buf);
       match op {
         sync_op @ Op::Sync(..) => sync_op,

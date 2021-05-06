@@ -96,7 +96,7 @@ pub fn init(
       ("op_host_get_message", op_async(op_host_get_message)),
       (
         "op_host_unhandled_error",
-        op_sync(move |state, message: String, _| {
+        op_sync(move |state, message: String, _: ()| {
           if is_main_worker {
             return Err(generic_error("Cannot be called from main worker."));
           }

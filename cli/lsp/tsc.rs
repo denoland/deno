@@ -1826,7 +1826,7 @@ where
   V: de::DeserializeOwned,
   R: Serialize + 'static,
 {
-  op_sync(move |s, args, _bufs| {
+  op_sync(move |s, args, _: ()| {
     let state = s.borrow_mut::<State>();
     op_fn(state, args)
   })
