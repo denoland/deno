@@ -3,7 +3,6 @@
 use crate::colors;
 use crate::create_main_worker;
 use crate::file_fetcher::File;
-use crate::flags::Flags;
 use crate::fs_util;
 use crate::media_type::MediaType;
 use crate::module_graph;
