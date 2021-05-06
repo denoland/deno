@@ -360,7 +360,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
   Ok(flags)
 }
 
-fn clap_root<'a>(version: &'a str) -> App {
+fn clap_root(version: &str) -> App {
   clap::App::new("deno")
     .bin_name("deno")
     .global_setting(AppSettings::UnifiedHelpMessage)
@@ -505,11 +505,11 @@ aarch64-apple-darwin target is not supported in canary.
 }
 
 fn completions_subcommand<'a>() -> App<'a> {
-  SubCommand::new("completions")
+  App::new("completions")
     .setting(AppSettings::DisableHelpSubcommand)
     .arg(
       Arg::new("shell")
-        .possible_values(&clap::Shell::variants())
+        .possible_values(&["bash", "fish", "powershell", "zsh"])
         .required(true),
     )
     .about("Generate shell completions")
@@ -651,8 +651,7 @@ Show documentation for runtime built-ins:
         .about("Dot separated path to symbol")
         .takes_value(true)
         .required(false)
-        .conflicts_with("json")
-        .conflicts_with("pretty"),
+        .conflicts_with("json"),
     )
 }
 
@@ -1014,7 +1013,7 @@ fn test_subcommand<'a>() -> App<'a> {
         .min_values(0)
         .max_values(1)
         .takes_value(true)
-        .validator(|val: String| match val.parse::<usize>() {
+        .validator(|val: &str| match val.parse::<usize>() {
           Ok(_) => Ok(()),
           Err(_) => Err("jobs should be a number".to_string()),
         }),
@@ -1455,10 +1454,10 @@ fn completions_parse(
   let name = "deno";
 
   match matches.value_of("shell").unwrap() {
-    "Bash" => generate::<Bash, _>(&mut app, name, &mut buf),
-    "Fish" => generate::<Fish, _>(&mut app, name, &mut buf),
-    "PowerShell" => generate::<PowerShell, _>(&mut app, name, &mut buf),
-    "Zsh" => generate::<Zsh, _>(&mut app, name, &mut buf),
+    "bash" => generate::<Bash, _>(&mut app, name, &mut buf),
+    "fish" => generate::<Fish, _>(&mut app, name, &mut buf),
+    "powershell" => generate::<PowerShell, _>(&mut app, name, &mut buf),
+    "zsh" => generate::<Zsh, _>(&mut app, name, &mut buf),
     _ => unreachable!(),
   }
 
@@ -2008,9 +2007,9 @@ mod tests {
   #[test]
   fn version() {
     let r = flags_from_vec(svec!["deno", "--version"]);
-    assert_eq!(r.unwrap_err().kind, clap::ErrorKind::VersionDisplayed);
+    assert_eq!(r.unwrap_err().kind, clap::ErrorKind::DisplayVersion);
     let r = flags_from_vec(svec!["deno", "-V"]);
-    assert_eq!(r.unwrap_err().kind, clap::ErrorKind::VersionDisplayed);
+    assert_eq!(r.unwrap_err().kind, clap::ErrorKind::DisplayVersion);
   }
 
   #[test]
