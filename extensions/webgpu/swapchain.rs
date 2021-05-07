@@ -9,8 +9,8 @@ use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::borrow::Cow;
 
-struct WebGPUSwapChain(wgpu_core::id::SwapChainId);
-impl Resource for WebGPUSwapChain {
+struct WebGpuSwapChain(wgpu_core::id::SwapChainId);
+impl Resource for WebGpuSwapChain {
   fn name(&self) -> Cow<str> {
     "webGPUSwapChain".into()
   }
@@ -20,7 +20,7 @@ impl Resource for WebGPUSwapChain {
 #[serde(rename_all = "camelCase")]
 pub struct ConfigureSwapchainArgs {
   device_rid: u32,
-  surface_rid: u32,
+  swapchain_rid: u32,
   format: String,
   usage: u32,
   width: u32,
@@ -35,14 +35,14 @@ pub fn op_webgpu_configure_swapchain(
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGPUDevice>(args.device_rid)
+    .get::<super::WebGpuDevice>(args.device_rid)
     .ok_or_else(bad_resource_id)?;
   let device = device_resource.0;
-  let surface_resource = state
+  let swapchain_resource = state
     .resource_table
-    .get::<super::WebGPUSurface>(args.surface_rid)
+    .get::<WebGpuSwapChain>(args.swapchain_rid)
     .ok_or_else(bad_resource_id)?;
-  let surface = surface_resource.0;
+  let swapchain = swapchain_resource.0;
 
   let descriptor = wgpu_types::SwapChainDescriptor {
     usage: wgpu_types::TextureUsage::from_bits(args.usage).unwrap(),
@@ -54,9 +54,9 @@ pub fn op_webgpu_configure_swapchain(
 
   gfx_put!(device => instance.device_create_swap_chain(
     device,
-    surface,
+    swapchain.to_surface_id(),
     &descriptor
-  ) => state, WebGPUSwapChain)
+  ) => state, WebGpuSwapChain)
 }
 
 #[derive(Deserialize)]
@@ -79,17 +79,16 @@ pub fn op_webgpu_get_swapchain_preferred_format(
   let adapter = adapter_resource.0;
   let swapchain_resource = state
     .resource_table
-    .get::<WebGPUSwapChain>(args.swapchain_rid)
+    .get::<WebGpuSwapChain>(args.swapchain_rid)
     .ok_or_else(bad_resource_id)?;
   let swapchain = swapchain_resource.0;
 
+
   let texture_format = gfx_select!(adapter => instance.adapter_get_swap_chain_preferred_format(
     adapter,
-    surface
+    swapchain.to_surface_id()
   ))?;
 
-  let format = super::texture::deserialize_texture_format(&texture_format)?;
-
-  Ok(format.to_string())
+  super::texture::deserialize_texture_format(&texture_format).into()
 }
 
