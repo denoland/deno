@@ -393,40 +393,38 @@ pub async fn run_tests(
           .collect();
 
         for (slice, span) in blocks {
-          let (specifier, no_run) = {
-            let mut source = String::new();
-            let mut lines = slice.split('\n');
-            let tags = lines.next().unwrap_or("");
+          let mut source = String::new();
+          let mut lines = slice.split('\n');
+          let tags = lines.next().unwrap_or("");
 
-            // TODO(caspervonb) generate an inline source map
-            for line in lines {
-              let line = line.trim_start();
-              let line = line.strip_prefix('*').unwrap_or(line);
-              let line = line.strip_prefix(' ').unwrap_or(line);
+          // TODO(caspervonb) generate an inline source map
+          for line in lines {
+            let line = line.trim_start();
+            let line = line.strip_prefix('*').unwrap_or(line);
+            let line = line.strip_prefix(' ').unwrap_or(line);
 
-              source.push_str(&format!("{}\n", line));
-            }
+            source.push_str(&format!("{}\n", line));
+          }
 
-            let location = parsed_module.get_location(&span);
-            let specifier = deno_core::resolve_url_or_path(&format!(
-              "{}:{}-{}",
-              location.filename,
-              location.line,
-              location.line + slice.split('\n').count(),
-            ))?;
+          let location = parsed_module.get_location(&span);
+          let specifier = deno_core::resolve_url_or_path(&format!(
+            "{}:{}-{}",
+            location.filename,
+            location.line,
+            location.line + slice.split('\n').count(),
+          ))?;
 
-            let file = File {
-              local: specifier.to_file_path().unwrap(),
-              maybe_types: None,
-              media_type: MediaType::TypeScript, // media_type.clone(),
-              source: source.clone(),
-              specifier: specifier.clone(),
-            };
-
-            program_state.file_fetcher.insert_cached(file.clone());
-
-            (specifier, tags.contains(&"no_run"))
+          let file = File {
+            local: specifier.to_file_path().unwrap(),
+            maybe_types: None,
+            media_type: MediaType::TypeScript, // media_type.clone(),
+            source: source.clone(),
+            specifier: specifier.clone(),
           };
+
+          program_state.file_fetcher.insert_cached(file.clone());
+
+          let no_run = tags.contains(&"no_run");
 
           if !no_run {
             // TODO(caspervonb) import requires read access, we don't want that.
