@@ -436,16 +436,6 @@ pub async fn run_tests(
                 specifier.as_str(),
               ));
           }
-
-          program_state
-            .prepare_module_load(
-              specifier.clone(),
-              lib.clone(),
-              Permissions::allow_all(),
-              false,
-              program_state.maybe_import_map.clone(),
-            )
-            .await?;
         }
       }
 
