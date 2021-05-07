@@ -2520,6 +2520,7 @@ pub fn request(
   state_snapshot: StateSnapshot,
   method: RequestMethod,
 ) -> Result<Value, AnyError> {
+  let performance = state_snapshot.performance.clone();
   let id = {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
@@ -2529,6 +2530,7 @@ pub fn request(
     state.last_id
   };
   let request_params = method.to_value(id);
+  let mark = performance.mark("request", Some(request_params.clone()));
   let request_src = format!("globalThis.serverRequest({});", request_params);
   runtime.execute("[native_code]", &request_src)?;
 
@@ -2536,6 +2538,7 @@ pub fn request(
   let mut op_state = op_state.borrow_mut();
   let state = op_state.borrow_mut::<State>();
 
+  performance.measure(mark);
   if let Some(response) = state.response.clone() {
     state.response = None;
     Ok(response.data)
