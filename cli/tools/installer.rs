@@ -878,4 +878,49 @@ mod tests {
     let status = Command::new(file_path).spawn().unwrap().wait().unwrap();
     assert!(status.success());
   }
+
+  #[test]
+  fn install_with_import_map() {
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    let bin_dir = temp_dir.path().join("bin");
+    let import_map_path = temp_dir.path().join("import_map.json");
+    let import_map_url = Url::from_file_path(&import_map_path).unwrap();
+    let import_map = "{ \"imports\": {} }";
+    let mut import_map_file = File::create(&import_map_path).unwrap();
+    let result = import_map_file.write_all(import_map.as_bytes());
+    assert!(result.is_ok());
+
+    let result = install(
+      Flags {
+        import_map_path: Some(import_map_path.to_string_lossy().to_string()),
+        ..Flags::default()
+      },
+      "http://localhost:4545/cli/tests/cat.ts",
+      vec![],
+      Some("echo_test".to_string()),
+      Some(temp_dir.path().to_path_buf()),
+      true,
+    );
+    assert!(result.is_ok());
+
+    let mut file_path = bin_dir.join("echo_test");
+    if cfg!(windows) {
+      file_path = file_path.with_extension("cmd");
+    }
+    assert!(file_path.exists());
+
+    let mut expected_string = format!(
+      "--import-map '{}' 'http://localhost:4545/cli/tests/cat.ts'",
+      import_map_url.to_string()
+    );
+    if cfg!(windows) {
+      expected_string = format!(
+        "\"--import-map\" \"{}\" \"http://localhost:4545/cli/tests/cat.ts\"",
+        import_map_url.to_string()
+      );
+    }
+
+    let content = fs::read_to_string(file_path).unwrap();
+    assert!(content.contains(&expected_string));
+  }
 }
