@@ -319,7 +319,7 @@ pub async fn run_tests(
   flags: Flags,
   include: Option<Vec<String>>,
   no_run: bool,
-  docs: bool,
+  doc: bool,
   fail_fast: bool,
   quiet: bool,
   allow_none: bool,
@@ -348,7 +348,7 @@ pub async fn run_tests(
     module_graph::TypeLib::DenoWindow
   };
 
-  if docs {
+  if doc {
     let parse_modules =
       collect_test_module_specifiers(include, &cwd, is_supported_ext)?;
 
