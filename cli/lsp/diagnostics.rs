@@ -104,7 +104,9 @@ async fn update_diagnostics(
   let lint = async {
     let collection = collection.clone();
     if lint_enabled {
-      let mark = snapshot.performance.mark("update_diagnostics_lint", None::<()>);
+      let mark = snapshot
+        .performance
+        .mark("update_diagnostics_lint", None::<()>);
       let diagnostics =
         generate_lint_diagnostics(snapshot.clone(), collection.clone()).await;
       {
