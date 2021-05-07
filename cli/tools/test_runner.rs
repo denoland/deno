@@ -451,7 +451,7 @@ pub async fn run_tests(
 
       if !test_source.is_empty() {
         let test_specifier = deno_core::resolve_url_or_path(&format!(
-          "{}.doc",
+          "{}doc",
           file.specifier.as_str()
         ))?;
 
