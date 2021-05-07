@@ -16,6 +16,8 @@ impl Resource for WebGPUSwapChain {
   }
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ConfigureSwapchainArgs {
   device_rid: u32,
   surface_rid: u32,
@@ -28,8 +30,8 @@ pub struct ConfigureSwapchainArgs {
 pub fn op_webgpu_configure_swapchain(
   state: &mut OpState,
   args: ConfigureSwapchainArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<ResourceId, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -57,6 +59,8 @@ pub fn op_webgpu_configure_swapchain(
   ) => state, WebGPUSwapChain)
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GetSwapchainPreferredFormat {
   adapter_rid: u32,
   swapchain_rid: u32,
@@ -65,8 +69,8 @@ pub struct GetSwapchainPreferredFormat {
 pub fn op_webgpu_get_swapchain_preferred_format(
   state: &mut OpState,
   args: GetSwapchainPreferredFormat,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<String, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let adapter_resource = state
     .resource_table
@@ -86,6 +90,6 @@ pub fn op_webgpu_get_swapchain_preferred_format(
 
   let format = super::texture::deserialize_texture_format(&texture_format)?;
 
-  Ok(json!({ "format": format }))
+  Ok(format.to_string())
 }
 
