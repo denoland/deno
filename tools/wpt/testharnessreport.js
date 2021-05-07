@@ -9,5 +9,5 @@ window.add_result_callback(({ message, name, stack, status }) => {
 });
 
 window.add_completion_callback((tests, harnessStatus) => {
-  Deno.exit(0);
+  window.close();
 });
