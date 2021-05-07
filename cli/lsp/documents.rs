@@ -26,15 +26,26 @@ impl IndexValid {
   }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct DocumentData {
   bytes: Option<Vec<u8>>,
   line_index: Option<LineIndex>,
+  specifier: ModuleSpecifier,
   dependencies: Option<HashMap<String, analysis::Dependency>>,
   version: Option<i32>,
 }
 
 impl DocumentData {
+  pub fn new(specifier: ModuleSpecifier, version: i32, source: &str) -> Self {
+    Self {
+      bytes: Some(source.as_bytes().to_owned()),
+      line_index: Some(LineIndex::new(source)),
+      specifier,
+      dependencies: None,
+      version: Some(version),
+    }
+  }
+
   pub fn apply_content_changes(
     &mut self,
     content_changes: Vec<TextDocumentContentChangeEvent>,
@@ -113,10 +124,7 @@ impl DocumentCache {
   }
 
   pub fn close(&mut self, specifier: &ModuleSpecifier) {
-    if let Some(mut doc) = self.docs.get_mut(specifier) {
-      doc.version = None;
-      doc.dependencies = None;
-    }
+    self.docs.remove(specifier);
   }
 
   pub fn contains_key(&self, specifier: &ModuleSpecifier) -> bool {
@@ -143,7 +151,7 @@ impl DocumentCache {
   }
 
   pub fn len(&self) -> usize {
-    self.docs.iter().count()
+    self.docs.len()
   }
 
   pub fn line_index(&self, specifier: &ModuleSpecifier) -> Option<LineIndex> {
@@ -153,13 +161,8 @@ impl DocumentCache {
 
   pub fn open(&mut self, specifier: ModuleSpecifier, version: i32, text: &str) {
     self.docs.insert(
-      specifier,
-      DocumentData {
-        bytes: Some(text.as_bytes().to_owned()),
-        version: Some(version),
-        line_index: Some(LineIndex::new(&text)),
-        ..Default::default()
-      },
+      specifier.clone(),
+      DocumentData::new(specifier, version, text),
     );
   }
 
@@ -194,6 +197,10 @@ impl DocumentCache {
         ),
       ))
     }
+  }
+
+  pub fn specifiers(&self) -> Vec<ModuleSpecifier> {
+    self.docs.keys().cloned().collect()
   }
 
   pub fn version(&self, specifier: &ModuleSpecifier) -> Option<i32> {

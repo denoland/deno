@@ -5,7 +5,9 @@
   const core = window.Deno.core;
 
   function openPlugin(filename) {
-    return core.jsonOpSync("op_open_plugin", { filename });
+    const rid = core.opSync("op_open_plugin", filename);
+    core.syncOpsCache();
+    return rid;
   }
 
   window.__bootstrap.plugins = {

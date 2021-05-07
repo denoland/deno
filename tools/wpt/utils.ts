@@ -1,3 +1,4 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 /// FLAGS
 
 import { parse } from "https://deno.land/std@0.84.0/flags/mod.ts";

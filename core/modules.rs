@@ -21,7 +21,7 @@ use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
 
-lazy_static! {
+lazy_static::lazy_static! {
   pub static ref NEXT_LOAD_ID: AtomicI32 = AtomicI32::new(0);
 }
 
@@ -494,6 +494,10 @@ impl ModuleMap {
     }
 
     None
+  }
+
+  pub fn get_info_by_id(&self, id: &ModuleId) -> Option<&ModuleInfo> {
+    self.info.get(id)
   }
 }
 

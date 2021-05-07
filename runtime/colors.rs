@@ -1,5 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
 use regex::Regex;
 use std::env;
 use std::fmt;
@@ -10,15 +9,13 @@ use termcolor::{Ansi, ColorSpec, WriteColor};
 #[cfg(windows)]
 use termcolor::{BufferWriter, ColorChoice};
 
-lazy_static! {
-        // STRIP_ANSI_RE and strip_ansi_codes are lifted from the "console" crate.
-        // Copyright 2017 Armin Ronacher <armin.ronacher@active-4.com>. MIT License.
-        static ref STRIP_ANSI_RE: Regex = Regex::new(
-                r"[\x1b\x9b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]"
-        ).unwrap();
-        static ref NO_COLOR: bool = {
-                env::var_os("NO_COLOR").is_some()
-        };
+lazy_static::lazy_static! {
+  // STRIP_ANSI_RE and strip_ansi_codes are lifted from the "console" crate.
+  // Copyright 2017 Armin Ronacher <armin.ronacher@active-4.com>. MIT License.
+  static ref STRIP_ANSI_RE: Regex = Regex::new(
+          r"[\x1b\x9b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]"
+  ).unwrap();
+  static ref NO_COLOR: bool = env::var_os("NO_COLOR").is_some();
 }
 
 /// Helper function to strip ansi codes.

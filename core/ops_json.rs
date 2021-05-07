@@ -1,36 +1,15 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::error::type_error;
 use crate::error::AnyError;
-use crate::BufVec;
+use crate::serialize_op_result;
 use crate::Op;
 use crate::OpFn;
 use crate::OpState;
-use crate::ZeroCopyBuf;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::cell::RefCell;
-use std::convert::TryInto;
 use std::future::Future;
 use std::rc::Rc;
-
-fn json_serialize_op_result<R: Serialize>(
-  request_id: Option<u64>,
-  result: Result<R, AnyError>,
-  get_error_class_fn: crate::runtime::GetErrorClassFn,
-) -> Box<[u8]> {
-  let value = match result {
-    Ok(v) => serde_json::json!({ "ok": v, "requestId": request_id }),
-    Err(err) => serde_json::json!({
-      "requestId": request_id,
-      "err": {
-        "className": (get_error_class_fn)(&err),
-        "message": err.to_string(),
-      }
-    }),
-  };
-  serde_json::to_vec(&value).unwrap().into_boxed_slice()
-}
 
 /// Creates an op that passes data synchronously using JSON.
 ///
@@ -44,30 +23,29 @@ fn json_serialize_op_result<R: Serialize>(
 /// When registering an op like this...
 /// ```ignore
 /// let mut runtime = JsRuntime::new(...);
-/// runtime.register_op("hello", deno_core::json_op_sync(Self::hello_op));
+/// runtime.register_op("hello", deno_core::op_sync(Self::hello_op));
+/// runtime.sync_ops_cache();
 /// ```
 ///
 /// ...it can be invoked from JS using the provided name, for example:
 /// ```js
-/// Deno.core.ops();
-/// let result = Deno.core.jsonOpSync("function_name", args);
+/// let result = Deno.core.opSync("function_name", args);
 /// ```
 ///
-/// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
+/// `runtime.sync_ops_cache()` must be called after registering new ops
 /// A more complete example is available in the examples directory.
-pub fn json_op_sync<F, V, R>(op_fn: F) -> Box<OpFn>
+pub fn op_sync<F, A, B, R>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(&mut OpState, V, &mut [ZeroCopyBuf]) -> Result<R, AnyError> + 'static,
-  V: DeserializeOwned,
-  R: Serialize,
+  F: Fn(&mut OpState, A, B) -> Result<R, AnyError> + 'static,
+  A: DeserializeOwned,
+  B: DeserializeOwned,
+  R: Serialize + 'static,
 {
-  Box::new(move |state: Rc<RefCell<OpState>>, mut bufs: BufVec| -> Op {
-    let result = serde_json::from_slice(&bufs[0])
-      .map_err(AnyError::from)
-      .and_then(|args| op_fn(&mut state.borrow_mut(), args, &mut bufs[1..]));
-    let buf =
-      json_serialize_op_result(None, result, state.borrow().get_error_class_fn);
-    Op::Sync(buf)
+  Box::new(move |state, payload| -> Op {
+    let result = payload
+      .deserialize()
+      .and_then(|(a, b)| op_fn(&mut state.borrow_mut(), a, b));
+    Op::Sync(serialize_op_result(result, state))
   })
 }
 
@@ -84,51 +62,82 @@ where
 /// When registering an op like this...
 /// ```ignore
 /// let mut runtime = JsRuntime::new(...);
-/// runtime.register_op("hello", deno_core::json_op_async(Self::hello_op));
+/// runtime.register_op("hello", deno_core::op_async(Self::hello_op));
+/// runtime.sync_ops_cache();
 /// ```
 ///
 /// ...it can be invoked from JS using the provided name, for example:
 /// ```js
-/// Deno.core.ops();
-/// let future = Deno.core.jsonOpAsync("function_name", args);
+/// let future = Deno.core.opAsync("function_name", args);
 /// ```
 ///
-/// The `Deno.core.ops()` statement is needed once before any op calls, for initialization.
+/// `runtime.sync_ops_cache()` must be called after registering new ops
 /// A more complete example is available in the examples directory.
-pub fn json_op_async<F, V, R, RV>(op_fn: F) -> Box<OpFn>
+pub fn op_async<F, A, B, R, RV>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(Rc<RefCell<OpState>>, V, BufVec) -> R + 'static,
-  V: DeserializeOwned,
+  F: Fn(Rc<RefCell<OpState>>, A, B) -> R + 'static,
+  A: DeserializeOwned,
+  B: DeserializeOwned,
   R: Future<Output = Result<RV, AnyError>> + 'static,
-  RV: Serialize,
+  RV: Serialize + 'static,
 {
-  let try_dispatch_op =
-    move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Result<Op, AnyError> {
-      let request_id = bufs[0]
-        .get(0..8)
-        .map(|b| u64::from_le_bytes(b.try_into().unwrap()))
-        .ok_or_else(|| type_error("missing or invalid `requestId`"))?;
-      let args = serde_json::from_slice(&bufs[0][8..])?;
-      let bufs = bufs[1..].into();
-      use crate::futures::FutureExt;
-      let fut = op_fn(state.clone(), args, bufs).map(move |result| {
-        json_serialize_op_result(
-          Some(request_id),
-          result,
-          state.borrow().get_error_class_fn,
-        )
-      });
-      Ok(Op::Async(Box::pin(fut)))
+  Box::new(move |state, payload| -> Op {
+    let pid = payload.promise_id;
+    // Deserialize args, sync error on failure
+    let args = match payload.deserialize() {
+      Ok(args) => args,
+      Err(err) => {
+        return Op::Sync(serialize_op_result(Err::<(), AnyError>(err), state))
+      }
     };
+    let (a, b) = args;
 
-  Box::new(move |state: Rc<RefCell<OpState>>, bufs: BufVec| -> Op {
-    match try_dispatch_op(state.clone(), bufs) {
-      Ok(op) => op,
-      Err(err) => Op::Sync(json_serialize_op_result(
-        None,
-        Err::<(), AnyError>(err),
-        state.borrow().get_error_class_fn,
-      )),
-    }
+    use crate::futures::FutureExt;
+    let fut = op_fn(state.clone(), a, b)
+      .map(move |result| (pid, serialize_op_result(result, state)));
+    Op::Async(Box::pin(fut))
   })
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[tokio::test]
+  async fn op_async_stack_trace() {
+    let mut runtime = crate::JsRuntime::new(Default::default());
+
+    async fn op_throw(
+      _state: Rc<RefCell<OpState>>,
+      msg: Option<String>,
+      _: (),
+    ) -> Result<(), AnyError> {
+      assert_eq!(msg.unwrap(), "hello");
+      Err(crate::error::generic_error("foo"))
+    }
+
+    runtime.register_op("op_throw", op_async(op_throw));
+    runtime.sync_ops_cache();
+    runtime
+      .execute(
+        "<init>",
+        r#"
+    async function f1() {
+      await Deno.core.opAsync('op_throw', 'hello');
+    }
+
+    async function f2() {
+      await f1();
+    }
+
+    f2();
+    "#,
+      )
+      .unwrap();
+    let e = runtime.run_event_loop().await.unwrap_err().to_string();
+    println!("{}", e);
+    assert!(e.contains("Error: foo"));
+    assert!(e.contains("at async f1 (<init>:"));
+    assert!(e.contains("at async f2 (<init>:"));
+  }
 }

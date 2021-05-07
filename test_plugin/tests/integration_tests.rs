@@ -33,8 +33,9 @@ fn basic() {
     println!("stdout {}", stdout);
     println!("stderr {}", stderr);
   }
+  println!("{:?}", output.status);
   assert!(output.status.success());
-  let expected = "Hello from plugin.\nzero_copy[0]: test\nzero_copy[1]: 123\nzero_copy[2]: cba\nPlugin Sync Response: test\nHello from plugin.\nzero_copy[0]: test\nzero_copy[1]: 123\nzero_copy[2]: cba\nPlugin Async Response: test\n";
+  let expected = "Plugin rid: 3\nHello from sync plugin op.\nzero_copy: test\nop_test_sync returned: test\nHello from async plugin op.\nzero_copy: 123\nop_test_async returned: test\nHello from resource_table.add plugin op.\nTestResource rid: 4\nHello from resource_table.get plugin op.\nTestResource get value: hello plugin!\nHello from sync plugin op.\nOps completed count is correct!\nOps dispatched count is correct!\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
 }

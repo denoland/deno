@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::convert::From;
 use std::env;
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
@@ -126,8 +127,8 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
 const RESULT_KEYS: &[&str] =
   &["mean", "stddev", "user", "system", "min", "max"];
 fn run_exec_time(
-  deno_exe: &PathBuf,
-  target_dir: &PathBuf,
+  deno_exe: &Path,
+  target_dir: &Path,
 ) -> Result<HashMap<String, HashMap<String, f64>>> {
   let hyperfine_exe = test_util::prebuilt_tool_path("hyperfine");
 
@@ -218,19 +219,13 @@ fn rlib_size(target_dir: &std::path::Path, prefix: &str) -> u64 {
 
 const BINARY_TARGET_FILES: &[&str] =
   &["CLI_SNAPSHOT.bin", "COMPILER_SNAPSHOT.bin"];
-fn get_binary_sizes(target_dir: &PathBuf) -> Result<HashMap<String, u64>> {
+fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, u64>> {
   let mut sizes = HashMap::<String, u64>::new();
   let mut mtimes = HashMap::<String, SystemTime>::new();
 
   sizes.insert(
     "deno".to_string(),
     test_util::deno_exe_path().metadata()?.len(),
-  );
-
-  // add up size for denort
-  sizes.insert(
-    "denort".to_string(),
-    test_util::denort_exe_path().metadata()?.len(),
   );
 
   // add up size for everything in target/release/deps/libswc*
@@ -276,7 +271,7 @@ const BUNDLES: &[(&str, &str)] = &[
   ("file_server", "./test_util/std/http/file_server.ts"),
   ("gist", "./test_util/std/examples/gist.ts"),
 ];
-fn bundle_benchmark(deno_exe: &PathBuf) -> Result<HashMap<String, u64>> {
+fn bundle_benchmark(deno_exe: &Path) -> Result<HashMap<String, u64>> {
   let mut sizes = HashMap::<String, u64>::new();
 
   for (name, url) in BUNDLES {
@@ -304,7 +299,7 @@ fn bundle_benchmark(deno_exe: &PathBuf) -> Result<HashMap<String, u64>> {
   Ok(sizes)
 }
 
-fn run_throughput(deno_exe: &PathBuf) -> Result<HashMap<String, f64>> {
+fn run_throughput(deno_exe: &Path) -> Result<HashMap<String, f64>> {
   let mut m = HashMap::<String, f64>::new();
 
   m.insert("100M_tcp".to_string(), throughput::tcp(deno_exe, 100)?);
@@ -315,7 +310,7 @@ fn run_throughput(deno_exe: &PathBuf) -> Result<HashMap<String, f64>> {
   Ok(m)
 }
 
-fn run_http(target_dir: &PathBuf, new_data: &mut BenchResult) -> Result<()> {
+fn run_http(target_dir: &Path, new_data: &mut BenchResult) -> Result<()> {
   let stats = http::benchmark(target_dir)?;
 
   new_data.req_per_sec = stats
@@ -332,7 +327,7 @@ fn run_http(target_dir: &PathBuf, new_data: &mut BenchResult) -> Result<()> {
 }
 
 fn run_strace_benchmarks(
-  deno_exe: &PathBuf,
+  deno_exe: &Path,
   new_data: &mut BenchResult,
 ) -> Result<()> {
   use std::io::Read;
@@ -372,7 +367,7 @@ fn run_strace_benchmarks(
   Ok(())
 }
 
-fn run_max_mem_benchmark(deno_exe: &PathBuf) -> Result<HashMap<String, u64>> {
+fn run_max_mem_benchmark(deno_exe: &Path) -> Result<HashMap<String, u64>> {
   let mut results = HashMap::<String, u64>::new();
 
   for (name, args, return_code) in EXEC_TIME_BENCHMARKS {

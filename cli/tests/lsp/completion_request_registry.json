@@ -1,0 +1,18 @@
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "textDocument/completion",
+  "params": {
+    "textDocument": {
+      "uri": "file:///a/file.ts"
+    },
+    "position": {
+      "line": 0,
+      "character": 46
+    },
+    "context": {
+      "triggerKind": 2,
+      "triggerCharacter": "@"
+    }
+  }
+}

@@ -3,10 +3,7 @@
 use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::AsyncRefCell;
-use deno_core::BufVec;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
@@ -15,6 +12,9 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 
+use deno_core::op_async;
+use deno_core::op_sync;
+use deno_core::Extension;
 use notify::event::Event as NotifyEvent;
 use notify::Error as NotifyError;
 use notify::EventKind;
@@ -30,9 +30,13 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use tokio::sync::mpsc;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_sync(rt, "op_fs_events_open", op_fs_events_open);
-  super::reg_json_async(rt, "op_fs_events_poll", op_fs_events_poll);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_fs_events_open", op_sync(op_fs_events_open)),
+      ("op_fs_events_poll", op_async(op_fs_events_poll)),
+    ])
+    .build()
 }
 
 struct FsEventsResource {
@@ -93,8 +97,8 @@ pub struct OpenArgs {
 fn op_fs_events_open(
   state: &mut OpState,
   args: OpenArgs,
-  _zero_copy: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<ResourceId, AnyError> {
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, AnyError>>(16);
   let sender = std::sync::Mutex::new(sender);
   let mut watcher: RecommendedWatcher =
@@ -112,7 +116,7 @@ fn op_fs_events_open(
   };
   for path in &args.paths {
     state
-      .borrow::<Permissions>()
+      .borrow_mut::<Permissions>()
       .read
       .check(&PathBuf::from(path))?;
     watcher.watch(path, recursive_mode)?;
@@ -123,30 +127,25 @@ fn op_fs_events_open(
     cancel: Default::default(),
   };
   let rid = state.resource_table.add(resource);
-  Ok(json!(rid))
-}
-
-#[derive(Deserialize)]
-pub struct PollArgs {
-  rid: ResourceId,
+  Ok(rid)
 }
 
 async fn op_fs_events_poll(
   state: Rc<RefCell<OpState>>,
-  args: PollArgs,
-  _zero_copy: BufVec,
-) -> Result<Value, AnyError> {
+  rid: ResourceId,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<Option<FsEvent>, AnyError> {
   let resource = state
     .borrow()
     .resource_table
-    .get::<FsEventsResource>(args.rid)
+    .get::<FsEventsResource>(rid)
     .ok_or_else(bad_resource_id)?;
   let mut receiver = RcRef::map(&resource, |r| &r.receiver).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let maybe_result = receiver.recv().or_cancel(cancel).await?;
   match maybe_result {
-    Some(Ok(value)) => Ok(json!({ "value": value, "done": false })),
+    Some(Ok(value)) => Ok(Some(value)),
     Some(Err(err)) => Err(err),
-    None => Ok(json!({ "done": true })),
+    None => Ok(None),
   }
 }
