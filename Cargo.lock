@@ -3407,6 +3407,7 @@ version = "0.0.1"
 dependencies = [
  "deno_core",
  "futures",
+ "serde",
  "test_util",
 ]
 
