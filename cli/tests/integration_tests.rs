@@ -1014,6 +1014,15 @@ mod integration {
 
     #[test]
     fn test_watch() {
+      macro_rules! assert_contains {
+        ($string:expr, $($test:expr),+) => {
+          let string = $string; // This might be a function call or something
+          if !($(string.contains($test))||+) {
+            panic!("{:?} does not contain any of {:?}", string, [$($test),+]);
+          }
+        }
+      }
+
       let t = TempDir::new().expect("tempdir fail");
 
       let mut child = util::deno_cmd()
@@ -1036,26 +1045,20 @@ mod integration {
       let mut stderr_lines =
         std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
-      assert!(stdout_lines
-        .next()
-        .unwrap()
-        .contains("No matching test modules found"));
+      assert_contains!(
+        stdout_lines.next().unwrap(),
+        "No matching test modules found"
+      );
       wait_for_process_finished("Test", &mut stderr_lines);
 
       let foo_file = t.path().join("foo.js");
       let bar_file = t.path().join("bar.js");
       let foo_test = t.path().join("foo_test.js");
       let bar_test = t.path().join("bar_test.js");
-      std::fs::write(
-        &foo_file,
-        "export default function foo() { console.log('foo'); }",
-      )
-      .expect("error writing file");
-      std::fs::write(
-        &bar_file,
-        "export default function bar() { console.log('bar'); }",
-      )
-      .expect("error writing file");
+      std::fs::write(&foo_file, "export default function foo() { 1 + 1 }")
+        .expect("error writing file");
+      std::fs::write(&bar_file, "export default function bar() { 2 + 2 }")
+        .expect("error writing file");
       std::fs::write(
         &foo_test,
         "import foo from './foo.js'; Deno.test('foo', foo);",
@@ -1066,16 +1069,11 @@ mod integration {
         "import bar from './bar.js'; Deno.test('bar', bar);",
       )
       .expect("error writing file");
-      std::thread::sleep(std::time::Duration::from_secs(1));
 
-      assert!(stdout_lines.next().unwrap().contains("running 1 test"));
-      let line = stdout_lines.next().unwrap();
-      assert!(line.contains("bar") || line.contains("foo"));
-      assert!(stdout_lines.next().unwrap().contains("ok"));
-      assert!(stdout_lines.next().unwrap().contains("running 1 test"));
-      let line = stdout_lines.next().unwrap();
-      assert!(line.contains("foo") || line.contains("bar"));
-      assert!(stdout_lines.next().unwrap().contains("ok"));
+      assert_contains!(stdout_lines.next().unwrap(), "running 1 test");
+      assert_contains!(stdout_lines.next().unwrap(), "foo", "bar");
+      assert_contains!(stdout_lines.next().unwrap(), "running 1 test");
+      assert_contains!(stdout_lines.next().unwrap(), "foo", "bar");
       stdout_lines.next();
       stdout_lines.next();
       stdout_lines.next();
@@ -1083,17 +1081,14 @@ mod integration {
 
       // Change content of the file
       std::fs::write(
-        &foo_file,
-        "export default function foo() { console.log('foobar'); }",
+        &foo_test,
+        "import foo from './foo.js'; Deno.test('foobar', foo);",
       )
       .expect("error writing file");
-      // Events from the file watcher is "debounced", so we need to wait for the next execution to start
-      std::thread::sleep(std::time::Duration::from_secs(1));
 
-      assert!(stderr_lines.next().unwrap().contains("Restarting"));
-      assert!(stdout_lines.next().unwrap().contains("running 1 test"));
-      assert!(stdout_lines.next().unwrap().contains("foobar"));
-      assert!(stdout_lines.next().unwrap().contains("ok"));
+      assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+      assert_contains!(stdout_lines.next().unwrap(), "running 1 test");
+      assert_contains!(stdout_lines.next().unwrap(), "foobar");
       stdout_lines.next();
       stdout_lines.next();
       stdout_lines.next();
@@ -1101,31 +1096,23 @@ mod integration {
 
       // Add test
       let another_test = t.path().join("new_test.js");
-      std::fs::write(
-        &another_test,
-        "Deno.test('another one', () => console.log('new stuff!'))",
-      )
-      .expect("error writing file");
-      std::thread::sleep(std::time::Duration::from_secs(1));
-      assert!(stderr_lines.next().unwrap().contains("Restarting"));
-      assert!(stdout_lines.next().unwrap().contains("running 1 test"));
-      assert!(stdout_lines.next().unwrap().contains("new stuff!"));
-      assert!(stdout_lines.next().unwrap().contains("ok"));
+      std::fs::write(&another_test, "Deno.test('another one', () => 3 + 3)")
+        .expect("error writing file");
+      assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+      assert_contains!(stdout_lines.next().unwrap(), "running 1 test");
+      assert_contains!(stdout_lines.next().unwrap(), "another one");
       stdout_lines.next();
       stdout_lines.next();
       stdout_lines.next();
       wait_for_process_finished("Test", &mut stderr_lines);
 
       // Confirm that restarting occurs when a new file is updated
-      std::fs::write(&another_test, "Deno.test('another one', () => console.log('new stuff!')); Deno.test('another another one', () => console.log('newer stuff!'))")
+      std::fs::write(&another_test, "Deno.test('another one', () => 3 + 3); Deno.test('another another one', () => 4 + 4)")
     .expect("error writing file");
-      std::thread::sleep(std::time::Duration::from_secs(1));
-      assert!(stderr_lines.next().unwrap().contains("Restarting"));
-      assert!(stdout_lines.next().unwrap().contains("running 2 tests"));
-      assert!(stdout_lines.next().unwrap().contains("new stuff!"));
-      assert!(stdout_lines.next().unwrap().contains("ok"));
-      assert!(stdout_lines.next().unwrap().contains("newer stuff!"));
-      assert!(stdout_lines.next().unwrap().contains("ok"));
+      assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+      assert_contains!(stdout_lines.next().unwrap(), "running 2 tests");
+      assert_contains!(stdout_lines.next().unwrap(), "another one");
+      assert_contains!(stdout_lines.next().unwrap(), "another another one");
       stdout_lines.next();
       stdout_lines.next();
       stdout_lines.next();
@@ -1134,37 +1121,31 @@ mod integration {
       // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
       std::fs::write(&another_test, "syntax error ^^")
         .expect("error writing file");
-      std::thread::sleep(std::time::Duration::from_secs(1));
-      assert!(stderr_lines.next().unwrap().contains("Restarting"));
-      assert!(stderr_lines.next().unwrap().contains("error:"));
-      assert!(stderr_lines.next().unwrap().contains("Test failed"));
+      assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+      assert_contains!(stderr_lines.next().unwrap(), "error:");
+      assert_contains!(stderr_lines.next().unwrap(), "Test failed");
 
       // Then restore the file
-      std::fs::write(
-        &another_test,
-        "Deno.test('another one', () => console.log('new stuff!'))",
-      )
-      .expect("error writing file");
-      std::thread::sleep(std::time::Duration::from_secs(1));
-      assert!(stderr_lines.next().unwrap().contains("Restarting"));
-      assert!(stdout_lines.next().unwrap().contains("running 1 test"));
-      assert!(stdout_lines.next().unwrap().contains("new stuff!"));
-      assert!(stdout_lines.next().unwrap().contains("ok"));
+      std::fs::write(&another_test, "Deno.test('another one', () => 3 + 3)")
+        .expect("error writing file");
+      assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+      assert_contains!(stdout_lines.next().unwrap(), "running 1 test");
+      assert_contains!(stdout_lines.next().unwrap(), "another one");
       stdout_lines.next();
       stdout_lines.next();
       stdout_lines.next();
       wait_for_process_finished("Test", &mut stderr_lines);
 
       // Confirm that the watcher keeps on working even if the file is updated and the test fails
+      // This also confirms that it restarts when dependencies change
       std::fs::write(
         &foo_file,
         "export default function foo() { throw new Error('Whoops!'); }",
       )
       .expect("error writing file");
-      std::thread::sleep(std::time::Duration::from_secs(1));
-      assert!(stderr_lines.next().unwrap().contains("Restarting"));
-      assert!(stdout_lines.next().unwrap().contains("running 1 test"));
-      assert!(stdout_lines.next().unwrap().contains("FAILED"));
+      assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+      assert_contains!(stdout_lines.next().unwrap(), "running 1 test");
+      assert_contains!(stdout_lines.next().unwrap(), "FAILED");
       while !stdout_lines.next().unwrap().contains("test result") {}
       stdout_lines.next();
       wait_for_process_finished("Test", &mut stderr_lines);
@@ -1175,11 +1156,9 @@ mod integration {
         "export default function foo() { console.log('foo'); }",
       )
       .expect("error writing file");
-      std::thread::sleep(std::time::Duration::from_secs(1));
-      assert!(stderr_lines.next().unwrap().contains("Restarting"));
-      assert!(stdout_lines.next().unwrap().contains("running 1 test"));
-      assert!(stdout_lines.next().unwrap().contains("foo"));
-      assert!(stdout_lines.next().unwrap().contains("ok"));
+      assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+      assert_contains!(stdout_lines.next().unwrap(), "running 1 test");
+      assert_contains!(stdout_lines.next().unwrap(), "foo");
       stdout_lines.next();
       stdout_lines.next();
       stdout_lines.next();
