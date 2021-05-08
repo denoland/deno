@@ -13,6 +13,7 @@ crate-type = ["cdylib"]
 [dependencies]
 deno_core = { path = "../core" }
 futures = "0.3.9"
+serde = "1"
 
 [dev-dependencies]
 test_util = { path = "../test_util" }
