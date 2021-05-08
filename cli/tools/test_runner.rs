@@ -365,7 +365,10 @@ pub async fn run_tests(
         ast::parse(&file.specifier.as_str(), &file.source, &file.media_type)?;
 
       let mut comments = parsed_module.get_comments();
-      comments.sort_by_key(|comment| comment.span.lo());
+      comments.sort_by_key(|comment| {
+          let location = parsed_module.get_location(&comment.span);
+          location.line
+      });
 
       let mut test_source = String::new();
 
