@@ -75,7 +75,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/workers_large_message_bench.ts",
+      "cli/tests/workers/bench_large_message.ts",
     ],
     None,
   ),
