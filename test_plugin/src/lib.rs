@@ -37,7 +37,7 @@ pub fn init() -> Extension {
 #[derive(Debug, Deserialize)]
 struct TestArgs {
   val: String,
-  map: serde_json::Value, // TODO: comment here to make the tests pass (segmentation fault)
+  map: serde_json::Value, // TODO: https://github.com/denoland/deno/issues/10534
 }
 
 fn op_test_sync(
