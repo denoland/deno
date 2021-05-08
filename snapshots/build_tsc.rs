@@ -29,9 +29,8 @@ fn create_snapshot(
   snapshot_path: &Path,
   files: Vec<PathBuf>,
 ) {
-  // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
-  // workspace root.
-  let display_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+  let cwd = cli_dir();
+  let display_root = cwd.parent().unwrap();
   for file in files {
     println!("cargo:rerun-if-changed={}", file.display());
     let display_path = file.strip_prefix(display_root).unwrap();
@@ -236,8 +235,10 @@ pub fn main() {
 }
 
 fn cli_dir() -> PathBuf {
+  // TODO(nayeemrmn): https://github.com/rust-lang/cargo/issues/3946 to get the
+  // workspace root.
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-  manifest_dir.join("../cli").canonicalize().unwrap()
+  manifest_dir.join("..").join("cli").canonicalize().unwrap()
 }
 
 fn tsc_dir() -> PathBuf {
