@@ -3,9 +3,6 @@
 use deno_core::error::custom_error;
 use deno_core::op_sync;
 use deno_core::serde::Deserialize;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
 use deno_runtime::deno_console;
@@ -155,7 +152,7 @@ fn create_compiler_snapshot(
   });
   js_runtime.register_op(
     "op_build_info",
-    op_sync(move |_state, _args: Value, _bufs| {
+    op_sync(move |_state, _: (), _: ()| {
       Ok(json!({
         "buildSpecifier": build_specifier,
         "libs": build_libs,
@@ -166,8 +163,7 @@ fn create_compiler_snapshot(
   // files, but a slightly different implementation at build time.
   js_runtime.register_op(
     "op_load",
-    op_sync(move |_state, args, _bufs| {
-      let v: LoadArgs = serde_json::from_value(args)?;
+    op_sync(move |_state, v: LoadArgs, _: ()| {
       // we need a basic file to send to tsc to warm it up.
       if v.specifier == build_specifier {
         Ok(json!({
