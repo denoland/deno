@@ -3,6 +3,8 @@
 use deno_core::error::custom_error;
 use deno_core::op_sync;
 use deno_core::serde::Deserialize;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
 use deno_runtime::deno_console;
@@ -152,7 +154,7 @@ fn create_compiler_snapshot(
   });
   js_runtime.register_op(
     "op_build_info",
-    op_sync(move |_state, _: (), _: ()| {
+    op_sync(move |_state, _: Value, _: ()| {
       Ok(json!({
         "buildSpecifier": build_specifier,
         "libs": build_libs,
