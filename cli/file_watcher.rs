@@ -190,7 +190,7 @@ where
         };
 
         info!(
-          "{} {} finished! Restarting on file change...",
+          "{} {} finished. Restarting on file change...",
           colors::intense_blue("Watcher"),
           job_name,
         );
@@ -198,7 +198,7 @@ where
       Err(error) => {
         eprintln!("{}: {}", colors::red_bold("error"), error);
         info!(
-          "{} {} failed! Restarting on file change...",
+          "{} {} failed. Restarting on file change...",
           colors::intense_blue("Watcher"),
           job_name,
         );
