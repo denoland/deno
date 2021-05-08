@@ -553,7 +553,7 @@ fn deserialize(
   match value {
     Some(deserialized) => rv.set(deserialized),
     None => {
-      let msg = v8::String::new(scope, "string too long").unwrap();
+      let msg = v8::String::new(scope, "could not deserialize value").unwrap();
       let exception = v8::Exception::range_error(scope, msg);
       scope.throw_exception(exception);
     }
