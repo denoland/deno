@@ -32,3 +32,21 @@ export function ok() {
 export function fail() {
   throw new Error();
 }
+
+/**
+ * ```js
+ * # import { hidden } from "./doc.ts";
+ *
+ * hidden();
+ * ```
+ *
+ * ```ts
+ * # import { hidden } from "./doc.ts";
+ *
+ * hidden();
+ * ```
+ */
+export function hidden() {
+  // no-op
+}
+

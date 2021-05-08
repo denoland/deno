@@ -351,6 +351,8 @@ pub async fn run_tests(
 
   if doc {
     let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
+    let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
+
     let parse_modules =
       collect_test_module_specifiers(include, &cwd, is_supported_ext)?;
 
@@ -376,16 +378,13 @@ pub async fn run_tests(
           let tags = head.as_str();
 
           let body = block.get(2).unwrap();
-          let lines = body.as_str().lines();
+          let text = body.as_str();
 
           // TODO(caspervonb) generate an inline source map
           let mut source = String::new();
-          for line in lines {
-            let line = line.trim_start();
-            let line = line.strip_prefix('*').unwrap_or(line);
-            let line = line.strip_prefix(' ').unwrap_or(line);
-
-            source.push_str(&format!("{}\n", line));
+          for line in lines_regex.captures_iter(&text) {
+            let text = line.get(1).unwrap();
+            source.push_str(&format!("{}\n", text.as_str()));
           }
 
           let element = block.get(0).unwrap();
