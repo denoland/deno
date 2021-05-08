@@ -36,6 +36,7 @@ pub fn init() -> Extension {
 #[derive(Debug, Deserialize)]
 struct TestArgs {
   val: String,
+  map: std::collections::HashMap<String, String>, // TODO: comment here to make the tests pass (segmentation fault)
 }
 
 fn op_test_sync(
