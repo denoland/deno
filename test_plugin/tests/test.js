@@ -42,7 +42,7 @@ if (
 function runTestSync() {
   const result = Deno.core.opSync(
     "op_test_sync",
-    null,
+    { val: "1" },
     new Uint8Array([116, 101, 115, 116]),
   );
 
@@ -56,7 +56,7 @@ function runTestSync() {
 async function runTestAsync() {
   const promise = Deno.core.opAsync(
     "op_test_async",
-    null,
+    { val: "1" },
     new Uint8Array([49, 50, 51]),
   );
 
@@ -95,7 +95,7 @@ function runTestResourceTable() {
 function runTestOpCount() {
   const start = Deno.metrics();
 
-  Deno.core.opSync("op_test_sync");
+  Deno.core.opSync("op_test_sync", { val: "1" });
 
   const end = Deno.metrics();
 
