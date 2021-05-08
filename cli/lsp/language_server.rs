@@ -26,7 +26,6 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::fs;
@@ -35,6 +34,7 @@ use crate::config_file::ConfigFile;
 use crate::config_file::TsConfig;
 use crate::deno_dir;
 use crate::import_map::ImportMap;
+use crate::logger;
 use crate::media_type::MediaType;
 
 use super::analysis;
@@ -94,7 +94,6 @@ pub(crate) struct Inner {
   client: Client,
   /// Configuration information.
   config: Config,
-  debug_flag: Arc<AtomicBool>,
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The "in-memory" documents in the editor which can be updated and changed.
   documents: DocumentCache,
@@ -124,16 +123,13 @@ pub(crate) struct Inner {
 }
 
 impl LanguageServer {
-  pub fn new(client: Client, lsp_debug_flag: Arc<AtomicBool>) -> Self {
-    Self(Arc::new(tokio::sync::Mutex::new(Inner::new(
-      client,
-      lsp_debug_flag,
-    ))))
+  pub fn new(client: Client) -> Self {
+    Self(Arc::new(tokio::sync::Mutex::new(Inner::new(client))))
   }
 }
 
 impl Inner {
-  fn new(client: Client, debug_flag: Arc<AtomicBool>) -> Self {
+  fn new(client: Client) -> Self {
     let maybe_custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(maybe_custom_root)
       .expect("could not access DENO_DIR");
@@ -150,7 +146,6 @@ impl Inner {
       assets: Default::default(),
       client,
       config: Default::default(),
-      debug_flag,
       diagnostics_server,
       documents: Default::default(),
       maybe_config_uri: Default::default(),
@@ -362,8 +357,7 @@ impl Inner {
   }
 
   pub fn update_debug_flag(&self) -> bool {
-    self
-      .debug_flag
+    logger::LSP_DEBUG_FLAG
       .compare_exchange(
         !self.config.workspace_settings.internal_debug,
         self.config.workspace_settings.internal_debug,
@@ -2658,9 +2652,7 @@ mod tests {
 
   impl LspTestHarness {
     pub fn new(requests: Vec<LspTestHarnessRequest>) -> Self {
-      let lsp_debug_flag = Arc::new(AtomicBool::new(false));
-      let (service, _) =
-        LspService::new(|client| LanguageServer::new(client, lsp_debug_flag));
+      let (service, _) = LspService::new(LanguageServer::new);
       let service = Spawn::new(service);
       Self { requests, service }
     }

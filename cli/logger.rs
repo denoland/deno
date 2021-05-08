@@ -5,24 +5,19 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-struct CliLogger {
-  logger: env_logger::Logger,
-  lsp_debug_flag: Arc<AtomicBool>,
+lazy_static::lazy_static! {
+  pub static ref LSP_DEBUG_FLAG: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 }
 
+struct CliLogger(env_logger::Logger);
+
 impl CliLogger {
-  pub fn new(
-    logger: env_logger::Logger,
-    lsp_debug_flag: Arc<AtomicBool>,
-  ) -> Self {
-    Self {
-      logger,
-      lsp_debug_flag,
-    }
+  pub fn new(logger: env_logger::Logger) -> Self {
+    Self(logger)
   }
 
   pub fn filter(&self) -> log::LevelFilter {
-    self.logger.filter()
+    self.0.filter()
   }
 }
 
@@ -31,27 +26,24 @@ impl log::Log for CliLogger {
     if metadata.target() == "deno::lsp::performance"
       && metadata.level() == log::Level::Debug
     {
-      self.lsp_debug_flag.load(Ordering::Relaxed)
+      LSP_DEBUG_FLAG.load(Ordering::Relaxed)
     } else {
-      self.logger.enabled(metadata)
+      self.0.enabled(metadata)
     }
   }
 
   fn log(&self, record: &log::Record) {
     if self.enabled(record.metadata()) {
-      self.logger.log(record);
+      self.0.log(record);
     }
   }
 
   fn flush(&self) {
-    self.logger.flush();
+    self.0.flush();
   }
 }
 
-pub(crate) fn init(
-  maybe_level: Option<log::Level>,
-  lsp_debug_flag: Arc<AtomicBool>,
-) {
+pub(crate) fn init(maybe_level: Option<log::Level>) {
   let log_level = maybe_level.unwrap_or(log::Level::Info);
   let logger = env_logger::Builder::from_env(
     env_logger::Env::default()
@@ -90,7 +82,7 @@ pub(crate) fn init(
   })
   .build();
 
-  let cli_logger = CliLogger::new(logger, lsp_debug_flag);
+  let cli_logger = CliLogger::new(logger);
   let max_level = cli_logger.filter();
   let r = log::set_boxed_logger(Box::new(cli_logger));
   if r.is_ok() {

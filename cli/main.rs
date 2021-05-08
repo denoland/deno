@@ -76,7 +76,6 @@ use std::iter::once;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tools::test_runner;
@@ -442,8 +441,8 @@ async fn install_command(
   tools::installer::install(flags, &module_url, args, name, root, force)
 }
 
-async fn lsp_command(lsp_debug_flag: Arc<AtomicBool>) -> Result<(), AnyError> {
-  lsp::start(lsp_debug_flag).await
+async fn lsp_command() -> Result<(), AnyError> {
+  lsp::start().await
 }
 
 async fn lint_command(
@@ -1172,7 +1171,6 @@ fn init_v8_flags(v8_flags: &[String]) {
 
 fn get_subcommand(
   flags: Flags,
-  lsp_debug_flag: Arc<AtomicBool>,
 ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
   match flags.clone().subcommand {
     DenoSubcommand::Bundle {
@@ -1225,7 +1223,7 @@ fn get_subcommand(
     } => {
       install_command(flags, module_url, args, name, root, force).boxed_local()
     }
-    DenoSubcommand::Lsp => lsp_command(lsp_debug_flag).boxed_local(),
+    DenoSubcommand::Lsp => lsp_command().boxed_local(),
     DenoSubcommand::Lint {
       files,
       rules,
@@ -1328,11 +1326,7 @@ pub fn main() {
     init_v8_flags(&*flags.v8_flags);
   }
 
-  // when this flag is set to `true`, the process will log specific diagnostic
-  // debug information,
-  let lsp_debug_flag = Arc::new(AtomicBool::new(false));
+  logger::init(flags.log_level);
 
-  logger::init(flags.log_level, lsp_debug_flag.clone());
-
-  unwrap_or_exit(tokio_util::run_basic(get_subcommand(flags, lsp_debug_flag)));
+  unwrap_or_exit(tokio_util::run_basic(get_subcommand(flags)));
 }
