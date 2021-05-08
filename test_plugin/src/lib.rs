@@ -36,7 +36,6 @@ pub fn init() -> Extension {
 #[derive(Debug, Deserialize)]
 struct TestArgs {
   val: String,
-  map: std::collections::HashMap<String, String>, // TODO: comment here
 }
 
 fn op_test_sync(
