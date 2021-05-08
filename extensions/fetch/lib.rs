@@ -274,7 +274,7 @@ pub struct FetchResponse {
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _data: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<FetchResponse, AnyError> {
   let request = state
     .borrow_mut()
@@ -434,7 +434,7 @@ pub struct CreateHttpClientOptions {
 pub fn op_create_http_client<FP>(
   state: &mut OpState,
   args: CreateHttpClientOptions,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<ResourceId, AnyError>
 where
   FP: FetchPermissions + 'static,
