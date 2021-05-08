@@ -9,7 +9,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
-use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -30,7 +29,7 @@ struct ApplySourceMap {
 fn op_apply_source_map(
   state: &mut OpState,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<Value, AnyError> {
   let args: ApplySourceMap = serde_json::from_value(args)?;
 
@@ -56,7 +55,7 @@ fn op_apply_source_map(
 fn op_format_diagnostic(
   _state: &mut OpState,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<Value, AnyError> {
   let diagnostic: Diagnostics = serde_json::from_value(args)?;
   Ok(json!(diagnostic.to_string()))

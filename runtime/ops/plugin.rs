@@ -6,7 +6,6 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use dlopen::symbor::Library;
 use log::debug;
 use std::borrow::Cow;
@@ -32,7 +31,7 @@ pub fn init() -> Extension {
 pub fn op_open_plugin(
   state: &mut OpState,
   filename: String,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<ResourceId, AnyError> {
   let filename = PathBuf::from(&filename);
 

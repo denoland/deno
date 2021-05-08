@@ -80,7 +80,7 @@ impl Resource for TestResource {
 fn op_test_resource_table_add(
   state: &mut OpState,
   text: String,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<u32, AnyError> {
   println!("Hello from resource_table.add plugin op.");
 
@@ -90,7 +90,7 @@ fn op_test_resource_table_add(
 fn op_test_resource_table_get(
   state: &mut OpState,
   rid: ResourceId,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<String, AnyError> {
   println!("Hello from resource_table.get plugin op.");
 

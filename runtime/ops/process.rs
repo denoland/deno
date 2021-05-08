@@ -17,7 +17,6 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -101,7 +100,7 @@ struct RunInfo {
 fn op_run(
   state: &mut OpState,
   run_args: RunArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<RunInfo, AnyError> {
   let args = run_args.cmd;
   state.borrow_mut::<Permissions>().run.check(&args[0])?;
@@ -202,7 +201,7 @@ struct RunStatus {
 async fn op_run_status(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<RunStatus, AnyError> {
   let resource = state
     .borrow_mut()
@@ -287,11 +286,7 @@ struct KillArgs {
   signo: i32,
 }
 
-fn op_kill(
-  state: &mut OpState,
-  args: KillArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<(), AnyError> {
+fn op_kill(state: &mut OpState, args: KillArgs, _: ()) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.kill");
   state.borrow_mut::<Permissions>().run.check_all()?;
 
