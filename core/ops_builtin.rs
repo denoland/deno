@@ -92,7 +92,7 @@ fn op_decode(
   let buf = &zero_copy;
 
   // Strip BOM
-  let buf = if buf[0..3] == [0xEF, 0xBB, 0xBF] {
+  let buf = if buf[..3] == [0xEF, 0xBB, 0xBF] {
     &buf[3..]
   } else {
     buf
