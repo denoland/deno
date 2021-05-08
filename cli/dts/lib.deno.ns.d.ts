@@ -2285,7 +2285,7 @@ declare namespace Deno {
     /** The LLVM target triple */
     target: string;
     /** Instruction set architecture */
-    arch: "x86_64";
+    arch: "x86_64" | "aarch64";
     /** Operating system */
     os: "darwin" | "linux" | "windows";
     /** Computer vendor */
