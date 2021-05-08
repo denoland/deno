@@ -363,7 +363,9 @@ pub async fn run_tests(
         .unwrap();
       let parsed_module =
         ast::parse(&file.specifier.as_str(), &file.source, &file.media_type)?;
-      let comments = parsed_module.get_comments();
+
+      let mut comments = parsed_module.get_comments();
+      comments.sort_by_key(|comment| comment.span.lo());
 
       let mut test_source = String::new();
 
