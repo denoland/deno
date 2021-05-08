@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use regex::Regex;
 use crate::ast;
 use crate::colors;
 use crate::create_main_worker;
@@ -369,35 +370,19 @@ pub async fn run_tests(
           continue;
         }
 
-        let indices: Vec<usize> = comment
-          .text
-          .match_indices("```")
-          .map(|(i, _)| i as usize)
-          .collect();
+        let regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")
+            .unwrap();
 
-        let blocks: Vec<(String, Span)> = indices
-          .chunks(2)
-          .filter_map(|chunk| {
-            if chunk.len() == 2 {
-              let start = chunk[0] + 3;
-              let end = chunk[1];
+        let blocks = regex.captures_iter(&comment.text);
+        for block in blocks {
+          let head = block.get(1).unwrap();
+          let tags = head.as_str();
 
-              Some((
-                comment.text[start..end].to_string(),
-                comment.span.from_inner_byte_pos(start, end),
-              ))
-            } else {
-              None
-            }
-          })
-          .collect();
-
-        for (slice, span) in blocks {
-          let mut source = String::new();
-          let mut lines = slice.split('\n');
-          let tags = lines.next().unwrap_or("");
+          let body = block.get(2).unwrap();
+          let lines = body.as_str().lines();
 
           // TODO(caspervonb) generate an inline source map
+          let mut source = String::new();
           for line in lines {
             let line = line.trim_start();
             let line = line.strip_prefix('*').unwrap_or(line);
@@ -406,12 +391,14 @@ pub async fn run_tests(
             source.push_str(&format!("{}\n", line));
           }
 
+          let element = block.get(0).unwrap();
+          let span = comment.span.from_inner_byte_pos(element.start(), element.end());
           let location = parsed_module.get_location(&span);
           let specifier = deno_core::resolve_url_or_path(&format!(
             "{}:{}-{}",
             location.filename,
             location.line,
-            location.line + slice.split('\n').count(),
+            location.line + element.as_str().split('\n').count(),
           ))?;
 
           let file = File {
