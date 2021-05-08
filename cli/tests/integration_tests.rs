@@ -3841,6 +3841,17 @@ console.log("finish");
     http_server: true,
   });
 
+  // This test ensures that a descriptive error is shown when we're unable to load
+  // the import map. Even though this tests only the `run` subcommand, we can be sure
+  // that the error message is similar for other subcommands as they all use
+  // `program_state.maybe_import_map` to access the import map underneath.
+  itest!(error_import_map_unable_to_load {
+    args:
+      "run --import-map=import_maps/does_not_exist.json import_maps/test.ts",
+    output: "error_import_map_unable_to_load.out",
+    exit_code: 1,
+  });
+
   #[test]
   fn no_validate_asm() {
     let output = util::deno_cmd()
@@ -5398,7 +5409,9 @@ console.log("finish");
       .arg("--target")
       .arg("x86_64-unknown-linux-gnu")
       .arg("./test_util/std/examples/welcome.ts")
-      .stdout(std::process::Stdio::piped())
+      // TODO(kt3k): Prints command output to the test log for debugging purpose.
+      // Uncomment this line when this test become stable.
+      //.stdout(std::process::Stdio::piped())
       .spawn()
       .unwrap()
       .wait_with_output()

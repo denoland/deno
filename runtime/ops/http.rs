@@ -145,7 +145,7 @@ struct NextRequestResponse(
 async fn op_http_request_next(
   state: Rc<RefCell<OpState>>,
   conn_rid: ResourceId,
-  _data: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<Option<NextRequestResponse>, AnyError> {
   let conn_resource = state
     .borrow()
@@ -278,7 +278,7 @@ fn should_ignore_error(e: &AnyError) -> bool {
 fn op_http_start(
   state: &mut OpState,
   tcp_stream_rid: ResourceId,
-  _data: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<ResourceId, AnyError> {
   let deno_service = Service::default();
 
@@ -407,7 +407,7 @@ async fn op_http_response(
 async fn op_http_response_close(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _data: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()

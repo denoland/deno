@@ -8,7 +8,6 @@ use deno_core::serde_json::Value;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-use deno_core::ZeroCopyBuf;
 use deno_runtime::ops::worker_host::create_worker_permissions;
 use deno_runtime::ops::worker_host::PermissionsArg;
 use deno_runtime::permissions::Permissions;
@@ -32,7 +31,7 @@ struct PermissionsHolder(Uuid, Permissions);
 pub fn op_pledge_test_permissions(
   state: &mut OpState,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<Uuid, AnyError> {
   deno_runtime::ops::check_unstable(state, "Deno.test.permissions");
 
@@ -54,7 +53,7 @@ pub fn op_pledge_test_permissions(
 pub fn op_restore_test_permissions(
   state: &mut OpState,
   token: Uuid,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<(), AnyError> {
   deno_runtime::ops::check_unstable(state, "Deno.test.permissions");
 
@@ -80,7 +79,7 @@ struct PostTestMessageArgs {
 fn op_post_test_message(
   state: &mut OpState,
   args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<Value, AnyError> {
   let args: PostTestMessageArgs = serde_json::from_value(args)?;
   let origin = state.borrow::<ModuleSpecifier>().to_string();
