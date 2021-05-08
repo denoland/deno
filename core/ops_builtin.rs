@@ -18,6 +18,8 @@ pub(crate) fn init_builtins() -> Extension {
     ))
     .ops(vec![
       ("op_close", op_sync(op_close)),
+      ("op_decode", op_sync(op_decode)),
+      ("op_encode", op_sync(op_encode)),
       ("op_print", op_sync(op_print)),
       ("op_resources", op_sync(op_resources)),
     ])
@@ -70,4 +72,33 @@ pub fn op_print(
     stdout().flush().unwrap();
   }
   Ok(())
+}
+
+/// Converts String to Uint8Array
+fn op_encode(
+  _state: &mut OpState,
+  text: String,
+  _: (),
+) -> Result<ZeroCopyBuf, AnyError> {
+  Ok(text.into_bytes().into())
+}
+
+/// Converts Uint8Array to String
+fn op_decode(
+  _state: &mut OpState,
+  zero_copy: ZeroCopyBuf,
+  _: (),
+) -> Result<String, AnyError> {
+  let buf = &zero_copy;
+
+  // Strip BOM
+  let buf = if buf[0..3] == [0xEF, 0xBB, 0xBF] {
+    &buf[3..]
+  } else {
+    buf
+  };
+
+  std::str::from_utf8(buf)
+    .map(str::to_string)
+    .map_err(AnyError::from)
 }

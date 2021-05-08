@@ -33,12 +33,6 @@ lazy_static::lazy_static! {
         function: queue_microtask.map_fn_to()
       },
       v8::ExternalReference {
-        function: encode.map_fn_to()
-      },
-      v8::ExternalReference {
-        function: decode.map_fn_to()
-      },
-      v8::ExternalReference {
         function: serialize.map_fn_to()
       },
       v8::ExternalReference {
@@ -121,8 +115,6 @@ pub fn initialize_context<'s>(
     set_macrotask_callback,
   );
   set_func(scope, core_val, "evalContext", eval_context);
-  set_func(scope, core_val, "encode", encode);
-  set_func(scope, core_val, "decode", decode);
   set_func(scope, core_val, "serialize", serialize);
   set_func(scope, core_val, "deserialize", deserialize);
   set_func(scope, core_val, "getPromiseDetails", get_promise_details);
@@ -434,65 +426,6 @@ fn eval_context(
 
   let output = Output(Some(result.unwrap().into()), None);
   rv.set(to_v8(tc_scope, output).unwrap());
-}
-
-fn encode(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
-  let text = match v8::Local::<v8::String>::try_from(args.get(0)) {
-    Ok(s) => s,
-    Err(_) => {
-      throw_type_error(scope, "Invalid argument");
-      return;
-    }
-  };
-  let text_str = text.to_rust_string_lossy(scope);
-  let text_bytes = text_str.as_bytes().to_vec().into_boxed_slice();
-
-  let zbuf: ZeroCopyBuf = text_bytes.into();
-  rv.set(to_v8(scope, zbuf).unwrap())
-}
-
-fn decode(
-  scope: &mut v8::HandleScope,
-  args: v8::FunctionCallbackArguments,
-  mut rv: v8::ReturnValue,
-) {
-  let zero_copy: ZeroCopyBuf = match serde_v8::from_v8(scope, args.get(0)) {
-    Ok(zbuf) => zbuf,
-    Err(_) => {
-      throw_type_error(scope, "Invalid argument");
-      return;
-    }
-  };
-  let buf = &zero_copy;
-
-  // Strip BOM
-  let buf =
-    if buf.len() >= 3 && buf[0] == 0xef && buf[1] == 0xbb && buf[2] == 0xbf {
-      &buf[3..]
-    } else {
-      buf
-    };
-
-  // If `String::new_from_utf8()` returns `None`, this means that the
-  // length of the decoded string would be longer than what V8 can
-  // handle. In this case we return `RangeError`.
-  //
-  // For more details see:
-  // - https://encoding.spec.whatwg.org/#dom-textdecoder-decode
-  // - https://github.com/denoland/deno/issues/6649
-  // - https://github.com/v8/v8/blob/d68fb4733e39525f9ff0a9222107c02c28096e2a/include/v8.h#L3277-L3278
-  match v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal) {
-    Some(text) => rv.set(text.into()),
-    None => {
-      let msg = v8::String::new(scope, "string too long").unwrap();
-      let exception = v8::Exception::range_error(scope, msg);
-      scope.throw_exception(exception);
-    }
-  };
 }
 
 struct SerializeDeserialize {}

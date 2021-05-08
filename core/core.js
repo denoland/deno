@@ -132,6 +132,14 @@
     opSync("op_print", [str, isErr]);
   }
 
+  function decode(buf) {
+    return opSync("op_decode", buf);
+  }
+
+  function encode(str) {
+    return opSync("op_encode", str);
+  }
+
   // Provide bootstrap namespace
   window.__bootstrap = {};
   // Extra Deno.core.* exports
@@ -140,6 +148,8 @@
     opSync,
     ops,
     close,
+    decode,
+    encode,
     print,
     resources,
     registerErrorBuilder,
