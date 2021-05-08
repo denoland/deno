@@ -28,19 +28,34 @@ mod macros {
   macro_rules! gfx_select {
     ($id:expr => $global:ident.$method:ident( $($param:expr),* )) => {
       match $id.backend() {
-        #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "ios", target_os = "macos"))))]
+        #[cfg(not(target_os = "macos"))]
         wgpu_types::Backend::Vulkan => $global.$method::<wgpu_core::backend::Vulkan>( $($param),* ),
-        #[cfg(all(not(target_arch = "wasm32"), any(target_os = "ios", target_os = "macos")))]
+        #[cfg(target_os = "macos")]
         wgpu_types::Backend::Metal => $global.$method::<wgpu_core::backend::Metal>( $($param),* ),
-        #[cfg(all(not(target_arch = "wasm32"), windows))]
+        #[cfg(windows)]
         wgpu_types::Backend::Dx12 => $global.$method::<wgpu_core::backend::Dx12>( $($param),* ),
-        #[cfg(all(not(target_arch = "wasm32"), windows))]
+        #[cfg(windows)]
         wgpu_types::Backend::Dx11 => $global.$method::<wgpu_core::backend::Dx11>( $($param),* ),
-        #[cfg(any(target_arch = "wasm32", all(unix, not(any(target_os = "ios", target_os = "macos")))))]
+        #[cfg(all(unix, not(target_os = "macos")))]
         wgpu_types::Backend::Gl => $global.$method::<wgpu_core::backend::Gl>( $($param),+ ),
         other => panic!("Unexpected backend {:?}", other),
       }
     };
+  }
+
+  macro_rules! gfx_put {
+    ($id:expr => $global:ident.$method:ident( $($param:expr),* ) => $state:expr, $rc:expr) => {{
+      let (val, maybe_err) = gfx_select!($id => $global.$method($($param),*));
+      let rid = $state.resource_table.add($rc(val));
+      Ok(WebGpuResult::rid_err(rid, maybe_err))
+    }};
+  }
+
+  macro_rules! gfx_ok {
+    ($id:expr => $global:ident.$method:ident( $($param:expr),* )) => {{
+      let maybe_err = gfx_select!($id => $global.$method($($param),*)).err();
+      Ok(WebGpuResult::maybe_err(maybe_err))
+    }};
   }
 }
 
@@ -276,10 +291,10 @@ pub async fn op_webgpu_request_adapter(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GpuLimits {
-  _max_texture_dimension1d: Option<u32>,
-  _max_texture_dimension2d: Option<u32>,
-  _max_texture_dimension3d: Option<u32>,
-  _max_texture_array_layers: Option<u32>,
+  max_texture_dimension_1d: Option<u32>,
+  max_texture_dimension_2d: Option<u32>,
+  max_texture_dimension_3d: Option<u32>,
+  max_texture_array_layers: Option<u32>,
   max_bind_groups: Option<u32>,
   max_dynamic_uniform_buffers_per_pipeline_layout: Option<u32>,
   max_dynamic_storage_buffers_per_pipeline_layout: Option<u32>,
@@ -289,10 +304,55 @@ struct GpuLimits {
   max_storage_textures_per_shader_stage: Option<u32>,
   max_uniform_buffers_per_shader_stage: Option<u32>,
   max_uniform_buffer_binding_size: Option<u32>,
-  _max_storage_buffer_binding_size: Option<u32>,
-  _max_vertex_buffers: Option<u32>,
-  _max_vertex_attributes: Option<u32>,
-  _max_vertex_buffer_array_stride: Option<u32>,
+  max_storage_buffer_binding_size: Option<u32>,
+  max_vertex_buffers: Option<u32>,
+  max_vertex_attributes: Option<u32>,
+  max_vertex_buffer_array_stride: Option<u32>,
+}
+
+impl From<GpuLimits> for wgpu_types::Limits {
+  fn from(limits: GpuLimits) -> wgpu_types::Limits {
+    wgpu_types::Limits {
+      max_texture_dimension_1d: limits.max_texture_dimension_1d.unwrap_or(8192),
+      max_texture_dimension_2d: limits.max_texture_dimension_2d.unwrap_or(8192),
+      max_texture_dimension_3d: limits.max_texture_dimension_3d.unwrap_or(2048),
+      max_texture_array_layers: limits.max_texture_array_layers.unwrap_or(2048),
+      max_bind_groups: limits.max_bind_groups.unwrap_or(4),
+      max_dynamic_uniform_buffers_per_pipeline_layout: limits
+        .max_dynamic_uniform_buffers_per_pipeline_layout
+        .unwrap_or(8),
+      max_dynamic_storage_buffers_per_pipeline_layout: limits
+        .max_dynamic_storage_buffers_per_pipeline_layout
+        .unwrap_or(4),
+      max_sampled_textures_per_shader_stage: limits
+        .max_sampled_textures_per_shader_stage
+        .unwrap_or(16),
+      max_samplers_per_shader_stage: limits
+        .max_samplers_per_shader_stage
+        .unwrap_or(16),
+      max_storage_buffers_per_shader_stage: limits
+        .max_storage_buffers_per_shader_stage
+        .unwrap_or(4),
+      max_storage_textures_per_shader_stage: limits
+        .max_storage_textures_per_shader_stage
+        .unwrap_or(4),
+      max_uniform_buffers_per_shader_stage: limits
+        .max_uniform_buffers_per_shader_stage
+        .unwrap_or(12),
+      max_uniform_buffer_binding_size: limits
+        .max_uniform_buffer_binding_size
+        .unwrap_or(16384),
+      max_storage_buffer_binding_size: limits
+        .max_storage_buffer_binding_size
+        .unwrap_or(134217728),
+      max_vertex_buffers: limits.max_vertex_buffers.unwrap_or(8),
+      max_vertex_attributes: limits.max_vertex_attributes.unwrap_or(16),
+      max_vertex_buffer_array_stride: limits
+        .max_vertex_buffer_array_stride
+        .unwrap_or(2048),
+      max_push_constant_size: 0,
+    }
+  }
 }
 
 #[derive(Deserialize)]
@@ -401,34 +461,7 @@ pub async fn op_webgpu_request_device(
     features,
     limits: args
       .non_guaranteed_limits
-      .map_or(Default::default(), |limits| wgpu_types::Limits {
-        max_bind_groups: limits.max_bind_groups.unwrap_or(4),
-        max_dynamic_uniform_buffers_per_pipeline_layout: limits
-          .max_dynamic_uniform_buffers_per_pipeline_layout
-          .unwrap_or(8),
-        max_dynamic_storage_buffers_per_pipeline_layout: limits
-          .max_dynamic_storage_buffers_per_pipeline_layout
-          .unwrap_or(4),
-        max_sampled_textures_per_shader_stage: limits
-          .max_sampled_textures_per_shader_stage
-          .unwrap_or(16),
-        max_samplers_per_shader_stage: limits
-          .max_samplers_per_shader_stage
-          .unwrap_or(16),
-        max_storage_buffers_per_shader_stage: limits
-          .max_storage_buffers_per_shader_stage
-          .unwrap_or(4),
-        max_storage_textures_per_shader_stage: limits
-          .max_storage_textures_per_shader_stage
-          .unwrap_or(4),
-        max_uniform_buffers_per_shader_stage: limits
-          .max_uniform_buffers_per_shader_stage
-          .unwrap_or(12),
-        max_uniform_buffer_binding_size: limits
-          .max_uniform_buffer_binding_size
-          .unwrap_or(16384),
-        max_push_constant_size: 0,
-      }),
+      .map_or(wgpu_types::Limits::default(), Into::into),
   };
 
   let (device, maybe_err) = gfx_select!(adapter => instance.adapter_request_device(
@@ -534,15 +567,11 @@ pub fn op_webgpu_create_query_set(
     count: args.count,
   };
 
-  let (query_set, maybe_err) = gfx_select!(device => instance.device_create_query_set(
+  gfx_put!(device => instance.device_create_query_set(
     device,
     &descriptor,
     std::marker::PhantomData
-  ));
-
-  let rid = state.resource_table.add(WebGpuQuerySet(query_set));
-
-  Ok(WebGpuResult::rid_err(rid, maybe_err))
+  ) => state, WebGpuQuerySet)
 }
 
 fn declare_webgpu_ops() -> Vec<(&'static str, Box<OpFn>)> {
@@ -694,8 +723,8 @@ fn declare_webgpu_ops() -> Vec<(&'static str, Box<OpFn>)> {
       op_sync(render_pass::op_webgpu_render_pass_set_scissor_rect),
     ),
     (
-      "op_webgpu_render_pass_set_blend_color",
-      op_sync(render_pass::op_webgpu_render_pass_set_blend_color),
+      "op_webgpu_render_pass_set_blend_constant",
+      op_sync(render_pass::op_webgpu_render_pass_set_blend_constant),
     ),
     (
       "op_webgpu_render_pass_set_stencil_reference",

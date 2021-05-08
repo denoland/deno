@@ -184,10 +184,10 @@ delete Object.prototype.__proto__;
     core.registerErrorClass("Http", errors.Http);
     core.registerErrorClass("Busy", errors.Busy);
     core.registerErrorClass("NotSupported", errors.NotSupported);
-    core.registerErrorClass(
+    core.registerErrorBuilder(
       "DOMExceptionOperationError",
       function DOMExceptionOperationError(msg) {
-        DOMException.prototype.constructor.call(this, msg, "OperationError");
+        return new DOMException(msg, "OperationError");
       },
     );
   }
@@ -296,7 +296,7 @@ delete Object.prototype.__proto__;
     GPU: util.nonEnumerable(webgpu.GPU),
     GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
     GPUAdapterLimits: util.nonEnumerable(webgpu.GPUAdapterLimits),
-    GPUAdapterFeatures: util.nonEnumerable(webgpu.GPUAdapterFeatures),
+    GPUSupportedFeatures: util.nonEnumerable(webgpu.GPUSupportedFeatures),
     GPUDevice: util.nonEnumerable(webgpu.GPUDevice),
     GPUQueue: util.nonEnumerable(webgpu.GPUQueue),
     GPUBuffer: util.nonEnumerable(webgpu.GPUBuffer),

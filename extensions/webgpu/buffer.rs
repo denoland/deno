@@ -60,15 +60,11 @@ pub fn op_webgpu_create_buffer(
     mapped_at_creation: args.mapped_at_creation.unwrap_or(false),
   };
 
-  let (buffer, maybe_err) = gfx_select!(device => instance.device_create_buffer(
+  gfx_put!(device => instance.device_create_buffer(
     device,
     &descriptor,
     std::marker::PhantomData
-  ));
-
-  let rid = state.resource_table.add(WebGpuBuffer(buffer));
-
-  Ok(WebGpuResult::rid_err(rid, maybe_err))
+  ) => state, WebGpuBuffer)
 }
 
 #[derive(Deserialize)]
@@ -167,7 +163,7 @@ pub async fn op_webgpu_buffer_get_map_async(
 pub struct BufferGetMappedRangeArgs {
   buffer_rid: ResourceId,
   offset: u64,
-  size: u64,
+  size: Option<u64>,
 }
 
 pub fn op_webgpu_buffer_get_mapped_range(
@@ -183,21 +179,22 @@ pub fn op_webgpu_buffer_get_mapped_range(
     .ok_or_else(bad_resource_id)?;
   let buffer = buffer_resource.0;
 
-  let slice_pointer = gfx_select!(buffer => instance.buffer_get_mapped_range(
-    buffer,
-    args.offset,
-    std::num::NonZeroU64::new(args.size)
-  ))
-  .map_err(|e| DomExceptionOperationError::new(&e.to_string()))?;
+  let (slice_pointer, range_size) =
+    gfx_select!(buffer => instance.buffer_get_mapped_range(
+      buffer,
+      args.offset,
+      std::num::NonZeroU64::new(args.size.unwrap_or(0))
+    ))
+    .map_err(|e| DomExceptionOperationError::new(&e.to_string()))?;
 
   let slice = unsafe {
-    std::slice::from_raw_parts_mut(slice_pointer, args.size as usize)
+    std::slice::from_raw_parts_mut(slice_pointer, range_size as usize)
   };
   zero_copy.copy_from_slice(slice);
 
   let rid = state
     .resource_table
-    .add(WebGpuBufferMapped(slice_pointer, args.size as usize));
+    .add(WebGpuBufferMapped(slice_pointer, range_size as usize));
 
   Ok(WebGpuResult::rid(rid))
 }
@@ -233,7 +230,5 @@ pub fn op_webgpu_buffer_unmap(
     slice.copy_from_slice(&buffer);
   }
 
-  let maybe_err = gfx_select!(buffer => instance.buffer_unmap(buffer)).err();
-
-  Ok(WebGpuResult::maybe_err(maybe_err))
+  gfx_ok!(buffer => instance.buffer_unmap(buffer))
 }

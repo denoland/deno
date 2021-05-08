@@ -150,7 +150,7 @@ use deno_core::OpFn;
 use std::collections::HashMap;
 
 pub fn metrics_op(name: &'static str, op_fn: Box<OpFn>) -> Box<OpFn> {
-  Box::new(move |op_state, payload, buf| -> Op {
+  Box::new(move |op_state, payload| -> Op {
     // TODOs:
     // * The 'bytes' metrics seem pretty useless, especially now that the
     //   distinction between 'control' and 'data' buffers has become blurry.
@@ -160,12 +160,9 @@ pub fn metrics_op(name: &'static str, op_fn: Box<OpFn>) -> Box<OpFn> {
 
     // TODO: remove this, doesn't make a ton of sense
     let bytes_sent_control = 0;
-    let bytes_sent_data = match buf {
-      Some(ref b) => b.len(),
-      None => 0,
-    };
+    let bytes_sent_data = 0;
 
-    let op = (op_fn)(op_state.clone(), payload, buf);
+    let op = (op_fn)(op_state.clone(), payload);
 
     let op_state_ = op_state.clone();
     let mut s = op_state.borrow_mut();
@@ -181,9 +178,9 @@ pub fn metrics_op(name: &'static str, op_fn: Box<OpFn>) -> Box<OpFn> {
     use deno_core::futures::future::FutureExt;
 
     match op {
-      Op::Sync(buf) => {
+      Op::Sync(result) => {
         metrics.op_sync(bytes_sent_control, bytes_sent_data, 0);
-        Op::Sync(buf)
+        Op::Sync(result)
       }
       Op::Async(fut) => {
         metrics.op_dispatched_async(bytes_sent_control, bytes_sent_data);

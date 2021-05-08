@@ -56,24 +56,15 @@ pub fn op_webgpu_create_shader_module(
     })),
   };
 
-  let mut flags = wgpu_types::ShaderFlags::default();
-  flags.set(wgpu_types::ShaderFlags::VALIDATION, true);
-  #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-  flags.set(wgpu_types::ShaderFlags::EXPERIMENTAL_TRANSLATION, true);
-
   let descriptor = wgpu_core::pipeline::ShaderModuleDescriptor {
     label: args.label.map(Cow::from),
-    flags,
+    flags: wgpu_types::ShaderFlags::all(),
   };
 
-  let (shader_module, maybe_err) = gfx_select!(device => instance.device_create_shader_module(
+  gfx_put!(device => instance.device_create_shader_module(
     device,
     &descriptor,
     source,
     std::marker::PhantomData
-  ));
-
-  let rid = state.resource_table.add(WebGpuShaderModule(shader_module));
-
-  Ok(WebGpuResult::rid_err(rid, maybe_err))
+  ) => state, WebGpuShaderModule)
 }

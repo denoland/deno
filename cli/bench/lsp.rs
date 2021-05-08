@@ -268,6 +268,10 @@ fn bench_big_file_edits(deno_exe: &Path) -> Result<Duration, AnyError> {
 
   let (method, _): (String, Option<Value>) = client.read_notification()?;
   assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _): (String, Option<Value>) = client.read_notification()?;
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _): (String, Option<Value>) = client.read_notification()?;
+  assert_eq!(method, "textDocument/publishDiagnostics");
 
   let messages: Vec<FixtureMessage> =
     serde_json::from_slice(FIXTURE_DB_MESSAGES)?;
@@ -324,6 +328,10 @@ fn bench_startup_shutdown(deno_exe: &Path) -> Result<Duration, AnyError> {
     }),
   )?;
 
+  let (method, _): (String, Option<Value>) = client.read_notification()?;
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _): (String, Option<Value>) = client.read_notification()?;
+  assert_eq!(method, "textDocument/publishDiagnostics");
   let (method, _): (String, Option<Value>) = client.read_notification()?;
   assert_eq!(method, "textDocument/publishDiagnostics");
 

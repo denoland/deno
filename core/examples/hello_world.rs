@@ -4,6 +4,7 @@
 
 use deno_core::op_sync;
 use deno_core::JsRuntime;
+use deno_core::ZeroCopyBuf;
 use std::io::Write;
 
 fn main() {
@@ -26,21 +27,23 @@ fn main() {
     // The op_fn callback takes a state object OpState,
     // a structured arg of type `T` and an optional ZeroCopyBuf,
     // a mutable reference to a JavaScript ArrayBuffer
-    op_sync(|_state, msg: Option<String>, zero_copy| {
-      let mut out = std::io::stdout();
+    op_sync(
+      |_state, msg: Option<String>, zero_copy: Option<ZeroCopyBuf>| {
+        let mut out = std::io::stdout();
 
-      // Write msg to stdout
-      if let Some(msg) = msg {
-        out.write_all(msg.as_bytes()).unwrap();
-      }
+        // Write msg to stdout
+        if let Some(msg) = msg {
+          out.write_all(msg.as_bytes()).unwrap();
+        }
 
-      // Write the contents of every buffer to stdout
-      if let Some(buf) = zero_copy {
-        out.write_all(&buf).unwrap();
-      }
+        // Write the contents of every buffer to stdout
+        if let Some(buf) = zero_copy {
+          out.write_all(&buf).unwrap();
+        }
 
-      Ok(()) // No meaningful result
-    }),
+        Ok(()) // No meaningful result
+      },
+    ),
   );
 
   // Register the JSON op for summing a number array.
@@ -49,7 +52,7 @@ fn main() {
     // The op_sync function automatically deserializes
     // the first ZeroCopyBuf and serializes the return value
     // to reduce boilerplate
-    op_sync(|_state, nums: Vec<f64>, _| {
+    op_sync(|_state, nums: Vec<f64>, _: ()| {
       // Sum inputs
       let sum = nums.iter().fold(0.0, |a, v| a + v);
       // return as a Result<f64, AnyError>

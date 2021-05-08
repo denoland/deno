@@ -338,3 +338,22 @@ Deno.test({
     assert(files["deno:///bundle.js"].endsWith("})();\n"));
   },
 });
+
+Deno.test({
+  name: `Deno.emit() - throws descriptive error when unable to load import map`,
+  async fn() {
+    await assertThrowsAsync(
+      async () => {
+        await Deno.emit("/a.ts", {
+          bundle: "classic",
+          sources: {
+            "/a.ts": `console.log("hello");`,
+          },
+          importMapPath: "file:///import_map_does_not_exist.json",
+        });
+      },
+      Error,
+      "Unable to load 'file:///import_map_does_not_exist.json' import map",
+    );
+  },
+});

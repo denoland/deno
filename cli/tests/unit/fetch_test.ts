@@ -9,6 +9,16 @@ import {
 } from "./test_util.ts";
 import { Buffer } from "../../../test_util/std/io/buffer.ts";
 
+unitTest(
+  { perms: { net: true } },
+  async function fetchRequiresOneArgument(): Promise<void> {
+    await assertThrowsAsync(
+      fetch as unknown as () => Promise<void>,
+      TypeError,
+    );
+  },
+);
+
 unitTest({ perms: { net: true } }, async function fetchProtocolError(): Promise<
   void
 > {

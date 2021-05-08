@@ -132,13 +132,11 @@ pub fn op_webgpu_compute_pass_begin_pipeline_statistics_query(
     .get::<super::WebGpuQuerySet>(args.query_set)
     .ok_or_else(bad_resource_id)?;
 
-  unsafe {
-    wgpu_core::command::compute_ffi::wgpu_compute_pass_begin_pipeline_statistics_query(
-      &mut compute_pass_resource.0.borrow_mut(),
-      query_set_resource.0,
-      args.query_index,
-    );
-  }
+  wgpu_core::command::compute_ffi::wgpu_compute_pass_begin_pipeline_statistics_query(
+    &mut compute_pass_resource.0.borrow_mut(),
+    query_set_resource.0,
+    args.query_index,
+  );
 
   Ok(WebGpuResult::empty())
 }
@@ -159,11 +157,9 @@ pub fn op_webgpu_compute_pass_end_pipeline_statistics_query(
     .get::<WebGpuComputePass>(args.compute_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
-  unsafe {
-    wgpu_core::command::compute_ffi::wgpu_compute_pass_end_pipeline_statistics_query(
-      &mut compute_pass_resource.0.borrow_mut(),
-    );
-  }
+  wgpu_core::command::compute_ffi::wgpu_compute_pass_end_pipeline_statistics_query(
+    &mut compute_pass_resource.0.borrow_mut(),
+  );
 
   Ok(WebGpuResult::empty())
 }
@@ -190,13 +186,11 @@ pub fn op_webgpu_compute_pass_write_timestamp(
     .get::<super::WebGpuQuerySet>(args.query_set)
     .ok_or_else(bad_resource_id)?;
 
-  unsafe {
-    wgpu_core::command::compute_ffi::wgpu_compute_pass_write_timestamp(
-      &mut compute_pass_resource.0.borrow_mut(),
-      query_set_resource.0,
-      args.query_index,
-    );
-  }
+  wgpu_core::command::compute_ffi::wgpu_compute_pass_write_timestamp(
+    &mut compute_pass_resource.0.borrow_mut(),
+    query_set_resource.0,
+    args.query_index,
+  );
 
   Ok(WebGpuResult::empty())
 }
@@ -227,14 +221,10 @@ pub fn op_webgpu_compute_pass_end_pass(
   let compute_pass = &compute_pass_resource.0.borrow();
   let instance = state.borrow::<super::Instance>();
 
-  let maybe_err =
-    gfx_select!(command_encoder => instance.command_encoder_run_compute_pass(
-      command_encoder,
-      compute_pass
-    ))
-    .err();
-
-  Ok(WebGpuResult::maybe_err(maybe_err))
+  gfx_ok!(command_encoder => instance.command_encoder_run_compute_pass(
+    command_encoder,
+    compute_pass
+  ))
 }
 
 #[derive(Deserialize)]
