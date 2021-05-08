@@ -350,6 +350,7 @@ pub async fn run_tests(
   };
 
   if doc {
+    let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
     let parse_modules =
       collect_test_module_specifiers(include, &cwd, is_supported_ext)?;
 
@@ -370,11 +371,7 @@ pub async fn run_tests(
           continue;
         }
 
-        let regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")
-            .unwrap();
-
-        let blocks = regex.captures_iter(&comment.text);
-        for block in blocks {
+        for block in blocks_regex.captures_iter(&comment.text) {
           let head = block.get(1).unwrap();
           let tags = head.as_str();
 
