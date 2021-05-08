@@ -303,6 +303,9 @@ pub async fn run_test_file(
   Ok(())
 }
 
+/// Runs tests.
+///
+/// Returns a boolean indicating whether the tests failed.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_tests(
   program_state: Arc<ProgramState>,
@@ -315,13 +318,13 @@ pub async fn run_tests(
   allow_none: bool,
   filter: Option<String>,
   concurrent_jobs: usize,
-) -> Result<(), AnyError> {
+) -> Result<bool, AnyError> {
   if test_modules.is_empty() {
     println!("No matching test modules found");
     if !allow_none {
       std::process::exit(1);
     }
-    return Ok(());
+    return Ok(false);
   }
 
   program_state
@@ -334,7 +337,7 @@ pub async fn run_tests(
     .await?;
 
   if no_run {
-    return Ok(());
+    return Ok(false);
   }
 
   // Because scripts, and therefore worker.execute cannot detect unresolved promises at the moment
@@ -464,11 +467,7 @@ pub async fn run_tests(
   if let Some(e) = join_errors.next() {
     Err(e)
   } else {
-    if result.unwrap_or(false) {
-      std::process::exit(1);
-    }
-
-    Ok(())
+    Ok(result.unwrap_or(false))
   }
 }
 

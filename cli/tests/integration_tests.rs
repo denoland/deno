@@ -1015,6 +1015,33 @@ mod integration {
     #[test]
     fn test_watch() {
       let t = TempDir::new().expect("tempdir fail");
+
+      let mut child = util::deno_cmd()
+        .current_dir(util::root_path())
+        .arg("test")
+        .arg("--watch")
+        .arg("--unstable")
+        .arg("--no-check")
+        .arg(&t.path())
+        .env("NO_COLOR", "1")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to spawn script");
+
+      let stdout = child.stdout.as_mut().unwrap();
+      let mut stdout_lines =
+        std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+      let stderr = child.stderr.as_mut().unwrap();
+      let mut stderr_lines =
+        std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+      assert!(stdout_lines
+        .next()
+        .unwrap()
+        .contains("No matching test modules found"));
+      wait_for_process_finished("Test", &mut stderr_lines);
+
       let foo_file = t.path().join("foo.js");
       let bar_file = t.path().join("bar.js");
       let foo_test = t.path().join("foo_test.js");
@@ -1039,26 +1066,7 @@ mod integration {
         "import bar from './bar.js'; Deno.test('bar', bar);",
       )
       .expect("error writing file");
-
-      let mut child = util::deno_cmd()
-        .current_dir(util::root_path())
-        .arg("test")
-        .arg("--watch")
-        .arg("--unstable")
-        .arg("--no-check")
-        .arg(&t.path())
-        .env("NO_COLOR", "1")
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .expect("failed to spawn script");
-
-      let stdout = child.stdout.as_mut().unwrap();
-      let mut stdout_lines =
-        std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
-      let stderr = child.stderr.as_mut().unwrap();
-      let mut stderr_lines =
-        std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+      std::thread::sleep(std::time::Duration::from_secs(1));
 
       assert!(stdout_lines.next().unwrap().contains("running 1 test"));
       let line = stdout_lines.next().unwrap();
@@ -1072,8 +1080,6 @@ mod integration {
       stdout_lines.next();
       stdout_lines.next();
       wait_for_process_finished("Test", &mut stderr_lines);
-
-      std::thread::sleep(std::time::Duration::from_secs(1));
 
       // Change content of the file
       std::fs::write(
@@ -1143,6 +1149,40 @@ mod integration {
       assert!(stderr_lines.next().unwrap().contains("Restarting"));
       assert!(stdout_lines.next().unwrap().contains("running 1 test"));
       assert!(stdout_lines.next().unwrap().contains("new stuff!"));
+      assert!(stdout_lines.next().unwrap().contains("ok"));
+      stdout_lines.next();
+      stdout_lines.next();
+      stdout_lines.next();
+      wait_for_process_finished("Test", &mut stderr_lines);
+
+      // Confirm that the watcher keeps on working even if the file is updated and the test fails
+      std::fs::write(
+        &foo_file,
+        "export default function foo() { throw new Error('Whoops!'); }",
+      )
+      .expect("error writing file");
+      std::thread::sleep(std::time::Duration::from_secs(1));
+      assert!(stderr_lines.next().unwrap().contains("Restarting"));
+      assert!(stdout_lines.next().unwrap().contains("running 1 test"));
+      assert!(stdout_lines.next().unwrap().contains("FAILED"));
+      while !stdout_lines.next().unwrap().contains("test result") {}
+      stdout_lines.next();
+      wait_for_process_finished("Test", &mut stderr_lines);
+
+      // Then restore the file
+      std::fs::write(
+        &foo_file,
+        "export default function foo() { console.log('foo'); }",
+      )
+      .expect("error writing file");
+      std::thread::sleep(std::time::Duration::from_secs(1));
+      assert!(stderr_lines.next().unwrap().contains("Restarting"));
+      assert!(stdout_lines.next().unwrap().contains("running 1 test"));
+      assert!(stdout_lines.next().unwrap().contains("foo"));
+      assert!(stdout_lines.next().unwrap().contains("ok"));
+      stdout_lines.next();
+      stdout_lines.next();
+      stdout_lines.next();
       wait_for_process_finished("Test", &mut stderr_lines);
 
       // the watcher process is still alive

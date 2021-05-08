@@ -1021,19 +1021,20 @@ async fn test_command(
           no_run,
           fail_fast,
           quiet,
-          allow_none,
+          true,
           filter.clone(),
           concurrent_jobs,
         )
+        .map(|res| res.map(|_| ()))
       },
       "Test",
     )
-    .await
+    .await?;
   } else {
     let test_modules =
       test_runner::collect_test_module_specifiers(include, &cwd)?;
 
-    test_runner::run_tests(
+    let failed = test_runner::run_tests(
       program_state.clone(),
       permissions,
       lib,
@@ -1045,8 +1046,14 @@ async fn test_command(
       filter,
       concurrent_jobs,
     )
-    .await
+    .await?;
+
+    if failed {
+      std::process::exit(1);
+    }
   }
+
+  Ok(())
 }
 
 fn init_v8_flags(v8_flags: &[String]) {
