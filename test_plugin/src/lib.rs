@@ -8,6 +8,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::op_async;
 use deno_core::op_sync;
+use deno_core::serde_json;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -36,7 +37,7 @@ pub fn init() -> Extension {
 #[derive(Debug, Deserialize)]
 struct TestArgs {
   val: String,
-  map: std::collections::HashMap<String, String>, // TODO: comment here to make the tests pass (segmentation fault)
+  map: serde_json::Value, // TODO: comment here to make the tests pass (segmentation fault)
 }
 
 fn op_test_sync(
