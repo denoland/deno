@@ -48,51 +48,129 @@
     return inRange(a, 0x00, 0x7f);
   }
 
-  function stringToCodePoints(input) {
-    const u = [];
-    for (const c of input) {
-      u.push(c.codePointAt(0));
-    }
-    return u;
-  }
-
-  class UTF8Encoder {
-    handler(codePoint) {
-      if (codePoint === END_OF_STREAM) {
-        return "finished";
+  // Minor Unicode reference for readers.
+  //
+  // Unicode code points are integers in the range 0x0 - 0x10ffff, (using at
+  // most 21 bits). These integers are what rendering engines use to decide what
+  // glyphs are displayed on the screen. Since most code points use less than
+  // 21-bits, there are encodings that can represent code points more
+  // efficiently.
+  //
+  // UTF-16 is one such encoding, and is used by Javascript engines to store
+  // strings internally. UTF-16 uses 1 or 2 16-bit integers (2 or 4 bytes) to
+  // represent a single code point.
+  //
+  // UTF-8 is another encoding, and uses 1, 2, 3 or 4 bytes to represent a
+  // single code point.
+  //
+  // The goal of the function below is to transform UTF-16 into UTF-8 without
+  // allocating any memory (writing to the buffer passed as parameter). The
+  // conversion loop is roughly divided into 3 steps:
+  //
+  // - Decode UTF-16 into Unicode.
+  // - Check if there's still enough space in the output buffer. If not, break
+  //   out of the loop.
+  // - Encode UTF-8 into the output buffer.
+  //
+  // Some references to learn more about the topic:
+  // - https://dmitripavlutin.com/what-every-javascript-developer-should-know-about-unicode
+  // - https://en.wikipedia.org/wiki/UTF-8
+  // - https://en.wikipedia.org/wiki/UTF-16
+  function encodeUtf8(input, output, state) {
+    let { read, written } = state;
+    const inLen = input.length;
+    const outLen = output.length;
+    while (read < inLen) {
+      // Step 1: Decode the UTF-16 code unit(s) into an unicode code point.
+      //
+      // There are three possibilities here:
+      // - The code unit is outside the high surrogate range and is treated as
+      //   the code point.
+      // - The code unit is in the high surrogate range and the next one
+      //   is in the low surrogate range. The surrogate pair is combined into
+      //   the final code point.
+      // - The code unit is a lone surrogate (high or low) which is invalid in
+      //   UTF-16. In this case it is replaced by 0xfffd (� )
+      const badCodePoint = 0xfffd;
+      const codeUnit = input.charCodeAt(read++);
+      const surrogateMask = codeUnit & 0xfc00;
+      let codePoint = codeUnit;
+      if (surrogateMask === 0xd800) {
+        // codeUnit is a high surrogate, check if there's a next character
+        if (read < inLen) {
+          // check if the next one is a low surrogate
+          const nextCodeUnit = input.charCodeAt(read);
+          if ((nextCodeUnit & 0xfc00) === 0xdc00) {
+            // low surrogate, advance input offset and compute code point
+            codePoint = 0x10000 +
+              ((codeUnit & 0x3ff) << 10) + (nextCodeUnit & 0x3ff);
+            read++;
+          } else {
+            // lone high surrogate
+            codePoint = badCodePoint;
+          }
+        } else {
+          // lone high surrogate
+          codePoint = badCodePoint;
+        }
+      } else if (surrogateMask === 0xdc00) {
+        // lone low surrogate
+        codePoint = badCodePoint;
       }
 
-      if (inRange(codePoint, 0x00, 0x7f)) {
-        return [codePoint];
+      // Step 2: Check if there's available space to encode the code point as
+      // UTF-8. It will take at most 4 bytes, only need to check if the
+      // available space is lower than that.
+      const availableSpace = outLen - written;
+      if (availableSpace < 4) {
+        // Possibly not enough space, make the final decision based on the code
+        // point range.
+        if (
+          availableSpace < 1 ||
+          (availableSpace < 2 && codePoint >= 0x80) ||
+          (availableSpace < 3 && codePoint >= 0x800) ||
+          codePoint >= 0x10000
+        ) {
+          // Not enough space. Rewind read offset and bail out
+          const isSurrogatePair = codePoint !== codeUnit &&
+            codePoint !== badCodePoint;
+          read -= isSurrogatePair ? 2 : 1;
+          break;
+        }
       }
 
-      let count;
-      let offset;
-      if (inRange(codePoint, 0x0080, 0x07ff)) {
-        count = 1;
-        offset = 0xc0;
-      } else if (inRange(codePoint, 0x0800, 0xffff)) {
-        count = 2;
-        offset = 0xe0;
-      } else if (inRange(codePoint, 0x10000, 0x10ffff)) {
-        count = 3;
-        offset = 0xf0;
+      // Step 3: Encode the code point as UTF-8 into the output buffer.
+      if (codePoint < 0x80) {
+        // 7 bits, encoded in 1 byte directly (0xxxxxxx).
+        output[written++] = codePoint;
+      } else if (codePoint < 0x800) {
+        // 11 bits, encode in 2 bytes where:
+        // byte 1: 110xxxxx (5 bits)
+        // byte 2: 10xxxxxx (6 bits)
+        output[written++] = 0xc0 | (0x1f & (codePoint >> 6));
+        output[written++] = 0x80 | (0x3f & (codePoint));
+      } else if (codePoint < 0x10000) {
+        // 16 bits, encode in 3 bytes where:
+        // byte 1: 1110xxxx (4 bits)
+        // byte 2: 10xxxxxx (6 bits)
+        // byte 3: 10xxxxxx (6 bits)
+        output[written++] = 0xe0 | (0x0f & (codePoint >> 12));
+        output[written++] = 0x80 | (0x3f & (codePoint >> 6));
+        output[written++] = 0x80 | (0x3f & (codePoint));
       } else {
-        throw TypeError(
-          `Code point out of range: \\x${codePoint.toString(16)}`,
-        );
+        // 21 bits, encode in 4 bytes where:
+        // byte 1: 11110xxx (3 bits)
+        // byte 2: 10xxxxxx (6 bits)
+        // byte 3: 10xxxxxx (6 bits)
+        // byte 4: 10xxxxxx (6 bits)
+        output[written++] = 0xf0 | (0x07 & (codePoint >> 18));
+        output[written++] = 0x80 | (0x3f & (codePoint >> 12));
+        output[written++] = 0x80 | (0x3f & (codePoint >> 6));
+        output[written++] = 0x80 | (0x3f & (codePoint));
       }
-
-      const bytes = [(codePoint >> (6 * count)) + offset];
-
-      while (count > 0) {
-        const temp = codePoint >> (6 * (count - 1));
-        bytes.push(0x80 | (temp & 0x3f));
-        count--;
-      }
-
-      return bytes;
     }
+    state.read = read;
+    state.written = written;
   }
 
   function atob(s) {
@@ -4221,37 +4299,12 @@
           "2nd argument to TextEncoder.encodeInto must be Uint8Array",
         );
       }
+      const state = { read: 0, written: 0 };
       if (dest.byteLength === 0) {
-        return { read: 0, written: 0 };
+        return state;
       }
-      const encoder = new UTF8Encoder();
-      const inputStream = new Stream(stringToCodePoints(input));
-
-      let written = 0;
-      let read = 0;
-      while (true) {
-        const item = inputStream.read();
-        const result = encoder.handler(item);
-        if (result === "finished") {
-          break;
-        }
-        if (dest.length - written >= result.length) {
-          read++;
-          if (item > 0xFFFF) {
-            // increment read a second time if greater than U+FFFF
-            read++;
-          }
-          dest.set(result, written);
-          written += result.length;
-        } else {
-          break;
-        }
-      }
-
-      return {
-        read,
-        written,
-      };
+      encodeUtf8(input, dest, state);
+      return state;
     }
     get [Symbol.toStringTag]() {
       return "TextEncoder";

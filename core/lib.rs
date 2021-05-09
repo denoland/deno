@@ -12,7 +12,6 @@ mod normalize_path;
 mod ops;
 mod ops_builtin;
 mod ops_json;
-pub mod plugin_api;
 mod resources;
 mod runtime;
 

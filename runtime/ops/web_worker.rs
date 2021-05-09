@@ -6,13 +6,14 @@ use deno_core::error::null_opbuf;
 use deno_core::futures::channel::mpsc;
 use deno_core::op_sync;
 use deno_core::Extension;
+use deno_core::ZeroCopyBuf;
 
 pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
       (
         "op_worker_post_message",
-        op_sync(move |state, _args: (), buf| {
+        op_sync(move |state, _args: (), buf: Option<ZeroCopyBuf>| {
           let buf = buf.ok_or_else(null_opbuf)?;
           let msg_buf: Box<[u8]> = (*buf).into();
           let mut sender = state.borrow::<mpsc::Sender<WorkerEvent>>().clone();
@@ -25,7 +26,7 @@ pub fn init() -> Extension {
       // Notify host that guest worker closes.
       (
         "op_worker_close",
-        op_sync(move |state, _args: (), _bufs| {
+        op_sync(move |state, _: (), _: ()| {
           // Notify parent that we're finished
           let mut sender = state.borrow::<mpsc::Sender<WorkerEvent>>().clone();
           sender.close_channel();

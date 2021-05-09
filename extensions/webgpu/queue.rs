@@ -24,7 +24,7 @@ pub struct QueueSubmitArgs {
 pub fn op_webgpu_queue_submit(
   state: &mut OpState,
   args: QueueSubmitArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let queue_resource = state
