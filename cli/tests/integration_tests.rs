@@ -1151,11 +1151,8 @@ mod integration {
       wait_for_process_finished("Test", &mut stderr_lines);
 
       // Then restore the file
-      std::fs::write(
-        &foo_file,
-        "export default function foo() { 1 + 1 }",
-      )
-      .expect("error writing file");
+      std::fs::write(&foo_file, "export default function foo() { 1 + 1 }")
+        .expect("error writing file");
       assert_contains!(stderr_lines.next().unwrap(), "Restarting");
       assert_contains!(stdout_lines.next().unwrap(), "running 1 test");
       assert_contains!(stdout_lines.next().unwrap(), "foo");
