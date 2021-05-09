@@ -385,6 +385,7 @@ pub async fn run_tests(
             .span
             .from_inner_byte_pos(element.start(), element.end());
           let location = parsed_module.get_location(&span);
+
           let specifier = deno_core::resolve_url_or_path(&format!(
             "{}:{}-{}",
             location.filename,

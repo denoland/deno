@@ -2400,7 +2400,7 @@ mod integration {
     });
 
     itest!(doc {
-      args: "test --docs --allow-all test/doc.ts",
+      args: "test --doc --allow-all test/doc.ts",
       exit_code: 1,
       output: "test/doc.out",
     });
