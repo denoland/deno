@@ -1153,7 +1153,7 @@ mod integration {
       // Then restore the file
       std::fs::write(
         &foo_file,
-        "export default function foo() { console.log('foo'); }",
+        "export default function foo() { 1 + 1 }",
       )
       .expect("error writing file");
       assert_contains!(stderr_lines.next().unwrap(), "Restarting");
@@ -1163,6 +1163,18 @@ mod integration {
       stdout_lines.next();
       stdout_lines.next();
       wait_for_process_finished("Test", &mut stderr_lines);
+
+      // Test that circular dependencies work fine
+      std::fs::write(
+        &foo_file,
+        "import './bar.js'; export default function foo() { 1 + 1 }",
+      )
+      .expect("error writing file");
+      std::fs::write(
+        &bar_file,
+        "import './foo.js'; export default function bar() { 2 + 2 }",
+      )
+      .expect("error writing file");
 
       // the watcher process is still alive
       assert!(child.try_wait().unwrap().is_none());

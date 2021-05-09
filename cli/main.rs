@@ -43,6 +43,8 @@ use crate::flags::DenoSubcommand;
 use crate::flags::Flags;
 use crate::fmt_errors::PrettyJsError;
 use crate::media_type::MediaType;
+use crate::module_graph::GraphBuilder;
+use crate::module_graph::Module;
 use crate::module_loader::CliModuleLoader;
 use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
@@ -50,7 +52,6 @@ use crate::specifier_handler::FetchHandler;
 use crate::tools::installer::infer_name_from_url;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::futures::future;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::resolve_url_or_path;
@@ -68,6 +69,7 @@ use log::debug;
 use log::info;
 use log::Level;
 use log::LevelFilter;
+use std::collections::HashSet;
 use std::env;
 use std::io::Read;
 use std::io::Write;
@@ -945,28 +947,60 @@ async fn test_command(
             .collect()
         };
 
-        let graphs = future::join_all(test_modules.into_iter().map(|module| {
-          let handler = handler.clone();
-          let maybe_import_map = program_state.maybe_import_map.clone();
-          let lockfile = program_state.lockfile.clone();
-          async move {
-            let mut builder = module_graph::GraphBuilder::new(
-              handler,
-              maybe_import_map,
-              lockfile,
-            );
-            let module_specifier = deno_core::resolve_url(module.as_str())?;
-            builder.add(&module_specifier, false).await?;
-            Ok::<module_graph::Graph, AnyError>(builder.get_graph())
-          }
-        }))
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>, _>>()?;
+        let mut builder = GraphBuilder::new(
+          handler,
+          program_state.maybe_import_map.clone(),
+          program_state.lockfile.clone(),
+        );
+        for specifier in test_modules.iter() {
+          builder.add(specifier, false).await?;
+        }
+        let graph = builder.get_graph();
 
-        for graph in graphs {
-          let root = graph.info()?.root;
-          let modules = graph.get_modules();
+        for specifier in test_modules {
+          fn get_dependencies<'a>(
+            graph: &'a module_graph::Graph,
+            module: &'a Module,
+            // This needs to be accessible to skip getting dependencies if they're already there,
+            // otherwise this will cause a stack overflow with circular dependencies
+            output: &mut HashSet<&'a ModuleSpecifier>,
+          ) -> Result<(), AnyError> {
+            for dep in module.dependencies.values() {
+              if let Some(specifier) = &dep.maybe_code {
+                if !output.contains(specifier) {
+                  output.insert(specifier);
+
+                  &get_dependencies(
+                    &graph,
+                    graph.get_specifier(specifier)?,
+                    output,
+                  )?;
+                }
+              }
+              if let Some(specifier) = &dep.maybe_type {
+                if !output.contains(specifier) {
+                  output.insert(specifier);
+
+                  &get_dependencies(
+                    &graph,
+                    graph.get_specifier(specifier)?,
+                    output,
+                  )?;
+                }
+              }
+            }
+
+            Ok(())
+          }
+
+          // This test module and all it's dependencies
+          let mut modules = HashSet::new();
+          modules.insert(&specifier);
+          &get_dependencies(
+            &graph,
+            graph.get_specifier(&specifier)?,
+            &mut modules,
+          )?;
 
           paths_to_watch.extend(
             modules
@@ -978,8 +1012,8 @@ async fn test_command(
             for path in changed.iter().filter_map(|path| {
               deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
             }) {
-              if modules.contains(&path) {
-                modules_to_reload.push(root);
+              if modules.contains(&&path) {
+                modules_to_reload.push(specifier);
                 break;
               }
             }
