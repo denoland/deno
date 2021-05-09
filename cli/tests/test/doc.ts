@@ -49,4 +49,3 @@ export function fail() {
 export function hidden() {
   // no-op
 }
-

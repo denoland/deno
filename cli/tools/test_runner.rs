@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use regex::Regex;
 use crate::ast;
 use crate::colors;
 use crate::create_main_worker;
@@ -23,6 +22,7 @@ use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
+use regex::Regex;
 use serde::Deserialize;
 use std::path::Path;
 use std::path::PathBuf;
@@ -366,8 +366,8 @@ pub async fn run_tests(
 
       let mut comments = parsed_module.get_comments();
       comments.sort_by_key(|comment| {
-          let location = parsed_module.get_location(&comment.span);
-          location.line
+        let location = parsed_module.get_location(&comment.span);
+        location.line
       });
 
       let mut test_source = String::new();
@@ -393,7 +393,9 @@ pub async fn run_tests(
           }
 
           let element = block.get(0).unwrap();
-          let span = comment.span.from_inner_byte_pos(element.start(), element.end());
+          let span = comment
+            .span
+            .from_inner_byte_pos(element.start(), element.end());
           let location = parsed_module.get_location(&span);
           let specifier = deno_core::resolve_url_or_path(&format!(
             "{}:{}-{}",
