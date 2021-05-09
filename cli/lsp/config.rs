@@ -87,24 +87,48 @@ impl Default for ImportCompletionSettings {
   }
 }
 
+/// Deno language server specific settings that can be applied uniquely to a
+/// specifier.
+#[derive(Debug, Default, Clone, Deserialize)]
+pub struct SpecifierSettings {
+  /// A flag that indicates if Deno is enabled for this specifier or not.
+  pub enable: bool,
+}
+
+/// Deno language server specific settings that are applied to a workspace.
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Settings {
+pub struct WorkspaceSettings {
+  /// A flag that indicates if Deno is enabled for the workspace.
   pub enable: bool,
+
+  /// An option that points to a path string of the tsconfig file to apply to
+  /// code within the workspace.
   pub config: Option<String>,
+
+  /// An option that points to a path string of the import map to apply to the
+  /// code within the workspace.
   pub import_map: Option<String>,
+
+  /// Code lens specific settings for the workspace.
   #[serde(default)]
   pub code_lens: CodeLensSettings,
   #[serde(default)]
+
+  /// Suggestion (auto-completion) settings for the workspace.
   pub suggest: CompletionSettings,
 
+  /// A flag that indicates if linting is enabled for the workspace.
   #[serde(default)]
   pub lint: bool,
+
+  /// A flag that indicates if Dene should validate code against the unstable
+  /// APIs for the workspace.
   #[serde(default)]
   pub unstable: bool,
 }
 
-impl Settings {
+impl WorkspaceSettings {
   /// Determine if any code lenses are enabled at all.  This allows short
   /// circuiting when there are no code lenses enabled.
   pub fn enabled_code_lens(&self) -> bool {
@@ -116,8 +140,8 @@ impl Settings {
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
   pub root_uri: Option<Url>,
-  pub specifier_settings: HashMap<ModuleSpecifier, Settings>,
-  pub workspace_settings: Settings,
+  pub specifier_settings: HashMap<ModuleSpecifier, SpecifierSettings>,
+  pub workspace_settings: WorkspaceSettings,
 }
 
 impl Config {
@@ -169,14 +193,14 @@ impl Config {
     specifier: ModuleSpecifier,
     value: Value,
   ) -> LSPResult<()> {
-    let settings: Settings = serde_json::from_value(value)
+    let settings: SpecifierSettings = serde_json::from_value(value)
       .map_err(|err| LSPError::invalid_params(err.to_string()))?;
     self.specifier_settings.insert(specifier, settings);
     Ok(())
   }
 
   pub fn update_workspace(&mut self, value: Value) -> LSPResult<()> {
-    let settings: Settings = serde_json::from_value(value)
+    let settings: WorkspaceSettings = serde_json::from_value(value)
       .map_err(|err| LSPError::invalid_params(err.to_string()))?;
     self.workspace_settings = settings;
     self.specifier_settings = HashMap::new();
