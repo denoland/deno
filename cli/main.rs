@@ -970,7 +970,7 @@ async fn test_command(
                 if !output.contains(specifier) {
                   output.insert(specifier);
 
-                  &get_dependencies(
+                  get_dependencies(
                     &graph,
                     graph.get_specifier(specifier)?,
                     output,
@@ -981,7 +981,7 @@ async fn test_command(
                 if !output.contains(specifier) {
                   output.insert(specifier);
 
-                  &get_dependencies(
+                  get_dependencies(
                     &graph,
                     graph.get_specifier(specifier)?,
                     output,
@@ -996,7 +996,7 @@ async fn test_command(
           // This test module and all it's dependencies
           let mut modules = HashSet::new();
           modules.insert(&specifier);
-          &get_dependencies(
+          get_dependencies(
             &graph,
             graph.get_specifier(&specifier)?,
             &mut modules,
