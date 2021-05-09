@@ -633,7 +633,7 @@ async fn op_write_async(
 async fn op_shutdown(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow()

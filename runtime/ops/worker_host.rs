@@ -449,7 +449,7 @@ pub struct CreateWorkerArgs {
 fn op_create_worker(
   state: &mut OpState,
   args: CreateWorkerArgs,
-  _data: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WorkerId, AnyError> {
   let specifier = args.specifier.clone();
   let maybe_source_code = if args.has_source_code {
@@ -532,7 +532,7 @@ fn op_create_worker(
 fn op_host_terminate_worker(
   state: &mut OpState,
   id: WorkerId,
-  _data: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<(), AnyError> {
   let worker_thread = state
     .borrow_mut::<WorkersTable>()
@@ -607,7 +607,7 @@ fn try_remove_and_close(state: Rc<RefCell<OpState>>, id: u32) {
 async fn op_host_get_message(
   state: Rc<RefCell<OpState>>,
   id: WorkerId,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<Value, AnyError> {
   let worker_handle = {
     let s = state.borrow();

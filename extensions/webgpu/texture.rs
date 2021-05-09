@@ -3,7 +3,6 @@
 use deno_core::error::AnyError;
 use deno_core::error::{bad_resource_id, not_supported};
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -145,7 +144,7 @@ pub struct CreateTextureArgs {
 pub fn op_webgpu_create_texture(
   state: &mut OpState,
   args: CreateTextureArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
@@ -200,7 +199,7 @@ pub struct CreateTextureViewArgs {
 pub fn op_webgpu_create_texture_view(
   state: &mut OpState,
   args: CreateTextureViewArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let texture_resource = state
