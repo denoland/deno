@@ -411,6 +411,15 @@ pub async fn run_tests(
           };
 
           program_state.file_fetcher.insert_cached(file.clone());
+          program_state
+            .prepare_module_load(
+              specifier.clone(),
+              lib.clone(),
+              Permissions::allow_all(),
+              false,
+              program_state.maybe_import_map.clone(),
+            )
+            .await?;
 
           let no_run = tags.contains(&"no_run");
 
