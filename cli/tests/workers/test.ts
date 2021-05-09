@@ -198,15 +198,12 @@ Deno.test({
     );
 
     racyWorker.onmessage = (e): void => {
-      assertEquals(e.data.buf.length, 999999);
-      racyWorker.onmessage = (_e): void => {
-        throw new Error("unreachable");
-      };
       setTimeout(() => {
         promise.resolve();
       }, 100);
     };
 
+    racyWorker.postMessage("START");
     await promise;
   },
 });
