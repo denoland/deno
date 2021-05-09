@@ -335,7 +335,19 @@ pub async fn run_tests(
   let mut test_modules =
     collect_test_module_specifiers(include.clone(), &cwd, is_supported)?;
 
-  let mut prepare_modules = test_modules.clone();
+  if test_modules.is_empty() {
+    println!("No matching test modules found");
+    if !allow_none {
+      std::process::exit(1);
+    }
+    return Ok(());
+  }
+
+  let lib = if flags.unstable {
+    module_graph::TypeLib::UnstableDenoWindow
+  } else {
+    module_graph::TypeLib::DenoWindow
+  };
 
   if doc {
     let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
@@ -402,6 +414,15 @@ pub async fn run_tests(
           };
 
           program_state.file_fetcher.insert_cached(file.clone());
+          program_state
+            .prepare_module_load(
+              specifier.clone(),
+              lib.clone(),
+              Permissions::allow_all(),
+              false,
+              program_state.maybe_import_map.clone(),
+            )
+            .await?;
 
           let no_run = tags.contains(&"no_run");
 
@@ -413,8 +434,6 @@ pub async fn run_tests(
                 specifier.as_str(),
               ));
           }
-
-          prepare_modules.push(specifier);
         }
       }
 
@@ -434,28 +453,13 @@ pub async fn run_tests(
 
         program_state.file_fetcher.insert_cached(test_file);
         test_modules.push(test_specifier.clone());
-        prepare_modules.push(test_specifier.clone());
       }
     }
   }
 
-  if test_modules.is_empty() {
-    println!("No matching test modules found");
-    if !allow_none {
-      std::process::exit(1);
-    }
-    return Ok(());
-  }
-
-  let lib = if flags.unstable {
-    module_graph::TypeLib::UnstableDenoWindow
-  } else {
-    module_graph::TypeLib::DenoWindow
-  };
-
   program_state
     .prepare_module_graph(
-      prepare_modules.clone(),
+      test_modules.clone(),
       lib.clone(),
       permissions.clone(),
       program_state.maybe_import_map.clone(),
