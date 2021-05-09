@@ -39,25 +39,7 @@
     return core.opAsync("op_host_get_message", id);
   }
 
-  const encoder = new TextEncoder();
   const decoder = new TextDecoder();
-
-  function encodeMessage(data) {
-    const dataJson = JSON.stringify(data);
-    return encoder.encode(dataJson);
-  }
-
-  function decodeMessage(dataIntArray) {
-    // Temporary solution until structured clone arrives in v8.
-    // Current clone is made by parsing json to byte array and from byte array back to json.
-    // In that case "undefined" transforms to empty byte array, but empty byte array does not transform back to undefined.
-    // Thats why this special is statement is needed.
-    if (dataIntArray.length == 0) {
-      return undefined;
-    }
-    const dataJson = decoder.decode(dataIntArray);
-    return JSON.parse(dataJson);
-  }
 
   /**
    * @param {string} permission
@@ -211,18 +193,7 @@
       this.#poll();
     }
 
-    #handleMessage = (msgData) => {
-      let data;
-      try {
-        data = decodeMessage(new Uint8Array(msgData));
-      } catch (e) {
-        const msgErrorEvent = new MessageEvent("messageerror", {
-          cancelable: false,
-          data,
-        });
-        return;
-      }
-
+    #handleMessage = (data) => {
       const msgEvent = new MessageEvent("message", {
         cancelable: false,
         data,
@@ -269,7 +240,7 @@
               throw new Error("Unhandled error event reached main worker.");
             } else {
               core.opSync(
-                "op_host_unhandled_error",
+                "op_worker_unhandled_error",
                 event.error.message,
               );
             }
@@ -278,7 +249,8 @@
         }
 
         if (type === "msg") {
-          this.#handleMessage(event.data);
+          const data = core.deserialize(new Uint8Array(event.data));
+          this.#handleMessage(data);
           continue;
         }
 
@@ -288,7 +260,7 @@
               throw new Error("Unhandled error event reached main worker.");
             } else {
               core.opSync(
-                "op_host_unhandled_error",
+                "op_worker_unhandled_error",
                 event.error.message,
               );
             }
@@ -317,7 +289,8 @@
         return;
       }
 
-      hostPostMessage(this.#id, encodeMessage(message));
+      const bufferMsg = core.serialize(message);
+      hostPostMessage(this.#id, bufferMsg);
     }
 
     terminate() {

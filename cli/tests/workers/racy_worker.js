@@ -14,7 +14,9 @@ setTimeout(() => {
 while (true) {
   await new Promise((done) => {
     setTimeout(() => {
-      postMessage({ buf: new Array(999999) });
+      postMessage({
+        buf: [...new Array(999999)].map((element, index) => index),
+      });
       done();
     });
   });

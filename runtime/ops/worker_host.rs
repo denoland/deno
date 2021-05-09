@@ -15,12 +15,11 @@ use crate::web_worker::run_web_worker;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
 use crate::web_worker::WorkerEvent;
+use crate::web_worker::WorkerId;
 use deno_core::error::custom_error;
-use deno_core::error::generic_error;
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
-use deno_core::futures::channel::mpsc;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::serde::de;
@@ -46,7 +45,7 @@ use std::thread::JoinHandle;
 
 pub struct CreateWebWorkerArgs {
   pub name: String,
-  pub worker_id: u32,
+  pub worker_id: WorkerId,
   pub parent_permissions: Permissions,
   pub permissions: Permissions,
   pub main_module: ModuleSpecifier,
@@ -68,13 +67,9 @@ pub struct WorkerThread {
   worker_handle: WebWorkerHandle,
 }
 
-pub type WorkersTable = HashMap<u32, WorkerThread>;
-pub type WorkerId = u32;
+pub type WorkersTable = HashMap<WorkerId, WorkerThread>;
 
-pub fn init(
-  is_main_worker: bool,
-  create_web_worker_cb: Arc<CreateWebWorkerCb>,
-) -> Extension {
+pub fn init(create_web_worker_cb: Arc<CreateWebWorkerCb>) -> Extension {
   Extension::builder()
     .state(move |state| {
       state.put::<WorkersTable>(WorkersTable::default());
@@ -94,20 +89,6 @@ pub fn init(
       ),
       ("op_host_post_message", op_sync(op_host_post_message)),
       ("op_host_get_message", op_async(op_host_get_message)),
-      (
-        "op_host_unhandled_error",
-        op_sync(move |state, message: String, _: ()| {
-          if is_main_worker {
-            return Err(generic_error("Cannot be called from main worker."));
-          }
-
-          let mut sender = state.borrow::<mpsc::Sender<WorkerEvent>>().clone();
-          sender
-            .try_send(WorkerEvent::Error(generic_error(message)))
-            .expect("Failed to propagate error event to parent worker");
-          Ok(true)
-        }),
-      ),
     ])
     .build()
 }
@@ -501,7 +482,7 @@ fn op_create_worker(
       use_deno_namespace,
     });
 
-    // Send thread safe handle to newly created worker to host thread
+    // Send thread safe handle from newly created worker to host thread
     handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
     drop(handle_sender);
 
@@ -512,6 +493,7 @@ fn op_create_worker(
     run_web_worker(worker, module_specifier, maybe_source_code)
   })?;
 
+  // Receive WebWorkerHandle from newly created worker
   let worker_handle = handle_receiver.recv().unwrap()?;
 
   let worker_thread = WorkerThread {
@@ -534,7 +516,7 @@ fn op_host_terminate_worker(
   id: WorkerId,
   _: (),
 ) -> Result<(), AnyError> {
-  let worker_thread = state
+  let mut worker_thread = state
     .borrow_mut::<WorkersTable>()
     .remove(&id)
     .expect("No worker handle found");
@@ -590,11 +572,11 @@ fn serialize_worker_event(event: WorkerEvent) -> Value {
 /// Try to remove worker from workers table - NOTE: `Worker.terminate()`
 /// might have been called already meaning that we won't find worker in
 /// table - in that case ignore.
-fn try_remove_and_close(state: Rc<RefCell<OpState>>, id: u32) {
+fn try_remove_and_close(state: Rc<RefCell<OpState>>, id: WorkerId) {
   let mut s = state.borrow_mut();
   let workers = s.borrow_mut::<WorkersTable>();
   if let Some(mut worker_thread) = workers.remove(&id) {
-    worker_thread.worker_handle.sender.close_channel();
+    worker_thread.worker_handle.terminate();
     worker_thread
       .join_handle
       .join()
@@ -642,7 +624,7 @@ fn op_host_post_message(
   data: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
   let data = data.ok_or_else(null_opbuf)?;
-  let msg = Vec::from(&*data).into_boxed_slice();
+  let msg: Box<[u8]> = (*data).into();
 
   debug!("post message to worker {}", id);
   let worker_thread = state
