@@ -1,55 +1,105 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::plugin_api::Interface;
-use deno_core::plugin_api::Op;
-use deno_core::plugin_api::OpResult;
-use deno_core::plugin_api::ZeroCopyBuf;
-use futures::future::FutureExt;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use deno_core::error::bad_resource_id;
+use deno_core::error::AnyError;
+use deno_core::op_async;
+use deno_core::op_sync;
+use deno_core::Extension;
+use deno_core::OpState;
+use deno_core::Resource;
+use deno_core::ResourceId;
+use deno_core::ZeroCopyBuf;
 
 #[no_mangle]
-pub fn deno_plugin_init(interface: &mut dyn Interface) {
-  interface.register_op("testSync", op_test_sync);
-  interface.register_op("testAsync", op_test_async);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_test_sync", op_sync(op_test_sync)),
+      ("op_test_async", op_async(op_test_async)),
+      (
+        "op_test_resource_table_add",
+        op_sync(op_test_resource_table_add),
+      ),
+      (
+        "op_test_resource_table_get",
+        op_sync(op_test_resource_table_get),
+      ),
+    ])
+    .build()
 }
 
 fn op_test_sync(
-  _interface: &mut dyn Interface,
+  _state: &mut OpState,
+  _args: (),
   zero_copy: Option<ZeroCopyBuf>,
-) -> Op {
-  if zero_copy.is_some() {
-    println!("Hello from plugin.");
-  }
+) -> Result<String, AnyError> {
+  println!("Hello from sync plugin op.");
+
   if let Some(buf) = zero_copy {
-    let buf_str = std::str::from_utf8(&buf[..]).unwrap();
+    let buf_str = std::str::from_utf8(&buf[..])?;
     println!("zero_copy: {}", buf_str);
   }
-  let result = b"test";
-  let result_box: Box<[u8]> = Box::new(*result);
-  Op::Sync(OpResult::Ok(result_box.into()))
+
+  Ok("test".to_string())
 }
 
-fn op_test_async(
-  _interface: &mut dyn Interface,
+async fn op_test_async(
+  _state: Rc<RefCell<OpState>>,
+  _args: (),
   zero_copy: Option<ZeroCopyBuf>,
-) -> Op {
-  if zero_copy.is_some() {
-    println!("Hello from plugin.");
-  }
-  let fut = async move {
-    if let Some(buf) = zero_copy {
-      let buf_str = std::str::from_utf8(&buf[..]).unwrap();
-      println!("zero_copy: {}", buf_str);
-    }
-    let (tx, rx) = futures::channel::oneshot::channel::<Result<(), ()>>();
-    std::thread::spawn(move || {
-      std::thread::sleep(std::time::Duration::from_secs(1));
-      tx.send(Ok(())).unwrap();
-    });
-    assert!(rx.await.is_ok());
-    let result = b"test";
-    let result_box: Box<[u8]> = Box::new(*result);
-    (0, OpResult::Ok(result_box.into()))
-  };
+) -> Result<String, AnyError> {
+  println!("Hello from async plugin op.");
 
-  Op::Async(fut.boxed())
+  if let Some(buf) = zero_copy {
+    let buf_str = std::str::from_utf8(&buf[..])?;
+    println!("zero_copy: {}", buf_str);
+  }
+
+  let (tx, rx) = futures::channel::oneshot::channel::<Result<(), ()>>();
+  std::thread::spawn(move || {
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    tx.send(Ok(())).unwrap();
+  });
+  assert!(rx.await.is_ok());
+
+  Ok("test".to_string())
+}
+
+struct TestResource(String);
+impl Resource for TestResource {
+  fn name(&self) -> Cow<str> {
+    "TestResource".into()
+  }
+}
+
+#[allow(clippy::unnecessary_wraps)]
+fn op_test_resource_table_add(
+  state: &mut OpState,
+  text: String,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<u32, AnyError> {
+  println!("Hello from resource_table.add plugin op.");
+
+  Ok(state.resource_table.add(TestResource(text)))
+}
+
+fn op_test_resource_table_get(
+  state: &mut OpState,
+  rid: ResourceId,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<String, AnyError> {
+  println!("Hello from resource_table.get plugin op.");
+
+  Ok(
+    state
+      .resource_table
+      .get::<TestResource>(rid)
+      .ok_or_else(bad_resource_id)?
+      .0
+      .clone(),
+  )
 }

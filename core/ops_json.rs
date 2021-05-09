@@ -5,7 +5,6 @@ use crate::serialize_op_result;
 use crate::Op;
 use crate::OpFn;
 use crate::OpState;
-use crate::ZeroCopyBuf;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::cell::RefCell;
@@ -35,16 +34,17 @@ use std::rc::Rc;
 ///
 /// `runtime.sync_ops_cache()` must be called after registering new ops
 /// A more complete example is available in the examples directory.
-pub fn op_sync<F, V, R>(op_fn: F) -> Box<OpFn>
+pub fn op_sync<F, A, B, R>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(&mut OpState, V, Option<ZeroCopyBuf>) -> Result<R, AnyError> + 'static,
-  V: DeserializeOwned,
+  F: Fn(&mut OpState, A, B) -> Result<R, AnyError> + 'static,
+  A: DeserializeOwned,
+  B: DeserializeOwned,
   R: Serialize + 'static,
 {
-  Box::new(move |state, payload, buf| -> Op {
+  Box::new(move |state, payload| -> Op {
     let result = payload
       .deserialize()
-      .and_then(|args| op_fn(&mut state.borrow_mut(), args, buf));
+      .and_then(|(a, b)| op_fn(&mut state.borrow_mut(), a, b));
     Op::Sync(serialize_op_result(result, state))
   })
 }
@@ -73,14 +73,15 @@ where
 ///
 /// `runtime.sync_ops_cache()` must be called after registering new ops
 /// A more complete example is available in the examples directory.
-pub fn op_async<F, V, R, RV>(op_fn: F) -> Box<OpFn>
+pub fn op_async<F, A, B, R, RV>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(Rc<RefCell<OpState>>, V, Option<ZeroCopyBuf>) -> R + 'static,
-  V: DeserializeOwned,
+  F: Fn(Rc<RefCell<OpState>>, A, B) -> R + 'static,
+  A: DeserializeOwned,
+  B: DeserializeOwned,
   R: Future<Output = Result<RV, AnyError>> + 'static,
   RV: Serialize + 'static,
 {
-  Box::new(move |state, payload, buf| -> Op {
+  Box::new(move |state, payload| -> Op {
     let pid = payload.promise_id;
     // Deserialize args, sync error on failure
     let args = match payload.deserialize() {
@@ -89,9 +90,10 @@ where
         return Op::Sync(serialize_op_result(Err::<(), AnyError>(err), state))
       }
     };
+    let (a, b) = args;
 
     use crate::futures::FutureExt;
-    let fut = op_fn(state.clone(), args, buf)
+    let fut = op_fn(state.clone(), a, b)
       .map(move |result| (pid, serialize_op_result(result, state)));
     Op::Async(Box::pin(fut))
   })
@@ -108,10 +110,9 @@ mod tests {
     async fn op_throw(
       _state: Rc<RefCell<OpState>>,
       msg: Option<String>,
-      zero_copy: Option<ZeroCopyBuf>,
+      _: (),
     ) -> Result<(), AnyError> {
       assert_eq!(msg.unwrap(), "hello");
-      assert!(zero_copy.is_none());
       Err(crate::error::generic_error("foo"))
     }
 
