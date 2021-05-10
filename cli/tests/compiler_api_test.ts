@@ -189,7 +189,10 @@ Deno.test({
     assertEquals(diagnostics.length, 0);
     assert(!ignoredOptions);
     assertEquals(stats.length, 12);
-    assertEquals(Object.keys(files), ["deno:///bundle.js"]);
+    assertEquals(
+      Object.keys(files).sort(),
+      ["deno:///bundle.js", "deno:///bundle.js.map"].sort(),
+    );
     assert(files["deno:///bundle.js"].includes(`const bar1 = "bar"`));
   },
 });
@@ -206,7 +209,10 @@ Deno.test({
     assertEquals(diagnostics.length, 0);
     assert(!ignoredOptions);
     assertEquals(stats.length, 12);
-    assertEquals(Object.keys(files), ["deno:///bundle.js"]);
+    assertEquals(
+      Object.keys(files).sort(),
+      ["deno:///bundle.js", "deno:///bundle.js.map"].sort(),
+    );
     assert(files["deno:///bundle.js"].length);
   },
 });
@@ -227,7 +233,10 @@ Deno.test({
     assertEquals(diagnostics.length, 0);
     assert(!ignoredOptions);
     assertEquals(stats.length, 12);
-    assertEquals(Object.keys(files), ["deno:///bundle.js"]);
+    assertEquals(
+      Object.keys(files).sort(),
+      ["deno:///bundle.js.map", "deno:///bundle.js"].sort(),
+    );
     assert(files["deno:///bundle.js"].includes(`const bar1 = "bar"`));
   },
 });
@@ -334,9 +343,10 @@ Deno.test({
     });
     assert(diagnostics);
     assertEquals(diagnostics.length, 0);
-    assertEquals(Object.keys(files).length, 1);
+    assertEquals(Object.keys(files).length, 2);
     assert(files["deno:///bundle.js"].startsWith("(function() {\n"));
     assert(files["deno:///bundle.js"].endsWith("})();\n"));
+    assert(files["deno:///bundle.js.map"]);
   },
 });
 
