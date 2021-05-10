@@ -603,6 +603,7 @@ mod tests {
 
     let mut handle = handle_receiver.recv().unwrap();
 
+    // TODO(Inteon): use Deno.core.serialize() instead of hardcoded encoded value
     let msg = vec![34, 2, 104, 105].into_boxed_slice(); // "hi" encoded
     let r = handle.post_message(msg.clone());
     assert!(r.is_ok());
@@ -617,11 +618,13 @@ mod tests {
     assert!(maybe_msg.is_some());
     match maybe_msg {
       Some(WorkerEvent::Message(buf)) => {
+        // TODO(Inteon): use Deno.core.serialize() instead of hardcoded encoded value
         assert_eq!(*buf, [65, 3, 73, 2, 73, 4, 73, 6, 36, 0, 3]);
       }
       _ => unreachable!(),
     }
 
+    // TODO(Inteon): use Deno.core.serialize() instead of hardcoded encoded value
     let msg = vec![34, 4, 101, 120, 105, 116].into_boxed_slice(); // "exit" encoded
     let r = handle.post_message(msg);
     assert!(r.is_ok());
@@ -647,6 +650,7 @@ mod tests {
 
     let mut handle = handle_receiver.recv().unwrap();
 
+    // TODO(Inteon): use Deno.core.serialize() instead of hardcoded encoded value
     let msg = vec![34, 2, 104, 105].into_boxed_slice(); // "hi" encoded
     let r = handle.post_message(msg.clone());
     assert!(r.is_ok());
