@@ -224,57 +224,44 @@
 
     #poll = async () => {
       while (!this.#terminated) {
-        const event = await hostGetMessage(this.#id);
+        const [type, data] = await hostGetMessage(this.#id);
 
         // If terminate was called then we ignore all messages
         if (this.#terminated) {
           return;
         }
 
-        const type = event.type;
-
-        if (type === "terminalError") {
-          this.#terminated = true;
-          if (!this.#handleError(event.error)) {
-            if (globalThis instanceof Window) {
-              throw new Error("Unhandled error event reached main worker.");
-            } else {
-              core.opSync(
-                "op_worker_unhandled_error",
-                event.error.message,
-              );
-            }
+        switch (type) {
+          case 0: { // Message
+            const msg = core.deserialize(data);
+            this.#handleMessage(msg);
+            break;
           }
-          continue;
-        }
-
-        if (type === "msg") {
-          const data = core.deserialize(new Uint8Array(event.data));
-          this.#handleMessage(data);
-          continue;
-        }
-
-        if (type === "error") {
-          if (!this.#handleError(event.error)) {
-            if (globalThis instanceof Window) {
-              throw new Error("Unhandled error event reached main worker.");
-            } else {
-              core.opSync(
-                "op_worker_unhandled_error",
-                event.error.message,
-              );
+          case 1: { // TerminalError
+            this.#terminated = true;
+          } /* falls through */
+          case 2: { // Error
+            if (!this.#handleError(data)) {
+              if (globalThis instanceof Window) {
+                throw new Error("Unhandled error event reached main worker.");
+              } else {
+                core.opSync(
+                  "op_worker_unhandled_error",
+                  data.message,
+                );
+              }
             }
+            break;
           }
-          continue;
+          case 3: { // Close
+            log(`Host got "close" message from worker: ${this.#name}`);
+            this.#terminated = true;
+            return;
+          }
+          default: {
+            throw new Error(`Unknown worker event: "${type}"`);
+          }
         }
-
-        if (type === "close") {
-          log(`Host got "close" message from worker: ${this.#name}`);
-          this.#terminated = true;
-          return;
-        }
-
-        throw new Error(`Unknown worker event: "${type}"`);
       }
     };
 

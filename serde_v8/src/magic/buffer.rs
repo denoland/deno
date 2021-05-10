@@ -14,6 +14,8 @@ pub enum MagicBuffer {
   ToV8(Cell<Option<Box<[u8]>>>),
 }
 
+unsafe impl Sync for MagicBuffer {}
+
 impl MagicBuffer {
   pub fn new<'s>(
     scope: &mut v8::HandleScope<'s>,
@@ -29,6 +31,12 @@ impl Clone for MagicBuffer {
       Self::FromV8(zbuf) => Self::FromV8(zbuf.clone()),
       Self::ToV8(_) => panic!("Don't Clone a MagicBuffer sent to v8"),
     }
+  }
+}
+
+impl Default for MagicBuffer {
+  fn default() -> Self {
+    MagicBuffer::ToV8(Cell::new(Some(vec![0_u8; 0].into_boxed_slice())))
   }
 }
 
@@ -88,7 +96,10 @@ impl serde::Serialize for MagicBuffer {
 
     let mut s = serializer.serialize_struct(BUF_NAME, 1)?;
     let boxed: Box<[u8]> = match self {
-      Self::FromV8(_) => unreachable!(),
+      Self::FromV8(buf) => {
+        let value: &[u8] = &*buf;
+        value.into()
+      }
       Self::ToV8(x) => x.take().expect("MagicBuffer was empty"),
     };
     let hack: [usize; 2] = unsafe { std::mem::transmute(boxed) };

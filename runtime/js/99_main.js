@@ -83,7 +83,7 @@ delete Object.prototype.__proto__;
   async function pollForMessages() {
     while (!isClosing) {
       const bufferMsg = await opGetMessage();
-      const data = core.deserialize(new Uint8Array(bufferMsg));
+      const data = core.deserialize(bufferMsg);
 
       const msgEvent = new MessageEvent("message", {
         cancelable: false,

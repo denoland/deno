@@ -27,7 +27,6 @@ use deno_core::serde::de::SeqAccess;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -529,43 +528,42 @@ fn op_host_terminate_worker(
   Ok(())
 }
 
-fn serialize_worker_event(event: WorkerEvent) -> Value {
-  match event {
-    WorkerEvent::Message(buf) => json!({ "type": "msg", "data": buf }),
-    WorkerEvent::TerminalError(error) => match error.downcast::<JsError>() {
-      Ok(js_error) => json!({
-        "type": "terminalError",
-        "error": {
-          "message": js_error.message,
-          "fileName": js_error.script_resource_name,
-          "lineNumber": js_error.line_number,
-          "columnNumber": js_error.start_column,
-        }
-      }),
-      Err(error) => json!({
-        "type": "terminalError",
-        "error": {
-          "message": error.to_string(),
-        }
-      }),
-    },
-    WorkerEvent::Error(error) => match error.downcast::<JsError>() {
-      Ok(js_error) => json!({
-        "type": "error",
-        "error": {
-          "message": js_error.message,
-          "fileName": js_error.script_resource_name,
-          "lineNumber": js_error.line_number,
-          "columnNumber": js_error.start_column,
-        }
-      }),
-      Err(error) => json!({
-        "type": "error",
-        "error": {
-          "message": error.to_string(),
-        }
-      }),
-    },
+use deno_core::serde::Serialize;
+use deno_core::serde::Serializer;
+
+impl Serialize for WorkerEvent {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let type_id = match &self {
+      WorkerEvent::Message(_) => 0_i32,
+      WorkerEvent::TerminalError(_) => 1_i32,
+      WorkerEvent::Error(_) => 2_i32,
+      WorkerEvent::Close => 3_i32,
+    };
+
+    match self {
+      WorkerEvent::Message(buf) => {
+        Serialize::serialize(&(type_id, buf), serializer)
+      }
+      WorkerEvent::TerminalError(error) | WorkerEvent::Error(error) => {
+        let value = match error.downcast_ref::<JsError>() {
+          Some(js_error) => json!({
+            "message": js_error.message,
+            "fileName": js_error.script_resource_name,
+            "lineNumber": js_error.line_number,
+            "columnNumber": js_error.start_column,
+          }),
+          None => json!({
+            "message": error.to_string(),
+          }),
+        };
+
+        Serialize::serialize(&(type_id, value), serializer)
+      }
+      _ => Serialize::serialize(&(type_id, ()), serializer),
+    }
   }
 }
 
@@ -590,7 +588,7 @@ async fn op_host_get_message(
   state: Rc<RefCell<OpState>>,
   id: WorkerId,
   _: (),
-) -> Result<Value, AnyError> {
+) -> Result<WorkerEvent, AnyError> {
   let worker_handle = {
     let s = state.borrow();
     let workers_table = s.borrow::<WorkersTable>();
@@ -599,7 +597,7 @@ async fn op_host_get_message(
       handle.worker_handle.clone()
     } else {
       // If handle was not found it means worker has already shutdown
-      return Ok(json!({ "type": "close" }));
+      return Ok(WorkerEvent::Close);
     }
   };
 
@@ -609,12 +607,12 @@ async fn op_host_get_message(
     if let WorkerEvent::TerminalError(_) = &event {
       try_remove_and_close(state, id);
     }
-    return Ok(serialize_worker_event(event));
+    return Ok(event);
   }
 
   // If there was no event from worker it means it has already been closed.
   try_remove_and_close(state, id);
-  Ok(json!({ "type": "close" }))
+  Ok(WorkerEvent::Close)
 }
 
 /// Post message to guest worker as host
@@ -623,8 +621,7 @@ fn op_host_post_message(
   id: WorkerId,
   data: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
-  let data = data.ok_or_else(null_opbuf)?;
-  let msg: Box<[u8]> = (*data).into();
+  let msg = data.ok_or_else(null_opbuf)?;
 
   debug!("post message to worker {}", id);
   let worker_thread = state

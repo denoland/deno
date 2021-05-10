@@ -27,6 +27,7 @@ use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
+use deno_core::ZeroCopyBuf;
 use deno_file::BlobUrlStore;
 use log::debug;
 use std::cell::RefCell;
@@ -55,7 +56,7 @@ impl WorkerId {
   }
 }
 
-type WorkerMessage = Box<[u8]>;
+type WorkerMessage = ZeroCopyBuf;
 
 /// Events that are sent to host from child
 /// worker.
@@ -63,6 +64,7 @@ pub enum WorkerEvent {
   Message(WorkerMessage),
   Error(AnyError),
   TerminalError(AnyError),
+  Close,
 }
 
 // Channels used for communication with worker's parent
@@ -605,13 +607,13 @@ mod tests {
 
     // TODO(Inteon): use Deno.core.serialize() instead of hardcoded encoded value
     let msg = vec![34, 2, 104, 105].into_boxed_slice(); // "hi" encoded
-    let r = handle.post_message(msg.clone());
+    let r = handle.post_message(msg.clone().into());
     assert!(r.is_ok());
 
     let maybe_msg = handle.get_event().await.unwrap();
     assert!(maybe_msg.is_some());
 
-    let r = handle.post_message(msg.clone());
+    let r = handle.post_message(msg.clone().into());
     assert!(r.is_ok());
 
     let maybe_msg = handle.get_event().await.unwrap();
@@ -626,7 +628,7 @@ mod tests {
 
     // TODO(Inteon): use Deno.core.serialize() instead of hardcoded encoded value
     let msg = vec![34, 4, 101, 120, 105, 116].into_boxed_slice(); // "exit" encoded
-    let r = handle.post_message(msg);
+    let r = handle.post_message(msg.into());
     assert!(r.is_ok());
     let event = handle.get_event().await.unwrap();
     assert!(event.is_none());
@@ -652,7 +654,7 @@ mod tests {
 
     // TODO(Inteon): use Deno.core.serialize() instead of hardcoded encoded value
     let msg = vec![34, 2, 104, 105].into_boxed_slice(); // "hi" encoded
-    let r = handle.post_message(msg.clone());
+    let r = handle.post_message(msg.clone().into());
     assert!(r.is_ok());
     let event = handle.get_event().await.unwrap();
     assert!(event.is_none());
