@@ -28,6 +28,7 @@ delete Object.prototype.__proto__;
   const fileReader = window.__bootstrap.fileReader;
   const webgpu = window.__bootstrap.webgpu;
   const webSocket = window.__bootstrap.webSocket;
+  const webStorage = window.__bootstrap.webStorage;
   const file = window.__bootstrap.file;
   const formData = window.__bootstrap.formData;
   const fetch = window.__bootstrap.fetch;
@@ -142,8 +143,6 @@ delete Object.prototype.__proto__;
   }
 
   function runtimeStart(runtimeOptions, source) {
-    core.ops();
-
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
     version.setVersions(
       runtimeOptions.denoVersion,
@@ -186,16 +185,23 @@ delete Object.prototype.__proto__;
     core.registerErrorClass("Http", errors.Http);
     core.registerErrorClass("Busy", errors.Busy);
     core.registerErrorClass("NotSupported", errors.NotSupported);
-    core.registerErrorClass("Error", Error);
-    core.registerErrorClass("RangeError", RangeError);
-    core.registerErrorClass("ReferenceError", ReferenceError);
-    core.registerErrorClass("SyntaxError", SyntaxError);
-    core.registerErrorClass("TypeError", TypeError);
-    core.registerErrorClass("URIError", URIError);
-    core.registerErrorClass(
+    core.registerErrorBuilder(
       "DOMExceptionOperationError",
-      DOMException,
-      "OperationError",
+      function DOMExceptionOperationError(msg) {
+        return new DOMException(msg, "OperationError");
+      },
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionQuotaExceededError",
+      function DOMExceptionQuotaExceededError(msg) {
+        return new DOMException(msg, "QuotaExceededError");
+      },
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionNotSupportedError",
+      function DOMExceptionNotSupportedError(msg) {
+        return new DOMException(msg, "NotSupported");
+      },
     );
   }
 
@@ -303,7 +309,7 @@ delete Object.prototype.__proto__;
     GPU: util.nonEnumerable(webgpu.GPU),
     GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
     GPUAdapterLimits: util.nonEnumerable(webgpu.GPUAdapterLimits),
-    GPUAdapterFeatures: util.nonEnumerable(webgpu.GPUAdapterFeatures),
+    GPUSupportedFeatures: util.nonEnumerable(webgpu.GPUSupportedFeatures),
     GPUDevice: util.nonEnumerable(webgpu.GPUDevice),
     GPUQueue: util.nonEnumerable(webgpu.GPUQueue),
     GPUBuffer: util.nonEnumerable(webgpu.GPUBuffer),
@@ -358,6 +364,17 @@ delete Object.prototype.__proto__;
     alert: util.writable(prompt.alert),
     confirm: util.writable(prompt.confirm),
     prompt: util.writable(prompt.prompt),
+    localStorage: {
+      configurable: true,
+      enumerable: true,
+      get: webStorage.localStorage,
+    },
+    sessionStorage: {
+      configurable: true,
+      enumerable: true,
+      get: webStorage.sessionStorage,
+    },
+    Storage: util.nonEnumerable(webStorage.Storage),
   };
 
   const workerRuntimeGlobalProperties = {

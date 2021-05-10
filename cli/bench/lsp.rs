@@ -184,6 +184,22 @@ impl LspClient {
     }
   }
 
+  fn read_request<R>(&mut self) -> Result<(u64, String, Option<R>), AnyError>
+  where
+    R: de::DeserializeOwned,
+  {
+    loop {
+      if let LspMessage::Request(id, method, maybe_params) = self.read()? {
+        if let Some(p) = maybe_params {
+          let params = serde_json::from_value(p)?;
+          return Ok((id, method, Some(params)));
+        } else {
+          return Ok((id, method, None));
+        }
+      }
+    }
+  }
+
   fn write(&mut self, value: Value) -> Result<(), AnyError> {
     let value_str = value.to_string();
     let msg = format!(
@@ -220,6 +236,18 @@ impl LspClient {
         return Ok((result, error));
       }
     }
+  }
+
+  fn write_response<V>(&mut self, id: u64, result: V) -> Result<(), AnyError>
+  where
+    V: Serialize,
+  {
+    let value = json!({
+      "jsonrpc": "2.0",
+      "id": id,
+      "result": result
+    });
+    self.write(value)
   }
 
   fn write_notification<S, V>(
@@ -266,6 +294,20 @@ fn bench_big_file_edits(deno_exe: &Path) -> Result<Duration, AnyError> {
     }),
   )?;
 
+  let (id, method, _): (u64, String, Option<Value>) = client.read_request()?;
+  assert_eq!(method, "workspace/configuration");
+
+  client.write_response(
+    id,
+    json!({
+      "enable": true
+    }),
+  )?;
+
+  let (method, _): (String, Option<Value>) = client.read_notification()?;
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _): (String, Option<Value>) = client.read_notification()?;
+  assert_eq!(method, "textDocument/publishDiagnostics");
   let (method, _): (String, Option<Value>) = client.read_notification()?;
   assert_eq!(method, "textDocument/publishDiagnostics");
 
@@ -324,6 +366,20 @@ fn bench_startup_shutdown(deno_exe: &Path) -> Result<Duration, AnyError> {
     }),
   )?;
 
+  let (id, method, _): (u64, String, Option<Value>) = client.read_request()?;
+  assert_eq!(method, "workspace/configuration");
+
+  client.write_response(
+    id,
+    json!({
+      "enable": true
+    }),
+  )?;
+
+  let (method, _): (String, Option<Value>) = client.read_notification()?;
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _): (String, Option<Value>) = client.read_notification()?;
+  assert_eq!(method, "textDocument/publishDiagnostics");
   let (method, _): (String, Option<Value>) = client.read_notification()?;
   assert_eq!(method, "textDocument/publishDiagnostics");
 

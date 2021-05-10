@@ -50,3 +50,20 @@ unitTest({ ignore: true }, async function responseFormData() {
   assert(formData instanceof FormData);
   assertEquals(formData, input);
 });
+
+unitTest(function customInspectFunction(): void {
+  const response = new Response();
+  assertEquals(
+    Deno.inspect(response),
+    `Response {
+  body: null,
+  bodyUsed: false,
+  headers: Headers {},
+  ok: true,
+  redirected: false,
+  status: 200,
+  statusText: "",
+  url: ""
+}`,
+  );
+});

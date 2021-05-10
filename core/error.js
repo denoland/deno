@@ -178,7 +178,7 @@
 
   /**
    * Returns a function that can be used as `Error.prepareStackTrace`.
-   * 
+   *
    * This function accepts an optional argument, a function that performs
    * source mapping. It is not required to pass this argument, but
    * in such case only JavaScript sources will have proper position in
@@ -191,7 +191,7 @@
    *  fileName: string,
    *  lineNumber: number,
    *  columnNumber: number
-   * }} sourceMappingFn 
+   * }} sourceMappingFn
    */
   function createPrepareStackTrace(sourceMappingFn) {
     return function prepareStackTrace(

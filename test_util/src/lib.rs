@@ -85,10 +85,6 @@ pub fn tests_path() -> PathBuf {
   root_path().join("cli").join("tests")
 }
 
-pub fn wpt_path() -> PathBuf {
-  root_path().join("test_util").join("wpt")
-}
-
 pub fn third_party_path() -> PathBuf {
   root_path().join("third_party")
 }
@@ -102,15 +98,6 @@ pub fn target_dir() -> PathBuf {
 pub fn deno_exe_path() -> PathBuf {
   // Something like /Users/rld/src/deno/target/debug/deps/deno
   let mut p = target_dir().join("deno");
-  if cfg!(windows) {
-    p.set_extension("exe");
-  }
-  p
-}
-
-pub fn denort_exe_path() -> PathBuf {
-  // Something like /Users/rld/src/deno/target/debug/deps/denort
-  let mut p = target_dir().join("denort");
   if cfg!(windows) {
     p.set_extension("exe");
   }

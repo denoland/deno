@@ -90,6 +90,11 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     None,
   ),
   (
+    "text_encoder_into",
+    &["run", "cli/tests/text_encoder_into_perf.js"],
+    None,
+  ),
+  (
     "check",
     &[
       "cache",
@@ -226,12 +231,6 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, u64>> {
   sizes.insert(
     "deno".to_string(),
     test_util::deno_exe_path().metadata()?.len(),
-  );
-
-  // add up size for denort
-  sizes.insert(
-    "denort".to_string(),
-    test_util::denort_exe_path().metadata()?.len(),
   );
 
   // add up size for everything in target/release/deps/libswc*

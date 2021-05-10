@@ -10,12 +10,12 @@
 use crate::colors;
 use crate::diff::diff;
 use crate::file_watcher;
+use crate::file_watcher::ResolutionResult;
 use crate::fs_util::{collect_files, get_extension, is_supported_ext_fmt};
 use crate::text_encoding;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
-use deno_core::futures::FutureExt;
 use log::debug;
 use log::info;
 use std::fs;
@@ -37,15 +37,32 @@ pub async fn format(
   check: bool,
   watch: bool,
 ) -> Result<(), AnyError> {
-  let target_file_resolver = || {
-    // collect the files that are to be formatted
-    collect_files(&args, &ignore, is_supported_ext_fmt).and_then(|files| {
-      if files.is_empty() {
-        Err(generic_error("No target files found."))
+  let resolver = |changed: Option<Vec<PathBuf>>| {
+    let files_changed = changed.is_some();
+    let result =
+      collect_files(&args, &ignore, is_supported_ext_fmt).map(|files| {
+        if let Some(paths) = changed {
+          files
+            .into_iter()
+            .filter(|path| paths.contains(path))
+            .collect::<Vec<_>>()
+        } else {
+          files
+        }
+      });
+    let paths_to_watch = args.clone();
+    async move {
+      if (files_changed || !watch)
+        && matches!(result, Ok(ref files) if files.is_empty())
+      {
+        ResolutionResult::Ignore
       } else {
-        Ok(files)
+        ResolutionResult::Restart {
+          paths_to_watch,
+          result,
+        }
       }
-    })
+    }
   };
   let operation = |paths: Vec<PathBuf>| {
     let config = get_typescript_config();
@@ -57,13 +74,18 @@ pub async fn format(
       }
       Ok(())
     }
-    .boxed_local()
   };
 
   if watch {
-    file_watcher::watch_func(target_file_resolver, operation, "Fmt").await?;
+    file_watcher::watch_func(resolver, operation, "Fmt").await?;
   } else {
-    operation(target_file_resolver()?).await?;
+    let files =
+      if let ResolutionResult::Restart { result, .. } = resolver(None).await {
+        result?
+      } else {
+        return Err(generic_error("No target files found."));
+      };
+    operation(files).await?;
   }
 
   Ok(())

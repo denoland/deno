@@ -89,7 +89,7 @@ declare namespace Deno {
   /** The current process id of the runtime. */
   export const pid: number;
 
-  /** Reflects the `NO_COLOR` environment variable.
+  /** Reflects the `NO_COLOR` environment variable at program start.
    *
    * See: https://no-color.org/ */
   export const noColor: boolean;
@@ -177,12 +177,12 @@ declare namespace Deno {
   export function exit(code?: number): never;
 
   export const env: {
-    /** Retrieve the value of an environment variable. Returns undefined if that
+    /** Retrieve the value of an environment variable. Returns `undefined` if that
      * key doesn't exist.
      *
      * ```ts
      * console.log(Deno.env.get("HOME"));  // e.g. outputs "/home/alice"
-     * console.log(Deno.env.get("MADE_UP_VAR"));  // outputs "Undefined"
+     * console.log(Deno.env.get("MADE_UP_VAR"));  // outputs "undefined"
      * ```
      * Requires `allow-env` permission. */
     get(key: string): string | undefined;
@@ -190,7 +190,7 @@ declare namespace Deno {
     /** Set the value of an environment variable.
      *
      * ```ts
-     * Deno.env.set("SOME_VAR", "Value"));
+     * Deno.env.set("SOME_VAR", "Value");
      * Deno.env.get("SOME_VAR");  // outputs "Value"
      * ```
      *
@@ -200,8 +200,8 @@ declare namespace Deno {
     /** Delete the value of an environment variable.
      *
      * ```ts
-     * Deno.env.set("SOME_VAR", "Value"));
-     * Deno.env.delete("SOME_VAR");  // outputs "Undefined"
+     * Deno.env.set("SOME_VAR", "Value");
+     * Deno.env.delete("SOME_VAR");  // outputs "undefined"
      * ```
      *
      * Requires `allow-env` permission. */
@@ -426,7 +426,7 @@ declare namespace Deno {
 
   /**
    * @deprecated Use iter from https://deno.land/std/io/util.ts instead. Deno.iter will be removed in Deno 2.0.
-   * 
+   *
    * Turns a Reader, `r`, into an async iterator.
    *
    * ```ts
@@ -465,7 +465,7 @@ declare namespace Deno {
 
   /**
    * @deprecated Use iterSync from https://deno.land/std/io/util.ts instead. Deno.iterSync will be removed in Deno 2.0.
-   * 
+   *
    * Turns a ReaderSync, `r`, into an iterator.
    *
    * ```ts
@@ -781,8 +781,8 @@ declare namespace Deno {
     constructor(rid: number);
     write(p: Uint8Array): Promise<number>;
     writeSync(p: Uint8Array): number;
-    truncate(len?: number): void;
-    truncateSync(len?: number): Promise<void>;
+    truncate(len?: number): Promise<void>;
+    truncateSync(len?: number): void;
     read(p: Uint8Array): Promise<number | null>;
     readSync(p: Uint8Array): number | null;
     seek(offset: number, whence: SeekMode): Promise<number>;
@@ -851,7 +851,7 @@ declare namespace Deno {
 
   /**
    * @deprecated Use Buffer from https://deno.land/std/io/buffer.ts instead. Deno.Buffer will be removed in Deno 2.0.
-   * 
+   *
    * A variable-sized buffer of bytes with `read()` and `write()` methods.
    *
    * Deno.Buffer is almost always used with some I/O like files and sockets. It
@@ -934,7 +934,7 @@ declare namespace Deno {
 
   /**
    * @deprecated Use readAll from https://deno.land/std/io/util.ts instead. Deno.readAll will be removed in Deno 2.0.
-   * 
+   *
    * Read Reader `r` until EOF (`null`) and resolve to the content as
    * Uint8Array`.
    *
@@ -958,7 +958,7 @@ declare namespace Deno {
 
   /**
    * @deprecated Use readAllSync from https://deno.land/std/io/util.ts instead. Deno.readAllSync will be removed in Deno 2.0.
-   * 
+   *
    * Synchronously reads Reader `r` until EOF (`null`) and returns the content
    * as `Uint8Array`.
    *
@@ -982,20 +982,24 @@ declare namespace Deno {
 
   /**
    * @deprecated Use writeAll from https://deno.land/std/io/util.ts instead. Deno.readAll will be removed in Deno 2.0.
-   * 
+   *
    * Write all the content of the array buffer (`arr`) to the writer (`w`).
    *
    * ```ts
    * // Example writing to stdout
    * const contentBytes = new TextEncoder().encode("Hello World");
    * await Deno.writeAll(Deno.stdout, contentBytes);
+   * ```
    *
+   * ```ts
    * // Example writing to file
    * const contentBytes = new TextEncoder().encode("Hello World");
    * const file = await Deno.open('test.file', {write: true});
    * await Deno.writeAll(file, contentBytes);
    * Deno.close(file.rid);
+   * ```
    *
+   * ```ts
    * // Example writing to buffer
    * const contentBytes = new TextEncoder().encode("Hello World");
    * const writer = new Deno.Buffer();
@@ -1007,7 +1011,7 @@ declare namespace Deno {
 
   /**
    * @deprecated Use writeAllSync from https://deno.land/std/io/util.ts instead. Deno.writeAllSync will be removed in Deno 2.0.
-   * 
+   *
    * Synchronously write all the content of the array buffer (`arr`) to the
    * writer (`w`).
    *
@@ -1015,13 +1019,17 @@ declare namespace Deno {
    * // Example writing to stdout
    * const contentBytes = new TextEncoder().encode("Hello World");
    * Deno.writeAllSync(Deno.stdout, contentBytes);
+   * ```
    *
+   * ```ts
    * // Example writing to file
    * const contentBytes = new TextEncoder().encode("Hello World");
    * const file = Deno.openSync('test.file', {write: true});
    * Deno.writeAllSync(file, contentBytes);
    * Deno.close(file.rid);
+   * ```
    *
+   * ```ts
    * // Example writing to buffer
    * const contentBytes = new TextEncoder().encode("Hello World");
    * const writer = new Deno.Buffer();
@@ -1575,6 +1583,7 @@ declare namespace Deno {
    * what it points to..
    *
    * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
    * const fileInfo = Deno.lstatSync("hello.txt");
    * assert(fileInfo.isFile);
    * ```
@@ -1947,6 +1956,16 @@ declare namespace Deno {
    *```
    *
    * Requires `allow-read` permission.
+   *
+   * Call `watcher.return()` to stop watching.
+   *
+   * ```ts
+   * const watcher = Deno.watchFs("/");
+   * setTimeout(() => { watcher.return(); }, 5000);
+   * for await (const event of watcher) {
+   *    console.log(">>>> event", event);
+   * }
+   * ```
    */
   export function watchFs(
     paths: string | string[],
@@ -2237,6 +2256,7 @@ declare namespace Deno {
     /** Revokes a permission, and resolves to the state of the permission.
      *
      * ```ts
+     * import { assert } from "https://deno.land/std/testing/asserts.ts";
      * const status = await Deno.permissions.revoke({ name: "run" });
      * assert(status.state !== "granted")
      * ```
@@ -2350,16 +2370,19 @@ declare namespace Deno {
    * if the file previously was larger than this new length, the extra  data  is  lost.
    *
    * if  the  file  previously  was shorter, it is extended, and the extended part reads as null bytes ('\0').
-   * 
+   *
    * ```ts
    * // truncate the entire file
-   * const file = Deno.open("my_file.txt", { read: true, write: true, truncate: true, create: true });
+   * const file = Deno.openSync("my_file.txt", { read: true, write: true, truncate: true, create: true });
    * Deno.ftruncateSync(file.rid);
+   * ```
    *
+   * ```ts
    * // truncate part of the file
-   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
-   * Deno.write(file.rid, new TextEncoder().encode("Hello World"));
+   * const file = Deno.openSync("my_file.txt", { read: true, write: true, create: true });
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello World"));
    * Deno.ftruncateSync(file.rid, 7);
+   * Deno.seekSync(file.rid, 0, Deno.SeekMode.Start);
    * const data = new Uint8Array(32);
    * Deno.readSync(file.rid, data);
    * console.log(new TextDecoder().decode(data)); // Hello W
@@ -2378,11 +2401,13 @@ declare namespace Deno {
    *
    * ```ts
    * // truncate the entire file
-   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
    * await Deno.ftruncate(file.rid);
+   * ```
    *
+   * ```ts
    * // truncate part of the file
-   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
+   * const file = await Deno.open("my_file.txt", { read: true, write: true, create: true });
    * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
    * await Deno.ftruncate(file.rid, 7);
    * const data = new Uint8Array(32);
@@ -2392,10 +2417,11 @@ declare namespace Deno {
    */
   export function ftruncate(rid: number, len?: number): Promise<void>;
 
-  /** 
+  /**
    * Synchronously returns a `Deno.FileInfo` for the given file stream.
    *
    * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
    * const file = Deno.openSync("file.txt", { read: true });
    * const fileInfo = Deno.fstatSync(file.rid);
    * assert(fileInfo.isFile);
@@ -2407,6 +2433,7 @@ declare namespace Deno {
    * Returns a `Deno.FileInfo` for the given file stream.
    *
    * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
    * const file = await Deno.open("file.txt", { read: true });
    * const fileInfo = await Deno.fstat(file.rid);
    * assert(fileInfo.isFile);

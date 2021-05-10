@@ -18,7 +18,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
-use deno_core::ZeroCopyBuf;
 use deno_runtime::permissions::Permissions;
 use serde::Deserialize;
 use std::cell::RefCell;
@@ -33,10 +32,10 @@ pub fn init(rt: &mut deno_core::JsRuntime) {
 
 #[derive(Debug, Deserialize)]
 enum RuntimeBundleType {
-  #[serde(rename = "esm")]
-  Esm,
-  #[serde(rename = "iife")]
-  Iife,
+  #[serde(rename = "module")]
+  Module,
+  #[serde(rename = "classic")]
+  Classic,
 }
 
 #[derive(Debug, Deserialize)]
@@ -54,7 +53,7 @@ struct EmitArgs {
 async fn op_emit(
   state: Rc<RefCell<OpState>>,
   args: Value,
-  _data: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<Value, AnyError> {
   deno_runtime::ops::check_unstable2(&state, "Deno.emit");
   let args: EmitArgs = serde_json::from_value(args)?;
@@ -87,7 +86,13 @@ async fn op_emit(
       let file = program_state
         .file_fetcher
         .fetch(&import_map_specifier, &mut runtime_permissions)
-        .await?;
+        .await
+        .map_err(|e| {
+          generic_error(format!(
+            "Unable to load '{}' import map: {}",
+            import_map_specifier, e
+          ))
+        })?;
       ImportMap::from_json(import_map_specifier.as_str(), &file.source)?
     };
     Some(import_map)
@@ -108,8 +113,8 @@ async fn op_emit(
       ))
     })?;
   let bundle_type = match args.bundle {
-    Some(RuntimeBundleType::Esm) => BundleType::Esm,
-    Some(RuntimeBundleType::Iife) => BundleType::Iife,
+    Some(RuntimeBundleType::Module) => BundleType::Module,
+    Some(RuntimeBundleType::Classic) => BundleType::Classic,
     None => BundleType::None,
   };
   let graph = builder.get_graph();

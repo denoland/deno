@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 jobs:
   build:
-    name: ${{ matrix.os }} ${{ matrix.variant }}
+    name: ${{ matrix.kind }} ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     strategy:
@@ -42,7 +42,7 @@ jobs:
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.51.0
+          rust-version: 1.52.0
 
       - name: Install Deno
         run: |-
@@ -58,7 +58,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v2
         with:
-          node-version: "14"
+          node-version: "16"
           check-latest: true
 
       - name: Butcher Cargo.toml
@@ -79,4 +79,3 @@ jobs:
         run: |
           du -h -t100m target/
           du -ah target/release/deno
-          du -ah target/release/denort

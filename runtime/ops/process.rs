@@ -8,13 +8,15 @@ use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::op_async;
+use deno_core::op_sync;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -25,10 +27,14 @@ use tokio::process::Command;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_sync(rt, "op_run", op_run);
-  super::reg_async(rt, "op_run_status", op_run_status);
-  super::reg_sync(rt, "op_kill", op_kill);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_run", op_sync(op_run)),
+      ("op_run_status", op_async(op_run_status)),
+      ("op_kill", op_sync(op_kill)),
+    ])
+    .build()
 }
 
 fn clone_file(
@@ -94,7 +100,7 @@ struct RunInfo {
 fn op_run(
   state: &mut OpState,
   run_args: RunArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<RunInfo, AnyError> {
   let args = run_args.cmd;
   state.borrow_mut::<Permissions>().run.check(&args[0])?;
@@ -195,7 +201,7 @@ struct RunStatus {
 async fn op_run_status(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<RunStatus, AnyError> {
   let resource = state
     .borrow_mut()
@@ -280,11 +286,7 @@ struct KillArgs {
   signo: i32,
 }
 
-fn op_kill(
-  state: &mut OpState,
-  args: KillArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<(), AnyError> {
+fn op_kill(state: &mut OpState, args: KillArgs, _: ()) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.kill");
   state.borrow_mut::<Permissions>().run.check_all()?;
 
