@@ -29,11 +29,6 @@ lazy_static::lazy_static! {
     ).case_insensitive(true).build().unwrap();
 }
 
-pub fn is_remote_url(module_url: &str) -> bool {
-  let lower = module_url.to_lowercase();
-  lower.starts_with("http://") || lower.starts_with("https://")
-}
-
 fn validate_name(exec_name: &str) -> Result<(), AnyError> {
   if EXEC_NAME_RE.is_match(exec_name) {
     Ok(())
@@ -329,16 +324,6 @@ mod tests {
 
   lazy_static::lazy_static! {
     pub static ref ENV_LOCK: Mutex<()> = Mutex::new(());
-  }
-
-  #[test]
-  fn test_is_remote_url() {
-    assert!(is_remote_url("https://deno.land/std/http/file_server.ts"));
-    assert!(is_remote_url("http://deno.land/std/http/file_server.ts"));
-    assert!(is_remote_url("HTTP://deno.land/std/http/file_server.ts"));
-    assert!(is_remote_url("HTTp://deno.land/std/http/file_server.ts"));
-    assert!(!is_remote_url("file:///dev/deno_std/http/file_server.ts"));
-    assert!(!is_remote_url("./dev/deno_std/http/file_server.ts"));
   }
 
   #[test]
