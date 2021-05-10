@@ -144,7 +144,6 @@ unitTest(async function timeoutCancelInvalidSilentFail(): Promise<void> {
   // Expect no panic
   const promise = deferred();
   let count = 0;
-  // deno-lint-ignore no-unused-vars
   const id = setTimeout((): void => {
     count++;
     // Should have no effect
