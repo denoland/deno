@@ -190,13 +190,36 @@ jobs:
           key:
             a-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
-      - name: Cache build output
-        uses: actions/cache@v2
+      # In main branch, always creates fresh cache
+      - name: Cache build output (main)
+        # TODO(kt3k): Change the version to the released version
+        # when https://github.com/actions/cache/pull/489 (or 571) is merged.
+        uses: actions/cache@03e00da99d75a2204924908e1cca7902cafce66b
+        if: github.ref == 'refs/heads/main'
         with:
           path: |
             ./target
-          key:
-            a-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ hashFiles('Cargo.lock') }}
+          key: |
+            a-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+
+      # Restores cache from the latest main branch's Cache
+      - name: Cache build output (PR)
+        # TODO(kt3k): Change the version to the released version
+        # when https://github.com/actions/cache/pull/489 (or 571) is merged.
+        uses: actions/cache@03e00da99d75a2204924908e1cca7902cafce66b
+        if: github.ref != 'refs/heads/main'
+        with:
+          path: |
+            ./target
+          key: |
+            dummy # Cache never be created for this key.
+          restore-keys: |
+            a-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ hashFiles('Cargo.lock') }}-
+
+      # Skips saving cache in PR branches
+      - name: Skip save cache (PR)
+        run: echo "CACHE_SKIP_SAVE=true" >> $GITHUB_ENV
+        if: github.ref != 'refs/heads/main'
 
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
