@@ -2902,7 +2902,7 @@ console.log("finish");
   fn _061_permissions_request() {
     let args = "run 061_permissions_request.ts";
     let output = "061_permissions_request.ts.out";
-    let input = b"g\nd\n";
+    let input = b"y\nn\n";
 
     util::test_pty(args, output, input);
   }
@@ -2912,7 +2912,7 @@ console.log("finish");
   fn _062_permissions_request_global() {
     let args = "run 062_permissions_request_global.ts";
     let output = "062_permissions_request_global.ts.out";
-    let input = b"g\n";
+    let input = b"y\n";
 
     util::test_pty(args, output, input);
   }
@@ -3077,7 +3077,7 @@ console.log("finish");
   fn _090_run_permissions_request() {
     let args = "run 090_run_permissions_request.ts";
     let output = "090_run_permissions_request.ts.out";
-    let input = b"g\nd\n";
+    let input = b"y\nn\n";
 
     util::test_pty(args, output, input);
   }
