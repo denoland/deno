@@ -74,7 +74,7 @@ pub struct UrlParts {
 pub fn op_url_parse(
   _state: &mut deno_core::OpState,
   args: UrlParseArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<UrlParts, AnyError> {
   let base_url = args
     .base_href
@@ -160,7 +160,7 @@ pub fn op_url_parse_search_params(
 pub fn op_url_stringify_search_params(
   _state: &mut deno_core::OpState,
   args: Vec<(String, String)>,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<String, AnyError> {
   let search = form_urlencoded::Serializer::new(String::new())
     .extend_pairs(args)

@@ -3,7 +3,6 @@
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -80,7 +79,7 @@ pub struct CreateSamplerArgs {
 pub fn op_webgpu_create_sampler(
   state: &mut OpState,
   args: CreateSamplerArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state

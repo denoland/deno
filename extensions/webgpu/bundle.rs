@@ -43,7 +43,7 @@ pub struct CreateRenderBundleEncoderArgs {
 pub fn op_webgpu_create_render_bundle_encoder(
   state: &mut OpState,
   args: CreateRenderBundleEncoderArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let device_resource = state
     .resource_table
@@ -96,7 +96,7 @@ pub struct RenderBundleEncoderFinishArgs {
 pub fn op_webgpu_render_bundle_encoder_finish(
   state: &mut OpState,
   args: RenderBundleEncoderFinishArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let render_bundle_encoder_resource = state
     .resource_table
@@ -188,7 +188,7 @@ pub struct RenderBundleEncoderPushDebugGroupArgs {
 pub fn op_webgpu_render_bundle_encoder_push_debug_group(
   state: &mut OpState,
   args: RenderBundleEncoderPushDebugGroupArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let render_bundle_encoder_resource = state
     .resource_table
@@ -215,7 +215,7 @@ pub struct RenderBundleEncoderPopDebugGroupArgs {
 pub fn op_webgpu_render_bundle_encoder_pop_debug_group(
   state: &mut OpState,
   args: RenderBundleEncoderPopDebugGroupArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let render_bundle_encoder_resource = state
     .resource_table
@@ -239,7 +239,7 @@ pub struct RenderBundleEncoderInsertDebugMarkerArgs {
 pub fn op_webgpu_render_bundle_encoder_insert_debug_marker(
   state: &mut OpState,
   args: RenderBundleEncoderInsertDebugMarkerArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let render_bundle_encoder_resource = state
     .resource_table
@@ -267,7 +267,7 @@ pub struct RenderBundleEncoderSetPipelineArgs {
 pub fn op_webgpu_render_bundle_encoder_set_pipeline(
   state: &mut OpState,
   args: RenderBundleEncoderSetPipelineArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let render_pipeline_resource = state
     .resource_table
@@ -299,7 +299,7 @@ pub struct RenderBundleEncoderSetIndexBufferArgs {
 pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
   state: &mut OpState,
   args: RenderBundleEncoderSetIndexBufferArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table
@@ -336,7 +336,7 @@ pub struct RenderBundleEncoderSetVertexBufferArgs {
 pub fn op_webgpu_render_bundle_encoder_set_vertex_buffer(
   state: &mut OpState,
   args: RenderBundleEncoderSetVertexBufferArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table
@@ -371,7 +371,7 @@ pub struct RenderBundleEncoderDrawArgs {
 pub fn op_webgpu_render_bundle_encoder_draw(
   state: &mut OpState,
   args: RenderBundleEncoderDrawArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let render_bundle_encoder_resource = state
     .resource_table
@@ -403,7 +403,7 @@ pub struct RenderBundleEncoderDrawIndexedArgs {
 pub fn op_webgpu_render_bundle_encoder_draw_indexed(
   state: &mut OpState,
   args: RenderBundleEncoderDrawIndexedArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let render_bundle_encoder_resource = state
     .resource_table
@@ -433,7 +433,7 @@ pub struct RenderBundleEncoderDrawIndirectArgs {
 pub fn op_webgpu_render_bundle_encoder_draw_indirect(
   state: &mut OpState,
   args: RenderBundleEncoderDrawIndirectArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table

@@ -3,7 +3,6 @@
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -80,7 +79,7 @@ pub struct CreateBindGroupLayoutArgs {
 pub fn op_webgpu_create_bind_group_layout(
   state: &mut OpState,
   args: CreateBindGroupLayoutArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
@@ -213,7 +212,7 @@ pub struct CreatePipelineLayoutArgs {
 pub fn op_webgpu_create_pipeline_layout(
   state: &mut OpState,
   args: CreatePipelineLayoutArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
@@ -267,7 +266,7 @@ pub struct CreateBindGroupArgs {
 pub fn op_webgpu_create_bind_group(
   state: &mut OpState,
   args: CreateBindGroupArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
