@@ -1012,6 +1012,7 @@ mod integration {
       temp_directory.close().unwrap();
     }
 
+    #[cfg(unix)]
     #[test]
     fn test_watch() {
       macro_rules! assert_contains {
