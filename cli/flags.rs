@@ -1031,6 +1031,11 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(true)
         .multiple(true),
     )
+    .arg(
+      watch_arg()
+        .conflicts_with("no-run")
+        .conflicts_with("coverage"),
+    )
     .arg(script_arg().last(true))
     .about("Run tests")
     .long_about(
@@ -1666,6 +1671,8 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let allow_none = matches.is_present("allow-none");
   let quiet = matches.is_present("quiet");
   let filter = matches.value_of("filter").map(String::from);
+
+  flags.watch = matches.is_present("watch");
 
   if matches.is_present("script_arg") {
     let script_arg: Vec<String> = matches

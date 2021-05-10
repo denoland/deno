@@ -4,10 +4,13 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
+use deno_core::ModuleSpecifier;
 use lspower::jsonrpc::Error as LSPError;
 use lspower::jsonrpc::Result as LSPResult;
 use lspower::lsp;
 use std::collections::HashMap;
+
+pub const SETTINGS_SECTION: &str = "deno";
 
 #[derive(Debug, Clone, Default)]
 pub struct ClientCapabilities {
@@ -84,19 +87,43 @@ impl Default for ImportCompletionSettings {
   }
 }
 
+/// Deno language server specific settings that can be applied uniquely to a
+/// specifier.
+#[derive(Debug, Default, Clone, Deserialize)]
+pub struct SpecifierSettings {
+  /// A flag that indicates if Deno is enabled for this specifier or not.
+  pub enable: bool,
+}
+
+/// Deno language server specific settings that are applied to a workspace.
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSettings {
+  /// A flag that indicates if Deno is enabled for the workspace.
   pub enable: bool,
+
+  /// An option that points to a path string of the tsconfig file to apply to
+  /// code within the workspace.
   pub config: Option<String>,
+
+  /// An option that points to a path string of the import map to apply to the
+  /// code within the workspace.
   pub import_map: Option<String>,
+
+  /// Code lens specific settings for the workspace.
   #[serde(default)]
   pub code_lens: CodeLensSettings,
   #[serde(default)]
+
+  /// Suggestion (auto-completion) settings for the workspace.
   pub suggest: CompletionSettings,
 
+  /// A flag that indicates if linting is enabled for the workspace.
   #[serde(default)]
   pub lint: bool,
+
+  /// A flag that indicates if Dene should validate code against the unstable
+  /// APIs for the workspace.
   #[serde(default)]
   pub unstable: bool,
 }
@@ -113,15 +140,21 @@ impl WorkspaceSettings {
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
   pub root_uri: Option<Url>,
-  pub settings: WorkspaceSettings,
+  pub specifier_settings: HashMap<ModuleSpecifier, SpecifierSettings>,
+  pub workspace_settings: WorkspaceSettings,
 }
 
 impl Config {
-  pub fn update(&mut self, value: Value) -> LSPResult<()> {
-    let settings: WorkspaceSettings = serde_json::from_value(value)
-      .map_err(|err| LSPError::invalid_params(err.to_string()))?;
-    self.settings = settings;
-    Ok(())
+  pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
+    self.specifier_settings.contains_key(specifier)
+  }
+
+  pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
+    if let Some(settings) = self.specifier_settings.get(specifier) {
+      settings.enable
+    } else {
+      self.workspace_settings.enable
+    }
   }
 
   #[allow(clippy::redundant_closure_call)]
@@ -153,5 +186,69 @@ impl Config {
         .and_then(|it| it.line_folding_only)
         .unwrap_or(false);
     }
+  }
+
+  pub fn update_specifier(
+    &mut self,
+    specifier: ModuleSpecifier,
+    value: Value,
+  ) -> LSPResult<()> {
+    let settings: SpecifierSettings = serde_json::from_value(value)
+      .map_err(|err| LSPError::invalid_params(err.to_string()))?;
+    self.specifier_settings.insert(specifier, settings);
+    Ok(())
+  }
+
+  pub fn update_workspace(&mut self, value: Value) -> LSPResult<()> {
+    let settings: WorkspaceSettings = serde_json::from_value(value)
+      .map_err(|err| LSPError::invalid_params(err.to_string()))?;
+    self.workspace_settings = settings;
+    self.specifier_settings = HashMap::new();
+    Ok(())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use deno_core::resolve_url;
+  use deno_core::serde_json::json;
+
+  #[test]
+  fn test_config_contains() {
+    let mut config = Config::default();
+    let specifier = resolve_url("https://deno.land/x/a.ts").unwrap();
+    assert!(!config.contains(&specifier));
+    config
+      .update_specifier(
+        specifier.clone(),
+        json!({
+          "enable": true
+        }),
+      )
+      .expect("could not update specifier");
+    assert!(config.contains(&specifier));
+  }
+
+  #[test]
+  fn test_config_specifier_enabled() {
+    let mut config = Config::default();
+    let specifier = resolve_url("file:///a.ts").unwrap();
+    assert!(!config.specifier_enabled(&specifier));
+    config
+      .update_workspace(json!({
+        "enable": true
+      }))
+      .expect("could not update");
+    assert!(config.specifier_enabled(&specifier));
+    config
+      .update_specifier(
+        specifier.clone(),
+        json!({
+          "enable": false
+        }),
+      )
+      .expect("could not update");
+    assert!(!config.specifier_enabled(&specifier));
   }
 }

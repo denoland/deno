@@ -54,7 +54,7 @@ fn hash_data_specifier(specifier: &ModuleSpecifier) -> String {
 /// A bi-directional map of URLs sent to the LSP client and internal module
 /// specifiers.  We need to map internal specifiers into `deno:` schema URLs
 /// to allow the Deno language server to manage these as virtual documents.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct LspUrlMap {
   specifier_to_url: HashMap<ModuleSpecifier, Url>,
   url_to_specifier: HashMap<Url, ModuleSpecifier>,
