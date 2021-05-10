@@ -95,7 +95,7 @@ pub fn get_lint_references(
 ) -> Result<Vec<Reference>, AnyError> {
   let syntax = ast::get_syntax(media_type);
   let lint_rules = rules::get_recommended_rules();
-  let mut linter = create_linter(syntax, lint_rules);
+  let linter = create_linter(syntax, lint_rules);
   // TODO(@kitsonk) we should consider caching the swc source file versions for
   // reuse by other processes
   let (_, lint_diagnostics) =
