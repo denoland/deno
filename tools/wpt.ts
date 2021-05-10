@@ -519,7 +519,7 @@ function createReportTestCase(expectation: boolean | string[]) {
         break;
     }
 
-    writeAllSync(Deno.stdout, new TextEncoder().encode(simpleMessage+"\n"));
+    writeAllSync(Deno.stdout, new TextEncoder().encode(simpleMessage + "\n"));
   };
 }
 
