@@ -3,7 +3,7 @@ use crate::flags::Flags;
 use crate::fs_util::canonicalize_path;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
+use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use log::Level;
 use regex::Regex;
@@ -144,26 +144,6 @@ pub fn infer_name_from_url(url: &Url) -> Option<String> {
   Some(stem)
 }
 
-/// Get a valid URL from the provided value.
-/// When the provided value is a URL with 'http(s)' scheme,
-/// it ensures it is valid by parsing it and if not, it will
-/// construct a URL of 'file' scheme from the provided value.
-fn get_valid_url(module_url: &str) -> Result<Url, AnyError> {
-  if is_remote_url(module_url) {
-    Ok(Url::parse(module_url).expect("Should be valid url"))
-  } else {
-    let module_path = PathBuf::from(module_url);
-    let module_path = if module_path.is_absolute() {
-      module_path
-    } else {
-      let cwd = env::current_dir()
-        .context("Failed to get current working directory")?;
-      cwd.join(module_path)
-    };
-    Ok(Url::from_file_path(module_path).expect("Path should be absolute"))
-  }
-}
-
 pub fn install(
   flags: Flags,
   module_url: &str,
@@ -189,7 +169,7 @@ pub fn install(
   };
 
   // Check if module_url is remote
-  let module_url = get_valid_url(module_url)?;
+  let module_url = resolve_url_or_path(module_url)?;
 
   let name = name.or_else(|| infer_name_from_url(&module_url));
 
@@ -279,7 +259,7 @@ pub fn install(
   }
 
   if let Some(import_map_path) = flags.import_map_path {
-    let import_map_url = get_valid_url(&import_map_path)?;
+    let import_map_url = resolve_url_or_path(&import_map_path)?;
     executable_args.push("--import-map".to_string());
     executable_args.push(import_map_url.to_string());
   }
