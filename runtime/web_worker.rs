@@ -13,6 +13,8 @@ use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
@@ -29,6 +31,7 @@ use deno_file::BlobUrlStore;
 use log::debug;
 use std::cell::RefCell;
 use std::env;
+use std::fmt;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -37,8 +40,22 @@ use std::task::Context;
 use std::task::Poll;
 use tokio::sync::Mutex as AsyncMutex;
 
-pub type WorkerId = u32;
-pub type WorkerMessage = Box<[u8]>;
+#[derive(
+  Debug, Default, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize,
+)]
+pub struct WorkerId(u32);
+impl fmt::Display for WorkerId {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "worker-{}", self.0)
+  }
+}
+impl WorkerId {
+  pub fn next(&self) -> Option<WorkerId> {
+    self.0.checked_add(1).map(WorkerId)
+  }
+}
+
+type WorkerMessage = Box<[u8]>;
 
 /// Events that are sent to host from child
 /// worker.
@@ -351,7 +368,7 @@ impl WebWorker {
     // Instead of using name for log we use `worker-${id}` because
     // WebWorkers can have empty string as name.
     let script = format!(
-      "bootstrap.workerRuntime({}, \"{}\", {}, \"worker-{}\")",
+      "bootstrap.workerRuntime({}, \"{}\", {}, \"{}\")",
       runtime_options_str, self.name, options.use_deno_namespace, self.id
     );
     self
@@ -551,7 +568,7 @@ mod tests {
       "TEST".to_string(),
       Permissions::allow_all(),
       main_module,
-      1,
+      WorkerId(1),
       &options,
     );
     worker.bootstrap(&options);

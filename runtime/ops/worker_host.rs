@@ -454,7 +454,7 @@ fn op_create_worker(
   let worker_id = state.take::<WorkerId>();
   let create_module_loader = state.take::<CreateWebWorkerCbHolder>();
   state.put::<CreateWebWorkerCbHolder>(create_module_loader.clone());
-  state.put::<WorkerId>(worker_id + 1);
+  state.put::<WorkerId>(worker_id.next().unwrap());
 
   let module_specifier = deno_core::resolve_url(&specifier)?;
   let worker_name = args_name.unwrap_or_else(|| "".to_string());
@@ -464,7 +464,7 @@ fn op_create_worker(
 
   // Setup new thread
   let thread_builder =
-    std::thread::Builder::new().name(format!("deno-worker-{}", worker_id));
+    std::thread::Builder::new().name(format!("{}", worker_id));
 
   // Spawn it
   let join_handle = thread_builder.spawn(move || {
