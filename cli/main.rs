@@ -930,11 +930,17 @@ async fn test_command(
 
     // TODO(caspervonb) clean this up.
     let resolver = |changed: Option<Vec<PathBuf>>| {
-      let doc_modules_result =
-        test_runner::collect_test_module_specifiers(include.clone(), &cwd, fs_util::is_supported_ext);
+      let doc_modules_result = test_runner::collect_test_module_specifiers(
+        include.clone(),
+        &cwd,
+        fs_util::is_supported_ext,
+      );
 
-      let test_modules_result =
-        test_runner::collect_test_module_specifiers(include.clone(), &cwd, tools::test_runner::is_supported);
+      let test_modules_result = test_runner::collect_test_module_specifiers(
+        include.clone(),
+        &cwd,
+        tools::test_runner::is_supported,
+      );
 
       let paths_to_watch = paths_to_watch.clone();
       let paths_to_watch_clone = paths_to_watch.clone();
@@ -943,11 +949,7 @@ async fn test_command(
       let program_state = program_state.clone();
       let files_changed = changed.is_some();
       async move {
-        let doc_modules = if doc {
-            doc_modules_result?
-        } else {
-            Vec::new()
-        };
+        let doc_modules = if doc { doc_modules_result? } else { Vec::new() };
 
         let test_modules = test_modules_result?;
 
@@ -972,9 +974,9 @@ async fn test_command(
         let graph = builder.get_graph();
 
         for specifier in doc_modules {
-            if let Ok(path) = specifier.to_file_path() {
-             paths_to_watch.push(path);
-            }
+          if let Ok(path) = specifier.to_file_path() {
+            paths_to_watch.push(path);
+          }
         }
 
         for specifier in test_modules {
@@ -1087,13 +1089,20 @@ async fn test_command(
     .await?;
   } else {
     let doc_modules = if doc {
-      test_runner::collect_test_module_specifiers(include.clone(), &cwd, fs_util::is_supported_ext)?
+      test_runner::collect_test_module_specifiers(
+        include.clone(),
+        &cwd,
+        fs_util::is_supported_ext,
+      )?
     } else {
-        Vec::new()
+      Vec::new()
     };
 
-    let test_modules =
-      test_runner::collect_test_module_specifiers(include.clone(), &cwd, tools::test_runner::is_supported)?;
+    let test_modules = test_runner::collect_test_module_specifiers(
+      include.clone(),
+      &cwd,
+      tools::test_runner::is_supported,
+    )?;
 
     let failed = test_runner::run_tests(
       program_state.clone(),

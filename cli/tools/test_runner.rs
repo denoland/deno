@@ -342,10 +342,7 @@ pub async fn run_tests(
     let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
 
     for specifier in &doc_modules {
-      let file = program_state
-        .file_fetcher
-        .get_source(&specifier)
-        .unwrap();
+      let file = program_state.file_fetcher.get_source(&specifier).unwrap();
 
       let parsed_module =
         ast::parse(&file.specifier.as_str(), &file.source, &file.media_type)?;
