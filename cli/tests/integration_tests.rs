@@ -2896,7 +2896,7 @@ console.log("finish");
   fn _090_run_permissions_request() {
     let args = "run 090_run_permissions_request.ts";
     let output = "090_run_permissions_request.ts.out";
-    let input = b"g\nd\n";
+    let input = b"y\nn\n";
 
     util::test_pty(args, output, input);
   }
