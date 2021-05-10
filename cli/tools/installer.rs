@@ -325,6 +325,7 @@ mod tests {
   use std::process::Command;
   use std::sync::Mutex;
   use tempfile::TempDir;
+  use test_util::tests_path;
 
   lazy_static::lazy_static! {
     pub static ref ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -898,6 +899,41 @@ mod tests {
         "\"--import-map\" \"{}\" \"http://localhost:4545/cli/tests/cat.ts\"",
         import_map_url.to_string()
       );
+    }
+
+    let content = fs::read_to_string(file_path).unwrap();
+    assert!(content.contains(&expected_string));
+  }
+
+  // Regression test for https://github.com/denoland/deno/issues/10556.
+  #[test]
+  fn install_file_url() {
+    let temp_dir = TempDir::new().expect("tempdir fail");
+    let bin_dir = temp_dir.path().join("bin");
+    let module_path = fs::canonicalize(tests_path().join("cat.ts")).unwrap();
+    let file_module_string =
+      Url::from_file_path(module_path).unwrap().to_string();
+    assert!(file_module_string.starts_with("file:///"));
+
+    let result = install(
+      Flags::default(),
+      &file_module_string,
+      vec![],
+      Some("echo_test".to_string()),
+      Some(temp_dir.path().to_path_buf()),
+      true,
+    );
+    assert!(result.is_ok());
+
+    let mut file_path = bin_dir.join("echo_test");
+    if cfg!(windows) {
+      file_path = file_path.with_extension("cmd");
+    }
+    assert!(file_path.exists());
+
+    let mut expected_string = format!("run '{}'", &file_module_string);
+    if cfg!(windows) {
+      expected_string = format!("\"run\" \"{}\"", &file_module_string);
     }
 
     let content = fs::read_to_string(file_path).unwrap();
