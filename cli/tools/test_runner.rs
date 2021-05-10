@@ -379,6 +379,8 @@ pub async fn run_tests(
             source.push_str(&format!("{}\n", text.as_str()));
           }
 
+          source.push_str("export {};");
+
           let element = block.get(0).unwrap();
           let span = comment
             .span
