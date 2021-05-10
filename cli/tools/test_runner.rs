@@ -332,7 +332,7 @@ pub async fn run_tests(
   let cwd = std::env::current_dir().expect("No current directory");
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
 
-  let mut test_modules =
+  let test_modules =
     collect_test_module_specifiers(include.clone(), &cwd, is_supported)?;
 
   if test_modules.is_empty() {
@@ -350,6 +350,8 @@ pub async fn run_tests(
   };
 
   if doc {
+    let mut test_programs = Vec::new();
+
     let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
     let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
 
@@ -370,8 +372,6 @@ pub async fn run_tests(
         location.line
       });
 
-      let mut test_source = String::new();
-
       for comment in comments {
         if comment.kind != CommentKind::Block || !comment.text.starts_with('*')
         {
@@ -379,9 +379,6 @@ pub async fn run_tests(
         }
 
         for block in blocks_regex.captures_iter(&comment.text) {
-          let head = block.get(1).unwrap();
-          let tags = head.as_str();
-
           let body = block.get(2).unwrap();
           let text = body.as_str();
 
@@ -414,47 +411,19 @@ pub async fn run_tests(
           };
 
           program_state.file_fetcher.insert_cached(file.clone());
-          program_state
-            .prepare_module_load(
-              specifier.clone(),
-              lib.clone(),
-              Permissions::allow_all(),
-              false,
-              program_state.maybe_import_map.clone(),
-            )
-            .await?;
-
-          let no_run = tags.contains(&"no_run");
-
-          if !no_run {
-            // TODO(caspervonb) import requires read access, we don't want that.
-            test_source.push_str(&format!(
-                "Deno.test(\"{}\", async function() {{ await import(\"{}\"); }});",
-                specifier.as_str(),
-                specifier.as_str(),
-              ));
-          }
+          test_programs.push(file.specifier.clone());
         }
       }
-
-      if !test_source.is_empty() {
-        let test_specifier = deno_core::resolve_url_or_path(&format!(
-          "{}doc",
-          file.specifier.as_str()
-        ))?;
-
-        let test_file = File {
-          local: test_specifier.to_file_path().unwrap(),
-          maybe_types: None,
-          media_type: MediaType::JavaScript,
-          source: test_source.clone(),
-          specifier: test_specifier.clone(),
-        };
-
-        program_state.file_fetcher.insert_cached(test_file);
-        test_modules.push(test_specifier.clone());
-      }
     }
+
+    program_state
+      .prepare_module_graph(
+        test_programs.clone(),
+        lib.clone(),
+        permissions.clone(),
+        program_state.maybe_import_map.clone(),
+      )
+      .await?;
   }
 
   program_state

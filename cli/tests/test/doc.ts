@@ -1,51 +1,10 @@
 /**
- * ```js
- * import { ok } from "./doc.ts";
- *
- * ok();
  * ```
+ * import { example } from "./doc.ts";
  *
- * ```ts
- * import { ok } from "./doc.ts";
- *
- * ok();
- * ```
- *
- */
-export function ok() {
-  // no-op
-}
-
-/**
- * ```js
- * import { fail } from "./doc.ts";
- *
- * fail();
- * ```
- *
- * ```ts
- * import { fail } from "./doc.ts";
- *
- * fail();
+ * console.assert(example() == 42);
  * ```
  */
-export function fail() {
-  throw new Error();
-}
-
-/**
- * ```js
- * # import { hidden } from "./doc.ts";
- *
- * hidden();
- * ```
- *
- * ```ts
- * # import { hidden } from "./doc.ts";
- *
- * hidden();
- * ```
- */
-export function hidden() {
-  // no-op
-}
+ export function example() : string {
+	 return "example";
+ }

@@ -1,30 +1,5 @@
-Check [WILDCARD]/doc.ts
-Check [WILDCARD]/doc.ts:20-25
-Check [WILDCARD]/doc.ts:26-31
 Check [WILDCARD]/doc.ts:2-7
-Check [WILDCARD]/doc.ts:8-13
-running 0 tests from [WILDCARD]/doc.ts
-running 4 tests from [WILDCARD]/doc
-test [WILDCARD]/doc.ts:20-25 ... FAILED [WILDCARD]
-test [WILDCARD]/doc.ts:26-31 ... FAILED [WILDCARD]
-test [WILDCARD]/doc.ts:2-7 ... ok [WILDCARD]
-test [WILDCARD]/doc.ts:8-13 ... ok [WILDCARD]
-
-failures:
-
-[WILDCARD]/doc.ts:20-25
-Error
-    at fail ([WILDCARD]/doc.ts:33:9)
-    at [WILDCARD]/doc.ts:20-25.ts:3:1
-
-[WILDCARD]/doc.ts:26-31
-Error
-    at fail ([WILDCARD]/doc.ts:33:9)
-    at [WILDCARD]/doc.ts:26-31.ts:3:1
-
-failures:
-
-	[WILDCARD]/doc.ts:20-25
-	[WILDCARD]/doc.ts:26-31
-
-test result: FAILED. 2 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out [WILDCARD]
+error: TS2367 [ERROR]: This condition will always return 'false' since the types 'string' and 'number' have no overlap.
+console.assert(example() == 42);
+               ~~~~~~~~~~~~~~~
+    at [WILDCARD]/doc.ts:2-7.ts:3:16

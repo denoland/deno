@@ -988,7 +988,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(
       Arg::with_name("doc")
         .long("doc")
-        .help("UNSTABLE: include documentation code blocks")
+        .help("UNSTABLE: type check code blocks")
         .takes_value(false),
     )
     .arg(
