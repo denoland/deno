@@ -372,6 +372,7 @@ Deno.test({
         },
         compilerOptions: {
           inlineSourceMap: true,
+          sourceMap: false,
         },
       });
       assert(diagnostics);
@@ -386,9 +387,6 @@ Deno.test({
         "/a.ts": `import { b } from "./b.ts";
         console.log(b);`,
         "/b.ts": `export const b = "b";`,
-      },
-      compilerOptions: {
-        sourceMap: true,
       },
     });
     assert(diagnostics);

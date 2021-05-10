@@ -960,6 +960,8 @@ impl Graph {
     let opts = match options.bundle_type {
       BundleType::Module | BundleType::Classic => json!({
         "noEmit": true,
+        "removeComments": true,
+        "sourceMap": true,
       }),
       BundleType::None => json!({
         "outDir": "deno://",
@@ -2433,9 +2435,10 @@ pub mod tests {
       .expect("should have emitted");
     assert!(result_info.diagnostics.is_empty());
     assert!(result_info.maybe_ignored_options.is_none());
-    assert_eq!(emitted_files.len(), 1);
+    assert_eq!(emitted_files.len(), 2);
     let actual = emitted_files.get("deno:///bundle.js");
     assert!(actual.is_some());
+    assert!(emitted_files.contains_key("deno:///bundle.js.map"));
     let actual = actual.unwrap();
     assert!(actual.contains("const b = \"b\";"));
     assert!(actual.contains("console.log(mod);"));
