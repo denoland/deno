@@ -75,6 +75,24 @@ pub struct Reference {
   range: Range,
 }
 
+impl Reference {
+  pub fn to_diagnostic(&self) -> lsp::Diagnostic {
+    match &self.category {
+      Category::Lint { message, code, .. } => lsp::Diagnostic {
+        range: self.range,
+        severity: Some(lsp::DiagnosticSeverity::Warning),
+        code: Some(lsp::NumberOrString::String(code.to_string())),
+        code_description: None,
+        source: Some("deno-lint".to_string()),
+        message: message.to_string(),
+        related_information: None,
+        tags: None, // we should tag unused code
+        data: None,
+      },
+    }
+  }
+}
+
 fn as_lsp_range(range: &deno_lint::diagnostic::Range) -> Range {
   Range {
     start: Position {
@@ -114,27 +132,6 @@ pub fn get_lint_references(
       })
       .collect(),
   )
-}
-
-pub fn references_to_diagnostics(
-  references: Vec<Reference>,
-) -> Vec<lsp::Diagnostic> {
-  references
-    .into_iter()
-    .map(|r| match r.category {
-      Category::Lint { message, code, .. } => lsp::Diagnostic {
-        range: r.range,
-        severity: Some(lsp::DiagnosticSeverity::Warning),
-        code: Some(lsp::NumberOrString::String(code)),
-        code_description: None,
-        source: Some("deno-lint".to_string()),
-        message,
-        related_information: None,
-        tags: None, // we should tag unused code
-        data: None,
-      },
-    })
-    .collect()
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
