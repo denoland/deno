@@ -3,7 +3,6 @@
 use crate::colors;
 use crate::create_main_worker;
 use crate::file_fetcher::File;
-use crate::flags::Flags;
 use crate::fs_util;
 use crate::media_type::MediaType;
 use crate::module_graph;
@@ -304,36 +303,29 @@ pub async fn run_test_file(
   Ok(())
 }
 
+/// Runs tests.
+///
+/// Returns a boolean indicating whether the tests failed.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_tests(
-  flags: Flags,
-  include: Option<Vec<String>>,
+  program_state: Arc<ProgramState>,
+  permissions: Permissions,
+  lib: module_graph::TypeLib,
+  test_modules: Vec<ModuleSpecifier>,
   no_run: bool,
   fail_fast: bool,
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
   concurrent_jobs: usize,
-) -> Result<(), AnyError> {
-  let program_state = ProgramState::build(flags.clone()).await?;
-  let permissions = Permissions::from_options(&flags.clone().into());
-  let cwd = std::env::current_dir().expect("No current directory");
-  let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let test_modules = collect_test_module_specifiers(include, &cwd)?;
-
+) -> Result<bool, AnyError> {
   if test_modules.is_empty() {
     println!("No matching test modules found");
     if !allow_none {
       std::process::exit(1);
     }
-    return Ok(());
+    return Ok(false);
   }
-
-  let lib = if flags.unstable {
-    module_graph::TypeLib::UnstableDenoWindow
-  } else {
-    module_graph::TypeLib::DenoWindow
-  };
 
   program_state
     .prepare_module_graph(
@@ -345,7 +337,7 @@ pub async fn run_tests(
     .await?;
 
   if no_run {
-    return Ok(());
+    return Ok(false);
   }
 
   // Because scripts, and therefore worker.execute cannot detect unresolved promises at the moment
@@ -475,11 +467,7 @@ pub async fn run_tests(
   if let Some(e) = join_errors.next() {
     Err(e)
   } else {
-    if result.unwrap_or(false) {
-      std::process::exit(1);
-    }
-
-    Ok(())
+    Ok(result.unwrap_or(false))
   }
 }
 
