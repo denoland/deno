@@ -1,10 +1,10 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
 use crate::media_type::MediaType;
 use crate::module_graph::Graph;
 use crate::module_graph::Stats;
-use crate::tsc_config::TsConfig;
 
 use deno_core::error::anyhow;
 use deno_core::error::bail;
@@ -538,11 +538,11 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::config_file::TsConfig;
   use crate::diagnostics::Diagnostic;
   use crate::diagnostics::DiagnosticCategory;
   use crate::module_graph::tests::MockSpecifierHandler;
   use crate::module_graph::GraphBuilder;
-  use crate::tsc_config::TsConfig;
   use std::env;
   use std::path::PathBuf;
   use std::sync::Mutex;

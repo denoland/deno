@@ -2,6 +2,7 @@
 
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
+use deno_core::error::Context;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -28,11 +29,11 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tokio::fs;
 
+use crate::config_file::ConfigFile;
+use crate::config_file::TsConfig;
 use crate::deno_dir;
 use crate::import_map::ImportMap;
 use crate::media_type::MediaType;
-use crate::tsc_config::parse_config;
-use crate::tsc_config::TsConfig;
 
 use super::analysis;
 use super::analysis::ts_changes_to_edit;
@@ -408,21 +409,10 @@ impl Inner {
           config_str
         ))
       }?;
-      let config_path = config_url
-        .to_file_path()
-        .map_err(|_| anyhow!("Bad file path."))?;
-      let config_text =
-        fs::read_to_string(config_path.clone())
-          .await
-          .map_err(|err| {
-            anyhow!(
-              "Failed to load the configuration file at: {}. [{}]",
-              config_url,
-              err
-            )
-          })?;
-      let (value, maybe_ignored_options) =
-        parse_config(&config_text, &config_path)?;
+
+      let config_file = ConfigFile::read(config_url.as_str())
+        .context("Failed to load configuration file")?;
+      let (value, maybe_ignored_options) = config_file.as_compiler_options()?;
       tsconfig.merge(&value);
       self.maybe_config_uri = Some(config_url);
       if let Some(ignored_options) = maybe_ignored_options {

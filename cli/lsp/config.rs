@@ -102,7 +102,7 @@ pub struct WorkspaceSettings {
   /// A flag that indicates if Deno is enabled for the workspace.
   pub enable: bool,
 
-  /// An option that points to a path string of the tsconfig file to apply to
+  /// An option that points to a path string of the config file to apply to
   /// code within the workspace.
   pub config: Option<String>,
 
