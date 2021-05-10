@@ -674,7 +674,9 @@ impl Inner {
     &mut self,
     params: DidChangeConfigurationParams,
   ) {
-    let mark = self.performance.mark("did_change_configuration", Some(&params));
+    let mark = self
+      .performance
+      .mark("did_change_configuration", Some(&params));
 
     if self.config.client_capabilities.workspace_configuration {
       let specifiers: Vec<ModuleSpecifier> =
@@ -1870,7 +1872,9 @@ impl Inner {
     if !self.config.specifier_enabled(&specifier) {
       return Ok(None);
     }
-    let mark = self.performance.mark("prepare_call_hierarchy", Some(&params));
+    let mark = self
+      .performance
+      .mark("prepare_call_hierarchy", Some(&params));
 
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
@@ -2124,7 +2128,9 @@ impl Inner {
     if !self.config.specifier_enabled(&specifier) {
       return Ok(None);
     }
-    let mark = self.performance.mark("semantic_tokens_range", Some(&params));
+    let mark = self
+      .performance
+      .mark("semantic_tokens_range", Some(&params));
 
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {

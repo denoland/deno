@@ -127,7 +127,9 @@ async fn update_diagnostics(
 
   let ts = async {
     let collection = collection.clone();
-    let mark = snapshot.performance.mark("update_diagnostics_ts", None::<()>);
+    let mark = snapshot
+      .performance
+      .mark("update_diagnostics_ts", None::<()>);
     let diagnostics =
       generate_ts_diagnostics(snapshot.clone(), collection.clone(), ts_server)
         .await
@@ -153,7 +155,9 @@ async fn update_diagnostics(
 
   let deps = async {
     let collection = collection.clone();
-    let mark = snapshot.performance.mark("update_diagnostics_deps", None::<()>);
+    let mark = snapshot
+      .performance
+      .mark("update_diagnostics_deps", None::<()>);
     let diagnostics =
       generate_dependency_diagnostics(snapshot.clone(), collection.clone())
         .await
