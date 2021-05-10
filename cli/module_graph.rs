@@ -1248,6 +1248,18 @@ impl Graph {
     self.modules.get_mut(s)
   }
 
+  pub fn get_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<&Module, AnyError> {
+    let s = self.resolve_specifier(specifier);
+    match self.get_module(s) {
+      ModuleSlot::Module(m) => Ok(m.as_ref()),
+      ModuleSlot::Err(e) => Err(anyhow!(e.to_string())),
+      _ => Err(GraphError::MissingSpecifier(specifier.clone()).into()),
+    }
+  }
+
   /// Consume graph and return list of all module specifiers contained in the
   /// graph.
   pub fn get_modules(&self) -> Vec<ModuleSpecifier> {

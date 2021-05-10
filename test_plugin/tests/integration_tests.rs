@@ -35,7 +35,24 @@ fn basic() {
   }
   println!("{:?}", output.status);
   assert!(output.status.success());
-  let expected = "Plugin rid: 3\nHello from sync plugin op.\nzero_copy: test\nop_test_sync returned: test\nHello from async plugin op.\nzero_copy: 123\nop_test_async returned: test\nHello from resource_table.add plugin op.\nTestResource rid: 4\nHello from resource_table.get plugin op.\nTestResource get value: hello plugin!\nHello from sync plugin op.\nOps completed count is correct!\nOps dispatched count is correct!\n";
+  let expected = "\
+    Plugin rid: 3\n\
+    Hello from sync plugin op.\n\
+    args: TestArgs { val: \"1\" }\n\
+    zero_copy: test\n\
+    op_test_sync returned: test\n\
+    Hello from async plugin op.\n\
+    args: TestArgs { val: \"1\" }\n\
+    zero_copy: 123\n\
+    op_test_async returned: test\n\
+    Hello from resource_table.add plugin op.\n\
+    TestResource rid: 4\n\
+    Hello from resource_table.get plugin op.\n\
+    TestResource get value: hello plugin!\n\
+    Hello from sync plugin op.\n\
+    args: TestArgs { val: \"1\" }\n\
+    Ops completed count is correct!\n\
+    Ops dispatched count is correct!\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
 }

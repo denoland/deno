@@ -31,7 +31,7 @@ pub struct ComputePassSetPipelineArgs {
 pub fn op_webgpu_compute_pass_set_pipeline(
   state: &mut OpState,
   args: ComputePassSetPipelineArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let compute_pipeline_resource = state
     .resource_table
@@ -62,7 +62,7 @@ pub struct ComputePassDispatchArgs {
 pub fn op_webgpu_compute_pass_dispatch(
   state: &mut OpState,
   args: ComputePassDispatchArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let compute_pass_resource = state
     .resource_table
@@ -90,7 +90,7 @@ pub struct ComputePassDispatchIndirectArgs {
 pub fn op_webgpu_compute_pass_dispatch_indirect(
   state: &mut OpState,
   args: ComputePassDispatchIndirectArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table
@@ -121,7 +121,7 @@ pub struct ComputePassBeginPipelineStatisticsQueryArgs {
 pub fn op_webgpu_compute_pass_begin_pipeline_statistics_query(
   state: &mut OpState,
   args: ComputePassBeginPipelineStatisticsQueryArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let compute_pass_resource = state
     .resource_table
@@ -150,7 +150,7 @@ pub struct ComputePassEndPipelineStatisticsQueryArgs {
 pub fn op_webgpu_compute_pass_end_pipeline_statistics_query(
   state: &mut OpState,
   args: ComputePassEndPipelineStatisticsQueryArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let compute_pass_resource = state
     .resource_table
@@ -175,7 +175,7 @@ pub struct ComputePassWriteTimestampArgs {
 pub fn op_webgpu_compute_pass_write_timestamp(
   state: &mut OpState,
   args: ComputePassWriteTimestampArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let compute_pass_resource = state
     .resource_table
@@ -205,7 +205,7 @@ pub struct ComputePassEndPassArgs {
 pub fn op_webgpu_compute_pass_end_pass(
   state: &mut OpState,
   args: ComputePassEndPassArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let command_encoder_resource = state
     .resource_table
@@ -284,7 +284,7 @@ pub struct ComputePassPushDebugGroupArgs {
 pub fn op_webgpu_compute_pass_push_debug_group(
   state: &mut OpState,
   args: ComputePassPushDebugGroupArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let compute_pass_resource = state
     .resource_table
@@ -312,7 +312,7 @@ pub struct ComputePassPopDebugGroupArgs {
 pub fn op_webgpu_compute_pass_pop_debug_group(
   state: &mut OpState,
   args: ComputePassPopDebugGroupArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let compute_pass_resource = state
     .resource_table
@@ -336,7 +336,7 @@ pub struct ComputePassInsertDebugMarkerArgs {
 pub fn op_webgpu_compute_pass_insert_debug_marker(
   state: &mut OpState,
   args: ComputePassInsertDebugMarkerArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let compute_pass_resource = state
     .resource_table
