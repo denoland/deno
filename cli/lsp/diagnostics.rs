@@ -65,7 +65,7 @@ async fn publish_diagnostics(
       // disabled, otherwise the client will not clear down previous
       // diagnostics
       let mut diagnostics: Vec<lsp::Diagnostic> =
-        if snapshot.config.settings.lint {
+        if snapshot.config.workspace_settings.lint {
           collection
             .diagnostics_for(&specifier, &DiagnosticSource::Lint)
             .cloned()
@@ -73,7 +73,7 @@ async fn publish_diagnostics(
         } else {
           vec![]
         };
-      if snapshot.config.settings.enable {
+      if snapshot.config.specifier_enabled(&specifier) {
         diagnostics.extend(
           collection
             .diagnostics_for(&specifier, &DiagnosticSource::TypeScript)
@@ -98,12 +98,8 @@ async fn update_diagnostics(
   snapshot: &language_server::StateSnapshot,
   ts_server: &tsc::TsServer,
 ) {
-  let (enabled, lint_enabled) = {
-    let config = &snapshot.config;
-    (config.settings.enable, config.settings.lint)
-  };
-
   let mark = snapshot.performance.mark("update_diagnostics");
+  let lint_enabled = snapshot.config.workspace_settings.lint;
 
   let lint = async {
     let collection = collection.clone();
@@ -128,62 +124,50 @@ async fn update_diagnostics(
   };
 
   let ts = async {
-    if enabled {
-      let collection = collection.clone();
-      let mark = snapshot.performance.mark("update_diagnostics_ts");
-      let diagnostics = generate_ts_diagnostics(
-        snapshot.clone(),
-        collection.clone(),
-        ts_server,
-      )
-      .await
-      .map_err(|err| {
-        error!("Error generating TypeScript diagnostics: {}", err);
-        err
-      })
-      .unwrap_or_default();
-      {
-        let mut collection = collection.lock().unwrap();
-        for (specifier, version, diagnostics) in diagnostics {
-          collection.set(
-            specifier,
-            DiagnosticSource::TypeScript,
-            version,
-            diagnostics,
-          );
-        }
+    let collection = collection.clone();
+    let mark = snapshot.performance.mark("update_diagnostics_ts");
+    let diagnostics =
+      generate_ts_diagnostics(snapshot.clone(), collection.clone(), ts_server)
+        .await
+        .map_err(|err| {
+          error!("Error generating TypeScript diagnostics: {}", err);
+          err
+        })
+        .unwrap_or_default();
+    {
+      let mut collection = collection.lock().unwrap();
+      for (specifier, version, diagnostics) in diagnostics {
+        collection.set(
+          specifier,
+          DiagnosticSource::TypeScript,
+          version,
+          diagnostics,
+        );
       }
-      publish_diagnostics(client, collection, snapshot).await;
-      snapshot.performance.measure(mark);
-    };
+    }
+    publish_diagnostics(client, collection, snapshot).await;
+    snapshot.performance.measure(mark);
   };
 
   let deps = async {
-    if enabled {
-      let collection = collection.clone();
-      let mark = snapshot.performance.mark("update_diagnostics_deps");
-      let diagnostics =
-        generate_dependency_diagnostics(snapshot.clone(), collection.clone())
-          .await
-          .map_err(|err| {
-            error!("Error generating dependency diagnostics: {}", err);
-            err
-          })
-          .unwrap_or_default();
-      {
-        let mut collection = collection.lock().unwrap();
-        for (specifier, version, diagnostics) in diagnostics {
-          collection.set(
-            specifier,
-            DiagnosticSource::Deno,
-            version,
-            diagnostics,
-          );
-        }
+    let collection = collection.clone();
+    let mark = snapshot.performance.mark("update_diagnostics_deps");
+    let diagnostics =
+      generate_dependency_diagnostics(snapshot.clone(), collection.clone())
+        .await
+        .map_err(|err| {
+          error!("Error generating dependency diagnostics: {}", err);
+          err
+        })
+        .unwrap_or_default();
+    {
+      let mut collection = collection.lock().unwrap();
+      for (specifier, version, diagnostics) in diagnostics {
+        collection.set(specifier, DiagnosticSource::Deno, version, diagnostics);
       }
-      publish_diagnostics(client, collection, snapshot).await;
-      snapshot.performance.measure(mark);
-    };
+    }
+    publish_diagnostics(client, collection, snapshot).await;
+    snapshot.performance.measure(mark);
   };
 
   tokio::join!(lint, ts, deps);
@@ -534,11 +518,13 @@ async fn generate_ts_diagnostics(
   {
     let collection = collection.lock().unwrap();
     for specifier in state_snapshot.documents.open_specifiers() {
-      let version = state_snapshot.documents.version(specifier);
-      let current_version =
-        collection.get_version(specifier, &DiagnosticSource::TypeScript);
-      if version != current_version {
-        specifiers.push(specifier.clone());
+      if state_snapshot.config.specifier_enabled(specifier) {
+        let version = state_snapshot.documents.version(specifier);
+        let current_version =
+          collection.get_version(specifier, &DiagnosticSource::TypeScript);
+        if version != current_version {
+          specifiers.push(specifier.clone());
+        }
       }
     }
   }
@@ -568,6 +554,9 @@ async fn generate_dependency_diagnostics(
 
     let sources = &mut state_snapshot.sources;
     for specifier in state_snapshot.documents.open_specifiers() {
+      if !state_snapshot.config.specifier_enabled(specifier) {
+        continue;
+      }
       let version = state_snapshot.documents.version(specifier);
       let current_version = collection.lock().unwrap().get_version(specifier, &DiagnosticSource::Deno);
       if version != current_version {
