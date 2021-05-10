@@ -1220,7 +1220,7 @@ declare namespace Deno {
       *
       * Examples:
       *
-      * ```
+      * ```ts
       * Deno.test({
       *   name: "inherit",
       *   permissions: {
@@ -1233,7 +1233,7 @@ declare namespace Deno {
       * };
       * ```
       *
-      * ```
+      * ```ts
       * Deno.test({
       *   name: "true",
       *   permissions: {
@@ -1246,7 +1246,7 @@ declare namespace Deno {
       * };
       * ```
       *
-      * ```
+      * ```ts
       * Deno.test({
       *   name: "false",
       *   permissions: {

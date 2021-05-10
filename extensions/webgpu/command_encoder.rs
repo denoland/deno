@@ -3,11 +3,11 @@
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::num::NonZeroU32;
 
 use super::error::WebGpuResult;
 
@@ -48,7 +48,7 @@ pub struct CreateCommandEncoderArgs {
 pub fn op_webgpu_create_command_encoder(
   state: &mut OpState,
   args: CreateCommandEncoderArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
@@ -105,7 +105,7 @@ pub struct CommandEncoderBeginRenderPassArgs {
 pub fn op_webgpu_command_encoder_begin_render_pass(
   state: &mut OpState,
   args: CommandEncoderBeginRenderPassArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let command_encoder_resource = state
     .resource_table
@@ -120,8 +120,8 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
       .get::<super::texture::WebGpuTextureView>(color_attachment.view)
       .ok_or_else(bad_resource_id)?;
 
-    let attachment = wgpu_core::command::ColorAttachmentDescriptor {
-      attachment: texture_view_resource.0,
+    let attachment = wgpu_core::command::RenderPassColorAttachment {
+      view: texture_view_resource.0,
       resolve_target: color_attachment
         .resolve_target
         .map(|rid| {
@@ -173,8 +173,8 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
       .ok_or_else(bad_resource_id)?;
 
     depth_stencil_attachment =
-      Some(wgpu_core::command::DepthStencilAttachmentDescriptor {
-        attachment: texture_view_resource.0,
+      Some(wgpu_core::command::RenderPassDepthStencilAttachment {
+        view: texture_view_resource.0,
         depth: match attachment.depth_load_op.as_str() {
           "load" => wgpu_core::command::PassChannel {
             load_op: wgpu_core::command::LoadOp::Load,
@@ -238,7 +238,7 @@ pub struct CommandEncoderBeginComputePassArgs {
 pub fn op_webgpu_command_encoder_begin_compute_pass(
   state: &mut OpState,
   args: CommandEncoderBeginComputePassArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let command_encoder_resource = state
     .resource_table
@@ -277,7 +277,7 @@ pub struct CommandEncoderCopyBufferToBufferArgs {
 pub fn op_webgpu_command_encoder_copy_buffer_to_buffer(
   state: &mut OpState,
   args: CommandEncoderCopyBufferToBufferArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
@@ -344,7 +344,7 @@ pub struct CommandEncoderCopyBufferToTextureArgs {
 pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
   state: &mut OpState,
   args: CommandEncoderCopyBufferToTextureArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
@@ -361,15 +361,15 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
     .get::<super::texture::WebGpuTexture>(args.destination.texture)
     .ok_or_else(bad_resource_id)?;
 
-  let source = wgpu_core::command::BufferCopyView {
+  let source = wgpu_core::command::ImageCopyBuffer {
     buffer: source_buffer_resource.0,
-    layout: wgpu_types::TextureDataLayout {
+    layout: wgpu_types::ImageDataLayout {
       offset: args.source.offset.unwrap_or(0),
-      bytes_per_row: args.source.bytes_per_row.unwrap_or(0),
-      rows_per_image: args.source.rows_per_image.unwrap_or(0),
+      bytes_per_row: NonZeroU32::new(args.source.bytes_per_row.unwrap_or(0)),
+      rows_per_image: NonZeroU32::new(args.source.rows_per_image.unwrap_or(0)),
     },
   };
-  let destination = wgpu_core::command::TextureCopyView {
+  let destination = wgpu_core::command::ImageCopyTexture {
     texture: destination_texture_resource.0,
     mip_level: args.destination.mip_level.unwrap_or(0),
     origin: args
@@ -388,7 +388,7 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
     &wgpu_types::Extent3d {
       width: args.copy_size.width.unwrap_or(1),
       height: args.copy_size.height.unwrap_or(1),
-      depth: args.copy_size.depth.unwrap_or(1),
+      depth_or_array_layers: args.copy_size.depth_or_array_layers.unwrap_or(1),
     }
   ))
 }
@@ -405,7 +405,7 @@ pub struct CommandEncoderCopyTextureToBufferArgs {
 pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
   state: &mut OpState,
   args: CommandEncoderCopyTextureToBufferArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
@@ -422,7 +422,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
     .get::<super::buffer::WebGpuBuffer>(args.destination.buffer)
     .ok_or_else(bad_resource_id)?;
 
-  let source = wgpu_core::command::TextureCopyView {
+  let source = wgpu_core::command::ImageCopyTexture {
     texture: source_texture_resource.0,
     mip_level: args.source.mip_level.unwrap_or(0),
     origin: args.source.origin.map_or(Default::default(), |origin| {
@@ -433,12 +433,16 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
       }
     }),
   };
-  let destination = wgpu_core::command::BufferCopyView {
+  let destination = wgpu_core::command::ImageCopyBuffer {
     buffer: destination_buffer_resource.0,
-    layout: wgpu_types::TextureDataLayout {
+    layout: wgpu_types::ImageDataLayout {
       offset: args.destination.offset.unwrap_or(0),
-      bytes_per_row: args.destination.bytes_per_row.unwrap_or(0),
-      rows_per_image: args.destination.rows_per_image.unwrap_or(0),
+      bytes_per_row: NonZeroU32::new(
+        args.destination.bytes_per_row.unwrap_or(0),
+      ),
+      rows_per_image: NonZeroU32::new(
+        args.destination.rows_per_image.unwrap_or(0),
+      ),
     },
   };
   gfx_ok!(command_encoder => instance.command_encoder_copy_texture_to_buffer(
@@ -448,7 +452,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
     &wgpu_types::Extent3d {
       width: args.copy_size.width.unwrap_or(1),
       height: args.copy_size.height.unwrap_or(1),
-      depth: args.copy_size.depth.unwrap_or(1),
+      depth_or_array_layers: args.copy_size.depth_or_array_layers.unwrap_or(1),
     }
   ))
 }
@@ -465,7 +469,7 @@ pub struct CommandEncoderCopyTextureToTextureArgs {
 pub fn op_webgpu_command_encoder_copy_texture_to_texture(
   state: &mut OpState,
   args: CommandEncoderCopyTextureToTextureArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
@@ -482,7 +486,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
     .get::<super::texture::WebGpuTexture>(args.destination.texture)
     .ok_or_else(bad_resource_id)?;
 
-  let source = wgpu_core::command::TextureCopyView {
+  let source = wgpu_core::command::ImageCopyTexture {
     texture: source_texture_resource.0,
     mip_level: args.source.mip_level.unwrap_or(0),
     origin: args.source.origin.map_or(Default::default(), |origin| {
@@ -493,7 +497,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
       }
     }),
   };
-  let destination = wgpu_core::command::TextureCopyView {
+  let destination = wgpu_core::command::ImageCopyTexture {
     texture: destination_texture_resource.0,
     mip_level: args.destination.mip_level.unwrap_or(0),
     origin: args
@@ -512,7 +516,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
     &wgpu_types::Extent3d {
       width: args.copy_size.width.unwrap_or(1),
       height: args.copy_size.height.unwrap_or(1),
-      depth: args.copy_size.depth.unwrap_or(1),
+      depth_or_array_layers: args.copy_size.depth_or_array_layers.unwrap_or(1),
     }
   ))
 }
@@ -527,7 +531,7 @@ pub struct CommandEncoderPushDebugGroupArgs {
 pub fn op_webgpu_command_encoder_push_debug_group(
   state: &mut OpState,
   args: CommandEncoderPushDebugGroupArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
@@ -549,7 +553,7 @@ pub struct CommandEncoderPopDebugGroupArgs {
 pub fn op_webgpu_command_encoder_pop_debug_group(
   state: &mut OpState,
   args: CommandEncoderPopDebugGroupArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
@@ -571,7 +575,7 @@ pub struct CommandEncoderInsertDebugMarkerArgs {
 pub fn op_webgpu_command_encoder_insert_debug_marker(
   state: &mut OpState,
   args: CommandEncoderInsertDebugMarkerArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
@@ -597,7 +601,7 @@ pub struct CommandEncoderWriteTimestampArgs {
 pub fn op_webgpu_command_encoder_write_timestamp(
   state: &mut OpState,
   args: CommandEncoderWriteTimestampArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
@@ -631,7 +635,7 @@ pub struct CommandEncoderResolveQuerySetArgs {
 pub fn op_webgpu_command_encoder_resolve_query_set(
   state: &mut OpState,
   args: CommandEncoderResolveQuerySetArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let command_encoder_resource = state
@@ -668,7 +672,7 @@ pub struct CommandEncoderFinishArgs {
 pub fn op_webgpu_command_encoder_finish(
   state: &mut OpState,
   args: CommandEncoderFinishArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let command_encoder_resource = state
     .resource_table
