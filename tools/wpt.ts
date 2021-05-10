@@ -150,7 +150,7 @@ async function run() {
     rest.length == 0 ? undefined : rest,
     expectation,
   );
-  assertAllExpectationsHaveTests(expectation, tests);
+  assertAllExpectationsHaveTests(expectation, tests, rest);
   console.log(`Going to run ${tests.length} test files.`);
 
   const results = await runWithTestUtil(false, async () => {
@@ -182,6 +182,7 @@ async function run() {
 function assertAllExpectationsHaveTests(
   expectation: Expectation,
   testsToRun: TestToRun[],
+  filter?: string[],
 ): void {
   const tests = new Set(testsToRun.map((t) => t.path));
   const missingTests: string[] = [];
@@ -189,6 +190,12 @@ function assertAllExpectationsHaveTests(
   function walk(parentExpectation: Expectation, parent: string) {
     for (const key in parentExpectation) {
       const path = `${parent}/${key}`;
+      if (
+        filter &&
+        !filter.find((filter) => path.substring(1).startsWith(filter))
+      ) {
+        continue;
+      }
       const expectation = parentExpectation[key];
       if (typeof expectation == "boolean" || Array.isArray(expectation)) {
         if (!tests.has(path)) {
@@ -536,7 +543,12 @@ function discoverTestsToRun(
         ) {
           if (!path) continue;
           const url = new URL(path, "http://web-platform.test:8000");
-          if (!url.pathname.endsWith(".any.html")) continue;
+          if (
+            !url.pathname.endsWith(".any.html") &&
+            !url.pathname.endsWith(".window.html")
+          ) {
+            continue;
+          }
           const finalPath = url.pathname + url.search;
 
           const split = finalPath.split("/");
