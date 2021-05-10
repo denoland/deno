@@ -632,10 +632,12 @@ async fn bundle_command(
       Ok((paths_to_watch, module_graph, program_state))
     }
     .map(move |result| match result {
-      Ok((paths_to_watch, module_graph)) => ResolutionResult::Restart {
-        paths_to_watch,
-        result: Ok(module_graph),
-      },
+      Ok((paths_to_watch, module_graph, program_state)) => {
+        ResolutionResult::Restart {
+          paths_to_watch,
+          result: Ok((program_state, module_graph)),
+        }
+      }
       Err(e) => ResolutionResult::Restart {
         paths_to_watch: vec![PathBuf::from(source_file2)],
         result: Err(e),
@@ -643,14 +645,17 @@ async fn bundle_command(
     })
   };
 
-  let operation = |program_state: Arc<ProgramState>,
-                   module_graph: module_graph::Graph| {
+  let operation = |(program_state, module_graph): (
+    Arc<ProgramState>,
+    module_graph::Graph,
+  )| {
     let flags = flags.clone();
     let out_file = out_file.clone();
     async move {
       info!("{} {}", colors::green("Bundle"), module_graph.info()?.root);
 
-      let output = bundle_module_graph(module_graph, flags, debug)?;
+      let output =
+        bundle_module_graph(module_graph, program_state, flags, debug)?;
 
       debug!(">>>>> bundle END");
 
@@ -791,10 +796,12 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       Ok((paths_to_watch, main_module, program_state))
     }
     .map(move |result| match result {
-      Ok((paths_to_watch, module_info)) => ResolutionResult::Restart {
-        paths_to_watch,
-        result: Ok(module_info),
-      },
+      Ok((paths_to_watch, module_info, program_state)) => {
+        ResolutionResult::Restart {
+          paths_to_watch,
+          result: Ok((program_state, module_info)),
+        }
+      }
       Err(e) => ResolutionResult::Restart {
         paths_to_watch: vec![PathBuf::from(script2)],
         result: Err(e),
@@ -802,26 +809,26 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     })
   };
 
-  let operation = |program_state: Arc<ProgramState>,
-                   main_module: ModuleSpecifier| {
-    let flags = flags.clone();
-    let permissions = Permissions::from_options(&flags.into());
-    async move {
-      let main_module = main_module.clone();
-      let mut worker = create_main_worker(
-        &program_state,
-        main_module.clone(),
-        permissions,
-        false,
-      );
-      debug!("main_module {}", main_module);
-      worker.execute_module(&main_module).await?;
-      worker.execute("window.dispatchEvent(new Event('load'))")?;
-      worker.run_event_loop().await?;
-      worker.execute("window.dispatchEvent(new Event('unload'))")?;
-      Ok(())
-    }
-  };
+  let operation =
+    |(program_state, main_module): (Arc<ProgramState>, ModuleSpecifier)| {
+      let flags = flags.clone();
+      let permissions = Permissions::from_options(&flags.into());
+      async move {
+        let main_module = main_module.clone();
+        let mut worker = create_main_worker(
+          &program_state,
+          main_module.clone(),
+          permissions,
+          false,
+        );
+        debug!("main_module {}", main_module);
+        worker.execute_module(&main_module).await?;
+        worker.execute("window.dispatchEvent(new Event('load'))")?;
+        worker.run_event_loop().await?;
+        worker.execute("window.dispatchEvent(new Event('unload'))")?;
+        Ok(())
+      }
+    };
 
   file_watcher::watch_func(resolver, operation, "Process").await
 }
