@@ -4675,7 +4675,7 @@ mod tests {
           json!({
             "label": "build",
             "kind": 6,
-            "detail": "const Deno.build: {\n    target: string;\n    arch: \"x86_64\";\n    os: \"darwin\" | \"linux\" | \"windows\";\n    vendor: string;\n    env?: string | undefined;\n}",
+            "detail": "const Deno.build: {\n    target: string;\n    arch: \"x86_64\" | \"aarch64\";\n    os: \"darwin\" | \"linux\" | \"windows\";\n    vendor: string;\n    env?: string | undefined;\n}",
             "documentation": {
               "kind": "markdown",
               "value": "Build related information."
