@@ -16,6 +16,8 @@ jobs:
             variant: 2
           - os: ubuntu-18.04
             variant: 3
+          - os: ubuntu-18.04
+            variant: 4
 
       fail-fast: false
 
