@@ -34,6 +34,10 @@ import {
   red,
   yellow,
 } from "https://deno.land/std@0.84.0/fmt/colors.ts";
+import {
+  writeAll,
+  writeAllSync,
+} from "https://deno.land/std@0.95.0/io/util.ts";
 import { saveExpectation } from "./wpt/utils.ts";
 
 const command = Deno.args[0];
@@ -104,7 +108,7 @@ async function setup() {
           throw err;
         }
       });
-      await Deno.writeAll(
+      await writeAll(
         file,
         new TextEncoder().encode(
           "\n\n# Configured for Web Platform Tests (Deno)\n" + entries,
@@ -429,7 +433,7 @@ function analyzeTestResult(
 function reportVariation(result: TestResult, expectation: boolean | string[]) {
   if (result.status !== 0) {
     console.log(`test stderr:`);
-    Deno.writeAllSync(Deno.stdout, new TextEncoder().encode(result.stderr));
+    writeAllSync(Deno.stdout, new TextEncoder().encode(result.stderr));
 
     const expectFail = expectation === false;
     console.log(
@@ -515,7 +519,7 @@ function createReportTestCase(expectation: boolean | string[]) {
         break;
     }
 
-    console.log(simpleMessage);
+    writeAllSync(Deno.stdout, new TextEncoder().encode(simpleMessage+"\n"));
   };
 }
 
