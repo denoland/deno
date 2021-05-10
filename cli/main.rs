@@ -914,6 +914,7 @@ async fn test_command(
   flags: Flags,
   include: Option<Vec<String>>,
   no_run: bool,
+  doc: bool,
   fail_fast: bool,
   quiet: bool,
   allow_none: bool,
@@ -923,6 +924,8 @@ async fn test_command(
   if let Some(ref coverage_dir) = flags.coverage_dir {
     env::set_var("DENO_UNSTABLE_COVERAGE_DIR", coverage_dir);
   }
+
+  // TODO(caspervonb) move this chunk into tools::test_runner.
 
   let program_state = ProgramState::build(flags.clone()).await?;
 
@@ -944,9 +947,20 @@ async fn test_command(
 
     let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
 
+    // TODO(caspervonb) clean this up.
     let resolver = |changed: Option<Vec<PathBuf>>| {
-      let test_modules_result =
-        test_runner::collect_test_module_specifiers(include.clone(), &cwd);
+      let doc_modules_result = test_runner::collect_test_module_specifiers(
+        include.clone(),
+        &cwd,
+        fs_util::is_supported_ext,
+      );
+
+      let test_modules_result = test_runner::collect_test_module_specifiers(
+        include.clone(),
+        &cwd,
+        tools::test_runner::is_supported,
+      );
+
       let paths_to_watch = paths_to_watch.clone();
       let paths_to_watch_clone = paths_to_watch.clone();
 
@@ -954,6 +968,8 @@ async fn test_command(
       let program_state = program_state.clone();
       let files_changed = changed.is_some();
       async move {
+        let doc_modules = if doc { doc_modules_result? } else { Vec::new() };
+
         let test_modules = test_modules_result?;
 
         let mut paths_to_watch = paths_to_watch_clone;
@@ -975,6 +991,12 @@ async fn test_command(
           builder.add(specifier, false).await?;
         }
         let graph = builder.get_graph();
+
+        for specifier in doc_modules {
+          if let Ok(path) = specifier.to_file_path() {
+            paths_to_watch.push(path);
+          }
+        }
 
         for specifier in test_modules {
           fn get_dependencies<'a>(
@@ -1070,6 +1092,7 @@ async fn test_command(
           program_state.clone(),
           permissions.clone(),
           lib.clone(),
+          modules_to_reload.clone(),
           modules_to_reload,
           no_run,
           fail_fast,
@@ -1084,13 +1107,27 @@ async fn test_command(
     )
     .await?;
   } else {
-    let test_modules =
-      test_runner::collect_test_module_specifiers(include, &cwd)?;
+    let doc_modules = if doc {
+      test_runner::collect_test_module_specifiers(
+        include.clone(),
+        &cwd,
+        fs_util::is_supported_ext,
+      )?
+    } else {
+      Vec::new()
+    };
+
+    let test_modules = test_runner::collect_test_module_specifiers(
+      include.clone(),
+      &cwd,
+      tools::test_runner::is_supported,
+    )?;
 
     let failed = test_runner::run_tests(
       program_state.clone(),
       permissions,
       lib,
+      doc_modules,
       test_modules,
       no_run,
       fail_fast,
@@ -1235,6 +1272,7 @@ fn get_subcommand(
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {
       no_run,
+      doc,
       fail_fast,
       quiet,
       include,
@@ -1245,6 +1283,7 @@ fn get_subcommand(
       flags,
       include,
       no_run,
+      doc,
       fail_fast,
       quiet,
       allow_none,

@@ -2580,6 +2580,12 @@ mod integration {
       output: "test/deno_test.out",
     });
 
+    itest!(doc {
+      args: "test --doc --allow-all test/doc.ts",
+      exit_code: 1,
+      output: "test/doc.out",
+    });
+
     itest!(allow_all {
       args: "test --unstable --allow-all test/allow_all.ts",
       exit_code: 0,

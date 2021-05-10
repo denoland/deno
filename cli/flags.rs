@@ -96,6 +96,7 @@ pub enum DenoSubcommand {
     script: String,
   },
   Test {
+    doc: bool,
     no_run: bool,
     fail_fast: bool,
     quiet: bool,
@@ -985,6 +986,12 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(false),
     )
     .arg(
+      Arg::with_name("doc")
+        .long("doc")
+        .help("UNSTABLE: type check code blocks")
+        .takes_value(false),
+    )
+    .arg(
       Arg::with_name("fail-fast")
         .long("fail-fast")
         .alias("failfast")
@@ -1667,6 +1674,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
 
   let no_run = matches.is_present("no-run");
+  let doc = matches.is_present("doc");
   let fail_fast = matches.is_present("fail-fast");
   let allow_none = matches.is_present("allow-none");
   let quiet = matches.is_present("quiet");
@@ -1711,6 +1719,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.coverage_dir = matches.value_of("coverage").map(String::from);
   flags.subcommand = DenoSubcommand::Test {
     no_run,
+    doc,
     fail_fast,
     quiet,
     include,
@@ -3357,6 +3366,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Test {
           no_run: true,
+          doc: false,
           fail_fast: false,
           filter: Some("- foo".to_string()),
           allow_none: true,
