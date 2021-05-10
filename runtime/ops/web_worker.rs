@@ -34,11 +34,7 @@ pub fn init() -> Extension {
 
           let maybe_data = temp.get_message().await;
 
-          if let Some(data) = maybe_data {
-            return Ok(data);
-          }
-
-          Ok(Box::new([]))
+          Ok(maybe_data.unwrap_or_default())
         }),
       ),
       // Notify host that guest worker closes.

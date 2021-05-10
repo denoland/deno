@@ -62,7 +62,7 @@ impl WebWorkerInternalHandle {
   pub fn post_event(&self, event: WorkerEvent) -> Result<(), AnyError> {
     let mut sender = self.sender.clone();
     // If the channel is closed,
-    // the worker must have terminated but the termination message has not yet been recieved.
+    // the worker must have terminated but the termination message has not yet been received.
     //
     // Therefore just treat it as if the worker has terminated and return.
     if sender.is_closed() {
