@@ -178,32 +178,42 @@
     get [_iterableHeaders]() {
       const list = this[_headerList];
 
-      const headers = [];
-      const headerNamesSet = new Set();
+      // The order of steps are not similar to the ones suggested by the
+      // spec but produce the same result.
+      const headers = {};
+      const cookies = [];
       for (const entry of list) {
-        headerNamesSet.add(byteLowerCase(entry[0]));
-      }
-      const names = [...headerNamesSet].sort();
-      for (const name of names) {
-        // The following if statement, and if block of the following statement
-        // are not spec compliant. `set-cookie` is the only header that can not
-        // be concatentated, so must be given to the user as multiple headers.
+        const name = byteLowerCase(entry[0]);
+        const value = entry[1];
+        if (value === null) throw new TypeError("Unreachable");
+        // The following if statement is not spec compliant.
+        // `set-cookie` is the only header that can not be concatentated,
+        // so must be given to the user as multiple headers.
         // The else block of the if statement is spec compliant again.
-        if (name == "set-cookie") {
-          const setCookie = list.filter((entry) =>
-            byteLowerCase(entry[0]) === "set-cookie"
-          );
-          if (setCookie.length === 0) throw new TypeError("Unreachable");
-          for (const entry of setCookie) {
-            headers.push([name, entry[1]]);
-          }
+        if (name === "set-cookie") {
+          cookies.push([name, value]);
         } else {
-          const value = getHeader(list, name);
-          if (value === null) throw new TypeError("Unreachable");
-          headers.push([name, value]);
+          // The following code has the same behaviour as getHeader()
+          // at the end of loop. But it avoids looping through the entire
+          // list to combine multiple values with same header name. It
+          // instead gradually combines them as they are found.
+          let header = headers[name];
+          if (header && header.length > 0) {
+            header += "\x2C\x20" + value;
+          } else {
+            header = value;
+          }
+          headers[name] = header;
         }
       }
-      return headers;
+
+      return [...Object.entries(headers), ...cookies].sort((a, b) => {
+        const akey = a[0];
+        const bkey = b[0];
+        if (akey > bkey) return 1;
+        if (akey < bkey) return -1;
+        return 0;
+      });
     }
 
     /** @param {HeadersInit} [init] */

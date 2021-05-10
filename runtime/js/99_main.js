@@ -28,6 +28,7 @@ delete Object.prototype.__proto__;
   const fileReader = window.__bootstrap.fileReader;
   const webgpu = window.__bootstrap.webgpu;
   const webSocket = window.__bootstrap.webSocket;
+  const webStorage = window.__bootstrap.webStorage;
   const file = window.__bootstrap.file;
   const formData = window.__bootstrap.formData;
   const fetch = window.__bootstrap.fetch;
@@ -188,6 +189,18 @@ delete Object.prototype.__proto__;
       "DOMExceptionOperationError",
       function DOMExceptionOperationError(msg) {
         return new DOMException(msg, "OperationError");
+      },
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionQuotaExceededError",
+      function DOMExceptionQuotaExceededError(msg) {
+        return new DOMException(msg, "QuotaExceededError");
+      },
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionNotSupportedError",
+      function DOMExceptionNotSupportedError(msg) {
+        return new DOMException(msg, "NotSupported");
       },
     );
   }
@@ -351,6 +364,17 @@ delete Object.prototype.__proto__;
     alert: util.writable(prompt.alert),
     confirm: util.writable(prompt.confirm),
     prompt: util.writable(prompt.prompt),
+    localStorage: {
+      configurable: true,
+      enumerable: true,
+      get: webStorage.localStorage,
+    },
+    sessionStorage: {
+      configurable: true,
+      enumerable: true,
+      get: webStorage.sessionStorage,
+    },
+    Storage: util.nonEnumerable(webStorage.Storage),
   };
 
   const workerRuntimeGlobalProperties = {
