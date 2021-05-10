@@ -4,11 +4,8 @@ use crate::ast;
 use crate::colors;
 use crate::create_main_worker;
 use crate::file_fetcher::File;
-use crate::flags::Flags;
 use crate::fs_util::collect_files;
-use crate::fs_util::is_supported_ext;
 use crate::fs_util::normalize_path;
-use crate::fs_util;
 use crate::media_type::MediaType;
 use crate::module_graph;
 use crate::program_state::ProgramState;
@@ -32,9 +29,6 @@ use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Instant;
 use swc_common::comments::CommentKind;
-use swc_common::SourceFile;
-use swc_common::SourceMap;
-use swc_common::Span;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
