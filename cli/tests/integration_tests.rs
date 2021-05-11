@@ -5583,6 +5583,7 @@ console.log("finish");
     assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
   }
 
+  #[ignore]
   #[test]
   #[cfg(windows)]
   // https://github.com/denoland/deno/issues/9667
