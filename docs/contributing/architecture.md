@@ -53,5 +53,3 @@ Metrics is Deno's internal counter for various statistics.
 ### Schematic diagram
 
 ![architectural schematic](https://deno.land/images/schematic_v0.2.png)
-
-
