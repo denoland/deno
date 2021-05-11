@@ -39,25 +39,7 @@
     return core.opAsync("op_host_get_message", id);
   }
 
-  const encoder = new TextEncoder();
   const decoder = new TextDecoder();
-
-  function encodeMessage(data) {
-    const dataJson = JSON.stringify(data);
-    return encoder.encode(dataJson);
-  }
-
-  function decodeMessage(dataIntArray) {
-    // Temporary solution until structured clone arrives in v8.
-    // Current clone is made by parsing json to byte array and from byte array back to json.
-    // In that case "undefined" transforms to empty byte array, but empty byte array does not transform back to undefined.
-    // Thats why this special is statement is needed.
-    if (dataIntArray.length == 0) {
-      return undefined;
-    }
-    const dataJson = decoder.decode(dataIntArray);
-    return JSON.parse(dataJson);
-  }
 
   /**
    * @param {string} permission
@@ -211,18 +193,7 @@
       this.#poll();
     }
 
-    #handleMessage = (msgData) => {
-      let data;
-      try {
-        data = decodeMessage(new Uint8Array(msgData));
-      } catch (e) {
-        const msgErrorEvent = new MessageEvent("messageerror", {
-          cancelable: false,
-          data,
-        });
-        return;
-      }
-
+    #handleMessage = (data) => {
       const msgEvent = new MessageEvent("message", {
         cancelable: false,
         data,
@@ -253,56 +224,44 @@
 
     #poll = async () => {
       while (!this.#terminated) {
-        const event = await hostGetMessage(this.#id);
+        const [type, data] = await hostGetMessage(this.#id);
 
         // If terminate was called then we ignore all messages
         if (this.#terminated) {
           return;
         }
 
-        const type = event.type;
-
-        if (type === "terminalError") {
-          this.#terminated = true;
-          if (!this.#handleError(event.error)) {
-            if (globalThis instanceof Window) {
-              throw new Error("Unhandled error event reached main worker.");
-            } else {
-              core.opSync(
-                "op_host_unhandled_error",
-                event.error.message,
-              );
-            }
+        switch (type) {
+          case 0: { // Message
+            const msg = core.deserialize(data);
+            this.#handleMessage(msg);
+            break;
           }
-          continue;
-        }
-
-        if (type === "msg") {
-          this.#handleMessage(event.data);
-          continue;
-        }
-
-        if (type === "error") {
-          if (!this.#handleError(event.error)) {
-            if (globalThis instanceof Window) {
-              throw new Error("Unhandled error event reached main worker.");
-            } else {
-              core.opSync(
-                "op_host_unhandled_error",
-                event.error.message,
-              );
+          case 1: { // TerminalError
+            this.#terminated = true;
+          } /* falls through */
+          case 2: { // Error
+            if (!this.#handleError(data)) {
+              if (globalThis instanceof Window) {
+                throw new Error("Unhandled error event reached main worker.");
+              } else {
+                core.opSync(
+                  "op_worker_unhandled_error",
+                  data.message,
+                );
+              }
             }
+            break;
           }
-          continue;
+          case 3: { // Close
+            log(`Host got "close" message from worker: ${this.#name}`);
+            this.#terminated = true;
+            return;
+          }
+          default: {
+            throw new Error(`Unknown worker event: "${type}"`);
+          }
         }
-
-        if (type === "close") {
-          log(`Host got "close" message from worker: ${this.#name}`);
-          this.#terminated = true;
-          return;
-        }
-
-        throw new Error(`Unknown worker event: "${type}"`);
       }
     };
 
@@ -317,7 +276,8 @@
         return;
       }
 
-      hostPostMessage(this.#id, encodeMessage(message));
+      const bufferMsg = core.serialize(message);
+      hostPostMessage(this.#id, bufferMsg);
     }
 
     terminate() {

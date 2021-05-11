@@ -67,7 +67,7 @@ delete Object.prototype.__proto__;
     }
 
     isClosing = true;
-    opCloseWorker();
+    core.opSync("op_worker_close");
   }
 
   // TODO(bartlomieju): remove these functions
@@ -76,66 +76,62 @@ delete Object.prototype.__proto__;
   const onerror = () => {};
 
   function postMessage(data) {
-    const dataJson = JSON.stringify(data);
-    const dataIntArray = encoder.encode(dataJson);
-    opPostMessage(dataIntArray);
+    const dataIntArray = core.serialize(data);
+    core.opSync("op_worker_post_message", null, dataIntArray);
   }
 
   let isClosing = false;
-  async function workerMessageRecvCallback(data) {
-    const msgEvent = new MessageEvent("message", {
-      cancelable: false,
-      data,
-    });
+  async function pollForMessages() {
+    while (!isClosing) {
+      const bufferMsg = await core.opAsync("op_worker_get_message");
+      const data = core.deserialize(bufferMsg);
 
-    try {
-      if (globalThis["onmessage"]) {
-        const result = globalThis.onmessage(msgEvent);
-        if (result && "then" in result) {
-          await result;
-        }
-      }
-      globalThis.dispatchEvent(msgEvent);
-    } catch (e) {
-      let handled = false;
-
-      const errorEvent = new ErrorEvent("error", {
-        cancelable: true,
-        message: e.message,
-        lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
-        colno: e.columnNumber ? e.columnNumber + 1 : undefined,
-        filename: e.fileName,
-        error: null,
+      const msgEvent = new MessageEvent("message", {
+        cancelable: false,
+        data,
       });
 
-      if (globalThis["onerror"]) {
-        const ret = globalThis.onerror(
-          e.message,
-          e.fileName,
-          e.lineNumber,
-          e.columnNumber,
-          e,
-        );
-        handled = ret === true;
-      }
+      try {
+        if (globalThis.onmessage) {
+          await globalThis.onmessage(msgEvent);
+        }
+        globalThis.dispatchEvent(msgEvent);
+      } catch (e) {
+        let handled = false;
 
-      globalThis.dispatchEvent(errorEvent);
-      if (errorEvent.defaultPrevented) {
-        handled = true;
-      }
+        const errorEvent = new ErrorEvent("error", {
+          cancelable: true,
+          message: e.message,
+          lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
+          colno: e.columnNumber ? e.columnNumber + 1 : undefined,
+          filename: e.fileName,
+          error: null,
+        });
 
-      if (!handled) {
-        throw e;
+        if (globalThis["onerror"]) {
+          const ret = globalThis.onerror(
+            e.message,
+            e.fileName,
+            e.lineNumber,
+            e.columnNumber,
+            e,
+          );
+          handled = ret === true;
+        }
+
+        globalThis.dispatchEvent(errorEvent);
+        if (errorEvent.defaultPrevented) {
+          handled = true;
+        }
+
+        if (!handled) {
+          core.opSync(
+            "op_worker_unhandled_error",
+            e.message,
+          );
+        }
       }
     }
-  }
-
-  function opPostMessage(data) {
-    core.opSync("op_worker_post_message", null, data);
-  }
-
-  function opCloseWorker() {
-    core.opSync("op_worker_close");
   }
 
   function opMainModule() {
@@ -395,7 +391,6 @@ delete Object.prototype.__proto__;
     // TODO(bartlomieju): should be readonly?
     close: util.nonEnumerable(workerClose),
     postMessage: util.writable(postMessage),
-    workerMessageRecvCallback: util.nonEnumerable(workerMessageRecvCallback),
   };
 
   let hasBootstrapped = false;
@@ -505,6 +500,8 @@ delete Object.prototype.__proto__;
 
     location.setLocationHref(locationHref);
     registerErrors();
+
+    pollForMessages();
 
     const internalSymbol = Symbol("Deno.internal");
 
