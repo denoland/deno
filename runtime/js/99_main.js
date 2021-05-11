@@ -91,11 +91,8 @@ delete Object.prototype.__proto__;
       });
 
       try {
-        if (globalThis["onmessage"]) {
-          const result = globalThis.onmessage(msgEvent);
-          if (result && "then" in result) {
-            await result;
-          }
+        if (globalThis.onmessage) {
+          await globalThis.onmessage(msgEvent);
         }
         globalThis.dispatchEvent(msgEvent);
       } catch (e) {
