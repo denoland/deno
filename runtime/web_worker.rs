@@ -459,7 +459,9 @@ impl WebWorker {
           return Poll::Pending;
         }
 
-        panic!("coding error: either js is polling or the worker is terminted");
+        panic!(
+          "coding error: either js is polling or the worker is terminated"
+        );
       }
       Poll::Pending => Poll::Pending,
     }

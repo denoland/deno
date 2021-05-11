@@ -1,9 +1,9 @@
 use rusty_v8 as v8;
 
-use std::cell::Cell;
 use std::fmt;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::sync::Mutex;
 
 use super::zero_copy_buf::ZeroCopyBuf;
 
@@ -11,10 +11,8 @@ use super::zero_copy_buf::ZeroCopyBuf;
 // allowing us to use a single type for familiarity
 pub enum MagicBuffer {
   FromV8(ZeroCopyBuf),
-  ToV8(Cell<Option<Box<[u8]>>>),
+  ToV8(Mutex<Option<Box<[u8]>>>),
 }
-
-unsafe impl Sync for MagicBuffer {}
 
 impl MagicBuffer {
   pub fn new<'s>(
@@ -22,6 +20,10 @@ impl MagicBuffer {
     view: v8::Local<v8::ArrayBufferView>,
   ) -> Self {
     Self::FromV8(ZeroCopyBuf::new(scope, view))
+  }
+
+  pub fn empty() -> Self {
+    MagicBuffer::ToV8(Mutex::new(Some(vec![0_u8; 0].into_boxed_slice())))
   }
 }
 
@@ -31,12 +33,6 @@ impl Clone for MagicBuffer {
       Self::FromV8(zbuf) => Self::FromV8(zbuf.clone()),
       Self::ToV8(_) => panic!("Don't Clone a MagicBuffer sent to v8"),
     }
-  }
-}
-
-impl Default for MagicBuffer {
-  fn default() -> Self {
-    MagicBuffer::ToV8(Cell::new(Some(vec![0_u8; 0].into_boxed_slice())))
   }
 }
 
@@ -73,7 +69,7 @@ impl DerefMut for MagicBuffer {
 
 impl From<Box<[u8]>> for MagicBuffer {
   fn from(buf: Box<[u8]>) -> Self {
-    MagicBuffer::ToV8(Cell::new(Some(buf)))
+    MagicBuffer::ToV8(Mutex::new(Some(buf)))
   }
 }
 
@@ -100,7 +96,7 @@ impl serde::Serialize for MagicBuffer {
         let value: &[u8] = &*buf;
         value.into()
       }
-      Self::ToV8(x) => x.take().expect("MagicBuffer was empty"),
+      Self::ToV8(x) => x.lock().unwrap().take().expect("MagicBuffer was empty"),
     };
     let hack: [usize; 2] = unsafe { std::mem::transmute(boxed) };
     let f1: u64 = hack[0] as u64;

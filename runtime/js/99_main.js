@@ -66,7 +66,7 @@ delete Object.prototype.__proto__;
     }
 
     isClosing = true;
-    opCloseWorker();
+    core.opSync("op_worker_close");
   }
 
   // TODO(bartlomieju): remove these functions
@@ -76,13 +76,13 @@ delete Object.prototype.__proto__;
 
   function postMessage(data) {
     const dataIntArray = core.serialize(data);
-    opPostMessage(dataIntArray);
+    core.opSync("op_worker_post_message", null, dataIntArray);
   }
 
   let isClosing = false;
   async function pollForMessages() {
     while (!isClosing) {
-      const bufferMsg = await opGetMessage();
+      const bufferMsg = await core.opAsync("op_worker_get_message");
       const data = core.deserialize(bufferMsg);
 
       const msgEvent = new MessageEvent("message", {
@@ -134,18 +134,6 @@ delete Object.prototype.__proto__;
         }
       }
     }
-  }
-
-  function opGetMessage() {
-    return core.opAsync("op_worker_get_message");
-  }
-
-  function opPostMessage(data) {
-    core.opSync("op_worker_post_message", null, data);
-  }
-
-  function opCloseWorker() {
-    core.opSync("op_worker_close");
   }
 
   function opMainModule() {

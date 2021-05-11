@@ -54,7 +54,7 @@ async fn op_worker_get_message(
 
   let maybe_data = temp.get_message().await;
 
-  Ok(maybe_data.unwrap_or_default())
+  Ok(maybe_data.unwrap_or_else(ZeroCopyBuf::empty))
 }
 
 #[allow(clippy::unnecessary_wraps)]
