@@ -88,13 +88,8 @@ impl DiagnosticCollection {
 }
 
 #[derive(Debug)]
-enum DiagnosticRequest {
-  Update,
-}
-
-#[derive(Debug)]
 pub(crate) struct DiagnosticsServer {
-  channel: Option<mpsc::UnboundedSender<DiagnosticRequest>>,
+  channel: Option<mpsc::UnboundedSender<()>>,
   collection: Arc<Mutex<DiagnosticCollection>>,
 }
 
@@ -131,7 +126,7 @@ impl DiagnosticsServer {
     client: lspower::Client,
     ts_server: Arc<tsc::TsServer>,
   ) {
-    let (tx, mut rx) = mpsc::unbounded_channel::<DiagnosticRequest>();
+    let (tx, mut rx) = mpsc::unbounded_channel::<()>();
     self.channel = Some(tx);
     let collection = self.collection.clone();
 
@@ -164,7 +159,7 @@ impl DiagnosticsServer {
               match maybe_request {
                 // channel has closed
                 None => break,
-                Some(DiagnosticRequest::Update) => {
+                Some(_) => {
                   dirty = true;
                   debounce_timer.as_mut().reset(Instant::now() + DELAY);
                 }
@@ -190,7 +185,7 @@ impl DiagnosticsServer {
 
   pub(crate) fn update(&self) -> Result<(), AnyError> {
     if let Some(tx) = &self.channel {
-      tx.send(DiagnosticRequest::Update).map_err(|err| err.into())
+      tx.send(()).map_err(|err| err.into())
     } else {
       Err(anyhow!("diagnostics server not started"))
     }
