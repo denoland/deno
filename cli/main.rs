@@ -309,7 +309,6 @@ pub fn get_types(unstable: bool) -> String {
     crate::tsc::DENO_WEB_LIB,
     crate::tsc::DENO_FILE_LIB,
     crate::tsc::DENO_FETCH_LIB,
-    crate::tsc::DENO_WEBGPU_LIB,
     crate::tsc::DENO_WEBSOCKET_LIB,
     crate::tsc::DENO_WEBSTORAGE_LIB,
     crate::tsc::DENO_CRYPTO_LIB,
@@ -318,7 +317,11 @@ pub fn get_types(unstable: bool) -> String {
   );
 
   if unstable {
-    types.push_str(&format!("\n{}", crate::tsc::UNSTABLE_NS_LIB,));
+    types.push_str(&format!(
+      "\n{}\n{}",
+      crate::tsc::UNSTABLE_NS_LIB,
+      crate::tsc::DENO_WEBGPU_LIB,
+    ));
   }
 
   types
