@@ -266,18 +266,26 @@ where
 fn print_cache_info(
   state: &Arc<ProgramState>,
   json: bool,
+  location: Option<deno_core::url::Url>,
 ) -> Result<(), AnyError> {
   let deno_dir = &state.dir.root;
   let modules_cache = &state.file_fetcher.get_http_cache_location();
   let typescript_cache = &state.dir.gen_cache.location;
   let registry_cache =
     &state.dir.root.join(lsp::language_server::REGISTRIES_PATH);
+  let mut location_data = state.dir.root.join("location_data");
+
+  if let Some(location) = location {
+    location_data = location_data.join(&checksum::gen(&[location.to_string().as_bytes()]));
+  }
+
   if json {
     let output = json!({
-        "denoDir": deno_dir,
-        "modulesCache": modules_cache,
-        "typescriptCache": typescript_cache,
-        "registryCache": registry_cache,
+      "denoDir": deno_dir,
+      "modulesCache": modules_cache,
+      "typescriptCache": typescript_cache,
+      "registryCache": registry_cache,
+      "locationData": location_data,
     });
     write_json_to_stdout(&output)
   } else {
@@ -296,6 +304,11 @@ fn print_cache_info(
       "{} {:?}",
       colors::bold("Language server registries cache:"),
       registry_cache,
+    );
+    println!(
+      "{} {:?}",
+      colors::bold("Location data location:"),
+      location_data,
     );
     Ok(())
   }
@@ -391,6 +404,7 @@ async fn info_command(
   maybe_specifier: Option<String>,
   json: bool,
 ) -> Result<(), AnyError> {
+  let location = flags.location.clone();
   let program_state = ProgramState::build(flags).await?;
   if let Some(specifier) = maybe_specifier {
     let specifier = resolve_url_or_path(&specifier)?;
@@ -417,7 +431,7 @@ async fn info_command(
     }
   } else {
     // If it was just "deno info" print location of caches and exit
-    print_cache_info(&program_state, json)
+    print_cache_info(&program_state, json, location)
   }
 }
 
