@@ -9,13 +9,15 @@ export const {
   wptreport,
   quiet,
   release,
+  build,
   rebuild,
   ["--"]: rest,
   ["auto-config"]: autoConfig,
 } = parse(Deno.args, {
   "--": true,
-  boolean: ["quiet", "release", "no-interactive"],
+  boolean: ["build", "quiet", "release", "no-interactive"],
   string: ["json", "wptreport"],
+  default: { build: true },
 });
 
 /// PAGE ROOT
@@ -138,6 +140,7 @@ export async function checkPy3Available() {
 }
 
 export async function cargoBuild() {
+  if (!build) return;
   const proc = Deno.run({
     cmd: ["cargo", "build", ...(release ? ["--release"] : [])],
     cwd: ROOT_PATH,
