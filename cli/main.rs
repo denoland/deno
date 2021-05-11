@@ -276,7 +276,8 @@ fn print_cache_info(
   let mut location_data = state.dir.root.join("location_data");
 
   if let Some(location) = location {
-    location_data = location_data.join(&checksum::gen(&[location.to_string().as_bytes()]));
+    location_data =
+      location_data.join(&checksum::gen(&[location.to_string().as_bytes()]));
   }
 
   if json {
