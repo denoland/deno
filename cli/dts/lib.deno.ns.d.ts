@@ -2263,9 +2263,7 @@ declare namespace Deno {
      *
      * ```ts
      * const status = await Deno.permissions.query({ name: "read", path: "/etc" });
-     * if (status.state === "granted") {
-     *   data = await Deno.readFile("/etc/passwd");
-     * }
+     * console.log(status.state);
      * ```
      */
     query(desc: PermissionDescriptor): Promise<PermissionStatus>;
@@ -2274,6 +2272,7 @@ declare namespace Deno {
      *
      * ```ts
      * import { assert } from "https://deno.land/std/testing/asserts.ts";
+     *
      * const status = await Deno.permissions.revoke({ name: "run" });
      * assert(status.state !== "granted")
      * ```
