@@ -1970,7 +1970,13 @@ declare namespace Deno {
    *
    * ```ts
    * const watcher = Deno.watchFs("/");
-   * setTimeout(() => { watcher.return(); }, 5000);
+   *
+   * setTimeout(() => {
+   *   if (watcher.return) {
+   *     watcher.return();
+   *   }
+   * }, 5000);
+   *
    * for await (const event of watcher) {
    *    console.log(">>>> event", event);
    * }
