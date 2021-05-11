@@ -651,6 +651,7 @@ declare namespace Deno {
    * ```ts
    * const file = Deno.openSync('hello.txt', {read: true, write: true, truncate: true, create: true});
    * Deno.writeSync(file.rid, new TextEncoder().encode("Hello world"));
+   *
    * // advance cursor 6 bytes
    * const cursorPosition = Deno.seekSync(file.rid, 6, Deno.SeekMode.Start);
    * console.log(cursorPosition);  // 6
@@ -663,6 +664,9 @@ declare namespace Deno {
    *
    * ```ts
    * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
+   * const file = Deno.openSync('hello.txt', {read: true, write: true, truncate: true, create: true});
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello world"));
+   *
    * // Seek 6 bytes from the start of the file
    * console.log(Deno.seekSync(file.rid, 6, Deno.SeekMode.Start)); // "6"
    * // Seek 2 more bytes from the current position
@@ -681,8 +685,10 @@ declare namespace Deno {
    * The call resolves to the new position within the resource (bytes from the start).
    *
    * ```ts
+   * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
    * const file = await Deno.open('hello.txt', {read: true, write: true, truncate: true, create: true});
    * await Deno.write(file.rid, new TextEncoder().encode("Hello world"));
+   *
    * // advance cursor 6 bytes
    * const cursorPosition = await Deno.seek(file.rid, 6, Deno.SeekMode.Start);
    * console.log(cursorPosition);  // 6
@@ -695,6 +701,9 @@ declare namespace Deno {
    *
    * ```ts
    * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
+   * const file = await Deno.open('hello.txt', {read: true, write: true, truncate: true, create: true});
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello world"));
+   *
    * // Seek 6 bytes from the start of the file
    * console.log(await Deno.seek(file.rid, 6, Deno.SeekMode.Start)); // "6"
    * // Seek 2 more bytes from the current position
