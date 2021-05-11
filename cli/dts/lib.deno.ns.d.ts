@@ -1995,7 +1995,7 @@ declare namespace Deno {
      * `stderr` use:
      *
      * ```ts
-     * const p = Deno.run({ cmd, stderr: 'piped', stdout: 'piped' });
+     * const p = Deno.run({ cmd: [ "echo", "hello world" ], stderr: 'piped', stdout: 'piped' });
      * const [status, stdout, stderr] = await Promise.all([
      *   p.status(),
      *   p.output(),
