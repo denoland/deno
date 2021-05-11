@@ -26,7 +26,6 @@ use crate::OpPayload;
 use crate::OpResult;
 use crate::OpState;
 use crate::PromiseId;
-use crate::ZeroCopyBuf;
 use futures::channel::mpsc;
 use futures::future::poll_fn;
 use futures::stream::FuturesUnordered;
@@ -520,7 +519,7 @@ impl JsRuntime {
   /// * [op_async()](fn.op_async.html)
   pub fn register_op<F>(&mut self, name: &str, op_fn: F) -> OpId
   where
-    F: Fn(Rc<RefCell<OpState>>, OpPayload, Option<ZeroCopyBuf>) -> Op + 'static,
+    F: Fn(Rc<RefCell<OpState>>, OpPayload) -> Op + 'static,
   {
     Self::state(self.v8_isolate())
       .borrow_mut()
@@ -1524,6 +1523,7 @@ pub mod tests {
   use crate::error::custom_error;
   use crate::modules::ModuleSourceFuture;
   use crate::op_sync;
+  use crate::ZeroCopyBuf;
   use futures::future::lazy;
   use futures::FutureExt;
   use std::io;
@@ -1549,18 +1549,15 @@ pub mod tests {
     dispatch_count: Arc<AtomicUsize>,
   }
 
-  fn dispatch(
-    rc_op_state: Rc<RefCell<OpState>>,
-    payload: OpPayload,
-    buf: Option<ZeroCopyBuf>,
-  ) -> Op {
+  fn dispatch(rc_op_state: Rc<RefCell<OpState>>, payload: OpPayload) -> Op {
     let rc_op_state2 = rc_op_state.clone();
     let op_state_ = rc_op_state2.borrow();
     let test_state = op_state_.borrow::<TestState>();
     test_state.dispatch_count.fetch_add(1, Ordering::Relaxed);
+    let (control, buf): (u8, Option<ZeroCopyBuf>) =
+      payload.deserialize().unwrap();
     match test_state.mode {
       Mode::Async => {
-        let control: u8 = payload.deserialize().unwrap();
         assert_eq!(control, 42);
         let resp = (0, serialize_op_result(Ok(43), rc_op_state));
         Op::Async(Box::pin(futures::future::ready(resp)))
@@ -1970,9 +1967,9 @@ pub mod tests {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     let dispatch_count_ = dispatch_count.clone();
 
-    let dispatcher = move |state, payload: OpPayload, _buf| -> Op {
+    let dispatcher = move |state, payload: OpPayload| -> Op {
       dispatch_count_.fetch_add(1, Ordering::Relaxed);
-      let control: u8 = payload.deserialize().unwrap();
+      let (control, _): (u8, ()) = payload.deserialize().unwrap();
       assert_eq!(control, 42);
       let resp = (0, serialize_op_result(Ok(43), state));
       Op::Async(Box::pin(futures::future::ready(resp)))

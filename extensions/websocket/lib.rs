@@ -87,7 +87,7 @@ impl WsStreamResource {}
 pub fn op_ws_check_permission<WP>(
   state: &mut OpState,
   url: String,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<(), AnyError>
 where
   WP: WebSocketPermissions + 'static,
@@ -117,7 +117,7 @@ pub struct CreateResponse {
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
   args: CreateArgs,
-  _bufs: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<CreateResponse, AnyError>
 where
   WP: WebSocketPermissions + 'static,
@@ -250,7 +250,7 @@ pub struct CloseArgs {
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
   args: CloseArgs,
-  _bufs: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<(), AnyError> {
   let rid = args.rid;
   let msg = Message::Close(args.code.map(|c| CloseFrame {
@@ -286,7 +286,7 @@ pub enum NextEventResponse {
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _bufs: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<NextEventResponse, AnyError> {
   let resource = state
     .borrow_mut()

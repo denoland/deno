@@ -31,8 +31,8 @@ winres = "0.1.11"
 
 [dependencies]
 deno_core = { path = "../core", version = "0.86.0" }
-deno_doc = "0.3.0"
-deno_lint = "0.4.0"
+deno_doc = "0.4.0"
+deno_lint = "0.5.0"
 deno_runtime = { path = "../runtime", version = "0.13.0" }
 
 atty = "0.2.14"
@@ -43,7 +43,7 @@ data-url = "0.1.0"
 dissimilar = "1.0.2"
 dprint-plugin-json = "0.10.2"
 dprint-plugin-markdown = "0.7.1"
-dprint-plugin-typescript = "0.44.2"
+dprint-plugin-typescript = "0.45.0"
 encoding_rs = "0.8.28"
 env_logger = "0.8.3"
 fancy-regex = "0.5.0"
@@ -67,9 +67,9 @@ semver-parser = "0.10.2"
 serde = { version = "1.0.125", features = ["derive"] }
 shell-escape = "0.1.5"
 sourcemap = "6.0.1"
-swc_bundler = "0.32.5"
-swc_common = { version = "0.10.17", features = ["sourcemap"] }
-swc_ecmascript = { version = "0.31.3", features = ["codegen", "dep_graph", "parser", "proposal", "react", "transforms", "typescript", "visit"] }
+swc_bundler = "0.34.0"
+swc_common = { version = "0.10.18", features = ["sourcemap"] }
+swc_ecmascript = { version = "0.33.0", features = ["codegen", "dep_graph", "parser", "proposal", "react", "transforms", "typescript", "visit"] }
 tempfile = "3.2.0"
 termcolor = "1.1.2"
 text-size = "1.1.0"

@@ -10,7 +10,6 @@ use deno_core::OpFn;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -229,7 +228,7 @@ pub struct GpuAdapterDevice {
 pub async fn op_webgpu_request_adapter(
   state: Rc<RefCell<OpState>>,
   args: RequestAdapterArgs,
-  _bufs: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<GpuAdapterDeviceOrErr, AnyError> {
   let mut state = state.borrow_mut();
   check_unstable(&state, "navigator.gpu.requestAdapter");
@@ -291,10 +290,10 @@ pub async fn op_webgpu_request_adapter(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GpuLimits {
-  _max_texture_dimension1d: Option<u32>,
-  _max_texture_dimension2d: Option<u32>,
-  _max_texture_dimension3d: Option<u32>,
-  _max_texture_array_layers: Option<u32>,
+  max_texture_dimension_1d: Option<u32>,
+  max_texture_dimension_2d: Option<u32>,
+  max_texture_dimension_3d: Option<u32>,
+  max_texture_array_layers: Option<u32>,
   max_bind_groups: Option<u32>,
   max_dynamic_uniform_buffers_per_pipeline_layout: Option<u32>,
   max_dynamic_storage_buffers_per_pipeline_layout: Option<u32>,
@@ -304,10 +303,55 @@ struct GpuLimits {
   max_storage_textures_per_shader_stage: Option<u32>,
   max_uniform_buffers_per_shader_stage: Option<u32>,
   max_uniform_buffer_binding_size: Option<u32>,
-  _max_storage_buffer_binding_size: Option<u32>,
-  _max_vertex_buffers: Option<u32>,
-  _max_vertex_attributes: Option<u32>,
-  _max_vertex_buffer_array_stride: Option<u32>,
+  max_storage_buffer_binding_size: Option<u32>,
+  max_vertex_buffers: Option<u32>,
+  max_vertex_attributes: Option<u32>,
+  max_vertex_buffer_array_stride: Option<u32>,
+}
+
+impl From<GpuLimits> for wgpu_types::Limits {
+  fn from(limits: GpuLimits) -> wgpu_types::Limits {
+    wgpu_types::Limits {
+      max_texture_dimension_1d: limits.max_texture_dimension_1d.unwrap_or(8192),
+      max_texture_dimension_2d: limits.max_texture_dimension_2d.unwrap_or(8192),
+      max_texture_dimension_3d: limits.max_texture_dimension_3d.unwrap_or(2048),
+      max_texture_array_layers: limits.max_texture_array_layers.unwrap_or(2048),
+      max_bind_groups: limits.max_bind_groups.unwrap_or(4),
+      max_dynamic_uniform_buffers_per_pipeline_layout: limits
+        .max_dynamic_uniform_buffers_per_pipeline_layout
+        .unwrap_or(8),
+      max_dynamic_storage_buffers_per_pipeline_layout: limits
+        .max_dynamic_storage_buffers_per_pipeline_layout
+        .unwrap_or(4),
+      max_sampled_textures_per_shader_stage: limits
+        .max_sampled_textures_per_shader_stage
+        .unwrap_or(16),
+      max_samplers_per_shader_stage: limits
+        .max_samplers_per_shader_stage
+        .unwrap_or(16),
+      max_storage_buffers_per_shader_stage: limits
+        .max_storage_buffers_per_shader_stage
+        .unwrap_or(4),
+      max_storage_textures_per_shader_stage: limits
+        .max_storage_textures_per_shader_stage
+        .unwrap_or(4),
+      max_uniform_buffers_per_shader_stage: limits
+        .max_uniform_buffers_per_shader_stage
+        .unwrap_or(12),
+      max_uniform_buffer_binding_size: limits
+        .max_uniform_buffer_binding_size
+        .unwrap_or(16384),
+      max_storage_buffer_binding_size: limits
+        .max_storage_buffer_binding_size
+        .unwrap_or(134217728),
+      max_vertex_buffers: limits.max_vertex_buffers.unwrap_or(8),
+      max_vertex_attributes: limits.max_vertex_attributes.unwrap_or(16),
+      max_vertex_buffer_array_stride: limits
+        .max_vertex_buffer_array_stride
+        .unwrap_or(2048),
+      max_push_constant_size: 0,
+    }
+  }
 }
 
 #[derive(Deserialize)]
@@ -322,7 +366,7 @@ pub struct RequestDeviceArgs {
 pub async fn op_webgpu_request_device(
   state: Rc<RefCell<OpState>>,
   args: RequestDeviceArgs,
-  _bufs: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<GpuAdapterDevice, AnyError> {
   let mut state = state.borrow_mut();
   let adapter_resource = state
@@ -416,34 +460,7 @@ pub async fn op_webgpu_request_device(
     features,
     limits: args
       .non_guaranteed_limits
-      .map_or(Default::default(), |limits| wgpu_types::Limits {
-        max_bind_groups: limits.max_bind_groups.unwrap_or(4),
-        max_dynamic_uniform_buffers_per_pipeline_layout: limits
-          .max_dynamic_uniform_buffers_per_pipeline_layout
-          .unwrap_or(8),
-        max_dynamic_storage_buffers_per_pipeline_layout: limits
-          .max_dynamic_storage_buffers_per_pipeline_layout
-          .unwrap_or(4),
-        max_sampled_textures_per_shader_stage: limits
-          .max_sampled_textures_per_shader_stage
-          .unwrap_or(16),
-        max_samplers_per_shader_stage: limits
-          .max_samplers_per_shader_stage
-          .unwrap_or(16),
-        max_storage_buffers_per_shader_stage: limits
-          .max_storage_buffers_per_shader_stage
-          .unwrap_or(4),
-        max_storage_textures_per_shader_stage: limits
-          .max_storage_textures_per_shader_stage
-          .unwrap_or(4),
-        max_uniform_buffers_per_shader_stage: limits
-          .max_uniform_buffers_per_shader_stage
-          .unwrap_or(12),
-        max_uniform_buffer_binding_size: limits
-          .max_uniform_buffer_binding_size
-          .unwrap_or(16384),
-        max_push_constant_size: 0,
-      }),
+      .map_or(wgpu_types::Limits::default(), Into::into),
   };
 
   let (device, maybe_err) = gfx_select!(adapter => instance.adapter_request_device(
@@ -485,7 +502,7 @@ pub struct CreateQuerySetArgs {
 pub fn op_webgpu_create_query_set(
   state: &mut OpState,
   args: CreateQuerySetArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let device_resource = state
     .resource_table
@@ -705,8 +722,8 @@ fn declare_webgpu_ops() -> Vec<(&'static str, Box<OpFn>)> {
       op_sync(render_pass::op_webgpu_render_pass_set_scissor_rect),
     ),
     (
-      "op_webgpu_render_pass_set_blend_color",
-      op_sync(render_pass::op_webgpu_render_pass_set_blend_color),
+      "op_webgpu_render_pass_set_blend_constant",
+      op_sync(render_pass::op_webgpu_render_pass_set_blend_constant),
     ),
     (
       "op_webgpu_render_pass_set_stencil_reference",

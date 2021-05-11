@@ -11,11 +11,11 @@ use super::semantic_tokens::TsTokenEncodingConsts;
 use super::text;
 use super::text::LineIndex;
 
+use crate::config_file::TsConfig;
 use crate::media_type::MediaType;
 use crate::tokio_util::create_basic_runtime;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
-use crate::tsc_config::TsConfig;
 
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
@@ -1826,7 +1826,7 @@ where
   V: de::DeserializeOwned,
   R: Serialize + 'static,
 {
-  op_sync(move |s, args, _bufs| {
+  op_sync(move |s, args, _: ()| {
     let state = s.borrow_mut::<State>();
     op_fn(state, args)
   })

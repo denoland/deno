@@ -100,7 +100,7 @@ pub(crate) struct AcceptArgs {
 async fn accept_tcp(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<OpConn, AnyError> {
   let rid = args.rid;
 
@@ -145,12 +145,12 @@ async fn accept_tcp(
 async fn op_accept(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
-  _buf: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<OpConn, AnyError> {
   match args.transport.as_str() {
-    "tcp" => accept_tcp(state, args, _buf).await,
+    "tcp" => accept_tcp(state, args, ()).await,
     #[cfg(unix)]
-    "unix" => net_unix::accept_unix(state, args, _buf).await,
+    "unix" => net_unix::accept_unix(state, args, ()).await,
     other => Err(bad_transport(other)),
   }
 }
@@ -288,7 +288,7 @@ struct ConnectArgs {
 async fn op_connect(
   state: Rc<RefCell<OpState>>,
   args: ConnectArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<OpConn, AnyError> {
   match args {
     ConnectArgs {
@@ -454,7 +454,7 @@ fn listen_udp(
 fn op_listen(
   state: &mut OpState,
   args: ListenArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<OpConn, AnyError> {
   match args {
     ListenArgs {
@@ -595,7 +595,7 @@ pub struct NameServer {
 async fn op_dns_resolve(
   state: Rc<RefCell<OpState>>,
   args: ResolveAddrArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<Vec<DnsReturnRecord>, AnyError> {
   let ResolveAddrArgs {
     query,
