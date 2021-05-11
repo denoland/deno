@@ -1013,7 +1013,8 @@ mod integration {
       temp_directory.close().unwrap();
     }
 
-    #[cfg(unix)]
+    // TODO(bartlomieju): flaky (https://github.com/denoland/deno/issues/10552)
+    #[ignore]
     #[test]
     fn test_watch() {
       macro_rules! assert_contains {
