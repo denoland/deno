@@ -328,8 +328,10 @@ impl FileFetcher {
       map_content_type(specifier, maybe_content_type);
     let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
     let maybe_types = match media_type {
-      MediaType::JavaScript | MediaType::Jsx => headers.get("x-typescript-types").cloned(),
-      _ => None
+      MediaType::JavaScript | MediaType::Jsx => {
+        headers.get("x-typescript-types").cloned()
+      }
+      _ => None,
     };
 
     Ok(File {
@@ -1609,12 +1611,10 @@ mod tests {
   #[tokio::test]
   async fn test_fetch_remote_jsx_with_types() {
     let specifier =
-      resolve_url_or_path("http://127.0.0.1:4545/xTypeScriptTypes.jsx").unwrap();
+      resolve_url_or_path("http://127.0.0.1:4545/xTypeScriptTypes.jsx")
+        .unwrap();
     let (file, _) = test_fetch_remote(&specifier).await;
-    assert_eq!(
-      file.media_type,
-      MediaType::Jsx,
-    );
+    assert_eq!(file.media_type, MediaType::Jsx,);
     assert_eq!(
       file.maybe_types,
       Some("./xTypeScriptTypes.d.ts".to_string())
@@ -1626,10 +1626,7 @@ mod tests {
     let specifier =
       resolve_url_or_path("http://127.0.0.1:4545/xTypeScriptTypes.ts").unwrap();
     let (file, _) = test_fetch_remote(&specifier).await;
-    assert_eq!(
-      file.maybe_types,
-      None
-    );
+    assert_eq!(file.maybe_types, None);
   }
 
   #[tokio::test]
