@@ -1221,6 +1221,8 @@ declare namespace Deno {
       * Examples:
       *
       * ```ts
+      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+      *
       * Deno.test({
       *   name: "inherit",
       *   permissions: {
@@ -1234,6 +1236,8 @@ declare namespace Deno {
       * ```
       *
       * ```ts
+      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+      *
       * Deno.test({
       *   name: "true",
       *   permissions: {
@@ -1247,6 +1251,8 @@ declare namespace Deno {
       * ```
       *
       * ```ts
+      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+      *
       * Deno.test({
       *   name: "false",
       *   permissions: {
@@ -1260,6 +1266,8 @@ declare namespace Deno {
       * ```
       *
       * ```
+      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+      *
       * Deno.test({
       *   name: "localhost:8080",
       *   permissions: {
