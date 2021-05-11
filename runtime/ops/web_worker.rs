@@ -66,6 +66,11 @@ fn op_worker_close(state: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
   Ok(())
 }
 
+/// A worker that encounters an uncaught error will pass this error
+/// to its parent worker using this op. The parent worker will use
+/// this same op to pass the error to its own parent (in case
+/// `e.preventDefault()` was not called in `worker.onerror`). This
+/// is done until the error reaches the root/ main worker.
 #[allow(clippy::unnecessary_wraps)]
 fn op_worker_unhandled_error(
   state: &mut OpState,
