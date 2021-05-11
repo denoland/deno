@@ -1135,5 +1135,18 @@
       "set-blob.any.html": true,
       "set.any.html": true
     }
+  },
+  "websockets": {
+    "stream": {
+      "tentative": {
+        "abort.any.html": false,
+        "backpressure-receive.any.html": true,
+        "backpressure-send.any.html": true,
+        "close.any.html": [
+          "close during handshake should work"
+        ],
+        "constructor.any.html": true
+      }
+    }
   }
 }

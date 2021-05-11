@@ -154,90 +154,99 @@
         );
       }
 
-      core.opAsync("op_ws_create", {
-        url: this[_url],
-        protocols: options.protocols?.join(", ") ?? "",
-      }).then((create) => {
-        options.abort?.addEventListener("abort", () => this.close());
-
-        this[_rid] = create.rid;
-        const readable = new ReadableStream({
-          start: async (controller) => {
-            await this.closed;
-            controller.close();
-            writable.close();
-          },
-          pull: async (controller) => {
-            const { kind, value } = await core.opAsync(
-              "op_ws_next_event",
-              this[_rid],
-            );
-
-            switch (kind) {
-              case "string": {
-                controller.enqueue(value);
-                break;
-              }
-              case "binary": {
-                controller.enqueue(value);
-                break;
-              }
-              case "ping": {
-                await core.opAsync("op_ws_send", {
-                  rid: this[_rid],
-                  kind: "pong",
-                });
-                break;
-              }
-              case "close": {
-                this[_closed].resolve(value);
-                tryClose(this[_rid]);
-                break;
-              }
-              case "error": {
-                const err = new Error(value);
-                this[_closed].reject(err);
-                controller.error(err);
-                tryClose(this[_rid]);
-                break;
-              }
-            }
-          },
-          cancel: (reason) => this.close(reason),
-        });
-        const writable = new WritableStream({
-          write: async (chunk) => {
-            if (typeof chunk === "string") {
-              await core.opAsync("op_ws_send", {
-                rid: this[_rid],
-                kind: "text",
-                text: chunk,
-              });
-            } else if (chunk instanceof Uint8Array) {
-              await core.opAsync("op_ws_send", {
-                rid: this[_rid],
-                kind: "binary",
-              }, chunk);
-            } else {
-              throw new TypeError(
-                "A chunk may only be either a string or an Uint8Array",
-              );
-            }
-          },
-          cancel: (reason) => this.close(reason),
-          abort: (reason) => this.close(reason),
-        });
-
-        this[_connection].resolve({
-          readable,
-          writable,
-          extensions: create.extensions ?? "",
-          protocol: create.protocol ?? "",
-        });
-      }).catch((err) => {
+      if (options.signal?.aborted) {
+        const err = new DOMException(
+          "This operation was aborted",
+          "AbortError",
+        );
         this[_connection].reject(err);
         this[_closed].reject(err);
-      });
+      } else {
+        core.opAsync("op_ws_create", {
+          url: this[_url],
+          protocols: options.protocols?.join(", ") ?? "",
+        }).then((create) => {
+          options.signal?.addEventListener("abort", () => this.close());
+
+          this[_rid] = create.rid;
+          const readable = new ReadableStream({
+            start: async (controller) => {
+              await this.closed;
+              controller.close();
+              writable.close();
+            },
+            pull: async (controller) => {
+              const { kind, value } = await core.opAsync(
+                "op_ws_next_event",
+                this[_rid],
+              );
+
+              switch (kind) {
+                case "string": {
+                  controller.enqueue(value);
+                  break;
+                }
+                case "binary": {
+                  controller.enqueue(value);
+                  break;
+                }
+                case "ping": {
+                  await core.opAsync("op_ws_send", {
+                    rid: this[_rid],
+                    kind: "pong",
+                  });
+                  break;
+                }
+                case "close": {
+                  this[_closed].resolve(value);
+                  tryClose(this[_rid]);
+                  break;
+                }
+                case "error": {
+                  const err = new Error(value);
+                  this[_closed].reject(err);
+                  controller.error(err);
+                  tryClose(this[_rid]);
+                  break;
+                }
+              }
+            },
+            cancel: (reason) => this.close(reason),
+          });
+          const writable = new WritableStream({
+            write: async (chunk) => {
+              if (typeof chunk === "string") {
+                await core.opAsync("op_ws_send", {
+                  rid: this[_rid],
+                  kind: "text",
+                  text: chunk,
+                });
+              } else if (chunk instanceof Uint8Array) {
+                await core.opAsync("op_ws_send", {
+                  rid: this[_rid],
+                  kind: "binary",
+                }, chunk);
+              } else {
+                throw new TypeError(
+                  "A chunk may only be either a string or an Uint8Array",
+                );
+              }
+            },
+            cancel: (reason) => this.close(reason),
+            abort: (reason) => this.close(reason),
+          });
+
+          this[_connection].resolve({
+            readable,
+            writable,
+            extensions: create.extensions ?? "",
+            protocol: create.protocol ?? "",
+          });
+        }).catch((err) => {
+          this[_connection].reject(err);
+          this[_closed].reject(err);
+        });
+      }
     }
 
     [_connection] = new Deferred();
@@ -263,7 +272,7 @@
       ) {
         throw new DOMException(
           "The close code must be either 1000 or in the range of 3000 to 4999.",
-          "NotSupportedError",
+          "InvalidAccessError",
         );
       }
 
@@ -290,7 +299,7 @@
         }).then(() => {
           tryClose(this[_rid]);
           this[_closed].resolve({
-            code,
+            code: code ?? 1005,
             reason: closeInfo.reason,
           });
         }).catch((err) => {
