@@ -90,8 +90,12 @@
   "embedding_deno": {
     "name": "Embedding Deno"
   },
-  "help": {
-    "name": "Help"
+  "community": {
+    "name": "Community",
+    "children": {
+      "support": "support",
+      "conference": "conference"
+    }
   },
   "contributing": {
     "name": "Contributing",
