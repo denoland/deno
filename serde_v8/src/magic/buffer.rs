@@ -93,7 +93,7 @@ impl serde::Serialize for MagicBuffer {
     let mut s = serializer.serialize_struct(BUF_NAME, 1)?;
     let boxed: Box<[u8]> = match self {
       Self::FromV8(buf) => {
-        let value: &[u8] = &*buf;
+        let value: &[u8] = &buf;
         value.into()
       }
       Self::ToV8(x) => x.lock().unwrap().take().expect("MagicBuffer was empty"),
