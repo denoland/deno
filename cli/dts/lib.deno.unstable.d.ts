@@ -1230,7 +1230,7 @@ declare namespace Deno {
       *     const status = await Deno.permissions.query({ name: "net" })
       *     assertEquals(status.state, "granted");
       *   },
-      * };
+      * });
       * ```
       *
       * ```ts
@@ -1243,7 +1243,7 @@ declare namespace Deno {
       *     const status = await Deno.permissions.query({ name: "net" });
       *     assertEquals(status.state, "granted");
       *   },
-      * };
+      * });
       * ```
       *
       * ```ts
@@ -1256,7 +1256,7 @@ declare namespace Deno {
       *     const status = await Deno.permissions.query({ name: "net" });
       *     assertEquals(status.state, "denied");
       *   },
-      * };
+      * });
       * ```
       *
       * ```
@@ -1269,7 +1269,7 @@ declare namespace Deno {
       *     const status = await Deno.permissions.query({ name: "net", host: "localhost:8080" });
       *     assertEquals(status.state, "granted");
       *   },
-      * };
+      * });
       * ```
       */
       net?: "inherit" | boolean | string[];
