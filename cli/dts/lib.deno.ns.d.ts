@@ -2122,11 +2122,12 @@ declare namespace Deno {
    * `console.log()`.
    *
    * ```ts
-   * const obj = {};
-   * obj.propA = 10;
-   * obj.propB = "hello";
-   * const objAsString = Deno.inspect(obj); // { propA: 10, propB: "hello" }
-   * console.log(obj);  // prints same value as objAsString, e.g. { propA: 10, propB: "hello" }
+   * const obj = {
+   *   a: 10,
+   *   b: "hello",
+   * };
+   * const objAsString = Deno.inspect(obj); // { a: 10, b: "hello" }
+   * console.log(obj);  // prints same value as objAsString, e.g. { a: 10, b: "hello" }
    * ```
    *
    * You can also register custom inspect functions, via the `customInspect` Deno
@@ -2140,15 +2141,16 @@ declare namespace Deno {
    *     return "x=" + this.x + ", y=" + this.y;
    *   }
    * }
-   * ```
    *
-   *      const inStringFormat = Deno.inspect(new A()); // "x=10, y=hello"
-   *      console.log(inStringFormat);  // prints "x=10, y=hello"
+   * const inStringFormat = Deno.inspect(new A()); // "x=10, y=hello"
+   * console.log(inStringFormat);  // prints "x=10, y=hello"
+   * ```
    *
    * Finally, you can also specify the depth to which it will format.
    *
-   *      Deno.inspect({a: {b: {c: {d: 'hello'}}}}, {depth: 2}); // { a: { b: [Object] } }
-   *
+   * ```ts
+   * Deno.inspect({a: {b: {c: {d: 'hello'}}}}, {depth: 2}); // { a: { b: [Object] } }
+   * ```
    */
   export function inspect(value: unknown, options?: InspectOptions): string;
 
