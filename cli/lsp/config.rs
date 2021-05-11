@@ -114,9 +114,11 @@ pub struct WorkspaceSettings {
   #[serde(default)]
   pub code_lens: CodeLensSettings,
 
-  /// A flag that indicates if linting is enabled for the workspace.
+  /// A flag that indicates if internal debug logging should be made available.
+  #[serde(default)]
   pub internal_debug: bool,
 
+  /// A flag that indicates if linting is enabled for the workspace.
   #[serde(default)]
   pub lint: bool,
 
