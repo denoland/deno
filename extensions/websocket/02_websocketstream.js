@@ -186,6 +186,29 @@
             options.signal?.addEventListener("abort", () => this.close());
 
             this[_rid] = create.rid;
+
+            const writable = new WritableStream({
+              write: async (chunk) => {
+                if (typeof chunk === "string") {
+                  await core.opAsync("op_ws_send", {
+                    rid: this[_rid],
+                    kind: "text",
+                    text: chunk,
+                  });
+                } else if (chunk instanceof Uint8Array) {
+                  await core.opAsync("op_ws_send", {
+                    rid: this[_rid],
+                    kind: "binary",
+                  }, chunk);
+                } else {
+                  throw new TypeError(
+                    "A chunk may only be either a string or an Uint8Array",
+                  );
+                }
+              },
+              cancel: (reason) => this.close(reason),
+              abort: (reason) => this.close(reason),
+            });
             const readable = new ReadableStream({
               start: async (controller) => {
                 await this.closed;
@@ -229,28 +252,6 @@
                 }
               },
               cancel: (reason) => this.close(reason),
-            });
-            const writable = new WritableStream({
-              write: async (chunk) => {
-                if (typeof chunk === "string") {
-                  await core.opAsync("op_ws_send", {
-                    rid: this[_rid],
-                    kind: "text",
-                    text: chunk,
-                  });
-                } else if (chunk instanceof Uint8Array) {
-                  await core.opAsync("op_ws_send", {
-                    rid: this[_rid],
-                    kind: "binary",
-                  }, chunk);
-                } else {
-                  throw new TypeError(
-                    "A chunk may only be either a string or an Uint8Array",
-                  );
-                }
-              },
-              cancel: (reason) => this.close(reason),
-              abort: (reason) => this.close(reason),
             });
 
             this[_connection].resolve({
