@@ -21,6 +21,7 @@ mod http_util;
 mod import_map;
 mod info;
 mod lockfile;
+mod logger;
 mod lsp;
 mod media_type;
 mod module_graph;
@@ -67,8 +68,6 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use log::debug;
 use log::info;
-use log::Level;
-use log::LevelFilter;
 use std::collections::HashSet;
 use std::env;
 use std::io::Read;
@@ -1170,43 +1169,6 @@ fn init_v8_flags(v8_flags: &[String]) {
   }
 }
 
-fn init_logger(maybe_level: Option<Level>) {
-  let log_level = match maybe_level {
-    Some(level) => level,
-    None => Level::Info, // Default log level
-  };
-  env_logger::Builder::from_env(
-    env_logger::Env::default()
-      .default_filter_or(log_level.to_level_filter().to_string()),
-  )
-  // https://github.com/denoland/deno/issues/6641
-  .filter_module("rustyline", LevelFilter::Off)
-  // wgpu crates (gfx_backend), have a lot of useless INFO and WARN logs
-  .filter_module("wgpu", LevelFilter::Error)
-  .filter_module("gfx", LevelFilter::Error)
-  .format(|buf, record| {
-    let mut target = record.target().to_string();
-    if let Some(line_no) = record.line() {
-      target.push(':');
-      target.push_str(&line_no.to_string());
-    }
-    if record.level() <= Level::Info {
-      // Print ERROR, WARN, INFO logs as they are
-      writeln!(buf, "{}", record.args())
-    } else {
-      // Add prefix to DEBUG or TRACE logs
-      writeln!(
-        buf,
-        "{} RS - {} - {}",
-        record.level(),
-        target,
-        record.args()
-      )
-    }
-  })
-  .init();
-}
-
 fn get_subcommand(
   flags: Flags,
 ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
@@ -1363,7 +1325,8 @@ pub fn main() {
   if !flags.v8_flags.is_empty() {
     init_v8_flags(&*flags.v8_flags);
   }
-  init_logger(flags.log_level);
+
+  logger::init(flags.log_level);
 
   unwrap_or_exit(tokio_util::run_basic(get_subcommand(flags)));
 }
