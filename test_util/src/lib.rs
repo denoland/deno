@@ -497,6 +497,30 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       );
       Ok(res)
     }
+    (_, "/xTypeScriptTypes.jsx") => {
+      let mut res = Response::new(Body::from("export const foo = 'foo';"));
+      res
+        .headers_mut()
+        .insert("Content-type", HeaderValue::from_static("text/jsx"));
+      res.headers_mut().insert(
+        "X-TypeScript-Types",
+        HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
+      );
+      Ok(res)
+    }
+    (_, "/xTypeScriptTypes.ts") => {
+      let mut res =
+        Response::new(Body::from("export const foo: string = 'foo';"));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      res.headers_mut().insert(
+        "X-TypeScript-Types",
+        HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
+      );
+      Ok(res)
+    }
     (_, "/xTypeScriptTypes.d.ts") => {
       let mut res = Response::new(Body::from("export const foo: 'foo';"));
       res.headers_mut().insert(
