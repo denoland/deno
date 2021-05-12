@@ -39,10 +39,6 @@
         "willSaveWaitUntil": true,
         "didSave": true
       }
-    },
-    "workspace": {
-      "configuration": true,
-      "workspaceFolders": true
     }
   }
 }

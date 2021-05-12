@@ -45,7 +45,6 @@ use super::analysis::ResolvedDependency;
 use super::capabilities;
 use super::completions;
 use super::config::Config;
-use super::config::SETTINGS_SECTION;
 use super::diagnostics;
 use super::diagnostics::DiagnosticSource;
 use super::documents::DocumentCache;
@@ -80,7 +79,6 @@ pub struct StateSnapshot {
   pub module_registries: registries::ModuleRegistry,
   pub performance: Performance,
   pub sources: Sources,
-  pub url_map: urls::LspUrlMap,
 }
 
 #[derive(Debug)]
@@ -191,6 +189,10 @@ impl Inner {
     }
   }
 
+  fn enabled(&self) -> bool {
+    self.config.settings.enable
+  }
+
   /// Searches assets, open documents and external sources for a line_index,
   /// which might be performed asynchronously, hydrating in memory caches for
   /// subsequent requests.
@@ -292,7 +294,6 @@ impl Inner {
       module_registries: self.module_registries.clone(),
       performance: self.performance.clone(),
       sources: self.sources.clone(),
-      url_map: self.url_map.clone(),
     }
   }
 
@@ -300,10 +301,7 @@ impl Inner {
     let mark = self.performance.mark("update_import_map");
     let (maybe_import_map, maybe_root_uri) = {
       let config = &self.config;
-      (
-        config.workspace_settings.import_map.clone(),
-        config.root_uri.clone(),
-      )
+      (config.settings.import_map.clone(), config.root_uri.clone())
     };
     if let Some(import_map_str) = &maybe_import_map {
       info!("Updating import map from: \"{}\"", import_map_str);
@@ -348,8 +346,7 @@ impl Inner {
 
   async fn update_registries(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_registries");
-    for (registry, enabled) in
-      self.config.workspace_settings.suggest.imports.hosts.iter()
+    for (registry, enabled) in self.config.settings.suggest.imports.hosts.iter()
     {
       if *enabled {
         info!("Enabling auto complete registry for: {}", registry);
@@ -380,16 +377,13 @@ impl Inner {
     }));
     let (maybe_config, maybe_root_uri) = {
       let config = &self.config;
-      if config.workspace_settings.unstable {
+      if config.settings.unstable {
         let unstable_libs = json!({
           "lib": ["deno.ns", "deno.window", "deno.unstable"]
         });
         tsconfig.merge(&unstable_libs);
       }
-      (
-        config.workspace_settings.config.clone(),
-        config.root_uri.clone(),
-      )
+      (config.settings.config.clone(), config.root_uri.clone())
     };
     if let Some(config_str) = &maybe_config {
       info!("Updating TypeScript configuration from: \"{}\"", config_str);
@@ -487,7 +481,7 @@ impl Inner {
       let config = &mut self.config;
       config.root_uri = params.root_uri;
       if let Some(value) = params.initialization_options {
-        config.update_workspace(value)?;
+        config.update(value)?;
       }
       config.update_capabilities(&params.capabilities);
     }
@@ -569,35 +563,13 @@ impl Inner {
 
   async fn did_open(&mut self, params: DidOpenTextDocumentParams) {
     let mark = self.performance.mark("did_open");
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
-
-    // we only query the individual resource file if the client supports it
-    if self.config.client_capabilities.workspace_configuration
-      && !self.config.contains(&specifier)
-    {
-      if let Ok(value) = self
-        .client
-        .configuration(vec![ConfigurationItem {
-          scope_uri: Some(params.text_document.uri.clone()),
-          section: Some(SETTINGS_SECTION.to_string()),
-        }])
-        .await
-      {
-        if let Err(err) = self
-          .config
-          .update_specifier(specifier.clone(), value[0].clone())
-        {
-          warn!("Error updating specifier configuration: {}", err);
-        }
-      }
-    }
-
     if params.text_document.uri.scheme() == "deno" {
       // we can ignore virtual text documents opening, as they don't need to
       // be tracked in memory, as they are static assets that won't change
       // already managed by the language service
       return;
     }
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
     self.documents.open(
       specifier.clone(),
       params.text_document.version,
@@ -653,69 +625,56 @@ impl Inner {
     params: DidChangeConfigurationParams,
   ) {
     let mark = self.performance.mark("did_change_configuration");
-
-    if self.config.client_capabilities.workspace_configuration {
-      let specifiers: Vec<ModuleSpecifier> =
-        self.config.specifier_settings.keys().cloned().collect();
-      let mut snapshot = self.snapshot();
-      let mut config_items = specifiers
-        .iter()
-        .map(|s| ConfigurationItem {
-          scope_uri: Some(snapshot.url_map.normalize_specifier(s).unwrap()),
-          section: Some(SETTINGS_SECTION.to_string()),
+    let config = if self.config.client_capabilities.workspace_configuration {
+      self
+        .client
+        .configuration(vec![ConfigurationItem {
+          scope_uri: None,
+          section: Some("deno".to_string()),
+        }])
+        .await
+        .map(|vec| vec.get(0).cloned())
+        .unwrap_or_else(|err| {
+          error!("failed to fetch the extension settings {}", err);
+          None
         })
-        .collect();
-      let mut items = vec![ConfigurationItem {
-        scope_uri: None,
-        section: Some(SETTINGS_SECTION.to_string()),
-      }];
-      items.append(&mut config_items);
-      if let Ok(configs) = self.client.configuration(items).await {
-        for (i, value) in configs.into_iter().enumerate() {
-          if let Err(err) = match i {
-            0 => self.config.update_workspace(value),
-            _ => self
-              .config
-              .update_specifier(specifiers[i - 1].clone(), value),
-          } {
-            error!("failed to update settings: {}", err);
-          }
-        }
-      }
-    } else if let Some(config) = params
-      .settings
-      .as_object()
-      .map(|settings| settings.get(SETTINGS_SECTION))
-      .flatten()
-      .cloned()
-    {
-      if let Err(err) = self.config.update_workspace(config) {
+    } else {
+      params
+        .settings
+        .as_object()
+        .map(|settings| settings.get("deno"))
+        .flatten()
+        .cloned()
+    };
+
+    if let Some(config) = config {
+      if let Err(err) = self.config.update(config) {
         error!("failed to update settings: {}", err);
       }
+      if let Err(err) = self.update_import_map().await {
+        self
+          .client
+          .show_message(MessageType::Warning, err.to_string())
+          .await;
+      }
+      if let Err(err) = self.update_registries().await {
+        self
+          .client
+          .show_message(MessageType::Warning, err.to_string())
+          .await;
+      }
+      if let Err(err) = self.update_tsconfig().await {
+        self
+          .client
+          .show_message(MessageType::Warning, err.to_string())
+          .await;
+      }
+      if let Err(err) = self.diagnostics_server.update() {
+        error!("{}", err);
+      }
+    } else {
+      error!("received empty extension settings from the client");
     }
-
-    if let Err(err) = self.update_import_map().await {
-      self
-        .client
-        .show_message(MessageType::Warning, err.to_string())
-        .await;
-    }
-    if let Err(err) = self.update_registries().await {
-      self
-        .client
-        .show_message(MessageType::Warning, err.to_string())
-        .await;
-    }
-    if let Err(err) = self.update_tsconfig().await {
-      self
-        .client
-        .show_message(MessageType::Warning, err.to_string())
-        .await;
-    }
-    if let Err(err) = self.diagnostics_server.update() {
-      error!("{}", err);
-    }
-
     self.performance.measure(mark);
   }
 
@@ -750,14 +709,14 @@ impl Inner {
   }
 
   async fn document_symbol(
-    &mut self,
+    &self,
     params: DocumentSymbolParams,
   ) -> LspResult<Option<DocumentSymbolResponse>> {
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.enabled() {
       return Ok(None);
     }
     let mark = self.performance.mark("document_symbol");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
 
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
@@ -848,15 +807,14 @@ impl Inner {
     }
   }
 
-  async fn hover(&mut self, params: HoverParams) -> LspResult<Option<Hover>> {
-    let specifier = self
-      .url_map
-      .normalize_url(&params.text_document_position_params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+  async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
+    if !self.enabled() {
       return Ok(None);
     }
     let mark = self.performance.mark("hover");
-
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -892,12 +850,12 @@ impl Inner {
     &mut self,
     params: CodeActionParams,
   ) -> LspResult<Option<CodeActionResponse>> {
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.enabled() {
       return Ok(None);
     }
 
     let mark = self.performance.mark("code_action");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
     let fixable_diagnostics: Vec<&Diagnostic> = params
       .context
       .diagnostics
@@ -1048,14 +1006,12 @@ impl Inner {
     &mut self,
     params: CodeLensParams,
   ) -> LspResult<Option<Vec<CodeLens>>> {
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier)
-      || !self.config.workspace_settings.enabled_code_lens()
-    {
+    if !self.enabled() || !self.config.settings.enabled_code_lens() {
       return Ok(None);
     }
 
     let mark = self.performance.mark("code_lens");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
     let line_index = self.get_line_index_sync(&specifier).unwrap();
     let navigation_tree =
       self.get_navigation_tree(&specifier).await.map_err(|err| {
@@ -1071,7 +1027,7 @@ impl Inner {
       let mut code_lenses = cl.borrow_mut();
 
       // TSC Implementations Code Lens
-      if self.config.workspace_settings.code_lens.implementations {
+      if self.config.settings.code_lens.implementations {
         let source = CodeLensSource::Implementations;
         match i.kind {
           tsc::ScriptElementKind::InterfaceElement => {
@@ -1095,7 +1051,7 @@ impl Inner {
       }
 
       // TSC References Code Lens
-      if self.config.workspace_settings.code_lens.references {
+      if self.config.settings.code_lens.references {
         let source = CodeLensSource::References;
         if let Some(parent) = &mp {
           if parent.kind == tsc::ScriptElementKind::EnumElement {
@@ -1104,12 +1060,7 @@ impl Inner {
         }
         match i.kind {
           tsc::ScriptElementKind::FunctionElement => {
-            if self
-              .config
-              .workspace_settings
-              .code_lens
-              .references_all_functions
-            {
+            if self.config.settings.code_lens.references_all_functions {
               code_lenses.push(i.to_code_lens(
                 &line_index,
                 &specifier,
@@ -1356,17 +1307,16 @@ impl Inner {
   }
 
   async fn document_highlight(
-    &mut self,
+    &self,
     params: DocumentHighlightParams,
   ) -> LspResult<Option<Vec<DocumentHighlight>>> {
+    if !self.enabled() {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("document_highlight");
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position_params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
-      return Ok(None);
-    }
-
-    let mark = self.performance.mark("document_highlight");
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -1409,13 +1359,13 @@ impl Inner {
     &mut self,
     params: ReferenceParams,
   ) -> LspResult<Option<Vec<Location>>> {
-    let specifier = self
-      .url_map
-      .normalize_url(&params.text_document_position.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.enabled() {
       return Ok(None);
     }
     let mark = self.performance.mark("references");
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position.text_document.uri);
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -1464,13 +1414,13 @@ impl Inner {
     &mut self,
     params: GotoDefinitionParams,
   ) -> LspResult<Option<GotoDefinitionResponse>> {
-    let specifier = self
-      .url_map
-      .normalize_url(&params.text_document_position_params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.enabled() {
       return Ok(None);
     }
     let mark = self.performance.mark("goto_definition");
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -1504,16 +1454,16 @@ impl Inner {
   }
 
   async fn completion(
-    &mut self,
+    &self,
     params: CompletionParams,
   ) -> LspResult<Option<CompletionResponse>> {
-    let specifier = self
-      .url_map
-      .normalize_url(&params.text_document_position.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.enabled() {
       return Ok(None);
     }
     let mark = self.performance.mark("completion");
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position.text_document.uri);
     // Import specifiers are something wholly internal to Deno, so for
     // completions, we will use internal logic and if there are completions
     // for imports, we will return those and not send a message into tsc, where
@@ -1566,7 +1516,7 @@ impl Inner {
       if let Some(completions) = maybe_completion_info {
         let results = completions.as_completion_response(
           &line_index,
-          &self.config.workspace_settings.suggest,
+          &self.config.settings.suggest,
           &specifier,
           position,
         );
@@ -1623,13 +1573,13 @@ impl Inner {
     &mut self,
     params: GotoImplementationParams,
   ) -> LspResult<Option<GotoImplementationResponse>> {
-    let specifier = self
-      .url_map
-      .normalize_url(&params.text_document_position_params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.enabled() {
       return Ok(None);
     }
     let mark = self.performance.mark("goto_implementation");
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -1670,14 +1620,14 @@ impl Inner {
   }
 
   async fn folding_range(
-    &mut self,
+    &self,
     params: FoldingRangeParams,
   ) -> LspResult<Option<Vec<FoldingRange>>> {
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.enabled() {
       return Ok(None);
     }
     let mark = self.performance.mark("folding_range");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
 
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
@@ -1730,11 +1680,11 @@ impl Inner {
     &mut self,
     params: CallHierarchyIncomingCallsParams,
   ) -> LspResult<Option<Vec<CallHierarchyIncomingCall>>> {
-    let specifier = self.url_map.normalize_url(&params.item.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.enabled() {
       return Ok(None);
     }
     let mark = self.performance.mark("incoming_calls");
+    let specifier = self.url_map.normalize_url(&params.item.uri);
 
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
@@ -1784,11 +1734,11 @@ impl Inner {
     &mut self,
     params: CallHierarchyOutgoingCallsParams,
   ) -> LspResult<Option<Vec<CallHierarchyOutgoingCall>>> {
-    let specifier = self.url_map.normalize_url(&params.item.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.enabled() {
       return Ok(None);
     }
     let mark = self.performance.mark("outgoing_calls");
+    let specifier = self.url_map.normalize_url(&params.item.uri);
 
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
@@ -1839,13 +1789,13 @@ impl Inner {
     &mut self,
     params: CallHierarchyPrepareParams,
   ) -> LspResult<Option<Vec<CallHierarchyItem>>> {
-    let specifier = self
-      .url_map
-      .normalize_url(&params.text_document_position_params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.enabled() {
       return Ok(None);
     }
     let mark = self.performance.mark("prepare_call_hierarchy");
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
 
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
@@ -1916,13 +1866,13 @@ impl Inner {
     &mut self,
     params: RenameParams,
   ) -> LspResult<Option<WorkspaceEdit>> {
-    let specifier = self
-      .url_map
-      .normalize_url(&params.text_document_position.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.enabled() {
       return Ok(None);
     }
     let mark = self.performance.mark("rename");
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position.text_document.uri);
 
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
@@ -2003,14 +1953,14 @@ impl Inner {
   }
 
   async fn selection_range(
-    &mut self,
+    &self,
     params: SelectionRangeParams,
   ) -> LspResult<Option<Vec<SelectionRange>>> {
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.enabled() {
       return Ok(None);
     }
     let mark = self.performance.mark("selection_range");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
 
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
@@ -2045,14 +1995,14 @@ impl Inner {
   }
 
   async fn semantic_tokens_full(
-    &mut self,
+    &self,
     params: SemanticTokensParams,
   ) -> LspResult<Option<SemanticTokensResult>> {
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.enabled() {
       return Ok(None);
     }
     let mark = self.performance.mark("semantic_tokens_full");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
 
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
@@ -2092,14 +2042,14 @@ impl Inner {
   }
 
   async fn semantic_tokens_range(
-    &mut self,
+    &self,
     params: SemanticTokensRangeParams,
   ) -> LspResult<Option<SemanticTokensRangeResult>> {
-    let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.enabled() {
       return Ok(None);
     }
     let mark = self.performance.mark("semantic_tokens_range");
+    let specifier = self.url_map.normalize_url(&params.text_document.uri);
 
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
@@ -2138,16 +2088,16 @@ impl Inner {
   }
 
   async fn signature_help(
-    &mut self,
+    &self,
     params: SignatureHelpParams,
   ) -> LspResult<Option<SignatureHelp>> {
-    let specifier = self
-      .url_map
-      .normalize_url(&params.text_document_position_params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.enabled() {
       return Ok(None);
     }
     let mark = self.performance.mark("signature_help");
+    let specifier = self
+      .url_map
+      .normalize_url(&params.text_document_position_params.text_document.uri);
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
