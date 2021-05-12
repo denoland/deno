@@ -12,6 +12,7 @@ use crate::config_file::IgnoredCompilerOptions;
 use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
 use crate::import_map::ImportMap;
+use crate::import_map::ImportMapError;
 use crate::info;
 use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
@@ -397,10 +398,13 @@ impl Module {
           Ok(specifier) => Some(specifier),
           Err(any_error) => {
             match any_error.downcast_ref::<ModuleResolutionError>() {
-              Some(ModuleResolutionError::ImportPrefixMissing(_, _)) => None,
-              _ => {
-                return Err(any_error);
-              }
+              Some(ModuleResolutionError::ImportPrefixMissing(..)) => None,
+              _ => match any_error.downcast_ref::<ImportMapError>() {
+                Some(ImportMapError::UnmappedBareSpecifier(..)) => None,
+                _ => {
+                  return Err(any_error);
+                }
+              },
             }
           }
         };
@@ -447,10 +451,8 @@ impl Module {
   ) -> Result<ModuleSpecifier, AnyError> {
     let maybe_resolve = if let Some(import_map) = self.maybe_import_map.clone()
     {
-      import_map
-        .lock()
-        .unwrap()
-        .resolve(specifier, self.specifier.as_str())?
+      let import_map = import_map.lock().unwrap();
+      Some(import_map.resolve(specifier, self.specifier.as_str())?)
     } else {
       None
     };

@@ -42,7 +42,7 @@ impl fmt::Display for ModuleResolutionError {
         "relative import path \"{}\" not prefixed with / or ./ or ../{}",
         specifier,
         match maybe_referrer {
-          Some(referrer) => format!(" Imported from \"{}\"", referrer),
+          Some(referrer) => format!(" from \"{}\"", referrer),
           None => format!(""),
         }
       ),

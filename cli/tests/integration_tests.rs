@@ -3133,6 +3133,12 @@ console.log("finish");
     exit_code: 1,
   });
 
+  itest!(_092_import_map_unmapped_bare_specifier {
+    args: "run --import-map import_maps/import_map.json 092_import_map_unmapped_bare_specifier.ts",
+    output: "092_import_map_unmapped_bare_specifier.ts.out",
+    exit_code: 1,
+  });
+
   itest!(dynamic_import_permissions_remote_remote {
     args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_remote_remote.ts",
     output: "dynamic_import/permissions_remote_remote.ts.out",
