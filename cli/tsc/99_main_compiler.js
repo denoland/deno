@@ -72,6 +72,9 @@ delete Object.prototype.__proto__;
   /** @type {Map<string, ts.SourceFile>} */
   const sourceFileCache = new Map();
 
+  /** @type {Map<string, string>} */
+  const scriptVersionCache = new Map();
+
   /** @param {ts.DiagnosticRelatedInformation} diagnostic */
   function fromRelatedInformation({
     start,
@@ -368,7 +371,15 @@ delete Object.prototype.__proto__;
       if (sourceFile) {
         return sourceFile.version ?? "1";
       }
-      return core.opSync("op_script_version", { specifier });
+      // tsc neurotically requests the script version multiple times even though
+      // it can't possibly have changed, so we will memoize it on a per request
+      // basis.
+      if (scriptVersionCache.has(specifier)) {
+        return scriptVersionCache.get(specifier);
+      }
+      const scriptVersion = core.opSync("op_script_version", { specifier });
+      scriptVersionCache.set(specifier, scriptVersion);
+      return scriptVersion;
     },
     getScriptSnapshot(specifier) {
       debug(`host.getScriptSnapshot("${specifier}")`);
@@ -386,8 +397,7 @@ delete Object.prototype.__proto__;
           },
         };
       }
-      /** @type {string | undefined} */
-      const version = core.opSync("op_script_version", { specifier });
+      const version = host.getScriptVersion(specifier);
       if (version != null) {
         return new ScriptSnapshot(specifier, version);
       }
@@ -526,6 +536,8 @@ delete Object.prototype.__proto__;
    */
   function serverRequest({ id, ...request }) {
     debug(`serverRequest()`, { id, ...request });
+    // evict all memoized source file versions
+    scriptVersionCache.clear();
     switch (request.method) {
       case "configure": {
         const { options, errors } = ts
