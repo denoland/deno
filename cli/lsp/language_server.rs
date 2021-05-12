@@ -594,25 +594,26 @@ impl Inner {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
 
     // we only query the individual resource file if the client supports it
-    if self.config.client_capabilities.workspace_configuration
-      && !self.config.contains(&specifier)
-    {
-      if let Ok(value) = self
-        .client
-        .configuration(vec![ConfigurationItem {
-          scope_uri: Some(params.text_document.uri.clone()),
-          section: Some(SETTINGS_SECTION.to_string()),
-        }])
-        .await
-      {
-        if let Err(err) = self
-          .config
-          .update_specifier(specifier.clone(), value[0].clone())
-        {
-          warn!("Error updating specifier configuration: {}", err);
-        }
-      }
-    }
+    // TODO(@kitsonk) workaround https://github.com/denoland/deno/issues/10603
+    // if self.config.client_capabilities.workspace_configuration
+    //   && !self.config.contains(&specifier)
+    // {
+    //   if let Ok(value) = self
+    //     .client
+    //     .configuration(vec![ConfigurationItem {
+    //       scope_uri: Some(params.text_document.uri.clone()),
+    //       section: Some(SETTINGS_SECTION.to_string()),
+    //     }])
+    //     .await
+    //   {
+    //     if let Err(err) = self
+    //       .config
+    //       .update_specifier(specifier.clone(), value[0].clone())
+    //     {
+    //       warn!("Error updating specifier configuration: {}", err);
+    //     }
+    //   }
+    // }
 
     if params.text_document.uri.scheme() == "deno" {
       // we can ignore virtual text documents opening, as they don't need to
