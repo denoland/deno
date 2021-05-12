@@ -13,6 +13,7 @@ pub use deno_websocket;
 pub use deno_webstorage;
 
 pub mod colors;
+pub mod deno_inspector;
 pub mod errors;
 pub mod fs_util;
 pub mod inspector;
