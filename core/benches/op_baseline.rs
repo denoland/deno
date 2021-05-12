@@ -8,16 +8,15 @@ use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::Op;
 use deno_core::OpState;
-use deno_core::ZeroCopyBuf;
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 fn create_js_runtime() -> JsRuntime {
   let mut runtime = JsRuntime::new(Default::default());
-  runtime.register_op("pi_json", op_sync(|_, _: (), _| Ok(314159)));
+  runtime.register_op("pi_json", op_sync(|_, _: (), _: ()| Ok(314159)));
   runtime.register_op("pi_async", op_async(op_pi_async));
-  runtime.register_op("nop", |state, _, _| {
+  runtime.register_op("nop", |state, _| {
     Op::Sync(serialize_op_result(Ok(9), state))
   });
   runtime.sync_ops_cache();
@@ -29,7 +28,7 @@ fn create_js_runtime() -> JsRuntime {
 async fn op_pi_async(
   _: Rc<RefCell<OpState>>,
   _: (),
-  _: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<i64, AnyError> {
   Ok(314159)
 }

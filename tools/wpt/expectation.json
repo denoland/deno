@@ -1,13 +1,13 @@
 {
   "WebCryptoAPI": {
-    "getRandomValues.any.js": true
+    "getRandomValues.any.html": true
   },
   "console": {
-    "console-is-a-namespace.any.js": true,
-    "console-label-conversion.any.js": true,
-    "console-namespace-object-class-string.any.js": true,
-    "console-tests-historical.any.js": true,
-    "idlharness.any.js": [
+    "console-is-a-namespace.any.html": true,
+    "console-label-conversion.any.html": true,
+    "console-namespace-object-class-string.any.html": true,
+    "console-tests-historical.any.html": true,
+    "idlharness.any.html": [
       "console namespace: operation table(optional any, optional sequence<DOMString>)",
       "console namespace: operation dir(optional any, optional object?)",
       "console namespace: operation dirxml(any...)"
@@ -15,57 +15,30 @@
   },
   "dom": {
     "abort": {
-      "event.any.js": true
+      "event.any.html": true
     },
     "events": {
-      "AddEventListenerOptions-signal.any.js": true,
-      "Event-dispatch-listener-order.window.js": true,
-      "Event-isTrusted.any.js": true,
-      "EventListener-addEventListener.sub.window.js": true,
-      "EventTarget-constructible.any.js": true,
-      "event-global-extra.window.js": true,
-      "event-global.worker.js": true,
-      "legacy-pre-activation-behavior.window.js": true,
-      "relatedTarget.window.js": true,
-      "Event-constructors.any.js": [
+      "AddEventListenerOptions-signal.any.html": true,
+      "Event-isTrusted.any.html": true,
+      "EventTarget-constructible.any.html": true,
+      "Event-constructors.any.html": [
         "Untitled 2",
         "Untitled 3"
       ]
     }
   },
   "encoding": {
-    "api-basics.any.js": true,
-    "api-invalid-label.any.js": true,
-    "api-replacement-encodings.any.js": true,
-    "api-surrogates-utf8.any.js": true,
-    "encodeInto.any.js": [
-      "encodeInto() into ArrayBuffer with \ud834A\udf06A¥Hi and destination length 10, offset 0, filler 0",
-      "encodeInto() into SharedArrayBuffer with \ud834A\udf06A¥Hi and destination length 10, offset 0, filler 0",
-      "encodeInto() into ArrayBuffer with \ud834A\udf06A¥Hi and destination length 10, offset 4, filler 0",
-      "encodeInto() into SharedArrayBuffer with \ud834A\udf06A¥Hi and destination length 10, offset 4, filler 0",
-      "encodeInto() into ArrayBuffer with \ud834A\udf06A¥Hi and destination length 10, offset 0, filler 128",
-      "encodeInto() into SharedArrayBuffer with \ud834A\udf06A¥Hi and destination length 10, offset 0, filler 128",
-      "encodeInto() into ArrayBuffer with \ud834A\udf06A¥Hi and destination length 10, offset 4, filler 128",
-      "encodeInto() into SharedArrayBuffer with \ud834A\udf06A¥Hi and destination length 10, offset 4, filler 128",
-      "encodeInto() into ArrayBuffer with \ud834A\udf06A¥Hi and destination length 10, offset 0, filler random",
-      "encodeInto() into SharedArrayBuffer with \ud834A\udf06A¥Hi and destination length 10, offset 0, filler random",
-      "encodeInto() into ArrayBuffer with \ud834A\udf06A¥Hi and destination length 10, offset 4, filler random",
-      "encodeInto() into SharedArrayBuffer with \ud834A\udf06A¥Hi and destination length 10, offset 4, filler random",
-      "encodeInto() into ArrayBuffer with A\udf06 and destination length 4, offset 0, filler 0",
-      "encodeInto() into SharedArrayBuffer with A\udf06 and destination length 4, offset 0, filler 0",
-      "encodeInto() into ArrayBuffer with A\udf06 and destination length 4, offset 4, filler 0",
-      "encodeInto() into SharedArrayBuffer with A\udf06 and destination length 4, offset 4, filler 0",
-      "encodeInto() into ArrayBuffer with A\udf06 and destination length 4, offset 0, filler 128",
-      "encodeInto() into SharedArrayBuffer with A\udf06 and destination length 4, offset 0, filler 128",
-      "encodeInto() into ArrayBuffer with A\udf06 and destination length 4, offset 4, filler 128",
-      "encodeInto() into SharedArrayBuffer with A\udf06 and destination length 4, offset 4, filler 128",
-      "encodeInto() into ArrayBuffer with A\udf06 and destination length 4, offset 0, filler random",
-      "encodeInto() into SharedArrayBuffer with A\udf06 and destination length 4, offset 0, filler random",
-      "encodeInto() into ArrayBuffer with A\udf06 and destination length 4, offset 4, filler random",
-      "encodeInto() into SharedArrayBuffer with A\udf06 and destination length 4, offset 4, filler random",
+    "api-basics.any.html": true,
+    "api-invalid-label.any.html?1-1000": true,
+    "api-invalid-label.any.html?1001-2000": true,
+    "api-invalid-label.any.html?2001-3000": true,
+    "api-invalid-label.any.html?3001-last": true,
+    "api-replacement-encodings.any.html": true,
+    "api-surrogates-utf8.any.html": true,
+    "encodeInto.any.html": [
       "encodeInto() and a detached output buffer"
     ],
-    "idlharness.any.js": [
+    "idlharness.any.html": [
       "TextDecoder interface: existence and properties of interface object",
       "TextDecoder interface: operation decode(optional BufferSource, optional TextDecodeOptions)",
       "TextDecoder interface: attribute encoding",
@@ -95,39 +68,45 @@
       "TextEncoderStream interface: existence and properties of interface prototype object's @@unscopables property",
       "TextEncoderStream interface: attribute encoding"
     ],
-    "iso-2022-jp-decoder.any.js": false,
+    "iso-2022-jp-decoder.any.html": false,
     "legacy-mb-schinese": {
       "gb18030": {
-        "gb18030-decoder.any.js": true
+        "gb18030-decoder.any.html": true
       },
       "gbk": {
-        "gbk-decoder.any.js": true
+        "gbk-decoder.any.html": true
       }
     },
-    "replacement-encodings.any.js": false,
+    "replacement-encodings.any.html": false,
     "streams": {
-      "backpressure.any.js": false,
-      "decode-attributes.any.js": false,
-      "decode-bad-chunks.any.js": false,
-      "decode-ignore-bom.any.js": false,
-      "decode-incomplete-input.any.js": false,
-      "decode-non-utf8.any.js": false,
-      "decode-split-character.any.js": false,
-      "decode-utf8.any.js": false,
-      "encode-bad-chunks.any.js": false,
-      "encode-utf8.any.js": false,
-      "readable-writable-properties.any.js": false,
-      "realms.window.js": false
+      "backpressure.any.html": false,
+      "decode-attributes.any.html": false,
+      "decode-bad-chunks.any.html": false,
+      "decode-ignore-bom.any.html": false,
+      "decode-incomplete-input.any.html": false,
+      "decode-non-utf8.any.html": false,
+      "decode-split-character.any.html": false,
+      "decode-utf8.any.html": false,
+      "encode-bad-chunks.any.html": false,
+      "encode-utf8.any.html": false,
+      "readable-writable-properties.any.html": false
     },
-    "textdecoder-byte-order-marks.any.js": true,
-    "textdecoder-copy.any.js": false,
-    "textdecoder-fatal-single-byte.any.js": true,
-    "textdecoder-fatal-streaming.any.js": [
+    "textdecoder-byte-order-marks.any.html": true,
+    "textdecoder-copy.any.html": false,
+    "textdecoder-fatal-single-byte.any.html?1-1000": true,
+    "textdecoder-fatal-single-byte.any.html?1001-2000": true,
+    "textdecoder-fatal-single-byte.any.html?2001-3000": true,
+    "textdecoder-fatal-single-byte.any.html?3001-4000": true,
+    "textdecoder-fatal-single-byte.any.html?4001-5000": true,
+    "textdecoder-fatal-single-byte.any.html?5001-6000": true,
+    "textdecoder-fatal-single-byte.any.html?6001-7000": true,
+    "textdecoder-fatal-single-byte.any.html?7001-last": true,
+    "textdecoder-fatal-streaming.any.html": [
       "Fatal flag, streaming cases"
     ],
-    "textdecoder-fatal.any.js": true,
-    "textdecoder-ignorebom.any.js": true,
-    "textdecoder-labels.any.js": [
+    "textdecoder-fatal.any.html": true,
+    "textdecoder-ignorebom.any.html": true,
+    "textdecoder-labels.any.html": [
       "cseucpkdfmtjapanese => EUC-JP",
       "euc-jp => EUC-JP",
       "x-euc-jp => EUC-JP",
@@ -153,25 +132,25 @@
       "windows-949 => EUC-KR",
       "x-user-defined => x-user-defined"
     ],
-    "textdecoder-streaming.any.js": false,
-    "textdecoder-utf16-surrogates.any.js": true,
-    "textencoder-constructor-non-utf.any.js": [
+    "textdecoder-streaming.any.html": false,
+    "textdecoder-utf16-surrogates.any.html": true,
+    "textencoder-constructor-non-utf.any.html": [
       "Encoding argument supported for decode: EUC-JP",
       "Encoding argument supported for decode: ISO-2022-JP",
       "Encoding argument supported for decode: Shift_JIS",
       "Encoding argument supported for decode: EUC-KR",
       "Encoding argument supported for decode: x-user-defined"
     ],
-    "textencoder-utf16-surrogates.any.js": true,
-    "unsupported-encodings.any.js": false,
-    "textdecoder-arguments.any.js": false
+    "textencoder-utf16-surrogates.any.html": true,
+    "unsupported-encodings.any.html": false,
+    "textdecoder-arguments.any.html": false
   },
   "hr-time": {
-    "monotonic-clock.any.js": true,
-    "basic.any.js": [
+    "monotonic-clock.any.html": true,
+    "basic.any.html": [
       "Performance interface extends EventTarget."
     ],
-    "idlharness.any.js": [
+    "idlharness.any.html": [
       "Performance interface: existence and properties of interface object",
       "Performance interface: existence and properties of interface prototype object",
       "Performance interface: operation now()",
@@ -185,7 +164,7 @@
     ]
   },
   "streams": {
-    "idlharness.any.js": [
+    "idlharness.any.html": [
       "ReadableStream interface object length",
       "ReadableStream interface: attribute locked",
       "ReadableStream interface: operation cancel(optional any)",
@@ -310,14 +289,14 @@
       "CountQueuingStrategy interface: new CountQueuingStrategy({ highWaterMark: 5 }) must inherit property \"highWaterMark\" with the proper type"
     ],
     "piping": {
-      "abort.any.js": [
+      "abort.any.html": [
         "a signal argument 'null' should cause pipeTo() to reject",
         "a signal argument 'AbortSignal' should cause pipeTo() to reject",
         "a signal argument 'true' should cause pipeTo() to reject",
         "a signal argument '-1' should cause pipeTo() to reject",
         "a signal argument '[object AbortSignal]' should cause pipeTo() to reject"
       ],
-      "close-propagation-backward.any.js": [
+      "close-propagation-backward.any.html": [
         "Closing must be propagated backward: starts closed; preventCancel = null (falsy); fulfilled cancel promise",
         "Closing must be propagated backward: starts closed; preventCancel = 0 (falsy); fulfilled cancel promise",
         "Closing must be propagated backward: starts closed; preventCancel = -0 (falsy); fulfilled cancel promise",
@@ -328,7 +307,7 @@
         "Closing must be propagated backward: starts closed; preventCancel = Symbol() (truthy)",
         "Closing must be propagated backward: starts closed; preventCancel = [object Object] (truthy)"
       ],
-      "close-propagation-forward.any.js": [
+      "close-propagation-forward.any.html": [
         "Closing must be propagated forward: starts closed; preventClose = null (falsy); fulfilled close promise",
         "Closing must be propagated forward: starts closed; preventClose = 0 (falsy); fulfilled close promise",
         "Closing must be propagated forward: starts closed; preventClose = -0 (falsy); fulfilled close promise",
@@ -339,7 +318,7 @@
         "Closing must be propagated forward: starts closed; preventClose = Symbol() (truthy)",
         "Closing must be propagated forward: starts closed; preventClose = [object Object] (truthy)"
       ],
-      "error-propagation-backward.any.js": [
+      "error-propagation-backward.any.html": [
         "Errors must be propagated backward: becomes errored before piping due to write; preventCancel = null (falsy); fulfilled cancel promise",
         "Errors must be propagated backward: becomes errored before piping due to write; preventCancel = 0 (falsy); fulfilled cancel promise",
         "Errors must be propagated backward: becomes errored before piping due to write; preventCancel = -0 (falsy); fulfilled cancel promise",
@@ -350,7 +329,7 @@
         "Errors must be propagated backward: becomes errored before piping due to write; preventCancel = Symbol() (truthy)",
         "Errors must be propagated backward: becomes errored before piping due to write; preventCancel = [object Object] (truthy)"
       ],
-      "error-propagation-forward.any.js": [
+      "error-propagation-forward.any.html": [
         "Errors must be propagated forward: starts errored; preventAbort = null (falsy); fulfilled abort promise",
         "Errors must be propagated forward: starts errored; preventAbort = 0 (falsy); fulfilled abort promise",
         "Errors must be propagated forward: starts errored; preventAbort = -0 (falsy); fulfilled abort promise",
@@ -361,22 +340,21 @@
         "Errors must be propagated forward: starts errored; preventAbort = Symbol() (truthy)",
         "Errors must be propagated forward: starts errored; preventAbort = [object Object] (truthy)"
       ],
-      "flow-control.any.js": true,
-      "general.any.js": [
+      "flow-control.any.html": true,
+      "general.any.html": [
         "pipeTo must check the brand of its ReadableStream this value",
         "pipeTo must check the brand of its WritableStream argument",
         "pipeTo() promise should resolve if null is passed"
       ],
-      "multiple-propagation.any.js": true,
-      "pipe-through.any.js": true,
-      "then-interception.any.js": true,
-      "throwing-options.any.js": false,
-      "transform-streams.any.js": true
+      "multiple-propagation.any.html": true,
+      "pipe-through.any.html": true,
+      "then-interception.any.html": true,
+      "throwing-options.any.html": false,
+      "transform-streams.any.html": true
     },
-    "queuing-strategies-size-function-per-global.window.js": false,
-    "queuing-strategies.any.js": true,
+    "queuing-strategies.any.html": true,
     "readable-byte-streams": {
-      "bad-buffers-and-views.any.js": [
+      "bad-buffers-and-views.any.html": [
         "ReadableStream with byte source: respond() throws if the BYOB request's buffer has been detached (in the readable state)",
         "ReadableStream with byte source: respond() throws if the BYOB request's buffer has been detached (in the closed state)",
         "ReadableStream with byte source: respondWithNewView() throws if the supplied view's buffer has been detached (in the readable state)",
@@ -391,8 +369,8 @@
         "ReadableStream with byte source: reading into a zero-length buffer rejects",
         "ReadableStream with byte source: reading into a zero-length view on a non-zero-length buffer rejects"
       ],
-      "construct-byob-request.any.js": false,
-      "general.any.js": [
+      "construct-byob-request.any.html": false,
+      "general.any.html": [
         "getReader({mode: \"byob\"}) throws on non-bytes streams",
         "ReadableStream with byte source can be constructed with no errors",
         "getReader({mode}) must perform ToString()",
@@ -449,7 +427,7 @@
       ]
     },
     "readable-streams": {
-      "async-iterator.any.js": [
+      "async-iterator.any.html": [
         "Async iterator instances should have the correct list of properties",
         "values() throws if there's already a lock",
         "return() should unlock the stream synchronously when preventCancel = false",
@@ -468,76 +446,76 @@
         "return() rejects if the stream has errored",
         "next() that succeeds; next() that reports an error; next()"
       ],
-      "bad-strategies.any.js": true,
-      "bad-underlying-sources.any.js": true,
-      "cancel.any.js": false,
-      "constructor.any.js": false,
-      "count-queuing-strategy-integration.any.js": true,
-      "default-reader.any.js": true,
-      "floating-point-total-queue-size.any.js": true,
-      "garbage-collection.any.js": true,
-      "general.any.js": [
+      "bad-strategies.any.html": true,
+      "bad-underlying-sources.any.html": true,
+      "cancel.any.html": false,
+      "constructor.any.html": false,
+      "count-queuing-strategy-integration.any.html": true,
+      "default-reader.any.html": true,
+      "floating-point-total-queue-size.any.html": true,
+      "garbage-collection.any.html": true,
+      "general.any.html": [
         "ReadableStream: if pull rejects, it should error the stream"
       ],
-      "patched-global.any.js": true,
-      "reentrant-strategies.any.js": true,
-      "tee.any.js": false,
-      "templated.any.js": [
+      "patched-global.any.html": true,
+      "reentrant-strategies.any.html": true,
+      "tee.any.html": false,
+      "templated.any.html": [
         "ReadableStream (empty) reader: canceling via the stream should fail"
       ]
     },
     "transform-streams": {
-      "backpressure.any.js": true,
-      "errors.any.js": true,
-      "flush.any.js": true,
-      "general.any.js": true,
-      "lipfuzz.any.js": true,
-      "patched-global.any.js": [
+      "backpressure.any.html": true,
+      "errors.any.html": true,
+      "flush.any.html": true,
+      "general.any.html": true,
+      "lipfuzz.any.html": true,
+      "patched-global.any.html": [
         "TransformStream constructor should not call setters for highWaterMark or size"
       ],
-      "properties.any.js": true,
-      "reentrant-strategies.any.js": true,
-      "strategies.any.js": true,
-      "terminate.any.js": [
+      "properties.any.html": true,
+      "reentrant-strategies.any.html": true,
+      "strategies.any.html": true,
+      "terminate.any.html": [
         "controller.terminate() inside flush() should not prevent writer.close() from succeeding"
       ]
     },
     "writable-streams": {
-      "aborting.any.js": false,
-      "bad-strategies.any.js": [
+      "aborting.any.html": false,
+      "bad-strategies.any.html": [
         "reject any non-function value for strategy.size",
         "Writable stream: invalid size beats invalid highWaterMark"
       ],
-      "bad-underlying-sinks.any.js": true,
-      "byte-length-queuing-strategy.any.js": true,
-      "close.any.js": false,
-      "constructor.any.js": [
+      "bad-underlying-sinks.any.html": true,
+      "byte-length-queuing-strategy.any.html": true,
+      "close.any.html": false,
+      "constructor.any.html": [
         "underlyingSink argument should be converted after queuingStrategy argument",
         "WritableStreamDefaultController constructor should throw",
         "WritableStreamDefaultController constructor should throw when passed an initialised WritableStream",
         "WritableStreamDefaultWriter should throw unless passed a WritableStream"
       ],
-      "count-queuing-strategy.any.js": true,
-      "error.any.js": true,
-      "floating-point-total-queue-size.any.js": true,
-      "general.any.js": true,
-      "properties.any.js": true,
-      "reentrant-strategy.any.js": true,
-      "start.any.js": true,
-      "write.any.js": true
+      "count-queuing-strategy.any.html": true,
+      "error.any.html": true,
+      "floating-point-total-queue-size.any.html": true,
+      "general.any.html": true,
+      "properties.any.html": true,
+      "reentrant-strategy.any.html": true,
+      "start.any.html": true,
+      "write.any.html": true
     }
   },
   "user-timing": {
-    "buffered-flag.any.js": false,
-    "case-sensitivity.any.js": false,
-    "clear_all_marks.any.js": true,
-    "clear_all_measures.any.js": true,
-    "clear_non_existent_mark.any.js": true,
-    "clear_non_existent_measure.any.js": true,
-    "clear_one_mark.any.js": true,
-    "clear_one_measure.any.js": true,
-    "entry_type.any.js": true,
-    "idlharness.any.js": [
+    "buffered-flag.any.html": false,
+    "case-sensitivity.any.html": false,
+    "clear_all_marks.any.html": true,
+    "clear_all_measures.any.html": true,
+    "clear_non_existent_mark.any.html": true,
+    "clear_non_existent_measure.any.html": true,
+    "clear_one_mark.any.html": true,
+    "clear_one_measure.any.html": true,
+    "entry_type.any.html": true,
+    "idlharness.any.html": [
       "PerformanceMark interface: attribute detail",
       "PerformanceMeasure interface object length",
       "PerformanceMeasure interface: attribute detail",
@@ -548,139 +526,135 @@
       "Performance interface: calling mark(DOMString, optional PerformanceMarkOptions) on performance with too few arguments must throw TypeError",
       "Performance interface: calling measure(DOMString, optional (DOMString or PerformanceMeasureOptions), optional DOMString) on performance with too few arguments must throw TypeError"
     ],
-    "mark-entry-constructor.any.js": true,
-    "mark-errors.any.js": true,
-    "mark-l3.any.js": false,
-    "mark-measure-return-objects.any.js": true,
-    "mark.any.js": true,
-    "measure-l3.any.js": true,
-    "measure-with-dict.any.js": [
+    "mark-entry-constructor.any.html": true,
+    "mark-errors.any.html": true,
+    "mark-l3.any.html": false,
+    "mark-measure-return-objects.any.html": true,
+    "mark.any.html": true,
+    "measure-l3.any.html": true,
+    "measure-with-dict.any.html": [
       "measure entries' detail and start/end are customizable"
     ],
-    "measure_syntax_err.any.js": true,
-    "structured-serialize-detail.any.js": true,
-    "supported-usertiming-types.any.js": false,
-    "user_timing_exists.any.js": true
+    "measure_syntax_err.any.html": true,
+    "structured-serialize-detail.any.html": true,
+    "supported-usertiming-types.any.html": false,
+    "user_timing_exists.any.html": true
   },
   "wasm": {
     "jsapi": {
       "constructor": {
-        "compile.any.js": true,
-        "instantiate-bad-imports.any.js": false,
-        "instantiate.any.js": [
+        "compile.any.html": true,
+        "instantiate-bad-imports.any.html": false,
+        "instantiate.any.html": [
           "Synchronous options handling: Buffer argument"
         ],
-        "multi-value.any.js": true,
-        "toStringTag.any.js": true,
-        "validate.any.js": true
+        "multi-value.any.html": true,
+        "toStringTag.any.html": true,
+        "validate.any.html": true
       },
       "global": {
-        "constructor.any.js": true,
-        "toString.any.js": true,
-        "type.tentative.any.js": false,
-        "value-get-set.any.js": true,
-        "valueOf.any.js": true
+        "constructor.any.html": true,
+        "toString.any.html": true,
+        "type.tentative.any.html": false,
+        "value-get-set.any.html": true,
+        "valueOf.any.html": true
       },
-      "idlharness.any.js": [
+      "idlharness.any.html": [
         "Table interface: operation set(unsigned long, optional any)"
       ],
       "instance": {
-        "constructor-bad-imports.any.js": false,
-        "constructor-caching.any.js": true,
-        "constructor.any.js": true,
-        "exports.any.js": [
+        "constructor-bad-imports.any.html": false,
+        "constructor-caching.any.html": true,
+        "constructor.any.html": true,
+        "exports.any.html": [
           "Setting (sloppy mode)"
         ],
-        "toString.any.js": true
+        "toString.any.html": true
       },
-      "interface.any.js": [
+      "interface.any.html": [
         "WebAssembly: property descriptor"
       ],
       "memory": {
-        "buffer.any.js": [
+        "buffer.any.html": [
           "Setting (sloppy mode)"
         ],
-        "constructor.any.js": true,
-        "grow.any.js": true,
-        "toString.any.js": true,
-        "type.tentative.any.js": false,
-        "constructor-shared.tentative.any.js": true,
-        "constructor-types.tentative.any.js": false
+        "constructor.any.html": true,
+        "grow.any.html": true,
+        "toString.any.html": true,
+        "type.tentative.any.html": false,
+        "constructor-shared.tentative.any.html": true,
+        "constructor-types.tentative.any.html": false
       },
       "module": {
-        "constructor.any.js": true,
-        "customSections.any.js": true,
-        "exports.any.js": true,
-        "imports.any.js": true,
-        "toString.any.js": true
+        "constructor.any.html": true,
+        "customSections.any.html": true,
+        "exports.any.html": true,
+        "imports.any.html": true,
+        "toString.any.html": true
       },
-      "prototypes.any.js": false,
+      "prototypes.any.html": false,
       "table": {
-        "constructor.any.js": true,
-        "get-set.any.js": true,
-        "grow.any.js": true,
-        "length.any.js": [
+        "constructor.any.html": true,
+        "get-set.any.html": true,
+        "grow.any.html": true,
+        "length.any.html": [
           "Setting (sloppy mode)"
         ],
-        "toString.any.js": true,
-        "constructor-reftypes.tentative.any.js": [
+        "toString.any.html": true,
+        "constructor-reftypes.tentative.any.html": [
           "initialize externref table with default value",
           "initialize anyfunc table with default value",
           "initialize anyfunc table with a bad default value"
         ],
-        "constructor-types.tentative.any.js": false,
-        "grow-reftypes.tentative.any.js": false,
-        "set-reftypes.tentative.any.js": false,
-        "type.tentative.any.js": false
+        "constructor-types.tentative.any.html": false,
+        "grow-reftypes.tentative.any.html": false,
+        "set-reftypes.tentative.any.html": false,
+        "type.tentative.any.html": false
       }
     },
     "serialization": {
-      "arraybuffer": {
-        "transfer.window.js": false
-      },
       "module": {
-        "nested-worker-success.any.js": false,
-        "serialization-via-idb.any.js": false,
-        "serialization-via-notifications-api.any.js": false
+        "serialization-via-idb.any.html": false,
+        "serialization-via-notifications-api.any.html": false
       }
     },
     "webapi": {
-      "abort.any.js": false,
-      "body.any.js": false,
-      "contenttype.any.js": false,
-      "empty-body.any.js": false,
-      "historical.any.js": false,
-      "idlharness.any.js": [
+      "abort.any.html": false,
+      "body.any.html": false,
+      "contenttype.any.html": false,
+      "empty-body.any.html": false,
+      "historical.any.html": false,
+      "idlharness.any.html": [
         "WebAssembly namespace: operation compileStreaming(Promise<Response>)",
         "WebAssembly namespace: operation instantiateStreaming(Promise<Response>, optional object)"
       ],
-      "instantiateStreaming-bad-imports.any.js": false,
-      "instantiateStreaming.any.js": false,
-      "invalid-args.any.js": false,
-      "invalid-code.any.js": false,
-      "modified-contenttype.any.js": false,
-      "origin.sub.any.js": false,
-      "rejected-arg.any.js": false,
-      "status.any.js": false
+      "instantiateStreaming-bad-imports.any.html": false,
+      "instantiateStreaming.any.html": false,
+      "invalid-args.any.html": false,
+      "invalid-code.any.html": false,
+      "modified-contenttype.any.html": false,
+      "origin.sub.any.html": false,
+      "rejected-arg.any.html": false,
+      "status.any.html": false
     }
   },
   "WebIDL": {
     "ecmascript-binding": {
       "es-exceptions": {
-        "DOMException-constants.any.js": true,
-        "DOMException-constructor-and-prototype.any.js": true,
-        "DOMException-constructor-behavior.any.js": true,
-        "DOMException-custom-bindings.any.js": [
+        "DOMException-constants.any.html": true,
+        "DOMException-constructor-and-prototype.any.html": true,
+        "DOMException-constructor-behavior.any.html": true,
+        "DOMException-custom-bindings.any.html": [
           "does not inherit from Error: class-side"
         ]
       }
     }
   },
   "url": {
-    "historical.any.js": [
+    "historical.any.html": [
       "<a> and <area>.searchParams should be undefined"
     ],
-    "idlharness.any.js": [
+    "idlharness.any.html": [
       "URL interface object length",
       "URL interface: attribute href",
       "URL interface: stringifier",
@@ -708,7 +682,7 @@
       "URLSearchParams interface: stringifier",
       "Stringification of new URLSearchParams(\"hi=there&thank=you\")"
     ],
-    "url-constructor.any.js": [
+    "url-constructor.any.html": [
       "Parsing: <https://x/�?�#�> against <about:blank>",
       "Parsing: <http://example.com/\ud800𐟾\udfff﷐﷏﷯ﷰ￾￿?\ud800𐟾\udfff﷐﷏﷯ﷰ￾￿> against <about:blank>",
       "Parsing: <file://%43%7C> against <about:blank>",
@@ -766,12 +740,12 @@
       "Parsing: <> against <non-spec:/..//p>",
       "Parsing: <path> against <non-spec:/..//p>"
     ],
-    "url-origin.any.js": [
+    "url-origin.any.html": [
       "Origin parsing: <http://example.com/\ud800𐟾\udfff﷐﷏﷯ﷰ￾￿?\ud800𐟾\udfff﷐﷏﷯ﷰ￾￿> against <about:blank>",
       "Origin parsing: <https://x/�?�#�> against <about:blank>"
     ],
-    "url-searchparams.any.js": true,
-    "url-setters-stripping.any.js": [
+    "url-searchparams.any.html": true,
+    "url-setters-stripping.any.html": [
       "Setting protocol with leading U+0000 (https:)",
       "Setting protocol with U+0000 before inserted colon (https:)",
       "Setting port with leading U+0000 (https:)",
@@ -789,56 +763,56 @@
       "Setting port with leading U+001F (wpt++:)",
       "Setting pathname with trailing U+001F (wpt++:)"
     ],
-    "url-tojson.any.js": true,
-    "urlencoded-parser.any.js": true,
-    "urlsearchparams-append.any.js": true,
-    "urlsearchparams-constructor.any.js": [
+    "url-tojson.any.html": true,
+    "urlencoded-parser.any.html": true,
+    "urlsearchparams-append.any.html": true,
+    "urlsearchparams-constructor.any.html": [
       "Construct with 2 unpaired surrogates (no trailing)",
       "Construct with 3 unpaired surrogates (no leading)",
       "Construct with object with NULL, non-ASCII, and surrogate keys"
     ],
-    "urlsearchparams-delete.any.js": true,
-    "urlsearchparams-foreach.any.js": true,
-    "urlsearchparams-get.any.js": true,
-    "urlsearchparams-getall.any.js": true,
-    "urlsearchparams-has.any.js": true,
-    "urlsearchparams-set.any.js": true,
-    "urlsearchparams-sort.any.js": [
+    "urlsearchparams-delete.any.html": true,
+    "urlsearchparams-foreach.any.html": true,
+    "urlsearchparams-get.any.html": true,
+    "urlsearchparams-getall.any.html": true,
+    "urlsearchparams-has.any.html": true,
+    "urlsearchparams-set.any.html": true,
+    "urlsearchparams-sort.any.html": [
       "Parse and sort: �=x&￼&�=a",
       "URL parse and sort: �=x&￼&�=a",
       "Parse and sort: é&e�&é",
       "URL parse and sort: é&e�&é"
     ],
-    "urlsearchparams-stringifier.any.js": true
+    "urlsearchparams-stringifier.any.html": true
   },
   "fetch": {
     "api": {
       "request": {
-        "request-init-002.any.js": true,
-        "request-init-stream.any.js": [
+        "request-init-002.any.html": true,
+        "request-init-stream.any.html": [
           "Constructing a Request with a Request on which body.getReader() is called",
           "Constructing a Request with a Request on which body.getReader().read() is called",
           "Constructing a Request with a Request on which read() and releaseLock() are called"
         ],
-        "request-consume-empty.any.js": [
+        "request-consume-empty.any.html": [
           "Consume empty FormData request body as text"
         ],
-        "request-consume.any.js": true
+        "request-consume.any.html": true
       },
       "headers": {
-        "headers-basic.any.js": true,
-        "headers-casing.any.js": true,
-        "headers-combine.any.js": true,
-        "headers-errors.any.js": true,
-        "headers-normalize.any.js": true,
-        "headers-record.any.js": true,
-        "headers-structure.any.js": true
+        "headers-basic.any.html": true,
+        "headers-casing.any.html": true,
+        "headers-combine.any.html": true,
+        "headers-errors.any.html": true,
+        "headers-normalize.any.html": true,
+        "headers-record.any.html": true,
+        "headers-structure.any.html": true
       },
       "basic": {
-        "request-head.any.js": true,
-        "request-headers-case.any.js": false,
-        "request-headers-nonascii.any.js": false,
-        "request-headers.any.js": [
+        "request-head.any.html": true,
+        "request-headers-case.any.html": false,
+        "request-headers-nonascii.any.html": false,
+        "request-headers.any.html": [
           "Fetch with PUT without body",
           "Fetch with PUT with body",
           "Fetch with POST without body",
@@ -861,24 +835,17 @@
           "Fetch with TacO and mode \"same-origin\" needs an Origin header",
           "Fetch with TacO and mode \"cors\" needs an Origin header"
         ],
-        "text-utf8.any.js": true,
-        "accept-header.any.js": [
+        "text-utf8.any.html": true,
+        "accept-header.any.html": [
           "Request through fetch should have a 'accept-language' header"
         ],
-        "conditional-get.any.js": false,
-        "error-after-response.any.js": false,
-        "header-value-combining.any.js": false,
-        "header-value-null-byte.any.js": true,
-        "historical.any.js": true,
-        "http-response-code.any.js": true,
-        "integrity.sub.any.js": [
-          "Invalid integrity",
-          "Multiple integrities: invalid stronger than valid",
-          "Multiple integrities: both are invalid",
-          "CORS invalid integrity",
-          "Empty string integrity for opaque response"
-        ],
-        "request-upload.any.js": [
+        "conditional-get.any.html": false,
+        "error-after-response.any.html": false,
+        "header-value-combining.any.html": false,
+        "header-value-null-byte.any.html": true,
+        "historical.any.html": true,
+        "http-response-code.any.html": true,
+        "request-upload.any.html": [
           "Fetch with POST with ReadableStream",
           "Fetch with POST with ReadableStream containing String",
           "Fetch with POST with ReadableStream containing null",
@@ -887,39 +854,48 @@
           "Fetch with POST with ReadableStream containing Blob",
           "Fetch with POST with text body on 421 response should be retried once on new connection."
         ],
-        "response-url.sub.any.js": true,
-        "scheme-about.any.js": true,
-        "scheme-blob.sub.any.js": true,
-        "scheme-data.any.js": false,
-        "scheme-others.sub.any.js": true,
-        "stream-response.any.js": true,
-        "stream-safe-creation.any.js": false
+        "response-url.sub.any.html": true,
+        "scheme-about.any.html": true,
+        "scheme-blob.sub.any.html": true,
+        "scheme-data.any.html": [
+          "Fetching [HEAD] data:,response%27s%20body is OK"
+        ],
+        "scheme-others.sub.any.html": true,
+        "stream-response.any.html": true,
+        "stream-safe-creation.any.html": [
+          "throwing Object.prototype.start accessor should not affect stream creation by 'fetch'",
+          "Object.prototype.start accessor returning invalid value should not affect stream creation by 'fetch'",
+          "throwing Object.prototype.size accessor should not affect stream creation by 'fetch'",
+          "Object.prototype.size accessor returning invalid value should not affect stream creation by 'fetch'",
+          "throwing Object.prototype.highWaterMark accessor should not affect stream creation by 'fetch'",
+          "Object.prototype.highWaterMark accessor returning invalid value should not affect stream creation by 'fetch'"
+        ]
       },
       "response": {
-        "json.any.js": true,
-        "response-init-001.any.js": true,
-        "response-init-002.any.js": true,
-        "response-static-error.any.js": true,
-        "response-static-redirect.any.js": true,
-        "response-stream-disturbed-1.any.js": true,
-        "response-stream-disturbed-2.any.js": true,
-        "response-stream-disturbed-3.any.js": true,
-        "response-stream-disturbed-4.any.js": true,
-        "response-stream-disturbed-5.any.js": true,
-        "response-stream-disturbed-6.any.js": true,
-        "response-stream-disturbed-by-pipe.any.js": true,
-        "response-stream-with-broken-then.any.js": [
+        "json.any.html": true,
+        "response-init-001.any.html": true,
+        "response-init-002.any.html": true,
+        "response-static-error.any.html": true,
+        "response-static-redirect.any.html": true,
+        "response-stream-disturbed-1.any.html": true,
+        "response-stream-disturbed-2.any.html": true,
+        "response-stream-disturbed-3.any.html": true,
+        "response-stream-disturbed-4.any.html": true,
+        "response-stream-disturbed-5.any.html": true,
+        "response-stream-disturbed-6.any.html": true,
+        "response-stream-disturbed-by-pipe.any.html": true,
+        "response-stream-with-broken-then.any.html": [
           "Attempt to inject {done: false, value: bye} via Object.prototype.then.",
           "Attempt to inject value: undefined via Object.prototype.then.",
           "Attempt to inject undefined via Object.prototype.then.",
           "Attempt to inject 8.2 via Object.prototype.then.",
           "intercepting arraybuffer to text conversion via Object.prototype.then should not be possible"
         ],
-        "response-error-from-stream.any.js": true,
-        "response-error.any.js": true,
-        "response-from-stream.any.js": true,
-        "response-cancel-stream.any.js": true,
-        "response-clone.any.js": [
+        "response-error-from-stream.any.html": true,
+        "response-error.any.html": true,
+        "response-from-stream.any.html": true,
+        "response-cancel-stream.any.html": true,
+        "response-clone.any.html": [
           "Check response clone use structureClone for teed ReadableStreams (Int8Arraychunk)",
           "Check response clone use structureClone for teed ReadableStreams (Int16Arraychunk)",
           "Check response clone use structureClone for teed ReadableStreams (Int32Arraychunk)",
@@ -932,20 +908,20 @@
           "Check response clone use structureClone for teed ReadableStreams (Float64Arraychunk)",
           "Check response clone use structureClone for teed ReadableStreams (DataViewchunk)"
         ],
-        "response-consume-empty.any.js": [
+        "response-consume-empty.any.html": [
           "Consume empty FormData response body as text"
         ],
-        "response-consume-stream.any.js": true
+        "response-consume-stream.any.html": true
       },
       "body": {
-        "mime-type.any.js": true
+        "mime-type.any.html": true
       },
       "redirect": {
-        "redirect-count.any.js": true,
-        "redirect-empty-location.any.js": [
+        "redirect-count.any.html": true,
+        "redirect-empty-location.any.html": [
           "redirect response with empty Location, manual mode"
         ],
-        "redirect-location.any.js": [
+        "redirect-location.any.html": [
           "Redirect 301 in \"manual\" mode without location",
           "Redirect 301 in \"manual\" mode with invalid location",
           "Redirect 301 in \"manual\" mode with data location",
@@ -962,11 +938,11 @@
           "Redirect 308 in \"manual\" mode with invalid location",
           "Redirect 308 in \"manual\" mode with data location"
         ],
-        "redirect-method.any.js": true,
-        "redirect-schemes.any.js": true,
-        "redirect-to-dataurl.any.js": true
+        "redirect-method.any.html": true,
+        "redirect-schemes.any.html": true,
+        "redirect-to-dataurl.any.html": true
       },
-      "idlharness.any.js": [
+      "idlharness.any.html": [
         "Headers interface: operation append(ByteString, ByteString)",
         "Headers interface: operation delete(ByteString)",
         "Headers interface: operation get(ByteString)",
@@ -1018,46 +994,46 @@
       ]
     },
     "data-urls": {
-      "base64.any.js": true,
-      "processing.any.js": [
+      "base64.any.html": true,
+      "processing.any.html": [
         "\"data:text/plain;a=\\\",\\\",X\""
       ]
     }
   },
   "FileAPI": {
     "blob": {
-      "Blob-array-buffer.any.js": true,
-      "Blob-stream.any.js": true,
-      "Blob-text.any.js": true,
-      "Blob-constructor.any.js": [
+      "Blob-array-buffer.any.html": true,
+      "Blob-constructor.any.html": [
         "Passing a FrozenArray as the blobParts array should work (FrozenArray<MessagePort>)."
       ],
-      "Blob-slice-overflow.any.js": true,
-      "Blob-slice.any.js": true
+      "Blob-slice-overflow.any.html": true,
+      "Blob-slice.any.html": true,
+      "Blob-stream.any.html": true,
+      "Blob-text.any.html": true
     },
     "file": {
-      "File-constructor.any.js": true
+      "File-constructor.any.html": true
     },
-    "fileReader.any.js": true,
+    "fileReader.any.html": true,
     "url": {
-      "url-format.any.js": true,
-      "url-with-fetch.any.js": [
+      "url-format.any.html": true,
+      "url-with-fetch.any.html": [
         "Revoke blob URL after creating Request, will fetch"
       ]
     },
     "reading-data-section": {
-      "Determining-Encoding.any.js": true,
-      "FileReader-event-handler-attributes.any.js": true,
-      "FileReader-multiple-reads.any.js": true,
-      "filereader_abort.any.js": true,
-      "filereader_error.any.js": true,
-      "filereader_events.any.js": false,
-      "filereader_readAsArrayBuffer.any.js": true,
-      "filereader_readAsBinaryString.any.js": true,
-      "filereader_readAsDataURL.any.js": true,
-      "filereader_readAsText.any.js": true,
-      "filereader_readystate.any.js": true,
-      "filereader_result.any.js": [
+      "Determining-Encoding.any.html": true,
+      "FileReader-event-handler-attributes.any.html": true,
+      "FileReader-multiple-reads.any.html": true,
+      "filereader_abort.any.html": true,
+      "filereader_error.any.html": true,
+      "filereader_events.any.html": false,
+      "filereader_readAsArrayBuffer.any.html": true,
+      "filereader_readAsBinaryString.any.html": true,
+      "filereader_readAsDataURL.any.html": true,
+      "filereader_readAsText.any.html": true,
+      "filereader_readystate.any.html": true,
+      "filereader_result.any.html": [
         "result is null during \"loadstart\" event for readAsText",
         "result is null during \"loadstart\" event for readAsDataURL",
         "result is null during \"loadstart\" event for readAsArrayBuffer",
@@ -1072,32 +1048,92 @@
   "html": {
     "webappapis": {
       "atob": {
-        "base64.any.js": true
+        "base64.any.html": true
       },
       "timers": {
-        "cleartimeout-clearinterval.any.js": true,
-        "missing-timeout-setinterval.any.js": true,
-        "negative-setinterval.any.js": true,
-        "negative-settimeout.any.js": true,
-        "type-long-setinterval.any.js": true,
-        "type-long-settimeout.any.js": true
+        "cleartimeout-clearinterval.any.html": true,
+        "missing-timeout-setinterval.any.html": true,
+        "negative-setinterval.any.html": true,
+        "negative-settimeout.any.html": true,
+        "type-long-setinterval.any.html": true,
+        "type-long-settimeout.any.html": true
       },
       "microtask-queuing": {
-        "queue-microtask-exceptions.any.js": true,
-        "queue-microtask.any.js": true
+        "queue-microtask-exceptions.any.html": true,
+        "queue-microtask.any.html": true
       }
     }
   },
+  "webstorage": {
+    "defineProperty.window.html": true,
+    "set.window.html": true,
+    "storage_enumerate.window.html": true,
+    "storage_in.window.html": true,
+    "event_constructor.window.html": false,
+    "event_initstorageevent.window.html": false,
+    "missing_arguments.window.html": true,
+    "storage_builtins.window.html": true,
+    "storage_clear.window.html": true,
+    "storage_functions_not_overwritten.window.html": true,
+    "storage_getitem.window.html": true,
+    "storage_indexing.window.html": true,
+    "storage_key.window.html": true,
+    "storage_key_empty_string.window.html": true,
+    "storage_length.window.html": true,
+    "storage_local_setitem_quotaexceedederr.window.html": true,
+    "storage_local_window_open.window.html": false,
+    "storage_removeitem.window.html": true,
+    "storage_session_setitem_quotaexceedederr.window.html": true,
+    "storage_session_window_noopener.window.html": false,
+    "storage_session_window_open.window.html": false,
+    "storage_set_value_enumerate.window.html": true,
+    "storage_setitem.window.html": [
+      "localStorage[\"\ud800\"]",
+      "localStorage[] = \"\ud800\"",
+      "localStorage[\"\udbff\"]",
+      "localStorage[] = \"\udbff\"",
+      "localStorage[\"\udc00\"]",
+      "localStorage[] = \"\udc00\"",
+      "localStorage[\"\udfff\"]",
+      "localStorage[] = \"\udfff\"",
+      "localStorage[\"\\ufffd\"]",
+      "localStorage[] = \"\\ufffd\"",
+      "localStorage[\"\ud83ca\"]",
+      "localStorage[] = \"\ud83ca\"",
+      "localStorage[\"a\udf4d\"]",
+      "localStorage[] = \"a\udf4d\"",
+      "sessionStorage[\"\ud800\"]",
+      "sessionStorage[] = \"\ud800\"",
+      "sessionStorage[\"\udbff\"]",
+      "sessionStorage[] = \"\udbff\"",
+      "sessionStorage[\"\udc00\"]",
+      "sessionStorage[] = \"\udc00\"",
+      "sessionStorage[\"\udfff\"]",
+      "sessionStorage[] = \"\udfff\"",
+      "sessionStorage[\"\\ufffd\"]",
+      "sessionStorage[] = \"\\ufffd\"",
+      "sessionStorage[\"\ud83ca\"]",
+      "sessionStorage[] = \"\ud83ca\"",
+      "sessionStorage[\"a\udf4d\"]",
+      "sessionStorage[] = \"a\udf4d\""
+    ],
+    "storage_string_conversion.window.html": true,
+    "storage_supported_property_names.window.html": true,
+    "symbol-props.window.html": [
+      "localStorage: defineProperty not configurable",
+      "sessionStorage: defineProperty not configurable"
+    ]
+  },
   "xhr": {
     "formdata": {
-      "append.any.js": true,
-      "constructor.any.js": true,
-      "delete.any.js": true,
-      "foreach.any.js": true,
-      "get.any.js": true,
-      "has.any.js": true,
-      "set-blob.any.js": true,
-      "set.any.js": true
+      "append.any.html": true,
+      "constructor.any.html": true,
+      "delete.any.html": true,
+      "foreach.any.html": true,
+      "get.any.html": true,
+      "has.any.html": true,
+      "set-blob.any.html": true,
+      "set.any.html": true
     }
   }
 }

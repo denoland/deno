@@ -309,21 +309,17 @@ fn opcall<'s>(
     }
   };
 
-  // Structured args
-  let v = args.get(2);
+  // Deserializable args (may be structured args or ZeroCopyBuf)
+  let a = args.get(2);
+  let b = args.get(3);
 
-  // Buf arg (optional)
-  let arg3 = args.get(3);
-  let buf: Option<ZeroCopyBuf> = match serde_v8::from_v8(scope, arg3) {
-    Ok(buf) => buf,
-    Err(err) => {
-      throw_type_error(scope, format!("Err with buf arg: {}", err));
-      return;
-    }
+  let payload = OpPayload {
+    scope,
+    a,
+    b,
+    promise_id,
   };
-
-  let payload = OpPayload::new(scope, v, promise_id);
-  let op = OpTable::route_op(op_id, state.op_state.clone(), payload, buf);
+  let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
   match op {
     Op::Sync(result) => {
       rv.set(result.to_v8(scope).unwrap());
@@ -557,7 +553,7 @@ fn deserialize(
   match value {
     Some(deserialized) => rv.set(deserialized),
     None => {
-      let msg = v8::String::new(scope, "string too long").unwrap();
+      let msg = v8::String::new(scope, "could not deserialize value").unwrap();
       let exception = v8::Exception::range_error(scope, msg);
       scope.throw_exception(exception);
     }

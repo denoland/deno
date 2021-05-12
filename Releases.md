@@ -6,6 +6,41 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.10.1 / 2021.05.11
+
+- fix(#10603): Disable lsp workspaces, resolve deadlock bug
+
+### 1.10.0 / 2021.05.11
+
+- feat: "deno test" prompts number of tests and origin (#10428)
+- feat: "Worker.postMessage()" uses structured clone algorithm (#9323)
+- feat: add "deno test --doc" (#10521)
+- feat: add "deno test --jobs" (#9815)
+- feat: add "deno test --watch" (#9160)
+- feat: add test permissions to Deno.test (#10188)
+- feat: add WebStorage API (#7819)
+- feat: align plugin api with "deno_core::Extension" (#10427)
+- feat: support deno-fmt-ignore-file for markdown formatting (#10191)
+- feat(core): enable WASM shared memory (#10116)
+- feat(core): introduce Extension (#9800)
+- feat(lsp): add internal debugging logging (#10438)
+- feat(lsp): support workspace folders configuration (#10488)
+- fix: invalid types for asynchronous and synchronous `File#truncate` (#10353)
+- fix: rename Deno.emit() bundle options to "module" and "classic" (#10332)
+- fix: sleepSync doesn't return a Promise (#10358)
+- fix: TextEncoder#encodeInto spec compliance (#10129)
+- fix: typings for `Deno.os.arch` (#10541)
+- fix(extensions/fetch): infinite loop on fill headers (#10406)
+- fix(extensions/fetch): Prevent throwing when inspecting a request (#10335)
+- fix(installer): allow remote import maps (#10499)
+- fix(lsp): remove code_action/diagnostics deadlock (#10555)
+- fix(tls): flush send buffer in the background after closing TLS stream
+  (#10146)
+- fix(tls): throw meaningful error when hostname is invalid (#10387)
+
+Release notes for std version 0.96.0:
+https://github.com/denoland/deno_std/releases/tag/0.96.0
+
 ### 1.9.2 / 2021.04.23
 
 - fix: parse websocket messages correctly (#10318)

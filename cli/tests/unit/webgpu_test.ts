@@ -49,18 +49,13 @@ unitTest({
 
   storageBuffer.unmap();
 
-  const bindGroupLayout = device.createBindGroupLayout({
-    entries: [
-      {
-        binding: 0,
-        visibility: 4,
-        buffer: {
-          type: "storage",
-          minBindingSize: 4,
-        },
-      },
-    ],
+  const computePipeline = device.createComputePipeline({
+    compute: {
+      module: shaderModule,
+      entryPoint: "main",
+    },
   });
+  const bindGroupLayout = computePipeline.getBindGroupLayout(0);
 
   const bindGroup = device.createBindGroup({
     layout: bindGroupLayout,
@@ -72,18 +67,6 @@ unitTest({
         },
       },
     ],
-  });
-
-  const pipelineLayout = device.createPipelineLayout({
-    bindGroupLayouts: [bindGroupLayout],
-  });
-
-  const computePipeline = device.createComputePipeline({
-    layout: pipelineLayout,
-    compute: {
-      module: shaderModule,
-      entryPoint: "main",
-    },
   });
 
   const encoder = device.createCommandEncoder();
