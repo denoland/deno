@@ -431,7 +431,7 @@ impl Inner {
         ))
       }?;
 
-      let config_file = ConfigFile::read(config_url.as_str())
+      let config_file = ConfigFile::read(config_url.path())
         .context("Failed to load configuration file")?;
       let (value, maybe_ignored_options) = config_file.as_compiler_options()?;
       tsconfig.merge(&value);

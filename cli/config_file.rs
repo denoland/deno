@@ -270,9 +270,14 @@ pub struct ConfigFile {
 }
 
 impl ConfigFile {
-  pub fn read(path: &str) -> Result<Self, AnyError> {
-    let cwd = std::env::current_dir()?;
-    let config_file = cwd.join(path);
+  pub fn read(path_str: &str) -> Result<Self, AnyError> {
+    let path = Path::new(path_str);
+    let config_file = if path.is_absolute() {
+      path.to_path_buf()
+    } else {
+      std::env::current_dir()?.join(path_str)
+    };
+
     let config_path = canonicalize_path(&config_file).map_err(|_| {
       std::io::Error::new(
         std::io::ErrorKind::InvalidInput,
