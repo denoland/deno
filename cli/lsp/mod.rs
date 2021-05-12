@@ -1,5 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
 use deno_core::error::AnyError;
 use lspower::LspService;
 use lspower::Server;

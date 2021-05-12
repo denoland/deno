@@ -98,15 +98,13 @@ async fn update_diagnostics(
   snapshot: &language_server::StateSnapshot,
   ts_server: &tsc::TsServer,
 ) {
-  let mark = snapshot.performance.mark("update_diagnostics", None::<()>);
+  let mark = snapshot.performance.mark("update_diagnostics");
   let lint_enabled = snapshot.config.workspace_settings.lint;
 
   let lint = async {
     let collection = collection.clone();
     if lint_enabled {
-      let mark = snapshot
-        .performance
-        .mark("update_diagnostics_lint", None::<()>);
+      let mark = snapshot.performance.mark("update_diagnostics_lint");
       let diagnostics =
         generate_lint_diagnostics(snapshot.clone(), collection.clone()).await;
       {
@@ -127,9 +125,7 @@ async fn update_diagnostics(
 
   let ts = async {
     let collection = collection.clone();
-    let mark = snapshot
-      .performance
-      .mark("update_diagnostics_ts", None::<()>);
+    let mark = snapshot.performance.mark("update_diagnostics_ts");
     let diagnostics =
       generate_ts_diagnostics(snapshot.clone(), collection.clone(), ts_server)
         .await
@@ -155,9 +151,7 @@ async fn update_diagnostics(
 
   let deps = async {
     let collection = collection.clone();
-    let mark = snapshot
-      .performance
-      .mark("update_diagnostics_deps", None::<()>);
+    let mark = snapshot.performance.mark("update_diagnostics_deps");
     let diagnostics =
       generate_dependency_diagnostics(snapshot.clone(), collection.clone())
         .await

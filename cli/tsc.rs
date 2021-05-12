@@ -13,7 +13,6 @@ use deno_core::error::Context;
 use deno_core::op_sync;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -351,7 +350,7 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
   )
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolveArgs {
   /// The base specifier that the supplied specifier strings should be resolved

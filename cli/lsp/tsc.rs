@@ -1832,7 +1832,7 @@ where
   })
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SourceSnapshotArgs {
   specifier: String,
@@ -1846,17 +1846,14 @@ fn op_dispose(
   state: &mut State,
   args: SourceSnapshotArgs,
 ) -> Result<bool, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_dispose", Some(&args));
+  let mark = state.state_snapshot.performance.mark("op_dispose");
   let specifier = resolve_url(&args.specifier)?;
   state.snapshots.remove(&(specifier, args.version.into()));
   state.state_snapshot.performance.measure(mark);
   Ok(true)
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GetChangeRangeArgs {
   specifier: String,
@@ -1871,13 +1868,10 @@ fn op_get_change_range(
   state: &mut State,
   args: GetChangeRangeArgs,
 ) -> Result<Value, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_get_change_range", Some(&args));
+  let mark = state.state_snapshot.performance.mark("op_get_change_range");
   let specifier = resolve_url(&args.specifier)?;
   cache_snapshot(state, &specifier, args.version.clone())?;
-  let r = if let Some(current) = state
+  if let Some(current) = state
     .snapshots
     .get(&(specifier.clone(), args.version.clone().into()))
   {
@@ -1885,9 +1879,11 @@ fn op_get_change_range(
       .snapshots
       .get(&(specifier, args.old_version.clone().into()))
     {
+      state.state_snapshot.performance.measure(mark);
       Ok(text::get_range_change(prev, current))
     } else {
       let new_length = current.encode_utf16().count();
+      state.state_snapshot.performance.measure(mark);
       // when a local file is opened up in the editor, the compiler might
       // already have a snapshot of it in memory, and will request it, but we
       // now are working off in memory versions of the document, and so need
@@ -1901,6 +1897,7 @@ fn op_get_change_range(
       }))
     }
   } else {
+    state.state_snapshot.performance.measure(mark);
     Err(custom_error(
       "MissingSnapshot",
       format!(
@@ -1908,23 +1905,16 @@ fn op_get_change_range(
         args
       ),
     ))
-  };
-
-  state.state_snapshot.performance.measure(mark);
-  r
+  }
 }
 
 fn op_get_length(
   state: &mut State,
   args: SourceSnapshotArgs,
 ) -> Result<usize, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_get_length", Some(&args));
+  let mark = state.state_snapshot.performance.mark("op_get_length");
   let specifier = resolve_url(&args.specifier)?;
-  let r = if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier)
-  {
+  if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier) {
     Ok(asset.length)
   } else {
     cache_snapshot(state, &specifier, args.version.clone())?;
@@ -1932,13 +1922,12 @@ fn op_get_length(
       .snapshots
       .get(&(specifier, args.version.into()))
       .unwrap();
+    state.state_snapshot.performance.measure(mark);
     Ok(content.encode_utf16().count())
-  };
-  state.state_snapshot.performance.measure(mark);
-  r
+  }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GetTextArgs {
   specifier: String,
@@ -1951,10 +1940,7 @@ fn op_get_text(
   state: &mut State,
   args: GetTextArgs,
 ) -> Result<String, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_get_text", Some(&args));
+  let mark = state.state_snapshot.performance.mark("op_get_text");
   let specifier = resolve_url(&args.specifier)?;
   let content =
     if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
@@ -1975,10 +1961,7 @@ fn op_resolve(
   state: &mut State,
   args: ResolveArgs,
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_resolve", Some(&args));
+  let mark = state.state_snapshot.performance.mark("op_resolve");
   let mut resolved = Vec::new();
   let referrer = resolve_url(&args.base)?;
   let sources = &mut state.state_snapshot.sources;
@@ -2086,7 +2069,7 @@ fn op_script_names(
   )
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ScriptVersionArgs {
   specifier: String,
@@ -2096,32 +2079,27 @@ fn op_script_version(
   state: &mut State,
   args: ScriptVersionArgs,
 ) -> Result<Option<String>, AnyError> {
-  let mark = state
-    .state_snapshot
-    .performance
-    .mark("op_script_version", Some(&args));
+  let mark = state.state_snapshot.performance.mark("op_script_version");
   let specifier = resolve_url(&args.specifier)?;
-  let r = if specifier.scheme() == "asset" {
-    if state.state_snapshot.assets.contains_key(&specifier) {
+  if specifier.scheme() == "asset" {
+    return if state.state_snapshot.assets.contains_key(&specifier) {
       Ok(Some("1".to_string()))
     } else {
       Ok(None)
-    }
+    };
   } else if let Some(version) =
     state.state_snapshot.documents.version(&specifier)
   {
-    Ok(Some(version.to_string()))
+    return Ok(Some(version.to_string()));
   } else {
     let sources = &mut state.state_snapshot.sources;
     if let Some(version) = sources.get_script_version(&specifier) {
-      Ok(Some(version))
-    } else {
-      Ok(None)
+      return Ok(Some(version));
     }
-  };
+  }
 
   state.state_snapshot.performance.measure(mark);
-  r
+  Ok(None)
 }
 
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
@@ -2520,7 +2498,6 @@ pub fn request(
   state_snapshot: StateSnapshot,
   method: RequestMethod,
 ) -> Result<Value, AnyError> {
-  let performance = state_snapshot.performance.clone();
   let id = {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
@@ -2530,7 +2507,6 @@ pub fn request(
     state.last_id
   };
   let request_params = method.to_value(id);
-  let mark = performance.mark("request", Some(request_params.clone()));
   let request_src = format!("globalThis.serverRequest({});", request_params);
   runtime.execute("[native_code]", &request_src)?;
 
@@ -2538,7 +2514,6 @@ pub fn request(
   let mut op_state = op_state.borrow_mut();
   let state = op_state.borrow_mut::<State>();
 
-  performance.measure(mark);
   if let Some(response) = state.response.clone() {
     state.response = None;
     Ok(response.data)
