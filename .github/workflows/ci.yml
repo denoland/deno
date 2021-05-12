@@ -47,6 +47,7 @@ jobs:
 
     env:
       RUST_BACKTRACE: full
+      RUSTC_FORCE_INCREMENTAL: 1
       CARGO_TERM_COLOR: always
 
     steps:
