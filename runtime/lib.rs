@@ -16,6 +16,7 @@ pub mod colors;
 pub mod errors;
 pub mod fs_util;
 pub mod inspector;
+pub mod inspector_session;
 pub mod js;
 pub mod metrics;
 pub mod ops;

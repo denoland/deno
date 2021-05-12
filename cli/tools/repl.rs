@@ -8,7 +8,7 @@ use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_runtime::inspector::InspectorSession;
+use deno_runtime::inspector_session::InspectorSession;
 use deno_runtime::worker::MainWorker;
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;

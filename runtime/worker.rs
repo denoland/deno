@@ -2,7 +2,7 @@
 
 use crate::inspector::DenoInspector;
 use crate::inspector::InspectorServer;
-use crate::inspector::InspectorSession;
+use crate::inspector_session::InspectorSession;
 use crate::js;
 use crate::metrics;
 use crate::ops;
