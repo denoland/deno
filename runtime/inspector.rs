@@ -4,6 +4,7 @@
 //! https://chromedevtools.github.io/devtools-protocol/
 //! https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/
 
+use crate::deno_inspector::DenoInspectorBase;
 use core::convert::Infallible as Never; // Alias for the future `!` type.
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
@@ -402,10 +403,8 @@ enum PollState {
 }
 
 pub struct DenoInspector {
-  v8_inspector_client: v8::inspector::V8InspectorClientBase,
-  v8_inspector: v8::UniquePtr<v8::inspector::V8Inspector>,
+  pub deno_inspector_base: Box<DenoInspectorBase>,
   sessions: RefCell<InspectorSessions>,
-  flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
   _canary_tx: oneshot::Sender<Never>,
   pub server: Option<Arc<InspectorServer>>,
@@ -415,13 +414,13 @@ pub struct DenoInspector {
 impl Deref for DenoInspector {
   type Target = v8::inspector::V8Inspector;
   fn deref(&self) -> &Self::Target {
-    self.v8_inspector.as_ref().unwrap()
+    &*self.deno_inspector_base
   }
 }
 
 impl DerefMut for DenoInspector {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    self.v8_inspector.as_mut().unwrap()
+    &mut *self.deno_inspector_base
   }
 }
 
@@ -441,26 +440,28 @@ impl Drop for DenoInspector {
 
 impl v8::inspector::V8InspectorClientImpl for DenoInspector {
   fn base(&self) -> &v8::inspector::V8InspectorClientBase {
-    &self.v8_inspector_client
+    self.deno_inspector_base.base()
   }
 
   fn base_mut(&mut self) -> &mut v8::inspector::V8InspectorClientBase {
-    &mut self.v8_inspector_client
+    self.deno_inspector_base.base_mut()
   }
 
   fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
-    assert_eq!(context_group_id, DenoInspectorSession::CONTEXT_GROUP_ID);
-    self.flags.borrow_mut().on_pause = true;
+    self
+      .deno_inspector_base
+      .run_message_loop_on_pause(context_group_id);
     let _ = self.poll_sessions(None);
   }
 
   fn quit_message_loop_on_pause(&mut self) {
-    self.flags.borrow_mut().on_pause = false;
+    self.deno_inspector_base.quit_message_loop_on_pause()
   }
 
   fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
-    assert_eq!(context_group_id, DenoInspectorSession::CONTEXT_GROUP_ID);
-    self.flags.borrow_mut().session_handshake_done = true;
+    self
+      .deno_inspector_base
+      .run_if_waiting_for_debugger(context_group_id)
   }
 }
 
@@ -475,26 +476,20 @@ impl Future for DenoInspector {
 }
 
 impl DenoInspector {
-  const CONTEXT_GROUP_ID: i32 = 1;
-
   pub fn new(
     js_runtime: &mut deno_core::JsRuntime,
     server: Option<Arc<InspectorServer>>,
   ) -> Box<Self> {
-    let context = js_runtime.global_context();
-    let scope = &mut v8::HandleScope::new(js_runtime.v8_isolate());
+    let deno_inspector_base = DenoInspectorBase::new(js_runtime);
 
     let (new_websocket_tx, new_websocket_rx) =
       mpsc::unbounded::<WebSocketProxy>();
     let (canary_tx, canary_rx) = oneshot::channel::<Never>();
 
     // Create DenoInspector instance.
-    let mut self_ = new_box_with(|self_ptr| {
-      let v8_inspector_client =
-        v8::inspector::V8InspectorClientBase::new::<Self>();
-
+    let self_ = new_box_with(|self_ptr| {
       let sessions = InspectorSessions::new(self_ptr, new_websocket_rx);
-      let flags = InspectorFlags::new();
+      let scope = &mut v8::HandleScope::new(js_runtime.v8_isolate());
       let waker = InspectorWaker::new(scope.thread_safe_handle());
 
       let debugger_url = if let Some(server) = server.clone() {
@@ -514,23 +509,14 @@ impl DenoInspector {
       };
 
       Self {
-        v8_inspector_client,
-        v8_inspector: Default::default(),
+        deno_inspector_base,
         sessions,
-        flags,
         waker,
         _canary_tx: canary_tx,
         server,
         debugger_url,
       }
     });
-    self_.v8_inspector =
-      v8::inspector::V8Inspector::create(scope, &mut *self_).into();
-
-    // Tell the inspector about the global context.
-    let context = v8::Local::new(scope, context);
-    let context_name = v8::inspector::StringView::from(&b"global context"[..]);
-    self_.context_created(context, Self::CONTEXT_GROUP_ID, context_name);
 
     // Poll the session handler so we will get notified whenever there is
     // new_incoming debugger activity.
@@ -571,13 +557,25 @@ impl DenoInspector {
         // Do one "handshake" with a newly connected session at a time.
         if let Some(session) = &mut sessions.handshake {
           let poll_result = session.poll_unpin(cx);
-          let handshake_done =
-            replace(&mut self.flags.borrow_mut().session_handshake_done, false);
+          let handshake_done = replace(
+            &mut self
+              .deno_inspector_base
+              .flags
+              .borrow_mut()
+              .session_handshake_done,
+            false,
+          );
           match poll_result {
             Poll::Pending if handshake_done => {
               let session = sessions.handshake.take().unwrap();
               sessions.established.push(session);
-              take(&mut self.flags.borrow_mut().waiting_for_session);
+              take(
+                &mut self
+                  .deno_inspector_base
+                  .flags
+                  .borrow_mut()
+                  .waiting_for_session,
+              );
             }
             Poll::Ready(_) => sessions.handshake = None,
             Poll::Pending => break,
@@ -604,8 +602,8 @@ impl DenoInspector {
       }
 
       let should_block = sessions.handshake.is_some()
-        || self.flags.borrow().on_pause
-        || self.flags.borrow().waiting_for_session;
+        || self.deno_inspector_base.flags.borrow().on_pause
+        || self.deno_inspector_base.flags.borrow().waiting_for_session;
 
       let new_state = self.waker.update(|w| {
         match w.poll_state {
@@ -657,25 +655,11 @@ impl DenoInspector {
       match self.sessions.get_mut().established.iter_mut().next() {
         Some(session) => break session.break_on_next_statement(),
         None => {
-          self.flags.get_mut().waiting_for_session = true;
+          self.deno_inspector_base.flags.get_mut().waiting_for_session = true;
           let _ = self.poll_sessions(None).unwrap();
         }
       };
     }
-  }
-}
-
-#[derive(Default)]
-struct InspectorFlags {
-  waiting_for_session: bool,
-  session_handshake_done: bool,
-  on_pause: bool,
-}
-
-impl InspectorFlags {
-  fn new() -> RefCell<Self> {
-    let self_ = Self::default();
-    RefCell::new(self_)
   }
 }
 

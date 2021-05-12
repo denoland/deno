@@ -238,9 +238,10 @@ impl MainWorker {
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
   pub fn create_inspector_session(&mut self) -> Box<InspectorSession> {
-    let inspector = self.inspector.as_mut().unwrap();
+    let inspector_ptr =
+      &mut *self.inspector.as_mut().unwrap().deno_inspector_base;
 
-    InspectorSession::new(&mut **inspector)
+    InspectorSession::new(inspector_ptr)
   }
 
   pub fn poll_event_loop(

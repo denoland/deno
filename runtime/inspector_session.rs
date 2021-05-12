@@ -4,6 +4,8 @@
 //! https://chromedevtools.github.io/devtools-protocol/
 //! https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/
 
+use crate::deno_inspector::new_box_with;
+use crate::deno_inspector::DenoInspectorBase;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::oneshot;
@@ -14,8 +16,6 @@ use deno_core::v8;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::ops::DerefMut;
-use crate::deno_inspector::DenoInspector;
-use crate::deno_inspector::new_box_with;
 
 /// A local inspector session that can be used to send and receive protocol messages directly on
 /// the same thread as an isolate.
@@ -102,7 +102,7 @@ impl v8::inspector::ChannelImpl for InspectorSession {
 impl InspectorSession {
   const CONTEXT_GROUP_ID: i32 = 1;
 
-  pub fn new(inspector_ptr: *mut DenoInspector) -> Box<Self> {
+  pub fn new(inspector_ptr: *mut DenoInspectorBase) -> Box<Self> {
     new_box_with(move |self_ptr| {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
       let v8_session = unsafe { &mut *inspector_ptr }.connect(

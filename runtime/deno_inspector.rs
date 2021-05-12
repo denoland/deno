@@ -5,32 +5,32 @@
 //! https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/
 
 use deno_core::v8;
+use std::cell::RefCell;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ptr;
-use std::cell::RefCell;
 
-pub struct DenoInspector {
-  v8_inspector_client: v8::inspector::V8InspectorClientBase,
-  v8_inspector: v8::UniquePtr<v8::inspector::V8Inspector>,
-  flags: RefCell<InspectorFlags>,
+pub struct DenoInspectorBase {
+  pub v8_inspector_client: v8::inspector::V8InspectorClientBase,
+  pub v8_inspector: v8::UniquePtr<v8::inspector::V8Inspector>,
+  pub flags: RefCell<InspectorFlags>,
 }
 
-impl Deref for DenoInspector {
+impl Deref for DenoInspectorBase {
   type Target = v8::inspector::V8Inspector;
   fn deref(&self) -> &Self::Target {
     self.v8_inspector.as_ref().unwrap()
   }
 }
 
-impl DerefMut for DenoInspector {
+impl DerefMut for DenoInspectorBase {
   fn deref_mut(&mut self) -> &mut Self::Target {
     self.v8_inspector.as_mut().unwrap()
   }
 }
 
-impl v8::inspector::V8InspectorClientImpl for DenoInspector {
+impl v8::inspector::V8InspectorClientImpl for DenoInspectorBase {
   fn base(&self) -> &v8::inspector::V8InspectorClientBase {
     &self.v8_inspector_client
   }
@@ -40,7 +40,7 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
   }
 
   fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
-    assert_eq!(context_group_id, DenoInspector::CONTEXT_GROUP_ID);
+    assert_eq!(context_group_id, DenoInspectorBase::CONTEXT_GROUP_ID);
     self.flags.borrow_mut().on_pause = true;
   }
 
@@ -49,12 +49,12 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
   }
 
   fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
-    assert_eq!(context_group_id, DenoInspector::CONTEXT_GROUP_ID);
+    assert_eq!(context_group_id, DenoInspectorBase::CONTEXT_GROUP_ID);
     self.flags.borrow_mut().session_handshake_done = true;
   }
 }
 
-impl DenoInspector {
+impl DenoInspectorBase {
   const CONTEXT_GROUP_ID: i32 = 1;
 
   pub fn new(js_runtime: &mut deno_core::JsRuntime) -> Box<Self> {
@@ -62,18 +62,12 @@ impl DenoInspector {
     let scope = &mut v8::HandleScope::new(js_runtime.v8_isolate());
 
     // Create DenoInspector instance.
-    let mut self_ = new_box_with(|self_ptr| {
-      let v8_inspector_client =
-        v8::inspector::V8InspectorClientBase::new::<Self>();
-
-      let flags = InspectorFlags::new();
-
-      Self {
-        v8_inspector_client,
-        v8_inspector: Default::default(),
-        flags,
-      }
+    let mut self_ = Box::new(Self {
+      v8_inspector_client: v8::inspector::V8InspectorClientBase::new::<Self>(),
+      v8_inspector: Default::default(),
+      flags: InspectorFlags::new(),
     });
+
     self_.v8_inspector =
       v8::inspector::V8Inspector::create(scope, &mut *self_).into();
 
@@ -87,10 +81,10 @@ impl DenoInspector {
 }
 
 #[derive(Default)]
-struct InspectorFlags {
-  waiting_for_session: bool,
-  session_handshake_done: bool,
-  on_pause: bool,
+pub struct InspectorFlags {
+  pub waiting_for_session: bool,
+  pub session_handshake_done: bool,
+  pub on_pause: bool,
 }
 
 impl InspectorFlags {
