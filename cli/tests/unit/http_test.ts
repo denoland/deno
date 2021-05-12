@@ -272,3 +272,23 @@ unitTest(
     await promise;
   },
 );
+
+unitTest(
+  { perms: { net: true } },
+  async function httpServerRegressionResourceLeak() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const event = await httpConn.nextRequest();
+      assert(event);
+      await event.respondWith(new Response("response"));
+      listener.close();
+    })();
+
+    // We don't need additional assertions as the resource
+    // leaks are reported by the test runner.
+    const _resp = await fetch("http://127.0.0.1:4501/");
+    await promise;
+  },
+);
