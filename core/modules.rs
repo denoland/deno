@@ -341,7 +341,9 @@ impl RecursiveModuleLoad {
     specifier: ModuleSpecifier,
     referrer: ModuleSpecifier,
   ) {
+    eprintln!("add import spec: {} ref: {} load_id: {}", specifier, referrer, self.id);
     if !self.is_pending.contains(&specifier) {
+      eprintln!("add import pending doesn't contain spec: {} ref: {} load_id: {}", specifier, referrer, self.id);
       let fut = self.loader.load(
         self.op_state.clone(),
         &specifier,

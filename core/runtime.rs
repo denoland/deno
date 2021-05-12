@@ -1150,7 +1150,7 @@ impl JsRuntime {
           // The top-level module from a dynamic import has been instantiated.
           // Load is done.
           let module_id = load.root_module_id.unwrap();
-          eprintln!("dynamic import done {} {}", module_id, dyn_import_id);
+          eprintln!("dynamic import done mod_id: {} import_id: {}", module_id, dyn_import_id);
           let result = self.mod_instantiate(module_id);
           if let Err(err) = result {
             self.dyn_import_error(dyn_import_id, err);
@@ -1314,7 +1314,7 @@ impl JsRuntime {
       let state = state_rc.borrow();
       state.module_map.get_id(&module_url_found)
     };
-
+    eprintln!("register mod_id: {:?}, url: {}", maybe_mod_id, module_url_found);
     let module_id = match maybe_mod_id {
       Some(id) => {
         // Module has already been registered.
@@ -1341,6 +1341,7 @@ impl JsRuntime {
         let state = state_rc.borrow();
         state.module_map.is_registered(&module_specifier)
       };
+      eprintln!("is_registered {} mod_id: {} spec: {}", is_registered, module_id, module_specifier);
       if !is_registered {
         load
           .add_import(module_specifier.to_owned(), referrer_specifier.clone());
@@ -1353,7 +1354,9 @@ impl JsRuntime {
       load.state = LoadState::LoadingImports;
     }
 
+    // TODO: should verify if all dependencies are loaded as well?
     if load.pending.is_empty() {
+      eprintln!("load done {}", load.id);
       load.state = LoadState::Done;
     }
 
