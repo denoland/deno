@@ -323,8 +323,18 @@ mod tests {
   use deno_core::serde_json::json;
 
   #[test]
-  fn read_config_file() {
+  fn read_config_file_relative() {
     let config_file = ConfigFile::read("tests/module_graph/tsconfig.json")
+      .expect("Failed to load config file");
+    assert!(config_file.json.compiler_options.is_some());
+  }
+
+  #[test]
+  fn read_config_file_absolute() {
+    let path = std::env::current_dir()
+      .unwrap()
+      .join("tests/module_graph/tsconfig.json");
+    let config_file = ConfigFile::read(path.to_str().unwrap())
       .expect("Failed to load config file");
     assert!(config_file.json.compiler_options.is_some());
   }
