@@ -416,7 +416,7 @@ impl Inner {
         });
         tsconfig.merge(&unstable_libs);
       }
-      (workspace_settings.config.clone(), config.root_uri.clone())
+      (workspace_settings.config, config.root_uri.clone())
     };
     if let Some(config_str) = &maybe_config {
       info!("Updating TypeScript configuration from: \"{}\"", config_str);
