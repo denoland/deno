@@ -733,7 +733,7 @@ declare namespace Deno {
    * is ignored. This functionality currently only works on Linux and Mac OS.
    *
    * ```ts
-   * Deno.setRaw(myTTY.rid, true, { cbreak: true });
+   * Deno.setRaw(Deno.stdin.rid, true, { cbreak: true });
    * ```
    */
   export function setRaw(
