@@ -1042,7 +1042,7 @@ declare namespace Deno {
    * A custom HttpClient for use with `fetch`.
    *
    * ```ts
-   * const client = new Deno.createHttpClient({ caFile: "./ca.pem" });
+   * const client = new Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
    * const req = await fetch("https://myserver.com", { client });
    * ```
    */
@@ -1064,7 +1064,7 @@ declare namespace Deno {
    * Create a custom HttpClient for to use with `fetch`.
    *
    * ```ts
-   * const client = new Deno.createHttpClient({ caFile: "./ca.pem" });
+   * const client = new Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
    * const req = await fetch("https://myserver.com", { client });
    * ```
    */
