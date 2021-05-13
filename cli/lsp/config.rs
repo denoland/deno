@@ -1,14 +1,20 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::tokio_util::create_basic_runtime;
+
+use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use lspower::jsonrpc::Error as LSPError;
-use lspower::jsonrpc::Result as LSPResult;
+use log::error;
 use lspower::lsp;
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::thread;
+use tokio::sync::mpsc;
 
 pub const SETTINGS_SECTION: &str = "deno";
 
@@ -139,25 +145,178 @@ impl WorkspaceSettings {
   }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ConfigSnapshot {
+  pub client_capabilities: ClientCapabilities,
+  pub root_uri: Option<Url>,
+  pub settings: Settings,
+}
+
+impl ConfigSnapshot {
+  pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
+    if let Some(settings) = self.settings.specifiers.get(specifier) {
+      settings.1.enable
+    } else {
+      self.settings.workspace.enable
+    }
+  }
+}
+
+enum ConfigRequest {
+  Specifier(ModuleSpecifier, ModuleSpecifier),
+  Workspace,
+}
+
 #[derive(Debug, Default, Clone)]
+pub struct Settings {
+  pub specifiers:
+    HashMap<ModuleSpecifier, (ModuleSpecifier, SpecifierSettings)>,
+  pub workspace: WorkspaceSettings,
+}
+
+#[derive(Debug)]
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
   pub root_uri: Option<Url>,
-  pub specifier_settings: HashMap<ModuleSpecifier, SpecifierSettings>,
-  pub workspace_settings: WorkspaceSettings,
+  settings: Arc<Mutex<Settings>>,
+  tx: mpsc::UnboundedSender<ConfigRequest>,
 }
 
 impl Config {
-  #[allow(unused)]
-  pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
-    self.specifier_settings.contains_key(specifier)
+  pub fn new(client: lspower::Client) -> Self {
+    let (tx, mut rx) = mpsc::unbounded_channel::<ConfigRequest>();
+    let settings = Arc::new(Mutex::new(Settings::default()));
+    let settings_ref = settings.clone();
+
+    let _join_handle = thread::spawn(move || {
+      let runtime = create_basic_runtime();
+
+      runtime.block_on(async {
+        loop {
+          match rx.recv().await {
+            None => break,
+            Some(ConfigRequest::Workspace) => {
+              let mut settings = settings_ref.lock().unwrap();
+              let specifiers: Vec<(
+                ModuleSpecifier,
+                (ModuleSpecifier, SpecifierSettings),
+              )> = settings.specifiers.clone().into_iter().collect();
+              let mut items = vec![lsp::ConfigurationItem {
+                scope_uri: None,
+                section: Some(SETTINGS_SECTION.to_string()),
+              }];
+              for (_, (uri, _)) in specifiers.iter() {
+                items.push(lsp::ConfigurationItem {
+                  scope_uri: Some(uri.clone()),
+                  section: Some(SETTINGS_SECTION.to_string()),
+                });
+              }
+              let specifiers: Vec<(ModuleSpecifier, ModuleSpecifier)> =
+                specifiers.into_iter().map(|(s, (u, _))| (s, u)).collect();
+              if let Ok(configs) = client.configuration(items).await {
+                for (i, value) in configs.into_iter().enumerate() {
+                  match i {
+                    0 => {
+                      match serde_json::from_value::<WorkspaceSettings>(value) {
+                        Ok(workspace_settings) => {
+                          settings.workspace = workspace_settings;
+                        }
+                        Err(err) => {
+                          error!(
+                            "Error converting workspace settings: {}",
+                            err
+                          );
+                        }
+                      }
+                    }
+                    _ => {
+                      match serde_json::from_value::<SpecifierSettings>(value) {
+                        Ok(specifier_settings) => {
+                          let (specifier, uri) = specifiers[i - 1].clone();
+                          settings
+                            .specifiers
+                            .insert(specifier, (uri, specifier_settings));
+                        }
+                        Err(err) => {
+                          error!(
+                            "Error converting specifier settings: {}",
+                            err
+                          );
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            Some(ConfigRequest::Specifier(specifier, uri)) => {
+              if let Ok(value) = client
+                .configuration(vec![lsp::ConfigurationItem {
+                  scope_uri: Some(uri.clone()),
+                  section: Some(SETTINGS_SECTION.to_string()),
+                }])
+                .await
+              {
+                match serde_json::from_value::<SpecifierSettings>(
+                  value[0].clone(),
+                ) {
+                  Ok(specifier_settings) => {
+                    settings_ref
+                      .lock()
+                      .unwrap()
+                      .specifiers
+                      .insert(specifier, (uri, specifier_settings));
+                  }
+                  Err(err) => {
+                    error!("Error converting specifier settings: {}", err);
+                  }
+                }
+              } else {
+                error!(
+                  "Error retrieving settings for specifier: {}",
+                  specifier
+                );
+              }
+            }
+          }
+        }
+      })
+    });
+
+    Self {
+      client_capabilities: ClientCapabilities::default(),
+      root_uri: None,
+      settings,
+      tx,
+    }
+  }
+
+  pub fn get_workspace_settings(&self) -> WorkspaceSettings {
+    self.settings.lock().unwrap().workspace.clone()
+  }
+
+  /// Set the workspace settings directly, which occurs during initialization
+  /// and when the client does not support workspace configuration requests
+  pub fn set_workspace_settings(&self, value: Value) -> Result<(), AnyError> {
+    let workspace_settings = serde_json::from_value(value)?;
+    self.settings.lock().unwrap().workspace = workspace_settings;
+    Ok(())
+  }
+
+  pub fn snapshot(&self) -> ConfigSnapshot {
+    ConfigSnapshot {
+      client_capabilities: self.client_capabilities.clone(),
+      root_uri: self.root_uri.clone(),
+      settings: self.settings.lock().unwrap().clone(),
+    }
   }
 
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
-    if let Some(settings) = self.specifier_settings.get(specifier) {
-      settings.enable
+    let settings = self.settings.lock().unwrap();
+    if let Some(specifier_settings) = settings.specifiers.get(specifier) {
+      specifier_settings.1.enable
     } else {
-      self.workspace_settings.enable
+      settings.workspace.enable
     }
   }
 
@@ -192,23 +351,32 @@ impl Config {
     }
   }
 
-  pub fn update_specifier(
-    &mut self,
-    specifier: ModuleSpecifier,
-    value: Value,
-  ) -> LSPResult<()> {
-    let settings: SpecifierSettings = serde_json::from_value(value)
-      .map_err(|err| LSPError::invalid_params(err.to_string()))?;
-    self.specifier_settings.insert(specifier, settings);
-    Ok(())
+  pub fn update_specifier_settings(
+    &self,
+    specifier: &ModuleSpecifier,
+    uri: &ModuleSpecifier,
+  ) {
+    if self.client_capabilities.workspace_configuration
+      && !self
+        .settings
+        .lock()
+        .unwrap()
+        .specifiers
+        .contains_key(specifier)
+    {
+      if let Err(err) = self
+        .tx
+        .send(ConfigRequest::Specifier(specifier.clone(), uri.clone()))
+      {
+        error!("Error sending config request: {}", err);
+      }
+    }
   }
 
-  pub fn update_workspace(&mut self, value: Value) -> LSPResult<()> {
-    let settings: WorkspaceSettings = serde_json::from_value(value)
-      .map_err(|err| LSPError::invalid_params(err.to_string()))?;
-    self.workspace_settings = settings;
-    self.specifier_settings = HashMap::new();
-    Ok(())
+  pub fn update_workspace_settings(&self) {
+    if let Err(err) = self.tx.send(ConfigRequest::Workspace) {
+      error!("Error sending config request: {}", err);
+    }
   }
 }
 
@@ -218,41 +386,45 @@ mod tests {
   use deno_core::resolve_url;
   use deno_core::serde_json::json;
 
-  #[test]
-  fn test_config_contains() {
-    let mut config = Config::default();
-    let specifier = resolve_url("https://deno.land/x/a.ts").unwrap();
-    assert!(!config.contains(&specifier));
-    config
-      .update_specifier(
-        specifier.clone(),
-        json!({
-          "enable": true
-        }),
-      )
-      .expect("could not update specifier");
-    assert!(config.contains(&specifier));
+  #[derive(Debug, Default)]
+  struct MockLanguageServer;
+
+  #[lspower::async_trait]
+  impl lspower::LanguageServer for MockLanguageServer {
+    async fn initialize(
+      &self,
+      _params: lspower::lsp::InitializeParams,
+    ) -> lspower::jsonrpc::Result<lsp::InitializeResult> {
+      Ok(lspower::lsp::InitializeResult {
+        capabilities: lspower::lsp::ServerCapabilities::default(),
+        server_info: None,
+      })
+    }
+
+    async fn shutdown(&self) -> lspower::jsonrpc::Result<()> {
+      Ok(())
+    }
+  }
+
+  fn setup() -> Config {
+    let mut maybe_client: Option<lspower::Client> = None;
+    let (_service, _) = lspower::LspService::new(|client| {
+      maybe_client = Some(client);
+      MockLanguageServer::default()
+    });
+    Config::new(maybe_client.unwrap())
   }
 
   #[test]
   fn test_config_specifier_enabled() {
-    let mut config = Config::default();
+    let config = setup();
     let specifier = resolve_url("file:///a.ts").unwrap();
     assert!(!config.specifier_enabled(&specifier));
     config
-      .update_workspace(json!({
+      .set_workspace_settings(json!({
         "enable": true
       }))
       .expect("could not update");
     assert!(config.specifier_enabled(&specifier));
-    config
-      .update_specifier(
-        specifier.clone(),
-        json!({
-          "enable": false
-        }),
-      )
-      .expect("could not update");
-    assert!(!config.specifier_enabled(&specifier));
   }
 }

@@ -314,7 +314,7 @@ async fn generate_lint_diagnostics(
   collection: Arc<Mutex<DiagnosticCollection>>,
 ) -> Result<DiagnosticVec, AnyError> {
   let documents = snapshot.documents.clone();
-  let workspace_settings = snapshot.config.workspace_settings.clone();
+  let workspace_settings = snapshot.config.settings.workspace.clone();
   tokio::task::spawn(async move {
     let mut diagnostics_vec = Vec::new();
     if workspace_settings.lint {
@@ -487,7 +487,7 @@ async fn publish_diagnostics(
   if let Some(changes) = collection.take_changes() {
     for specifier in changes {
       let mut diagnostics: Vec<lsp::Diagnostic> =
-        if snapshot.config.workspace_settings.lint {
+        if snapshot.config.settings.workspace.lint {
           collection
             .get(&specifier, DiagnosticSource::DenoLint)
             .cloned()

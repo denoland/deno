@@ -62,16 +62,15 @@ fn bench_big_file_edits(deno_exe: &Path) -> Result<Duration, AnyError> {
     }),
   )?;
 
-  // TODO(@kitsonk) work around https://github.com/denoland/deno/issues/10603
-  // let (id, method, _): (u64, String, Option<Value>) = client.read_request()?;
-  // assert_eq!(method, "workspace/configuration");
+  let (id, method, _): (u64, String, Option<Value>) = client.read_request()?;
+  assert_eq!(method, "workspace/configuration");
 
-  // client.write_response(
-  //   id,
-  //   json!({
-  //     "enable": true
-  //   }),
-  // )?;
+  client.write_response(
+    id,
+    json!({
+      "enable": true
+    }),
+  )?;
 
   let (method, _): (String, Option<Value>) = client.read_notification()?;
   assert_eq!(method, "textDocument/publishDiagnostics");
@@ -145,16 +144,15 @@ fn bench_startup_shutdown(deno_exe: &Path) -> Result<Duration, AnyError> {
     }),
   )?;
 
-  // TODO(@kitsonk) work around https://github.com/denoland/deno/issues/10603
-  // let (id, method, _): (u64, String, Option<Value>) = client.read_request()?;
-  // assert_eq!(method, "workspace/configuration");
+  let (id, method, _): (u64, String, Option<Value>) = client.read_request()?;
+  assert_eq!(method, "workspace/configuration");
 
-  // client.write_response(
-  //   id,
-  //   json!({
-  //     "enable": true
-  //   }),
-  // )?;
+  client.write_response(
+    id,
+    json!({
+      "enable": true
+    }),
+  )?;
 
   let (method, _): (String, Option<Value>) = client.read_notification()?;
   assert_eq!(method, "textDocument/publishDiagnostics");

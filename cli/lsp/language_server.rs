@@ -38,6 +38,7 @@ use super::analysis::ResolvedDependency;
 use super::capabilities;
 use super::completions;
 use super::config::Config;
+use super::config::ConfigSnapshot;
 use super::config::SETTINGS_SECTION;
 use super::diagnostics;
 use super::diagnostics::DiagnosticSource;
@@ -77,7 +78,7 @@ pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
 #[derive(Debug, Clone, Default)]
 pub struct StateSnapshot {
   pub assets: Assets,
-  pub config: Config,
+  pub config: ConfigSnapshot,
   pub documents: DocumentCache,
   pub module_registries: registries::ModuleRegistry,
   pub performance: Performance,
@@ -141,11 +142,12 @@ impl Inner {
     let ts_server = Arc::new(TsServer::new());
     let performance = Performance::default();
     let diagnostics_server = diagnostics::DiagnosticsServer::new();
+    let config = Config::new(client.clone());
 
     Self {
       assets: Default::default(),
       client,
-      config: Default::default(),
+      config,
       diagnostics_server,
       documents: Default::default(),
       maybe_config_uri: Default::default(),
@@ -297,7 +299,7 @@ impl Inner {
   pub(crate) fn snapshot(&self) -> StateSnapshot {
     StateSnapshot {
       assets: self.assets.clone(),
-      config: self.config.clone(),
+      config: self.config.snapshot(),
       documents: self.documents.clone(),
       module_registries: self.module_registries.clone(),
       performance: self.performance.clone(),
@@ -311,7 +313,7 @@ impl Inner {
     let (maybe_import_map, maybe_root_uri) = {
       let config = &self.config;
       (
-        config.workspace_settings.import_map.clone(),
+        config.get_workspace_settings().import_map,
         config.root_uri.clone(),
       )
     };
@@ -357,10 +359,11 @@ impl Inner {
   }
 
   pub fn update_debug_flag(&self) -> bool {
+    let internal_debug = self.config.get_workspace_settings().internal_debug;
     logger::LSP_DEBUG_FLAG
       .compare_exchange(
-        !self.config.workspace_settings.internal_debug,
-        self.config.workspace_settings.internal_debug,
+        !internal_debug,
+        internal_debug,
         Ordering::Acquire,
         Ordering::Relaxed,
       )
@@ -369,8 +372,13 @@ impl Inner {
 
   async fn update_registries(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_registries", None::<()>);
-    for (registry, enabled) in
-      self.config.workspace_settings.suggest.imports.hosts.iter()
+    for (registry, enabled) in self
+      .config
+      .get_workspace_settings()
+      .suggest
+      .imports
+      .hosts
+      .iter()
     {
       if *enabled {
         info!("Enabling auto complete registry for: {}", registry);
@@ -401,16 +409,14 @@ impl Inner {
     }));
     let (maybe_config, maybe_root_uri) = {
       let config = &self.config;
-      if config.workspace_settings.unstable {
+      let workspace_settings = config.get_workspace_settings();
+      if workspace_settings.unstable {
         let unstable_libs = json!({
           "lib": ["deno.ns", "deno.window", "deno.unstable"]
         });
         tsconfig.merge(&unstable_libs);
       }
-      (
-        config.workspace_settings.config.clone(),
-        config.root_uri.clone(),
-      )
+      (workspace_settings.config.clone(), config.root_uri.clone())
     };
     if let Some(config_str) = &maybe_config {
       info!("Updating TypeScript configuration from: \"{}\"", config_str);
@@ -507,7 +513,10 @@ impl Inner {
       let config = &mut self.config;
       config.root_uri = params.root_uri;
       if let Some(value) = params.initialization_options {
-        config.update_workspace(value)?;
+        config.set_workspace_settings(value).map_err(|err| {
+          error!("Cannot set workspace settings: {}", err);
+          LspError::internal_error()
+        })?;
       }
       config.update_capabilities(&params.capabilities);
     }
@@ -592,27 +601,10 @@ impl Inner {
     let mark = self.performance.mark("did_open", Some(&params));
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
 
-    // we only query the individual resource file if the client supports it
-    // TODO(@kitsonk) workaround https://github.com/denoland/deno/issues/10603
-    // if self.config.client_capabilities.workspace_configuration
-    //   && !self.config.contains(&specifier)
-    // {
-    //   if let Ok(value) = self
-    //     .client
-    //     .configuration(vec![ConfigurationItem {
-    //       scope_uri: Some(params.text_document.uri.clone()),
-    //       section: Some(SETTINGS_SECTION.to_string()),
-    //     }])
-    //     .await
-    //   {
-    //     if let Err(err) = self
-    //       .config
-    //       .update_specifier(specifier.clone(), value[0].clone())
-    //     {
-    //       warn!("Error updating specifier configuration: {}", err);
-    //     }
-    //   }
-    // }
+    info!("did_open {} {}", specifier, params.text_document.uri);
+    self
+      .config
+      .update_specifier_settings(&specifier, &params.text_document.uri);
 
     if params.text_document.uri.scheme() == "deno" {
       // we can ignore virtual text documents opening, as they don't need to
@@ -679,33 +671,7 @@ impl Inner {
       .mark("did_change_configuration", Some(&params));
 
     if self.config.client_capabilities.workspace_configuration {
-      let specifiers: Vec<ModuleSpecifier> =
-        self.config.specifier_settings.keys().cloned().collect();
-      let mut snapshot = self.snapshot();
-      let mut config_items = specifiers
-        .iter()
-        .map(|s| ConfigurationItem {
-          scope_uri: Some(snapshot.url_map.normalize_specifier(s).unwrap()),
-          section: Some(SETTINGS_SECTION.to_string()),
-        })
-        .collect();
-      let mut items = vec![ConfigurationItem {
-        scope_uri: None,
-        section: Some(SETTINGS_SECTION.to_string()),
-      }];
-      items.append(&mut config_items);
-      if let Ok(configs) = self.client.configuration(items).await {
-        for (i, value) in configs.into_iter().enumerate() {
-          if let Err(err) = match i {
-            0 => self.config.update_workspace(value),
-            _ => self
-              .config
-              .update_specifier(specifiers[i - 1].clone(), value),
-          } {
-            error!("failed to update settings: {}", err);
-          }
-        }
-      }
+      self.config.update_workspace_settings();
     } else if let Some(config) = params
       .settings
       .as_object()
@@ -713,7 +679,7 @@ impl Inner {
       .flatten()
       .cloned()
     {
-      if let Err(err) = self.config.update_workspace(config) {
+      if let Err(err) = self.config.set_workspace_settings(config) {
         error!("failed to update settings: {}", err);
       }
     }
@@ -1074,7 +1040,7 @@ impl Inner {
   ) -> LspResult<Option<Vec<CodeLens>>> {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
     if !self.config.specifier_enabled(&specifier)
-      || !self.config.workspace_settings.enabled_code_lens()
+      || !self.config.get_workspace_settings().enabled_code_lens()
     {
       return Ok(None);
     }
@@ -1093,9 +1059,10 @@ impl Inner {
     let cl = Rc::new(RefCell::new(Vec::new()));
     navigation_tree.walk(&|i, mp| {
       let mut code_lenses = cl.borrow_mut();
+      let workspace_settings = self.config.get_workspace_settings();
 
       // TSC Implementations Code Lens
-      if self.config.workspace_settings.code_lens.implementations {
+      if workspace_settings.code_lens.implementations {
         let source = CodeLensSource::Implementations;
         match i.kind {
           tsc::ScriptElementKind::InterfaceElement => {
@@ -1119,7 +1086,7 @@ impl Inner {
       }
 
       // TSC References Code Lens
-      if self.config.workspace_settings.code_lens.references {
+      if workspace_settings.code_lens.references {
         let source = CodeLensSource::References;
         if let Some(parent) = &mp {
           if parent.kind == tsc::ScriptElementKind::EnumElement {
@@ -1128,12 +1095,7 @@ impl Inner {
         }
         match i.kind {
           tsc::ScriptElementKind::FunctionElement => {
-            if self
-              .config
-              .workspace_settings
-              .code_lens
-              .references_all_functions
-            {
+            if workspace_settings.code_lens.references_all_functions {
               code_lenses.push(i.to_code_lens(
                 &line_index,
                 &specifier,
@@ -1590,7 +1552,7 @@ impl Inner {
       if let Some(completions) = maybe_completion_info {
         let results = completions.as_completion_response(
           &line_index,
-          &self.config.workspace_settings.suggest,
+          &self.config.get_workspace_settings().suggest,
           &specifier,
           position,
         );
