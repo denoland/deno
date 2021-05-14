@@ -17,9 +17,9 @@ use std::fmt;
 use std::path::PathBuf;
 
 #[derive(Clone)]
-struct LocationDataDir(PathBuf);
+struct OriginDataDir(PathBuf);
 
-pub fn init(location_data_dir: Option<PathBuf>) -> Extension {
+pub fn init(origin_data_dir: Option<PathBuf>) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:extensions/webstorage",
@@ -39,8 +39,8 @@ pub fn init(location_data_dir: Option<PathBuf>) -> Extension {
       ),
     ])
     .state(move |state| {
-      if let Some(location_data_dir) = location_data_dir.clone() {
-        state.put(LocationDataDir(location_data_dir));
+      if let Some(origin_data_dir) = origin_data_dir.clone() {
+        state.put(OriginDataDir(origin_data_dir));
       }
       Ok(())
     })
@@ -65,7 +65,7 @@ pub fn op_webstorage_open(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
   let connection = if persistent {
-    let path = state.try_borrow::<LocationDataDir>().ok_or_else(|| {
+    let path = state.try_borrow::<OriginDataDir>().ok_or_else(|| {
       DomExceptionNotSupportedError::new(
         "LocalStorage is not supported in this context.",
       )

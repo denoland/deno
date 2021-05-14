@@ -204,11 +204,12 @@ pub fn create_main_worker(
     no_color: !colors::use_color(),
     get_error_class_fn: Some(&crate::errors::get_error_class_name),
     location: program_state.flags.location.clone(),
-    location_data_dir: program_state.flags.location.clone().map(|loc| {
+    origin_data_dir: program_state.flags.location.clone().map(|loc| {
       program_state
         .dir
         .root
         .clone()
+        // TODO(@crowlKats): change to origin_data for 2.0
         .join("location_data")
         .join(checksum::gen(&[loc.to_string().as_bytes()]))
     }),
@@ -286,7 +287,7 @@ fn print_cache_info(
       "modulesCache": modules_cache,
       "typescriptCache": typescript_cache,
       "registryCache": registry_cache,
-      "locationData": location_data,
+      "originData": location_data,
     });
     write_json_to_stdout(&output)
   } else {
@@ -308,7 +309,7 @@ fn print_cache_info(
     );
     println!(
       "{} {:?}",
-      colors::bold("Location data location:"),
+      colors::bold("Origin data location:"),
       location_data,
     );
     Ok(())
