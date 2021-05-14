@@ -183,36 +183,45 @@ fn display_parts_to_string(parts: &[SymbolDisplayPart]) -> String {
 }
 
 fn get_tag_body_text(tag: &JsDocTagInfo) -> Option<String> {
-  tag.text.as_ref().map(|text| match tag.name.as_str() {
-    "example" => {
-      let caption_regex =
-        Regex::new(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)").unwrap();
-      if caption_regex.is_match(&text) {
-        caption_regex
-          .replace(text, |c: &Captures| {
-            format!("{}\n\n{}", &c[1], make_codeblock(&c[2]))
-          })
-          .to_string()
-      } else {
-        make_codeblock(text)
+  tag.text.as_ref().map(|display_parts| {
+    // TODO(@kitsonk) check logic in vscode about handling this API change in
+    // tsserver
+    let text = display_parts_to_string(display_parts);
+    match tag.name.as_str() {
+      "example" => {
+        let caption_regex =
+          Regex::new(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)").unwrap();
+        if caption_regex.is_match(&text) {
+          caption_regex
+            .replace(&text, |c: &Captures| {
+              format!("{}\n\n{}", &c[1], make_codeblock(&c[2]))
+            })
+            .to_string()
+        } else {
+          make_codeblock(&text)
+        }
       }
+      "author" => {
+        let email_match_regex =
+          Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap();
+        email_match_regex
+          .replace(&text, |c: &Captures| format!("{} {}", &c[1], &c[2]))
+          .to_string()
+      }
+      "default" => make_codeblock(&text),
+      _ => replace_links(&text),
     }
-    "author" => {
-      let email_match_regex = Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap();
-      email_match_regex
-        .replace(text, |c: &Captures| format!("{} {}", &c[1], &c[2]))
-        .to_string()
-    }
-    "default" => make_codeblock(text),
-    _ => replace_links(text),
   })
 }
 
 fn get_tag_documentation(tag: &JsDocTagInfo) -> String {
   match tag.name.as_str() {
     "augments" | "extends" | "param" | "template" => {
-      if let Some(text) = &tag.text {
+      if let Some(display_parts) = &tag.text {
         let part_regex = Regex::new(r"^(\S+)\s*-?\s*").unwrap();
+        // TODO(@kitsonk) check logic in vscode about handling this API change
+        // in tsserver
+        let text = display_parts_to_string(display_parts);
         let body: Vec<&str> = part_regex.split(&text).collect();
         if body.len() == 3 {
           let param = body[1];
@@ -474,7 +483,7 @@ pub struct SymbolDisplayPart {
 #[serde(rename_all = "camelCase")]
 pub struct JsDocTagInfo {
   name: String,
-  text: Option<String>,
+  text: Option<Vec<SymbolDisplayPart>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2703,7 +2712,7 @@ mod tests {
               "character": 7
             },
             "fileName": "file:///a.ts",
-            "messageText": "Cannot find name 'console'. Do you need to change your target library? Try changing the `lib` compiler option to include 'dom'.",
+            "messageText": "Cannot find name 'console'. Do you need to change your target library? Try changing the \'lib\' compiler option to include 'dom'.",
             "sourceLine": "console.log(\"hello deno\");",
             "category": 1,
             "code": 2584
