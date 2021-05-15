@@ -23,7 +23,7 @@ fn main() {
   // It can be invoked with Deno.core.opcall and the id this method returns
   // or Deno.core.opSync   and the name provided.
   runtime.register_op(
-    "op_print",
+    "op_custom_print",
     // The op_fn callback takes a state object OpState,
     // a structured arg of type `T` and an optional ZeroCopyBuf,
     // a mutable reference to a JavaScript ArrayBuffer
@@ -48,7 +48,7 @@ fn main() {
 
   // Register the JSON op for summing a number array.
   runtime.register_op(
-    "op_sum",
+    "op_custom_sum",
     // The op_sync function automatically deserializes
     // the first ZeroCopyBuf and serializes the return value
     // to reduce boilerplate
@@ -72,7 +72,7 @@ fn main() {
 // our op_print op to display the stringified argument.
 const _newline = new Uint8Array([10]);
 function print(value) {
-  Deno.core.opSync('op_print', value.toString(), _newline);
+  Deno.core.opSync('op_custom_print', value.toString(), _newline);
 }
 "#,
     )
@@ -87,11 +87,11 @@ const arr = [1, 2, 3];
 print("The sum of");
 print(arr);
 print("is");
-print(Deno.core.opSync('op_sum', arr));
+print(Deno.core.opSync('op_custom_sum', arr));
 
 // And incorrect usage
 try {
-  print(Deno.core.opSync('op_sum', 0));
+  print(Deno.core.opSync('op_custom_sum', 0));
 } catch(e) {
   print('Exception:');
   print(e);
