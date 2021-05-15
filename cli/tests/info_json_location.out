@@ -1,4 +1,4 @@
 {
-  "originData": "[WILDCARD]location_data[WILDCARD]",
+  "originStorage": "[WILDCARD]location_data[WILDCARD]",
   "localStorage": "[WILDCARD]location_data[WILDCARD]local_storage"
 }

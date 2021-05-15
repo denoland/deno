@@ -3,5 +3,5 @@
   "modulesCache": "[WILDCARD]deps",
   "typescriptCache": "[WILDCARD]gen",
   "registryCache": "[WILDCARD]registries",
-  "originData": "[WILDCARD]location_data"
+  "originStorage": "[WILDCARD]location_data"
 }

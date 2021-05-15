@@ -69,7 +69,7 @@ pub struct WorkerOptions {
   pub no_color: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub location: Option<Url>,
-  pub origin_data_dir: Option<std::path::PathBuf>,
+  pub origin_storage_dir: Option<std::path::PathBuf>,
   pub blob_url_store: BlobUrlStore,
 }
 
@@ -105,7 +105,7 @@ impl MainWorker {
         options.user_agent.clone(),
         options.ca_data.clone(),
       ),
-      deno_webstorage::init(options.origin_data_dir.clone()),
+      deno_webstorage::init(options.origin_storage_dir.clone()),
       deno_crypto::init(options.seed),
       deno_webgpu::init(options.unstable),
       deno_timers::init::<Permissions>(),
@@ -293,7 +293,7 @@ mod tests {
       no_color: true,
       get_error_class_fn: None,
       location: None,
-      origin_data_dir: None,
+      origin_storage_dir: None,
       blob_url_store: BlobUrlStore::default(),
     };
 

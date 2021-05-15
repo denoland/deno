@@ -204,7 +204,7 @@ pub fn create_main_worker(
     no_color: !colors::use_color(),
     get_error_class_fn: Some(&crate::errors::get_error_class_name),
     location: program_state.flags.location.clone(),
-    origin_data_dir: program_state.flags.location.clone().map(|loc| {
+    origin_storage_dir: program_state.flags.location.clone().map(|loc| {
       program_state
         .dir
         .root
@@ -288,11 +288,11 @@ fn print_cache_info(
         "modulesCache": modules_cache,
         "typescriptCache": typescript_cache,
         "registryCache": registry_cache,
-        "originData": origin_dir,
+        "originStorage": origin_dir,
       })
     } else {
       json!({
-        "originData": origin_dir,
+        "originStorage": origin_dir,
         "localStorage": origin_dir.join("local_storage"),
       })
     };
@@ -315,9 +315,9 @@ fn print_cache_info(
         colors::bold("Language server registries cache:"),
         registry_cache,
       );
-      println!("{} {:?}", colors::bold("Origin data:"), origin_dir);
+      println!("{} {:?}", colors::bold("Origin Storage:"), origin_dir);
     } else {
-      println!("{} {:?}", colors::bold("Origin data:"), origin_dir);
+      println!("{} {:?}", colors::bold("Origin Storage:"), origin_dir);
       println!(
         "{} {:?}",
         colors::bold("Local Storage:"),

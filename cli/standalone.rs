@@ -191,7 +191,7 @@ pub async fn run(
     no_color: !colors::use_color(),
     get_error_class_fn: Some(&get_error_class_name),
     location: metadata.location,
-    origin_data_dir: None,
+    origin_storage_dir: None,
     blob_url_store,
   };
   let mut worker =
