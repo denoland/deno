@@ -143,7 +143,7 @@ declare namespace Deno {
    *
    * The plugin system is not stable and will change in the future, hence the
    * lack of docs. For now take a look at the example
-   * https://github.com/denoland/deno/tree/master/test_plugin
+   * https://github.com/denoland/deno/tree/main/test_plugin
    */
   export function openPlugin(filename: string): number;
 
