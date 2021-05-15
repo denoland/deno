@@ -276,7 +276,7 @@ fn print_cache_info(
     &state.dir.root.join(lsp::language_server::REGISTRIES_PATH);
   let mut origin_dir = state.dir.root.join("location_data");
 
-  if let Some(location) = location {
+  if let Some(location) = &location {
     origin_dir =
       origin_dir.join(&checksum::gen(&[location.to_string().as_bytes()]));
   }
