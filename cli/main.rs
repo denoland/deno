@@ -315,9 +315,9 @@ fn print_cache_info(
         colors::bold("Language server registries cache:"),
         registry_cache,
       );
-      println!("{} {:?}", colors::bold("Origin Storage:"), origin_dir);
+      println!("{} {:?}", colors::bold("Origin storage:"), origin_dir);
     } else {
-      println!("{} {:?}", colors::bold("Origin Storage:"), origin_dir);
+      println!("{} {:?}", colors::bold("Origin storage:"), origin_dir);
       println!(
         "{} {:?}",
         colors::bold("Local Storage:"),
