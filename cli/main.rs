@@ -274,11 +274,11 @@ fn print_cache_info(
   let typescript_cache = &state.dir.gen_cache.location;
   let registry_cache =
     &state.dir.root.join(lsp::language_server::REGISTRIES_PATH);
-  let mut location_data = state.dir.root.join("location_data");
+  let mut origin_dir = state.dir.root.join("location_data");
 
   if let Some(location) = location {
-    location_data =
-      location_data.join(&checksum::gen(&[location.to_string().as_bytes()]));
+    origin_dir =
+      origin_dir.join(&checksum::gen(&[location.to_string().as_bytes()]));
   }
 
   if json {
@@ -287,7 +287,8 @@ fn print_cache_info(
       "modulesCache": modules_cache,
       "typescriptCache": typescript_cache,
       "registryCache": registry_cache,
-      "originData": location_data,
+      "originData": origin_dir,
+      "localStorage": location.map(|_| origin_dir.join("local_storage")),
     });
     write_json_to_stdout(&output)
   } else {
@@ -307,11 +308,14 @@ fn print_cache_info(
       colors::bold("Language server registries cache:"),
       registry_cache,
     );
-    println!(
-      "{} {:?}",
-      colors::bold("Origin data location:"),
-      location_data,
-    );
+    println!("{} {:?}", colors::bold("Origin data:"), origin_dir,);
+    if location.is_some() {
+      println!(
+        "{} {:?}",
+        colors::bold("Local Storage:"),
+        origin_dir.join("local_storage"),
+      );
+    }
     Ok(())
   }
 }
