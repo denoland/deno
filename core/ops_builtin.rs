@@ -57,10 +57,9 @@ pub fn op_close(
 /// Builtin utility to print to stdout/stderr
 pub fn op_print(
   _state: &mut OpState,
-  args: (String, bool),
-  _: (),
+  msg: String,
+  is_err: bool,
 ) -> Result<(), AnyError> {
-  let (msg, is_err) = args;
   if is_err {
     eprint!("{}", msg);
     stderr().flush().unwrap();
