@@ -9,12 +9,11 @@ fn main() {
   // Initialize a runtime instance
   let mut runtime = JsRuntime::new(Default::default());
 
-  // Register the JSON op for summing a number array.
+  // Register an op for summing a number array.
   runtime.register_op(
     "op_sum",
-    // The op_sync function automatically deserializes
-    // the first ZeroCopyBuf and serializes the return value
-    // to reduce boilerplate
+    // The op-layer automatically deserializes inputs
+    // and serializes the returned Result & value
     op_sync(|_state, nums: Vec<f64>, _: ()| {
       // Sum inputs
       let sum = nums.iter().fold(0.0, |a, v| a + v);
