@@ -134,9 +134,6 @@ declare namespace Deno {
    *
    * ```ts
    * const rid = Deno.openPlugin("./path/to/some/plugin.so");
-   * const opId = Deno.core.ops()["some_op"];
-   * const response = Deno.core.dispatch(opId, new Uint8Array([1,2,3,4]));
-   * console.log(`Response from plugin ${response}`);
    * ```
    *
    * Requires `allow-plugin` permission.
