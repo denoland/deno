@@ -844,10 +844,15 @@ fn op_stat_sync(
   state.borrow_mut::<Permissions>().read.check(&path)?;
   debug!("op_stat_sync {} {}", path.display(), lstat);
   let metadata = if lstat {
-    std::fs::symlink_metadata(&path)?
+    std::fs::symlink_metadata(&path).map_err(|err| {
+      io::Error::new(err.kind(), format!("{}, stat '{}'", err, args.path))
+    })
   } else {
-    std::fs::metadata(&path)?
+    std::fs::metadata(&path).map_err(|err| {
+      io::Error::new(err.kind(), format!("{}, stat '{}'", err, args.path))
+    })
   };
+  let metadata = metadata?;
   Ok(get_stat(metadata))
 }
 
@@ -867,10 +872,15 @@ async fn op_stat_async(
   tokio::task::spawn_blocking(move || {
     debug!("op_stat_async {} {}", path.display(), lstat);
     let metadata = if lstat {
-      std::fs::symlink_metadata(&path)?
+      std::fs::symlink_metadata(&path).map_err(|err| {
+        io::Error::new(err.kind(), format!("{}, stat '{}'", err, args.path))
+      })
     } else {
-      std::fs::metadata(&path)?
+      std::fs::metadata(&path).map_err(|err| {
+        io::Error::new(err.kind(), format!("{}, stat '{}'", err, args.path))
+      })
     };
+    let metadata = metadata?;
     Ok(get_stat(metadata))
   })
   .await
@@ -1165,15 +1175,15 @@ fn op_symlink_sync(
       None => {
         let old_meta = std::fs::metadata(&oldpath);
         match old_meta {
-          Ok(metadata) => {
-            if metadata.is_file() {
-              symlink_file(&oldpath, &newpath)?
-            } else if metadata.is_dir() {
-              symlink_dir(&oldpath, &newpath)?
-            }
-          }
-          Err(_) => return Err(type_error("you must pass a `options` argument for non-existent target path in windows".to_string())),
-        }
+                        Ok(metadata) => {
+                            if metadata.is_file() {
+                                symlink_file(&oldpath, &newpath)?
+                            } else if metadata.is_dir() {
+                                symlink_dir(&oldpath, &newpath)?
+                            }
+                        }
+                        Err(_) => return Err(type_error("you must pass a `options` argument for non-existent target path in windows".to_string())),
+                    }
       }
     };
     Ok(())
@@ -1194,42 +1204,42 @@ async fn op_symlink_async(
   }
 
   tokio::task::spawn_blocking(move || {
-    debug!("op_symlink_async {} {}", oldpath.display(), newpath.display());
-    #[cfg(unix)]
-    {
-      use std::os::unix::fs::symlink;
-      symlink(&oldpath, &newpath)?;
-      Ok(())
-    }
-    #[cfg(not(unix))]
-    {
-      use std::os::windows::fs::{symlink_dir, symlink_file};
-
-      match args.options {
-        Some(options) => match options._type.as_ref() {
-          "file" => symlink_file(&oldpath, &newpath)?,
-          "dir" => symlink_dir(&oldpath, &newpath)?,
-          _ => return Err(type_error("unsupported type")),
-        },
-        None => {
-          let old_meta = std::fs::metadata(&oldpath);
-          match old_meta {
-            Ok(metadata) => {
-              if metadata.is_file() {
-                symlink_file(&oldpath, &newpath)?
-              } else if metadata.is_dir() {
-                symlink_dir(&oldpath, &newpath)?
-              }
+        debug!("op_symlink_async {} {}", oldpath.display(), newpath.display());
+        #[cfg(unix)]
+            {
+                use std::os::unix::fs::symlink;
+                symlink(&oldpath, &newpath)?;
+                Ok(())
             }
-            Err(_) => return Err(type_error("you must pass a `options` argument for non-existent target path in windows".to_string())),
-          }
-        }
-      };
-      Ok(())
-    }
-  })
-  .await
-  .unwrap()
+        #[cfg(not(unix))]
+            {
+                use std::os::windows::fs::{symlink_dir, symlink_file};
+
+                match args.options {
+                    Some(options) => match options._type.as_ref() {
+                        "file" => symlink_file(&oldpath, &newpath)?,
+                        "dir" => symlink_dir(&oldpath, &newpath)?,
+                        _ => return Err(type_error("unsupported type")),
+                    },
+                    None => {
+                        let old_meta = std::fs::metadata(&oldpath);
+                        match old_meta {
+                            Ok(metadata) => {
+                                if metadata.is_file() {
+                                    symlink_file(&oldpath, &newpath)?
+                                } else if metadata.is_dir() {
+                                    symlink_dir(&oldpath, &newpath)?
+                                }
+                            }
+                            Err(_) => return Err(type_error("you must pass a `options` argument for non-existent target path in windows".to_string())),
+                        }
+                    }
+                };
+                Ok(())
+            }
+    })
+        .await
+        .unwrap()
 }
 
 fn op_read_link_sync(
