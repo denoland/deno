@@ -1,8 +1,4 @@
 {
-  "denoDir": "[WILDCARD]",
-  "modulesCache": "[WILDCARD]deps",
-  "typescriptCache": "[WILDCARD]gen",
-  "registryCache": "[WILDCARD]registries",
   "originData": "[WILDCARD]location_data[WILDCARD]",
   "localStorage": "[WILDCARD]location_data[WILDCARD]local_storage"
 }

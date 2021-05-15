@@ -282,34 +282,42 @@ fn print_cache_info(
   }
 
   if json {
-    let output = json!({
-      "denoDir": deno_dir,
-      "modulesCache": modules_cache,
-      "typescriptCache": typescript_cache,
-      "registryCache": registry_cache,
-      "originData": origin_dir,
-      "localStorage": location.map(|_| origin_dir.join("local_storage")),
-    });
+    let output = if location.is_none() {
+      json!({
+        "denoDir": deno_dir,
+        "modulesCache": modules_cache,
+        "typescriptCache": typescript_cache,
+        "registryCache": registry_cache,
+        "originData": origin_dir,
+      })
+    } else {
+      json!({
+        "originData": origin_dir,
+        "localStorage": origin_dir.join("local_storage"),
+      })
+    };
     write_json_to_stdout(&output)
   } else {
-    println!("{} {:?}", colors::bold("DENO_DIR location:"), deno_dir);
-    println!(
-      "{} {:?}",
-      colors::bold("Remote modules cache:"),
-      modules_cache
-    );
-    println!(
-      "{} {:?}",
-      colors::bold("Emitted modules cache:"),
-      typescript_cache
-    );
-    println!(
-      "{} {:?}",
-      colors::bold("Language server registries cache:"),
-      registry_cache,
-    );
-    println!("{} {:?}", colors::bold("Origin data:"), origin_dir,);
-    if location.is_some() {
+    if location.is_none() {
+      println!("{} {:?}", colors::bold("DENO_DIR location:"), deno_dir);
+      println!(
+        "{} {:?}",
+        colors::bold("Remote modules cache:"),
+        modules_cache
+      );
+      println!(
+        "{} {:?}",
+        colors::bold("Emitted modules cache:"),
+        typescript_cache
+      );
+      println!(
+        "{} {:?}",
+        colors::bold("Language server registries cache:"),
+        registry_cache,
+      );
+      println!("{} {:?}", colors::bold("Origin data:"), origin_dir);
+    } else {
+      println!("{} {:?}", colors::bold("Origin data:"), origin_dir);
       println!(
         "{} {:?}",
         colors::bold("Local Storage:"),
