@@ -59,8 +59,6 @@ delete Object.prototype.__proto__;
     }
   }
 
-  const encoder = new TextEncoder();
-
   function workerClose() {
     if (isClosing) {
       return;

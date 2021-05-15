@@ -197,7 +197,7 @@ Deno.test({
       { type: "module" },
     );
 
-    racyWorker.onmessage = (e): void => {
+    racyWorker.onmessage = (_e): void => {
       setTimeout(() => {
         promise.resolve();
       }, 100);
@@ -352,7 +352,7 @@ Deno.test({
     );
     const arr: number[] = [];
     w.addEventListener("message", () => arr.push(1));
-    w.onmessage = (e): void => {
+    w.onmessage = (_e): void => {
       arr.push(2);
     };
     w.addEventListener("message", () => arr.push(3));

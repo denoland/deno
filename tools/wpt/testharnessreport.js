@@ -1,6 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+import { writeAllSync } from "https://deno.land/std@0.96.0/io/util.ts";
+
 window.add_result_callback(({ message, name, stack, status }) => {
-  Deno.writeAllSync(
+  writeAllSync(
     Deno.stderr,
     new TextEncoder().encode(
       `${JSON.stringify({ name, status, message, stack })}\n`,
@@ -8,6 +11,6 @@ window.add_result_callback(({ message, name, stack, status }) => {
   );
 });
 
-window.add_completion_callback((tests, harnessStatus) => {
+window.add_completion_callback((_tests, _harnessStatus) => {
   Deno.exit(0);
 });
