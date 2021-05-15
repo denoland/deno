@@ -34,6 +34,7 @@ fn main() {
 function print(value) {
   Deno.core.print(value.toString()+"\n");
 }
+
 const arr = [1, 2, 3];
 print("The sum of");
 print(arr);
