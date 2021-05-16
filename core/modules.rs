@@ -517,6 +517,29 @@ impl ModuleMap {
   pub fn get_info_by_id(&self, id: &ModuleId) -> Option<&ModuleInfo> {
     self.info.get(id)
   }
+
+  pub fn load_main(
+    &self,
+    op_state: Rc<RefCell<OpState>>,
+    specifier: &str,
+    code: Option<String>,
+  ) -> RecursiveModuleLoad {
+    RecursiveModuleLoad::main(op_state, specifier, code, self.loader.clone())
+  }
+
+  pub fn load_dynamic_import(
+    &self,
+    op_state: Rc<RefCell<OpState>>,
+    specifier: &str,
+    referrer: &str,
+  ) -> RecursiveModuleLoad {
+    RecursiveModuleLoad::dynamic_import(
+      op_state,
+      specifier,
+      referrer,
+      self.loader.clone(),
+    )
+  }
 }
 
 #[cfg(test)]

@@ -8,6 +8,7 @@ use crate::OpPayload;
 use crate::OpTable;
 use crate::PromiseId;
 use crate::ZeroCopyBuf;
+use log::debug;
 use rusty_v8 as v8;
 use serde::Serialize;
 use serde_v8::to_v8;
@@ -182,13 +183,18 @@ pub extern "C" fn host_import_module_dynamically_callback(
     let mut state = state_rc.borrow_mut();
     let module_map_rc = JsRuntime::module_map(scope);
     let module_map = module_map_rc.borrow();
-    let loader = module_map.loader.clone();
-    state.dyn_import_cb(
-      resolver_handle,
+    let op_state = state.op_state.clone();
+
+    debug!(
+      "dyn_import specifier {} referrer {} ",
+      specifier_str, referrer_name_str
+    );
+    let load = module_map.load_dynamic_import(
+      op_state,
       &specifier_str,
       &referrer_name_str,
-      loader,
     );
+    state.dyn_import_cb(load, resolver_handle);
   }
 
   // Map errors from module resolution (not JS errors from module execution) to
@@ -591,7 +597,7 @@ pub fn module_resolve_callback<'s>(
 
   let state_rc = JsRuntime::state(scope);
   let module_map_rc = JsRuntime::module_map(scope);
-  let state = state_rc.borrow();
+  let op_state = state_rc.borrow().op_state.clone();
   let module_map = module_map_rc.borrow();
 
   let referrer_global = v8::Global::new(scope, referrer);
@@ -605,16 +611,11 @@ pub fn module_resolve_callback<'s>(
 
   let resolved_specifier = module_map
     .loader
-    .resolve(
-      state.op_state.clone(),
-      &specifier_str,
-      &referrer_name,
-      false,
-    )
+    .resolve(op_state, &specifier_str, &referrer_name, false)
     .expect("Module should have been already resolved");
 
-  if let Some(id) = module_map_rc.borrow().get_id(resolved_specifier.as_str()) {
-    if let Some(handle) = module_map_rc.borrow().get_handle(id) {
+  if let Some(id) = module_map.get_id(resolved_specifier.as_str()) {
+    if let Some(handle) = module_map.get_handle(id) {
       return Some(v8::Local::new(scope, handle));
     }
   }

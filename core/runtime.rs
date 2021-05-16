@@ -690,19 +690,9 @@ impl JsRuntimeState {
   // Called by V8 during `Isolate::mod_instantiate`.
   pub fn dyn_import_cb(
     &mut self,
+    load: RecursiveModuleLoad,
     resolver_handle: v8::Global<v8::PromiseResolver>,
-    specifier: &str,
-    referrer: &str,
-    loader: Rc<dyn ModuleLoader>,
   ) {
-    debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
-
-    let load = RecursiveModuleLoad::dynamic_import(
-      self.op_state.clone(),
-      specifier,
-      referrer,
-      loader,
-    );
     self.dyn_import_map.insert(load.id, resolver_handle);
     self.waker.wake();
     let fut = load.prepare().boxed_local();
@@ -762,7 +752,9 @@ impl JsRuntime {
     source: &str,
   ) -> Result<ModuleId, AnyError> {
     let state_rc = Self::state(self.v8_isolate());
+    let op_state = state_rc.borrow().op_state.clone();
     let module_map_rc = Self::module_map(self.v8_isolate());
+    let mut module_map = module_map_rc.borrow_mut();
     let scope = &mut self.handle_scope();
 
     let name_str = v8::String::new(scope, name).unwrap();
@@ -793,9 +785,8 @@ impl JsRuntime {
       let import_specifier = module_request
         .get_specifier()
         .to_rust_string_lossy(tc_scope);
-      let state = state_rc.borrow();
-      let module_specifier = module_map_rc.borrow().loader.resolve(
-        state.op_state.clone(),
+      let module_specifier = module_map.loader.resolve(
+        op_state.clone(),
         &import_specifier,
         name,
         false,
@@ -803,7 +794,7 @@ impl JsRuntime {
       import_specifiers.push(module_specifier);
     }
 
-    let id = module_map_rc.borrow_mut().register(
+    let id = module_map.register(
       name,
       main,
       v8::Global::<v8::Module>::new(tc_scope, module),
@@ -1351,18 +1342,12 @@ impl JsRuntime {
     specifier: &ModuleSpecifier,
     code: Option<String>,
   ) -> Result<ModuleId, AnyError> {
-    let loader = {
-      let module_map_rc = Self::module_map(self.v8_isolate());
-      let module_map = module_map_rc.borrow();
-      module_map.loader.clone()
-    };
+    let module_map_rc = Self::module_map(self.v8_isolate());
+    let op_state = self.op_state();
+    let module_map = module_map_rc.borrow();
 
-    let load = RecursiveModuleLoad::main(
-      self.op_state(),
-      &specifier.to_string(),
-      code,
-      loader,
-    );
+    let load = module_map.load_main(op_state, &specifier.to_string(), code);
+
     let (_load_id, prepare_result) = load.prepare().await;
 
     let mut load = prepare_result?;
