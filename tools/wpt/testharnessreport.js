@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-import { writeAllSync } from "https://deno.land/std@0.96.0/io/util.ts";
+import { writeAllSync } from "../../test_util/std/io/util.ts";
 
 window.add_result_callback(({ message, name, stack, status }) => {
   writeAllSync(
