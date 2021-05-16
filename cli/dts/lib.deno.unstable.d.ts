@@ -1161,6 +1161,7 @@ declare namespace Deno {
    * Services HTTP requests given a TCP or TLS socket.
    *
    * ```ts
+   * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
    * const httpConn = Deno.serveHttp(conn);
    * const e = await httpConn.nextRequest();
    * if (e) {
