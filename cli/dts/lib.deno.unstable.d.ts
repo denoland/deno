@@ -143,7 +143,7 @@ declare namespace Deno {
    *
    * The plugin system is not stable and will change in the future, hence the
    * lack of docs. For now take a look at the example
-   * https://github.com/denoland/deno/tree/master/test_plugin
+   * https://github.com/denoland/deno/tree/main/test_plugin
    */
   export function openPlugin(filename: string): number;
 
@@ -1042,7 +1042,7 @@ declare namespace Deno {
    * A custom HttpClient for use with `fetch`.
    *
    * ```ts
-   * const client = new Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
+   * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
    * const req = await fetch("https://myserver.com", { client });
    * ```
    */
@@ -1064,7 +1064,7 @@ declare namespace Deno {
    * Create a custom HttpClient for to use with `fetch`.
    *
    * ```ts
-   * const client = new Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
+   * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
    * const req = await fetch("https://myserver.com", { client });
    * ```
    */
@@ -1161,6 +1161,7 @@ declare namespace Deno {
    * Services HTTP requests given a TCP or TLS socket.
    *
    * ```ts
+   * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
    * const httpConn = Deno.serveHttp(conn);
    * const e = await httpConn.nextRequest();
    * if (e) {
