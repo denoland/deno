@@ -14,7 +14,6 @@ use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
-use crate::modules::ModuleSource;
 use crate::modules::NoopModuleLoader;
 use crate::modules::PrepareLoadFuture;
 use crate::modules::RecursiveModuleLoad;
@@ -32,7 +31,6 @@ use futures::stream::StreamExt;
 use futures::stream::StreamFuture;
 use futures::task::AtomicWaker;
 use futures::Future;
-use log::debug;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -1032,6 +1030,8 @@ impl JsRuntime {
     cx: &mut Context,
   ) -> Poll<Result<(), AnyError>> {
     let state_rc = Self::state(self.v8_isolate());
+    let module_map_rc = Self::module_map(self.v8_isolate());
+    let op_state = state_rc.borrow().op_state.clone();
 
     if state_rc.borrow().pending_dyn_imports.is_empty() {
       return Poll::Ready(Ok(()));
@@ -1054,7 +1054,15 @@ impl JsRuntime {
               // A module (not necessarily the one dynamically imported) has been
               // fetched. Create and register it, and if successful, poll for the
               // next recursive-load event related to this dynamic import.
-              match self.register_during_load(info, &mut load) {
+              let register_result =
+                module_map_rc.borrow_mut().register_during_load(
+                  &mut self.handle_scope(),
+                  op_state.clone(),
+                  info,
+                  &mut load,
+                );
+
+              match register_result {
                 Ok(()) => {
                   // Keep importing until it's fully drained
                   state_rc
@@ -1201,84 +1209,6 @@ impl JsRuntime {
     }
   }
 
-  // TODO(bartlomieju): this function should live on `ModuleMap`
-  fn register_during_load(
-    &mut self,
-    module_source: ModuleSource,
-    load: &mut RecursiveModuleLoad,
-  ) -> Result<(), AnyError> {
-    let referrer_specifier =
-      crate::resolve_url(&module_source.module_url_found).unwrap();
-
-    let module_map_rc = Self::module_map(self.v8_isolate());
-    let state_rc = Self::state(self.v8_isolate());
-    let op_state = state_rc.borrow().op_state.clone();
-
-    // #A There are 3 cases to handle at this moment:
-    // 1. Source code resolved result have the same module name as requested
-    //    and is not yet registered
-    //     -> register
-    // 2. Source code resolved result have a different name as requested:
-    //   2a. The module with resolved module name has been registered
-    //     -> alias
-    //   2b. The module with resolved module name has not yet been registered
-    //     -> register & alias
-
-    // If necessary, register an alias.
-    if module_source.module_url_specified != module_source.module_url_found {
-      module_map_rc.borrow_mut().alias(
-        &module_source.module_url_specified,
-        &module_source.module_url_found,
-      );
-    }
-
-    let maybe_mod_id = module_map_rc
-      .borrow()
-      .get_id(&module_source.module_url_found);
-
-    let module_id = match maybe_mod_id {
-      Some(id) => {
-        // Module has already been registered.
-        debug!(
-          "Already-registered module fetched again: {}",
-          module_source.module_url_found
-        );
-        id
-      }
-      // Module not registered yet, do it now.
-      None => {
-        let scope = &mut self.handle_scope();
-        module_map_rc.borrow_mut().new_module(
-          scope,
-          op_state,
-          load.is_currently_loading_main_module(),
-          &module_source.module_url_found,
-          &module_source.code,
-        )?
-      }
-    };
-
-    // Now we must iterate over all imports of the module and load them.
-    let imports = module_map_rc
-      .borrow()
-      .get_children(module_id)
-      .unwrap()
-      .clone();
-
-    for module_specifier in imports {
-      let is_registered =
-        module_map_rc.borrow().is_registered(&module_specifier);
-      if !is_registered {
-        load
-          .add_import(module_specifier.to_owned(), referrer_specifier.clone());
-      }
-    }
-
-    load.module_registered(module_id);
-
-    Ok(())
-  }
-
   /// Asynchronously load specified module and all of its dependencies
   ///
   /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
@@ -1291,10 +1221,11 @@ impl JsRuntime {
     let module_map_rc = Self::module_map(self.v8_isolate());
     let op_state = self.op_state();
 
-    let load =
-      module_map_rc
-        .borrow()
-        .load_main(op_state, &specifier.to_string(), code);
+    let load = module_map_rc.borrow().load_main(
+      op_state.clone(),
+      &specifier.to_string(),
+      code,
+    );
 
     let (_load_id, prepare_result) = load.prepare().await;
 
@@ -1302,7 +1233,13 @@ impl JsRuntime {
 
     while let Some(info_result) = load.next().await {
       let info = info_result?;
-      self.register_during_load(info, &mut load)?;
+      let scope = &mut self.handle_scope();
+      module_map_rc.borrow_mut().register_during_load(
+        scope,
+        op_state.clone(),
+        info,
+        &mut load,
+      )?;
     }
 
     let root_id = load.root_module_id.expect("Root module id empty");
@@ -1448,6 +1385,7 @@ impl JsRuntime {
 pub mod tests {
   use super::*;
   use crate::error::custom_error;
+  use crate::modules::ModuleSource;
   use crate::modules::ModuleSourceFuture;
   use crate::op_sync;
   use crate::ZeroCopyBuf;

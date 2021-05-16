@@ -12,6 +12,7 @@ use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
 use futures::stream::TryStreamExt;
+use log::debug;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -520,6 +521,71 @@ impl ModuleMap {
     );
 
     Ok(id)
+  }
+
+  pub fn register_during_load(
+    &mut self,
+    scope: &mut v8::HandleScope,
+    op_state: Rc<RefCell<OpState>>,
+    module_source: ModuleSource,
+    load: &mut RecursiveModuleLoad,
+  ) -> Result<(), AnyError> {
+    let referrer_specifier =
+      crate::resolve_url(&module_source.module_url_found).unwrap();
+
+    // #A There are 3 cases to handle at this moment:
+    // 1. Source code resolved result have the same module name as requested
+    //    and is not yet registered
+    //     -> register
+    // 2. Source code resolved result have a different name as requested:
+    //   2a. The module with resolved module name has been registered
+    //     -> alias
+    //   2b. The module with resolved module name has not yet been registered
+    //     -> register & alias
+
+    // If necessary, register an alias.
+    if module_source.module_url_specified != module_source.module_url_found {
+      self.alias(
+        &module_source.module_url_specified,
+        &module_source.module_url_found,
+      );
+    }
+
+    let maybe_mod_id = self.get_id(&module_source.module_url_found);
+
+    let module_id = match maybe_mod_id {
+      Some(id) => {
+        // Module has already been registered.
+        debug!(
+          "Already-registered module fetched again: {}",
+          module_source.module_url_found
+        );
+        id
+      }
+      // Module not registered yet, do it now.
+      None => self.new_module(
+        scope,
+        op_state,
+        load.is_currently_loading_main_module(),
+        &module_source.module_url_found,
+        &module_source.code,
+      )?,
+    };
+
+    // Now we must iterate over all imports of the module and load them.
+    let imports = self.get_children(module_id).unwrap().clone();
+
+    for module_specifier in imports {
+      let is_registered = self.is_registered(&module_specifier);
+      if !is_registered {
+        load
+          .add_import(module_specifier.to_owned(), referrer_specifier.clone());
+      }
+    }
+
+    load.module_registered(module_id);
+
+    Ok(())
   }
 
   pub fn get_children(&self, id: ModuleId) -> Option<&Vec<ModuleSpecifier>> {
