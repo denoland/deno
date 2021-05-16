@@ -2,9 +2,11 @@
 
 use rusty_v8 as v8;
 
+use crate::bindings;
 use crate::error::generic_error;
 use crate::error::AnyError;
 use crate::module_specifier::ModuleSpecifier;
+use crate::runtime::exception_to_err_result;
 use crate::OpState;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
@@ -13,6 +15,7 @@ use futures::stream::TryStreamExt;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::convert::TryFrom;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -452,22 +455,53 @@ impl ModuleMap {
     }
   }
 
-  pub fn get_children(&self, id: ModuleId) -> Option<&Vec<ModuleSpecifier>> {
-    self.info.get(&id).map(|i| &i.import_specifiers)
-  }
-
-  pub fn is_registered(&self, specifier: &ModuleSpecifier) -> bool {
-    self.get_id(&specifier.to_string()).is_some()
-  }
-
-  pub fn register(
+  // Create and compile an ES module.
+  pub fn new_module(
     &mut self,
-    name: &str,
+    scope: &mut v8::HandleScope,
+    op_state: Rc<RefCell<OpState>>,
     main: bool,
-    handle: v8::Global<v8::Module>,
-    import_specifiers: Vec<ModuleSpecifier>,
-  ) -> ModuleId {
-    let name = String::from(name);
+    name: &str,
+    source: &str,
+  ) -> Result<ModuleId, AnyError> {
+    let name_str = v8::String::new(scope, name).unwrap();
+    let source_str = v8::String::new(scope, source).unwrap();
+
+    let origin = bindings::module_origin(scope, name_str);
+    let source = v8::script_compiler::Source::new(source_str, Some(&origin));
+
+    let tc_scope = &mut v8::TryCatch::new(scope);
+
+    let maybe_module = v8::script_compiler::compile_module(tc_scope, source);
+
+    if tc_scope.has_caught() {
+      assert!(maybe_module.is_none());
+      let e = tc_scope.exception().unwrap();
+      return exception_to_err_result(tc_scope, e, false);
+    }
+
+    let module = maybe_module.unwrap();
+
+    let mut import_specifiers: Vec<ModuleSpecifier> = vec![];
+    let module_requests = module.get_module_requests();
+    for i in 0..module_requests.length() {
+      let module_request = v8::Local::<v8::ModuleRequest>::try_from(
+        module_requests.get(tc_scope, i).unwrap(),
+      )
+      .unwrap();
+      let import_specifier = module_request
+        .get_specifier()
+        .to_rust_string_lossy(tc_scope);
+      let module_specifier = self.loader.resolve(
+        op_state.clone(),
+        &import_specifier,
+        name,
+        false,
+      )?;
+      import_specifiers.push(module_specifier);
+    }
+
+    let handle = v8::Global::<v8::Module>::new(tc_scope, module);
     let id = self.next_module_id;
     self.next_module_id += 1;
     self
@@ -480,11 +514,20 @@ impl ModuleMap {
       ModuleInfo {
         id,
         main,
-        name,
+        name: name.to_string(),
         import_specifiers,
       },
     );
-    id
+
+    Ok(id)
+  }
+
+  pub fn get_children(&self, id: ModuleId) -> Option<&Vec<ModuleSpecifier>> {
+    self.info.get(&id).map(|i| &i.import_specifiers)
+  }
+
+  pub fn is_registered(&self, specifier: &ModuleSpecifier) -> bool {
+    self.get_id(&specifier.to_string()).is_some()
   }
 
   pub fn alias(&mut self, name: &str, target: &str) {

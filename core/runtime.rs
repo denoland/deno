@@ -114,6 +114,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
+  // TODO: looks like it can be moved to `ModuleMap`
   pub(crate) dyn_import_map:
     HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
   preparing_dyn_imports: FuturesUnordered<Pin<Box<PrepareLoadFuture>>>,
@@ -687,7 +688,6 @@ where
 }
 
 impl JsRuntimeState {
-  // Called by V8 during `Isolate::mod_instantiate`.
   pub fn dyn_import_cb(
     &mut self,
     load: RecursiveModuleLoad,
@@ -742,67 +742,6 @@ pub(crate) fn exception_to_err_result<'s, T>(
 
 // Related to module loading
 impl JsRuntime {
-  /// Low-level module creation.
-  ///
-  /// Called during module loading or dynamic import loading.
-  fn mod_new(
-    &mut self,
-    op_state: Rc<RefCell<OpState>>,
-    main: bool,
-    name: &str,
-    source: &str,
-  ) -> Result<ModuleId, AnyError> {
-    let module_map_rc = Self::module_map(self.v8_isolate());
-    let mut module_map = module_map_rc.borrow_mut();
-    let scope = &mut self.handle_scope();
-
-    let name_str = v8::String::new(scope, name).unwrap();
-    let source_str = v8::String::new(scope, source).unwrap();
-
-    let origin = bindings::module_origin(scope, name_str);
-    let source = v8::script_compiler::Source::new(source_str, Some(&origin));
-
-    let tc_scope = &mut v8::TryCatch::new(scope);
-
-    let maybe_module = v8::script_compiler::compile_module(tc_scope, source);
-
-    if tc_scope.has_caught() {
-      assert!(maybe_module.is_none());
-      let e = tc_scope.exception().unwrap();
-      return exception_to_err_result(tc_scope, e, false);
-    }
-
-    let module = maybe_module.unwrap();
-
-    let mut import_specifiers: Vec<ModuleSpecifier> = vec![];
-    let module_requests = module.get_module_requests();
-    for i in 0..module_requests.length() {
-      let module_request = v8::Local::<v8::ModuleRequest>::try_from(
-        module_requests.get(tc_scope, i).unwrap(),
-      )
-      .unwrap();
-      let import_specifier = module_request
-        .get_specifier()
-        .to_rust_string_lossy(tc_scope);
-      let module_specifier = module_map.loader.resolve(
-        op_state.clone(),
-        &import_specifier,
-        name,
-        false,
-      )?;
-      import_specifiers.push(module_specifier);
-    }
-
-    let id = module_map.register(
-      name,
-      main,
-      v8::Global::<v8::Module>::new(tc_scope, module),
-      import_specifiers,
-    );
-
-    Ok(id)
-  }
-
   /// Instantiates a ES module
   ///
   /// `AnyError` can be downcast to a type that exposes additional information
@@ -1307,12 +1246,16 @@ impl JsRuntime {
         id
       }
       // Module not registered yet, do it now.
-      None => self.mod_new(
-        op_state,
-        load.is_currently_loading_main_module(),
-        &module_source.module_url_found,
-        &module_source.code,
-      )?,
+      None => {
+        let scope = &mut self.handle_scope();
+        module_map_rc.borrow_mut().new_module(
+          scope,
+          op_state,
+          load.is_currently_loading_main_module(),
+          &module_source.module_url_found,
+          &module_source.code,
+        )?
+      }
     };
 
     // Now we must iterate over all imports of the module and load them.
@@ -1981,45 +1924,48 @@ pub mod tests {
 
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
-    let specifier_a = "file:///a.js".to_string();
     let op_state = runtime.op_state();
-    let mod_a = runtime
-      .mod_new(
-        op_state.clone(),
-        true,
-        &specifier_a,
-        r#"
-        import { b } from './b.js'
-        if (b() != 'b') throw Error();
-        let control = 42;
-        Deno.core.opAsync("op_test", control);
-      "#,
-      )
-      .unwrap();
-    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
-
     let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
-    {
-      let module_map = module_map_rc.borrow();
+
+    let (mod_a, mod_b) = {
+      let scope = &mut runtime.handle_scope();
+      let mut module_map = module_map_rc.borrow_mut();
+      let specifier_a = "file:///a.js".to_string();
+      let mod_a = module_map
+        .new_module(
+          scope,
+          op_state.clone(),
+          true,
+          &specifier_a,
+          r#"
+          import { b } from './b.js'
+          if (b() != 'b') throw Error();
+          let control = 42;
+          Deno.core.opAsync("op_test", control);
+        "#,
+        )
+        .unwrap();
+
+      assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
       let imports = module_map.get_children(mod_a);
       assert_eq!(
         imports,
         Some(&vec![crate::resolve_url("file:///b.js").unwrap()])
       );
-    }
-    let mod_b = runtime
-      .mod_new(
-        op_state,
-        false,
-        "file:///b.js",
-        "export function b() { return 'b' }",
-      )
-      .unwrap();
-    {
-      let module_map = module_map_rc.borrow();
+
+      let mod_b = module_map
+        .new_module(
+          scope,
+          op_state,
+          false,
+          "file:///b.js",
+          "export function b() { return 'b' }",
+        )
+        .unwrap();
       let imports = module_map.get_children(mod_b).unwrap();
       assert_eq!(imports.len(), 0);
-    }
+      (mod_a, mod_b)
+    };
 
     runtime.mod_instantiate(mod_b).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
