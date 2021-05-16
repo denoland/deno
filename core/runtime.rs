@@ -10,7 +10,6 @@ use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
 use crate::futures::FutureExt;
 use crate::module_specifier::ModuleSpecifier;
-use crate::modules::LoadState;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
@@ -1264,20 +1263,14 @@ impl JsRuntime {
     }
   }
 
+  // TODO(bartlomieju): this function should live on `ModuleMap`
   fn register_during_load(
     &mut self,
-    info: ModuleSource,
+    module_source: ModuleSource,
     load: &mut RecursiveModuleLoad,
   ) -> Result<(), AnyError> {
-    let ModuleSource {
-      code,
-      module_url_specified,
-      module_url_found,
-    } = info;
-
-    let is_main =
-      load.state == LoadState::LoadingRoot && !load.is_dynamic_import();
-    let referrer_specifier = crate::resolve_url(&module_url_found).unwrap();
+    let referrer_specifier =
+      crate::resolve_url(&module_source.module_url_found).unwrap();
 
     let state_rc = Self::state(self.v8_isolate());
     // #A There are 3 cases to handle at this moment:
@@ -1291,59 +1284,56 @@ impl JsRuntime {
     //     -> register & alias
 
     // If necessary, register an alias.
-    if module_url_specified != module_url_found {
+    if module_source.module_url_specified != module_source.module_url_found {
       let mut state = state_rc.borrow_mut();
-      state
-        .module_map
-        .alias(&module_url_specified, &module_url_found);
+      state.module_map.alias(
+        &module_source.module_url_specified,
+        &module_source.module_url_found,
+      );
     }
 
-    let maybe_mod_id = {
-      let state = state_rc.borrow();
-      state.module_map.get_id(&module_url_found)
-    };
+    let maybe_mod_id = state_rc
+      .borrow()
+      .module_map
+      .get_id(&module_source.module_url_found);
 
     let module_id = match maybe_mod_id {
       Some(id) => {
         // Module has already been registered.
         debug!(
           "Already-registered module fetched again: {}",
-          module_url_found
+          module_source.module_url_found
         );
         id
       }
       // Module not registered yet, do it now.
-      None => self.mod_new(is_main, &module_url_found, &code)?,
+      None => self.mod_new(
+        load.is_currently_loading_main_module(),
+        &module_source.module_url_found,
+        &module_source.code,
+      )?,
     };
 
     // Now we must iterate over all imports of the module and load them.
-    let imports = {
-      let state_rc = Self::state(self.v8_isolate());
-      let state = state_rc.borrow();
-      state.module_map.get_children(module_id).unwrap().clone()
-    };
+    let imports = state_rc
+      .borrow()
+      .module_map
+      .get_children(module_id)
+      .unwrap()
+      .clone();
 
     for module_specifier in imports {
-      let is_registered = {
-        let state_rc = Self::state(self.v8_isolate());
-        let state = state_rc.borrow();
-        state.module_map.is_registered(&module_specifier)
-      };
+      let is_registered = state_rc
+        .borrow()
+        .module_map
+        .is_registered(&module_specifier);
       if !is_registered {
         load
           .add_import(module_specifier.to_owned(), referrer_specifier.clone());
       }
     }
 
-    // If we just finished loading the root module, store the root module id.
-    if load.state == LoadState::LoadingRoot {
-      load.root_module_id = Some(module_id);
-      load.state = LoadState::LoadingImports;
-    }
-
-    if load.pending.is_empty() {
-      load.state = LoadState::Done;
-    }
+    load.module_registered(module_id);
 
     Ok(())
   }

@@ -336,6 +336,22 @@ impl RecursiveModuleLoad {
     Ok(())
   }
 
+  pub fn is_currently_loading_main_module(&self) -> bool {
+    !self.is_dynamic_import() && self.state == LoadState::LoadingRoot
+  }
+
+  pub fn module_registered(&mut self, module_id: ModuleId) {
+    // If we just finished loading the root module, store the root module id.
+    if self.state == LoadState::LoadingRoot {
+      self.root_module_id = Some(module_id);
+      self.state = LoadState::LoadingImports;
+    }
+
+    if self.pending.is_empty() {
+      self.state = LoadState::Done;
+    }
+  }
+
   pub fn add_import(
     &mut self,
     specifier: ModuleSpecifier,
@@ -383,6 +399,7 @@ impl Stream for RecursiveModuleLoad {
 
 pub struct ModuleInfo {
   pub id: ModuleId,
+  // Used in "bindings.rs" for "import.meta.main" property value.
   pub main: bool,
   pub name: String,
   pub import_specifiers: Vec<ModuleSpecifier>,
