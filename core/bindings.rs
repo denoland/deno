@@ -180,7 +180,15 @@ pub extern "C" fn host_import_module_dynamically_callback(
   {
     let state_rc = JsRuntime::state(scope);
     let mut state = state_rc.borrow_mut();
-    state.dyn_import_cb(resolver_handle, &specifier_str, &referrer_name_str);
+    let module_map_rc = JsRuntime::module_map(scope);
+    let module_map = module_map_rc.borrow();
+    let loader = module_map.loader.clone();
+    state.dyn_import_cb(
+      resolver_handle,
+      &specifier_str,
+      &referrer_name_str,
+      loader,
+    );
   }
 
   // Map errors from module resolution (not JS errors from module execution) to
@@ -595,7 +603,7 @@ pub fn module_resolve_callback<'s>(
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
-  let resolved_specifier = state
+  let resolved_specifier = module_map
     .loader
     .resolve(
       state.op_state.clone(),

@@ -114,7 +114,6 @@ pub(crate) struct JsRuntimeState {
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
-  pub loader: Rc<dyn ModuleLoader>,
   pub(crate) dyn_import_map:
     HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
   preparing_dyn_imports: FuturesUnordered<Pin<Box<PrepareLoadFuture>>>,
@@ -294,13 +293,12 @@ impl JsRuntime {
       pending_unref_ops: FuturesUnordered::new(),
       op_state: Rc::new(RefCell::new(op_state)),
       have_unpolled_ops: false,
-      loader,
       dyn_import_map: HashMap::new(),
       preparing_dyn_imports: FuturesUnordered::new(),
       pending_dyn_imports: FuturesUnordered::new(),
       waker: AtomicWaker::new(),
     })));
-    isolate.set_slot(Rc::new(RefCell::new(ModuleMap::new())));
+    isolate.set_slot(Rc::new(RefCell::new(ModuleMap::new(loader))));
 
     // Add builtins extension
     options
@@ -501,7 +499,9 @@ impl JsRuntime {
     // Overwrite existing ModuleMap to drop v8::Global handles
     self
       .v8_isolate()
-      .set_slot(Rc::new(RefCell::new(ModuleMap::new())));
+      .set_slot(Rc::new(RefCell::new(ModuleMap::new(Rc::new(
+        NoopModuleLoader,
+      )))));
     // Drop other v8::Global handles before snapshotting
     std::mem::take(&mut state.borrow_mut().js_recv_cb);
 
@@ -693,6 +693,7 @@ impl JsRuntimeState {
     resolver_handle: v8::Global<v8::PromiseResolver>,
     specifier: &str,
     referrer: &str,
+    loader: Rc<dyn ModuleLoader>,
   ) {
     debug!("dyn_import specifier {} referrer {} ", specifier, referrer);
 
@@ -700,7 +701,7 @@ impl JsRuntimeState {
       self.op_state.clone(),
       specifier,
       referrer,
-      self.loader.clone(),
+      loader,
     );
     self.dyn_import_map.insert(load.id, resolver_handle);
     self.waker.wake();
@@ -793,7 +794,7 @@ impl JsRuntime {
         .get_specifier()
         .to_rust_string_lossy(tc_scope);
       let state = state_rc.borrow();
-      let module_specifier = state.loader.resolve(
+      let module_specifier = module_map_rc.borrow().loader.resolve(
         state.op_state.clone(),
         &import_specifier,
         name,
@@ -1351,9 +1352,9 @@ impl JsRuntime {
     code: Option<String>,
   ) -> Result<ModuleId, AnyError> {
     let loader = {
-      let state_rc = Self::state(self.v8_isolate());
-      let state = state_rc.borrow();
-      state.loader.clone()
+      let module_map_rc = Self::module_map(self.v8_isolate());
+      let module_map = module_map_rc.borrow();
+      module_map.loader.clone()
     };
 
     let load = RecursiveModuleLoad::main(

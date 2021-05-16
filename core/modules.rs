@@ -416,8 +416,8 @@ enum SymbolicModule {
 }
 
 /// A collection of JS modules.
-#[derive(Default)]
 pub struct ModuleMap {
+  pub loader: Rc<dyn ModuleLoader>,
   ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
   handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
   info: HashMap<ModuleId, ModuleInfo>,
@@ -426,8 +426,9 @@ pub struct ModuleMap {
 }
 
 impl ModuleMap {
-  pub fn new() -> ModuleMap {
+  pub fn new(loader: Rc<dyn ModuleLoader>) -> ModuleMap {
     Self {
+      loader,
       handles_by_id: HashMap::new(),
       ids_by_handle: HashMap::new(),
       info: HashMap::new(),
