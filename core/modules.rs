@@ -789,7 +789,6 @@ mod tests {
         ]
       );
 
-      let state = state_rc.borrow();
       let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
       let modules = module_map_rc.borrow();
 
@@ -862,7 +861,6 @@ mod tests {
         ]
       );
 
-      let state = state_rc.borrow();
       let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
       let modules = module_map_rc.borrow();
 
@@ -1009,7 +1007,6 @@ mod tests {
       vec!["file:///b.js", "file:///c.js", "file:///d.js"]
     );
 
-    let state = state_rc.borrow();
     let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
     let modules = module_map_rc.borrow();
 
