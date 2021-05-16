@@ -59,6 +59,7 @@ use crate::config_file::TsConfig;
 use crate::deno_dir;
 use crate::import_map::ImportMap;
 use crate::logger;
+use crate::lsp::diagnostics::is_diagnosable;
 use crate::media_type::MediaType;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::get_typescript_config;
@@ -785,6 +786,11 @@ impl Inner {
     if !self.config.specifier_enabled(&specifier) {
       return Ok(None);
     }
+    let media_type = MediaType::from(&specifier);
+    if !is_diagnosable(media_type) {
+      return Ok(None);
+    }
+
     let mark = self.performance.mark("document_symbol", Some(&params));
 
     let line_index =
