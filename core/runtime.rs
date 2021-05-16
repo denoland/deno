@@ -747,12 +747,11 @@ impl JsRuntime {
   /// Called during module loading or dynamic import loading.
   fn mod_new(
     &mut self,
+    op_state: Rc<RefCell<OpState>>,
     main: bool,
     name: &str,
     source: &str,
   ) -> Result<ModuleId, AnyError> {
-    let state_rc = Self::state(self.v8_isolate());
-    let op_state = state_rc.borrow().op_state.clone();
     let module_map_rc = Self::module_map(self.v8_isolate());
     let mut module_map = module_map_rc.borrow_mut();
     let scope = &mut self.handle_scope();
@@ -1273,6 +1272,9 @@ impl JsRuntime {
       crate::resolve_url(&module_source.module_url_found).unwrap();
 
     let module_map_rc = Self::module_map(self.v8_isolate());
+    let state_rc = Self::state(self.v8_isolate());
+    let op_state = state_rc.borrow().op_state.clone();
+
     // #A There are 3 cases to handle at this moment:
     // 1. Source code resolved result have the same module name as requested
     //    and is not yet registered
@@ -1306,6 +1308,7 @@ impl JsRuntime {
       }
       // Module not registered yet, do it now.
       None => self.mod_new(
+        op_state,
         load.is_currently_loading_main_module(),
         &module_source.module_url_found,
         &module_source.code,
@@ -1344,9 +1347,11 @@ impl JsRuntime {
   ) -> Result<ModuleId, AnyError> {
     let module_map_rc = Self::module_map(self.v8_isolate());
     let op_state = self.op_state();
-    let module_map = module_map_rc.borrow();
 
-    let load = module_map.load_main(op_state, &specifier.to_string(), code);
+    let load =
+      module_map_rc
+        .borrow()
+        .load_main(op_state, &specifier.to_string(), code);
 
     let (_load_id, prepare_result) = load.prepare().await;
 
@@ -1977,8 +1982,10 @@ pub mod tests {
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
     let specifier_a = "file:///a.js".to_string();
+    let op_state = runtime.op_state();
     let mod_a = runtime
       .mod_new(
+        op_state.clone(),
         true,
         &specifier_a,
         r#"
@@ -2001,7 +2008,12 @@ pub mod tests {
       );
     }
     let mod_b = runtime
-      .mod_new(false, "file:///b.js", "export function b() { return 'b' }")
+      .mod_new(
+        op_state,
+        false,
+        "file:///b.js",
+        "export function b() { return 'b' }",
+      )
       .unwrap();
     {
       let module_map = module_map_rc.borrow();

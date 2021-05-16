@@ -182,14 +182,13 @@ pub extern "C" fn host_import_module_dynamically_callback(
     let state_rc = JsRuntime::state(scope);
     let mut state = state_rc.borrow_mut();
     let module_map_rc = JsRuntime::module_map(scope);
-    let module_map = module_map_rc.borrow();
     let op_state = state.op_state.clone();
 
     debug!(
       "dyn_import specifier {} referrer {} ",
       specifier_str, referrer_name_str
     );
-    let load = module_map.load_dynamic_import(
+    let load = module_map_rc.borrow().load_dynamic_import(
       op_state,
       &specifier_str,
       &referrer_name_str,
