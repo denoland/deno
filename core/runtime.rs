@@ -115,7 +115,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub loader: Rc<dyn ModuleLoader>,
-  pub module_map: ModuleMap,
+  // pub module_map: ModuleMap,
   pub(crate) dyn_import_map:
     HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
   preparing_dyn_imports: FuturesUnordered<Pin<Box<PrepareLoadFuture>>>,
@@ -295,13 +295,14 @@ impl JsRuntime {
       pending_unref_ops: FuturesUnordered::new(),
       op_state: Rc::new(RefCell::new(op_state)),
       have_unpolled_ops: false,
-      module_map: ModuleMap::new(),
+      // module_map: ModuleMap::new(),
       loader,
       dyn_import_map: HashMap::new(),
       preparing_dyn_imports: FuturesUnordered::new(),
       pending_dyn_imports: FuturesUnordered::new(),
       waker: AtomicWaker::new(),
     })));
+    isolate.set_slot(Rc::new(RefCell::new(ModuleMap::new())));
 
     // Add builtins extension
     options
@@ -360,6 +361,11 @@ impl JsRuntime {
   pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
     let s = isolate.get_slot::<Rc<RefCell<JsRuntimeState>>>().unwrap();
     s.clone()
+  }
+
+  pub(crate) fn module_map(isolate: &v8::Isolate) -> Rc<RefCell<ModuleMap>> {
+    let module_map = isolate.get_slot::<Rc<RefCell<ModuleMap>>>().unwrap();
+    module_map.clone()
   }
 
   /// Initializes JS of provided Extensions
@@ -495,7 +501,11 @@ impl JsRuntime {
     state.borrow_mut().global_context.take();
 
     // Drop v8::Global handles before snapshotting
-    std::mem::take(&mut state.borrow_mut().module_map);
+    // Overwrite existing ModuleMap to drop v8::Global handles
+    let old_map_taken = self
+      .v8_isolate()
+      .set_slot(Rc::new(RefCell::new(ModuleMap::new())));
+    assert!(old_map_taken);
     std::mem::take(&mut state.borrow_mut().js_recv_cb);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
@@ -579,6 +589,7 @@ impl JsRuntime {
     cx: &mut Context,
   ) -> Poll<Result<(), AnyError>> {
     let state_rc = Self::state(self.v8_isolate());
+    let module_map_rc = Self::module_map(self.v8_isolate());
     {
       let state = state_rc.borrow();
       state.waker.register(cx.waker());
@@ -651,9 +662,9 @@ impl JsRuntime {
       } else {
         let mut msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promise.
 Pending dynamic modules:\n".to_string();
+        let module_map = module_map_rc.borrow();
         for pending_evaluate in &state.pending_dyn_mod_evaluate {
-          let module_info = state
-            .module_map
+          let module_info = module_map
             .get_info_by_id(&pending_evaluate.module_id)
             .unwrap();
           msg.push_str(&format!("- {}", module_info.name.as_str()));
@@ -753,6 +764,7 @@ impl JsRuntime {
     source: &str,
   ) -> Result<ModuleId, AnyError> {
     let state_rc = Self::state(self.v8_isolate());
+    let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
 
     let name_str = v8::String::new(scope, name).unwrap();
@@ -793,7 +805,7 @@ impl JsRuntime {
       import_specifiers.push(module_specifier);
     }
 
-    let id = state_rc.borrow_mut().module_map.register(
+    let id = module_map_rc.borrow_mut().register(
       name,
       main,
       v8::Global::<v8::Module>::new(tc_scope, module),
@@ -809,13 +821,12 @@ impl JsRuntime {
   /// about the V8 exception. By default this type is `JsError`, however it may
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
   fn mod_instantiate(&mut self, id: ModuleId) -> Result<(), AnyError> {
-    let state_rc = Self::state(self.v8_isolate());
+    let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
 
-    let module = state_rc
+    let module = module_map_rc
       .borrow()
-      .module_map
       .get_handle(id)
       .map(|handle| v8::Local::new(tc_scope, handle))
       .expect("ModuleInfo not found");
@@ -849,10 +860,10 @@ impl JsRuntime {
     id: ModuleId,
   ) -> Result<(), AnyError> {
     let state_rc = Self::state(self.v8_isolate());
+    let module_map_rc = Self::module_map(self.v8_isolate());
 
-    let module_handle = state_rc
+    let module_handle = module_map_rc
       .borrow()
-      .module_map
       .get_handle(id)
       .expect("ModuleInfo not found");
 
@@ -936,11 +947,11 @@ impl JsRuntime {
     id: ModuleId,
   ) -> mpsc::Receiver<Result<(), AnyError>> {
     let state_rc = Self::state(self.v8_isolate());
+    let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
 
-    let module = state_rc
+    let module = module_map_rc
       .borrow()
-      .module_map
       .get_handle(id)
       .map(|handle| v8::Local::new(scope, handle))
       .expect("ModuleInfo not found");
@@ -1024,6 +1035,7 @@ impl JsRuntime {
 
   fn dyn_import_done(&mut self, id: ModuleLoadId, mod_id: ModuleId) {
     let state_rc = Self::state(self.v8_isolate());
+    let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
 
     let resolver_handle = state_rc
@@ -1034,9 +1046,8 @@ impl JsRuntime {
     let resolver = resolver_handle.get(scope);
 
     let module = {
-      let state = state_rc.borrow();
-      state
-        .module_map
+      module_map_rc
+        .borrow()
         .get_handle(mod_id)
         .map(|handle| v8::Local::new(scope, handle))
         .expect("Dyn import module info not found")
@@ -1272,7 +1283,7 @@ impl JsRuntime {
     let referrer_specifier =
       crate::resolve_url(&module_source.module_url_found).unwrap();
 
-    let state_rc = Self::state(self.v8_isolate());
+    let module_map_rc = Self::module_map(self.v8_isolate());
     // #A There are 3 cases to handle at this moment:
     // 1. Source code resolved result have the same module name as requested
     //    and is not yet registered
@@ -1285,16 +1296,14 @@ impl JsRuntime {
 
     // If necessary, register an alias.
     if module_source.module_url_specified != module_source.module_url_found {
-      let mut state = state_rc.borrow_mut();
-      state.module_map.alias(
+      module_map_rc.borrow_mut().alias(
         &module_source.module_url_specified,
         &module_source.module_url_found,
       );
     }
 
-    let maybe_mod_id = state_rc
+    let maybe_mod_id = module_map_rc
       .borrow()
-      .module_map
       .get_id(&module_source.module_url_found);
 
     let module_id = match maybe_mod_id {
@@ -1315,18 +1324,15 @@ impl JsRuntime {
     };
 
     // Now we must iterate over all imports of the module and load them.
-    let imports = state_rc
+    let imports = module_map_rc
       .borrow()
-      .module_map
       .get_children(module_id)
       .unwrap()
       .clone();
 
     for module_specifier in imports {
-      let is_registered = state_rc
-        .borrow()
-        .module_map
-        .is_registered(&module_specifier);
+      let is_registered =
+        module_map_rc.borrow().is_registered(&module_specifier);
       if !is_registered {
         load
           .add_import(module_specifier.to_owned(), referrer_specifier.clone());
@@ -2002,10 +2008,10 @@ pub mod tests {
       .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
-    let state_rc = JsRuntime::state(runtime.v8_isolate());
+    let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
     {
-      let state = state_rc.borrow();
-      let imports = state.module_map.get_children(mod_a);
+      let module_map = module_map_rc.borrow();
+      let imports = module_map.get_children(mod_a);
       assert_eq!(
         imports,
         Some(&vec![crate::resolve_url("file:///b.js").unwrap()])
@@ -2015,8 +2021,8 @@ pub mod tests {
       .mod_new(false, "file:///b.js", "export function b() { return 'b' }")
       .unwrap();
     {
-      let state = state_rc.borrow();
-      let imports = state.module_map.get_children(mod_b).unwrap();
+      let module_map = module_map_rc.borrow();
+      let imports = module_map.get_children(mod_b).unwrap();
       assert_eq!(imports.len(), 0);
     }
 

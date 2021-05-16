@@ -721,9 +721,9 @@ mod tests {
       ]
     );
 
-    let state_rc = JsRuntime::state(runtime.v8_isolate());
-    let state = state_rc.borrow();
-    let modules = &state.module_map;
+    let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+    let modules = module_map_rc.borrow();
+
     assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
     let b_id = modules.get_id("file:///b.js").unwrap();
     let c_id = modules.get_id("file:///c.js").unwrap();
@@ -789,9 +789,9 @@ mod tests {
         ]
       );
 
-      let state_rc = JsRuntime::state(runtime.v8_isolate());
       let state = state_rc.borrow();
-      let modules = &state.module_map;
+      let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+      let modules = module_map_rc.borrow();
 
       assert_eq!(modules.get_id("file:///circular1.js"), Some(circular1_id));
       let circular2_id = modules.get_id("file:///circular2.js").unwrap();
@@ -862,9 +862,9 @@ mod tests {
         ]
       );
 
-      let state_rc = JsRuntime::state(runtime.v8_isolate());
       let state = state_rc.borrow();
-      let modules = &state.module_map;
+      let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+      let modules = module_map_rc.borrow();
 
       assert_eq!(modules.get_id("file:///redirect1.js"), Some(redirect1_id));
 
@@ -1009,9 +1009,9 @@ mod tests {
       vec!["file:///b.js", "file:///c.js", "file:///d.js"]
     );
 
-    let state_rc = JsRuntime::state(runtime.v8_isolate());
     let state = state_rc.borrow();
-    let modules = &state.module_map;
+    let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+    let modules = module_map_rc.borrow();
 
     assert_eq!(modules.get_id("file:///main_with_code.js"), Some(main_id));
     let b_id = modules.get_id("file:///b.js").unwrap();
