@@ -1,4 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
 use deno_core::error::AnyError;
 use lspower::LspService;
 use lspower::Server;
@@ -9,8 +10,11 @@ mod completions;
 mod config;
 mod diagnostics;
 mod documents;
-mod language_server;
+pub(crate) mod language_server;
+mod path_to_regex;
 mod performance;
+mod registries;
+mod semantic_tokens;
 mod sources;
 mod text;
 mod tsc;

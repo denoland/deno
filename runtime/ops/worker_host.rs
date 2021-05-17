@@ -1,10 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
 use crate::permissions::resolve_read_allowlist;
 use crate::permissions::resolve_write_allowlist;
+use crate::permissions::EnvDescriptor;
 use crate::permissions::NetDescriptor;
 use crate::permissions::PermissionState;
 use crate::permissions::Permissions;
 use crate::permissions::ReadDescriptor;
+use crate::permissions::RunDescriptor;
 use crate::permissions::UnaryPermission;
 use crate::permissions::UnitPermission;
 use crate::permissions::WriteDescriptor;
@@ -12,18 +15,19 @@ use crate::web_worker::run_web_worker;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
 use crate::web_worker::WorkerEvent;
+use crate::web_worker::WorkerId;
 use deno_core::error::custom_error;
-use deno_core::error::generic_error;
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
-use deno_core::futures::channel::mpsc;
+use deno_core::op_async;
+use deno_core::op_sync;
 use deno_core::serde::de;
 use deno_core::serde::de::SeqAccess;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
-use deno_core::BufVec;
+use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
@@ -40,7 +44,7 @@ use std::thread::JoinHandle;
 
 pub struct CreateWebWorkerArgs {
   pub name: String,
-  pub worker_id: u32,
+  pub worker_id: WorkerId,
   pub parent_permissions: Permissions,
   pub permissions: Permissions,
   pub main_module: ModuleSpecifier,
@@ -57,55 +61,35 @@ pub type CreateWebWorkerCb =
 #[derive(Clone)]
 pub struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
 
-#[derive(Deserialize)]
-struct HostUnhandledErrorArgs {
-  message: String,
-}
-
 pub struct WorkerThread {
   join_handle: JoinHandle<Result<(), AnyError>>,
   worker_handle: WebWorkerHandle,
 }
 
-pub type WorkersTable = HashMap<u32, WorkerThread>;
-pub type WorkerId = u32;
+pub type WorkersTable = HashMap<WorkerId, WorkerThread>;
 
-pub fn init(
-  rt: &mut deno_core::JsRuntime,
-  sender: Option<mpsc::Sender<WorkerEvent>>,
-  create_web_worker_cb: Arc<CreateWebWorkerCb>,
-) {
-  {
-    let op_state = rt.op_state();
-    let mut state = op_state.borrow_mut();
-    state.put::<WorkersTable>(WorkersTable::default());
-    state.put::<WorkerId>(WorkerId::default());
+pub fn init(create_web_worker_cb: Arc<CreateWebWorkerCb>) -> Extension {
+  Extension::builder()
+    .state(move |state| {
+      state.put::<WorkersTable>(WorkersTable::default());
+      state.put::<WorkerId>(WorkerId::default());
 
-    let create_module_loader = CreateWebWorkerCbHolder(create_web_worker_cb);
-    state.put::<CreateWebWorkerCbHolder>(create_module_loader);
-  }
-  super::reg_json_sync(rt, "op_create_worker", op_create_worker);
-  super::reg_json_sync(
-    rt,
-    "op_host_terminate_worker",
-    op_host_terminate_worker,
-  );
-  super::reg_json_sync(rt, "op_host_post_message", op_host_post_message);
-  super::reg_json_async(rt, "op_host_get_message", op_host_get_message);
-  super::reg_json_sync(
-    rt,
-    "op_host_unhandled_error",
-    move |_state, args: HostUnhandledErrorArgs, _zero_copy| {
-      if let Some(mut sender) = sender.clone() {
-        sender
-          .try_send(WorkerEvent::Error(generic_error(args.message)))
-          .expect("Failed to propagate error event to parent worker");
-        Ok(json!(true))
-      } else {
-        Err(generic_error("Cannot be called from main worker."))
-      }
-    },
-  );
+      let create_module_loader =
+        CreateWebWorkerCbHolder(create_web_worker_cb.clone());
+      state.put::<CreateWebWorkerCbHolder>(create_module_loader);
+
+      Ok(())
+    })
+    .ops(vec![
+      ("op_create_worker", op_sync(op_create_worker)),
+      (
+        "op_host_terminate_worker",
+        op_sync(op_host_terminate_worker),
+      ),
+      ("op_host_post_message", op_sync(op_host_post_message)),
+      ("op_host_get_message", op_async(op_host_get_message)),
+    ])
+    .build()
 }
 
 fn merge_boolean_permission(
@@ -194,25 +178,65 @@ fn merge_write_permission(
   Ok(main)
 }
 
-fn create_worker_permissions(
+fn merge_env_permission(
+  mut main: UnaryPermission<EnvDescriptor>,
+  worker: Option<UnaryPermission<EnvDescriptor>>,
+) -> Result<UnaryPermission<EnvDescriptor>, AnyError> {
+  if let Some(worker) = worker {
+    if (worker.global_state < main.global_state)
+      || !worker.granted_list.iter().all(|x| main.check(&x.0).is_ok())
+    {
+      return Err(custom_error(
+        "PermissionDenied",
+        "Can't escalate parent thread permissions",
+      ));
+    } else {
+      main.global_state = worker.global_state;
+      main.granted_list = worker.granted_list;
+    }
+  }
+  Ok(main)
+}
+
+fn merge_run_permission(
+  mut main: UnaryPermission<RunDescriptor>,
+  worker: Option<UnaryPermission<RunDescriptor>>,
+) -> Result<UnaryPermission<RunDescriptor>, AnyError> {
+  if let Some(worker) = worker {
+    if (worker.global_state < main.global_state)
+      || !worker.granted_list.iter().all(|x| main.check(&x.0).is_ok())
+    {
+      return Err(custom_error(
+        "PermissionDenied",
+        "Can't escalate parent thread permissions",
+      ));
+    } else {
+      main.global_state = worker.global_state;
+      main.granted_list = worker.granted_list;
+    }
+  }
+  Ok(main)
+}
+
+pub fn create_worker_permissions(
   main_perms: Permissions,
   worker_perms: PermissionsArg,
 ) -> Result<Permissions, AnyError> {
   Ok(Permissions {
-    env: merge_boolean_permission(main_perms.env, worker_perms.env)?,
+    env: merge_env_permission(main_perms.env, worker_perms.env)?,
     hrtime: merge_boolean_permission(main_perms.hrtime, worker_perms.hrtime)?,
     net: merge_net_permission(main_perms.net, worker_perms.net)?,
     plugin: merge_boolean_permission(main_perms.plugin, worker_perms.plugin)?,
     read: merge_read_permission(main_perms.read, worker_perms.read)?,
-    run: merge_boolean_permission(main_perms.run, worker_perms.run)?,
+    run: merge_run_permission(main_perms.run, worker_perms.run)?,
     write: merge_write_permission(main_perms.write, worker_perms.write)?,
   })
 }
 
 #[derive(Debug, Deserialize)]
-struct PermissionsArg {
-  #[serde(default, deserialize_with = "as_permission_state")]
-  env: Option<PermissionState>,
+pub struct PermissionsArg {
+  #[serde(default, deserialize_with = "as_unary_env_permission")]
+  env: Option<UnaryPermission<EnvDescriptor>>,
   #[serde(default, deserialize_with = "as_permission_state")]
   hrtime: Option<PermissionState>,
   #[serde(default, deserialize_with = "as_unary_net_permission")]
@@ -221,8 +245,8 @@ struct PermissionsArg {
   plugin: Option<PermissionState>,
   #[serde(default, deserialize_with = "as_unary_read_permission")]
   read: Option<UnaryPermission<ReadDescriptor>>,
-  #[serde(default, deserialize_with = "as_permission_state")]
-  run: Option<PermissionState>,
+  #[serde(default, deserialize_with = "as_unary_run_permission")]
+  run: Option<UnaryPermission<RunDescriptor>>,
   #[serde(default, deserialize_with = "as_unary_write_permission")]
   write: Option<UnaryPermission<WriteDescriptor>>,
 }
@@ -253,6 +277,14 @@ impl<'de> de::Visitor<'de> for ParseBooleanOrStringVec {
 
   fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
     formatter.write_str("a vector of strings or a boolean")
+  }
+
+  // visit_unit maps undefined/missing values to false
+  fn visit_unit<E>(self) -> Result<UnaryPermissionBase, E>
+  where
+    E: de::Error,
+  {
+    self.visit_bool(false)
   }
 
   fn visit_bool<E>(self, v: bool) -> Result<UnaryPermissionBase, E>
@@ -346,6 +378,42 @@ where
   }))
 }
 
+fn as_unary_env_permission<'de, D>(
+  deserializer: D,
+) -> Result<Option<UnaryPermission<EnvDescriptor>>, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  let value: UnaryPermissionBase =
+    deserializer.deserialize_any(ParseBooleanOrStringVec)?;
+
+  Ok(Some(UnaryPermission::<EnvDescriptor> {
+    global_state: value.global_state,
+    granted_list: value
+      .paths
+      .into_iter()
+      .map(|env| EnvDescriptor(env.to_uppercase()))
+      .collect(),
+    ..Default::default()
+  }))
+}
+
+fn as_unary_run_permission<'de, D>(
+  deserializer: D,
+) -> Result<Option<UnaryPermission<RunDescriptor>>, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  let value: UnaryPermissionBase =
+    deserializer.deserialize_any(ParseBooleanOrStringVec)?;
+
+  Ok(Some(UnaryPermission::<RunDescriptor> {
+    global_state: value.global_state,
+    granted_list: value.paths.into_iter().map(RunDescriptor).collect(),
+    ..Default::default()
+  }))
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateWorkerArgs {
@@ -361,8 +429,8 @@ pub struct CreateWorkerArgs {
 fn op_create_worker(
   state: &mut OpState,
   args: CreateWorkerArgs,
-  _data: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
+  _: (),
+) -> Result<WorkerId, AnyError> {
   let specifier = args.specifier.clone();
   let maybe_source_code = if args.has_source_code {
     Some(args.source_code.clone())
@@ -385,7 +453,7 @@ fn op_create_worker(
   let worker_id = state.take::<WorkerId>();
   let create_module_loader = state.take::<CreateWebWorkerCbHolder>();
   state.put::<CreateWebWorkerCbHolder>(create_module_loader.clone());
-  state.put::<WorkerId>(worker_id + 1);
+  state.put::<WorkerId>(worker_id.next().unwrap());
 
   let module_specifier = deno_core::resolve_url(&specifier)?;
   let worker_name = args_name.unwrap_or_else(|| "".to_string());
@@ -395,7 +463,7 @@ fn op_create_worker(
 
   // Setup new thread
   let thread_builder =
-    std::thread::Builder::new().name(format!("deno-worker-{}", worker_id));
+    std::thread::Builder::new().name(format!("{}", worker_id));
 
   // Spawn it
   let join_handle = thread_builder.spawn(move || {
@@ -413,7 +481,7 @@ fn op_create_worker(
       use_deno_namespace,
     });
 
-    // Send thread safe handle to newly created worker to host thread
+    // Send thread safe handle from newly created worker to host thread
     handle_sender.send(Ok(worker.thread_safe_handle())).unwrap();
     drop(handle_sender);
 
@@ -424,6 +492,7 @@ fn op_create_worker(
     run_web_worker(worker, module_specifier, maybe_source_code)
   })?;
 
+  // Receive WebWorkerHandle from newly created worker
   let worker_handle = handle_receiver.recv().unwrap()?;
 
   let worker_thread = WorkerThread {
@@ -437,22 +506,16 @@ fn op_create_worker(
     .borrow_mut::<WorkersTable>()
     .insert(worker_id, worker_thread);
 
-  Ok(json!({ "id": worker_id }))
-}
-
-#[derive(Deserialize)]
-pub struct WorkerArgs {
-  id: i32,
+  Ok(worker_id)
 }
 
 #[allow(clippy::unnecessary_wraps)]
 fn op_host_terminate_worker(
   state: &mut OpState,
-  args: WorkerArgs,
-  _data: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  let id = args.id as u32;
-  let worker_thread = state
+  id: WorkerId,
+  _: (),
+) -> Result<(), AnyError> {
+  let mut worker_thread = state
     .borrow_mut::<WorkersTable>()
     .remove(&id)
     .expect("No worker handle found");
@@ -462,57 +525,56 @@ fn op_host_terminate_worker(
     .join()
     .expect("Panic in worker thread")
     .expect("Panic in worker event loop");
-  Ok(json!({}))
+  Ok(())
 }
 
-fn serialize_worker_event(event: WorkerEvent) -> Value {
-  match event {
-    WorkerEvent::Message(buf) => json!({ "type": "msg", "data": buf }),
-    WorkerEvent::TerminalError(error) => match error.downcast::<JsError>() {
-      Ok(js_error) => json!({
-        "type": "terminalError",
-        "error": {
-          "message": js_error.message,
-          "fileName": js_error.script_resource_name,
-          "lineNumber": js_error.line_number,
-          "columnNumber": js_error.start_column,
-        }
-      }),
-      Err(error) => json!({
-        "type": "terminalError",
-        "error": {
-          "message": error.to_string(),
-        }
-      }),
-    },
-    WorkerEvent::Error(error) => match error.downcast::<JsError>() {
-      Ok(js_error) => json!({
-        "type": "error",
-        "error": {
-          "message": js_error.message,
-          "fileName": js_error.script_resource_name,
-          "lineNumber": js_error.line_number,
-          "columnNumber": js_error.start_column,
-        }
-      }),
-      Err(error) => json!({
-        "type": "error",
-        "error": {
-          "message": error.to_string(),
-        }
-      }),
-    },
+use deno_core::serde::Serialize;
+use deno_core::serde::Serializer;
+
+impl Serialize for WorkerEvent {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let type_id = match &self {
+      WorkerEvent::Message(_) => 0_i32,
+      WorkerEvent::TerminalError(_) => 1_i32,
+      WorkerEvent::Error(_) => 2_i32,
+      WorkerEvent::Close => 3_i32,
+    };
+
+    match self {
+      WorkerEvent::Message(buf) => {
+        Serialize::serialize(&(type_id, buf), serializer)
+      }
+      WorkerEvent::TerminalError(error) | WorkerEvent::Error(error) => {
+        let value = match error.downcast_ref::<JsError>() {
+          Some(js_error) => json!({
+            "message": js_error.message,
+            "fileName": js_error.script_resource_name,
+            "lineNumber": js_error.line_number,
+            "columnNumber": js_error.start_column,
+          }),
+          None => json!({
+            "message": error.to_string(),
+          }),
+        };
+
+        Serialize::serialize(&(type_id, value), serializer)
+      }
+      _ => Serialize::serialize(&(type_id, ()), serializer),
+    }
   }
 }
 
 /// Try to remove worker from workers table - NOTE: `Worker.terminate()`
 /// might have been called already meaning that we won't find worker in
 /// table - in that case ignore.
-fn try_remove_and_close(state: Rc<RefCell<OpState>>, id: u32) {
+fn try_remove_and_close(state: Rc<RefCell<OpState>>, id: WorkerId) {
   let mut s = state.borrow_mut();
   let workers = s.borrow_mut::<WorkersTable>();
   if let Some(mut worker_thread) = workers.remove(&id) {
-    worker_thread.worker_handle.sender.close_channel();
+    worker_thread.worker_handle.terminate();
     worker_thread
       .join_handle
       .join()
@@ -524,11 +586,9 @@ fn try_remove_and_close(state: Rc<RefCell<OpState>>, id: u32) {
 /// Get message from guest worker as host
 async fn op_host_get_message(
   state: Rc<RefCell<OpState>>,
-  args: WorkerArgs,
-  _zero_copy: BufVec,
-) -> Result<Value, AnyError> {
-  let id = args.id as u32;
-
+  id: WorkerId,
+  _: (),
+) -> Result<WorkerEvent, AnyError> {
   let worker_handle = {
     let s = state.borrow();
     let workers_table = s.borrow::<WorkersTable>();
@@ -537,7 +597,7 @@ async fn op_host_get_message(
       handle.worker_handle.clone()
     } else {
       // If handle was not found it means worker has already shutdown
-      return Ok(json!({ "type": "close" }));
+      return Ok(WorkerEvent::Close);
     }
   };
 
@@ -547,23 +607,21 @@ async fn op_host_get_message(
     if let WorkerEvent::TerminalError(_) = &event {
       try_remove_and_close(state, id);
     }
-    return Ok(serialize_worker_event(event));
+    return Ok(event);
   }
 
   // If there was no event from worker it means it has already been closed.
   try_remove_and_close(state, id);
-  Ok(json!({ "type": "close" }))
+  Ok(WorkerEvent::Close)
 }
 
 /// Post message to guest worker as host
 fn op_host_post_message(
   state: &mut OpState,
-  args: WorkerArgs,
-  data: &mut [ZeroCopyBuf],
-) -> Result<Value, AnyError> {
-  assert_eq!(data.len(), 1, "Invalid number of arguments");
-  let id = args.id as u32;
-  let msg = Vec::from(&*data[0]).into_boxed_slice();
+  id: WorkerId,
+  data: Option<ZeroCopyBuf>,
+) -> Result<(), AnyError> {
+  let msg = data.ok_or_else(null_opbuf)?;
 
   debug!("post message to worker {}", id);
   let worker_thread = state
@@ -571,5 +629,5 @@ fn op_host_post_message(
     .get(&id)
     .expect("No worker handle found");
   worker_thread.worker_handle.post_message(msg)?;
-  Ok(json!({}))
+  Ok(())
 }

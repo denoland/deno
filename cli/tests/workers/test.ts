@@ -8,6 +8,7 @@ import {
   assertThrows,
 } from "../../../test_util/std/testing/asserts.ts";
 import { deferred } from "../../../test_util/std/async/deferred.ts";
+import { fromFileUrl } from "../../../test_util/std/path/mod.ts";
 
 Deno.test({
   name: "worker terminate",
@@ -198,15 +199,12 @@ Deno.test({
     );
 
     racyWorker.onmessage = (e): void => {
-      assertEquals(e.data.buf.length, 999999);
-      racyWorker.onmessage = (_e): void => {
-        throw new Error("unreachable");
-      };
       setTimeout(() => {
         promise.resolve();
       }, 100);
     };
 
+    racyWorker.postMessage("START");
     await promise;
   },
 });
@@ -479,8 +477,16 @@ Deno.test("Worker limit children permissions granularly", async function () {
 
   //Routes are relative to the spawned worker location
   const routes = [
-    { permission: false, route: "read_check_granular_worker.js" },
-    { permission: true, route: "read_check_worker.js" },
+    {
+      permission: false,
+      path: fromFileUrl(
+        new URL("read_check_granular_worker.js", import.meta.url),
+      ),
+    },
+    {
+      permission: true,
+      path: fromFileUrl(new URL("read_check_worker.js", import.meta.url)),
+    },
   ];
 
   let checked = 0;
@@ -493,10 +499,10 @@ Deno.test("Worker limit children permissions granularly", async function () {
     }
   };
 
-  routes.forEach(({ route }, index) =>
+  routes.forEach(({ path }, index) =>
     worker.postMessage({
       index,
-      route,
+      path,
     })
   );
 
@@ -556,12 +562,14 @@ Deno.test("Nested worker limit children permissions granularly", async function 
     {
       childHasPermission: false,
       parentHasPermission: true,
-      route: "read_check_granular_worker.js",
+      path: fromFileUrl(
+        new URL("read_check_granular_worker.js", import.meta.url),
+      ),
     },
     {
       childHasPermission: false,
       parentHasPermission: false,
-      route: "read_check_worker.js",
+      path: fromFileUrl(new URL("read_check_worker.js", import.meta.url)),
     },
   ];
 
@@ -582,10 +590,10 @@ Deno.test("Nested worker limit children permissions granularly", async function 
   };
 
   // Index needed cause requests will be handled asynchronously
-  routes.forEach(({ route }, index) =>
+  routes.forEach(({ path }, index) =>
     worker.postMessage({
       index,
-      route,
+      path,
     })
   );
 
@@ -693,6 +701,70 @@ Deno.test({
         result.reject(new Error("Handler didn't run during top-level delay."));
       }
     };
+    await result;
+    worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "Worker with native HTTP",
+  fn: async function () {
+    const result = deferred();
+    const worker = new Worker(
+      new URL(
+        "./http_worker.js",
+        import.meta.url,
+      ).href,
+      {
+        type: "module",
+        deno: {
+          namespace: true,
+          permissions: "inherit",
+        },
+      },
+    );
+    worker.onmessage = () => {
+      result.resolve();
+    };
+    await result;
+
+    assert(worker);
+    const response = await fetch("http://localhost:4500");
+    assert(await response.arrayBuffer());
+    worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "structured cloning postMessage",
+  fn: async function (): Promise<void> {
+    const result = deferred();
+    const worker = new Worker(
+      new URL("worker_structured_cloning.ts", import.meta.url).href,
+      { type: "module" },
+    );
+
+    worker.onmessage = (e): void => {
+      // self field should reference itself (circular ref)
+      const value = e.data.self.self.self;
+
+      // fields a and b refer to the same array
+      assertEquals(value.a, ["a", true, 432]);
+      assertEquals(value.a, ["a", true, 432]);
+      value.b[0] = "b";
+      value.a[2] += 5;
+      assertEquals(value.a, ["b", true, 437]);
+      assertEquals(value.b, ["b", true, 437]);
+
+      const len = value.c.size;
+      value.c.add(1); // This value is already in the set.
+      value.c.add(2);
+      assertEquals(len + 1, value.c.size);
+
+      result.resolve();
+    };
+
+    worker.postMessage("START");
     await result;
     worker.terminate();
   },

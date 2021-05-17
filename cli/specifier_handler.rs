@@ -222,9 +222,10 @@ impl CompiledFileMetadata {
 pub struct FetchHandler {
   /// An instance of disk where generated (emitted) files are stored.
   disk_cache: DiskCache,
-  /// The set of current runtime permissions which need to be applied to
-  /// dynamic imports.
-  runtime_permissions: Permissions,
+  /// The set permissions which are used for root modules (static imports).
+  root_permissions: Permissions,
+  /// The set of permissions which are used for dynamic imports.
+  dynamic_permissions: Permissions,
   /// A clone of the `program_state` file fetcher.
   file_fetcher: FileFetcher,
 }
@@ -232,7 +233,8 @@ pub struct FetchHandler {
 impl FetchHandler {
   pub fn new(
     program_state: &Arc<ProgramState>,
-    runtime_permissions: Permissions,
+    root_permissions: Permissions,
+    dynamic_permissions: Permissions,
   ) -> Result<Self, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let deno_dir = DenoDir::new(custom_root)?;
@@ -241,7 +243,8 @@ impl FetchHandler {
 
     Ok(FetchHandler {
       disk_cache,
-      runtime_permissions,
+      root_permissions,
+      dynamic_permissions,
       file_fetcher,
     })
   }
@@ -257,17 +260,17 @@ impl SpecifierHandler for FetchHandler {
     // When the module graph fetches dynamic modules, the set of dynamic
     // permissions need to be applied.  Other static imports have all
     // permissions.
-    let permissions = if is_dynamic {
-      self.runtime_permissions.clone()
+    let mut permissions = if is_dynamic {
+      self.dynamic_permissions.clone()
     } else {
-      Permissions::allow_all()
+      self.root_permissions.clone()
     };
     let file_fetcher = self.file_fetcher.clone();
     let disk_cache = self.disk_cache.clone();
 
     async move {
       let source_file = file_fetcher
-        .fetch(&requested_specifier, &permissions)
+        .fetch(&requested_specifier, &mut permissions)
         .await
         .map_err(|err| {
           let err = if let Some(e) = err.downcast_ref::<std::io::Error>() {
@@ -306,7 +309,9 @@ impl SpecifierHandler for FetchHandler {
           }
         })?;
       let url = &source_file.specifier;
-      let is_remote = !(url.scheme() == "file" || url.scheme() == "data");
+      let is_remote = !(url.scheme() == "file"
+        || url.scheme() == "data"
+        || url.scheme() == "blob");
       let filename = disk_cache.get_cache_filename_with_extension(url, "meta");
       let maybe_version = if let Some(filename) = filename {
         if let Ok(bytes) = disk_cache.get(&filename) {
@@ -569,6 +574,7 @@ pub mod tests {
   use crate::file_fetcher::CacheSetting;
   use crate::http_cache::HttpCache;
   use deno_core::resolve_url_or_path;
+  use deno_runtime::deno_file::BlobUrlStore;
   use tempfile::TempDir;
 
   macro_rules! map (
@@ -593,13 +599,15 @@ pub mod tests {
       CacheSetting::Use,
       true,
       None,
+      BlobUrlStore::default(),
     )
     .expect("could not setup");
     let disk_cache = deno_dir.gen_cache;
 
     let fetch_handler = FetchHandler {
       disk_cache,
-      runtime_permissions: Permissions::default(),
+      root_permissions: Permissions::allow_all(),
+      dynamic_permissions: Permissions::default(),
       file_fetcher,
     };
 

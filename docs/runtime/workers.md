@@ -143,7 +143,7 @@ the `deno.permissions` option in the worker API.
     type: "module",
     deno: {
       namespace: true,
-      permissions: [
+      permissions: {
         net: [
           "https://deno.land/",
         ],
@@ -152,7 +152,7 @@ the `deno.permissions` option in the worker API.
           new URL("./file_2.txt", import.meta.url),
         ],
         write: false,
-      ],
+      },
     },
   });
   ```
@@ -163,18 +163,21 @@ the `deno.permissions` option in the worker API.
   file is currently in
 
   ```ts
-  const worker = new Worker(new URL("./worker/worker.js", import.meta.url).href, {
-    type: "module",
-    deno: {
-      namespace: true,
-      permissions: [
-        read: [
-          "/home/user/Documents/deno/worker/file_1.txt",
-          "./worker/file_2.txt",
-        ],
-      ],
+  const worker = new Worker(
+    new URL("./worker/worker.js", import.meta.url).href,
+    {
+      type: "module",
+      deno: {
+        namespace: true,
+        permissions: {
+          read: [
+            "/home/user/Documents/deno/worker/file_1.txt",
+            "./worker/file_2.txt",
+          ],
+        },
+      },
     },
-  });
+  );
   ```
 
 - Both `deno.permissions` and its children support the option `"inherit"`, which
@@ -233,8 +236,8 @@ the `deno.permissions` option in the worker API.
   });
   ```
 
-- You can disable the permissions of the worker all together by passing false to
-  the `deno.permissions` option.
+- You can disable the permissions of the worker all together by passing `"none"`
+  to the `deno.permissions` option.
 
   ```ts
   // This worker will not have any permissions enabled

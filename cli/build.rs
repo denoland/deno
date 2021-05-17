@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::custom_error;
-use deno_core::json_op_sync;
+use deno_core::op_sync;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -11,10 +11,12 @@ use deno_core::RuntimeOptions;
 use deno_runtime::deno_console;
 use deno_runtime::deno_crypto;
 use deno_runtime::deno_fetch;
+use deno_runtime::deno_file;
 use deno_runtime::deno_url;
 use deno_runtime::deno_web;
 use deno_runtime::deno_webgpu;
 use deno_runtime::deno_websocket;
+use deno_runtime::deno_webstorage;
 use regex::Regex;
 use std::collections::HashMap;
 use std::env;
@@ -66,9 +68,11 @@ fn create_compiler_snapshot(
   op_crate_libs.insert("deno.console", deno_console::get_declaration());
   op_crate_libs.insert("deno.url", deno_url::get_declaration());
   op_crate_libs.insert("deno.web", deno_web::get_declaration());
+  op_crate_libs.insert("deno.file", deno_file::get_declaration());
   op_crate_libs.insert("deno.fetch", deno_fetch::get_declaration());
   op_crate_libs.insert("deno.webgpu", deno_webgpu::get_declaration());
   op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
+  op_crate_libs.insert("deno.webstorage", deno_webstorage::get_declaration());
   op_crate_libs.insert("deno.crypto", deno_crypto::get_declaration());
 
   // ensure we invalidate the build properly.
@@ -154,7 +158,7 @@ fn create_compiler_snapshot(
   });
   js_runtime.register_op(
     "op_build_info",
-    json_op_sync(move |_state, _args: Value, _bufs| {
+    op_sync(move |_state, _args: Value, _: ()| {
       Ok(json!({
         "buildSpecifier": build_specifier,
         "libs": build_libs,
@@ -165,7 +169,7 @@ fn create_compiler_snapshot(
   // files, but a slightly different implementation at build time.
   js_runtime.register_op(
     "op_load",
-    json_op_sync(move |_state, args, _bufs| {
+    op_sync(move |_state, args, _: ()| {
       let v: LoadArgs = serde_json::from_value(args)?;
       // we need a basic file to send to tsc to warm it up.
       if v.specifier == build_specifier {
@@ -208,6 +212,8 @@ fn create_compiler_snapshot(
       }
     }),
   );
+  js_runtime.sync_ops_cache();
+
   create_snapshot(js_runtime, snapshot_path, files);
 }
 
@@ -271,6 +277,10 @@ fn main() {
     deno_web::get_declaration().display()
   );
   println!(
+    "cargo:rustc-env=DENO_FILE_LIB_PATH={}",
+    deno_file::get_declaration().display()
+  );
+  println!(
     "cargo:rustc-env=DENO_FETCH_LIB_PATH={}",
     deno_fetch::get_declaration().display()
   );
@@ -281,6 +291,10 @@ fn main() {
   println!(
     "cargo:rustc-env=DENO_WEBSOCKET_LIB_PATH={}",
     deno_websocket::get_declaration().display()
+  );
+  println!(
+    "cargo:rustc-env=DENO_WEBSTORAGE_LIB_PATH={}",
+    deno_webstorage::get_declaration().display()
   );
   println!(
     "cargo:rustc-env=DENO_CRYPTO_LIB_PATH={}",

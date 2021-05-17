@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::config_file;
 use crate::media_type::MediaType;
-use crate::tsc_config;
 
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
@@ -229,9 +229,9 @@ impl Default for EmitOptions {
   }
 }
 
-impl From<tsc_config::TsConfig> for EmitOptions {
-  fn from(config: tsc_config::TsConfig) -> Self {
-    let options: tsc_config::EmitConfigOptions =
+impl From<config_file::TsConfig> for EmitOptions {
+  fn from(config: config_file::TsConfig) -> Self {
+    let options: config_file::EmitConfigOptions =
       serde_json::from_value(config.0).unwrap();
     let imports_not_used_as_values =
       match options.imports_not_used_as_values.as_str() {
@@ -254,20 +254,21 @@ impl From<tsc_config::TsConfig> for EmitOptions {
 fn strip_config_from_emit_options(
   options: &EmitOptions,
 ) -> typescript::strip::Config {
-  let mut config = typescript::strip::Config::default();
-  config.import_not_used_as_values = match options.imports_not_used_as_values {
-    ImportsNotUsedAsValues::Remove => {
-      typescript::strip::ImportNotUsedAsValues::Remove
-    }
-    ImportsNotUsedAsValues::Preserve => {
-      typescript::strip::ImportNotUsedAsValues::Preserve
-    }
-    // `Error` only affects the type-checking stage. Fall back to `Remove` here.
-    ImportsNotUsedAsValues::Error => {
-      typescript::strip::ImportNotUsedAsValues::Remove
-    }
-  };
-  config
+  typescript::strip::Config {
+    import_not_used_as_values: match options.imports_not_used_as_values {
+      ImportsNotUsedAsValues::Remove => {
+        typescript::strip::ImportsNotUsedAsValues::Remove
+      }
+      ImportsNotUsedAsValues::Preserve => {
+        typescript::strip::ImportsNotUsedAsValues::Preserve
+      }
+      // `Error` only affects the type-checking stage. Fall back to `Remove` here.
+      ImportsNotUsedAsValues::Error => {
+        typescript::strip::ImportsNotUsedAsValues::Remove
+      }
+    },
+    use_define_for_class_fields: true,
+  }
 }
 
 /// A logical structure to hold the value of a parsed module for further
@@ -301,6 +302,22 @@ impl ParsedModule {
   /// be located.
   pub fn get_leading_comments(&self) -> Vec<Comment> {
     self.leading_comments.clone()
+  }
+
+  /// Get the module's comments.
+  pub fn get_comments(&self) -> Vec<Comment> {
+    let mut comments = Vec::new();
+    let (leading_comments, trailing_comments) = self.comments.borrow_all();
+
+    for value in leading_comments.values() {
+      comments.append(&mut value.clone());
+    }
+
+    for value in trailing_comments.values() {
+      comments.append(&mut value.clone());
+    }
+
+    comments
   }
 
   /// Get a location for a given span within the module.

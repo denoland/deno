@@ -1,3 +1,4 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 /// FLAGS
 
 import { parse } from "https://deno.land/std@0.84.0/flags/mod.ts";
@@ -82,38 +83,6 @@ export function saveExpectation(expectation: Expectation) {
     EXPECTATION_PATH,
     JSON.stringify(expectation, undefined, "  "),
   );
-}
-
-export function generateTestExpectations(filter: string[]) {
-  const manifest = getManifest();
-
-  function walk(folder: ManifestFolder, prefix: string): Expectation {
-    const expectation: Expectation = {};
-    for (const key in folder) {
-      const path = `${prefix}/${key}`;
-      const entry = folder[key];
-      if (Array.isArray(entry)) {
-        if (!filter.find((filter) => path.startsWith(filter))) continue;
-        if (key.endsWith(".js")) {
-          expectation[key] = false;
-        }
-      } else {
-        if (!filter.find((filter) => `${path}/`.startsWith(filter))) continue;
-        expectation[key] = walk(entry, path);
-      }
-    }
-    for (const key in expectation) {
-      const entry = expectation[key];
-      if (typeof entry === "object") {
-        if (Object.keys(expectation[key]).length === 0) {
-          delete expectation[key];
-        }
-      }
-    }
-    return expectation;
-  }
-
-  return walk(manifest.items.testharness, "");
 }
 
 export function getExpectFailForCase(

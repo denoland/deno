@@ -7,6 +7,9 @@ use crate::ast::Location;
 use crate::ast::ParsedModule;
 use crate::checksum;
 use crate::colors;
+use crate::config_file::ConfigFile;
+use crate::config_file::IgnoredCompilerOptions;
+use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
 use crate::import_map::ImportMap;
 use crate::info;
@@ -19,8 +22,6 @@ use crate::specifier_handler::Emit;
 use crate::specifier_handler::FetchFuture;
 use crate::specifier_handler::SpecifierHandler;
 use crate::tsc;
-use crate::tsc_config::IgnoredCompilerOptions;
-use crate::tsc_config::TsConfig;
 use crate::version;
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
@@ -579,10 +580,10 @@ impl Serialize for TypeLib {
 pub struct BundleOptions {
   /// If `true` then debug logging will be output from the isolate.
   pub debug: bool,
-  /// An optional string that points to a user supplied TypeScript configuration
-  /// file that augments the the default configuration passed to the TypeScript
+  /// An optional config file with user supplied TypeScript configuration
+  /// that augments the the default configuration passed to the TypeScript
   /// compiler.
-  pub maybe_config_path: Option<String>,
+  pub maybe_config_file: Option<ConfigFile>,
 }
 
 #[derive(Debug, Default)]
@@ -593,10 +594,10 @@ pub struct CheckOptions {
   pub emit: bool,
   /// The base type libraries that should be used when type checking.
   pub lib: TypeLib,
-  /// An optional string that points to a user supplied TypeScript configuration
-  /// file that augments the the default configuration passed to the TypeScript
+  /// An optional config file with user supplied TypeScript configuration
+  /// that augments the the default configuration passed to the TypeScript
   /// compiler.
-  pub maybe_config_path: Option<String>,
+  pub maybe_config_file: Option<ConfigFile>,
   /// Ignore any previously emits and ensure that all files are emitted from
   /// source.
   pub reload: bool,
@@ -606,11 +607,11 @@ pub struct CheckOptions {
 pub enum BundleType {
   /// Return the emitted contents of the program as a single "flattened" ES
   /// module.
-  Esm,
+  Module,
   /// Return the emitted contents of the program as a single script that
   /// executes the program using an immediately invoked function execution
   /// (IIFE).
-  Iife,
+  Classic,
   /// Do not bundle the emit, instead returning each of the modules that are
   /// part of the program as individual files.
   None,
@@ -642,10 +643,10 @@ pub struct EmitOptions {
 pub struct TranspileOptions {
   /// If `true` then debug logging will be output from the isolate.
   pub debug: bool,
-  /// An optional string that points to a user supplied TypeScript configuration
-  /// file that augments the the default configuration passed to the TypeScript
+  /// An optional config file with user supplied TypeScript configuration
+  /// that augments the the default configuration passed to the TypeScript
   /// compiler.
-  pub maybe_config_path: Option<String>,
+  pub maybe_config_file: Option<ConfigFile>,
   /// Ignore any previously emits and ensure that all files are emitted from
   /// source.
   pub reload: bool,
@@ -773,11 +774,14 @@ impl Graph {
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
     }));
-    let maybe_ignored_options =
-      ts_config.merge_tsconfig(options.maybe_config_path)?;
+    let maybe_ignored_options = ts_config
+      .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
 
-    let s =
-      self.emit_bundle(&root_specifier, &ts_config.into(), &BundleType::Esm)?;
+    let s = self.emit_bundle(
+      &root_specifier,
+      &ts_config.into(),
+      &BundleType::Module,
+    )?;
     let stats = Stats(vec![
       ("Files".to_string(), self.modules.len() as u32),
       ("Total time".to_string(), start.elapsed().as_millis() as u32),
@@ -803,6 +807,7 @@ impl Graph {
       "strict": true,
       "target": "esnext",
       "tsBuildInfoFile": "deno:///.tsbuildinfo",
+      "useDefineForClassFields": true,
     }));
     if options.emit {
       config.merge(&json!({
@@ -819,8 +824,8 @@ impl Graph {
         "noEmit": true,
       }));
     }
-    let maybe_ignored_options =
-      config.merge_tsconfig(options.maybe_config_path)?;
+    let maybe_ignored_options = config
+      .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
 
     // Short circuit if none of the modules require an emit, or all of the
     // modules that require an emit have a valid emit.  There is also an edge
@@ -948,9 +953,10 @@ impl Graph {
       "module": "esnext",
       "strict": true,
       "target": "esnext",
+      "useDefineForClassFields": true,
     }));
     let opts = match options.bundle_type {
-      BundleType::Esm | BundleType::Iife => json!({
+      BundleType::Module | BundleType::Classic => json!({
         "noEmit": true,
       }),
       BundleType::None => json!({
@@ -991,7 +997,7 @@ impl Graph {
 
       let graph = graph.lock().unwrap();
       match options.bundle_type {
-        BundleType::Esm | BundleType::Iife => {
+        BundleType::Module | BundleType::Classic => {
           assert!(
             response.emitted_files.is_empty(),
             "No files should have been emitted from tsc."
@@ -1047,7 +1053,7 @@ impl Graph {
       let start = Instant::now();
       let mut emit_count = 0_u32;
       match options.bundle_type {
-        BundleType::Esm | BundleType::Iife => {
+        BundleType::Module | BundleType::Classic => {
           assert_eq!(
             self.roots.len(),
             1,
@@ -1120,8 +1126,8 @@ impl Graph {
     let loader = BundleLoader::new(self, emit_options, &globals, cm.clone());
     let hook = Box::new(BundleHook);
     let module = match bundle_type {
-      BundleType::Esm => swc_bundler::ModuleType::Es,
-      BundleType::Iife => swc_bundler::ModuleType::Iife,
+      BundleType::Module => swc_bundler::ModuleType::Es,
+      BundleType::Classic => swc_bundler::ModuleType::Iife,
       _ => unreachable!("invalid bundle type"),
     };
     let bundler = swc_bundler::Bundler::new(
@@ -1241,6 +1247,18 @@ impl Graph {
       s = redirect;
     }
     self.modules.get_mut(s)
+  }
+
+  pub fn get_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<&Module, AnyError> {
+    let s = self.resolve_specifier(specifier);
+    match self.get_module(s) {
+      ModuleSlot::Module(m) => Ok(m.as_ref()),
+      ModuleSlot::Err(e) => Err(anyhow!(e.to_string())),
+      _ => Err(GraphError::MissingSpecifier(specifier.clone()).into()),
+    }
   }
 
   /// Consume graph and return list of all module specifiers contained in the
@@ -1593,8 +1611,8 @@ impl Graph {
       "jsxFragmentFactory": "React.Fragment",
     }));
 
-    let maybe_ignored_options =
-      ts_config.merge_tsconfig(options.maybe_config_path)?;
+    let maybe_ignored_options = ts_config
+      .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
 
     let config = ts_config.as_bytes();
     let emit_options: ast::EmitOptions = ts_config.into();
@@ -1757,7 +1775,7 @@ impl GraphBuilder {
         }
         Some(Ok(cached_module)) => {
           let is_root = &cached_module.specifier == specifier;
-          self.visit(cached_module, is_root)?;
+          self.visit(cached_module, is_root, is_dynamic)?;
         }
         _ => {}
       }
@@ -1805,6 +1823,7 @@ impl GraphBuilder {
     &mut self,
     cached_module: CachedModule,
     is_root: bool,
+    is_root_dynamic: bool,
   ) -> Result<(), AnyError> {
     let specifier = cached_module.specifier.clone();
     let requested_specifier = cached_module.requested_specifier.clone();
@@ -1841,14 +1860,22 @@ impl GraphBuilder {
     for (_, dep) in module.dependencies.iter() {
       let maybe_referrer = Some(dep.location.clone());
       if let Some(specifier) = dep.maybe_code.as_ref() {
-        self.fetch(specifier, &maybe_referrer, dep.is_dynamic);
+        self.fetch(
+          specifier,
+          &maybe_referrer,
+          is_root_dynamic || dep.is_dynamic,
+        );
       }
       if let Some(specifier) = dep.maybe_type.as_ref() {
-        self.fetch(specifier, &maybe_referrer, dep.is_dynamic);
+        self.fetch(
+          specifier,
+          &maybe_referrer,
+          is_root_dynamic || dep.is_dynamic,
+        );
       }
     }
     if let Some((_, specifier)) = module.maybe_types.as_ref() {
-      self.fetch(specifier, &None, false);
+      self.fetch(specifier, &None, is_root_dynamic);
     }
     if specifier != requested_specifier {
       self
@@ -2161,7 +2188,7 @@ pub mod tests {
         debug: false,
         emit: true,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: None,
+        maybe_config_file: None,
         reload: false,
       })
       .expect("should have checked");
@@ -2183,7 +2210,7 @@ pub mod tests {
         debug: false,
         emit: false,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: None,
+        maybe_config_file: None,
         reload: false,
       })
       .expect("should have checked");
@@ -2200,7 +2227,7 @@ pub mod tests {
         debug: false,
         emit: true,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: None,
+        maybe_config_file: None,
         reload: false,
       })
       .expect("should have checked");
@@ -2224,7 +2251,7 @@ pub mod tests {
         debug: false,
         emit: false,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: None,
+        maybe_config_file: None,
         reload: false,
       })
       .expect("should have checked");
@@ -2246,7 +2273,7 @@ pub mod tests {
         debug: false,
         emit: true,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: None,
+        maybe_config_file: None,
         reload: false,
       })
       .expect("should have checked");
@@ -2267,7 +2294,7 @@ pub mod tests {
         debug: false,
         emit: false,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: None,
+        maybe_config_file: None,
         reload: false,
       })
       .expect("should have checked");
@@ -2279,14 +2306,14 @@ pub mod tests {
     let specifier = resolve_url_or_path("file:///tests/checkwithconfig.ts")
       .expect("could not resolve module");
     let (graph, handler) = setup(specifier.clone()).await;
+    let config_file =
+      ConfigFile::read("tests/module_graph/tsconfig_01.json").unwrap();
     let result_info = graph
       .check(CheckOptions {
         debug: false,
         emit: true,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: Some(
-          "tests/module_graph/tsconfig_01.json".to_string(),
-        ),
+        maybe_config_file: Some(config_file),
         reload: true,
       })
       .expect("should have checked");
@@ -2300,14 +2327,14 @@ pub mod tests {
 
     // let's do it all over again to ensure that the versions are determinstic
     let (graph, handler) = setup(specifier).await;
+    let config_file =
+      ConfigFile::read("tests/module_graph/tsconfig_01.json").unwrap();
     let result_info = graph
       .check(CheckOptions {
         debug: false,
         emit: true,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: Some(
-          "tests/module_graph/tsconfig_01.json".to_string(),
-        ),
+        maybe_config_file: Some(config_file),
         reload: true,
       })
       .expect("should have checked");
@@ -2379,7 +2406,7 @@ pub mod tests {
     let (emitted_files, result_info) = graph
       .emit(EmitOptions {
         check: true,
-        bundle_type: BundleType::Esm,
+        bundle_type: BundleType::Module,
         debug: false,
         maybe_user_config: None,
       })
@@ -2528,10 +2555,12 @@ pub mod tests {
     let specifier = resolve_url_or_path("https://deno.land/x/transpile.tsx")
       .expect("could not resolve module");
     let (mut graph, handler) = setup(specifier).await;
+    let config_file =
+      ConfigFile::read("tests/module_graph/tsconfig.json").unwrap();
     let result_info = graph
       .transpile(TranspileOptions {
         debug: false,
-        maybe_config_path: Some("tests/module_graph/tsconfig.json".to_string()),
+        maybe_config_file: Some(config_file),
         reload: false,
       })
       .unwrap();
