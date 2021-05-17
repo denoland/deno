@@ -298,26 +298,24 @@ fn print_cache_info(
     };
     write_json_to_stdout(&output)
   } else {
-    if location.is_none() {
-      println!("{} {:?}", colors::bold("DENO_DIR location:"), deno_dir);
-      println!(
-        "{} {:?}",
-        colors::bold("Remote modules cache:"),
-        modules_cache
-      );
-      println!(
-        "{} {:?}",
-        colors::bold("Emitted modules cache:"),
-        typescript_cache
-      );
-      println!(
-        "{} {:?}",
-        colors::bold("Language server registries cache:"),
-        registry_cache,
-      );
-      println!("{} {:?}", colors::bold("Origin storage:"), origin_dir);
-    } else {
-      println!("{} {:?}", colors::bold("Origin storage:"), origin_dir);
+    println!("{} {:?}", colors::bold("DENO_DIR location:"), deno_dir);
+    println!(
+      "{} {:?}",
+      colors::bold("Remote modules cache:"),
+      modules_cache
+    );
+    println!(
+      "{} {:?}",
+      colors::bold("Emitted modules cache:"),
+      typescript_cache
+    );
+    println!(
+      "{} {:?}",
+      colors::bold("Language server registries cache:"),
+      registry_cache,
+    );
+    println!("{} {:?}", colors::bold("Origin storage:"), origin_dir);
+    if location.is_some() {
       println!(
         "{} {:?}",
         colors::bold("Local Storage:"),
