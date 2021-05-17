@@ -6,6 +6,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
+use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::Extension;
 use deno_core::OpState;
@@ -23,6 +24,7 @@ use rand::rngs::OsRng;
 use rand::rngs::StdRng;
 use rand::thread_rng;
 use rand::Rng;
+use rand::SeedableRng;
 use ring::agreement::Algorithm as RingAlgorithm;
 use ring::agreement::EphemeralPrivateKey;
 use ring::hmac::Algorithm as HmacAlgorithm;
@@ -36,7 +38,6 @@ use rsa::RSAPrivateKey;
 use rsa::RSAPublicKey;
 use sha1::Sha1;
 use sha2::{Digest, Sha256, Sha384, Sha512};
-use rand::SeedableRng;
 use std::path::PathBuf;
 
 pub use rand; // Re-export rand
@@ -59,10 +60,17 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       prefix "deno:extensions/crypto",
       "01_crypto.js",
     ))
-    .ops(vec![(
-      "op_crypto_get_random_values",
-      op_sync(op_crypto_get_random_values),
-    )])
+    .ops(vec![
+      (
+        "op_crypto_get_random_values",
+        op_sync(op_crypto_get_random_values),
+      ),
+      (
+        "op_webcrypto_generate_key",
+        op_async(op_webcrypto_generate_key),
+      ),
+      ("op_webcrypto_sign_key", op_async(op_webcrypto_sign_key)),
+    ])
     .state(move |state| {
       if let Some(seed) = maybe_seed {
         state.put(StdRng::seed_from_u64(seed));
