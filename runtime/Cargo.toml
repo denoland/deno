@@ -73,8 +73,8 @@ tokio-util = { version = "0.6", features = ["io"] }
 uuid = { version = "0.8.2", features = ["v4"] }
 webpki = "0.21.4"
 webpki-roots = "0.21.1"
-trust-dns-proto = "0.20.1"
-trust-dns-resolver = { version = "0.20.1", features = ["tokio-runtime", "serde-config"] }
+trust-dns-proto = "0.20.3"
+trust-dns-resolver = { version = "0.20.3", features = ["tokio-runtime", "serde-config"] }
 
 [target.'cfg(windows)'.dependencies]
 fwdansi = "1.1.0"
