@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::ops::tls;
 use deno_core::error::null_opbuf;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
@@ -21,17 +22,12 @@ use std::cell::RefCell;
 use std::io::Read;
 use std::io::Write;
 use std::rc::Rc;
-use tokio::io::split;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
-use tokio::io::ReadHalf;
-use tokio::io::WriteHalf;
 use tokio::net::tcp;
-use tokio::net::TcpStream;
 use tokio::process;
-use tokio_rustls as tls;
 
 #[cfg(unix)]
 use std::os::unix::io::FromRawFd;
@@ -306,18 +302,6 @@ where
   }
 }
 
-pub type FullDuplexSplitResource<S> =
-  FullDuplexResource<ReadHalf<S>, WriteHalf<S>>;
-
-impl<S> From<S> for FullDuplexSplitResource<S>
-where
-  S: AsyncRead + AsyncWrite + 'static,
-{
-  fn from(stream: S) -> Self {
-    Self::new(split(stream))
-  }
-}
-
 pub type ChildStdinResource = WriteOnlyResource<process::ChildStdin>;
 
 impl Resource for ChildStdinResource {
@@ -363,25 +347,11 @@ impl Resource for TcpStreamResource {
   }
 }
 
-pub type TlsClientStreamResource =
-  FullDuplexSplitResource<tls::client::TlsStream<TcpStream>>;
+pub type TlsStreamResource = FullDuplexResource<tls::ReadHalf, tls::WriteHalf>;
 
-impl Resource for TlsClientStreamResource {
+impl Resource for TlsStreamResource {
   fn name(&self) -> Cow<str> {
-    "tlsClientStream".into()
-  }
-
-  fn close(self: Rc<Self>) {
-    self.cancel_read_ops();
-  }
-}
-
-pub type TlsServerStreamResource =
-  FullDuplexSplitResource<tls::server::TlsStream<TcpStream>>;
-
-impl Resource for TlsServerStreamResource {
-  fn name(&self) -> Cow<str> {
-    "tlsServerStream".into()
+    "tlsStream".into()
   }
 
   fn close(self: Rc<Self>) {
@@ -572,9 +542,7 @@ async fn op_read_async(
     s.read(buf).await?
   } else if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
     s.read(buf).await?
-  } else if let Some(s) = resource.downcast_rc::<TlsClientStreamResource>() {
-    s.read(buf).await?
-  } else if let Some(s) = resource.downcast_rc::<TlsServerStreamResource>() {
+  } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
     s.read(buf).await?
   } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
     s.read(buf).await?
@@ -616,9 +584,7 @@ async fn op_write_async(
     s.write(buf).await?
   } else if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
     s.write(buf).await?
-  } else if let Some(s) = resource.downcast_rc::<TlsClientStreamResource>() {
-    s.write(buf).await?
-  } else if let Some(s) = resource.downcast_rc::<TlsServerStreamResource>() {
+  } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
     s.write(buf).await?
   } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
     s.write(buf).await?
@@ -644,9 +610,7 @@ async fn op_shutdown(
     s.shutdown().await?;
   } else if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
     s.shutdown().await?;
-  } else if let Some(s) = resource.downcast_rc::<TlsClientStreamResource>() {
-    s.shutdown().await?;
-  } else if let Some(s) = resource.downcast_rc::<TlsServerStreamResource>() {
+  } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
     s.shutdown().await?;
   } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
     s.shutdown().await?;

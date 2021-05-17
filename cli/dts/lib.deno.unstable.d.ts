@@ -143,7 +143,7 @@ declare namespace Deno {
    *
    * The plugin system is not stable and will change in the future, hence the
    * lack of docs. For now take a look at the example
-   * https://github.com/denoland/deno/tree/master/test_plugin
+   * https://github.com/denoland/deno/tree/main/test_plugin
    */
   export function openPlugin(filename: string): number;
 
@@ -412,16 +412,6 @@ declare namespace Deno {
      * The type definitions are resolved according to the normal Deno resolution
      * irrespective of if sources are provided on the call. Like other Deno
      * modules, there is no "magical" resolution. For example:
-     *
-     * ```ts
-     * Deno.compile(
-     *   "./foo.js",
-     *   undefined,
-     *   {
-     *     types: [ "./foo.d.ts", "https://deno.land/x/example/types.d.ts" ]
-     *   }
-     * );
-     * ```
      */
     types?: string[];
     /** Emit class fields with ECMAScript-standard semantics. Defaults to
@@ -536,18 +526,19 @@ declare namespace Deno {
    * uncaught error is logged. This function can be used to perform the lookup
    * for creating better error handling.
    *
-   * **Note:** `line` and `column` are 1 indexed, which matches display
+   * **Note:** `lineNumber` and `columnNumber` are 1 indexed, which matches display
    * expectations, but is not typical of most index numbers in Deno.
    *
    * An example:
    *
    * ```ts
-   * const orig = Deno.applySourceMap({
+   * const origin = Deno.applySourceMap({
    *   fileName: "file://my/module.ts",
    *   lineNumber: 5,
    *   columnNumber: 15
    * });
-   * console.log(`${orig.filename}:${orig.line}:${orig.column}`);
+   *
+   * console.log(`${origin.fileName}:${origin.lineNumber}:${origin.columnNumber}`);
    * ```
    */
   export function applySourceMap(location: Location): Location;
@@ -742,7 +733,7 @@ declare namespace Deno {
    * is ignored. This functionality currently only works on Linux and Mac OS.
    *
    * ```ts
-   * Deno.setRaw(myTTY.rid, true, { cbreak: true });
+   * Deno.setRaw(Deno.stdin.rid, true, { cbreak: true });
    * ```
    */
   export function setRaw(
@@ -991,7 +982,7 @@ declare namespace Deno {
    *
    * ```ts
    * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
-   * const tlsConn = await Deno.startTls(conn, { certFile: "./certs/my_custom_root_CA.pem", hostname: "127.0.0.1", port: 80 });
+   * const tlsConn = await Deno.startTls(conn, { certFile: "./certs/my_custom_root_CA.pem", hostname: "localhost" });
    * ```
    *
    * Requires `allow-net` permission.
@@ -1051,7 +1042,7 @@ declare namespace Deno {
    * A custom HttpClient for use with `fetch`.
    *
    * ```ts
-   * const client = new Deno.createHttpClient({ caFile: "./ca.pem" });
+   * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
    * const req = await fetch("https://myserver.com", { client });
    * ```
    */
@@ -1073,7 +1064,7 @@ declare namespace Deno {
    * Create a custom HttpClient for to use with `fetch`.
    *
    * ```ts
-   * const client = new Deno.createHttpClient({ caFile: "./ca.pem" });
+   * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
    * const req = await fetch("https://myserver.com", { client });
    * ```
    */
@@ -1170,6 +1161,7 @@ declare namespace Deno {
    * Services HTTP requests given a TCP or TLS socket.
    *
    * ```ts
+   * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
    * const httpConn = Deno.serveHttp(conn);
    * const e = await httpConn.nextRequest();
    * if (e) {
@@ -1221,6 +1213,8 @@ declare namespace Deno {
       * Examples:
       *
       * ```ts
+      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+      *
       * Deno.test({
       *   name: "inherit",
       *   permissions: {
@@ -1230,10 +1224,12 @@ declare namespace Deno {
       *     const status = await Deno.permissions.query({ name: "net" })
       *     assertEquals(status.state, "granted");
       *   },
-      * };
+      * });
       * ```
       *
       * ```ts
+      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+      *
       * Deno.test({
       *   name: "true",
       *   permissions: {
@@ -1243,10 +1239,12 @@ declare namespace Deno {
       *     const status = await Deno.permissions.query({ name: "net" });
       *     assertEquals(status.state, "granted");
       *   },
-      * };
+      * });
       * ```
       *
       * ```ts
+      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+      *
       * Deno.test({
       *   name: "false",
       *   permissions: {
@@ -1256,10 +1254,12 @@ declare namespace Deno {
       *     const status = await Deno.permissions.query({ name: "net" });
       *     assertEquals(status.state, "denied");
       *   },
-      * };
+      * });
       * ```
       *
       * ```
+      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+      *
       * Deno.test({
       *   name: "localhost:8080",
       *   permissions: {
@@ -1269,7 +1269,7 @@ declare namespace Deno {
       *     const status = await Deno.permissions.query({ name: "net", host: "localhost:8080" });
       *     assertEquals(status.state, "granted");
       *   },
-      * };
+      * });
       * ```
       */
       net?: "inherit" | boolean | string[];
@@ -1387,10 +1387,8 @@ declare interface WorkerOptions {
       /** The format of the net access list must be `hostname[:port]`
        * in order to be resolved.
        *
-       * ```
-       * net: ["https://deno.land", "localhost:8080"],
-       * ```
-       * */
+       * For example: `["https://deno.land", "localhost:8080"]`.
+       */
       net?: "inherit" | boolean | string[];
       plugin?: "inherit" | boolean;
       read?: "inherit" | boolean | Array<string | URL>;

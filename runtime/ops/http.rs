@@ -1,7 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ops::io::TcpStreamResource;
-use crate::ops::io::TlsServerStreamResource;
+use crate::ops::io::TlsStreamResource;
+use crate::ops::tls::TlsStream;
 use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
@@ -43,7 +44,6 @@ use std::task::Poll;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
 use tokio::sync::oneshot;
-use tokio_rustls::server::TlsStream;
 use tokio_util::io::StreamReader;
 
 pub fn init() -> Extension {
@@ -100,7 +100,7 @@ impl HyperService<Request<Body>> for Service {
 
 enum ConnType {
   Tcp(Rc<RefCell<Connection<TcpStream, Service, LocalExecutor>>>),
-  Tls(Rc<RefCell<Connection<TlsStream<TcpStream>, Service, LocalExecutor>>>),
+  Tls(Rc<RefCell<Connection<TlsStream, Service, LocalExecutor>>>),
 }
 
 struct ConnResource {
@@ -305,12 +305,12 @@ fn op_http_start(
 
   if let Some(resource_rc) = state
     .resource_table
-    .take::<TlsServerStreamResource>(tcp_stream_rid)
+    .take::<TlsStreamResource>(tcp_stream_rid)
   {
     let resource = Rc::try_unwrap(resource_rc)
       .expect("Only a single use of this resource should happen");
     let (read_half, write_half) = resource.into_inner();
-    let tls_stream = read_half.unsplit(write_half);
+    let tls_stream = read_half.reunite(write_half);
     let addr = tls_stream.get_ref().0.local_addr()?;
 
     let hyper_connection = Http::new()

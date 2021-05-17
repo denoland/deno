@@ -113,7 +113,7 @@ impl MainWorker {
       metrics::init(),
       // Runtime ops
       ops::runtime::init(main_module),
-      ops::worker_host::init(true, options.create_web_worker_cb.clone()),
+      ops::worker_host::init(options.create_web_worker_cb.clone()),
       ops::fs_events::init(),
       ops::fs::init(),
       ops::http::init(),
