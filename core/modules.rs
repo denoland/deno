@@ -422,15 +422,16 @@ enum SymbolicModule {
 
 /// A collection of JS modules.
 pub struct ModuleMap {
-  op_state: Rc<RefCell<OpState>>,
-  pub loader: Rc<dyn ModuleLoader>,
-
+  // Handling of specifiers and v8 objects
   ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
   handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
   info: HashMap<ModuleId, ModuleInfo>,
   by_name: HashMap<String, SymbolicModule>,
   next_module_id: ModuleId,
-
+  
+  // Handling of futures for loading module sources
+  pub loader: Rc<dyn ModuleLoader>,
+  pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) dynamic_import_map:
     HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
   pub(crate) preparing_dynamic_imports:
@@ -445,17 +446,13 @@ impl ModuleMap {
     op_state: Rc<RefCell<OpState>>,
   ) -> ModuleMap {
     Self {
-      loader,
-      op_state,
-
-      // Handling of specifiers and v8 objects
-      handles_by_id: HashMap::new(),
       ids_by_handle: HashMap::new(),
+      handles_by_id: HashMap::new(),
       info: HashMap::new(),
       by_name: HashMap::new(),
       next_module_id: 1,
-
-      // Handling of futures for loading module sources
+      loader,
+      op_state,
       dynamic_import_map: HashMap::new(),
       preparing_dynamic_imports: FuturesUnordered::new(),
       pending_dynamic_imports: FuturesUnordered::new(),

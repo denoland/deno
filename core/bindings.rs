@@ -584,6 +584,8 @@ fn queue_microtask(
   };
 }
 
+// TODO(bartlomieju): this function could live in `modules.rs` and
+// would make more sense there
 // Called by V8 during `Isolate::mod_instantiate`.
 pub fn module_resolve_callback<'s>(
   context: v8::Local<'s, v8::Context>,
@@ -593,10 +595,9 @@ pub fn module_resolve_callback<'s>(
 ) -> Option<v8::Local<'s, v8::Module>> {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
-  let state_rc = JsRuntime::state(scope);
   let module_map_rc = JsRuntime::module_map(scope);
-  let op_state = state_rc.borrow().op_state.clone();
   let module_map = module_map_rc.borrow();
+  let op_state = module_map.op_state.clone();
 
   let referrer_global = v8::Global::new(scope, referrer);
 
@@ -607,6 +608,7 @@ pub fn module_resolve_callback<'s>(
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
+  // TODO: This whole bit is `ModuleMap` specific and could be a method on it
   let resolved_specifier = module_map
     .loader
     .resolve(op_state, &specifier_str, &referrer_name, false)
@@ -617,6 +619,7 @@ pub fn module_resolve_callback<'s>(
       return Some(v8::Local::new(scope, handle));
     }
   }
+  // END
 
   let msg = format!(
     r#"Cannot resolve module "{}" from "{}""#,
