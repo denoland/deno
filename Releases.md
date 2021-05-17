@@ -10,7 +10,8 @@ https://github.com/denoland/deno_install
 
 - fix: static import permissions in dynamic imports
 - fix(lsp): remove duplicate cwd in config path (#10620)
-- fix(cli): ignore x-typescript-types header when media type is not js/jsx (#10574)
+- fix(cli): ignore x-typescript-types header when media type is not js/jsx
+  (#10574)
 - chore: upgrade Tokio to 1.6.0 (#10637)
 
 Release notes for std version 0.97.0:
