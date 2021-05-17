@@ -8,6 +8,7 @@ import {
   assertThrows,
 } from "../../../test_util/std/testing/asserts.ts";
 import { deferred } from "../../../test_util/std/async/deferred.ts";
+import { fromFileUrl } from "../../../test_util/std/path/mod.ts";
 
 Deno.test({
   name: "worker terminate",
@@ -476,8 +477,16 @@ Deno.test("Worker limit children permissions granularly", async function () {
 
   //Routes are relative to the spawned worker location
   const routes = [
-    { permission: false, route: "read_check_granular_worker.js" },
-    { permission: true, route: "read_check_worker.js" },
+    {
+      permission: false,
+      path: fromFileUrl(
+        new URL("read_check_granular_worker.js", import.meta.url),
+      ),
+    },
+    {
+      permission: true,
+      path: fromFileUrl(new URL("read_check_worker.js", import.meta.url)),
+    },
   ];
 
   let checked = 0;
@@ -490,10 +499,10 @@ Deno.test("Worker limit children permissions granularly", async function () {
     }
   };
 
-  routes.forEach(({ route }, index) =>
+  routes.forEach(({ path }, index) =>
     worker.postMessage({
       index,
-      route,
+      path,
     })
   );
 
@@ -553,12 +562,14 @@ Deno.test("Nested worker limit children permissions granularly", async function 
     {
       childHasPermission: false,
       parentHasPermission: true,
-      route: "read_check_granular_worker.js",
+      path: fromFileUrl(
+        new URL("read_check_granular_worker.js", import.meta.url),
+      ),
     },
     {
       childHasPermission: false,
       parentHasPermission: false,
-      route: "read_check_worker.js",
+      path: fromFileUrl(new URL("read_check_worker.js", import.meta.url)),
     },
   ];
 
@@ -579,10 +590,10 @@ Deno.test("Nested worker limit children permissions granularly", async function 
   };
 
   // Index needed cause requests will be handled asynchronously
-  routes.forEach(({ route }, index) =>
+  routes.forEach(({ path }, index) =>
     worker.postMessage({
       index,
-      route,
+      path,
     })
   );
 
