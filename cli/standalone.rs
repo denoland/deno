@@ -221,12 +221,16 @@ pub async fn run(
   };
   let mut worker =
     MainWorker::from_options(main_module.clone(), permissions, &options);
-  let js_runtime = &mut worker.js_runtime;
-  js_runtime
-    .op_state()
-    .borrow_mut()
-    .put::<Arc<ProgramState>>(program_state.clone());
-  ops::runtime_compiler::init(js_runtime);
+  {
+    let js_runtime = &mut worker.js_runtime;
+    js_runtime
+      .op_state()
+      .borrow_mut()
+      .put::<Arc<ProgramState>>(program_state.clone());
+    ops::errors::init(js_runtime);
+    ops::runtime_compiler::init(js_runtime);
+    js_runtime.sync_ops_cache();
+  }
   worker.bootstrap(&options);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
