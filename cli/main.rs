@@ -291,7 +291,8 @@ fn print_cache_info(
     });
 
     if location.is_some() {
-      output["localStorage"] = serde_json::to_value(origin_dir.join("local_storage"))?;
+      output["localStorage"] =
+        serde_json::to_value(origin_dir.join("local_storage"))?;
     }
 
     write_json_to_stdout(&output)
