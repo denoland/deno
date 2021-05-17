@@ -794,7 +794,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     .arg(
       location_arg()
         .conflicts_with("file")
-        .help("Show files used for web storage APIs etc. when running a script with '--location=<HREF>'")
+        .help("Show files used for origin bound APIs like the Web Storage API when running a script with '--location=<HREF>'")
     )
     // TODO(lucacasonato): remove for 2.0
     .arg(no_check_arg().hidden(true))
