@@ -584,9 +584,11 @@ fn queue_microtask(
   };
 }
 
-// TODO(bartlomieju): this function could live in `modules.rs` and
-// would make more sense there
-// Called by V8 during `Isolate::mod_instantiate`.
+/// Called by V8 during `JsRuntime::mod_instantiate`.
+///
+/// This function borrows `ModuleMap` from the isolate slot,
+/// so it is crucial to ensure there are no existing borrows
+/// of `ModuleMap` when `JsRuntime::mod_instantiate` is called.
 pub fn module_resolve_callback<'s>(
   context: v8::Local<'s, v8::Context>,
   specifier: v8::Local<'s, v8::String>,
@@ -597,7 +599,6 @@ pub fn module_resolve_callback<'s>(
 
   let module_map_rc = JsRuntime::module_map(scope);
   let module_map = module_map_rc.borrow();
-  let op_state = module_map.op_state.clone();
 
   let referrer_global = v8::Global::new(scope, referrer);
 
@@ -608,18 +609,11 @@ pub fn module_resolve_callback<'s>(
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
-  // TODO: This whole bit is `ModuleMap` specific and could be a method on it
-  let resolved_specifier = module_map
-    .loader
-    .resolve(op_state, &specifier_str, &referrer_name, false)
-    .expect("Module should have been already resolved");
-
-  if let Some(id) = module_map.get_id(resolved_specifier.as_str()) {
-    if let Some(handle) = module_map.get_handle(id) {
-      return Some(v8::Local::new(scope, handle));
-    }
+  let maybe_module =
+    module_map.resolve_callback(scope, &specifier_str, &referrer_name);
+  if let Some(module) = maybe_module {
+    return Some(module);
   }
-  // END
 
   let msg = format!(
     r#"Cannot resolve module "{}" from "{}""#,

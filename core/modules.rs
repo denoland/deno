@@ -428,10 +428,10 @@ pub struct ModuleMap {
   info: HashMap<ModuleId, ModuleInfo>,
   by_name: HashMap<String, SymbolicModule>,
   next_module_id: ModuleId,
-  
+
   // Handling of futures for loading module sources
   pub loader: Rc<dyn ModuleLoader>,
-  pub(crate) op_state: Rc<RefCell<OpState>>,
+  op_state: Rc<RefCell<OpState>>,
   pub(crate) dynamic_import_map:
     HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
   pub(crate) preparing_dynamic_imports:
@@ -676,6 +676,27 @@ impl ModuleMap {
   pub fn has_pending_dynamic_imports(&self) -> bool {
     !(self.preparing_dynamic_imports.is_empty()
       && self.pending_dynamic_imports.is_empty())
+  }
+
+  /// Called by `module_resolve_callback` during module instantiation.
+  pub fn resolve_callback<'s>(
+    &self,
+    scope: &mut v8::HandleScope<'s>,
+    specifier: &str,
+    referrer: &str,
+  ) -> Option<v8::Local<'s, v8::Module>> {
+    let resolved_specifier = self
+      .loader
+      .resolve(self.op_state.clone(), specifier, referrer, false)
+      .expect("Module should have been already resolved");
+
+    if let Some(id) = self.get_id(resolved_specifier.as_str()) {
+      if let Some(handle) = self.get_handle(id) {
+        return Some(v8::Local::new(scope, handle));
+      }
+    }
+
+    None
   }
 }
 
