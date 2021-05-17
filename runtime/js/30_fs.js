@@ -128,11 +128,11 @@
   }
 
   function realPathSync(path) {
-    return core.opSync("op_realpath_sync", pathFromURL(path));
+    return core.opSync("op_realpath_sync", path);
   }
 
   function realPath(path) {
-    return core.opAsync("op_realpath_async", pathFromURL(path));
+    return core.opAsync("op_realpath_async", path);
   }
 
   function removeSync(
