@@ -2,6 +2,7 @@
 
 [workspace]
 members = [
+  "bench_util",
   "cli",
   "core",
   "runtime",
