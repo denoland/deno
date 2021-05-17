@@ -7,7 +7,6 @@ use deno_core::op_sync;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-use deno_core::ZeroCopyBuf;
 
 pub fn init(main_module: ModuleSpecifier) -> Extension {
   Extension::builder()
@@ -22,7 +21,7 @@ pub fn init(main_module: ModuleSpecifier) -> Extension {
 fn op_main_module(
   state: &mut OpState,
   _args: (),
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<String, AnyError> {
   let main = state.borrow::<ModuleSpecifier>().to_string();
   let main_url = deno_core::resolve_url_or_path(&main)?;

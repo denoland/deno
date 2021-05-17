@@ -1,10 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::ast;
 use crate::colors;
 use crate::create_main_worker;
 use crate::file_fetcher::File;
-use crate::flags::Flags;
-use crate::fs_util;
+use crate::fs_util::collect_files;
+use crate::fs_util::normalize_path;
 use crate::media_type::MediaType;
 use crate::module_graph;
 use crate::program_state::ProgramState;
@@ -19,6 +20,7 @@ use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
+use regex::Regex;
 use serde::Deserialize;
 use std::path::Path;
 use std::path::PathBuf;
@@ -26,6 +28,7 @@ use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Instant;
+use swc_common::comments::CommentKind;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -199,7 +202,7 @@ fn create_reporter(concurrent: bool) -> Box<dyn TestReporter + Send> {
   Box::new(PrettyTestReporter::new(concurrent))
 }
 
-fn is_supported(p: &Path) -> bool {
+pub(crate) fn is_supported(p: &Path) -> bool {
   use std::path::Component;
   if let Some(Component::Normal(basename_os_str)) = p.components().next_back() {
     let basename = basename_os_str.to_string_lossy();
@@ -223,19 +226,22 @@ fn is_supported(p: &Path) -> bool {
   }
 }
 
-pub fn collect_test_module_specifiers(
+pub fn collect_test_module_specifiers<P>(
   include: Vec<String>,
   root_path: &Path,
-) -> Result<Vec<Url>, AnyError> {
+  predicate: P,
+) -> Result<Vec<Url>, AnyError>
+where
+  P: Fn(&Path) -> bool,
+{
   let (include_paths, include_urls): (Vec<String>, Vec<String>) =
     include.into_iter().partition(|n| !is_remote_url(n));
-
   let mut prepared = vec![];
 
   for path in include_paths {
-    let p = fs_util::normalize_path(&root_path.join(path));
+    let p = normalize_path(&root_path.join(path));
     if p.is_dir() {
-      let test_files = fs_util::collect_files(&[p], &[], is_supported).unwrap();
+      let test_files = collect_files(&[p], &[], &predicate).unwrap();
       let test_files_as_urls = test_files
         .iter()
         .map(|f| Url::from_file_path(f).unwrap())
@@ -304,36 +310,104 @@ pub async fn run_test_file(
   Ok(())
 }
 
+/// Runs tests.
+///
+/// Returns a boolean indicating whether the tests failed.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_tests(
-  flags: Flags,
-  include: Option<Vec<String>>,
+  program_state: Arc<ProgramState>,
+  permissions: Permissions,
+  lib: module_graph::TypeLib,
+  doc_modules: Vec<ModuleSpecifier>,
+  test_modules: Vec<ModuleSpecifier>,
   no_run: bool,
   fail_fast: bool,
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
   concurrent_jobs: usize,
-) -> Result<(), AnyError> {
-  let program_state = ProgramState::build(flags.clone()).await?;
-  let permissions = Permissions::from_options(&flags.clone().into());
-  let cwd = std::env::current_dir().expect("No current directory");
-  let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let test_modules = collect_test_module_specifiers(include, &cwd)?;
-
+) -> Result<bool, AnyError> {
   if test_modules.is_empty() {
     println!("No matching test modules found");
     if !allow_none {
       std::process::exit(1);
     }
-    return Ok(());
+    return Ok(false);
   }
 
-  let lib = if flags.unstable {
-    module_graph::TypeLib::UnstableDenoWindow
-  } else {
-    module_graph::TypeLib::DenoWindow
-  };
+  if !doc_modules.is_empty() {
+    let mut test_programs = Vec::new();
+
+    let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
+    let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
+
+    for specifier in &doc_modules {
+      let file = program_state.file_fetcher.get_source(&specifier).unwrap();
+
+      let parsed_module =
+        ast::parse(&file.specifier.as_str(), &file.source, &file.media_type)?;
+
+      let mut comments = parsed_module.get_comments();
+      comments.sort_by_key(|comment| {
+        let location = parsed_module.get_location(&comment.span);
+        location.line
+      });
+
+      for comment in comments {
+        if comment.kind != CommentKind::Block || !comment.text.starts_with('*')
+        {
+          continue;
+        }
+
+        for block in blocks_regex.captures_iter(&comment.text) {
+          let body = block.get(2).unwrap();
+          let text = body.as_str();
+
+          // TODO(caspervonb) generate an inline source map
+          let mut source = String::new();
+          for line in lines_regex.captures_iter(&text) {
+            let text = line.get(1).unwrap();
+            source.push_str(&format!("{}\n", text.as_str()));
+          }
+
+          source.push_str("export {};");
+
+          let element = block.get(0).unwrap();
+          let span = comment
+            .span
+            .from_inner_byte_pos(element.start(), element.end());
+          let location = parsed_module.get_location(&span);
+
+          let specifier = deno_core::resolve_url_or_path(&format!(
+            "{}:{}-{}",
+            location.filename,
+            location.line,
+            location.line + element.as_str().split('\n').count(),
+          ))?;
+
+          let file = File {
+            local: specifier.to_file_path().unwrap(),
+            maybe_types: None,
+            media_type: MediaType::TypeScript, // media_type.clone(),
+            source: source.clone(),
+            specifier: specifier.clone(),
+          };
+
+          program_state.file_fetcher.insert_cached(file.clone());
+          test_programs.push(file.specifier.clone());
+        }
+      }
+    }
+
+    program_state
+      .prepare_module_graph(
+        test_programs.clone(),
+        lib.clone(),
+        permissions.clone(),
+        program_state.maybe_import_map.clone(),
+      )
+      .await?;
+  }
 
   program_state
     .prepare_module_graph(
@@ -345,14 +419,14 @@ pub async fn run_tests(
     .await?;
 
   if no_run {
-    return Ok(());
+    return Ok(false);
   }
 
   // Because scripts, and therefore worker.execute cannot detect unresolved promises at the moment
   // we generate a module for the actual test execution.
   let test_options = json!({
-    "disableLog": quiet,
-    "filter": filter,
+      "disableLog": quiet,
+      "filter": filter,
   });
 
   let test_module = deno_core::resolve_path("$deno$test.js")?;
@@ -475,11 +549,7 @@ pub async fn run_tests(
   if let Some(e) = join_errors.next() {
     Err(e)
   } else {
-    if result.unwrap_or(false) {
-      std::process::exit(1);
-    }
-
-    Ok(())
+    Ok(result.unwrap_or(false))
   }
 }
 
@@ -499,6 +569,7 @@ mod tests {
         "http://example.com/printf_test.ts".to_string(),
       ],
       &test_data_path,
+      is_supported,
     )
     .unwrap();
     let test_data_url =
@@ -547,8 +618,12 @@ mod tests {
       .join("std")
       .join("http");
     println!("root {:?}", root);
-    let mut matched_urls =
-      collect_test_module_specifiers(vec![".".to_string()], &root).unwrap();
+    let mut matched_urls = collect_test_module_specifiers(
+      vec![".".to_string()],
+      &root,
+      is_supported,
+    )
+    .unwrap();
     matched_urls.sort();
     let root_url = Url::from_file_path(root).unwrap().to_string();
     println!("root_url {}", root_url);

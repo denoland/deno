@@ -11,7 +11,7 @@
     GPU,
     GPUAdapter,
     GPUAdapterLimits,
-    GPUAdapterFeatures,
+    GPUSupportedFeatures,
     GPUDevice,
     GPUQueue,
     GPUBuffer,
@@ -58,10 +58,10 @@
     GPUAdapterLimits,
   );
 
-  // INTERFACE: GPUAdapterFeatures
-  webidl.converters.GPUAdapterFeatures = webidl.createInterfaceConverter(
-    "GPUAdapterFeatures",
-    GPUAdapterFeatures,
+  // INTERFACE: GPUSupportedFeatures
+  webidl.converters.GPUSupportedFeatures = webidl.createInterfaceConverter(
+    "GPUSupportedFeatures",
+    GPUSupportedFeatures,
   );
 
   // INTERFACE: GPU
@@ -229,7 +229,7 @@
     {
       key: "width",
       converter: webidl.converters["GPUIntegerCoordinate"],
-      defaultValue: 1,
+      required: true,
     },
     {
       key: "height",
@@ -835,28 +835,6 @@
       dictMembersGPUPipelineLayoutDescriptor,
     );
 
-  // ENUM: GPUCompilationMessageType
-  webidl.converters["GPUCompilationMessageType"] = webidl.createEnumConverter(
-    "GPUCompilationMessageType",
-    [
-      "error",
-      "warning",
-      "info",
-    ],
-  );
-
-  // // INTERFACE: GPUCompilationMessage
-  // webidl.converters.GPUCompilationMessage = webidl.createInterfaceConverter(
-  //   "GPUCompilationMessage",
-  //   GPUCompilationMessage,
-  // );
-
-  // // INTERFACE: GPUCompilationInfo
-  // webidl.converters.GPUCompilationInfo = webidl.createInterfaceConverter(
-  //   "GPUCompilationInfo",
-  //   GPUCompilationInfo,
-  // );
-
   // INTERFACE: GPUShaderModule
   webidl.converters.GPUShaderModule = webidl.createInterfaceConverter(
     "GPUShaderModule",
@@ -890,6 +868,28 @@
       dictMembersGPUObjectDescriptorBase,
       dictMembersGPUShaderModuleDescriptor,
     );
+
+  // // ENUM: GPUCompilationMessageType
+  // webidl.converters["GPUCompilationMessageType"] = webidl.createEnumConverter(
+  //   "GPUCompilationMessageType",
+  //   [
+  //     "error",
+  //     "warning",
+  //     "info",
+  //   ],
+  // );
+
+  // // INTERFACE: GPUCompilationMessage
+  // webidl.converters.GPUCompilationMessage = webidl.createInterfaceConverter(
+  //   "GPUCompilationMessage",
+  //   GPUCompilationMessage,
+  // );
+
+  // // INTERFACE: GPUCompilationInfo
+  // webidl.converters.GPUCompilationInfo = webidl.createInterfaceConverter(
+  //   "GPUCompilationInfo",
+  //   GPUCompilationInfo,
+  // );
 
   // DICTIONARY: GPUPipelineDescriptorBase
   const dictMembersGPUPipelineDescriptorBase = [
@@ -960,36 +960,36 @@
   webidl.converters["GPUVertexFormat"] = webidl.createEnumConverter(
     "GPUVertexFormat",
     [
-      "uchar2",
-      "uchar4",
-      "char2",
-      "char4",
-      "uchar2norm",
-      "uchar4norm",
-      "char2norm",
-      "char4norm",
-      "ushort2",
-      "ushort4",
-      "short2",
-      "short4",
-      "ushort2norm",
-      "ushort4norm",
-      "short2norm",
-      "short4norm",
-      "half2",
-      "half4",
-      "float",
-      "float2",
-      "float3",
-      "float4",
-      "uint",
-      "uint2",
-      "uint3",
-      "uint4",
-      "int",
-      "int2",
-      "int3",
-      "int4",
+      "uint8x2",
+      "uint8x4",
+      "sint8x2",
+      "sint8x4",
+      "unorm8x2",
+      "unorm8x4",
+      "snorm8x2",
+      "snorm8x4",
+      "uint16x2",
+      "uint16x4",
+      "sint16x2",
+      "sint16x4",
+      "unorm16x2",
+      "unorm16x4",
+      "snorm16x2",
+      "snorm16x4",
+      "float16x2",
+      "float16x4",
+      "float32",
+      "float32x2",
+      "float32x3",
+      "float32x4",
+      "uint32",
+      "uint32x2",
+      "uint32x3",
+      "uint32x4",
+      "sint32",
+      "sint32x2",
+      "sint32x3",
+      "sint32x4",
     ],
   );
 
@@ -1116,6 +1116,11 @@
       converter: webidl.converters["GPUCullMode"],
       defaultValue: "none",
     },
+    {
+      key: "clampDepth",
+      converter: webidl.converters["boolean"],
+      defaultValue: false,
+    },
   ];
   webidl.converters["GPUPrimitiveState"] = webidl.createDictionaryConverter(
     "GPUPrimitiveState",
@@ -1229,11 +1234,6 @@
       converter: webidl.converters["float"],
       defaultValue: 0,
     },
-    {
-      key: "clampDepth",
-      converter: webidl.converters["boolean"],
-      defaultValue: false,
-    },
   ];
   webidl.converters["GPUDepthStencilState"] = webidl.createDictionaryConverter(
     "GPUDepthStencilState",
@@ -1273,17 +1273,17 @@
     [
       "zero",
       "one",
-      "src-color",
-      "one-minus-src-color",
+      "src",
+      "one-minus-src",
       "src-alpha",
       "one-minus-src-alpha",
-      "dst-color",
-      "one-minus-dst-color",
+      "dst",
+      "one-minus-dst",
       "dst-alpha",
       "one-minus-dst-alpha",
       "src-alpha-saturated",
-      "blend-color",
-      "one-minus-blend-color",
+      "constant",
+      "one-minus-constant",
     ],
   );
 
@@ -1559,6 +1559,44 @@
     dictMembersGPUImageCopyTexture,
   );
 
+  // DICTIONARY: GPUOrigin2DDict
+  const dictMembersGPUOrigin2DDict = [
+    {
+      key: "x",
+      converter: webidl.converters["GPUIntegerCoordinate"],
+      defaultValue: 0,
+    },
+    {
+      key: "y",
+      converter: webidl.converters["GPUIntegerCoordinate"],
+      defaultValue: 0,
+    },
+  ];
+  webidl.converters["GPUOrigin2DDict"] = webidl.createDictionaryConverter(
+    "GPUOrigin2DDict",
+    dictMembersGPUOrigin2DDict,
+  );
+
+  // TYPEDEF: GPUOrigin2D
+  webidl.converters["GPUOrigin2D"] = (V, opts) => {
+    // Union for (sequence<GPUIntegerCoordinate> or GPUOrigin2DDict)
+    if (V === null || V === undefined) {
+      return webidl.converters["GPUOrigin2DDict"](V, opts);
+    }
+    if (typeof V === "object") {
+      const method = V[Symbol.iterator];
+      if (method !== undefined) {
+        return webidl.converters["sequence<GPUIntegerCoordinate>"](V, opts);
+      }
+      return webidl.converters["GPUOrigin2DDict"](V, opts);
+    }
+    throw webidl.makeException(
+      TypeError,
+      "can not be converted to sequence<GPUIntegerCoordinate> or GPUOrigin2DDict.",
+      opts,
+    );
+  };
+
   // INTERFACE: GPUComputePassEncoder
   webidl.converters.GPUComputePassEncoder = webidl.createInterfaceConverter(
     "GPUComputePassEncoder",
@@ -1615,8 +1653,9 @@
       "can not be converted to sequence<double> or GPUColorDict.",
       opts,
     );
-  }; // ENUM: GPUStoreOp
+  };
 
+  // ENUM: GPUStoreOp
   webidl.converters["GPUStoreOp"] = webidl.createEnumConverter("GPUStoreOp", [
     "store",
     "clear",
@@ -1638,7 +1677,7 @@
     {
       key: "storeOp",
       converter: webidl.converters["GPUStoreOp"],
-      defaultValue: "store",
+      required: true,
     },
   ];
   webidl.converters["GPURenderPassColorAttachment"] = webidl
@@ -1885,42 +1924,4 @@
 
   // TYPEDEF: GPUFlagsConstant
   webidl.converters["GPUFlagsConstant"] = webidl.converters["unsigned long"];
-
-  // DICTIONARY: GPUOrigin2DDict
-  const dictMembersGPUOrigin2DDict = [
-    {
-      key: "x",
-      converter: webidl.converters["GPUIntegerCoordinate"],
-      defaultValue: 0,
-    },
-    {
-      key: "y",
-      converter: webidl.converters["GPUIntegerCoordinate"],
-      defaultValue: 0,
-    },
-  ];
-  webidl.converters["GPUOrigin2DDict"] = webidl.createDictionaryConverter(
-    "GPUOrigin2DDict",
-    dictMembersGPUOrigin2DDict,
-  );
-
-  // TYPEDEF: GPUOrigin2D
-  webidl.converters["GPUOrigin2D"] = (V, opts) => {
-    // Union for (sequence<GPUIntegerCoordinate> or GPUOrigin2DDict)
-    if (V === null || V === undefined) {
-      return webidl.converters["GPUOrigin2DDict"](V, opts);
-    }
-    if (typeof V === "object") {
-      const method = V[Symbol.iterator];
-      if (method !== undefined) {
-        return webidl.converters["sequence<GPUIntegerCoordinate>"](V, opts);
-      }
-      return webidl.converters["GPUOrigin2DDict"](V, opts);
-    }
-    throw webidl.makeException(
-      TypeError,
-      "can not be converted to sequence<GPUIntegerCoordinate> or GPUOrigin2DDict.",
-      opts,
-    );
-  };
 })(this);

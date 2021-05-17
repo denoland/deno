@@ -129,7 +129,7 @@
   }
 
   function print(str, isErr = false) {
-    opSync("op_print", [str, isErr]);
+    opSync("op_print", str, isErr);
   }
 
   // Provide bootstrap namespace

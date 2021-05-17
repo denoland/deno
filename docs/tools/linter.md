@@ -35,6 +35,7 @@ For more detail, run `deno lint --help`.
 - `no-control-regex`
 - `no-debugger`
 - `no-delete-var`
+- `no-deprecated-deno-api`
 - `no-dupe-args`
 - `no-dupe-class-members`
 - `no-dupe-else-if`
@@ -71,11 +72,11 @@ For more detail, run `deno lint --help`.
 - `no-shadow-restricted-names`
 - `no-this-alias`
 - `no-this-before-super`
-- `no-undef`
 - `no-unreachable`
 - `no-unsafe-finally`
 - `no-unsafe-negation`
 - `no-unused-labels`
+- `no-unused-vars`
 - `no-with`
 - `prefer-as-const`
 - `prefer-const`
