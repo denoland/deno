@@ -422,7 +422,9 @@ enum SymbolicModule {
 
 /// A collection of JS modules.
 pub struct ModuleMap {
+  op_state: Rc<RefCell<OpState>>,
   pub loader: Rc<dyn ModuleLoader>,
+
   ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
   handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
   info: HashMap<ModuleId, ModuleInfo>,
@@ -438,9 +440,13 @@ pub struct ModuleMap {
 }
 
 impl ModuleMap {
-  pub fn new(loader: Rc<dyn ModuleLoader>) -> ModuleMap {
+  pub fn new(
+    loader: Rc<dyn ModuleLoader>,
+    op_state: Rc<RefCell<OpState>>,
+  ) -> ModuleMap {
     Self {
       loader,
+      op_state,
 
       // Handling of specifiers and v8 objects
       handles_by_id: HashMap::new(),
@@ -475,7 +481,6 @@ impl ModuleMap {
   pub fn new_module(
     &mut self,
     scope: &mut v8::HandleScope,
-    op_state: Rc<RefCell<OpState>>,
     main: bool,
     name: &str,
     source: &str,
@@ -509,7 +514,7 @@ impl ModuleMap {
         .get_specifier()
         .to_rust_string_lossy(tc_scope);
       let module_specifier = self.loader.resolve(
-        op_state.clone(),
+        self.op_state.clone(),
         &import_specifier,
         name,
         false,
@@ -541,7 +546,6 @@ impl ModuleMap {
   pub fn register_during_load(
     &mut self,
     scope: &mut v8::HandleScope,
-    op_state: Rc<RefCell<OpState>>,
     module_source: ModuleSource,
     load: &mut RecursiveModuleLoad,
   ) -> Result<(), AnyError> {
@@ -580,7 +584,6 @@ impl ModuleMap {
       // Module not registered yet, do it now.
       None => self.new_module(
         scope,
-        op_state,
         load.is_currently_loading_main_module(),
         &module_source.module_url_found,
         &module_source.code,
@@ -644,23 +647,26 @@ impl ModuleMap {
 
   pub fn load_main(
     &self,
-    op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     code: Option<String>,
   ) -> RecursiveModuleLoad {
-    RecursiveModuleLoad::main(op_state, specifier, code, self.loader.clone())
+    RecursiveModuleLoad::main(
+      self.op_state.clone(),
+      specifier,
+      code,
+      self.loader.clone(),
+    )
   }
 
   // Initiate loading of a module graph imported using `import()`.
   pub fn load_dynamic_import(
     &mut self,
-    op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     referrer: &str,
     resolver_handle: v8::Global<v8::PromiseResolver>,
   ) {
     let load = RecursiveModuleLoad::dynamic_import(
-      op_state,
+      self.op_state.clone(),
       specifier,
       referrer,
       self.loader.clone(),
@@ -672,7 +678,7 @@ impl ModuleMap {
 
   pub fn has_pending_dynamic_imports(&self) -> bool {
     !(self.preparing_dynamic_imports.is_empty()
-      && module_map.pending_dynamic_imports.is_empty())
+      && self.pending_dynamic_imports.is_empty())
   }
 }
 

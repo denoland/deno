@@ -180,22 +180,19 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let resolver_handle = v8::Global::new(scope, resolver);
   {
     let state_rc = JsRuntime::state(scope);
-    let mut state = state_rc.borrow_mut();
     let module_map_rc = JsRuntime::module_map(scope);
-    let op_state = state.op_state.clone();
 
     debug!(
       "dyn_import specifier {} referrer {} ",
       specifier_str, referrer_name_str
     );
     module_map_rc.borrow_mut().load_dynamic_import(
-      op_state,
       &specifier_str,
       &referrer_name_str,
       resolver_handle,
     );
     // TODO(bartlomieju): should be renamed to "wake()"?
-    state.dyn_import_cb();
+    state_rc.borrow_mut().dyn_import_cb();
   }
 
   // Map errors from module resolution (not JS errors from module execution) to

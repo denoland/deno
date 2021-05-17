@@ -271,6 +271,8 @@ impl JsRuntime {
       op_state.get_error_class_fn = get_error_class_fn;
     }
 
+    let op_state = Rc::new(RefCell::new(op_state));
+
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
       global_context: Some(global_context),
       pending_promise_exceptions: HashMap::new(),
@@ -281,11 +283,13 @@ impl JsRuntime {
       js_error_create_fn,
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
-      op_state: Rc::new(RefCell::new(op_state)),
+      op_state: op_state.clone(),
       have_unpolled_ops: false,
       waker: AtomicWaker::new(),
     })));
-    isolate.set_slot(Rc::new(RefCell::new(ModuleMap::new(loader))));
+
+    let module_map = ModuleMap::new(loader, op_state);
+    isolate.set_slot(Rc::new(RefCell::new(module_map)));
 
     // Add builtins extension
     options
@@ -486,9 +490,10 @@ impl JsRuntime {
     // Overwrite existing ModuleMap to drop v8::Global handles
     self
       .v8_isolate()
-      .set_slot(Rc::new(RefCell::new(ModuleMap::new(Rc::new(
-        NoopModuleLoader,
-      )))));
+      .set_slot(Rc::new(RefCell::new(ModuleMap::new(
+        Rc::new(NoopModuleLoader),
+        state.borrow().op_state.clone(),
+      ))));
     // Drop other v8::Global handles before snapshotting
     std::mem::take(&mut state.borrow_mut().js_recv_cb);
 
@@ -1007,9 +1012,7 @@ impl JsRuntime {
     &mut self,
     cx: &mut Context,
   ) -> Poll<Result<(), AnyError>> {
-    let state_rc = Self::state(self.v8_isolate());
     let module_map_rc = Self::module_map(self.v8_isolate());
-    let op_state = state_rc.borrow().op_state.clone();
 
     if module_map_rc.borrow().pending_dynamic_imports.is_empty() {
       return Poll::Ready(Ok(()));
@@ -1035,7 +1038,6 @@ impl JsRuntime {
               let register_result =
                 module_map_rc.borrow_mut().register_during_load(
                   &mut self.handle_scope(),
-                  op_state.clone(),
                   info,
                   &mut load,
                 );
@@ -1197,13 +1199,8 @@ impl JsRuntime {
     code: Option<String>,
   ) -> Result<ModuleId, AnyError> {
     let module_map_rc = Self::module_map(self.v8_isolate());
-    let op_state = self.op_state();
 
-    let load = module_map_rc.borrow().load_main(
-      op_state.clone(),
-      specifier.as_str(),
-      code,
-    );
+    let load = module_map_rc.borrow().load_main(specifier.as_str(), code);
 
     let (_load_id, prepare_result) = load.prepare().await;
 
@@ -1212,12 +1209,9 @@ impl JsRuntime {
     while let Some(info_result) = load.next().await {
       let info = info_result?;
       let scope = &mut self.handle_scope();
-      module_map_rc.borrow_mut().register_during_load(
-        scope,
-        op_state.clone(),
-        info,
-        &mut load,
-      )?;
+      module_map_rc
+        .borrow_mut()
+        .register_during_load(scope, info, &mut load)?;
     }
 
     let root_id = load.root_module_id.expect("Root module id empty");
@@ -1840,7 +1834,6 @@ pub mod tests {
 
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
-    let op_state = runtime.op_state();
     let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
 
     let (mod_a, mod_b) = {
@@ -1850,7 +1843,6 @@ pub mod tests {
       let mod_a = module_map
         .new_module(
           scope,
-          op_state.clone(),
           true,
           &specifier_a,
           r#"
@@ -1872,7 +1864,6 @@ pub mod tests {
       let mod_b = module_map
         .new_module(
           scope,
-          op_state,
           false,
           "file:///b.js",
           "export function b() { return 'b' }",
