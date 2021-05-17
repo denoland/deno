@@ -1,6 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::flags::Flags;
+use crate::ops;
+use crate::program_state::ProgramState;
 use crate::version;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -108,7 +111,7 @@ fn read_string_slice(
   Ok(string)
 }
 
-pub const SPECIFIER: &str = "file://$deno$/bundle.js";
+const SPECIFIER: &str = "file://$deno$/bundle.js";
 
 struct EmbeddedModuleLoader(String);
 
@@ -153,11 +156,33 @@ impl ModuleLoader for EmbeddedModuleLoader {
   }
 }
 
-pub fn create_standalone_worker(
-  main_module: ModuleSpecifier,
+fn metadata_to_flags(metadata: &Metadata) -> Flags {
+  let permissions = metadata.permissions.clone();
+  Flags {
+    argv: metadata.argv.clone(),
+    unstable: metadata.unstable,
+    seed: metadata.seed,
+    location: metadata.location.clone(),
+    allow_env: permissions.allow_env,
+    allow_hrtime: permissions.allow_hrtime,
+    allow_net: permissions.allow_net,
+    allow_plugin: permissions.allow_plugin,
+    allow_read: permissions.allow_read,
+    allow_run: permissions.allow_run,
+    allow_write: permissions.allow_write,
+    v8_flags: metadata.v8_flags.clone(),
+    log_level: metadata.log_level,
+    ..Default::default()
+  }
+}
+
+pub async fn run(
   source_code: String,
   metadata: Metadata,
-) -> Result<(MainWorker, WorkerOptions), AnyError> {
+) -> Result<(), AnyError> {
+  let flags = metadata_to_flags(&metadata);
+  let main_module = resolve_url(SPECIFIER)?;
+  let program_state = ProgramState::build(flags).await?;
   let permissions = Permissions::from_options(&metadata.permissions);
   let blob_url_store = BlobUrlStore::default();
   let module_loader = Rc::new(EmbeddedModuleLoader(source_code));
@@ -194,8 +219,20 @@ pub fn create_standalone_worker(
     location_data_dir: None,
     blob_url_store,
   };
-  let worker = MainWorker::from_options(main_module, permissions, &options);
-  Ok((worker, options))
+  let mut worker =
+    MainWorker::from_options(main_module.clone(), permissions, &options);
+  let js_runtime = &mut worker.js_runtime;
+  js_runtime
+    .op_state()
+    .borrow_mut()
+    .put::<Arc<ProgramState>>(program_state.clone());
+  ops::runtime_compiler::init(js_runtime);
+  worker.bootstrap(&options);
+  worker.execute_module(&main_module).await?;
+  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  worker.run_event_loop().await?;
+  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  std::process::exit(0);
 }
 
 fn get_error_class_name(e: &AnyError) -> &'static str {
