@@ -925,7 +925,7 @@ impl JsRuntime {
     receiver
   }
 
-  fn dyn_import_error(&mut self, id: ModuleLoadId, err: AnyError) {
+  fn dynamic_import_reject(&mut self, id: ModuleLoadId, err: AnyError) {
     let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
 
@@ -933,7 +933,7 @@ impl JsRuntime {
       .borrow_mut()
       .dynamic_import_map
       .remove(&id)
-      .expect("Invalid dyn import id");
+      .expect("Invalid dynamic import id");
     let resolver = resolver_handle.get(scope);
 
     let exception = err
@@ -949,7 +949,7 @@ impl JsRuntime {
     scope.perform_microtask_checkpoint();
   }
 
-  fn dyn_import_done(&mut self, id: ModuleLoadId, mod_id: ModuleId) {
+  fn dynamic_import_resolve(&mut self, id: ModuleLoadId, mod_id: ModuleId) {
     let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
 
@@ -957,7 +957,7 @@ impl JsRuntime {
       .borrow_mut()
       .dynamic_import_map
       .remove(&id)
-      .expect("Invalid dyn import id");
+      .expect("Invalid dynamic import id");
     let resolver = resolver_handle.get(scope);
 
     let module = {
@@ -1003,7 +1003,7 @@ impl JsRuntime {
               .push(load.into_future());
           }
           Err(err) => {
-            self.dyn_import_error(dyn_import_id, err);
+            self.dynamic_import_reject(dyn_import_id, err);
           }
         }
         // Continue polling for more prepared dynamic imports.
@@ -1060,14 +1060,14 @@ impl JsRuntime {
                     .pending_dyn_imports
                     .push(load.into_future());
                 }
-                Err(err) => self.dyn_import_error(dyn_import_id, err),
+                Err(err) => self.dynamic_import_reject(dyn_import_id, err),
               }
             }
             Err(err) => {
               // A non-javascript error occurred; this could be due to a an invalid
               // module specifier, or a problem with the source map, or a failure
               // to fetch the module source code.
-              self.dyn_import_error(dyn_import_id, err)
+              self.dynamic_import_reject(dyn_import_id, err)
             }
           }
         } else {
@@ -1076,7 +1076,7 @@ impl JsRuntime {
           let module_id = load.root_module_id.unwrap();
           let result = self.mod_instantiate(module_id);
           if let Err(err) = result {
-            self.dyn_import_error(dyn_import_id, err);
+            self.dynamic_import_reject(dyn_import_id, err);
           }
           self.dyn_mod_evaluate(dyn_import_id, module_id)?;
         }
@@ -1187,10 +1187,10 @@ impl JsRuntime {
       if let Some(result) = maybe_result {
         match result {
           Ok((dyn_import_id, module_id)) => {
-            self.dyn_import_done(dyn_import_id, module_id);
+            self.dynamic_import_resolve(dyn_import_id, module_id);
           }
           Err((dyn_import_id, err1)) => {
-            self.dyn_import_error(dyn_import_id, err1);
+            self.dynamic_import_reject(dyn_import_id, err1);
           }
         }
       } else {
