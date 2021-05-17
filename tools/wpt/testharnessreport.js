@@ -1,14 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-import { writeAllSync } from "../../test_util/std/io/util.ts";
-
 window.add_result_callback(({ message, name, stack, status }) => {
-  writeAllSync(
-    Deno.stderr,
-    new TextEncoder().encode(
-      `${JSON.stringify({ name, status, message, stack })}\n`,
-    ),
+  const data = new TextEncoder().encode(
+    `${JSON.stringify({ name, status, message, stack })}\n`,
   );
+  const bytesWritten = Deno.stderr.writeSync(data);
+  if (bytesWritten !== data.byteLength) {
+    throw new TypeError("failed to report test result");
+  }
 });
 
 window.add_completion_callback((_tests, _harnessStatus) => {
