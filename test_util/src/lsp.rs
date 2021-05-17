@@ -1,5 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use super::new_deno_dir;
+
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::de;
@@ -106,7 +108,9 @@ impl Drop for LspClient {
 
 impl LspClient {
   pub fn new(deno_exe: &Path) -> Result<Self, anyhow::Error> {
+    let deno_dir = new_deno_dir();
     let mut child = Command::new(deno_exe)
+      .env("DENO_DIR", deno_dir.path())
       .arg("lsp")
       .stdin(Stdio::piped())
       .stdout(Stdio::piped())
@@ -186,14 +190,15 @@ impl LspClient {
     Ok(())
   }
 
-  pub fn write_request<S, V>(
+  pub fn write_request<S, V, R>(
     &mut self,
     method: S,
     params: V,
-  ) -> Result<(Option<Value>, Option<LspResponseError>), anyhow::Error>
+  ) -> Result<(Option<R>, Option<LspResponseError>), anyhow::Error>
   where
     S: AsRef<str>,
     V: Serialize,
+    R: de::DeserializeOwned,
   {
     let value = json!({
       "jsonrpc": "2.0",
@@ -207,7 +212,12 @@ impl LspClient {
       if let LspMessage::Response(id, result, error) = self.read()? {
         assert_eq!(id, self.request_id);
         self.request_id += 1;
-        return Ok((result, error));
+        if let Some(r) = result {
+          let result = serde_json::from_value(r)?;
+          return Ok((Some(result), error));
+        } else {
+          return Ok((None, error));
+        }
       }
     }
   }

@@ -86,19 +86,29 @@ fn bench_big_file_edits(deno_exe: &Path) -> Result<Duration, AnyError> {
   for msg in messages {
     match msg.fixture_type {
       FixtureType::Action => {
-        client.write_request("textDocument/codeAction", msg.params)?;
+        client.write_request::<_, _, Value>(
+          "textDocument/codeAction",
+          msg.params,
+        )?;
       }
       FixtureType::Change => {
         client.write_notification("textDocument/didChange", msg.params)?;
       }
       FixtureType::Completion => {
-        client.write_request("textDocument/completion", msg.params)?;
+        client.write_request::<_, _, Value>(
+          "textDocument/completion",
+          msg.params,
+        )?;
       }
       FixtureType::Highlight => {
-        client.write_request("textDocument/documentHighlight", msg.params)?;
+        client.write_request::<_, _, Value>(
+          "textDocument/documentHighlight",
+          msg.params,
+        )?;
       }
       FixtureType::Hover => {
-        client.write_request("textDocument/hover", msg.params)?;
+        client
+          .write_request::<_, _, Value>("textDocument/hover", msg.params)?;
       }
     }
   }
