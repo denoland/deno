@@ -1467,7 +1467,7 @@ declare namespace Deno {
    * Requires `allow-read` permission for the target path.
    * Also requires `allow-read` permission for the CWD if the target path is
    * relative.*/
-  export function realPathSync(path: string): string;
+  export function realPathSync(path: string | URL): string;
 
   /** Resolves to the absolute normalized path, with symbolic links resolved.
    *
@@ -1483,7 +1483,7 @@ declare namespace Deno {
    * Requires `allow-read` permission for the target path.
    * Also requires `allow-read` permission for the CWD if the target path is
    * relative.*/
-  export function realPath(path: string): Promise<string>;
+  export function realPath(path: string | URL): Promise<string>;
 
   export interface DirEntry {
     name: string;
