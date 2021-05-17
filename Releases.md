@@ -6,6 +6,17 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.10.2 / 2021.05.17
+
+- fix: static import permissions in dynamic imports
+- fix(lsp): remove duplicate cwd in config path (#10620)
+- fix(cli): ignore x-typescript-types header when media type is not js/jsx
+  (#10574)
+- chore: upgrade Tokio to 1.6.0 (#10637)
+
+Release notes for std version 0.97.0:
+https://github.com/denoland/deno_std/releases/tag/0.97.0
+
 ### 1.10.1 / 2021.05.11
 
 - fix(#10603): Disable lsp workspaces, resolve deadlock bug
