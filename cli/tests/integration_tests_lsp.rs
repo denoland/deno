@@ -38,6 +38,13 @@ where
   client
     .write_notification("textDocument/didOpen", params)
     .unwrap();
+
+  let (id, method, _) = client.read_request::<Value>().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(id, json!({ "enable": true }))
+    .unwrap();
+
   let (method, _) = client.read_notification::<Value>().unwrap();
   assert_eq!(method, "textDocument/publishDiagnostics");
   let (method, _) = client.read_notification::<Value>().unwrap();
@@ -209,6 +216,13 @@ fn lsp_hover_disabled() {
       }),
     )
     .unwrap();
+
+  let (id, method, _) = client.read_request::<Value>().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(id, json!({ "enable": false }))
+    .unwrap();
+
   let (maybe_res, maybe_err) = client
     .write_request(
       "textDocument/hover",
@@ -453,6 +467,12 @@ fn lsp_hover_closed_document() {
       }),
     )
     .unwrap();
+  let (id, method, _) = client.read_request::<Value>().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(id, json!({ "enable": true }))
+    .unwrap();
+
   client
     .write_notification(
       "textDocument/didOpen",
@@ -466,6 +486,12 @@ fn lsp_hover_closed_document() {
       }),
     )
     .unwrap();
+  let (id, method, _) = client.read_request::<Value>().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(id, json!({ "enable": true }))
+    .unwrap();
+
   let (method, _) = client.read_notification::<Value>().unwrap();
   assert_eq!(method, "textDocument/publishDiagnostics");
   let (method, _) = client.read_notification::<Value>().unwrap();

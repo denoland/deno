@@ -144,7 +144,7 @@ fn bench_startup_shutdown(deno_exe: &Path) -> Result<Duration, AnyError> {
     }),
   )?;
 
-  let (id, method, _): (u64, String, Option<Value>) = client.read_request()?;
+  let (id, method, _) = client.read_request::<Value>()?;
   assert_eq!(method, "workspace/configuration");
 
   client.write_response(
