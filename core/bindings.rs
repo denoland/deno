@@ -584,11 +584,11 @@ fn queue_microtask(
   };
 }
 
-/// Called by V8 during `JsRuntime::mod_instantiate`.
+/// Called by V8 during `JsRuntime::instantiate_module`.
 ///
 /// This function borrows `ModuleMap` from the isolate slot,
 /// so it is crucial to ensure there are no existing borrows
-/// of `ModuleMap` when `JsRuntime::mod_instantiate` is called.
+/// of `ModuleMap` when `JsRuntime::instantiate_module` is called.
 pub fn module_resolve_callback<'s>(
   context: v8::Local<'s, v8::Context>,
   specifier: v8::Local<'s, v8::String>,
