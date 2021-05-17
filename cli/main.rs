@@ -282,20 +282,18 @@ fn print_cache_info(
   }
 
   if json {
-    let output = if location.is_none() {
-      json!({
-        "denoDir": deno_dir,
-        "modulesCache": modules_cache,
-        "typescriptCache": typescript_cache,
-        "registryCache": registry_cache,
-        "originStorage": origin_dir,
-      })
-    } else {
-      json!({
-        "originStorage": origin_dir,
-        "localStorage": origin_dir.join("local_storage"),
-      })
-    };
+    let mut output = json!({
+      "denoDir": deno_dir,
+      "modulesCache": modules_cache,
+      "typescriptCache": typescript_cache,
+      "registryCache": registry_cache,
+      "originStorage": origin_dir,
+    });
+
+    if location.is_some() {
+      output["localStorage"] = serde_json::to_value(origin_dir.join("local_storage"))?;
+    }
+
     write_json_to_stdout(&output)
   } else {
     println!("{} {:?}", colors::bold("DENO_DIR location:"), deno_dir);
