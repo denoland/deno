@@ -10,6 +10,7 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use log::error;
 use lspower::lsp;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -170,7 +171,7 @@ enum ConfigRequest {
 #[derive(Debug, Default, Clone)]
 pub struct Settings {
   pub specifiers:
-    HashMap<ModuleSpecifier, (ModuleSpecifier, SpecifierSettings)>,
+    BTreeMap<ModuleSpecifier, (ModuleSpecifier, SpecifierSettings)>,
   pub workspace: WorkspaceSettings,
 }
 
@@ -179,12 +180,12 @@ pub struct Config {
   pub client_capabilities: ClientCapabilities,
   pub root_uri: Option<Url>,
   settings: Arc<Mutex<Settings>>,
-  tx: mpsc::UnboundedSender<ConfigRequest>,
+  tx: mpsc::Sender<ConfigRequest>,
 }
 
 impl Config {
   pub fn new(client: lspower::Client) -> Self {
-    let (tx, mut rx) = mpsc::unbounded_channel::<ConfigRequest>();
+    let (tx, mut rx) = mpsc::channel::<ConfigRequest>(100);
     let settings = Arc::new(Mutex::new(Settings::default()));
     let settings_ref = settings.clone();
 
@@ -196,24 +197,34 @@ impl Config {
           match rx.recv().await {
             None => break,
             Some(ConfigRequest::Workspace) => {
-              let mut settings = settings_ref.lock().unwrap();
-              let specifiers: Vec<(
-                ModuleSpecifier,
-                (ModuleSpecifier, SpecifierSettings),
-              )> = settings.specifiers.clone().into_iter().collect();
               let mut items = vec![lsp::ConfigurationItem {
                 scope_uri: None,
                 section: Some(SETTINGS_SECTION.to_string()),
               }];
-              for (_, (uri, _)) in specifiers.iter() {
-                items.push(lsp::ConfigurationItem {
-                  scope_uri: Some(uri.clone()),
-                  section: Some(SETTINGS_SECTION.to_string()),
-                });
-              }
-              let specifiers: Vec<(ModuleSpecifier, ModuleSpecifier)> =
-                specifiers.into_iter().map(|(s, (u, _))| (s, u)).collect();
+              let (specifier_uri_map, mut specifier_items): (
+                Vec<(ModuleSpecifier, ModuleSpecifier)>,
+                Vec<lsp::ConfigurationItem>,
+              ) = {
+                let settings = settings_ref.lock().unwrap();
+                (
+                  settings
+                    .specifiers
+                    .iter()
+                    .map(|(s, (u, _))| (s.clone(), u.clone()))
+                    .collect(),
+                  settings
+                    .specifiers
+                    .iter()
+                    .map(|(_, (uri, _))| lsp::ConfigurationItem {
+                      scope_uri: Some(uri.clone()),
+                      section: Some(SETTINGS_SECTION.to_string()),
+                    })
+                    .collect(),
+                )
+              };
+              items.append(&mut specifier_items);
               if let Ok(configs) = client.configuration(items).await {
+                let mut settings = settings_ref.lock().unwrap();
                 for (i, value) in configs.into_iter().enumerate() {
                   match i {
                     0 => {
@@ -232,7 +243,8 @@ impl Config {
                     _ => {
                       match serde_json::from_value::<SpecifierSettings>(value) {
                         Ok(specifier_settings) => {
-                          let (specifier, uri) = specifiers[i - 1].clone();
+                          let (specifier, uri) =
+                            specifier_uri_map[i - 1].clone();
                           settings
                             .specifiers
                             .insert(specifier, (uri, specifier_settings));
@@ -351,7 +363,7 @@ impl Config {
     }
   }
 
-  pub fn update_specifier_settings(
+  pub async fn update_specifier_settings(
     &self,
     specifier: &ModuleSpecifier,
     uri: &ModuleSpecifier,
@@ -367,14 +379,15 @@ impl Config {
       if let Err(err) = self
         .tx
         .send(ConfigRequest::Specifier(specifier.clone(), uri.clone()))
+        .await
       {
         error!("Error sending config request: {}", err);
       }
     }
   }
 
-  pub fn update_workspace_settings(&self) {
-    if let Err(err) = self.tx.send(ConfigRequest::Workspace) {
+  pub async fn update_workspace_settings(&self) {
+    if let Err(err) = self.tx.send(ConfigRequest::Workspace).await {
       error!("Error sending config request: {}", err);
     }
   }

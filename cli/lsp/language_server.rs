@@ -601,10 +601,10 @@ impl Inner {
     let mark = self.performance.mark("did_open", Some(&params));
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
 
-    info!("did_open {} {}", specifier, params.text_document.uri);
     self
       .config
-      .update_specifier_settings(&specifier, &params.text_document.uri);
+      .update_specifier_settings(&specifier, &params.text_document.uri)
+      .await;
 
     if params.text_document.uri.scheme() == "deno" {
       // we can ignore virtual text documents opening, as they don't need to
@@ -671,7 +671,7 @@ impl Inner {
       .mark("did_change_configuration", Some(&params));
 
     if self.config.client_capabilities.workspace_configuration {
-      self.config.update_workspace_settings();
+      self.config.update_workspace_settings().await;
     } else if let Some(config) = params
       .settings
       .as_object()
