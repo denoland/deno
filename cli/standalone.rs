@@ -1,9 +1,12 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::data_url::get_source_from_data_url;
+use crate::file_fetcher::get_source_from_bytes;
+use crate::file_fetcher::strip_shebang;
 use crate::version;
+use data_url::DataUrl;
 use deno_core::error::type_error;
+use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::futures::FutureExt;
@@ -109,6 +112,19 @@ fn read_string_slice(
   Ok(string)
 }
 
+fn get_source_from_data_url(
+  specifier: &ModuleSpecifier,
+) -> Result<String, AnyError> {
+  let data_url = DataUrl::process(specifier.as_str())
+    .map_err(|e| uri_error(format!("{:?}", e)))?;
+  let mime = data_url.mime_type();
+  let charset = mime.get_parameter("charset").map(|v| v.to_string());
+  let (bytes, _) = data_url
+    .decode_to_vec()
+    .map_err(|e| uri_error(format!("{:?}", e)))?;
+  Ok(strip_shebang(get_source_from_bytes(bytes, charset)?))
+}
+
 const SPECIFIER: &str = "file://$deno$/bundle.js";
 
 struct EmbeddedModuleLoader(String);
@@ -142,7 +158,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let module_specifier = module_specifier.clone();
     let is_data_uri = get_source_from_data_url(&module_specifier).ok();
-    let code = if let Some((ref source, _, _)) = is_data_uri {
+    let code = if let Some(ref source) = is_data_uri {
       source.to_string()
     } else {
       self.0.to_string()

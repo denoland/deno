@@ -4,7 +4,6 @@ mod ast;
 mod auth_tokens;
 mod checksum;
 mod colors;
-mod data_url;
 mod config_file;
 mod deno_dir;
 mod diagnostics;
