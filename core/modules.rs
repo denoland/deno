@@ -11,6 +11,7 @@ use crate::OpState;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
+use futures::stream::StreamFuture;
 use futures::stream::TryStreamExt;
 use log::debug;
 use std::cell::RefCell;
@@ -427,20 +428,31 @@ pub struct ModuleMap {
   info: HashMap<ModuleId, ModuleInfo>,
   by_name: HashMap<String, SymbolicModule>,
   next_module_id: ModuleId,
+
   pub(crate) dynamic_import_map:
     HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
+  pub(crate) preparing_dynamic_imports:
+    FuturesUnordered<Pin<Box<PrepareLoadFuture>>>,
+  pub(crate) pending_dynamic_imports:
+    FuturesUnordered<StreamFuture<RecursiveModuleLoad>>,
 }
 
 impl ModuleMap {
   pub fn new(loader: Rc<dyn ModuleLoader>) -> ModuleMap {
     Self {
       loader,
+
+      // Handling of specifiers and v8 objects
       handles_by_id: HashMap::new(),
       ids_by_handle: HashMap::new(),
       info: HashMap::new(),
       by_name: HashMap::new(),
       next_module_id: 1,
+
+      // Handling of futures for loading module sources
       dynamic_import_map: HashMap::new(),
+      preparing_dynamic_imports: FuturesUnordered::new(),
+      pending_dynamic_imports: FuturesUnordered::new(),
     }
   }
 
@@ -639,13 +651,14 @@ impl ModuleMap {
     RecursiveModuleLoad::main(op_state, specifier, code, self.loader.clone())
   }
 
+  // Initiate loading of a module graph imported using `import()`.
   pub fn load_dynamic_import(
     &mut self,
     op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     referrer: &str,
     resolver_handle: v8::Global<v8::PromiseResolver>,
-  ) -> RecursiveModuleLoad {
+  ) {
     let load = RecursiveModuleLoad::dynamic_import(
       op_state,
       specifier,
@@ -653,7 +666,13 @@ impl ModuleMap {
       self.loader.clone(),
     );
     self.dynamic_import_map.insert(load.id, resolver_handle);
-    load
+    let fut = load.prepare().boxed_local();
+    self.preparing_dynamic_imports.push(fut);
+  }
+
+  pub fn has_pending_dynamic_imports(&self) -> bool {
+    !(self.preparing_dynamic_imports.is_empty()
+      && module_map.pending_dynamic_imports.is_empty())
   }
 }
 

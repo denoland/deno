@@ -188,13 +188,14 @@ pub extern "C" fn host_import_module_dynamically_callback(
       "dyn_import specifier {} referrer {} ",
       specifier_str, referrer_name_str
     );
-    let load = module_map_rc.borrow_mut().load_dynamic_import(
+    module_map_rc.borrow_mut().load_dynamic_import(
       op_state,
       &specifier_str,
       &referrer_name_str,
       resolver_handle,
     );
-    state.dyn_import_cb(load);
+    // TODO(bartlomieju): should be renamed to "wake()"?
+    state.dyn_import_cb();
   }
 
   // Map errors from module resolution (not JS errors from module execution) to

@@ -8,15 +8,12 @@ use crate::error::generic_error;
 use crate::error::AnyError;
 use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
-use crate::futures::FutureExt;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
 use crate::modules::NoopModuleLoader;
-use crate::modules::PrepareLoadFuture;
-use crate::modules::RecursiveModuleLoad;
 use crate::ops::*;
 use crate::Extension;
 use crate::OpMiddlewareFn;
@@ -28,7 +25,6 @@ use futures::channel::mpsc;
 use futures::future::poll_fn;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
-use futures::stream::StreamFuture;
 use futures::task::AtomicWaker;
 use futures::Future;
 use std::any::Any;
@@ -112,8 +108,6 @@ pub(crate) struct JsRuntimeState {
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
-  preparing_dyn_imports: FuturesUnordered<Pin<Box<PrepareLoadFuture>>>,
-  pending_dyn_imports: FuturesUnordered<StreamFuture<RecursiveModuleLoad>>,
   waker: AtomicWaker,
 }
 
@@ -289,8 +283,6 @@ impl JsRuntime {
       pending_unref_ops: FuturesUnordered::new(),
       op_state: Rc::new(RefCell::new(op_state)),
       have_unpolled_ops: false,
-      preparing_dyn_imports: FuturesUnordered::new(),
-      pending_dyn_imports: FuturesUnordered::new(),
       waker: AtomicWaker::new(),
     })));
     isolate.set_slot(Rc::new(RefCell::new(ModuleMap::new(loader))));
@@ -612,12 +604,11 @@ impl JsRuntime {
     self.evaluate_pending_module();
 
     let state = state_rc.borrow();
+    let module_map = module_map_rc.borrow();
+
     let has_pending_ops = !state.pending_ops.is_empty();
 
-    let has_pending_dyn_imports = !{
-      state.preparing_dyn_imports.is_empty()
-        && state.pending_dyn_imports.is_empty()
-    };
+    let has_pending_dyn_imports = module_map.has_pending_dynamic_imports();
     let has_pending_dyn_module_evaluation =
       !state.pending_dyn_mod_evaluate.is_empty();
     let has_pending_module_evaluation = state.pending_mod_evaluate.is_some();
@@ -654,7 +645,6 @@ impl JsRuntime {
       } else {
         let mut msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promise.
 Pending dynamic modules:\n".to_string();
-        let module_map = module_map_rc.borrow();
         for pending_evaluate in &state.pending_dyn_mod_evaluate {
           let module_info = module_map
             .get_info_by_id(&pending_evaluate.module_id)
@@ -682,10 +672,8 @@ where
 }
 
 impl JsRuntimeState {
-  pub fn dyn_import_cb(&mut self, load: RecursiveModuleLoad) {
+  pub fn dyn_import_cb(&mut self) {
     self.waker.wake();
-    let fut = load.prepare().boxed_local();
-    self.preparing_dyn_imports.push(fut);
   }
 }
 
@@ -979,16 +967,16 @@ impl JsRuntime {
     &mut self,
     cx: &mut Context,
   ) -> Poll<Result<(), AnyError>> {
-    let state_rc = Self::state(self.v8_isolate());
+    let module_map_rc = Self::module_map(self.v8_isolate());
 
-    if state_rc.borrow().preparing_dyn_imports.is_empty() {
+    if module_map_rc.borrow().preparing_dynamic_imports.is_empty() {
       return Poll::Ready(Ok(()));
     }
 
     loop {
-      let poll_result = state_rc
+      let poll_result = module_map_rc
         .borrow_mut()
-        .preparing_dyn_imports
+        .preparing_dynamic_imports
         .poll_next_unpin(cx);
 
       if let Poll::Ready(Some(prepare_poll)) = poll_result {
@@ -997,9 +985,9 @@ impl JsRuntime {
 
         match prepare_result {
           Ok(load) => {
-            state_rc
+            module_map_rc
               .borrow_mut()
-              .pending_dyn_imports
+              .pending_dynamic_imports
               .push(load.into_future());
           }
           Err(err) => {
@@ -1023,14 +1011,14 @@ impl JsRuntime {
     let module_map_rc = Self::module_map(self.v8_isolate());
     let op_state = state_rc.borrow().op_state.clone();
 
-    if state_rc.borrow().pending_dyn_imports.is_empty() {
+    if module_map_rc.borrow().pending_dynamic_imports.is_empty() {
       return Poll::Ready(Ok(()));
     }
 
     loop {
-      let poll_result = state_rc
+      let poll_result = module_map_rc
         .borrow_mut()
-        .pending_dyn_imports
+        .pending_dynamic_imports
         .poll_next_unpin(cx);
 
       if let Poll::Ready(Some(load_stream_poll)) = poll_result {
@@ -1055,9 +1043,9 @@ impl JsRuntime {
               match register_result {
                 Ok(()) => {
                   // Keep importing until it's fully drained
-                  state_rc
+                  module_map_rc
                     .borrow_mut()
-                    .pending_dyn_imports
+                    .pending_dynamic_imports
                     .push(load.into_future());
                 }
                 Err(err) => self.dynamic_import_reject(dyn_import_id, err),
