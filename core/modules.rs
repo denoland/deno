@@ -593,7 +593,7 @@ impl ModuleMap {
   }
 
   pub fn is_registered(&self, specifier: &ModuleSpecifier) -> bool {
-    self.get_id(&specifier.to_string()).is_some()
+    self.get_id(specifier.as_str()).is_some()
   }
 
   pub fn alias(&mut self, name: &str, target: &str) {

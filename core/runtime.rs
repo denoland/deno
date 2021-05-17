@@ -1223,7 +1223,7 @@ impl JsRuntime {
 
     let load = module_map_rc.borrow().load_main(
       op_state.clone(),
-      &specifier.to_string(),
+      specifier.as_str(),
       code,
     );
 
