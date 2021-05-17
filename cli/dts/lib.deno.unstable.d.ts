@@ -982,7 +982,7 @@ declare namespace Deno {
    *
    * ```ts
    * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
-   * const tlsConn = await Deno.startTls(conn, { certFile: "./certs/my_custom_root_CA.pem", hostname: "127.0.0.1", port: 80 });
+   * const tlsConn = await Deno.startTls(conn, { certFile: "./certs/my_custom_root_CA.pem", hostname: "localhost" });
    * ```
    *
    * Requires `allow-net` permission.
