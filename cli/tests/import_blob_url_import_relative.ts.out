@@ -1,0 +1,4 @@
+error: Uncaught (in promise) TypeError: invalid URL: relative URL with a cannot-be-a-base base
+const a = await import(url);
+          ^
+    at async file://[WILDCARD]/cli/tests/import_blob_url_import_relative.ts:6:11

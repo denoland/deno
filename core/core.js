@@ -3,74 +3,52 @@
 
 ((window) => {
   // Available on start due to bindings.
-  const core = window.Deno.core;
-  const { recv, send } = core;
+  const { opcall } = window.Deno.core;
 
   let opsCache = {};
-  const errorMap = {};
+  const errorMap = {
+    // Builtin v8 / JS errors
+    Error,
+    RangeError,
+    ReferenceError,
+    SyntaxError,
+    TypeError,
+    URIError,
+  };
   let nextPromiseId = 1;
-  const promiseTable = new Map();
+  const promiseMap = new Map();
+  const RING_SIZE = 4 * 1024;
+  const NO_PROMISE = null; // Alias to null is faster than plain nulls
+  const promiseRing = new Array(RING_SIZE).fill(NO_PROMISE);
 
-  function init() {
-    recv(handleAsyncMsgFromRust);
-  }
-
-  function ops() {
-    // op id 0 is a special value to retrieve the map of registered ops.
-    const newOpsCache = Object.fromEntries(send(0));
-    opsCache = Object.freeze(newOpsCache);
-    return opsCache;
-  }
-
-  function handleAsyncMsgFromRust() {
-    for (let i = 0; i < arguments.length; i += 2) {
-      opAsyncHandler(arguments[i], arguments[i + 1]);
+  function setPromise(promiseId) {
+    const idx = promiseId % RING_SIZE;
+    // Move old promise from ring to map
+    const oldPromise = promiseRing[idx];
+    if (oldPromise !== NO_PROMISE) {
+      const oldPromiseId = promiseId - RING_SIZE;
+      promiseMap.set(oldPromiseId, oldPromise);
     }
+    // Set new promise
+    return promiseRing[idx] = newPromise();
   }
 
-  function dispatch(opName, promiseId, control, zeroCopy) {
-    return send(opsCache[opName], promiseId, control, zeroCopy);
-  }
-
-  function registerErrorClass(errorName, className, args) {
-    if (typeof errorMap[errorName] !== "undefined") {
-      throw new TypeError(`Error class for "${errorName}" already registered`);
+  function getPromise(promiseId) {
+    // Check if out of ring bounds, fallback to map
+    const outOfBounds = promiseId < nextPromiseId - RING_SIZE;
+    if (outOfBounds) {
+      const promise = promiseMap.get(promiseId);
+      promiseMap.delete(promiseId);
+      return promise;
     }
-    errorMap[errorName] = [className, args ?? []];
+    // Otherwise take from ring
+    const idx = promiseId % RING_SIZE;
+    const promise = promiseRing[idx];
+    promiseRing[idx] = NO_PROMISE;
+    return promise;
   }
 
-  function getErrorClassAndArgs(errorName) {
-    return errorMap[errorName] ?? [undefined, []];
-  }
-
-  function processResponse(res) {
-    if (!isErr(res)) {
-      return res;
-    }
-    throw processErr(res);
-  }
-
-  // .$err_class_name is a special key that should only exist on errors
-  function isErr(res) {
-    return !!(res && res.$err_class_name);
-  }
-
-  function processErr(err) {
-    const className = err.$err_class_name;
-    const [ErrorClass, args] = getErrorClassAndArgs(className);
-    if (!ErrorClass) {
-      return new Error(
-        `Unregistered error class: "${className}"\n  ${err.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
-      );
-    }
-    return new ErrorClass(err.message, ...args);
-  }
-
-  function jsonOpAsync(opName, args = null, zeroCopy = null) {
-    const promiseId = nextPromiseId++;
-    const maybeError = dispatch(opName, promiseId, args, zeroCopy);
-    // Handle sync error (e.g: error parsing args)
-    if (maybeError) processResponse(maybeError);
+  function newPromise() {
     let resolve, reject;
     const promise = new Promise((resolve_, reject_) => {
       resolve = resolve_;
@@ -78,51 +56,82 @@
     });
     promise.resolve = resolve;
     promise.reject = reject;
-    promiseTable.set(promiseId, promise);
     return promise;
   }
 
-  function jsonOpSync(opName, args = null, zeroCopy = null) {
-    return processResponse(dispatch(opName, null, args, zeroCopy));
+  function ops() {
+    return opsCache;
   }
 
-  function opAsyncHandler(promiseId, res) {
-    const promise = promiseTable.get(promiseId);
-    promiseTable.delete(promiseId);
-    if (!isErr(res)) {
+  function syncOpsCache() {
+    // op id 0 is a special value to retrieve the map of registered ops.
+    opsCache = Object.freeze(Object.fromEntries(opcall(0)));
+  }
+
+  function handleAsyncMsgFromRust() {
+    for (let i = 0; i < arguments.length; i += 2) {
+      const promiseId = arguments[i];
+      const res = arguments[i + 1];
+      const promise = getPromise(promiseId);
       promise.resolve(res);
-    } else {
-      promise.reject(processErr(res));
     }
   }
 
-  function binOpSync(opName, args = null, zeroCopy = null) {
-    return jsonOpSync(opName, args, zeroCopy);
+  function dispatch(opName, promiseId, control, zeroCopy) {
+    const opId = typeof opName === "string" ? opsCache[opName] : opName;
+    return opcall(opId, promiseId, control, zeroCopy);
   }
 
-  function binOpAsync(opName, args = null, zeroCopy = null) {
-    return jsonOpAsync(opName, args, zeroCopy);
+  function registerErrorClass(className, errorClass) {
+    if (typeof errorMap[className] !== "undefined") {
+      throw new TypeError(`Error class for "${className}" already registered`);
+    }
+    errorMap[className] = errorClass;
+  }
+
+  function unwrapOpResult(res) {
+    // .$err_class_name is a special key that should only exist on errors
+    if (res?.$err_class_name) {
+      const className = res.$err_class_name;
+      const ErrorClass = errorMap[className];
+      if (!ErrorClass) {
+        throw new Error(
+          `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
+        );
+      }
+      throw new ErrorClass(res.message);
+    }
+    return res;
+  }
+
+  function opAsync(opName, args = null, zeroCopy = null) {
+    const promiseId = nextPromiseId++;
+    const maybeError = dispatch(opName, promiseId, args, zeroCopy);
+    // Handle sync error (e.g: error parsing args)
+    if (maybeError) return unwrapOpResult(maybeError);
+    return setPromise(promiseId).then(unwrapOpResult);
+  }
+
+  function opSync(opName, args = null, zeroCopy = null) {
+    return unwrapOpResult(dispatch(opName, null, args, zeroCopy));
   }
 
   function resources() {
-    return Object.fromEntries(jsonOpSync("op_resources"));
+    return Object.fromEntries(opSync("op_resources"));
   }
 
   function close(rid) {
-    jsonOpSync("op_close", rid);
+    opSync("op_close", rid);
   }
 
   Object.assign(window.Deno.core, {
-    binOpAsync,
-    binOpSync,
-    jsonOpAsync,
-    jsonOpSync,
-    dispatch: send,
-    dispatchByName: dispatch,
+    opAsync,
+    opSync,
     ops,
     close,
     resources,
     registerErrorClass,
-    init,
+    handleAsyncMsgFromRust,
+    syncOpsCache,
   });
 })(this);

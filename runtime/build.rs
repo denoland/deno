@@ -13,10 +13,13 @@ fn create_snapshot(
   snapshot_path: &Path,
   files: Vec<PathBuf>,
 ) {
+  // Initialization order matters.
   deno_webidl::init(&mut js_runtime);
   deno_console::init(&mut js_runtime);
+  deno_timers::init(&mut js_runtime);
   deno_url::init(&mut js_runtime);
   deno_web::init(&mut js_runtime);
+  deno_file::init(&mut js_runtime);
   deno_fetch::init(&mut js_runtime);
   deno_websocket::init(&mut js_runtime);
   deno_crypto::init(&mut js_runtime);

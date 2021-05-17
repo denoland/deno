@@ -5,11 +5,17 @@ use deno_core::serde_json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
+use rustls::Session;
 use std::fs;
+use std::io::BufReader;
+use std::io::Cursor;
 use std::io::{BufRead, Read, Write};
 use std::process::Command;
+use std::sync::Arc;
 use tempfile::TempDir;
 use test_util as util;
+use tokio_rustls::rustls;
+use tokio_rustls::webpki;
 
 #[test]
 fn js_unit_tests_lint() {
@@ -27,16 +33,17 @@ fn js_unit_tests_lint() {
 #[test]
 fn js_unit_tests() {
   let _g = util::http_server();
+
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
-    .arg("run")
+    .arg("test")
     .arg("--unstable")
+    .arg("--location=http://js-unit-tests/foo/bar")
     .arg("-A")
-    .arg("cli/tests/unit/unit_test_runner.ts")
-    .arg("--master")
-    .arg("--verbose")
+    .arg("cli/tests/unit")
     .spawn()
     .expect("failed to spawn script");
+
   let status = deno.wait().expect("failed to wait for the child process");
   assert_eq!(Some(0), status.code());
   assert!(status.success());
@@ -2389,6 +2396,18 @@ mod integration {
       output: "test/deno_test.out",
     });
 
+    itest!(allow_all {
+      args: "test --unstable --allow-all test/allow_all.ts",
+      exit_code: 0,
+      output: "test/allow_all.out",
+    });
+
+    itest!(allow_none {
+      args: "test --unstable test/allow_none.ts",
+      exit_code: 1,
+      output: "test/allow_none.out",
+    });
+
     itest!(fail_fast {
       args: "test --fail-fast test/test_runner_test.ts",
       exit_code: 1,
@@ -2488,6 +2507,12 @@ console.log("finish");
   itest!(worker_nested_error {
     args: "run -A workers/worker_nested_error.ts",
     output: "workers/worker_nested_error.ts.out",
+    exit_code: 1,
+  });
+
+  itest!(nonexistent_worker {
+    args: "run --allow-read workers/nonexistent_worker.ts",
+    output: "workers/nonexistent_worker.out",
     exit_code: 1,
   });
 
@@ -2844,6 +2869,27 @@ console.log("finish");
   itest!(_088_dynamic_import_already_evaluating {
     args: "run --allow-read 088_dynamic_import_already_evaluating.ts",
     output: "088_dynamic_import_already_evaluating.ts.out",
+  });
+
+  itest!(_089_run_allow_list {
+    args: "run --allow-run=cat 089_run_allow_list.ts",
+    output: "089_run_allow_list.ts.out",
+  });
+
+  #[cfg(unix)]
+  #[test]
+  fn _090_run_permissions_request() {
+    let args = "run 090_run_permissions_request.ts";
+    let output = "090_run_permissions_request.ts.out";
+    let input = b"g\nd\n";
+
+    util::test_pty(args, output, input);
+  }
+
+  itest!(_091_use_define_for_class_fields {
+    args: "run 091_use_define_for_class_fields.ts",
+    output: "091_use_define_for_class_fields.ts.out",
+    exit_code: 1,
   });
 
   itest!(js_import_detect {
@@ -3223,7 +3269,7 @@ console.log("finish");
   });
 
   itest!(heapstats {
-    args: "run --quiet --v8-flags=--expose-gc heapstats.js",
+    args: "run --quiet --unstable --v8-flags=--expose-gc heapstats.js",
     output: "heapstats.js.out",
   });
 
@@ -3401,14 +3447,14 @@ console.log("finish");
     output: "wasm.ts.out",
   });
 
+  itest!(wasm_shared {
+    args: "run --quiet wasm_shared.ts",
+    output: "wasm_shared.out",
+  });
+
   itest!(wasm_async {
     args: "run wasm_async.js",
     output: "wasm_async.out",
-  });
-
-  itest!(wasm_streaming {
-    args: "run wasm_streaming.js",
-    output: "wasm_streaming.out",
   });
 
   itest!(wasm_unreachable {
@@ -3681,6 +3727,34 @@ console.log("finish");
   itest!(import_dynamic_data_url {
     args: "run --quiet --reload import_dynamic_data_url.ts",
     output: "import_dynamic_data_url.ts.out",
+  });
+
+  itest!(import_blob_url_error_stack {
+    args: "run --quiet --reload import_blob_url_error_stack.ts",
+    output: "import_blob_url_error_stack.ts.out",
+    exit_code: 1,
+  });
+
+  itest!(import_blob_url_import_relative {
+    args: "run --quiet --reload import_blob_url_import_relative.ts",
+    output: "import_blob_url_import_relative.ts.out",
+    exit_code: 1,
+  });
+
+  itest!(import_blob_url_imports {
+    args: "run --quiet --reload import_blob_url_imports.ts",
+    output: "import_blob_url_imports.ts.out",
+    http_server: true,
+  });
+
+  itest!(import_blob_url_jsx {
+    args: "run --quiet --reload import_blob_url_jsx.ts",
+    output: "import_blob_url_jsx.ts.out",
+  });
+
+  itest!(import_blob_url {
+    args: "run --quiet --reload import_blob_url.ts",
+    output: "import_blob_url.ts.out",
   });
 
   itest!(import_file_with_colon {
@@ -3996,14 +4070,14 @@ console.log("finish");
 
     itest!(stdin {
       args: "lint --unstable -",
-      input: Some("let a: any;"),
+      input: Some("let _a: any;"),
       output: "lint/expected_from_stdin.out",
       exit_code: 1,
     });
 
     itest!(stdin_json {
       args: "lint --unstable --json -",
-      input: Some("let a: any;"),
+      input: Some("let _a: any;"),
       output: "lint/expected_from_stdin_json.out",
       exit_code: 1,
     });
@@ -4689,7 +4763,9 @@ console.log("finish");
       /// Returns the next websocket message as a string ignoring
       /// Debugger.scriptParsed messages.
       async fn ws_read_msg(
-        socket: &mut tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+        socket: &mut tokio_tungstenite::WebSocketStream<
+          tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
       ) -> String {
         use deno_core::futures::stream::StreamExt;
         while let Some(msg) = socket.next().await {
@@ -5086,6 +5162,25 @@ console.log("finish");
     assert!(stderr.contains("BadResource"));
   }
 
+  #[cfg(not(windows))]
+  #[test]
+  fn should_not_panic_on_not_found_cwd() {
+    let output = util::deno_cmd()
+      .current_dir(util::root_path())
+      .arg("run")
+      .arg("--allow-write")
+      .arg("--allow-read")
+      .arg("cli/tests/dont_panic_not_found_cwd.ts")
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(!output.status.success());
+    let stderr = std::str::from_utf8(&output.stderr).unwrap().trim();
+    assert!(stderr.contains("Failed to get current working directory"));
+  }
+
   #[cfg(windows)]
   // Clippy suggests to remove the `NoStd` prefix from all variants. I disagree.
   #[allow(clippy::enum_variant_names)]
@@ -5295,8 +5390,7 @@ console.log("finish");
       .wait_with_output()
       .unwrap();
     assert!(output.status.success());
-    let exists = std::path::Path::new(&exe).exists();
-    assert!(exists, true);
+    assert!(std::path::Path::new(&exe).exists());
   }
 
   #[test]
@@ -5542,17 +5636,6 @@ console.log("finish");
     let stderr_str = String::from_utf8(output.stderr).unwrap();
     assert!(util::strip_ansi_codes(&stderr_str)
       .contains("PermissionDenied: Requires write access"));
-  }
-
-  #[test]
-  fn denort_direct_use_error() {
-    let status = Command::new(util::denort_exe_path())
-      .current_dir(util::root_path())
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
-    assert!(!status.success());
   }
 
   #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -5833,4 +5916,83 @@ console.log("finish");
 
     handle.abort();
   }
+}
+
+#[tokio::test]
+async fn listen_tls_alpn() {
+  let child = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("--allow-net")
+    .arg("--allow-read")
+    .arg("./cli/tests/listen_tls_alpn.ts")
+    .arg("4504")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let mut stdout = child.stdout.unwrap();
+  let mut buffer = [0; 5];
+  let read = stdout.read(&mut buffer).unwrap();
+  assert_eq!(read, 5);
+  let msg = std::str::from_utf8(&buffer).unwrap();
+  assert_eq!(msg, "READY");
+
+  let mut cfg = rustls::ClientConfig::new();
+  let reader =
+    &mut BufReader::new(Cursor::new(include_bytes!("./tls/RootCA.crt")));
+  cfg.root_store.add_pem_file(reader).unwrap();
+  cfg.alpn_protocols.push("foobar".as_bytes().to_vec());
+
+  let tls_connector = tokio_rustls::TlsConnector::from(Arc::new(cfg));
+  let hostname = webpki::DNSNameRef::try_from_ascii_str("localhost").unwrap();
+  let stream = tokio::net::TcpStream::connect("localhost:4504")
+    .await
+    .unwrap();
+
+  let tls_stream = tls_connector.connect(hostname, stream).await.unwrap();
+  let (_, session) = tls_stream.get_ref();
+
+  let alpn = session.get_alpn_protocol().unwrap();
+  assert_eq!(std::str::from_utf8(alpn).unwrap(), "foobar");
+}
+
+#[tokio::test]
+async fn listen_tls_alpn_fail() {
+  let child = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("--allow-net")
+    .arg("--allow-read")
+    .arg("./cli/tests/listen_tls_alpn.ts")
+    .arg("4505")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let mut stdout = child.stdout.unwrap();
+  let mut buffer = [0; 5];
+  let read = stdout.read(&mut buffer).unwrap();
+  assert_eq!(read, 5);
+  let msg = std::str::from_utf8(&buffer).unwrap();
+  assert_eq!(msg, "READY");
+
+  let mut cfg = rustls::ClientConfig::new();
+  let reader =
+    &mut BufReader::new(Cursor::new(include_bytes!("./tls/RootCA.crt")));
+  cfg.root_store.add_pem_file(reader).unwrap();
+  cfg.alpn_protocols.push("boofar".as_bytes().to_vec());
+
+  let tls_connector = tokio_rustls::TlsConnector::from(Arc::new(cfg));
+  let hostname = webpki::DNSNameRef::try_from_ascii_str("localhost").unwrap();
+  let stream = tokio::net::TcpStream::connect("localhost:4505")
+    .await
+    .unwrap();
+
+  let tls_stream = tls_connector.connect(hostname, stream).await.unwrap();
+  let (_, session) = tls_stream.get_ref();
+
+  assert!(session.get_alpn_protocol().is_none());
 }

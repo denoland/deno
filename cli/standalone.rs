@@ -15,6 +15,7 @@ use deno_core::v8_set_flags;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_runtime::deno_file::BlobUrlStore;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsOptions;
 use deno_runtime::worker::MainWorker;
@@ -158,6 +159,7 @@ pub fn create_standalone_worker(
   metadata: Metadata,
 ) -> Result<(MainWorker, WorkerOptions), AnyError> {
   let permissions = Permissions::from_options(&metadata.permissions);
+  let blob_url_store = BlobUrlStore::default();
   let module_loader = Rc::new(EmbeddedModuleLoader(source_code));
   let create_web_worker_cb = Arc::new(|_| {
     todo!("Worker are currently not supported in standalone binaries");
@@ -189,6 +191,7 @@ pub fn create_standalone_worker(
     no_color: !colors::use_color(),
     get_error_class_fn: Some(&get_error_class_name),
     location: metadata.location,
+    blob_url_store,
   };
   let worker = MainWorker::from_options(main_module, permissions, &options);
   Ok((worker, options))

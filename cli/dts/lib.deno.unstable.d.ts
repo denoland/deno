@@ -434,12 +434,17 @@ declare namespace Deno {
     scopes?: Record<string, Record<string, string>>;
   }
 
-  interface EmitOptions {
+  /**
+   * **UNSTABLE**: new API, yet to be vetted.
+   *
+   * The options for `Deno.emit()` API.
+   */
+  export interface EmitOptions {
     /** Indicate that the source code should be emitted to a single file
-     * JavaScript bundle that is a single ES module (`"esm"`) or a single file
-     * self contained script we executes in an immediately invoked function
-     * when loaded (`"iife"`). */
-    bundle?: "esm" | "iife";
+     * JavaScript bundle that is a single ES module (`"module"`) or a single
+     * file self contained script we executes in an immediately invoked function
+     * when loaded (`"classic"`). */
+    bundle?: "module" | "classic";
     /** If `true` then the sources will be typed checked, returning any
      * diagnostic errors in the result.  If `false` type checking will be
      * skipped.  Defaults to `true`.
@@ -467,7 +472,12 @@ declare namespace Deno {
     sources?: Record<string, string>;
   }
 
-  interface EmitResult {
+  /**
+   * **UNSTABLE**: new API, yet to be vetted.
+   *
+   * The result of `Deno.emit()` API.
+   */
+  export interface EmitResult {
     /** Diagnostic messages returned from the type checker (`tsc`). */
     diagnostics: Diagnostic[];
     /** Any emitted files.  If bundled, then the JavaScript will have the
@@ -991,6 +1001,16 @@ declare namespace Deno {
     options?: StartTlsOptions,
   ): Promise<Conn>;
 
+  export interface ListenTlsOptions {
+    /** **UNSTABLE**: new API, yet to be vetted.
+     *
+     * Application-Layer Protocol Negotiation (ALPN) protocols to announce to
+     * the client. If not specified, no ALPN extension will be included in the
+     * TLS handshake.
+     */
+    alpnProtocols?: string[];
+  }
+
   /** **UNSTABLE**: The `signo` argument may change to require the Deno.Signal
    * enum.
    *
@@ -1022,69 +1042,6 @@ declare namespace Deno {
    */
   export function hostname(): string;
 
-  /** **UNSTABLE**: new API, yet to be vetted.
-   * Synchronously truncates or extends the specified file stream, to reach the
-   * specified `len`.  If `len` is not specified then the entire file contents
-   * are truncated.
-   *
-   * ```ts
-   * // truncate the entire file
-   * const file = Deno.open("my_file.txt", { read: true, write: true, truncate: true, create: true });
-   * Deno.ftruncateSync(file.rid);
-   *
-   * // truncate part of the file
-   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
-   * Deno.write(file.rid, new TextEncoder().encode("Hello World"));
-   * Deno.ftruncateSync(file.rid, 7);
-   * const data = new Uint8Array(32);
-   * Deno.readSync(file.rid, data);
-   * console.log(new TextDecoder().decode(data)); // Hello W
-   * ```
-   */
-  export function ftruncateSync(rid: number, len?: number): void;
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   * Truncates or extends the specified file stream, to reach the specified `len`. If
-   * `len` is not specified then the entire file contents are truncated.
-   *
-   * ```ts
-   * // truncate the entire file
-   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
-   * await Deno.ftruncate(file.rid);
-   *
-   * // truncate part of the file
-   * const file = Deno.open("my_file.txt", { read: true, write: true, create: true });
-   * await Deno.write(file.rid, new TextEncoder().encode("Hello World"));
-   * await Deno.ftruncate(file.rid, 7);
-   * const data = new Uint8Array(32);
-   * await Deno.read(file.rid, data);
-   * console.log(new TextDecoder().decode(data)); // Hello W
-   * ```
-   */
-  export function ftruncate(rid: number, len?: number): Promise<void>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   * Synchronously returns a `Deno.FileInfo` for the given file stream.
-   *
-   * ```ts
-   * const file = Deno.openSync("file.txt", { read: true });
-   * const fileInfo = Deno.fstatSync(file.rid);
-   * assert(fileInfo.isFile);
-   * ```
-   */
-  export function fstatSync(rid: number): FileInfo;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   * Returns a `Deno.FileInfo` for the given file stream.
-   *
-   * ```ts
-   * const file = await Deno.open("file.txt", { read: true });
-   * const fileInfo = await Deno.fstat(file.rid);
-   * assert(fileInfo.isFile);
-   * ```
-   */
-  export function fstat(rid: number): Promise<FileInfo>;
-
   /** **UNSTABLE**: New API, yet to be vetted.
    * The pid of the current process's parent.
    */
@@ -1106,7 +1063,7 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    * The options used when creating a [HttpClient].
    */
-  interface CreateHttpClientOptions {
+  export interface CreateHttpClientOptions {
     /** A certificate authority to use when validating TLS certificates. Certificate data must be PEM encoded.
      */
     caData?: string;
@@ -1167,7 +1124,7 @@ declare namespace Deno {
    * Deno.sleepSync(10);
    * ```
    */
-  export function sleepSync(millis: number): Promise<void>;
+  export function sleepSync(millis: number): void;
 
   export interface Metrics extends OpMetrics {
     ops: Record<string, OpMetrics>;
@@ -1185,6 +1142,178 @@ declare namespace Deno {
     bytesSentControl: number;
     bytesSentData: number;
     bytesReceived: number;
+  }
+
+  export interface MemoryUsage {
+    rss: number;
+    heapTotal: number;
+    heapUsed: number;
+    external: number;
+  }
+
+  export function memoryUsage(): MemoryUsage;
+
+  export interface RequestEvent {
+    readonly request: Request;
+    respondWith(r: Response | Promise<Response>): Promise<void>;
+  }
+
+  export interface HttpConn extends AsyncIterable<RequestEvent> {
+    readonly rid: number;
+
+    nextRequest(): Promise<RequestEvent | null>;
+    close(): void;
+  }
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Services HTTP requests given a TCP or TLS socket.
+   *
+   * ```ts
+   * const httpConn = Deno.serveHttp(conn);
+   * const e = await httpConn.nextRequest();
+   * if (e) {
+   *   e.respondWith(new Response("Hello World"));
+   * }
+   * ```
+   *
+   * If `httpConn.nextRequest()` encounters an error or returns `null`
+   * then the underlying HttpConn resource is closed automatically.
+   */
+  export function serveHttp(conn: Conn): HttpConn;
+
+  /** **UNSTABLE**: New option, yet to be vetted. */
+  export interface TestDefinition {
+    /** Specifies the permissions that should be used to run the test.
+     * Set this to "inherit" to keep the calling thread's permissions.
+     * Set this to "none" to revoke all permissions.
+     *
+     * Defaults to "inherit".
+    */
+    permissions?: "inherit" | "none" | {
+      /** Specifies if the `net` permission should be requested or revoked.
+      * If set to `"inherit"`, the current `env` permission will be inherited.
+      * If set to `true`, the global `net` permission will be requested.
+      * If set to `false`, the global `net` permission will be revoked.
+      *
+      * Defaults to "inherit".
+      */
+      env?: "inherit" | boolean;
+
+      /** Specifies if the `hrtime` permission should be requested or revoked.
+      * If set to `"inherit"`, the current `hrtime` permission will be inherited.
+      * If set to `true`, the global `hrtime` permission will be requested.
+      * If set to `false`, the global `hrtime` permission will be revoked.
+      *
+      * Defaults to "inherit".
+      */
+      hrtime?: "inherit" | boolean;
+
+      /** Specifies if the `net` permission should be requested or revoked.
+      * if set to `"inherit"`, the current `net` permission will be inherited.
+      * if set to `true`, the global `net` permission will be requested.
+      * if set to `false`, the global `net` permission will be revoked.
+      * if set to `string[]`, the `net` permission will be requested with the
+      * specified host strings with the format `"<host>[:<port>]`.
+      *
+      * Defaults to "inherit".
+      *
+      * Examples:
+      *
+      * ```
+      * Deno.test({
+      *   name: "inherit",
+      *   permissions: {
+      *     net: "inherit",
+      *   },
+      *   async fn() {
+      *     const status = await Deno.permissions.query({ name: "net" })
+      *     assertEquals(status.state, "granted");
+      *   },
+      * };
+      * ```
+      *
+      * ```
+      * Deno.test({
+      *   name: "true",
+      *   permissions: {
+      *     net: true,
+      *   },
+      *   async fn() {
+      *     const status = await Deno.permissions.query({ name: "net" });
+      *     assertEquals(status.state, "granted");
+      *   },
+      * };
+      * ```
+      *
+      * ```
+      * Deno.test({
+      *   name: "false",
+      *   permissions: {
+      *     net: false,
+      *   },
+      *   async fn() {
+      *     const status = await Deno.permissions.query({ name: "net" });
+      *     assertEquals(status.state, "denied");
+      *   },
+      * };
+      * ```
+      *
+      * ```
+      * Deno.test({
+      *   name: "localhost:8080",
+      *   permissions: {
+      *     net: ["localhost:8080"],
+      *   },
+      *   async fn() {
+      *     const status = await Deno.permissions.query({ name: "net", host: "localhost:8080" });
+      *     assertEquals(status.state, "granted");
+      *   },
+      * };
+      * ```
+      */
+      net?: "inherit" | boolean | string[];
+
+      /** Specifies if the `plugin` permission should be requested or revoked.
+      * If set to `"inherit"`, the current `plugin` permission will be inherited.
+      * If set to `true`, the global `plugin` permission will be requested.
+      * If set to `false`, the global `plugin` permission will be revoked.
+      *
+      * Defaults to "inherit".
+      */
+      plugin?: "inherit" | boolean;
+
+      /** Specifies if the `read` permission should be requested or revoked.
+      * If set to `"inherit"`, the current `read` permission will be inherited.
+      * If set to `true`, the global `read` permission will be requested.
+      * If set to `false`, the global `read` permission will be revoked.
+      * If set to `Array<string | URL>`, the `read` permission will be requested with the
+      * specified file paths.
+      *
+      * Defaults to "inherit".
+      */
+      read?: "inherit" | boolean | Array<string | URL>;
+
+      /** Specifies if the `run` permission should be requested or revoked.
+      * If set to `"inherit"`, the current `run` permission will be inherited.
+      * If set to `true`, the global `run` permission will be requested.
+      * If set to `false`, the global `run` permission will be revoked.
+      *
+      * Defaults to "inherit".
+      */
+      run?: "inherit" | boolean;
+
+      /** Specifies if the `write` permission should be requested or revoked.
+      * If set to `"inherit"`, the current `write` permission will be inherited.
+      * If set to `true`, the global `write` permission will be requested.
+      * If set to `false`, the global `write` permission will be revoked.
+      * If set to `Array<string | URL>`, the `write` permission will be requested with the
+      * specified file paths.
+      *
+      * Defaults to "inherit".
+      */
+      write?: "inherit" | boolean | Array<string | URL>;
+    };
   }
 }
 

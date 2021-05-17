@@ -28,15 +28,15 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_async(rt, "op_emit", op_emit);
+  super::reg_async(rt, "op_emit", op_emit);
 }
 
 #[derive(Debug, Deserialize)]
 enum RuntimeBundleType {
-  #[serde(rename = "esm")]
-  Esm,
-  #[serde(rename = "iife")]
-  Iife,
+  #[serde(rename = "module")]
+  Module,
+  #[serde(rename = "classic")]
+  Classic,
 }
 
 #[derive(Debug, Deserialize)]
@@ -60,7 +60,7 @@ async fn op_emit(
   let args: EmitArgs = serde_json::from_value(args)?;
   let root_specifier = args.root_specifier;
   let program_state = state.borrow().borrow::<Arc<ProgramState>>().clone();
-  let runtime_permissions = {
+  let mut runtime_permissions = {
     let state = state.borrow();
     state.borrow::<Permissions>().clone()
   };
@@ -86,7 +86,7 @@ async fn op_emit(
     } else {
       let file = program_state
         .file_fetcher
-        .fetch(&import_map_specifier, &runtime_permissions)
+        .fetch(&import_map_specifier, &mut runtime_permissions)
         .await?;
       ImportMap::from_json(import_map_specifier.as_str(), &file.source)?
     };
@@ -108,8 +108,8 @@ async fn op_emit(
       ))
     })?;
   let bundle_type = match args.bundle {
-    Some(RuntimeBundleType::Esm) => BundleType::Esm,
-    Some(RuntimeBundleType::Iife) => BundleType::Iife,
+    Some(RuntimeBundleType::Module) => BundleType::Module,
+    Some(RuntimeBundleType::Classic) => BundleType::Classic,
     None => BundleType::None,
   };
   let graph = builder.get_graph();

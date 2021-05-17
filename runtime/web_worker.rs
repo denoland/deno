@@ -8,6 +8,7 @@ use crate::ops;
 use crate::permissions::Permissions;
 use crate::tokio_util::create_basic_runtime;
 use deno_core::error::AnyError;
+use deno_core::error::Context as ErrorContext;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
@@ -23,6 +24,7 @@ use deno_core::JsRuntime;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
+use deno_file::BlobUrlStore;
 use log::debug;
 use std::env;
 use std::rc::Rc;
@@ -66,6 +68,14 @@ impl WebWorkerHandle {
   /// Post message to worker as a host.
   pub fn post_message(&self, buf: Box<[u8]>) -> Result<(), AnyError> {
     let mut sender = self.sender.clone();
+    // If the channel is closed,
+    // the worker must have terminated but the termination message has not yet been recieved.
+    //
+    // Therefore just treat it as if the worker has terminated and return.
+    if sender.is_closed() {
+      self.terminated.store(true, Ordering::SeqCst);
+      return Ok(());
+    }
     sender.try_send(buf)?;
     Ok(())
   }
@@ -155,6 +165,7 @@ pub struct WebWorkerOptions {
   /// Sets `Deno.noColor` in JS runtime.
   pub no_color: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
+  pub blob_url_store: BlobUrlStore,
 }
 
 impl WebWorker {
@@ -217,7 +228,7 @@ impl WebWorker {
       }
 
       ops::web_worker::init(js_runtime, sender.clone(), handle);
-      ops::runtime::init(js_runtime, main_module);
+      ops::runtime::init(js_runtime, main_module.clone());
       ops::fetch::init(
         js_runtime,
         options.user_agent.clone(),
@@ -229,9 +240,14 @@ impl WebWorker {
         Some(sender),
         options.create_web_worker_cb.clone(),
       );
-      ops::reg_json_sync(js_runtime, "op_close", deno_core::op_close);
-      ops::reg_json_sync(js_runtime, "op_resources", deno_core::op_resources);
+      ops::reg_sync(js_runtime, "op_close", deno_core::op_close);
+      ops::reg_sync(js_runtime, "op_resources", deno_core::op_resources);
       ops::url::init(js_runtime);
+      ops::file::init(
+        js_runtime,
+        options.blob_url_store.clone(),
+        Some(main_module),
+      );
       ops::io::init(js_runtime);
       ops::webgpu::init(js_runtime);
       ops::websocket::init(
@@ -246,6 +262,7 @@ impl WebWorker {
         ops::fs::init(js_runtime);
         ops::net::init(js_runtime);
         ops::os::init(js_runtime);
+        ops::http::init(js_runtime);
         ops::permissions::init(js_runtime);
         ops::plugin::init(js_runtime);
         ops::process::init(js_runtime);
@@ -267,6 +284,7 @@ impl WebWorker {
           t.add(stream);
         }
       }
+      js_runtime.sync_ops_cache();
 
       worker
     }
@@ -304,7 +322,9 @@ impl WebWorker {
 
   /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
   pub fn execute(&mut self, js_source: &str) -> Result<(), AnyError> {
-    let path = env::current_dir().unwrap().join("__anonymous__");
+    let path = env::current_dir()
+      .context("Failed to get current working directory")?
+      .join("__anonymous__");
     let url = Url::from_file_path(path).unwrap();
     self.js_runtime.execute(url.as_str(), js_source)
   }
@@ -518,6 +538,7 @@ mod tests {
       ts_version: "x".to_string(),
       no_color: true,
       get_error_class_fn: None,
+      blob_url_store: BlobUrlStore::default(),
     };
 
     let mut worker = WebWorker::from_options(

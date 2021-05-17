@@ -1,0 +1,6 @@
+[WILDCARD]error: Uncaught (in promise) Error: Hello 2
+   throw new Error(`Hello ${A.C}`);
+         ^
+    at a (blob:null/[WILDCARD]:8:10)
+    at file:///[WILDCARD]/cli/tests/import_blob_url_error_stack.ts:13:1
+[WILDCARD]
