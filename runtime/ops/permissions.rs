@@ -4,16 +4,21 @@ use crate::permissions::Permissions;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
+use deno_core::op_sync;
 use deno_core::url;
+use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::path::Path;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_sync(rt, "op_query_permission", op_query_permission);
-  super::reg_sync(rt, "op_revoke_permission", op_revoke_permission);
-  super::reg_sync(rt, "op_request_permission", op_request_permission);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_query_permission", op_sync(op_query_permission)),
+      ("op_revoke_permission", op_sync(op_revoke_permission)),
+      ("op_request_permission", op_sync(op_request_permission)),
+    ])
+    .build()
 }
 
 #[derive(Deserialize)]
@@ -28,7 +33,7 @@ pub struct PermissionArgs {
 pub fn op_query_permission(
   state: &mut OpState,
   args: PermissionArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<String, AnyError> {
   let permissions = state.borrow::<Permissions>();
   let path = args.path.as_deref();
@@ -59,7 +64,7 @@ pub fn op_query_permission(
 pub fn op_revoke_permission(
   state: &mut OpState,
   args: PermissionArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<String, AnyError> {
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
@@ -90,7 +95,7 @@ pub fn op_revoke_permission(
 pub fn op_request_permission(
   state: &mut OpState,
   args: PermissionArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<String, AnyError> {
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();

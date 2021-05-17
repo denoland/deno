@@ -71,7 +71,7 @@ declare var close: () => void;
 declare var name: string;
 declare var postMessage: (message: any) => void;
 
-// TODO(nayeemrmn): Move this to `op_crates/web` where its implementation is.
+// TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
 // The types there must first be split into window, worker and global types.
 /** The absolute location of the script executed by the Worker. Such an object
  * is initialized for each worker and is available via the
@@ -90,6 +90,6 @@ declare class WorkerLocation {
   readonly search: string;
 }
 
-// TODO(nayeemrmn): Move this to `op_crates/web` where its implementation is.
+// TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
 // The types there must first be split into window, worker and global types.
 declare var location: WorkerLocation;

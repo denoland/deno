@@ -495,6 +495,10 @@ impl ModuleMap {
 
     None
   }
+
+  pub fn get_info_by_id(&self, id: &ModuleId) -> Option<&ModuleInfo> {
+    self.info.get(id)
+  }
 }
 
 #[cfg(test)]
