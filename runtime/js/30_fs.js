@@ -338,7 +338,11 @@
     newpath,
     options,
   ) {
-    core.opSync("op_symlink_sync", { oldpath, newpath, options });
+    core.opSync("op_symlink_sync", {
+      oldpath: pathFromURL(oldpath),
+      newpath: pathFromURL(newpath),
+      options,
+    });
   }
 
   async function symlink(
