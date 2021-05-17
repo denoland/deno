@@ -92,10 +92,7 @@ jobs:
           curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
           echo "$HOME/.deno/bin" >> $GITHUB_PATH
 
-      # TODO(ry) Enable on all OSes https://github.com/denoland/deno/issues/10378
       - name: Error on Warning
-        if: |
-          !startsWith(matrix.os, 'windows')
         run: echo "RUSTFLAGS=-D warnings" >> $GITHUB_ENV
 
       - name: Install Deno (Windows)
