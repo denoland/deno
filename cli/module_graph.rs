@@ -1775,7 +1775,7 @@ impl GraphBuilder {
         }
         Some(Ok(cached_module)) => {
           let is_root = &cached_module.specifier == specifier;
-          self.visit(cached_module, is_root)?;
+          self.visit(cached_module, is_root, is_dynamic)?;
         }
         _ => {}
       }
@@ -1823,6 +1823,7 @@ impl GraphBuilder {
     &mut self,
     cached_module: CachedModule,
     is_root: bool,
+    is_root_dynamic: bool,
   ) -> Result<(), AnyError> {
     let specifier = cached_module.specifier.clone();
     let requested_specifier = cached_module.requested_specifier.clone();
@@ -1859,14 +1860,22 @@ impl GraphBuilder {
     for (_, dep) in module.dependencies.iter() {
       let maybe_referrer = Some(dep.location.clone());
       if let Some(specifier) = dep.maybe_code.as_ref() {
-        self.fetch(specifier, &maybe_referrer, dep.is_dynamic);
+        self.fetch(
+          specifier,
+          &maybe_referrer,
+          is_root_dynamic || dep.is_dynamic,
+        );
       }
       if let Some(specifier) = dep.maybe_type.as_ref() {
-        self.fetch(specifier, &maybe_referrer, dep.is_dynamic);
+        self.fetch(
+          specifier,
+          &maybe_referrer,
+          is_root_dynamic || dep.is_dynamic,
+        );
       }
     }
     if let Some((_, specifier)) = module.maybe_types.as_ref() {
-      self.fetch(specifier, &None, false);
+      self.fetch(specifier, &None, is_root_dynamic);
     }
     if specifier != requested_specifier {
       self

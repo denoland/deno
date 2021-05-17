@@ -35,6 +35,7 @@ pub async fn cache(
   let handler = Arc::new(Mutex::new(FetchHandler::new(
     &program_state,
     Permissions::allow_all(),
+    Permissions::allow_all(),
   )?));
   let mut builder = GraphBuilder::new(handler, maybe_import_map.clone(), None);
   builder.add(specifier, false).await
