@@ -96,12 +96,14 @@ pub enum DenoSubcommand {
     script: String,
   },
   Test {
+    doc: bool,
     no_run: bool,
     fail_fast: bool,
     quiet: bool,
     allow_none: bool,
     include: Option<Vec<String>>,
     filter: Option<String>,
+    concurrent_jobs: usize,
   },
   Types,
   Upgrade {
@@ -984,6 +986,12 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(false),
     )
     .arg(
+      Arg::with_name("doc")
+        .long("doc")
+        .help("UNSTABLE: type check code blocks")
+        .takes_value(false),
+    )
+    .arg(
       Arg::with_name("fail-fast")
         .long("fail-fast")
         .alias("failfast")
@@ -1013,10 +1021,27 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .help("UNSTABLE: Collect coverage profile data"),
     )
     .arg(
+      Arg::with_name("jobs")
+        .short("j")
+        .long("jobs")
+        .min_values(0)
+        .max_values(1)
+        .takes_value(true)
+        .validator(|val: String| match val.parse::<usize>() {
+          Ok(_) => Ok(()),
+          Err(_) => Err("jobs should be a number".to_string()),
+        }),
+    )
+    .arg(
       Arg::with_name("files")
         .help("List of file names to run")
         .takes_value(true)
         .multiple(true),
+    )
+    .arg(
+      watch_arg()
+        .conflicts_with("no-run")
+        .conflicts_with("coverage"),
     )
     .arg(script_arg().last(true))
     .about("Run tests")
@@ -1649,10 +1674,13 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
 
   let no_run = matches.is_present("no-run");
+  let doc = matches.is_present("doc");
   let fail_fast = matches.is_present("fail-fast");
   let allow_none = matches.is_present("allow-none");
   let quiet = matches.is_present("quiet");
   let filter = matches.value_of("filter").map(String::from);
+
+  flags.watch = matches.is_present("watch");
 
   if matches.is_present("script_arg") {
     let script_arg: Vec<String> = matches
@@ -1665,6 +1693,17 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
       flags.argv.push(v);
     }
   }
+
+  let concurrent_jobs = if matches.is_present("jobs") {
+    if let Some(value) = matches.value_of("jobs") {
+      value.parse().unwrap()
+    } else {
+      // TODO(caspervonb) drop the dependency on num_cpus when https://doc.rust-lang.org/std/thread/fn.available_concurrency.html becomes stable.
+      num_cpus::get()
+    }
+  } else {
+    1
+  };
 
   let include = if matches.is_present("files") {
     let files: Vec<String> = matches
@@ -1680,11 +1719,13 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.coverage_dir = matches.value_of("coverage").map(String::from);
   flags.subcommand = DenoSubcommand::Test {
     no_run,
+    doc,
     fail_fast,
     quiet,
     include,
     filter,
     allow_none,
+    concurrent_jobs,
   };
 }
 
@@ -3325,11 +3366,13 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Test {
           no_run: true,
+          doc: false,
           fail_fast: false,
           filter: Some("- foo".to_string()),
           allow_none: true,
           quiet: false,
           include: Some(svec!["dir1/", "dir2/"]),
+          concurrent_jobs: 1,
         },
         unstable: true,
         coverage_dir: Some("cov".to_string()),

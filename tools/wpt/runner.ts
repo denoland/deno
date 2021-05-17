@@ -78,6 +78,8 @@ export async function runSingleTest(
       "-A",
       "--location",
       url.toString(),
+      "--cert",
+      join(ROOT_PATH, `./test_util/wpt/tools/certs/cacert.pem`),
       tempFile,
       "[]",
     ],

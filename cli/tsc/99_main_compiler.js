@@ -34,15 +34,16 @@ delete Object.prototype.__proto__;
     }
   }
 
+  function printStderr(msg) {
+    core.print(msg, true);
+  }
+
   function debug(...args) {
     if (logDebug) {
       const stringifiedArgs = args.map((arg) =>
         typeof arg === "string" ? arg : JSON.stringify(arg)
       ).join(" ");
-      // adding a non-zero integer value to the end of the debug string causes
-      // the message to be printed to stderr instead of stdout, which is better
-      // aligned to the behaviour of debug messages
-      core.print(`DEBUG ${logSource} - ${stringifiedArgs}\n`, 1);
+      printStderr(`DEBUG ${logSource} - ${stringifiedArgs}\n`);
     }
   }
 
@@ -52,7 +53,7 @@ delete Object.prototype.__proto__;
         ? String(arg)
         : JSON.stringify(arg)
     ).join(" ");
-    core.print(`ERROR ${logSource} = ${stringifiedArgs}\n`, 1);
+    printStderr(`ERROR ${logSource} = ${stringifiedArgs}\n`);
   }
 
   class AssertionError extends Error {

@@ -191,6 +191,7 @@ pub fn create_standalone_worker(
     no_color: !colors::use_color(),
     get_error_class_fn: Some(&get_error_class_name),
     location: metadata.location,
+    location_data_dir: None,
     blob_url_store,
   };
   let worker = MainWorker::from_options(main_module, permissions, &options);

@@ -4,7 +4,7 @@
 release from) should be frozen and no commits should land until the release is
 cut.**
 
-1. Create a PR that bumps versions of all crates in `op_crates` and `runtime`
+1. Create a PR that bumps versions of all crates in `extensions` and `runtime`
    directories.
 
 To determine if you should bump a crate a minor version instead of a patch
@@ -32,9 +32,9 @@ between the crates, it must be done in specific order:
 
 - `deno_core` - all crates depend on `deno_core` so it must always be published
   first
-- crates in `op_crates/` directory - there is no specific order required for
+- crates in `extensions/` directory - there is no specific order required for
   those
-- `runtime` - this crate depends on `deno_core` and all crates in `op_crates/`
+- `runtime` - this crate depends on `deno_core` and all crates in `extensions/`
   directory
 
 If there are any problems when you publish, that require you to change the code,

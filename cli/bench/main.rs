@@ -75,7 +75,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/workers_large_message_bench.ts",
+      "cli/tests/workers/bench_large_message.ts",
     ],
     None,
   ),
@@ -87,6 +87,11 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   (
     "text_encoder",
     &["run", "cli/tests/text_encoder_perf.js"],
+    None,
+  ),
+  (
+    "text_encoder_into",
+    &["run", "cli/tests/text_encoder_into_perf.js"],
     None,
   ),
   (

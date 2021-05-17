@@ -1,5 +1,5 @@
 [WILDCARD]
-running 4 tests
+running 4 tests from [WILDCARD]
 test fail1 ... FAILED [WILDCARD]
 test fail2 ... FAILED [WILDCARD]
 test success1 ... ok [WILDCARD]

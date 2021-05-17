@@ -61,3 +61,56 @@ with Deno:
     textDocument: TextDocumentIdentifier;
   }
   ```
+
+## Settings
+
+There are several settings that the language server supports for a workspace:
+
+- `deno.enable`
+- `deno.config`
+- `deno.import_map`
+- `deno.code_lens.implementations`
+- `deno.code_lens.references`
+- `deno.code_lens.references_all_functions`
+- `deno.suggest.complete_function_calls`
+- `deno.suggest.names`
+- `deno.suggest.paths`
+- `deno.suggest.auto_imports`
+- `deno.imports.hosts`
+- `deno.lint`
+- `deno.unstable`
+
+There are settings that are support on a per resource basis by the language
+server:
+
+- `deno.enable`
+
+There are several points in the process where Deno analyzes these settings.
+First, when the `initialize` request from the client, the
+`initializationOptions` will be assumed to be an object that represents the
+`deno` namespace of options. For example, the following value:
+
+```json
+{
+  "enable": true,
+  "unstable": true
+}
+```
+
+Would enable Deno with the unstable APIs for this instance of the language
+server.
+
+When the language server receives a `workspace/didChangeConfiguration`
+notification, it will assess if the client has indicated if it has a
+`workspaceConfiguration` capability. If it does, it will send a
+`workspace/configuration` request which will include a request for the workspace
+configuration as well as the configuration of all URIs that the language server
+is currently tracking.
+
+If the client has the `workspaceConfiguration` capability, the language server
+will send a configuration request for the URI when it received the
+`textDocument/didOpen` notification in order to get the resources specific
+settings.
+
+If the client does not have the `workspaceConfiguration` capability, the
+language server will assume the workspace setting applies to all resources.

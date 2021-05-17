@@ -30,7 +30,7 @@ can be partially embedded.
 
 ### Cross Compilation
 
-You can use cross compilation by adding `--target` CLI argument, benefiting that
-you can create binaries for other platforms in single CI machine. Deno supports
-compiling to Windows x64, macOS x64, macOS ARM and Linux x64 currently. Use
-`deno compile --help` to get the full list about compilation targets.
+You can compile binaries for other platforms by adding the `--target` CLI flag.
+Deno currently supports compiling to Windows x64, macOS x64, macOS ARM and Linux
+x64. Use `deno compile --help` to list the full values for each compilation
+target.

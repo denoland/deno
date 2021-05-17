@@ -1,9 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
+  assertEquals,
   assertMatch,
   assertThrows,
   assertThrowsAsync,
+  pathToAbsoluteFileUrl,
   unitTest,
 } from "./test_util.ts";
 
@@ -17,6 +19,12 @@ unitTest({ perms: { read: true } }, function realPathSyncSuccess(): void {
     assertMatch(realPath, /^[A-Z]:\\/);
     assert(realPath.endsWith(relative.replace(/\//g, "\\")));
   }
+});
+
+unitTest({ perms: { read: true } }, function realPathSyncUrl(): void {
+  const relative = "cli/tests/fixture.json";
+  const url = pathToAbsoluteFileUrl(relative);
+  assertEquals(Deno.realPathSync(relative), Deno.realPathSync(url));
 });
 
 unitTest(
@@ -65,6 +73,15 @@ unitTest({ perms: { read: true } }, async function realPathSuccess(): Promise<
     assert(realPath.endsWith(relativePath.replace(/\//g, "\\")));
   }
 });
+
+unitTest(
+  { perms: { read: true } },
+  async function realPathUrl(): Promise<void> {
+    const relative = "cli/tests/fixture.json";
+    const url = pathToAbsoluteFileUrl(relative);
+    assertEquals(await Deno.realPath(relative), await Deno.realPath(url));
+  },
+);
 
 unitTest(
   {
