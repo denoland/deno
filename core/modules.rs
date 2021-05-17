@@ -427,6 +427,8 @@ pub struct ModuleMap {
   info: HashMap<ModuleId, ModuleInfo>,
   by_name: HashMap<String, SymbolicModule>,
   next_module_id: ModuleId,
+  pub(crate) dynamic_import_map:
+    HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
 }
 
 impl ModuleMap {
@@ -438,6 +440,7 @@ impl ModuleMap {
       info: HashMap::new(),
       by_name: HashMap::new(),
       next_module_id: 1,
+      dynamic_import_map: HashMap::new(),
     }
   }
 
@@ -637,17 +640,20 @@ impl ModuleMap {
   }
 
   pub fn load_dynamic_import(
-    &self,
+    &mut self,
     op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     referrer: &str,
+    resolver_handle: v8::Global<v8::PromiseResolver>,
   ) -> RecursiveModuleLoad {
-    RecursiveModuleLoad::dynamic_import(
+    let load = RecursiveModuleLoad::dynamic_import(
       op_state,
       specifier,
       referrer,
       self.loader.clone(),
-    )
+    );
+    self.dynamic_import_map.insert(load.id, resolver_handle);
+    load
   }
 }
 

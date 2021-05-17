@@ -112,9 +112,6 @@ pub(crate) struct JsRuntimeState {
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
-  // TODO: looks like it can be moved to `ModuleMap`
-  pub(crate) dyn_import_map:
-    HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
   preparing_dyn_imports: FuturesUnordered<Pin<Box<PrepareLoadFuture>>>,
   pending_dyn_imports: FuturesUnordered<StreamFuture<RecursiveModuleLoad>>,
   waker: AtomicWaker,
@@ -292,7 +289,6 @@ impl JsRuntime {
       pending_unref_ops: FuturesUnordered::new(),
       op_state: Rc::new(RefCell::new(op_state)),
       have_unpolled_ops: false,
-      dyn_import_map: HashMap::new(),
       preparing_dyn_imports: FuturesUnordered::new(),
       pending_dyn_imports: FuturesUnordered::new(),
       waker: AtomicWaker::new(),
@@ -686,12 +682,7 @@ where
 }
 
 impl JsRuntimeState {
-  pub fn dyn_import_cb(
-    &mut self,
-    load: RecursiveModuleLoad,
-    resolver_handle: v8::Global<v8::PromiseResolver>,
-  ) {
-    self.dyn_import_map.insert(load.id, resolver_handle);
+  pub fn dyn_import_cb(&mut self, load: RecursiveModuleLoad) {
     self.waker.wake();
     let fut = load.prepare().boxed_local();
     self.preparing_dyn_imports.push(fut);
@@ -935,12 +926,12 @@ impl JsRuntime {
   }
 
   fn dyn_import_error(&mut self, id: ModuleLoadId, err: AnyError) {
-    let state_rc = Self::state(self.v8_isolate());
+    let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
 
-    let resolver_handle = state_rc
+    let resolver_handle = module_map_rc
       .borrow_mut()
-      .dyn_import_map
+      .dynamic_import_map
       .remove(&id)
       .expect("Invalid dyn import id");
     let resolver = resolver_handle.get(scope);
@@ -959,13 +950,12 @@ impl JsRuntime {
   }
 
   fn dyn_import_done(&mut self, id: ModuleLoadId, mod_id: ModuleId) {
-    let state_rc = Self::state(self.v8_isolate());
     let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
 
-    let resolver_handle = state_rc
+    let resolver_handle = module_map_rc
       .borrow_mut()
-      .dyn_import_map
+      .dynamic_import_map
       .remove(&id)
       .expect("Invalid dyn import id");
     let resolver = resolver_handle.get(scope);
