@@ -677,7 +677,10 @@ where
 }
 
 impl JsRuntimeState {
-  pub fn dyn_import_cb(&mut self) {
+  /// Called by `bindings::host_import_module_dynamically_callback`
+  /// after initiating new dynamic import load.
+  pub fn notify_new_dynamic_import(&mut self) {
+    // Notify event loop to poll again soon.
     self.waker.wake();
   }
 }

@@ -475,7 +475,7 @@ impl ModuleMap {
   }
 
   // Create and compile an ES module.
-  pub fn new_module(
+  pub(crate) fn new_module(
     &mut self,
     scope: &mut v8::HandleScope,
     main: bool,

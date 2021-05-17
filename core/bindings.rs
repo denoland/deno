@@ -191,8 +191,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
       &referrer_name_str,
       resolver_handle,
     );
-    // TODO(bartlomieju): should be renamed to "wake()"?
-    state_rc.borrow_mut().dyn_import_cb();
+    state_rc.borrow_mut().notify_new_dynamic_import();
   }
 
   // Map errors from module resolution (not JS errors from module execution) to
