@@ -9,6 +9,20 @@ use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::borrow::Cow;
 
+struct WebGpuRawWindowHandle(Box<dyn raw_window_handle::HasRawWindowHandle>);
+impl Resource for WebGpuRawWindowHandle {
+  fn name(&self) -> Cow<str> {
+    "webGPURawWindowHandle".into()
+  }
+}
+
+struct WebGpuSurface(wgpu_core::id::SurfaceId);
+impl Resource for WebGpuSwapChain {
+  fn name(&self) -> Cow<str> {
+    "webGPUSurface".into()
+  }
+}
+
 struct WebGpuSwapChain(wgpu_core::id::SwapChainId);
 impl Resource for WebGpuSwapChain {
   fn name(&self) -> Cow<str> {
@@ -18,9 +32,43 @@ impl Resource for WebGpuSwapChain {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CreateSurfaceArgs {
+  device_rid: u32,
+  raw_window_handle_rid: u32,
+}
+
+pub fn op_webgpu_create_surface(
+  state: &mut OpState,
+  args: CreateSurfaceArgs,
+  _zero_copy: Option<ZeroCopyBuf>,
+) -> Result<ResourceId, AnyError> {
+  let instance = state.borrow::<super::Instance>();
+  let device_resource = state
+    .resource_table
+    .get::<super::WebGpuDevice>(args.device_rid)
+    .ok_or_else(bad_resource_id)?;
+  let device = device_resource.0;
+  let raw_window_handle_resource = state
+    .resource_table
+    .get::<WebGpuRawWindowHandle>(args.raw_window_handle_rid)
+    .ok_or_else(bad_resource_id)?;
+  let raw_window_handle = &*raw_window_handle_resource.0;
+
+  let surface_id = gfx_select!(device => instance.instance_create_surface(
+    raw_window_handle,
+    std::marker::PhantomData
+  ));
+
+  let rid = state.resource_table.add(WebGpuSurface(surface_id));
+
+  Ok(rid)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ConfigureSwapchainArgs {
   device_rid: u32,
-  swapchain_rid: u32,
+  surface_rid: u32,
   format: String,
   usage: u32,
   width: u32,
@@ -40,7 +88,7 @@ pub fn op_webgpu_configure_swapchain(
   let device = device_resource.0;
   let swapchain_resource = state
     .resource_table
-    .get::<WebGpuSwapChain>(args.swapchain_rid)
+    .get::<WebGpuSurface>(args.surface_rid)
     .ok_or_else(bad_resource_id)?;
   let swapchain = swapchain_resource.0;
 
@@ -54,7 +102,7 @@ pub fn op_webgpu_configure_swapchain(
 
   gfx_put!(device => instance.device_create_swap_chain(
     device,
-    swapchain.to_surface_id(),
+    swapchain,
     &descriptor
   ) => state, WebGpuSwapChain)
 }
