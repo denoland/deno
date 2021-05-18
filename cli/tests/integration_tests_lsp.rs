@@ -1604,6 +1604,74 @@ fn lsp_completions_registry_empty() {
   shutdown(&mut client);
 }
 
+#[test]
+fn lsp_diagnostics_warn() {
+  let _g = http_server();
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import * as a from \"http://127.0.0.1:4545/cli/tests/x_deno_warning.js\";\n\nconsole.log(a)\n",
+      },
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": "file:///a/file.ts",
+        },
+        "uris": [
+          {
+            "uri": "http://127.0.0.1:4545/cli/tests/x_deno_warning.js",
+          }
+        ],
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, maybe_params) = client
+    .read_notification::<lsp::PublishDiagnosticsParams>()
+    .unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  assert_eq!(
+    maybe_params,
+    Some(lsp::PublishDiagnosticsParams {
+      uri: Url::parse("file:///a/file.ts").unwrap(),
+      diagnostics: vec![lsp::Diagnostic {
+        range: lsp::Range {
+          start: lsp::Position {
+            line: 0,
+            character: 19
+          },
+          end: lsp::Position {
+            line: 0,
+            character: 70
+          }
+        },
+        severity: Some(lsp::DiagnosticSeverity::Warning),
+        code: Some(lsp::NumberOrString::String("deno-warn".to_string())),
+        source: Some("deno".to_string()),
+        message: "foobar".to_string(),
+        ..Default::default()
+      }],
+      version: Some(1),
+    })
+  );
+  shutdown(&mut client);
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PerformanceAverage {
