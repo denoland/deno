@@ -39,7 +39,7 @@ impl Resource for WebGpuSwapChain {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateSurfaceArgs {
-  device_rid: u32,
+  // device_rid: u32,
   raw_window_handle_rid: u32,
 }
 
@@ -49,19 +49,15 @@ pub fn op_webgpu_create_surface(
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<ResourceId, AnyError> {
   let instance = state.borrow::<super::Instance>();
-  let device_resource = state
-    .resource_table
-    .get::<super::WebGpuDevice>(args.device_rid)
-    .ok_or_else(bad_resource_id)?;
-  let device = device_resource.0;
   let raw_window_handle_resource = state
     .resource_table
     .get::<WebGpuRawWindowHandle>(args.raw_window_handle_rid)
     .ok_or_else(bad_resource_id)?;
-  let raw_window_handle = raw_window_handle_resource.0;
 
-  let surface_id = instance
-    .instance_create_surface(&raw_window_handle, std::marker::PhantomData);
+  let surface_id = instance.instance_create_surface(
+    &raw_window_handle_resource.0,
+    std::marker::PhantomData,
+  );
 
   let rid = state.resource_table.add(WebGpuSurface(surface_id));
 
@@ -140,5 +136,6 @@ pub fn op_webgpu_get_swapchain_preferred_format(
     swapchain.to_surface_id()
   ))?;
 
-  super::texture::deserialize_texture_format(&texture_format).into()
+  super::texture::deserialize_texture_format(&texture_format)
+    .map(|s| s.to_owned())
 }
