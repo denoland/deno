@@ -149,6 +149,9 @@ delete Object.prototype.__proto__;
     // TS2306: File 'file:///Users/rld/src/deno/cli/tests/subdir/amd_like.js' is
     // not a module.
     2306,
+    // TS2688: Cannot find type definition file for '...'.
+    // We ignore because type defintion files can end with '.ts'.
+    2688,
     // TS2691: An import path cannot end with a '.ts' extension. Consider
     // importing 'bad-module' instead.
     2691,
