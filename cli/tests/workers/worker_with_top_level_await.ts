@@ -6,7 +6,7 @@ function delay(ms: number): Promise<void> {
   });
 }
 
-onmessage = (e: MessageEvent) => {
+onmessage = (_e: MessageEvent) => {
   postMessage("triggered worker handler");
   close();
 };

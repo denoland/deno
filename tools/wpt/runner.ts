@@ -21,7 +21,7 @@ export async function runWithTestUtil<T>(
       if (req.status == 200) {
         break;
       }
-    } catch (err) {
+    } catch (_err) {
       // do nothing if this fails
     }
     const passedTime = performance.now() - start;
@@ -61,7 +61,7 @@ export interface TestCaseResult {
 
 export async function runSingleTest(
   url: URL,
-  options: ManifestTestOptions,
+  _options: ManifestTestOptions,
   reporter: (result: TestCaseResult) => void,
 ): Promise<TestResult> {
   const bundle = await generateBundle(url);

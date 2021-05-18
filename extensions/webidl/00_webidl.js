@@ -385,7 +385,6 @@
 
   function isArrayBufferDetached(V) {
     try {
-      // eslint-disable-next-line no-new
       new Uint8Array(V);
       return false;
     } catch {
