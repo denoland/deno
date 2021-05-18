@@ -444,13 +444,21 @@ async fn generate_deps_diagnostics(
                       range,
                       severity: Some(lsp::DiagnosticSeverity::Error),
                       code,
-                      code_description: None,
                       source: Some("deno".to_string()),
                       message,
-                      related_information: None,
-                      tags: None,
-                      data: None,
+                      ..Default::default()
                     });
+                  } else if sources.contains_key(&specifier) {
+                    if let Some(message) = sources.get_maybe_warning(&specifier) {
+                      diagnostics.push(lsp::Diagnostic {
+                        range,
+                        severity: Some(lsp::DiagnosticSeverity::Warning),
+                        code: Some(lsp::NumberOrString::String("deno-warn".to_string())),
+                        source: Some("deno".to_string()),
+                        message,
+                        ..Default::default()
+                      })
+                    }
                   }
                 },
               }
