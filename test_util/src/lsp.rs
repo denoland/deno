@@ -9,6 +9,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::json;
 use serde_json::Value;
+use std::collections::VecDeque;
 use std::io;
 use std::io::Write;
 use std::path::Path;
@@ -86,8 +87,12 @@ where
 }
 
 pub struct LspClient {
-  reader: io::BufReader<ChildStdout>,
   child: Child,
+  reader: io::BufReader<ChildStdout>,
+  /// Used to hold pending messages that have come out of the expected sequence
+  /// by the harness user which will be sent first when trying to consume a
+  /// message before attempting to read a new message.
+  msg_queue: VecDeque<LspMessage>,
   request_id: u64,
   start: Instant,
   writer: io::BufWriter<ChildStdin>,
@@ -125,6 +130,7 @@ impl LspClient {
 
     Ok(Self {
       child,
+      msg_queue: VecDeque::new(),
       reader,
       request_id: 1,
       start: Instant::now(),
@@ -134,6 +140,14 @@ impl LspClient {
 
   pub fn duration(&self) -> Duration {
     self.start.elapsed()
+  }
+
+  pub fn queue_is_empty(&self) -> bool {
+    self.msg_queue.is_empty()
+  }
+
+  pub fn queue_len(&self) -> usize {
+    self.msg_queue.len()
   }
 
   fn read(&mut self) -> Result<LspMessage, anyhow::Error> {
@@ -148,13 +162,42 @@ impl LspClient {
   where
     R: de::DeserializeOwned,
   {
+    if !self.msg_queue.is_empty() {
+      let mut msg_queue = VecDeque::new();
+      loop {
+        match self.msg_queue.pop_front() {
+          Some(LspMessage::Notification(method, maybe_params)) => {
+            if let Some(p) = maybe_params {
+              let params = serde_json::from_value(p)?;
+              return Ok((method, Some(params)));
+            } else {
+              return Ok((method, None));
+            }
+          }
+          Some(msg) => {
+            msg_queue.push_back(msg);
+          }
+          _ => break,
+        }
+      }
+      self.msg_queue = msg_queue;
+    }
+
     loop {
-      if let LspMessage::Notification(method, maybe_params) = self.read()? {
-        if let Some(p) = maybe_params {
-          let params = serde_json::from_value(p)?;
-          return Ok((method, Some(params)));
-        } else {
-          return Ok((method, None));
+      match self.read() {
+        Ok(LspMessage::Notification(method, maybe_params)) => {
+          if let Some(p) = maybe_params {
+            let params = serde_json::from_value(p)?;
+            return Ok((method, Some(params)));
+          } else {
+            return Ok((method, None));
+          }
+        }
+        Ok(msg) => {
+          self.msg_queue.push_back(msg);
+        }
+        Err(err) => {
+          return Err(err);
         }
       }
     }
@@ -166,13 +209,42 @@ impl LspClient {
   where
     R: de::DeserializeOwned,
   {
+    if !self.msg_queue.is_empty() {
+      let mut msg_queue = VecDeque::new();
+      loop {
+        match self.msg_queue.pop_front() {
+          Some(LspMessage::Request(id, method, maybe_params)) => {
+            if let Some(p) = maybe_params {
+              let params = serde_json::from_value(p)?;
+              return Ok((id, method, Some(params)));
+            } else {
+              return Ok((id, method, None));
+            }
+          }
+          Some(msg) => {
+            msg_queue.push_back(msg);
+          }
+          _ => break,
+        }
+      }
+      self.msg_queue = msg_queue;
+    }
+
     loop {
-      if let LspMessage::Request(id, method, maybe_params) = self.read()? {
-        if let Some(p) = maybe_params {
-          let params = serde_json::from_value(p)?;
-          return Ok((id, method, Some(params)));
-        } else {
-          return Ok((id, method, None));
+      match self.read() {
+        Ok(LspMessage::Request(id, method, maybe_params)) => {
+          if let Some(p) = maybe_params {
+            let params = serde_json::from_value(p)?;
+            return Ok((id, method, Some(params)));
+          } else {
+            return Ok((id, method, None));
+          }
+        }
+        Ok(msg) => {
+          self.msg_queue.push_back(msg);
+        }
+        Err(err) => {
+          return Err(err);
         }
       }
     }
@@ -209,14 +281,22 @@ impl LspClient {
     self.write(value)?;
 
     loop {
-      if let LspMessage::Response(id, result, error) = self.read()? {
-        assert_eq!(id, self.request_id);
-        self.request_id += 1;
-        if let Some(r) = result {
-          let result = serde_json::from_value(r)?;
-          return Ok((Some(result), error));
-        } else {
-          return Ok((None, error));
+      match self.read() {
+        Ok(LspMessage::Response(id, result, error)) => {
+          assert_eq!(id, self.request_id);
+          self.request_id += 1;
+          if let Some(r) = result {
+            let result = serde_json::from_value(r)?;
+            return Ok((Some(result), error));
+          } else {
+            return Ok((None, error));
+          }
+        }
+        Ok(msg) => {
+          self.msg_queue.push_back(msg);
+        }
+        Err(err) => {
+          return Err(err);
         }
       }
     }

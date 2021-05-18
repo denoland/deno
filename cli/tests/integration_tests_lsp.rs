@@ -1554,6 +1554,7 @@ fn lsp_code_actions_deadlock() {
     assert_eq!(method, "textDocument/publishDiagnostics");
   }
 
+  assert!(client.queue_is_empty());
   shutdown(&mut client);
 }
 
