@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::config_file::ConfigFile;
 use crate::deno_dir;
 use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
@@ -46,6 +47,7 @@ pub struct ProgramState {
   pub modules:
     Arc<Mutex<HashMap<ModuleSpecifier, Result<ModuleSource, AnyError>>>>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
+  pub maybe_config_file: Option<ConfigFile>,
   pub maybe_import_map: Option<ImportMap>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub ca_data: Option<Vec<u8>>,
@@ -91,6 +93,13 @@ impl ProgramState {
       None
     };
 
+    let maybe_config_file =
+      if let Some(config_path) = flags.config_path.as_ref() {
+        Some(ConfigFile::read(config_path)?)
+      } else {
+        None
+      };
+
     let maybe_import_map: Option<ImportMap> =
       match flags.import_map_path.as_ref() {
         None => None,
@@ -129,6 +138,7 @@ impl ProgramState {
       file_fetcher,
       modules: Default::default(),
       lockfile,
+      maybe_config_file,
       maybe_import_map,
       maybe_inspector_server,
       ca_data,
@@ -143,12 +153,14 @@ impl ProgramState {
     self: &Arc<Self>,
     specifiers: Vec<ModuleSpecifier>,
     lib: TypeLib,
-    runtime_permissions: Permissions,
+    root_permissions: Permissions,
+    dynamic_permissions: Permissions,
     maybe_import_map: Option<ImportMap>,
   ) -> Result<(), AnyError> {
     let handler = Arc::new(Mutex::new(FetchHandler::new(
       self,
-      runtime_permissions.clone(),
+      root_permissions,
+      dynamic_permissions,
     )?));
 
     let mut builder =
@@ -160,12 +172,12 @@ impl ProgramState {
 
     let mut graph = builder.get_graph();
     let debug = self.flags.log_level == Some(log::Level::Debug);
-    let maybe_config_path = self.flags.config_path.clone();
+    let maybe_config_file = self.maybe_config_file.clone();
 
     let result_modules = if self.flags.no_check {
       let result_info = graph.transpile(TranspileOptions {
         debug,
-        maybe_config_path,
+        maybe_config_file,
         reload: self.flags.reload,
       })?;
       debug!("{}", result_info.stats);
@@ -178,7 +190,7 @@ impl ProgramState {
         debug,
         emit: true,
         lib,
-        maybe_config_path,
+        maybe_config_file,
         reload: self.flags.reload,
       })?;
 
@@ -211,30 +223,28 @@ impl ProgramState {
     self: &Arc<Self>,
     specifier: ModuleSpecifier,
     lib: TypeLib,
-    mut runtime_permissions: Permissions,
+    root_permissions: Permissions,
+    dynamic_permissions: Permissions,
     is_dynamic: bool,
     maybe_import_map: Option<ImportMap>,
   ) -> Result<(), AnyError> {
     let specifier = specifier.clone();
-    // Workers are subject to the current runtime permissions.  We do the
-    // permission check here early to avoid "wasting" time building a module
-    // graph for a module that cannot be loaded.
-    if lib == TypeLib::DenoWorker || lib == TypeLib::UnstableDenoWorker {
-      runtime_permissions.check_specifier(&specifier)?;
-    }
-    let handler =
-      Arc::new(Mutex::new(FetchHandler::new(self, runtime_permissions)?));
+    let handler = Arc::new(Mutex::new(FetchHandler::new(
+      self,
+      root_permissions,
+      dynamic_permissions,
+    )?));
     let mut builder =
       GraphBuilder::new(handler, maybe_import_map, self.lockfile.clone());
     builder.add(&specifier, is_dynamic).await?;
     let mut graph = builder.get_graph();
     let debug = self.flags.log_level == Some(log::Level::Debug);
-    let maybe_config_path = self.flags.config_path.clone();
+    let maybe_config_file = self.maybe_config_file.clone();
 
     let result_modules = if self.flags.no_check {
       let result_info = graph.transpile(TranspileOptions {
         debug,
-        maybe_config_path,
+        maybe_config_file,
         reload: self.flags.reload,
       })?;
       debug!("{}", result_info.stats);
@@ -247,7 +257,7 @@ impl ProgramState {
         debug,
         emit: true,
         lib,
-        maybe_config_path,
+        maybe_config_file,
         reload: self.flags.reload,
       })?;
 

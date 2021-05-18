@@ -152,7 +152,7 @@ fn lint_file(
   let syntax = ast::get_syntax(&media_type);
 
   let lint_rules = rules::get_recommended_rules();
-  let mut linter = create_linter(syntax, lint_rules);
+  let linter = create_linter(syntax, lint_rules);
 
   let (_, file_diagnostics) = linter.lint(file_name, source_code.clone())?;
 
@@ -176,7 +176,7 @@ fn lint_stdin(json: bool) -> Result<(), AnyError> {
   let mut reporter = create_reporter(reporter_kind);
   let lint_rules = rules::get_recommended_rules();
   let syntax = ast::get_syntax(&MediaType::TypeScript);
-  let mut linter = create_linter(syntax, lint_rules);
+  let linter = create_linter(syntax, lint_rules);
   let mut has_error = false;
   let pseudo_file_name = "_stdin.ts";
   match linter

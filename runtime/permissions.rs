@@ -1054,9 +1054,9 @@ fn permission_prompt(message: &str) -> bool {
   if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
     return false;
   };
-  let opts = "[g/d (g = grant, d = deny)] ";
+  let opts = "[y/n (y = yes allow, n = no deny)] ";
   let msg = format!(
-    "{}  ️Deno requests {}. Grant? {}",
+    "{}  ️Deno requests {}. Allow? {}",
     PERMISSION_EMOJI, message, opts
   );
   // print to stderr so that if deno is > to a file this is still displayed.
@@ -1073,8 +1073,8 @@ fn permission_prompt(message: &str) -> bool {
       Some(v) => v,
     };
     match ch.to_ascii_lowercase() {
-      'g' => return true,
-      'd' => return false,
+      'y' => return true,
+      'n' => return false,
       _ => {
         // If we don't get a recognized option try again.
         let msg_again = format!("Unrecognized option '{}' {}", ch, opts);

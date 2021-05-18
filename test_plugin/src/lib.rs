@@ -13,6 +13,7 @@ use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+use serde::Deserialize;
 
 #[no_mangle]
 pub fn init() -> Extension {
@@ -32,12 +33,19 @@ pub fn init() -> Extension {
     .build()
 }
 
+#[derive(Debug, Deserialize)]
+struct TestArgs {
+  val: String,
+}
+
 fn op_test_sync(
   _state: &mut OpState,
-  _args: (),
+  args: TestArgs,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<String, AnyError> {
   println!("Hello from sync plugin op.");
+
+  println!("args: {:?}", args);
 
   if let Some(buf) = zero_copy {
     let buf_str = std::str::from_utf8(&buf[..])?;
@@ -49,10 +57,12 @@ fn op_test_sync(
 
 async fn op_test_async(
   _state: Rc<RefCell<OpState>>,
-  _args: (),
+  args: TestArgs,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<String, AnyError> {
   println!("Hello from async plugin op.");
+
+  println!("args: {:?}", args);
 
   if let Some(buf) = zero_copy {
     let buf_str = std::str::from_utf8(&buf[..])?;
@@ -80,7 +90,7 @@ impl Resource for TestResource {
 fn op_test_resource_table_add(
   state: &mut OpState,
   text: String,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<u32, AnyError> {
   println!("Hello from resource_table.add plugin op.");
 
@@ -90,7 +100,7 @@ fn op_test_resource_table_add(
 fn op_test_resource_table_get(
   state: &mut OpState,
   rid: ResourceId,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<String, AnyError> {
   println!("Hello from resource_table.get plugin op.");
 
