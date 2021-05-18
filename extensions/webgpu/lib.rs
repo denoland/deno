@@ -907,5 +907,18 @@ fn declare_webgpu_ops() -> Vec<(&'static str, Box<OpFn>)> {
       "op_webgpu_create_shader_module",
       op_sync(shader::op_webgpu_create_shader_module),
     ),
+    // swapchain
+    (
+      "op_webgpu_create_surface",
+      op_sync(swapchain::op_webgpu_create_surface),
+    ),
+    (
+      "op_webgpu_configure_swapchain",
+      op_sync(swapchain::op_webgpu_configure_swapchain),
+    ),
+    (
+      "op_webgpu_get_swapchain_preferred_format",
+      op_sync(swapchain::op_webgpu_get_swapchain_preferred_format),
+    ),
   ]
 }
