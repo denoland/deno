@@ -340,6 +340,12 @@ mod tests {
   }
 
   #[test]
+  fn include_config_path_on_error() {
+    let error = ConfigFile::read("404.json").err().unwrap();
+    assert!(error.to_string().contains("404.json"));
+  }
+
+  #[test]
   fn test_json_merge() {
     let mut value_a = json!({
       "a": true,
