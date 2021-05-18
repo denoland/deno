@@ -2,7 +2,6 @@
 
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -432,8 +431,7 @@ impl Inner {
         ))
       }?;
 
-      let config_file = ConfigFile::read(config_url.path())
-        .context("Failed to load configuration file")?;
+      let config_file = ConfigFile::read(config_url.path())?;
       let (value, maybe_ignored_options) = config_file.as_compiler_options()?;
       tsconfig.merge(&value);
       self.maybe_config_uri = Some(config_url);
