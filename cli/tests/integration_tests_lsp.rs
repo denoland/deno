@@ -1661,19 +1661,21 @@ fn lsp_performance() {
 }
 
 #[test]
-fn format_json() {
+fn lsp_format_json() {
   let mut client = init("initialize_params.json");
-  did_open(
-    &mut client,
-    json!({
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      json!({
         "textDocument": {
           "uri": "file:///a/file.json",
           "languageId": "json",
           "version": 1,
           "text": "{\"key\":\"value\"}"
         }
-    }),
-  );
+      }),
+    )
+    .unwrap();
 
   let (maybe_res, maybe_err) = client
     .write_request::<_, _, Value>(
@@ -1727,19 +1729,21 @@ fn format_json() {
 }
 
 #[test]
-fn format_markdown() {
+fn lsp_format_markdown() {
   let mut client = init("initialize_params.json");
-  did_open(
-    &mut client,
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.md",
-        "languageId": "markdown",
-        "version": 1,
-        "text": "#   Hello World"
-      }
-    }),
-  );
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.md",
+          "languageId": "markdown",
+          "version": 1,
+          "text": "#   Hello World"
+        }
+      }),
+    )
+    .unwrap();
 
   let (maybe_res, maybe_err) = client
     .write_request::<_, _, Value>(
