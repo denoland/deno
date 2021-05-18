@@ -10,7 +10,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
-use dprint_plugin_typescript as dprint;
 use log::error;
 use log::info;
 use log::warn;
@@ -29,13 +28,6 @@ use std::rc::Rc;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::fs;
-
-use crate::config_file::ConfigFile;
-use crate::config_file::TsConfig;
-use crate::deno_dir;
-use crate::import_map::ImportMap;
-use crate::logger;
-use crate::media_type::MediaType;
 
 use super::analysis;
 use super::analysis::ts_changes_to_edit;
@@ -62,6 +54,15 @@ use super::tsc::AssetDocument;
 use super::tsc::Assets;
 use super::tsc::TsServer;
 use super::urls;
+use crate::config_file::ConfigFile;
+use crate::config_file::TsConfig;
+use crate::deno_dir;
+use crate::import_map::ImportMap;
+use crate::logger;
+use crate::lsp::diagnostics::is_diagnosable;
+use crate::media_type::MediaType;
+use crate::tools::fmt::format_file;
+use crate::tools::fmt::get_typescript_config;
 
 pub const REGISTRIES_PATH: &str = "registries";
 const SOURCES_PATH: &str = "deps";
@@ -785,6 +786,11 @@ impl Inner {
     if !self.config.specifier_enabled(&specifier) {
       return Ok(None);
     }
+    let media_type = MediaType::from(&specifier);
+    if !is_diagnosable(media_type) {
+      return Ok(None);
+    }
+
     let mark = self.performance.mark("document_symbol", Some(&params));
 
     let line_index =
@@ -845,12 +851,8 @@ impl Inner {
 
     // TODO(lucacasonato): handle error properly
     let text_edits = tokio::task::spawn_blocking(move || {
-      let config = dprint::configuration::ConfigurationBuilder::new()
-        .deno()
-        .build();
-      // TODO(@kitsonk) this could be handled better in `cli/tools/fmt.rs` in the
-      // future.
-      match dprint::format_text(&file_path, &file_text, &config) {
+      let config = get_typescript_config();
+      match format_file(&file_path, &file_text, config) {
         Ok(new_text) => {
           Some(text::get_edits(&file_text, &new_text, line_index))
         }

@@ -218,6 +218,17 @@ impl<'a> From<&'a diagnostics::Position> for lsp::Position {
   }
 }
 
+/// Check if diagnostics can be generated for the provided media type.
+pub fn is_diagnosable(media_type: MediaType) -> bool {
+  matches!(
+    media_type,
+    MediaType::TypeScript
+      | MediaType::JavaScript
+      | MediaType::Tsx
+      | MediaType::Jsx
+  )
+}
+
 fn get_diagnostic_message(diagnostic: &diagnostics::Diagnostic) -> String {
   if let Some(message) = diagnostic.message_text.clone() {
     message
@@ -312,8 +323,8 @@ async fn generate_lint_diagnostics(
           .lock()
           .await
           .get_version(specifier, &DiagnosticSource::DenoLint);
-        if version != current_version {
-          let media_type = MediaType::from(specifier);
+        let media_type = MediaType::from(specifier);
+        if version != current_version && is_diagnosable(media_type) {
           if let Ok(Some(source_code)) = documents.content(specifier) {
             if let Ok(references) = analysis::get_lint_references(
               specifier,
@@ -354,10 +365,11 @@ async fn generate_ts_diagnostics(
         let version = snapshot.documents.version(s);
         let current_version =
           collection.get_version(s, &DiagnosticSource::TypeScript);
-        if version == current_version {
-          None
-        } else {
+        let media_type = MediaType::from(s);
+        if version != current_version && is_diagnosable(media_type) {
           Some(s.clone())
+        } else {
+          None
         }
       })
       .collect()
