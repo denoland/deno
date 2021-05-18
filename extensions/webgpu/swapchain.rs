@@ -109,14 +109,14 @@ pub fn op_webgpu_configure_swapchain(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GetSwapchainPreferredFormat {
+pub struct GetSwapchainPreferredFormatArgs {
   adapter_rid: u32,
   swapchain_rid: u32,
 }
 
 pub fn op_webgpu_get_swapchain_preferred_format(
   state: &mut OpState,
-  args: GetSwapchainPreferredFormat,
+  args: GetSwapchainPreferredFormatArgs,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<String, AnyError> {
   let instance = state.borrow::<super::Instance>();
