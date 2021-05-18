@@ -186,7 +186,7 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key:
-            z-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+            sOmt1ng-rAnd0M-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -198,7 +198,7 @@ jobs:
           path: |
             ./target
           key: |
-            z-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+            sOmt1ng-rAnd0M-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
 
       # Restores cache from the latest main branch's Cache
       - name: Cache build output (PR)
@@ -212,7 +212,7 @@ jobs:
           key: |
             dummy # Cache never be created for this key.
           restore-keys: |
-            z-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ hashFiles('Cargo.lock') }}-
+            sOmt1ng-rAnd0M-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ hashFiles('Cargo.lock') }}-
 
       # Skips saving cache in PR branches
       - name: Skip save cache (PR)
