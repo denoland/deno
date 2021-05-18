@@ -216,6 +216,7 @@
         });
       }
 
+      // deno-lint-ignore no-this-alias
       const O = this;
       /** @type {number} */
       let relativeStart;

@@ -4,7 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
   const { parsePermissions } = window.__bootstrap.worker;
-  const { setExitHandler, exit } = window.__bootstrap.os;
+  const { setExitHandler } = window.__bootstrap.os;
   const { Console, inspectArgs } = window.__bootstrap.console;
   const { metrics } = window.__bootstrap.metrics;
   const { assert } = window.__bootstrap.util;
