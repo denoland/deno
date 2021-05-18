@@ -4,9 +4,9 @@ window.add_result_callback(({ message, name, stack, status }) => {
   const data = new TextEncoder().encode(
     `${JSON.stringify({ name, status, message, stack })}\n`,
   );
-  const bytesWritten = Deno.stderr.writeSync(data);
-  if (bytesWritten !== data.byteLength) {
-    throw new TypeError("failed to report test result");
+  let bytesWritten = 0;
+  while (bytesWritten < data.byteLength) {
+    bytesWritten += Deno.stderr.writeSync(data.subarray(bytesWritten));
   }
 });
 
