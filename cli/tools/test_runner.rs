@@ -331,14 +331,6 @@ pub async fn run_tests(
   filter: Option<String>,
   concurrent_jobs: usize,
 ) -> Result<bool, AnyError> {
-  if test_modules.is_empty() {
-    println!("No matching test modules found");
-    if !allow_none {
-      std::process::exit(1);
-    }
-    return Ok(false);
-  }
-
   if !doc_modules.is_empty() {
     let mut test_programs = Vec::new();
 
@@ -415,6 +407,13 @@ pub async fn run_tests(
         program_state.maybe_import_map.clone(),
       )
       .await?;
+  } else if test_modules.is_empty() {
+    println!("No matching test modules found");
+    if !allow_none {
+      std::process::exit(1);
+    }
+
+    return Ok(false);
   }
 
   program_state
