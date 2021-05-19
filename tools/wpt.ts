@@ -34,6 +34,10 @@ import {
   red,
   yellow,
 } from "https://deno.land/std@0.84.0/fmt/colors.ts";
+import {
+  writeAll,
+  writeAllSync,
+} from "https://deno.land/std@0.95.0/io/util.ts";
 import { saveExpectation } from "./wpt/utils.ts";
 
 const command = Deno.args[0];
@@ -104,7 +108,7 @@ async function setup() {
           throw err;
         }
       });
-      await Deno.writeAll(
+      await writeAll(
         file,
         new TextEncoder().encode(
           "\n\n# Configured for Web Platform Tests (Deno)\n" + entries,
@@ -137,7 +141,6 @@ async function setup() {
 }
 
 interface TestToRun {
-  sourcePath: string;
   path: string;
   url: URL;
   options: ManifestTestOptions;
@@ -146,7 +149,12 @@ interface TestToRun {
 
 async function run() {
   assert(Array.isArray(rest), "filter must be array");
-  const tests = discoverTestsToRun(rest.length == 0 ? undefined : rest);
+  const expectation = getExpectation();
+  const tests = discoverTestsToRun(
+    rest.length == 0 ? undefined : rest,
+    expectation,
+  );
+  assertAllExpectationsHaveTests(expectation, tests, rest);
   console.log(`Going to run ${tests.length} test files.`);
 
   const results = await runWithTestUtil(false, async () => {
@@ -171,6 +179,50 @@ async function run() {
   }
   const code = reportFinal(results);
   Deno.exit(code);
+}
+
+// Check that all expectations in the expectations file have a test that will be
+// run.
+function assertAllExpectationsHaveTests(
+  expectation: Expectation,
+  testsToRun: TestToRun[],
+  filter?: string[],
+): void {
+  const tests = new Set(testsToRun.map((t) => t.path));
+  const missingTests: string[] = [];
+
+  function walk(parentExpectation: Expectation, parent: string) {
+    for (const key in parentExpectation) {
+      const path = `${parent}/${key}`;
+      if (
+        filter &&
+        !filter.find((filter) => path.substring(1).startsWith(filter))
+      ) {
+        continue;
+      }
+      const expectation = parentExpectation[key];
+      if (typeof expectation == "boolean" || Array.isArray(expectation)) {
+        if (!tests.has(path)) {
+          missingTests.push(path);
+        }
+      } else {
+        walk(expectation, path);
+      }
+    }
+  }
+
+  walk(expectation, "");
+
+  if (missingTests.length > 0) {
+    console.log(
+      red(
+        "Following tests are missing in manifest, but are present in expectations:",
+      ),
+    );
+    console.log("");
+    console.log(missingTests.join("\n"));
+    Deno.exit(1);
+  }
 }
 
 async function update() {
@@ -204,8 +256,8 @@ async function update() {
     { passed: string[]; failed: string[]; status: number }
   > = {};
   for (const { test, result } of results) {
-    if (!resultTests[test.sourcePath]) {
-      resultTests[test.sourcePath] = {
+    if (!resultTests[test.path]) {
+      resultTests[test.path] = {
         passed: [],
         failed: [],
         status: result.status,
@@ -213,9 +265,9 @@ async function update() {
     }
     for (const case_ of result.cases) {
       if (case_.passed) {
-        resultTests[test.sourcePath].passed.push(case_.name);
+        resultTests[test.path].passed.push(case_.name);
       } else {
-        resultTests[test.sourcePath].failed.push(case_.name);
+        resultTests[test.path].failed.push(case_.name);
       }
     }
   }
@@ -381,7 +433,7 @@ function analyzeTestResult(
 function reportVariation(result: TestResult, expectation: boolean | string[]) {
   if (result.status !== 0) {
     console.log(`test stderr:`);
-    Deno.writeAllSync(Deno.stdout, new TextEncoder().encode(result.stderr));
+    writeAllSync(Deno.stdout, new TextEncoder().encode(result.stderr));
 
     const expectFail = expectation === false;
     console.log(
@@ -467,7 +519,7 @@ function createReportTestCase(expectation: boolean | string[]) {
         break;
     }
 
-    console.log(simpleMessage);
+    writeAllSync(Deno.stdout, new TextEncoder().encode(simpleMessage + "\n"));
   };
 }
 
@@ -485,27 +537,9 @@ function discoverTestsToRun(
     prefix: string,
   ) {
     for (const key in parentFolder) {
-      const sourcePath = `${prefix}/${key}`;
       const entry = parentFolder[key];
-      const expectation = Array.isArray(parentExpectation) ||
-          typeof parentExpectation == "boolean"
-        ? parentExpectation
-        : parentExpectation[key];
-
-      if (expectation === undefined) continue;
 
       if (Array.isArray(entry)) {
-        assert(
-          Array.isArray(expectation) || typeof expectation == "boolean",
-          "test entry must not have a folder expectation",
-        );
-        if (
-          filter &&
-          !filter.find((filter) => sourcePath.substring(1).startsWith(filter))
-        ) {
-          continue;
-        }
-
         for (
           const [path, options] of entry.slice(
             1,
@@ -513,17 +547,51 @@ function discoverTestsToRun(
         ) {
           if (!path) continue;
           const url = new URL(path, "http://web-platform.test:8000");
-          if (!url.pathname.endsWith(".any.html")) continue;
+          if (
+            !url.pathname.endsWith(".any.html") &&
+            !url.pathname.endsWith(".window.html")
+          ) {
+            continue;
+          }
+          const finalPath = url.pathname + url.search;
+
+          const split = finalPath.split("/");
+          const finalKey = split[split.length - 1];
+
+          const expectation = Array.isArray(parentExpectation) ||
+              typeof parentExpectation == "boolean"
+            ? parentExpectation
+            : parentExpectation[finalKey];
+
+          if (expectation === undefined) continue;
+
+          assert(
+            Array.isArray(expectation) || typeof expectation == "boolean",
+            "test entry must not have a folder expectation",
+          );
+
+          if (
+            filter &&
+            !filter.find((filter) => finalPath.substring(1).startsWith(filter))
+          ) {
+            continue;
+          }
           testsToRun.push({
-            sourcePath,
-            path: url.pathname + url.search,
+            path: finalPath,
             url,
             options,
             expectation,
           });
         }
       } else {
-        walk(entry, expectation, sourcePath);
+        const expectation = Array.isArray(parentExpectation) ||
+            typeof parentExpectation == "boolean"
+          ? parentExpectation
+          : parentExpectation[key];
+
+        if (expectation === undefined) continue;
+
+        walk(entry, expectation, `${prefix}/${key}`);
       }
     }
   }

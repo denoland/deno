@@ -27,6 +27,8 @@ use lspower::lsp::TextDocumentSyncCapability;
 use lspower::lsp::TextDocumentSyncKind;
 use lspower::lsp::TextDocumentSyncOptions;
 use lspower::lsp::WorkDoneProgressOptions;
+use lspower::lsp::WorkspaceFoldersServerCapabilities;
+use lspower::lsp::WorkspaceServerCapabilities;
 
 use super::semantic_tokens::get_legend;
 
@@ -132,7 +134,13 @@ pub fn server_capabilities(
         },
       ),
     ),
-    workspace: None,
+    workspace: Some(WorkspaceServerCapabilities {
+      workspace_folders: Some(WorkspaceFoldersServerCapabilities {
+        supported: Some(true),
+        change_notifications: None,
+      }),
+      file_operations: None,
+    }),
     experimental: None,
     linked_editing_range_provider: None,
     moniker_provider: None,

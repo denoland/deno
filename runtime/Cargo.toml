@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.13.0"
+version = "0.15.0"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -18,34 +18,36 @@ name = "hello_runtime"
 path = "examples/hello_runtime.rs"
 
 [build-dependencies]
-deno_console = { path = "../extensions/console", version = "0.5.0" }
-deno_core = { path = "../core", version = "0.86.0" }
-deno_crypto = { path = "../extensions/crypto", version = "0.19.0" }
-deno_fetch = { path = "../extensions/fetch", version = "0.27.0" }
-deno_file = { path = "../extensions/file", version = "0.4.0" }
-deno_timers = { path = "../extensions/timers", version = "0.3.0" }
-deno_url = { path = "../extensions/url", version = "0.5.0" }
-deno_web = { path = "../extensions/web", version = "0.35.0" }
-deno_webgpu = { path = "../extensions/webgpu", version = "0.6.0" }
-deno_webidl = { path = "../extensions/webidl", version = "0.5.0" }
-deno_websocket = { path = "../extensions/websocket", version = "0.10.0" }
+deno_console = { version = "0.7.0", path = "../extensions/console" }
+deno_core = { version = "0.88.0", path = "../core" }
+deno_crypto = { version = "0.21.0", path = "../extensions/crypto" }
+deno_fetch = { version = "0.29.0", path = "../extensions/fetch" }
+deno_file = { version = "0.6.0", path = "../extensions/file" }
+deno_timers = { version = "0.5.0", path = "../extensions/timers" }
+deno_url = { version = "0.7.0", path = "../extensions/url" }
+deno_web = { version = "0.37.0", path = "../extensions/web" }
+deno_webgpu = { version = "0.8.0", path = "../extensions/webgpu" }
+deno_webidl = { version = "0.7.0", path = "../extensions/webidl" }
+deno_websocket = { version = "0.12.0", path = "../extensions/websocket" }
+deno_webstorage = { version = "0.2.0", path = "../extensions/webstorage" }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1.11"
 winapi = "0.3.9"
 
 [dependencies]
-deno_console = { path = "../extensions/console", version = "0.5.0" }
-deno_core = { path = "../core", version = "0.86.0" }
-deno_crypto = { path = "../extensions/crypto", version = "0.19.0" }
-deno_fetch = { path = "../extensions/fetch", version = "0.27.0" }
-deno_file = { path = "../extensions/file", version = "0.4.0" }
-deno_timers = { path = "../extensions/timers", version = "0.3.0" }
-deno_url = { path = "../extensions/url", version = "0.5.0" }
-deno_web = { path = "../extensions/web", version = "0.35.0" }
-deno_webgpu = { path = "../extensions/webgpu", version = "0.6.0" }
-deno_webidl = { path = "../extensions/webidl", version = "0.5.0" }
-deno_websocket = { path = "../extensions/websocket", version = "0.10.0" }
+deno_console = { version = "0.7.0", path = "../extensions/console" }
+deno_core = { version = "0.88.0", path = "../core" }
+deno_crypto = { version = "0.21.0", path = "../extensions/crypto" }
+deno_fetch = { version = "0.29.0", path = "../extensions/fetch" }
+deno_file = { version = "0.6.0", path = "../extensions/file" }
+deno_timers = { version = "0.5.0", path = "../extensions/timers" }
+deno_url = { version = "0.7.0", path = "../extensions/url" }
+deno_web = { version = "0.37.0", path = "../extensions/web" }
+deno_webgpu = { version = "0.8.0", path = "../extensions/webgpu" }
+deno_webidl = { version = "0.7.0", path = "../extensions/webidl" }
+deno_websocket = { version = "0.12.0", path = "../extensions/websocket" }
+deno_webstorage = { version = "0.2.0", path = "../extensions/webstorage" }
 
 atty = "0.2.14"
 bytes = "1"
@@ -62,17 +64,17 @@ notify = "5.0.0-pre.7"
 percent-encoding = "2.1.0"
 regex = "1.4.3"
 ring = "0.16.20"
+rustls = "0.19.0"
 serde = { version = "1.0.125", features = ["derive"] }
 sys-info = "0.9.0"
 termcolor = "1.1.2"
-tokio = { version = "1.4.0", features = ["full"] }
+tokio = { version = "1.6.0", features = ["full"] }
 tokio-util = { version = "0.6", features = ["io"] }
-tokio-rustls = "0.22.0"
 uuid = { version = "0.8.2", features = ["v4"] }
 webpki = "0.21.4"
 webpki-roots = "0.21.1"
-trust-dns-proto = "0.20.1"
-trust-dns-resolver = { version = "0.20.1", features = ["tokio-runtime", "serde-config"] }
+trust-dns-proto = "0.20.3"
+trust-dns-resolver = { version = "0.20.3", features = ["tokio-runtime", "serde-config"] }
 
 [target.'cfg(windows)'.dependencies]
 fwdansi = "1.1.0"

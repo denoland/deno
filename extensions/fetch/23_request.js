@@ -16,7 +16,7 @@
   const { HTTP_TOKEN_CODE_POINT_RE, byteUpperCase } = window.__bootstrap.infra;
   const { URL } = window.__bootstrap.url;
   const { guardFromHeaders } = window.__bootstrap.headers;
-  const { InnerBody, mixinBody, extractBody } = window.__bootstrap.fetchBody;
+  const { mixinBody, extractBody } = window.__bootstrap.fetchBody;
   const { getLocationHref } = window.__bootstrap.location;
   const mimesniff = window.__bootstrap.mimesniff;
   const {
@@ -38,7 +38,7 @@
    * @property {() => string} url
    * @property {() => string} currentUrl
    * @property {[string, string][]} headerList
-   * @property {null | InnerBody} body
+   * @property {null | typeof __window.bootstrap.fetchBody.InnerBody} body
    * @property {"follow" | "error" | "manual"} redirectMode
    * @property {number} redirectCount
    * @property {string[]} urlList
@@ -61,7 +61,7 @@
    * @param {string} method
    * @param {string} url
    * @param {[string, string][]} headerList
-   * @param {InnerBody} body
+   * @param {typeof __window.bootstrap.fetchBody.InnerBody} body
    * @returns
    */
   function newInnerRequest(method, url, headerList = [], body = null) {

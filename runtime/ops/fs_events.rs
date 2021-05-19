@@ -10,7 +10,6 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 
 use deno_core::op_async;
 use deno_core::op_sync;
@@ -97,7 +96,7 @@ pub struct OpenArgs {
 fn op_fs_events_open(
   state: &mut OpState,
   args: OpenArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<ResourceId, AnyError> {
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, AnyError>>(16);
   let sender = std::sync::Mutex::new(sender);
@@ -133,7 +132,7 @@ fn op_fs_events_open(
 async fn op_fs_events_poll(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<Option<FsEvent>, AnyError> {
   let resource = state
     .borrow()

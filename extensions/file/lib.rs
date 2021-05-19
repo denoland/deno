@@ -76,7 +76,7 @@ pub fn op_file_create_object_url(
 pub fn op_file_revoke_object_url(
   state: &mut deno_core::OpState,
   url: String,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<(), AnyError> {
   let url = Url::parse(&url)?;
   let blob_store = state.borrow::<BlobUrlStore>();

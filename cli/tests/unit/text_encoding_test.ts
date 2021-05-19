@@ -157,6 +157,62 @@ unitTest(function textEncodeInto3(): void {
   ]);
 });
 
+unitTest(function loneSurrogateEncodeInto(): void {
+  const fixture = "lone𝄞\ud888surrogate";
+  const encoder = new TextEncoder();
+  const bytes = new Uint8Array(20);
+  const result = encoder.encodeInto(fixture, bytes);
+  assertEquals(result.read, 16);
+  assertEquals(result.written, 20);
+  // deno-fmt-ignore
+  assertEquals(Array.from(bytes), [
+    0x6c, 0x6f, 0x6e, 0x65,
+    0xf0, 0x9d, 0x84, 0x9e,
+    0xef, 0xbf, 0xbd, 0x73,
+    0x75, 0x72, 0x72, 0x6f,
+    0x67, 0x61, 0x74, 0x65
+  ]);
+});
+
+unitTest(function loneSurrogateEncodeInto2(): void {
+  const fixture = "\ud800";
+  const encoder = new TextEncoder();
+  const bytes = new Uint8Array(3);
+  const result = encoder.encodeInto(fixture, bytes);
+  assertEquals(result.read, 1);
+  assertEquals(result.written, 3);
+  // deno-fmt-ignore
+  assertEquals(Array.from(bytes), [
+    0xef, 0xbf, 0xbd
+  ]);
+});
+
+unitTest(function loneSurrogateEncodeInto3(): void {
+  const fixture = "\udc00";
+  const encoder = new TextEncoder();
+  const bytes = new Uint8Array(3);
+  const result = encoder.encodeInto(fixture, bytes);
+  assertEquals(result.read, 1);
+  assertEquals(result.written, 3);
+  // deno-fmt-ignore
+  assertEquals(Array.from(bytes), [
+    0xef, 0xbf, 0xbd
+  ]);
+});
+
+unitTest(function swappedSurrogatePairEncodeInto4(): void {
+  const fixture = "\udc00\ud800";
+  const encoder = new TextEncoder();
+  const bytes = new Uint8Array(8);
+  const result = encoder.encodeInto(fixture, bytes);
+  assertEquals(result.read, 2);
+  assertEquals(result.written, 6);
+  // deno-fmt-ignore
+  assertEquals(Array.from(bytes), [
+    0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd, 0x00, 0x00
+  ]);
+});
+
 unitTest(function textDecoderSharedUint8Array(): void {
   const ab = new SharedArrayBuffer(6);
   const dataView = new DataView(ab);

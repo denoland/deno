@@ -14,11 +14,11 @@ use crate::module_graph::GraphBuilder;
 use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
 use crate::text_encoding;
-use deno_runtime::permissions::Permissions;
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
+use deno_runtime::permissions::Permissions;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -34,6 +34,7 @@ pub async fn cache(
   let program_state = Arc::new(ProgramState::build(Default::default()).await?);
   let handler = Arc::new(Mutex::new(FetchHandler::new(
     &program_state,
+    Permissions::allow_all(),
     Permissions::allow_all(),
   )?));
   let mut builder = GraphBuilder::new(handler, maybe_import_map.clone(), None);
@@ -104,6 +105,7 @@ struct Metadata {
   length_utf16: usize,
   line_index: LineIndex,
   maybe_types: Option<analysis::ResolvedDependency>,
+  maybe_warning: Option<String>,
   media_type: MediaType,
   source: String,
   version: String,
@@ -115,6 +117,7 @@ impl Metadata {
     source: &str,
     version: &str,
     media_type: &MediaType,
+    maybe_warning: Option<String>,
     maybe_import_map: &Option<ImportMap>,
   ) -> Self {
     let (dependencies, maybe_types) = if let Ok(parsed_module) =
@@ -137,6 +140,7 @@ impl Metadata {
       length_utf16: source.encode_utf16().count(),
       line_index,
       maybe_types,
+      maybe_warning,
       media_type: media_type.to_owned(),
       source: source.to_string(),
       version: version.to_string(),
@@ -177,6 +181,13 @@ impl Sources {
     specifier: &ModuleSpecifier,
   ) -> Option<analysis::ResolvedDependency> {
     self.0.lock().unwrap().get_maybe_types(specifier)
+  }
+
+  pub fn get_maybe_warning(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<String> {
+    self.0.lock().unwrap().get_maybe_warning(specifier)
   }
 
   pub fn get_media_type(
@@ -270,6 +281,14 @@ impl Inner {
     metadata.maybe_types
   }
 
+  fn get_maybe_warning(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<String> {
+    let metadata = self.get_metadata(&specifier)?;
+    metadata.maybe_warning
+  }
+
   fn get_media_type(
     &mut self,
     specifier: &ModuleSpecifier,
@@ -291,11 +310,11 @@ impl Inner {
     let path = self.get_path(specifier)?;
     let bytes = fs::read(path).ok()?;
     let scheme = specifier.scheme();
-    let (source, media_type, maybe_types) = if scheme == "file" {
+    let (source, media_type, maybe_types, maybe_warning) = if scheme == "file" {
       let maybe_charset =
         Some(text_encoding::detect_charset(&bytes).to_string());
       let source = get_source_from_bytes(bytes, maybe_charset).ok()?;
-      (source, MediaType::from(specifier), None)
+      (source, MediaType::from(specifier), None, None)
     } else {
       let cache_filename = self.http_cache.get_cache_filename(specifier)?;
       let headers = get_remote_headers(&cache_filename)?;
@@ -306,13 +325,15 @@ impl Inner {
       let maybe_types = headers.get("x-typescript-types").map(|s| {
         analysis::resolve_import(s, &specifier, &self.maybe_import_map)
       });
-      (source, media_type, maybe_types)
+      let maybe_warning = headers.get("x-deno-warning").cloned();
+      (source, media_type, maybe_types, maybe_warning)
     };
     let mut metadata = Metadata::new(
       specifier,
       &source,
       &version,
       &media_type,
+      maybe_warning,
       &self.maybe_import_map,
     );
     if maybe_types.is_some() {
@@ -544,6 +565,23 @@ mod tests {
     let actual =
       sources.resolve_import("https://deno.land/x/lib.js", &specifier_dep);
     assert_eq!(actual, Some((specifier_type, MediaType::Dts)))
+  }
+
+  #[test]
+  fn test_warning_header() {
+    let (sources, location) = setup();
+    let cache = HttpCache::new(&location);
+    let specifier = resolve_url("https://deno.land/x/lib.js").unwrap();
+    let mut headers = HashMap::new();
+    headers.insert(
+      "x-deno-warning".to_string(),
+      "this is a warning".to_string(),
+    );
+    cache
+      .set(&specifier, headers, b"export const a = 1;")
+      .unwrap();
+    let actual = sources.get_maybe_warning(&specifier);
+    assert_eq!(actual, Some("this is a warning".to_string()));
   }
 
   #[test]
