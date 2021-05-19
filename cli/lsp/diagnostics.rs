@@ -402,7 +402,7 @@ fn diagnose_dependency(
   maybe_dependency: &Option<ResolvedDependency>,
   maybe_range: &Option<lsp::Range>,
 ) {
-  if let (Some(dep), Some(range)) = (maybe_dependency, maybe_range.clone()) {
+  if let (Some(dep), Some(range)) = (maybe_dependency, *maybe_range) {
     match dep {
       analysis::ResolvedDependency::Err(err) => {
         diagnostics.push(lsp::Diagnostic {
