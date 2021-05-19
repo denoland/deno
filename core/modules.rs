@@ -357,6 +357,12 @@ impl RecursiveModuleLoad {
     }
   }
 
+  /// Return root `ModuleId`; this function panics
+  /// if load is not finished yet.
+  pub fn expect_finished(&self) -> ModuleId {
+    self.root_module_id.expect("Root module id empty")
+  }
+
   pub fn add_import(
     &mut self,
     specifier: ModuleSpecifier,

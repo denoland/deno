@@ -1069,7 +1069,7 @@ impl JsRuntime {
         } else {
           // The top-level module from a dynamic import has been instantiated.
           // Load is done.
-          let module_id = load.root_module_id.unwrap();
+          let module_id = load.expect_finished();
           let result = self.instantiate_module(module_id);
           if let Err(err) = result {
             self.dynamic_import_reject(dyn_import_id, err);
@@ -1220,7 +1220,7 @@ impl JsRuntime {
         .register_during_load(scope, info, &mut load)?;
     }
 
-    let root_id = load.root_module_id.expect("Root module id empty");
+    let root_id = load.expect_finished();
     self.instantiate_module(root_id).map(|_| root_id)
   }
 
