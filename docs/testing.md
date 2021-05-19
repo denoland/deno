@@ -270,6 +270,6 @@ By default, `deno coverage` will exclude any files matching the regular
 expression `test\.(js|mjs|ts|jsx|tsx)` and only consider including files
 matching the regular expression `^file:`.
 
-These filters can be overriden using the `--exclude` and `--include` flags. A
+These filters can be overridden using the `--exclude` and `--include` flags. A
 source file's url must match both regular expressions for it to be a part of the
 report.
