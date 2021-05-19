@@ -11,7 +11,6 @@ use crate::module_graph;
 use crate::program_state::ProgramState;
 use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
-use crate::tools::installer::is_remote_url;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
@@ -224,6 +223,11 @@ pub(crate) fn is_supported(p: &Path) -> bool {
   } else {
     false
   }
+}
+
+pub fn is_remote_url(module_url: &str) -> bool {
+  let lower = module_url.to_lowercase();
+  lower.starts_with("http://") || lower.starts_with("https://")
 }
 
 pub fn collect_test_module_specifiers<P>(
@@ -641,5 +645,15 @@ mod tests {
     .map(|f| Url::parse(&f).unwrap())
     .collect();
     assert_eq!(matched_urls, expected);
+  }
+
+  #[test]
+  fn test_is_remote_url() {
+    assert!(is_remote_url("https://deno.land/std/http/file_server.ts"));
+    assert!(is_remote_url("http://deno.land/std/http/file_server.ts"));
+    assert!(is_remote_url("HTTP://deno.land/std/http/file_server.ts"));
+    assert!(is_remote_url("HTTp://deno.land/std/http/file_server.ts"));
+    assert!(!is_remote_url("file:///dev/deno_std/http/file_server.ts"));
+    assert!(!is_remote_url("./dev/deno_std/http/file_server.ts"));
   }
 }
