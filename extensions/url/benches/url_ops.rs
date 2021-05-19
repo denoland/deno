@@ -1,11 +1,11 @@
-use bench_util::bench_js_sync;
-use bench_util::bench_or_profile;
-use bench_util::bencher::{benchmark_group, Bencher};
+use deno_bench_util::bench_js_sync;
+use deno_bench_util::bench_or_profile;
+use deno_bench_util::bencher::{benchmark_group, Bencher};
 
 use deno_core::JsRuntime;
 
 fn setup(runtime: &mut JsRuntime) {
-  // TODO(@AaronO): support caller provided extensions in bench_util
+  // TODO(@AaronO): support caller provided extensions in deno_bench_util
   let mut ext = deno_url::init();
 
   for (name, op_fn) in ext.init_ops().unwrap() {

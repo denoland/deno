@@ -1,6 +1,6 @@
-use bench_util::bench_or_profile;
-use bench_util::bencher::{benchmark_group, Bencher};
-use bench_util::{bench_js_async, bench_js_sync};
+use deno_bench_util::bench_or_profile;
+use deno_bench_util::bencher::{benchmark_group, Bencher};
+use deno_bench_util::{bench_js_async, bench_js_sync};
 
 use deno_core::error::AnyError;
 use deno_core::op_async;
