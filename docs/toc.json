@@ -23,6 +23,7 @@
       "web_platform_apis": "Web Platform APIs",
       "http_server_apis": "HTTP Server APIs",
       "location_api": "Location API",
+      "web_storage_api": "Web Storage API",
       "workers": "Workers"
     }
   },

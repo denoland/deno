@@ -5,7 +5,9 @@ use deno_core::serde_json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_websocket::tokio_tungstenite;
-use rustls::Session;
+use deno_runtime::ops::tls::rustls;
+use deno_runtime::ops::tls::webpki;
+use deno_runtime::ops::tls::TlsStream;
 use std::fs;
 use std::io::BufReader;
 use std::io::Cursor;
@@ -14,8 +16,7 @@ use std::process::Command;
 use std::sync::Arc;
 use tempfile::TempDir;
 use test_util as util;
-use tokio_rustls::rustls;
-use tokio_rustls::webpki;
+use tokio::task::LocalSet;
 
 #[test]
 fn js_unit_tests_lint() {
@@ -1012,7 +1013,8 @@ mod integration {
       temp_directory.close().unwrap();
     }
 
-    #[cfg(unix)]
+    // TODO(bartlomieju): flaky (https://github.com/denoland/deno/issues/10552)
+    #[ignore]
     #[test]
     fn test_watch() {
       macro_rules! assert_contains {
@@ -3094,6 +3096,41 @@ console.log("finish");
     exit_code: 1,
   });
 
+  itest!(dynamic_import_permissions_remote_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_remote_remote.ts",
+    output: "dynamic_import/permissions_remote_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(dynamic_import_permissions_data_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_data_remote.ts",
+    output: "dynamic_import/permissions_data_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(dynamic_import_permissions_blob_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_blob_remote.ts",
+    output: "dynamic_import/permissions_blob_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(dynamic_import_permissions_data_local {
+    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_data_local.ts",
+    output: "dynamic_import/permissions_data_local.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(dynamic_import_permissions_blob_local {
+    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_blob_local.ts",
+    output: "dynamic_import/permissions_blob_local.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
   itest!(js_import_detect {
     args: "run --quiet --reload js_import_detect.ts",
     output: "js_import_detect.ts.out",
@@ -3461,6 +3498,48 @@ console.log("finish");
     args: "run --reload error_worker_permissions_remote.ts",
     http_server: true,
     output: "error_worker_permissions_remote.ts.out",
+    exit_code: 1,
+  });
+
+  itest!(worker_permissions_remote_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 workers/permissions_remote_remote.ts",
+    output: "workers/permissions_remote_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(worker_permissions_dynamic_remote {
+    args: "run --quiet --reload --allow-net --unstable workers/permissions_dynamic_remote.ts",
+    output: "workers/permissions_dynamic_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(worker_permissions_data_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 workers/permissions_data_remote.ts",
+    output: "workers/permissions_data_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(worker_permissions_blob_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 workers/permissions_blob_remote.ts",
+    output: "workers/permissions_blob_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(worker_permissions_data_local {
+    args: "run --quiet --reload --allow-net=localhost:4545 workers/permissions_data_local.ts",
+    output: "workers/permissions_data_local.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(worker_permissions_blob_local {
+    args: "run --quiet --reload --allow-net=localhost:4545 workers/permissions_blob_local.ts",
+    output: "workers/permissions_blob_local.ts.out",
+    http_server: true,
     exit_code: 1,
   });
 
@@ -3944,7 +4023,7 @@ console.log("finish");
   });
 
   itest!(import_blob_url_imports {
-    args: "run --quiet --reload import_blob_url_imports.ts",
+    args: "run --quiet --reload --allow-net=localhost:4545 import_blob_url_imports.ts",
     output: "import_blob_url_imports.ts.out",
     http_server: true,
   });
@@ -5602,6 +5681,7 @@ console.log("finish");
     assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
   }
 
+  #[ignore]
   #[test]
   #[cfg(windows)]
   // https://github.com/denoland/deno/issues/9667
@@ -6155,79 +6235,103 @@ console.log("finish");
 
 #[tokio::test]
 async fn listen_tls_alpn() {
-  let child = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("run")
-    .arg("--unstable")
-    .arg("--quiet")
-    .arg("--allow-net")
-    .arg("--allow-read")
-    .arg("./cli/tests/listen_tls_alpn.ts")
-    .arg("4504")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap();
-  let mut stdout = child.stdout.unwrap();
-  let mut buffer = [0; 5];
-  let read = stdout.read(&mut buffer).unwrap();
-  assert_eq!(read, 5);
-  let msg = std::str::from_utf8(&buffer).unwrap();
-  assert_eq!(msg, "READY");
+  // TLS streams require the presence of an ambient local task set to gracefully
+  // close dropped connections in the background.
+  LocalSet::new()
+    .run_until(async {
+      let mut child = util::deno_cmd()
+        .current_dir(util::root_path())
+        .arg("run")
+        .arg("--unstable")
+        .arg("--quiet")
+        .arg("--allow-net")
+        .arg("--allow-read")
+        .arg("./cli/tests/listen_tls_alpn.ts")
+        .arg("4504")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+      let stdout = child.stdout.as_mut().unwrap();
+      let mut buffer = [0; 5];
+      let read = stdout.read(&mut buffer).unwrap();
+      assert_eq!(read, 5);
+      let msg = std::str::from_utf8(&buffer).unwrap();
+      assert_eq!(msg, "READY");
 
-  let mut cfg = rustls::ClientConfig::new();
-  let reader =
-    &mut BufReader::new(Cursor::new(include_bytes!("./tls/RootCA.crt")));
-  cfg.root_store.add_pem_file(reader).unwrap();
-  cfg.alpn_protocols.push("foobar".as_bytes().to_vec());
+      let mut cfg = rustls::ClientConfig::new();
+      let reader =
+        &mut BufReader::new(Cursor::new(include_bytes!("./tls/RootCA.crt")));
+      cfg.root_store.add_pem_file(reader).unwrap();
+      cfg.alpn_protocols.push("foobar".as_bytes().to_vec());
+      let cfg = Arc::new(cfg);
 
-  let tls_connector = tokio_rustls::TlsConnector::from(Arc::new(cfg));
-  let hostname = webpki::DNSNameRef::try_from_ascii_str("localhost").unwrap();
-  let stream = tokio::net::TcpStream::connect("localhost:4504")
-    .await
-    .unwrap();
+      let hostname =
+        webpki::DNSNameRef::try_from_ascii_str("localhost").unwrap();
 
-  let tls_stream = tls_connector.connect(hostname, stream).await.unwrap();
-  let (_, session) = tls_stream.get_ref();
+      let tcp_stream = tokio::net::TcpStream::connect("localhost:4504")
+        .await
+        .unwrap();
+      let mut tls_stream =
+        TlsStream::new_client_side(tcp_stream, &cfg, hostname);
+      tls_stream.handshake().await.unwrap();
+      let (_, session) = tls_stream.get_ref();
 
-  let alpn = session.get_alpn_protocol().unwrap();
-  assert_eq!(std::str::from_utf8(alpn).unwrap(), "foobar");
+      let alpn = session.get_alpn_protocol().unwrap();
+      assert_eq!(std::str::from_utf8(alpn).unwrap(), "foobar");
+
+      child.kill().unwrap();
+      child.wait().unwrap();
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn listen_tls_alpn_fail() {
-  let child = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("run")
-    .arg("--unstable")
-    .arg("--quiet")
-    .arg("--allow-net")
-    .arg("--allow-read")
-    .arg("./cli/tests/listen_tls_alpn.ts")
-    .arg("4505")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap();
-  let mut stdout = child.stdout.unwrap();
-  let mut buffer = [0; 5];
-  let read = stdout.read(&mut buffer).unwrap();
-  assert_eq!(read, 5);
-  let msg = std::str::from_utf8(&buffer).unwrap();
-  assert_eq!(msg, "READY");
+  // TLS streams require the presence of an ambient local task set to gracefully
+  // close dropped connections in the background.
+  LocalSet::new()
+    .run_until(async {
+      let mut child = util::deno_cmd()
+        .current_dir(util::root_path())
+        .arg("run")
+        .arg("--unstable")
+        .arg("--quiet")
+        .arg("--allow-net")
+        .arg("--allow-read")
+        .arg("./cli/tests/listen_tls_alpn.ts")
+        .arg("4505")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+      let stdout = child.stdout.as_mut().unwrap();
+      let mut buffer = [0; 5];
+      let read = stdout.read(&mut buffer).unwrap();
+      assert_eq!(read, 5);
+      let msg = std::str::from_utf8(&buffer).unwrap();
+      assert_eq!(msg, "READY");
 
-  let mut cfg = rustls::ClientConfig::new();
-  let reader =
-    &mut BufReader::new(Cursor::new(include_bytes!("./tls/RootCA.crt")));
-  cfg.root_store.add_pem_file(reader).unwrap();
-  cfg.alpn_protocols.push("boofar".as_bytes().to_vec());
+      let mut cfg = rustls::ClientConfig::new();
+      let reader =
+        &mut BufReader::new(Cursor::new(include_bytes!("./tls/RootCA.crt")));
+      cfg.root_store.add_pem_file(reader).unwrap();
+      cfg.alpn_protocols.push("boofar".as_bytes().to_vec());
+      let cfg = Arc::new(cfg);
 
-  let tls_connector = tokio_rustls::TlsConnector::from(Arc::new(cfg));
-  let hostname = webpki::DNSNameRef::try_from_ascii_str("localhost").unwrap();
-  let stream = tokio::net::TcpStream::connect("localhost:4505")
-    .await
-    .unwrap();
+      let hostname =
+        webpki::DNSNameRef::try_from_ascii_str("localhost").unwrap();
 
-  let tls_stream = tls_connector.connect(hostname, stream).await.unwrap();
-  let (_, session) = tls_stream.get_ref();
+      let tcp_stream = tokio::net::TcpStream::connect("localhost:4505")
+        .await
+        .unwrap();
+      let mut tls_stream =
+        TlsStream::new_client_side(tcp_stream, &cfg, hostname);
+      tls_stream.handshake().await.unwrap();
+      let (_, session) = tls_stream.get_ref();
 
-  assert!(session.get_alpn_protocol().is_none());
+      assert!(session.get_alpn_protocol().is_none());
+
+      child.kill().unwrap();
+      child.wait().unwrap();
+    })
+    .await;
 }
