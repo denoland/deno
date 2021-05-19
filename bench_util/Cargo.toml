@@ -8,7 +8,7 @@ description = "Bench and profiling utilities for deno crates"
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/denoland/deno"
-publish = false
+publish = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
