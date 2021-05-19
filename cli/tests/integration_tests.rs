@@ -3256,6 +3256,12 @@ console.log("finish");
     output: "bundle_jsx.out",
   });
 
+  itest!(bundle_errors_on_two_source_map_options {
+    args: "bundle jsx_import_from_ts.ts --config bundle/sourcemap_tsconfig.json",
+    exit_code: 1,
+    output_str: Some("[WILDCARD]\nerror: TS5053 [ERROR]: Option 'sourceMap' cannot be specified with option 'inlineSourceMap'.\n"),
+  });
+
   itest!(fmt_check_tests_dir {
     args: "fmt --check ./ --ignore=.test_coverage",
     output: "fmt/expected_fmt_check_tests_dir.out",
