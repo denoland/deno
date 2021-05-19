@@ -139,10 +139,7 @@ declare namespace Deno {
    * // The Deno.core namespace is needed to interact with plugins, but this is
    * // internal so we use ts-ignore to skip type checking these calls.
    * // @ts-ignore
-   * const {
-   *   op_test_sync,
-   *   op_test_async,
-   * } = Deno.core.ops();
+   * const { op_test_sync, op_test_async } = Deno.core.ops();
    *
    * assert(op_test_sync);
    * assert(op_test_async);
