@@ -1236,12 +1236,12 @@ impl Graph {
       cm.build_source_map_from(&mut src_map_buf, None)
         .to_writer(&mut buf)?;
 
-      if emit_options.inline_source_map {
+      if emit_options.source_map {
+        map = Some(String::from_utf8(buf)?);
+      } else if emit_options.inline_source_map {
         src.push_str("//# sourceMappingURL=data:application/json;base64,");
         let encoded_map = base64::encode(buf);
         src.push_str(&encoded_map);
-      } else if emit_options.source_map {
-        map = Some(String::from_utf8(buf)?);
       }
     }
 
