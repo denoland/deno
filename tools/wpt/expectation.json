@@ -1145,7 +1145,19 @@
         "close.any.html": [
           "close during handshake should work"
         ],
-        "constructor.any.html": true
+        "constructor.any.html": true,
+        "abort.any.html?wpt_flags=h2": false,
+        "abort.any.html?wss": false,
+        "backpressure-receive.any.html?wpt_flags=h2": false,
+        "backpressure-receive.any.html?wss": true,
+        "backpressure-send.any.html?wpt_flags=h2": false,
+        "backpressure-send.any.html?wss": true,
+        "close.any.html?wpt_flags=h2": false,
+        "close.any.html?wss": [
+          "close during handshake should work"
+        ],
+        "constructor.any.html?wpt_flags=h2": false,
+        "constructor.any.html?wss": true
       }
     }
   }
