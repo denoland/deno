@@ -62,6 +62,11 @@ fn get_webstorage(
       })?;
       std::fs::create_dir_all(&path.0)?;
       let conn = Connection::open(path.0.join("local_storage"))?;
+      conn.execute(
+        "CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)",
+        params![],
+      )?;
+
       state.put(LocalStorage(conn));
     }
 
@@ -69,16 +74,16 @@ fn get_webstorage(
   } else {
     if state.try_borrow::<SessionStorage>().is_none() {
       let conn = Connection::open_in_memory()?;
+      conn.execute(
+        "CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)",
+        params![],
+      )?;
+
       state.put(SessionStorage(conn));
     }
 
     &state.borrow::<SessionStorage>().0
   };
-
-  conn.execute(
-    "CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)",
-    params![],
-  )?;
 
   Ok(conn)
 }
