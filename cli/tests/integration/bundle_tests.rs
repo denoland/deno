@@ -382,13 +382,20 @@ itest!(lock_check_err_with_bundle {
 });
 
 itest!(bundle {
-  args: "bundle subdir/mod1.ts",
+  args:
+    "bundle subdir/mod1.ts --config bundle/disable_sourcemap_tsconfig.json",
   output: "bundle.test.out",
 });
 
 itest!(bundle_jsx {
-  args: "bundle jsx_import_from_ts.ts",
+  args: "bundle jsx_import_from_ts.ts --config bundle/disable_sourcemap_tsconfig.json",
   output: "bundle_jsx.out",
+});
+
+itest!(bundle_errors_on_two_source_map_options {
+  args: "bundle jsx_import_from_ts.ts --config bundle/sourcemap_tsconfig.json",
+  exit_code: 1,
+  output_str: Some("[WILDCARD]\nerror: TS5053 [ERROR]: Option 'sourceMap' cannot be specified with option 'inlineSourceMap'.\n"),
 });
 
 itest!(error_027_bundle_with_bare_import {
