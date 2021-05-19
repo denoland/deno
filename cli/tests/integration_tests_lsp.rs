@@ -1362,17 +1362,24 @@ fn lsp_code_actions() {
 #[test]
 fn lsp_code_actions_deno_cache() {
   let mut client = init("initialize_params.json");
-  did_open(
-    &mut client,
-    json!({
+  client
+    .write_notification("textDocument/didOpen", json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
         "text": "import * as a from \"https://deno.land/x/a/mod.ts\";\n\nconsole.log(a);\n"
       }
-    }),
-  );
+    }))
+    .unwrap();
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, params) = client.read_notification().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  assert_eq!(params, Some(load_fixture("diagnostics_deno_deps.json")));
+
   let (maybe_res, maybe_err) = client
     .write_request(
       "textDocument/codeAction",
