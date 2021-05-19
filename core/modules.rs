@@ -709,12 +709,17 @@ impl ModuleMap {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::serialize_op_result;
   use crate::JsRuntime;
+  use crate::Op;
+  use crate::OpPayload;
   use crate::RuntimeOptions;
   use futures::future::FutureExt;
   use std::error::Error;
   use std::fmt;
   use std::future::Future;
+  use std::io;
+  use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Arc;
   use std::sync::Mutex;
 
@@ -949,6 +954,319 @@ mod tests {
     import "/circular2.js";
     Deno.core.print("circular3");
   "#;
+
+  #[test]
+  fn test_mods() {
+    #[derive(Default)]
+    struct ModsLoader {
+      pub count: Arc<AtomicUsize>,
+    }
+
+    impl ModuleLoader for ModsLoader {
+      fn resolve(
+        &self,
+        _op_state: Rc<RefCell<OpState>>,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+      ) -> Result<ModuleSpecifier, AnyError> {
+        self.count.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(specifier, "./b.js");
+        assert_eq!(referrer, "file:///a.js");
+        let s = crate::resolve_import(specifier, referrer).unwrap();
+        Ok(s)
+      }
+
+      fn load(
+        &self,
+        _op_state: Rc<RefCell<OpState>>,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
+        unreachable!()
+      }
+    }
+
+    let loader = Rc::new(ModsLoader::default());
+
+    let resolve_count = loader.count.clone();
+    let dispatch_count = Arc::new(AtomicUsize::new(0));
+    let dispatch_count_ = dispatch_count.clone();
+
+    let dispatcher = move |state, payload: OpPayload| -> Op {
+      dispatch_count_.fetch_add(1, Ordering::Relaxed);
+      let (control, _): (u8, ()) = payload.deserialize().unwrap();
+      assert_eq!(control, 42);
+      let resp = (0, serialize_op_result(Ok(43), state));
+      Op::Async(Box::pin(futures::future::ready(resp)))
+    };
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+    runtime.register_op("op_test", dispatcher);
+    runtime.sync_ops_cache();
+
+    runtime
+      .execute(
+        "setup.js",
+        r#"
+        function assert(cond) {
+          if (!cond) {
+            throw Error("assert");
+          }
+        }
+        "#,
+      )
+      .unwrap();
+
+    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
+
+    let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+
+    let (mod_a, mod_b) = {
+      let scope = &mut runtime.handle_scope();
+      let mut module_map = module_map_rc.borrow_mut();
+      let specifier_a = "file:///a.js".to_string();
+      let mod_a = module_map
+        .new_module(
+          scope,
+          true,
+          &specifier_a,
+          r#"
+          import { b } from './b.js'
+          if (b() != 'b') throw Error();
+          let control = 42;
+          Deno.core.opAsync("op_test", control);
+        "#,
+        )
+        .unwrap();
+
+      assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
+      let imports = module_map.get_children(mod_a);
+      assert_eq!(
+        imports,
+        Some(&vec![crate::resolve_url("file:///b.js").unwrap()])
+      );
+
+      let mod_b = module_map
+        .new_module(
+          scope,
+          false,
+          "file:///b.js",
+          "export function b() { return 'b' }",
+        )
+        .unwrap();
+      let imports = module_map.get_children(mod_b).unwrap();
+      assert_eq!(imports.len(), 0);
+      (mod_a, mod_b)
+    };
+
+    runtime.instantiate_module(mod_b).unwrap();
+    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
+    assert_eq!(resolve_count.load(Ordering::SeqCst), 1);
+
+    runtime.instantiate_module(mod_a).unwrap();
+    assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
+
+    runtime.mod_evaluate(mod_a);
+    assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
+  }
+
+  #[test]
+  fn dyn_import_err() {
+    #[derive(Clone, Default)]
+    struct DynImportErrLoader {
+      pub count: Arc<AtomicUsize>,
+    }
+
+    impl ModuleLoader for DynImportErrLoader {
+      fn resolve(
+        &self,
+        _op_state: Rc<RefCell<OpState>>,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+      ) -> Result<ModuleSpecifier, AnyError> {
+        self.count.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(specifier, "/foo.js");
+        assert_eq!(referrer, "file:///dyn_import2.js");
+        let s = crate::resolve_import(specifier, referrer).unwrap();
+        Ok(s)
+      }
+
+      fn load(
+        &self,
+        _op_state: Rc<RefCell<OpState>>,
+        _module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
+        async { Err(io::Error::from(io::ErrorKind::NotFound).into()) }.boxed()
+      }
+    }
+
+    // Test an erroneous dynamic import where the specified module isn't found.
+    run_in_task(|cx| {
+      let loader = Rc::new(DynImportErrLoader::default());
+      let count = loader.count.clone();
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        module_loader: Some(loader),
+        ..Default::default()
+      });
+
+      runtime
+        .execute(
+          "file:///dyn_import2.js",
+          r#"
+        (async () => {
+          await import("/foo.js");
+        })();
+        "#,
+        )
+        .unwrap();
+
+      assert_eq!(count.load(Ordering::Relaxed), 0);
+      // We should get an error here.
+      let result = runtime.poll_event_loop(cx);
+      if let Poll::Ready(Ok(_)) = result {
+        unreachable!();
+      }
+      assert_eq!(count.load(Ordering::Relaxed), 2);
+    })
+  }
+
+  #[derive(Clone, Default)]
+  struct DynImportOkLoader {
+    pub prepare_load_count: Arc<AtomicUsize>,
+    pub resolve_count: Arc<AtomicUsize>,
+    pub load_count: Arc<AtomicUsize>,
+  }
+
+  impl ModuleLoader for DynImportOkLoader {
+    fn resolve(
+      &self,
+      _op_state: Rc<RefCell<OpState>>,
+      specifier: &str,
+      referrer: &str,
+      _is_main: bool,
+    ) -> Result<ModuleSpecifier, AnyError> {
+      let c = self.resolve_count.fetch_add(1, Ordering::Relaxed);
+      assert!(c < 4);
+      assert_eq!(specifier, "./b.js");
+      assert_eq!(referrer, "file:///dyn_import3.js");
+      let s = crate::resolve_import(specifier, referrer).unwrap();
+      Ok(s)
+    }
+
+    fn load(
+      &self,
+      _op_state: Rc<RefCell<OpState>>,
+      specifier: &ModuleSpecifier,
+      _maybe_referrer: Option<ModuleSpecifier>,
+      _is_dyn_import: bool,
+    ) -> Pin<Box<ModuleSourceFuture>> {
+      self.load_count.fetch_add(1, Ordering::Relaxed);
+      let info = ModuleSource {
+        module_url_specified: specifier.to_string(),
+        module_url_found: specifier.to_string(),
+        code: "export function b() { return 'b' }".to_owned(),
+      };
+      async move { Ok(info) }.boxed()
+    }
+
+    fn prepare_load(
+      &self,
+      _op_state: Rc<RefCell<OpState>>,
+      _load_id: ModuleLoadId,
+      _module_specifier: &ModuleSpecifier,
+      _maybe_referrer: Option<String>,
+      _is_dyn_import: bool,
+    ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+      self.prepare_load_count.fetch_add(1, Ordering::Relaxed);
+      async { Ok(()) }.boxed_local()
+    }
+  }
+
+  #[test]
+  fn dyn_import_ok() {
+    run_in_task(|cx| {
+      let loader = Rc::new(DynImportOkLoader::default());
+      let prepare_load_count = loader.prepare_load_count.clone();
+      let resolve_count = loader.resolve_count.clone();
+      let load_count = loader.load_count.clone();
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        module_loader: Some(loader),
+        ..Default::default()
+      });
+
+      // Dynamically import mod_b
+      runtime
+        .execute(
+          "file:///dyn_import3.js",
+          r#"
+          (async () => {
+            let mod = await import("./b.js");
+            if (mod.b() !== 'b') {
+              throw Error("bad1");
+            }
+            // And again!
+            mod = await import("./b.js");
+            if (mod.b() !== 'b') {
+              throw Error("bad2");
+            }
+          })();
+          "#,
+        )
+        .unwrap();
+
+      // First poll runs `prepare_load` hook.
+      assert!(matches!(runtime.poll_event_loop(cx), Poll::Pending));
+      assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
+
+      // Second poll actually loads modules into the isolate.
+      assert!(matches!(runtime.poll_event_loop(cx), Poll::Ready(Ok(_))));
+      assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
+      assert_eq!(load_count.load(Ordering::Relaxed), 2);
+      assert!(matches!(runtime.poll_event_loop(cx), Poll::Ready(Ok(_))));
+      assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
+      assert_eq!(load_count.load(Ordering::Relaxed), 2);
+    })
+  }
+
+  #[test]
+  fn dyn_import_borrow_mut_error() {
+    // https://github.com/denoland/deno/issues/6054
+    run_in_task(|cx| {
+      let loader = Rc::new(DynImportOkLoader::default());
+      let prepare_load_count = loader.prepare_load_count.clone();
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        module_loader: Some(loader),
+        ..Default::default()
+      });
+      runtime.sync_ops_cache();
+      runtime
+        .execute(
+          "file:///dyn_import3.js",
+          r#"
+          (async () => {
+            let mod = await import("./b.js");
+            if (mod.b() !== 'b') {
+              throw Error("bad");
+            }
+          })();
+          "#,
+        )
+        .unwrap();
+      // First poll runs `prepare_load` hook.
+      let _ = runtime.poll_event_loop(cx);
+      assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
+      // Second poll triggers error
+      let _ = runtime.poll_event_loop(cx);
+    })
+  }
 
   #[test]
   fn test_circular_load() {
