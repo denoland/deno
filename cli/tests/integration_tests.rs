@@ -3273,12 +3273,13 @@ console.log("finish");
   });
 
   itest!(bundle {
-    args: "bundle subdir/mod1.ts",
+    args:
+      "bundle subdir/mod1.ts --config bundle/disable_sourcemap_tsconfig.json",
     output: "bundle.test.out",
   });
 
   itest!(bundle_jsx {
-    args: "bundle jsx_import_from_ts.ts",
+    args: "bundle jsx_import_from_ts.ts --config bundle/disable_sourcemap_tsconfig.json",
     output: "bundle_jsx.out",
   });
 
