@@ -21,7 +21,7 @@ use tokio::task::LocalSet;
 // TODO(caspervonb): investiate why this fails on Windows.
 #[cfg(unix)]
 #[test]
-fn dts_ns() {
+fn typecheck_declarations_ns() {
   let status = util::deno_cmd()
     .arg("test")
     .arg("--allow-all")
@@ -37,7 +37,7 @@ fn dts_ns() {
 // TODO(caspervonb): investiate why this fails on Windows.
 #[cfg(unix)]
 #[test]
-fn dts_unstable() {
+fn typecheck_declarations_unstable() {
   let status = util::deno_cmd()
     .arg("test")
     .arg("--doc")
