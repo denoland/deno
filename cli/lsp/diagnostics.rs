@@ -11,6 +11,7 @@ use crate::tokio_util::create_basic_runtime;
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
+use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use log::error;
 use lspower::lsp;
@@ -446,6 +447,7 @@ async fn generate_deps_diagnostics(
                       code,
                       source: Some("deno".to_string()),
                       message,
+                      data: Some(json!({ "specifier": specifier })),
                       ..Default::default()
                     });
                   } else if sources.contains_key(&specifier) {
