@@ -3479,6 +3479,7 @@ dependencies = [
 name = "test_util"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-stream",
  "bytes",
  "futures",
@@ -3488,6 +3489,7 @@ dependencies = [
  "pty",
  "regex",
  "serde",
+ "serde_json",
  "tempfile",
  "tokio",
  "tokio-rustls",

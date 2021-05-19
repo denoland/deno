@@ -108,16 +108,16 @@
     return res;
   }
 
-  function opAsync(opName, args = null, zeroCopy = null) {
+  function opAsync(opName, arg1 = null, arg2 = null) {
     const promiseId = nextPromiseId++;
-    const maybeError = dispatch(opName, promiseId, args, zeroCopy);
+    const maybeError = dispatch(opName, promiseId, arg1, arg2);
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
     return setPromise(promiseId).then(unwrapOpResult);
   }
 
-  function opSync(opName, args = null, zeroCopy = null) {
-    return unwrapOpResult(dispatch(opName, null, args, zeroCopy));
+  function opSync(opName, arg1 = null, arg2 = null) {
+    return unwrapOpResult(dispatch(opName, null, arg1, arg2));
   }
 
   function resources() {

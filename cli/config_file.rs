@@ -24,6 +24,7 @@ pub struct EmitConfigOptions {
   pub emit_decorator_metadata: bool,
   pub imports_not_used_as_values: String,
   pub inline_source_map: bool,
+  pub source_map: bool,
   pub jsx: String,
   pub jsx_factory: String,
   pub jsx_fragment_factory: String,
@@ -337,6 +338,12 @@ mod tests {
     let config_file = ConfigFile::read(path.to_str().unwrap())
       .expect("Failed to load config file");
     assert!(config_file.json.compiler_options.is_some());
+  }
+
+  #[test]
+  fn include_config_path_on_error() {
+    let error = ConfigFile::read("404.json").err().unwrap();
+    assert!(error.to_string().contains("404.json"));
   }
 
   #[test]

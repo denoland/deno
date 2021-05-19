@@ -17,7 +17,7 @@ unitTest(async function sendAsyncStackTrace() {
 declare global {
   namespace Deno {
     // deno-lint-ignore no-explicit-any
-    var core: any; // eslint-disable-line no-var
+    var core: any;
   }
 }
 

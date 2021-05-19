@@ -706,7 +706,7 @@
     for (let i = 0; i < handlers.length; i++) {
       const listener = handlers[i];
 
-      let capture, once, passive, signal;
+      let capture, once, passive;
       if (typeof listener.options === "boolean") {
         capture = listener.options;
         once = false;

@@ -11,7 +11,7 @@
 /// <reference lib="esnext" />
 "use strict";
 
-((window) => {
+((_window) => {
   const webidl = globalThis.__bootstrap.webidl;
   const { Blob, File, _byteSequence } = globalThis.__bootstrap.file;
 

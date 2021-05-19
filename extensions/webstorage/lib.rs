@@ -1,18 +1,14 @@
-// Copyright 2018-2020 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op_sync;
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::Resource;
-use deno_core::ZeroCopyBuf;
 use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
 use serde::Deserialize;
-use std::borrow::Cow;
 use std::fmt;
 use std::path::PathBuf;
 
@@ -26,7 +22,6 @@ pub fn init(location_data_dir: Option<PathBuf>) -> Extension {
       "01_webstorage.js",
     ))
     .ops(vec![
-      ("op_webstorage_open", op_sync(op_webstorage_open)),
       ("op_webstorage_length", op_sync(op_webstorage_length)),
       ("op_webstorage_key", op_sync(op_webstorage_key)),
       ("op_webstorage_set", op_sync(op_webstorage_set)),
@@ -51,82 +46,73 @@ pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_webstorage.d.ts")
 }
 
-struct WebStorageConnectionResource(Connection);
+struct LocalStorage(Connection);
+struct SessionStorage(Connection);
 
-impl Resource for WebStorageConnectionResource {
-  fn name(&self) -> Cow<str> {
-    "webStorage".into()
-  }
-}
-
-pub fn op_webstorage_open(
+fn get_webstorage(
   state: &mut OpState,
   persistent: bool,
-  _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<u32, AnyError> {
-  let connection = if persistent {
-    let path = state.try_borrow::<LocationDataDir>().ok_or_else(|| {
-      DomExceptionNotSupportedError::new(
-        "LocalStorage is not supported in this context.",
-      )
-    })?;
-    std::fs::create_dir_all(&path.0)?;
-    Connection::open(path.0.join("local_storage"))?
+) -> Result<&Connection, AnyError> {
+  let conn = if persistent {
+    if state.try_borrow::<LocalStorage>().is_none() {
+      let path = state.try_borrow::<LocationDataDir>().ok_or_else(|| {
+        DomExceptionNotSupportedError::new(
+          "LocalStorage is not supported in this context.",
+        )
+      })?;
+      std::fs::create_dir_all(&path.0)?;
+      let conn = Connection::open(path.0.join("local_storage"))?;
+      conn.execute(
+        "CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)",
+        params![],
+      )?;
+
+      state.put(LocalStorage(conn));
+    }
+
+    &state.borrow::<LocalStorage>().0
   } else {
-    Connection::open_in_memory()?
+    if state.try_borrow::<SessionStorage>().is_none() {
+      let conn = Connection::open_in_memory()?;
+      conn.execute(
+        "CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)",
+        params![],
+      )?;
+
+      state.put(SessionStorage(conn));
+    }
+
+    &state.borrow::<SessionStorage>().0
   };
 
-  connection.execute(
-    "CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)",
-    params![],
-  )?;
-
-  let rid = state
-    .resource_table
-    .add(WebStorageConnectionResource(connection));
-  Ok(rid)
+  Ok(conn)
 }
 
 pub fn op_webstorage_length(
   state: &mut OpState,
-  rid: u32,
-  _zero_copy: Option<ZeroCopyBuf>,
+  persistent: bool,
+  _: (),
 ) -> Result<u32, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<WebStorageConnectionResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+  let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt = resource.0.prepare("SELECT COUNT(*) FROM data")?;
+  let mut stmt = conn.prepare("SELECT COUNT(*) FROM data")?;
 
   let length: u32 = stmt.query_row(params![], |row| row.get(0))?;
 
   Ok(length)
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct KeyArgs {
-  rid: u32,
-  index: u32,
-}
-
 pub fn op_webstorage_key(
   state: &mut OpState,
-  args: KeyArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  index: u32,
+  persistent: bool,
 ) -> Result<Option<String>, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<WebStorageConnectionResource>(args.rid)
-    .ok_or_else(bad_resource_id)?;
+  let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt = resource
-    .0
-    .prepare("SELECT key FROM data LIMIT 1 OFFSET ?")?;
+  let mut stmt = conn.prepare("SELECT key FROM data LIMIT 1 OFFSET ?")?;
 
   let key: Option<String> = stmt
-    .query_row(params![args.index], |row| row.get(0))
+    .query_row(params![index], |row| row.get(0))
     .optional()?;
 
   Ok(key)
@@ -135,7 +121,6 @@ pub fn op_webstorage_key(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SetArgs {
-  rid: u32,
   key_name: String,
   key_value: String,
 }
@@ -143,16 +128,12 @@ pub struct SetArgs {
 pub fn op_webstorage_set(
   state: &mut OpState,
   args: SetArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  persistent: bool,
 ) -> Result<(), AnyError> {
-  let resource = state
-    .resource_table
-    .get::<WebStorageConnectionResource>(args.rid)
-    .ok_or_else(bad_resource_id)?;
+  let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt = resource
-    .0
-    .prepare("SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'")?;
+  let mut stmt =
+    conn.prepare("SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'")?;
   let size: u32 = stmt.query_row(params![], |row| row.get(0))?;
 
   if size >= 5000000 {
@@ -162,7 +143,7 @@ pub fn op_webstorage_set(
     );
   }
 
-  resource.0.execute(
+  conn.execute(
     "INSERT OR REPLACE INTO data (key, value) VALUES (?, ?)",
     params![args.key_name, args.key_value],
   )?;
@@ -170,68 +151,43 @@ pub fn op_webstorage_set(
   Ok(())
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GetArgs {
-  rid: u32,
-  key_name: String,
-}
-
 pub fn op_webstorage_get(
   state: &mut OpState,
-  args: GetArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  key_name: String,
+  persistent: bool,
 ) -> Result<Option<String>, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<WebStorageConnectionResource>(args.rid)
-    .ok_or_else(bad_resource_id)?;
+  let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt = resource.0.prepare("SELECT value FROM data WHERE key = ?")?;
+  let mut stmt = conn.prepare("SELECT value FROM data WHERE key = ?")?;
 
   let val = stmt
-    .query_row(params![args.key_name], |row| row.get(0))
+    .query_row(params![key_name], |row| row.get(0))
     .optional()?;
 
   Ok(val)
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RemoveArgs {
-  rid: u32,
-  key_name: String,
-}
-
 pub fn op_webstorage_remove(
   state: &mut OpState,
-  args: RemoveArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  key_name: String,
+  persistent: bool,
 ) -> Result<(), AnyError> {
-  let resource = state
-    .resource_table
-    .get::<WebStorageConnectionResource>(args.rid)
-    .ok_or_else(bad_resource_id)?;
+  let conn = get_webstorage(state, persistent)?;
 
-  resource
-    .0
-    .execute("DELETE FROM data WHERE key = ?", params![args.key_name])?;
+  conn.execute("DELETE FROM data WHERE key = ?", params![key_name])?;
 
   Ok(())
 }
 
 pub fn op_webstorage_clear(
   state: &mut OpState,
-  rid: u32,
-  _zero_copy: Option<ZeroCopyBuf>,
+  persistent: bool,
+  _: (),
 ) -> Result<(), AnyError> {
-  let resource = state
-    .resource_table
-    .get::<WebStorageConnectionResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+  let conn = get_webstorage(state, persistent)?;
 
-  resource.0.execute("DROP TABLE data", params![])?;
-  resource.0.execute(
+  conn.execute("DROP TABLE data", params![])?;
+  conn.execute(
     "CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)",
     params![],
   )?;
@@ -241,15 +197,12 @@ pub fn op_webstorage_clear(
 
 pub fn op_webstorage_iterate_keys(
   state: &mut OpState,
-  rid: u32,
-  _zero_copy: Option<ZeroCopyBuf>,
+  persistent: bool,
+  _: (),
 ) -> Result<Vec<String>, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<WebStorageConnectionResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+  let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt = resource.0.prepare("SELECT key FROM data")?;
+  let mut stmt = conn.prepare("SELECT key FROM data")?;
 
   let keys = stmt
     .query_map(params![], |row| row.get::<_, String>(0))?

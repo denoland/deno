@@ -1,7 +1,7 @@
 // V8 logs any asmjs validation errors to stdout, but it shows line numbers that
 // are non-existent in the source.
 
-const asmJsModule = function () {
+const _asmJsModule = function () {
   "use asm";
 
   function func(
