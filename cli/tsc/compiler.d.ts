@@ -5,7 +5,6 @@
 import * as _ts from "../dts/typescript";
 
 declare global {
-  // deno-lint-ignore no-namespace
   namespace ts {
     var libs: string[];
     var libMap: Map<string, string>;
@@ -22,7 +21,6 @@ declare global {
     var performance: Performance;
   }
 
-  // deno-lint-ignore no-namespace
   namespace ts {
     export = _ts;
   }
@@ -36,7 +34,7 @@ declare global {
     // deno-lint-ignore no-explicit-any
     opSync<T>(name: string, params: T): any;
     ops(): void;
-    print(msg: string, code?: number): void;
+    print(msg: string, stderr: bool): void;
     registerErrorClass(
       name: string,
       Ctor: typeof Error,

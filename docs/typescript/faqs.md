@@ -82,7 +82,7 @@ are using the TypeScript compiler to emit the code, it will follow the same
 This means that certain language features are not supportable. Those features
 are:
 
-- Re-exporting of types is ambigious and requires to know if the source module
+- Re-exporting of types is ambiguous and requires to know if the source module
   is exporting runtime code or just type information. Therefore, it is
   recommended that you use `import type` and `export type` for type only imports
   and exports. This will help ensure that when the code is emitted, that all the
@@ -114,3 +114,16 @@ compiler. Its main purpose is to ensure that TypeScript and JavaScript can run
 under Deno. The secondary ability to do TypeScript and JavaScript emitting via
 the runtime API `Deno.emit()` is intended to be simple and straight forward and
 support a certain set of use cases.
+
+### How do I combine Deno code with non-Deno code in my IDE?
+
+The Deno language server supports the ability to have a "per-resource"
+configuration of enabling Deno or not. This also requires a client IDE to
+support this ability. For Visual Studio Code the official
+[Deno extension](https://marketplace.visualstudio.com/items?itemName=denoland.vscode-deno)
+supports the vscode concept of
+[multi-root workspace](https://code.visualstudio.com/docs/editor/multi-root-workspaces).
+This means you just need to add folders to the workspace and set the
+`deno.enable` setting as required on each folder.
+
+For other IDEs, the client extensions needs to support the similar IDE concepts.

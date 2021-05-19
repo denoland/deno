@@ -2,7 +2,6 @@
 
 use crate::colors;
 use deno_core::error::AnyError;
-use deno_core::futures::ready;
 use deno_core::futures::stream::{Stream, StreamExt};
 use deno_core::futures::Future;
 use log::info;
@@ -14,10 +13,11 @@ use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
 use pin_project::pin_project;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
@@ -29,26 +29,24 @@ use tokio::time::Sleep;
 
 const DEBOUNCE_INTERVAL: Duration = Duration::from_millis(200);
 
-type FileWatcherFuture<T> = Pin<Box<dyn Future<Output = T>>>;
-
 #[pin_project(project = DebounceProjection)]
 struct Debounce {
   #[pin]
   timer: Sleep,
-  event_detected: Arc<AtomicBool>,
+  changed_paths: Arc<Mutex<HashSet<PathBuf>>>,
 }
 
 impl Debounce {
   fn new() -> Self {
     Self {
       timer: sleep(DEBOUNCE_INTERVAL),
-      event_detected: Arc::new(AtomicBool::new(false)),
+      changed_paths: Arc::new(Mutex::new(HashSet::new())),
     }
   }
 }
 
 impl Stream for Debounce {
-  type Item = ();
+  type Item = Vec<PathBuf>;
 
   /// Note that this never returns `Poll::Ready(None)`, which means that the
   /// file watcher will be alive until the Deno process is terminated.
@@ -56,18 +54,24 @@ impl Stream for Debounce {
     self: Pin<&mut Self>,
     cx: &mut Context,
   ) -> Poll<Option<Self::Item>> {
-    if self.event_detected.swap(false, Ordering::Relaxed) {
-      Poll::Ready(Some(()))
+    let mut changed_paths = self.changed_paths.lock().unwrap();
+    if changed_paths.len() > 0 {
+      Poll::Ready(Some(changed_paths.drain().collect()))
     } else {
+      drop(changed_paths);
       let mut timer = self.project().timer;
-      ready!(timer.as_mut().poll(cx));
-      timer.reset(Instant::now() + DEBOUNCE_INTERVAL);
+      if timer.as_mut().poll(cx).is_ready() {
+        timer.reset(Instant::now() + DEBOUNCE_INTERVAL);
+      }
       Poll::Pending
     }
   }
 }
 
-async fn error_handler(watch_future: FileWatcherFuture<Result<(), AnyError>>) {
+async fn error_handler<F>(watch_future: F)
+where
+  F: Future<Output = Result<(), AnyError>>,
+{
   let result = watch_future.await;
   if let Err(err) = result {
     let msg = format!("{}: {}", colors::red_bold("error"), err.to_string(),);
@@ -75,172 +79,139 @@ async fn error_handler(watch_future: FileWatcherFuture<Result<(), AnyError>>) {
   }
 }
 
-/// This function adds watcher functionality to subcommands like `fmt` or `lint`.
-/// The difference from [`watch_func_with_module_resolution`] is that this doesn't depend on
-/// [`ModuleGraph`].
-///
-/// - `target_resolver` is used for resolving file paths to be watched at every restarting of the watcher. The
-/// return value of this closure will then be passed to `operation` as an argument.
-///
-/// - `operation` is the actual operation we want to run every time the watcher detects file
-/// changes. For example, in the case where we would like to apply `fmt`, then `operation` would
-/// have the logic for it like calling `format_source_files`.
-///
-/// - `job_name` is just used for printing watcher status to terminal.
-///
-/// Note that the watcher will stop working if `target_resolver` fails at some point.
-///
-/// [`ModuleGraph`]: crate::module_graph::Graph
-pub async fn watch_func<F, G>(
-  target_resolver: F,
-  operation: G,
-  job_name: &str,
-) -> Result<(), AnyError>
-where
-  F: Fn() -> Result<Vec<PathBuf>, AnyError>,
-  G: Fn(Vec<PathBuf>) -> FileWatcherFuture<Result<(), AnyError>>,
-{
-  let debounce = Debounce::new();
-  pin!(debounce);
+pub enum ResolutionResult<T> {
+  Restart {
+    paths_to_watch: Vec<PathBuf>,
+    result: Result<T, AnyError>,
+  },
+  Ignore,
+}
 
+async fn next_restart<R, T, F>(
+  resolver: &mut R,
+  debounce: &mut Pin<&mut Debounce>,
+) -> (Vec<PathBuf>, Result<T, AnyError>)
+where
+  R: FnMut(Option<Vec<PathBuf>>) -> F,
+  F: Future<Output = ResolutionResult<T>>,
+{
   loop {
-    let paths = target_resolver()?;
-    let _watcher = new_watcher(&paths, &debounce)?;
-    let func = error_handler(operation(paths));
-    let mut is_file_changed = false;
-    select! {
-      _ = debounce.next() => {
-        is_file_changed = true;
+    let changed = debounce.next().await;
+    match resolver(changed).await {
+      ResolutionResult::Ignore => {
+        log::debug!("File change ignored")
+      }
+      ResolutionResult::Restart {
+        paths_to_watch,
+        result,
+      } => {
         info!(
           "{} File change detected! Restarting!",
           colors::intense_blue("Watcher"),
         );
-      },
-      _ = func => {},
-    };
-
-    if !is_file_changed {
-      info!(
-        "{} {} finished! Restarting on file change...",
-        colors::intense_blue("Watcher"),
-        job_name,
-      );
-      debounce.next().await;
-      info!(
-        "{} File change detected! Restarting!",
-        colors::intense_blue("Watcher"),
-      );
+        return (paths_to_watch, result);
+      }
     }
   }
 }
 
-pub enum ModuleResolutionResult<T> {
-  Success {
-    paths_to_watch: Vec<PathBuf>,
-    module_info: T,
-  },
-  Fail {
-    source_path: PathBuf,
-    error: AnyError,
-  },
-}
-
-/// This function adds watcher functionality to subcommands like `run` or `bundle`.
-/// The difference from [`watch_func`] is that this does depend on [`ModuleGraph`].
+/// Creates a file watcher, which will call `resolver` with every file change.
 ///
-/// - `module_resolver` is used for both resolving file paths to be watched at every restarting
-/// of the watcher and building [`ModuleGraph`] or [`ModuleSpecifier`] which will then be passed
-/// to `operation`.
+/// - `resolver` is used for resolving file paths to be watched at every restarting
+/// of the watcher, and can also return a value to be passed to `operation`.
+/// It returns a [`ResolutionResult`], which can either instruct the watcher to restart or ignore the change.
+/// This always contains paths to watch;
 ///
 /// - `operation` is the actual operation we want to run every time the watcher detects file
 /// changes. For example, in the case where we would like to bundle, then `operation` would
-/// have the logic for it like doing bundle with the help of [`ModuleGraph`].
+/// have the logic for it like bundling the code.
 ///
 /// - `job_name` is just used for printing watcher status to terminal.
-///
-/// Note that the watcher will try to continue watching files using the previously resolved
-/// data if `module_resolver` fails at some point, which means the watcher won't work at all
-/// if `module_resolver` fails at the first attempt.
-///
-/// [`ModuleGraph`]: crate::module_graph::Graph
-/// [`ModuleSpecifier`]: deno_core::ModuleSpecifier
-pub async fn watch_func_with_module_resolution<F, G, T>(
-  module_resolver: F,
-  operation: G,
+pub async fn watch_func<R, O, T, F1, F2>(
+  mut resolver: R,
+  mut operation: O,
   job_name: &str,
 ) -> Result<(), AnyError>
 where
-  F: Fn() -> FileWatcherFuture<ModuleResolutionResult<T>>,
-  G: Fn(T) -> FileWatcherFuture<Result<(), AnyError>>,
-  T: Clone,
+  R: FnMut(Option<Vec<PathBuf>>) -> F1,
+  O: FnMut(T) -> F2,
+  F1: Future<Output = ResolutionResult<T>>,
+  F2: Future<Output = Result<(), AnyError>>,
 {
   let debounce = Debounce::new();
   pin!(debounce);
 
   // Store previous data. If module resolution fails at some point, the watcher will try to
   // continue watching files using these data.
-  let mut paths = Vec::new();
-  let mut module = None;
+  let mut paths_to_watch;
+  let mut resolution_result;
+
+  match resolver(None).await {
+    ResolutionResult::Ignore => {
+      // The only situation where it makes sense to ignore the initial 'change'
+      // is if the command isn't supposed to do anything until something changes,
+      // e.g. a variant of `deno test` which doesn't run the entire test suite to start with,
+      // but instead does nothing until you make a change.
+      //
+      // In that case, this is probably the correct output.
+      info!(
+        "{} Waiting for file changes...",
+        colors::intense_blue("Watcher"),
+      );
+
+      let (paths, result) = next_restart(&mut resolver, &mut debounce).await;
+      paths_to_watch = paths;
+      resolution_result = result;
+    }
+    ResolutionResult::Restart {
+      paths_to_watch: paths,
+      result,
+    } => {
+      paths_to_watch = paths;
+      resolution_result = result;
+    }
+  };
 
   loop {
-    match module_resolver().await {
-      ModuleResolutionResult::Success {
-        paths_to_watch,
-        module_info,
-      } => {
-        paths = paths_to_watch;
-        module = Some(module_info);
-      }
-      ModuleResolutionResult::Fail { source_path, error } => {
-        if paths.is_empty() {
-          paths = vec![source_path];
-        }
+    let watcher = new_watcher(&paths_to_watch, &debounce)?;
 
-        if module.is_none() {
-          eprintln!("{}: {}", colors::red_bold("error"), error);
-        }
-      }
-    }
-    let _watcher = new_watcher(&paths, &debounce)?;
+    match resolution_result {
+      Ok(operation_arg) => {
+        let fut = error_handler(operation(operation_arg));
+        select! {
+          (paths, result) = next_restart(&mut resolver, &mut debounce) => {
+            if result.is_ok() {
+              paths_to_watch = paths;
+            }
+            resolution_result = result;
+            continue;
+          },
+          _ = fut => {},
+        };
 
-    if let Some(module) = &module {
-      let func = error_handler(operation(module.clone()));
-      let mut is_file_changed = false;
-      select! {
-        _ = debounce.next() => {
-          is_file_changed = true;
-          info!(
-            "{} File change detected! Restarting!",
-            colors::intense_blue("Watcher"),
-          );
-        },
-        _ = func => {},
-      };
-
-      if !is_file_changed {
         info!(
-          "{} {} finished! Restarting on file change...",
+          "{} {} finished. Restarting on file change...",
           colors::intense_blue("Watcher"),
           job_name,
         );
-        debounce.next().await;
+      }
+      Err(error) => {
+        eprintln!("{}: {}", colors::red_bold("error"), error);
         info!(
-          "{} File change detected! Restarting!",
+          "{} {} failed. Restarting on file change...",
           colors::intense_blue("Watcher"),
+          job_name,
         );
       }
-    } else {
-      info!(
-        "{} {} failed! Restarting on file change...",
-        colors::intense_blue("Watcher"),
-        job_name,
-      );
-      debounce.next().await;
-      info!(
-        "{} File change detected! Restarting!",
-        colors::intense_blue("Watcher"),
-      );
     }
+
+    let (paths, result) = next_restart(&mut resolver, &mut debounce).await;
+    if result.is_ok() {
+      paths_to_watch = paths;
+    }
+    resolution_result = result;
+
+    drop(watcher);
   }
 }
 
@@ -248,7 +219,7 @@ fn new_watcher(
   paths: &[PathBuf],
   debounce: &Debounce,
 ) -> Result<RecommendedWatcher, AnyError> {
-  let event_detected = Arc::clone(&debounce.event_detected);
+  let changed_paths = Arc::clone(&debounce.changed_paths);
 
   let mut watcher: RecommendedWatcher =
     Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
@@ -257,16 +228,22 @@ fn new_watcher(
           event.kind,
           EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
         ) {
-          event_detected.store(true, Ordering::Relaxed);
+          let paths = event
+            .paths
+            .iter()
+            .filter_map(|path| path.canonicalize().ok());
+          let mut changed_paths = changed_paths.lock().unwrap();
+          changed_paths.extend(paths);
         }
       }
     })?;
 
   watcher.configure(Config::PreciseEvents(true)).unwrap();
 
+  log::debug!("Watching paths: {:?}", paths);
   for path in paths {
     // Ignore any error e.g. `PathNotFound`
-    let _ = watcher.watch(path, RecursiveMode::NonRecursive);
+    let _ = watcher.watch(path, RecursiveMode::Recursive);
   }
 
   Ok(watcher)

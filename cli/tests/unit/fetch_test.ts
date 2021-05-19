@@ -9,6 +9,16 @@ import {
 } from "./test_util.ts";
 import { Buffer } from "../../../test_util/std/io/buffer.ts";
 
+unitTest(
+  { perms: { net: true } },
+  async function fetchRequiresOneArgument(): Promise<void> {
+    await assertThrowsAsync(
+      fetch as unknown as () => Promise<void>,
+      TypeError,
+    );
+  },
+);
+
 unitTest({ perms: { net: true } }, async function fetchProtocolError(): Promise<
   void
 > {
@@ -444,6 +454,21 @@ unitTest(
     const response = await fetch(req);
     const text = await response.text();
     assertEquals(text, data);
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchSeparateInit(): Promise<void> {
+    // related to: https://github.com/denoland/deno/issues/10396
+    const req = new Request("http://localhost:4545/cli/tests/001_hello.js");
+    const init = {
+      method: "GET",
+    };
+    req.headers.set("foo", "bar");
+    const res = await fetch(req, init);
+    assertEquals(res.status, 200);
+    await res.text();
   },
 );
 

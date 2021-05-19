@@ -1,7 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ops::io::TcpStreamResource;
-use crate::ops::io::TlsServerStreamResource;
+use crate::ops::io::TlsStreamResource;
+use crate::ops::tls::TlsStream;
 use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
@@ -10,10 +11,13 @@ use deno_core::futures::future::poll_fn;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
+use deno_core::op_async;
+use deno_core::op_sync;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -40,18 +44,19 @@ use std::task::Poll;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
 use tokio::sync::oneshot;
-use tokio_rustls::server::TlsStream;
 use tokio_util::io::StreamReader;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_sync(rt, "op_http_start", op_http_start);
-
-  super::reg_async(rt, "op_http_request_next", op_http_request_next);
-  super::reg_async(rt, "op_http_request_read", op_http_request_read);
-
-  super::reg_async(rt, "op_http_response", op_http_response);
-  super::reg_async(rt, "op_http_response_write", op_http_response_write);
-  super::reg_async(rt, "op_http_response_close", op_http_response_close);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_http_start", op_sync(op_http_start)),
+      ("op_http_request_next", op_async(op_http_request_next)),
+      ("op_http_request_read", op_async(op_http_request_read)),
+      ("op_http_response", op_async(op_http_response)),
+      ("op_http_response_write", op_async(op_http_response_write)),
+      ("op_http_response_close", op_async(op_http_response_close)),
+    ])
+    .build()
 }
 
 struct ServiceInner {
@@ -95,7 +100,7 @@ impl HyperService<Request<Body>> for Service {
 
 enum ConnType {
   Tcp(Rc<RefCell<Connection<TcpStream, Service, LocalExecutor>>>),
-  Tls(Rc<RefCell<Connection<TlsStream<TcpStream>, Service, LocalExecutor>>>),
+  Tls(Rc<RefCell<Connection<TlsStream, Service, LocalExecutor>>>),
 }
 
 struct ConnResource {
@@ -140,7 +145,7 @@ struct NextRequestResponse(
 async fn op_http_request_next(
   state: Rc<RefCell<OpState>>,
   conn_rid: ResourceId,
-  _data: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<Option<NextRequestResponse>, AnyError> {
   let conn_resource = state
     .borrow()
@@ -273,7 +278,7 @@ fn should_ignore_error(e: &AnyError) -> bool {
 fn op_http_start(
   state: &mut OpState,
   tcp_stream_rid: ResourceId,
-  _data: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<ResourceId, AnyError> {
   let deno_service = Service::default();
 
@@ -300,12 +305,12 @@ fn op_http_start(
 
   if let Some(resource_rc) = state
     .resource_table
-    .take::<TlsServerStreamResource>(tcp_stream_rid)
+    .take::<TlsStreamResource>(tcp_stream_rid)
   {
     let resource = Rc::try_unwrap(resource_rc)
       .expect("Only a single use of this resource should happen");
     let (read_half, write_half) = resource.into_inner();
-    let tls_stream = read_half.unsplit(write_half);
+    let tls_stream = read_half.reunite(write_half);
     let addr = tls_stream.get_ref().0.local_addr()?;
 
     let hyper_connection = Http::new()
@@ -402,7 +407,7 @@ async fn op_http_response(
 async fn op_http_response_close(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _data: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()

@@ -342,6 +342,14 @@ unitTest(function consoleTestStringifyCircular(): void {
     stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
     'TAG { str: 1, [Symbol(sym)]: 2, [Symbol(Symbol.toStringTag)]: "TAG" }',
   );
+  assertEquals(
+    stringify({
+      [Deno.customInspect]: function () {
+        return Deno.inspect(this);
+      },
+    }),
+    "[Circular]",
+  );
   // test inspect is working the same
   assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
 });
@@ -878,11 +886,18 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
     }
   }
 
+  const a = new A();
   assertThrows(
-    () => stringify(new A()),
+    () => stringify(a),
     Error,
     "BOOM",
     "Custom inspect won't attempt to parse if user defined function throws",
+  );
+  assertThrows(
+    () => stringify(a),
+    Error,
+    "BOOM",
+    "Inpsect should fail and maintain a clear CTX_STACK",
   );
 });
 
