@@ -936,6 +936,10 @@ impl JsRuntime {
         v8::Exception::type_error(scope, message)
       });
 
+    // IMPORTANT: No borrows to `ModuleMap` can be held at this point because
+    // rejecting the promise might initiate another `import()` which will
+    // in turn call `bindings::host_import_module_dynamically_callback` which
+    // will reach into `ModuleMap` from within the isolate.
     resolver.reject(scope, exception).unwrap();
     scope.perform_microtask_checkpoint();
   }
@@ -961,6 +965,10 @@ impl JsRuntime {
     // Resolution success
     assert_eq!(module.get_status(), v8::ModuleStatus::Evaluated);
 
+    // IMPORTANT: No borrows to `ModuleMap` can be held at this point because
+    // resolving the promise might initiate another `import()` which will
+    // in turn call `bindings::host_import_module_dynamically_callback` which
+    // will reach into `ModuleMap` from within the isolate.
     let module_namespace = module.get_module_namespace();
     resolver.resolve(scope, module_namespace).unwrap();
     scope.perform_microtask_checkpoint();
