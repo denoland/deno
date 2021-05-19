@@ -350,7 +350,11 @@
     newpath,
     options,
   ) {
-    await core.opAsync("op_symlink_async", { oldpath, newpath, options });
+    await core.opAsync("op_symlink_async", {
+      oldpath: pathFromURL(oldpath),
+      newpath: pathFromURL(newpath),
+      options,
+    });
   }
 
   function fdatasyncSync(rid) {
