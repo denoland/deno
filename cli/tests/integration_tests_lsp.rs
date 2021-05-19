@@ -318,7 +318,7 @@ fn lsp_hover_unstable_enabled() {
           "language":"typescript",
           "value":"function Deno.openPlugin(filename: string): number"
         },
-        "**UNSTABLE**: new API, yet to be vetted.\n\nOpen and initialize a plugin.\n\n```ts\nconst rid = Deno.openPlugin(\"./path/to/some/plugin.so\");\nconst opId = Deno.core.ops()[\"some_op\"];\nconst response = Deno.core.dispatch(opId, new Uint8Array([1,2,3,4]));\nconsole.log(`Response from plugin ${response}`);\n```\n\nRequires `allow-plugin` permission.\n\nThe plugin system is not stable and will change in the future, hence the\nlack of docs. For now take a look at the example\nhttps://github.com/denoland/deno/tree/main/test_plugin"
+        "**UNSTABLE**: new API, yet to be vetted.\n\nOpen and initialize a plugin.\n\n```ts\nimport { assert } from \"https://deno.land/std/testing/asserts.ts\";\nconst rid = Deno.openPlugin(\"./path/to/some/plugin.so\");\n\n// The Deno.core namespace is needed to interact with plugins, but this is\n// internal so we use ts-ignore to skip type checking these calls.\n// @ts-ignore\nconst {\n op_test_sync,\n op_test_async,\n} = Deno.core.ops();\n\nassert(op_test_sync);\nassert(op_test_async);\n\n// @ts-ignore\nconst result = Deno.core.opSync(\"op_test_sync\");\n\n// @ts-ignore\nconst result = await Deno.core.opAsync(\"op_test_sync\");\n```\n\nRequires `allow-plugin` permission.\n\nThe plugin system is not stable and will change in the future, hence the\nlack of docs. For now take a look at the example\nhttps://github.com/denoland/deno/tree/main/test_plugin"
       ],
       "range":{
         "start":{
@@ -1362,17 +1362,24 @@ fn lsp_code_actions() {
 #[test]
 fn lsp_code_actions_deno_cache() {
   let mut client = init("initialize_params.json");
-  did_open(
-    &mut client,
-    json!({
+  client
+    .write_notification("textDocument/didOpen", json!({
       "textDocument": {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
         "text": "import * as a from \"https://deno.land/x/a/mod.ts\";\n\nconsole.log(a);\n"
       }
-    }),
-  );
+    }))
+    .unwrap();
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, params) = client.read_notification().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  assert_eq!(params, Some(load_fixture("diagnostics_deno_deps.json")));
+
   let (maybe_res, maybe_err) = client
     .write_request(
       "textDocument/codeAction",

@@ -1,11 +1,13 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
 
-  const _rid = Symbol("[[rid]]");
+  const _persistent = Symbol("[[persistent]]");
 
   class Storage {
-    [_rid];
+    [_persistent];
 
     constructor() {
       webidl.illegalConstructor();
@@ -13,7 +15,7 @@
 
     get length() {
       webidl.assertBranded(this, Storage);
-      return core.opSync("op_webstorage_length", this[_rid]);
+      return core.opSync("op_webstorage_length", this[_persistent]);
     }
 
     key(index) {
@@ -25,10 +27,7 @@
         context: "Argument 1",
       });
 
-      return core.opSync("op_webstorage_key", {
-        rid: this[_rid],
-        index,
-      });
+      return core.opSync("op_webstorage_key", index, this[_persistent]);
     }
 
     setItem(key, value) {
@@ -45,10 +44,9 @@
       });
 
       core.opSync("op_webstorage_set", {
-        rid: this[_rid],
         keyName: key,
         keyValue: value,
-      });
+      }, this[_persistent]);
     }
 
     getItem(key) {
@@ -60,10 +58,7 @@
         context: "Argument 1",
       });
 
-      return core.opSync("op_webstorage_get", {
-        rid: this[_rid],
-        keyName: key,
-      });
+      return core.opSync("op_webstorage_get", key, this[_persistent]);
     }
 
     removeItem(key) {
@@ -75,25 +70,20 @@
         context: "Argument 1",
       });
 
-      core.opSync("op_webstorage_remove", {
-        rid: this[_rid],
-        keyName: key,
-      });
+      core.opSync("op_webstorage_remove", key, this[_persistent]);
     }
 
     clear() {
       webidl.assertBranded(this, Storage);
-      core.opSync("op_webstorage_clear", this[_rid]);
+      core.opSync("op_webstorage_clear", this[_persistent]);
     }
   }
 
   function createStorage(persistent) {
     if (persistent) window.location;
 
-    const rid = core.opSync("op_webstorage_open", persistent);
-
     const storage = webidl.createBranded(Storage);
-    storage[_rid] = rid;
+    storage[_persistent] = persistent;
 
     const proxy = new Proxy(storage, {
       deleteProperty(target, key) {
@@ -135,7 +125,7 @@
         return (typeof target.getItem(p)) === "string";
       },
       ownKeys() {
-        return core.opSync("op_webstorage_iterate_keys", rid);
+        return core.opSync("op_webstorage_iterate_keys", persistent);
       },
       getOwnPropertyDescriptor(target, key) {
         if (arguments.length === 1) {
