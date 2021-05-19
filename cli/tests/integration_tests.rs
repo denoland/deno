@@ -19,20 +19,6 @@ use test_util as util;
 use tokio::task::LocalSet;
 
 #[test]
-fn dts_doc() {
-  let status = util::deno_cmd()
-    .arg("test")
-    .arg("--doc")
-    .arg("--unstable")
-    .arg(util::root_path().join("cli/dts"))
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-  assert!(status.success());
-}
-
-#[test]
 fn js_unit_tests_lint() {
   let status = util::deno_cmd()
     .arg("lint")
