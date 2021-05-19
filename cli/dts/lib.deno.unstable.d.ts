@@ -146,7 +146,7 @@ declare namespace Deno {
    *
    * assert(op_test_sync);
    * assert(op_test_async);
-   * 
+   *
    * // @ts-ignore
    * const result = Deno.core.opSync("op_test_sync");
    *
