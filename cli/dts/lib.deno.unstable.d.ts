@@ -133,6 +133,7 @@ declare namespace Deno {
    * Open and initialize a plugin.
    *
    * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
    * const rid = Deno.openPlugin("./path/to/some/plugin.so");
    *
    * // The Deno.core namespace is needed to interact with plugins, but this is
