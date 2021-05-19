@@ -781,7 +781,15 @@ impl Graph {
   pub fn bundle(
     &self,
     options: BundleOptions,
-  ) -> Result<(String, Stats, Option<IgnoredCompilerOptions>), AnyError> {
+  ) -> Result<
+    (
+      String,
+      Option<String>,
+      Stats,
+      Option<IgnoredCompilerOptions>,
+    ),
+    AnyError,
+  > {
     if self.roots.is_empty() || self.roots.len() > 1 {
       return Err(GraphError::NotSupported(format!("Bundling is only supported when there is a single root module in the graph.  Found: {}", self.roots.len())).into());
     }
@@ -792,7 +800,7 @@ impl Graph {
       "checkJs": false,
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
-      "inlineSourceMap": false,
+      "inlineSourceMap": true,
       "sourceMap": false,
       "jsx": "react",
       "jsxFactory": "React.createElement",
@@ -801,7 +809,7 @@ impl Graph {
     let maybe_ignored_options = ts_config
       .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
 
-    let (src, _) = self.emit_bundle(
+    let (src, src_map) = self.emit_bundle(
       &root_specifier,
       &ts_config.into(),
       &BundleType::Module,
@@ -811,7 +819,7 @@ impl Graph {
       ("Total time".to_string(), start.elapsed().as_millis() as u32),
     ]);
 
-    Ok((src, stats, maybe_ignored_options))
+    Ok((src, src_map, stats, maybe_ignored_options))
   }
 
   /// Type check the module graph, corresponding to the options provided.
@@ -2230,7 +2238,7 @@ pub mod tests {
         .await
         .expect("module not inserted");
       let graph = builder.get_graph();
-      let (actual, stats, maybe_ignored_options) = graph
+      let (actual, _, stats, maybe_ignored_options) = graph
         .bundle(BundleOptions::default())
         .expect("could not bundle");
       assert_eq!(stats.0.len(), 2);
