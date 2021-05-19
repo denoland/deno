@@ -5,3 +5,4 @@ const mod = function() {
     };
 }();
 export { mod as a };
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbIjxmaWxlOi8vL3Rlc3RzL3N1YmRpci9hLnRzPiIsIjxmaWxlOi8vL3Rlc3RzL2ZpeHR1cmUwOC50cz4iXSwic291cmNlc0NvbnRlbnQiOlsiZXhwb3J0IGNvbnN0IGEgPSBcImFcIjtcbiIsImV4cG9ydCAqIGFzIGEgZnJvbSBcIi4vc3ViZGlyL2EudHNcIjtcbiJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiTUFBYSxFQUFDLElBQUcsQ0FBRzs7O1FBQVAsQ0FBQyxFQUFELEVBQUM7OztnQkNBRixDQUFDIn0=

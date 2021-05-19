@@ -1,2 +1,3 @@
 const a = await import("./subdir/a.ts");
 console.log(a);
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbIjxmaWxlOi8vL3Rlc3RzL2ZpeHR1cmUwNC50cz4iXSwic291cmNlc0NvbnRlbnQiOlsiY29uc3QgYSA9IGF3YWl0IGltcG9ydChcIi4vc3ViZGlyL2EudHNcIik7XG5cbmNvbnNvbGUubG9nKGEpO1xuIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiJNQUFNLENBQUMsU0FBUyxNQUFNLEVBQUMsYUFBZTtBQUV0QyxPQUFPLENBQUMsR0FBRyxDQUFDLENBQUMifQ==
