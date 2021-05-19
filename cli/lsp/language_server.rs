@@ -2,7 +2,6 @@
 
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;

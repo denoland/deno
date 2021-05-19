@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use deno_core::error::AnyError;
 use deno_core::futures::stream::{Stream, StreamExt};
 use deno_core::futures::Future;
 use log::info;
