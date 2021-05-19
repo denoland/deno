@@ -24,6 +24,7 @@ pub struct EmitConfigOptions {
   pub emit_decorator_metadata: bool,
   pub imports_not_used_as_values: String,
   pub inline_source_map: bool,
+  pub source_map: bool,
   pub jsx: String,
   pub jsx_factory: String,
   pub jsx_fragment_factory: String,
@@ -270,9 +271,14 @@ pub struct ConfigFile {
 }
 
 impl ConfigFile {
-  pub fn read(path: &str) -> Result<Self, AnyError> {
-    let cwd = std::env::current_dir()?;
-    let config_file = cwd.join(path);
+  pub fn read(path_str: &str) -> Result<Self, AnyError> {
+    let path = Path::new(path_str);
+    let config_file = if path.is_absolute() {
+      path.to_path_buf()
+    } else {
+      std::env::current_dir()?.join(path_str)
+    };
+
     let config_path = canonicalize_path(&config_file).map_err(|_| {
       std::io::Error::new(
         std::io::ErrorKind::InvalidInput,
@@ -318,10 +324,26 @@ mod tests {
   use deno_core::serde_json::json;
 
   #[test]
-  fn read_config_file() {
+  fn read_config_file_relative() {
     let config_file = ConfigFile::read("tests/module_graph/tsconfig.json")
       .expect("Failed to load config file");
     assert!(config_file.json.compiler_options.is_some());
+  }
+
+  #[test]
+  fn read_config_file_absolute() {
+    let path = std::env::current_dir()
+      .unwrap()
+      .join("tests/module_graph/tsconfig.json");
+    let config_file = ConfigFile::read(path.to_str().unwrap())
+      .expect("Failed to load config file");
+    assert!(config_file.json.compiler_options.is_some());
+  }
+
+  #[test]
+  fn include_config_path_on_error() {
+    let error = ConfigFile::read("404.json").err().unwrap();
+    assert!(error.to_string().contains("404.json"));
   }
 
   #[test]

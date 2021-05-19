@@ -15,7 +15,7 @@
 ((window) => {
   const webidl = window.__bootstrap.webidl;
   const { HTTP_TAB_OR_SPACE, regexMatcher } = window.__bootstrap.infra;
-  const { InnerBody, extractBody, mixinBody } = window.__bootstrap.fetchBody;
+  const { extractBody, mixinBody } = window.__bootstrap.fetchBody;
   const { getLocationHref } = window.__bootstrap.location;
   const mimesniff = window.__bootstrap.mimesniff;
   const { URL } = window.__bootstrap.url;
@@ -47,7 +47,7 @@
    * @property {number} status
    * @property {string} statusMessage
    * @property {[string, string][]} headerList
-   * @property {null | InnerBody} body
+   * @property {null | typeof __window.bootstrap.fetchBody.InnerBody} body
    * @property {string} [error]
    */
 

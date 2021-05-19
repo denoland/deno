@@ -395,6 +395,7 @@ pub async fn run_tests(
       .prepare_module_graph(
         test_programs.clone(),
         lib.clone(),
+        Permissions::allow_all(),
         permissions.clone(),
         program_state.maybe_import_map.clone(),
       )
@@ -412,6 +413,7 @@ pub async fn run_tests(
     .prepare_module_graph(
       test_modules.clone(),
       lib.clone(),
+      Permissions::allow_all(),
       permissions.clone(),
       program_state.maybe_import_map.clone(),
     )
