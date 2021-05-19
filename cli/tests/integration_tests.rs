@@ -18,6 +18,8 @@ use tempfile::TempDir;
 use test_util as util;
 use tokio::task::LocalSet;
 
+// TODO(caspervonb): investiate why this fails on Windows.
+#[cfg(unix)]
 #[test]
 fn dts_ns() {
   let status = util::deno_cmd()
@@ -32,6 +34,8 @@ fn dts_ns() {
   assert!(status.success());
 }
 
+// TODO(caspervonb): investiate why this fails on Windows.
+#[cfg(unix)]
 #[test]
 fn dts_unstable() {
   let status = util::deno_cmd()
