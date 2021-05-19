@@ -11,6 +11,7 @@ use crate::tokio_util::create_basic_runtime;
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
+use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use log::error;
 use lspower::lsp;
@@ -218,6 +219,17 @@ impl<'a> From<&'a diagnostics::Position> for lsp::Position {
   }
 }
 
+/// Check if diagnostics can be generated for the provided media type.
+pub fn is_diagnosable(media_type: MediaType) -> bool {
+  matches!(
+    media_type,
+    MediaType::TypeScript
+      | MediaType::JavaScript
+      | MediaType::Tsx
+      | MediaType::Jsx
+  )
+}
+
 fn get_diagnostic_message(diagnostic: &diagnostics::Diagnostic) -> String {
   if let Some(message) = diagnostic.message_text.clone() {
     message
@@ -312,8 +324,8 @@ async fn generate_lint_diagnostics(
           .lock()
           .await
           .get_version(specifier, &DiagnosticSource::DenoLint);
-        if version != current_version {
-          let media_type = MediaType::from(specifier);
+        let media_type = MediaType::from(specifier);
+        if version != current_version && is_diagnosable(media_type) {
           if let Ok(Some(source_code)) = documents.content(specifier) {
             if let Ok(references) = analysis::get_lint_references(
               specifier,
@@ -354,10 +366,11 @@ async fn generate_ts_diagnostics(
         let version = snapshot.documents.version(s);
         let current_version =
           collection.get_version(s, &DiagnosticSource::TypeScript);
-        if version == current_version {
-          None
-        } else {
+        let media_type = MediaType::from(s);
+        if version != current_version && is_diagnosable(media_type) {
           Some(s.clone())
+        } else {
+          None
         }
       })
       .collect()
@@ -432,13 +445,22 @@ async fn generate_deps_diagnostics(
                       range,
                       severity: Some(lsp::DiagnosticSeverity::Error),
                       code,
-                      code_description: None,
                       source: Some("deno".to_string()),
                       message,
-                      related_information: None,
-                      tags: None,
-                      data: None,
+                      data: Some(json!({ "specifier": specifier })),
+                      ..Default::default()
                     });
+                  } else if sources.contains_key(&specifier) {
+                    if let Some(message) = sources.get_maybe_warning(&specifier) {
+                      diagnostics.push(lsp::Diagnostic {
+                        range,
+                        severity: Some(lsp::DiagnosticSeverity::Warning),
+                        code: Some(lsp::NumberOrString::String("deno-warn".to_string())),
+                        source: Some("deno".to_string()),
+                        message,
+                        ..Default::default()
+                      })
+                    }
                   }
                 },
               }

@@ -22,10 +22,10 @@ pub struct CliModuleLoader {
   /// import map file will be resolved and set.
   pub import_map: Option<ImportMap>,
   pub lib: TypeLib,
-  /// The initial set of permissions used to resolve the imports in the worker.
-  /// They are decoupled from the worker permissions since read access errors
-  /// must be raised based on the parent thread permissions
-  pub initial_permissions: Rc<RefCell<Option<Permissions>>>,
+  /// The initial set of permissions used to resolve the static imports in the
+  /// worker. They are decoupled from the worker (dynamic) permissions since
+  /// read access errors must be raised based on the parent thread permissions.
+  pub root_permissions: Permissions,
   pub program_state: Arc<ProgramState>,
 }
 
@@ -42,7 +42,7 @@ impl CliModuleLoader {
     Rc::new(CliModuleLoader {
       import_map,
       lib,
-      initial_permissions: Rc::new(RefCell::new(None)),
+      root_permissions: Permissions::allow_all(),
       program_state,
     })
   }
@@ -60,7 +60,7 @@ impl CliModuleLoader {
     Rc::new(CliModuleLoader {
       import_map: None,
       lib,
-      initial_permissions: Rc::new(RefCell::new(Some(permissions))),
+      root_permissions: permissions,
       program_state,
     })
   }
@@ -125,16 +125,8 @@ impl ModuleLoader for CliModuleLoader {
     let maybe_import_map = self.import_map.clone();
     let state = op_state.borrow();
 
-    // The permissions that should be applied to any dynamically imported module
-    let dynamic_permissions =
-      // If there are initial permissions assigned to the loader take them 
-      // and use only once for top level module load.
-      // Otherwise use permissions assigned to the current worker.
-      if let Some(permissions) = self.initial_permissions.borrow_mut().take() {
-        permissions
-      } else {
-        state.borrow::<Permissions>().clone()
-      };
+    let root_permissions = self.root_permissions.clone();
+    let dynamic_permissions = state.borrow::<Permissions>().clone();
 
     let lib = self.lib.clone();
     drop(state);
@@ -145,6 +137,7 @@ impl ModuleLoader for CliModuleLoader {
         .prepare_module_load(
           specifier,
           lib,
+          root_permissions,
           dynamic_permissions,
           is_dynamic,
           maybe_import_map,

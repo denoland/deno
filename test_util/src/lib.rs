@@ -46,6 +46,8 @@ use tokio_tungstenite::accept_async;
 #[cfg(unix)]
 pub use pty;
 
+pub mod lsp;
+
 const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
 const REDIRECT_PORT: u16 = 4546;
