@@ -7,7 +7,6 @@
   const { getLocationHref } = window.__bootstrap.location;
   const { log, pathFromURL } = window.__bootstrap.util;
   const { defineEventHandler } = window.__bootstrap.webUtil;
-  const build = window.__bootstrap.build.build;
 
   function createWorker(
     specifier,

@@ -7,7 +7,7 @@ function oneWorker(i: number) {
       new URL("worker_large_message.js", import.meta.url).href,
       { type: "module" },
     );
-    worker.onmessage = (e): void => {
+    worker.onmessage = (_e): void => {
       if (countDown > 0) {
         countDown--;
         return;

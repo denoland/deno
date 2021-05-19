@@ -769,7 +769,8 @@ impl Graph {
       "checkJs": false,
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
-      "inlineSourceMap": true,
+      "inlineSourceMap": false,
+      "sourceMap": false,
       "jsx": "react",
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
@@ -777,7 +778,7 @@ impl Graph {
     let maybe_ignored_options = ts_config
       .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
 
-    let s = self.emit_bundle(
+    let (src, _) = self.emit_bundle(
       &root_specifier,
       &ts_config.into(),
       &BundleType::Module,
@@ -787,7 +788,7 @@ impl Graph {
       ("Total time".to_string(), start.elapsed().as_millis() as u32),
     ]);
 
-    Ok((s, stats, maybe_ignored_options))
+    Ok((src, stats, maybe_ignored_options))
   }
 
   /// Type check the module graph, corresponding to the options provided.
@@ -945,6 +946,7 @@ impl Graph {
       "experimentalDecorators": true,
       "importsNotUsedAsValues": "remove",
       "inlineSourceMap": false,
+      "sourceMap": false,
       "isolatedModules": true,
       "jsx": "react",
       "jsxFactory": "React.createElement",
@@ -958,6 +960,8 @@ impl Graph {
     let opts = match options.bundle_type {
       BundleType::Module | BundleType::Classic => json!({
         "noEmit": true,
+        "removeComments": true,
+        "sourceMap": true,
       }),
       BundleType::None => json!({
         "outDir": "deno://",
@@ -1008,12 +1012,15 @@ impl Graph {
             "Only a single root module supported."
           );
           let specifier = &graph.roots[0];
-          let s = graph.emit_bundle(
+          let (src, maybe_src_map) = graph.emit_bundle(
             specifier,
             &config.into(),
             &options.bundle_type,
           )?;
-          emitted_files.insert("deno:///bundle.js".to_string(), s);
+          emitted_files.insert("deno:///bundle.js".to_string(), src);
+          if let Some(src_map) = maybe_src_map {
+            emitted_files.insert("deno:///bundle.js.map".to_string(), src_map);
+          }
         }
         BundleType::None => {
           for emitted_file in &response.emitted_files {
@@ -1060,13 +1067,16 @@ impl Graph {
             "Only a single root module supported."
           );
           let specifier = &self.roots[0];
-          let s = self.emit_bundle(
+          let (src, maybe_src_map) = self.emit_bundle(
             specifier,
             &config.into(),
             &options.bundle_type,
           )?;
           emit_count += 1;
-          emitted_files.insert("deno:///bundle.js".to_string(), s);
+          emitted_files.insert("deno:///bundle.js".to_string(), src);
+          if let Some(src_map) = maybe_src_map {
+            emitted_files.insert("deno:///bundle.js.map".to_string(), src_map);
+          }
         }
         BundleType::None => {
           let emit_options: ast::EmitOptions = config.into();
@@ -1118,7 +1128,7 @@ impl Graph {
     specifier: &ModuleSpecifier,
     emit_options: &ast::EmitOptions,
     bundle_type: &BundleType,
-  ) -> Result<String, AnyError> {
+  ) -> Result<(String, Option<String>), AnyError> {
     let cm = Rc::new(swc_common::SourceMap::new(
       swc_common::FilePathMapping::empty(),
     ));
@@ -1150,13 +1160,17 @@ impl Graph {
       .bundle(entries)
       .context("Unable to output bundle during Graph::bundle().")?;
     let mut buf = Vec::new();
+    let mut src_map_buf = Vec::new();
     {
       let mut emitter = swc_ecmascript::codegen::Emitter {
         cfg: swc_ecmascript::codegen::Config { minify: false },
         cm: cm.clone(),
         comments: None,
         wr: Box::new(swc_ecmascript::codegen::text_writer::JsWriter::new(
-          cm, "\n", &mut buf, None,
+          cm.clone(),
+          "\n",
+          &mut buf,
+          Some(&mut src_map_buf),
         )),
       };
 
@@ -1164,8 +1178,24 @@ impl Graph {
         .emit_module(&output[0].module)
         .context("Unable to emit bundle during Graph::bundle().")?;
     }
+    let mut src = String::from_utf8(buf)
+      .context("Emitted bundle is an invalid utf-8 string.")?;
+    let mut map: Option<String> = None;
+    {
+      let mut buf = Vec::new();
+      cm.build_source_map_from(&mut src_map_buf, None)
+        .to_writer(&mut buf)?;
 
-    String::from_utf8(buf).context("Emitted bundle is an invalid utf-8 string.")
+      if emit_options.inline_source_map {
+        src.push_str("//# sourceMappingURL=data:application/json;base64,");
+        let encoded_map = base64::encode(buf);
+        src.push_str(&encoded_map);
+      } else if emit_options.source_map {
+        map = Some(String::from_utf8(buf)?);
+      }
+    }
+
+    Ok((src, map))
   }
 
   /// Update the handler with any modules that are marked as _dirty_ and update
@@ -1606,6 +1636,7 @@ impl Graph {
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
       "inlineSourceMap": true,
+      "sourceMap": false,
       "jsx": "react",
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
@@ -1775,7 +1806,7 @@ impl GraphBuilder {
         }
         Some(Ok(cached_module)) => {
           let is_root = &cached_module.specifier == specifier;
-          self.visit(cached_module, is_root)?;
+          self.visit(cached_module, is_root, is_dynamic)?;
         }
         _ => {}
       }
@@ -1823,6 +1854,7 @@ impl GraphBuilder {
     &mut self,
     cached_module: CachedModule,
     is_root: bool,
+    is_root_dynamic: bool,
   ) -> Result<(), AnyError> {
     let specifier = cached_module.specifier.clone();
     let requested_specifier = cached_module.requested_specifier.clone();
@@ -1859,14 +1891,22 @@ impl GraphBuilder {
     for (_, dep) in module.dependencies.iter() {
       let maybe_referrer = Some(dep.location.clone());
       if let Some(specifier) = dep.maybe_code.as_ref() {
-        self.fetch(specifier, &maybe_referrer, dep.is_dynamic);
+        self.fetch(
+          specifier,
+          &maybe_referrer,
+          is_root_dynamic || dep.is_dynamic,
+        );
       }
       if let Some(specifier) = dep.maybe_type.as_ref() {
-        self.fetch(specifier, &maybe_referrer, dep.is_dynamic);
+        self.fetch(
+          specifier,
+          &maybe_referrer,
+          is_root_dynamic || dep.is_dynamic,
+        );
       }
     }
     if let Some((_, specifier)) = module.maybe_types.as_ref() {
-      self.fetch(specifier, &None, false);
+      self.fetch(specifier, &None, is_root_dynamic);
     }
     if specifier != requested_specifier {
       self
@@ -2404,9 +2444,10 @@ pub mod tests {
       .expect("should have emitted");
     assert!(result_info.diagnostics.is_empty());
     assert!(result_info.maybe_ignored_options.is_none());
-    assert_eq!(emitted_files.len(), 1);
+    assert_eq!(emitted_files.len(), 2);
     let actual = emitted_files.get("deno:///bundle.js");
     assert!(actual.is_some());
+    assert!(emitted_files.contains_key("deno:///bundle.js.map"));
     let actual = actual.unwrap();
     assert!(actual.contains("const b = \"b\";"));
     assert!(actual.contains("console.log(mod);"));

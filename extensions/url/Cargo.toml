@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_url"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2018"
 description = "URL API implementation for Deno"
 authors = ["the Deno authors"]
@@ -14,8 +14,8 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.87.0", path = "../../core" }
-idna = "0.2.2"
+deno_core = { version = "0.88.0", path = "../../core" }
+idna = "0.2.3"
 percent-encoding = "2.1.0"
 serde = { version = "1.0.125", features = ["derive"] }
 

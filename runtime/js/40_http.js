@@ -77,6 +77,7 @@
     }
 
     [Symbol.asyncIterator]() {
+      // deno-lint-ignore no-this-alias
       const httpConn = this;
       return {
         async next() {
