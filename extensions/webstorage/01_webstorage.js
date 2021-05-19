@@ -1,3 +1,9 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+
+
+
+
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
