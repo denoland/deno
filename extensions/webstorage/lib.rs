@@ -46,32 +46,43 @@ pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_webstorage.d.ts")
 }
 
+struct LocalStorage(Connection);
+struct SessionStorage(Connection);
+
 fn get_webstorage(
   state: &mut OpState,
   persistent: bool,
 ) -> Result<&Connection, AnyError> {
-  if state.try_borrow::<Connection>().is_none() {
-    let conn = if persistent {
+  let conn = if persistent {
+    if state.try_borrow::<LocalStorage>().is_none() {
       let path = state.try_borrow::<LocationDataDir>().ok_or_else(|| {
         DomExceptionNotSupportedError::new(
           "LocalStorage is not supported in this context.",
         )
       })?;
       std::fs::create_dir_all(&path.0)?;
-      Connection::open(path.0.join("local_storage"))?
-    } else {
-      Connection::open_in_memory()?
-    };
+      let conn = Connection::open(path.0.join("local_storage"))?;
+      state.put(LocalStorage(conn));
+    }
 
-    conn.execute(
-      "CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)",
-      params![],
-    )?;
 
-    state.put(conn);
-  }
 
-  Ok(state.borrow::<Connection>())
+    &state.borrow::<LocalStorage>().0
+  } else {
+    if state.try_borrow::<SessionStorage>().is_none() {
+      let conn = Connection::open_in_memory()?;
+      state.put(SessionStorage(conn));
+    }
+
+    &state.borrow::<SessionStorage>().0
+  };
+
+  conn.execute(
+    "CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)",
+    params![],
+  )?;
+
+  Ok(conn)
 }
 
 pub fn op_webstorage_length(
