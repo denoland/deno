@@ -1077,7 +1077,20 @@
     "storage_session_window_noopener.window.html": false,
     "storage_session_window_open.window.html": false,
     "storage_set_value_enumerate.window.html": true,
-    "storage_setitem.window.html": true,
+    "storage_setitem.window.html": [
+      "localStorage[] = \"\ud800\"",
+      "localStorage[] = \"\udbff\"",
+      "localStorage[] = \"\udc00\"",
+      "localStorage[] = \"\udfff\"",
+      "localStorage[] = \"\ud83ca\"",
+      "localStorage[] = \"a\udf4d\"",
+      "sessionStorage[] = \"\ud800\"",
+      "sessionStorage[] = \"\udbff\"",
+      "sessionStorage[] = \"\udc00\"",
+      "sessionStorage[] = \"\udfff\"",
+      "sessionStorage[] = \"\ud83ca\"",
+      "sessionStorage[] = \"a\udf4d\""
+    ],
     "storage_string_conversion.window.html": true,
     "storage_supported_property_names.window.html": true,
     "symbol-props.window.html": [
