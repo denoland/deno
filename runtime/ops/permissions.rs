@@ -4,16 +4,21 @@ use crate::permissions::Permissions;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
+use deno_core::op_sync;
 use deno_core::url;
+use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use std::path::Path;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_sync(rt, "op_query_permission", op_query_permission);
-  super::reg_sync(rt, "op_revoke_permission", op_revoke_permission);
-  super::reg_sync(rt, "op_request_permission", op_request_permission);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_query_permission", op_sync(op_query_permission)),
+      ("op_revoke_permission", op_sync(op_revoke_permission)),
+      ("op_request_permission", op_sync(op_request_permission)),
+    ])
+    .build()
 }
 
 #[derive(Deserialize)]
@@ -21,13 +26,14 @@ pub struct PermissionArgs {
   name: String,
   path: Option<String>,
   host: Option<String>,
+  variable: Option<String>,
   command: Option<String>,
 }
 
 pub fn op_query_permission(
   state: &mut OpState,
   args: PermissionArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<String, AnyError> {
   let permissions = state.borrow::<Permissions>();
   let path = args.path.as_deref();
@@ -41,7 +47,7 @@ pub fn op_query_permission(
       }
       .as_ref(),
     ),
-    "env" => permissions.env.query(),
+    "env" => permissions.env.query(args.variable.as_deref()),
     "run" => permissions.run.query(args.command.as_deref()),
     "plugin" => permissions.plugin.query(),
     "hrtime" => permissions.hrtime.query(),
@@ -58,7 +64,7 @@ pub fn op_query_permission(
 pub fn op_revoke_permission(
   state: &mut OpState,
   args: PermissionArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<String, AnyError> {
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
@@ -72,7 +78,7 @@ pub fn op_revoke_permission(
       }
       .as_ref(),
     ),
-    "env" => permissions.env.revoke(),
+    "env" => permissions.env.revoke(args.variable.as_deref()),
     "run" => permissions.run.revoke(args.command.as_deref()),
     "plugin" => permissions.plugin.revoke(),
     "hrtime" => permissions.hrtime.revoke(),
@@ -89,7 +95,7 @@ pub fn op_revoke_permission(
 pub fn op_request_permission(
   state: &mut OpState,
   args: PermissionArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<String, AnyError> {
   let permissions = state.borrow_mut::<Permissions>();
   let path = args.path.as_deref();
@@ -103,7 +109,7 @@ pub fn op_request_permission(
       }
       .as_ref(),
     ),
-    "env" => permissions.env.request(),
+    "env" => permissions.env.request(args.variable.as_deref()),
     "run" => permissions.run.request(args.command.as_deref()),
     "plugin" => permissions.plugin.request(),
     "hrtime" => permissions.hrtime.request(),

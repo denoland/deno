@@ -1,21 +1,25 @@
 // See issue for details
 // https://github.com/denoland/deno/issues/4080
 //
-// After first call to `postMessage() this worker schedules
-// [close(), postMessage()] ops on the same turn of microtask queue
-// (because message is rather big).
-// Only single `postMessage()` call should make it
-// to host, ie. after calling `close()` no more code should be run.
+// After first received message, this worker schedules
+// [assert(), close(), assert()] ops on the same turn of microtask queue
+// All tasks after close should not make it
 
-setTimeout(() => {
-  close();
-}, 50);
-
-while (true) {
-  await new Promise((done) => {
+onmessage = async function () {
+  let stage = 0;
+  await new Promise((_) => {
     setTimeout(() => {
-      postMessage({ buf: new Array(999999) });
-      done();
-    });
+      if (stage !== 0) throw "Unexpected stage";
+      stage = 1;
+    }, 50);
+    setTimeout(() => {
+      if (stage !== 1) throw "Unexpected stage";
+      stage = 2;
+      postMessage("DONE");
+      close();
+    }, 50);
+    setTimeout(() => {
+      throw "This should not be run";
+    }, 50);
   });
-}
+};

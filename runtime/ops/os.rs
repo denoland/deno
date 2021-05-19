@@ -3,32 +3,37 @@
 use super::utils::into_string;
 use crate::permissions::Permissions;
 use deno_core::error::{type_error, AnyError};
+use deno_core::op_sync;
 use deno_core::url::Url;
+use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_sync(rt, "op_exit", op_exit);
-  super::reg_sync(rt, "op_env", op_env);
-  super::reg_sync(rt, "op_exec_path", op_exec_path);
-  super::reg_sync(rt, "op_set_env", op_set_env);
-  super::reg_sync(rt, "op_get_env", op_get_env);
-  super::reg_sync(rt, "op_delete_env", op_delete_env);
-  super::reg_sync(rt, "op_hostname", op_hostname);
-  super::reg_sync(rt, "op_loadavg", op_loadavg);
-  super::reg_sync(rt, "op_os_release", op_os_release);
-  super::reg_sync(rt, "op_system_memory_info", op_system_memory_info);
-  super::reg_sync(rt, "op_system_cpu_info", op_system_cpu_info);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_exit", op_sync(op_exit)),
+      ("op_env", op_sync(op_env)),
+      ("op_exec_path", op_sync(op_exec_path)),
+      ("op_set_env", op_sync(op_set_env)),
+      ("op_get_env", op_sync(op_get_env)),
+      ("op_delete_env", op_sync(op_delete_env)),
+      ("op_hostname", op_sync(op_hostname)),
+      ("op_loadavg", op_sync(op_loadavg)),
+      ("op_os_release", op_sync(op_os_release)),
+      ("op_system_memory_info", op_sync(op_system_memory_info)),
+      ("op_system_cpu_info", op_sync(op_system_cpu_info)),
+    ])
+    .build()
 }
 
 fn op_exec_path(
   state: &mut OpState,
   _args: (),
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<String, AnyError> {
   let current_exe = env::current_exe().unwrap();
   state
@@ -52,9 +57,9 @@ pub struct SetEnv {
 fn op_set_env(
   state: &mut OpState,
   args: SetEnv,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<(), AnyError> {
-  state.borrow_mut::<Permissions>().env.check()?;
+  state.borrow_mut::<Permissions>().env.check(&args.key)?;
   let invalid_key =
     args.key.is_empty() || args.key.contains(&['=', '\0'] as &[char]);
   let invalid_value = args.value.contains('\0');
@@ -68,18 +73,18 @@ fn op_set_env(
 fn op_env(
   state: &mut OpState,
   _args: (),
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<HashMap<String, String>, AnyError> {
-  state.borrow_mut::<Permissions>().env.check()?;
+  state.borrow_mut::<Permissions>().env.check_all()?;
   Ok(env::vars().collect())
 }
 
 fn op_get_env(
   state: &mut OpState,
   key: String,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<Option<String>, AnyError> {
-  state.borrow_mut::<Permissions>().env.check()?;
+  state.borrow_mut::<Permissions>().env.check(&key)?;
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error("Key contains invalid characters."));
   }
@@ -89,12 +94,13 @@ fn op_get_env(
   };
   Ok(r)
 }
+
 fn op_delete_env(
   state: &mut OpState,
   key: String,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<(), AnyError> {
-  state.borrow_mut::<Permissions>().env.check()?;
+  state.borrow_mut::<Permissions>().env.check(&key)?;
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error("Key contains invalid characters."));
   }
@@ -102,21 +108,17 @@ fn op_delete_env(
   Ok(())
 }
 
-fn op_exit(
-  _state: &mut OpState,
-  code: i32,
-  _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<(), AnyError> {
+fn op_exit(_state: &mut OpState, code: i32, _: ()) -> Result<(), AnyError> {
   std::process::exit(code)
 }
 
 fn op_loadavg(
   state: &mut OpState,
   _args: (),
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<(f64, f64, f64), AnyError> {
   super::check_unstable(state, "Deno.loadavg");
-  state.borrow_mut::<Permissions>().env.check()?;
+  state.borrow_mut::<Permissions>().env.check_all()?;
   match sys_info::loadavg() {
     Ok(loadavg) => Ok((loadavg.one, loadavg.five, loadavg.fifteen)),
     Err(_) => Ok((0.0, 0.0, 0.0)),
@@ -126,10 +128,10 @@ fn op_loadavg(
 fn op_hostname(
   state: &mut OpState,
   _args: (),
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<String, AnyError> {
   super::check_unstable(state, "Deno.hostname");
-  state.borrow_mut::<Permissions>().env.check()?;
+  state.borrow_mut::<Permissions>().env.check_all()?;
   let hostname = sys_info::hostname().unwrap_or_else(|_| "".to_string());
   Ok(hostname)
 }
@@ -137,10 +139,10 @@ fn op_hostname(
 fn op_os_release(
   state: &mut OpState,
   _args: (),
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<String, AnyError> {
   super::check_unstable(state, "Deno.osRelease");
-  state.borrow_mut::<Permissions>().env.check()?;
+  state.borrow_mut::<Permissions>().env.check_all()?;
   let release = sys_info::os_release().unwrap_or_else(|_| "".to_string());
   Ok(release)
 }
@@ -161,10 +163,10 @@ struct MemInfo {
 fn op_system_memory_info(
   state: &mut OpState,
   _args: (),
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<Option<MemInfo>, AnyError> {
   super::check_unstable(state, "Deno.systemMemoryInfo");
-  state.borrow_mut::<Permissions>().env.check()?;
+  state.borrow_mut::<Permissions>().env.check_all()?;
   match sys_info::mem_info() {
     Ok(info) => Ok(Some(MemInfo {
       total: info.total,
@@ -188,10 +190,10 @@ struct CpuInfo {
 fn op_system_cpu_info(
   state: &mut OpState,
   _args: (),
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<CpuInfo, AnyError> {
   super::check_unstable(state, "Deno.systemCpuInfo");
-  state.borrow_mut::<Permissions>().env.check()?;
+  state.borrow_mut::<Permissions>().env.check_all()?;
 
   let cores = sys_info::cpu_num().ok();
   let speed = sys_info::cpu_speed().ok();

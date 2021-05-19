@@ -6,14 +6,16 @@ use super::analysis::ResolvedDependencyErr;
 use super::config;
 use super::language_server;
 use super::language_server::StateSnapshot;
+use super::semantic_tokens::SemanticTokensBuilder;
+use super::semantic_tokens::TsTokenEncodingConsts;
 use super::text;
 use super::text::LineIndex;
 
+use crate::config_file::TsConfig;
 use crate::media_type::MediaType;
 use crate::tokio_util::create_basic_runtime;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
-use crate::tsc_config::TsConfig;
 
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
@@ -35,11 +37,11 @@ use log::warn;
 use lspower::lsp;
 use regex::Captures;
 use regex::Regex;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::thread;
 use std::{borrow::Cow, cmp};
-use text_size::TextSize;
+use std::{collections::HashMap, path::Path};
+use text_size::{TextRange, TextSize};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
@@ -283,6 +285,13 @@ fn parse_kind_modifier(kind_modifiers: &str) -> HashSet<&str> {
   re.split(kind_modifiers).collect()
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum OneOrMany<T> {
+  One(T),
+  Many(Vec<T>),
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum ScriptElementKind {
   #[serde(rename = "")]
@@ -407,6 +416,33 @@ impl From<ScriptElementKind> for lsp::CompletionItemKind {
       ScriptElementKind::Directory => lsp::CompletionItemKind::Folder,
       ScriptElementKind::String => lsp::CompletionItemKind::Constant,
       _ => lsp::CompletionItemKind::Property,
+    }
+  }
+}
+
+impl From<ScriptElementKind> for lsp::SymbolKind {
+  fn from(kind: ScriptElementKind) -> Self {
+    match kind {
+      ScriptElementKind::ModuleElement => lsp::SymbolKind::Module,
+      ScriptElementKind::ClassElement => lsp::SymbolKind::Class,
+      ScriptElementKind::EnumElement => lsp::SymbolKind::Enum,
+      ScriptElementKind::InterfaceElement => lsp::SymbolKind::Interface,
+      ScriptElementKind::MemberFunctionElement => lsp::SymbolKind::Method,
+      ScriptElementKind::MemberVariableElement => lsp::SymbolKind::Property,
+      ScriptElementKind::MemberGetAccessorElement => lsp::SymbolKind::Property,
+      ScriptElementKind::MemberSetAccessorElement => lsp::SymbolKind::Property,
+      ScriptElementKind::VariableElement => lsp::SymbolKind::Variable,
+      ScriptElementKind::ConstElement => lsp::SymbolKind::Variable,
+      ScriptElementKind::LocalVariableElement => lsp::SymbolKind::Variable,
+      ScriptElementKind::FunctionElement => lsp::SymbolKind::Function,
+      ScriptElementKind::LocalFunctionElement => lsp::SymbolKind::Function,
+      ScriptElementKind::ConstructSignatureElement => {
+        lsp::SymbolKind::Constructor
+      }
+      ScriptElementKind::ConstructorImplementationElement => {
+        lsp::SymbolKind::Constructor
+      }
+      _ => lsp::SymbolKind::Variable,
     }
   }
 }
@@ -583,6 +619,90 @@ impl NavigationTree {
         "source": source
       })),
     }
+  }
+
+  pub fn collect_document_symbols(
+    &self,
+    line_index: &LineIndex,
+    document_symbols: &mut Vec<lsp::DocumentSymbol>,
+  ) -> bool {
+    let mut should_include = self.should_include_entry();
+    if !should_include
+      && self.child_items.as_ref().map_or(true, |v| v.is_empty())
+    {
+      return false;
+    }
+
+    let children = self
+      .child_items
+      .as_ref()
+      .map_or(&[] as &[NavigationTree], |v| v.as_slice());
+    for span in self.spans.iter() {
+      let range = TextRange::at(span.start.into(), span.length.into());
+      let mut symbol_children = Vec::<lsp::DocumentSymbol>::new();
+      for child in children.iter() {
+        let should_traverse_child = child
+          .spans
+          .iter()
+          .map(|child_span| {
+            TextRange::at(child_span.start.into(), child_span.length.into())
+          })
+          .any(|child_range| range.intersect(child_range).is_some());
+        if should_traverse_child {
+          let included_child =
+            child.collect_document_symbols(line_index, &mut symbol_children);
+          should_include = should_include || included_child;
+        }
+      }
+
+      if should_include {
+        let mut selection_span = span;
+        if let Some(name_span) = self.name_span.as_ref() {
+          let name_range =
+            TextRange::at(name_span.start.into(), name_span.length.into());
+          if range.contains_range(name_range) {
+            selection_span = name_span;
+          }
+        }
+
+        let mut tags: Option<Vec<lsp::SymbolTag>> = None;
+        let kind_modifiers = parse_kind_modifier(&self.kind_modifiers);
+        if kind_modifiers.contains("deprecated") {
+          tags = Some(vec![lsp::SymbolTag::Deprecated]);
+        }
+
+        let children = if !symbol_children.is_empty() {
+          Some(symbol_children)
+        } else {
+          None
+        };
+
+        // The field `deprecated` is deprecated but DocumentSymbol does not have
+        // a default, therefore we have to supply the deprecated deprecated
+        // field. It is like a bad version of Inception.
+        #[allow(deprecated)]
+        document_symbols.push(lsp::DocumentSymbol {
+          name: self.text.clone(),
+          kind: self.kind.clone().into(),
+          range: span.to_range(line_index),
+          selection_range: selection_span.to_range(line_index),
+          tags,
+          children,
+          detail: None,
+          deprecated: None,
+        })
+      }
+    }
+
+    should_include
+  }
+
+  fn should_include_entry(&self) -> bool {
+    if let ScriptElementKind::Alias = self.kind {
+      return false;
+    }
+
+    !self.text.is_empty() && self.text != "<function>" && self.text != "<class>"
   }
 
   pub fn walk<F>(&self, callback: &F)
@@ -854,6 +974,56 @@ impl FileTextChanges {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct Classifications {
+  spans: Vec<u32>,
+}
+
+impl Classifications {
+  pub fn to_semantic_tokens(
+    &self,
+    line_index: &LineIndex,
+  ) -> lsp::SemanticTokens {
+    let token_count = self.spans.len() / 3;
+    let mut builder = SemanticTokensBuilder::new();
+    for i in 0..token_count {
+      let src_offset = 3 * i;
+      let offset = self.spans[src_offset];
+      let length = self.spans[src_offset + 1];
+      let ts_classification = self.spans[src_offset + 2];
+
+      let token_type =
+        Classifications::get_token_type_from_classification(ts_classification);
+      let token_modifiers =
+        Classifications::get_token_modifier_from_classification(
+          ts_classification,
+        );
+
+      let start_pos = line_index.position_tsc(offset.into());
+      let end_pos = line_index.position_tsc(TextSize::from(offset + length));
+
+      // start_pos.line == end_pos.line is always true as there are no multiline tokens
+      builder.push(
+        start_pos.line,
+        start_pos.character,
+        end_pos.character - start_pos.character,
+        token_type,
+        token_modifiers,
+      );
+    }
+    builder.build(None)
+  }
+
+  fn get_token_type_from_classification(ts_classification: u32) -> u32 {
+    (ts_classification >> (TsTokenEncodingConsts::TypeOffset as u32)) - 1
+  }
+
+  fn get_token_modifier_from_classification(ts_classification: u32) -> u32 {
+    ts_classification & (TsTokenEncodingConsts::ModifierMask as u32)
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CodeAction {
   description: String,
   changes: Vec<FileTextChanges>,
@@ -914,6 +1084,182 @@ impl ReferenceEntry {
       uri,
       range: self.document_span.text_span.to_range(line_index),
     }
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallHierarchyItem {
+  name: String,
+  kind: ScriptElementKind,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  kind_modifiers: Option<String>,
+  file: String,
+  span: TextSpan,
+  selection_span: TextSpan,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  container_name: Option<String>,
+}
+
+impl CallHierarchyItem {
+  pub(crate) async fn try_resolve_call_hierarchy_item(
+    &self,
+    language_server: &mut language_server::Inner,
+    maybe_root_path: Option<&Path>,
+  ) -> Option<lsp::CallHierarchyItem> {
+    let target_specifier = resolve_url(&self.file).unwrap();
+    let target_line_index = language_server
+      .get_line_index(target_specifier)
+      .await
+      .ok()?;
+
+    Some(self.to_call_hierarchy_item(
+      &target_line_index,
+      language_server,
+      maybe_root_path,
+    ))
+  }
+
+  pub(crate) fn to_call_hierarchy_item(
+    &self,
+    line_index: &LineIndex,
+    language_server: &mut language_server::Inner,
+    maybe_root_path: Option<&Path>,
+  ) -> lsp::CallHierarchyItem {
+    let target_specifier = resolve_url(&self.file).unwrap();
+    let uri = language_server
+      .url_map
+      .normalize_specifier(&target_specifier)
+      .unwrap();
+
+    let use_file_name = self.is_source_file_item();
+    let maybe_file_path = if uri.scheme() == "file" {
+      uri.to_file_path().ok()
+    } else {
+      None
+    };
+    let name = if use_file_name {
+      if let Some(file_path) = maybe_file_path.as_ref() {
+        file_path.file_name().unwrap().to_string_lossy().to_string()
+      } else {
+        uri.to_string()
+      }
+    } else {
+      self.name.clone()
+    };
+    let detail = if use_file_name {
+      if let Some(file_path) = maybe_file_path.as_ref() {
+        // TODO: update this to work with multi root workspaces
+        let parent_dir = file_path.parent().unwrap();
+        if let Some(root_path) = maybe_root_path {
+          parent_dir
+            .strip_prefix(root_path)
+            .unwrap_or(parent_dir)
+            .to_string_lossy()
+            .to_string()
+        } else {
+          parent_dir.to_string_lossy().to_string()
+        }
+      } else {
+        String::new()
+      }
+    } else {
+      self.container_name.as_ref().cloned().unwrap_or_default()
+    };
+
+    let mut tags: Option<Vec<lsp::SymbolTag>> = None;
+    if let Some(modifiers) = self.kind_modifiers.as_ref() {
+      let kind_modifiers = parse_kind_modifier(modifiers);
+      if kind_modifiers.contains("deprecated") {
+        tags = Some(vec![lsp::SymbolTag::Deprecated]);
+      }
+    }
+
+    lsp::CallHierarchyItem {
+      name,
+      tags,
+      uri,
+      detail: Some(detail),
+      kind: self.kind.clone().into(),
+      range: self.span.to_range(line_index),
+      selection_range: self.selection_span.to_range(line_index),
+      data: None,
+    }
+  }
+
+  fn is_source_file_item(&self) -> bool {
+    self.kind == ScriptElementKind::ScriptElement
+      || self.kind == ScriptElementKind::ModuleElement
+        && self.selection_span.start == 0
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallHierarchyIncomingCall {
+  from: CallHierarchyItem,
+  from_spans: Vec<TextSpan>,
+}
+
+impl CallHierarchyIncomingCall {
+  pub(crate) async fn try_resolve_call_hierarchy_incoming_call(
+    &self,
+    language_server: &mut language_server::Inner,
+    maybe_root_path: Option<&Path>,
+  ) -> Option<lsp::CallHierarchyIncomingCall> {
+    let target_specifier = resolve_url(&self.from.file).unwrap();
+    let target_line_index = language_server
+      .get_line_index(target_specifier)
+      .await
+      .ok()?;
+
+    Some(lsp::CallHierarchyIncomingCall {
+      from: self.from.to_call_hierarchy_item(
+        &target_line_index,
+        language_server,
+        maybe_root_path,
+      ),
+      from_ranges: self
+        .from_spans
+        .iter()
+        .map(|span| span.to_range(&target_line_index))
+        .collect(),
+    })
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallHierarchyOutgoingCall {
+  to: CallHierarchyItem,
+  from_spans: Vec<TextSpan>,
+}
+
+impl CallHierarchyOutgoingCall {
+  pub(crate) async fn try_resolve_call_hierarchy_outgoing_call(
+    &self,
+    line_index: &LineIndex,
+    language_server: &mut language_server::Inner,
+    maybe_root_path: Option<&Path>,
+  ) -> Option<lsp::CallHierarchyOutgoingCall> {
+    let target_specifier = resolve_url(&self.to.file).unwrap();
+    let target_line_index = language_server
+      .get_line_index(target_specifier)
+      .await
+      .ok()?;
+
+    Some(lsp::CallHierarchyOutgoingCall {
+      to: self.to.to_call_hierarchy_item(
+        &target_line_index,
+        language_server,
+        maybe_root_path,
+      ),
+      from_ranges: self
+        .from_spans
+        .iter()
+        .map(|span| span.to_range(&line_index))
+        .collect(),
+    })
   }
 }
 
@@ -1480,13 +1826,13 @@ where
   V: de::DeserializeOwned,
   R: Serialize + 'static,
 {
-  op_sync(move |s, args, _bufs| {
+  op_sync(move |s, args, _: ()| {
     let state = s.borrow_mut::<State>();
     op_fn(state, args)
   })
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SourceSnapshotArgs {
   specifier: String,
@@ -1496,18 +1842,21 @@ struct SourceSnapshotArgs {
 /// The language service is dropping a reference to a source file snapshot, and
 /// we can drop our version of that document.
 #[allow(clippy::unnecessary_wraps)]
-fn dispose(
+fn op_dispose(
   state: &mut State,
   args: SourceSnapshotArgs,
 ) -> Result<bool, AnyError> {
-  let mark = state.state_snapshot.performance.mark("op_dispose");
+  let mark = state
+    .state_snapshot
+    .performance
+    .mark("op_dispose", Some(&args));
   let specifier = resolve_url(&args.specifier)?;
   state.snapshots.remove(&(specifier, args.version.into()));
   state.state_snapshot.performance.measure(mark);
   Ok(true)
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct GetChangeRangeArgs {
   specifier: String,
@@ -1518,14 +1867,17 @@ struct GetChangeRangeArgs {
 
 /// The language service wants to compare an old snapshot with a new snapshot to
 /// determine what source has changed.
-fn get_change_range(
+fn op_get_change_range(
   state: &mut State,
   args: GetChangeRangeArgs,
 ) -> Result<Value, AnyError> {
-  let mark = state.state_snapshot.performance.mark("op_get_change_range");
+  let mark = state
+    .state_snapshot
+    .performance
+    .mark("op_get_change_range", Some(&args));
   let specifier = resolve_url(&args.specifier)?;
   cache_snapshot(state, &specifier, args.version.clone())?;
-  if let Some(current) = state
+  let r = if let Some(current) = state
     .snapshots
     .get(&(specifier.clone(), args.version.clone().into()))
   {
@@ -1533,11 +1885,9 @@ fn get_change_range(
       .snapshots
       .get(&(specifier, args.old_version.clone().into()))
     {
-      state.state_snapshot.performance.measure(mark);
       Ok(text::get_range_change(prev, current))
     } else {
       let new_length = current.encode_utf16().count();
-      state.state_snapshot.performance.measure(mark);
       // when a local file is opened up in the editor, the compiler might
       // already have a snapshot of it in memory, and will request it, but we
       // now are working off in memory versions of the document, and so need
@@ -1551,7 +1901,6 @@ fn get_change_range(
       }))
     }
   } else {
-    state.state_snapshot.performance.measure(mark);
     Err(custom_error(
       "MissingSnapshot",
       format!(
@@ -1559,16 +1908,23 @@ fn get_change_range(
         args
       ),
     ))
-  }
+  };
+
+  state.state_snapshot.performance.measure(mark);
+  r
 }
 
-fn get_length(
+fn op_get_length(
   state: &mut State,
   args: SourceSnapshotArgs,
 ) -> Result<usize, AnyError> {
-  let mark = state.state_snapshot.performance.mark("op_get_length");
+  let mark = state
+    .state_snapshot
+    .performance
+    .mark("op_get_length", Some(&args));
   let specifier = resolve_url(&args.specifier)?;
-  if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier) {
+  let r = if let Some(Some(asset)) = state.state_snapshot.assets.get(&specifier)
+  {
     Ok(asset.length)
   } else {
     cache_snapshot(state, &specifier, args.version.clone())?;
@@ -1576,12 +1932,13 @@ fn get_length(
       .snapshots
       .get(&(specifier, args.version.into()))
       .unwrap();
-    state.state_snapshot.performance.measure(mark);
     Ok(content.encode_utf16().count())
-  }
+  };
+  state.state_snapshot.performance.measure(mark);
+  r
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct GetTextArgs {
   specifier: String,
@@ -1590,8 +1947,14 @@ struct GetTextArgs {
   end: usize,
 }
 
-fn get_text(state: &mut State, args: GetTextArgs) -> Result<String, AnyError> {
-  let mark = state.state_snapshot.performance.mark("op_get_text");
+fn op_get_text(
+  state: &mut State,
+  args: GetTextArgs,
+) -> Result<String, AnyError> {
+  let mark = state
+    .state_snapshot
+    .performance
+    .mark("op_get_text", Some(&args));
   let specifier = resolve_url(&args.specifier)?;
   let content =
     if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
@@ -1608,11 +1971,14 @@ fn get_text(state: &mut State, args: GetTextArgs) -> Result<String, AnyError> {
   Ok(text::slice(&content, args.start..args.end).to_string())
 }
 
-fn resolve(
+fn op_resolve(
   state: &mut State,
   args: ResolveArgs,
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
-  let mark = state.state_snapshot.performance.mark("op_resolve");
+  let mark = state
+    .state_snapshot
+    .performance
+    .mark("op_resolve", Some(&args));
   let mut resolved = Vec::new();
   let referrer = resolve_url(&args.base)?;
   let sources = &mut state.state_snapshot.sources;
@@ -1699,13 +2065,13 @@ fn resolve(
 }
 
 #[allow(clippy::unnecessary_wraps)]
-fn respond(state: &mut State, args: Response) -> Result<bool, AnyError> {
+fn op_respond(state: &mut State, args: Response) -> Result<bool, AnyError> {
   state.response = Some(args);
   Ok(true)
 }
 
 #[allow(clippy::unnecessary_wraps)]
-fn script_names(
+fn op_script_names(
   state: &mut State,
   _args: Value,
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
@@ -1720,37 +2086,42 @@ fn script_names(
   )
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ScriptVersionArgs {
   specifier: String,
 }
 
-fn script_version(
+fn op_script_version(
   state: &mut State,
   args: ScriptVersionArgs,
 ) -> Result<Option<String>, AnyError> {
-  let mark = state.state_snapshot.performance.mark("op_script_version");
+  let mark = state
+    .state_snapshot
+    .performance
+    .mark("op_script_version", Some(&args));
   let specifier = resolve_url(&args.specifier)?;
-  if specifier.scheme() == "asset" {
-    return if state.state_snapshot.assets.contains_key(&specifier) {
+  let r = if specifier.scheme() == "asset" {
+    if state.state_snapshot.assets.contains_key(&specifier) {
       Ok(Some("1".to_string()))
     } else {
       Ok(None)
-    };
+    }
   } else if let Some(version) =
     state.state_snapshot.documents.version(&specifier)
   {
-    return Ok(Some(version.to_string()));
+    Ok(Some(version.to_string()))
   } else {
     let sources = &mut state.state_snapshot.sources;
     if let Some(version) = sources.get_script_version(&specifier) {
-      return Ok(Some(version));
+      Ok(Some(version))
+    } else {
+      Ok(None)
     }
-  }
+  };
 
   state.state_snapshot.performance.measure(mark);
-  Ok(None)
+  r
 }
 
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
@@ -1768,14 +2139,15 @@ pub fn start(debug: bool) -> Result<JsRuntime, AnyError> {
     op_state.put(State::new(StateSnapshot::default()));
   }
 
-  runtime.register_op("op_dispose", op(dispose));
-  runtime.register_op("op_get_change_range", op(get_change_range));
-  runtime.register_op("op_get_length", op(get_length));
-  runtime.register_op("op_get_text", op(get_text));
-  runtime.register_op("op_resolve", op(resolve));
-  runtime.register_op("op_respond", op(respond));
-  runtime.register_op("op_script_names", op(script_names));
-  runtime.register_op("op_script_version", op(script_version));
+  runtime.register_op("op_dispose", op(op_dispose));
+  runtime.register_op("op_get_change_range", op(op_get_change_range));
+  runtime.register_op("op_get_length", op(op_get_length));
+  runtime.register_op("op_get_text", op(op_get_text));
+  runtime.register_op("op_resolve", op(op_resolve));
+  runtime.register_op("op_respond", op(op_respond));
+  runtime.register_op("op_script_names", op(op_script_names));
+  runtime.register_op("op_script_version", op(op_script_version));
+  runtime.sync_ops_cache();
 
   let init_config = json!({ "debug": debug });
   let init_src = format!("globalThis.serverInit({});", init_config);
@@ -1940,6 +2312,8 @@ pub enum RequestMethod {
   GetDiagnostics(Vec<ModuleSpecifier>),
   /// Return document highlights at position.
   GetDocumentHighlights((ModuleSpecifier, u32, Vec<ModuleSpecifier>)),
+  /// Get semantic highlights information for a particular file.
+  GetEncodedSemanticClassifications((ModuleSpecifier, TextSpan)),
   /// Get implementation information for a specific position.
   GetImplementation((ModuleSpecifier, u32)),
   /// Get a "navigation tree" for a specifier.
@@ -1956,6 +2330,12 @@ pub enum RequestMethod {
   GetSmartSelectionRange((ModuleSpecifier, u32)),
   /// Get the diagnostic codes that support some form of code fix.
   GetSupportedCodeFixes,
+  /// Resolve a call hierarchy item for a specific position.
+  PrepareCallHierarchy((ModuleSpecifier, u32)),
+  /// Resolve incoming call hierarchy items for a specific position.
+  ProvideCallHierarchyIncomingCalls((ModuleSpecifier, u32)),
+  /// Resolve outgoing call hierarchy items for a specific position.
+  ProvideCallHierarchyOutgoingCalls((ModuleSpecifier, u32)),
 }
 
 impl RequestMethod {
@@ -2043,6 +2423,14 @@ impl RequestMethod {
         "position": position,
         "filesToSearch": files_to_search,
       }),
+      RequestMethod::GetEncodedSemanticClassifications((specifier, span)) => {
+        json!({
+          "id": id,
+          "method": "getEncodedSemanticClassifications",
+          "specifier": specifier,
+          "span": span,
+        })
+      }
       RequestMethod::GetImplementation((specifier, position)) => json!({
         "id": id,
         "method": "getImplementation",
@@ -2092,6 +2480,36 @@ impl RequestMethod {
         "id": id,
         "method": "getSupportedCodeFixes",
       }),
+      RequestMethod::PrepareCallHierarchy((specifier, position)) => {
+        json!({
+          "id": id,
+          "method": "prepareCallHierarchy",
+          "specifier": specifier,
+          "position": position
+        })
+      }
+      RequestMethod::ProvideCallHierarchyIncomingCalls((
+        specifier,
+        position,
+      )) => {
+        json!({
+          "id": id,
+          "method": "provideCallHierarchyIncomingCalls",
+          "specifier": specifier,
+          "position": position
+        })
+      }
+      RequestMethod::ProvideCallHierarchyOutgoingCalls((
+        specifier,
+        position,
+      )) => {
+        json!({
+          "id": id,
+          "method": "provideCallHierarchyOutgoingCalls",
+          "specifier": specifier,
+          "position": position
+        })
+      }
     }
   }
 }
@@ -2102,6 +2520,7 @@ pub fn request(
   state_snapshot: StateSnapshot,
   method: RequestMethod,
 ) -> Result<Value, AnyError> {
+  let performance = state_snapshot.performance.clone();
   let id = {
     let op_state = runtime.op_state();
     let mut op_state = op_state.borrow_mut();
@@ -2111,6 +2530,7 @@ pub fn request(
     state.last_id
   };
   let request_params = method.to_value(id);
+  let mark = performance.mark("request", Some(request_params.clone()));
   let request_src = format!("globalThis.serverRequest({});", request_params);
   runtime.execute("[native_code]", &request_src)?;
 
@@ -2118,6 +2538,7 @@ pub fn request(
   let mut op_state = op_state.borrow_mut();
   let state = op_state.borrow_mut::<State>();
 
+  performance.measure(mark);
   if let Some(response) = state.response.clone() {
     state.response = None;
     Ok(response.data)
@@ -2696,7 +3117,7 @@ mod tests {
     assert!(result.is_ok());
     let response: CompletionInfo =
       serde_json::from_value(result.unwrap()).unwrap();
-    assert_eq!(response.entries.len(), 20);
+    assert_eq!(response.entries.len(), 19);
     let result = request(
       &mut runtime,
       state_snapshot,

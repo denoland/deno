@@ -21,8 +21,7 @@ is opened, and printed to stdout (e.g. the console).
 /**
  * cat.ts
  */
-for (let i = 0; i < Deno.args.length; i++) {
-  const filename = Deno.args[i];
+for (const filename of Deno.args) {
   const file = await Deno.open(filename);
   await Deno.copy(file, Deno.stdout);
   file.close();
