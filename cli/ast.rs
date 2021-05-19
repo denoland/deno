@@ -205,6 +205,9 @@ pub struct EmitOptions {
   /// Should the source map be inlined in the emitted code file, or provided
   /// as a separate file.  Defaults to `true`.
   pub inline_source_map: bool,
+  // Should a corresponding .map file be created for the output. This should be
+  // false if inline_source_map is true. Defaults to `false`.
+  pub source_map: bool,
   /// When transforming JSX, what value should be used for the JSX factory.
   /// Defaults to `React.createElement`.
   pub jsx_factory: String,
@@ -222,6 +225,7 @@ impl Default for EmitOptions {
       emit_metadata: false,
       imports_not_used_as_values: ImportsNotUsedAsValues::Remove,
       inline_source_map: true,
+      source_map: false,
       jsx_factory: "React.createElement".into(),
       jsx_fragment_factory: "React.Fragment".into(),
       transform_jsx: true,
@@ -244,6 +248,7 @@ impl From<config_file::TsConfig> for EmitOptions {
       emit_metadata: options.emit_decorator_metadata,
       imports_not_used_as_values,
       inline_source_map: options.inline_source_map,
+      source_map: options.source_map,
       jsx_factory: options.jsx_factory,
       jsx_fragment_factory: options.jsx_fragment_factory,
       transform_jsx: options.jsx == "react",
