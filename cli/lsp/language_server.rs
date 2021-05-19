@@ -284,7 +284,7 @@ impl Inner {
       let navigation_tree: tsc::NavigationTree = self
         .ts_server
         .request(
-          self.snapshot(),
+          self.snapshot()?,
           tsc::RequestMethod::GetNavigationTree(specifier.clone()),
         )
         .await?;
@@ -296,16 +296,19 @@ impl Inner {
     }
   }
 
-  pub(crate) fn snapshot(&self) -> StateSnapshot {
-    StateSnapshot {
+  pub(crate) fn snapshot(&self) -> LspResult<StateSnapshot> {
+    Ok(StateSnapshot {
       assets: self.assets.clone(),
-      config: self.config.snapshot(),
+      config: self.config.snapshot().map_err(|err| {
+        error!("{}", err);
+        LspError::internal_error()
+      })?,
       documents: self.documents.clone(),
       module_registries: self.module_registries.clone(),
       performance: self.performance.clone(),
       sources: self.sources.clone(),
       url_map: self.url_map.clone(),
-    }
+    })
   }
 
   pub async fn update_import_map(&mut self) -> Result<(), AnyError> {
@@ -449,7 +452,7 @@ impl Inner {
     }
     let _ok: bool = self
       .ts_server
-      .request(self.snapshot(), tsc::RequestMethod::Configure(tsconfig))
+      .request(self.snapshot()?, tsc::RequestMethod::Configure(tsconfig))
       .await?;
     self.performance.measure(mark);
     Ok(())
@@ -470,7 +473,7 @@ impl Inner {
       return Ok(maybe_asset.clone());
     } else {
       let maybe_asset =
-        tsc::get_asset(&specifier, &self.ts_server, self.snapshot()).await?;
+        tsc::get_asset(&specifier, &self.ts_server, self.snapshot()?).await?;
       self.assets.insert(specifier.clone(), maybe_asset.clone());
       Ok(maybe_asset)
     }
@@ -529,7 +532,7 @@ impl Inner {
     if capabilities.code_action_provider.is_some() {
       let fixable_diagnostics: Vec<String> = self
         .ts_server
-        .request(self.snapshot(), tsc::RequestMethod::GetSupportedCodeFixes)
+        .request(self.snapshot()?, tsc::RequestMethod::GetSupportedCodeFixes)
         .await
         .map_err(|err| {
           error!("Unable to get fixable diagnostics: {}", err);
@@ -601,10 +604,13 @@ impl Inner {
     let mark = self.performance.mark("did_open", Some(&params));
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
 
-    self
+    if let Err(err) = self
       .config
       .update_specifier_settings(&specifier, &params.text_document.uri)
-      .await;
+      .await
+    {
+      error!("Error updating specifier settings: {}", err);
+    }
 
     if params.text_document.uri.scheme() == "deno" {
       // we can ignore virtual text documents opening, as they don't need to
@@ -671,7 +677,9 @@ impl Inner {
       .mark("did_change_configuration", Some(&params));
 
     if self.config.client_capabilities.workspace_configuration {
-      self.config.update_workspace_settings().await;
+      if let Err(err) = self.config.update_workspace_settings().await {
+        error!("Error updating workspace settings: {}", err);
+      }
     } else if let Some(config) = params
       .settings
       .as_object()
@@ -770,7 +778,7 @@ impl Inner {
     let req = tsc::RequestMethod::GetNavigationTree(specifier);
     let navigation_tree: tsc::NavigationTree = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -866,7 +874,7 @@ impl Inner {
     ));
     let maybe_quick_info: Option<tsc::QuickInfo> = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Unable to get quick info: {}", err);
@@ -943,7 +951,7 @@ impl Inner {
             codes,
           ));
           let actions: Vec<tsc::CodeFixAction> =
-            match self.ts_server.request(self.snapshot(), req).await {
+            match self.ts_server.request(self.snapshot()?, req).await {
               Ok(items) => items,
               Err(err) => {
                 // sometimes tsc reports errors when retrieving code actions
@@ -1006,7 +1014,7 @@ impl Inner {
       ));
       let combined_code_actions: tsc::CombinedCodeActions = self
         .ts_server
-        .request(self.snapshot(), req)
+        .request(self.snapshot()?, req)
         .await
         .map_err(|err| {
           error!("Unable to get combined fix from TypeScript: {}", err);
@@ -1176,12 +1184,14 @@ impl Inner {
             line_index.offset_tsc(params.range.start)?,
           ));
           let maybe_implementations: Option<Vec<tsc::ImplementationLocation>> =
-            self.ts_server.request(self.snapshot(), req).await.map_err(
-              |err| {
+            self
+              .ts_server
+              .request(self.snapshot()?, req)
+              .await
+              .map_err(|err| {
                 error!("Error processing TypeScript request: {}", err);
                 LspError::internal_error()
-              },
-            )?;
+              })?;
           if let Some(implementations) = maybe_implementations {
             let mut locations = Vec::new();
             for implementation in implementations {
@@ -1254,13 +1264,14 @@ impl Inner {
             code_lens_data.specifier.clone(),
             line_index.offset_tsc(params.range.start)?,
           ));
-          let maybe_references: Option<Vec<tsc::ReferenceEntry>> =
-            self.ts_server.request(self.snapshot(), req).await.map_err(
-              |err| {
-                error!("Error processing TypeScript request: {}", err);
-                LspError::internal_error()
-              },
-            )?;
+          let maybe_references: Option<Vec<tsc::ReferenceEntry>> = self
+            .ts_server
+            .request(self.snapshot()?, req)
+            .await
+            .map_err(|err| {
+              error!("Error processing TypeScript request: {}", err);
+              LspError::internal_error()
+            })?;
           if let Some(references) = maybe_references {
             let mut locations = Vec::new();
             for reference in references {
@@ -1370,7 +1381,7 @@ impl Inner {
     ));
     let maybe_document_highlights: Option<Vec<tsc::DocumentHighlights>> = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Unable to get document highlights from TypeScript: {}", err);
@@ -1417,7 +1428,7 @@ impl Inner {
     ));
     let maybe_references: Option<Vec<tsc::ReferenceEntry>> = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Unable to get references from TypeScript: {}", err);
@@ -1472,7 +1483,7 @@ impl Inner {
     ));
     let maybe_definition: Option<tsc::DefinitionInfoAndBoundSpan> = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Unable to get definition from TypeScript: {}", err);
@@ -1507,7 +1518,7 @@ impl Inner {
     let response = if let Some(response) = completions::get_import_completions(
       &specifier,
       &params.text_document_position.position,
-      &self.snapshot(),
+      &self.snapshot()?,
     )
     .await
     {
@@ -1542,7 +1553,7 @@ impl Inner {
       ));
       let maybe_completion_info: Option<tsc::CompletionInfo> = self
         .ts_server
-        .request(self.snapshot(), req)
+        .request(self.snapshot()?, req)
         .await
         .map_err(|err| {
           error!("Unable to get completion info from TypeScript: {}", err);
@@ -1580,13 +1591,14 @@ impl Inner {
         })?;
       if let Some(data) = data.tsc {
         let req = tsc::RequestMethod::GetCompletionDetails(data.into());
-        let maybe_completion_info: Option<tsc::CompletionEntryDetails> =
-          self.ts_server.request(self.snapshot(), req).await.map_err(
-            |err| {
-              error!("Unable to get completion info from TypeScript: {}", err);
-              LspError::internal_error()
-            },
-          )?;
+        let maybe_completion_info: Option<tsc::CompletionEntryDetails> = self
+          .ts_server
+          .request(self.snapshot()?, req)
+          .await
+          .map_err(|err| {
+            error!("Unable to get completion info from TypeScript: {}", err);
+            LspError::internal_error()
+          })?;
         if let Some(completion_info) = maybe_completion_info {
           completion_info.as_completion_item(&params)
         } else {
@@ -1632,7 +1644,7 @@ impl Inner {
     ));
     let maybe_implementations: Option<Vec<tsc::ImplementationLocation>> = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -1678,7 +1690,7 @@ impl Inner {
     let req = tsc::RequestMethod::GetOutliningSpans(specifier.clone());
     let outlining_spans: Vec<tsc::OutliningSpan> = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -1738,7 +1750,7 @@ impl Inner {
     ));
     let incoming_calls: Vec<tsc::CallHierarchyIncomingCall> = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -1792,7 +1804,7 @@ impl Inner {
     ));
     let outgoing_calls: Vec<tsc::CallHierarchyOutgoingCall> = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -1852,7 +1864,7 @@ impl Inner {
     let maybe_one_or_many: Option<tsc::OneOrMany<tsc::CallHierarchyItem>> =
       self
         .ts_server
-        .request(self.snapshot(), req)
+        .request(self.snapshot()?, req)
         .await
         .map_err(|err| {
           error!("Failed to request to tsserver {}", err);
@@ -1932,7 +1944,7 @@ impl Inner {
 
     let maybe_locations: Option<Vec<tsc::RenameLocation>> = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -2019,7 +2031,7 @@ impl Inner {
 
       let selection_range: tsc::SelectionRange = self
         .ts_server
-        .request(self.snapshot(), req)
+        .request(self.snapshot()?, req)
         .await
         .map_err(|err| {
           error!("Failed to request to tsserver {}", err);
@@ -2061,7 +2073,7 @@ impl Inner {
     ));
     let semantic_classification: tsc::Classifications = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -2109,7 +2121,7 @@ impl Inner {
     ));
     let semantic_classification: tsc::Classifications = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -2166,7 +2178,7 @@ impl Inner {
     ));
     let maybe_signature_help_items: Option<tsc::SignatureHelpItems> = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver: {}", err);

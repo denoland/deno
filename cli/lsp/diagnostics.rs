@@ -170,7 +170,7 @@ impl DiagnosticsServer {
               dirty = false;
               debounce_timer.as_mut().reset(Instant::now() + NEVER);
 
-              let snapshot = language_server.lock().await.snapshot();
+              let snapshot = language_server.lock().await.snapshot().unwrap();
               update_diagnostics(
                 &client,
                 collection.clone(),
