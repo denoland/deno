@@ -65,8 +65,6 @@ fn get_webstorage(
       state.put(LocalStorage(conn));
     }
 
-
-
     &state.borrow::<LocalStorage>().0
   } else {
     if state.try_borrow::<SessionStorage>().is_none() {
