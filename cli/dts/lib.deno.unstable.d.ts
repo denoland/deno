@@ -134,6 +134,23 @@ declare namespace Deno {
    *
    * ```ts
    * const rid = Deno.openPlugin("./path/to/some/plugin.so");
+   *
+   * // The Deno.core namespace is needed to interact with plugins, but this is
+   * // internal so we use ts-ignore to skip type checking these calls.
+   * // @ts-ignore
+   * const {
+   *   op_test_sync,
+   *   op_test_async,
+   * } = Deno.core.ops();
+   *
+   * assert(op_test_sync);
+   * assert(op_test_async);
+   * 
+   * // @ts-ignore
+   * const result = Deno.core.opSync("op_test_sync");
+   *
+   * // @ts-ignore
+   * const result = await Deno.core.opAsync("op_test_sync");
    * ```
    *
    * Requires `allow-plugin` permission.
