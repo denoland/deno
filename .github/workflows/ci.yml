@@ -217,6 +217,7 @@ jobs:
       # Skips saving cache in PR branches
       - name: Skip save cache (PR)
         run: echo "CACHE_SKIP_SAVE=true" >> $GITHUB_ENV
+        shell: bash
         if: github.ref != 'refs/heads/main'
 
       - name: Apply and update mtime cache
