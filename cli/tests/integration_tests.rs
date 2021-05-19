@@ -1666,6 +1666,32 @@ mod integration {
   }
 
   #[test]
+  fn bundle_emit_source_map() {
+    let mod1 = util::root_path().join("cli/tests/subdir/mod1.ts");
+    let config = util::root_path().join("cli/tests/bundle/tsconfig.json");
+    assert!(mod1.is_file());
+    let t = TempDir::new().expect("tempdir fail");
+    let bundle = t.path().join("mod1.bundle.js");
+    let source_map_file = t.path().join("mod1.bundle.js.map");
+
+    let mut deno = util::deno_cmd()
+      .current_dir(util::root_path())
+      .arg("bundle")
+      .arg("--no-check")
+      .arg("--config")
+      .arg(config)
+      .arg(mod1)
+      .arg(&bundle)
+      .spawn()
+      .expect("failed to spawn script");
+    let status = deno.wait().expect("failed to wait for the child process");
+
+    assert!(status.success());
+    assert!(bundle.is_file());
+    assert!(source_map_file.is_file());
+  }
+
+  #[test]
   fn bundle_circular() {
     // First we have to generate a bundle of some module that has exports.
     let circular1 = util::root_path().join("cli/tests/subdir/circular1.ts");
