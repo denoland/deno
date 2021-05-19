@@ -155,7 +155,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   {
     if self.input.is_string() {
       let v8_string = v8::Local::<v8::String>::try_from(self.input).unwrap();
-      let string = v8_string.to_rust_string_lossy();
+      let string = v8_string.to_rust_string_lossy(self.scope);
       visitor.visit_string(string)
     } else {
       Err(Error::ExpectedString)
