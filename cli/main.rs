@@ -388,7 +388,7 @@ async fn compile_command(
     colors::green("Bundle"),
     module_specifier.to_string()
   );
-  let bundle_str =
+  let (bundle_str, _) =
     bundle_module_graph(module_graph, program_state.clone(), flags, debug)?;
 
   info!(
@@ -633,9 +633,9 @@ fn bundle_module_graph(
   program_state: Arc<ProgramState>,
   flags: Flags,
   debug: bool,
-) -> Result<String, AnyError> {
-  let (bundle, stats, maybe_ignored_options) =
-    module_graph.bundle(module_graph::BundleOptions {
+) -> Result<(String, Option<String>), AnyError> {
+  let (bundle, source_map, stats, maybe_ignored_options) = module_graph
+    .bundle(module_graph::BundleOptions {
       debug,
       maybe_config_file: program_state.maybe_config_file.clone(),
     })?;
@@ -646,7 +646,7 @@ fn bundle_module_graph(
     _ => {}
   }
   debug!("{}", stats);
-  Ok(bundle)
+  Ok((bundle, source_map))
 }
 
 async fn bundle_command(
@@ -709,7 +709,7 @@ async fn bundle_command(
     async move {
       info!("{} {}", colors::green("Bundle"), module_graph.info()?.root);
 
-      let output =
+      let (output, source_map) =
         bundle_module_graph(module_graph, program_state, flags, debug)?;
 
       debug!(">>>>> bundle END");
@@ -724,6 +724,23 @@ async fn bundle_command(
           out_file,
           colors::gray(&info::human_size(output_len as f64))
         );
+        if let Some(src_map) = source_map {
+          let src_map_bytes = src_map.as_bytes();
+          let src_map_len = src_map_bytes.len();
+          let src_map_extension = if let Some(ext) = out_file.extension() {
+            format!("{}.map", ext.to_str().unwrap())
+          } else {
+            "map".to_string()
+          };
+          let src_map_file = out_file.with_extension(src_map_extension);
+          fs_util::write_file(&src_map_file, src_map_bytes, 0o644)?;
+          info!(
+            "{} {:?} ({})",
+            colors::green("Emit"),
+            src_map_file,
+            colors::gray(&info::human_size(src_map_len as f64))
+          );
+        }
       } else {
         println!("{}", output);
       }
