@@ -44,6 +44,8 @@ use std::{cell::BorrowMutError, convert::Infallible};
 use std::{cell::RefCell, rc::Rc};
 use uuid::Uuid;
 
+/// Websocket server that is used to proxy connections from
+/// devtools to the inspector.
 pub struct InspectorServer {
   pub host: SocketAddr,
   register_inspector_tx: UnboundedSender<InspectorInfo>,
@@ -406,7 +408,7 @@ enum PollState {
 pub struct DenoInspector {
   v8_inspector_client: v8::inspector::V8InspectorClientBase,
   v8_inspector: v8::UniquePtr<v8::inspector::V8Inspector>,
-  sessions: RefCell<InspectorSessions>,
+  sessions: RefCell<SessionContainer>,
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
   _canary_tx: oneshot::Sender<Never>,
@@ -451,7 +453,7 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
   }
 
   fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
-    assert_eq!(context_group_id, DenoInspectorSession::CONTEXT_GROUP_ID);
+    assert_eq!(context_group_id, WebsocketSession::CONTEXT_GROUP_ID);
     self.flags.borrow_mut().on_pause = true;
     let _ = self.poll_sessions(None);
   }
@@ -461,7 +463,7 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
   }
 
   fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
-    assert_eq!(context_group_id, DenoInspectorSession::CONTEXT_GROUP_ID);
+    assert_eq!(context_group_id, WebsocketSession::CONTEXT_GROUP_ID);
     self.flags.borrow_mut().session_handshake_done = true;
   }
 }
@@ -495,7 +497,7 @@ impl DenoInspector {
       let v8_inspector_client =
         v8::inspector::V8InspectorClientBase::new::<Self>();
 
-      let sessions = InspectorSessions::new(self_ptr, new_websocket_rx);
+      let sessions = SessionContainer::new(self_ptr, new_websocket_rx);
       let flags = InspectorFlags::new();
       let waker = InspectorWaker::new(scope.thread_safe_handle());
 
@@ -681,20 +683,21 @@ impl InspectorFlags {
   }
 }
 
-struct InspectorSessions {
-  new_incoming:
-    Pin<Box<dyn Stream<Item = Box<DenoInspectorSession>> + 'static>>,
-  handshake: Option<Box<DenoInspectorSession>>,
-  established: FuturesUnordered<Box<DenoInspectorSession>>,
+/// A helper structure that helps coordinate sessions during different
+/// parts of their lifecycle.
+struct SessionContainer {
+  new_incoming: Pin<Box<dyn Stream<Item = Box<WebsocketSession>> + 'static>>,
+  handshake: Option<Box<WebsocketSession>>,
+  established: FuturesUnordered<Box<WebsocketSession>>,
 }
 
-impl InspectorSessions {
+impl SessionContainer {
   fn new(
     inspector_ptr: *mut DenoInspector,
     new_websocket_rx: UnboundedReceiver<WebSocketProxy>,
   ) -> RefCell<Self> {
     let new_incoming = new_websocket_rx
-      .map(move |websocket| DenoInspectorSession::new(inspector_ptr, websocket))
+      .map(move |websocket| WebsocketSession::new(inspector_ptr, websocket))
       .boxed_local();
     let self_ = Self {
       new_incoming,
@@ -704,7 +707,7 @@ impl InspectorSessions {
   }
 }
 
-impl Default for InspectorSessions {
+impl Default for SessionContainer {
   fn default() -> Self {
     Self {
       new_incoming: stream::empty().boxed_local(),
@@ -786,27 +789,28 @@ impl task::ArcWake for InspectorWaker {
   }
 }
 
-struct DenoInspectorSession {
+/// An inspector session that proxies messages to Websocket connection.
+struct WebsocketSession {
   v8_channel: v8::inspector::ChannelBase,
   v8_session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
   websocket_tx: WebSocketProxySender,
   websocket_rx_handler: Pin<Box<dyn Future<Output = ()> + 'static>>,
 }
 
-impl Deref for DenoInspectorSession {
+impl Deref for WebsocketSession {
   type Target = v8::inspector::V8InspectorSession;
   fn deref(&self) -> &Self::Target {
     &self.v8_session
   }
 }
 
-impl DerefMut for DenoInspectorSession {
+impl DerefMut for WebsocketSession {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.v8_session
   }
 }
 
-impl DenoInspectorSession {
+impl WebsocketSession {
   const CONTEXT_GROUP_ID: i32 = 1;
 
   pub fn new(
@@ -875,7 +879,7 @@ impl DenoInspectorSession {
   }
 }
 
-impl v8::inspector::ChannelImpl for DenoInspectorSession {
+impl v8::inspector::ChannelImpl for WebsocketSession {
   fn base(&self) -> &v8::inspector::ChannelBase {
     &self.v8_channel
   }
@@ -902,7 +906,7 @@ impl v8::inspector::ChannelImpl for DenoInspectorSession {
   fn flush_protocol_notifications(&mut self) {}
 }
 
-impl Future for DenoInspectorSession {
+impl Future for WebsocketSession {
   type Output = ();
   fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     self.websocket_rx_handler.poll_unpin(cx)
