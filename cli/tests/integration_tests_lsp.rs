@@ -737,7 +737,7 @@ fn lsp_large_doc_changes() {
     .unwrap();
   client
     .write_notification(
-      "textDocument/didChagne",
+      "textDocument/didChange",
       json!({
         "textDocument": {
           "uri": "file:///a/file.ts",
@@ -1417,6 +1417,152 @@ fn lsp_code_actions_deno_cache() {
     maybe_res,
     Some(load_fixture("code_action_response_cache.json"))
   );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_code_actions_deadlock() {
+  let mut client = init("initialize_params.json");
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      load_fixture("did_open_params_large.json"),
+    )
+    .unwrap();
+  let (id, method, _) = client.read_request::<Value>().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(id, json!({ "enable": true }))
+    .unwrap();
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/semanticTokens/full",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+  for _ in 0..3 {
+    let (method, _) = client.read_notification::<Value>().unwrap();
+    assert_eq!(method, "textDocument/publishDiagnostics");
+  }
+  client
+    .write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "version": 2
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": {
+                "line": 444,
+                "character": 11
+              },
+              "end": {
+                "line": 444,
+                "character": 14
+              }
+            },
+            "text": "+++"
+          }
+        ]
+      }),
+    )
+    .unwrap();
+  client
+    .write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "version": 2
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": {
+                "line": 445,
+                "character": 4
+              },
+              "end": {
+                "line": 445,
+                "character": 4
+              }
+            },
+            "text": "// "
+          }
+        ]
+      }),
+    )
+    .unwrap();
+  client
+    .write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "version": 2
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": {
+                "line": 477,
+                "character": 4
+              },
+              "end": {
+                "line": 477,
+                "character": 9
+              }
+            },
+            "text": "error"
+          }
+        ]
+      }),
+    )
+    .unwrap();
+  // diagnostics only trigger after changes have elapsed in a separate thread,
+  // so we need to delay the next messages a little bit to attempt to create a
+  // potential for a deadlock with the codeAction
+  std::thread::sleep(std::time::Duration::from_millis(50));
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "position": {
+          "line": 609,
+          "character": 33,
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/codeAction",
+      load_fixture("code_action_params_deadlock.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+
+  for _ in 0..3 {
+    let (method, _) = client.read_notification::<Value>().unwrap();
+    assert_eq!(method, "textDocument/publishDiagnostics");
+  }
+
+  assert!(client.queue_is_empty());
   shutdown(&mut client);
 }
 
