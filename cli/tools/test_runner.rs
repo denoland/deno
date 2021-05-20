@@ -338,9 +338,10 @@ pub async fn run_tests(
     let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
 
     for specifier in &doc_modules {
+      let mut fetch_permissions = Permissions::allow_all();
       let file = program_state
         .file_fetcher
-        .fetch(&specifier, &mut permissions.clone())
+        .fetch(&specifier, &mut fetch_permissions)
         .await?;
 
       let parsed_module =
