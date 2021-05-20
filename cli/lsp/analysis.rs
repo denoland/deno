@@ -778,11 +778,11 @@ mod tests {
         maybe_type_specifier_range: Some(Range {
           start: Position {
             line: 7,
-            character: 19,
+            character: 20,
           },
           end: Position {
             line: 7,
-            character: 63,
+            character: 62,
           }
         })
       })
