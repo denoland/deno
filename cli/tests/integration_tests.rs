@@ -24,7 +24,6 @@ use tokio::task::LocalSet;
 fn typecheck_declarations_ns() {
   let status = util::deno_cmd()
     .arg("test")
-    .arg("--allow-all")
     .arg("--doc")
     .arg(util::root_path().join("cli/dts/lib.deno.ns.d.ts"))
     .spawn()
@@ -41,7 +40,6 @@ fn typecheck_declarations_unstable() {
   let status = util::deno_cmd()
     .arg("test")
     .arg("--doc")
-    .arg("--allow-all")
     .arg("--unstable")
     .arg(util::root_path().join("cli/dts/lib.deno.unstable.d.ts"))
     .spawn()
