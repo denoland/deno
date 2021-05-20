@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
+// deno-fmt-ignore-file
 // @ts-nocheck
 
 const filenameBase = "test_plugin";
