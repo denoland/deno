@@ -123,7 +123,7 @@ where
     Some(params) => Some(serde_json::from_value(params)?),
     None => None,
   };
-  return Ok((method, maybe_params));
+  Ok((method, maybe_params))
 }
 
 fn request_result<R>(
@@ -138,7 +138,7 @@ where
     Some(params) => Some(serde_json::from_value(params)?),
     None => None,
   };
-  return Ok((id, method, maybe_params));
+  Ok((id, method, maybe_params))
 }
 
 fn response_result<R>(
@@ -152,7 +152,7 @@ where
     Some(result) => Some(serde_json::from_value(result)?),
     None => None,
   };
-  return Ok((maybe_result, maybe_error));
+  Ok((maybe_result, maybe_error))
 }
 
 impl LspClient {
