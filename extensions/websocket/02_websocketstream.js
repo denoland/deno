@@ -183,8 +183,6 @@
               this[_closed].reject(err);
             });
           } else {
-            options.signal?.addEventListener("abort", () => this.close());
-
             this[_rid] = create.rid;
 
             const writable = new WritableStream({
@@ -326,6 +324,14 @@
           this[_closed].reject(err);
         });
       }
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${
+        inspect({
+          url: this.url,
+        })
+      }`;
     }
   }
 

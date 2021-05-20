@@ -1147,7 +1147,7 @@
         ],
         "constructor.any.html": true,
         "abort.any.html?wpt_flags=h2": false,
-        "abort.any.html?wss": false,
+        "abort.any.html?wss": true,
         "backpressure-receive.any.html?wpt_flags=h2": false,
         "backpressure-receive.any.html?wss": true,
         "backpressure-send.any.html?wpt_flags=h2": false,
