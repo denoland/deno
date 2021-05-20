@@ -1398,6 +1398,11 @@ fn lsp_code_actions_deno_cache() {
       }
     }))
     .unwrap();
+  let (id, method, _) = client.read_request::<Value>().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(id, json!({ "enable": true }))
+    .unwrap();
   let (method, _) = client.read_notification::<Value>().unwrap();
   assert_eq!(method, "textDocument/publishDiagnostics");
   let (method, _) = client.read_notification::<Value>().unwrap();
@@ -1859,6 +1864,11 @@ fn lsp_diagnostics_deno_types() {
       "textDocument/didOpen",
       load_fixture("did_open_params_deno_types.json"),
     )
+    .unwrap();
+  let (id, method, _) = client.read_request::<Value>().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(id, json!({ "enable": true }))
     .unwrap();
   let (maybe_res, maybe_err) = client
     .write_request::<_, _, Value>(
