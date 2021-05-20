@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
+// @ts-nocheck
 
 const filenameBase = "test_plugin";
 
@@ -15,7 +16,7 @@ if (Deno.build.os === "darwin") {
 }
 
 const filename = `../target/${
-  Deno.args[0]
+  "debug"
 }/${filenamePrefix}${filenameBase}${filenameSuffix}`;
 
 const resourcesPre = Deno.resources();
