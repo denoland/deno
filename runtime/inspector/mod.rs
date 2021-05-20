@@ -29,8 +29,6 @@ use std::ffi::c_void;
 use std::mem::replace;
 use std::mem::take;
 use std::mem::MaybeUninit;
-use std::ops::Deref;
-use std::ops::DerefMut;
 use std::pin::Pin;
 use std::ptr;
 use std::ptr::NonNull;
@@ -65,19 +63,6 @@ pub struct DenoInspector {
   _canary_tx: oneshot::Sender<Never>,
   pub server: Option<Arc<InspectorServer>>,
   pub debugger_url: Option<String>,
-}
-
-impl Deref for DenoInspector {
-  type Target = v8::inspector::V8Inspector;
-  fn deref(&self) -> &Self::Target {
-    self.v8_inspector.as_ref().unwrap()
-  }
-}
-
-impl DerefMut for DenoInspector {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    self.v8_inspector.as_mut().unwrap()
-  }
 }
 
 impl Drop for DenoInspector {
@@ -144,11 +129,10 @@ impl DenoInspector {
     let (canary_tx, canary_rx) = oneshot::channel::<Never>();
 
     // Create DenoInspector instance.
-    let mut self_ = new_box_with(|self_ptr| {
+    let mut self_ = Box::new({
       let v8_inspector_client =
         v8::inspector::V8InspectorClientBase::new::<Self>();
 
-      let sessions = SessionContainer::new(self_ptr, new_websocket_rx);
       let flags = InspectorFlags::new();
       let waker = InspectorWaker::new(scope.thread_safe_handle());
 
@@ -171,7 +155,7 @@ impl DenoInspector {
       Self {
         v8_inspector_client,
         v8_inspector: Default::default(),
-        sessions,
+        sessions: Default::default(),
         flags,
         waker,
         _canary_tx: canary_tx,
@@ -181,17 +165,27 @@ impl DenoInspector {
     });
     self_.v8_inspector =
       v8::inspector::V8Inspector::create(scope, &mut *self_).into();
+    self_.sessions =
+      SessionContainer::new(self_.v8_inspector_mut(), new_websocket_rx);
 
     // Tell the inspector about the global context.
     let context = v8::Local::new(scope, context);
     let context_name = v8::inspector::StringView::from(&b"global context"[..]);
-    self_.context_created(context, Self::CONTEXT_GROUP_ID, context_name);
+    self_.v8_inspector_mut().context_created(
+      context,
+      Self::CONTEXT_GROUP_ID,
+      context_name,
+    );
 
     // Poll the session handler so we will get notified whenever there is
     // new_incoming debugger activity.
     let _ = self_.poll_sessions(None).unwrap();
 
     self_
+  }
+
+  pub fn v8_inspector_mut(&mut self) -> &mut v8::inspector::V8Inspector {
+    self.v8_inspector.as_mut().unwrap()
   }
 
   fn poll_sessions(
@@ -344,11 +338,11 @@ struct SessionContainer {
 
 impl SessionContainer {
   fn new(
-    inspector_ptr: *mut DenoInspector,
+    v8_inspector_ptr: *mut v8::inspector::V8Inspector,
     new_websocket_rx: UnboundedReceiver<WebSocketProxy>,
   ) -> RefCell<Self> {
     let new_incoming = new_websocket_rx
-      .map(move |websocket| WebsocketSession::new(inspector_ptr, websocket))
+      .map(move |websocket| WebsocketSession::new(v8_inspector_ptr, websocket))
       .boxed_local();
     let self_ = Self {
       new_incoming,
@@ -452,12 +446,12 @@ impl WebsocketSession {
   const CONTEXT_GROUP_ID: i32 = 1;
 
   pub fn new(
-    inspector_ptr: *mut DenoInspector,
+    v8_inspector_ptr: *mut v8::inspector::V8Inspector,
     websocket: WebSocketProxy,
   ) -> Box<Self> {
     new_box_with(move |self_ptr| {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
-      let mut v8_session = unsafe { &mut *inspector_ptr }.connect(
+      let mut v8_session = unsafe { &mut *v8_inspector_ptr }.connect(
         Self::CONTEXT_GROUP_ID,
         // Todo(piscisaureus): V8Inspector::connect() should require that
         // the 'v8_channel' argument cannot move.
@@ -625,10 +619,10 @@ impl v8::inspector::ChannelImpl for InMemorySession {
 impl InMemorySession {
   const CONTEXT_GROUP_ID: i32 = 1;
 
-  pub fn new(inspector_ptr: *mut DenoInspector) -> Box<Self> {
+  pub fn new(v8_inspector: &mut v8::inspector::V8Inspector) -> Box<Self> {
     new_box_with(move |self_ptr| {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
-      let v8_session = unsafe { &mut *inspector_ptr }.connect(
+      let v8_session = { &mut *v8_inspector }.connect(
         Self::CONTEXT_GROUP_ID,
         unsafe { &mut *self_ptr },
         v8::inspector::StringView::empty(),
