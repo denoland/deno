@@ -683,8 +683,6 @@
       "Stringification of new URLSearchParams(\"hi=there&thank=you\")"
     ],
     "url-constructor.any.html": [
-      "Parsing: <https://x/�?�#�> against <about:blank>",
-      "Parsing: <http://example.com/\ud800𐟾\udfff﷐﷏﷯ﷰ￾￿?\ud800𐟾\udfff﷐﷏﷯ﷰ￾￿> against <about:blank>",
       "Parsing: <file://%43%7C> against <about:blank>",
       "Parsing: <file://%43|> against <about:blank>",
       "Parsing: <file://C%7C> against <about:blank>",
@@ -740,10 +738,7 @@
       "Parsing: <> against <non-spec:/..//p>",
       "Parsing: <path> against <non-spec:/..//p>"
     ],
-    "url-origin.any.html": [
-      "Origin parsing: <http://example.com/\ud800𐟾\udfff﷐﷏﷯ﷰ￾￿?\ud800𐟾\udfff﷐﷏﷯ﷰ￾￿> against <about:blank>",
-      "Origin parsing: <https://x/�?�#�> against <about:blank>"
-    ],
+    "url-origin.any.html": true,
     "url-searchparams.any.html": true,
     "url-setters-stripping.any.html": [
       "Setting protocol with leading U+0000 (https:)",
@@ -777,12 +772,7 @@
     "urlsearchparams-getall.any.html": true,
     "urlsearchparams-has.any.html": true,
     "urlsearchparams-set.any.html": true,
-    "urlsearchparams-sort.any.html": [
-      "Parse and sort: �=x&￼&�=a",
-      "URL parse and sort: �=x&￼&�=a",
-      "Parse and sort: é&e�&é",
-      "URL parse and sort: é&e�&é"
-    ],
+    "urlsearchparams-sort.any.html": true,
     "urlsearchparams-stringifier.any.html": true
   },
   "fetch": {
@@ -1088,33 +1078,17 @@
     "storage_session_window_open.window.html": false,
     "storage_set_value_enumerate.window.html": true,
     "storage_setitem.window.html": [
-      "localStorage[\"\ud800\"]",
       "localStorage[] = \"\ud800\"",
-      "localStorage[\"\udbff\"]",
       "localStorage[] = \"\udbff\"",
-      "localStorage[\"\udc00\"]",
       "localStorage[] = \"\udc00\"",
-      "localStorage[\"\udfff\"]",
       "localStorage[] = \"\udfff\"",
-      "localStorage[\"\\ufffd\"]",
-      "localStorage[] = \"\\ufffd\"",
-      "localStorage[\"\ud83ca\"]",
       "localStorage[] = \"\ud83ca\"",
-      "localStorage[\"a\udf4d\"]",
       "localStorage[] = \"a\udf4d\"",
-      "sessionStorage[\"\ud800\"]",
       "sessionStorage[] = \"\ud800\"",
-      "sessionStorage[\"\udbff\"]",
       "sessionStorage[] = \"\udbff\"",
-      "sessionStorage[\"\udc00\"]",
       "sessionStorage[] = \"\udc00\"",
-      "sessionStorage[\"\udfff\"]",
       "sessionStorage[] = \"\udfff\"",
-      "sessionStorage[\"\\ufffd\"]",
-      "sessionStorage[] = \"\\ufffd\"",
-      "sessionStorage[\"\ud83ca\"]",
       "sessionStorage[] = \"\ud83ca\"",
-      "sessionStorage[\"a\udf4d\"]",
       "sessionStorage[] = \"a\udf4d\""
     ],
     "storage_string_conversion.window.html": true,

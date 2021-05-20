@@ -925,7 +925,10 @@ async fn test_command(
   concurrent_jobs: usize,
 ) -> Result<(), AnyError> {
   if let Some(ref coverage_dir) = flags.coverage_dir {
-    env::set_var("DENO_UNSTABLE_COVERAGE_DIR", coverage_dir);
+    env::set_var(
+      "DENO_UNSTABLE_COVERAGE_DIR",
+      PathBuf::from(coverage_dir).canonicalize()?,
+    );
   }
 
   // TODO(caspervonb) move this chunk into tools::test_runner.

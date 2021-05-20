@@ -133,10 +133,22 @@ declare namespace Deno {
    * Open and initialize a plugin.
    *
    * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
    * const rid = Deno.openPlugin("./path/to/some/plugin.so");
-   * const opId = Deno.core.ops()["some_op"];
-   * const response = Deno.core.dispatch(opId, new Uint8Array([1,2,3,4]));
-   * console.log(`Response from plugin ${response}`);
+   *
+   * // The Deno.core namespace is needed to interact with plugins, but this is
+   * // internal so we use ts-ignore to skip type checking these calls.
+   * // @ts-ignore
+   * const { op_test_sync, op_test_async } = Deno.core.ops();
+   *
+   * assert(op_test_sync);
+   * assert(op_test_async);
+   *
+   * // @ts-ignore
+   * const result = Deno.core.opSync("op_test_sync");
+   *
+   * // @ts-ignore
+   * const result = await Deno.core.opAsync("op_test_sync");
    * ```
    *
    * Requires `allow-plugin` permission.
@@ -929,7 +941,7 @@ declare namespace Deno {
    *
    * ```ts
    * const listener = Deno.listenDatagram({
-   *   address: "/foo/bar.sock",
+   *   path: "/foo/bar.sock",
    *   transport: "unixpacket"
    * });
    * ```
@@ -1351,28 +1363,6 @@ declare interface WorkerOptions {
    *     },
    *   }
    * );
-   * worker.postMessage({ cmd: "readFile", fileName: "./log.txt" });
-   *
-   * // deno_worker.ts
-   *
-   *
-   * self.onmessage = async function (e) {
-   *     const { cmd, fileName } = e.data;
-   *     if (cmd !== "readFile") {
-   *         throw new Error("Invalid command");
-   *     }
-   *     const buf = await Deno.readFile(fileName);
-   *     const fileContents = new TextDecoder().decode(buf);
-   *     console.log(fileContents);
-   * }
-   *
-   * // $ cat log.txt
-   * // hello world
-   * // hello world 2
-   *
-   * // $ deno run --allow-read mod.ts
-   * // hello world
-   * // hello world2
    * ```
    */
   // TODO(Soremwar)
