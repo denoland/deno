@@ -20,11 +20,11 @@ fn basic() {
   let build_plugin_output = build_plugin.output().unwrap();
   assert!(build_plugin_output.status.success());
   let output = deno_cmd()
-    .arg("run")
+    .arg("test")
     .arg("--allow-plugin")
     .arg("--unstable")
-    .arg("tests/test.js")
-    .arg(BUILD_VARIANT)
+    .arg("tests/test.ts")
+    .arg("--quiet") // --quiet to have the same stdout as before
     .output()
     .unwrap();
   let stdout = std::str::from_utf8(&output.stdout).unwrap();
