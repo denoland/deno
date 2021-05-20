@@ -84,6 +84,7 @@ declare namespace Deno {
     BadResource: ErrorConstructor;
     Http: ErrorConstructor;
     Busy: ErrorConstructor;
+    NotSupported: ErrorConstructor;
   };
 
   /** The current process id of the runtime. */
