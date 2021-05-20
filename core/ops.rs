@@ -78,6 +78,15 @@ pub struct OpError {
   message: String,
 }
 
+impl OpError {
+  pub fn new(class_name: &'static str, message: String) -> Self {
+    Self {
+      class_name,
+      message,
+    }
+  }
+}
+
 pub fn serialize_op_result<R: Serialize + 'static>(
   result: Result<R, AnyError>,
   state: Rc<RefCell<OpState>>,

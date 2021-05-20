@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::AnyError;
+use crate::ops::OpError;
 use crate::JsRuntime;
 use crate::Op;
 use crate::OpId;
@@ -323,9 +324,10 @@ fn opcall<'s>(
   };
   let op = OpTable::route_op(op_id, state.op_state.clone(), payload);
   match op {
-    Op::Sync(result) => {
-      rv.set(result.to_v8(scope).unwrap());
-    }
+    Op::Sync(result) => match result.to_v8(scope) {
+      Ok(v) => rv.set(v),
+      Err(e) => rv.set(serde_v8_error(scope, e)),
+    },
     Op::Async(fut) => {
       state.pending_ops.push(fut);
       state.have_unpolled_ops = true;
@@ -336,6 +338,23 @@ fn opcall<'s>(
     }
     Op::NotFound => {
       throw_type_error(scope, format!("Unknown op id: {}", op_id));
+    }
+  }
+}
+
+// serializes a serialization error ... (e.g: serde_v8::Error::StringTooLong)
+fn serde_v8_error<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  err: serde_v8::Error,
+) -> v8::Local<'s, v8::Value> {
+  match err {
+    serde_v8::Error::StringTooLong => {
+      let err = OpError::new("RangeError", "string too long".into());
+      serde_v8::to_v8(scope, err).unwrap()
+    }
+    err => {
+      let err = OpError::new("Error", err.to_string());
+      serde_v8::to_v8(scope, err).unwrap()
     }
   }
 }

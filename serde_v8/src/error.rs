@@ -18,6 +18,7 @@ pub enum Error {
   ExpectedEnum,
 
   ExpectedUtf8,
+  StringTooLong,
 
   LengthMismatch,
 }

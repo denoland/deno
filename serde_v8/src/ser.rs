@@ -412,7 +412,7 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
   fn serialize_str(self, v: &str) -> JsResult<'a> {
     v8::String::new(&mut self.scope.borrow_mut(), v)
       .map(|v| v.into())
-      .ok_or(Error::ExpectedString)
+      .ok_or(Error::StringTooLong)
   }
 
   fn serialize_bytes(self, _v: &[u8]) -> JsResult<'a> {
