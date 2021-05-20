@@ -1429,6 +1429,11 @@ fn lsp_code_actions_deadlock() {
       load_fixture("did_open_params_large.json"),
     )
     .unwrap();
+  let (id, method, _) = client.read_request::<Value>().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(id, json!({ "enable": true }))
+    .unwrap();
   let (maybe_res, maybe_err) = client
     .write_request::<_, _, Value>(
       "textDocument/semanticTokens/full",
@@ -1523,6 +1528,9 @@ fn lsp_code_actions_deadlock() {
       }),
     )
     .unwrap();
+  // diagnostics only trigger after changes have elapsed in a separate thread,
+  // so we need to delay the next messages a little bit to attempt to create a
+  // potential for a deadlock with the codeAction
   std::thread::sleep(std::time::Duration::from_millis(50));
   let (maybe_res, maybe_err) = client
     .write_request::<_, _, Value>(
