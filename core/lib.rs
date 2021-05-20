@@ -51,6 +51,8 @@ pub use crate::modules::ModuleLoader;
 pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::NoopModuleLoader;
+// TODO(bartlomieju): this struct should be implementation
+// detail nad not be public
 pub use crate::modules::RecursiveModuleLoad;
 pub use crate::normalize_path::normalize_path;
 pub use crate::ops::serialize_op_result;

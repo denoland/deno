@@ -1,10 +1,10 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
 use crate::media_type::MediaType;
 use crate::module_graph::Graph;
 use crate::module_graph::Stats;
-use crate::tsc_config::TsConfig;
 
 use deno_core::error::anyhow;
 use deno_core::error::bail;
@@ -13,6 +13,7 @@ use deno_core::error::Context;
 use deno_core::op_sync;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -37,6 +38,8 @@ pub static DENO_FETCH_LIB: &str = include_str!(env!("DENO_FETCH_LIB_PATH"));
 pub static DENO_WEBGPU_LIB: &str = include_str!(env!("DENO_WEBGPU_LIB_PATH"));
 pub static DENO_WEBSOCKET_LIB: &str =
   include_str!(env!("DENO_WEBSOCKET_LIB_PATH"));
+pub static DENO_WEBSTORAGE_LIB: &str =
+  include_str!(env!("DENO_WEBSTORAGE_LIB_PATH"));
 pub static DENO_CRYPTO_LIB: &str = include_str!(env!("DENO_CRYPTO_LIB_PATH"));
 pub static SHARED_GLOBALS_LIB: &str =
   include_str!("dts/lib.deno.shared_globals.d.ts");
@@ -348,7 +351,7 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
   )
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolveArgs {
   /// The base specifier that the supplied specifier strings should be resolved
@@ -536,11 +539,11 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::config_file::TsConfig;
   use crate::diagnostics::Diagnostic;
   use crate::diagnostics::DiagnosticCategory;
   use crate::module_graph::tests::MockSpecifierHandler;
   use crate::module_graph::GraphBuilder;
-  use crate::tsc_config::TsConfig;
   use std::env;
   use std::path::PathBuf;
   use std::sync::Mutex;

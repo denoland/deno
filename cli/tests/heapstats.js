@@ -14,6 +14,7 @@ function allocTest(alloc, allocAssert, deallocAssert) {
   const t1 = sample();
 
   // Alloc
+  // deno-lint-ignore no-unused-vars
   let x = alloc();
   const t2 = sample();
   allocAssert(delta(t1, t2));

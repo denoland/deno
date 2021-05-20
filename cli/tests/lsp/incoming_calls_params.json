@@ -1,0 +1,28 @@
+{
+  "item": {
+    "name": "baz",
+    "kind": 6,
+    "detail": "Bar",
+    "uri": "file:///a/file.ts",
+    "range": {
+      "start": {
+        "line": 5,
+        "character": 2
+      },
+      "end": {
+        "line": 7,
+        "character": 3
+      }
+    },
+    "selectionRange": {
+      "start": {
+        "line": 5,
+        "character": 2
+      },
+      "end": {
+        "line": 5,
+        "character": 5
+      }
+    }
+  }
+}

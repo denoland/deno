@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::config_file;
 use crate::media_type::MediaType;
-use crate::tsc_config;
 
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
@@ -205,6 +205,9 @@ pub struct EmitOptions {
   /// Should the source map be inlined in the emitted code file, or provided
   /// as a separate file.  Defaults to `true`.
   pub inline_source_map: bool,
+  // Should a corresponding .map file be created for the output. This should be
+  // false if inline_source_map is true. Defaults to `false`.
+  pub source_map: bool,
   /// When transforming JSX, what value should be used for the JSX factory.
   /// Defaults to `React.createElement`.
   pub jsx_factory: String,
@@ -222,6 +225,7 @@ impl Default for EmitOptions {
       emit_metadata: false,
       imports_not_used_as_values: ImportsNotUsedAsValues::Remove,
       inline_source_map: true,
+      source_map: false,
       jsx_factory: "React.createElement".into(),
       jsx_fragment_factory: "React.Fragment".into(),
       transform_jsx: true,
@@ -229,9 +233,9 @@ impl Default for EmitOptions {
   }
 }
 
-impl From<tsc_config::TsConfig> for EmitOptions {
-  fn from(config: tsc_config::TsConfig) -> Self {
-    let options: tsc_config::EmitConfigOptions =
+impl From<config_file::TsConfig> for EmitOptions {
+  fn from(config: config_file::TsConfig) -> Self {
+    let options: config_file::EmitConfigOptions =
       serde_json::from_value(config.0).unwrap();
     let imports_not_used_as_values =
       match options.imports_not_used_as_values.as_str() {
@@ -244,6 +248,7 @@ impl From<tsc_config::TsConfig> for EmitOptions {
       emit_metadata: options.emit_decorator_metadata,
       imports_not_used_as_values,
       inline_source_map: options.inline_source_map,
+      source_map: options.source_map,
       jsx_factory: options.jsx_factory,
       jsx_fragment_factory: options.jsx_fragment_factory,
       transform_jsx: options.jsx == "react",
@@ -302,6 +307,22 @@ impl ParsedModule {
   /// be located.
   pub fn get_leading_comments(&self) -> Vec<Comment> {
     self.leading_comments.clone()
+  }
+
+  /// Get the module's comments.
+  pub fn get_comments(&self) -> Vec<Comment> {
+    let mut comments = Vec::new();
+    let (leading_comments, trailing_comments) = self.comments.borrow_all();
+
+    for value in leading_comments.values() {
+      comments.append(&mut value.clone());
+    }
+
+    for value in trailing_comments.values() {
+      comments.append(&mut value.clone());
+    }
+
+    comments
   }
 
   /// Get a location for a given span within the module.

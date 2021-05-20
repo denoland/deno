@@ -24,5 +24,5 @@ Documentation for this crate is thin at the moment. Please see
 [http_bench_json_ops.rs](https://github.com/denoland/deno/blob/main/core/examples/http_bench_json_ops.rs)
 as a simple example of usage.
 
-TypeScript support and a lot of other functionality is not available at this
+TypeScript support and lots of other functionality are not available at this
 layer. See the [CLI](https://github.com/denoland/deno/tree/main/cli) for that.

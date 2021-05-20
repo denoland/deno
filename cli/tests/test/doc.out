@@ -1,0 +1,5 @@
+Check [WILDCARD]/doc.ts:2-7
+error: TS2367 [ERROR]: This condition will always return 'false' since the types 'string' and 'number' have no overlap.
+console.assert(example() == 42);
+               ~~~~~~~~~~~~~~~
+    at [WILDCARD]/doc.ts:2-7.ts:3:16
