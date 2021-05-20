@@ -9,8 +9,7 @@ let filenamePrefix = "lib";
 if (Deno.build.os === "windows") {
   filenameSuffix = ".dll";
   filenamePrefix = "";
-}
-if (Deno.build.os === "darwin") {
+} else if (Deno.build.os === "darwin") {
   filenameSuffix = ".dylib";
 }
 
