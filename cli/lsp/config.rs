@@ -263,6 +263,14 @@ impl Config {
               }
             }
             Some(ConfigRequest::Specifier(specifier, uri)) => {
+              if settings_ref
+                .read()
+                .unwrap()
+                .specifiers
+                .contains_key(&specifier)
+              {
+                continue;
+              }
               if let Ok(value) = client
                 .configuration(vec![lsp::ConfigurationItem {
                   scope_uri: Some(uri.clone()),
@@ -373,21 +381,11 @@ impl Config {
     specifier: &ModuleSpecifier,
     uri: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
-    if self.client_capabilities.workspace_configuration
-      && !self
-        .settings
-        .try_read()
-        .map_err(|_| anyhow!("Error reading config."))?
-        .specifiers
-        .contains_key(specifier)
-    {
-      self
-        .tx
-        .send(ConfigRequest::Specifier(specifier.clone(), uri.clone()))
-        .await
-        .map_err(|_| anyhow!("Error sending config update task."))?;
-    }
-    Ok(())
+    self
+      .tx
+      .send(ConfigRequest::Specifier(specifier.clone(), uri.clone()))
+      .await
+      .map_err(|_| anyhow!("Error sending config update task."))
   }
 
   pub async fn update_workspace_settings(&self) -> Result<(), AnyError> {
