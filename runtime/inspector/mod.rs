@@ -622,7 +622,7 @@ impl InMemorySession {
   pub fn new(v8_inspector: &mut v8::inspector::V8Inspector) -> Box<Self> {
     new_box_with(move |self_ptr| {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
-      let v8_session = { &mut *v8_inspector }.connect(
+      let v8_session = v8_inspector.connect(
         Self::CONTEXT_GROUP_ID,
         unsafe { &mut *self_ptr },
         v8::inspector::StringView::empty(),
