@@ -574,19 +574,6 @@ pub struct InMemorySession {
   notification_queue: Vec<Value>,
 }
 
-impl Deref for InMemorySession {
-  type Target = v8::inspector::V8InspectorSession;
-  fn deref(&self) -> &Self::Target {
-    &self.v8_session
-  }
-}
-
-impl DerefMut for InMemorySession {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.v8_session
-  }
-}
-
 impl v8::inspector::ChannelImpl for InMemorySession {
   fn base(&self) -> &v8::inspector::ChannelBase {
     &self.v8_channel
