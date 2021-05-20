@@ -448,19 +448,6 @@ struct WebsocketSession {
   websocket_rx_handler: Pin<Box<dyn Future<Output = ()> + 'static>>,
 }
 
-impl Deref for WebsocketSession {
-  type Target = v8::inspector::V8InspectorSession;
-  fn deref(&self) -> &Self::Target {
-    &self.v8_session
-  }
-}
-
-impl DerefMut for WebsocketSession {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.v8_session
-  }
-}
-
 impl WebsocketSession {
   const CONTEXT_GROUP_ID: i32 = 1;
 
@@ -470,7 +457,7 @@ impl WebsocketSession {
   ) -> Box<Self> {
     new_box_with(move |self_ptr| {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
-      let v8_session = unsafe { &mut *inspector_ptr }.connect(
+      let mut v8_session = unsafe { &mut *inspector_ptr }.connect(
         Self::CONTEXT_GROUP_ID,
         // Todo(piscisaureus): V8Inspector::connect() should require that
         // the 'v8_channel' argument cannot move.
@@ -480,7 +467,7 @@ impl WebsocketSession {
 
       let (websocket_tx, websocket_rx) = websocket.split();
       let websocket_rx_handler =
-        Self::receive_from_websocket(self_ptr, websocket_rx);
+        Self::receive_from_websocket(&mut *v8_session, websocket_rx);
 
       Self {
         v8_channel,
@@ -494,7 +481,7 @@ impl WebsocketSession {
   /// Returns a future that receives messages from the websocket and dispatches
   /// them to the V8 session.
   fn receive_from_websocket(
-    self_ptr: *mut Self,
+    v8_session: *mut v8::inspector::V8InspectorSession,
     websocket_rx: WebSocketProxyReceiver,
   ) -> Pin<Box<dyn Future<Output = ()> + 'static>> {
     async move {
@@ -504,7 +491,7 @@ impl WebsocketSession {
         .map_ok(move |msg| {
           let msg = msg.into_data();
           let msg = v8::inspector::StringView::from(msg.as_slice());
-          unsafe { &mut *self_ptr }.dispatch_protocol_message(msg);
+          unsafe { &mut *v8_session }.dispatch_protocol_message(msg);
         })
         .try_collect::<()>()
         .await;
@@ -526,7 +513,9 @@ impl WebsocketSession {
   pub fn break_on_next_statement(&mut self) {
     let reason = v8::inspector::StringView::from(&b"debugCommand"[..]);
     let detail = v8::inspector::StringView::empty();
-    self.schedule_pause_on_next_statement(reason, detail);
+    self
+      .v8_session
+      .schedule_pause_on_next_statement(reason, detail);
   }
 }
 
