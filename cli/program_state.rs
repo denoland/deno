@@ -153,12 +153,14 @@ impl ProgramState {
     self: &Arc<Self>,
     specifiers: Vec<ModuleSpecifier>,
     lib: TypeLib,
-    runtime_permissions: Permissions,
+    root_permissions: Permissions,
+    dynamic_permissions: Permissions,
     maybe_import_map: Option<ImportMap>,
   ) -> Result<(), AnyError> {
     let handler = Arc::new(Mutex::new(FetchHandler::new(
       self,
-      runtime_permissions.clone(),
+      root_permissions,
+      dynamic_permissions,
     )?));
 
     let mut builder =
@@ -221,19 +223,17 @@ impl ProgramState {
     self: &Arc<Self>,
     specifier: ModuleSpecifier,
     lib: TypeLib,
-    mut runtime_permissions: Permissions,
+    root_permissions: Permissions,
+    dynamic_permissions: Permissions,
     is_dynamic: bool,
     maybe_import_map: Option<ImportMap>,
   ) -> Result<(), AnyError> {
     let specifier = specifier.clone();
-    // Workers are subject to the current runtime permissions.  We do the
-    // permission check here early to avoid "wasting" time building a module
-    // graph for a module that cannot be loaded.
-    if lib == TypeLib::DenoWorker || lib == TypeLib::UnstableDenoWorker {
-      runtime_permissions.check_specifier(&specifier)?;
-    }
-    let handler =
-      Arc::new(Mutex::new(FetchHandler::new(self, runtime_permissions)?));
+    let handler = Arc::new(Mutex::new(FetchHandler::new(
+      self,
+      root_permissions,
+      dynamic_permissions,
+    )?));
     let mut builder =
       GraphBuilder::new(handler, maybe_import_map, self.lockfile.clone());
     builder.add(&specifier, is_dynamic).await?;

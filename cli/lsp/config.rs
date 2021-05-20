@@ -148,6 +148,7 @@ pub struct Config {
 }
 
 impl Config {
+  #[allow(unused)]
   pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
     self.specifier_settings.contains_key(specifier)
   }

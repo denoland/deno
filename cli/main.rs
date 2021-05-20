@@ -398,6 +398,7 @@ async fn info_command(
       // info accesses dynamically imported modules just for their information
       // so we allow access to all of them.
       Permissions::allow_all(),
+      Permissions::allow_all(),
     )?));
     let mut builder = module_graph::GraphBuilder::new(
       handler,
@@ -478,6 +479,7 @@ async fn cache_command(
         specifier,
         lib.clone(),
         Permissions::allow_all(),
+        Permissions::allow_all(),
         false,
         program_state.maybe_import_map.clone(),
       )
@@ -543,6 +545,7 @@ async fn create_module_graph_and_maybe_check(
     &program_state,
     // when bundling, dynamic imports are only access for their type safety,
     // therefore we will allow the graph to access any module.
+    Permissions::allow_all(),
     Permissions::allow_all(),
   )?));
   let mut builder = module_graph::GraphBuilder::new(
@@ -780,6 +783,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       let handler = Arc::new(Mutex::new(FetchHandler::new(
         &program_state,
         Permissions::allow_all(),
+        Permissions::allow_all(),
       )?));
       let mut builder = module_graph::GraphBuilder::new(
         handler,
@@ -921,7 +925,10 @@ async fn test_command(
   concurrent_jobs: usize,
 ) -> Result<(), AnyError> {
   if let Some(ref coverage_dir) = flags.coverage_dir {
-    env::set_var("DENO_UNSTABLE_COVERAGE_DIR", coverage_dir);
+    env::set_var(
+      "DENO_UNSTABLE_COVERAGE_DIR",
+      PathBuf::from(coverage_dir).canonicalize()?,
+    );
   }
 
   // TODO(caspervonb) move this chunk into tools::test_runner.
@@ -941,6 +948,7 @@ async fn test_command(
   if flags.watch {
     let handler = Arc::new(Mutex::new(FetchHandler::new(
       &program_state,
+      Permissions::allow_all(),
       Permissions::allow_all(),
     )?));
 

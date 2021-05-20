@@ -18,6 +18,39 @@ use tempfile::TempDir;
 use test_util as util;
 use tokio::task::LocalSet;
 
+// TODO(caspervonb): investiate why this fails on Windows.
+#[cfg(unix)]
+#[test]
+fn typecheck_declarations_ns() {
+  let status = util::deno_cmd()
+    .arg("test")
+    .arg("--allow-all")
+    .arg("--doc")
+    .arg(util::root_path().join("cli/dts/lib.deno.ns.d.ts"))
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+// TODO(caspervonb): investiate why this fails on Windows.
+#[cfg(unix)]
+#[test]
+fn typecheck_declarations_unstable() {
+  let status = util::deno_cmd()
+    .arg("test")
+    .arg("--doc")
+    .arg("--allow-all")
+    .arg("--unstable")
+    .arg(util::root_path().join("cli/dts/lib.deno.unstable.d.ts"))
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
 #[test]
 fn js_unit_tests_lint() {
   let status = util::deno_cmd()
@@ -1013,7 +1046,8 @@ mod integration {
       temp_directory.close().unwrap();
     }
 
-    #[cfg(unix)]
+    // TODO(bartlomieju): flaky (https://github.com/denoland/deno/issues/10552)
+    #[ignore]
     #[test]
     fn test_watch() {
       macro_rules! assert_contains {
@@ -3095,6 +3129,41 @@ console.log("finish");
     exit_code: 1,
   });
 
+  itest!(dynamic_import_permissions_remote_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_remote_remote.ts",
+    output: "dynamic_import/permissions_remote_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(dynamic_import_permissions_data_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_data_remote.ts",
+    output: "dynamic_import/permissions_data_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(dynamic_import_permissions_blob_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_blob_remote.ts",
+    output: "dynamic_import/permissions_blob_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(dynamic_import_permissions_data_local {
+    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_data_local.ts",
+    output: "dynamic_import/permissions_data_local.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(dynamic_import_permissions_blob_local {
+    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_blob_local.ts",
+    output: "dynamic_import/permissions_blob_local.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
   itest!(js_import_detect {
     args: "run --quiet --reload js_import_detect.ts",
     output: "js_import_detect.ts.out",
@@ -3462,6 +3531,48 @@ console.log("finish");
     args: "run --reload error_worker_permissions_remote.ts",
     http_server: true,
     output: "error_worker_permissions_remote.ts.out",
+    exit_code: 1,
+  });
+
+  itest!(worker_permissions_remote_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 workers/permissions_remote_remote.ts",
+    output: "workers/permissions_remote_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(worker_permissions_dynamic_remote {
+    args: "run --quiet --reload --allow-net --unstable workers/permissions_dynamic_remote.ts",
+    output: "workers/permissions_dynamic_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(worker_permissions_data_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 workers/permissions_data_remote.ts",
+    output: "workers/permissions_data_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(worker_permissions_blob_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 workers/permissions_blob_remote.ts",
+    output: "workers/permissions_blob_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(worker_permissions_data_local {
+    args: "run --quiet --reload --allow-net=localhost:4545 workers/permissions_data_local.ts",
+    output: "workers/permissions_data_local.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(worker_permissions_blob_local {
+    args: "run --quiet --reload --allow-net=localhost:4545 workers/permissions_blob_local.ts",
+    output: "workers/permissions_blob_local.ts.out",
+    http_server: true,
     exit_code: 1,
   });
 
@@ -3945,7 +4056,7 @@ console.log("finish");
   });
 
   itest!(import_blob_url_imports {
-    args: "run --quiet --reload import_blob_url_imports.ts",
+    args: "run --quiet --reload --allow-net=localhost:4545 import_blob_url_imports.ts",
     output: "import_blob_url_imports.ts.out",
     http_server: true,
   });
@@ -5582,6 +5693,7 @@ console.log("finish");
     assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
   }
 
+  #[ignore]
   #[test]
   #[cfg(windows)]
   // https://github.com/denoland/deno/issues/9667

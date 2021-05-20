@@ -635,6 +635,7 @@ pub async fn cover_files(
         module_specifier.clone(),
         TypeLib::UnstableDenoWindow,
         Permissions::allow_all(),
+        Permissions::allow_all(),
         false,
         program_state.maybe_import_map.clone(),
       )

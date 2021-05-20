@@ -4474,7 +4474,7 @@
     return ((validLen + placeHoldersLen) * 3) / 4 - placeHoldersLen;
   }
 
-  function _byteLength(b64, validLen, placeHoldersLen) {
+  function _byteLength(_b64, validLen, placeHoldersLen) {
     return ((validLen + placeHoldersLen) * 3) / 4 - placeHoldersLen;
   }
 

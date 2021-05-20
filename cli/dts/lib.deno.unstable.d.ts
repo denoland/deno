@@ -133,17 +133,29 @@ declare namespace Deno {
    * Open and initialize a plugin.
    *
    * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
    * const rid = Deno.openPlugin("./path/to/some/plugin.so");
-   * const opId = Deno.core.ops()["some_op"];
-   * const response = Deno.core.dispatch(opId, new Uint8Array([1,2,3,4]));
-   * console.log(`Response from plugin ${response}`);
+   *
+   * // The Deno.core namespace is needed to interact with plugins, but this is
+   * // internal so we use ts-ignore to skip type checking these calls.
+   * // @ts-ignore
+   * const { op_test_sync, op_test_async } = Deno.core.ops();
+   *
+   * assert(op_test_sync);
+   * assert(op_test_async);
+   *
+   * // @ts-ignore
+   * const result = Deno.core.opSync("op_test_sync");
+   *
+   * // @ts-ignore
+   * const result = await Deno.core.opAsync("op_test_sync");
    * ```
    *
    * Requires `allow-plugin` permission.
    *
    * The plugin system is not stable and will change in the future, hence the
    * lack of docs. For now take a look at the example
-   * https://github.com/denoland/deno/tree/master/test_plugin
+   * https://github.com/denoland/deno/tree/main/test_plugin
    */
   export function openPlugin(filename: string): number;
 
@@ -526,18 +538,19 @@ declare namespace Deno {
    * uncaught error is logged. This function can be used to perform the lookup
    * for creating better error handling.
    *
-   * **Note:** `line` and `column` are 1 indexed, which matches display
+   * **Note:** `lineNumber` and `columnNumber` are 1 indexed, which matches display
    * expectations, but is not typical of most index numbers in Deno.
    *
    * An example:
    *
    * ```ts
-   * const orig = Deno.applySourceMap({
+   * const origin = Deno.applySourceMap({
    *   fileName: "file://my/module.ts",
    *   lineNumber: 5,
    *   columnNumber: 15
    * });
-   * console.log(`${orig.filename}:${orig.line}:${orig.column}`);
+   *
+   * console.log(`${origin.fileName}:${origin.lineNumber}:${origin.columnNumber}`);
    * ```
    */
   export function applySourceMap(location: Location): Location;
@@ -732,7 +745,7 @@ declare namespace Deno {
    * is ignored. This functionality currently only works on Linux and Mac OS.
    *
    * ```ts
-   * Deno.setRaw(myTTY.rid, true, { cbreak: true });
+   * Deno.setRaw(Deno.stdin.rid, true, { cbreak: true });
    * ```
    */
   export function setRaw(
@@ -928,7 +941,7 @@ declare namespace Deno {
    *
    * ```ts
    * const listener = Deno.listenDatagram({
-   *   address: "/foo/bar.sock",
+   *   path: "/foo/bar.sock",
    *   transport: "unixpacket"
    * });
    * ```
@@ -981,7 +994,7 @@ declare namespace Deno {
    *
    * ```ts
    * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
-   * const tlsConn = await Deno.startTls(conn, { certFile: "./certs/my_custom_root_CA.pem", hostname: "127.0.0.1", port: 80 });
+   * const tlsConn = await Deno.startTls(conn, { certFile: "./certs/my_custom_root_CA.pem", hostname: "localhost" });
    * ```
    *
    * Requires `allow-net` permission.
@@ -1041,7 +1054,7 @@ declare namespace Deno {
    * A custom HttpClient for use with `fetch`.
    *
    * ```ts
-   * const client = new Deno.createHttpClient({ caFile: "./ca.pem" });
+   * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
    * const req = await fetch("https://myserver.com", { client });
    * ```
    */
@@ -1063,7 +1076,7 @@ declare namespace Deno {
    * Create a custom HttpClient for to use with `fetch`.
    *
    * ```ts
-   * const client = new Deno.createHttpClient({ caFile: "./ca.pem" });
+   * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
    * const req = await fetch("https://myserver.com", { client });
    * ```
    */
@@ -1160,6 +1173,7 @@ declare namespace Deno {
    * Services HTTP requests given a TCP or TLS socket.
    *
    * ```ts
+   * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
    * const httpConn = Deno.serveHttp(conn);
    * const e = await httpConn.nextRequest();
    * if (e) {
@@ -1211,6 +1225,8 @@ declare namespace Deno {
       * Examples:
       *
       * ```ts
+      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+      *
       * Deno.test({
       *   name: "inherit",
       *   permissions: {
@@ -1224,6 +1240,8 @@ declare namespace Deno {
       * ```
       *
       * ```ts
+      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+      *
       * Deno.test({
       *   name: "true",
       *   permissions: {
@@ -1237,6 +1255,8 @@ declare namespace Deno {
       * ```
       *
       * ```ts
+      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+      *
       * Deno.test({
       *   name: "false",
       *   permissions: {
@@ -1250,6 +1270,8 @@ declare namespace Deno {
       * ```
       *
       * ```
+      * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+      *
       * Deno.test({
       *   name: "localhost:8080",
       *   permissions: {
@@ -1341,28 +1363,6 @@ declare interface WorkerOptions {
    *     },
    *   }
    * );
-   * worker.postMessage({ cmd: "readFile", fileName: "./log.txt" });
-   *
-   * // deno_worker.ts
-   *
-   *
-   * self.onmessage = async function (e) {
-   *     const { cmd, fileName } = e.data;
-   *     if (cmd !== "readFile") {
-   *         throw new Error("Invalid command");
-   *     }
-   *     const buf = await Deno.readFile(fileName);
-   *     const fileContents = new TextDecoder().decode(buf);
-   *     console.log(fileContents);
-   * }
-   *
-   * // $ cat log.txt
-   * // hello world
-   * // hello world 2
-   *
-   * // $ deno run --allow-read mod.ts
-   * // hello world
-   * // hello world2
    * ```
    */
   // TODO(Soremwar)
@@ -1377,10 +1377,8 @@ declare interface WorkerOptions {
       /** The format of the net access list must be `hostname[:port]`
        * in order to be resolved.
        *
-       * ```
-       * net: ["https://deno.land", "localhost:8080"],
-       * ```
-       * */
+       * For example: `["https://deno.land", "localhost:8080"]`.
+       */
       net?: "inherit" | boolean | string[];
       plugin?: "inherit" | boolean;
       read?: "inherit" | boolean | Array<string | URL>;

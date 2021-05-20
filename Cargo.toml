@@ -2,25 +2,26 @@
 
 [workspace]
 members = [
+  "bench_util",
   "cli",
   "core",
   "runtime",
   "serde_v8",
   "test_plugin",
   "test_util",
+  "extensions/console",
   "extensions/crypto",
   "extensions/fetch",
+  "extensions/file",
   "extensions/timers",
   "extensions/url",
   "extensions/web",
   "extensions/webgpu",
   "extensions/webidl",
   "extensions/websocket",
+  "extensions/webstorage"
 ]
-exclude = [
-  "std/hash/_wasm"
-]
-
+exclude = ["test_util/std/hash/_wasm"]
 
 [profile.release]
 codegen-units = 1
