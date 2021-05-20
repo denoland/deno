@@ -8,7 +8,7 @@ use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_runtime::inspector::InspectorSession;
+use deno_runtime::inspector::InMemorySession;
 use deno_runtime::worker::MainWorker;
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
@@ -257,7 +257,7 @@ impl Highlighter for Helper {
 
 async fn post_message_and_poll(
   worker: &mut MainWorker,
-  session: &mut InspectorSession,
+  session: &mut InMemorySession,
   method: &str,
   params: Option<Value>,
 ) -> Result<Value, AnyError> {
@@ -282,7 +282,7 @@ async fn post_message_and_poll(
 
 async fn read_line_and_poll(
   worker: &mut MainWorker,
-  session: &mut InspectorSession,
+  session: &mut InMemorySession,
   message_rx: &Receiver<(String, Option<Value>)>,
   response_tx: &Sender<Result<Value, AnyError>>,
   editor: Arc<Mutex<Editor<Helper>>>,
@@ -353,7 +353,7 @@ Object.defineProperty(globalThis, "_error", {
 
 async fn inject_prelude(
   worker: &mut MainWorker,
-  session: &mut InspectorSession,
+  session: &mut InMemorySession,
   context_id: u64,
 ) -> Result<(), AnyError> {
   post_message_and_poll(
@@ -372,7 +372,7 @@ async fn inject_prelude(
 
 pub async fn is_closing(
   worker: &mut MainWorker,
-  session: &mut InspectorSession,
+  session: &mut InMemorySession,
   context_id: u64,
 ) -> Result<bool, AnyError> {
   let closed = post_message_and_poll(

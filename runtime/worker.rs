@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::inspector::DenoInspector;
+use crate::inspector::InMemorySession;
 use crate::inspector::InspectorServer;
-use crate::inspector::InspectorSession;
 use crate::js;
 use crate::metrics;
 use crate::ops;
@@ -237,10 +237,10 @@ impl MainWorker {
 
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
-  pub fn create_inspector_session(&mut self) -> Box<InspectorSession> {
+  pub fn create_inspector_session(&mut self) -> Box<InMemorySession> {
     let inspector = self.inspector.as_mut().unwrap();
 
-    InspectorSession::new(&mut **inspector)
+    InMemorySession::new(&mut **inspector)
   }
 
   pub fn poll_event_loop(
