@@ -432,7 +432,7 @@ declare namespace Deno {
     dst: Writer,
     options?: {
       bufSize?: number;
-    }
+    },
   ): Promise<number>;
 
   /**
@@ -471,7 +471,7 @@ declare namespace Deno {
     r: Reader,
     options?: {
       bufSize?: number;
-    }
+    },
   ): AsyncIterableIterator<Uint8Array>;
 
   /**
@@ -510,7 +510,7 @@ declare namespace Deno {
     r: ReaderSync,
     options?: {
       bufSize?: number;
-    }
+    },
   ): IterableIterator<Uint8Array>;
 
   /** Synchronously open a file and return an instance of `Deno.File`.  The
@@ -542,11 +542,8 @@ declare namespace Deno {
    * Requires `allow-read` and/or `allow-write` permissions depending on options.
    */
   export function open(
-
     path: string | URL,
-
-       options?: OpenOptions
-
+    options?: OpenOptions,
   ): Promise<File>;
 
   /** Creates a file if none exists or truncates an existing file and returns
@@ -690,13 +687,9 @@ declare namespace Deno {
    * ```
    */
   export function seekSync(
-
     rid: number,
-
-       offset: number,
-
-       whence: SeekMode
-
+    offset: number,
+    whence: SeekMode,
   ): number;
 
   /** Seek a resource ID (`rid`) to the given `offset` under mode given by `whence`.
@@ -731,13 +724,9 @@ declare namespace Deno {
    * ```
    */
   export function seek(
-
     rid: number,
-
-       offset: number,
-
-       whence: SeekMode
-
+    offset: number,
+    whence: SeekMode,
   ): Promise<number>;
 
   /**
@@ -807,8 +796,7 @@ declare namespace Deno {
       WriterSync,
       Seeker,
       SeekerSync,
-      Closer
-  {
+      Closer {
     readonly rid: number;
     constructor(rid: number);
     write(p: Uint8Array): Promise<number>;
@@ -1110,11 +1098,8 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission. */
   export function mkdir(
-
     path: string | URL,
-
-    options?: MkdirOptions
-
+    options?: MkdirOptions,
   ): Promise<void>;
 
   export interface MakeTempOptions {
@@ -1273,7 +1258,7 @@ declare namespace Deno {
   export function chownSync(
     path: string | URL,
     uid: number | null,
-    gid: number | null
+    gid: number | null,
   ): void;
 
   /** Change owner of a regular file or directory. This functionality
@@ -1294,7 +1279,7 @@ declare namespace Deno {
   export function chown(
     path: string | URL,
     uid: number | null,
-    gid: number | null
+    gid: number | null,
   ): Promise<void>;
 
   export interface RemoveOptions {
@@ -1328,11 +1313,8 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission. */
   export function remove(
-
     path: string | URL,
-
-    options?: RemoveOptions
-
+    options?: RemoveOptions,
   ): Promise<void>;
 
   /** Synchronously renames (moves) `oldpath` to `newpath`. Paths may be files or
@@ -1560,11 +1542,8 @@ declare namespace Deno {
    * Requires `allow-read` permission on fromPath.
    * Requires `allow-write` permission on toPath. */
   export function copyFileSync(
-
     fromPath: string | URL,
-
-    toPath: string | URL
-
+    toPath: string | URL,
   ): void;
 
   /** Copies the contents and permissions of one file to another specified path,
@@ -1579,7 +1558,7 @@ declare namespace Deno {
    * Requires `allow-write` permission on toPath. */
   export function copyFile(
     fromPath: string | URL,
-    toPath: string | URL
+    toPath: string | URL,
   ): Promise<void>;
 
   /** Returns the full path destination of the named symbolic link.
@@ -1686,7 +1665,7 @@ declare namespace Deno {
   export function writeFileSync(
     path: string | URL,
     data: Uint8Array,
-    options?: WriteFileOptions
+    options?: WriteFileOptions,
   ): void;
 
   /** Write `data` to the given `path`, by default creating a new file if needed,
@@ -1706,7 +1685,7 @@ declare namespace Deno {
   export function writeFile(
     path: string | URL,
     data: Uint8Array,
-    options?: WriteFileOptions
+    options?: WriteFileOptions,
   ): Promise<void>;
 
   /** Synchronously write string `data` to the given `path`, by default creating a new file if needed,
@@ -1721,7 +1700,7 @@ declare namespace Deno {
   export function writeTextFileSync(
     path: string | URL,
     data: string,
-    options?: WriteFileOptions
+    options?: WriteFileOptions,
   ): void;
 
   /** Asynchronously write string `data` to the given `path`, by default creating a new file if needed,
@@ -1736,7 +1715,7 @@ declare namespace Deno {
   export function writeTextFile(
     path: string | URL,
     data: string,
-    options?: WriteFileOptions
+    options?: WriteFileOptions,
   ): Promise<void>;
 
   /** Synchronously truncates or extends the specified file, to reach the
@@ -1836,9 +1815,7 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission. */
   export function listen(
-
-    options: ListenOptions & { transport?: "tcp" }
-
+    options: ListenOptions & { transport?: "tcp" },
   ): Listener;
 
   export interface ListenTlsOptions extends ListenOptions {
@@ -2018,20 +1995,17 @@ declare namespace Deno {
    */
   export function watchFs(
     paths: string | string[],
-    options?: { recursive: boolean }
+    options?: { recursive: boolean },
   ): AsyncIterableIterator<FsEvent>;
 
   export class Process<T extends RunOptions = RunOptions> {
     readonly rid: number;
     readonly pid: number;
-    readonly stdin: T["stdin"] extends "piped"
-      ? Writer & Closer
+    readonly stdin: T["stdin"] extends "piped" ? Writer & Closer
       : (Writer & Closer) | null;
-    readonly stdout: T["stdout"] extends "piped"
-      ? Reader & Closer
+    readonly stdout: T["stdout"] extends "piped" ? Reader & Closer
       : (Reader & Closer) | null;
-    readonly stderr: T["stderr"] extends "piped"
-      ? Reader & Closer
+    readonly stderr: T["stderr"] extends "piped" ? Reader & Closer
       : (Reader & Closer) | null;
     /** Wait for the process to exit and return its exit status.
      *
@@ -2082,15 +2056,15 @@ declare namespace Deno {
 
   export type ProcessStatus =
     | {
-        success: true;
-        code: 0;
-        signal?: undefined;
-      }
+      success: true;
+      code: 0;
+      signal?: undefined;
+    }
     | {
-        success: false;
-        code: number;
-        signal?: number;
-      };
+      success: false;
+      code: number;
+      signal?: number;
+    };
 
   export interface RunOptions {
     /** Arguments to pass. Note, the first element needs to be a path to the
@@ -2271,27 +2245,27 @@ declare namespace Deno {
       type: K,
       listener: (
         this: PermissionStatus,
-        ev: PermissionStatusEventMap[K]
+        ev: PermissionStatusEventMap[K],
       ) => any,
-      options?: boolean | AddEventListenerOptions
+      options?: boolean | AddEventListenerOptions,
     ): void;
     addEventListener(
       type: string,
       listener: EventListenerOrEventListenerObject,
-      options?: boolean | AddEventListenerOptions
+      options?: boolean | AddEventListenerOptions,
     ): void;
     removeEventListener<K extends keyof PermissionStatusEventMap>(
       type: K,
       listener: (
         this: PermissionStatus,
-        ev: PermissionStatusEventMap[K]
+        ev: PermissionStatusEventMap[K],
       ) => any,
-      options?: boolean | EventListenerOptions
+      options?: boolean | EventListenerOptions,
     ): void;
     removeEventListener(
       type: string,
       listener: EventListenerOrEventListenerObject,
-      options?: boolean | EventListenerOptions
+      options?: boolean | EventListenerOptions,
     ): void;
   }
 
@@ -2394,7 +2368,7 @@ declare namespace Deno {
   export function symlinkSync(
     oldpath: string,
     newpath: string,
-    options?: SymlinkOptions
+    options?: SymlinkOptions,
   ): void;
 
   /**
@@ -2411,7 +2385,7 @@ declare namespace Deno {
   export function symlink(
     oldpath: string,
     newpath: string,
-    options?: SymlinkOptions
+    options?: SymlinkOptions,
   ): Promise<void>;
 
   /**
