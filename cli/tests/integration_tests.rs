@@ -3475,6 +3475,12 @@ console.log("finish");
     exit_code: 1,
   });
 
+  itest!(error_028_data_worker_error {
+    args: "bundle error_028_data_worker_error.ts",
+    output: "error_028_data_worker_error.ts.out",
+    exit_code: 1,
+  });
+
   itest!(error_missing_module_named_import {
     args: "run --reload error_missing_module_named_import.ts",
     output: "error_missing_module_named_import.ts.out",

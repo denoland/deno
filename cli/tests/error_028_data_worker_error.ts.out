@@ -1,0 +1,4 @@
+[WILDCARD]error: Uncaught Error: bad
+  throw Error("bad");
+        ^
+    at data:application/javascript;base64,dGh...pOw==:2:7)
