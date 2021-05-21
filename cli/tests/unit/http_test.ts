@@ -317,3 +317,25 @@ unitTest(
     await promise;
   },
 );
+
+unitTest(
+  { perms: { net: true } },
+  async function httpServerEmptyBlobResponse() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const event = await httpConn.nextRequest();
+      assert(event);
+      const { respondWith } = event;
+      await respondWith(new Response(new Blob([])));
+      httpConn.close();
+      listener.close();
+    })();
+
+    const resp = await fetch("http://127.0.0.1:4501/");
+    const respBody = await resp.text();
+    assertEquals("", respBody);
+    await promise;
+  },
+);
