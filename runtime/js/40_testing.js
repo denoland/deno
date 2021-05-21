@@ -42,7 +42,7 @@ After:
   - completed: ${post.opsCompletedAsync}
 
 Make sure to await all promises returned from Deno APIs before
-finishing test case.`,
+finishing test case.`
       );
     };
   }
@@ -50,9 +50,7 @@ finishing test case.`,
   // Wrap test function in additional assertion that makes sure
   // the test case does not "leak" resources - ie. resource table after
   // the test has exactly the same contents as before the test.
-  function assertResources(
-    fn,
-  ) {
+  function assertResources(fn) {
     return async function resourceSanitizer() {
       const pre = core.resources();
       await fn();
@@ -77,7 +75,7 @@ finishing test case.`;
       setExitHandler((exitCode) => {
         assert(
           false,
-          `Test case attempted to exit with exit code: ${exitCode}`,
+          `Test case attempted to exit with exit code: ${exitCode}`
         );
       });
 
@@ -91,14 +89,15 @@ finishing test case.`;
     };
   }
 
+  const hooks = {
+    beforeEach: null,
+  };
+
   const tests = [];
 
   // Main test function provided by Deno, as you can see it merely
   // creates a new object with "name" and "fn" fields.
-  function test(
-    t,
-    fn,
-  ) {
+  function test(t, fn) {
     let testDef;
     const defaults = {
       ignore: false,
@@ -142,6 +141,14 @@ finishing test case.`;
     tests.push(testDef);
   }
 
+  // Main beforeEach function provided by Deno, as you can see it merely
+  function beforeEach(fn) {
+    if (!fn || typeof fn != "function") {
+      throw new TypeError("Missing test function");
+    }
+    hooks.beforeEach = fn;
+  }
+
   function postTestMessage(kind, data) {
     return core.opSync("op_post_test_message", { message: { kind, data } });
   }
@@ -164,7 +171,7 @@ finishing test case.`;
   function pledgeTestPermissions(permissions) {
     return core.opSync(
       "op_pledge_test_permissions",
-      parsePermissions(permissions),
+      parsePermissions(permissions)
     );
   }
 
@@ -211,7 +218,7 @@ finishing test case.`;
         name,
         duration,
         result: {
-          "failed": inspectArgs([error]),
+          failed: inspectArgs([error]),
         },
       });
     } finally {
@@ -221,10 +228,7 @@ finishing test case.`;
     }
   }
 
-  async function runTests({
-    disableLog = false,
-    filter = null,
-  } = {}) {
+  async function runTests({ disableLog = false, filter = null } = {}) {
     const originalConsole = globalThis.console;
     if (disableLog) {
       globalThis.console = new Console(() => {});
@@ -232,7 +236,7 @@ finishing test case.`;
 
     const only = tests.filter((test) => test.only);
     const pending = (only.length > 0 ? only : tests).filter(
-      createTestFilter(filter),
+      createTestFilter(filter)
     );
     postTestMessage("plan", {
       filtered: tests.length - pending.length,
@@ -241,6 +245,9 @@ finishing test case.`;
     });
 
     for (const test of pending) {
+      if (hooks.beforeEach) {
+        await hooks.beforeEach();
+      }
       await runTest(test);
     }
 
@@ -250,11 +257,12 @@ finishing test case.`;
   }
 
   window.__bootstrap.internals = {
-    ...window.__bootstrap.internals ?? {},
+    ...(window.__bootstrap.internals ?? {}),
     runTests,
   };
 
   window.__bootstrap.testing = {
     test,
+    beforeEach,
   };
 })(this);
