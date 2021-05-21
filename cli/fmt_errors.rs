@@ -22,7 +22,19 @@ pub fn format_location(frame: &JsStackFrame) -> String {
   }
   let mut result = String::new();
   if let Some(file_name) = &frame.file_name {
-    result += &cyan(&file_name).to_string();
+    let mut fmt_file_name = file_name.clone();
+    if fmt_file_name.starts_with("data:") {
+      if let Some(data_pieces) = fmt_file_name.split_once(',') {
+        let data_length = data_pieces.1.len();
+        if let Some(data_start) = data_pieces.1.get(0..3) {
+          if let Some(data_end) = data_pieces.1.get(data_length - 3..) {
+            fmt_file_name =
+              format!("{},{}...{}", data_pieces.0, data_start, data_end)
+          }
+        }
+      }
+    }
+    result += &cyan(fmt_file_name).to_string();
   } else {
     if frame.is_eval {
       result +=
