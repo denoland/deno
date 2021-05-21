@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use bencher::Bencher;
-use deno_core::futures::future::poll_fn;
 use deno_core::v8;
 use deno_core::JsRuntime;
 
@@ -76,5 +75,5 @@ pub fn bench_js_async(
 
 async fn inner_async(src: &str, runtime: &mut JsRuntime) {
   runtime.execute("inner_loop", src).unwrap();
-  poll_fn(|cx| runtime.poll_event_loop(cx)).await.unwrap();
+  runtime.run_event_loop().await.unwrap();
 }
