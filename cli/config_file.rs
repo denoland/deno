@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::fs_util::canonicalize_path;
+use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::serde::Deserialize;
@@ -293,7 +294,10 @@ impl ConfigFile {
   }
 
   pub fn new(text: &str, path: &Path) -> Result<Self, AnyError> {
-    let jsonc = jsonc_parser::parse_to_serde_value(text)?.unwrap();
+    let jsonc = match jsonc_parser::parse_to_serde_value(text) {
+      Ok(Some(value)) if value.is_object() => value,
+      _ => return Err(anyhow!("Unable to parse config file JSON")),
+    };
     let json: ConfigFileJson = serde_json::from_value(jsonc)?;
 
     Ok(Self {
@@ -391,6 +395,13 @@ mod tests {
         maybe_path: Some(config_path),
       }),
     );
+  }
+
+  #[test]
+  fn test_parse_config_with_empty_file() {
+    let config_text = "";
+    let config_path = PathBuf::from("/deno/tsconfig.json");
+    assert!(ConfigFile::new(config_text, &config_path).is_err());
   }
 
   #[test]
