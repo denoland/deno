@@ -5,6 +5,7 @@
   // Available on start due to bindings.
   const { opcall } = window.Deno.core;
 
+  let macrotaskCallback = null;
   let opsCache = {};
   const errorMap = {};
   // Builtin v8 / JS errors
@@ -68,12 +69,23 @@
     opsCache = Object.freeze(Object.fromEntries(opcall(0)));
   }
 
-  function handleAsyncMsgFromRust() {
+  function asyncTick() {
+    // Process async ops
     for (let i = 0; i < arguments.length; i += 2) {
       const promiseId = arguments[i];
       const res = arguments[i + 1];
       const promise = getPromise(promiseId);
       promise.resolve(res);
+    }
+    // Run macrotask to completion
+    while (macrotaskCallback && !macrotaskCallback()) { /* loop */ }
+  }
+
+  function setMacrotaskCallback(cb) {
+    if (macrotaskCallback) {
+      throw new TypeError("Deno.core.setMacrotaskCallback() already called");
+    } else {
+      macrotaskCallback = cb;
     }
   }
 
@@ -144,7 +156,8 @@
     resources,
     registerErrorBuilder,
     registerErrorClass,
-    handleAsyncMsgFromRust,
+    asyncTick,
     syncOpsCache,
+    setMacrotaskCallback,
   });
 })(this);

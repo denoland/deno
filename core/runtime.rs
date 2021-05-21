@@ -97,8 +97,7 @@ struct ModEvaluate {
 /// embedder slots.
 pub(crate) struct JsRuntimeState {
   pub global_context: Option<v8::Global<v8::Context>>,
-  pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
-  pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_tick_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
   pending_dyn_mod_evaluate: VecDeque<DynImportModEvaluate>,
@@ -278,8 +277,7 @@ impl JsRuntime {
       pending_promise_exceptions: HashMap::new(),
       pending_dyn_mod_evaluate: VecDeque::new(),
       pending_mod_evaluate: None,
-      js_recv_cb: None,
-      js_macrotask_cb: None,
+      js_tick_cb: None,
       js_error_create_fn,
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
@@ -404,21 +402,20 @@ impl JsRuntime {
     Ok(())
   }
 
-  /// Grabs a reference to core.js' handleAsyncMsgFromRust
+  /// Grabs a reference to core.js' asyncTick
   fn init_recv_cb(&mut self) {
     let scope = &mut self.handle_scope();
 
-    // Get Deno.core.handleAsyncMsgFromRust
-    let code =
-      v8::String::new(scope, "Deno.core.handleAsyncMsgFromRust").unwrap();
+    // Get Deno.core.asyncTick
+    let code = v8::String::new(scope, "Deno.core.asyncTick").unwrap();
     let script = v8::Script::compile(scope, code, None).unwrap();
     let v8_value = script.run(scope).unwrap();
 
-    // Put global handle in state.js_recv_cb
+    // Put global handle in state.js_tick_cb
     let state_rc = JsRuntime::state(scope);
     let mut state = state_rc.borrow_mut();
     let cb = v8::Local::<v8::Function>::try_from(v8_value).unwrap();
-    state.js_recv_cb.replace(v8::Global::new(scope, cb));
+    state.js_tick_cb.replace(v8::Global::new(scope, cb));
   }
 
   /// Ensures core.js has the latest op-name to op-id mappings
@@ -495,7 +492,7 @@ impl JsRuntime {
         state.borrow().op_state.clone(),
       ))));
     // Drop other v8::Global handles before snapshotting
-    std::mem::take(&mut state.borrow_mut().js_recv_cb);
+    std::mem::take(&mut state.borrow_mut().js_tick_cb);
 
     let snapshot_creator = self.snapshot_creator.as_mut().unwrap();
     let snapshot = snapshot_creator
@@ -584,11 +581,10 @@ impl JsRuntime {
       state.waker.register(cx.waker());
     }
 
-    // Ops
+    // Async JS tick (ops & macrotask)
     {
       let async_responses = self.poll_pending_ops(cx);
-      self.async_op_response(async_responses)?;
-      self.drain_macrotasks()?;
+      self.js_tick(async_responses)?;
       self.check_promise_exceptions()?;
     }
 
@@ -1289,7 +1285,7 @@ impl JsRuntime {
   }
 
   // Send finished responses to JS
-  fn async_op_response(
+  fn js_tick(
     &mut self,
     async_responses: Vec<(PromiseId, OpResult)>,
   ) -> Result<(), AnyError> {
@@ -1300,7 +1296,7 @@ impl JsRuntime {
       return Ok(());
     }
 
-    let js_recv_cb_handle = state_rc.borrow().js_recv_cb.clone().unwrap();
+    let js_tick_cb_handle = state_rc.borrow().js_tick_cb.clone().unwrap();
 
     let scope = &mut self.handle_scope();
 
@@ -1320,45 +1316,14 @@ impl JsRuntime {
     }
 
     let tc_scope = &mut v8::TryCatch::new(scope);
-    let js_recv_cb = js_recv_cb_handle.get(tc_scope);
+    let js_tick_cb = js_tick_cb_handle.get(tc_scope);
     let this = v8::undefined(tc_scope).into();
-    js_recv_cb.call(tc_scope, this, args.as_slice());
+    js_tick_cb.call(tc_scope, this, args.as_slice());
 
     match tc_scope.exception() {
       None => Ok(()),
       Some(exception) => exception_to_err_result(tc_scope, exception, false),
     }
-  }
-
-  fn drain_macrotasks(&mut self) -> Result<(), AnyError> {
-    let js_macrotask_cb_handle =
-      match &Self::state(self.v8_isolate()).borrow().js_macrotask_cb {
-        Some(handle) => handle.clone(),
-        None => return Ok(()),
-      };
-
-    let scope = &mut self.handle_scope();
-    let js_macrotask_cb = js_macrotask_cb_handle.get(scope);
-
-    // Repeatedly invoke macrotask callback until it returns true (done),
-    // such that ready microtasks would be automatically run before
-    // next macrotask is processed.
-    let tc_scope = &mut v8::TryCatch::new(scope);
-    let this = v8::undefined(tc_scope).into();
-    loop {
-      let is_done = js_macrotask_cb.call(tc_scope, this, &[]);
-
-      if let Some(exception) = tc_scope.exception() {
-        return exception_to_err_result(tc_scope, exception, false);
-      }
-
-      let is_done = is_done.unwrap();
-      if is_done.is_true() {
-        break;
-      }
-    }
-
-    Ok(())
   }
 }
 
