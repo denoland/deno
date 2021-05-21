@@ -322,9 +322,9 @@ declare namespace Deno {
   export interface ReaderSync {
     /** Reads up to `p.byteLength` bytes into `p`. It resolves to the number
      * of bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error
-     * encountered. Even if `read()` returns `n` < `p.byteLength`, it may use
+     * encountered. Even if `readSync()` returns `n` < `p.byteLength`, it may use
      * all of `p` as scratch space during the call. If some data is available
-     * but not `p.byteLength` bytes, `read()` conventionally returns what is
+     * but not `p.byteLength` bytes, `readSync()` conventionally returns what is
      * available instead of waiting for more.
      *
      * When `readSync()` encounters end-of-file condition, it returns EOF
