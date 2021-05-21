@@ -42,7 +42,7 @@ After:
   - completed: ${post.opsCompletedAsync}
 
 Make sure to await all promises returned from Deno APIs before
-finishing test case.`
+finishing test case.`,
       );
     };
   }
@@ -75,7 +75,7 @@ finishing test case.`;
       setExitHandler((exitCode) => {
         assert(
           false,
-          `Test case attempted to exit with exit code: ${exitCode}`
+          `Test case attempted to exit with exit code: ${exitCode}`,
         );
       });
 
@@ -171,7 +171,7 @@ finishing test case.`;
   function pledgeTestPermissions(permissions) {
     return core.opSync(
       "op_pledge_test_permissions",
-      parsePermissions(permissions)
+      parsePermissions(permissions),
     );
   }
 
@@ -236,7 +236,7 @@ finishing test case.`;
 
     const only = tests.filter((test) => test.only);
     const pending = (only.length > 0 ? only : tests).filter(
-      createTestFilter(filter)
+      createTestFilter(filter),
     );
     postTestMessage("plan", {
       filtered: tests.length - pending.length,
