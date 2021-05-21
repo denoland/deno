@@ -662,6 +662,64 @@ mod tests {
   use deno_core::resolve_url;
 
   #[test]
+  fn test_reference_to_diagnostic() {
+    let range = Range {
+      start: Position {
+        line: 1,
+        character: 1,
+      },
+      end: Position {
+        line: 2,
+        character: 2,
+      },
+    };
+
+    let test_cases = [
+      (
+        Reference {
+          category: Category::Lint {
+            message: "message1".to_string(),
+            code: "code1".to_string(),
+            hint: None,
+          },
+          range,
+        },
+        lsp::Diagnostic {
+          range,
+          severity: Some(lsp::DiagnosticSeverity::Warning),
+          code: Some(lsp::NumberOrString::String("code1".to_string())),
+          source: Some("deno-lint".to_string()),
+          message: "message1".to_string(),
+          ..Default::default()
+        },
+      ),
+      (
+        Reference {
+          category: Category::Lint {
+            message: "message2".to_string(),
+            code: "code2".to_string(),
+            hint: Some("hint2".to_string()),
+          },
+          range,
+        },
+        lsp::Diagnostic {
+          range,
+          severity: Some(lsp::DiagnosticSeverity::Warning),
+          code: Some(lsp::NumberOrString::String("code2".to_string())),
+          source: Some("deno-lint".to_string()),
+          message: "message2\nhint2".to_string(),
+          ..Default::default()
+        },
+      ),
+    ];
+
+    for (input, expected) in test_cases.iter() {
+      let actual = input.to_diagnostic();
+      assert_eq!(&actual, expected);
+    }
+  }
+
+  #[test]
   fn test_as_lsp_range() {
     let fixture = deno_lint::diagnostic::Range {
       start: deno_lint::diagnostic::Position {
