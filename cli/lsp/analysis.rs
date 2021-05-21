@@ -60,6 +60,7 @@ lazy_static::lazy_static! {
 
 /// Category of self-generated diagnostic messages (those not coming from)
 /// TypeScript.
+#[derive(Debug, PartialEq, Eq)]
 pub enum Category {
   /// A lint diagnostic, where the first element is the message.
   Lint {
@@ -70,6 +71,7 @@ pub enum Category {
 }
 
 /// A structure to hold a reference to a diagnostic message.
+#[derive(Debug, PartialEq, Eq)]
 pub struct Reference {
   category: Category,
   range: Range,
@@ -746,6 +748,38 @@ mod tests {
           character: 0,
         },
       }
+    );
+  }
+
+  #[test]
+  fn test_get_lint_references() {
+    let specifier = resolve_url("file:///a.ts").expect("bad specifier");
+    let source = "const foo = 42;";
+    let actual =
+      get_lint_references(&specifier, &MediaType::TypeScript, source).unwrap();
+
+    assert_eq!(
+      actual,
+      vec![Reference {
+        category: Category::Lint {
+          message: "`foo` is never used".to_string(),
+          code: "no-unused-vars".to_string(),
+          hint: Some(
+            "If this is intentional, prefix it with an underscore like `_foo`"
+              .to_string()
+          ),
+        },
+        range: Range {
+          start: Position {
+            line: 0,
+            character: 6,
+          },
+          end: Position {
+            line: 0,
+            character: 9,
+          }
+        }
+      }]
     );
   }
 
