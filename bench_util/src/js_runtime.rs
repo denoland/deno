@@ -1,14 +1,14 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use bencher::Bencher;
 use deno_core::v8;
+use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
-use deno_core::Extension;
 
 use crate::profiling::is_profiling;
 
 pub fn create_js_runtime(setup: impl FnOnce() -> Vec<Extension>) -> JsRuntime {
-  JsRuntime::new(RuntimeOptions{
+  JsRuntime::new(RuntimeOptions {
     extensions: setup(),
     ..Default::default()
   })

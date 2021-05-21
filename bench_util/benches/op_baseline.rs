@@ -14,17 +14,16 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 fn setup() -> Vec<Extension> {
-  vec![
-    Extension::builder()
+  vec![Extension::builder()
     .ops(vec![
       ("pi_json", op_sync(|_, _: (), _: ()| Ok(314159))),
       ("pi_async", op_async(op_pi_async)),
-      ("nop", Box::new(|state, _| {
-        Op::Sync(serialize_op_result(Ok(9), state))
-      })),
+      (
+        "nop",
+        Box::new(|state, _| Op::Sync(serialize_op_result(Ok(9), state))),
+      ),
     ])
-    .build()
-  ]
+    .build()]
 }
 
 // this is a function since async closures aren't stable

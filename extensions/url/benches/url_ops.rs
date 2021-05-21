@@ -7,10 +7,12 @@ use deno_core::Extension;
 fn setup() -> Vec<Extension> {
   vec![
     deno_url::init(),
-    Extension::builder().js(vec![
-      ("setup", "const { URL } = globalThis.__bootstrap.url;")
-    ])
-    .build(),
+    Extension::builder()
+      .js(vec![(
+        "setup",
+        "const { URL } = globalThis.__bootstrap.url;",
+      )])
+      .build(),
   ]
 }
 
