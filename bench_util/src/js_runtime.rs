@@ -1,20 +1,17 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use bencher::Bencher;
 use deno_core::v8;
+use deno_core::Extension;
 use deno_core::JsRuntime;
+use deno_core::RuntimeOptions;
 
 use crate::profiling::is_profiling;
 
-pub fn create_js_runtime(setup: impl FnOnce(&mut JsRuntime)) -> JsRuntime {
-  let mut rt = JsRuntime::new(Default::default());
-
-  // Caller provided setup
-  setup(&mut rt);
-
-  // Init ops
-  rt.sync_ops_cache();
-
-  rt
+pub fn create_js_runtime(setup: impl FnOnce() -> Vec<Extension>) -> JsRuntime {
+  JsRuntime::new(RuntimeOptions {
+    extensions: setup(),
+    ..Default::default()
+  })
 }
 
 fn loop_code(iters: u64, src: &str) -> String {
@@ -24,7 +21,7 @@ fn loop_code(iters: u64, src: &str) -> String {
 pub fn bench_js_sync(
   b: &mut Bencher,
   src: &str,
-  setup: impl FnOnce(&mut JsRuntime),
+  setup: impl FnOnce() -> Vec<Extension>,
 ) {
   let mut runtime = create_js_runtime(setup);
   let scope = &mut runtime.handle_scope();
@@ -50,7 +47,7 @@ pub fn bench_js_sync(
 pub fn bench_js_async(
   b: &mut Bencher,
   src: &str,
-  setup: impl FnOnce(&mut JsRuntime),
+  setup: impl FnOnce() -> Vec<Extension>,
 ) {
   let mut runtime = create_js_runtime(setup);
   let tokio_runtime = tokio::runtime::Builder::new_current_thread()
