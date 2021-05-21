@@ -64,15 +64,16 @@ pub fn bench_js_async(
 
   if is_profiling() {
     for _ in 0..10000 {
-      runtime.execute("inner_loop", src).unwrap();
-      let future = runtime.run_event_loop();
-      tokio_runtime.block_on(future).unwrap();
+      tokio_runtime.block_on(inner_async(src, &mut runtime));
     }
   } else {
     b.iter(|| {
-      runtime.execute("inner_loop", src).unwrap();
-      let future = runtime.run_event_loop();
-      tokio_runtime.block_on(future).unwrap();
+      tokio_runtime.block_on(inner_async(src, &mut runtime));
     });
   }
+}
+
+async fn inner_async(src: &str, runtime: &mut JsRuntime) {
+  runtime.execute("inner_loop", src).unwrap();
+  runtime.run_event_loop().await.unwrap();
 }
