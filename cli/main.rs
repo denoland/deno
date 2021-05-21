@@ -925,6 +925,7 @@ async fn test_command(
   concurrent_jobs: usize,
 ) -> Result<(), AnyError> {
   if let Some(ref coverage_dir) = flags.coverage_dir {
+    std::fs::create_dir_all(&coverage_dir)?;
     env::set_var(
       "DENO_UNSTABLE_COVERAGE_DIR",
       PathBuf::from(coverage_dir).canonicalize()?,
