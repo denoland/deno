@@ -78,13 +78,24 @@ pub struct Reference {
 impl Reference {
   pub fn to_diagnostic(&self) -> lsp::Diagnostic {
     match &self.category {
-      Category::Lint { message, code, .. } => lsp::Diagnostic {
+      Category::Lint {
+        message,
+        code,
+        hint,
+      } => lsp::Diagnostic {
         range: self.range,
         severity: Some(lsp::DiagnosticSeverity::Warning),
         code: Some(lsp::NumberOrString::String(code.to_string())),
         code_description: None,
         source: Some("deno-lint".to_string()),
-        message: message.to_string(),
+        message: {
+          let mut msg = message.to_string();
+          if let Some(hint) = hint {
+            msg.push('\n');
+            msg.push_str(hint);
+          }
+          msg
+        },
         related_information: None,
         tags: None, // we should tag unused code
         data: None,
