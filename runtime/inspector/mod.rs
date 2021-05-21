@@ -128,40 +128,38 @@ impl DenoInspector {
       mpsc::unbounded::<WebSocketProxy>();
     let (canary_tx, canary_rx) = oneshot::channel::<Never>();
 
-    // Create DenoInspector instance.
-    let mut self_ = Box::new({
-      let v8_inspector_client =
-        v8::inspector::V8InspectorClientBase::new::<Self>();
+    let v8_inspector_client =
+      v8::inspector::V8InspectorClientBase::new::<Self>();
 
-      let flags = InspectorFlags::new();
-      let waker = InspectorWaker::new(scope.thread_safe_handle());
+    let flags = InspectorFlags::new();
+    let waker = InspectorWaker::new(scope.thread_safe_handle());
 
-      let debugger_url = if let Some(server) = server.clone() {
-        let info = InspectorInfo {
-          host: server.host,
-          uuid: Uuid::new_v4(),
-          thread_name: thread::current().name().map(|n| n.to_owned()),
-          new_websocket_tx,
-          canary_rx,
-        };
-
-        let debugger_url = info.get_websocket_debugger_url();
-        server.register_inspector(info);
-        Some(debugger_url)
-      } else {
-        None
+    let debugger_url = if let Some(server) = server.clone() {
+      let info = InspectorInfo {
+        host: server.host,
+        uuid: Uuid::new_v4(),
+        thread_name: thread::current().name().map(|n| n.to_owned()),
+        new_websocket_tx,
+        canary_rx,
       };
 
-      Self {
-        v8_inspector_client,
-        v8_inspector: Default::default(),
-        sessions: Default::default(),
-        flags,
-        waker,
-        _canary_tx: canary_tx,
-        server,
-        debugger_url,
-      }
+      let debugger_url = info.get_websocket_debugger_url();
+      server.register_inspector(info);
+      Some(debugger_url)
+    } else {
+      None
+    };
+
+    // Create DenoInspector instance.
+    let mut self_ = Box::new(Self {
+      v8_inspector_client,
+      v8_inspector: Default::default(),
+      sessions: Default::default(),
+      flags,
+      waker,
+      _canary_tx: canary_tx,
+      server,
+      debugger_url,
     });
     self_.v8_inspector =
       v8::inspector::V8Inspector::create(scope, &mut *self_).into();
