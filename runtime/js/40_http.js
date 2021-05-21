@@ -132,10 +132,13 @@
           } else {
             const reader = innerResp.body.stream.getReader();
             const r1 = await reader.read();
-            if (r1.done) throw new TypeError("Unreachable");
-            respBody = r1.value;
-            const r2 = await reader.read();
-            if (!r2.done) throw new TypeError("Unreachable");
+            if (r1.done) {
+              respBody = new Uint8Array(0);
+            } else {
+              respBody = r1.value;
+              const r2 = await reader.read();
+              if (!r2.done) throw new TypeError("Unreachable");
+            }
           }
         } else {
           innerResp.body.streamOrStatic.consumed = true;
