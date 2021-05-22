@@ -26,8 +26,8 @@ pub fn format_location(frame: &JsStackFrame) -> String {
     if fmt_file_name.starts_with("data:") {
       if let Some(data_pieces) = fmt_file_name.split_once(',') {
         let data_length = data_pieces.1.len();
-        if let Some(data_start) = data_pieces.1.get(0..3) {
-          if let Some(data_end) = data_pieces.1.get(data_length - 3..) {
+        if let Some(data_start) = data_pieces.1.get(0..5) {
+          if let Some(data_end) = data_pieces.1.get(data_length - 5..) {
             fmt_file_name =
               format!("{},{}...{}", data_pieces.0, data_start, data_end)
           }

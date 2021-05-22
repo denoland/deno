@@ -70,7 +70,7 @@
     if (fileName) {
       if (fileName.startsWith("data:")) {
         const dataPieces = fileName.split(',', 2);
-        fileName = `${dataPieces[0]},${dataPieces[1].substring(0,3)}...${dataPieces[1].substring(dataPieces[1].length - 3)}`
+        fileName = `${dataPieces[0]},${dataPieces[1].substring(0,5)}...${dataPieces[1].substring(dataPieces[1].length - 5)}`
       }
       result += fileName;
     } else {
