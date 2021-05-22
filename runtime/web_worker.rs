@@ -268,6 +268,7 @@ impl WebWorker {
         options.user_agent.clone(),
         options.ca_data.clone(),
       ),
+      deno_broadcast_channel::init(),
       deno_crypto::init(options.seed),
       deno_webgpu::init(options.unstable),
       deno_timers::init::<Permissions>(),
