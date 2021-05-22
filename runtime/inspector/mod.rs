@@ -64,8 +64,7 @@ pub struct DenoInspector {
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
   _canary_tx: oneshot::Sender<Never>,
-  pub server: Option<Arc<InspectorServer>>,
-  pub debugger_url: Option<String>,
+  server: Option<Arc<InspectorServer>>,
 }
 
 impl Drop for DenoInspector {
@@ -137,7 +136,10 @@ impl DenoInspector {
     let flags = InspectorFlags::new();
     let waker = InspectorWaker::new(scope.thread_safe_handle());
 
-    let debugger_url = if let Some(server) = server.clone() {
+    // TODO(bartlomieju): DenoInspector should have public `InspectorInfo`
+    // field and registration with server should happen at the callsite 
+    // of `DenoInspector::new()`.
+    if let Some(server) = server.clone() {
       let info = InspectorInfo {
         host: server.host,
         uuid: Uuid::new_v4(),
@@ -146,12 +148,8 @@ impl DenoInspector {
         canary_rx,
       };
 
-      let debugger_url = info.get_websocket_debugger_url();
       server.register_inspector(info);
-      Some(debugger_url)
-    } else {
-      None
-    };
+    }
 
     // Create DenoInspector instance.
     let mut self_ = Box::new(Self {
@@ -162,7 +160,6 @@ impl DenoInspector {
       waker,
       _canary_tx: canary_tx,
       server,
-      debugger_url,
     });
     self_.v8_inspector = Rc::new(RefCell::new(
       v8::inspector::V8Inspector::create(scope, &mut *self_).into(),
