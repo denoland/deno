@@ -209,28 +209,31 @@
    * }} sourceMappingFn
    */
   function createPrepareStackTrace(sourceMappingFn) {
-    return function prepareStackTrace(error, callSites) {
-      const mappedCallSites = callSites.map((callSite) => {
-        const fileName = callSite.getFileName();
-        const lineNumber = callSite.getLineNumber();
-        const columnNumber = callSite.getColumnNumber();
-        if (
-          sourceMappingFn &&
-          fileName &&
-          lineNumber != null &&
-          columnNumber != null
-        ) {
-          return patchCallSite(
-            callSite,
-            sourceMappingFn({
-              fileName,
-              lineNumber,
-              columnNumber,
-            }),
-          );
-        }
-        return callSite;
-      });
+    return function prepareStackTrace(
+      error,
+      callSites,
+    ) {
+      const mappedCallSites = callSites.map(
+        (callSite) => {
+          const fileName = callSite.getFileName();
+          const lineNumber = callSite.getLineNumber();
+          const columnNumber = callSite.getColumnNumber();
+          if (
+            sourceMappingFn && fileName && lineNumber != null &&
+            columnNumber != null
+          ) {
+            return patchCallSite(
+              callSite,
+              sourceMappingFn({
+                fileName,
+                lineNumber,
+                columnNumber,
+              }),
+            );
+          }
+          return callSite;
+        },
+      );
       Object.defineProperties(error, {
         __callSiteEvals: { value: [], configurable: true },
       });
@@ -249,9 +252,8 @@
       } else {
         messageLine = "";
       }
-      return (
-        messageLine + formattedCallSites.map((s) => `\n    at ${s}`).join("")
-      );
+      return messageLine +
+        formattedCallSites.map((s) => `\n    at ${s}`).join("");
     };
   }
 
