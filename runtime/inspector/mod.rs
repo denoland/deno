@@ -57,6 +57,8 @@ enum PollState {
 
 pub struct DenoInspector {
   v8_inspector_client: v8::inspector::V8InspectorClientBase,
+  // TODO(bartlomieju): make this field private
+  // TODO(bartlomieju): could probably be v8::UniqueRef instead of UniquePtr
   pub v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
   sessions: RefCell<SessionContainer>,
   flags: RefCell<InspectorFlags>,
@@ -436,7 +438,8 @@ impl task::ArcWake for InspectorWaker {
 /// An inspector session that proxies messages to Websocket connection.
 struct WebsocketSession {
   v8_channel: v8::inspector::ChannelBase,
-  v8_session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
+  // TODO(bartlomieju): could probably be v8::UniqueRef instead of UniquePtr
+  v8_session: Rc<RefCell<v8::UniquePtr<v8::inspector::V8InspectorSession>>>,
   websocket_tx: WebSocketProxySender,
   websocket_rx_handler: Pin<Box<dyn Future<Output = ()> + 'static>>,
 }
@@ -452,17 +455,21 @@ impl WebsocketSession {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
       let mut v8_inspector = v8_inspector_rc.borrow_mut();
       let v8_inspector_ptr = v8_inspector.as_mut().unwrap();
-      let mut v8_session = v8_inspector_ptr.connect(
-        Self::CONTEXT_GROUP_ID,
-        // Todo(piscisaureus): V8Inspector::connect() should require that
-        // the 'v8_channel' argument cannot move.
-        unsafe { &mut *self_ptr },
-        v8::inspector::StringView::empty(),
-      );
+      let v8_session = Rc::new(RefCell::new(
+        v8_inspector_ptr
+          .connect(
+            Self::CONTEXT_GROUP_ID,
+            // Todo(piscisaureus): V8Inspector::connect() should require that
+            // the 'v8_channel' argument cannot move.
+            unsafe { &mut *self_ptr },
+            v8::inspector::StringView::empty(),
+          )
+          .into(),
+      ));
 
       let (websocket_tx, websocket_rx) = websocket.split();
       let websocket_rx_handler =
-        Self::receive_from_websocket(&mut *v8_session, websocket_rx);
+        Self::receive_from_websocket(v8_session.clone(), websocket_rx);
 
       Self {
         v8_channel,
@@ -476,7 +483,9 @@ impl WebsocketSession {
   /// Returns a future that receives messages from the websocket and dispatches
   /// them to the V8 session.
   fn receive_from_websocket(
-    v8_session: *mut v8::inspector::V8InspectorSession,
+    v8_session_rc: Rc<
+      RefCell<v8::UniquePtr<v8::inspector::V8InspectorSession>>,
+    >,
     websocket_rx: WebSocketProxyReceiver,
   ) -> Pin<Box<dyn Future<Output = ()> + 'static>> {
     async move {
@@ -486,7 +495,9 @@ impl WebsocketSession {
         .map_ok(move |msg| {
           let msg = msg.into_data();
           let msg = v8::inspector::StringView::from(msg.as_slice());
-          unsafe { &mut *v8_session }.dispatch_protocol_message(msg);
+          let mut v8_session = v8_session_rc.borrow_mut();
+          let v8_session_ptr = v8_session.as_mut().unwrap();
+          v8_session_ptr.dispatch_protocol_message(msg);
         })
         .try_collect::<()>()
         .await;
@@ -510,6 +521,9 @@ impl WebsocketSession {
     let detail = v8::inspector::StringView::empty();
     self
       .v8_session
+      .borrow_mut()
+      .as_mut()
+      .unwrap()
       .schedule_pause_on_next_statement(reason, detail);
   }
 }
@@ -629,6 +643,8 @@ impl InMemorySession {
       let v8_inspector_ptr = v8_inspector.as_mut().unwrap();
       let v8_session = v8_inspector_ptr.connect(
         Self::CONTEXT_GROUP_ID,
+        // Todo(piscisaureus): V8Inspector::connect() should require that
+        // the 'v8_channel' argument cannot move.
         unsafe { &mut *self_ptr },
         v8::inspector::StringView::empty(),
       );
