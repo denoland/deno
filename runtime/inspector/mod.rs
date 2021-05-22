@@ -32,6 +32,7 @@ use std::mem::MaybeUninit;
 use std::pin::Pin;
 use std::ptr;
 use std::ptr::NonNull;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
@@ -56,7 +57,7 @@ enum PollState {
 
 pub struct DenoInspector {
   v8_inspector_client: v8::inspector::V8InspectorClientBase,
-  v8_inspector: v8::UniquePtr<v8::inspector::V8Inspector>,
+  pub v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
   sessions: RefCell<SessionContainer>,
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
@@ -161,29 +162,27 @@ impl DenoInspector {
       server,
       debugger_url,
     });
-    self_.v8_inspector =
-      v8::inspector::V8Inspector::create(scope, &mut *self_).into();
+    self_.v8_inspector = Rc::new(RefCell::new(
+      v8::inspector::V8Inspector::create(scope, &mut *self_).into(),
+    ));
     self_.sessions =
-      SessionContainer::new(self_.v8_inspector_mut(), new_websocket_rx);
+      SessionContainer::new(self_.v8_inspector.clone(), new_websocket_rx);
 
     // Tell the inspector about the global context.
     let context = v8::Local::new(scope, context);
     let context_name = v8::inspector::StringView::from(&b"global context"[..]);
-    self_.v8_inspector_mut().context_created(
-      context,
-      Self::CONTEXT_GROUP_ID,
-      context_name,
-    );
+    self_
+      .v8_inspector
+      .borrow_mut()
+      .as_mut()
+      .unwrap()
+      .context_created(context, Self::CONTEXT_GROUP_ID, context_name);
 
     // Poll the session handler so we will get notified whenever there is
     // new_incoming debugger activity.
     let _ = self_.poll_sessions(None).unwrap();
 
     self_
-  }
-
-  pub fn v8_inspector_mut(&mut self) -> &mut v8::inspector::V8Inspector {
-    self.v8_inspector.as_mut().unwrap()
   }
 
   fn poll_sessions(
@@ -336,11 +335,13 @@ struct SessionContainer {
 
 impl SessionContainer {
   fn new(
-    v8_inspector_ptr: *mut v8::inspector::V8Inspector,
+    v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
     new_websocket_rx: UnboundedReceiver<WebSocketProxy>,
   ) -> RefCell<Self> {
     let new_incoming = new_websocket_rx
-      .map(move |websocket| WebsocketSession::new(v8_inspector_ptr, websocket))
+      .map(move |websocket| {
+        WebsocketSession::new(v8_inspector.clone(), websocket)
+      })
       .boxed_local();
     let self_ = Self {
       new_incoming,
@@ -444,12 +445,14 @@ impl WebsocketSession {
   const CONTEXT_GROUP_ID: i32 = 1;
 
   pub fn new(
-    v8_inspector_ptr: *mut v8::inspector::V8Inspector,
+    v8_inspector_rc: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
     websocket: WebSocketProxy,
   ) -> Box<Self> {
     new_box_with(move |self_ptr| {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
-      let mut v8_session = unsafe { &mut *v8_inspector_ptr }.connect(
+      let mut v8_inspector = v8_inspector_rc.borrow_mut();
+      let v8_inspector_ptr = v8_inspector.as_mut().unwrap();
+      let mut v8_session = v8_inspector_ptr.connect(
         Self::CONTEXT_GROUP_ID,
         // Todo(piscisaureus): V8Inspector::connect() should require that
         // the 'v8_channel' argument cannot move.
@@ -617,10 +620,14 @@ impl v8::inspector::ChannelImpl for InMemorySession {
 impl InMemorySession {
   const CONTEXT_GROUP_ID: i32 = 1;
 
-  pub fn new(v8_inspector: &mut v8::inspector::V8Inspector) -> Box<Self> {
+  pub fn new(
+    v8_inspector_rc: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
+  ) -> Box<Self> {
     new_box_with(move |self_ptr| {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
-      let v8_session = v8_inspector.connect(
+      let mut v8_inspector = v8_inspector_rc.borrow_mut();
+      let v8_inspector_ptr = v8_inspector.as_mut().unwrap();
+      let v8_session = v8_inspector_ptr.connect(
         Self::CONTEXT_GROUP_ID,
         unsafe { &mut *self_ptr },
         v8::inspector::StringView::empty(),

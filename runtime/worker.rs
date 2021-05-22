@@ -240,7 +240,7 @@ impl MainWorker {
   pub fn create_inspector_session(&mut self) -> Box<InMemorySession> {
     let inspector = self.inspector.as_mut().unwrap();
 
-    InMemorySession::new(inspector.v8_inspector_mut())
+    InMemorySession::new(inspector.v8_inspector.clone())
   }
 
   pub fn poll_event_loop(
