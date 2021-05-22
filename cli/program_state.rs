@@ -15,6 +15,7 @@ use crate::module_graph::TypeLib;
 use crate::source_maps::SourceMapGetter;
 use crate::specifier_handler::FetchHandler;
 use crate::version;
+use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_file::BlobUrlStore;
 use deno_runtime::inspector::InspectorServer;
 use deno_runtime::permissions::Permissions;
@@ -52,6 +53,7 @@ pub struct ProgramState {
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub ca_data: Option<Vec<u8>>,
   pub blob_url_store: BlobUrlStore,
+  pub broadcast_channel: InMemoryBroadcastChannel,
 }
 
 impl ProgramState {
@@ -77,6 +79,7 @@ impl ProgramState {
     };
 
     let blob_url_store = BlobUrlStore::default();
+    let broadcast_channel = InMemoryBroadcastChannel::default();
 
     let file_fetcher = FileFetcher::new(
       http_cache,
@@ -143,6 +146,7 @@ impl ProgramState {
       maybe_inspector_server,
       ca_data,
       blob_url_store,
+      broadcast_channel,
     };
     Ok(Arc::new(program_state))
   }

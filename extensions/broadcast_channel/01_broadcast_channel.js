@@ -4,6 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
+  const { setTarget } = window.__bootstrap.event;
 
   const handlerSymbol = Symbol("eventHandlers");
   function makeWrappedHandler(handler) {
@@ -21,7 +22,10 @@
     // HTML specification section 8.1.5.1
     Object.defineProperty(emitter, `on${name}`, {
       get() {
-        return this[handlerSymbol]?.get(name)?.handler;
+        // TODO(bnoordhuis) The "BroadcastChannel should have an onmessage
+        // event" WPT test expects that .onmessage !== undefined. Returning
+        // null makes it pass but is perhaps not exactly in the spirit.
+        return this[handlerSymbol]?.get(name)?.handler ?? null;
       },
       set(value) {
         if (!this[handlerSymbol]) {
@@ -43,12 +47,56 @@
 
   const _name = Symbol("[[name]]");
   const _closed = Symbol("[[closed]]");
-  const _rid = Symbol("[[rid]]");
+
+  const channels = [];
+  let rid = null;
+
+  async function recv() {
+    while (channels.length > 0) {
+      const message = await core.opAsync("op_broadcast_recv", rid);
+
+      if (message === null) {
+        break;
+      }
+
+      const [name, data] = message;
+      dispatch(null, name, new Uint8Array(data));
+    }
+
+    core.close(rid);
+    rid = null;
+  }
+
+  function dispatch(source, name, data) {
+    for (const channel of channels) {
+      if (channel === source) continue; // Don't self-send.
+      if (channel[_name] !== name) continue;
+      if (channel[_closed]) continue;
+
+      const go = () => {
+        if (channel[_closed]) return;
+        const event = new MessageEvent("message", {
+          data: core.deserialize(data), // TODO(bnoordhuis) Cache immutables.
+          origin: "http://127.0.0.1",
+        });
+        setTarget(event, channel);
+        channel.dispatchEvent(event);
+      };
+
+      defer(go);
+    }
+  }
+
+  // Defer to avoid starving the event loop. Not using queueMicrotask()
+  // for that reason: it lets promises make forward progress but can
+  // still starve other parts of the event loop.
+  function defer(go) {
+    setTimeout(go, 1);
+  }
 
   class BroadcastChannel extends EventTarget {
     [_name];
     [_closed] = false;
-    [_rid];
 
     get name() {
       return this[_name];
@@ -56,8 +104,6 @@
 
     constructor(name) {
       super();
-
-      window.location;
 
       const prefix = "Failed to construct 'broadcastChannel'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
@@ -67,46 +113,50 @@
         context: "Argument 1",
       });
 
-      this[_rid] = core.opSync("op_broadcast_open", this[_name]);
-
       this[webidl.brand] = webidl.brand;
 
-      this.#eventLoop();
+      channels.push(this);
+
+      if (rid === null) {
+        // Create the rid immediately, otherwise there is a time window (and a
+        // race condition) where messages can get lost, because recv() is async.
+        rid = core.opSync("op_broadcast_subscribe");
+        recv();
+      }
     }
 
     postMessage(message) {
       webidl.assertBranded(this, BroadcastChannel);
 
+      const prefix = "Failed to execute 'postMessage' on 'BroadcastChannel'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+
       if (this[_closed]) {
         throw new DOMException("Already closed", "InvalidStateError");
       }
 
-      core.opAsync("op_broadcast_send", this[_rid], core.serialize(message));
+      if (typeof message === "function" || typeof message === "symbol") {
+        throw new DOMException("Uncloneable value", "DataCloneError");
+      }
+
+      const data = core.serialize(message);
+
+      // Send to other listeners in this VM.
+      dispatch(this, this[_name], new Uint8Array(data));
+
+      // Send to listeners in other VMs.
+      defer(() => core.opAsync("op_broadcast_send", [rid, this[_name]], data));
     }
 
     close() {
       webidl.assertBranded(this, BroadcastChannel);
-
       this[_closed] = true;
-      core.close(this[_rid]);
-    }
 
-    async #eventLoop() {
-      while (!this[_closed]) {
-        const message = await core.opAsync(
-          "op_broadcast_next_event",
-          this[_rid],
-        );
+      const index = channels.indexOf(this);
+      if (index === -1) return;
 
-        if (message.length !== 0) {
-          const event = new MessageEvent("message", {
-            data: core.deserialize(message),
-            origin: window.location,
-          });
-          event.target = this;
-          this.dispatchEvent(event);
-        }
-      }
+      channels.splice(index, 1);
+      if (channels.length === 0) core.opSync("op_broadcast_unsubscribe", rid);
     }
   }
 

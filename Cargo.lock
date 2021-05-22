@@ -595,8 +595,10 @@ dependencies = [
 name = "deno_broadcast_channel"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "deno_core",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
