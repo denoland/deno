@@ -738,6 +738,7 @@ dependencies = [
 name = "deno_timers"
 version = "0.5.0"
 dependencies = [
+ "deno_bench_util",
  "deno_core",
  "tokio",
 ]
