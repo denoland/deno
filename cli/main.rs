@@ -124,6 +124,7 @@ fn create_web_worker_callback(
       no_color: !colors::use_color(),
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
       blob_url_store: program_state.blob_url_store.clone(),
+      broadcast_channel: program_state.broadcast_channel.clone(),
     };
 
     let mut worker = WebWorker::from_options(
@@ -212,6 +213,7 @@ pub fn create_main_worker(
         .join(checksum::gen(&[loc.to_string().as_bytes()]))
     }),
     blob_url_store: program_state.blob_url_store.clone(),
+    broadcast_channel: program_state.broadcast_channel.clone(),
   };
 
   let mut worker = MainWorker::from_options(main_module, permissions, &options);
