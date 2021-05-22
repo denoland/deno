@@ -68,11 +68,20 @@
     let fileName = callSite.getFileName();
 
     if (fileName) {
-      if (fileName.startsWith("data:")) {
-        const dataPieces = fileName.split(",", 2);
-        fileName = `${dataPieces[0]},${dataPieces[1].substring(0, 5)}...${
-          dataPieces[1].substring(dataPieces[1].length - 5)
-        }`;
+      try {
+        const fileNameUrl = new URL(fileName);
+        if (fileNameUrl.protocol == "data:" && fileName.length > 150) {
+          const dataPieces = fileNameUrl.pathname.split(",", 2);
+          fileName = `${fileNameUrl.protocol}${dataPieces[0]},${
+            dataPieces[1].substring(0, 5)
+          }...${dataPieces[1].substring(dataPieces[1].length - 5)}`;
+        }
+      } catch (e) {
+        if (e instanceof TypeError) {
+          // TypeError is expected if fileName is not a valid URL
+        } else {
+          throw e;
+        }
       }
       result += fileName;
     } else {
@@ -200,31 +209,28 @@
    * }} sourceMappingFn
    */
   function createPrepareStackTrace(sourceMappingFn) {
-    return function prepareStackTrace(
-      error,
-      callSites,
-    ) {
-      const mappedCallSites = callSites.map(
-        (callSite) => {
-          const fileName = callSite.getFileName();
-          const lineNumber = callSite.getLineNumber();
-          const columnNumber = callSite.getColumnNumber();
-          if (
-            sourceMappingFn && fileName && lineNumber != null &&
-            columnNumber != null
-          ) {
-            return patchCallSite(
-              callSite,
-              sourceMappingFn({
-                fileName,
-                lineNumber,
-                columnNumber,
-              }),
-            );
-          }
-          return callSite;
-        },
-      );
+    return function prepareStackTrace(error, callSites) {
+      const mappedCallSites = callSites.map((callSite) => {
+        const fileName = callSite.getFileName();
+        const lineNumber = callSite.getLineNumber();
+        const columnNumber = callSite.getColumnNumber();
+        if (
+          sourceMappingFn &&
+          fileName &&
+          lineNumber != null &&
+          columnNumber != null
+        ) {
+          return patchCallSite(
+            callSite,
+            sourceMappingFn({
+              fileName,
+              lineNumber,
+              columnNumber,
+            }),
+          );
+        }
+        return callSite;
+      });
       Object.defineProperties(error, {
         __callSiteEvals: { value: [], configurable: true },
       });
@@ -243,8 +249,9 @@
       } else {
         messageLine = "";
       }
-      return messageLine +
-        formattedCallSites.map((s) => `\n    at ${s}`).join("");
+      return (
+        messageLine + formattedCallSites.map((s) => `\n    at ${s}`).join("")
+      );
     };
   }
 

@@ -5,11 +5,13 @@ use crate::colors::italic_bold;
 use crate::colors::red;
 use crate::colors::yellow;
 use deno_core::error::{AnyError, JsError, JsStackFrame};
+use deno_core::url::Url;
 use std::error::Error;
 use std::fmt;
 use std::ops::Deref;
 
 const SOURCE_ABBREV_THRESHOLD: usize = 150;
+const FILE_ABBREV_THRESHOLD: usize = 150;
 
 // Keep in sync with `/core/error.js`.
 pub fn format_location(frame: &JsStackFrame) -> String {
@@ -23,13 +25,23 @@ pub fn format_location(frame: &JsStackFrame) -> String {
   let mut result = String::new();
   if let Some(file_name) = &frame.file_name {
     let mut fmt_file_name = file_name.clone();
-    if fmt_file_name.starts_with("data:") {
-      if let Some(data_pieces) = fmt_file_name.split_once(',') {
-        let data_length = data_pieces.1.len();
-        if let Some(data_start) = data_pieces.1.get(0..5) {
-          if let Some(data_end) = data_pieces.1.get(data_length - 5..) {
-            fmt_file_name =
-              format!("{},{}...{}", data_pieces.0, data_start, data_end)
+    if fmt_file_name.len() > FILE_ABBREV_THRESHOLD {
+      if let Ok(file_url) = Url::parse(&fmt_file_name) {
+        if file_url.scheme() == "data" {
+          let data_path = file_url.path();
+          if let Some(data_pieces) = data_path.split_once(',') {
+            let data_length = data_pieces.1.len();
+            if let Some(data_start) = data_pieces.1.get(0..5) {
+              if let Some(data_end) = data_pieces.1.get(data_length - 5..) {
+                fmt_file_name = format!(
+                  "{}:{},{}...{}",
+                  file_url.scheme(),
+                  data_pieces.0,
+                  data_start,
+                  data_end
+                )
+              }
+            }
           }
         }
       }

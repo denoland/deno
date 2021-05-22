@@ -3487,6 +3487,18 @@ console.log("finish");
     output: "error_029_data_error_format_rust.ts.out",
   });
 
+  itest!(error_030_data_error_format_rust_long {
+    args: "run --reload error_030_data_error_format_rust_long.ts",
+    exit_code: 1,
+    output: "error_030_data_error_format_rust_long.ts.out",
+  });
+
+  itest!(error_031_data_error_format_js_long {
+    args: "run --reload error_031_data_error_format_js_long.ts",
+    exit_code: 0,
+    output: "error_031_data_error_format_js_long.ts.out",
+  });
+
   itest!(error_missing_module_named_import {
     args: "run --reload error_missing_module_named_import.ts",
     output: "error_missing_module_named_import.ts.out",

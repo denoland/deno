@@ -1,4 +1,4 @@
 [WILDCARD]error: Uncaught (in promise) Error: bad
 throw new Error("bad");
       ^
-    at data:application/javascript;base64,dGhyb...iKTs=:1:7
+    at data:application/javascript;base64,dGhyb3cgbmV3IEVycm9yKCJiYWQiKTs=:1:7
