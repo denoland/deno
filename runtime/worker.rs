@@ -107,6 +107,7 @@ impl MainWorker {
       ),
       deno_webstorage::init(options.location_data_dir.clone()),
       deno_crypto::init(options.seed),
+      deno_broadcast_channel::init(),
       deno_webgpu::init(options.unstable),
       deno_timers::init::<Permissions>(),
       // Metrics

@@ -29,6 +29,7 @@ delete Object.prototype.__proto__;
   const webgpu = window.__bootstrap.webgpu;
   const webSocket = window.__bootstrap.webSocket;
   const webStorage = window.__bootstrap.webStorage;
+  const broadcastChannel = window.__bootstrap.broadcastChannel;
   const file = window.__bootstrap.file;
   const formData = window.__bootstrap.formData;
   const fetch = window.__bootstrap.fetch;
@@ -282,6 +283,7 @@ delete Object.prototype.__proto__;
     URL: util.nonEnumerable(url.URL),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
+    BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
     Worker: util.nonEnumerable(worker.Worker),
     WritableStream: util.nonEnumerable(streams.WritableStream),
     WritableStreamDefaultWriter: util.nonEnumerable(
