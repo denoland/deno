@@ -11,7 +11,7 @@ use std::ops::Deref;
 
 const SOURCE_ABBREV_THRESHOLD: usize = 150;
 
-// Keep in sync with `runtime/js/40_error_stack.js`.
+// Keep in sync with `/core/error.js`.
 pub fn format_location(frame: &JsStackFrame) -> String {
   let _internal = frame
     .file_name
@@ -51,7 +51,7 @@ pub fn format_location(frame: &JsStackFrame) -> String {
   result
 }
 
-// Keep in sync with `runtime/js/40_error_stack.js`.
+// Keep in sync with `/core/error.js`.
 fn format_frame(frame: &JsStackFrame) -> String {
   let _internal = frame
     .file_name

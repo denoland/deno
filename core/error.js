@@ -65,9 +65,13 @@
 
     let result = "";
 
-    const fileName = callSite.getFileName();
+    let fileName = callSite.getFileName();
 
     if (fileName) {
+      if (fileName.startsWith("data:")) {
+        const dataPieces = fileName.split(',', 2);
+        fileName = `${dataPieces[0]},${dataPieces[1].substring(0,3)}...${dataPieces[1].substring(dataPieces[1].length - 3)}`
+      }
       result += fileName;
     } else {
       if (callSite.isEval()) {

@@ -3475,10 +3475,16 @@ console.log("finish");
     exit_code: 1,
   });
 
-  itest!(error_028_data_worker_error {
-    args: "bundle error_028_data_worker_error.ts",
-    output: "error_028_data_worker_error.ts.out",
+  itest!(error_028_data_error_format_js {
+    args: "run --reload error_028_data_error_format_js.ts",
+    exit_code: 0,
+    output: "error_028_data_error_format_js.ts.out",
+  });
+
+  itest!(error_029_data_error_format_rust {
+    args: "run --reload error_029_data_error_format_rust.ts",
     exit_code: 1,
+    output: "error_029_data_error_format_rust.ts.out",
   });
 
   itest!(error_missing_module_named_import {

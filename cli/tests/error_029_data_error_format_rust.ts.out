@@ -1,0 +1,4 @@
+[WILDCARD]error: Uncaught (in promise) Error: bad
+throw new Error("bad");
+      ^
+    at data:application/javascript;base64,dGh...Ts=:1:7
