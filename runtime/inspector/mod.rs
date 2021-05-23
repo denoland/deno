@@ -36,7 +36,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
-use uuid::Uuid;
 
 mod server;
 
@@ -142,14 +141,7 @@ impl DenoInspector {
     // field and registration with server should happen at the callsite
     // of `DenoInspector::new()`.
     if let Some(server) = server.clone() {
-      let info = InspectorInfo {
-        host: server.host,
-        uuid: Uuid::new_v4(),
-        thread_name: thread::current().name().map(|n| n.to_owned()),
-        new_websocket_tx,
-        canary_rx,
-      };
-
+      let info = InspectorInfo::new(server.host, new_websocket_tx, canary_rx);
       server.register_inspector(info);
     }
 

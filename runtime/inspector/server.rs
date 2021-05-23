@@ -340,6 +340,20 @@ pub struct InspectorInfo {
 }
 
 impl InspectorInfo {
+  pub fn new(
+    host: SocketAddr,
+    new_websocket_tx: mpsc::UnboundedSender<WebSocketProxy>,
+    canary_rx: oneshot::Receiver<Never>,
+  ) -> Self {
+    Self {
+      host,
+      uuid: Uuid::new_v4(),
+      thread_name: thread::current().name().map(|n| n.to_owned()),
+      new_websocket_tx,
+      canary_rx,
+    }
+  }
+
   fn get_json_metadata(&self) -> Value {
     json!({
       "description": "deno",
