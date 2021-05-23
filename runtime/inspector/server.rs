@@ -270,7 +270,7 @@ async fn server(
 
 /// Creates a future that proxies messages sent and received on a warp WebSocket
 /// to a UnboundedSender/UnboundedReceiver pair. We need this to sidestep
-/// Tokio's task budget, which causes issues when DenoInspector::poll_sessions()
+/// Tokio's task budget, which causes issues when JsRuntimeInspector::poll_sessions()
 /// needs to block the thread because JavaScript execution is paused.
 ///
 /// This works because UnboundedSender/UnboundedReceiver are implemented in the

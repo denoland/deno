@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
-use crate::inspector::DenoInspector;
 use crate::inspector::InspectorInfo;
 use crate::inspector::InspectorServer;
+use crate::inspector::JsRuntimeInspector;
 use crate::inspector::WebSocketProxy;
 use crate::js;
 use crate::metrics;
@@ -201,7 +201,7 @@ fn create_handles(
 /// `WebWorker`.
 pub struct WebWorker {
   id: WorkerId,
-  inspector: Option<Box<DenoInspector>>,
+  inspector: Option<Box<JsRuntimeInspector>>,
   pub js_runtime: JsRuntime,
   pub name: String,
   internal_handle: WebWorkerInternalHandle,
@@ -330,7 +330,8 @@ impl WebWorker {
       let (new_websocket_tx, new_websocket_rx) =
         mpsc::unbounded::<WebSocketProxy>();
 
-      let inspector = DenoInspector::new(&mut js_runtime, new_websocket_rx);
+      let inspector =
+        JsRuntimeInspector::new(&mut js_runtime, new_websocket_rx);
 
       if let Some(server) = options.maybe_inspector_server.clone() {
         let info = InspectorInfo::new(server.host, new_websocket_tx);

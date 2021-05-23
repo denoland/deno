@@ -1,9 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::inspector::DenoInspector;
 use crate::inspector::InMemorySession;
 use crate::inspector::InspectorInfo;
 use crate::inspector::InspectorServer;
+use crate::inspector::JsRuntimeInspector;
 use crate::inspector::WebSocketProxy;
 use crate::js;
 use crate::metrics;
@@ -43,7 +43,7 @@ use std::task::Poll;
 /// All `WebWorker`s created during program execution
 /// are descendants of this worker.
 pub struct MainWorker {
-  inspector: Option<Box<DenoInspector>>,
+  inspector: Option<Box<JsRuntimeInspector>>,
   pub js_runtime: JsRuntime,
   should_break_on_first_statement: bool,
 }
@@ -153,7 +153,8 @@ impl MainWorker {
       let (new_websocket_tx, new_websocket_rx) =
         mpsc::unbounded::<WebSocketProxy>();
 
-      let inspector = DenoInspector::new(&mut js_runtime, new_websocket_rx);
+      let inspector =
+        JsRuntimeInspector::new(&mut js_runtime, new_websocket_rx);
 
       if let Some(server) = options.maybe_inspector_server.clone() {
         let info = InspectorInfo::new(server.host, new_websocket_tx);

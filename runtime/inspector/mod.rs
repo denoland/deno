@@ -53,7 +53,17 @@ enum PollState {
   Dropped,
 }
 
-pub struct DenoInspector {
+/// This structure is used responsible for providing inspector interface
+/// to the `JsRuntime`.
+///
+/// It stores an instance of `v8::inspector::V8Inspector` and additionally
+/// implements `v8::inspector::V8InspectorClientImpl`.
+///
+/// After creating this structure it's possible to connect multiple sessions
+/// to the inspector, in case of Deno it's either: a "websocket session" that
+/// provides integration with Chrome Devtools, or an "in-memory session" that
+/// is used for REPL or converage collection.
+pub struct JsRuntimeInspector {
   v8_inspector_client: v8::inspector::V8InspectorClientBase,
   // TODO(bartlomieju): make this field private
   // TODO(bartlomieju): could probably be v8::UniqueRef instead of UniquePtr
@@ -63,13 +73,14 @@ pub struct DenoInspector {
   waker: Arc<InspectorWaker>,
 }
 
-impl Drop for DenoInspector {
+impl Drop for JsRuntimeInspector {
   fn drop(&mut self) {
     // Since the  waker is cloneable, it might outlive the inspector itself.
     // Set the poll state to 'dropped' so it doesn't attempt to request an
     // interrupt from the isolate.
     self.waker.update(|w| w.poll_state = PollState::Dropped);
-    // V8 automatically deletes all sessions when an Inspector instance is
+    // TODO(bartlomieju): this comment is out of date
+    // V8 automatically deletes all sessions when an `V8Inspector` instance is
     // deleted, however InspectorSession also has a drop handler that cleans
     // up after itself. To avoid a double free, make sure the inspector is
     // dropped last.
@@ -77,7 +88,7 @@ impl Drop for DenoInspector {
   }
 }
 
-impl v8::inspector::V8InspectorClientImpl for DenoInspector {
+impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
   fn base(&self) -> &v8::inspector::V8InspectorClientBase {
     &self.v8_inspector_client
   }
@@ -102,17 +113,19 @@ impl v8::inspector::V8InspectorClientImpl for DenoInspector {
   }
 }
 
-/// DenoInspector implements a Future so that it can poll for new incoming
+/// `JsRuntimeInspector` implements a Future so that it can poll for new incoming
 /// connections and messages from the WebSocket server. The Worker that owns
-/// this DenoInspector will call our poll function from Worker::poll().
-impl Future for DenoInspector {
+/// this `JsRuntimeInspector` will call this function from `Worker::poll()`.
+impl Future for JsRuntimeInspector {
   type Output = ();
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
     self.poll_sessions(Some(cx)).unwrap()
   }
 }
 
-impl DenoInspector {
+impl JsRuntimeInspector {
+  /// Currently Deno supports only a single context in `JsRuntime`
+  /// and thus it's id is provided as an associated contant.
   const CONTEXT_GROUP_ID: i32 = 1;
 
   pub fn new(
@@ -128,7 +141,7 @@ impl DenoInspector {
     let flags = InspectorFlags::new();
     let waker = InspectorWaker::new(scope.thread_safe_handle());
 
-    // Create DenoInspector instance.
+    // Create JsRuntimeInspector instance.
     let mut self_ = Box::new(Self {
       v8_inspector_client,
       v8_inspector: Default::default(),
@@ -334,7 +347,7 @@ struct InspectorWakerInner {
   poll_state: PollState,
   task_waker: Option<task::Waker>,
   parked_thread: Option<thread::Thread>,
-  inspector_ptr: Option<NonNull<DenoInspector>>,
+  inspector_ptr: Option<NonNull<JsRuntimeInspector>>,
   isolate_handle: v8::IsolateHandle,
 }
 
@@ -385,7 +398,7 @@ impl task::ArcWake for InspectorWaker {
             _isolate: &mut v8::Isolate,
             arg: *mut c_void,
           ) {
-            let inspector = unsafe { &*(arg as *mut DenoInspector) };
+            let inspector = unsafe { &*(arg as *mut JsRuntimeInspector) };
             let _ = inspector.poll_sessions(None);
           }
         }
