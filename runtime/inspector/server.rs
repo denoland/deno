@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::channel::mpsc::UnboundedSender;
@@ -23,19 +24,20 @@ use std::rc::Rc;
 use std::thread;
 use uuid::Uuid;
 
-pub type WebSocketProxySender = UnboundedSender<tungstenite::Message>;
-pub type WebSocketProxyReceiver =
-  UnboundedReceiver<Result<tungstenite::Message, tungstenite::Error>>;
+pub type SessionProxySender = UnboundedSender<String>;
+// TODO(bartlomieju): does it even need to send a Result?
+// It seems `Vec<u8>` would be enough
+pub type SessionProxyReceiver = UnboundedReceiver<Result<Vec<u8>, AnyError>>;
 
 /// Encapsulates an UnboundedSender/UnboundedReceiver pair that together form
 /// a duplex channel for sending/receiving websocket messages.
 pub struct WebSocketProxy {
-  tx: WebSocketProxySender,
-  rx: WebSocketProxyReceiver,
+  tx: SessionProxySender,
+  rx: SessionProxyReceiver,
 }
 
 impl WebSocketProxy {
-  pub fn split(self) -> (WebSocketProxySender, WebSocketProxyReceiver) {
+  pub fn split(self) -> (SessionProxySender, SessionProxyReceiver) {
     (self.tx, self.rx)
   }
 }
@@ -302,11 +304,17 @@ fn create_websocket_proxy(
   let pump = async move {
     let (websocket_tx, websocket_rx) = websocket.split();
 
-    let outbound_pump =
-      outbound_rx.map(Ok).forward(websocket_tx).map_err(|_| ());
+    let outbound_pump = outbound_rx
+      .map(tungstenite::Message::text)
+      .map(Ok)
+      .forward(websocket_tx)
+      .map_err(|_| ());
 
     let inbound_pump = websocket_rx
-      .map(|msg| inbound_tx.unbounded_send(msg))
+      .map(|result| {
+        let result = result.map(|msg| msg.into_data()).map_err(AnyError::from);
+        inbound_tx.unbounded_send(result)
+      })
       .map_err(|_| ())
       .try_collect::<()>();
 

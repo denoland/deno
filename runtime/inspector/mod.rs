@@ -20,7 +20,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::v8;
-use deno_websocket::tokio_tungstenite::tungstenite;
 use std::cell::BorrowMutError;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -40,9 +39,9 @@ mod server;
 
 pub use server::InspectorInfo;
 pub use server::InspectorServer;
+use server::SessionProxyReceiver;
+use server::SessionProxySender;
 pub use server::WebSocketProxy;
-use server::WebSocketProxyReceiver;
-use server::WebSocketProxySender;
 
 #[derive(Clone, Copy)]
 enum PollState {
@@ -420,7 +419,7 @@ struct WebsocketSession {
   v8_channel: v8::inspector::ChannelBase,
   // TODO(bartlomieju): could probably be v8::UniqueRef instead of UniquePtr
   v8_session: Rc<RefCell<v8::UniquePtr<v8::inspector::V8InspectorSession>>>,
-  websocket_tx: WebSocketProxySender,
+  websocket_tx: SessionProxySender,
   websocket_rx_handler: Pin<Box<dyn Future<Output = ()> + 'static>>,
 }
 
@@ -466,14 +465,13 @@ impl WebsocketSession {
     v8_session_rc: Rc<
       RefCell<v8::UniquePtr<v8::inspector::V8InspectorSession>>,
     >,
-    websocket_rx: WebSocketProxyReceiver,
+    websocket_rx: SessionProxyReceiver,
   ) -> Pin<Box<dyn Future<Output = ()> + 'static>> {
     async move {
       eprintln!("Debugger session started.");
 
       let result = websocket_rx
         .map_ok(move |msg| {
-          let msg = msg.into_data();
           let msg = v8::inspector::StringView::from(msg.as_slice());
           let mut v8_session = v8_session_rc.borrow_mut();
           let v8_session_ptr = v8_session.as_mut().unwrap();
@@ -492,7 +490,6 @@ impl WebsocketSession {
 
   fn send_to_websocket(&self, msg: v8::UniquePtr<v8::inspector::StringBuffer>) {
     let msg = msg.unwrap().string().to_string();
-    let msg = tungstenite::Message::text(msg);
     let _ = self.websocket_tx.unbounded_send(msg);
   }
 
