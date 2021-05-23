@@ -39,9 +39,9 @@ use std::thread;
 
 mod server;
 
-use server::InspectorInfo;
+pub use server::InspectorInfo;
 pub use server::InspectorServer;
-use server::WebSocketProxy;
+pub use server::WebSocketProxy;
 use server::WebSocketProxyReceiver;
 use server::WebSocketProxySender;
 
@@ -63,9 +63,6 @@ pub struct DenoInspector {
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
   _canary_tx: oneshot::Sender<Never>,
-  // TODO(bartlomieju): remove server from this struct
-  #[allow(unused)]
-  server: Option<Arc<InspectorServer>>,
 }
 
 impl Drop for DenoInspector {
@@ -122,28 +119,17 @@ impl DenoInspector {
 
   pub fn new(
     js_runtime: &mut deno_core::JsRuntime,
-    server: Option<Arc<InspectorServer>>,
+    new_websocket_rx: mpsc::UnboundedReceiver<WebSocketProxy>,
+    canary_tx: oneshot::Sender<Never>,
   ) -> Box<Self> {
     let context = js_runtime.global_context();
     let scope = &mut v8::HandleScope::new(js_runtime.v8_isolate());
-
-    let (new_websocket_tx, new_websocket_rx) =
-      mpsc::unbounded::<WebSocketProxy>();
-    let (canary_tx, canary_rx) = oneshot::channel::<Never>();
 
     let v8_inspector_client =
       v8::inspector::V8InspectorClientBase::new::<Self>();
 
     let flags = InspectorFlags::new();
     let waker = InspectorWaker::new(scope.thread_safe_handle());
-
-    // TODO(bartlomieju): DenoInspector should have public `InspectorInfo`
-    // field and registration with server should happen at the callsite
-    // of `DenoInspector::new()`.
-    if let Some(server) = server.clone() {
-      let info = InspectorInfo::new(server.host, new_websocket_tx, canary_rx);
-      server.register_inspector(info);
-    }
 
     // Create DenoInspector instance.
     let mut self_ = Box::new(Self {
@@ -153,7 +139,6 @@ impl DenoInspector {
       flags,
       waker,
       _canary_tx: canary_tx,
-      server,
     });
     self_.v8_inspector = Rc::new(RefCell::new(
       v8::inspector::V8Inspector::create(scope, &mut *self_).into(),
@@ -182,12 +167,6 @@ impl DenoInspector {
     &self,
     mut invoker_cx: Option<&mut Context>,
   ) -> Result<Poll<()>, BorrowMutError> {
-    // TODO(bartlomieju): remove
-    // Short-circuit if there is no server
-    // if self.server.is_none() {
-    //   return Ok(Poll::Ready(()));
-    // }
-
     // The futures this function uses do not have re-entrant poll() functions.
     // However it is can happpen that poll_sessions() gets re-entered, e.g.
     // when an interrupt request is honored while the inspector future is polled

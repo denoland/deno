@@ -1,15 +1,19 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
 use crate::inspector::DenoInspector;
+use crate::inspector::InspectorInfo;
 use crate::inspector::InspectorServer;
+use crate::inspector::WebSocketProxy;
 use crate::js;
 use crate::metrics;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::tokio_util::create_basic_runtime;
+use core::convert::Infallible as Never; // Alias for the future `!` type.
 use deno_core::error::AnyError;
 use deno_core::error::Context as ErrorContext;
 use deno_core::futures::channel::mpsc;
+use deno_core::futures::channel::oneshot;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
@@ -319,10 +323,19 @@ impl WebWorker {
     });
 
     let inspector = if options.attach_inspector {
-      Some(DenoInspector::new(
-        &mut js_runtime,
-        options.maybe_inspector_server.clone(),
-      ))
+      let (new_websocket_tx, new_websocket_rx) =
+        mpsc::unbounded::<WebSocketProxy>();
+      let (canary_tx, canary_rx) = oneshot::channel::<Never>();
+
+      let inspector =
+        DenoInspector::new(&mut js_runtime, new_websocket_rx, canary_tx);
+
+      if let Some(server) = options.maybe_inspector_server.clone() {
+        let info = InspectorInfo::new(server.host, new_websocket_tx, canary_rx);
+        server.register_inspector(info);
+      }
+
+      Some(inspector)
     } else {
       None
     };
