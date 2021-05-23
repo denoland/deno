@@ -64,6 +64,8 @@ pub struct DenoInspector {
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
   _canary_tx: oneshot::Sender<Never>,
+  // TODO(bartlomieju): remove server from this struct
+  #[allow(unused)]
   server: Option<Arc<InspectorServer>>,
 }
 
@@ -137,7 +139,7 @@ impl DenoInspector {
     let waker = InspectorWaker::new(scope.thread_safe_handle());
 
     // TODO(bartlomieju): DenoInspector should have public `InspectorInfo`
-    // field and registration with server should happen at the callsite 
+    // field and registration with server should happen at the callsite
     // of `DenoInspector::new()`.
     if let Some(server) = server.clone() {
       let info = InspectorInfo {
@@ -188,10 +190,11 @@ impl DenoInspector {
     &self,
     mut invoker_cx: Option<&mut Context>,
   ) -> Result<Poll<()>, BorrowMutError> {
+    // TODO(bartlomieju): remove
     // Short-circuit if there is no server
-    if self.server.is_none() {
-      return Ok(Poll::Ready(()));
-    }
+    // if self.server.is_none() {
+    //   return Ok(Poll::Ready(()));
+    // }
 
     // The futures this function uses do not have re-entrant poll() functions.
     // However it is can happpen that poll_sessions() gets re-entered, e.g.
