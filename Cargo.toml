@@ -9,6 +9,7 @@ members = [
   "serde_v8",
   "test_plugin",
   "test_util",
+  "extensions/broadcast_channel",
   "extensions/console",
   "extensions/crypto",
   "extensions/fetch",

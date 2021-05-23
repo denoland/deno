@@ -10,6 +10,7 @@ use crate::ops;
 use crate::permissions::Permissions;
 use crate::tokio_util::create_basic_runtime;
 use core::convert::Infallible as Never; // Alias for the future `!` type.
+use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
 use deno_core::error::Context as ErrorContext;
 use deno_core::futures::channel::mpsc;
@@ -234,6 +235,7 @@ pub struct WebWorkerOptions {
   pub no_color: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub blob_url_store: BlobUrlStore,
+  pub broadcast_channel: InMemoryBroadcastChannel,
 }
 
 impl WebWorker {
@@ -271,6 +273,10 @@ impl WebWorker {
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
         options.ca_data.clone(),
+      ),
+      deno_broadcast_channel::init(
+        options.broadcast_channel.clone(),
+        options.unstable,
       ),
       deno_crypto::init(options.seed),
       deno_webgpu::init(options.unstable),
@@ -579,6 +585,7 @@ mod tests {
       no_color: true,
       get_error_class_fn: None,
       blob_url_store: BlobUrlStore::default(),
+      broadcast_channel: InMemoryBroadcastChannel::default(),
     };
 
     let mut worker = WebWorker::from_options(

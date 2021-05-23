@@ -1117,6 +1117,10 @@
   }
 
   class MessageEvent extends Event {
+    get source() {
+      return null;
+    }
+
     constructor(type, eventInitDict) {
       super(type, {
         bubbles: eventInitDict?.bubbles ?? false,
@@ -1208,5 +1212,6 @@
   };
   window.__bootstrap.event = {
     setIsTrusted,
+    setTarget,
   };
 })(this);

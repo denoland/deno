@@ -1098,6 +1098,14 @@
       "sessionStorage: defineProperty not configurable"
     ]
   },
+  "webmessaging": {
+    "broadcastchannel": {
+      "basics.any.html": [
+        "postMessage results in correct event"
+      ],
+      "interface.any.html": true
+    }
+  },
   "xhr": {
     "formdata": {
       "append.any.html": true,

@@ -592,6 +592,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_broadcast_channel"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "deno_core",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "deno_console"
 version = "0.7.0"
 dependencies = [
@@ -691,6 +701,7 @@ version = "0.15.0"
 dependencies = [
  "atty",
  "bytes",
+ "deno_broadcast_channel",
  "deno_console",
  "deno_core",
  "deno_crypto",
@@ -738,6 +749,7 @@ dependencies = [
 name = "deno_timers"
 version = "0.5.0"
 dependencies = [
+ "deno_bench_util",
  "deno_core",
  "tokio",
 ]

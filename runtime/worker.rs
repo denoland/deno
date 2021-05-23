@@ -10,6 +10,7 @@ use crate::metrics;
 use crate::ops;
 use crate::permissions::Permissions;
 use core::convert::Infallible as Never; // Alias for the future `!` type.
+use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
 use deno_core::error::Context as ErrorContext;
 use deno_core::futures::channel::mpsc;
@@ -76,6 +77,7 @@ pub struct WorkerOptions {
   pub location: Option<Url>,
   pub location_data_dir: Option<std::path::PathBuf>,
   pub blob_url_store: BlobUrlStore,
+  pub broadcast_channel: InMemoryBroadcastChannel,
 }
 
 impl MainWorker {
@@ -112,6 +114,10 @@ impl MainWorker {
       ),
       deno_webstorage::init(options.location_data_dir.clone()),
       deno_crypto::init(options.seed),
+      deno_broadcast_channel::init(
+        options.broadcast_channel.clone(),
+        options.unstable,
+      ),
       deno_webgpu::init(options.unstable),
       deno_timers::init::<Permissions>(),
       // Metrics
@@ -309,6 +315,7 @@ mod tests {
       location: None,
       location_data_dir: None,
       blob_url_store: BlobUrlStore::default(),
+      broadcast_channel: InMemoryBroadcastChannel::default(),
     };
 
     MainWorker::from_options(main_module, permissions, &options)

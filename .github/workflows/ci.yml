@@ -210,7 +210,7 @@ jobs:
           path: |
             ./target
           key: |
-            dummy # Cache never be created for this key.
+            s0mth1ng_rand0m # Cache never be created for this key.
           restore-keys: |
             a-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ hashFiles('Cargo.lock') }}-
 
