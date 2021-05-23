@@ -4,7 +4,6 @@
 //! https://chromedevtools.github.io/devtools-protocol/
 //! https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/
 
-use core::convert::Infallible as Never; // Alias for the future `!` type.
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
@@ -62,7 +61,6 @@ pub struct DenoInspector {
   sessions: RefCell<SessionContainer>,
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
-  _canary_tx: oneshot::Sender<Never>,
 }
 
 impl Drop for DenoInspector {
@@ -120,7 +118,6 @@ impl DenoInspector {
   pub fn new(
     js_runtime: &mut deno_core::JsRuntime,
     new_websocket_rx: mpsc::UnboundedReceiver<WebSocketProxy>,
-    canary_tx: oneshot::Sender<Never>,
   ) -> Box<Self> {
     let context = js_runtime.global_context();
     let scope = &mut v8::HandleScope::new(js_runtime.v8_isolate());
@@ -138,7 +135,6 @@ impl DenoInspector {
       sessions: Default::default(),
       flags,
       waker,
-      _canary_tx: canary_tx,
     });
     self_.v8_inspector = Rc::new(RefCell::new(
       v8::inspector::V8Inspector::create(scope, &mut *self_).into(),

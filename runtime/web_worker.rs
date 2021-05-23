@@ -9,12 +9,10 @@ use crate::metrics;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::tokio_util::create_basic_runtime;
-use core::convert::Infallible as Never; // Alias for the future `!` type.
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
 use deno_core::error::Context as ErrorContext;
 use deno_core::futures::channel::mpsc;
-use deno_core::futures::channel::oneshot;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
@@ -331,13 +329,11 @@ impl WebWorker {
     let inspector = if options.attach_inspector {
       let (new_websocket_tx, new_websocket_rx) =
         mpsc::unbounded::<WebSocketProxy>();
-      let (canary_tx, canary_rx) = oneshot::channel::<Never>();
 
-      let inspector =
-        DenoInspector::new(&mut js_runtime, new_websocket_rx, canary_tx);
+      let inspector = DenoInspector::new(&mut js_runtime, new_websocket_rx);
 
       if let Some(server) = options.maybe_inspector_server.clone() {
-        let info = InspectorInfo::new(server.host, new_websocket_tx, canary_rx);
+        let info = InspectorInfo::new(server.host, new_websocket_tx);
         server.register_inspector(info);
       }
 
