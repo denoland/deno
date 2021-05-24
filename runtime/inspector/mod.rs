@@ -419,8 +419,8 @@ struct WebsocketSession {
   v8_channel: v8::inspector::ChannelBase,
   // TODO(bartlomieju): could probably be v8::UniqueRef instead of UniquePtr
   v8_session: Rc<RefCell<v8::UniquePtr<v8::inspector::V8InspectorSession>>>,
-  websocket_tx: SessionProxySender,
-  websocket_rx_handler: Pin<Box<dyn Future<Output = ()> + 'static>>,
+  proxy_tx: SessionProxySender,
+  proxy_rx_handler: Pin<Box<dyn Future<Output = ()> + 'static>>,
 }
 
 impl WebsocketSession {
@@ -446,31 +446,42 @@ impl WebsocketSession {
           .into(),
       ));
 
-      let (websocket_tx, websocket_rx) = websocket.split();
-      let websocket_rx_handler =
-        Self::receive_from_websocket(v8_session.clone(), websocket_rx);
+      let (proxy_tx, proxy_rx) = websocket.split();
+      let proxy_rx_handler =
+        Self::receive_from_proxy(v8_session.clone(), proxy_rx);
 
       Self {
         v8_channel,
         v8_session,
-        websocket_tx,
-        websocket_rx_handler,
+        proxy_tx,
+        proxy_rx_handler,
       }
     })
   }
 
-  /// Returns a future that receives messages from the websocket and dispatches
+  // Dispatch message to V8 session
+  #[allow(unused)]
+  fn dispatch_message(&mut self, msg: Vec<u8>) {
+    let msg = v8::inspector::StringView::from(msg.as_slice());
+    let mut v8_session = self.v8_session.borrow_mut();
+    let v8_session_ptr = v8_session.as_mut().unwrap();
+    v8_session_ptr.dispatch_protocol_message(msg);
+  }
+
+  // TODO(bartlomieju): this function should be reworked into `impl Future`
+  // or `impl Stream`
+  /// Returns a future that receives messages from the proxy and dispatches
   /// them to the V8 session.
-  fn receive_from_websocket(
+  fn receive_from_proxy(
     v8_session_rc: Rc<
       RefCell<v8::UniquePtr<v8::inspector::V8InspectorSession>>,
     >,
-    websocket_rx: SessionProxyReceiver,
+    proxy_rx: SessionProxyReceiver,
   ) -> Pin<Box<dyn Future<Output = ()> + 'static>> {
     async move {
       eprintln!("Debugger session started.");
 
-      let result = websocket_rx
+      let result = proxy_rx
         .map_ok(move |msg| {
           let msg = v8::inspector::StringView::from(msg.as_slice());
           let mut v8_session = v8_session_rc.borrow_mut();
@@ -488,9 +499,9 @@ impl WebsocketSession {
     .boxed_local()
   }
 
-  fn send_to_websocket(&self, msg: v8::UniquePtr<v8::inspector::StringBuffer>) {
+  fn send_message(&self, msg: v8::UniquePtr<v8::inspector::StringBuffer>) {
     let msg = msg.unwrap().string().to_string();
-    let _ = self.websocket_tx.unbounded_send(msg);
+    let _ = self.proxy_tx.unbounded_send(msg);
   }
 
   pub fn break_on_next_statement(&mut self) {
@@ -519,14 +530,14 @@ impl v8::inspector::ChannelImpl for WebsocketSession {
     _call_id: i32,
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    self.send_to_websocket(message);
+    self.send_message(message);
   }
 
   fn send_notification(
     &mut self,
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    self.send_to_websocket(message);
+    self.send_message(message);
   }
 
   fn flush_protocol_notifications(&mut self) {}
@@ -535,7 +546,7 @@ impl v8::inspector::ChannelImpl for WebsocketSession {
 impl Future for WebsocketSession {
   type Output = ();
   fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    self.websocket_rx_handler.poll_unpin(cx)
+    self.proxy_rx_handler.poll_unpin(cx)
   }
 }
 

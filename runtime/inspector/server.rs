@@ -24,6 +24,7 @@ use std::rc::Rc;
 use std::thread;
 use uuid::Uuid;
 
+// TODO(bartlomieju): these two should be moved to `mod.rs`
 pub type SessionProxySender = UnboundedSender<String>;
 // TODO(bartlomieju): does it even need to send a Result?
 // It seems `Vec<u8>` would be enough
