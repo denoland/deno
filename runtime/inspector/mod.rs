@@ -576,7 +576,7 @@ impl Future for WebsocketSession {
 
 /// A local inspector session that can be used to send and receive protocol messages directly on
 /// the same thread as an isolate.
-pub struct InMemorySession2 {
+pub struct InMemorySession {
   v8_session_tx: UnboundedSender<Result<Vec<u8>, AnyError>>,
   v8_session_rx: UnboundedReceiver<(Option<i32>, String)>,
   response_tx_map: HashMap<i32, oneshot::Sender<serde_json::Value>>,
@@ -584,7 +584,7 @@ pub struct InMemorySession2 {
   notification_queue: Vec<Value>,
 }
 
-impl InMemorySession2 {
+impl InMemorySession {
   pub fn new(
     v8_session_tx: UnboundedSender<Result<Vec<u8>, AnyError>>,
     v8_session_rx: UnboundedReceiver<(Option<i32>, String)>,

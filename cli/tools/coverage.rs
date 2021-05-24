@@ -13,7 +13,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
-use deno_runtime::inspector::InMemorySession2;
+use deno_runtime::inspector::InMemorySession;
 use deno_runtime::permissions::Permissions;
 use regex::Regex;
 use serde::Deserialize;
@@ -26,11 +26,11 @@ use uuid::Uuid;
 
 pub struct CoverageCollector {
   pub dir: PathBuf,
-  session: Box<InMemorySession2>,
+  session: Box<InMemorySession>,
 }
 
 impl CoverageCollector {
-  pub fn new(dir: PathBuf, session: Box<InMemorySession2>) -> Self {
+  pub fn new(dir: PathBuf, session: Box<InMemorySession>) -> Self {
     Self { dir, session }
   }
 

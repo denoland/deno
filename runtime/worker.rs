@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::inspector::InMemorySession2;
+use crate::inspector::InMemorySession;
 use crate::inspector::InspectorInfo;
 use crate::inspector::InspectorServer;
 use crate::inspector::JsRuntimeInspector;
@@ -253,7 +253,7 @@ impl MainWorker {
   // `Inspector::connect_local_session()`?
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
-  pub async fn create_inspector_session(&mut self) -> Box<InMemorySession2> {
+  pub async fn create_inspector_session(&mut self) -> Box<InMemorySession> {
     // The 'outbound' channel carries messages sent to the session.
     let (outbound_tx, outbound_rx) = mpsc::unbounded();
 
@@ -272,7 +272,7 @@ impl MainWorker {
       .unbounded_send(proxy)
       .unwrap();
 
-    let mut session = InMemorySession2::new(inbound_tx, outbound_rx);
+    let mut session = InMemorySession::new(inbound_tx, outbound_rx);
 
     {
       let response =
