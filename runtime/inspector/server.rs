@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use core::convert::Infallible as Never; // Alias for the future `!` type.
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
@@ -11,6 +12,7 @@ use deno_core::futures::pin_mut;
 use deno_core::futures::prelude::*;
 use deno_core::futures::select;
 use deno_core::futures::stream::StreamExt;
+use deno_core::futures::task::Poll;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -62,8 +64,9 @@ impl InspectorServer {
   pub fn register_inspector(
     &self,
     session_sender: UnboundedSender<SessionProxy>,
+    deregister_rx: oneshot::Receiver<()>,
   ) {
-    let info = InspectorInfo::new(self.host, session_sender);
+    let info = InspectorInfo::new(self.host, session_sender, deregister_rx);
     self.register_inspector_tx.unbounded_send(info).unwrap();
   }
 }
@@ -196,6 +199,15 @@ async fn server(
     })
     .collect::<()>();
 
+  let inspector_map = Rc::clone(&inspector_map_);
+  let deregister_inspector_handler = future::poll_fn(|cx| {
+    inspector_map
+      .borrow_mut()
+      .retain(|_, info| info.deregister_rx.poll_unpin(cx) == Poll::Pending);
+    Poll::<Never>::Pending
+  })
+  .fuse();
+
   let json_version_response = json!({
     "Browser": name,
     "Protocol-Version": "1.3",
@@ -250,10 +262,12 @@ async fn server(
   .fuse();
 
   pin_mut!(register_inspector_handler);
+  pin_mut!(deregister_inspector_handler);
   pin_mut!(server_handler);
 
   select! {
     _ = register_inspector_handler => {},
+    _ = deregister_inspector_handler => unreachable!(),
     _ = server_handler => {},
   }
 }
@@ -319,18 +333,21 @@ pub struct InspectorInfo {
   pub uuid: Uuid,
   pub thread_name: Option<String>,
   pub new_session_tx: UnboundedSender<SessionProxy>,
+  pub deregister_rx: oneshot::Receiver<()>,
 }
 
 impl InspectorInfo {
   pub fn new(
     host: SocketAddr,
     new_session_tx: mpsc::UnboundedSender<SessionProxy>,
+    deregister_rx: oneshot::Receiver<()>,
   ) -> Self {
     Self {
       host,
       uuid: Uuid::new_v4(),
       thread_name: thread::current().name().map(|n| n.to_owned()),
       new_session_tx,
+      deregister_rx,
     }
   }
 

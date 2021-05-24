@@ -149,10 +149,12 @@ impl MainWorker {
     });
 
     let inspector = if options.attach_inspector {
-      let inspector = JsRuntimeInspector::new(&mut js_runtime);
+      let mut inspector = JsRuntimeInspector::new(&mut js_runtime);
 
       if let Some(server) = options.maybe_inspector_server.clone() {
-        server.register_inspector(inspector.get_session_sender());
+        let session_sender = inspector.get_session_sender();
+        let deregister_rx = inspector.add_deregister_handler();
+        server.register_inspector(session_sender, deregister_rx);
       }
 
       Some(inspector)
