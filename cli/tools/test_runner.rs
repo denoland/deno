@@ -379,7 +379,7 @@ pub async fn run_tests(
           let location = parsed_module.get_location(&span);
 
           let specifier = deno_core::resolve_url_or_path(&format!(
-            "{}:{}-{}",
+            "{}${}-{}",
             location.filename,
             location.line,
             location.line + element.as_str().split('\n').count(),
