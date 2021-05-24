@@ -232,7 +232,7 @@ pub fn parse_deno_types(comment: &Comment) -> Option<(String, Span)> {
   } else if let Some(m) = captures.get(2) {
     Some((m.as_str().to_string(), match_to_span(comment, &m)))
   } else {
-    panic!("unreachable");
+    unreachable!();
   }
 }
 
