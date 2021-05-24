@@ -134,7 +134,7 @@ fn handle_ws_request(
           )
           .await;
         let (proxy, pump) = create_websocket_proxy(websocket);
-
+        eprintln!("Debugger session started.");
         let _ = new_session_tx.unbounded_send(proxy);
         pump.await;
       });

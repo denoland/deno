@@ -286,7 +286,7 @@ pub async fn run_test_file(
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
     program_state.coverage_dir
   {
-    let session = worker.create_inspector_session();
+    let session = worker.create_inspector_session().await;
     let coverage_dir = PathBuf::from(coverage_dir);
     let mut coverage_collector = CoverageCollector::new(coverage_dir, session);
     coverage_collector.start_collecting().await?;

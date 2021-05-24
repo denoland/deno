@@ -216,14 +216,12 @@ impl JsRuntimeInspector {
       loop {
         // Do one "handshake" with a newly connected session at a time.
         if let Some(session) = &mut sessions.handshake {
-          eprintln!("polling handshake session")
           let poll_result = session.poll_unpin(cx);
           let handshake_done =
             replace(&mut self.flags.borrow_mut().session_handshake_done, false);
           match poll_result {
             Poll::Pending if handshake_done => {
               let session = sessions.handshake.take().unwrap();
-              eprintln!("new established session");
               sessions.established.push(session);
               take(&mut self.flags.borrow_mut().waiting_for_session);
             }
@@ -235,7 +233,6 @@ impl JsRuntimeInspector {
         // Accept new connections.
         match sessions.new_incoming.poll_next_unpin(cx) {
           Poll::Ready(Some(session)) => {
-            eprintln!("new handshake session");
             let prev = sessions.handshake.replace(session);
             assert!(prev.is_none());
             continue;
@@ -252,9 +249,8 @@ impl JsRuntimeInspector {
         };
       }
 
-      let should_block = sessions.handshake.is_some()
-        || self.flags.borrow().on_pause
-        || self.flags.borrow().waiting_for_session;
+      let should_block =
+        self.flags.borrow().on_pause || self.flags.borrow().waiting_for_session;
 
       let new_state = self.waker.update(|w| {
         match w.poll_state {
@@ -347,7 +343,6 @@ impl SessionContainer {
   ) -> RefCell<Self> {
     let new_incoming = new_session_rx
       .map(move |session_proxy| {
-        eprintln!("received new session!");
         WebsocketSession::new(v8_inspector.clone(), session_proxy)
       })
       .boxed_local();
@@ -506,11 +501,8 @@ impl WebsocketSession {
     proxy_rx: SessionProxyReceiver,
   ) -> Pin<Box<dyn Future<Output = ()> + 'static>> {
     async move {
-      eprintln!("Debugger session started.");
-
       let result = proxy_rx
         .map_ok(move |msg| {
-          eprintln!("got new message from proxy");
           let msg = v8::inspector::StringView::from(msg.as_slice());
           let mut v8_session = v8_session_rc.borrow_mut();
           let v8_session_ptr = v8_session.as_mut().unwrap();
@@ -533,7 +525,6 @@ impl WebsocketSession {
     msg: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
     let msg = msg.unwrap().string().to_string();
-    eprintln!("sending message to proxt {}", msg);
     let _ = self.proxy_tx.unbounded_send((maybe_call_id, msg));
   }
 
@@ -585,143 +576,6 @@ impl Future for WebsocketSession {
 
 /// A local inspector session that can be used to send and receive protocol messages directly on
 /// the same thread as an isolate.
-pub struct InMemorySession {
-  v8_channel: v8::inspector::ChannelBase,
-  v8_session: v8::UniqueRef<v8::inspector::V8InspectorSession>,
-  response_tx_map: HashMap<i32, oneshot::Sender<serde_json::Value>>,
-  next_message_id: i32,
-  notification_queue: Vec<Value>,
-}
-
-impl v8::inspector::ChannelImpl for InMemorySession {
-  fn base(&self) -> &v8::inspector::ChannelBase {
-    &self.v8_channel
-  }
-
-  fn base_mut(&mut self) -> &mut v8::inspector::ChannelBase {
-    &mut self.v8_channel
-  }
-
-  fn send_response(
-    &mut self,
-    call_id: i32,
-    message: v8::UniquePtr<v8::inspector::StringBuffer>,
-  ) {
-    let raw_message = message.unwrap().string().to_string();
-    let message: serde_json::Value = match serde_json::from_str(&raw_message) {
-      Ok(v) => v,
-      Err(error) => match error.classify() {
-        serde_json::error::Category::Syntax => json!({
-          "id": call_id,
-          "result": {
-            "result": {
-              "type": "error",
-              "description": "Unterminated string literal",
-              "value": "Unterminated string literal",
-            },
-            "exceptionDetails": {
-              "exceptionId": 0,
-              "text": "Unterminated string literal",
-              "lineNumber": 0,
-              "columnNumber": 0
-            },
-          },
-        }),
-        _ => panic!("Could not parse inspector message"),
-      },
-    };
-
-    self
-      .response_tx_map
-      .remove(&call_id)
-      .unwrap()
-      .send(message)
-      .unwrap();
-  }
-
-  fn send_notification(
-    &mut self,
-    message: v8::UniquePtr<v8::inspector::StringBuffer>,
-  ) {
-    let raw_message = message.unwrap().string().to_string();
-    let message = serde_json::from_str(&raw_message).unwrap();
-
-    self.notification_queue.push(message);
-  }
-
-  fn flush_protocol_notifications(&mut self) {}
-}
-
-impl InMemorySession {
-  const CONTEXT_GROUP_ID: i32 = 1;
-
-  pub fn new(
-    v8_inspector_rc: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
-  ) -> Box<Self> {
-    new_box_with(move |self_ptr| {
-      let v8_channel = v8::inspector::ChannelBase::new::<Self>();
-      let mut v8_inspector = v8_inspector_rc.borrow_mut();
-      let v8_inspector_ptr = v8_inspector.as_mut().unwrap();
-      let v8_session = v8_inspector_ptr.connect(
-        Self::CONTEXT_GROUP_ID,
-        // Todo(piscisaureus): V8Inspector::connect() should require that
-        // the 'v8_channel' argument cannot move.
-        unsafe { &mut *self_ptr },
-        v8::inspector::StringView::empty(),
-      );
-
-      let response_tx_map = HashMap::new();
-      let next_message_id = 0;
-
-      let notification_queue = Vec::new();
-
-      Self {
-        v8_channel,
-        v8_session,
-        response_tx_map,
-        next_message_id,
-        notification_queue,
-      }
-    })
-  }
-
-  pub fn notifications(&mut self) -> Vec<Value> {
-    self.notification_queue.split_off(0)
-  }
-
-  pub async fn post_message(
-    &mut self,
-    method: &str,
-    params: Option<serde_json::Value>,
-  ) -> Result<serde_json::Value, AnyError> {
-    let id = self.next_message_id;
-    self.next_message_id += 1;
-
-    let (response_tx, response_rx) = oneshot::channel::<serde_json::Value>();
-    self.response_tx_map.insert(id, response_tx);
-
-    let message = json!({
-        "id": id,
-        "method": method,
-        "params": params,
-    });
-
-    let raw_message = serde_json::to_string(&message).unwrap();
-    let raw_message = v8::inspector::StringView::from(raw_message.as_bytes());
-    self.v8_session.dispatch_protocol_message(raw_message);
-
-    let response = response_rx.await.unwrap();
-    if let Some(error) = response.get("error") {
-      return Err(generic_error(error.to_string()));
-    }
-
-    let result = response.get("result").unwrap().clone();
-    Ok(result)
-  }
-}
-
-/// A local inspector session that can be used to send and receive protocol messages directly on
-/// the same thread as an isolate.
 pub struct InMemorySession2 {
   v8_session_tx: UnboundedSender<Result<Vec<u8>, AnyError>>,
   v8_session_rx: UnboundedReceiver<(Option<i32>, String)>,
@@ -758,7 +612,6 @@ impl InMemorySession2 {
     method: &str,
     params: Option<serde_json::Value>,
   ) -> Result<serde_json::Value, AnyError> {
-    eprintln!("sending post message {}", method);
     let id = self.next_message_id;
     self.next_message_id += 1;
 
@@ -773,21 +626,16 @@ impl InMemorySession2 {
     });
 
     let raw_message = serde_json::to_string(&message).unwrap();
-    eprintln!("sending message from repl");
     self
       .v8_session_tx
       .unbounded_send(Ok(raw_message.as_bytes().to_vec()))
       .unwrap();
-    eprintln!("sent message from repl");
 
     loop {
-      eprintln!("looping");
       tokio::select! {
         _ = self.receive_from_v8_session() => {
-          eprintln!("received vrom v8_session")
         },
         result = &mut response_rx => {
-          eprintln!("got response");
           let response = result?;
           if let Some(error) = response.get("error") {
             return Err(generic_error(error.to_string()));
@@ -801,9 +649,7 @@ impl InMemorySession2 {
   }
 
   async fn receive_from_v8_session(&mut self) {
-    eprintln!("waiting on v8_session response");
     let (maybe_call_id, message) = self.v8_session_rx.next().await.unwrap();
-    eprintln!("waited on v8_session response");
     // If there's no call_id then it's a notification
     if let Some(call_id) = maybe_call_id {
       let message: serde_json::Value = match serde_json::from_str(&message) {

@@ -249,9 +249,11 @@ impl MainWorker {
     }
   }
 
+  // TODO(bartlomieju): could be better abstracted, maybe
+  // `Inspector::connect_local_session()`?
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
-  pub fn create_inspector_session(&mut self) -> Box<InMemorySession2> {
+  pub async fn create_inspector_session(&mut self) -> Box<InMemorySession2> {
     // The 'outbound' channel carries messages sent to the session.
     let (outbound_tx, outbound_rx) = mpsc::unbounded();
 
@@ -269,8 +271,33 @@ impl MainWorker {
       .get_session_sender()
       .unbounded_send(proxy)
       .unwrap();
+
+    let mut session = InMemorySession2::new(inbound_tx, outbound_rx);
+
+    {
+      let response =
+        session.post_message("Runtime.runIfWaitingForDebugger", None);
+      tokio::pin!(response);
+
+      loop {
+        tokio::select! {
+          result = &mut response => {
+            result.expect("Failed to start session");
+            break;
+          }
+
+          _ = self.run_event_loop() => {
+            // A zero delay is long enough to yield the thread in order to prevent the loop from
+            // running hot for messages that are taking longer to resolve like for example an
+            // evaluation of top level await.
+            tokio::time::sleep(tokio::time::Duration::from_millis(0)).await;
+          }
+        };
+      }
+    }
+
     // TODO(bartlomieju): Box is superfluous
-    Box::new(InMemorySession2::new(inbound_tx, outbound_rx))
+    Box::new(session)
   }
 
   pub fn poll_event_loop(
