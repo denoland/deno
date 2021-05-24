@@ -331,9 +331,9 @@ impl InspectorFlags {
 /// A helper structure that helps coordinate sessions during different
 /// parts of their lifecycle.
 struct SessionContainer {
-  new_incoming: Pin<Box<dyn Stream<Item = Box<WebsocketSession>> + 'static>>,
-  handshake: Option<Box<WebsocketSession>>,
-  established: FuturesUnordered<Box<WebsocketSession>>,
+  new_incoming: Pin<Box<dyn Stream<Item = Box<InspectorSession>> + 'static>>,
+  handshake: Option<Box<InspectorSession>>,
+  established: FuturesUnordered<Box<InspectorSession>>,
 }
 
 impl SessionContainer {
@@ -343,7 +343,7 @@ impl SessionContainer {
   ) -> RefCell<Self> {
     let new_incoming = new_session_rx
       .map(move |session_proxy| {
-        WebsocketSession::new(v8_inspector.clone(), session_proxy)
+        InspectorSession::new(v8_inspector.clone(), session_proxy)
       })
       .boxed_local();
     let self_ = Self {
@@ -436,8 +436,9 @@ impl task::ArcWake for InspectorWaker {
   }
 }
 
-/// An inspector session that proxies messages to Websocket connection.
-struct WebsocketSession {
+/// An inspector session that proxies messages to concrete "transport layer",
+/// eg. Websocket or another set of channels.
+struct InspectorSession {
   v8_channel: v8::inspector::ChannelBase,
   // TODO(bartlomieju): could probably be v8::UniqueRef instead of UniquePtr
   v8_session: Rc<RefCell<v8::UniquePtr<v8::inspector::V8InspectorSession>>>,
@@ -445,7 +446,7 @@ struct WebsocketSession {
   proxy_rx_handler: Pin<Box<dyn Future<Output = ()> + 'static>>,
 }
 
-impl WebsocketSession {
+impl InspectorSession {
   const CONTEXT_GROUP_ID: i32 = 1;
 
   pub fn new(
@@ -540,7 +541,7 @@ impl WebsocketSession {
   }
 }
 
-impl v8::inspector::ChannelImpl for WebsocketSession {
+impl v8::inspector::ChannelImpl for InspectorSession {
   fn base(&self) -> &v8::inspector::ChannelBase {
     &self.v8_channel
   }
@@ -567,7 +568,7 @@ impl v8::inspector::ChannelImpl for WebsocketSession {
   fn flush_protocol_notifications(&mut self) {}
 }
 
-impl Future for WebsocketSession {
+impl Future for InspectorSession {
   type Output = ();
   fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
     self.proxy_rx_handler.poll_unpin(cx)
