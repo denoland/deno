@@ -24,24 +24,7 @@ use std::rc::Rc;
 use std::thread;
 use uuid::Uuid;
 
-// TODO(bartlomieju): these two should be moved to `mod.rs`
-pub type SessionProxySender = UnboundedSender<String>;
-// TODO(bartlomieju): does it even need to send a Result?
-// It seems `Vec<u8>` would be enough
-pub type SessionProxyReceiver = UnboundedReceiver<Result<Vec<u8>, AnyError>>;
-
-/// Encapsulates an UnboundedSender/UnboundedReceiver pair that together form
-/// a duplex channel for sending/receiving websocket messages.
-pub struct WebSocketProxy {
-  tx: SessionProxySender,
-  rx: SessionProxyReceiver,
-}
-
-impl WebSocketProxy {
-  pub fn split(self) -> (SessionProxySender, SessionProxyReceiver) {
-    (self.tx, self.rx)
-  }
-}
+use super::SessionProxy;
 
 /// Websocket server that is used to proxy connections from
 /// devtools to the inspector.
@@ -116,7 +99,7 @@ fn handle_ws_request(
   let (parts, body) = req.into_parts();
   let req = http::Request::from_parts(parts, ());
 
-  if let Some(new_websocket_tx) = req
+  if let Some(new_session_tx) = req
     .uri()
     .path()
     .strip_prefix("/ws/")
@@ -125,7 +108,7 @@ fn handle_ws_request(
       inspector_map
         .borrow()
         .get(&uuid)
-        .map(|info| info.new_websocket_tx.clone())
+        .map(|info| info.new_session_tx.clone())
     })
   {
     let resp = tungstenite::handshake::server::create_response(&req)
@@ -152,7 +135,7 @@ fn handle_ws_request(
           .await;
         let (proxy, pump) = create_websocket_proxy(websocket);
 
-        let _ = new_websocket_tx.unbounded_send(proxy);
+        let _ = new_session_tx.unbounded_send(proxy);
         pump.await;
       });
     }
@@ -287,14 +270,14 @@ fn create_websocket_proxy(
   websocket: deno_websocket::tokio_tungstenite::WebSocketStream<
     hyper::upgrade::Upgraded,
   >,
-) -> (WebSocketProxy, impl Future<Output = ()> + Send) {
+) -> (SessionProxy, impl Future<Output = ()> + Send) {
   // The 'outbound' channel carries messages sent to the websocket.
   let (outbound_tx, outbound_rx) = mpsc::unbounded();
 
   // The 'inbound' channel carries messages received from the websocket.
   let (inbound_tx, inbound_rx) = mpsc::unbounded();
 
-  let proxy = WebSocketProxy {
+  let proxy = SessionProxy {
     tx: outbound_tx,
     rx: inbound_rx,
   };
@@ -331,19 +314,19 @@ pub struct InspectorInfo {
   pub host: SocketAddr,
   pub uuid: Uuid,
   pub thread_name: Option<String>,
-  pub new_websocket_tx: UnboundedSender<WebSocketProxy>,
+  pub new_session_tx: UnboundedSender<SessionProxy>,
 }
 
 impl InspectorInfo {
   pub fn new(
     host: SocketAddr,
-    new_websocket_tx: mpsc::UnboundedSender<WebSocketProxy>,
+    new_session_tx: mpsc::UnboundedSender<SessionProxy>,
   ) -> Self {
     Self {
       host,
       uuid: Uuid::new_v4(),
       thread_name: thread::current().name().map(|n| n.to_owned()),
-      new_websocket_tx,
+      new_session_tx,
     }
   }
 

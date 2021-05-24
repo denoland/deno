@@ -4,7 +4,7 @@ use crate::inspector::InMemorySession;
 use crate::inspector::InspectorInfo;
 use crate::inspector::InspectorServer;
 use crate::inspector::JsRuntimeInspector;
-use crate::inspector::WebSocketProxy;
+use crate::inspector::SessionProxy;
 use crate::js;
 use crate::metrics;
 use crate::ops;
@@ -150,14 +150,12 @@ impl MainWorker {
     });
 
     let inspector = if options.attach_inspector {
-      let (new_websocket_tx, new_websocket_rx) =
-        mpsc::unbounded::<WebSocketProxy>();
+      let (new_session_tx, new_session_rx) = mpsc::unbounded::<SessionProxy>();
 
-      let inspector =
-        JsRuntimeInspector::new(&mut js_runtime, new_websocket_rx);
+      let inspector = JsRuntimeInspector::new(&mut js_runtime, new_session_rx);
 
       if let Some(server) = options.maybe_inspector_server.clone() {
-        let info = InspectorInfo::new(server.host, new_websocket_tx);
+        let info = InspectorInfo::new(server.host, new_session_tx);
         server.register_inspector(info);
       }
 

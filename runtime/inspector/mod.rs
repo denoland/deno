@@ -8,6 +8,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
+use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::channel::oneshot;
 use deno_core::futures::future::Future;
 use deno_core::futures::prelude::*;
@@ -39,9 +40,25 @@ mod server;
 
 pub use server::InspectorInfo;
 pub use server::InspectorServer;
-use server::SessionProxyReceiver;
-use server::SessionProxySender;
-pub use server::WebSocketProxy;
+
+// TODO(bartlomieju): these two should be moved to `mod.rs`
+pub type SessionProxySender = UnboundedSender<String>;
+// TODO(bartlomieju): does it even need to send a Result?
+// It seems `Vec<u8>` would be enough
+pub type SessionProxyReceiver = UnboundedReceiver<Result<Vec<u8>, AnyError>>;
+
+/// Encapsulates an UnboundedSender/UnboundedReceiver pair that together form
+/// a duplex channel for sending/receiving messages in V8 session.
+pub struct SessionProxy {
+  tx: SessionProxySender,
+  rx: SessionProxyReceiver,
+}
+
+impl SessionProxy {
+  pub fn split(self) -> (SessionProxySender, SessionProxyReceiver) {
+    (self.tx, self.rx)
+  }
+}
 
 #[derive(Clone, Copy)]
 enum PollState {
@@ -129,7 +146,9 @@ impl JsRuntimeInspector {
 
   pub fn new(
     js_runtime: &mut deno_core::JsRuntime,
-    new_websocket_rx: mpsc::UnboundedReceiver<WebSocketProxy>,
+    // TODO(bartlomieju): this should be created internally,
+    // and there should be a method for obtaining a new copy of sender
+    new_session_rx: mpsc::UnboundedReceiver<SessionProxy>,
   ) -> Box<Self> {
     let context = js_runtime.global_context();
     let scope = &mut v8::HandleScope::new(js_runtime.v8_isolate());
@@ -152,7 +171,7 @@ impl JsRuntimeInspector {
       v8::inspector::V8Inspector::create(scope, &mut *self_).into(),
     ));
     self_.sessions =
-      SessionContainer::new(self_.v8_inspector.clone(), new_websocket_rx);
+      SessionContainer::new(self_.v8_inspector.clone(), new_session_rx);
 
     // Tell the inspector about the global context.
     let context = v8::Local::new(scope, context);
@@ -317,11 +336,11 @@ struct SessionContainer {
 impl SessionContainer {
   fn new(
     v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
-    new_websocket_rx: UnboundedReceiver<WebSocketProxy>,
+    new_session_rx: UnboundedReceiver<SessionProxy>,
   ) -> RefCell<Self> {
-    let new_incoming = new_websocket_rx
-      .map(move |websocket| {
-        WebsocketSession::new(v8_inspector.clone(), websocket)
+    let new_incoming = new_session_rx
+      .map(move |session_proxy| {
+        WebsocketSession::new(v8_inspector.clone(), session_proxy)
       })
       .boxed_local();
     let self_ = Self {
@@ -428,7 +447,7 @@ impl WebsocketSession {
 
   pub fn new(
     v8_inspector_rc: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
-    websocket: WebSocketProxy,
+    session_proxy: SessionProxy,
   ) -> Box<Self> {
     new_box_with(move |self_ptr| {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
@@ -446,7 +465,7 @@ impl WebsocketSession {
           .into(),
       ));
 
-      let (proxy_tx, proxy_rx) = websocket.split();
+      let (proxy_tx, proxy_rx) = session_proxy.split();
       let proxy_rx_handler =
         Self::receive_from_proxy(v8_session.clone(), proxy_rx);
 
