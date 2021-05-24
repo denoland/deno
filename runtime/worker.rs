@@ -13,6 +13,7 @@ use deno_core::error::Context as ErrorContext;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
+use deno_core::futures::Future;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
@@ -27,6 +28,7 @@ use deno_core::RuntimeOptions;
 use deno_file::BlobUrlStore;
 use log::debug;
 use std::env;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::task::Context;
@@ -286,6 +288,28 @@ impl MainWorker {
 
   pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
     poll_fn(|cx| self.poll_event_loop(cx)).await
+  }
+
+  /// A utility function that runs provided future concurrently with the event loop.
+  ///
+  /// Useful when using a local inspector session.
+  pub async fn with_event_loop<'a, T>(
+    &mut self,
+    mut fut: Pin<Box<dyn Future<Output = T> + 'a>>,
+  ) -> T {
+    loop {
+      tokio::select! {
+        result = &mut fut => {
+          return result;
+        }
+        _ = self.run_event_loop() => {
+          // A zero delay is long enough to yield the thread in order to prevent the loop from
+          // running hot for messages that are taking longer to resolve like for example an
+          // evaluation of top level await.
+          tokio::time::sleep(tokio::time::Duration::from_millis(0)).await;
+        }
+      };
+    }
   }
 }
 

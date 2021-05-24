@@ -37,7 +37,6 @@ impl CoverageCollector {
   pub async fn start_collecting(&mut self) -> Result<(), AnyError> {
     self.session.post_message("Debugger.enable", None).await?;
     self.session.post_message("Profiler.enable", None).await?;
-
     self
       .session
       .post_message(
@@ -45,7 +44,6 @@ impl CoverageCollector {
         Some(json!({"callCount": true, "detailed": true})),
       )
       .await?;
-
     Ok(())
   }
 

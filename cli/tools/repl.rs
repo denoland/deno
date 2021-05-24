@@ -6,6 +6,7 @@ use crate::colors;
 use crate::media_type::MediaType;
 use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_runtime::inspector::LocalInspectorSession;
@@ -262,22 +263,7 @@ async fn post_message_and_poll(
   params: Option<Value>,
 ) -> Result<Value, AnyError> {
   let response = session.post_message(method, params);
-  tokio::pin!(response);
-
-  loop {
-    tokio::select! {
-      result = &mut response => {
-        return result
-      }
-
-      _ = worker.run_event_loop() => {
-        // A zero delay is long enough to yield the thread in order to prevent the loop from
-        // running hot for messages that are taking longer to resolve like for example an
-        // evaluation of top level await.
-        tokio::time::sleep(tokio::time::Duration::from_millis(0)).await;
-      }
-    }
-  }
+  worker.with_event_loop(response.boxed_local()).await
 }
 
 async fn read_line_and_poll(
@@ -294,9 +280,10 @@ async fn read_line_and_poll(
 
   loop {
     for (method, params) in message_rx.try_iter() {
-      response_tx
-        .send(session.post_message(&method, params).await)
-        .unwrap();
+      let result = worker
+        .with_event_loop(session.post_message(&method, params).boxed_local())
+        .await;
+      response_tx.send(result).unwrap();
     }
 
     // Because an inspector websocket client may choose to connect at anytime when we have an
