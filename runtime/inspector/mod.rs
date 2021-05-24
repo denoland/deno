@@ -146,9 +146,7 @@ impl JsRuntimeInspector {
   /// and thus it's id is provided as an associated contant.
   const CONTEXT_GROUP_ID: i32 = 1;
 
-  pub fn new(
-    js_runtime: &mut deno_core::JsRuntime,
-  ) -> Box<Self> {
+  pub fn new(js_runtime: &mut deno_core::JsRuntime) -> Box<Self> {
     let context = js_runtime.global_context();
     let scope = &mut v8::HandleScope::new(js_runtime.v8_isolate());
 

@@ -329,7 +329,8 @@ impl WebWorker {
       let inspector = JsRuntimeInspector::new(&mut js_runtime);
 
       if let Some(server) = options.maybe_inspector_server.clone() {
-        let info = InspectorInfo::new(server.host, inspector.get_session_sender());
+        let info =
+          InspectorInfo::new(server.host, inspector.get_session_sender());
         server.register_inspector(info);
       }
 

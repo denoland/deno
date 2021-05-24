@@ -4,7 +4,6 @@ use crate::inspector::InMemorySession;
 use crate::inspector::InspectorInfo;
 use crate::inspector::InspectorServer;
 use crate::inspector::JsRuntimeInspector;
-use crate::inspector::SessionProxy;
 use crate::js;
 use crate::metrics;
 use crate::ops;
@@ -12,7 +11,6 @@ use crate::permissions::Permissions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
 use deno_core::error::Context as ErrorContext;
-use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
@@ -153,7 +151,8 @@ impl MainWorker {
       let inspector = JsRuntimeInspector::new(&mut js_runtime);
 
       if let Some(server) = options.maybe_inspector_server.clone() {
-        let info = InspectorInfo::new(server.host, inspector.get_session_sender());
+        let info =
+          InspectorInfo::new(server.host, inspector.get_session_sender());
         server.register_inspector(info);
       }
 
