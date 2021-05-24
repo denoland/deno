@@ -253,29 +253,14 @@ impl MainWorker {
   pub async fn create_inspector_session(&mut self) -> LocalInspectorSession {
     let inspector = self.inspector.as_ref().unwrap();
     let mut session = inspector.create_local_session();
-
-    {
-      let response =
-        session.post_message("Runtime.runIfWaitingForDebugger", None);
-      tokio::pin!(response);
-
-      loop {
-        tokio::select! {
-          result = &mut response => {
-            result.expect("Failed to start session");
-            break;
-          }
-
-          _ = self.run_event_loop() => {
-            // A zero delay is long enough to yield the thread in order to prevent the loop from
-            // running hot for messages that are taking longer to resolve like for example an
-            // evaluation of top level await.
-            tokio::time::sleep(tokio::time::Duration::from_millis(0)).await;
-          }
-        };
-      }
-    }
-
+    // Send message to session to complete the handshake.
+    let msg_fut = session
+      .post_message("Runtime.runIfWaitingForDebugger", None)
+      .boxed_local();
+    self
+      .with_event_loop(msg_fut)
+      .await
+      .expect("Failed to start local inspector session");
     session
   }
 
