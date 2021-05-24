@@ -3,7 +3,6 @@ use crate::colors;
 use crate::inspector::InspectorInfo;
 use crate::inspector::InspectorServer;
 use crate::inspector::JsRuntimeInspector;
-use crate::inspector::SessionProxy;
 use crate::js;
 use crate::metrics;
 use crate::ops;
@@ -327,12 +326,10 @@ impl WebWorker {
     });
 
     let inspector = if options.attach_inspector {
-      let (new_session_tx, new_session_rx) = mpsc::unbounded::<SessionProxy>();
-
-      let inspector = JsRuntimeInspector::new(&mut js_runtime, new_session_rx);
+      let inspector = JsRuntimeInspector::new(&mut js_runtime);
 
       if let Some(server) = options.maybe_inspector_server.clone() {
-        let info = InspectorInfo::new(server.host, new_session_tx);
+        let info = InspectorInfo::new(server.host, inspector.get_session_sender());
         server.register_inspector(info);
       }
 

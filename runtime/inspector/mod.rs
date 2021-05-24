@@ -41,8 +41,9 @@ mod server;
 pub use server::InspectorInfo;
 pub use server::InspectorServer;
 
-// TODO(bartlomieju): these two should be moved to `mod.rs`
-pub type SessionProxySender = UnboundedSender<String>;
+/// If first argument is `None` then it's a notification, otherwise
+/// it's a message.
+pub type SessionProxySender = UnboundedSender<(Option<i32>, String)>;
 // TODO(bartlomieju): does it even need to send a Result?
 // It seems `Vec<u8>` would be enough
 pub type SessionProxyReceiver = UnboundedReceiver<Result<Vec<u8>, AnyError>>;
@@ -50,8 +51,8 @@ pub type SessionProxyReceiver = UnboundedReceiver<Result<Vec<u8>, AnyError>>;
 /// Encapsulates an UnboundedSender/UnboundedReceiver pair that together form
 /// a duplex channel for sending/receiving messages in V8 session.
 pub struct SessionProxy {
-  tx: SessionProxySender,
-  rx: SessionProxyReceiver,
+  pub tx: SessionProxySender,
+  pub rx: SessionProxyReceiver,
 }
 
 impl SessionProxy {
@@ -84,6 +85,7 @@ pub struct JsRuntimeInspector {
   // TODO(bartlomieju): make this field private
   // TODO(bartlomieju): could probably be v8::UniqueRef instead of UniquePtr
   pub v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
+  new_session_tx: UnboundedSender<SessionProxy>,
   sessions: RefCell<SessionContainer>,
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
@@ -114,7 +116,7 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
   }
 
   fn run_message_loop_on_pause(&mut self, context_group_id: i32) {
-    assert_eq!(context_group_id, WebsocketSession::CONTEXT_GROUP_ID);
+    assert_eq!(context_group_id, JsRuntimeInspector::CONTEXT_GROUP_ID);
     self.flags.borrow_mut().on_pause = true;
     let _ = self.poll_sessions(None);
   }
@@ -124,7 +126,7 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
   }
 
   fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
-    assert_eq!(context_group_id, WebsocketSession::CONTEXT_GROUP_ID);
+    assert_eq!(context_group_id, JsRuntimeInspector::CONTEXT_GROUP_ID);
     self.flags.borrow_mut().session_handshake_done = true;
   }
 }
@@ -146,12 +148,11 @@ impl JsRuntimeInspector {
 
   pub fn new(
     js_runtime: &mut deno_core::JsRuntime,
-    // TODO(bartlomieju): this should be created internally,
-    // and there should be a method for obtaining a new copy of sender
-    new_session_rx: mpsc::UnboundedReceiver<SessionProxy>,
   ) -> Box<Self> {
     let context = js_runtime.global_context();
     let scope = &mut v8::HandleScope::new(js_runtime.v8_isolate());
+
+    let (new_session_tx, new_session_rx) = mpsc::unbounded::<SessionProxy>();
 
     let v8_inspector_client =
       v8::inspector::V8InspectorClientBase::new::<Self>();
@@ -164,6 +165,7 @@ impl JsRuntimeInspector {
       v8_inspector_client,
       v8_inspector: Default::default(),
       sessions: Default::default(),
+      new_session_tx,
       flags,
       waker,
     });
@@ -308,6 +310,10 @@ impl JsRuntimeInspector {
         }
       };
     }
+  }
+
+  pub fn get_session_sender(&self) -> UnboundedSender<SessionProxy> {
+    self.new_session_tx.clone()
   }
 }
 
@@ -518,9 +524,13 @@ impl WebsocketSession {
     .boxed_local()
   }
 
-  fn send_message(&self, msg: v8::UniquePtr<v8::inspector::StringBuffer>) {
+  fn send_message(
+    &self,
+    maybe_call_id: Option<i32>,
+    msg: v8::UniquePtr<v8::inspector::StringBuffer>,
+  ) {
     let msg = msg.unwrap().string().to_string();
-    let _ = self.proxy_tx.unbounded_send(msg);
+    let _ = self.proxy_tx.unbounded_send((maybe_call_id, msg));
   }
 
   pub fn break_on_next_statement(&mut self) {
@@ -546,17 +556,17 @@ impl v8::inspector::ChannelImpl for WebsocketSession {
 
   fn send_response(
     &mut self,
-    _call_id: i32,
+    call_id: i32,
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    self.send_message(message);
+    self.send_message(Some(call_id), message);
   }
 
   fn send_notification(
     &mut self,
     message: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
-    self.send_message(message);
+    self.send_message(None, message);
   }
 
   fn flush_protocol_notifications(&mut self) {}
