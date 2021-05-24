@@ -41,7 +41,7 @@
      * @param {Blob} blob
      * @param {{kind: "ArrayBuffer" | "Text" | "DataUrl" | "BinaryString", encoding?: string}} readtype
      */
-    #readOperation = (blob, readtype) => {
+    #readOperation(blob, readtype) {
       // 1. If fr’s state is "loading", throw an InvalidStateError DOMException.
       if (this[state] === "loading") {
         throw new DOMException(
@@ -221,7 +221,7 @@
           }
         }
       })();
-    };
+    }
 
     constructor() {
       super();

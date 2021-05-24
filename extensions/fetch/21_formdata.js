@@ -287,20 +287,19 @@
       return finalBuffer;
     }
 
-    #createBoundary = () => {
+    #createBoundary() {
       return (
         "----------" +
         Array.from(Array(32))
           .map(() => Math.random().toString(36)[2] || 0)
           .join("")
       );
-    };
-
-    /**
+    } /**
      * @param {[string, string][]} headers
      * @returns {void}
      */
-    #writeHeaders = (headers) => {
+
+    #writeHeaders(headers) {
       let buf = (this.chunks.length === 0) ? "" : "\r\n";
 
       buf += `--${this.boundary}\r\n`;
@@ -310,19 +309,18 @@
       buf += `\r\n`;
 
       this.chunks.push(encoder.encode(buf));
-    };
-
-    /**
+    } /**
      * @param {string} field
      * @param {string} filename
      * @param {string} [type]
      * @returns {void}
      */
-    #writeFileHeaders = (
+
+    #writeFileHeaders(
       field,
       filename,
       type,
-    ) => {
+    ) {
       /** @type {[string, string][]} */
       const headers = [
         [
@@ -332,37 +330,34 @@
         ["Content-Type", type || "application/octet-stream"],
       ];
       return this.#writeHeaders(headers);
-    };
-
-    /**
+    } /**
      * @param {string} field
      * @returns {void}
      */
-    #writeFieldHeaders = (field) => {
+
+    #writeFieldHeaders(field) {
       /** @type {[string, string][]} */
       const headers = [["Content-Disposition", `form-data; name="${field}"`]];
       return this.#writeHeaders(headers);
-    };
-
-    /**
+    } /**
      * @param {string} field
      * @param {string} value
      * @returns {void}
      */
-    #writeField = (field, value) => {
+
+    #writeField(field, value) {
       this.#writeFieldHeaders(field);
       this.chunks.push(encoder.encode(value));
-    };
-
-    /**
+    } /**
      * @param {string} field
      * @param {File} value
      * @returns {void}
      */
-    #writeFile = (field, value) => {
+
+    #writeFile(field, value) {
       this.#writeFileHeaders(field, value.name, value.type);
       this.chunks.push(value[_byteSequence]);
-    };
+    }
   }
 
   /**
@@ -418,7 +413,7 @@
      * @param {string} headersText
      * @returns {{ headers: Headers, disposition: Map<string, string> }}
      */
-    #parseHeaders = (headersText) => {
+    #parseHeaders(headersText) {
       const headers = new Headers();
       const rawHeaders = headersText.split("\r\n");
       for (const rawHeader of rawHeaders) {
@@ -436,11 +431,10 @@
       );
 
       return { headers, disposition };
-    };
-
-    /**
+    } /**
      * @returns {FormData}
      */
+
     parse() {
       // Body must be at least 2 boundaries + \r\n + -- on the last boundary.
       if (this.body.length < (this.boundary.length * 2) + 4) {
