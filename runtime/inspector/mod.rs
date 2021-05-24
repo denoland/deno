@@ -216,6 +216,7 @@ impl JsRuntimeInspector {
       loop {
         // Do one "handshake" with a newly connected session at a time.
         if let Some(session) = &mut sessions.handshake {
+          eprintln!("polling handshake session")
           let poll_result = session.poll_unpin(cx);
           let handshake_done =
             replace(&mut self.flags.borrow_mut().session_handshake_done, false);
@@ -346,6 +347,7 @@ impl SessionContainer {
   ) -> RefCell<Self> {
     let new_incoming = new_session_rx
       .map(move |session_proxy| {
+        eprintln!("received new session!");
         WebsocketSession::new(v8_inspector.clone(), session_proxy)
       })
       .boxed_local();
@@ -531,6 +533,7 @@ impl WebsocketSession {
     msg: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
     let msg = msg.unwrap().string().to_string();
+    eprintln!("sending message to proxt {}", msg);
     let _ = self.proxy_tx.unbounded_send((maybe_call_id, msg));
   }
 
@@ -755,6 +758,7 @@ impl InMemorySession2 {
     method: &str,
     params: Option<serde_json::Value>,
   ) -> Result<serde_json::Value, AnyError> {
+    eprintln!("sending post message {}", method);
     let id = self.next_message_id;
     self.next_message_id += 1;
 

@@ -261,6 +261,7 @@ async fn post_message_and_poll(
   method: &str,
   params: Option<Value>,
 ) -> Result<Value, AnyError> {
+  eprintln!("post message and poll");
   let response = session.post_message(method, params);
   tokio::pin!(response);
 
@@ -403,10 +404,18 @@ pub async fn run(
 
   let history_file = program_state.dir.root.join("deno_history.txt");
 
-  eprintln!("sending runtime enable");
+  eprintln!("run repl runifWaiting");
+  post_message_and_poll(
+    &mut worker,
+    &mut session,
+    "Runtime.runIfWaitingForDebugger",
+    None,
+  )
+  .await?;
+  eprintln!("run repl runtime.enable");
   post_message_and_poll(&mut worker, &mut session, "Runtime.enable", None)
     .await?;
-  eprintln!("sent runtime enable");
+  eprintln!("run repl after untime.enable");
   // Enabling the runtime domain will always send trigger one executionContextCreated for each
   // context the inspector knows about so we grab the execution context from that since
   // our inspector does not support a default context (0 is an invalid context id).
