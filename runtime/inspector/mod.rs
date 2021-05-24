@@ -222,6 +222,7 @@ impl JsRuntimeInspector {
           match poll_result {
             Poll::Pending if handshake_done => {
               let session = sessions.handshake.take().unwrap();
+              eprintln!("new established session");
               sessions.established.push(session);
               take(&mut self.flags.borrow_mut().waiting_for_session);
             }
@@ -233,6 +234,7 @@ impl JsRuntimeInspector {
         // Accept new connections.
         match sessions.new_incoming.poll_next_unpin(cx) {
           Poll::Ready(Some(session)) => {
+            eprintln!("new handshake session");
             let prev = sessions.handshake.replace(session);
             assert!(prev.is_none());
             continue;
@@ -506,6 +508,7 @@ impl WebsocketSession {
 
       let result = proxy_rx
         .map_ok(move |msg| {
+          eprintln!("got new message from proxy");
           let msg = v8::inspector::StringView::from(msg.as_slice());
           let mut v8_session = v8_session_rc.borrow_mut();
           let v8_session_ptr = v8_session.as_mut().unwrap();
@@ -711,6 +714,127 @@ impl InMemorySession {
 
     let result = response.get("result").unwrap().clone();
     Ok(result)
+  }
+}
+
+/// A local inspector session that can be used to send and receive protocol messages directly on
+/// the same thread as an isolate.
+pub struct InMemorySession2 {
+  v8_session_tx: UnboundedSender<Result<Vec<u8>, AnyError>>,
+  v8_session_rx: UnboundedReceiver<(Option<i32>, String)>,
+  response_tx_map: HashMap<i32, oneshot::Sender<serde_json::Value>>,
+  next_message_id: i32,
+  notification_queue: Vec<Value>,
+}
+
+impl InMemorySession2 {
+  pub fn new(
+    v8_session_tx: UnboundedSender<Result<Vec<u8>, AnyError>>,
+    v8_session_rx: UnboundedReceiver<(Option<i32>, String)>,
+  ) -> Self {
+    let response_tx_map = HashMap::new();
+    let next_message_id = 0;
+
+    let notification_queue = Vec::new();
+
+    Self {
+      v8_session_tx,
+      v8_session_rx,
+      response_tx_map,
+      next_message_id,
+      notification_queue,
+    }
+  }
+
+  pub fn notifications(&mut self) -> Vec<Value> {
+    self.notification_queue.split_off(0)
+  }
+
+  pub async fn post_message(
+    &mut self,
+    method: &str,
+    params: Option<serde_json::Value>,
+  ) -> Result<serde_json::Value, AnyError> {
+    let id = self.next_message_id;
+    self.next_message_id += 1;
+
+    let (response_tx, mut response_rx) =
+      oneshot::channel::<serde_json::Value>();
+    self.response_tx_map.insert(id, response_tx);
+
+    let message = json!({
+        "id": id,
+        "method": method,
+        "params": params,
+    });
+
+    let raw_message = serde_json::to_string(&message).unwrap();
+    eprintln!("sending message from repl");
+    self
+      .v8_session_tx
+      .unbounded_send(Ok(raw_message.as_bytes().to_vec()))
+      .unwrap();
+    eprintln!("sent message from repl");
+
+    loop {
+      eprintln!("looping");
+      tokio::select! {
+        _ = self.receive_from_v8_session() => {
+          eprintln!("received vrom v8_session")
+        },
+        result = &mut response_rx => {
+          eprintln!("got response");
+          let response = result?;
+          if let Some(error) = response.get("error") {
+            return Err(generic_error(error.to_string()));
+          }
+
+          let result = response.get("result").unwrap().clone();
+          return Ok(result);
+        }
+      }
+    }
+  }
+
+  async fn receive_from_v8_session(&mut self) {
+    eprintln!("waiting on v8_session response");
+    let (maybe_call_id, message) = self.v8_session_rx.next().await.unwrap();
+    eprintln!("waited on v8_session response");
+    // If there's no call_id then it's a notification
+    if let Some(call_id) = maybe_call_id {
+      let message: serde_json::Value = match serde_json::from_str(&message) {
+        Ok(v) => v,
+        Err(error) => match error.classify() {
+          serde_json::error::Category::Syntax => json!({
+            "id": call_id,
+            "result": {
+              "result": {
+                "type": "error",
+                "description": "Unterminated string literal",
+                "value": "Unterminated string literal",
+              },
+              "exceptionDetails": {
+                "exceptionId": 0,
+                "text": "Unterminated string literal",
+                "lineNumber": 0,
+                "columnNumber": 0
+              },
+            },
+          }),
+          _ => panic!("Could not parse inspector message"),
+        },
+      };
+
+      self
+        .response_tx_map
+        .remove(&call_id)
+        .unwrap()
+        .send(message)
+        .unwrap();
+    } else {
+      let message = serde_json::from_str(&message).unwrap();
+      self.notification_queue.push(message);
+    }
   }
 }
 

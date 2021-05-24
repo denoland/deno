@@ -1,9 +1,10 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::inspector::InMemorySession;
+use crate::inspector::InMemorySession2;
 use crate::inspector::InspectorInfo;
 use crate::inspector::InspectorServer;
 use crate::inspector::JsRuntimeInspector;
+use crate::inspector::SessionProxy;
 use crate::js;
 use crate::metrics;
 use crate::ops;
@@ -11,6 +12,7 @@ use crate::permissions::Permissions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
 use deno_core::error::Context as ErrorContext;
+use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
@@ -249,10 +251,26 @@ impl MainWorker {
 
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
-  pub fn create_inspector_session(&mut self) -> Box<InMemorySession> {
-    let inspector = self.inspector.as_mut().unwrap();
+  pub fn create_inspector_session(&mut self) -> Box<InMemorySession2> {
+    // The 'outbound' channel carries messages sent to the session.
+    let (outbound_tx, outbound_rx) = mpsc::unbounded();
 
-    InMemorySession::new(inspector.v8_inspector.clone())
+    // The 'inbound' channel carries messages received from the session.
+    let (inbound_tx, inbound_rx) = mpsc::unbounded();
+
+    let proxy = SessionProxy {
+      tx: outbound_tx,
+      rx: inbound_rx,
+    };
+
+    // Let inspector know there's a new session
+    let inspector = self.inspector.as_ref().unwrap();
+    inspector
+      .get_session_sender()
+      .unbounded_send(proxy)
+      .unwrap();
+    // TODO(bartlomieju): Box is superfluous
+    Box::new(InMemorySession2::new(inbound_tx, outbound_rx))
   }
 
   pub fn poll_event_loop(
