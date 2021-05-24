@@ -59,7 +59,11 @@ impl InspectorServer {
     }
   }
 
-  pub fn register_inspector(&self, info: InspectorInfo) {
+  pub fn register_inspector(
+    &self,
+    session_sender: UnboundedSender<SessionProxy>,
+  ) {
+    let info = InspectorInfo::new(self.host, session_sender);
     self.register_inspector_tx.unbounded_send(info).unwrap();
   }
 }

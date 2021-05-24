@@ -38,7 +38,6 @@ use std::thread;
 
 mod server;
 
-pub use server::InspectorInfo;
 pub use server::InspectorServer;
 
 /// If first argument is `None` then it's a notification, otherwise
