@@ -252,16 +252,7 @@ impl MainWorker {
   /// was not configured to create inspector.
   pub async fn create_inspector_session(&mut self) -> LocalInspectorSession {
     let inspector = self.inspector.as_ref().unwrap();
-    let mut session = inspector.create_local_session();
-    // Send message to session to complete the handshake.
-    let msg_fut = session
-      .post_message("Runtime.runIfWaitingForDebugger", None)
-      .boxed_local();
-    self
-      .with_event_loop(msg_fut)
-      .await
-      .expect("Failed to start local inspector session");
-    session
+    inspector.create_local_session()
   }
 
   pub fn poll_event_loop(

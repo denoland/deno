@@ -341,7 +341,16 @@ impl JsRuntimeInspector {
       rx: inbound_rx,
     };
 
-    self.get_session_sender().unbounded_send(proxy).unwrap();
+    // InspectorSessions for a local session is added directly to the "established"
+    // sessions, so it doesn't need to go through the session sender.
+    let inspector_session =
+      InspectorSession::new(self.v8_inspector.clone(), proxy);
+    self
+      .sessions
+      .borrow_mut()
+      .established
+      .push(inspector_session);
+    take(&mut self.flags.borrow_mut().waiting_for_session);
 
     LocalInspectorSession::new(inbound_tx, outbound_rx)
   }
