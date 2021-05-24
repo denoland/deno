@@ -310,6 +310,23 @@ impl JsRuntimeInspector {
   pub fn get_session_sender(&self) -> UnboundedSender<SessionProxy> {
     self.new_session_tx.clone()
   }
+
+  pub fn create_local_session(&self) -> LocalInspectorSession {
+    // The 'outbound' channel carries messages sent to the session.
+    let (outbound_tx, outbound_rx) = mpsc::unbounded();
+
+    // The 'inbound' channel carries messages received from the session.
+    let (inbound_tx, inbound_rx) = mpsc::unbounded();
+
+    let proxy = SessionProxy {
+      tx: outbound_tx,
+      rx: inbound_rx,
+    };
+
+    self.get_session_sender().unbounded_send(proxy).unwrap();
+
+    LocalInspectorSession::new(inbound_tx, outbound_rx)
+  }
 }
 
 #[derive(Default)]
@@ -573,7 +590,7 @@ impl Future for InspectorSession {
 
 /// A local inspector session that can be used to send and receive protocol messages directly on
 /// the same thread as an isolate.
-pub struct InMemorySession {
+pub struct LocalInspectorSession {
   v8_session_tx: UnboundedSender<Result<Vec<u8>, AnyError>>,
   v8_session_rx: UnboundedReceiver<(Option<i32>, String)>,
   response_tx_map: HashMap<i32, oneshot::Sender<serde_json::Value>>,
@@ -581,7 +598,7 @@ pub struct InMemorySession {
   notification_queue: Vec<Value>,
 }
 
-impl InMemorySession {
+impl LocalInspectorSession {
   pub fn new(
     v8_session_tx: UnboundedSender<Result<Vec<u8>, AnyError>>,
     v8_session_rx: UnboundedReceiver<(Option<i32>, String)>,
