@@ -13,3 +13,12 @@ window.add_result_callback(({ message, name, stack, status }) => {
 window.add_completion_callback((_tests, _harnessStatus) => {
   Deno.exit(0);
 });
+
+globalThis.document = {
+  // document.body shim for FileAPI/file/File-constructor.any.html test
+  body: {
+    toString() {
+      return "[object HTMLBodyElement]";
+    },
+  },
+};
