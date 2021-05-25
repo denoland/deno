@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::import_map::ImportMap;
+use crate::info::ModuleGraphInfo;
 use crate::module_graph::BundleType;
 use crate::module_graph::EmitOptions;
 use crate::module_graph::GraphBuilder;
@@ -14,7 +15,6 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::resolve_url_or_path;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
@@ -28,6 +28,7 @@ use std::sync::Mutex;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_async(rt, "op_emit", op_emit);
+  super::reg_async(rt, "op_info", op_info);
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,11 +53,10 @@ struct EmitArgs {
 
 async fn op_emit(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: EmitArgs,
   _: (),
 ) -> Result<Value, AnyError> {
   deno_runtime::ops::check_unstable2(&state, "Deno.emit");
-  let args: EmitArgs = serde_json::from_value(args)?;
   let root_specifier = args.root_specifier;
   let program_state = state.borrow().borrow::<Arc<ProgramState>>().clone();
   let mut runtime_permissions = {
@@ -133,4 +133,38 @@ async fn op_emit(
     "ignoredOptions": result_info.maybe_ignored_options,
     "stats": result_info.stats,
   }))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InfoArgs {
+  specifier: String,
+}
+
+async fn op_info(
+  state: Rc<RefCell<OpState>>,
+  args: InfoArgs,
+  _: (),
+) -> Result<ModuleGraphInfo, AnyError> {
+  deno_runtime::ops::check_unstable2(&state, "Deno.info");
+  let specifier = resolve_url_or_path(&args.specifier)?;
+  let program_state = state.borrow().borrow::<Arc<ProgramState>>().clone();
+  let runtime_permissions = {
+    let state = state.borrow();
+    state.borrow::<Permissions>().clone()
+  };
+  let handler = Arc::new(Mutex::new(FetchHandler::new(
+    &program_state,
+    runtime_permissions.clone(),
+    runtime_permissions.clone(),
+  )?));
+  let mut builder = GraphBuilder::new(handler, None, None);
+  builder.add(&specifier, true).await.map_err(|_| {
+    type_error(format!(
+      "Unable to handle the given specifier: {}",
+      specifier
+    ))
+  })?;
+  let graph = builder.get_graph();
+  graph.info()
 }

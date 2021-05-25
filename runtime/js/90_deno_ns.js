@@ -107,6 +107,8 @@
     Signal: __bootstrap.signals.Signal,
     SignalStream: __bootstrap.signals.SignalStream,
     emit: __bootstrap.compilerApi.emit,
+    info: __bootstrap.compilerApi.info,
+    ModuleGraphMediaType: __bootstrap.compilerApi.ModuleGraphMediaType,
     openPlugin: __bootstrap.plugins.openPlugin,
     kill: __bootstrap.process.kill,
     setRaw: __bootstrap.tty.setRaw,

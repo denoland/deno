@@ -540,6 +540,89 @@ declare namespace Deno {
     options?: EmitOptions,
   ): Promise<EmitResult>;
 
+  enum ModuleGraphMediaType {
+    JavaScript = "JavaScript",
+    TypeScript = "TypeScript",
+    JSX = "JSX",
+    TSX = "TSX",
+    Dts = "Dts",
+    /** Deno does not currently support JSON modules. */
+    Json = "Json",
+    /** Deno does not currently support WASM modules. */
+    Wasm = "Wasm",
+    /** This media type should never appear in a module graph. */
+    TsBuildInfo = "TsBuildInfo",
+    /** This media type should never appear in a module graph. */
+    SourceMap = "SourceMap",
+    /** This media type should never appear in a module graph. */
+    Unknown = "Unknown",
+  }
+
+  interface ModuleGraphDependency {
+    /** The specifier provided from within the module. */
+    specifier: string;
+    /** Indicates if the import was dynamically imported or not. */
+    isDynamic: string;
+    /** The fully qualified module specifier (URL) for the code dependency. */
+    code?: string;
+    /** The fully qualified module specifier (URL) for the type only
+     * dependency. */
+    type?: string;
+  }
+
+  interface ModuleGraphModule {
+    /** The fully qualified module specifier (URL) for the module. */
+    specifier: string;
+    /** An array of dependencies of the module. */
+    dependencies?: ModuleGraphDependency[];
+    /** The size of the module on disk in bytes. */
+    size?: number;
+    /** How the file is treated within Deno.  All the possible media types that
+     * Deno considers are listed here, but in practice, several of them would
+     * never appear in a module graph. */
+    mediaType?: ModuleGraphMediaType;
+    /** The path to the local file. For local modules this will be the local
+     * file path, for remote modules and data URLs, this would be the path to
+     * the file in the Deno cache. */
+    local?: string;
+    /** The checksum of the local source file. This can be used to validate if
+     * the current on disk version matches the version described here. */
+    checksum?: string;
+    /** The path to an emitted version of the module, if the module requires
+     * transpilation to be loaded into the Deno runtime. */
+    emit?: string;
+    /** The path to an optionally emitted source map between the original and
+     * emitted version of the file. */
+    map?: string;
+    /** If when resolving the module, Deno encountered an error and the module
+     * is unavailable, the text of that error will be indicated here. */
+    error?: string;
+  }
+
+  /** An object representation of a Deno module dependency graph. */
+  interface ModuleGraph {
+    /** The root specifier for the graph. */
+    root: string;
+    /** The modules that are part of the graph. */
+    modules: ModuleGraphModule[];
+    /** The total size of all the unique dependencies in the graph in bytes. */
+    size: number;
+  }
+
+  /**
+   * **UNSTABLE**: new API, yet to be finalized.
+   *
+   * Similar to the command line functionality `deno info --json`, the API
+   * provides information about a module and its dependencies.
+   *
+   * Requires `allow/read` permissions to access local modules and the cache and
+   * potentially `allow/net` permissions if there are .
+   *
+   * @param specifier The specifier that serves as the entry point for the
+   *                  module graph.
+   */
+  export function info(specifier: string | URL): Promise<ModuleGraph>;
+
   /** **UNSTABLE**: Should not have same name as `window.location` type. */
   interface Location {
     /** The full url for the module, e.g. `file://some/file.ts` or

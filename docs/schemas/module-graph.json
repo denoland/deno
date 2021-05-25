@@ -95,12 +95,17 @@
     "dependency": {
       "type": "object",
       "required": [
-        "specifier"
+        "specifier",
+        "isDynamic"
       ],
       "properties": {
         "specifier": {
           "type": "string",
           "description": "The specifier provided from within the module."
+        },
+        "isDynamic": {
+          "type": "boolean",
+          "description": "Indicates if the import was dynamically imported or not."
         },
         "code": {
           "type": "string",

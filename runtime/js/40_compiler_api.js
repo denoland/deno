@@ -43,6 +43,47 @@
   }
 
   /**
+   * @typedef {object} OpInfoRequest
+   * @property {string} specifier
+   */
+
+  /**
+   * @typedef {object} OpInfoResponseDependency
+   * @property {string} specifier
+   * @property {boolean} isDynamic
+   * @property {string=} code
+   * @property {string=} type
+   */
+
+  /**
+   * @typedef {object} OpInfoResponseModule
+   * @property {string} specifier
+   * @property {Array<OpInfoResponseDependency>=} dependencies
+   * @property {number=} size
+   * @property {mediaType=} string
+   * @property {string=} local
+   * @property {string=} checksum
+   * @property {string=} emit
+   * @property {string=} map
+   * @property {string=} error
+   */
+
+  /**
+   * @typedef {object} OpInfoResponse
+   * @property {string} root
+   * @property {OpInfoResponseModule[]} modules
+   * @property {number} size
+   */
+
+  /**
+   * @param {OpInfoRequest} request
+   * @returns {Promise<OpInfoResponse>}
+   */
+  function opInfo(request) {
+    return core.opAsync("op_info", request);
+  }
+
+  /**
    * @param {string} specifier
    * @returns {string}
    */
@@ -83,7 +124,41 @@
     return opEmit({ rootSpecifier, ...options });
   }
 
+  /**
+   * @param {string | URL} specifier
+   * @returns {Promise<OpInfoResponse>}
+   */
+  function info(specifier) {
+    util.log(`Deno.info`, { specifier });
+    if (!specifier) {
+      return Promise.reject(
+        new TypeError("A root specifier must be supplied."),
+      );
+    }
+    if (typeof specifier !== "string") {
+      specifier = String(specifier);
+    }
+    return opInfo({ specifier });
+  }
+
+  // These correspond to the cli::media_type::MediaType display trait
+  var ModuleGraphMediaType;
+  (function (ModuleGraphMediaType) {
+    ModuleGraphMediaType["JavaScript"] = "JavaScript";
+    ModuleGraphMediaType["TypeScript"] = "TypeScript";
+    ModuleGraphMediaType["JSX"] = "JSX";
+    ModuleGraphMediaType["TSX"] = "TSX";
+    ModuleGraphMediaType["Dts"] = "Dts";
+    ModuleGraphMediaType["Json"] = "Json";
+    ModuleGraphMediaType["Wasm"] = "Wasm";
+    ModuleGraphMediaType["TsBuildInfo"] = "TsBuildInfo";
+    ModuleGraphMediaType["SourceMap"] = "SourceMap";
+    ModuleGraphMediaType["Unknown"] = "Unknown";
+  })(ModuleGraphMediaType || (ModuleGraphMediaType = {}));
+
   window.__bootstrap.compilerApi = {
     emit,
+    info,
+    ModuleGraphMediaType,
   };
 })(this);
