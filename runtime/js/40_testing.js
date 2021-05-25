@@ -15,10 +15,10 @@
   // ops. Note that "unref" ops are ignored since in nature that are
   // optional.
   function assertOps(fn) {
-    return async function asyncOpSanitizer() {
+    return async function asyncOpSanitizer(parameter) {
       const pre = metrics();
       try {
-        await fn();
+        await fn(parameter);
       } finally {
         // Defer until next event loop turn - that way timeouts and intervals
         // cleared can actually be removed from resource table, otherwise
@@ -53,9 +53,9 @@ finishing test case.`,
   function assertResources(
     fn,
   ) {
-    return async function resourceSanitizer() {
+    return async function resourceSanitizer(parameter) {
       const pre = core.resources();
-      await fn();
+      await fn(parameter);
       const post = core.resources();
 
       const preStr = JSON.stringify(pre, null, 2);
@@ -73,7 +73,7 @@ finishing test case.`;
   // Wrap test function in additional assertion that makes sure
   // that the test case does not accidentally exit prematurely.
   function assertExit(fn) {
-    return async function exitSanitizer() {
+    return async function exitSanitizer(parameter) {
       setExitHandler((exitCode) => {
         assert(
           false,
@@ -82,7 +82,7 @@ finishing test case.`;
       });
 
       try {
-        await fn();
+        await fn(parameter);
       } catch (err) {
         throw err;
       } finally {
@@ -91,7 +91,7 @@ finishing test case.`;
     };
   }
 
-  const tests = [];
+  let tests = [];
 
   // Main test function provided by Deno, as you can see it merely
   // creates a new object with "name" and "fn" fields.
@@ -107,6 +107,7 @@ finishing test case.`;
       sanitizeResources: true,
       sanitizeExit: true,
       permissions: null,
+      parameters: [],
     };
 
     if (typeof t === "string") {
@@ -138,8 +139,16 @@ finishing test case.`;
     if (testDef.sanitizeExit) {
       testDef.fn = assertExit(testDef.fn);
     }
-
-    tests.push(testDef);
+    if (testDef.parameters.length > 0) {
+      const parametersTests = testDef.parameters.map((parameter) => {
+        const test = Object.assign({}, testDef);
+        test.parameter = parameter;
+        return test;
+      });
+      tests = tests.concat(parametersTests);
+    } else {
+      tests.push(testDef);
+    }
   }
 
   function postTestMessage(kind, data) {
@@ -172,13 +181,17 @@ finishing test case.`;
     core.opSync("op_restore_test_permissions", token);
   }
 
-  async function runTest({ name, ignore, fn, permissions }) {
+  async function runTest({ name, ignore, fn, permissions, parameter }) {
     let token = null;
     const time = Date.now();
+    let testName = name;
+    if (parameter) {
+      testName += ` ${JSON.stringify(parameter)}`;
+    }
 
     try {
       postTestMessage("wait", {
-        name,
+        name: testName,
       });
 
       if (permissions) {
@@ -188,7 +201,7 @@ finishing test case.`;
       if (ignore) {
         const duration = Date.now() - time;
         postTestMessage("result", {
-          name,
+          name: testName,
           duration,
           result: "ignored",
         });
@@ -196,11 +209,15 @@ finishing test case.`;
         return;
       }
 
-      await fn();
+      if (parameter) {
+        await fn(parameter);
+      } else {
+        await fn();
+      }
 
       const duration = Date.now() - time;
       postTestMessage("result", {
-        name,
+        name: testName,
         duration,
         result: "ok",
       });
@@ -208,7 +225,7 @@ finishing test case.`;
       const duration = Date.now() - time;
 
       postTestMessage("result", {
-        name,
+        name: testName,
         duration,
         result: {
           "failed": inspectArgs([error]),
@@ -234,6 +251,7 @@ finishing test case.`;
     const pending = (only.length > 0 ? only : tests).filter(
       createTestFilter(filter),
     );
+
     postTestMessage("plan", {
       filtered: tests.length - pending.length,
       pending: pending.length,

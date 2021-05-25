@@ -95,8 +95,8 @@ declare namespace Deno {
    * See: https://no-color.org/ */
   export const noColor: boolean;
 
-  export interface TestDefinition {
-    fn: () => void | Promise<void>;
+  export interface TestDefinition<T = void> {
+    fn: (() => void) | ((parameter: T) => void) | Promise<void>;
     name: string;
     ignore?: boolean;
     /** If at least one test has `only` set to true, only run tests that have
@@ -109,10 +109,12 @@ declare namespace Deno {
      * after the test has exactly the same contents as before the test. Defaults
      * to true. */
     sanitizeResources?: boolean;
-
     /** Ensure the test case does not prematurely cause the process to exit,
      * for example via a call to `Deno.exit`. Defaults to true. */
     sanitizeExit?: boolean;
+    /** Execute a single test method multiple times with different parameters.
+     * Defaults to []. */
+    parameters?: Array<T>;
   }
 
   /** Register a test which will be run when `deno test` is used on the command
@@ -144,9 +146,18 @@ declare namespace Deno {
    *     assertEquals(decoder.decode(data), "Hello world");
    *   }
    * });
+   *
+   * Deno.test({
+   *   name: "object test",
+   *   parameters: [{ data: 1, except: 2 }, { data: 2, except: 4 }],
+   *   fn(parameter: { data: number; except: number }) {
+   *     assertEquals(parameter.data * 2, parameter.except);
+   *   },
+   * });
+   *
    * ```
    */
-  export function test(t: TestDefinition): void;
+  export function test<T = void>(t: TestDefinition<T>): void;
 
   /** Register a test which will be run when `deno test` is used on the command
    * line and the containing module looks like a test module.
