@@ -10,6 +10,8 @@ use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::channel::oneshot;
+use deno_core::futures::future::select;
+use deno_core::futures::future::Either;
 use deno_core::futures::future::Future;
 use deno_core::futures::prelude::*;
 use deno_core::futures::stream::FuturesUnordered;
@@ -673,10 +675,10 @@ impl LocalInspectorSession {
       .unwrap();
 
     loop {
-      tokio::select! {
-        _ = self.receive_from_v8_session() => {
-        },
-        result = &mut response_rx => {
+      let receive_fut = self.receive_from_v8_session().boxed_local();
+      match select(receive_fut, &mut response_rx).await {
+        Either::Left(_) => continue,
+        Either::Right((result, _)) => {
           let response = result?;
           if let Some(error) = response.get("error") {
             return Err(generic_error(error.to_string()));
