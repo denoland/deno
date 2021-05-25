@@ -34,8 +34,8 @@ The following permissions are available:
   run in a sandbox and therefore do not have the same security restrictions as
   the deno process. Therefore, use with caution.
 - **--allow-write=\<allow-write\>** Allow file system write access. You can
-  specify an optional, comma-separated list of directories or files to provide an
-  allow-list of allowed file system access.
+  specify an optional, comma-separated list of directories or files to provide
+  an allow-list of allowed file system access.
 
 ### Permissions allow-list
 
