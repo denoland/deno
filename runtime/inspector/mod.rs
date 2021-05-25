@@ -317,10 +317,18 @@ impl JsRuntimeInspector {
     }
   }
 
+  /// Obtain a sender for proxy channels.
+  ///
+  /// After a proxy is sent inspector will wait for a "handshake".
+  /// Frontend must send "Runtime.runIfWaitingForDebugger" message to
+  /// complete the handshake.
   pub fn get_session_sender(&self) -> UnboundedSender<SessionProxy> {
     self.new_session_tx.clone()
   }
 
+  /// Create a channel that notifies the frontend when inspector is dropped.
+  ///
+  /// NOTE: Only a single handler is currently available.
   pub fn add_deregister_handler(&mut self) -> oneshot::Receiver<()> {
     let (tx, rx) = oneshot::channel::<()>();
     let prev = self.deregister_tx.replace(tx);
@@ -331,6 +339,8 @@ impl JsRuntimeInspector {
     rx
   }
 
+  /// Create a local inspector session that can be used on
+  /// the same thread as the isolate.
   pub fn create_local_session(&self) -> LocalInspectorSession {
     // The 'outbound' channel carries messages sent to the session.
     let (outbound_tx, outbound_rx) = mpsc::unbounded();
@@ -344,7 +354,8 @@ impl JsRuntimeInspector {
     };
 
     // InspectorSessions for a local session is added directly to the "established"
-    // sessions, so it doesn't need to go through the session sender.
+    // sessions, so it doesn't need to go through the session sender and handshake
+    // phase.
     let inspector_session =
       InspectorSession::new(self.v8_inspector.clone(), proxy);
     self
