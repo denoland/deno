@@ -208,10 +208,11 @@
               abort: (reason) => this.close(reason),
             });
             const readable = new ReadableStream({
-              start: async (controller) => {
-                await this.closed;
-                controller.close();
-                writable.close();
+              start: (controller) => {
+                this.closed.then(() => {
+                  controller.close();
+                  writable.close();
+                });
               },
               pull: async (controller) => {
                 const { kind, value } = await core.opAsync(
