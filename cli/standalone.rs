@@ -15,6 +15,7 @@ use deno_core::v8_set_flags;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_file::BlobUrlStore;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsOptions;
@@ -160,6 +161,7 @@ pub async fn run(
   let main_module = resolve_url(SPECIFIER)?;
   let permissions = Permissions::from_options(&metadata.permissions);
   let blob_url_store = BlobUrlStore::default();
+  let broadcast_channel = InMemoryBroadcastChannel::default();
   let module_loader = Rc::new(EmbeddedModuleLoader(source_code));
   let create_web_worker_cb = Arc::new(|_| {
     todo!("Worker are currently not supported in standalone binaries");
@@ -193,6 +195,7 @@ pub async fn run(
     location: metadata.location,
     location_data_dir: None,
     blob_url_store,
+    broadcast_channel,
   };
   let mut worker =
     MainWorker::from_options(main_module.clone(), permissions, &options);

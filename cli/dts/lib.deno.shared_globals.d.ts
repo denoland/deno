@@ -12,6 +12,7 @@
 /// <reference lib="deno.fetch" />
 /// <reference lib="deno.websocket" />
 /// <reference lib="deno.crypto" />
+/// <reference lib="deno.broadcast_channel" />
 
 declare namespace WebAssembly {
   /**

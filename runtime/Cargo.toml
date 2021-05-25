@@ -18,6 +18,7 @@ name = "hello_runtime"
 path = "examples/hello_runtime.rs"
 
 [build-dependencies]
+deno_broadcast_channel = { path = "../extensions/broadcast_channel", version = "0.1.0" }
 deno_console = { version = "0.7.0", path = "../extensions/console" }
 deno_core = { version = "0.88.0", path = "../core" }
 deno_crypto = { version = "0.21.0", path = "../extensions/crypto" }
@@ -36,6 +37,7 @@ winres = "0.1.11"
 winapi = "0.3.9"
 
 [dependencies]
+deno_broadcast_channel = { path = "../extensions/broadcast_channel", version = "0.1.0" }
 deno_console = { version = "0.7.0", path = "../extensions/console" }
 deno_core = { version = "0.88.0", path = "../core" }
 deno_crypto = { version = "0.21.0", path = "../extensions/crypto" }

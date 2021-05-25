@@ -184,7 +184,7 @@ async fn download_package(
           print!("\u{001b}[1G\u{001b}[2K");
         }
         print!(
-          "{:0>4.1} MiB / {:.1} MiB ({:0>5.1}%)",
+          "{:>4.1} MiB / {:.1} MiB ({:^5.1}%)",
           current_size / MEBIBYTE,
           total_size / MEBIBYTE,
           (current_size / total_size) * 100.0,

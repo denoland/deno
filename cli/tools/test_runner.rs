@@ -11,7 +11,6 @@ use crate::module_graph;
 use crate::program_state::ProgramState;
 use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
-use crate::tools::installer::is_remote_url;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
@@ -226,6 +225,11 @@ pub(crate) fn is_supported(p: &Path) -> bool {
   }
 }
 
+pub fn is_remote_url(module_url: &str) -> bool {
+  let lower = module_url.to_lowercase();
+  lower.starts_with("http://") || lower.starts_with("https://")
+}
+
 pub fn collect_test_module_specifiers<P>(
   include: Vec<String>,
   root_path: &Path,
@@ -327,14 +331,6 @@ pub async fn run_tests(
   filter: Option<String>,
   concurrent_jobs: usize,
 ) -> Result<bool, AnyError> {
-  if test_modules.is_empty() {
-    println!("No matching test modules found");
-    if !allow_none {
-      std::process::exit(1);
-    }
-    return Ok(false);
-  }
-
   if !doc_modules.is_empty() {
     let mut test_programs = Vec::new();
 
@@ -342,7 +338,11 @@ pub async fn run_tests(
     let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
 
     for specifier in &doc_modules {
-      let file = program_state.file_fetcher.get_source(&specifier).unwrap();
+      let mut fetch_permissions = Permissions::allow_all();
+      let file = program_state
+        .file_fetcher
+        .fetch(&specifier, &mut fetch_permissions)
+        .await?;
 
       let parsed_module =
         ast::parse(&file.specifier.as_str(), &file.source, &file.media_type)?;
@@ -379,7 +379,7 @@ pub async fn run_tests(
           let location = parsed_module.get_location(&span);
 
           let specifier = deno_core::resolve_url_or_path(&format!(
-            "{}:{}-{}",
+            "{}${}-{}",
             location.filename,
             location.line,
             location.line + element.as_str().split('\n').count(),
@@ -408,6 +408,13 @@ pub async fn run_tests(
         program_state.maybe_import_map.clone(),
       )
       .await?;
+  } else if test_modules.is_empty() {
+    println!("No matching test modules found");
+    if !allow_none {
+      std::process::exit(1);
+    }
+
+    return Ok(false);
   }
 
   program_state
@@ -641,5 +648,15 @@ mod tests {
     .map(|f| Url::parse(&f).unwrap())
     .collect();
     assert_eq!(matched_urls, expected);
+  }
+
+  #[test]
+  fn test_is_remote_url() {
+    assert!(is_remote_url("https://deno.land/std/http/file_server.ts"));
+    assert!(is_remote_url("http://deno.land/std/http/file_server.ts"));
+    assert!(is_remote_url("HTTP://deno.land/std/http/file_server.ts"));
+    assert!(is_remote_url("HTTp://deno.land/std/http/file_server.ts"));
+    assert!(!is_remote_url("file:///dev/deno_std/http/file_server.ts"));
+    assert!(!is_remote_url("./dev/deno_std/http/file_server.ts"));
   }
 }

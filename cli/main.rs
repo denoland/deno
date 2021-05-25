@@ -124,6 +124,7 @@ fn create_web_worker_callback(
       no_color: !colors::use_color(),
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
       blob_url_store: program_state.blob_url_store.clone(),
+      broadcast_channel: program_state.broadcast_channel.clone(),
     };
 
     let mut worker = WebWorker::from_options(
@@ -212,6 +213,7 @@ pub fn create_main_worker(
         .join(checksum::gen(&[loc.to_string().as_bytes()]))
     }),
     blob_url_store: program_state.blob_url_store.clone(),
+    broadcast_channel: program_state.broadcast_channel.clone(),
   };
 
   let mut worker = MainWorker::from_options(main_module, permissions, &options);
@@ -302,7 +304,7 @@ fn print_cache_info(
 
 pub fn get_types(unstable: bool) -> String {
   let mut types = format!(
-    "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+    "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
     crate::tsc::DENO_NS_LIB,
     crate::tsc::DENO_CONSOLE_LIB,
     crate::tsc::DENO_URL_LIB,
@@ -313,6 +315,7 @@ pub fn get_types(unstable: bool) -> String {
     crate::tsc::DENO_WEBSOCKET_LIB,
     crate::tsc::DENO_WEBSTORAGE_LIB,
     crate::tsc::DENO_CRYPTO_LIB,
+    crate::tsc::DENO_BROADCAST_CHANNEL_LIB,
     crate::tsc::SHARED_GLOBALS_LIB,
     crate::tsc::WINDOW_LIB,
   );
@@ -925,7 +928,11 @@ async fn test_command(
   concurrent_jobs: usize,
 ) -> Result<(), AnyError> {
   if let Some(ref coverage_dir) = flags.coverage_dir {
-    env::set_var("DENO_UNSTABLE_COVERAGE_DIR", coverage_dir);
+    std::fs::create_dir_all(&coverage_dir)?;
+    env::set_var(
+      "DENO_UNSTABLE_COVERAGE_DIR",
+      PathBuf::from(coverage_dir).canonicalize()?,
+    );
   }
 
   // TODO(caspervonb) move this chunk into tools::test_runner.
