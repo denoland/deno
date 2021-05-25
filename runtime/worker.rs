@@ -9,7 +9,6 @@ use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
 use deno_core::error::Context as ErrorContext;
 use deno_core::futures::future::poll_fn;
-use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
 use deno_core::futures::Future;
 use deno_core::serde_json;
@@ -251,9 +250,6 @@ impl MainWorker {
     &mut self,
     cx: &mut Context,
   ) -> Poll<Result<(), AnyError>> {
-    // TODO(bartlomieju): move to core
-    // We always poll the inspector if it exists.
-    let _ = self.js_runtime.inspector().map(|i| i.poll_unpin(cx));
     self.js_runtime.poll_event_loop(cx)
   }
 

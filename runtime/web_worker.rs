@@ -442,9 +442,6 @@ impl WebWorker {
       return Poll::Ready(Ok(()));
     }
 
-    // TODO(bartlomieju): move to JsRuntime
-    // We always poll the inspector if it exists.
-    let _ = self.js_runtime.inspector().map(|i| i.poll_unpin(cx));
     match self.js_runtime.poll_event_loop(cx) {
       Poll::Ready(r) => {
         // If js ended because we are terminating, just return Ok

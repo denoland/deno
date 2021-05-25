@@ -24,6 +24,7 @@ use crate::OpState;
 use crate::PromiseId;
 use futures::channel::mpsc;
 use futures::future::poll_fn;
+use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use futures::task::AtomicWaker;
@@ -599,6 +600,9 @@ impl JsRuntime {
     &mut self,
     cx: &mut Context,
   ) -> Poll<Result<(), AnyError>> {
+    // We always poll the inspector if it exists.
+    let _ = self.inspector().map(|i| i.poll_unpin(cx));
+
     let state_rc = Self::state(self.v8_isolate());
     let module_map_rc = Self::module_map(self.v8_isolate());
     {
