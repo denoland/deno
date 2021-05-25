@@ -52,6 +52,9 @@ use std::result;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
+use swc_common::comments::Comment;
+use swc_common::BytePos;
+use swc_common::Span;
 
 lazy_static::lazy_static! {
   /// Matched the `@deno-types` pragma.
@@ -188,35 +191,48 @@ pub enum TypeScriptReference {
   Types(String),
 }
 
+fn match_to_span(comment: &Comment, m: &regex::Match) -> Span {
+  Span {
+    lo: comment.span.lo + BytePos((m.start() + 1) as u32),
+    hi: comment.span.lo + BytePos((m.end() + 1) as u32),
+    ctxt: comment.span.ctxt,
+  }
+}
+
 /// Determine if a comment contains a triple slash reference and optionally
 /// return its kind and value.
-pub fn parse_ts_reference(comment: &str) -> Option<TypeScriptReference> {
-  if !TRIPLE_SLASH_REFERENCE_RE.is_match(comment) {
+pub fn parse_ts_reference(
+  comment: &Comment,
+) -> Option<(TypeScriptReference, Span)> {
+  if !TRIPLE_SLASH_REFERENCE_RE.is_match(&comment.text) {
     None
-  } else if let Some(captures) = PATH_REFERENCE_RE.captures(comment) {
-    Some(TypeScriptReference::Path(
-      captures.get(1).unwrap().as_str().to_string(),
+  } else if let Some(captures) = PATH_REFERENCE_RE.captures(&comment.text) {
+    let m = captures.get(1).unwrap();
+    Some((
+      TypeScriptReference::Path(m.as_str().to_string()),
+      match_to_span(comment, &m),
     ))
   } else {
-    TYPES_REFERENCE_RE.captures(comment).map(|captures| {
-      TypeScriptReference::Types(captures.get(1).unwrap().as_str().to_string())
+    TYPES_REFERENCE_RE.captures(&comment.text).map(|captures| {
+      let m = captures.get(1).unwrap();
+      (
+        TypeScriptReference::Types(m.as_str().to_string()),
+        match_to_span(comment, &m),
+      )
     })
   }
 }
 
 /// Determine if a comment contains a `@deno-types` pragma and optionally return
 /// its value.
-pub fn parse_deno_types(comment: &str) -> Option<String> {
-  if let Some(captures) = DENO_TYPES_RE.captures(comment) {
-    if let Some(m) = captures.get(1) {
-      Some(m.as_str().to_string())
-    } else if let Some(m) = captures.get(2) {
-      Some(m.as_str().to_string())
-    } else {
-      panic!("unreachable");
-    }
+pub fn parse_deno_types(comment: &Comment) -> Option<(String, Span)> {
+  let captures = DENO_TYPES_RE.captures(&comment.text)?;
+  if let Some(m) = captures.get(1) {
+    Some((m.as_str().to_string(), match_to_span(comment, &m)))
+  } else if let Some(m) = captures.get(2) {
+    Some((m.as_str().to_string(), match_to_span(comment, &m)))
   } else {
-    None
+    unreachable!();
   }
 }
 
@@ -327,7 +343,7 @@ impl Module {
 
     // parse out any triple slash references
     for comment in parsed_module.get_leading_comments().iter() {
-      if let Some(ts_reference) = parse_ts_reference(&comment.text) {
+      if let Some((ts_reference, _)) = parse_ts_reference(&comment) {
         let location = parsed_module.get_location(&comment.span);
         match ts_reference {
           TypeScriptReference::Path(import) => {
@@ -392,7 +408,7 @@ impl Module {
       // Parse out any `@deno-types` pragmas and modify dependency
       let maybe_type = if !desc.leading_comments.is_empty() {
         let comment = desc.leading_comments.last().unwrap();
-        if let Some(deno_types) = parse_deno_types(&comment.text).as_ref() {
+        if let Some((deno_types, _)) = parse_deno_types(&comment).as_ref() {
           Some(self.resolve_import(deno_types, Some(location.clone()))?)
         } else {
           None
