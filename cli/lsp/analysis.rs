@@ -140,6 +140,7 @@ pub struct Dependency {
   pub maybe_code: Option<ResolvedDependency>,
   pub maybe_code_specifier_range: Option<Range>,
   pub maybe_type: Option<ResolvedDependency>,
+  pub maybe_type_specifier_range: Option<Range>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -259,13 +260,24 @@ pub fn analyze_dependencies(
 
   // Parse leading comments for supported triple slash references.
   for comment in parsed_module.get_leading_comments().iter() {
-    if let Some(ts_reference) = parse_ts_reference(&comment.text) {
+    if let Some((ts_reference, span)) = parse_ts_reference(&comment) {
+      let loc = parsed_module.source_map.lookup_char_pos(span.lo);
       match ts_reference {
         TypeScriptReference::Path(import) => {
           let dep = dependencies.entry(import.clone()).or_default();
           let resolved_import =
             resolve_import(&import, specifier, maybe_import_map);
           dep.maybe_code = Some(resolved_import);
+          dep.maybe_code_specifier_range = Some(Range {
+            start: Position {
+              line: (loc.line - 1) as u32,
+              character: loc.col_display as u32,
+            },
+            end: Position {
+              line: (loc.line - 1) as u32,
+              character: (loc.col_display + import.chars().count() + 2) as u32,
+            },
+          });
         }
         TypeScriptReference::Types(import) => {
           let resolved_import =
@@ -273,11 +285,20 @@ pub fn analyze_dependencies(
           if media_type == &MediaType::JavaScript
             || media_type == &MediaType::Jsx
           {
-            maybe_type = Some(resolved_import)
-          } else {
-            let dep = dependencies.entry(import).or_default();
-            dep.maybe_type = Some(resolved_import);
+            maybe_type = Some(resolved_import.clone());
           }
+          let dep = dependencies.entry(import.clone()).or_default();
+          dep.maybe_type = Some(resolved_import);
+          dep.maybe_type_specifier_range = Some(Range {
+            start: Position {
+              line: (loc.line - 1) as u32,
+              character: loc.col_display as u32,
+            },
+            end: Position {
+              line: (loc.line - 1) as u32,
+              character: (loc.col_display + import.chars().count() + 2) as u32,
+            },
+          });
         }
       }
     }
@@ -294,7 +315,13 @@ pub fn analyze_dependencies(
     let maybe_resolved_type_dependency =
       // Check for `@deno-types` pragmas that affect the import
       if let Some(comment) = desc.leading_comments.last() {
-        parse_deno_types(&comment.text).as_ref().map(|deno_types| resolve_import(deno_types, specifier, maybe_import_map))
+        parse_deno_types(&comment).as_ref().map(|(deno_types, span)| {
+          (
+            resolve_import(deno_types, specifier, maybe_import_map),
+            deno_types.clone(),
+            parsed_module.source_map.lookup_char_pos(span.lo)
+          )
+        })
       } else {
         None
       };
@@ -304,6 +331,17 @@ pub fn analyze_dependencies(
     match desc.kind {
       swc_ecmascript::dep_graph::DependencyKind::ExportType
       | swc_ecmascript::dep_graph::DependencyKind::ImportType => {
+        dep.maybe_type_specifier_range = Some(Range {
+          start: Position {
+            line: (desc.specifier_line - 1) as u32,
+            character: desc.specifier_col as u32,
+          },
+          end: Position {
+            line: (desc.specifier_line - 1) as u32,
+            character: (desc.specifier_col + desc.specifier.chars().count() + 2)
+              as u32,
+          },
+        });
         dep.maybe_type = Some(resolved_import)
       }
       _ => {
@@ -321,8 +359,22 @@ pub fn analyze_dependencies(
         dep.maybe_code = Some(resolved_import);
       }
     }
-    if maybe_resolved_type_dependency.is_some() && dep.maybe_type.is_none() {
-      dep.maybe_type = maybe_resolved_type_dependency;
+    if dep.maybe_type.is_none() {
+      if let Some((resolved_dependency, specifier, loc)) =
+        maybe_resolved_type_dependency
+      {
+        dep.maybe_type_specifier_range = Some(Range {
+          start: Position {
+            line: (loc.line - 1) as u32,
+            character: (loc.col_display + 1) as u32,
+          },
+          end: Position {
+            line: (loc.line - 1) as u32,
+            character: (loc.col_display + 1 + specifier.chars().count()) as u32,
+          },
+        });
+        dep.maybe_type = Some(resolved_dependency);
+      }
     }
   }
 
@@ -723,6 +775,16 @@ mod tests {
             character: 58,
           }
         }),
+        maybe_type_specifier_range: Some(Range {
+          start: Position {
+            line: 7,
+            character: 20,
+          },
+          end: Position {
+            line: 7,
+            character: 62,
+          }
+        })
       })
     );
     assert_eq!(
@@ -743,6 +805,7 @@ mod tests {
             character: 50,
           }
         }),
+        maybe_type_specifier_range: None,
       })
     );
   }
