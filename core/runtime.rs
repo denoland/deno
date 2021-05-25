@@ -8,6 +8,7 @@ use crate::error::generic_error;
 use crate::error::AnyError;
 use crate::error::ErrWithV8Handle;
 use crate::error::JsError;
+use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
@@ -75,6 +76,7 @@ pub struct JsRuntime {
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
   // an safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
+  inspector: Option<Box<JsRuntimeInspector>>,
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
   allocations: IsolateAllocations,
@@ -113,6 +115,10 @@ pub(crate) struct JsRuntimeState {
 
 impl Drop for JsRuntime {
   fn drop(&mut self) {
+    // The Isolate object must outlive the Inspector object, but this is
+    // currently not enforced by the type system.
+    self.inspector.take();
+
     if let Some(creator) = self.snapshot_creator.take() {
       // TODO(ry): in rusty_v8, `SnapShotCreator::get_owned_isolate()` returns
       // a `struct OwnedIsolate` which is not actually owned, hence the need
@@ -198,6 +204,9 @@ pub struct RuntimeOptions {
   /// V8 platform instance to use. Used when Deno initializes V8
   /// (which it only does once), otherwise it's silenty dropped.
   pub v8_platform: Option<v8::UniquePtr<v8::Platform>>,
+
+  /// Create a V8 inspector and attach to the runtime.
+  pub attach_inspector: bool,
 }
 
 impl JsRuntime {
@@ -258,6 +267,14 @@ impl JsRuntime {
       (isolate, None)
     };
 
+    let maybe_inspector = if options.attach_inspector {
+      let inspector =
+        JsRuntimeInspector::new(&mut isolate, global_context.clone());
+      Some(inspector)
+    } else {
+      None
+    };
+
     let loader = options
       .module_loader
       .unwrap_or_else(|| Rc::new(NoopModuleLoader));
@@ -298,6 +315,7 @@ impl JsRuntime {
 
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
+      inspector: maybe_inspector,
       snapshot_creator: maybe_snapshot_creator,
       has_snapshotted: false,
       allocations: IsolateAllocations::default(),
@@ -326,6 +344,10 @@ impl JsRuntime {
 
   pub fn v8_isolate(&mut self) -> &mut v8::OwnedIsolate {
     self.v8_isolate.as_mut().unwrap()
+  }
+
+  pub fn inspector(&mut self) -> Option<&mut Box<JsRuntimeInspector>> {
+    self.inspector.as_mut()
   }
 
   pub fn handle_scope(&mut self) -> v8::HandleScope {

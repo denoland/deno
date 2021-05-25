@@ -19,7 +19,6 @@ use deno_core::Extension;
 use deno_core::GetErrorClassFn;
 use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
-use deno_core::JsRuntimeInspector;
 use deno_core::LocalInspectorSession;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
@@ -42,7 +41,6 @@ use std::task::Poll;
 /// All `WebWorker`s created during program execution
 /// are descendants of this worker.
 pub struct MainWorker {
-  inspector: Option<Box<JsRuntimeInspector>>,
   pub js_runtime: JsRuntime,
   should_break_on_first_statement: bool,
 }
@@ -145,28 +143,22 @@ impl MainWorker {
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
       extensions,
+      attach_inspector: options.attach_inspector,
       ..Default::default()
     });
 
-    let inspector = if options.attach_inspector {
-      let mut inspector = JsRuntimeInspector::new(&mut js_runtime);
+    let mut should_break_on_first_statement = false;
 
+    if let Some(inspector) = js_runtime.inspector() {
       if let Some(server) = options.maybe_inspector_server.clone() {
         let session_sender = inspector.get_session_sender();
         let deregister_rx = inspector.add_deregister_handler();
         server.register_inspector(session_sender, deregister_rx);
       }
-
-      Some(inspector)
-    } else {
-      None
-    };
-
-    let should_break_on_first_statement =
-      inspector.is_some() && options.should_break_on_first_statement;
+      should_break_on_first_statement = options.should_break_on_first_statement;
+    }
 
     Self {
-      inspector,
       js_runtime,
       should_break_on_first_statement,
     }
@@ -241,8 +233,8 @@ impl MainWorker {
   fn wait_for_inspector_session(&mut self) {
     if self.should_break_on_first_statement {
       self
-        .inspector
-        .as_mut()
+        .js_runtime
+        .inspector()
         .unwrap()
         .wait_for_session_and_break_on_next_statement()
     }
@@ -251,7 +243,7 @@ impl MainWorker {
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
   pub async fn create_inspector_session(&mut self) -> LocalInspectorSession {
-    let inspector = self.inspector.as_ref().unwrap();
+    let inspector = self.js_runtime.inspector().unwrap();
     inspector.create_local_session()
   }
 
@@ -259,8 +251,9 @@ impl MainWorker {
     &mut self,
     cx: &mut Context,
   ) -> Poll<Result<(), AnyError>> {
+    // TODO(bartlomieju): move to core
     // We always poll the inspector if it exists.
-    let _ = self.inspector.as_mut().map(|i| i.poll_unpin(cx));
+    let _ = self.js_runtime.inspector().map(|i| i.poll_unpin(cx));
     self.js_runtime.poll_event_loop(cx)
   }
 
@@ -288,14 +281,6 @@ impl MainWorker {
         }
       };
     }
-  }
-}
-
-impl Drop for MainWorker {
-  fn drop(&mut self) {
-    // The Isolate object must outlive the Inspector object, but this is
-    // currently not enforced by the type system.
-    self.inspector.take();
   }
 }
 

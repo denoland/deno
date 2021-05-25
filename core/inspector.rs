@@ -23,7 +23,6 @@ use crate::serde_json;
 use crate::serde_json::json;
 use crate::serde_json::Value;
 use crate::v8;
-use crate::JsRuntime;
 use std::cell::BorrowMutError;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -150,9 +149,11 @@ impl JsRuntimeInspector {
   /// and thus it's id is provided as an associated contant.
   const CONTEXT_GROUP_ID: i32 = 1;
 
-  pub fn new(js_runtime: &mut JsRuntime) -> Box<Self> {
-    let context = js_runtime.global_context();
-    let scope = &mut v8::HandleScope::new(js_runtime.v8_isolate());
+  pub fn new(
+    isolate: &mut v8::OwnedIsolate,
+    context: v8::Global<v8::Context>,
+  ) -> Box<Self> {
+    let scope = &mut v8::HandleScope::new(isolate);
 
     let (new_session_tx, new_session_rx) = mpsc::unbounded::<SessionProxy>();
 

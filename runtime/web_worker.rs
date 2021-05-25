@@ -23,7 +23,6 @@ use deno_core::Extension;
 use deno_core::GetErrorClassFn;
 use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
-use deno_core::JsRuntimeInspector;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -199,7 +198,6 @@ fn create_handles(
 /// `WebWorker`.
 pub struct WebWorker {
   id: WorkerId,
-  inspector: Option<Box<JsRuntimeInspector>>,
   pub js_runtime: JsRuntime,
   pub name: String,
   internal_handle: WebWorkerInternalHandle,
@@ -320,23 +318,18 @@ impl WebWorker {
       startup_snapshot: Some(js::deno_isolate_init()),
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
+      attach_inspector: options.attach_inspector,
       extensions,
       ..Default::default()
     });
 
-    let inspector = if options.attach_inspector {
-      let mut inspector = JsRuntimeInspector::new(&mut js_runtime);
-
+    if let Some(inspector) = js_runtime.inspector() {
       if let Some(server) = options.maybe_inspector_server.clone() {
         let session_sender = inspector.get_session_sender();
         let deregister_rx = inspector.add_deregister_handler();
         server.register_inspector(session_sender, deregister_rx);
       }
-
-      Some(inspector)
-    } else {
-      None
-    };
+    }
 
     let (internal_handle, external_handle) = {
       let handle = js_runtime.v8_isolate().thread_safe_handle();
@@ -349,7 +342,6 @@ impl WebWorker {
 
     Self {
       id: worker_id,
-      inspector,
       js_runtime,
       name,
       internal_handle,
@@ -450,8 +442,9 @@ impl WebWorker {
       return Poll::Ready(Ok(()));
     }
 
+    // TODO(bartlomieju): move to JsRuntime
     // We always poll the inspector if it exists.
-    let _ = self.inspector.as_mut().map(|i| i.poll_unpin(cx));
+    let _ = self.js_runtime.inspector().map(|i| i.poll_unpin(cx));
     match self.js_runtime.poll_event_loop(cx) {
       Poll::Ready(r) => {
         // If js ended because we are terminating, just return Ok
@@ -480,14 +473,6 @@ impl WebWorker {
 
   pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
     poll_fn(|cx| self.poll_event_loop(cx)).await
-  }
-}
-
-impl Drop for WebWorker {
-  fn drop(&mut self) {
-    // The Isolate object must outlive the Inspector object, but this is
-    // currently not enforced by the type system.
-    self.inspector.take();
   }
 }
 
