@@ -374,7 +374,6 @@
         "getReader({mode: \"byob\"}) throws on non-bytes streams",
         "ReadableStream with byte source can be constructed with no errors",
         "getReader({mode}) must perform ToString()",
-        "ReadableStream with byte source: autoAllocateChunkSize cannot be 0",
         "ReadableStreamBYOBReader can be constructed directly",
         "ReadableStreamBYOBReader constructor requires a ReadableStream argument",
         "ReadableStreamBYOBReader constructor requires an unlocked ReadableStream",
@@ -483,7 +482,6 @@
     "writable-streams": {
       "aborting.any.html": false,
       "bad-strategies.any.html": [
-        "reject any non-function value for strategy.size",
         "Writable stream: invalid size beats invalid highWaterMark"
       ],
       "bad-underlying-sinks.any.html": true,
@@ -491,8 +489,6 @@
       "close.any.html": false,
       "constructor.any.html": [
         "underlyingSink argument should be converted after queuingStrategy argument",
-        "WritableStreamDefaultController constructor should throw",
-        "WritableStreamDefaultController constructor should throw when passed an initialised WritableStream",
         "WritableStreamDefaultWriter should throw unless passed a WritableStream"
       ],
       "count-queuing-strategy.any.html": true,
@@ -522,9 +518,7 @@
       "Performance interface: operation mark(DOMString, optional PerformanceMarkOptions)",
       "Performance interface: operation clearMarks(optional DOMString)",
       "Performance interface: operation measure(DOMString, optional (DOMString or PerformanceMeasureOptions), optional DOMString)",
-      "Performance interface: operation clearMeasures(optional DOMString)",
-      "Performance interface: calling mark(DOMString, optional PerformanceMarkOptions) on performance with too few arguments must throw TypeError",
-      "Performance interface: calling measure(DOMString, optional (DOMString or PerformanceMeasureOptions), optional DOMString) on performance with too few arguments must throw TypeError"
+      "Performance interface: operation clearMeasures(optional DOMString)"
     ],
     "mark-entry-constructor.any.html": true,
     "mark-errors.any.html": true,
@@ -583,7 +577,10 @@
         "toString.any.html": true,
         "type.tentative.any.html": false,
         "constructor-shared.tentative.any.html": true,
-        "constructor-types.tentative.any.html": false
+        "constructor-types.tentative.any.html": [
+          "Zero minimum",
+          "Non-zero minimum"
+        ]
       },
       "module": {
         "constructor.any.html": true,
@@ -603,10 +600,12 @@
         "toString.any.html": true,
         "constructor-reftypes.tentative.any.html": [
           "initialize externref table with default value",
-          "initialize anyfunc table with default value",
-          "initialize anyfunc table with a bad default value"
+          "initialize anyfunc table with default value"
         ],
-        "constructor-types.tentative.any.html": false,
+        "constructor-types.tentative.any.html": [
+          "Zero minimum",
+          "Non-zero minimum"
+        ],
         "grow-reftypes.tentative.any.html": false,
         "set-reftypes.tentative.any.html": false,
         "type.tentative.any.html": false
@@ -670,6 +669,7 @@
       "URL interface: attribute searchParams",
       "URL interface: attribute hash",
       "URL interface: operation toJSON()",
+      "URL interface: legacy window alias",
       "Stringification of new URL(\"http://foo\")",
       "URLSearchParams interface: operation append(USVString, USVString)",
       "URLSearchParams interface: operation delete(USVString)",
@@ -683,12 +683,6 @@
       "Stringification of new URLSearchParams(\"hi=there&thank=you\")"
     ],
     "url-constructor.any.html": [
-      "Parsing: <file://%43%7C> against <about:blank>",
-      "Parsing: <file://%43|> against <about:blank>",
-      "Parsing: <file://C%7C> against <about:blank>",
-      "Parsing: <file://%43%7C/> against <about:blank>",
-      "Parsing: <https://%43%7C/> against <about:blank>",
-      "Parsing: <asdf://%43|/> against <about:blank>",
       "Parsing: </> against <file://h/C:/a/b>",
       "Parsing: <file:\\\\//> against <about:blank>",
       "Parsing: <file:\\\\\\\\> against <about:blank>",
@@ -779,11 +773,7 @@
     "api": {
       "request": {
         "request-init-002.any.html": true,
-        "request-init-stream.any.html": [
-          "Constructing a Request with a Request on which body.getReader() is called",
-          "Constructing a Request with a Request on which body.getReader().read() is called",
-          "Constructing a Request with a Request on which read() and releaseLock() are called"
-        ],
+        "request-init-stream.any.html": true,
         "request-consume-empty.any.html": [
           "Consume empty FormData request body as text"
         ],
@@ -979,7 +969,6 @@
         "Response interface: operation formData()",
         "Response interface: operation json()",
         "Response interface: operation text()",
-        "Response interface: calling redirect(USVString, optional unsigned short) on new Response() with too few arguments must throw TypeError",
         "Window interface: operation fetch(RequestInfo, optional RequestInit)"
       ]
     },
