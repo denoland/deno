@@ -16,6 +16,7 @@ use deno_core::futures::task::Poll;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::SessionProxy;
 use deno_websocket::tokio_tungstenite::tungstenite;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -25,8 +26,6 @@ use std::process;
 use std::rc::Rc;
 use std::thread;
 use uuid::Uuid;
-
-use super::SessionProxy;
 
 /// Websocket server that is used to proxy connections from
 /// devtools to the inspector.

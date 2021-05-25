@@ -13,7 +13,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
-use deno_runtime::inspector::LocalInspectorSession;
+use deno_core::LocalInspectorSession;
 use deno_runtime::permissions::Permissions;
 use regex::Regex;
 use serde::Deserialize;

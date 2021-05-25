@@ -4,25 +4,26 @@
 //! https://chromedevtools.github.io/devtools-protocol/
 //! https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/
 
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
-use deno_core::futures::channel::mpsc;
-use deno_core::futures::channel::mpsc::UnboundedReceiver;
-use deno_core::futures::channel::mpsc::UnboundedSender;
-use deno_core::futures::channel::oneshot;
-use deno_core::futures::future::select;
-use deno_core::futures::future::Either;
-use deno_core::futures::future::Future;
-use deno_core::futures::prelude::*;
-use deno_core::futures::stream::FuturesUnordered;
-use deno_core::futures::stream::StreamExt;
-use deno_core::futures::task;
-use deno_core::futures::task::Context;
-use deno_core::futures::task::Poll;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
-use deno_core::v8;
+use crate::error::generic_error;
+use crate::error::AnyError;
+use crate::futures::channel::mpsc;
+use crate::futures::channel::mpsc::UnboundedReceiver;
+use crate::futures::channel::mpsc::UnboundedSender;
+use crate::futures::channel::oneshot;
+use crate::futures::future::select;
+use crate::futures::future::Either;
+use crate::futures::future::Future;
+use crate::futures::prelude::*;
+use crate::futures::stream::FuturesUnordered;
+use crate::futures::stream::StreamExt;
+use crate::futures::task;
+use crate::futures::task::Context;
+use crate::futures::task::Poll;
+use crate::serde_json;
+use crate::serde_json::json;
+use crate::serde_json::Value;
+use crate::v8;
+use crate::JsRuntime;
 use std::cell::BorrowMutError;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -37,10 +38,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
-
-mod server;
-
-pub use server::InspectorServer;
 
 /// If first argument is `None` then it's a notification, otherwise
 /// it's a message.
@@ -153,7 +150,7 @@ impl JsRuntimeInspector {
   /// and thus it's id is provided as an associated contant.
   const CONTEXT_GROUP_ID: i32 = 1;
 
-  pub fn new(js_runtime: &mut deno_core::JsRuntime) -> Box<Self> {
+  pub fn new(js_runtime: &mut JsRuntime) -> Box<Self> {
     let context = js_runtime.global_context();
     let scope = &mut v8::HandleScope::new(js_runtime.v8_isolate());
 

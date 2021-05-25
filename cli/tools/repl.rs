@@ -9,7 +9,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_runtime::inspector::LocalInspectorSession;
+use deno_core::LocalInspectorSession;
 use deno_runtime::worker::MainWorker;
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;

@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
-use crate::inspector::InspectorServer;
-use crate::inspector::JsRuntimeInspector;
+use crate::inspector_server::InspectorServer;
 use crate::js;
 use crate::metrics;
 use crate::ops;
@@ -24,6 +23,7 @@ use deno_core::Extension;
 use deno_core::GetErrorClassFn;
 use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
+use deno_core::JsRuntimeInspector;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
