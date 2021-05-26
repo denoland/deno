@@ -257,8 +257,9 @@ impl JsRuntimeInspector {
         };
       }
 
-      let should_block =
-        self.flags.borrow().on_pause || self.flags.borrow().waiting_for_session;
+      let should_block = sessions.handshake.is_some()
+        || self.flags.borrow().on_pause
+        || self.flags.borrow().waiting_for_session;
 
       let new_state = self.waker.update(|w| {
         match w.poll_state {
