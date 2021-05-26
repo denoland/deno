@@ -287,7 +287,7 @@ async fn read_line_and_poll(
       result = &mut line => {
         return result.unwrap();
       }
-      _ = worker.run_event_loop(), if poll_worker => {
+      _ = worker.run_event_loop(false), if poll_worker => {
         poll_worker = false;
       }
       _ = timeout => {

@@ -591,14 +591,22 @@ impl JsRuntime {
   /// This future resolves when:
   ///  - there are no more pending dynamic imports
   ///  - there are no more pending ops
-  pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
-    poll_fn(|cx| self.poll_event_loop(cx)).await
+  ///  - there are no more active inspector sessions (only if `wait_for_inspector` is set to true)
+  pub async fn run_event_loop(
+    &mut self,
+    wait_for_inspector: bool,
+  ) -> Result<(), AnyError> {
+    poll_fn(|cx| self.poll_event_loop(cx, wait_for_inspector)).await
   }
 
   /// Runs a single tick of event loop
+  ///
+  /// If `wait_for_inspector` is set to true event loop
+  /// will return `Poll::Pending` if there are active inspector sessions.
   pub fn poll_event_loop(
     &mut self,
     cx: &mut Context,
+    wait_for_inspector: bool,
   ) -> Poll<Result<(), AnyError>> {
     // We always poll the inspector if it exists.
     let _ = self.inspector().map(|i| i.poll_unpin(cx));
@@ -653,8 +661,11 @@ impl JsRuntime {
       && !has_pending_dyn_imports
       && !has_pending_dyn_module_evaluation
       && !has_pending_module_evaluation
-      && !inspector_has_active_sessions
     {
+      if wait_for_inspector && inspector_has_active_sessions {
+        return Poll::Pending;
+      }
+
       return Poll::Ready(Ok(()));
     }
 
@@ -1594,7 +1605,7 @@ pub mod tests {
          "#,
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx, false) {
         unreachable!();
       }
     });
@@ -1620,7 +1631,7 @@ pub mod tests {
           include_str!("encode_decode_test.js"),
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx, false) {
         unreachable!();
       }
     });
@@ -1636,7 +1647,7 @@ pub mod tests {
           include_str!("serialize_deserialize_test.js"),
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx, false) {
         unreachable!();
       }
     });
@@ -1669,7 +1680,7 @@ pub mod tests {
           include_str!("error_builder_test.js"),
         )
         .unwrap();
-      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx) {
+      if let Poll::Ready(Err(_)) = runtime.poll_event_loop(&mut cx, false) {
         unreachable!();
       }
     });
@@ -1849,7 +1860,7 @@ pub mod tests {
     .unwrap();
 
     runtime.mod_evaluate(module_id);
-    futures::executor::block_on(runtime.run_event_loop()).unwrap();
+    futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
 
     let _snapshot = runtime.snapshot();
   }
@@ -1928,7 +1939,7 @@ main();
     at async error_async_stack.js:4:5
     at async error_async_stack.js:10:5"#;
 
-      match runtime.poll_event_loop(cx) {
+      match runtime.poll_event_loop(cx, false) {
         Poll::Ready(Err(e)) => {
           assert_eq!(e.to_string(), expected_error);
         }

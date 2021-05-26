@@ -902,7 +902,7 @@ mod tests {
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
 
     runtime.mod_evaluate(a_id);
-    futures::executor::block_on(runtime.run_event_loop()).unwrap();
+    futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
     let l = loads.lock().unwrap();
     assert_eq!(
       l.to_vec(),
@@ -1130,7 +1130,7 @@ mod tests {
 
       assert_eq!(count.load(Ordering::Relaxed), 0);
       // We should get an error here.
-      let result = runtime.poll_event_loop(cx);
+      let result = runtime.poll_event_loop(cx, false);
       if let Poll::Ready(Ok(_)) = result {
         unreachable!();
       }
@@ -1223,14 +1223,20 @@ mod tests {
         .unwrap();
 
       // First poll runs `prepare_load` hook.
-      assert!(matches!(runtime.poll_event_loop(cx), Poll::Pending));
+      assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
       assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
 
       // Second poll actually loads modules into the isolate.
-      assert!(matches!(runtime.poll_event_loop(cx), Poll::Ready(Ok(_))));
+      assert!(matches!(
+        runtime.poll_event_loop(cx, false),
+        Poll::Ready(Ok(_))
+      ));
       assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
-      assert!(matches!(runtime.poll_event_loop(cx), Poll::Ready(Ok(_))));
+      assert!(matches!(
+        runtime.poll_event_loop(cx, false),
+        Poll::Ready(Ok(_))
+      ));
       assert_eq!(resolve_count.load(Ordering::Relaxed), 4);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
     })
@@ -1261,10 +1267,10 @@ mod tests {
         )
         .unwrap();
       // First poll runs `prepare_load` hook.
-      let _ = runtime.poll_event_loop(cx);
+      let _ = runtime.poll_event_loop(cx, false);
       assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
       // Second poll triggers error
-      let _ = runtime.poll_event_loop(cx);
+      let _ = runtime.poll_event_loop(cx, false);
     })
   }
 
@@ -1283,7 +1289,7 @@ mod tests {
       assert!(result.is_ok());
       let circular1_id = result.unwrap();
       runtime.mod_evaluate(circular1_id);
-      runtime.run_event_loop().await.unwrap();
+      runtime.run_event_loop(false).await.unwrap();
 
       let l = loads.lock().unwrap();
       assert_eq!(
@@ -1356,7 +1362,7 @@ mod tests {
       assert!(result.is_ok());
       let redirect1_id = result.unwrap();
       runtime.mod_evaluate(redirect1_id);
-      runtime.run_event_loop().await.unwrap();
+      runtime.run_event_loop(false).await.unwrap();
       let l = loads.lock().unwrap();
       assert_eq!(
         l.to_vec(),
@@ -1505,7 +1511,7 @@ mod tests {
       futures::executor::block_on(main_id_fut).expect("Failed to load");
 
     runtime.mod_evaluate(main_id);
-    futures::executor::block_on(runtime.run_event_loop()).unwrap();
+    futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
 
     let l = loads.lock().unwrap();
     assert_eq!(

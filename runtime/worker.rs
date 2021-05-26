@@ -220,7 +220,7 @@ impl MainWorker {
         return result;
       }
 
-      event_loop_result = self.run_event_loop() => {
+      event_loop_result = self.run_event_loop(false) => {
         event_loop_result?;
         let maybe_result = receiver.next().await;
         let result = maybe_result.expect("Module evaluation result not provided.");
@@ -249,12 +249,16 @@ impl MainWorker {
   pub fn poll_event_loop(
     &mut self,
     cx: &mut Context,
+    wait_for_inspector: bool,
   ) -> Poll<Result<(), AnyError>> {
-    self.js_runtime.poll_event_loop(cx)
+    self.js_runtime.poll_event_loop(cx, wait_for_inspector)
   }
 
-  pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
-    poll_fn(|cx| self.poll_event_loop(cx)).await
+  pub async fn run_event_loop(
+    &mut self,
+    wait_for_inspector: bool,
+  ) -> Result<(), AnyError> {
+    poll_fn(|cx| self.poll_event_loop(cx, wait_for_inspector)).await
   }
 
   /// A utility function that runs provided future concurrently with the event loop.
@@ -269,7 +273,7 @@ impl MainWorker {
         result = &mut fut => {
           return result;
         }
-        _ = self.run_event_loop() => {}
+        _ = self.run_event_loop(false) => {}
       };
     }
   }
@@ -323,7 +327,7 @@ mod tests {
     if let Err(err) = result {
       eprintln!("execute_mod err {:?}", err);
     }
-    if let Err(e) = worker.run_event_loop().await {
+    if let Err(e) = worker.run_event_loop(false).await {
       panic!("Future got unexpected error: {:?}", e);
     }
   }
@@ -340,7 +344,7 @@ mod tests {
     if let Err(err) = result {
       eprintln!("execute_mod err {:?}", err);
     }
-    if let Err(e) = worker.run_event_loop().await {
+    if let Err(e) = worker.run_event_loop(false).await {
       panic!("Future got unexpected error: {:?}", e);
     }
   }

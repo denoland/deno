@@ -416,7 +416,7 @@ impl WebWorker {
         return result;
       }
 
-      event_loop_result = self.run_event_loop() => {
+      event_loop_result = self.run_event_loop(false) => {
         if self.internal_handle.is_terminated() {
            return Ok(());
         }
@@ -436,13 +436,14 @@ impl WebWorker {
   pub fn poll_event_loop(
     &mut self,
     cx: &mut Context,
+    wait_for_inspector: bool,
   ) -> Poll<Result<(), AnyError>> {
     // If awakened because we are terminating, just return Ok
     if self.internal_handle.is_terminated() {
       return Poll::Ready(Ok(()));
     }
 
-    match self.js_runtime.poll_event_loop(cx) {
+    match self.js_runtime.poll_event_loop(cx, wait_for_inspector) {
       Poll::Ready(r) => {
         // If js ended because we are terminating, just return Ok
         if self.internal_handle.is_terminated() {
@@ -468,8 +469,11 @@ impl WebWorker {
     }
   }
 
-  pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
-    poll_fn(|cx| self.poll_event_loop(cx)).await
+  pub async fn run_event_loop(
+    &mut self,
+    wait_for_inspector: bool,
+  ) -> Result<(), AnyError> {
+    poll_fn(|cx| self.poll_event_loop(cx, wait_for_inspector)).await
   }
 }
 
@@ -525,7 +529,7 @@ pub fn run_web_worker(
     return Ok(());
   }
 
-  let result = rt.block_on(worker.run_event_loop());
+  let result = rt.block_on(worker.run_event_loop(true));
   debug!("Worker thread shuts down {}", &name);
   result
 }
@@ -595,7 +599,7 @@ mod tests {
       worker.execute(source).unwrap();
       let handle = worker.thread_safe_handle();
       handle_sender.send(handle).unwrap();
-      let r = tokio_util::run_basic(worker.run_event_loop());
+      let r = tokio_util::run_basic(worker.run_event_loop(false));
       assert!(r.is_ok())
     });
 
@@ -642,7 +646,7 @@ mod tests {
       worker.execute("onmessage = () => { close(); }").unwrap();
       let handle = worker.thread_safe_handle();
       handle_sender.send(handle).unwrap();
-      let r = tokio_util::run_basic(worker.run_event_loop());
+      let r = tokio_util::run_basic(worker.run_event_loop(false));
       assert!(r.is_ok())
     });
 
