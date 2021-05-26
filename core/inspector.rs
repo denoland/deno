@@ -197,6 +197,11 @@ impl JsRuntimeInspector {
     self_
   }
 
+  pub fn has_active_sessions(&self) -> bool {
+    let sessions = self.sessions.borrow();
+    !sessions.established.is_empty() || sessions.handshake.is_some()
+  }
+
   fn poll_sessions(
     &self,
     mut invoker_cx: Option<&mut Context>,

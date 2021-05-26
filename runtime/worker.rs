@@ -269,12 +269,7 @@ impl MainWorker {
         result = &mut fut => {
           return result;
         }
-        _ = self.run_event_loop() => {
-          // A zero delay is long enough to yield the thread in order to prevent the loop from
-          // running hot for messages that are taking longer to resolve like for example an
-          // evaluation of top level await.
-          tokio::time::sleep(tokio::time::Duration::from_millis(0)).await;
-        }
+        _ = self.run_event_loop() => {}
       };
     }
   }

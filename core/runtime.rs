@@ -643,11 +643,17 @@ impl JsRuntime {
     let has_pending_dyn_module_evaluation =
       !state.pending_dyn_mod_evaluate.is_empty();
     let has_pending_module_evaluation = state.pending_mod_evaluate.is_some();
+    let inspector_has_active_sessions = self
+      .inspector
+      .as_ref()
+      .map(|i| i.has_active_sessions())
+      .unwrap_or(false);
 
     if !has_pending_ops
       && !has_pending_dyn_imports
       && !has_pending_dyn_module_evaluation
       && !has_pending_module_evaluation
+      && !inspector_has_active_sessions
     {
       return Poll::Ready(Ok(()));
     }
