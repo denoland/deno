@@ -47,12 +47,12 @@ pub type SessionProxyReceiver = UnboundedReceiver<Result<Vec<u8>, AnyError>>;
 
 /// Encapsulates an UnboundedSender/UnboundedReceiver pair that together form
 /// a duplex channel for sending/receiving messages in V8 session.
-pub struct SessionProxy {
+pub struct InspectorSessionProxy {
   pub tx: SessionProxySender,
   pub rx: SessionProxyReceiver,
 }
 
-impl SessionProxy {
+impl InspectorSessionProxy {
   pub fn split(self) -> (SessionProxySender, SessionProxyReceiver) {
     (self.tx, self.rx)
   }
@@ -80,7 +80,7 @@ enum PollState {
 pub struct JsRuntimeInspector {
   v8_inspector_client: v8::inspector::V8InspectorClientBase,
   v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
-  new_session_tx: UnboundedSender<SessionProxy>,
+  new_session_tx: UnboundedSender<InspectorSessionProxy>,
   sessions: RefCell<SessionContainer>,
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
@@ -155,7 +155,8 @@ impl JsRuntimeInspector {
   ) -> Box<Self> {
     let scope = &mut v8::HandleScope::new(isolate);
 
-    let (new_session_tx, new_session_rx) = mpsc::unbounded::<SessionProxy>();
+    let (new_session_tx, new_session_rx) =
+      mpsc::unbounded::<InspectorSessionProxy>();
 
     let v8_inspector_client =
       v8::inspector::V8InspectorClientBase::new::<Self>();
@@ -321,7 +322,7 @@ impl JsRuntimeInspector {
   /// After a proxy is sent inspector will wait for a "handshake".
   /// Frontend must send "Runtime.runIfWaitingForDebugger" message to
   /// complete the handshake.
-  pub fn get_session_sender(&self) -> UnboundedSender<SessionProxy> {
+  pub fn get_session_sender(&self) -> UnboundedSender<InspectorSessionProxy> {
     self.new_session_tx.clone()
   }
 
@@ -347,7 +348,7 @@ impl JsRuntimeInspector {
     // The 'inbound' channel carries messages received from the session.
     let (inbound_tx, inbound_rx) = mpsc::unbounded();
 
-    let proxy = SessionProxy {
+    let proxy = InspectorSessionProxy {
       tx: outbound_tx,
       rx: inbound_rx,
     };
@@ -393,7 +394,7 @@ struct SessionContainer {
 impl SessionContainer {
   fn new(
     v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
-    new_session_rx: UnboundedReceiver<SessionProxy>,
+    new_session_rx: UnboundedReceiver<InspectorSessionProxy>,
   ) -> RefCell<Self> {
     let new_incoming = new_session_rx
       .map(move |session_proxy| {
@@ -504,7 +505,7 @@ impl InspectorSession {
 
   pub fn new(
     v8_inspector_rc: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
-    session_proxy: SessionProxy,
+    session_proxy: InspectorSessionProxy,
   ) -> Box<Self> {
     new_box_with(move |self_ptr| {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();
