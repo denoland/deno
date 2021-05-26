@@ -17,7 +17,7 @@ use crate::specifier_handler::FetchHandler;
 use crate::version;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_file::BlobUrlStore;
-use deno_runtime::inspector::InspectorServer;
+use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::Permissions;
 
 use deno_core::error::anyhow;

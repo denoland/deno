@@ -534,7 +534,7 @@ async fn eval_command(
   debug!("main_module {}", &main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
-  worker.run_event_loop().await?;
+  worker.run_event_loop(false).await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
   Ok(())
 }
@@ -737,7 +737,7 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   let program_state = ProgramState::build(flags).await?;
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions, false);
-  worker.run_event_loop().await?;
+  worker.run_event_loop(false).await?;
 
   tools::repl::run(&program_state, worker).await
 }
@@ -770,7 +770,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
-  worker.run_event_loop().await?;
+  worker.run_event_loop(false).await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
   Ok(())
 }
@@ -839,7 +839,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         debug!("main_module {}", main_module);
         worker.execute_module(&main_module).await?;
         worker.execute("window.dispatchEvent(new Event('load'))")?;
-        worker.run_event_loop().await?;
+        worker.run_event_loop(false).await?;
         worker.execute("window.dispatchEvent(new Event('unload'))")?;
         Ok(())
       }
@@ -881,7 +881,9 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
-  worker.run_event_loop().await?;
+  worker
+    .run_event_loop(maybe_coverage_collector.is_none())
+    .await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {

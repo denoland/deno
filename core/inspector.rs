@@ -4,25 +4,25 @@
 //! https://chromedevtools.github.io/devtools-protocol/
 //! https://hyperandroid.com/2020/02/12/v8-inspector-from-an-embedder-standpoint/
 
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
-use deno_core::futures::channel::mpsc;
-use deno_core::futures::channel::mpsc::UnboundedReceiver;
-use deno_core::futures::channel::mpsc::UnboundedSender;
-use deno_core::futures::channel::oneshot;
-use deno_core::futures::future::select;
-use deno_core::futures::future::Either;
-use deno_core::futures::future::Future;
-use deno_core::futures::prelude::*;
-use deno_core::futures::stream::FuturesUnordered;
-use deno_core::futures::stream::StreamExt;
-use deno_core::futures::task;
-use deno_core::futures::task::Context;
-use deno_core::futures::task::Poll;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
-use deno_core::v8;
+use crate::error::generic_error;
+use crate::error::AnyError;
+use crate::futures::channel::mpsc;
+use crate::futures::channel::mpsc::UnboundedReceiver;
+use crate::futures::channel::mpsc::UnboundedSender;
+use crate::futures::channel::oneshot;
+use crate::futures::future::select;
+use crate::futures::future::Either;
+use crate::futures::future::Future;
+use crate::futures::prelude::*;
+use crate::futures::stream::FuturesUnordered;
+use crate::futures::stream::StreamExt;
+use crate::futures::task;
+use crate::futures::task::Context;
+use crate::futures::task::Poll;
+use crate::serde_json;
+use crate::serde_json::json;
+use crate::serde_json::Value;
+use crate::v8;
 use std::cell::BorrowMutError;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -38,10 +38,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 
-mod server;
-
-pub use server::InspectorServer;
-
 /// If first argument is `None` then it's a notification, otherwise
 /// it's a message.
 pub type SessionProxySender = UnboundedSender<(Option<i32>, String)>;
@@ -51,12 +47,12 @@ pub type SessionProxyReceiver = UnboundedReceiver<Result<Vec<u8>, AnyError>>;
 
 /// Encapsulates an UnboundedSender/UnboundedReceiver pair that together form
 /// a duplex channel for sending/receiving messages in V8 session.
-pub struct SessionProxy {
+pub struct InspectorSessionProxy {
   pub tx: SessionProxySender,
   pub rx: SessionProxyReceiver,
 }
 
-impl SessionProxy {
+impl InspectorSessionProxy {
   pub fn split(self) -> (SessionProxySender, SessionProxyReceiver) {
     (self.tx, self.rx)
   }
@@ -84,7 +80,7 @@ enum PollState {
 pub struct JsRuntimeInspector {
   v8_inspector_client: v8::inspector::V8InspectorClientBase,
   v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
-  new_session_tx: UnboundedSender<SessionProxy>,
+  new_session_tx: UnboundedSender<InspectorSessionProxy>,
   sessions: RefCell<SessionContainer>,
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
@@ -153,11 +149,14 @@ impl JsRuntimeInspector {
   /// and thus it's id is provided as an associated contant.
   const CONTEXT_GROUP_ID: i32 = 1;
 
-  pub fn new(js_runtime: &mut deno_core::JsRuntime) -> Box<Self> {
-    let context = js_runtime.global_context();
-    let scope = &mut v8::HandleScope::new(js_runtime.v8_isolate());
+  pub fn new(
+    isolate: &mut v8::OwnedIsolate,
+    context: v8::Global<v8::Context>,
+  ) -> Box<Self> {
+    let scope = &mut v8::HandleScope::new(isolate);
 
-    let (new_session_tx, new_session_rx) = mpsc::unbounded::<SessionProxy>();
+    let (new_session_tx, new_session_rx) =
+      mpsc::unbounded::<InspectorSessionProxy>();
 
     let v8_inspector_client =
       v8::inspector::V8InspectorClientBase::new::<Self>();
@@ -196,6 +195,11 @@ impl JsRuntimeInspector {
     let _ = self_.poll_sessions(None).unwrap();
 
     self_
+  }
+
+  pub fn has_active_sessions(&self) -> bool {
+    let sessions = self.sessions.borrow();
+    !sessions.established.is_empty() || sessions.handshake.is_some()
   }
 
   fn poll_sessions(
@@ -323,7 +327,7 @@ impl JsRuntimeInspector {
   /// After a proxy is sent inspector will wait for a "handshake".
   /// Frontend must send "Runtime.runIfWaitingForDebugger" message to
   /// complete the handshake.
-  pub fn get_session_sender(&self) -> UnboundedSender<SessionProxy> {
+  pub fn get_session_sender(&self) -> UnboundedSender<InspectorSessionProxy> {
     self.new_session_tx.clone()
   }
 
@@ -349,7 +353,7 @@ impl JsRuntimeInspector {
     // The 'inbound' channel carries messages received from the session.
     let (inbound_tx, inbound_rx) = mpsc::unbounded();
 
-    let proxy = SessionProxy {
+    let proxy = InspectorSessionProxy {
       tx: outbound_tx,
       rx: inbound_rx,
     };
@@ -395,7 +399,7 @@ struct SessionContainer {
 impl SessionContainer {
   fn new(
     v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
-    new_session_rx: UnboundedReceiver<SessionProxy>,
+    new_session_rx: UnboundedReceiver<InspectorSessionProxy>,
   ) -> RefCell<Self> {
     let new_incoming = new_session_rx
       .map(move |session_proxy| {
@@ -506,7 +510,7 @@ impl InspectorSession {
 
   pub fn new(
     v8_inspector_rc: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
-    session_proxy: SessionProxy,
+    session_proxy: InspectorSessionProxy,
   ) -> Box<Self> {
     new_box_with(move |self_ptr| {
       let v8_channel = v8::inspector::ChannelBase::new::<Self>();

@@ -1,8 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::inspector::InspectorServer;
-use crate::inspector::JsRuntimeInspector;
-use crate::inspector::LocalInspectorSession;
+use crate::inspector_server::InspectorServer;
 use crate::js;
 use crate::metrics;
 use crate::ops;
@@ -11,7 +9,6 @@ use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
 use deno_core::error::Context as ErrorContext;
 use deno_core::futures::future::poll_fn;
-use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
 use deno_core::futures::Future;
 use deno_core::serde_json;
@@ -21,6 +18,7 @@ use deno_core::Extension;
 use deno_core::GetErrorClassFn;
 use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
+use deno_core::LocalInspectorSession;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -42,7 +40,6 @@ use std::task::Poll;
 /// All `WebWorker`s created during program execution
 /// are descendants of this worker.
 pub struct MainWorker {
-  inspector: Option<Box<JsRuntimeInspector>>,
   pub js_runtime: JsRuntime,
   should_break_on_first_statement: bool,
 }
@@ -145,28 +142,22 @@ impl MainWorker {
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
       extensions,
+      attach_inspector: options.attach_inspector,
       ..Default::default()
     });
 
-    let inspector = if options.attach_inspector {
-      let mut inspector = JsRuntimeInspector::new(&mut js_runtime);
+    let mut should_break_on_first_statement = false;
 
+    if let Some(inspector) = js_runtime.inspector() {
       if let Some(server) = options.maybe_inspector_server.clone() {
         let session_sender = inspector.get_session_sender();
         let deregister_rx = inspector.add_deregister_handler();
         server.register_inspector(session_sender, deregister_rx);
       }
-
-      Some(inspector)
-    } else {
-      None
-    };
-
-    let should_break_on_first_statement =
-      inspector.is_some() && options.should_break_on_first_statement;
+      should_break_on_first_statement = options.should_break_on_first_statement;
+    }
 
     Self {
-      inspector,
       js_runtime,
       should_break_on_first_statement,
     }
@@ -229,7 +220,7 @@ impl MainWorker {
         return result;
       }
 
-      event_loop_result = self.run_event_loop() => {
+      event_loop_result = self.run_event_loop(false) => {
         event_loop_result?;
         let maybe_result = receiver.next().await;
         let result = maybe_result.expect("Module evaluation result not provided.");
@@ -241,8 +232,8 @@ impl MainWorker {
   fn wait_for_inspector_session(&mut self) {
     if self.should_break_on_first_statement {
       self
-        .inspector
-        .as_mut()
+        .js_runtime
+        .inspector()
         .unwrap()
         .wait_for_session_and_break_on_next_statement()
     }
@@ -251,21 +242,23 @@ impl MainWorker {
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
   pub async fn create_inspector_session(&mut self) -> LocalInspectorSession {
-    let inspector = self.inspector.as_ref().unwrap();
+    let inspector = self.js_runtime.inspector().unwrap();
     inspector.create_local_session()
   }
 
   pub fn poll_event_loop(
     &mut self,
     cx: &mut Context,
+    wait_for_inspector: bool,
   ) -> Poll<Result<(), AnyError>> {
-    // We always poll the inspector if it exists.
-    let _ = self.inspector.as_mut().map(|i| i.poll_unpin(cx));
-    self.js_runtime.poll_event_loop(cx)
+    self.js_runtime.poll_event_loop(cx, wait_for_inspector)
   }
 
-  pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
-    poll_fn(|cx| self.poll_event_loop(cx)).await
+  pub async fn run_event_loop(
+    &mut self,
+    wait_for_inspector: bool,
+  ) -> Result<(), AnyError> {
+    poll_fn(|cx| self.poll_event_loop(cx, wait_for_inspector)).await
   }
 
   /// A utility function that runs provided future concurrently with the event loop.
@@ -280,22 +273,9 @@ impl MainWorker {
         result = &mut fut => {
           return result;
         }
-        _ = self.run_event_loop() => {
-          // A zero delay is long enough to yield the thread in order to prevent the loop from
-          // running hot for messages that are taking longer to resolve like for example an
-          // evaluation of top level await.
-          tokio::time::sleep(tokio::time::Duration::from_millis(0)).await;
-        }
+        _ = self.run_event_loop(false) => {}
       };
     }
-  }
-}
-
-impl Drop for MainWorker {
-  fn drop(&mut self) {
-    // The Isolate object must outlive the Inspector object, but this is
-    // currently not enforced by the type system.
-    self.inspector.take();
   }
 }
 
@@ -347,7 +327,7 @@ mod tests {
     if let Err(err) = result {
       eprintln!("execute_mod err {:?}", err);
     }
-    if let Err(e) = worker.run_event_loop().await {
+    if let Err(e) = worker.run_event_loop(false).await {
       panic!("Future got unexpected error: {:?}", e);
     }
   }
@@ -364,7 +344,7 @@ mod tests {
     if let Err(err) = result {
       eprintln!("execute_mod err {:?}", err);
     }
-    if let Err(e) = worker.run_event_loop().await {
+    if let Err(e) = worker.run_event_loop(false).await {
       panic!("Future got unexpected error: {:?}", e);
     }
   }

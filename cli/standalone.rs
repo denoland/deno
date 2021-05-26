@@ -202,7 +202,7 @@ pub async fn run(
   worker.bootstrap(&options);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
-  worker.run_event_loop().await?;
+  worker.run_event_loop(true).await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
   std::process::exit(0);
 }

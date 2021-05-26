@@ -9,7 +9,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_runtime::inspector::LocalInspectorSession;
+use deno_core::LocalInspectorSession;
 use deno_runtime::worker::MainWorker;
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
@@ -287,7 +287,7 @@ async fn read_line_and_poll(
       result = &mut line => {
         return result.unwrap();
       }
-      _ = worker.run_event_loop(), if poll_worker => {
+      _ = worker.run_event_loop(false), if poll_worker => {
         poll_worker = false;
       }
       _ = timeout => {

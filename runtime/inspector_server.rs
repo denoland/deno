@@ -16,6 +16,7 @@ use deno_core::futures::task::Poll;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::InspectorSessionProxy;
 use deno_websocket::tokio_tungstenite::tungstenite;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -25,8 +26,6 @@ use std::process;
 use std::rc::Rc;
 use std::thread;
 use uuid::Uuid;
-
-use super::SessionProxy;
 
 /// Websocket server that is used to proxy connections from
 /// devtools to the inspector.
@@ -63,7 +62,7 @@ impl InspectorServer {
 
   pub fn register_inspector(
     &self,
-    session_sender: UnboundedSender<SessionProxy>,
+    session_sender: UnboundedSender<InspectorSessionProxy>,
     deregister_rx: oneshot::Receiver<()>,
   ) {
     let info = InspectorInfo::new(self.host, session_sender, deregister_rx);
@@ -288,14 +287,14 @@ fn create_websocket_proxy(
   websocket: deno_websocket::tokio_tungstenite::WebSocketStream<
     hyper::upgrade::Upgraded,
   >,
-) -> (SessionProxy, impl Future<Output = ()> + Send) {
+) -> (InspectorSessionProxy, impl Future<Output = ()> + Send) {
   // The 'outbound' channel carries messages sent to the websocket.
   let (outbound_tx, outbound_rx) = mpsc::unbounded();
 
   // The 'inbound' channel carries messages received from the websocket.
   let (inbound_tx, inbound_rx) = mpsc::unbounded();
 
-  let proxy = SessionProxy {
+  let proxy = InspectorSessionProxy {
     tx: outbound_tx,
     rx: inbound_rx,
   };
@@ -332,14 +331,14 @@ pub struct InspectorInfo {
   pub host: SocketAddr,
   pub uuid: Uuid,
   pub thread_name: Option<String>,
-  pub new_session_tx: UnboundedSender<SessionProxy>,
+  pub new_session_tx: UnboundedSender<InspectorSessionProxy>,
   pub deregister_rx: oneshot::Receiver<()>,
 }
 
 impl InspectorInfo {
   pub fn new(
     host: SocketAddr,
-    new_session_tx: mpsc::UnboundedSender<SessionProxy>,
+    new_session_tx: mpsc::UnboundedSender<InspectorSessionProxy>,
     deregister_rx: oneshot::Receiver<()>,
   ) -> Self {
     Self {

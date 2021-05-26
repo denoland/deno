@@ -55,6 +55,6 @@ async fn main() -> Result<(), AnyError> {
     MainWorker::from_options(main_module.clone(), permissions, &options);
   worker.bootstrap(&options);
   worker.execute_module(&main_module).await?;
-  worker.run_event_loop().await?;
+  worker.run_event_loop(false).await?;
   Ok(())
 }
