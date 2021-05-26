@@ -14,6 +14,7 @@ use crate::tools::coverage::CoverageCollector;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
+use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
@@ -286,10 +287,12 @@ pub async fn run_test_file(
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
     program_state.coverage_dir
   {
-    let session = worker.create_inspector_session();
+    let session = worker.create_inspector_session().await;
     let coverage_dir = PathBuf::from(coverage_dir);
     let mut coverage_collector = CoverageCollector::new(coverage_dir, session);
-    coverage_collector.start_collecting().await?;
+    worker
+      .with_event_loop(coverage_collector.start_collecting().boxed_local())
+      .await?;
 
     Some(coverage_collector)
   } else {
@@ -308,7 +311,9 @@ pub async fn run_test_file(
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-    coverage_collector.stop_collecting().await?;
+    worker
+      .with_event_loop(coverage_collector.stop_collecting().boxed_local())
+      .await?;
   }
 
   Ok(())

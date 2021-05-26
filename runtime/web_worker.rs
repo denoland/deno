@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
-use crate::inspector::DenoInspector;
 use crate::inspector::InspectorServer;
+use crate::inspector::JsRuntimeInspector;
 use crate::js;
 use crate::metrics;
 use crate::ops;
@@ -199,7 +199,7 @@ fn create_handles(
 /// `WebWorker`.
 pub struct WebWorker {
   id: WorkerId,
-  inspector: Option<Box<DenoInspector>>,
+  inspector: Option<Box<JsRuntimeInspector>>,
   pub js_runtime: JsRuntime,
   pub name: String,
   internal_handle: WebWorkerInternalHandle,
@@ -325,10 +325,15 @@ impl WebWorker {
     });
 
     let inspector = if options.attach_inspector {
-      Some(DenoInspector::new(
-        &mut js_runtime,
-        options.maybe_inspector_server.clone(),
-      ))
+      let mut inspector = JsRuntimeInspector::new(&mut js_runtime);
+
+      if let Some(server) = options.maybe_inspector_server.clone() {
+        let session_sender = inspector.get_session_sender();
+        let deregister_rx = inspector.add_deregister_handler();
+        server.register_inspector(session_sender, deregister_rx);
+      }
+
+      Some(inspector)
     } else {
       None
     };
