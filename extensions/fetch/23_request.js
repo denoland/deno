@@ -403,6 +403,28 @@
 
   mixinBody(Request, _body, _mimeType);
 
+  Object.defineProperty(Request.prototype, "method", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(Request.prototype, "url", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(Request.prototype, "headers", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(Request.prototype, "redirect", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(Request.prototype, "clone", {
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+
   webidl.converters["Request"] = webidl.createInterfaceConverter(
     "Request",
     Request,
