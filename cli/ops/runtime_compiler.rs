@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::deno_dir::DenoDir;
 use crate::import_map::ImportMap;
 use crate::info::ModuleGraphInfo;
 use crate::module_graph::BundleType;
@@ -18,6 +19,7 @@ use deno_core::resolve_url_or_path;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
+use deno_runtime::deno_fetch::FetchPermissions;
 use deno_runtime::permissions::Permissions;
 use serde::Deserialize;
 use std::cell::RefCell;
@@ -149,10 +151,18 @@ async fn op_info(
   deno_runtime::ops::check_unstable2(&state, "Deno.info");
   let specifier = resolve_url_or_path(&args.specifier)?;
   let program_state = state.borrow().borrow::<Arc<ProgramState>>().clone();
-  let runtime_permissions = {
+  let mut runtime_permissions = {
     let state = state.borrow();
     state.borrow::<Permissions>().clone()
   };
+
+  // we should check read permissions on the cache first, to ensure that we can
+  // expose any cache information to the runtime
+  let custom_root = std::env::var("DENO_DIR").map(String::into).ok();
+  let deno_dir = DenoDir::new(custom_root)?;
+  runtime_permissions
+    .check_read(&deno_dir.root)
+    .context("Deno.info() requires read access to the cache dir, run again with the --allow-read flag.")?;
   let handler = Arc::new(Mutex::new(FetchHandler::new(
     &program_state,
     runtime_permissions.clone(),
