@@ -6,7 +6,7 @@ async function call(): Promise<void> {
     console.log("before await fn()");
     await fn();
     console.log("after await fn()");
-  } catch (error) {
+  } catch (_error) {
     console.log("catch");
   }
   console.log("after try-catch");

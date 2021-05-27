@@ -52,6 +52,9 @@ use std::result;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
+use swc_common::comments::Comment;
+use swc_common::BytePos;
+use swc_common::Span;
 
 lazy_static::lazy_static! {
   /// Matched the `@deno-types` pragma.
@@ -188,35 +191,48 @@ pub enum TypeScriptReference {
   Types(String),
 }
 
+fn match_to_span(comment: &Comment, m: &regex::Match) -> Span {
+  Span {
+    lo: comment.span.lo + BytePos((m.start() + 1) as u32),
+    hi: comment.span.lo + BytePos((m.end() + 1) as u32),
+    ctxt: comment.span.ctxt,
+  }
+}
+
 /// Determine if a comment contains a triple slash reference and optionally
 /// return its kind and value.
-pub fn parse_ts_reference(comment: &str) -> Option<TypeScriptReference> {
-  if !TRIPLE_SLASH_REFERENCE_RE.is_match(comment) {
+pub fn parse_ts_reference(
+  comment: &Comment,
+) -> Option<(TypeScriptReference, Span)> {
+  if !TRIPLE_SLASH_REFERENCE_RE.is_match(&comment.text) {
     None
-  } else if let Some(captures) = PATH_REFERENCE_RE.captures(comment) {
-    Some(TypeScriptReference::Path(
-      captures.get(1).unwrap().as_str().to_string(),
+  } else if let Some(captures) = PATH_REFERENCE_RE.captures(&comment.text) {
+    let m = captures.get(1).unwrap();
+    Some((
+      TypeScriptReference::Path(m.as_str().to_string()),
+      match_to_span(comment, &m),
     ))
   } else {
-    TYPES_REFERENCE_RE.captures(comment).map(|captures| {
-      TypeScriptReference::Types(captures.get(1).unwrap().as_str().to_string())
+    TYPES_REFERENCE_RE.captures(&comment.text).map(|captures| {
+      let m = captures.get(1).unwrap();
+      (
+        TypeScriptReference::Types(m.as_str().to_string()),
+        match_to_span(comment, &m),
+      )
     })
   }
 }
 
 /// Determine if a comment contains a `@deno-types` pragma and optionally return
 /// its value.
-pub fn parse_deno_types(comment: &str) -> Option<String> {
-  if let Some(captures) = DENO_TYPES_RE.captures(comment) {
-    if let Some(m) = captures.get(1) {
-      Some(m.as_str().to_string())
-    } else if let Some(m) = captures.get(2) {
-      Some(m.as_str().to_string())
-    } else {
-      panic!("unreachable");
-    }
+pub fn parse_deno_types(comment: &Comment) -> Option<(String, Span)> {
+  let captures = DENO_TYPES_RE.captures(&comment.text)?;
+  if let Some(m) = captures.get(1) {
+    Some((m.as_str().to_string(), match_to_span(comment, &m)))
+  } else if let Some(m) = captures.get(2) {
+    Some((m.as_str().to_string(), match_to_span(comment, &m)))
   } else {
-    None
+    unreachable!();
   }
 }
 
@@ -327,7 +343,7 @@ impl Module {
 
     // parse out any triple slash references
     for comment in parsed_module.get_leading_comments().iter() {
-      if let Some(ts_reference) = parse_ts_reference(&comment.text) {
+      if let Some((ts_reference, _)) = parse_ts_reference(&comment) {
         let location = parsed_module.get_location(&comment.span);
         match ts_reference {
           TypeScriptReference::Path(import) => {
@@ -392,7 +408,7 @@ impl Module {
       // Parse out any `@deno-types` pragmas and modify dependency
       let maybe_type = if !desc.leading_comments.is_empty() {
         let comment = desc.leading_comments.last().unwrap();
-        if let Some(deno_types) = parse_deno_types(&comment.text).as_ref() {
+        if let Some((deno_types, _)) = parse_deno_types(&comment).as_ref() {
           Some(self.resolve_import(deno_types, Some(location.clone()))?)
         } else {
           None
@@ -769,7 +785,8 @@ impl Graph {
       "checkJs": false,
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
-      "inlineSourceMap": true,
+      "inlineSourceMap": false,
+      "sourceMap": false,
       "jsx": "react",
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
@@ -777,7 +794,7 @@ impl Graph {
     let maybe_ignored_options = ts_config
       .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
 
-    let s = self.emit_bundle(
+    let (src, _) = self.emit_bundle(
       &root_specifier,
       &ts_config.into(),
       &BundleType::Module,
@@ -787,7 +804,7 @@ impl Graph {
       ("Total time".to_string(), start.elapsed().as_millis() as u32),
     ]);
 
-    Ok((s, stats, maybe_ignored_options))
+    Ok((src, stats, maybe_ignored_options))
   }
 
   /// Type check the module graph, corresponding to the options provided.
@@ -945,6 +962,7 @@ impl Graph {
       "experimentalDecorators": true,
       "importsNotUsedAsValues": "remove",
       "inlineSourceMap": false,
+      "sourceMap": false,
       "isolatedModules": true,
       "jsx": "react",
       "jsxFactory": "React.createElement",
@@ -958,6 +976,8 @@ impl Graph {
     let opts = match options.bundle_type {
       BundleType::Module | BundleType::Classic => json!({
         "noEmit": true,
+        "removeComments": true,
+        "sourceMap": true,
       }),
       BundleType::None => json!({
         "outDir": "deno://",
@@ -1008,12 +1028,15 @@ impl Graph {
             "Only a single root module supported."
           );
           let specifier = &graph.roots[0];
-          let s = graph.emit_bundle(
+          let (src, maybe_src_map) = graph.emit_bundle(
             specifier,
             &config.into(),
             &options.bundle_type,
           )?;
-          emitted_files.insert("deno:///bundle.js".to_string(), s);
+          emitted_files.insert("deno:///bundle.js".to_string(), src);
+          if let Some(src_map) = maybe_src_map {
+            emitted_files.insert("deno:///bundle.js.map".to_string(), src_map);
+          }
         }
         BundleType::None => {
           for emitted_file in &response.emitted_files {
@@ -1060,13 +1083,16 @@ impl Graph {
             "Only a single root module supported."
           );
           let specifier = &self.roots[0];
-          let s = self.emit_bundle(
+          let (src, maybe_src_map) = self.emit_bundle(
             specifier,
             &config.into(),
             &options.bundle_type,
           )?;
           emit_count += 1;
-          emitted_files.insert("deno:///bundle.js".to_string(), s);
+          emitted_files.insert("deno:///bundle.js".to_string(), src);
+          if let Some(src_map) = maybe_src_map {
+            emitted_files.insert("deno:///bundle.js.map".to_string(), src_map);
+          }
         }
         BundleType::None => {
           let emit_options: ast::EmitOptions = config.into();
@@ -1118,7 +1144,7 @@ impl Graph {
     specifier: &ModuleSpecifier,
     emit_options: &ast::EmitOptions,
     bundle_type: &BundleType,
-  ) -> Result<String, AnyError> {
+  ) -> Result<(String, Option<String>), AnyError> {
     let cm = Rc::new(swc_common::SourceMap::new(
       swc_common::FilePathMapping::empty(),
     ));
@@ -1150,13 +1176,17 @@ impl Graph {
       .bundle(entries)
       .context("Unable to output bundle during Graph::bundle().")?;
     let mut buf = Vec::new();
+    let mut src_map_buf = Vec::new();
     {
       let mut emitter = swc_ecmascript::codegen::Emitter {
         cfg: swc_ecmascript::codegen::Config { minify: false },
         cm: cm.clone(),
         comments: None,
         wr: Box::new(swc_ecmascript::codegen::text_writer::JsWriter::new(
-          cm, "\n", &mut buf, None,
+          cm.clone(),
+          "\n",
+          &mut buf,
+          Some(&mut src_map_buf),
         )),
       };
 
@@ -1164,8 +1194,24 @@ impl Graph {
         .emit_module(&output[0].module)
         .context("Unable to emit bundle during Graph::bundle().")?;
     }
+    let mut src = String::from_utf8(buf)
+      .context("Emitted bundle is an invalid utf-8 string.")?;
+    let mut map: Option<String> = None;
+    {
+      let mut buf = Vec::new();
+      cm.build_source_map_from(&mut src_map_buf, None)
+        .to_writer(&mut buf)?;
 
-    String::from_utf8(buf).context("Emitted bundle is an invalid utf-8 string.")
+      if emit_options.inline_source_map {
+        src.push_str("//# sourceMappingURL=data:application/json;base64,");
+        let encoded_map = base64::encode(buf);
+        src.push_str(&encoded_map);
+      } else if emit_options.source_map {
+        map = Some(String::from_utf8(buf)?);
+      }
+    }
+
+    Ok((src, map))
   }
 
   /// Update the handler with any modules that are marked as _dirty_ and update
@@ -1606,6 +1652,7 @@ impl Graph {
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
       "inlineSourceMap": true,
+      "sourceMap": false,
       "jsx": "react",
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
@@ -2413,9 +2460,10 @@ pub mod tests {
       .expect("should have emitted");
     assert!(result_info.diagnostics.is_empty());
     assert!(result_info.maybe_ignored_options.is_none());
-    assert_eq!(emitted_files.len(), 1);
+    assert_eq!(emitted_files.len(), 2);
     let actual = emitted_files.get("deno:///bundle.js");
     assert!(actual.is_some());
+    assert!(emitted_files.contains_key("deno:///bundle.js.map"));
     let actual = actual.unwrap();
     assert!(actual.contains("const b = \"b\";"));
     assert!(actual.contains("console.log(mod);"));

@@ -60,6 +60,7 @@ lazy_static::lazy_static! {
 
 /// Category of self-generated diagnostic messages (those not coming from)
 /// TypeScript.
+#[derive(Debug, PartialEq, Eq)]
 pub enum Category {
   /// A lint diagnostic, where the first element is the message.
   Lint {
@@ -70,6 +71,7 @@ pub enum Category {
 }
 
 /// A structure to hold a reference to a diagnostic message.
+#[derive(Debug, PartialEq, Eq)]
 pub struct Reference {
   category: Category,
   range: Range,
@@ -78,13 +80,24 @@ pub struct Reference {
 impl Reference {
   pub fn to_diagnostic(&self) -> lsp::Diagnostic {
     match &self.category {
-      Category::Lint { message, code, .. } => lsp::Diagnostic {
+      Category::Lint {
+        message,
+        code,
+        hint,
+      } => lsp::Diagnostic {
         range: self.range,
         severity: Some(lsp::DiagnosticSeverity::Warning),
         code: Some(lsp::NumberOrString::String(code.to_string())),
         code_description: None,
         source: Some("deno-lint".to_string()),
-        message: message.to_string(),
+        message: {
+          let mut msg = message.to_string();
+          if let Some(hint) = hint {
+            msg.push('\n');
+            msg.push_str(hint);
+          }
+          msg
+        },
         related_information: None,
         tags: None, // we should tag unused code
         data: None,
@@ -140,6 +153,7 @@ pub struct Dependency {
   pub maybe_code: Option<ResolvedDependency>,
   pub maybe_code_specifier_range: Option<Range>,
   pub maybe_type: Option<ResolvedDependency>,
+  pub maybe_type_specifier_range: Option<Range>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -259,13 +273,24 @@ pub fn analyze_dependencies(
 
   // Parse leading comments for supported triple slash references.
   for comment in parsed_module.get_leading_comments().iter() {
-    if let Some(ts_reference) = parse_ts_reference(&comment.text) {
+    if let Some((ts_reference, span)) = parse_ts_reference(&comment) {
+      let loc = parsed_module.source_map.lookup_char_pos(span.lo);
       match ts_reference {
         TypeScriptReference::Path(import) => {
           let dep = dependencies.entry(import.clone()).or_default();
           let resolved_import =
             resolve_import(&import, specifier, maybe_import_map);
           dep.maybe_code = Some(resolved_import);
+          dep.maybe_code_specifier_range = Some(Range {
+            start: Position {
+              line: (loc.line - 1) as u32,
+              character: loc.col_display as u32,
+            },
+            end: Position {
+              line: (loc.line - 1) as u32,
+              character: (loc.col_display + import.chars().count() + 2) as u32,
+            },
+          });
         }
         TypeScriptReference::Types(import) => {
           let resolved_import =
@@ -273,11 +298,20 @@ pub fn analyze_dependencies(
           if media_type == &MediaType::JavaScript
             || media_type == &MediaType::Jsx
           {
-            maybe_type = Some(resolved_import)
-          } else {
-            let dep = dependencies.entry(import).or_default();
-            dep.maybe_type = Some(resolved_import);
+            maybe_type = Some(resolved_import.clone());
           }
+          let dep = dependencies.entry(import.clone()).or_default();
+          dep.maybe_type = Some(resolved_import);
+          dep.maybe_type_specifier_range = Some(Range {
+            start: Position {
+              line: (loc.line - 1) as u32,
+              character: loc.col_display as u32,
+            },
+            end: Position {
+              line: (loc.line - 1) as u32,
+              character: (loc.col_display + import.chars().count() + 2) as u32,
+            },
+          });
         }
       }
     }
@@ -294,7 +328,13 @@ pub fn analyze_dependencies(
     let maybe_resolved_type_dependency =
       // Check for `@deno-types` pragmas that affect the import
       if let Some(comment) = desc.leading_comments.last() {
-        parse_deno_types(&comment.text).as_ref().map(|deno_types| resolve_import(deno_types, specifier, maybe_import_map))
+        parse_deno_types(&comment).as_ref().map(|(deno_types, span)| {
+          (
+            resolve_import(deno_types, specifier, maybe_import_map),
+            deno_types.clone(),
+            parsed_module.source_map.lookup_char_pos(span.lo)
+          )
+        })
       } else {
         None
       };
@@ -304,6 +344,17 @@ pub fn analyze_dependencies(
     match desc.kind {
       swc_ecmascript::dep_graph::DependencyKind::ExportType
       | swc_ecmascript::dep_graph::DependencyKind::ImportType => {
+        dep.maybe_type_specifier_range = Some(Range {
+          start: Position {
+            line: (desc.specifier_line - 1) as u32,
+            character: desc.specifier_col as u32,
+          },
+          end: Position {
+            line: (desc.specifier_line - 1) as u32,
+            character: (desc.specifier_col + desc.specifier.chars().count() + 2)
+              as u32,
+          },
+        });
         dep.maybe_type = Some(resolved_import)
       }
       _ => {
@@ -321,8 +372,22 @@ pub fn analyze_dependencies(
         dep.maybe_code = Some(resolved_import);
       }
     }
-    if maybe_resolved_type_dependency.is_some() && dep.maybe_type.is_none() {
-      dep.maybe_type = maybe_resolved_type_dependency;
+    if dep.maybe_type.is_none() {
+      if let Some((resolved_dependency, specifier, loc)) =
+        maybe_resolved_type_dependency
+      {
+        dep.maybe_type_specifier_range = Some(Range {
+          start: Position {
+            line: (loc.line - 1) as u32,
+            character: (loc.col_display + 1) as u32,
+          },
+          end: Position {
+            line: (loc.line - 1) as u32,
+            character: (loc.col_display + 1 + specifier.chars().count()) as u32,
+          },
+        });
+        dep.maybe_type = Some(resolved_dependency);
+      }
     }
   }
 
@@ -651,6 +716,64 @@ mod tests {
   use deno_core::resolve_url;
 
   #[test]
+  fn test_reference_to_diagnostic() {
+    let range = Range {
+      start: Position {
+        line: 1,
+        character: 1,
+      },
+      end: Position {
+        line: 2,
+        character: 2,
+      },
+    };
+
+    let test_cases = [
+      (
+        Reference {
+          category: Category::Lint {
+            message: "message1".to_string(),
+            code: "code1".to_string(),
+            hint: None,
+          },
+          range,
+        },
+        lsp::Diagnostic {
+          range,
+          severity: Some(lsp::DiagnosticSeverity::Warning),
+          code: Some(lsp::NumberOrString::String("code1".to_string())),
+          source: Some("deno-lint".to_string()),
+          message: "message1".to_string(),
+          ..Default::default()
+        },
+      ),
+      (
+        Reference {
+          category: Category::Lint {
+            message: "message2".to_string(),
+            code: "code2".to_string(),
+            hint: Some("hint2".to_string()),
+          },
+          range,
+        },
+        lsp::Diagnostic {
+          range,
+          severity: Some(lsp::DiagnosticSeverity::Warning),
+          code: Some(lsp::NumberOrString::String("code2".to_string())),
+          source: Some("deno-lint".to_string()),
+          message: "message2\nhint2".to_string(),
+          ..Default::default()
+        },
+      ),
+    ];
+
+    for (input, expected) in test_cases.iter() {
+      let actual = input.to_diagnostic();
+      assert_eq!(&actual, expected);
+    }
+  }
+
+  #[test]
   fn test_as_lsp_range() {
     let fixture = deno_lint::diagnostic::Range {
       start: deno_lint::diagnostic::Position {
@@ -677,6 +800,38 @@ mod tests {
           character: 0,
         },
       }
+    );
+  }
+
+  #[test]
+  fn test_get_lint_references() {
+    let specifier = resolve_url("file:///a.ts").expect("bad specifier");
+    let source = "const foo = 42;";
+    let actual =
+      get_lint_references(&specifier, &MediaType::TypeScript, source).unwrap();
+
+    assert_eq!(
+      actual,
+      vec![Reference {
+        category: Category::Lint {
+          message: "`foo` is never used".to_string(),
+          code: "no-unused-vars".to_string(),
+          hint: Some(
+            "If this is intentional, prefix it with an underscore like `_foo`"
+              .to_string()
+          ),
+        },
+        range: Range {
+          start: Position {
+            line: 0,
+            character: 6,
+          },
+          end: Position {
+            line: 0,
+            character: 9,
+          }
+        }
+      }]
     );
   }
 
@@ -723,6 +878,16 @@ mod tests {
             character: 58,
           }
         }),
+        maybe_type_specifier_range: Some(Range {
+          start: Position {
+            line: 7,
+            character: 20,
+          },
+          end: Position {
+            line: 7,
+            character: 62,
+          }
+        })
       })
     );
     assert_eq!(
@@ -743,6 +908,7 @@ mod tests {
             character: 50,
           }
         }),
+        maybe_type_specifier_range: None,
       })
     );
   }

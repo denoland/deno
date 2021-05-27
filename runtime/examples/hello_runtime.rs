@@ -2,6 +2,7 @@
 
 use deno_core::error::AnyError;
 use deno_core::FsModuleLoader;
+use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_file::BlobUrlStore;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
@@ -42,6 +43,7 @@ async fn main() -> Result<(), AnyError> {
     location: None,
     origin_storage_dir: None,
     blob_url_store: BlobUrlStore::default(),
+    broadcast_channel: InMemoryBroadcastChannel::default(),
   };
 
   let js_path =
@@ -53,6 +55,6 @@ async fn main() -> Result<(), AnyError> {
     MainWorker::from_options(main_module.clone(), permissions, &options);
   worker.bootstrap(&options);
   worker.execute_module(&main_module).await?;
-  worker.run_event_loop().await?;
+  worker.run_event_loop(false).await?;
   Ok(())
 }

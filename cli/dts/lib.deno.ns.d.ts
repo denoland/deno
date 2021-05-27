@@ -84,6 +84,7 @@ declare namespace Deno {
     BadResource: ErrorConstructor;
     Http: ErrorConstructor;
     Busy: ErrorConstructor;
+    NotSupported: ErrorConstructor;
   };
 
   /** The current process id of the runtime. */
@@ -98,7 +99,7 @@ declare namespace Deno {
     fn: () => void | Promise<void>;
     name: string;
     ignore?: boolean;
-    /** If at lease one test has `only` set to true, only run tests that have
+    /** If at least one test has `only` set to true, only run tests that have
      * `only` set to true and fail the test suite. */
     only?: boolean;
     /** Check that the number of async completed ops after the test is the same
@@ -321,9 +322,9 @@ declare namespace Deno {
   export interface ReaderSync {
     /** Reads up to `p.byteLength` bytes into `p`. It resolves to the number
      * of bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error
-     * encountered. Even if `read()` returns `n` < `p.byteLength`, it may use
+     * encountered. Even if `readSync()` returns `n` < `p.byteLength`, it may use
      * all of `p` as scratch space during the call. If some data is available
-     * but not `p.byteLength` bytes, `read()` conventionally returns what is
+     * but not `p.byteLength` bytes, `readSync()` conventionally returns what is
      * available instead of waiting for more.
      *
      * When `readSync()` encounters end-of-file condition, it returns EOF

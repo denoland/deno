@@ -19,6 +19,33 @@ use test_util as util;
 use tokio::task::LocalSet;
 
 #[test]
+fn typecheck_declarations_ns() {
+  let status = util::deno_cmd()
+    .arg("test")
+    .arg("--doc")
+    .arg(util::root_path().join("cli/dts/lib.deno.ns.d.ts"))
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn typecheck_declarations_unstable() {
+  let status = util::deno_cmd()
+    .arg("test")
+    .arg("--doc")
+    .arg("--unstable")
+    .arg(util::root_path().join("cli/dts/lib.deno.unstable.d.ts"))
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
 fn js_unit_tests_lint() {
   let status = util::deno_cmd()
     .arg("lint")
@@ -4404,12 +4431,13 @@ console.log("finish");
     #[test]
     fn branch() {
       let tempdir = TempDir::new().expect("tempdir fail");
+      let tempdir = tempdir.path().join("cov");
       let status = util::deno_cmd()
         .current_dir(util::root_path())
         .arg("test")
         .arg("--quiet")
         .arg("--unstable")
-        .arg(format!("--coverage={}", tempdir.path().to_str().unwrap()))
+        .arg(format!("--coverage={}", tempdir.to_str().unwrap()))
         .arg("cli/tests/coverage/branch_test.ts")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::inherit())
@@ -4423,7 +4451,7 @@ console.log("finish");
         .arg("coverage")
         .arg("--quiet")
         .arg("--unstable")
-        .arg(format!("{}/", tempdir.path().to_str().unwrap()))
+        .arg(format!("{}/", tempdir.to_str().unwrap()))
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::inherit())
         .output()
@@ -4452,7 +4480,7 @@ console.log("finish");
         .arg("--quiet")
         .arg("--unstable")
         .arg("--lcov")
-        .arg(format!("{}/", tempdir.path().to_str().unwrap()))
+        .arg(format!("{}/", tempdir.to_str().unwrap()))
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::inherit())
         .output()
