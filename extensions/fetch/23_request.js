@@ -273,7 +273,7 @@
         ((init.body !== undefined && init.body !== null) ||
           inputBody !== null)
       ) {
-        throw new TypeError("HEAD and GET requests may not have a body.");
+        throw new TypeError("Request with GET/HEAD method cannot have body.");
       }
 
       // 34.
