@@ -2846,9 +2846,19 @@ console.log("finish");
     output: "041_info_flag.out",
   });
 
+  itest!(_042_info_flag_location {
+    args: "info --location https://deno.land",
+    output: "041_info_flag_location.out",
+  });
+
   itest!(info_json {
     args: "info --json --unstable",
     output: "info_json.out",
+  });
+
+  itest!(info_json_location {
+    args: "info --json --unstable --location https://deno.land",
+    output: "info_json_location.out",
   });
 
   itest!(_042_dyn_import_evalcontext {
