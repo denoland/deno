@@ -28,14 +28,14 @@ The following permissions are available:
 - **--allow-plugin** Allow loading plugins. Please note that --allow-plugin is
   an unstable feature.
 - **--allow-read=\<allow-read\>** Allow file system read access. You can specify
-  an optional, comma-separated list of directories or files to provide a
+  an optional, comma-separated list of directories or files to provide an
   allow-list of allowed file system access.
 - **--allow-run** Allow running subprocesses. Be aware that subprocesses are not
   run in a sandbox and therefore do not have the same security restrictions as
   the deno process. Therefore, use with caution.
 - **--allow-write=\<allow-write\>** Allow file system write access. You can
-  specify an optional, comma-separated list of directories or files to provide a
-  allow-list of allowed file system access.
+  specify an optional, comma-separated list of directories or files to provide
+  an allow-list of allowed file system access.
 
 ### Permissions allow-list
 
