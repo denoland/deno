@@ -192,16 +192,16 @@
       this.#poll();
     }
 
-    #handleMessage = (data) => {
+    #handleMessage(data) {
       const msgEvent = new MessageEvent("message", {
         cancelable: false,
         data,
       });
 
       this.dispatchEvent(msgEvent);
-    };
+    }
 
-    #handleError = (e) => {
+    #handleError(e) {
       const event = new ErrorEvent("error", {
         cancelable: true,
         message: e.message,
@@ -219,7 +219,7 @@
       }
 
       return handled;
-    };
+    }
 
     #poll = async () => {
       while (!this.#terminated) {
