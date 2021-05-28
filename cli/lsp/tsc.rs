@@ -934,8 +934,8 @@ impl DocumentHighlights {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TextChange {
-  span: TextSpan,
-  new_text: String,
+  pub span: TextSpan,
+  pub new_text: String,
 }
 
 impl TextChange {
@@ -953,10 +953,10 @@ impl TextChange {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct FileTextChanges {
-  file_name: String,
-  text_changes: Vec<TextChange>,
+  pub file_name: String,
+  pub text_changes: Vec<TextChange>,
   #[serde(skip_serializing_if = "Option::is_none")]
-  is_new_file: Option<bool>,
+  pub is_new_file: Option<bool>,
 }
 
 impl FileTextChanges {
