@@ -26,7 +26,7 @@ deno_fetch = { version = "0.29.0", path = "../extensions/fetch" }
 deno_file = { version = "0.6.0", path = "../extensions/file" }
 deno_timers = { version = "0.5.0", path = "../extensions/timers" }
 deno_url = { version = "0.7.0", path = "../extensions/url" }
-deno_web = { version = "0.37.0", path = "../extensions/web" }
+deno_web = { version = "0.38.0", path = "../extensions/web" }
 deno_webgpu = { version = "0.8.0", path = "../extensions/webgpu" }
 deno_webidl = { version = "0.7.0", path = "../extensions/webidl" }
 deno_websocket = { version = "0.12.0", path = "../extensions/websocket" }
@@ -45,7 +45,7 @@ deno_fetch = { version = "0.29.0", path = "../extensions/fetch" }
 deno_file = { version = "0.6.0", path = "../extensions/file" }
 deno_timers = { version = "0.5.0", path = "../extensions/timers" }
 deno_url = { version = "0.7.0", path = "../extensions/url" }
-deno_web = { version = "0.37.0", path = "../extensions/web" }
+deno_web = { version = "0.38.0", path = "../extensions/web" }
 deno_webgpu = { version = "0.8.0", path = "../extensions/webgpu" }
 deno_webidl = { version = "0.7.0", path = "../extensions/webidl" }
 deno_websocket = { version = "0.12.0", path = "../extensions/websocket" }
