@@ -448,6 +448,8 @@ fn check_specifier(
   None
 }
 
+/// For a set of tsc changes, can them for any that contain something that looks
+/// like an import and rewrite the import specifier to include the extension
 pub(crate) fn fix_ts_import_changes(
   referrer: &ModuleSpecifier,
   changes: &[tsc::FileTextChanges],
@@ -461,8 +463,10 @@ pub(crate) fn fix_ts_import_changes(
       if let Some(captures) =
         IMPORT_SPECIFIER_RE.captures(&text_change.new_text)
       {
-        let specifier =
-          captures.get(1).ok_or(anyhow!("Missing capture."))?.as_str();
+        let specifier = captures
+          .get(1)
+          .ok_or_else(|| anyhow!("Missing capture."))?
+          .as_str();
         if let Some(new_specifier) = check_specifier(
           specifier,
           referrer,
@@ -502,15 +506,17 @@ fn fix_ts_import_action(
     let change = action
       .changes
       .get(0)
-      .ok_or(anyhow!("Unexpected action changes."))?;
+      .ok_or_else(|| anyhow!("Unexpected action changes."))?;
     let text_change = change
       .text_changes
       .get(0)
-      .ok_or(anyhow!("Missing text change."))?;
+      .ok_or_else(|| anyhow!("Missing text change."))?;
     if let Some(captures) = IMPORT_SPECIFIER_RE.captures(&text_change.new_text)
     {
-      let specifier =
-        captures.get(1).ok_or(anyhow!("Missing capture."))?.as_str();
+      let specifier = captures
+        .get(1)
+        .ok_or_else(|| anyhow!("Missing capture."))?
+        .as_str();
       let snapshot = language_server.snapshot()?;
       if let Some(new_specifier) = check_specifier(
         specifier,
