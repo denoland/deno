@@ -21,6 +21,6 @@ deno_file = { version = "0.6.0", path = "../file" }
 http = "0.2.4"
 reqwest = { version = "0.11.3", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
 serde = { version = "1.0.125", features = ["derive"] }
-tokio = { version = "1.6.0", features = ["full"] }
+tokio = { version = "1.6.1", features = ["full"] }
 tokio-stream = "0.1.5"
 tokio-util = "0.6.7"
