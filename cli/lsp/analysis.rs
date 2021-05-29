@@ -11,6 +11,7 @@ use crate::module_graph::parse_ts_reference;
 use crate::module_graph::TypeScriptReference;
 use crate::tools::lint::create_linter;
 
+use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
@@ -23,6 +24,7 @@ use deno_lint::rules;
 use lspower::lsp;
 use lspower::lsp::Position;
 use lspower::lsp::Range;
+use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
@@ -56,7 +58,11 @@ lazy_static::lazy_static! {
   .iter()
   .cloned()
   .collect();
+
+  static ref IMPORT_SPECIFIER_RE: Regex = Regex::new(r#"\sfrom\s+["']([^"']*)["']"#).unwrap();
 }
+
+const SUPPORTED_EXTENSIONS: &[&str] = &[".ts", ".tsx", ".js", ".jsx", ".mjs"];
 
 /// Category of self-generated diagnostic messages (those not coming from)
 /// TypeScript.
@@ -417,6 +423,143 @@ fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
   }
 }
 
+/// Iterate over the supported extensions, concatenating the extension on the
+/// specifier, returning the first specifier that is resolve-able, otherwise
+/// None if none match.
+fn check_specifier(
+  specifier: &str,
+  referrer: &ModuleSpecifier,
+  snapshot: &language_server::StateSnapshot,
+  maybe_import_map: &Option<ImportMap>,
+) -> Option<String> {
+  for ext in SUPPORTED_EXTENSIONS {
+    let specifier_with_ext = format!("{}{}", specifier, ext);
+    if let ResolvedDependency::Resolved(resolved_specifier) =
+      resolve_import(&specifier_with_ext, referrer, maybe_import_map)
+    {
+      if snapshot.documents.contains_key(&resolved_specifier)
+        || snapshot.sources.contains_key(&resolved_specifier)
+      {
+        return Some(specifier_with_ext);
+      }
+    }
+  }
+
+  None
+}
+
+/// For a set of tsc changes, can them for any that contain something that looks
+/// like an import and rewrite the import specifier to include the extension
+pub(crate) fn fix_ts_import_changes(
+  referrer: &ModuleSpecifier,
+  changes: &[tsc::FileTextChanges],
+  language_server: &language_server::Inner,
+) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
+  let mut r = Vec::new();
+  let snapshot = language_server.snapshot()?;
+  for change in changes {
+    let mut text_changes = Vec::new();
+    for text_change in &change.text_changes {
+      if let Some(captures) =
+        IMPORT_SPECIFIER_RE.captures(&text_change.new_text)
+      {
+        let specifier = captures
+          .get(1)
+          .ok_or_else(|| anyhow!("Missing capture."))?
+          .as_str();
+        if let Some(new_specifier) = check_specifier(
+          specifier,
+          referrer,
+          &snapshot,
+          &language_server.maybe_import_map,
+        ) {
+          let new_text =
+            text_change.new_text.replace(specifier, &new_specifier);
+          text_changes.push(tsc::TextChange {
+            span: text_change.span.clone(),
+            new_text,
+          });
+        } else {
+          text_changes.push(text_change.clone());
+        }
+      } else {
+        text_changes.push(text_change.clone());
+      }
+    }
+    r.push(tsc::FileTextChanges {
+      file_name: change.file_name.clone(),
+      text_changes,
+      is_new_file: change.is_new_file,
+    });
+  }
+  Ok(r)
+}
+
+/// Fix tsc import code actions so that the module specifier is correct for
+/// resolution by Deno (includes the extension).
+fn fix_ts_import_action(
+  referrer: &ModuleSpecifier,
+  action: &tsc::CodeFixAction,
+  language_server: &language_server::Inner,
+) -> Result<tsc::CodeFixAction, AnyError> {
+  if action.fix_name == "import" {
+    let change = action
+      .changes
+      .get(0)
+      .ok_or_else(|| anyhow!("Unexpected action changes."))?;
+    let text_change = change
+      .text_changes
+      .get(0)
+      .ok_or_else(|| anyhow!("Missing text change."))?;
+    if let Some(captures) = IMPORT_SPECIFIER_RE.captures(&text_change.new_text)
+    {
+      let specifier = captures
+        .get(1)
+        .ok_or_else(|| anyhow!("Missing capture."))?
+        .as_str();
+      let snapshot = language_server.snapshot()?;
+      if let Some(new_specifier) = check_specifier(
+        specifier,
+        referrer,
+        &snapshot,
+        &language_server.maybe_import_map,
+      ) {
+        let description = action.description.replace(specifier, &new_specifier);
+        let changes = action
+          .changes
+          .iter()
+          .map(|c| {
+            let text_changes = c
+              .text_changes
+              .iter()
+              .map(|tc| tsc::TextChange {
+                span: tc.span.clone(),
+                new_text: tc.new_text.replace(specifier, &new_specifier),
+              })
+              .collect();
+            tsc::FileTextChanges {
+              file_name: c.file_name.clone(),
+              text_changes,
+              is_new_file: c.is_new_file,
+            }
+          })
+          .collect();
+
+        return Ok(tsc::CodeFixAction {
+          description,
+          changes,
+          commands: None,
+          fix_name: action.fix_name.clone(),
+          fix_id: None,
+          fix_all_description: None,
+        });
+      }
+    }
+  }
+
+  Ok(action.clone())
+}
+
 /// Determines if two TypeScript diagnostic codes are effectively equivalent.
 fn is_equivalent_code(
   a: &Option<lsp::NumberOrString>,
@@ -547,6 +690,7 @@ impl CodeActionCollection {
   /// Add a TypeScript code fix action to the code actions collection.
   pub(crate) async fn add_ts_fix_action(
     &mut self,
+    specifier: &ModuleSpecifier,
     action: &tsc::CodeFixAction,
     diagnostic: &lsp::Diagnostic,
     language_server: &mut language_server::Inner,
@@ -564,6 +708,7 @@ impl CodeActionCollection {
         "The action returned from TypeScript is unsupported.",
       ));
     }
+    let action = fix_ts_import_action(specifier, action, language_server)?;
     let edit = ts_changes_to_edit(&action.changes, language_server).await?;
     let code_action = lsp::CodeAction {
       title: action.description.clone(),
