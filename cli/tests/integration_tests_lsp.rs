@@ -1426,6 +1426,57 @@ fn lsp_code_actions_deno_cache() {
 }
 
 #[test]
+fn lsp_code_actions_imports() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file00.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export const abc = \"abc\";\nexport const def = \"def\";\n"
+      }
+    }),
+  );
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file01.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "\nconsole.log(abc);\nconsole.log(def)\n"
+      }
+    }),
+  );
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeAction",
+      load_fixture("code_action_params_imports.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_action_response_imports.json"))
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "codeAction/resolve",
+      load_fixture("code_action_resolve_params_imports.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_action_resolve_response_imports.json"))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_code_actions_deadlock() {
   let mut client = init("initialize_params.json");
   client

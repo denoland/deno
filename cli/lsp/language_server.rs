@@ -29,6 +29,7 @@ use std::sync::Arc;
 use tokio::fs;
 
 use super::analysis;
+use super::analysis::fix_ts_import_changes;
 use super::analysis::ts_changes_to_edit;
 use super::analysis::CodeActionCollection;
 use super::analysis::CodeActionData;
@@ -964,7 +965,7 @@ impl Inner {
             };
           for action in actions {
             code_actions
-              .add_ts_fix_action(&action, diagnostic, self)
+              .add_ts_fix_action(&specifier, &action, diagnostic, self)
               .await
               .map_err(|err| {
                 error!("Unable to convert fix: {}", err);
@@ -1009,7 +1010,7 @@ impl Inner {
           LspError::invalid_params("The CodeAction's data is invalid.")
         })?;
       let req = tsc::RequestMethod::GetCombinedCodeFix((
-        code_action_data.specifier,
+        code_action_data.specifier.clone(),
         json!(code_action_data.fix_id.clone()),
       ));
       let combined_code_actions: tsc::CombinedCodeActions = self
@@ -1024,14 +1025,25 @@ impl Inner {
         error!("Deno does not support code actions with commands.");
         Err(LspError::invalid_request())
       } else {
+        let changes = if code_action_data.fix_id == "fixMissingImport" {
+          fix_ts_import_changes(
+            &code_action_data.specifier,
+            &combined_code_actions.changes,
+            self,
+          )
+          .map_err(|err| {
+            error!("Unable to remap changes: {}", err);
+            LspError::internal_error()
+          })?
+        } else {
+          combined_code_actions.changes.clone()
+        };
         let mut code_action = params.clone();
         code_action.edit =
-          ts_changes_to_edit(&combined_code_actions.changes, self)
-            .await
-            .map_err(|err| {
-              error!("Unable to convert changes to edits: {}", err);
-              LspError::internal_error()
-            })?;
+          ts_changes_to_edit(&changes, self).await.map_err(|err| {
+            error!("Unable to convert changes to edits: {}", err);
+            LspError::internal_error()
+          })?;
         Ok(code_action)
       }
     } else {
