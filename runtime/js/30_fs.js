@@ -315,7 +315,7 @@
     mtime,
   ) {
     core.opSync("op_utime_sync", {
-      path,
+      path: pathFromURL(path),
       atime: toUnixTimeFromEpoch(atime),
       mtime: toUnixTimeFromEpoch(mtime),
     });
@@ -327,7 +327,7 @@
     mtime,
   ) {
     await core.opAsync("op_utime_async", {
-      path,
+      path: pathFromURL(path),
       atime: toUnixTimeFromEpoch(atime),
       mtime: toUnixTimeFromEpoch(mtime),
     });
