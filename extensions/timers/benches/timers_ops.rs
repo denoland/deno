@@ -9,10 +9,12 @@ fn setup() -> Vec<Extension> {
     deno_timers::init::<deno_timers::NoTimersPermission>(),
     Extension::builder()
     .js(vec![
-      ("setup", r#"
-      const { opNow, setTimeout, handleTimerMacrotask } = globalThis.__bootstrap.timers;
-      Deno.core.setMacrotaskCallback(handleTimerMacrotask);
-      "#),
+      ("setup",
+        Box::new(|| Ok(r#"
+        const { opNow, setTimeout, handleTimerMacrotask } = globalThis.__bootstrap.timers;
+        Deno.core.setMacrotaskCallback(handleTimerMacrotask);
+        "#.to_owned())),
+      ),
     ])
     .state(|state| {
       state.put(deno_timers::NoTimersPermission{});
