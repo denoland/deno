@@ -1,0 +1,12 @@
+[WILDCARD][
+  {
+    specifier: "file:///[WILDCARD]/093_root.ts",
+    code: [WILDCARD],
+    map: '[WILDCARD]',
+    declaration: null
+  },
+  {
+    specifier: "https://deno.land/std@0.97.0/testing/asserts.ts",
+    error: 'Requires net access to "deno.land"[WILDCARD]'
+  }
+]

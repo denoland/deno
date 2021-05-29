@@ -1,4 +1,4 @@
-const { diagnostics, files } = await Deno.emit(
+const { diagnostics, modules } = await Deno.emit(
   "/main.ts",
   {
     sources: {
@@ -13,4 +13,4 @@ const { diagnostics, files } = await Deno.emit(
 );
 
 console.log(diagnostics);
-console.log(Object.keys(files).sort());
+console.log(modules);

@@ -11,6 +11,9 @@
 
 use crate::ast::Diagnostic;
 use crate::import_map::ImportMapError;
+use crate::module_graph::GraphError;
+use crate::specifier_handler::HandlerError;
+use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 
 fn get_import_map_error_class(_: &ImportMapError) -> &'static str {
@@ -21,6 +24,18 @@ fn get_diagnostic_class(_: &Diagnostic) -> &'static str {
   "SyntaxError"
 }
 
+fn get_graph_error_class(_: &GraphError) -> &'static str {
+  "TypeError"
+}
+
+fn get_handler_error_class(error: &HandlerError) -> &'static str {
+  match error {
+    HandlerError::FetchErrorWithLocation(error, ..) => {
+      get_error_class_name(error)
+    }
+  }
+}
+
 pub(crate) fn get_error_class_name(e: &AnyError) -> &'static str {
   deno_runtime::errors::get_error_class_name(e)
     .or_else(|| {
@@ -28,6 +43,11 @@ pub(crate) fn get_error_class_name(e: &AnyError) -> &'static str {
         .map(get_import_map_error_class)
     })
     .or_else(|| e.downcast_ref::<Diagnostic>().map(get_diagnostic_class))
+    .or_else(|| e.downcast_ref::<GraphError>().map(get_graph_error_class))
+    .or_else(|| {
+      e.downcast_ref::<HandlerError>()
+        .map(get_handler_error_class)
+    })
     .unwrap_or_else(|| {
       panic!(
         "Error '{}' contains boxed error of unknown type:{}",
@@ -37,4 +57,8 @@ pub(crate) fn get_error_class_name(e: &AnyError) -> &'static str {
           .collect::<String>()
       );
     })
+}
+
+pub(crate) fn derive_custom_error(error: &AnyError) -> AnyError {
+  custom_error(get_error_class_name(error), error.to_string())
 }
