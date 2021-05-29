@@ -444,11 +444,6 @@ declare namespace Deno {
    * The options for `Deno.emit()` API.
    */
   export interface EmitOptions {
-    /** Indicate that the source code should be emitted to a single file
-     * JavaScript bundle that is a single ES module (`"module"`) or a single
-     * file self contained script we executes in an immediately invoked function
-     * when loaded (`"classic"`). */
-    bundle?: "module" | "classic";
     /** If `true` then the sources will be typed checked, returning any
      * diagnostic errors in the result.  If `false` type checking will be
      * skipped.  Defaults to `true`.
@@ -487,12 +482,23 @@ declare namespace Deno {
      * Can be used with `Deno.formatDiagnostics` to display a user
      * friendly string. */
     diagnostics: Diagnostic[];
-    /** Any emitted files.  If bundled, then the JavaScript will have the
-     * key of `deno:///bundle.js` with an optional map (based on
-     * `compilerOptions`) in `deno:///bundle.js.map`. */
-    files: Record<string, string>;
+    /** Module entries containing transpiled code, source maps, declarations or
+     * errors. */
+    modules: Array<
+      {
+        specifier: string;
+        code: string;
+        map: string | null;
+        declaration: string | null;
+      } | {
+        specifier: string;
+        // TODO(nayeemrmn): We could upgrade this to `Error` by sending the
+        // class and message from Rust and reconstructing it in JS.
+        error: string;
+      }
+    >;
     /** An optional array of any compiler options that were ignored by Deno. */
-    ignoredOptions?: string[];
+    ignoredOptions: string[] | null;
     /** An array of internal statistics related to the emit, for diagnostic
      * purposes. */
     stats: Array<[string, number]>;
@@ -524,6 +530,49 @@ declare namespace Deno {
     rootSpecifier: string | URL,
     options?: EmitOptions,
   ): Promise<EmitResult>;
+
+  /**
+   * **UNSTABLE**: new API, yet to be vetted.
+   *
+   * The options for `Deno.emitBundle()` API.
+   */
+  export interface EmitBundleOptions extends EmitOptions {
+    /** Indicate that the source code should be emitted to a single file
+     * JavaScript bundle that is a single ES module (default: `"module"`) or a
+     * single file self contained script we executes in an immediately invoked
+     * function when loaded (`"classic"`). */
+    type?: "module" | "classic";
+  }
+
+  /**
+   * **UNSTABLE**: new API, yet to be vetted.
+   *
+   * The result of `Deno.emitBundle()` API.
+   */
+  export interface EmitBundleResult {
+    /** Diagnostic messages returned from the type checker (`tsc`). */
+    diagnostics: Diagnostic[];
+    /** The transpiled JavaScript bundle. */
+    code: string;
+    /** An optional source map. */
+    map: string | null;
+    /** An optional array of any compiler options that were ignored by Deno. */
+    ignoredOptions: string[] | null;
+    /** An array of internal statistics related to the emit, for diagnostic
+     * purposes. */
+    stats: Array<[string, number]>;
+  }
+
+  /**
+   * **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Similar to `Deno.emit()`, but the output is bundled. Choose between ES
+   * module and classic script format using the `type` option.
+   */
+  export function emitBundle(
+    rootSpecifier: string | URL,
+    options?: EmitBundleOptions,
+  ): Promise<EmitBundleResult>;
 
   /** **UNSTABLE**: Should not have same name as `window.location` type. */
   interface Location {

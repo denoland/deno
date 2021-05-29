@@ -34,10 +34,10 @@ pub type FetchFuture = Pin<
 
 /// A group of errors that represent errors that can occur with an
 /// an implementation of `SpecifierHandler`.
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug)]
 pub enum HandlerError {
   /// A fetch error, where we have a location associated with it.
-  FetchErrorWithLocation(String, Location),
+  FetchErrorWithLocation(AnyError, Location),
 }
 
 impl fmt::Display for HandlerError {
@@ -294,8 +294,7 @@ impl SpecifierHandler for FetchHandler {
             if !location.specifier.contains("$deno$") {
               (
                 requested_specifier.clone(),
-                HandlerError::FetchErrorWithLocation(err.to_string(), location)
-                  .into(),
+                HandlerError::FetchErrorWithLocation(err, location).into(),
               )
             } else {
               (requested_specifier.clone(), err)

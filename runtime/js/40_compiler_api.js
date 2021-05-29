@@ -9,7 +9,6 @@
   const core = window.Deno.core;
   const util = window.__bootstrap.util;
   const {
-    StringPrototypeMatch,
     PromiseReject,
     TypeError,
   } = window.__bootstrap.primordials;
@@ -22,7 +21,6 @@
 
   /**
    * @typedef {object} OpEmitRequest
-   * @property {"module" | "classic"=} bundle
    * @property {boolean=} check
    * @property {Record<string, any>=} compilerOptions
    * @property {ImportMap=} importMap
@@ -34,7 +32,7 @@
   /**
    * @typedef OpEmitResponse
    * @property {any[]} diagnostics
-   * @property {Record<string, string>} files
+   * @property {Array<{ specifier: string; code: string; map: string | null; declaration: string | null; } | { specifier: string; error: string; }>} modules
    * @property {string[]=} ignoredOptions
    * @property {Array<[string, number]>} stats
    */
@@ -45,19 +43,6 @@
    */
   function opEmit(request) {
     return core.opAsync("op_emit", request);
-  }
-
-  /**
-   * @param {string} specifier
-   * @returns {string}
-   */
-  function checkRelative(specifier) {
-    return StringPrototypeMatch(
-        specifier,
-        /^([\.\/\\]|https?:\/{2}|file:\/{2})/,
-      )
-      ? specifier
-      : `./${specifier}`;
   }
 
   /**
@@ -85,13 +70,24 @@
     if (!(typeof rootSpecifier === "string")) {
       rootSpecifier = rootSpecifier.toString();
     }
-    if (!options.sources) {
-      rootSpecifier = checkRelative(rootSpecifier);
-    }
     return opEmit({ rootSpecifier, ...options });
+  }
+
+  function emitBundle(rootSpecifier, options = {}) {
+    util.log(`Deno.emit`, { rootSpecifier });
+    if (!rootSpecifier) {
+      return Promise.reject(
+        new TypeError("A root specifier must be supplied."),
+      );
+    }
+    if (!(typeof rootSpecifier === "string")) {
+      rootSpecifier = rootSpecifier.toString();
+    }
+    return core.opAsync("op_emit_bundle", { rootSpecifier, ...options });
   }
 
   window.__bootstrap.compilerApi = {
     emit,
+    emitBundle,
   };
 })(this);

@@ -1,2 +1,6 @@
-[WILDCARD]error: Uncaught (in promise) PermissionDenied: Requires read access to "[WILDCARD]001_hello.js", run again with the --allow-read flag
-[WILDCARD]
+[WILDCARD][
+  {
+    specifier: "file:///[WILDCARD]/001_hello.js",
+    error: 'Requires read access to "[WILDCARD]001_hello.js"[WILDCARD]'
+  }
+]

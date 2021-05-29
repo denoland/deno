@@ -1,5 +1,5 @@
-const { files } = await Deno.emit("/mod.ts", {
-  bundle: "classic",
+const { code } = await Deno.emitBundle("/mod.ts", {
+  type: "classic",
   sources: {
     "/mod.ts": `import { hello } from "/hello.ts"; console.log(hello);`,
     "/hello.ts": `export const hello: string = "Hello, Compiler API!"`,
@@ -9,4 +9,4 @@ const { files } = await Deno.emit("/mod.ts", {
   },
 });
 
-eval(files["deno:///bundle.js"]);
+eval(code);

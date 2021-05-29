@@ -267,7 +267,6 @@ itest!(_079_location_authentication {
 itest!(_080_deno_emit_permissions {
   args: "run --unstable 080_deno_emit_permissions.ts",
   output: "080_deno_emit_permissions.ts.out",
-  exit_code: 1,
 });
 
 itest!(_081_location_relative_fetch_redirect {
@@ -355,6 +354,22 @@ itest!(_092_import_map_unmapped_bare_specifier {
   args: "run --import-map import_maps/import_map.json 092_import_map_unmapped_bare_specifier.ts",
   output: "092_import_map_unmapped_bare_specifier.ts.out",
   exit_code: 1,
+});
+
+itest!(_093_emit_permission_error {
+  args: "run --unstable --allow-read 093_emit_permission_error.ts",
+  output: "093_emit_permission_error.ts.out",
+});
+
+itest!(_094_emit_bundle_permission_error {
+  args: "run --unstable --allow-read 094_emit_bundle_permission_error.ts",
+  output: "094_emit_bundle_permission_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(_096_emit_with_bare_import {
+  args: "run --unstable --allow-read 096_emit_with_bare_import.ts",
+  output: "096_emit_with_bare_import.ts.out",
 });
 
 itest!(js_import_detect {

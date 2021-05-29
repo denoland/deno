@@ -2,7 +2,9 @@
 
 use crate::import_map::ImportMap;
 use crate::module_graph::BundleType;
+use crate::module_graph::EmitBundleOptions;
 use crate::module_graph::EmitOptions;
+use crate::module_graph::Graph;
 use crate::module_graph::GraphBuilder;
 use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
@@ -28,20 +30,12 @@ use std::sync::Arc;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_async(rt, "op_emit", op_emit);
-}
-
-#[derive(Debug, Deserialize)]
-enum RuntimeBundleType {
-  #[serde(rename = "module")]
-  Module,
-  #[serde(rename = "classic")]
-  Classic,
+  super::reg_async(rt, "op_emit_bundle", op_emit_bundle);
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct EmitArgs {
-  bundle: Option<RuntimeBundleType>,
   check: Option<bool>,
   compiler_options: Option<HashMap<String, Value>>,
   import_map: Option<Value>,
@@ -50,13 +44,19 @@ struct EmitArgs {
   sources: Option<HashMap<String, String>>,
 }
 
-async fn op_emit(
-  state: Rc<RefCell<OpState>>,
-  args: Value,
-  _: (),
-) -> Result<Value, AnyError> {
-  deno_runtime::ops::check_unstable2(&state, "Deno.emit");
-  let args: EmitArgs = serde_json::from_value(args)?;
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EmitBundleArgs {
+  #[serde(flatten)]
+  emit_args: EmitArgs,
+  #[serde(rename = "type")]
+  bundle_type: Option<BundleType>,
+}
+
+async fn prepare_emit(
+  state: &Rc<RefCell<OpState>>,
+  args: EmitArgs,
+) -> Result<(Graph, EmitOptions), AnyError> {
   let root_specifier = args.root_specifier;
   let program_state = state.borrow().borrow::<Arc<ProgramState>>().clone();
   let mut runtime_permissions = {
@@ -111,26 +111,50 @@ async fn op_emit(
   builder
     .analyze_compiler_options(&args.compiler_options)
     .await?;
-  let bundle_type = match args.bundle {
-    Some(RuntimeBundleType::Module) => BundleType::Module,
-    Some(RuntimeBundleType::Classic) => BundleType::Classic,
-    None => BundleType::None,
-  };
-  let graph = builder.get_graph();
-  let debug = program_state.flags.log_level == Some(log::Level::Debug);
-  let graph_errors = graph.get_errors();
-  let (files, mut result_info) = graph.emit(EmitOptions {
-    bundle_type,
-    check: args.check.unwrap_or(true),
-    debug,
-    maybe_user_config: args.compiler_options,
-  })?;
-  result_info.diagnostics.extend_graph_errors(graph_errors);
+  Ok((
+    builder.get_graph(),
+    EmitOptions {
+      check: args.check.unwrap_or(true),
+      debug: program_state.flags.log_level == Some(log::Level::Debug),
+      maybe_user_config: args.compiler_options,
+    },
+  ))
+}
 
+async fn op_emit(
+  state: Rc<RefCell<OpState>>,
+  args: Value,
+  _: (),
+) -> Result<Value, AnyError> {
+  deno_runtime::ops::check_unstable2(&state, "Deno.emit");
+  let args: EmitArgs = serde_json::from_value(args)?;
+  let (graph, emit_options) = prepare_emit(&state, args).await?;
+  let result = graph.emit(emit_options)?;
   Ok(json!({
-    "diagnostics": result_info.diagnostics,
-    "files": files,
-    "ignoredOptions": result_info.maybe_ignored_options,
-    "stats": result_info.stats,
+    "diagnostics": result.info.diagnostics,
+    "modules": result.modules,
+    "ignoredOptions": result.info.maybe_ignored_options,
+    "stats": result.info.stats,
+  }))
+}
+
+async fn op_emit_bundle(
+  state: Rc<RefCell<OpState>>,
+  args: Value,
+  _: (),
+) -> Result<Value, AnyError> {
+  deno_runtime::ops::check_unstable2(&state, "Deno.emitBundle");
+  let args: EmitBundleArgs = serde_json::from_value(args)?;
+  let (graph, emit_options) = prepare_emit(&state, args.emit_args).await?;
+  let result = graph.emit_bundle(EmitBundleOptions {
+    emit_options,
+    bundle_type: args.bundle_type.unwrap_or(BundleType::Module),
+  })?;
+  Ok(json!({
+    "diagnostics": result.info.diagnostics,
+    "code": result.code,
+    "map": result.map,
+    "ignoredOptions": result.info.maybe_ignored_options,
+    "stats": result.info.stats,
   }))
 }
