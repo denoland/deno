@@ -14,23 +14,7 @@
         "SHA-1 with long source data and altered buffer after call",
         "SHA-256 with long source data and altered buffer after call",
         "SHA-384 with long source data and altered buffer after call",
-        "SHA-512 with long source data and altered buffer after call",
-        "AES-GCM with empty",
-        "RSA-OAEP with empty",
-        "PBKDF2 with empty",
-        "AES-KW with empty",
-        "AES-GCM with short",
-        "RSA-OAEP with short",
-        "PBKDF2 with short",
-        "AES-KW with short",
-        "AES-GCM with medium",
-        "RSA-OAEP with medium",
-        "PBKDF2 with medium",
-        "AES-KW with medium",
-        "AES-GCM with long",
-        "RSA-OAEP with long",
-        "PBKDF2 with long",
-        "AES-KW with long"
+        "SHA-512 with long source data and altered buffer after call"
       ]
     }
   },

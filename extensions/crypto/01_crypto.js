@@ -42,7 +42,7 @@
   }
 
   const subtle = {
-    digest(algorithm, data) {
+    async digest(algorithm, data) {
       if (typeof algorithm === "string") {
         algorithm = { name: algorithm };
        } else if (typeof algorithm === "object" && algorithm !== null) {
@@ -80,7 +80,7 @@
         );
       }
 
-      return core.opAsync(
+      return await core.opAsync(
         "op_crypto_subtle_digest",
         algorithmId,
         data,
