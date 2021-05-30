@@ -73,8 +73,9 @@ pub async fn op_crypto_subtle_digest(
 
   let input = data.ok_or_else(null_opbuf)?;
   let output = tokio::task::spawn(async move {
-      digest::digest(algorithm, &input).as_ref().to_vec().into()
-  }).await?;
+    digest::digest(algorithm, &input).as_ref().to_vec().into()
+  })
+  .await?;
 
   Ok(output)
 }
