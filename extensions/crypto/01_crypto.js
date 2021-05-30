@@ -41,10 +41,38 @@
     return arrayBufferView;
   }
 
+  const subtle = {
+    digest(algorithm, data) {
+      const digestAlgorithms = [
+        "SHA-1",
+        "SHA-256",
+        "SHA-384",
+        "SHA-512",
+      ];
+
+      const normalizedAlgorithm = algorithm.toUpperCase();
+      const algorithmId = digestAlgorithms.indexOf(normalizedAlgorithm);
+      if (algorithmId == -1) {
+        throw new DOMException(
+          "Unrecognized algorithm name",
+          "NotSupportedError",
+        );
+      }
+
+      return core.opAsync(
+        "op_crypto_subtle_digest",
+        algorithmId,
+        data,
+      );
+    },
+  };
+
   window.crypto = {
     getRandomValues,
+    subtle,
   };
   window.__bootstrap.crypto = {
     getRandomValues,
+    subtle,
   };
 })(this);

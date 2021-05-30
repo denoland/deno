@@ -645,6 +645,7 @@ version = "0.21.0"
 dependencies = [
  "deno_core",
  "rand 0.8.3",
+ "ring",
 ]
 
 [[package]]
