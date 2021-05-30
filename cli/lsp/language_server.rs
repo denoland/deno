@@ -2,7 +2,6 @@
 
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -10,7 +9,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
-use dprint_plugin_typescript as dprint;
 use log::error;
 use log::info;
 use log::warn;
@@ -30,14 +28,8 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::fs;
 
-use crate::config_file::ConfigFile;
-use crate::config_file::TsConfig;
-use crate::deno_dir;
-use crate::import_map::ImportMap;
-use crate::logger;
-use crate::media_type::MediaType;
-
 use super::analysis;
+use super::analysis::fix_ts_import_changes;
 use super::analysis::ts_changes_to_edit;
 use super::analysis::CodeActionCollection;
 use super::analysis::CodeActionData;
@@ -47,6 +39,7 @@ use super::analysis::ResolvedDependency;
 use super::capabilities;
 use super::completions;
 use super::config::Config;
+use super::config::ConfigSnapshot;
 use super::config::SETTINGS_SECTION;
 use super::diagnostics;
 use super::diagnostics::DiagnosticSource;
@@ -62,6 +55,15 @@ use super::tsc::AssetDocument;
 use super::tsc::Assets;
 use super::tsc::TsServer;
 use super::urls;
+use crate::config_file::ConfigFile;
+use crate::config_file::TsConfig;
+use crate::deno_dir;
+use crate::import_map::ImportMap;
+use crate::logger;
+use crate::lsp::diagnostics::is_diagnosable;
+use crate::media_type::MediaType;
+use crate::tools::fmt::format_file;
+use crate::tools::fmt::get_typescript_config;
 
 pub const REGISTRIES_PATH: &str = "registries";
 const SOURCES_PATH: &str = "deps";
@@ -77,7 +79,7 @@ pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
 #[derive(Debug, Clone, Default)]
 pub struct StateSnapshot {
   pub assets: Assets,
-  pub config: Config,
+  pub config: ConfigSnapshot,
   pub documents: DocumentCache,
   pub module_registries: registries::ModuleRegistry,
   pub performance: Performance,
@@ -141,11 +143,12 @@ impl Inner {
     let ts_server = Arc::new(TsServer::new());
     let performance = Performance::default();
     let diagnostics_server = diagnostics::DiagnosticsServer::new();
+    let config = Config::new(client.clone());
 
     Self {
       assets: Default::default(),
       client,
-      config: Default::default(),
+      config,
       diagnostics_server,
       documents: Default::default(),
       maybe_config_uri: Default::default(),
@@ -282,7 +285,7 @@ impl Inner {
       let navigation_tree: tsc::NavigationTree = self
         .ts_server
         .request(
-          self.snapshot(),
+          self.snapshot()?,
           tsc::RequestMethod::GetNavigationTree(specifier.clone()),
         )
         .await?;
@@ -294,16 +297,19 @@ impl Inner {
     }
   }
 
-  pub(crate) fn snapshot(&self) -> StateSnapshot {
-    StateSnapshot {
+  pub(crate) fn snapshot(&self) -> LspResult<StateSnapshot> {
+    Ok(StateSnapshot {
       assets: self.assets.clone(),
-      config: self.config.clone(),
+      config: self.config.snapshot().map_err(|err| {
+        error!("{}", err);
+        LspError::internal_error()
+      })?,
       documents: self.documents.clone(),
       module_registries: self.module_registries.clone(),
       performance: self.performance.clone(),
       sources: self.sources.clone(),
       url_map: self.url_map.clone(),
-    }
+    })
   }
 
   pub async fn update_import_map(&mut self) -> Result<(), AnyError> {
@@ -311,7 +317,7 @@ impl Inner {
     let (maybe_import_map, maybe_root_uri) = {
       let config = &self.config;
       (
-        config.workspace_settings.import_map.clone(),
+        config.get_workspace_settings().import_map,
         config.root_uri.clone(),
       )
     };
@@ -357,10 +363,11 @@ impl Inner {
   }
 
   pub fn update_debug_flag(&self) -> bool {
+    let internal_debug = self.config.get_workspace_settings().internal_debug;
     logger::LSP_DEBUG_FLAG
       .compare_exchange(
-        !self.config.workspace_settings.internal_debug,
-        self.config.workspace_settings.internal_debug,
+        !internal_debug,
+        internal_debug,
         Ordering::Acquire,
         Ordering::Relaxed,
       )
@@ -369,8 +376,13 @@ impl Inner {
 
   async fn update_registries(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_registries", None::<()>);
-    for (registry, enabled) in
-      self.config.workspace_settings.suggest.imports.hosts.iter()
+    for (registry, enabled) in self
+      .config
+      .get_workspace_settings()
+      .suggest
+      .imports
+      .hosts
+      .iter()
     {
       if *enabled {
         info!("Enabling auto complete registry for: {}", registry);
@@ -401,16 +413,14 @@ impl Inner {
     }));
     let (maybe_config, maybe_root_uri) = {
       let config = &self.config;
-      if config.workspace_settings.unstable {
+      let workspace_settings = config.get_workspace_settings();
+      if workspace_settings.unstable {
         let unstable_libs = json!({
           "lib": ["deno.ns", "deno.window", "deno.unstable"]
         });
         tsconfig.merge(&unstable_libs);
       }
-      (
-        config.workspace_settings.config.clone(),
-        config.root_uri.clone(),
-      )
+      (workspace_settings.config, config.root_uri.clone())
     };
     if let Some(config_str) = &maybe_config {
       info!("Updating TypeScript configuration from: \"{}\"", config_str);
@@ -431,8 +441,7 @@ impl Inner {
         ))
       }?;
 
-      let config_file = ConfigFile::read(config_url.as_str())
-        .context("Failed to load configuration file")?;
+      let config_file = ConfigFile::read(config_url.path())?;
       let (value, maybe_ignored_options) = config_file.as_compiler_options()?;
       tsconfig.merge(&value);
       self.maybe_config_uri = Some(config_url);
@@ -444,7 +453,7 @@ impl Inner {
     }
     let _ok: bool = self
       .ts_server
-      .request(self.snapshot(), tsc::RequestMethod::Configure(tsconfig))
+      .request(self.snapshot()?, tsc::RequestMethod::Configure(tsconfig))
       .await?;
     self.performance.measure(mark);
     Ok(())
@@ -465,7 +474,7 @@ impl Inner {
       return Ok(maybe_asset.clone());
     } else {
       let maybe_asset =
-        tsc::get_asset(&specifier, &self.ts_server, self.snapshot()).await?;
+        tsc::get_asset(&specifier, &self.ts_server, self.snapshot()?).await?;
       self.assets.insert(specifier.clone(), maybe_asset.clone());
       Ok(maybe_asset)
     }
@@ -508,7 +517,10 @@ impl Inner {
       let config = &mut self.config;
       config.root_uri = params.root_uri;
       if let Some(value) = params.initialization_options {
-        config.update_workspace(value)?;
+        config.set_workspace_settings(value).map_err(|err| {
+          error!("Cannot set workspace settings: {}", err);
+          LspError::internal_error()
+        })?;
       }
       config.update_capabilities(&params.capabilities);
     }
@@ -521,7 +533,7 @@ impl Inner {
     if capabilities.code_action_provider.is_some() {
       let fixable_diagnostics: Vec<String> = self
         .ts_server
-        .request(self.snapshot(), tsc::RequestMethod::GetSupportedCodeFixes)
+        .request(self.snapshot()?, tsc::RequestMethod::GetSupportedCodeFixes)
         .await
         .map_err(|err| {
           error!("Unable to get fixable diagnostics: {}", err);
@@ -593,27 +605,13 @@ impl Inner {
     let mark = self.performance.mark("did_open", Some(&params));
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
 
-    // we only query the individual resource file if the client supports it
-    // TODO(@kitsonk) workaround https://github.com/denoland/deno/issues/10603
-    // if self.config.client_capabilities.workspace_configuration
-    //   && !self.config.contains(&specifier)
-    // {
-    //   if let Ok(value) = self
-    //     .client
-    //     .configuration(vec![ConfigurationItem {
-    //       scope_uri: Some(params.text_document.uri.clone()),
-    //       section: Some(SETTINGS_SECTION.to_string()),
-    //     }])
-    //     .await
-    //   {
-    //     if let Err(err) = self
-    //       .config
-    //       .update_specifier(specifier.clone(), value[0].clone())
-    //     {
-    //       warn!("Error updating specifier configuration: {}", err);
-    //     }
-    //   }
-    // }
+    if let Err(err) = self
+      .config
+      .update_specifier_settings(&specifier, &params.text_document.uri)
+      .await
+    {
+      error!("Error updating specifier settings: {}", err);
+    }
 
     if params.text_document.uri.scheme() == "deno" {
       // we can ignore virtual text documents opening, as they don't need to
@@ -680,32 +678,8 @@ impl Inner {
       .mark("did_change_configuration", Some(&params));
 
     if self.config.client_capabilities.workspace_configuration {
-      let specifiers: Vec<ModuleSpecifier> =
-        self.config.specifier_settings.keys().cloned().collect();
-      let mut snapshot = self.snapshot();
-      let mut config_items = specifiers
-        .iter()
-        .map(|s| ConfigurationItem {
-          scope_uri: Some(snapshot.url_map.normalize_specifier(s).unwrap()),
-          section: Some(SETTINGS_SECTION.to_string()),
-        })
-        .collect();
-      let mut items = vec![ConfigurationItem {
-        scope_uri: None,
-        section: Some(SETTINGS_SECTION.to_string()),
-      }];
-      items.append(&mut config_items);
-      if let Ok(configs) = self.client.configuration(items).await {
-        for (i, value) in configs.into_iter().enumerate() {
-          if let Err(err) = match i {
-            0 => self.config.update_workspace(value),
-            _ => self
-              .config
-              .update_specifier(specifiers[i - 1].clone(), value),
-          } {
-            error!("failed to update settings: {}", err);
-          }
-        }
+      if let Err(err) = self.config.update_workspace_settings().await {
+        error!("Error updating workspace settings: {}", err);
       }
     } else if let Some(config) = params
       .settings
@@ -714,7 +688,7 @@ impl Inner {
       .flatten()
       .cloned()
     {
-      if let Err(err) = self.config.update_workspace(config) {
+      if let Err(err) = self.config.set_workspace_settings(config) {
         error!("failed to update settings: {}", err);
       }
     }
@@ -785,6 +759,11 @@ impl Inner {
     if !self.config.specifier_enabled(&specifier) {
       return Ok(None);
     }
+    let media_type = MediaType::from(&specifier);
+    if !is_diagnosable(media_type) {
+      return Ok(None);
+    }
+
     let mark = self.performance.mark("document_symbol", Some(&params));
 
     let line_index =
@@ -800,7 +779,7 @@ impl Inner {
     let req = tsc::RequestMethod::GetNavigationTree(specifier);
     let navigation_tree: tsc::NavigationTree = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -845,12 +824,8 @@ impl Inner {
 
     // TODO(lucacasonato): handle error properly
     let text_edits = tokio::task::spawn_blocking(move || {
-      let config = dprint::configuration::ConfigurationBuilder::new()
-        .deno()
-        .build();
-      // TODO(@kitsonk) this could be handled better in `cli/tools/fmt.rs` in the
-      // future.
-      match dprint::format_text(&file_path, &file_text, &config) {
+      let config = get_typescript_config();
+      match format_file(&file_path, &file_text, config) {
         Ok(new_text) => {
           Some(text::get_edits(&file_text, &new_text, line_index))
         }
@@ -900,7 +875,7 @@ impl Inner {
     ));
     let maybe_quick_info: Option<tsc::QuickInfo> = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Unable to get quick info: {}", err);
@@ -977,7 +952,7 @@ impl Inner {
             codes,
           ));
           let actions: Vec<tsc::CodeFixAction> =
-            match self.ts_server.request(self.snapshot(), req).await {
+            match self.ts_server.request(self.snapshot()?, req).await {
               Ok(items) => items,
               Err(err) => {
                 // sometimes tsc reports errors when retrieving code actions
@@ -990,7 +965,7 @@ impl Inner {
             };
           for action in actions {
             code_actions
-              .add_ts_fix_action(&action, diagnostic, self)
+              .add_ts_fix_action(&specifier, &action, diagnostic, self)
               .await
               .map_err(|err| {
                 error!("Unable to convert fix: {}", err);
@@ -1035,12 +1010,12 @@ impl Inner {
           LspError::invalid_params("The CodeAction's data is invalid.")
         })?;
       let req = tsc::RequestMethod::GetCombinedCodeFix((
-        code_action_data.specifier,
+        code_action_data.specifier.clone(),
         json!(code_action_data.fix_id.clone()),
       ));
       let combined_code_actions: tsc::CombinedCodeActions = self
         .ts_server
-        .request(self.snapshot(), req)
+        .request(self.snapshot()?, req)
         .await
         .map_err(|err| {
           error!("Unable to get combined fix from TypeScript: {}", err);
@@ -1050,14 +1025,25 @@ impl Inner {
         error!("Deno does not support code actions with commands.");
         Err(LspError::invalid_request())
       } else {
+        let changes = if code_action_data.fix_id == "fixMissingImport" {
+          fix_ts_import_changes(
+            &code_action_data.specifier,
+            &combined_code_actions.changes,
+            self,
+          )
+          .map_err(|err| {
+            error!("Unable to remap changes: {}", err);
+            LspError::internal_error()
+          })?
+        } else {
+          combined_code_actions.changes.clone()
+        };
         let mut code_action = params.clone();
         code_action.edit =
-          ts_changes_to_edit(&combined_code_actions.changes, self)
-            .await
-            .map_err(|err| {
-              error!("Unable to convert changes to edits: {}", err);
-              LspError::internal_error()
-            })?;
+          ts_changes_to_edit(&changes, self).await.map_err(|err| {
+            error!("Unable to convert changes to edits: {}", err);
+            LspError::internal_error()
+          })?;
         Ok(code_action)
       }
     } else {
@@ -1074,7 +1060,7 @@ impl Inner {
   ) -> LspResult<Option<Vec<CodeLens>>> {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
     if !self.config.specifier_enabled(&specifier)
-      || !self.config.workspace_settings.enabled_code_lens()
+      || !self.config.get_workspace_settings().enabled_code_lens()
     {
       return Ok(None);
     }
@@ -1093,9 +1079,10 @@ impl Inner {
     let cl = Rc::new(RefCell::new(Vec::new()));
     navigation_tree.walk(&|i, mp| {
       let mut code_lenses = cl.borrow_mut();
+      let workspace_settings = self.config.get_workspace_settings();
 
       // TSC Implementations Code Lens
-      if self.config.workspace_settings.code_lens.implementations {
+      if workspace_settings.code_lens.implementations {
         let source = CodeLensSource::Implementations;
         match i.kind {
           tsc::ScriptElementKind::InterfaceElement => {
@@ -1119,7 +1106,7 @@ impl Inner {
       }
 
       // TSC References Code Lens
-      if self.config.workspace_settings.code_lens.references {
+      if workspace_settings.code_lens.references {
         let source = CodeLensSource::References;
         if let Some(parent) = &mp {
           if parent.kind == tsc::ScriptElementKind::EnumElement {
@@ -1128,12 +1115,7 @@ impl Inner {
         }
         match i.kind {
           tsc::ScriptElementKind::FunctionElement => {
-            if self
-              .config
-              .workspace_settings
-              .code_lens
-              .references_all_functions
-            {
+            if workspace_settings.code_lens.references_all_functions {
               code_lenses.push(i.to_code_lens(
                 &line_index,
                 &specifier,
@@ -1214,12 +1196,14 @@ impl Inner {
             line_index.offset_tsc(params.range.start)?,
           ));
           let maybe_implementations: Option<Vec<tsc::ImplementationLocation>> =
-            self.ts_server.request(self.snapshot(), req).await.map_err(
-              |err| {
+            self
+              .ts_server
+              .request(self.snapshot()?, req)
+              .await
+              .map_err(|err| {
                 error!("Error processing TypeScript request: {}", err);
                 LspError::internal_error()
-              },
-            )?;
+              })?;
           if let Some(implementations) = maybe_implementations {
             let mut locations = Vec::new();
             for implementation in implementations {
@@ -1292,13 +1276,14 @@ impl Inner {
             code_lens_data.specifier.clone(),
             line_index.offset_tsc(params.range.start)?,
           ));
-          let maybe_references: Option<Vec<tsc::ReferenceEntry>> =
-            self.ts_server.request(self.snapshot(), req).await.map_err(
-              |err| {
-                error!("Error processing TypeScript request: {}", err);
-                LspError::internal_error()
-              },
-            )?;
+          let maybe_references: Option<Vec<tsc::ReferenceEntry>> = self
+            .ts_server
+            .request(self.snapshot()?, req)
+            .await
+            .map_err(|err| {
+              error!("Error processing TypeScript request: {}", err);
+              LspError::internal_error()
+            })?;
           if let Some(references) = maybe_references {
             let mut locations = Vec::new();
             for reference in references {
@@ -1408,7 +1393,7 @@ impl Inner {
     ));
     let maybe_document_highlights: Option<Vec<tsc::DocumentHighlights>> = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Unable to get document highlights from TypeScript: {}", err);
@@ -1455,7 +1440,7 @@ impl Inner {
     ));
     let maybe_references: Option<Vec<tsc::ReferenceEntry>> = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Unable to get references from TypeScript: {}", err);
@@ -1510,7 +1495,7 @@ impl Inner {
     ));
     let maybe_definition: Option<tsc::DefinitionInfoAndBoundSpan> = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Unable to get definition from TypeScript: {}", err);
@@ -1545,7 +1530,7 @@ impl Inner {
     let response = if let Some(response) = completions::get_import_completions(
       &specifier,
       &params.text_document_position.position,
-      &self.snapshot(),
+      &self.snapshot()?,
     )
     .await
     {
@@ -1580,7 +1565,7 @@ impl Inner {
       ));
       let maybe_completion_info: Option<tsc::CompletionInfo> = self
         .ts_server
-        .request(self.snapshot(), req)
+        .request(self.snapshot()?, req)
         .await
         .map_err(|err| {
           error!("Unable to get completion info from TypeScript: {}", err);
@@ -1590,7 +1575,7 @@ impl Inner {
       if let Some(completions) = maybe_completion_info {
         let results = completions.as_completion_response(
           &line_index,
-          &self.config.workspace_settings.suggest,
+          &self.config.get_workspace_settings().suggest,
           &specifier,
           position,
         );
@@ -1618,13 +1603,14 @@ impl Inner {
         })?;
       if let Some(data) = data.tsc {
         let req = tsc::RequestMethod::GetCompletionDetails(data.into());
-        let maybe_completion_info: Option<tsc::CompletionEntryDetails> =
-          self.ts_server.request(self.snapshot(), req).await.map_err(
-            |err| {
-              error!("Unable to get completion info from TypeScript: {}", err);
-              LspError::internal_error()
-            },
-          )?;
+        let maybe_completion_info: Option<tsc::CompletionEntryDetails> = self
+          .ts_server
+          .request(self.snapshot()?, req)
+          .await
+          .map_err(|err| {
+            error!("Unable to get completion info from TypeScript: {}", err);
+            LspError::internal_error()
+          })?;
         if let Some(completion_info) = maybe_completion_info {
           completion_info.as_completion_item(&params)
         } else {
@@ -1670,7 +1656,7 @@ impl Inner {
     ));
     let maybe_implementations: Option<Vec<tsc::ImplementationLocation>> = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -1716,7 +1702,7 @@ impl Inner {
     let req = tsc::RequestMethod::GetOutliningSpans(specifier.clone());
     let outlining_spans: Vec<tsc::OutliningSpan> = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -1776,7 +1762,7 @@ impl Inner {
     ));
     let incoming_calls: Vec<tsc::CallHierarchyIncomingCall> = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -1830,7 +1816,7 @@ impl Inner {
     ));
     let outgoing_calls: Vec<tsc::CallHierarchyOutgoingCall> = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -1890,7 +1876,7 @@ impl Inner {
     let maybe_one_or_many: Option<tsc::OneOrMany<tsc::CallHierarchyItem>> =
       self
         .ts_server
-        .request(self.snapshot(), req)
+        .request(self.snapshot()?, req)
         .await
         .map_err(|err| {
           error!("Failed to request to tsserver {}", err);
@@ -1970,7 +1956,7 @@ impl Inner {
 
     let maybe_locations: Option<Vec<tsc::RenameLocation>> = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -2057,7 +2043,7 @@ impl Inner {
 
       let selection_range: tsc::SelectionRange = self
         .ts_server
-        .request(self.snapshot(), req)
+        .request(self.snapshot()?, req)
         .await
         .map_err(|err| {
           error!("Failed to request to tsserver {}", err);
@@ -2099,7 +2085,7 @@ impl Inner {
     ));
     let semantic_classification: tsc::Classifications = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -2147,7 +2133,7 @@ impl Inner {
     ));
     let semantic_classification: tsc::Classifications = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver {}", err);
@@ -2204,7 +2190,7 @@ impl Inner {
     ));
     let maybe_signature_help_items: Option<tsc::SignatureHelpItems> = self
       .ts_server
-      .request(self.snapshot(), req)
+      .request(self.snapshot()?, req)
       .await
       .map_err(|err| {
         error!("Failed to request to tsserver: {}", err);
@@ -2606,2400 +2592,5 @@ impl Inner {
     };
     self.performance.measure(mark);
     Ok(contents)
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::lsp::performance::PerformanceAverage;
-  use lspower::jsonrpc;
-  use lspower::ExitedError;
-  use lspower::LspService;
-  use std::fs;
-  use std::task::Poll;
-  use std::time::Instant;
-  use tempfile::TempDir;
-  use tower_test::mock::Spawn;
-
-  enum LspResponse<V>
-  where
-    V: FnOnce(Value),
-  {
-    None,
-    Delay(u64),
-    RequestAny,
-    Request(u64, Value),
-    RequestAssert(V),
-    RequestFixture(u64, String),
-  }
-
-  enum LspFixture {
-    None,
-    Path(&'static str),
-    Value(Value),
-  }
-
-  type LspTestHarnessRequest = (LspFixture, LspResponse<fn(Value)>);
-
-  struct LspTestHarness {
-    requests: Vec<LspTestHarnessRequest>,
-    service: Spawn<LspService>,
-  }
-
-  impl LspTestHarness {
-    pub fn new(requests: Vec<LspTestHarnessRequest>) -> Self {
-      let (service, _) = LspService::new(LanguageServer::new);
-      let service = Spawn::new(service);
-      Self { requests, service }
-    }
-
-    async fn run(&mut self) {
-      for (value_or_str, expected) in self.requests.iter() {
-        assert_eq!(self.service.poll_ready(), Poll::Ready(Ok(())));
-        let fixtures_path = test_util::root_path().join("cli/tests/lsp");
-        assert!(fixtures_path.is_dir());
-        let response: Result<Option<jsonrpc::Outgoing>, ExitedError> =
-          match value_or_str {
-            LspFixture::None => Ok(None),
-            LspFixture::Path(req_path_str) => {
-              let req_path = fixtures_path.join(req_path_str);
-              let req_str = fs::read_to_string(req_path).unwrap();
-              let req: jsonrpc::Incoming =
-                serde_json::from_str(&req_str).unwrap();
-              self.service.call(req).await
-            }
-            LspFixture::Value(value) => {
-              let req: jsonrpc::Incoming =
-                serde_json::from_value(value.clone()).unwrap();
-              self.service.call(req).await
-            }
-          };
-        match response {
-          Ok(result) => match expected {
-            LspResponse::None => assert_eq!(result, None),
-            LspResponse::Delay(millis) => {
-              tokio::time::sleep(tokio::time::Duration::from_millis(*millis))
-                .await
-            }
-            LspResponse::RequestAny => match result {
-              Some(jsonrpc::Outgoing::Response(_)) => (),
-              _ => panic!("unexpected result: {:?}", result),
-            },
-            LspResponse::Request(id, value) => match result {
-              Some(jsonrpc::Outgoing::Response(resp)) => assert_eq!(
-                resp,
-                jsonrpc::Response::ok(jsonrpc::Id::Number(*id), value.clone())
-              ),
-              _ => panic!("unexpected result: {:?}", result),
-            },
-            LspResponse::RequestAssert(assert) => match result {
-              Some(jsonrpc::Outgoing::Response(resp)) => assert(json!(resp)),
-              _ => panic!("unexpected result: {:?}", result),
-            },
-            LspResponse::RequestFixture(id, res_path_str) => {
-              let res_path = fixtures_path.join(res_path_str);
-              let res_str = fs::read_to_string(res_path).unwrap();
-              match result {
-                Some(jsonrpc::Outgoing::Response(resp)) => assert_eq!(
-                  resp,
-                  jsonrpc::Response::ok(
-                    jsonrpc::Id::Number(*id),
-                    serde_json::from_str(&res_str).unwrap()
-                  )
-                ),
-                _ => panic!("unexpected result: {:?}", result),
-              }
-            }
-          },
-          Err(err) => panic!("Error result: {}", err),
-        }
-      }
-    }
-  }
-
-  #[tokio::test]
-  async fn test_startup_shutdown() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  async fn test_hover() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_open_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("hover_request.json"),
-        LspResponse::Request(
-          2,
-          json!({
-            "contents": [
-              {
-                "language": "typescript",
-                "value": "const Deno.args: string[]"
-              },
-              "Returns the script arguments to the program. If for example we run a\nprogram:\n\ndeno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd\n\nThen `Deno.args` will contain:\n\n[ \"/etc/passwd\" ]"
-            ],
-            "range": {
-              "start": {
-                "line": 0,
-                "character": 17
-              },
-              "end": {
-                "line": 0,
-                "character": 21
-              }
-            }
-          }),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  async fn test_hover_asset() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_open_notification_asset.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("definition_request_asset.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("virtual_text_document_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("hover_request_asset.json"),
-        LspResponse::Request(
-          5,
-          json!({
-            "contents": [
-              {
-                "language": "typescript",
-                "value": "interface Date",
-              },
-              "Enables basic storage and retrieval of dates and times."
-            ],
-            "range": {
-              "start": {
-                "line": 109,
-                "character": 10,
-              },
-              "end": {
-                "line": 109,
-                "character": 14,
-              }
-            }
-          }),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  async fn test_hover_disabled() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request_disabled.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_open_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("hover_request.json"),
-        LspResponse::Request(2, json!(null)),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  async fn test_hover_unstable_disabled() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_open_notification_unstable.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("hover_request.json"),
-        LspResponse::Request(
-          2,
-          json!({
-            "contents": [
-              {
-                "language": "typescript",
-                "value": "any"
-              }
-            ],
-            "range": {
-              "start": {
-                "line": 0,
-                "character": 17
-              },
-              "end": {
-                "line": 0,
-                "character": 27
-              }
-            }
-          }),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  async fn test_hover_unstable_enabled() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request_unstable.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_open_notification_unstable.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("hover_request.json"),
-        LspResponse::Request(
-          2,
-          json!({
-            "contents": [
-              {
-                "language": "typescript",
-                "value": "function Deno.openPlugin(filename: string): number"
-              },
-              "**UNSTABLE**: new API, yet to be vetted.\n\nOpen and initialize a plugin.\n\n```ts\nconst rid = Deno.openPlugin(\"./path/to/some/plugin.so\");\nconst opId = Deno.core.ops()[\"some_op\"];\nconst response = Deno.core.dispatch(opId, new Uint8Array([1,2,3,4]));\nconsole.log(`Response from plugin ${response}`);\n```\n\nRequires `allow-plugin` permission.\n\nThe plugin system is not stable and will change in the future, hence the\nlack of docs. For now take a look at the example\nhttps://github.com/denoland/deno/tree/master/test_plugin"
-            ],
-            "range": {
-              "start": {
-                "line": 0,
-                "character": 17
-              },
-              "end": {
-                "line": 0,
-                "character": 27
-              }
-            }
-          }),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  async fn test_hover_change_mbc() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_open_notification_mbc.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_change_notification_mbc.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("hover_request_mbc.json"),
-        LspResponse::Request(
-          2,
-          json!({
-            "contents": [
-              {
-                "language": "typescript",
-                "value": "const b: \"🦕😃\"",
-              },
-              "",
-            ],
-            "range": {
-              "start": {
-                "line": 2,
-                "character": 15,
-              },
-              "end": {
-                "line": 2,
-                "character": 16,
-              },
-            }
-          }),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[derive(Deserialize)]
-  struct HoverResponse {
-    pub result: Option<Hover>,
-  }
-
-  #[tokio::test]
-  async fn test_hover_closed_document() {
-    let temp_dir = TempDir::new()
-      .expect("could not create temp dir")
-      .into_path();
-    let a_path = temp_dir.join("a.ts");
-    fs::write(a_path, r#"export const a = "a";"#)
-      .expect("could not write file");
-    let b_path = temp_dir.join("b.ts");
-    fs::write(&b_path, r#"export * from "./a.ts";"#)
-      .expect("could not write file");
-    let b_specifier =
-      Url::from_file_path(b_path).expect("could not convert path");
-    let c_path = temp_dir.join("c.ts");
-    fs::write(&c_path, "import { a } from \"./b.ts\";\nconsole.log(a);\n")
-      .expect("could not write file");
-    let c_specifier =
-      Url::from_file_path(c_path).expect("could not convert path");
-
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Value(json!({
-          "jsonrpc": "2.0",
-          "method": "textDocument/didOpen",
-          "params": {
-            "textDocument": {
-              "uri": b_specifier,
-              "languageId": "typescript",
-              "version": 1,
-              "text": r#"export * from "./a.ts";"#
-            }
-          }
-        })),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Value(json!({
-          "jsonrpc": "2.0",
-          "method": "textDocument/didOpen",
-          "params": {
-            "textDocument": {
-              "uri": c_specifier,
-              "languageId": "typescript",
-              "version": 1,
-              "text": "import { a } from \"./b.ts\";\nconsole.log(a);\n",
-            }
-          }
-        })),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Value(json!({
-          "jsonrpc": "2.0",
-          "id": 2,
-          "method": "textDocument/hover",
-          "params": {
-            "textDocument": {
-              "uri": c_specifier,
-            },
-            "position": {
-              "line": 0,
-              "character": 10
-            }
-          }
-        })),
-        LspResponse::RequestAssert(|value| {
-          let resp: HoverResponse = serde_json::from_value(value).unwrap();
-          if let Some(hover) = resp.result {
-            assert_eq!(
-              hover,
-              Hover {
-                contents: HoverContents::Array(vec![
-                  MarkedString::LanguageString(LanguageString {
-                    language: "typescript".to_string(),
-                    value: "(alias) const a: \"a\"\nimport a".to_string()
-                  }),
-                  MarkedString::String("".to_string()),
-                ]),
-                range: Some(Range {
-                  start: Position {
-                    line: 0,
-                    character: 9,
-                  },
-                  end: Position {
-                    line: 0,
-                    character: 10,
-                  }
-                }),
-              }
-            );
-          } else {
-            panic!("no response");
-          }
-        }),
-      ),
-      (
-        LspFixture::Value(json!({
-          "jsonrpc": "2.0",
-          "method": "textDocument/didClose",
-          "params": {
-            "textDocument": {
-              "uri": b_specifier,
-            }
-          }
-        })),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Value(json!({
-          "jsonrpc": "2.0",
-          "id": 4,
-          "method": "textDocument/hover",
-          "params": {
-            "textDocument": {
-              "uri": c_specifier,
-            },
-            "position": {
-              "line": 0,
-              "character": 10
-            }
-          }
-        })),
-        LspResponse::RequestAssert(|value| {
-          let resp: HoverResponse = serde_json::from_value(value).unwrap();
-          if let Some(hover) = resp.result {
-            assert_eq!(
-              hover,
-              Hover {
-                contents: HoverContents::Array(vec![
-                  MarkedString::LanguageString(LanguageString {
-                    language: "typescript".to_string(),
-                    value: "(alias) const a: \"a\"\nimport a".to_string()
-                  }),
-                  MarkedString::String("".to_string()),
-                ]),
-                range: Some(Range {
-                  start: Position {
-                    line: 0,
-                    character: 9,
-                  },
-                  end: Position {
-                    line: 0,
-                    character: 10,
-                  }
-                }),
-              }
-            );
-          } else {
-            panic!("no response");
-          }
-        }),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  async fn test_call_hierarchy() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("prepare_call_hierarchy_did_open_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("prepare_call_hierarchy_request.json"),
-        LspResponse::Request(
-          2,
-          json!([
-            {
-              "name": "baz",
-              "kind": 6,
-              "detail": "Bar",
-              "uri": "file:///a/file.ts",
-              "range": {
-                "start": {
-                  "line": 5,
-                  "character": 2
-                },
-                "end": {
-                  "line": 7,
-                  "character": 3
-                }
-              },
-              "selectionRange": {
-                "start": {
-                  "line": 5,
-                  "character": 2
-                },
-                "end": {
-                  "line": 5,
-                  "character": 5
-                }
-              }
-            }
-          ]),
-        ),
-      ),
-      (
-        LspFixture::Path("incoming_calls_request.json"),
-        LspResponse::Request(
-          4,
-          json!([
-            {
-              "from": {
-                "name": "main",
-                "kind": 12,
-                "detail": "",
-                "uri": "file:///a/file.ts",
-                "range": {
-                  "start": {
-                    "line": 10,
-                    "character": 0
-                  },
-                  "end": {
-                    "line": 13,
-                    "character": 1
-                  }
-                },
-                "selectionRange": {
-                  "start": {
-                    "line": 10,
-                    "character": 9
-                  },
-                  "end": {
-                    "line": 10,
-                    "character": 13
-                  }
-                }
-              },
-              "fromRanges": [
-                {
-                  "start": {
-                    "line": 12,
-                    "character": 6
-                  },
-                  "end": {
-                    "line": 12,
-                    "character": 9
-                  }
-                }
-              ]
-            }
-          ]),
-        ),
-      ),
-      (
-        LspFixture::Path("outgoing_calls_request.json"),
-        LspResponse::Request(
-          5,
-          json!([
-            {
-              "to": {
-                "name": "foo",
-                "kind": 12,
-                "detail": "",
-                "uri": "file:///a/file.ts",
-                "range": {
-                  "start": {
-                    "line": 0,
-                    "character": 0
-                  },
-                  "end": {
-                    "line": 2,
-                    "character": 1
-                  }
-                },
-                "selectionRange": {
-                  "start": {
-                    "line": 0,
-                    "character": 9
-                  },
-                  "end": {
-                    "line": 0,
-                    "character": 12
-                  }
-                }
-              },
-              "fromRanges": [
-                {
-                  "start": {
-                    "line": 6,
-                    "character": 11
-                  },
-                  "end": {
-                    "line": 6,
-                    "character": 14
-                  }
-                }
-              ]
-            }
-          ]),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  async fn test_format_mbc() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_open_notification_mbc_fmt.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("formatting_request_mbc_fmt.json"),
-        LspResponse::Request(
-          2,
-          json!([
-            {
-              "range": {
-                "start": {
-                  "line": 0,
-                  "character": 12
-                },
-                "end": {
-                  "line": 0,
-                  "character": 13,
-                }
-              },
-              "newText": "\""
-            },
-            {
-              "range": {
-                "start": {
-                  "line": 0,
-                  "character": 21
-                },
-                "end": {
-                  "line": 0,
-                  "character": 22
-                }
-              },
-              "newText": "\";"
-            },
-            {
-              "range": {
-                "start": {
-                  "line": 1,
-                  "character": 12,
-                },
-                "end": {
-                  "line": 1,
-                  "character": 13,
-                }
-              },
-              "newText": "\""
-            },
-            {
-              "range": {
-                "start": {
-                  "line": 1,
-                  "character": 23,
-                },
-                "end": {
-                  "line": 1,
-                  "character": 25,
-                }
-              },
-              "newText": "\");"
-            }
-          ]),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  #[ignore] // TODO(ry) Re-enable. Flaky on ubuntu-latest-xl.
-  async fn test_large_doc_change() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_open_notification_large.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_change_notification_large.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_change_notification_large_02.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_change_notification_large_03.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("hover_request_large_01.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("hover_request_large_02.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("hover_request_large_03.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    let time = Instant::now();
-    harness.run().await;
-    assert!(
-      time.elapsed().as_millis() <= 10000,
-      "the execution time exceeded 10000ms"
-    );
-  }
-
-  #[tokio::test]
-  async fn test_document_symbol() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("document_symbol_did_open_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("document_symbol_request.json"),
-        LspResponse::Request(
-          2,
-          json!([
-            {
-              "name": "bar",
-              "kind": 13,
-              "range": {
-                "start": {
-                  "line": 17,
-                  "character": 4
-                },
-                "end": {
-                  "line": 17,
-                  "character": 26
-                }
-              },
-              "selectionRange": {
-                "start": {
-                  "line": 17,
-                  "character": 4
-                },
-                "end": {
-                  "line": 17,
-                  "character": 7
-                }
-              }
-            },
-            {
-              "name": "Bar",
-              "kind": 5,
-              "range": {
-                "start": {
-                  "line": 4,
-                  "character": 0
-                },
-                "end": {
-                  "line": 13,
-                  "character": 1
-                }
-              },
-              "selectionRange": {
-                "start": {
-                  "line": 4,
-                  "character": 6
-                },
-                "end": {
-                  "line": 4,
-                  "character": 9
-                }
-              },
-              "children": [
-                {
-                  "name": "constructor",
-                  "kind": 9,
-                  "range": {
-                    "start": {
-                      "line": 5,
-                      "character": 2
-                    },
-                    "end": {
-                      "line": 5,
-                      "character": 35
-                    }
-                  },
-                  "selectionRange": {
-                    "start": {
-                      "line": 5,
-                      "character": 2
-                    },
-                    "end": {
-                      "line": 5,
-                      "character": 35
-                    }
-                  }
-                },
-                {
-                  "name": "baz",
-                  "kind": 6,
-                  "tags": [
-                    1
-                  ],
-                  "range": {
-                    "start": {
-                      "line": 8,
-                      "character": 2
-                    },
-                    "end": {
-                      "line": 8,
-                      "character": 25
-                    }
-                  },
-                  "selectionRange": {
-                    "start": {
-                      "line": 8,
-                      "character": 2
-                    },
-                    "end": {
-                      "line": 8,
-                      "character": 5
-                    }
-                  }
-                },
-                {
-                  "name": "foo",
-                  "kind": 6,
-                  "range": {
-                    "start": {
-                      "line": 6,
-                      "character": 2
-                    },
-                    "end": {
-                      "line": 6,
-                      "character": 24
-                    }
-                  },
-                  "selectionRange": {
-                    "start": {
-                      "line": 6,
-                      "character": 2
-                    },
-                    "end": {
-                      "line": 6,
-                      "character": 5
-                    }
-                  }
-                },
-                {
-                  "name": "getStaticBar",
-                  "kind": 6,
-                  "range": {
-                    "start": {
-                      "line": 12,
-                      "character": 2
-                    },
-                    "end": {
-                      "line": 12,
-                      "character": 57
-                    }
-                  },
-                  "selectionRange": {
-                    "start": {
-                      "line": 12,
-                      "character": 17
-                    },
-                    "end": {
-                      "line": 12,
-                      "character": 29
-                    }
-                  }
-                },
-                {
-                  "name": "staticBar",
-                  "kind": 7,
-                  "range": {
-                    "start": {
-                      "line": 11,
-                      "character": 2
-                    },
-                    "end": {
-                      "line": 11,
-                      "character": 32
-                    }
-                  },
-                  "selectionRange": {
-                    "start": {
-                      "line": 11,
-                      "character": 9
-                    },
-                    "end": {
-                      "line": 11,
-                      "character": 18
-                    }
-                  }
-                },
-                {
-                  "name": "value",
-                  "kind": 7,
-                  "range": {
-                    "start": {
-                      "line": 9,
-                      "character": 2
-                    },
-                    "end": {
-                      "line": 9,
-                      "character": 35
-                    }
-                  },
-                  "selectionRange": {
-                    "start": {
-                      "line": 9,
-                      "character": 6
-                    },
-                    "end": {
-                      "line": 9,
-                      "character": 11
-                    }
-                  }
-                },
-                {
-                  "name": "value",
-                  "kind": 7,
-                  "range": {
-                    "start": {
-                      "line": 10,
-                      "character": 2
-                    },
-                    "end": {
-                      "line": 10,
-                      "character": 42
-                    }
-                  },
-                  "selectionRange": {
-                    "start": {
-                      "line": 10,
-                      "character": 6
-                    },
-                    "end": {
-                      "line": 10,
-                      "character": 11
-                    }
-                  }
-                },
-                {
-                  "name": "x",
-                  "kind": 7,
-                  "range": {
-                    "start": {
-                      "line": 5,
-                      "character": 14
-                    },
-                    "end": {
-                      "line": 5,
-                      "character": 30
-                    }
-                  },
-                  "selectionRange": {
-                    "start": {
-                      "line": 5,
-                      "character": 21
-                    },
-                    "end": {
-                      "line": 5,
-                      "character": 22
-                    }
-                  }
-                }
-              ]
-            },
-            {
-              "name": "IFoo",
-              "kind": 11,
-              "range": {
-                "start": {
-                  "line": 0,
-                  "character": 0
-                },
-                "end": {
-                  "line": 2,
-                  "character": 1
-                }
-              },
-              "selectionRange": {
-                "start": {
-                  "line": 0,
-                  "character": 10
-                },
-                "end": {
-                  "line": 0,
-                  "character": 14
-                }
-              },
-              "children": [
-                {
-                  "name": "foo",
-                  "kind": 6,
-                  "range": {
-                    "start": {
-                      "line": 1,
-                      "character": 2
-                    },
-                    "end": {
-                      "line": 1,
-                      "character": 17
-                    }
-                  },
-                  "selectionRange": {
-                    "start": {
-                      "line": 1,
-                      "character": 2
-                    },
-                    "end": {
-                      "line": 1,
-                      "character": 5
-                    }
-                  }
-                }
-              ]
-            },
-            {
-              "name": "Values",
-              "kind": 10,
-              "range": {
-                "start": {
-                  "line": 15,
-                  "character": 0
-                },
-                "end": {
-                  "line": 15,
-                  "character": 30
-                }
-              },
-              "selectionRange": {
-                "start": {
-                  "line": 15,
-                  "character": 5
-                },
-                "end": {
-                  "line": 15,
-                  "character": 11
-                }
-              },
-              "children": [
-                {
-                  "name": "value1",
-                  "kind": 13,
-                  "range": {
-                    "start": {
-                      "line": 15,
-                      "character": 14
-                    },
-                    "end": {
-                      "line": 15,
-                      "character": 20
-                    }
-                  },
-                  "selectionRange": {
-                    "start": {
-                      "line": 15,
-                      "character": 14
-                    },
-                    "end": {
-                      "line": 15,
-                      "character": 20
-                    }
-                  }
-                },
-                {
-                  "name": "value2",
-                  "kind": 13,
-                  "range": {
-                    "start": {
-                      "line": 15,
-                      "character": 22
-                    },
-                    "end": {
-                      "line": 15,
-                      "character": 28
-                    }
-                  },
-                  "selectionRange": {
-                    "start": {
-                      "line": 15,
-                      "character": 22
-                    },
-                    "end": {
-                      "line": 15,
-                      "character": 28
-                    }
-                  }
-                }
-              ]
-            }
-          ]),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  async fn test_folding_range() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("folding_range_did_open_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("folding_range_request.json"),
-        LspResponse::Request(
-          2,
-          json!([
-            {
-              "startLine": 0,
-              "endLine": 12,
-              "kind": "region"
-            },
-            {
-              "startLine": 1,
-              "endLine": 3,
-              "kind": "comment"
-            },
-            {
-              "startLine": 4,
-              "endLine": 10
-            },
-            {
-              "startLine": 5,
-              "endLine": 9
-            },
-            {
-              "startLine": 6,
-              "endLine": 7
-            }
-          ]),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  async fn test_rename() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("rename_did_open_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("rename_request.json"),
-        LspResponse::Request(
-          2,
-          json!({
-            "documentChanges": [{
-              "textDocument": {
-                "uri": "file:///a/file.ts",
-                "version": 1,
-              },
-              "edits": [{
-                "range": {
-                  "start": {
-                    "line": 0,
-                    "character": 4
-                  },
-                  "end": {
-                    "line": 0,
-                    "character": 12
-                  }
-                },
-                "newText": "variable_modified"
-              }, {
-                "range": {
-                  "start": {
-                    "line": 1,
-                    "character": 12
-                  },
-                  "end": {
-                    "line": 1,
-                    "character": 20
-                  }
-                },
-                "newText": "variable_modified"
-              }]
-            }]
-          }),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  async fn test_selection_range() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("selection_range_did_open_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("selection_range_request.json"),
-        LspResponse::Request(
-          2,
-          json!([{
-            "range": {
-              "start": {
-                "line": 2,
-                "character": 8
-              },
-              "end": {
-                "line": 2,
-                "character": 9
-              }
-            },
-            "parent": {
-              "range": {
-                "start": {
-                  "line": 2,
-                  "character": 8
-                },
-                "end": {
-                  "line": 2,
-                  "character": 15
-                }
-              },
-              "parent": {
-                "range": {
-                  "start": {
-                    "line": 2,
-                    "character": 4
-                  },
-                  "end": {
-                    "line": 4,
-                    "character": 5
-                  }
-                },
-                "parent": {
-                  "range": {
-                    "start": {
-                      "line": 1,
-                      "character": 13
-                    },
-                    "end": {
-                      "line": 6,
-                      "character": 2
-                    }
-                  },
-                  "parent": {
-                    "range": {
-                      "start": {
-                        "line": 1,
-                        "character": 2
-                      },
-                      "end": {
-                        "line": 6,
-                        "character": 3
-                      }
-                    },
-                    "parent": {
-                      "range": {
-                        "start": {
-                          "line": 0,
-                          "character": 11
-                        },
-                        "end": {
-                          "line": 7,
-                          "character": 0
-                        }
-                      },
-                      "parent": {
-                        "range": {
-                          "start": {
-                            "line": 0,
-                            "character": 0
-                          },
-                          "end": {
-                            "line": 7,
-                            "character": 1
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }]),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  #[rustfmt::skip]
-  async fn test_semantic_tokens() {
-    let mut harness = LspTestHarness::new(vec![
-      (LspFixture::Path("initialize_request.json"), LspResponse::RequestAny),
-      (LspFixture::Path("initialized_notification.json"), LspResponse::None),
-      (
-        LspFixture::Path("semantic_tokens_did_open_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("semantic_tokens_full_request.json"),
-        LspResponse::Request(
-          2,
-          json!({
-            "data": [0, 5, 6, 1, 1, 0, 9, 6, 8, 9, 0, 8, 6, 8, 9, 2, 15 ,3, 10 ,5, 0, 4, 1, 6, 1, 0, 12 ,7, 2, 16 ,1, 8, 1, 7, 41 ,0, 4, 1, 6, 0, 0, 2, 5, 11 ,16 ,1, 9, 1, 7, 40 ,3, 10 ,4, 2, 1, 1, 11 ,1, 9, 9, 1, 2, 3, 11 ,1, 3, 6, 3, 0, 1, 0, 15 ,4, 2, 0, 1, 30 ,1, 6, 9, 1, 2, 3, 11 ,1, 1, 9, 9, 9, 3, 0, 16 ,3, 0, 0, 1, 17 ,12 ,11 ,3, 0, 24 ,3, 0, 0, 0, 4, 9, 9, 2]
-          }),
-        ),
-      ),
-      (
-        LspFixture::Path("semantic_tokens_range_request.json"),
-        LspResponse::Request(
-          4,
-          json!({
-            "data": [0, 5, 6, 1, 1, 0, 9, 6, 8, 9, 0, 8, 6, 8, 9, 2, 15 ,3, 10 ,5, 0, 4, 1, 6, 1, 0, 12 ,7, 2, 16 ,1, 8, 1, 7, 41 ,0, 4, 1, 6, 0, 0, 2, 5, 11 ,16 ,1, 9, 1, 7, 40]
-          }),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (LspFixture::Path("exit_notification.json"), LspResponse::None),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  async fn test_code_lens_request() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_open_notification_cl_references.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("code_lens_request.json"),
-        LspResponse::Request(
-          2,
-          json!([
-            {
-              "range": {
-                "start": {
-                  "line": 0,
-                  "character": 6,
-                },
-                "end": {
-                  "line": 0,
-                  "character": 7,
-                }
-              },
-              "data": {
-                "specifier": "file:///a/file.ts",
-                "source": "references",
-              },
-            },
-            {
-              "range": {
-                "start": {
-                  "line": 1,
-                  "character": 2,
-                },
-                "end": {
-                  "line": 1,
-                  "character": 3,
-                }
-              },
-              "data": {
-                "specifier": "file:///a/file.ts",
-                "source": "references",
-              }
-            }
-          ]),
-        ),
-      ),
-      (
-        LspFixture::Path("code_lens_resolve_request.json"),
-        LspResponse::Request(
-          4,
-          json!({
-            "range": {
-              "start": {
-                "line": 0,
-                "character": 6,
-              },
-              "end": {
-                "line": 0,
-                "character": 7,
-              }
-            },
-            "command": {
-              "title": "1 reference",
-              "command": "deno.showReferences",
-              "arguments": [
-                "file:///a/file.ts",
-                {
-                  "line": 0,
-                  "character": 6,
-                },
-                [
-                  {
-                    "uri": "file:///a/file.ts",
-                    "range": {
-                      "start": {
-                        "line": 12,
-                        "character": 14,
-                      },
-                      "end": {
-                        "line": 12,
-                        "character": 15,
-                      }
-                    }
-                  }
-                ],
-              ]
-            }
-          }),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  async fn test_signature_help() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("signature_help_did_open_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("signature_help_request_01.json"),
-        LspResponse::Request(
-          1,
-          json!({
-            "signatures": [
-              {
-                "label": "add(a: number, b: number): number",
-                "documentation": "Adds two numbers.",
-                "parameters": [
-                  {
-                    "label": "a: number",
-                    "documentation": "This is a first number."
-                  },
-                  {
-                    "label": "b: number",
-                    "documentation": "This is a second number."
-                  }
-                ]
-              }
-            ],
-            "activeSignature": 0,
-            "activeParameter": 0
-          }),
-        ),
-      ),
-      (
-        LspFixture::Path("signature_help_did_change_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("signature_help_request_02.json"),
-        LspResponse::Request(
-          2,
-          json!({
-            "signatures": [
-              {
-                "label": "add(a: number, b: number): number",
-                "documentation": "Adds two numbers.",
-                "parameters": [
-                  {
-                    "label": "a: number",
-                    "documentation": "This is a first number."
-                  },
-                  {
-                    "label": "b: number",
-                    "documentation": "This is a second number."
-                  }
-                ]
-              }
-            ],
-            "activeSignature": 0,
-            "activeParameter": 1
-          }),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  async fn test_code_lens_impl_request() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_open_notification_cl_impl.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("code_lens_request.json"),
-        LspResponse::Request(
-          2,
-          json!([
-            {
-              "range": {
-                "start": {
-                  "line": 0,
-                  "character": 10,
-                },
-                "end": {
-                  "line": 0,
-                  "character": 11,
-                }
-              },
-              "data": {
-                "specifier": "file:///a/file.ts",
-                "source": "implementations",
-              },
-            },
-            {
-              "range": {
-                "start": {
-                  "line": 0,
-                  "character": 10,
-                },
-                "end": {
-                  "line": 0,
-                  "character": 11,
-                }
-              },
-              "data": {
-                "specifier": "file:///a/file.ts",
-                "source": "references",
-              },
-            },
-            {
-              "range": {
-                "start": {
-                  "line": 4,
-                  "character": 6,
-                },
-                "end": {
-                  "line": 4,
-                  "character": 7,
-                }
-              },
-              "data": {
-                "specifier": "file:///a/file.ts",
-                "source": "references",
-              },
-            },
-          ]),
-        ),
-      ),
-      (
-        LspFixture::Path("code_lens_resolve_request_impl.json"),
-        LspResponse::Request(
-          4,
-          json!({
-            "range": {
-              "start": {
-                "line": 0,
-                "character": 10,
-              },
-              "end": {
-                "line": 0,
-                "character": 11,
-              }
-            },
-            "command": {
-              "title": "1 implementation",
-              "command": "deno.showReferences",
-              "arguments": [
-                "file:///a/file.ts",
-                {
-                  "line": 0,
-                  "character": 10,
-                },
-                [
-                  {
-                    "uri": "file:///a/file.ts",
-                    "range": {
-                      "start": {
-                        "line": 4,
-                        "character": 6,
-                      },
-                      "end": {
-                        "line": 4,
-                        "character": 7,
-                      }
-                    }
-                  }
-                ],
-              ]
-            }
-          }),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[derive(Deserialize)]
-  struct CodeLensResponse {
-    pub result: Option<Vec<CodeLens>>,
-  }
-
-  #[derive(Deserialize)]
-  struct CodeLensResolveResponse {
-    pub result: CodeLens,
-  }
-
-  #[tokio::test]
-  async fn test_code_lens_non_doc_nav_tree() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_open_notification_asset.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("references_request_asset.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("virtual_text_document_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("code_lens_request_asset.json"),
-        LspResponse::RequestAssert(|value| {
-          let resp: CodeLensResponse = serde_json::from_value(value).unwrap();
-          let lenses = resp.result.unwrap();
-          assert!(lenses.len() > 50);
-        }),
-      ),
-      (
-        LspFixture::Path("code_lens_resolve_request_asset.json"),
-        LspResponse::RequestAssert(|value| {
-          let resp: CodeLensResolveResponse =
-            serde_json::from_value(value).unwrap();
-          assert!(resp.result.command.is_some());
-        }),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  async fn test_code_actions() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_open_notification_code_action.json"),
-        LspResponse::None,
-      ),
-      (LspFixture::None, LspResponse::Delay(20000)),
-      (
-        LspFixture::Path("code_action_request.json"),
-        LspResponse::RequestFixture(2, "code_action_response.json".to_string()),
-      ),
-      (
-        LspFixture::Path("code_action_resolve_request.json"),
-        LspResponse::RequestFixture(
-          4,
-          "code_action_resolve_request_response.json".to_string(),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  async fn test_code_actions_deno_cache() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_open_notification_cache.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("code_action_request_cache.json"),
-        LspResponse::RequestFixture(
-          2,
-          "code_action_response_cache.json".to_string(),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[derive(Deserialize)]
-  struct CompletionResult {
-    pub result: Option<CompletionResponse>,
-  }
-
-  #[tokio::test]
-  async fn test_completions() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_open_notification_completions.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("completion_request.json"),
-        LspResponse::RequestAssert(|value| {
-          let response: CompletionResult =
-            serde_json::from_value(value).unwrap();
-          let result = response.result.unwrap();
-          match result {
-            CompletionResponse::List(list) => {
-              // there should be at least 90 completions for `Deno.`
-              assert!(list.items.len() > 90);
-            }
-            _ => panic!("unexpected result"),
-          }
-        }),
-      ),
-      (
-        LspFixture::Path("completion_resolve_request.json"),
-        LspResponse::Request(
-          4,
-          json!({
-            "label": "build",
-            "kind": 6,
-            "detail": "const Deno.build: {\n    target: string;\n    arch: \"x86_64\" | \"aarch64\";\n    os: \"darwin\" | \"linux\" | \"windows\";\n    vendor: string;\n    env?: string | undefined;\n}",
-            "documentation": {
-              "kind": "markdown",
-              "value": "Build related information."
-            },
-            "sortText": "1",
-            "insertTextFormat": 1,
-          }),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  async fn test_completions_optional() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_open_notification_completion_optional.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("completion_request_optional.json"),
-        LspResponse::Request(
-          2,
-          json!({
-            "isIncomplete": false,
-            "items": [
-              {
-                "label": "b?",
-                "kind": 5,
-                "sortText": "1",
-                "filterText": "b",
-                "insertText": "b",
-                "data": {
-                  "tsc": {
-                    "specifier": "file:///a/file.ts",
-                    "position": 79,
-                    "name": "b",
-                    "useCodeSnippet": false
-                  }
-                }
-              }
-            ]
-          }),
-        ),
-      ),
-      (
-        LspFixture::Path("completion_resolve_request_optional.json"),
-        LspResponse::Request(
-          4,
-          json!({
-            "label": "b?",
-            "kind": 5,
-            "detail": "(property) A.b?: string | undefined",
-            "documentation": {
-              "kind": "markdown",
-              "value": ""
-            },
-            "sortText": "1",
-            "filterText": "b",
-            "insertText": "b"
-          }),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  async fn test_completions_registry() {
-    let _g = test_util::http_server();
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request_registry.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_open_notification_completion_registry.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("completion_request_registry.json"),
-        LspResponse::RequestAssert(|value| {
-          let response: CompletionResult =
-            serde_json::from_value(value).unwrap();
-          let result = response.result.unwrap();
-          if let CompletionResponse::List(list) = result {
-            assert_eq!(list.items.len(), 3);
-          } else {
-            panic!("unexpected result");
-          }
-        }),
-      ),
-      (
-        LspFixture::Path("completion_resolve_request_registry.json"),
-        LspResponse::Request(
-          4,
-          json!({
-            "label": "v2.0.0",
-            "kind": 19,
-            "detail": "(version)",
-            "sortText": "0000000003",
-            "filterText": "http://localhost:4545/x/a@v2.0.0",
-            "textEdit": {
-              "range": {
-                "start": {
-                  "line": 0,
-                  "character": 20
-                },
-                "end": {
-                  "line": 0,
-                  "character": 46
-                }
-              },
-              "newText": "http://localhost:4545/x/a@v2.0.0"
-            }
-          }),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[tokio::test]
-  async fn test_completion_registry_empty_specifier() {
-    let _g = test_util::http_server();
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request_registry.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_open_notification_completion_registry_02.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("completion_request_registry_02.json"),
-        LspResponse::Request(
-          2,
-          json!({
-            "isIncomplete": false,
-            "items": [
-              {
-                "label": ".",
-                "kind": 19,
-                "detail": "(local)",
-                "sortText": "1",
-                "insertText": "."
-              },
-              {
-                "label": "..",
-                "kind": 19,
-                "detail": "(local)",
-                "sortText": "1",
-                "insertText": ".."
-              },
-              {
-                "label": "http://localhost:4545",
-                "kind": 19,
-                "detail": "(registry)",
-                "sortText": "2",
-                "textEdit": {
-                  "range": {
-                    "start": {
-                      "line": 0,
-                      "character": 20
-                    },
-                    "end": {
-                      "line": 0,
-                      "character": 20
-                    }
-                  },
-                  "newText": "http://localhost:4545"
-                }
-              }
-            ]
-          }),
-        ),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
-  }
-
-  #[derive(Deserialize)]
-  struct PerformanceAverages {
-    averages: Vec<PerformanceAverage>,
-  }
-  #[derive(Deserialize)]
-  struct PerformanceResponse {
-    result: PerformanceAverages,
-  }
-
-  #[tokio::test]
-  async fn test_deno_performance_request() {
-    let mut harness = LspTestHarness::new(vec![
-      (
-        LspFixture::Path("initialize_request.json"),
-        LspResponse::RequestAny,
-      ),
-      (
-        LspFixture::Path("initialized_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("did_open_notification.json"),
-        LspResponse::None,
-      ),
-      (
-        LspFixture::Path("hover_request.json"),
-        LspResponse::Request(
-          2,
-          json!({
-            "contents": [
-              {
-                "language": "typescript",
-                "value": "const Deno.args: string[]"
-              },
-              "Returns the script arguments to the program. If for example we run a\nprogram:\n\ndeno run --allow-read https://deno.land/std/examples/cat.ts /etc/passwd\n\nThen `Deno.args` will contain:\n\n[ \"/etc/passwd\" ]"
-            ],
-            "range": {
-              "start": {
-                "line": 0,
-                "character": 17
-              },
-              "end": {
-                "line": 0,
-                "character": 21
-              }
-            }
-          }),
-        ),
-      ),
-      (
-        LspFixture::Path("performance_request.json"),
-        LspResponse::RequestAssert(|value| {
-          let resp: PerformanceResponse =
-            serde_json::from_value(value).unwrap();
-          // the len can be variable since some of the parts of the language
-          // server run in separate threads and may not add to performance by
-          // the time the results are checked.
-          assert!(resp.result.averages.len() >= 6);
-        }),
-      ),
-      (
-        LspFixture::Path("shutdown_request.json"),
-        LspResponse::Request(3, json!(null)),
-      ),
-      (
-        LspFixture::Path("exit_notification.json"),
-        LspResponse::None,
-      ),
-    ]);
-    harness.run().await;
   }
 }

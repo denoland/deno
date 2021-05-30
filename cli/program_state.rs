@@ -15,8 +15,9 @@ use crate::module_graph::TypeLib;
 use crate::source_maps::SourceMapGetter;
 use crate::specifier_handler::FetchHandler;
 use crate::version;
+use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_file::BlobUrlStore;
-use deno_runtime::inspector::InspectorServer;
+use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::Permissions;
 
 use deno_core::error::anyhow;
@@ -52,6 +53,7 @@ pub struct ProgramState {
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub ca_data: Option<Vec<u8>>,
   pub blob_url_store: BlobUrlStore,
+  pub broadcast_channel: InMemoryBroadcastChannel,
 }
 
 impl ProgramState {
@@ -77,6 +79,7 @@ impl ProgramState {
     };
 
     let blob_url_store = BlobUrlStore::default();
+    let broadcast_channel = InMemoryBroadcastChannel::default();
 
     let file_fetcher = FileFetcher::new(
       http_cache,
@@ -143,6 +146,7 @@ impl ProgramState {
       maybe_inspector_server,
       ca_data,
       blob_url_store,
+      broadcast_channel,
     };
     Ok(Arc::new(program_state))
   }
@@ -153,12 +157,14 @@ impl ProgramState {
     self: &Arc<Self>,
     specifiers: Vec<ModuleSpecifier>,
     lib: TypeLib,
-    runtime_permissions: Permissions,
+    root_permissions: Permissions,
+    dynamic_permissions: Permissions,
     maybe_import_map: Option<ImportMap>,
   ) -> Result<(), AnyError> {
     let handler = Arc::new(Mutex::new(FetchHandler::new(
       self,
-      runtime_permissions.clone(),
+      root_permissions,
+      dynamic_permissions,
     )?));
 
     let mut builder =
@@ -221,19 +227,17 @@ impl ProgramState {
     self: &Arc<Self>,
     specifier: ModuleSpecifier,
     lib: TypeLib,
-    mut runtime_permissions: Permissions,
+    root_permissions: Permissions,
+    dynamic_permissions: Permissions,
     is_dynamic: bool,
     maybe_import_map: Option<ImportMap>,
   ) -> Result<(), AnyError> {
     let specifier = specifier.clone();
-    // Workers are subject to the current runtime permissions.  We do the
-    // permission check here early to avoid "wasting" time building a module
-    // graph for a module that cannot be loaded.
-    if lib == TypeLib::DenoWorker || lib == TypeLib::UnstableDenoWorker {
-      runtime_permissions.check_specifier(&specifier)?;
-    }
-    let handler =
-      Arc::new(Mutex::new(FetchHandler::new(self, runtime_permissions)?));
+    let handler = Arc::new(Mutex::new(FetchHandler::new(
+      self,
+      root_permissions,
+      dynamic_permissions,
+    )?));
     let mut builder =
       GraphBuilder::new(handler, maybe_import_map, self.lockfile.clone());
     builder.add(&specifier, is_dynamic).await?;

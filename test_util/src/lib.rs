@@ -46,6 +46,8 @@ use tokio_tungstenite::accept_async;
 #[cfg(unix)]
 pub use pty;
 
+pub mod lsp;
+
 const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
 const REDIRECT_PORT: u16 = 4546;
@@ -490,6 +492,30 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       res.headers_mut().insert(
         "Content-type",
         HeaderValue::from_static("application/javascript"),
+      );
+      res.headers_mut().insert(
+        "X-TypeScript-Types",
+        HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
+      );
+      Ok(res)
+    }
+    (_, "/xTypeScriptTypes.jsx") => {
+      let mut res = Response::new(Body::from("export const foo = 'foo';"));
+      res
+        .headers_mut()
+        .insert("Content-type", HeaderValue::from_static("text/jsx"));
+      res.headers_mut().insert(
+        "X-TypeScript-Types",
+        HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
+      );
+      Ok(res)
+    }
+    (_, "/xTypeScriptTypes.ts") => {
+      let mut res =
+        Response::new(Body::from("export const foo: string = 'foo';"));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
       );
       res.headers_mut().insert(
         "X-TypeScript-Types",

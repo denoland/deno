@@ -117,6 +117,7 @@ pub async fn print_docs(
     let handler = Arc::new(Mutex::new(FetchHandler::new(
       &program_state,
       Permissions::allow_all(),
+      Permissions::allow_all(),
     )?));
     let mut builder = module_graph::GraphBuilder::new(
       handler,

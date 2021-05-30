@@ -19,6 +19,33 @@ use test_util as util;
 use tokio::task::LocalSet;
 
 #[test]
+fn typecheck_declarations_ns() {
+  let status = util::deno_cmd()
+    .arg("test")
+    .arg("--doc")
+    .arg(util::root_path().join("cli/dts/lib.deno.ns.d.ts"))
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn typecheck_declarations_unstable() {
+  let status = util::deno_cmd()
+    .arg("test")
+    .arg("--doc")
+    .arg("--unstable")
+    .arg(util::root_path().join("cli/dts/lib.deno.unstable.d.ts"))
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
 fn js_unit_tests_lint() {
   let status = util::deno_cmd()
     .arg("lint")
@@ -2819,9 +2846,19 @@ console.log("finish");
     output: "041_info_flag.out",
   });
 
+  itest!(_042_info_flag_location {
+    args: "info --location https://deno.land",
+    output: "041_info_flag_location.out",
+  });
+
   itest!(info_json {
     args: "info --json --unstable",
     output: "info_json.out",
+  });
+
+  itest!(info_json_location {
+    args: "info --json --unstable --location https://deno.land",
+    output: "info_json_location.out",
   });
 
   itest!(_042_dyn_import_evalcontext {
@@ -3093,6 +3130,41 @@ console.log("finish");
   itest!(_091_use_define_for_class_fields {
     args: "run 091_use_define_for_class_fields.ts",
     output: "091_use_define_for_class_fields.ts.out",
+    exit_code: 1,
+  });
+
+  itest!(dynamic_import_permissions_remote_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_remote_remote.ts",
+    output: "dynamic_import/permissions_remote_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(dynamic_import_permissions_data_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_data_remote.ts",
+    output: "dynamic_import/permissions_data_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(dynamic_import_permissions_blob_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_blob_remote.ts",
+    output: "dynamic_import/permissions_blob_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(dynamic_import_permissions_data_local {
+    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_data_local.ts",
+    output: "dynamic_import/permissions_data_local.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(dynamic_import_permissions_blob_local {
+    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_blob_local.ts",
+    output: "dynamic_import/permissions_blob_local.ts.out",
+    http_server: true,
     exit_code: 1,
   });
 
@@ -3463,6 +3535,48 @@ console.log("finish");
     args: "run --reload error_worker_permissions_remote.ts",
     http_server: true,
     output: "error_worker_permissions_remote.ts.out",
+    exit_code: 1,
+  });
+
+  itest!(worker_permissions_remote_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 workers/permissions_remote_remote.ts",
+    output: "workers/permissions_remote_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(worker_permissions_dynamic_remote {
+    args: "run --quiet --reload --allow-net --unstable workers/permissions_dynamic_remote.ts",
+    output: "workers/permissions_dynamic_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(worker_permissions_data_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 workers/permissions_data_remote.ts",
+    output: "workers/permissions_data_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(worker_permissions_blob_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 workers/permissions_blob_remote.ts",
+    output: "workers/permissions_blob_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(worker_permissions_data_local {
+    args: "run --quiet --reload --allow-net=localhost:4545 workers/permissions_data_local.ts",
+    output: "workers/permissions_data_local.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(worker_permissions_blob_local {
+    args: "run --quiet --reload --allow-net=localhost:4545 workers/permissions_blob_local.ts",
+    output: "workers/permissions_blob_local.ts.out",
+    http_server: true,
     exit_code: 1,
   });
 
@@ -3946,7 +4060,7 @@ console.log("finish");
   });
 
   itest!(import_blob_url_imports {
-    args: "run --quiet --reload import_blob_url_imports.ts",
+    args: "run --quiet --reload --allow-net=localhost:4545 import_blob_url_imports.ts",
     output: "import_blob_url_imports.ts.out",
     http_server: true,
   });
@@ -4317,12 +4431,13 @@ console.log("finish");
     #[test]
     fn branch() {
       let tempdir = TempDir::new().expect("tempdir fail");
+      let tempdir = tempdir.path().join("cov");
       let status = util::deno_cmd()
         .current_dir(util::root_path())
         .arg("test")
         .arg("--quiet")
         .arg("--unstable")
-        .arg(format!("--coverage={}", tempdir.path().to_str().unwrap()))
+        .arg(format!("--coverage={}", tempdir.to_str().unwrap()))
         .arg("cli/tests/coverage/branch_test.ts")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::inherit())
@@ -4336,7 +4451,7 @@ console.log("finish");
         .arg("coverage")
         .arg("--quiet")
         .arg("--unstable")
-        .arg(format!("{}/", tempdir.path().to_str().unwrap()))
+        .arg(format!("{}/", tempdir.to_str().unwrap()))
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::inherit())
         .output()
@@ -4365,7 +4480,7 @@ console.log("finish");
         .arg("--quiet")
         .arg("--unstable")
         .arg("--lcov")
-        .arg(format!("{}/", tempdir.path().to_str().unwrap()))
+        .arg(format!("{}/", tempdir.to_str().unwrap()))
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::inherit())
         .output()

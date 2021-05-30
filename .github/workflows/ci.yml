@@ -47,6 +47,7 @@ jobs:
 
     env:
       RUST_BACKTRACE: full
+      RUSTC_FORCE_INCREMENTAL: 1
       CARGO_TERM_COLOR: always
 
     steps:
@@ -91,10 +92,7 @@ jobs:
           curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
           echo "$HOME/.deno/bin" >> $GITHUB_PATH
 
-      # TODO(ry) Enable on all OSes https://github.com/denoland/deno/issues/10378
       - name: Error on Warning
-        if: |
-          !startsWith(matrix.os, 'windows')
         run: echo "RUSTFLAGS=-D warnings" >> $GITHUB_ENV
 
       - name: Install Deno (Windows)
@@ -212,13 +210,14 @@ jobs:
           path: |
             ./target
           key: |
-            dummy # Cache never be created for this key.
+            s0mth1ng_rand0m # Cache never be created for this key.
           restore-keys: |
             a-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ hashFiles('Cargo.lock') }}-
 
       # Skips saving cache in PR branches
       - name: Skip save cache (PR)
         run: echo "CACHE_SKIP_SAVE=true" >> $GITHUB_ENV
+        shell: bash
         if: github.ref != 'refs/heads/main'
 
       - name: Apply and update mtime cache
