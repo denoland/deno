@@ -43,15 +43,36 @@
 
   const subtle = {
     digest(algorithm, data) {
-      const digestAlgorithms = [
+      if (typeof algorithm === "string") {
+        algorithm = { name: algorithm };
+       } else if (typeof algorithm === "object" && algorithm !== null) {
+       if (typeof algorithm.name !== "string") {
+         throw new TypeError("Algorithm name is missing or not a string");
+       }
+
+       algorithm = { ...algorithm };
+     } else {
+       throw new TypeError("Argument 1 must be an object or a string");
+     }
+
+       if (data instanceof ArrayBuffer) {
+         data = new Uint8Array(data);
+       } else if (ArrayBuffer.isView(data)) {
+         data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+       } else {
+         throw new TypeError(
+           "Argument 2 is not an ArrayBuffer nor does it implement the interface ArrayBufferView",
+         );
+       }
+
+      const algorithmName = algorithm.name.toUpperCase();
+      const algorithmId = [
         "SHA-1",
         "SHA-256",
         "SHA-384",
         "SHA-512",
-      ];
+      ].indexOf(algorithmName);
 
-      const normalizedAlgorithm = algorithm.toUpperCase();
-      const algorithmId = digestAlgorithms.indexOf(normalizedAlgorithm);
       if (algorithmId == -1) {
         throw new DOMException(
           "Unrecognized algorithm name",
