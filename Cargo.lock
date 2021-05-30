@@ -646,6 +646,7 @@ dependencies = [
  "deno_core",
  "rand 0.8.3",
  "ring",
+ "tokio",
 ]
 
 [[package]]
