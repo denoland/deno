@@ -80,11 +80,13 @@
         );
       }
 
-      return await core.opAsync(
+      const result = await core.opAsync(
         "op_crypto_subtle_digest",
         algorithmId,
         data.slice(),
       );
+
+      return result.buffer;
     },
   };
 
