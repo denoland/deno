@@ -2,20 +2,7 @@
   "WebCryptoAPI": {
     "getRandomValues.any.html": true,
     "digest": {
-      "digest.https.any.html": [
-        "SHA-1 with short source data and altered buffer after call",
-        "SHA-256 with short source data and altered buffer after call",
-        "SHA-384 with short source data and altered buffer after call",
-        "SHA-512 with short source data and altered buffer after call",
-        "SHA-1 with medium source data and altered buffer after call",
-        "SHA-256 with medium source data and altered buffer after call",
-        "SHA-384 with medium source data and altered buffer after call",
-        "SHA-512 with medium source data and altered buffer after call",
-        "SHA-1 with long source data and altered buffer after call",
-        "SHA-256 with long source data and altered buffer after call",
-        "SHA-384 with long source data and altered buffer after call",
-        "SHA-512 with long source data and altered buffer after call"
-      ]
+      "digest.https.any.html": true
     }
   },
   "console": {
