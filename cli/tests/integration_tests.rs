@@ -3139,6 +3139,12 @@ console.log("finish");
     exit_code: 1,
   });
 
+  itest!(_095_cache_with_bare_import {
+    args: "cache 095_cache_with_bare_import.ts",
+    output: "095_cache_with_bare_import.ts.out",
+    exit_code: 1,
+  });
+
   itest!(dynamic_import_permissions_remote_remote {
     args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_remote_remote.ts",
     output: "dynamic_import/permissions_remote_remote.ts.out",
