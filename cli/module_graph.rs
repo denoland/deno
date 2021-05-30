@@ -397,18 +397,14 @@ impl Module {
         match self.resolve_import(&desc.specifier, Some(location.clone())) {
           Ok(specifier) => Some(specifier),
           Err(any_error) => {
-            if desc.is_dynamic {
-              match any_error.downcast_ref::<ModuleResolutionError>() {
-                Some(ModuleResolutionError::ImportPrefixMissing(..)) => None,
-                _ => match any_error.downcast_ref::<ImportMapError>() {
-                  Some(ImportMapError::UnmappedBareSpecifier(..)) => None,
-                  _ => {
-                    return Err(any_error);
-                  }
-                },
-              }
-            } else {
-              return Err(any_error);
+            match any_error.downcast_ref::<ModuleResolutionError>() {
+              Some(ModuleResolutionError::ImportPrefixMissing(..)) => None,
+              _ => match any_error.downcast_ref::<ImportMapError>() {
+                Some(ImportMapError::UnmappedBareSpecifier(..)) => None,
+                _ => {
+                  return Err(any_error);
+                }
+              },
             }
           }
         };
