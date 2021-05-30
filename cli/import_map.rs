@@ -24,7 +24,7 @@ impl fmt::Display for ImportMapError {
     match self {
       ImportMapError::UnmappedBareSpecifier(specifier, maybe_referrer) => write!(
         f,
-        "relative import path \"{}\" not prefixed with / or ./ or ../ and not in import map{}",
+        "Relative import path \"{}\" not prefixed with / or ./ or ../ and not in import map{}",
         specifier,
         match maybe_referrer {
           Some(referrer) => format!(" from \"{}\"", referrer),

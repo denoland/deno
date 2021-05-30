@@ -39,7 +39,7 @@ impl fmt::Display for ModuleResolutionError {
       InvalidPath(ref path) => write!(f, "invalid module path: {:?}", path),
       ImportPrefixMissing(ref specifier, ref maybe_referrer) => write!(
         f,
-        "relative import path \"{}\" not prefixed with / or ./ or ../{}",
+        "Relative import path \"{}\" not prefixed with / or ./ or ../{}",
         specifier,
         match maybe_referrer {
           Some(referrer) => format!(" from \"{}\"", referrer),
