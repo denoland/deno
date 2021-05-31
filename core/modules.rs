@@ -408,6 +408,7 @@ impl Stream for RecursiveModuleLoad {
   }
 }
 
+#[derive(Clone)]
 pub struct ModuleInfo {
   pub id: ModuleId,
   // Used in "bindings.rs" for "import.meta.main" property value.
@@ -427,7 +428,7 @@ enum SymbolicModule {
 }
 
 /// A collection of JS modules.
-pub struct ModuleMap {
+pub struct ModuleMapInner {
   // Handling of specifiers and v8 objects
   ids_by_handle: HashMap<v8::Global<v8::Module>, ModuleId>,
   handles_by_id: HashMap<ModuleId, v8::Global<v8::Module>>,
@@ -446,12 +447,15 @@ pub struct ModuleMap {
     FuturesUnordered<StreamFuture<RecursiveModuleLoad>>,
 }
 
+#[derive(Clone)]
+pub struct ModuleMap(pub Rc<RefCell<ModuleMapInner>>);
+
 impl ModuleMap {
   pub fn new(
     loader: Rc<dyn ModuleLoader>,
     op_state: Rc<RefCell<OpState>>,
   ) -> ModuleMap {
-    Self {
+    Self(Rc::new(RefCell::new(ModuleMapInner {
       ids_by_handle: HashMap::new(),
       handles_by_id: HashMap::new(),
       info: HashMap::new(),
@@ -462,15 +466,16 @@ impl ModuleMap {
       dynamic_import_map: HashMap::new(),
       preparing_dynamic_imports: FuturesUnordered::new(),
       pending_dynamic_imports: FuturesUnordered::new(),
-    }
+    })))
   }
 
   /// Get module id, following all aliases in case of module specifier
   /// that had been redirected.
   pub fn get_id(&self, name: &str) -> Option<ModuleId> {
+    let inner = self.0.borrow();
     let mut mod_name = name;
     loop {
-      let symbolic_module = self.by_name.get(mod_name)?;
+      let symbolic_module = inner.by_name.get(mod_name)?;
       match symbolic_module {
         SymbolicModule::Alias(target) => {
           mod_name = target;
@@ -504,6 +509,7 @@ impl ModuleMap {
       return exception_to_err_result(tc_scope, e, false);
     }
 
+    let mut inner = self.0.borrow_mut();
     let module = maybe_module.unwrap();
 
     let mut import_specifiers: Vec<ModuleSpecifier> = vec![];
@@ -516,8 +522,8 @@ impl ModuleMap {
       let import_specifier = module_request
         .get_specifier()
         .to_rust_string_lossy(tc_scope);
-      let module_specifier = self.loader.resolve(
-        self.op_state.clone(),
+      let module_specifier = inner.loader.resolve(
+        inner.op_state.clone(),
         &import_specifier,
         name,
         false,
@@ -526,14 +532,14 @@ impl ModuleMap {
     }
 
     let handle = v8::Global::<v8::Module>::new(tc_scope, module);
-    let id = self.next_module_id;
-    self.next_module_id += 1;
-    self
+    let id = inner.next_module_id;
+    inner.next_module_id += 1;
+    inner
       .by_name
       .insert(name.to_string(), SymbolicModule::Mod(id));
-    self.handles_by_id.insert(id, handle.clone());
-    self.ids_by_handle.insert(handle, id);
-    self.info.insert(
+    inner.handles_by_id.insert(id, handle.clone());
+    inner.ids_by_handle.insert(handle, id);
+    inner.info.insert(
       id,
       ModuleInfo {
         id,
@@ -594,7 +600,7 @@ impl ModuleMap {
     };
 
     // Now we must iterate over all imports of the module and load them.
-    let imports = self.get_children(module_id).unwrap().clone();
+    let imports = self.get_children(module_id).unwrap();
 
     for module_specifier in imports {
       let is_registered = self.is_registered(&module_specifier);
@@ -609,8 +615,10 @@ impl ModuleMap {
     Ok(())
   }
 
-  pub fn get_children(&self, id: ModuleId) -> Option<&Vec<ModuleSpecifier>> {
-    self.info.get(&id).map(|i| &i.import_specifiers)
+  pub fn get_children(&self, id: ModuleId) -> Option<Vec<ModuleSpecifier>> {
+    let inner = self.0.borrow();
+
+    inner.info.get(&id).map(|i| i.import_specifiers.clone())
   }
 
   pub fn is_registered(&self, specifier: &ModuleSpecifier) -> bool {
@@ -619,33 +627,37 @@ impl ModuleMap {
 
   pub fn alias(&mut self, name: &str, target: &str) {
     self
+      .0
+      .borrow_mut()
       .by_name
       .insert(name.to_string(), SymbolicModule::Alias(target.to_string()));
   }
 
   #[cfg(test)]
   pub fn is_alias(&self, name: &str) -> bool {
-    let cond = self.by_name.get(name);
+    let inner = self.0.borrow();
+    let cond = inner.by_name.get(name);
     matches!(cond, Some(SymbolicModule::Alias(_)))
   }
 
   pub fn get_handle(&self, id: ModuleId) -> Option<v8::Global<v8::Module>> {
-    self.handles_by_id.get(&id).cloned()
+    self.0.borrow().handles_by_id.get(&id).cloned()
   }
 
   pub fn get_info(
     &self,
     global: &v8::Global<v8::Module>,
-  ) -> Option<&ModuleInfo> {
-    if let Some(id) = self.ids_by_handle.get(global) {
-      return self.info.get(id);
+  ) -> Option<ModuleInfo> {
+    let inner = self.0.borrow();
+    if let Some(id) = inner.ids_by_handle.get(global) {
+      return inner.info.get(id).cloned();
     }
 
     None
   }
 
-  pub fn get_info_by_id(&self, id: &ModuleId) -> Option<&ModuleInfo> {
-    self.info.get(id)
+  pub fn get_name_by_id(&self, id: &ModuleId) -> Option<String> {
+    self.0.borrow().info.get(id).map(|m| m.name.clone())
   }
 
   pub fn load_main(
@@ -653,11 +665,12 @@ impl ModuleMap {
     specifier: &str,
     code: Option<String>,
   ) -> RecursiveModuleLoad {
+    let inner = self.0.borrow();
     RecursiveModuleLoad::main(
-      self.op_state.clone(),
+      inner.op_state.clone(),
       specifier,
       code,
-      self.loader.clone(),
+      inner.loader.clone(),
     )
   }
 
@@ -668,20 +681,22 @@ impl ModuleMap {
     referrer: &str,
     resolver_handle: v8::Global<v8::PromiseResolver>,
   ) {
+    let mut inner = self.0.borrow_mut();
     let load = RecursiveModuleLoad::dynamic_import(
-      self.op_state.clone(),
+      inner.op_state.clone(),
       specifier,
       referrer,
-      self.loader.clone(),
+      inner.loader.clone(),
     );
-    self.dynamic_import_map.insert(load.id, resolver_handle);
+    inner.dynamic_import_map.insert(load.id, resolver_handle);
     let fut = load.prepare().boxed_local();
-    self.preparing_dynamic_imports.push(fut);
+    inner.preparing_dynamic_imports.push(fut);
   }
 
   pub fn has_pending_dynamic_imports(&self) -> bool {
-    !(self.preparing_dynamic_imports.is_empty()
-      && self.pending_dynamic_imports.is_empty())
+    let inner = self.0.borrow();
+    !(inner.preparing_dynamic_imports.is_empty()
+      && inner.pending_dynamic_imports.is_empty())
   }
 
   /// Called by `module_resolve_callback` during module instantiation.
@@ -691,10 +706,13 @@ impl ModuleMap {
     specifier: &str,
     referrer: &str,
   ) -> Option<v8::Local<'s, v8::Module>> {
-    let resolved_specifier = self
-      .loader
-      .resolve(self.op_state.clone(), specifier, referrer, false)
-      .expect("Module should have been already resolved");
+    let resolved_specifier = {
+      let inner = self.0.borrow();
+      inner
+        .loader
+        .resolve(inner.op_state.clone(), specifier, referrer, false)
+        .expect("Module should have been already resolved")
+    };
 
     if let Some(id) = self.get_id(resolved_specifier.as_str()) {
       if let Some(handle) = self.get_handle(id) {
@@ -914,8 +932,7 @@ mod tests {
       ]
     );
 
-    let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
-    let modules = module_map_rc.borrow();
+    let modules = JsRuntime::module_map(runtime.v8_isolate());
 
     assert_eq!(modules.get_id("file:///a.js"), Some(a_id));
     let b_id = modules.get_id("file:///b.js").unwrap();
@@ -923,20 +940,20 @@ mod tests {
     let d_id = modules.get_id("file:///d.js").unwrap();
     assert_eq!(
       modules.get_children(a_id),
-      Some(&vec![
+      Some(vec![
         crate::resolve_url("file:///b.js").unwrap(),
         crate::resolve_url("file:///c.js").unwrap()
       ])
     );
     assert_eq!(
       modules.get_children(b_id),
-      Some(&vec![crate::resolve_url("file:///c.js").unwrap()])
+      Some(vec![crate::resolve_url("file:///c.js").unwrap()])
     );
     assert_eq!(
       modules.get_children(c_id),
-      Some(&vec![crate::resolve_url("file:///d.js").unwrap()])
+      Some(vec![crate::resolve_url("file:///d.js").unwrap()])
     );
-    assert_eq!(modules.get_children(d_id), Some(&vec![]));
+    assert_eq!(modules.get_children(d_id), Some(vec![]));
   }
 
   const CIRCULAR1_SRC: &str = r#"
@@ -1024,11 +1041,10 @@ mod tests {
 
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
-    let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+    let mut module_map = JsRuntime::module_map(runtime.v8_isolate());
 
     let (mod_a, mod_b) = {
       let scope = &mut runtime.handle_scope();
-      let mut module_map = module_map_rc.borrow_mut();
       let specifier_a = "file:///a.js".to_string();
       let mod_a = module_map
         .new_module(
@@ -1048,7 +1064,7 @@ mod tests {
       let imports = module_map.get_children(mod_a);
       assert_eq!(
         imports,
-        Some(&vec![crate::resolve_url("file:///b.js").unwrap()])
+        Some(vec![crate::resolve_url("file:///b.js").unwrap()])
       );
 
       let mod_b = module_map
@@ -1301,27 +1317,26 @@ mod tests {
         ]
       );
 
-      let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
-      let modules = module_map_rc.borrow();
+      let modules = JsRuntime::module_map(runtime.v8_isolate());
 
       assert_eq!(modules.get_id("file:///circular1.js"), Some(circular1_id));
       let circular2_id = modules.get_id("file:///circular2.js").unwrap();
 
       assert_eq!(
         modules.get_children(circular1_id),
-        Some(&vec![crate::resolve_url("file:///circular2.js").unwrap()])
+        Some(vec![crate::resolve_url("file:///circular2.js").unwrap()])
       );
 
       assert_eq!(
         modules.get_children(circular2_id),
-        Some(&vec![crate::resolve_url("file:///circular3.js").unwrap()])
+        Some(vec![crate::resolve_url("file:///circular3.js").unwrap()])
       );
 
       assert!(modules.get_id("file:///circular3.js").is_some());
       let circular3_id = modules.get_id("file:///circular3.js").unwrap();
       assert_eq!(
         modules.get_children(circular3_id),
-        Some(&vec![
+        Some(vec![
           crate::resolve_url("file:///circular1.js").unwrap(),
           crate::resolve_url("file:///circular2.js").unwrap()
         ])
@@ -1373,8 +1388,7 @@ mod tests {
         ]
       );
 
-      let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
-      let modules = module_map_rc.borrow();
+      let modules = JsRuntime::module_map(runtime.v8_isolate());
 
       assert_eq!(modules.get_id("file:///redirect1.js"), Some(redirect1_id));
 
@@ -1519,8 +1533,7 @@ mod tests {
       vec!["file:///b.js", "file:///c.js", "file:///d.js"]
     );
 
-    let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
-    let modules = module_map_rc.borrow();
+    let modules = JsRuntime::module_map(runtime.v8_isolate());
 
     assert_eq!(modules.get_id("file:///main_with_code.js"), Some(main_id));
     let b_id = modules.get_id("file:///b.js").unwrap();
@@ -1529,19 +1542,19 @@ mod tests {
 
     assert_eq!(
       modules.get_children(main_id),
-      Some(&vec![
+      Some(vec![
         crate::resolve_url("file:///b.js").unwrap(),
         crate::resolve_url("file:///c.js").unwrap()
       ])
     );
     assert_eq!(
       modules.get_children(b_id),
-      Some(&vec![crate::resolve_url("file:///c.js").unwrap()])
+      Some(vec![crate::resolve_url("file:///c.js").unwrap()])
     );
     assert_eq!(
       modules.get_children(c_id),
-      Some(&vec![crate::resolve_url("file:///d.js").unwrap()])
+      Some(vec![crate::resolve_url("file:///d.js").unwrap()])
     );
-    assert_eq!(modules.get_children(d_id), Some(&vec![]));
+    assert_eq!(modules.get_children(d_id), Some(vec![]));
   }
 }

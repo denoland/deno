@@ -180,13 +180,13 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let resolver_handle = v8::Global::new(scope, resolver);
   {
     let state_rc = JsRuntime::state(scope);
-    let module_map_rc = JsRuntime::module_map(scope);
+    let mut module_map = JsRuntime::module_map(scope);
 
     debug!(
       "dyn_import specifier {} referrer {} ",
       specifier_str, referrer_name_str
     );
-    module_map_rc.borrow_mut().load_dynamic_import(
+    module_map.load_dynamic_import(
       &specifier_str,
       &referrer_name_str,
       resolver_handle,
@@ -229,8 +229,7 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   meta: v8::Local<v8::Object>,
 ) {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
-  let module_map_rc = JsRuntime::module_map(scope);
-  let module_map = module_map_rc.borrow();
+  let module_map = JsRuntime::module_map(scope);
 
   let module_global = v8::Global::new(scope, module);
   let info = module_map
@@ -596,27 +595,25 @@ pub fn module_resolve_callback<'s>(
 ) -> Option<v8::Local<'s, v8::Module>> {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
-  let module_map_rc = JsRuntime::module_map(scope);
-  let module_map = module_map_rc.borrow();
+  let module_map = JsRuntime::module_map(scope);
 
   let referrer_global = v8::Global::new(scope, referrer);
 
   let referrer_info = module_map
     .get_info(&referrer_global)
     .expect("ModuleInfo not found");
-  let referrer_name = referrer_info.name.to_string();
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
   let maybe_module =
-    module_map.resolve_callback(scope, &specifier_str, &referrer_name);
+    module_map.resolve_callback(scope, &specifier_str, &referrer_info.name);
   if let Some(module) = maybe_module {
     return Some(module);
   }
 
   let msg = format!(
     r#"Cannot resolve module "{}" from "{}""#,
-    specifier_str, referrer_name
+    specifier_str, referrer_info.name
   );
   throw_type_error(scope, msg);
   None

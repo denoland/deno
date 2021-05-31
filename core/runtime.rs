@@ -307,7 +307,7 @@ impl JsRuntime {
     })));
 
     let module_map = ModuleMap::new(loader, op_state);
-    isolate.set_slot(Rc::new(RefCell::new(module_map)));
+    isolate.set_slot(module_map);
 
     // Add builtins extension
     options
@@ -373,8 +373,8 @@ impl JsRuntime {
     s.clone()
   }
 
-  pub(crate) fn module_map(isolate: &v8::Isolate) -> Rc<RefCell<ModuleMap>> {
-    let module_map = isolate.get_slot::<Rc<RefCell<ModuleMap>>>().unwrap();
+  pub(crate) fn module_map(isolate: &v8::Isolate) -> ModuleMap {
+    let module_map = isolate.get_slot::<ModuleMap>().unwrap();
     module_map.clone()
   }
 
@@ -512,12 +512,10 @@ impl JsRuntime {
     state.borrow_mut().global_context.take();
 
     // Overwrite existing ModuleMap to drop v8::Global handles
-    self
-      .v8_isolate()
-      .set_slot(Rc::new(RefCell::new(ModuleMap::new(
-        Rc::new(NoopModuleLoader),
-        state.borrow().op_state.clone(),
-      ))));
+    self.v8_isolate().set_slot(ModuleMap::new(
+      Rc::new(NoopModuleLoader),
+      state.borrow().op_state.clone(),
+    ));
     // Drop other v8::Global handles before snapshotting
     std::mem::take(&mut state.borrow_mut().js_recv_cb);
 
@@ -613,7 +611,7 @@ impl JsRuntime {
     let _ = self.inspector().map(|i| i.poll_unpin(cx));
 
     let state_rc = Self::state(self.v8_isolate());
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let module_map = Self::module_map(self.v8_isolate());
     {
       let state = state_rc.borrow();
       state.waker.register(cx.waker());
@@ -644,7 +642,6 @@ impl JsRuntime {
     self.evaluate_pending_module();
 
     let state = state_rc.borrow();
-    let module_map = module_map_rc.borrow();
 
     let has_pending_ops = !state.pending_ops.is_empty();
 
@@ -695,10 +692,10 @@ impl JsRuntime {
         let mut msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promise.
 Pending dynamic modules:\n".to_string();
         for pending_evaluate in &state.pending_dyn_mod_evaluate {
-          let module_info = module_map
-            .get_info_by_id(&pending_evaluate.module_id)
+          let module_name = module_map
+            .get_name_by_id(&pending_evaluate.module_id)
             .unwrap();
-          msg.push_str(&format!("- {}", module_info.name.as_str()));
+          msg.push_str(&format!("- {}", module_name));
         }
         return Poll::Ready(Err(generic_error(msg)));
       }
@@ -780,7 +777,6 @@ impl JsRuntime {
     let tc_scope = &mut v8::TryCatch::new(scope);
 
     let module = module_map_rc
-      .borrow()
       .get_handle(id)
       .map(|handle| v8::Local::new(tc_scope, handle))
       .expect("ModuleInfo not found");
@@ -816,10 +812,8 @@ impl JsRuntime {
     let state_rc = Self::state(self.v8_isolate());
     let module_map_rc = Self::module_map(self.v8_isolate());
 
-    let module_handle = module_map_rc
-      .borrow()
-      .get_handle(id)
-      .expect("ModuleInfo not found");
+    let module_handle =
+      module_map_rc.get_handle(id).expect("ModuleInfo not found");
 
     let status = {
       let scope = &mut self.handle_scope();
@@ -905,7 +899,6 @@ impl JsRuntime {
     let scope = &mut self.handle_scope();
 
     let module = module_map_rc
-      .borrow()
       .get_handle(id)
       .map(|handle| v8::Local::new(scope, handle))
       .expect("ModuleInfo not found");
@@ -968,6 +961,7 @@ impl JsRuntime {
     let scope = &mut self.handle_scope();
 
     let resolver_handle = module_map_rc
+      .0
       .borrow_mut()
       .dynamic_import_map
       .remove(&id)
@@ -996,6 +990,7 @@ impl JsRuntime {
     let scope = &mut self.handle_scope();
 
     let resolver_handle = module_map_rc
+      .0
       .borrow_mut()
       .dynamic_import_map
       .remove(&id)
@@ -1004,7 +999,6 @@ impl JsRuntime {
 
     let module = {
       module_map_rc
-        .borrow()
         .get_handle(mod_id)
         .map(|handle| v8::Local::new(scope, handle))
         .expect("Dyn import module info not found")
@@ -1027,12 +1021,18 @@ impl JsRuntime {
   ) -> Poll<Result<(), AnyError>> {
     let module_map_rc = Self::module_map(self.v8_isolate());
 
-    if module_map_rc.borrow().preparing_dynamic_imports.is_empty() {
+    if module_map_rc
+      .0
+      .borrow()
+      .preparing_dynamic_imports
+      .is_empty()
+    {
       return Poll::Ready(Ok(()));
     }
 
     loop {
       let poll_result = module_map_rc
+        .0
         .borrow_mut()
         .preparing_dynamic_imports
         .poll_next_unpin(cx);
@@ -1044,6 +1044,7 @@ impl JsRuntime {
         match prepare_result {
           Ok(load) => {
             module_map_rc
+              .0
               .borrow_mut()
               .pending_dynamic_imports
               .push(load.into_future());
@@ -1065,14 +1066,15 @@ impl JsRuntime {
     &mut self,
     cx: &mut Context,
   ) -> Poll<Result<(), AnyError>> {
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let mut module_map_rc = Self::module_map(self.v8_isolate());
 
-    if module_map_rc.borrow().pending_dynamic_imports.is_empty() {
+    if module_map_rc.0.borrow().pending_dynamic_imports.is_empty() {
       return Poll::Ready(Ok(()));
     }
 
     loop {
       let poll_result = module_map_rc
+        .0
         .borrow_mut()
         .pending_dynamic_imports
         .poll_next_unpin(cx);
@@ -1088,17 +1090,17 @@ impl JsRuntime {
               // A module (not necessarily the one dynamically imported) has been
               // fetched. Create and register it, and if successful, poll for the
               // next recursive-load event related to this dynamic import.
-              let register_result =
-                module_map_rc.borrow_mut().register_during_load(
-                  &mut self.handle_scope(),
-                  info,
-                  &mut load,
-                );
+              let register_result = module_map_rc.register_during_load(
+                &mut self.handle_scope(),
+                info,
+                &mut load,
+              );
 
               match register_result {
                 Ok(()) => {
                   // Keep importing until it's fully drained
                   module_map_rc
+                    .0
                     .borrow_mut()
                     .pending_dynamic_imports
                     .push(load.into_future());
@@ -1251,9 +1253,9 @@ impl JsRuntime {
     specifier: &ModuleSpecifier,
     code: Option<String>,
   ) -> Result<ModuleId, AnyError> {
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let mut module_map_rc = Self::module_map(self.v8_isolate());
 
-    let load = module_map_rc.borrow().load_main(specifier.as_str(), code);
+    let load = module_map_rc.load_main(specifier.as_str(), code);
 
     let (_load_id, prepare_result) = load.prepare().await;
 
@@ -1262,9 +1264,7 @@ impl JsRuntime {
     while let Some(info_result) = load.next().await {
       let info = info_result?;
       let scope = &mut self.handle_scope();
-      module_map_rc
-        .borrow_mut()
-        .register_during_load(scope, info, &mut load)?;
+      module_map_rc.register_during_load(scope, info, &mut load)?;
     }
 
     let root_id = load.expect_finished();
