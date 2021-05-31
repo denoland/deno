@@ -6,6 +6,50 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.10.3 / 2021.05.31
+
+- feat(lsp): diagnostics for deno types and triple-slash refs (#10699)
+- feat(lsp): provide X-Deno-Warning as a diagnostic (#10680)
+- feat(lsp): show hints from `deno_lint` in addition to messages (#10739)
+- feat(lsp): support formatting json and markdown files (#10180)
+- fix(cli): always allow documentation modules to be checked (#10581)
+- fix(cli): canonicalize coverage dir (#10364)
+- fix(cli): don't statically error on dynamic unmapped bare specifiers (#10618)
+- fix(cli): empty tsconfig.json file does not cause error (#10734)
+- fix(cli): support source maps with Deno.emit() and bundle (#10510)
+- fix(cli/dts): fix missing error class (NotSupported) in types (#10713)
+- fix(cli/install): support `file:` scheme URLs (#10562)
+- fix(cli/test): don't use reserved symbol `:` in specifier (#10751)
+- fix(cli/test): ensure coverage dir exists (#10717)
+- fix(cli/upgrade): modify download size paddings (#10639)
+- fix(runtime/http): expose nextRequest() errors in respondWith() (#10384)
+- fix(runtime/http): fix empty blob response (#10689)
+- fix(serde_v8): remove intentional deserialization error on non-utf8 strings
+  (#10156)
+- fix(ext/fetch): fix error message of Request constructor (#10772)
+- fix(ext/fetch): make prototype properties writable (#10769)
+- fix(ext/fetch): remove unimplemented Request attributes (#10784)
+- fix(ext/file): update File constructor following the spec (#10760)
+- fix(ext/webstorage): use opstate for sqlite connection (#10692)
+- fix(lsp): deps diagnostics include data property (#10696)
+- fix(lsp): ignore type definition not found diagnostic (#10610)
+- fix(lsp): local module import added by code action now includes the file
+  extension (#10778)
+- fix(lsp): make failed to load config error descriptive (#10685)
+- fix(lsp): memoize script versions per tsc request (#10601)
+- fix(lsp): re-enable the per resource configuration without a deadlock (#10625)
+- docs(cli): update getting started for clarity (#10694)
+- docs(cli/dts) replace `read()` with `readSync()` (#10732)
+- docs(cli/dts): fix plugin example (#10647)
+- docs(cli/dts): fix typo in `TestDefinition.only` description (#10697)
+- docs(cli/dts): fix unix socket examples (#10705)
+- docs(cli/dts): make worker example pass (#10703)
+- docs(cli/dts): tag test permission example as typescript (#10753)
+- docs(permissions): fix grammatical error in permissions docs (#10755)
+- docs(runtime): fix fetch API usage of HTTP server (#10777)
+- docs(testing): fix misspelling (#10683)
+- docs(typescript): fix typo in faqs (#10682)
+
 ### 1.10.2 / 2021.05.17
 
 - fix: static import permissions in dynamic imports
