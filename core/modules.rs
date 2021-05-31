@@ -576,7 +576,7 @@ impl ModuleMap {
     }
 
     let maybe_mod_id = self.get_id(&module_source.module_url_found);
-    eprintln!("register mod_id: {:?}, url: {}", maybe_mod_id, module_url_found);
+    eprintln!("register mod_id: {:?}, url: {}", maybe_mod_id, module_source.module_url_found);
     let module_id = match maybe_mod_id {
       Some(id) => {
         // Module has already been registered.
@@ -699,7 +699,7 @@ impl ModuleMap {
       .resolve(self.op_state.clone(), specifier, referrer, false)
       .expect("Module should have been already resolved");
 
-    eprintln!("module_resolve_callback {} {:?}", resolved_specifier, state.module_map.get_id(resolved_specifier.as_str()));
+    eprintln!("module_resolve_callback {} {:?}", resolved_specifier, self.get_id(resolved_specifier.as_str()));
     if let Some(id) = self.get_id(resolved_specifier.as_str()) {
       if let Some(handle) = self.get_handle(id) {
         return Some(v8::Local::new(scope, handle));
@@ -723,6 +723,7 @@ mod tests {
   use std::fmt;
   use std::future::Future;
   use std::io;
+  use std::path::PathBuf;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Arc;
   use std::sync::Mutex;
@@ -1276,6 +1277,77 @@ mod tests {
       // Second poll triggers error
       let _ = runtime.poll_event_loop(cx, false);
     })
+  }
+
+  #[test]
+  fn dyn_circular_import() {
+    #[derive(Clone, Default)]
+    struct DynImportCircularLoader {
+      pub resolve_count: Arc<AtomicUsize>,
+      pub load_count: Arc<AtomicUsize>,
+    }
+
+    impl ModuleLoader for DynImportCircularLoader {
+      fn resolve(
+        &self,
+        _op_state: Rc<RefCell<OpState>>,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+      ) -> Result<ModuleSpecifier, AnyError> {
+        self.resolve_count.fetch_add(1, Ordering::Relaxed);
+        let s = crate::resolve_import(specifier, referrer).unwrap();
+        Ok(s)
+      }
+
+      fn load(
+        &self,
+        _op_state: Rc<RefCell<OpState>>,
+        specifier: &ModuleSpecifier,
+        maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
+        self.load_count.fetch_add(1, Ordering::Relaxed);
+        let filename = PathBuf::from(specifier.to_string())
+          .file_name()
+          .unwrap()
+          .to_string_lossy()
+          .to_string();
+        eprintln!("{} from {:?}", filename.as_str(), maybe_referrer);
+        let code = match filename.as_str() {
+          "a.js" => "import './b.js';",
+          "b.js" => "import './c.js';\nimport './a.js';",
+          "c.js" => "import './d.js';",
+          "d.js" => "// pass",
+          _ => unreachable!(),
+        };
+        let info = ModuleSource {
+          module_url_specified: specifier.to_string(),
+          module_url_found: specifier.to_string(),
+          code: code.to_owned(),
+        };
+        async move { Ok(info) }.boxed()
+      }
+    }
+
+    let loader = Rc::new(DynImportCircularLoader::default());
+    let resolve_count = loader.resolve_count.clone();
+    let load_count = loader.load_count.clone();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+
+    // Dynamically import mod_b
+    runtime
+      .execute("file:///entry.js", "import('./b.js');\nimport('./a.js');")
+      .unwrap();
+
+    let result = futures::executor::block_on(runtime.run_event_loop(false));
+    eprintln!("result {:?}", result);
+    assert!(result.is_ok());
+    eprintln!("{}", resolve_count.load(Ordering::Relaxed));
+    eprintln!("{}", load_count.load(Ordering::Relaxed));
   }
 
   #[test]

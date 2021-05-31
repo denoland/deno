@@ -1243,93 +1243,6 @@ impl JsRuntime {
     }
   }
 
-  fn register_during_load(
-    &mut self,
-    info: ModuleSource,
-    load: &mut RecursiveModuleLoad,
-  ) -> Result<(), AnyError> {
-    let ModuleSource {
-      code,
-      module_url_specified,
-      module_url_found,
-    } = info;
-
-    let is_main =
-      load.state == LoadState::LoadingRoot && !load.is_dynamic_import();
-    let referrer_specifier = crate::resolve_url(&module_url_found).unwrap();
-
-    let state_rc = Self::state(self.v8_isolate());
-    // #A There are 3 cases to handle at this moment:
-    // 1. Source code resolved result have the same module name as requested
-    //    and is not yet registered
-    //     -> register
-    // 2. Source code resolved result have a different name as requested:
-    //   2a. The module with resolved module name has been registered
-    //     -> alias
-    //   2b. The module with resolved module name has not yet been registered
-    //     -> register & alias
-
-    // If necessary, register an alias.
-    if module_url_specified != module_url_found {
-      let mut state = state_rc.borrow_mut();
-      state
-        .module_map
-        .alias(&module_url_specified, &module_url_found);
-    }
-
-    let maybe_mod_id = {
-      let state = state_rc.borrow();
-      state.module_map.get_id(&module_url_found)
-    };
-    eprintln!("register mod_id: {:?}, url: {}", maybe_mod_id, module_url_found);
-    let module_id = match maybe_mod_id {
-      Some(id) => {
-        // Module has already been registered.
-        debug!(
-          "Already-registered module fetched again: {}",
-          module_url_found
-        );
-        id
-      }
-      // Module not registered yet, do it now.
-      None => self.mod_new(is_main, &module_url_found, &code)?,
-    };
-
-    // Now we must iterate over all imports of the module and load them.
-    let imports = {
-      let state_rc = Self::state(self.v8_isolate());
-      let state = state_rc.borrow();
-      state.module_map.get_children(module_id).unwrap().clone()
-    };
-
-    for module_specifier in imports {
-      let is_registered = {
-        let state_rc = Self::state(self.v8_isolate());
-        let state = state_rc.borrow();
-        state.module_map.is_registered(&module_specifier)
-      };
-      eprintln!("is_registered {} mod_id: {} spec: {}", is_registered, module_id, module_specifier);
-      if !is_registered {
-        load
-          .add_import(module_specifier.to_owned(), referrer_specifier.clone());
-      }
-    }
-
-    // If we just finished loading the root module, store the root module id.
-    if load.state == LoadState::LoadingRoot {
-      load.root_module_id = Some(module_id);
-      load.state = LoadState::LoadingImports;
-    }
-
-    // TODO: should verify if all dependencies are loaded as well?
-    if load.pending.is_empty() {
-      eprintln!("load done {}", load.id);
-      load.state = LoadState::Done;
-    }
-
-    Ok(())
-  }
-
   /// Asynchronously load specified module and all of its dependencies
   ///
   /// User must call `JsRuntime::mod_evaluate` with returned `ModuleId`
@@ -1503,7 +1416,6 @@ pub mod tests {
   use crate::ZeroCopyBuf;
   use futures::future::lazy;
   use std::ops::FnOnce;
-  use std::path::PathBuf;
   use std::rc::Rc;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Arc;
@@ -2036,77 +1948,6 @@ main();
         _ => panic!(),
       };
     })
-  }
-
-  #[test]
-  fn dyn_circular_import() {
-    #[derive(Clone, Default)]
-    struct DynImportCircularLoader {
-      pub resolve_count: Arc<AtomicUsize>,
-      pub load_count: Arc<AtomicUsize>,
-    }
-
-    impl ModuleLoader for DynImportCircularLoader {
-      fn resolve(
-        &self,
-        _op_state: Rc<RefCell<OpState>>,
-        specifier: &str,
-        referrer: &str,
-        _is_main: bool,
-      ) -> Result<ModuleSpecifier, AnyError> {
-        self.resolve_count.fetch_add(1, Ordering::Relaxed);
-        let s = crate::resolve_import(specifier, referrer).unwrap();
-        Ok(s)
-      }
-
-      fn load(
-        &self,
-        _op_state: Rc<RefCell<OpState>>,
-        specifier: &ModuleSpecifier,
-        maybe_referrer: Option<ModuleSpecifier>,
-        _is_dyn_import: bool,
-      ) -> Pin<Box<ModuleSourceFuture>> {
-        self.load_count.fetch_add(1, Ordering::Relaxed);
-        let filename = PathBuf::from(specifier.to_string())
-          .file_name()
-          .unwrap()
-          .to_string_lossy()
-          .to_string();
-        eprintln!("{} from {:?}", filename.as_str(), maybe_referrer);
-        let code = match filename.as_str() {
-          "a.js" => "import './b.js';",
-          "b.js" => "import './c.js';\nimport './a.js';",
-          "c.js" => "import './d.js';",
-          "d.js" => "// pass",
-          _ => unreachable!(),
-        };
-        let info = ModuleSource {
-          module_url_specified: specifier.to_string(),
-          module_url_found: specifier.to_string(),
-          code: code.to_owned(),
-        };
-        async move { Ok(info) }.boxed()
-      }
-    }
-
-    let loader = Rc::new(DynImportCircularLoader::default());
-    let resolve_count = loader.resolve_count.clone();
-    let load_count = loader.load_count.clone();
-    let mut runtime = JsRuntime::new(RuntimeOptions {
-      module_loader: Some(loader),
-      ..Default::default()
-    });
-
-    // Dynamically import mod_b
-    runtime
-      .execute("file:///entry.js", "import('./b.js');\nimport('./a.js');")
-      .unwrap();
-
-    let result = futures::executor::block_on(runtime.run_event_loop());
-    eprintln!("result {:?}", result);
-    assert!(result.is_ok());
-    eprintln!("{}", resolve_count.load(Ordering::Relaxed));
-    eprintln!("{}", load_count.load(Ordering::Relaxed));
   }
 
   #[test]

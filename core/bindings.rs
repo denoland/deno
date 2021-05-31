@@ -608,21 +608,10 @@ pub fn module_resolve_callback<'s>(
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
-  let resolved_specifier = state
-    .loader
-    .resolve(
-      state.op_state.clone(),
-      &specifier_str,
-      &referrer_name,
-      false,
-    )
-    .expect("Module should have been already resolved");
-
-  eprintln!("module_resolve_callback {} {:?}", resolved_specifier, state.module_map.get_id(resolved_specifier.as_str()));
-  if let Some(id) = state.module_map.get_id(resolved_specifier.as_str()) {
-    if let Some(handle) = state.module_map.get_handle(id) {
-      return Some(v8::Local::new(scope, handle));
-    }
+  let maybe_module =
+    module_map.resolve_callback(scope, &specifier_str, &referrer_name);
+  if let Some(module) = maybe_module {
+    return Some(module);
   }
 
   let msg = format!(
