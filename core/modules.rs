@@ -11,6 +11,7 @@ use crate::OpState;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
+use futures::stream::StreamExt;
 use futures::stream::StreamFuture;
 use futures::stream::TryStreamExt;
 use log::debug;
@@ -448,7 +449,7 @@ pub struct ModuleMapInner {
 }
 
 #[derive(Clone)]
-pub struct ModuleMap(pub Rc<RefCell<ModuleMapInner>>);
+pub struct ModuleMap(Rc<RefCell<ModuleMapInner>>);
 
 impl ModuleMap {
   pub fn new(
@@ -691,6 +692,59 @@ impl ModuleMap {
     inner.dynamic_import_map.insert(load.id, resolver_handle);
     let fut = load.prepare().boxed_local();
     inner.preparing_dynamic_imports.push(fut);
+  }
+
+  pub fn add_pending_dynamic_import(&mut self, load: RecursiveModuleLoad) {
+    self
+      .0
+      .borrow_mut()
+      .pending_dynamic_imports
+      .push(load.into_future());
+  }
+
+  pub fn poll_preparing_dynamic_imports(
+    &mut self,
+    cx: &mut Context,
+  ) -> Poll<Option<(i32, Result<RecursiveModuleLoad, AnyError>)>> {
+    self
+      .0
+      .borrow_mut()
+      .preparing_dynamic_imports
+      .poll_next_unpin(cx)
+  }
+
+  pub fn poll_pending_dynamic_imports(
+    &mut self,
+    cx: &mut Context,
+  ) -> Poll<Option<(Option<Result<ModuleSource, AnyError>>, RecursiveModuleLoad)>>
+  {
+    self
+      .0
+      .borrow_mut()
+      .pending_dynamic_imports
+      .poll_next_unpin(cx)
+  }
+
+  pub fn remove_dynamic_import(
+    &mut self,
+    id: &ModuleLoadId,
+  ) -> v8::Global<v8::PromiseResolver> {
+    self
+      .0
+      .borrow_mut()
+      .dynamic_import_map
+      .remove(&id)
+      .expect("Invalid dynamic import id")
+  }
+
+  pub fn has_preparing_dynamic_imports(&self) -> bool {
+    let inner = self.0.borrow();
+    !inner.preparing_dynamic_imports.is_empty()
+  }
+
+  pub fn has_pending_dynamic_imports2(&self) -> bool {
+    let inner = self.0.borrow();
+    !inner.pending_dynamic_imports.is_empty()
   }
 
   pub fn has_pending_dynamic_imports(&self) -> bool {

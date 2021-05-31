@@ -957,15 +957,10 @@ impl JsRuntime {
   }
 
   fn dynamic_import_reject(&mut self, id: ModuleLoadId, err: AnyError) {
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let mut module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
 
-    let resolver_handle = module_map_rc
-      .0
-      .borrow_mut()
-      .dynamic_import_map
-      .remove(&id)
-      .expect("Invalid dynamic import id");
+    let resolver_handle = module_map_rc.remove_dynamic_import(&id);
     let resolver = resolver_handle.get(scope);
 
     let exception = err
@@ -986,15 +981,10 @@ impl JsRuntime {
   }
 
   fn dynamic_import_resolve(&mut self, id: ModuleLoadId, mod_id: ModuleId) {
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let mut module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
 
-    let resolver_handle = module_map_rc
-      .0
-      .borrow_mut()
-      .dynamic_import_map
-      .remove(&id)
-      .expect("Invalid dynamic import id");
+    let resolver_handle = module_map_rc.remove_dynamic_import(&id);
     let resolver = resolver_handle.get(scope);
 
     let module = {
@@ -1019,23 +1009,14 @@ impl JsRuntime {
     &mut self,
     cx: &mut Context,
   ) -> Poll<Result<(), AnyError>> {
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let mut module_map_rc = Self::module_map(self.v8_isolate());
 
-    if module_map_rc
-      .0
-      .borrow()
-      .preparing_dynamic_imports
-      .is_empty()
-    {
+    if !module_map_rc.has_preparing_dynamic_imports() {
       return Poll::Ready(Ok(()));
     }
 
     loop {
-      let poll_result = module_map_rc
-        .0
-        .borrow_mut()
-        .preparing_dynamic_imports
-        .poll_next_unpin(cx);
+      let poll_result = module_map_rc.poll_preparing_dynamic_imports(cx);
 
       if let Poll::Ready(Some(prepare_poll)) = poll_result {
         let dyn_import_id = prepare_poll.0;
@@ -1043,11 +1024,7 @@ impl JsRuntime {
 
         match prepare_result {
           Ok(load) => {
-            module_map_rc
-              .0
-              .borrow_mut()
-              .pending_dynamic_imports
-              .push(load.into_future());
+            module_map_rc.add_pending_dynamic_import(load);
           }
           Err(err) => {
             self.dynamic_import_reject(dyn_import_id, err);
@@ -1068,16 +1045,12 @@ impl JsRuntime {
   ) -> Poll<Result<(), AnyError>> {
     let mut module_map_rc = Self::module_map(self.v8_isolate());
 
-    if module_map_rc.0.borrow().pending_dynamic_imports.is_empty() {
+    if !module_map_rc.has_pending_dynamic_imports2() {
       return Poll::Ready(Ok(()));
     }
 
     loop {
-      let poll_result = module_map_rc
-        .0
-        .borrow_mut()
-        .pending_dynamic_imports
-        .poll_next_unpin(cx);
+      let poll_result = module_map_rc.poll_pending_dynamic_imports(cx);
 
       if let Poll::Ready(Some(load_stream_poll)) = poll_result {
         let maybe_result = load_stream_poll.0;
@@ -1099,11 +1072,7 @@ impl JsRuntime {
               match register_result {
                 Ok(()) => {
                   // Keep importing until it's fully drained
-                  module_map_rc
-                    .0
-                    .borrow_mut()
-                    .pending_dynamic_imports
-                    .push(load.into_future());
+                  module_map_rc.add_pending_dynamic_import(load);
                 }
                 Err(err) => self.dynamic_import_reject(dyn_import_id, err),
               }
