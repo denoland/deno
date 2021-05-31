@@ -3487,9 +3487,9 @@ console.log("finish");
     http_server: true,
   });
 
-  itest!(error_027_bare_import_error {
-    args: "bundle error_027_bare_import_error.ts",
-    output: "error_027_bare_import_error.ts.out",
+  itest!(error_027_bundle_with_bare_import {
+    args: "bundle error_027_bundle_with_bare_import.ts",
+    output: "error_027_bundle_with_bare_import.ts.out",
     exit_code: 1,
   });
 
