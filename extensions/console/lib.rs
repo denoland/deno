@@ -9,7 +9,7 @@ pub fn init() -> Extension {
     .js(include_js_files!(
       prefix "deno:extensions/console",
       "01_colors.js",
-      "02_console.js",
+      "02_console.js"
     ))
     .build()
 }

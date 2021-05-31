@@ -13,7 +13,7 @@ pub(crate) fn init_builtins() -> Extension {
     .js(include_js_files!(
       prefix "deno:core",
       "core.js",
-      "error.js",
+      "error.js"
     ))
     .ops(vec![
       ("op_close", op_sync(op_close)),

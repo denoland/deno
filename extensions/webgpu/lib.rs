@@ -113,7 +113,7 @@ pub fn init(unstable: bool) -> Extension {
     .js(include_js_files!(
       prefix "deno:extensions/webgpu",
       "01_webgpu.js",
-      "02_idl_types.js",
+      "02_idl_types.js"
     ))
     .ops(declare_webgpu_ops())
     .state(move |state| {

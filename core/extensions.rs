@@ -114,12 +114,12 @@ impl ExtensionBuilder {
 /// include_js_files!(
 ///   prefix "deno:extensions/hello",
 ///   "01_hello.js",
-///   "02_goodbye.js",
+///   "02_goodbye.js"
 /// )
 /// ```
 #[macro_export]
 macro_rules! include_js_files {
-  (prefix $prefix:literal, $($file:literal,)+) => {
+  (prefix $prefix:literal, $($file:literal),*) => {
     vec![
       $((
         concat!($prefix, "/", $file),

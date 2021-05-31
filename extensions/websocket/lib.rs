@@ -326,7 +326,7 @@ pub fn init<P: WebSocketPermissions + 'static>(
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:extensions/websocket",
-      "01_websocket.js",
+      "01_websocket.js"
     ))
     .ops(vec![
       (

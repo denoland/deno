@@ -111,7 +111,7 @@ pub fn init<BC: BroadcastChannel + 'static>(
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:extensions/broadcast_channel",
-      "01_broadcast_channel.js",
+      "01_broadcast_channel.js"
     ))
     .ops(vec![
       (

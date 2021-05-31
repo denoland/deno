@@ -16,7 +16,7 @@ pub fn init() -> Extension {
       "03_abort_signal.js",
       "04_global_interfaces.js",
       "08_text_encoding.js",
-      "12_location.js",
+      "12_location.js"
     ))
     .build()
 }

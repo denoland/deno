@@ -8,7 +8,7 @@ pub fn init() -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:extensions/webidl",
-      "00_webidl.js",
+      "00_webidl.js"
     ))
     .build()
 }

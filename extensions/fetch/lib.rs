@@ -67,7 +67,7 @@ pub fn init<P: FetchPermissions + 'static>(
       "22_http_client.js",
       "23_request.js",
       "23_response.js",
-      "26_fetch.js",
+      "26_fetch.js"
     ))
     .ops(vec![
       ("op_fetch", op_sync(op_fetch::<P>)),

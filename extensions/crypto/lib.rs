@@ -19,7 +19,7 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:extensions/crypto",
-      "01_crypto.js",
+      "01_crypto.js"
     ))
     .ops(vec![(
       "op_crypto_get_random_values",

@@ -93,7 +93,7 @@ pub fn init(
       prefix "deno:extensions/file",
       "01_file.js",
       "02_filereader.js",
-      "03_blob_url.js",
+      "03_blob_url.js"
     ))
     .ops(vec![
       (

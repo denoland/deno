@@ -20,7 +20,7 @@ pub fn init() -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:extensions/url",
-      "00_url.js",
+      "00_url.js"
     ))
     .ops(vec![
       ("op_url_parse", op_sync(op_url_parse)),
