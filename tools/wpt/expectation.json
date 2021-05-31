@@ -91,6 +91,7 @@
       "encode-utf8.any.html": false,
       "readable-writable-properties.any.html": false
     },
+    "textdecoder-arguments.any.html": true,
     "textdecoder-byte-order-marks.any.html": true,
     "textdecoder-copy.any.html": false,
     "textdecoder-fatal-single-byte.any.html?1-1000": true,
@@ -132,7 +133,7 @@
       "windows-949 => EUC-KR",
       "x-user-defined => x-user-defined"
     ],
-    "textdecoder-streaming.any.html": false,
+    "textdecoder-streaming.any.html": true,
     "textdecoder-utf16-surrogates.any.html": true,
     "textencoder-constructor-non-utf.any.html": [
       "Encoding argument supported for decode: EUC-JP",
@@ -142,8 +143,7 @@
       "Encoding argument supported for decode: x-user-defined"
     ],
     "textencoder-utf16-surrogates.any.html": true,
-    "unsupported-encodings.any.html": false,
-    "textdecoder-arguments.any.html": false
+    "unsupported-encodings.any.html": false
   },
   "hr-time": {
     "monotonic-clock.any.html": true,

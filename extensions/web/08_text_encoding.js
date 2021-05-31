@@ -222,12 +222,18 @@
     return result;
   }
 
-  function Big5Decoder(big5, bytes, fatal = false, ignoreBOM = false) {
+  function Big5Decoder(
+    big5,
+    bytes,
+    fatal = false,
+    ignoreBOM = false,
+    stream = false,
+    lead = 0x00,
+  ) {
     if (ignoreBOM) {
       throw new TypeError("Ignoring the BOM is available only with utf-8.");
     }
     const res = [];
-    let lead = 0x00;
     for (let i = 0; i < bytes.length; i++) {
       const byte = bytes[i];
       if (lead !== 0x00) {
@@ -276,11 +282,11 @@
       res.push(decoderError(fatal));
       continue;
     }
-    if (lead !== 0x00) {
+    if (!stream && lead !== 0x00) {
       lead = 0x00;
       res.push(decoderError(fatal));
     }
-    return res;
+    return [res, lead];
   }
 
   function Utf16ByteDecoder(
@@ -288,9 +294,9 @@
     be = false,
     fatal = false,
     ignoreBOM = false,
+    stream = false,
+    { leadByte = null, leadSurrogate = null } = {},
   ) {
-    let leadByte = null;
-    let leadSurrogate = null;
     const result = [];
 
     for (let i = 0; i < bytes.length; i++) {
@@ -327,10 +333,10 @@
       }
       result.push(codeUnit);
     }
-    if (!(leadByte === null && leadSurrogate === null)) {
+    if (!stream && !(leadByte === null && leadSurrogate === null)) {
       result.push(decoderError(fatal));
     }
-    return result;
+    return [result, { leadByte, leadSurrogate }];
   }
 
   const gb18030Ranges = {
@@ -587,14 +593,13 @@
     bytes,
     fatal = false,
     ignoreBOM = false,
+    stream = false,
+    { first = 0x00, second = 0x00, third = 0x00 } = {},
   ) {
     if (ignoreBOM) {
       throw new TypeError("Ignoring the BOM is available only with utf-8.");
     }
     const result = [];
-    let first = 0x00;
-    let second = 0x00;
-    let third = 0x00;
     for (let i = 0; i < bytes.length; i++) {
       const byte = bytes[i];
       if (third !== 0x00) {
@@ -667,10 +672,10 @@
       }
       result.push(decoderError(fatal));
     }
-    if (!(first === 0x00 && second === 0x00 && third === 0x00)) {
+    if (!stream && !(first === 0x00 && second === 0x00 && third === 0x00)) {
       result.push(decoderError(fatal));
     }
-    return result;
+    return [result, { first, second, third }];
   }
 
   class SingleByteDecoder {
@@ -4153,6 +4158,7 @@
 
   class TextDecoder {
     #encoding = "";
+    #state;
 
     get encoding() {
       return this.#encoding;
@@ -4186,9 +4192,11 @@
     }
 
     decode(input, options = { stream: false }) {
-      if (options.stream) {
-        throw new TypeError("Stream not supported.");
-      }
+      const stream = Boolean(options.stream);
+
+      // If we're decoding anything other than the first chunk of a stream,
+      // we will not ignore a BOM.
+      const ignoreBOM = this.ignoreBOM && this.#state === undefined;
 
       let bytes;
       if (input instanceof Uint8Array) {
@@ -4216,7 +4224,9 @@
       if (
         this.#encoding === "utf-8" &&
         this.fatal === false &&
-        this.ignoreBOM === false
+        ignoreBOM === false &&
+        stream === false &&
+        this.#state === undefined
       ) {
         return core.decode(bytes);
       }
@@ -4224,42 +4234,59 @@
       // For performance reasons we utilise a highly optimised decoder instead of
       // the general decoder.
       if (this.#encoding === "utf-8") {
-        return decodeUtf8(bytes, this.fatal, this.ignoreBOM);
+        const [result, state] = decodeUtf8(
+          bytes,
+          this.fatal,
+          ignoreBOM,
+          stream,
+          this.#state,
+        );
+        this.#state = stream ? state : undefined;
+        return result;
       }
 
       if (this.#encoding === "utf-16le" || this.#encoding === "utf-16be") {
-        const result = Utf16ByteDecoder(
+        const [result, state] = Utf16ByteDecoder(
           bytes,
           this.#encoding.endsWith("be"),
           this.fatal,
-          this.ignoreBOM,
+          ignoreBOM,
+          stream,
+          this.#state,
         );
+        this.#state = stream ? state : undefined;
         return String.fromCharCode.apply(null, result);
       }
 
       if (this.#encoding === "big5") {
-        const result = Big5Decoder(
+        const [result, state] = Big5Decoder(
           encodingIndexes.get("big5"),
           bytes,
           this.fatal,
-          this.ignoreBOM,
+          ignoreBOM,
+          stream,
+          this.#state,
         );
+        this.#state = stream ? state : undefined;
         return String.fromCharCode.apply(null, result);
       }
 
       if (this.#encoding === "gbk" || this.#encoding === "gb18030") {
-        const result = gb18030Decoder(
+        const [result, state] = gb18030Decoder(
           encodingIndexes.get("gb18030"),
           bytes,
           this.fatal,
-          this.ignoreBOM,
+          ignoreBOM,
+          stream,
+          this.#state,
         );
+        this.#state = stream ? state : undefined;
         return String.fromCodePoint.apply(null, result);
       }
 
       const decoder = decoders.get(this.#encoding)({
         fatal: this.fatal,
-        ignoreBOM: this.ignoreBOM,
+        ignoreBOM,
       });
       const inputStream = new Stream(bytes);
       const output = [];
@@ -4333,17 +4360,27 @@
   // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
   // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   // SOFTWARE.
-  function decodeUtf8(input, fatal, ignoreBOM) {
+  function decodeUtf8(
+    input,
+    fatal,
+    ignoreBOM,
+    stream,
+    { state = 0, codepoint = 0 } = {},
+  ) {
     let outString = "";
 
     // Prepare a buffer so that we don't have to do a lot of string concats, which
     // are very slow.
-    const outBufferLength = Math.min(1024, input.length);
+    // When decoding non-streaming UTF-8, the maximum output string length is
+    // input.length, but if state !== 0, there might be one additional code
+    // point.
+    const outBufferLength = Math.min(
+      1024,
+      input.length + (state === 0 ? 0 : 2),
+    );
     const outBuffer = new Uint16Array(outBufferLength);
     let outIndex = 0;
 
-    let state = 0;
-    let codepoint = 0;
     let type;
 
     let i =
@@ -4416,9 +4453,10 @@
       }
     }
 
-    // Add a replacement character if we ended in the middle of a sequence or
-    // encountered an invalid code at the end.
-    if (state !== 0) {
+    // Add a replacement character if we ended in the middle of a sequence and
+    // we aren't in streaming more, or if we encountered an invalid code at the
+    // end.
+    if (state === 12 || (!stream && state !== 0)) {
       if (fatal) throw new TypeError(`Decoder error. Unexpected end of data.`);
       outBuffer[outIndex++] = 0xfffd; // Replacement character
     }
@@ -4429,7 +4467,7 @@
       outBuffer.subarray(0, outIndex),
     );
 
-    return outString;
+    return [outString, { state, codepoint }];
   }
 
   // Following code is forked from https://github.com/beatgammit/base64-js
