@@ -3,6 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const webidl = window.__bootstrap.webidl;
 
   function getRandomValues(arrayBufferView) {
     if (!ArrayBuffer.isView(arrayBufferView)) {
@@ -55,15 +56,7 @@
         throw new TypeError("Argument 1 must be an object or a string");
       }
 
-      if (data instanceof ArrayBuffer) {
-        data = new Uint8Array(data);
-      } else if (ArrayBuffer.isView(data)) {
-        data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-      } else {
-        throw new TypeError(
-          "Argument 2 is not an ArrayBuffer nor does it implement the interface ArrayBufferView",
-        );
-      }
+      data = webidl.converters.BufferSource(data);
 
       const algorithmName = algorithm.name.toUpperCase();
       const algorithmId = [
