@@ -360,9 +360,14 @@
         "ReadableStream with byte source: respondWithNewView() throws if the supplied view's buffer has been detached (in the readable state)",
         "ReadableStream with byte source: respondWithNewView() throws if the supplied view's buffer is zero-length (in the readable state)",
         "ReadableStream with byte source: respondWithNewView() throws if the supplied view is zero-length on a non-zero-length buffer (in the readable state)",
+        "ReadableStream with byte source: respondWithNewView() throws if the supplied view's buffer has a different length (in the readable state)",
+        "ReadableStream with byte source: respondWithNewView() throws if the supplied view has a larger length (in the readable state)",
         "ReadableStream with byte source: respondWithNewView() throws if the supplied view's buffer has been detached (in the closed state)",
         "ReadableStream with byte source: respondWithNewView() throws if the supplied view's buffer is zero-length (in the closed state)",
-        "ReadableStream with byte source: respondWithNewView() throws if the supplied view is zero-length on a non-zero-length buffer (in the closed state)",
+        "ReadableStream with byte source: respondWithNewView() throws if the supplied view is non-zero-length (in the closed state)",
+        "ReadableStream with byte source: respondWithNewView() throws if the supplied view's buffer has a different length (in the closed state)",
+        "ReadableStream with byte source: enqueue() throws if the BYOB request's buffer has been detached (in the readable state)",
+        "ReadableStream with byte source: enqueue() throws if the BYOB request's buffer has been detached (in the closed state)",
         "ReadableStream with byte source: read()ing from a closed stream still transfers the buffer",
         "ReadableStream with byte source: read()ing from a stream with queued chunks still transfers the buffer",
         "ReadableStream with byte source: reading into an already-detached buffer rejects",
@@ -388,7 +393,7 @@
         "ReadableStream with byte source: Respond to pull() by enqueue() asynchronously",
         "ReadableStream with byte source: Respond to multiple pull() by separate enqueue()",
         "ReadableStream with byte source: read(view), then respond()",
-        "ReadableStream with byte source: read(view), then respond() with a transferred ArrayBuffer",
+        "ReadableStream with byte source: read(view), then respondWithNewView() with a transferred ArrayBuffer",
         "ReadableStream with byte source: read(view), then respond() with too big value",
         "ReadableStream with byte source: respond(3) to read(view) with 2 element Uint16Array enqueues the 1 byte remainder",
         "ReadableStream with byte source: enqueue(), getReader(), then read(view)",
@@ -405,6 +410,7 @@
         "ReadableStream with byte source: A stream must be errored if close()-d before fulfilling read(view) with Uint16Array",
         "ReadableStream with byte source: read(view), then respond() and close() in pull()",
         "ReadableStream with byte source: read(view) with Uint32Array, then fill it by multiple respond() calls",
+        "ReadableStream with byte source: read(view) with Uint32Array, then fill it by multiple enqueue() calls",
         "ReadableStream with byte source: read() twice, then enqueue() twice",
         "ReadableStream with byte source: Multiple read(view), close() and respond()",
         "ReadableStream with byte source: Multiple read(view), big enqueue()",
@@ -422,7 +428,11 @@
         "calling respondWithNewView() twice on the same byobRequest should throw",
         "calling respond(0) twice on the same byobRequest should throw even when closed",
         "pull() resolving should not make releaseLock() possible",
-        "ReadableStream with byte source: default reader + autoAllocateChunkSize + byobRequest interaction"
+        "ReadableStream with byte source: default reader + autoAllocateChunkSize + byobRequest interaction",
+        "ReadableStream with byte source: respondWithNewView() with a smaller view",
+        "ReadableStream with byte source: respondWithNewView() with a zero-length view (in the closed state)",
+        "ReadableStream with byte source: respondWithNewView() with a transferred non-zero-length view (in the readable state)",
+        "ReadableStream with byte source: respondWithNewView() with a transferred zero-length view (in the closed state)"
       ]
     },
     "readable-streams": {
@@ -979,7 +989,19 @@
       "Blob-text.any.html": true
     },
     "file": {
-      "File-constructor.any.html": true
+      "File-constructor.any.html": true,
+      "send-file-formdata-controls.any.html": [
+        "Upload file-for-upload-in-form-LF-[\n].txt (ASCII) in fetch with FormData",
+        "Upload file-for-upload-in-form-LF-CR-[\n\r].txt (ASCII) in fetch with FormData",
+        "Upload file-for-upload-in-form-CR-[\r].txt (ASCII) in fetch with FormData",
+        "Upload file-for-upload-in-form-CR-LF-[\r\n].txt (ASCII) in fetch with FormData"
+      ],
+      "send-file-formdata-punctuation.any.html": [
+        "Upload file-for-upload-in-form-QUOTATION-MARK-[\"].txt (ASCII) in fetch with FormData",
+        "Upload \"file-for-upload-in-form-double-quoted.txt\" (ASCII) in fetch with FormData"
+      ],
+      "send-file-formdata-utf-8.any.html": true,
+      "send-file-formdata.any.html": true
     },
     "fileReader.any.html": true,
     "url": {
