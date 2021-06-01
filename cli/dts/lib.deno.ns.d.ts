@@ -1952,16 +1952,16 @@ declare namespace Deno {
   /**
    * FsWatcher is returned by `Deno.watchFs` function when you start watching
    * the file system. You can iterate over this interface to get the file
-   * system events, and also You can stop watching the file system by calling
+   * system events, and also you can stop watching the file system by calling
    * `.close()` method.
    */
   export interface FsWatcher extends AsyncIterable<FsEvent> {
-    /** The rid of the `FsWatcher`. */
+    /** The resource id of the `FsWatcher`. */
     readonly rid: number;
-    /** Stops watching filesystem and closes the watcher resource. */
+    /** Stops watching the file system and closes the watcher resource. */
     close(): void;
     /** @deprecated
-     * Stops watching filesystem and closes the watcher resource.
+     * Stops watching the file system and closes the watcher resource.
      * Will be removed at 2.0.
      */
     return?(value?: any): Promise<IteratorResult<FsEvent>>;
