@@ -2125,3 +2125,93 @@ fn lsp_format_markdown() {
   );
   shutdown(&mut client);
 }
+
+#[test]
+fn lsp_configuration_did_change() {
+  let _g = http_server();
+  let mut client = init("initialize_params_did_config_change.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import * as a from \"http://localhost:4545/x/a@\""
+      }
+    }),
+  );
+  client
+    .write_notification(
+      "workspace/didChangeConfiguration",
+      json!({
+        "settings": {}
+      }),
+    )
+    .unwrap();
+  let (id, method, _) = client.read_request::<Value>().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(
+      id,
+      json!([{
+        "enable": true,
+        "codeLens": {
+          "implementations": true,
+          "references": true
+        },
+        "importMap": null,
+        "lint": true,
+        "suggest": {
+          "autoImports": true,
+          "completeFunctionCalls": false,
+          "names": true,
+          "paths": true,
+          "imports": {
+            "hosts": {
+              "http://localhost:4545/": true
+            }
+          }
+        },
+        "unstable": false
+      }]),
+    )
+    .unwrap();
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": {
+          "line": 0,
+          "character": 46
+        },
+        "context": {
+          "triggerKind": 2,
+          "triggerCharacter": "@"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+    assert!(!list.is_incomplete);
+    assert_eq!(list.items.len(), 3);
+  } else {
+    panic!("unexpected response");
+  }
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "completionItem/resolve",
+      load_fixture("completion_resolve_params_registry.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("completion_resolve_response_registry.json"))
+  );
+  shutdown(&mut client);
+}
