@@ -1949,6 +1949,25 @@ declare namespace Deno {
     paths: string[];
   }
 
+  /**
+   * FsWatcher is returned by `Deno.watchFs` function when you start watching
+   * the file system. You can iterate over this interface to get the file
+   * system events, and also you can stop watching the file system by calling
+   * `.close()` method.
+   */
+  export interface FsWatcher extends AsyncIterable<FsEvent> {
+    /** The resource id of the `FsWatcher`. */
+    readonly rid: number;
+    /** Stops watching the file system and closes the watcher resource. */
+    close(): void;
+    /** @deprecated
+     * Stops watching the file system and closes the watcher resource.
+     * Will be removed at 2.0.
+     */
+    return?(value?: any): Promise<IteratorResult<FsEvent>>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<FsEvent>;
+  }
+
   /** Watch for file system events against one or more `paths`, which can be files
    * or directories.  These paths must exist already.  One user action (e.g.
    * `touch test.file`) can  generate multiple file system events.  Likewise,
@@ -1967,15 +1986,13 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission.
    *
-   * Call `watcher.return()` to stop watching.
+   * Call `watcher.close()` to stop watching.
    *
    * ```ts
    * const watcher = Deno.watchFs("/");
    *
    * setTimeout(() => {
-   *   if (watcher.return) {
-   *     watcher.return();
-   *   }
+   *   watcher.close();
    * }, 5000);
    *
    * for await (const event of watcher) {
@@ -1986,7 +2003,7 @@ declare namespace Deno {
   export function watchFs(
     paths: string | string[],
     options?: { recursive: boolean },
-  ): AsyncIterableIterator<FsEvent>;
+  ): FsWatcher;
 
   export class Process<T extends RunOptions = RunOptions> {
     readonly rid: number;
