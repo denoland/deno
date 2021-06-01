@@ -8,6 +8,7 @@ use crate::error::AnyError;
 use crate::module_specifier::ModuleSpecifier;
 use crate::runtime::exception_to_err_result;
 use crate::OpState;
+use crate::JsRuntime;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
@@ -705,6 +706,86 @@ impl ModuleMap {
       .borrow_mut()
       .pending_dynamic_imports
       .push(load.into_future());
+  }
+
+  pub fn poll_dyn_imports(
+    &mut self,
+    cx: &mut Context,
+    js_runtime: &mut JsRuntime,
+  ) {
+    // First poll "preparing" dynamic imports
+    loop {
+      let poll_result = self.poll_preparing_dynamic_imports(cx);
+
+      match poll_result {
+        Poll::Pending => break,
+        Poll::Ready(None) => break,
+        Poll::Ready(Some(prepare_result)) => {
+          if prepare_result.result.is_err() {
+            js_runtime.dynamic_import_reject(
+              prepare_result.load_id,
+              prepare_result.result.unwrap_err(),
+            );
+          }
+        }
+      }
+    }
+
+    if !self.has_pending_dynamic_imports2() {
+      return;
+    }
+
+    loop {
+      let poll_result = self.poll_pending_dynamic_imports(cx);
+
+      match poll_result {
+        Poll::Pending => break,
+        Poll::Ready(None) => break,
+        Poll::Ready(Some(load_stream_poll)) => {
+          let maybe_result = load_stream_poll.0;
+          let mut load = load_stream_poll.1;
+          let dyn_import_id = load.id;
+
+          if let Some(load_stream_result) = maybe_result {
+            match load_stream_result {
+              Ok(info) => {
+                // A module (not necessarily the one dynamically imported) has been
+                // fetched. Create and register it, and if successful, poll for the
+                // next recursive-load event related to this dynamic import.
+                let register_result = self.register_during_load(
+                  &mut js_runtime.handle_scope(),
+                  info,
+                  &mut load,
+                );
+
+                match register_result {
+                  Ok(()) => {
+                    // Keep importing until it's fully drained
+                    self.add_pending_dynamic_import(load);
+                  }
+                  Err(err) => js_runtime.dynamic_import_reject(dyn_import_id, err),
+                }
+              }
+              Err(err) => {
+                // A non-javascript error occurred; this could be due to a an invalid
+                // module specifier, or a problem with the source map, or a failure
+                // to fetch the module source code.
+                js_runtime.dynamic_import_reject(dyn_import_id, err)
+              }
+            }
+          } else {
+            // The top-level module from a dynamic import has been instantiated.
+            // Load is done.
+            let module_id = load.expect_finished();
+            let result = js_runtime.instantiate_module(module_id);
+            if let Err(err) = result {
+              js_runtime.dynamic_import_reject(dyn_import_id, err);
+            }
+            js_runtime.dynamic_import_module_evaluate(dyn_import_id, module_id);
+          }
+        }
+      }
+    }
   }
 
   // TODO(bartlomieju): return type is still bad

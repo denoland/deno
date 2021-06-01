@@ -611,7 +611,7 @@ impl JsRuntime {
     let _ = self.inspector().map(|i| i.poll_unpin(cx));
 
     let state_rc = Self::state(self.v8_isolate());
-    let module_map = Self::module_map(self.v8_isolate());
+    let mut module_map = Self::module_map(self.v8_isolate());
     {
       let state = state_rc.borrow();
       state.waker.register(cx.waker());
@@ -627,7 +627,7 @@ impl JsRuntime {
 
     // Dynamic module loading - ie. modules loaded using "import()"
     {
-      self.poll_dyn_imports(cx);
+      module_map.poll_dyn_imports(cx, self);
       self.evaluate_dyn_imports();
       self.check_promise_exceptions()?;
     }
@@ -798,7 +798,7 @@ impl JsRuntime {
     Ok(())
   }
 
-  fn dynamic_import_module_evaluate(
+  pub(crate) fn dynamic_import_module_evaluate(
     &mut self,
     load_id: ModuleLoadId,
     id: ModuleId,
@@ -948,7 +948,7 @@ impl JsRuntime {
     receiver
   }
 
-  fn dynamic_import_reject(&mut self, id: ModuleLoadId, err: AnyError) {
+  pub(crate) fn dynamic_import_reject(&mut self, id: ModuleLoadId, err: AnyError) {
     let mut module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
 
@@ -972,7 +972,7 @@ impl JsRuntime {
     scope.perform_microtask_checkpoint();
   }
 
-  fn dynamic_import_resolve(&mut self, id: ModuleLoadId, mod_id: ModuleId) {
+  pub(crate) fn dynamic_import_resolve(&mut self, id: ModuleLoadId, mod_id: ModuleId) {
     let mut module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
 
@@ -995,84 +995,6 @@ impl JsRuntime {
     let module_namespace = module.get_module_namespace();
     resolver.resolve(scope, module_namespace).unwrap();
     scope.perform_microtask_checkpoint();
-  }
-
-  fn poll_dyn_imports(&mut self, cx: &mut Context) {
-    let mut module_map_rc = Self::module_map(self.v8_isolate());
-
-    // First poll "preparing" dynamic imports
-    loop {
-      let poll_result = module_map_rc.poll_preparing_dynamic_imports(cx);
-
-      match poll_result {
-        Poll::Pending => break,
-        Poll::Ready(None) => break,
-        Poll::Ready(Some(prepare_result)) => {
-          if prepare_result.result.is_err() {
-            self.dynamic_import_reject(
-              prepare_result.load_id,
-              prepare_result.result.unwrap_err(),
-            );
-          }
-        }
-      }
-    }
-
-    if !module_map_rc.has_pending_dynamic_imports2() {
-      return;
-    }
-
-    loop {
-      let poll_result = module_map_rc.poll_pending_dynamic_imports(cx);
-
-      match poll_result {
-        Poll::Pending => break,
-        Poll::Ready(None) => break,
-        Poll::Ready(Some(load_stream_poll)) => {
-          let maybe_result = load_stream_poll.0;
-          let mut load = load_stream_poll.1;
-          let dyn_import_id = load.id;
-
-          if let Some(load_stream_result) = maybe_result {
-            match load_stream_result {
-              Ok(info) => {
-                // A module (not necessarily the one dynamically imported) has been
-                // fetched. Create and register it, and if successful, poll for the
-                // next recursive-load event related to this dynamic import.
-                let register_result = module_map_rc.register_during_load(
-                  &mut self.handle_scope(),
-                  info,
-                  &mut load,
-                );
-
-                match register_result {
-                  Ok(()) => {
-                    // Keep importing until it's fully drained
-                    module_map_rc.add_pending_dynamic_import(load);
-                  }
-                  Err(err) => self.dynamic_import_reject(dyn_import_id, err),
-                }
-              }
-              Err(err) => {
-                // A non-javascript error occurred; this could be due to a an invalid
-                // module specifier, or a problem with the source map, or a failure
-                // to fetch the module source code.
-                self.dynamic_import_reject(dyn_import_id, err)
-              }
-            }
-          } else {
-            // The top-level module from a dynamic import has been instantiated.
-            // Load is done.
-            let module_id = load.expect_finished();
-            let result = self.instantiate_module(module_id);
-            if let Err(err) = result {
-              self.dynamic_import_reject(dyn_import_id, err);
-            }
-            self.dynamic_import_module_evaluate(dyn_import_id, module_id);
-          }
-        }
-      }
-    }
   }
 
   /// "deno_core" runs V8 with "--harmony-top-level-await"
