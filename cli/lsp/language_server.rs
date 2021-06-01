@@ -677,18 +677,36 @@ impl Inner {
       .performance
       .mark("did_change_configuration", Some(&params));
 
-    if self.config.client_capabilities.workspace_configuration {
-      if let Err(err) = self.config.update_workspace_settings().await {
-        error!("Error updating workspace settings: {}", err);
-      }
-    } else if let Some(config) = params
-      .settings
-      .as_object()
-      .map(|settings| settings.get(SETTINGS_SECTION))
-      .flatten()
-      .cloned()
-    {
-      if let Err(err) = self.config.set_workspace_settings(config) {
+    let maybe_config =
+      if self.config.client_capabilities.workspace_configuration {
+        let config_response = self
+          .client
+          .configuration(vec![ConfigurationItem {
+            scope_uri: None,
+            section: Some(SETTINGS_SECTION.to_string()),
+          }])
+          .await;
+        if let Err(err) = self.config.update_all_settings().await {
+          error!("Cannot request updating all settings: {}", err);
+        }
+        match config_response {
+          Ok(value_vec) => value_vec.get(0).cloned(),
+          Err(err) => {
+            error!("Error getting workspace configuration: {}", err);
+            None
+          }
+        }
+      } else {
+        params
+          .settings
+          .as_object()
+          .map(|settings| settings.get(SETTINGS_SECTION))
+          .flatten()
+          .cloned()
+      };
+
+    if let Some(value) = maybe_config {
+      if let Err(err) = self.config.set_workspace_settings(value) {
         error!("failed to update settings: {}", err);
       }
     }
