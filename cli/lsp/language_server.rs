@@ -3,8 +3,6 @@
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
-use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -44,6 +42,7 @@ use super::config::SETTINGS_SECTION;
 use super::diagnostics;
 use super::diagnostics::DiagnosticSource;
 use super::documents::DocumentCache;
+use super::lsp_custom;
 use super::performance::Performance;
 use super::registries;
 use super::sources;
@@ -385,10 +384,9 @@ impl Inner {
       .iter()
     {
       if *enabled {
-        info!("Enabling auto complete registry for: {}", registry);
+        info!("Enabling import suggestions for: {}", registry);
         self.module_registries.enable(registry).await?;
       } else {
-        info!("Disabling auto complete registry for: {}", registry);
         self.module_registries.disable(registry).await?;
       }
     }
@@ -552,17 +550,11 @@ impl Inner {
   async fn initialized(&mut self, _: InitializedParams) {
     // Check to see if we need to setup the import map
     if let Err(err) = self.update_import_map().await {
-      self
-        .client
-        .show_message(MessageType::Warning, err.to_string())
-        .await;
+      self.client.show_message(MessageType::Warning, err).await;
     }
     // Check to see if we need to setup any module registries
     if let Err(err) = self.update_registries().await {
-      self
-        .client
-        .show_message(MessageType::Warning, err.to_string())
-        .await;
+      self.client.show_message(MessageType::Warning, err).await;
     }
 
     if self
@@ -713,22 +705,13 @@ impl Inner {
 
     self.update_debug_flag();
     if let Err(err) = self.update_import_map().await {
-      self
-        .client
-        .show_message(MessageType::Warning, err.to_string())
-        .await;
+      self.client.show_message(MessageType::Warning, err).await;
     }
     if let Err(err) = self.update_registries().await {
-      self
-        .client
-        .show_message(MessageType::Warning, err.to_string())
-        .await;
+      self.client.show_message(MessageType::Warning, err).await;
     }
     if let Err(err) = self.update_tsconfig().await {
-      self
-        .client
-        .show_message(MessageType::Warning, err.to_string())
-        .await;
+      self.client.show_message(MessageType::Warning, err).await;
     }
     if let Err(err) = self.diagnostics_server.update() {
       error!("{}", err);
@@ -748,10 +731,7 @@ impl Inner {
     if let Some(import_map_uri) = &self.maybe_import_map_uri {
       if params.changes.iter().any(|fe| *import_map_uri == fe.uri) {
         if let Err(err) = self.update_import_map().await {
-          self
-            .client
-            .show_message(MessageType::Warning, err.to_string())
-            .await;
+          self.client.show_message(MessageType::Warning, err).await;
         }
       }
     }
@@ -759,10 +739,7 @@ impl Inner {
     if let Some(config_uri) = &self.maybe_config_uri {
       if params.changes.iter().any(|fe| *config_uri == fe.uri) {
         if let Err(err) = self.update_tsconfig().await {
-          self
-            .client
-            .show_message(MessageType::Warning, err.to_string())
-            .await;
+          self.client.show_message(MessageType::Warning, err).await;
         }
       }
     }
@@ -1549,6 +1526,7 @@ impl Inner {
       &specifier,
       &params.text_document_position.position,
       &self.snapshot()?,
+      self.client.clone(),
     )
     .await
     {
@@ -2004,27 +1982,31 @@ impl Inner {
     params: Option<Value>,
   ) -> LspResult<Option<Value>> {
     match method {
-      "deno/cache" => match params.map(serde_json::from_value) {
+      lsp_custom::CACHE_REQUEST => match params.map(serde_json::from_value) {
         Some(Ok(params)) => self.cache(params).await,
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
         None => Err(LspError::invalid_params("Missing parameters")),
       },
-      "deno/performance" => Ok(Some(self.get_performance())),
-      "deno/reloadImportRegistries" => self.reload_import_registries().await,
-      "deno/virtualTextDocument" => match params.map(serde_json::from_value) {
-        Some(Ok(params)) => Ok(Some(
-          serde_json::to_value(self.virtual_text_document(params).await?)
-            .map_err(|err| {
-              error!(
-                "Failed to serialize virtual_text_document response: {}",
-                err
-              );
-              LspError::internal_error()
-            })?,
-        )),
-        Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
-        None => Err(LspError::invalid_params("Missing parameters")),
-      },
+      lsp_custom::PERFORMANCE_REQUEST => Ok(Some(self.get_performance())),
+      lsp_custom::RELOAD_IMPORT_REGISTRIES_REQUEST => {
+        self.reload_import_registries().await
+      }
+      lsp_custom::VIRTUAL_TEXT_DOCUMENT => {
+        match params.map(serde_json::from_value) {
+          Some(Ok(params)) => Ok(Some(
+            serde_json::to_value(self.virtual_text_document(params).await?)
+              .map_err(|err| {
+                error!(
+                  "Failed to serialize virtual_text_document response: {}",
+                  err
+                );
+                LspError::internal_error()
+              })?,
+          )),
+          Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+          None => Err(LspError::invalid_params("Missing parameters")),
+        }
+      }
       _ => {
         error!("Got a {} request, but no handler is defined", method);
         Err(LspError::method_not_found())
@@ -2437,28 +2419,14 @@ impl lspower::LanguageServer for LanguageServer {
   }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct CacheParams {
-  /// The document currently open in the editor.  If there are no `uris`
-  /// supplied, the referrer will be cached.
-  referrer: TextDocumentIdentifier,
-  /// Any documents that have been specifically asked to be cached via the
-  /// command.
-  uris: Vec<TextDocumentIdentifier>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct VirtualTextDocumentParams {
-  text_document: TextDocumentIdentifier,
-}
-
 // These are implementations of custom commands supported by the LSP
 impl Inner {
   /// Similar to `deno cache` on the command line, where modules will be cached
   /// in the Deno cache, including any of their dependencies.
-  async fn cache(&mut self, params: CacheParams) -> LspResult<Option<Value>> {
+  async fn cache(
+    &mut self,
+    params: lsp_custom::CacheParams,
+  ) -> LspResult<Option<Value>> {
     let mark = self.performance.mark("cache", Some(&params));
     let referrer = self.url_map.normalize_url(&params.referrer.uri);
     if !params.uris.is_empty() {
@@ -2519,7 +2487,7 @@ impl Inner {
 
   async fn virtual_text_document(
     &mut self,
-    params: VirtualTextDocumentParams,
+    params: lsp_custom::VirtualTextDocumentParams,
   ) -> LspResult<Option<String>> {
     let mark = self
       .performance

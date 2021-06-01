@@ -1840,6 +1840,53 @@ fn lsp_completions_registry_empty() {
 }
 
 #[test]
+fn lsp_auto_discover_registry() {
+  let _g = http_server();
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import * as a from \"http://localhost:4545/x/a@\""
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": {
+          "line": 0,
+          "character": 46
+        },
+        "context": {
+          "triggerKind": 2,
+          "triggerCharacter": "@"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+  let (method, maybe_res) = client.read_notification().unwrap();
+  assert_eq!(method, "deno/registryState");
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "origin": "http://localhost:4545",
+      "suggestions": true,
+    }))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_diagnostics_warn() {
   let _g = http_server();
   let mut client = init("initialize_params.json");

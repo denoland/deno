@@ -2,6 +2,7 @@
 
 use super::analysis;
 use super::language_server;
+use super::lsp_custom;
 use super::tsc;
 
 use crate::fs_util::is_supported_ext;
@@ -9,6 +10,7 @@ use crate::media_type::MediaType;
 
 use deno_core::normalize_path;
 use deno_core::resolve_path;
+use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::url::Position;
@@ -34,6 +36,64 @@ pub struct CompletionItemData {
   pub tsc: Option<tsc::CompletionItemData>,
 }
 
+/// Check if the origin can be auto-configured for completions, and if so, send
+/// a notification to the client.
+async fn check_auto_config_registry(
+  url_str: &str,
+  snapshot: &language_server::StateSnapshot,
+  client: lspower::Client,
+) {
+  // check to see if auto discovery is enabled
+  if snapshot
+    .config
+    .settings
+    .workspace
+    .suggest
+    .imports
+    .auto_discover
+  {
+    if let Ok(specifier) = resolve_url(url_str) {
+      let scheme = specifier.scheme();
+      let path = &specifier[Position::BeforePath..];
+      if scheme.starts_with("http")
+        && !path.is_empty()
+        && url_str.ends_with(path)
+      {
+        // check to see if this origin is already explicitly set
+        let in_config = snapshot
+          .config
+          .settings
+          .workspace
+          .suggest
+          .imports
+          .hosts
+          .iter()
+          .any(|(h, _)| {
+            resolve_url(h).map(|u| u.origin()) == Ok(specifier.origin())
+          });
+        // if it isn't in the configuration, we will check to see if it supports
+        // suggestions and send a notification to the client.
+        if !in_config {
+          let origin = specifier.origin().ascii_serialization();
+          let suggestions = snapshot
+            .module_registries
+            .fetch_config(&origin)
+            .await
+            .is_ok();
+          client
+            .send_custom_notification::<lsp_custom::RegistryStateNotification>(
+              lsp_custom::RegistryStateNotificationParams {
+                origin,
+                suggestions,
+              },
+            )
+            .await;
+        }
+      }
+    }
+  }
+}
+
 /// Given a specifier, a position, and a snapshot, optionally return a
 /// completion response, which will be valid import completions for the specific
 /// context.
@@ -41,6 +101,7 @@ pub async fn get_import_completions(
   specifier: &ModuleSpecifier,
   position: &lsp::Position,
   state_snapshot: &language_server::StateSnapshot,
+  client: lspower::Client,
 ) -> Option<lsp::CompletionResponse> {
   if let Ok(Some(source)) = state_snapshot.documents.content(specifier) {
     let media_type = MediaType::from(specifier);
@@ -58,6 +119,8 @@ pub async fn get_import_completions(
       }
       // completion of modules from a module registry or cache
       if !current_specifier.is_empty() {
+        check_auto_config_registry(&current_specifier, state_snapshot, client)
+          .await;
         let offset = if position.character > range.start.character {
           (position.character - range.start.character) as usize
         } else {
@@ -808,11 +871,17 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_get_import_completions() {
+  async fn test_get_workspace_completions() {
     let specifier = resolve_url("file:///a/b/c.ts").unwrap();
-    let position = lsp::Position {
-      line: 0,
-      character: 21,
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 20,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 21,
+      },
     };
     let state_snapshot = setup(
       &[
@@ -822,32 +891,29 @@ mod tests {
       &[("https://deno.land/x/a/b/c.ts", "console.log(1);\n")],
     );
     let actual =
-      get_import_completions(&specifier, &position, &state_snapshot).await;
+      get_workspace_completions(&specifier, "h", &range, &state_snapshot);
     assert_eq!(
       actual,
-      Some(lsp::CompletionResponse::List(lsp::CompletionList {
-        is_incomplete: false,
-        items: vec![lsp::CompletionItem {
-          label: "https://deno.land/x/a/b/c.ts".to_string(),
-          kind: Some(lsp::CompletionItemKind::File),
-          detail: Some("(remote)".to_string()),
-          sort_text: Some("1".to_string()),
-          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range: lsp::Range {
-              start: lsp::Position {
-                line: 0,
-                character: 20
-              },
-              end: lsp::Position {
-                line: 0,
-                character: 21,
-              }
+      vec![lsp::CompletionItem {
+        label: "https://deno.land/x/a/b/c.ts".to_string(),
+        kind: Some(lsp::CompletionItemKind::File),
+        detail: Some("(remote)".to_string()),
+        sort_text: Some("1".to_string()),
+        text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 0,
+              character: 20
             },
-            new_text: "https://deno.land/x/a/b/c.ts".to_string(),
-          })),
-          ..Default::default()
-        }]
-      }))
+            end: lsp::Position {
+              line: 0,
+              character: 21,
+            }
+          },
+          new_text: "https://deno.land/x/a/b/c.ts".to_string(),
+        })),
+        ..Default::default()
+      }]
     );
   }
 }
