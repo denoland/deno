@@ -402,6 +402,7 @@ impl Inner {
       "allowJs": true,
       "esModuleInterop": true,
       "experimentalDecorators": true,
+      "importsNotUsedAsValues": "error",
       "isolatedModules": true,
       "jsx": "react",
       "lib": ["deno.ns", "deno.window"],

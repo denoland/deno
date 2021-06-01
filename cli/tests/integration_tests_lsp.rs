@@ -1477,6 +1477,56 @@ fn lsp_code_actions_imports() {
 }
 
 #[test]
+fn lsp_code_actions_import_types() {
+  let mut client = init("initialize_params.json");
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file00.d.ts",
+          "languageId": "typescript",
+          "version": 1,
+          "text": "export interface A {\n  a: string;\n}\n"
+        }
+      }),
+    )
+    .unwrap();
+
+  let (id, method, _) = client.read_request::<Value>().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(id, json!({ "enable": true }))
+    .unwrap();
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file01.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "\nconst a: A = {\n  a: \"a\"\n};\n"
+      }
+    }),
+  );
+
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/codeAction",
+      load_fixture("code_action_params_import_types.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_action_response_import_types.json"))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_code_actions_deadlock() {
   let mut client = init("initialize_params.json");
   client

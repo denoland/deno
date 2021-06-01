@@ -1,0 +1,54 @@
+{
+  "textDocument": {
+    "uri": "file:///a/file01.ts"
+  },
+  "range": {
+    "start": {
+      "line": 1,
+      "character": 9
+    },
+    "end": {
+      "line": 1,
+      "character": 10
+    }
+  },
+  "context": {
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 6
+          },
+          "end": {
+            "line": 1,
+            "character": 7
+          }
+        },
+        "severity": 2,
+        "code": "no-unused-vars",
+        "source": "deno-lint",
+        "message": "`a` is never used\nIf this is intentional, prefix it with an underscore like `_a`"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 9
+          },
+          "end": {
+            "line": 1,
+            "character": 10
+          }
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'A'."
+      }
+    ],
+    "only": [
+      "quickfix"
+    ]
+  }
+}

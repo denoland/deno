@@ -62,7 +62,8 @@ lazy_static::lazy_static! {
   static ref IMPORT_SPECIFIER_RE: Regex = Regex::new(r#"\sfrom\s+["']([^"']*)["']"#).unwrap();
 }
 
-const SUPPORTED_EXTENSIONS: &[&str] = &[".ts", ".tsx", ".js", ".jsx", ".mjs"];
+const SUPPORTED_EXTENSIONS: &[&str] =
+  &[".ts", ".d.ts", ".tsx", ".js", ".jsx", ".mjs"];
 
 /// Category of self-generated diagnostic messages (those not coming from)
 /// TypeScript.
