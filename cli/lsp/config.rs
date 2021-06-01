@@ -28,7 +28,7 @@ pub struct ClientCapabilities {
   pub line_folding_only: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeLensSettings {
   /// Flag for providing implementation code lenses.
@@ -53,16 +53,20 @@ impl Default for CodeLensSettings {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+fn is_true() -> bool {
+  true
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionSettings {
   #[serde(default)]
   pub complete_function_calls: bool,
-  #[serde(default)]
+  #[serde(default = "is_true")]
   pub names: bool,
-  #[serde(default)]
+  #[serde(default = "is_true")]
   pub paths: bool,
-  #[serde(default)]
+  #[serde(default = "is_true")]
   pub auto_imports: bool,
   #[serde(default)]
   pub imports: ImportCompletionSettings,
@@ -80,9 +84,15 @@ impl Default for CompletionSettings {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportCompletionSettings {
+  /// A flag that indicates if non-explicitly set origins should be checked for
+  /// supporting import suggestions.
+  #[serde(default = "is_true")]
+  pub auto_discover: bool,
+  /// A map of origins which have had explicitly set if import suggestions are
+  /// enabled.
   #[serde(default)]
   pub hosts: HashMap<String, bool>,
 }
@@ -90,6 +100,7 @@ pub struct ImportCompletionSettings {
 impl Default for ImportCompletionSettings {
   fn default() -> Self {
     Self {
+      auto_discover: true,
       hosts: HashMap::default(),
     }
   }
@@ -104,10 +115,11 @@ pub struct SpecifierSettings {
 }
 
 /// Deno language server specific settings that are applied to a workspace.
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSettings {
   /// A flag that indicates if Deno is enabled for the workspace.
+  #[serde(default)]
   pub enable: bool,
 
   /// An option that points to a path string of the config file to apply to
@@ -419,5 +431,39 @@ mod tests {
       }))
       .expect("could not update");
     assert!(config.specifier_enabled(&specifier));
+  }
+
+  #[test]
+  fn test_set_workspace_settings_defaults() {
+    let config = setup();
+    config
+      .set_workspace_settings(json!({}))
+      .expect("could not update");
+    assert_eq!(
+      config.get_workspace_settings(),
+      WorkspaceSettings {
+        enable: false,
+        config: None,
+        import_map: None,
+        code_lens: CodeLensSettings {
+          implementations: false,
+          references: false,
+          references_all_functions: false,
+        },
+        internal_debug: false,
+        lint: false,
+        suggest: CompletionSettings {
+          complete_function_calls: false,
+          names: true,
+          paths: true,
+          auto_imports: true,
+          imports: ImportCompletionSettings {
+            auto_discover: true,
+            hosts: HashMap::new(),
+          }
+        },
+        unstable: false,
+      }
+    );
   }
 }
