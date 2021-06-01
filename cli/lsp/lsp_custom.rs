@@ -4,11 +4,11 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use lspower::lsp;
 
-pub const CACHE_REQUEST: &'static str = "deno/cache";
-pub const PERFORMANCE_REQUEST: &'static str = "deno/performance";
-pub const RELOAD_IMPORT_REGISTRIES_REQUEST: &'static str =
+pub const CACHE_REQUEST: &str = "deno/cache";
+pub const PERFORMANCE_REQUEST: &str = "deno/performance";
+pub const RELOAD_IMPORT_REGISTRIES_REQUEST: &str =
   "deno/reloadImportRegistries";
-pub const VIRTUAL_TEXT_DOCUMENT: &'static str = "deno/virtualTextDocument";
+pub const VIRTUAL_TEXT_DOCUMENT: &str = "deno/virtualTextDocument";
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
