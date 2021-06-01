@@ -627,13 +627,8 @@ impl JsRuntime {
 
     // Dynamic module loading - ie. modules loaded using "import()"
     {
-      self.prepare_dyn_imports(cx);
-
-      let poll_imports = self.poll_dyn_imports(cx)?;
-      assert!(poll_imports.is_ready());
-
+      self.poll_dyn_imports(cx);
       self.evaluate_dyn_imports();
-
       self.check_promise_exceptions()?;
     }
 
@@ -807,7 +802,7 @@ impl JsRuntime {
     &mut self,
     load_id: ModuleLoadId,
     id: ModuleId,
-  ) -> Result<(), AnyError> {
+  ) {
     let state_rc = Self::state(self.v8_isolate());
     let module_map_rc = Self::module_map(self.v8_isolate());
 
@@ -822,7 +817,7 @@ impl JsRuntime {
 
     match status {
       v8::ModuleStatus::Instantiated | v8::ModuleStatus::Evaluated => {}
-      _ => return Ok(()),
+      _ => return,
     }
 
     // IMPORTANT: Top-level-await is enabled, which means that return value
@@ -873,8 +868,6 @@ impl JsRuntime {
     } else {
       assert!(status == v8::ModuleStatus::Errored);
     }
-
-    Ok(())
   }
 
   // TODO(bartlomieju): make it return `ModuleEvaluationFuture`?
@@ -1004,9 +997,10 @@ impl JsRuntime {
     scope.perform_microtask_checkpoint();
   }
 
-  fn prepare_dyn_imports(&mut self, cx: &mut Context) {
+  fn poll_dyn_imports(&mut self, cx: &mut Context) {
     let mut module_map_rc = Self::module_map(self.v8_isolate());
 
+    // First poll "preparing" dynamic imports
     loop {
       let poll_result = module_map_rc.poll_preparing_dynamic_imports(cx);
 
@@ -1023,70 +1017,61 @@ impl JsRuntime {
         }
       }
     }
-  }
-
-  fn poll_dyn_imports(
-    &mut self,
-    cx: &mut Context,
-  ) -> Poll<Result<(), AnyError>> {
-    let mut module_map_rc = Self::module_map(self.v8_isolate());
 
     if !module_map_rc.has_pending_dynamic_imports2() {
-      return Poll::Ready(Ok(()));
+      return;
     }
 
     loop {
       let poll_result = module_map_rc.poll_pending_dynamic_imports(cx);
 
-      if let Poll::Ready(Some(load_stream_poll)) = poll_result {
-        let maybe_result = load_stream_poll.0;
-        let mut load = load_stream_poll.1;
-        let dyn_import_id = load.id;
+      match poll_result {
+        Poll::Pending => break,
+        Poll::Ready(None) => break,
+        Poll::Ready(Some(load_stream_poll)) => {
+          let maybe_result = load_stream_poll.0;
+          let mut load = load_stream_poll.1;
+          let dyn_import_id = load.id;
 
-        if let Some(load_stream_result) = maybe_result {
-          match load_stream_result {
-            Ok(info) => {
-              // A module (not necessarily the one dynamically imported) has been
-              // fetched. Create and register it, and if successful, poll for the
-              // next recursive-load event related to this dynamic import.
-              let register_result = module_map_rc.register_during_load(
-                &mut self.handle_scope(),
-                info,
-                &mut load,
-              );
+          if let Some(load_stream_result) = maybe_result {
+            match load_stream_result {
+              Ok(info) => {
+                // A module (not necessarily the one dynamically imported) has been
+                // fetched. Create and register it, and if successful, poll for the
+                // next recursive-load event related to this dynamic import.
+                let register_result = module_map_rc.register_during_load(
+                  &mut self.handle_scope(),
+                  info,
+                  &mut load,
+                );
 
-              match register_result {
-                Ok(()) => {
-                  // Keep importing until it's fully drained
-                  module_map_rc.add_pending_dynamic_import(load);
+                match register_result {
+                  Ok(()) => {
+                    // Keep importing until it's fully drained
+                    module_map_rc.add_pending_dynamic_import(load);
+                  }
+                  Err(err) => self.dynamic_import_reject(dyn_import_id, err),
                 }
-                Err(err) => self.dynamic_import_reject(dyn_import_id, err),
+              }
+              Err(err) => {
+                // A non-javascript error occurred; this could be due to a an invalid
+                // module specifier, or a problem with the source map, or a failure
+                // to fetch the module source code.
+                self.dynamic_import_reject(dyn_import_id, err)
               }
             }
-            Err(err) => {
-              // A non-javascript error occurred; this could be due to a an invalid
-              // module specifier, or a problem with the source map, or a failure
-              // to fetch the module source code.
-              self.dynamic_import_reject(dyn_import_id, err)
+          } else {
+            // The top-level module from a dynamic import has been instantiated.
+            // Load is done.
+            let module_id = load.expect_finished();
+            let result = self.instantiate_module(module_id);
+            if let Err(err) = result {
+              self.dynamic_import_reject(dyn_import_id, err);
             }
+            self.dynamic_import_module_evaluate(dyn_import_id, module_id);
           }
-        } else {
-          // The top-level module from a dynamic import has been instantiated.
-          // Load is done.
-          let module_id = load.expect_finished();
-          let result = self.instantiate_module(module_id);
-          if let Err(err) = result {
-            self.dynamic_import_reject(dyn_import_id, err);
-          }
-          self.dynamic_import_module_evaluate(dyn_import_id, module_id)?;
         }
-
-        // Continue polling for more ready dynamic imports.
-        continue;
       }
-
-      // There are no active dynamic import loads, or none are ready.
-      return Poll::Ready(Ok(()));
     }
   }
 
