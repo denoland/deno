@@ -409,6 +409,11 @@ impl Stream for RecursiveModuleLoad {
   }
 }
 
+pub struct DynamicImportPrepareResult {
+  pub load_id: ModuleLoadId,
+  pub result: Result<(), AnyError>,
+}
+
 #[derive(Clone)]
 pub struct ModuleInfo {
   pub id: ModuleId,
@@ -702,15 +707,38 @@ impl ModuleMap {
       .push(load.into_future());
   }
 
+  // TODO(bartlomieju): return type is still bad
   pub fn poll_preparing_dynamic_imports(
     &mut self,
     cx: &mut Context,
-  ) -> Poll<Option<(i32, Result<RecursiveModuleLoad, AnyError>)>> {
-    self
+  ) -> Poll<Option<DynamicImportPrepareResult>> {
+    let poll_result = self
       .0
       .borrow_mut()
       .preparing_dynamic_imports
-      .poll_next_unpin(cx)
+      .poll_next_unpin(cx);
+
+    match poll_result {
+      Poll::Pending => Poll::Pending,
+      Poll::Ready(None) => Poll::Ready(None),
+      Poll::Ready(Some(prepare_result)) => {
+        // TODO(bartlomieju): simplify
+        let (load_id, prepare_result) = prepare_result;
+        match prepare_result {
+          Ok(load) => {
+            self.add_pending_dynamic_import(load);
+            Poll::Ready(Some(DynamicImportPrepareResult {
+              load_id,
+              result: Ok(()),
+            }))
+          }
+          Err(err) => Poll::Ready(Some(DynamicImportPrepareResult {
+            load_id,
+            result: Err(err),
+          })),
+        }
+      }
+    }
   }
 
   pub fn poll_pending_dynamic_imports(
@@ -737,6 +765,7 @@ impl ModuleMap {
       .expect("Invalid dynamic import id")
   }
 
+  #[allow(unused)]
   pub fn has_preparing_dynamic_imports(&self) -> bool {
     let inner = self.0.borrow();
     !inner.preparing_dynamic_imports.is_empty()

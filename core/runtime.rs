@@ -627,8 +627,7 @@ impl JsRuntime {
 
     // Dynamic module loading - ie. modules loaded using "import()"
     {
-      let poll_imports = self.prepare_dyn_imports(cx)?;
-      assert!(poll_imports.is_ready());
+      self.prepare_dyn_imports(cx);
 
       let poll_imports = self.poll_dyn_imports(cx)?;
       assert!(poll_imports.is_ready());
@@ -1005,37 +1004,24 @@ impl JsRuntime {
     scope.perform_microtask_checkpoint();
   }
 
-  fn prepare_dyn_imports(
-    &mut self,
-    cx: &mut Context,
-  ) -> Poll<Result<(), AnyError>> {
+  fn prepare_dyn_imports(&mut self, cx: &mut Context) {
     let mut module_map_rc = Self::module_map(self.v8_isolate());
-
-    if !module_map_rc.has_preparing_dynamic_imports() {
-      return Poll::Ready(Ok(()));
-    }
 
     loop {
       let poll_result = module_map_rc.poll_preparing_dynamic_imports(cx);
 
-      if let Poll::Ready(Some(prepare_poll)) = poll_result {
-        let dyn_import_id = prepare_poll.0;
-        let prepare_result = prepare_poll.1;
-
-        match prepare_result {
-          Ok(load) => {
-            module_map_rc.add_pending_dynamic_import(load);
-          }
-          Err(err) => {
-            self.dynamic_import_reject(dyn_import_id, err);
+      match poll_result {
+        Poll::Pending => break,
+        Poll::Ready(None) => break,
+        Poll::Ready(Some(prepare_result)) => {
+          if prepare_result.result.is_err() {
+            self.dynamic_import_reject(
+              prepare_result.load_id,
+              prepare_result.result.unwrap_err(),
+            );
           }
         }
-        // Continue polling for more prepared dynamic imports.
-        continue;
       }
-
-      // There are no active dynamic import loads, or none are ready.
-      return Poll::Ready(Ok(()));
     }
   }
 
