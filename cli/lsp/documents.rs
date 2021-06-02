@@ -3,6 +3,8 @@
 use super::analysis;
 use super::text::LineIndex;
 
+use crate::media_type::MediaType;
+
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -193,6 +195,8 @@ impl DocumentCache {
   /// related language server features.
   pub fn is_diagnosable(&self, specifier: &ModuleSpecifier) -> bool {
     if let Some(doc_data) = self.docs.get(specifier) {
+      // if the document is in the document cache, then use the client provided
+      // language id to determine if the specifier is diagnosable.
       matches!(
         doc_data.language_id,
         LanguageId::JavaScript
@@ -201,7 +205,15 @@ impl DocumentCache {
           | LanguageId::Tsx
       )
     } else {
-      false
+      // otherwise we look at the media type for the specifier.
+      matches!(
+        MediaType::from(specifier),
+        MediaType::JavaScript
+          | MediaType::Jsx
+          | MediaType::TypeScript
+          | MediaType::Tsx
+          | MediaType::Dts
+      )
     }
   }
 
@@ -365,5 +377,26 @@ mod tests {
       .content(&specifier)
       .expect("failed to get content");
     assert_eq!(actual, Some("console.log(\"Hello Deno\");\n".to_string()));
+  }
+
+  #[test]
+  fn test_is_diagnosable() {
+    let mut document_cache = DocumentCache::default();
+    let specifier = resolve_url("file:///a/file.ts").unwrap();
+    assert!(!document_cache.is_diagnosable(&specifier));
+    document_cache.open(
+      specifier.clone(),
+      1,
+      LanguageId::TypeScript,
+      "console.log(\"hello world\");\n",
+    );
+    assert!(document_cache.is_diagnosable(&specifier));
+    let specifier =
+      resolve_url("asset:///lib.es2015.symbol.wellknown.d.ts").unwrap();
+    assert!(document_cache.is_diagnosable(&specifier));
+    let specifier = resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
+    assert!(document_cache.is_diagnosable(&specifier));
+    let specifier = resolve_url("data:application/json;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
+    assert!(!document_cache.is_diagnosable(&specifier));
   }
 }
