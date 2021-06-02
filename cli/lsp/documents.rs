@@ -194,7 +194,17 @@ impl DocumentCache {
   /// Determines if the specifier should be processed for diagnostics and other
   /// related language server features.
   pub fn is_diagnosable(&self, specifier: &ModuleSpecifier) -> bool {
-    if let Some(doc_data) = self.docs.get(specifier) {
+    if specifier.scheme() != "file" {
+      // otherwise we look at the media type for the specifier.
+      matches!(
+        MediaType::from(specifier),
+        MediaType::JavaScript
+          | MediaType::Jsx
+          | MediaType::TypeScript
+          | MediaType::Tsx
+          | MediaType::Dts
+      )
+    } else if let Some(doc_data) = self.docs.get(specifier) {
       // if the document is in the document cache, then use the client provided
       // language id to determine if the specifier is diagnosable.
       matches!(
@@ -205,15 +215,7 @@ impl DocumentCache {
           | LanguageId::Tsx
       )
     } else {
-      // otherwise we look at the media type for the specifier.
-      matches!(
-        MediaType::from(specifier),
-        MediaType::JavaScript
-          | MediaType::Jsx
-          | MediaType::TypeScript
-          | MediaType::Tsx
-          | MediaType::Dts
-      )
+      false
     }
   }
 
