@@ -316,7 +316,19 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu') && matrix.kind == 'test' && matrix.profile == 'release'
         run: |
           deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts setup
-          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --quiet --release
+          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --quiet --release --json=wpt.json
+
+      - name: Upload wpt results to dl.deno.land
+        if: |
+          runner.os == 'Linux' &&
+          matrix.kind == 'test' &&
+          matrix.profile == 'release' &&
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/main'
+        run: |
+          gsutil cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json
+          echo $(git rev-parse HEAD) > wpt-latest.txt
+          gsutil cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt
 
       - name: Run web platform tests (debug)
         if: startsWith(matrix.os, 'ubuntu') && matrix.kind == 'test' && matrix.profile == 'debug'
