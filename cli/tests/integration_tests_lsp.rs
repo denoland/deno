@@ -2092,16 +2092,21 @@ fn lsp_diagnostics_refresh_dependents() {
   assert_eq!(method, "textDocument/publishDiagnostics");
   let (method, _) = client.read_notification::<Value>().unwrap();
   assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, maybe_params) = client.read_notification::<Value>().unwrap();
+  let (method, maybe_params) = client
+    .read_notification::<lsp::PublishDiagnosticsParams>()
+    .unwrap();
   assert_eq!(method, "textDocument/publishDiagnostics");
-  assert_eq!(
-    maybe_params,
-    Some(json!({
-      "uri": "file:///a/file_01.ts",
-      "diagnostics": [],
-      "version": 1,
-    }))
-  );
+  assert!(maybe_params.is_some());
+  let params = maybe_params.unwrap();
+  assert!(params.diagnostics.is_empty());
+  let (method, maybe_params) = client
+    .read_notification::<lsp::PublishDiagnosticsParams>()
+    .unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  assert!(maybe_params.is_some());
+  let params = maybe_params.unwrap();
+  assert!(params.diagnostics.is_empty());
+
   shutdown(&mut client);
 }
 
