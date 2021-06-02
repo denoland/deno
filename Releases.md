@@ -38,17 +38,6 @@ https://github.com/denoland/deno_install
 - fix(lsp): make failed to load config error descriptive (#10685)
 - fix(lsp): memoize script versions per tsc request (#10601)
 - fix(lsp): re-enable the per resource configuration without a deadlock (#10625)
-- docs(cli): update getting started for clarity (#10694)
-- docs(cli/dts) replace `read()` with `readSync()` (#10732)
-- docs(cli/dts): fix plugin example (#10647)
-- docs(cli/dts): fix typo in `TestDefinition.only` description (#10697)
-- docs(cli/dts): fix unix socket examples (#10705)
-- docs(cli/dts): make worker example pass (#10703)
-- docs(cli/dts): tag test permission example as typescript (#10753)
-- docs(permissions): fix grammatical error in permissions docs (#10755)
-- docs(runtime): fix fetch API usage of HTTP server (#10777)
-- docs(testing): fix misspelling (#10683)
-- docs(typescript): fix typo in faqs (#10682)
 
 ### 1.10.2 / 2021.05.17
 
