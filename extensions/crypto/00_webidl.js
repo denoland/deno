@@ -3,7 +3,7 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
-  webidl.converters["AlgorithmIdentifier"] = (V, opts) => {
+  webidl.converters["AlgorithmIdentifier"] = (V, _opts) => {
     if (typeof V == "string") {
       return webidl.converters["DOMString"](V);
     }
