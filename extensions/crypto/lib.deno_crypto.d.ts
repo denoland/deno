@@ -6,7 +6,7 @@
 declare var crypto: Crypto;
 
 declare interface Crypto {
-  readonly subtle: null;
+  readonly subtle: SubtleCrypto;
   getRandomValues<
     T extends
       | Int8Array
