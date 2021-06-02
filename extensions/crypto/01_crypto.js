@@ -42,41 +42,63 @@
     return arrayBufferView;
   }
 
+  const supportedAlgorithms = {
+    "digest": {
+      "SHA-1": {},
+      "SHA-256": {},
+      "SHA-384": {},
+      "SHA-512": {},
+    },
+  };
+
+  function normalizeAlgorithm(algorithm, op) {
+    if (typeof algorithm == "string") {
+      return normalizeAlgorithm({ name: algorithm }, op);
+    }
+
+    const registeredAlgorithms = supportedAlgorithms[op];
+    const algorithmName = Object.keys(registeredAlgorithms)
+      .find((key) => key.toLowerCase() == algorithm.name.toLowerCase());
+
+    if (algorithmName === undefined) {
+      throw new DOMException(
+        "Unrecognized algorithm name",
+        "NotSupportedError",
+      );
+    }
+
+    const normalizedAlgorithm = {};
+    normalizedAlgorithm.name = algorithmName;
+
+    return normalizedAlgorithm;
+  }
+
+  function serializeAlgorithm(algorithm, op) {
+    const registeredAlgorithms = supportedAlgorithms[op];
+    const registeredKeys = Object.keys(registeredAlgorithms);
+
+    return registeredKeys.indexOf(algorithm.name);
+  }
+
   const subtle = {
     async digest(algorithm, data) {
-      if (typeof algorithm === "string") {
-        algorithm = { name: algorithm };
-      } else if (typeof algorithm === "object" && algorithm !== null) {
-        if (typeof algorithm.name !== "string") {
-          throw new TypeError("Algorithm name is missing or not a string");
-        }
+      webidl.requiredArguments(arguments.length, 2);
 
-        algorithm = { ...algorithm };
-      } else {
-        throw new TypeError("Argument 1 must be an object or a string");
-      }
+      algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+        context: "Argument 1",
+      });
 
-      data = webidl.converters.BufferSource(data);
+      data = webidl.converters.BufferSource(data, {
+        context: "Argument 2",
+      });
 
-      const algorithmName = algorithm.name.toUpperCase();
-      const algorithmId = [
-        "SHA-1",
-        "SHA-256",
-        "SHA-384",
-        "SHA-512",
-      ].indexOf(algorithmName);
-
-      if (algorithmId == -1) {
-        throw new DOMException(
-          "Unrecognized algorithm name",
-          "NotSupportedError",
-        );
-      }
+      algorithm = normalizeAlgorithm(algorithm, "digest");
+      data = data.slice(0);
 
       const result = await core.opAsync(
         "op_crypto_subtle_digest",
-        algorithmId,
-        data.slice(),
+        serializeAlgorithm(algorithm, "digest"),
+        data,
       );
 
       return result.buffer;

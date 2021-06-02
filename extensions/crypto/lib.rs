@@ -23,6 +23,7 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:extensions/crypto",
+      "00_webidl.js",
       "01_crypto.js",
     ))
     .ops(vec![
