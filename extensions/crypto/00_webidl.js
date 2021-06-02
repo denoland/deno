@@ -4,11 +4,16 @@
 ((window) => {
   const webidl = window.__bootstrap.webidl;
   webidl.converters["AlgorithmIdentifier"] = (V, opts) => {
-    if (typeof V == "string") {
-      return webidl.converters["DOMString"](V, opts);
+    // Union for (DOMString or Algorithm) 
+    if (V === null || V === undefined) {
+      return webidl.converters["Algorithm"](V, opts);
     }
 
-    return webidl.converters["Algorithm"](V, opts);
+    if (typeof V == "object") {
+      return webidl.converters["Algorithm"](V, opts);
+    }
+
+    return webidl.converters["DOMString"](V, opts);
   };
 
   const algorithmDictionary = [
