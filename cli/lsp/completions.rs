@@ -559,6 +559,7 @@ mod tests {
   use crate::http_cache::HttpCache;
   use crate::lsp::analysis;
   use crate::lsp::documents::DocumentCache;
+  use crate::lsp::documents::LanguageId;
   use crate::lsp::sources::Sources;
   use crate::media_type::MediaType;
   use deno_core::resolve_url;
@@ -567,15 +568,15 @@ mod tests {
   use tempfile::TempDir;
 
   fn mock_state_snapshot(
-    fixtures: &[(&str, &str, i32)],
+    fixtures: &[(&str, &str, i32, LanguageId)],
     source_fixtures: &[(&str, &str)],
     location: &Path,
   ) -> language_server::StateSnapshot {
     let mut documents = DocumentCache::default();
-    for (specifier, source, version) in fixtures {
+    for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      documents.open(specifier.clone(), *version, source);
+      documents.open(specifier.clone(), *version, language_id.clone(), source);
       let media_type = MediaType::from(&specifier);
       let parsed_module =
         analysis::parse_module(&specifier, source, &media_type).unwrap();
@@ -608,7 +609,7 @@ mod tests {
   }
 
   fn setup(
-    documents: &[(&str, &str, i32)],
+    documents: &[(&str, &str, i32, LanguageId)],
     sources: &[(&str, &str)],
   ) -> language_server::StateSnapshot {
     let temp_dir = TempDir::new().expect("could not create temp dir");
@@ -885,8 +886,13 @@ mod tests {
     };
     let state_snapshot = setup(
       &[
-        ("file:///a/b/c.ts", "import * as d from \"h\"", 1),
-        ("file:///a/c.ts", r#""#, 1),
+        (
+          "file:///a/b/c.ts",
+          "import * as d from \"h\"",
+          1,
+          LanguageId::TypeScript,
+        ),
+        ("file:///a/c.ts", r#""#, 1, LanguageId::TypeScript),
       ],
       &[("https://deno.land/x/a/b/c.ts", "console.log(1);\n")],
     );

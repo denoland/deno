@@ -2566,6 +2566,7 @@ mod tests {
   use crate::http_util::HeadersMap;
   use crate::lsp::analysis;
   use crate::lsp::documents::DocumentCache;
+  use crate::lsp::documents::LanguageId;
   use crate::lsp::sources::Sources;
   use crate::lsp::text::LineIndex;
   use std::path::Path;
@@ -2573,14 +2574,14 @@ mod tests {
   use tempfile::TempDir;
 
   fn mock_state_snapshot(
-    fixtures: &[(&str, &str, i32)],
+    fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
   ) -> StateSnapshot {
     let mut documents = DocumentCache::default();
-    for (specifier, source, version) in fixtures {
+    for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      documents.open(specifier.clone(), *version, source);
+      documents.open(specifier.clone(), *version, language_id.clone(), source);
       let media_type = MediaType::from(&specifier);
       if let Ok(parsed_module) =
         analysis::parse_module(&specifier, source, &media_type)
@@ -2605,7 +2606,7 @@ mod tests {
   fn setup(
     debug: bool,
     config: Value,
-    sources: &[(&str, &str, i32)],
+    sources: &[(&str, &str, i32, LanguageId)],
   ) -> (JsRuntime, StateSnapshot, PathBuf) {
     let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
@@ -2688,7 +2689,12 @@ mod tests {
         "module": "esnext",
         "noEmit": true,
       }),
-      &[("file:///a.ts", r#"console.log("hello deno");"#, 1)],
+      &[(
+        "file:///a.ts",
+        r#"console.log("hello deno");"#,
+        1,
+        LanguageId::TypeScript,
+      )],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
@@ -2733,7 +2739,12 @@ mod tests {
         "lib": ["esnext", "dom", "deno.ns"],
         "noEmit": true,
       }),
-      &[("file:///a.ts", r#"console.log(document.location);"#, 1)],
+      &[(
+        "file:///a.ts",
+        r#"console.log(document.location);"#,
+        1,
+        LanguageId::TypeScript,
+      )],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
@@ -2766,6 +2777,7 @@ mod tests {
         console.log(b);
       "#,
         1,
+        LanguageId::TypeScript,
       )],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
@@ -2795,6 +2807,7 @@ mod tests {
         import { A } from ".";
         "#,
         1,
+        LanguageId::TypeScript,
       )],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
@@ -2848,6 +2861,7 @@ mod tests {
         console.log(b);
       "#,
         1,
+        LanguageId::TypeScript,
       )],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
@@ -2884,6 +2898,7 @@ mod tests {
         import * as test from
       "#,
         1,
+        LanguageId::TypeScript,
       )],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
@@ -2941,7 +2956,12 @@ mod tests {
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
-      &[("file:///a.ts", r#"const url = new URL("b.js", import."#, 1)],
+      &[(
+        "file:///a.ts",
+        r#"const url = new URL("b.js", import."#,
+        1,
+        LanguageId::TypeScript,
+      )],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
@@ -2998,6 +3018,7 @@ mod tests {
           }
         "#,
         1,
+        LanguageId::TypeScript,
       )],
     );
     let cache = HttpCache::new(&location);
@@ -3099,7 +3120,7 @@ mod tests {
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
-      &[("file:///a.ts", fixture, 1)],
+      &[("file:///a.ts", fixture, 1, LanguageId::TypeScript)],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
