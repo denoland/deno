@@ -179,8 +179,9 @@ async function run() {
     for (const result of results) {
       const minified = {
         file: result.test.path,
-        name: Object.fromEntries(result.test.options.script_metadata ?? []).title ??
-          null,
+        name:
+          Object.fromEntries(result.test.options.script_metadata ?? []).title ??
+            null,
         cases: result.result.cases.map((case_) => ({
           name: case_.name,
           passed: case_.passed,
