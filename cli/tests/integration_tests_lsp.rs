@@ -2119,6 +2119,56 @@ fn lsp_format_json() {
 }
 
 #[test]
+fn lsp_json_no_diagnostics() {
+  let mut client = init("initialize_params.json");
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.json",
+          "languageId": "json",
+          "version": 1,
+          "text": "{\"key\":\"value\"}"
+        }
+      }),
+    )
+    .unwrap();
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/semanticTokens/full",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.json"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.json"
+        },
+        "position": {
+          "line": 0,
+          "character": 3
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_format_markdown() {
   let mut client = init("initialize_params.json");
   client
@@ -2170,6 +2220,56 @@ fn lsp_format_markdown() {
       }
     ]))
   );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_markdown_no_diagnostics() {
+  let mut client = init("initialize_params.json");
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.md",
+          "languageId": "markdown",
+          "version": 1,
+          "text": "# Hello World"
+        }
+      }),
+    )
+    .unwrap();
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/semanticTokens/full",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.md"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.md"
+        },
+        "position": {
+          "line": 0,
+          "character": 3
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+
   shutdown(&mut client);
 }
 
