@@ -316,64 +316,9 @@
       return this[_headers];
     }
 
-    get destination() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get referrer() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get referrerPolicy() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get mode() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get credentials() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get cache() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
     get redirect() {
       webidl.assertBranded(this, Request);
       return this[_request].redirectMode;
-    }
-
-    get integrity() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get keepalive() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get isReloadNavigation() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get isHistoryNavigation() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get signal() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
     }
 
     clone() {
@@ -438,46 +383,6 @@
     }
     return webidl.converters["USVString"](V, opts);
   };
-
-  webidl.converters["ReferrerPolicy"] = webidl.createEnumConverter(
-    "ReferrerPolicy",
-    [
-      "",
-      "no-referrer",
-      "no-referrer-when-downgrade",
-      "same-origin",
-      "origin",
-      "strict-origin",
-      "origin-when-cross-origin",
-      "strict-origin-when-cross-origin",
-      "unsafe-url",
-    ],
-  );
-  webidl.converters["RequestMode"] = webidl.createEnumConverter("RequestMode", [
-    "navigate",
-    "same-origin",
-    "no-cors",
-    "cors",
-  ]);
-  webidl.converters["RequestCredentials"] = webidl.createEnumConverter(
-    "RequestCredentials",
-    [
-      "omit",
-      "same-origin",
-      "include",
-    ],
-  );
-  webidl.converters["RequestCache"] = webidl.createEnumConverter(
-    "RequestCache",
-    [
-      "default",
-      "no-store",
-      "reload",
-      "no-cache",
-      "force-cache",
-      "only-if-cached",
-    ],
-  );
   webidl.converters["RequestRedirect"] = webidl.createEnumConverter(
     "RequestRedirect",
     [
@@ -497,23 +402,7 @@
           webidl.converters["BodyInit"],
         ),
       },
-      { key: "referrer", converter: webidl.converters["USVString"] },
-      { key: "referrerPolicy", converter: webidl.converters["ReferrerPolicy"] },
-      { key: "mode", converter: webidl.converters["RequestMode"] },
-      {
-        key: "credentials",
-        converter: webidl.converters["RequestCredentials"],
-      },
-      { key: "cache", converter: webidl.converters["RequestCache"] },
       { key: "redirect", converter: webidl.converters["RequestRedirect"] },
-      { key: "integrity", converter: webidl.converters["DOMString"] },
-      { key: "keepalive", converter: webidl.converters["boolean"] },
-      {
-        key: "signal",
-        converter: webidl.createNullableConverter(
-          webidl.converters["AbortSignal"],
-        ),
-      },
       { key: "client", converter: webidl.converters.any },
     ],
   );

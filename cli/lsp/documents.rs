@@ -3,6 +3,9 @@
 use super::analysis;
 use super::text::LineIndex;
 
+use crate::media_type::MediaType;
+
+use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
@@ -10,6 +13,37 @@ use deno_core::ModuleSpecifier;
 use lspower::lsp::TextDocumentContentChangeEvent;
 use std::collections::HashMap;
 use std::ops::Range;
+use std::str::FromStr;
+
+/// A representation of the language id sent from the LSP client, which is used
+/// to determine how the document is handled within the language server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LanguageId {
+  JavaScript,
+  Jsx,
+  TypeScript,
+  Tsx,
+  Json,
+  JsonC,
+  Markdown,
+}
+
+impl FromStr for LanguageId {
+  type Err = AnyError;
+
+  fn from_str(s: &str) -> Result<Self, AnyError> {
+    match s {
+      "javascript" => Ok(Self::JavaScript),
+      "javascriptreact" => Ok(Self::Jsx),
+      "typescript" => Ok(Self::TypeScript),
+      "typescriptreact" => Ok(Self::Tsx),
+      "json" => Ok(Self::Json),
+      "jsonc" => Ok(Self::JsonC),
+      "markdown" => Ok(Self::Markdown),
+      _ => Err(anyhow!("Unsupported language id: {}", s)),
+    }
+  }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 enum IndexValid {
@@ -29,6 +63,7 @@ impl IndexValid {
 #[derive(Debug, Clone)]
 pub struct DocumentData {
   bytes: Option<Vec<u8>>,
+  language_id: LanguageId,
   line_index: Option<LineIndex>,
   specifier: ModuleSpecifier,
   dependencies: Option<HashMap<String, analysis::Dependency>>,
@@ -36,9 +71,15 @@ pub struct DocumentData {
 }
 
 impl DocumentData {
-  pub fn new(specifier: ModuleSpecifier, version: i32, source: &str) -> Self {
+  pub fn new(
+    specifier: ModuleSpecifier,
+    version: i32,
+    language_id: LanguageId,
+    source: &str,
+  ) -> Self {
     Self {
       bytes: Some(source.as_bytes().to_owned()),
+      language_id,
       line_index: Some(LineIndex::new(source)),
       specifier,
       dependencies: None,
@@ -150,6 +191,39 @@ impl DocumentCache {
     doc.dependencies.clone()
   }
 
+  /// Determines if the specifier should be processed for diagnostics and other
+  /// related language server features.
+  pub fn is_diagnosable(&self, specifier: &ModuleSpecifier) -> bool {
+    if specifier.scheme() != "file" {
+      // otherwise we look at the media type for the specifier.
+      matches!(
+        MediaType::from(specifier),
+        MediaType::JavaScript
+          | MediaType::Jsx
+          | MediaType::TypeScript
+          | MediaType::Tsx
+          | MediaType::Dts
+      )
+    } else if let Some(doc_data) = self.docs.get(specifier) {
+      // if the document is in the document cache, then use the client provided
+      // language id to determine if the specifier is diagnosable.
+      matches!(
+        doc_data.language_id,
+        LanguageId::JavaScript
+          | LanguageId::Jsx
+          | LanguageId::TypeScript
+          | LanguageId::Tsx
+      )
+    } else {
+      false
+    }
+  }
+
+  /// Determines if the specifier can be processed for formatting.
+  pub fn is_formattable(&self, specifier: &ModuleSpecifier) -> bool {
+    self.docs.contains_key(specifier)
+  }
+
   pub fn len(&self) -> usize {
     self.docs.len()
   }
@@ -159,10 +233,16 @@ impl DocumentCache {
     doc.line_index.clone()
   }
 
-  pub fn open(&mut self, specifier: ModuleSpecifier, version: i32, text: &str) {
+  pub fn open(
+    &mut self,
+    specifier: ModuleSpecifier,
+    version: i32,
+    language_id: LanguageId,
+    source: &str,
+  ) {
     self.docs.insert(
       specifier.clone(),
-      DocumentData::new(specifier, version, text),
+      DocumentData::new(specifier, version, language_id, source),
     );
   }
 
@@ -219,7 +299,12 @@ mod tests {
     let mut document_cache = DocumentCache::default();
     let specifier = resolve_url("file:///a/b.ts").unwrap();
     let missing_specifier = resolve_url("file:///a/c.ts").unwrap();
-    document_cache.open(specifier.clone(), 1, "console.log(\"Hello Deno\");\n");
+    document_cache.open(
+      specifier.clone(),
+      1,
+      LanguageId::TypeScript,
+      "console.log(\"Hello Deno\");\n",
+    );
     assert!(document_cache.contains_key(&specifier));
     assert!(!document_cache.contains_key(&missing_specifier));
   }
@@ -228,7 +313,12 @@ mod tests {
   fn test_document_cache_change() {
     let mut document_cache = DocumentCache::default();
     let specifier = resolve_url("file:///a/b.ts").unwrap();
-    document_cache.open(specifier.clone(), 1, "console.log(\"Hello deno\");\n");
+    document_cache.open(
+      specifier.clone(),
+      1,
+      LanguageId::TypeScript,
+      "console.log(\"Hello deno\");\n",
+    );
     document_cache
       .change(
         &specifier,
@@ -259,7 +349,12 @@ mod tests {
   fn test_document_cache_change_utf16() {
     let mut document_cache = DocumentCache::default();
     let specifier = resolve_url("file:///a/b.ts").unwrap();
-    document_cache.open(specifier.clone(), 1, "console.log(\"Hello 🦕\");\n");
+    document_cache.open(
+      specifier.clone(),
+      1,
+      LanguageId::TypeScript,
+      "console.log(\"Hello 🦕\");\n",
+    );
     document_cache
       .change(
         &specifier,
@@ -284,5 +379,26 @@ mod tests {
       .content(&specifier)
       .expect("failed to get content");
     assert_eq!(actual, Some("console.log(\"Hello Deno\");\n".to_string()));
+  }
+
+  #[test]
+  fn test_is_diagnosable() {
+    let mut document_cache = DocumentCache::default();
+    let specifier = resolve_url("file:///a/file.ts").unwrap();
+    assert!(!document_cache.is_diagnosable(&specifier));
+    document_cache.open(
+      specifier.clone(),
+      1,
+      LanguageId::TypeScript,
+      "console.log(\"hello world\");\n",
+    );
+    assert!(document_cache.is_diagnosable(&specifier));
+    let specifier =
+      resolve_url("asset:///lib.es2015.symbol.wellknown.d.ts").unwrap();
+    assert!(document_cache.is_diagnosable(&specifier));
+    let specifier = resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
+    assert!(document_cache.is_diagnosable(&specifier));
+    let specifier = resolve_url("data:application/json;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
+    assert!(!document_cache.is_diagnosable(&specifier));
   }
 }

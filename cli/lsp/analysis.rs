@@ -214,13 +214,7 @@ pub fn resolve_import(
   maybe_import_map: &Option<ImportMap>,
 ) -> ResolvedDependency {
   let maybe_mapped = if let Some(import_map) = maybe_import_map {
-    if let Ok(maybe_specifier) =
-      import_map.resolve(specifier, referrer.as_str())
-    {
-      maybe_specifier
-    } else {
-      None
-    }
+    import_map.resolve(specifier, referrer.as_str()).ok()
   } else {
     None
   };

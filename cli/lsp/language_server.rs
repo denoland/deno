@@ -3,8 +3,6 @@
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
-use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -44,6 +42,8 @@ use super::config::SETTINGS_SECTION;
 use super::diagnostics;
 use super::diagnostics::DiagnosticSource;
 use super::documents::DocumentCache;
+use super::documents::LanguageId;
+use super::lsp_custom;
 use super::performance::Performance;
 use super::registries;
 use super::sources;
@@ -60,7 +60,6 @@ use crate::config_file::TsConfig;
 use crate::deno_dir;
 use crate::import_map::ImportMap;
 use crate::logger;
-use crate::lsp::diagnostics::is_diagnosable;
 use crate::media_type::MediaType;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::get_typescript_config;
@@ -385,10 +384,9 @@ impl Inner {
       .iter()
     {
       if *enabled {
-        info!("Enabling auto complete registry for: {}", registry);
+        info!("Enabling import suggestions for: {}", registry);
         self.module_registries.enable(registry).await?;
       } else {
-        info!("Disabling auto complete registry for: {}", registry);
         self.module_registries.disable(registry).await?;
       }
     }
@@ -552,17 +550,11 @@ impl Inner {
   async fn initialized(&mut self, _: InitializedParams) {
     // Check to see if we need to setup the import map
     if let Err(err) = self.update_import_map().await {
-      self
-        .client
-        .show_message(MessageType::Warning, err.to_string())
-        .await;
+      self.client.show_message(MessageType::Warning, err).await;
     }
     // Check to see if we need to setup any module registries
     if let Err(err) = self.update_registries().await {
-      self
-        .client
-        .show_message(MessageType::Warning, err.to_string())
-        .await;
+      self.client.show_message(MessageType::Warning, err).await;
     }
 
     if self
@@ -619,17 +611,27 @@ impl Inner {
       // already managed by the language service
       return;
     }
+    let language_id = match params.text_document.language_id.parse() {
+      Ok(language_id) => language_id,
+      Err(err) => {
+        error!("{}", err);
+        LanguageId::TypeScript
+      }
+    };
     self.documents.open(
       specifier.clone(),
       params.text_document.version,
+      language_id,
       &params.text_document.text,
     );
-    self.analyze_dependencies(&specifier, &params.text_document.text);
-    self.performance.measure(mark);
 
-    if let Err(err) = self.diagnostics_server.update() {
-      error!("{}", err);
+    if self.documents.is_diagnosable(&specifier) {
+      self.analyze_dependencies(&specifier, &params.text_document.text);
+      if let Err(err) = self.diagnostics_server.update() {
+        error!("{}", err);
+      }
     }
+    self.performance.measure(mark);
   }
 
   async fn did_change(&mut self, params: DidChangeTextDocumentParams) {
@@ -640,15 +642,18 @@ impl Inner {
       params.text_document.version,
       params.content_changes,
     ) {
-      Ok(Some(source)) => self.analyze_dependencies(&specifier, &source),
+      Ok(Some(source)) => {
+        if self.documents.is_diagnosable(&specifier) {
+          self.analyze_dependencies(&specifier, &source);
+          if let Err(err) = self.diagnostics_server.update() {
+            error!("{}", err);
+          }
+        }
+      }
       Ok(_) => error!("No content returned from change."),
       Err(err) => error!("{}", err),
     }
     self.performance.measure(mark);
-
-    if let Err(err) = self.diagnostics_server.update() {
-      error!("{}", err);
-    }
   }
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
@@ -663,10 +668,12 @@ impl Inner {
     self.documents.close(&specifier);
     self.navigation_trees.remove(&specifier);
 
-    self.performance.measure(mark);
-    if let Err(err) = self.diagnostics_server.update() {
-      error!("{}", err);
+    if self.documents.is_diagnosable(&specifier) {
+      if let Err(err) = self.diagnostics_server.update() {
+        error!("{}", err);
+      }
     }
+    self.performance.measure(mark);
   }
 
   async fn did_change_configuration(
@@ -677,40 +684,49 @@ impl Inner {
       .performance
       .mark("did_change_configuration", Some(&params));
 
-    if self.config.client_capabilities.workspace_configuration {
-      if let Err(err) = self.config.update_workspace_settings().await {
-        error!("Error updating workspace settings: {}", err);
-      }
-    } else if let Some(config) = params
-      .settings
-      .as_object()
-      .map(|settings| settings.get(SETTINGS_SECTION))
-      .flatten()
-      .cloned()
-    {
-      if let Err(err) = self.config.set_workspace_settings(config) {
+    let maybe_config =
+      if self.config.client_capabilities.workspace_configuration {
+        let config_response = self
+          .client
+          .configuration(vec![ConfigurationItem {
+            scope_uri: None,
+            section: Some(SETTINGS_SECTION.to_string()),
+          }])
+          .await;
+        if let Err(err) = self.config.update_all_settings().await {
+          error!("Cannot request updating all settings: {}", err);
+        }
+        match config_response {
+          Ok(value_vec) => value_vec.get(0).cloned(),
+          Err(err) => {
+            error!("Error getting workspace configuration: {}", err);
+            None
+          }
+        }
+      } else {
+        params
+          .settings
+          .as_object()
+          .map(|settings| settings.get(SETTINGS_SECTION))
+          .flatten()
+          .cloned()
+      };
+
+    if let Some(value) = maybe_config {
+      if let Err(err) = self.config.set_workspace_settings(value) {
         error!("failed to update settings: {}", err);
       }
     }
 
     self.update_debug_flag();
     if let Err(err) = self.update_import_map().await {
-      self
-        .client
-        .show_message(MessageType::Warning, err.to_string())
-        .await;
+      self.client.show_message(MessageType::Warning, err).await;
     }
     if let Err(err) = self.update_registries().await {
-      self
-        .client
-        .show_message(MessageType::Warning, err.to_string())
-        .await;
+      self.client.show_message(MessageType::Warning, err).await;
     }
     if let Err(err) = self.update_tsconfig().await {
-      self
-        .client
-        .show_message(MessageType::Warning, err.to_string())
-        .await;
+      self.client.show_message(MessageType::Warning, err).await;
     }
     if let Err(err) = self.diagnostics_server.update() {
       error!("{}", err);
@@ -730,10 +746,7 @@ impl Inner {
     if let Some(import_map_uri) = &self.maybe_import_map_uri {
       if params.changes.iter().any(|fe| *import_map_uri == fe.uri) {
         if let Err(err) = self.update_import_map().await {
-          self
-            .client
-            .show_message(MessageType::Warning, err.to_string())
-            .await;
+          self.client.show_message(MessageType::Warning, err).await;
         }
       }
     }
@@ -741,10 +754,7 @@ impl Inner {
     if let Some(config_uri) = &self.maybe_config_uri {
       if params.changes.iter().any(|fe| *config_uri == fe.uri) {
         if let Err(err) = self.update_tsconfig().await {
-          self
-            .client
-            .show_message(MessageType::Warning, err.to_string())
-            .await;
+          self.client.show_message(MessageType::Warning, err).await;
         }
       }
     }
@@ -756,11 +766,9 @@ impl Inner {
     params: DocumentSymbolParams,
   ) -> LspResult<Option<DocumentSymbolResponse>> {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
-      return Ok(None);
-    }
-    let media_type = MediaType::from(&specifier);
-    if !is_diagnosable(media_type) {
+    if !self.documents.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
       return Ok(None);
     }
 
@@ -803,8 +811,11 @@ impl Inner {
     &self,
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
-    let mark = self.performance.mark("formatting", Some(&params));
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
+    if !self.documents.is_formattable(&specifier) {
+      return Ok(None);
+    }
+    let mark = self.performance.mark("formatting", Some(&params));
     let file_text = self
       .documents
       .content(&specifier)
@@ -855,7 +866,9 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position_params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.documents.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
       return Ok(None);
     }
     let mark = self.performance.mark("hover", Some(&params));
@@ -896,7 +909,9 @@ impl Inner {
     params: CodeActionParams,
   ) -> LspResult<Option<CodeActionResponse>> {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.documents.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
       return Ok(None);
     }
 
@@ -1059,7 +1074,8 @@ impl Inner {
     params: CodeLensParams,
   ) -> LspResult<Option<Vec<CodeLens>>> {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier)
+    if !self.documents.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
       || !self.config.get_workspace_settings().enabled_code_lens()
     {
       return Ok(None);
@@ -1371,7 +1387,9 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position_params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.documents.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
       return Ok(None);
     }
 
@@ -1421,9 +1439,12 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.documents.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
       return Ok(None);
     }
+
     let mark = self.performance.mark("references", Some(&params));
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
@@ -1476,9 +1497,12 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position_params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.documents.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
       return Ok(None);
     }
+
     let mark = self.performance.mark("goto_definition", Some(&params));
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
@@ -1519,9 +1543,12 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.documents.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
       return Ok(None);
     }
+
     let mark = self.performance.mark("completion", Some(&params));
     // Import specifiers are something wholly internal to Deno, so for
     // completions, we will use internal logic and if there are completions
@@ -1531,6 +1558,7 @@ impl Inner {
       &specifier,
       &params.text_document_position.position,
       &self.snapshot()?,
+      self.client.clone(),
     )
     .await
     {
@@ -1636,9 +1664,12 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position_params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.documents.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
       return Ok(None);
     }
+
     let mark = self.performance.mark("goto_implementation", Some(&params));
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
@@ -1684,11 +1715,13 @@ impl Inner {
     params: FoldingRangeParams,
   ) -> LspResult<Option<Vec<FoldingRange>>> {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.documents.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
       return Ok(None);
     }
-    let mark = self.performance.mark("folding_range", Some(&params));
 
+    let mark = self.performance.mark("folding_range", Some(&params));
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -1741,11 +1774,13 @@ impl Inner {
     params: CallHierarchyIncomingCallsParams,
   ) -> LspResult<Option<Vec<CallHierarchyIncomingCall>>> {
     let specifier = self.url_map.normalize_url(&params.item.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.documents.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
       return Ok(None);
     }
-    let mark = self.performance.mark("incoming_calls", Some(&params));
 
+    let mark = self.performance.mark("incoming_calls", Some(&params));
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -1795,11 +1830,13 @@ impl Inner {
     params: CallHierarchyOutgoingCallsParams,
   ) -> LspResult<Option<Vec<CallHierarchyOutgoingCall>>> {
     let specifier = self.url_map.normalize_url(&params.item.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.documents.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
       return Ok(None);
     }
-    let mark = self.performance.mark("outgoing_calls", Some(&params));
 
+    let mark = self.performance.mark("outgoing_calls", Some(&params));
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -1852,13 +1889,15 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position_params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.documents.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
       return Ok(None);
     }
+
     let mark = self
       .performance
       .mark("prepare_call_hierarchy", Some(&params));
-
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -1931,11 +1970,13 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.documents.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
       return Ok(None);
     }
-    let mark = self.performance.mark("rename", Some(&params));
 
+    let mark = self.performance.mark("rename", Some(&params));
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -1986,27 +2027,31 @@ impl Inner {
     params: Option<Value>,
   ) -> LspResult<Option<Value>> {
     match method {
-      "deno/cache" => match params.map(serde_json::from_value) {
+      lsp_custom::CACHE_REQUEST => match params.map(serde_json::from_value) {
         Some(Ok(params)) => self.cache(params).await,
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
         None => Err(LspError::invalid_params("Missing parameters")),
       },
-      "deno/performance" => Ok(Some(self.get_performance())),
-      "deno/reloadImportRegistries" => self.reload_import_registries().await,
-      "deno/virtualTextDocument" => match params.map(serde_json::from_value) {
-        Some(Ok(params)) => Ok(Some(
-          serde_json::to_value(self.virtual_text_document(params).await?)
-            .map_err(|err| {
-              error!(
-                "Failed to serialize virtual_text_document response: {}",
-                err
-              );
-              LspError::internal_error()
-            })?,
-        )),
-        Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
-        None => Err(LspError::invalid_params("Missing parameters")),
-      },
+      lsp_custom::PERFORMANCE_REQUEST => Ok(Some(self.get_performance())),
+      lsp_custom::RELOAD_IMPORT_REGISTRIES_REQUEST => {
+        self.reload_import_registries().await
+      }
+      lsp_custom::VIRTUAL_TEXT_DOCUMENT => {
+        match params.map(serde_json::from_value) {
+          Some(Ok(params)) => Ok(Some(
+            serde_json::to_value(self.virtual_text_document(params).await?)
+              .map_err(|err| {
+                error!(
+                  "Failed to serialize virtual_text_document response: {}",
+                  err
+                );
+                LspError::internal_error()
+              })?,
+          )),
+          Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+          None => Err(LspError::invalid_params("Missing parameters")),
+        }
+      }
       _ => {
         error!("Got a {} request, but no handler is defined", method);
         Err(LspError::method_not_found())
@@ -2019,11 +2064,13 @@ impl Inner {
     params: SelectionRangeParams,
   ) -> LspResult<Option<Vec<SelectionRange>>> {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.documents.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
       return Ok(None);
     }
-    let mark = self.performance.mark("selection_range", Some(&params));
 
+    let mark = self.performance.mark("selection_range", Some(&params));
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -2061,11 +2108,13 @@ impl Inner {
     params: SemanticTokensParams,
   ) -> LspResult<Option<SemanticTokensResult>> {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.documents.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
       return Ok(None);
     }
-    let mark = self.performance.mark("semantic_tokens_full", Some(&params));
 
+    let mark = self.performance.mark("semantic_tokens_full", Some(&params));
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -2108,13 +2157,15 @@ impl Inner {
     params: SemanticTokensRangeParams,
   ) -> LspResult<Option<SemanticTokensRangeResult>> {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.documents.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
       return Ok(None);
     }
+
     let mark = self
       .performance
       .mark("semantic_tokens_range", Some(&params));
-
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
         line_index
@@ -2158,9 +2209,12 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document_position_params.text_document.uri);
-    if !self.config.specifier_enabled(&specifier) {
+    if !self.documents.is_diagnosable(&specifier)
+      || !self.config.specifier_enabled(&specifier)
+    {
       return Ok(None);
     }
+
     let mark = self.performance.mark("signature_help", Some(&params));
     let line_index =
       if let Some(line_index) = self.get_line_index_sync(&specifier) {
@@ -2419,30 +2473,20 @@ impl lspower::LanguageServer for LanguageServer {
   }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct CacheParams {
-  /// The document currently open in the editor.  If there are no `uris`
-  /// supplied, the referrer will be cached.
-  referrer: TextDocumentIdentifier,
-  /// Any documents that have been specifically asked to be cached via the
-  /// command.
-  uris: Vec<TextDocumentIdentifier>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct VirtualTextDocumentParams {
-  text_document: TextDocumentIdentifier,
-}
-
 // These are implementations of custom commands supported by the LSP
 impl Inner {
   /// Similar to `deno cache` on the command line, where modules will be cached
   /// in the Deno cache, including any of their dependencies.
-  async fn cache(&mut self, params: CacheParams) -> LspResult<Option<Value>> {
-    let mark = self.performance.mark("cache", Some(&params));
+  async fn cache(
+    &mut self,
+    params: lsp_custom::CacheParams,
+  ) -> LspResult<Option<Value>> {
     let referrer = self.url_map.normalize_url(&params.referrer.uri);
+    if !self.documents.is_diagnosable(&referrer) {
+      return Ok(None);
+    }
+
+    let mark = self.performance.mark("cache", Some(&params));
     if !params.uris.is_empty() {
       for identifier in &params.uris {
         let specifier = self.url_map.normalize_url(&identifier.uri);
@@ -2501,7 +2545,7 @@ impl Inner {
 
   async fn virtual_text_document(
     &mut self,
-    params: VirtualTextDocumentParams,
+    params: lsp_custom::VirtualTextDocumentParams,
   ) -> LspResult<Option<String>> {
     let mark = self
       .performance

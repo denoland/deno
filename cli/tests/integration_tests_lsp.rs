@@ -1840,6 +1840,53 @@ fn lsp_completions_registry_empty() {
 }
 
 #[test]
+fn lsp_auto_discover_registry() {
+  let _g = http_server();
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import * as a from \"http://localhost:4545/x/a@\""
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": {
+          "line": 0,
+          "character": 46
+        },
+        "context": {
+          "triggerKind": 2,
+          "triggerCharacter": "@"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+  let (method, maybe_res) = client.read_notification().unwrap();
+  assert_eq!(method, "deno/registryState");
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "origin": "http://localhost:4545",
+      "suggestions": true,
+    }))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_diagnostics_warn() {
   let _g = http_server();
   let mut client = init("initialize_params.json");
@@ -2072,6 +2119,56 @@ fn lsp_format_json() {
 }
 
 #[test]
+fn lsp_json_no_diagnostics() {
+  let mut client = init("initialize_params.json");
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.json",
+          "languageId": "json",
+          "version": 1,
+          "text": "{\"key\":\"value\"}"
+        }
+      }),
+    )
+    .unwrap();
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/semanticTokens/full",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.json"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.json"
+        },
+        "position": {
+          "line": 0,
+          "character": 3
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_format_markdown() {
   let mut client = init("initialize_params.json");
   client
@@ -2122,6 +2219,146 @@ fn lsp_format_markdown() {
         "newText": "\n"
       }
     ]))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_markdown_no_diagnostics() {
+  let mut client = init("initialize_params.json");
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.md",
+          "languageId": "markdown",
+          "version": 1,
+          "text": "# Hello World"
+        }
+      }),
+    )
+    .unwrap();
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/semanticTokens/full",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.md"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.md"
+        },
+        "position": {
+          "line": 0,
+          "character": 3
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_configuration_did_change() {
+  let _g = http_server();
+  let mut client = init("initialize_params_did_config_change.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import * as a from \"http://localhost:4545/x/a@\""
+      }
+    }),
+  );
+  client
+    .write_notification(
+      "workspace/didChangeConfiguration",
+      json!({
+        "settings": {}
+      }),
+    )
+    .unwrap();
+  let (id, method, _) = client.read_request::<Value>().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(
+      id,
+      json!([{
+        "enable": true,
+        "codeLens": {
+          "implementations": true,
+          "references": true
+        },
+        "importMap": null,
+        "lint": true,
+        "suggest": {
+          "autoImports": true,
+          "completeFunctionCalls": false,
+          "names": true,
+          "paths": true,
+          "imports": {
+            "hosts": {
+              "http://localhost:4545/": true
+            }
+          }
+        },
+        "unstable": false
+      }]),
+    )
+    .unwrap();
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": {
+          "line": 0,
+          "character": 46
+        },
+        "context": {
+          "triggerKind": 2,
+          "triggerCharacter": "@"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+    assert!(!list.is_incomplete);
+    assert_eq!(list.items.len(), 3);
+  } else {
+    panic!("unexpected response");
+  }
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "completionItem/resolve",
+      load_fixture("completion_resolve_params_registry.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("completion_resolve_response_registry.json"))
   );
   shutdown(&mut client);
 }

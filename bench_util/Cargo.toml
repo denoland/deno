@@ -14,7 +14,7 @@ publish = true
 
 [dependencies]
 bencher = "0.1"
-deno_core = { version = "0.88.0", path = "../core" }
+deno_core = { version = "0.88.1", path = "../core" }
 tokio = { version = "1.6.1", features = ["full"] }
 
 [[bench]]
