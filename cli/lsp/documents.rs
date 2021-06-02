@@ -12,6 +12,7 @@ use deno_core::error::Context;
 use deno_core::ModuleSpecifier;
 use lspower::lsp::TextDocumentContentChangeEvent;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::ops::Range;
 use std::str::FromStr;
 
@@ -181,6 +182,27 @@ impl DocumentCache {
     } else {
       Ok(None)
     }
+  }
+
+  pub fn dependents(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Vec<ModuleSpecifier> {
+    let mut deps = HashSet::new();
+    let resolved_dependency =
+      Some(analysis::ResolvedDependency::Resolved(specifier.clone()));
+    for (doc_specifier, doc_data) in &self.docs {
+      if let Some(dependencies) = &doc_data.dependencies {
+        for dep in dependencies.values() {
+          if dep.maybe_code == resolved_dependency
+            || dep.maybe_type == resolved_dependency
+          {
+            deps.insert(doc_specifier.clone());
+          }
+        }
+      }
+    }
+    deps.into_iter().collect()
   }
 
   pub fn dependencies(
