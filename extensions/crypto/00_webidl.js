@@ -3,12 +3,12 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
-  webidl.converters["AlgorithmIdentifier"] = (V, _opts) => {
+  webidl.converters["AlgorithmIdentifier"] = (V, opts) => {
     if (typeof V == "string") {
-      return webidl.converters["DOMString"](V);
+      return webidl.converters["DOMString"](V, opts);
     }
 
-    return webidl.converters["Algorithm"](V);
+    return webidl.converters["Algorithm"](V, opts);
   };
 
   const algorithmDictionary = [
