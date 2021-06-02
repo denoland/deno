@@ -990,16 +990,8 @@
     },
     "file": {
       "File-constructor.any.html": true,
-      "send-file-formdata-controls.any.html": [
-        "Upload file-for-upload-in-form-LF-[\n].txt (ASCII) in fetch with FormData",
-        "Upload file-for-upload-in-form-LF-CR-[\n\r].txt (ASCII) in fetch with FormData",
-        "Upload file-for-upload-in-form-CR-[\r].txt (ASCII) in fetch with FormData",
-        "Upload file-for-upload-in-form-CR-LF-[\r\n].txt (ASCII) in fetch with FormData"
-      ],
-      "send-file-formdata-punctuation.any.html": [
-        "Upload file-for-upload-in-form-QUOTATION-MARK-[\"].txt (ASCII) in fetch with FormData",
-        "Upload \"file-for-upload-in-form-double-quoted.txt\" (ASCII) in fetch with FormData"
-      ],
+      "send-file-formdata-controls.any.html": true,
+      "send-file-formdata-punctuation.any.html": true,
       "send-file-formdata-utf-8.any.html": true,
       "send-file-formdata.any.html": true
     },
