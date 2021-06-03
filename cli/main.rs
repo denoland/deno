@@ -261,8 +261,10 @@ pub fn write_json_to_stdout<T>(value: &T) -> Result<(), AnyError>
 where
   T: ?Sized + serde::ser::Serialize,
 {
-  let writer = std::io::BufWriter::new(std::io::stdout());
-  serde_json::to_writer_pretty(writer, value).map_err(AnyError::from)
+  let mut writer = std::io::BufWriter::new(std::io::stdout());
+  serde_json::to_writer_pretty(&mut writer, value)?;
+  writeln!(&mut writer)?;
+  Ok(())
 }
 
 fn print_cache_info(
