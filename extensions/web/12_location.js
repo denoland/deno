@@ -362,8 +362,10 @@
     locationDescriptor: {
       get() {
         if (location == null) {
-          console.warn("Warning: accessing undefined 'location' global, " +
-            "run again with --location" );
+          console.warn(
+            "Warning: accessing undefined 'location' global, " +
+              "run again with --location",
+          );
         }
         return location;
       },
