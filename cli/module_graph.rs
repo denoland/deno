@@ -1237,11 +1237,14 @@ impl Graph {
         .to_writer(&mut buf)?;
 
       if emit_options.source_map {
-        map = Some(String::from_utf8(buf)?);
+        let mut src_map = String::from_utf8(buf)?;
+        src_map.push('\n');
+        map = Some(src_map);
       } else if emit_options.inline_source_map {
         src.push_str("//# sourceMappingURL=data:application/json;base64,");
         let encoded_map = base64::encode(buf);
         src.push_str(&encoded_map);
+        src.push('\n');
       }
     }
 
