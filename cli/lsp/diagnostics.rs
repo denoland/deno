@@ -120,8 +120,11 @@ impl DiagnosticsServer {
       .collect()
   }
 
-  pub(crate) async fn invalidate(&self, specifier: &ModuleSpecifier) {
-    self.collection.lock().await.versions.remove(specifier);
+  pub(crate) async fn invalidate(&self, specifiers: Vec<ModuleSpecifier>) {
+    let mut collection = self.collection.lock().await;
+    for specifier in specifiers {
+      collection.versions.remove(&specifier);
+    }
   }
 
   pub(crate) fn start(
