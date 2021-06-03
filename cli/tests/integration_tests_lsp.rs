@@ -1994,6 +1994,7 @@ fn lsp_diagnostics_deno_types() {
   shutdown(&mut client);
 }
 
+#[cfg(not(windows))]
 #[test]
 fn lsp_diagnostics_refresh_dependents() {
   let mut client = init("initialize_params.json");
