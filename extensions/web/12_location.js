@@ -362,9 +362,8 @@
     locationDescriptor: {
       get() {
         if (location == null) {
-          throw new ReferenceError(
-            `Access to "location", run again with --location <href>.`,
-          );
+          console.warn("Warning: accessing undefined 'location' global, " +
+            "run again with --location" );
         }
         return location;
       },
