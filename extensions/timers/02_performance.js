@@ -3,12 +3,8 @@
 
 ((window) => {
   const { opNow } = window.__bootstrap.timers;
-  const {
-    cloneValue,
-    illegalConstructorKey,
-    requiredArguments,
-  } = window.__bootstrap.performanceUtil;
-
+  const core = window.Deno.core;
+  const illegalConstructorKey = Symbol("illegalConstructorKey");
   const customInspect = Symbol.for("Deno.customInspect");
   let performanceEntries = [];
 
@@ -121,8 +117,11 @@
       name,
       options = {},
     ) {
-      requiredArguments("PerformanceMark", arguments.length, 1);
-
+      if (arguments.length < 1) {
+        throw new TypeError(
+          "PerformanceMark requires at least 1 argument, but only 0 present",
+        );
+      }
       // ensure options is object-ish, or null-ish
       switch (typeof options) {
         case "object": // includes null
@@ -141,7 +140,7 @@
       if (startTime < 0) {
         throw new TypeError("startTime cannot be negative");
       }
-      this.#detail = cloneValue(detail);
+      this.#detail = core.deserialize(core.serialize(detail));
     }
 
     toJSON() {
@@ -187,7 +186,7 @@
         throw new TypeError("Illegal constructor.");
       }
       super(name, "measure", startTime, duration, illegalConstructorKey);
-      this.#detail = cloneValue(detail);
+      this.#detail = core.deserialize(core.serialize(detail));
     }
 
     toJSON() {
