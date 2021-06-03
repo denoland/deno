@@ -339,3 +339,37 @@ unitTest(
     await promise;
   },
 );
+
+unitTest(
+  { perms: { net: true } },
+  async function httpServerNextRequestResolvesOnClose() {
+    const delay = (n: number) =>
+      new Promise((resolve) => setTimeout(resolve, n));
+    const httpConnList: Deno.HttpConn[] = [];
+
+    async function serve(l: Deno.Listener) {
+      for await (const conn of l) {
+        (async () => {
+          const c = Deno.serveHttp(conn);
+          httpConnList.push(c);
+          for await (const { respondWith } of c) {
+            respondWith(new Response("hello"));
+          }
+        })();
+      }
+    }
+
+    const l = Deno.listen({ port: 4500 });
+    serve(l);
+
+    await delay(300);
+    const res = await fetch("http://localhost:4500/");
+    const _text = await res.text();
+
+    // Close connection and listener.
+    httpConnList.forEach((conn) => conn.close());
+    l.close();
+
+    await delay(300);
+  },
+);
