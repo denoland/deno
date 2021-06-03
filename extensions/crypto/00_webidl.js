@@ -4,7 +4,7 @@
 ((window) => {
   const webidl = window.__bootstrap.webidl;
   webidl.converters["AlgorithmIdentifier"] = (V, opts) => {
-    // Union for (DOMString or Algorithm) 
+    // Union for (DOMString or Algorithm)
     if (V === null || V === undefined) {
       return webidl.converters["Algorithm"](V, opts);
     }
