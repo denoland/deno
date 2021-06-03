@@ -5,10 +5,6 @@
   const webidl = window.__bootstrap.webidl;
   webidl.converters["AlgorithmIdentifier"] = (V, opts) => {
     // Union for (object or DOMString)
-    if (V === null || V === undefined) {
-      return webidl.converters["object"](V, opts);
-    }
-
     if (typeof V == "object") {
       return webidl.converters["object"](V, opts);
     }
