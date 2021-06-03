@@ -147,6 +147,8 @@
             return this[bodySymbol].stream;
           }
         },
+        configurable: true,
+        enumerable: true,
       },
       bodyUsed: {
         /**
@@ -159,6 +161,8 @@
           }
           return false;
         },
+        configurable: true,
+        enumerable: true,
       },
       arrayBuffer: {
         /** @returns {Promise<ArrayBuffer>} */
@@ -167,6 +171,9 @@
           const body = await consumeBody(this);
           return packageData(body, "ArrayBuffer");
         },
+        writable: true,
+        configurable: true,
+        enumerable: true,
       },
       blob: {
         /** @returns {Promise<Blob>} */
@@ -175,6 +182,9 @@
           const body = await consumeBody(this);
           return packageData(body, "Blob", this[mimeTypeSymbol]);
         },
+        writable: true,
+        configurable: true,
+        enumerable: true,
       },
       formData: {
         /** @returns {Promise<FormData>} */
@@ -183,6 +193,9 @@
           const body = await consumeBody(this);
           return packageData(body, "FormData", this[mimeTypeSymbol]);
         },
+        writable: true,
+        configurable: true,
+        enumerable: true,
       },
       json: {
         /** @returns {Promise<any>} */
@@ -191,6 +204,9 @@
           const body = await consumeBody(this);
           return packageData(body, "JSON");
         },
+        writable: true,
+        configurable: true,
+        enumerable: true,
       },
       text: {
         /** @returns {Promise<string>} */
@@ -199,6 +215,9 @@
           const body = await consumeBody(this);
           return packageData(body, "text");
         },
+        writable: true,
+        configurable: true,
+        enumerable: true,
       },
     };
     return Object.defineProperties(prototype.prototype, mixin);

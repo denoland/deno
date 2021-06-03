@@ -165,7 +165,7 @@ async function run() {
       const result = await runSingleTest(
         test.url,
         test.options,
-        json ? () => {} : createReportTestCase(test.expectation),
+        createReportTestCase(test.expectation),
       );
       results.push({ test, result });
       reportVariation(result, test.expectation);
@@ -175,7 +175,21 @@ async function run() {
   });
 
   if (json) {
-    await Deno.writeTextFile(json, JSON.stringify(results));
+    const minifiedResults = [];
+    for (const result of results) {
+      const minified = {
+        file: result.test.path,
+        name:
+          Object.fromEntries(result.test.options.script_metadata ?? []).title ??
+            null,
+        cases: result.result.cases.map((case_) => ({
+          name: case_.name,
+          passed: case_.passed,
+        })),
+      };
+      minifiedResults.push(minified);
+    }
+    await Deno.writeTextFile(json, JSON.stringify(minifiedResults));
   }
   const code = reportFinal(results);
   Deno.exit(code);

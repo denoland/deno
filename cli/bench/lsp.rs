@@ -5,6 +5,8 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::url::Url;
+use lspower::lsp;
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
@@ -62,16 +64,15 @@ fn bench_big_file_edits(deno_exe: &Path) -> Result<Duration, AnyError> {
     }),
   )?;
 
-  // TODO(@kitsonk) work around https://github.com/denoland/deno/issues/10603
-  // let (id, method, _): (u64, String, Option<Value>) = client.read_request()?;
-  // assert_eq!(method, "workspace/configuration");
+  let (id, method, _): (u64, String, Option<Value>) = client.read_request()?;
+  assert_eq!(method, "workspace/configuration");
 
-  // client.write_response(
-  //   id,
-  //   json!({
-  //     "enable": true
-  //   }),
-  // )?;
+  client.write_response(
+    id,
+    json!({
+      "enable": true
+    }),
+  )?;
 
   let (method, _): (String, Option<Value>) = client.read_notification()?;
   assert_eq!(method, "textDocument/publishDiagnostics");
@@ -122,13 +123,108 @@ fn bench_big_file_edits(deno_exe: &Path) -> Result<Duration, AnyError> {
   Ok(client.duration())
 }
 
+fn bench_find_replace(deno_exe: &Path) -> Result<Duration, AnyError> {
+  let mut client = LspClient::new(deno_exe)?;
+
+  let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
+  let (_, maybe_err) =
+    client.write_request::<_, _, Value>("initialize", params)?;
+  assert!(maybe_err.is_none());
+  client.write_notification("initialized", json!({}))?;
+
+  for i in 0..10 {
+    client.write_notification(
+      "textDocument/didOpen",
+      json!({
+        "textDocument": {
+          "uri": format!("file:///a/file_{}.ts", i),
+          "languageId": "typescript",
+          "version": 1,
+          "text": "console.log(\"000\");\n"
+        }
+      }),
+    )?;
+  }
+
+  for _ in 0..10 {
+    let (id, method, _) = client.read_request::<Value>()?;
+    assert_eq!(method, "workspace/configuration");
+    client.write_response(id, json!({ "enable": true }))?;
+  }
+
+  for _ in 0..3 {
+    let (method, _): (String, Option<Value>) = client.read_notification()?;
+    assert_eq!(method, "textDocument/publishDiagnostics");
+  }
+
+  for i in 0..10 {
+    let file_name = format!("file:///a/file_{}.ts", i);
+    client.write_notification(
+      "textDocument/didChange",
+      lsp::DidChangeTextDocumentParams {
+        text_document: lsp::VersionedTextDocumentIdentifier {
+          uri: Url::parse(&file_name).unwrap(),
+          version: 2,
+        },
+        content_changes: vec![lsp::TextDocumentContentChangeEvent {
+          range: Some(lsp::Range {
+            start: lsp::Position {
+              line: 0,
+              character: 13,
+            },
+            end: lsp::Position {
+              line: 0,
+              character: 16,
+            },
+          }),
+          range_length: None,
+          text: "111".to_string(),
+        }],
+      },
+    )?;
+  }
+
+  for i in 0..10 {
+    let file_name = format!("file:///a/file_{}.ts", i);
+    let (maybe_res, maybe_err) = client.write_request::<_, _, Value>(
+      "textDocument/formatting",
+      lsp::DocumentFormattingParams {
+        text_document: lsp::TextDocumentIdentifier {
+          uri: Url::parse(&file_name).unwrap(),
+        },
+        options: lsp::FormattingOptions {
+          tab_size: 2,
+          insert_spaces: true,
+          ..Default::default()
+        },
+        work_done_progress_params: Default::default(),
+      },
+    )?;
+    assert!(maybe_err.is_none());
+    assert!(maybe_res.is_some());
+  }
+
+  for _ in 0..3 {
+    let (method, _): (String, Option<Value>) = client.read_notification()?;
+    assert_eq!(method, "textDocument/publishDiagnostics");
+  }
+
+  let (_, response_error): (Option<Value>, Option<LspResponseError>) =
+    client.write_request("shutdown", json!(null))?;
+  assert!(response_error.is_none());
+
+  client.write_notification("exit", json!(null))?;
+
+  Ok(client.duration())
+}
+
 /// A test that starts up the LSP, opens a single line document, and exits.
 fn bench_startup_shutdown(deno_exe: &Path) -> Result<Duration, AnyError> {
   let mut client = LspClient::new(deno_exe)?;
 
   let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
-  let (_, response_error): (Option<Value>, Option<LspResponseError>) =
-    client.write_request("initialize", params)?;
+  let (_, response_error) =
+    client.write_request::<_, _, Value>("initialize", params)?;
   assert!(response_error.is_none());
 
   client.write_notification("initialized", json!({}))?;
@@ -145,16 +241,15 @@ fn bench_startup_shutdown(deno_exe: &Path) -> Result<Duration, AnyError> {
     }),
   )?;
 
-  // TODO(@kitsonk) work around https://github.com/denoland/deno/issues/10603
-  // let (id, method, _): (u64, String, Option<Value>) = client.read_request()?;
-  // assert_eq!(method, "workspace/configuration");
+  let (id, method, _) = client.read_request::<Value>()?;
+  assert_eq!(method, "workspace/configuration");
 
-  // client.write_response(
-  //   id,
-  //   json!({
-  //     "enable": true
-  //   }),
-  // )?;
+  client.write_response(
+    id,
+    json!({
+      "enable": true
+    }),
+  )?;
 
   let (method, _): (String, Option<Value>) = client.read_notification()?;
   assert_eq!(method, "textDocument/publishDiagnostics");
@@ -198,6 +293,16 @@ pub(crate) fn benchmarks(
     (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as u64;
   println!("      ({} runs, mean: {}ms)", times.len(), mean);
   exec_times.insert("big_file_edits".to_string(), mean);
+
+  println!("   - Find/Replace");
+  let mut times = Vec::new();
+  for _ in 0..10 {
+    times.push(bench_find_replace(deno_exe)?);
+  }
+  let mean =
+    (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as u64;
+  println!("      ({} runs, mean: {}ms)", times.len(), mean);
+  exec_times.insert("find_replace".to_string(), mean);
 
   println!("<- End benchmarking lsp");
 

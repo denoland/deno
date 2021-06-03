@@ -14,6 +14,7 @@ use crate::tools::coverage::CoverageCollector;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
+use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
@@ -286,10 +287,12 @@ pub async fn run_test_file(
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
     program_state.coverage_dir
   {
-    let session = worker.create_inspector_session();
+    let session = worker.create_inspector_session().await;
     let coverage_dir = PathBuf::from(coverage_dir);
     let mut coverage_collector = CoverageCollector::new(coverage_dir, session);
-    coverage_collector.start_collecting().await?;
+    worker
+      .with_event_loop(coverage_collector.start_collecting().boxed_local())
+      .await?;
 
     Some(coverage_collector)
   } else {
@@ -304,11 +307,15 @@ pub async fn run_test_file(
   let execute_result = worker.execute_module(&test_module).await;
   execute_result?;
 
-  worker.run_event_loop().await?;
+  worker
+    .run_event_loop(maybe_coverage_collector.is_none())
+    .await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-    coverage_collector.stop_collecting().await?;
+    worker
+      .with_event_loop(coverage_collector.stop_collecting().boxed_local())
+      .await?;
   }
 
   Ok(())
@@ -331,14 +338,6 @@ pub async fn run_tests(
   filter: Option<String>,
   concurrent_jobs: usize,
 ) -> Result<bool, AnyError> {
-  if test_modules.is_empty() {
-    println!("No matching test modules found");
-    if !allow_none {
-      std::process::exit(1);
-    }
-    return Ok(false);
-  }
-
   if !doc_modules.is_empty() {
     let mut test_programs = Vec::new();
 
@@ -346,9 +345,10 @@ pub async fn run_tests(
     let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
 
     for specifier in &doc_modules {
+      let mut fetch_permissions = Permissions::allow_all();
       let file = program_state
         .file_fetcher
-        .fetch(&specifier, &mut permissions.clone())
+        .fetch(&specifier, &mut fetch_permissions)
         .await?;
 
       let parsed_module =
@@ -386,7 +386,7 @@ pub async fn run_tests(
           let location = parsed_module.get_location(&span);
 
           let specifier = deno_core::resolve_url_or_path(&format!(
-            "{}:{}-{}",
+            "{}${}-{}",
             location.filename,
             location.line,
             location.line + element.as_str().split('\n').count(),
@@ -415,6 +415,13 @@ pub async fn run_tests(
         program_state.maybe_import_map.clone(),
       )
       .await?;
+  } else if test_modules.is_empty() {
+    println!("No matching test modules found");
+    if !allow_none {
+      std::process::exit(1);
+    }
+
+    return Ok(false);
   }
 
   program_state

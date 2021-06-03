@@ -76,6 +76,7 @@ export async function runSingleTest(
       join(ROOT_PATH, `./target/${release ? "release" : "debug"}/deno`),
       "run",
       "-A",
+      "--unstable",
       "--location",
       url.toString(),
       "--cert",

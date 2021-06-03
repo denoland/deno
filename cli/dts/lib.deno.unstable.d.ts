@@ -139,10 +139,7 @@ declare namespace Deno {
    * // The Deno.core namespace is needed to interact with plugins, but this is
    * // internal so we use ts-ignore to skip type checking these calls.
    * // @ts-ignore
-   * const {
-   *   op_test_sync,
-   *   op_test_async,
-   * } = Deno.core.ops();
+   * const { op_test_sync, op_test_async } = Deno.core.ops();
    *
    * assert(op_test_sync);
    * assert(op_test_async);
@@ -769,7 +766,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission. */
   export function utimeSync(
-    path: string,
+    path: string | URL,
     atime: number | Date,
     mtime: number | Date,
   ): void;
@@ -786,7 +783,7 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission. */
   export function utime(
-    path: string,
+    path: string | URL,
     atime: number | Date,
     mtime: number | Date,
   ): Promise<void>;
@@ -1272,7 +1269,7 @@ declare namespace Deno {
       * });
       * ```
       *
-      * ```
+      * ```ts
       * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
       *
       * Deno.test({
