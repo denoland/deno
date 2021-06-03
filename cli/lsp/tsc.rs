@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use super::analysis::CodeLensSource;
 use super::analysis::ResolvedDependency;
 use super::analysis::ResolvedDependencyErr;
+use super::code_lens;
 use super::config;
 use super::language_server;
 use super::language_server::StateSnapshot;
@@ -610,7 +610,7 @@ impl NavigationTree {
     &self,
     line_index: &LineIndex,
     specifier: &ModuleSpecifier,
-    source: &CodeLensSource,
+    source: &code_lens::CodeLensSource,
   ) -> lsp::CodeLens {
     let range = if let Some(name_span) = &self.name_span {
       name_span.to_range(line_index)
