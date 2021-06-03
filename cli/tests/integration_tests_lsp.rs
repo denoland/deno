@@ -2008,15 +2008,26 @@ fn lsp_diagnostics_refresh_dependents() {
       },
     }),
   );
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file_01.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export * from \"./file_00.ts\";\n",
+      },
+    }),
+  );
   client
     .write_notification(
       "textDocument/didOpen",
       json!({
         "textDocument": {
-          "uri": "file:///a/file_01.ts",
+          "uri": "file:///a/file_02.ts",
           "languageId": "typescript",
           "version": 1,
-          "text": "import { a, b } from \"./file_00.ts\";\n\nconsole.log(a, b);\n"
+          "text": "import { a, b } from \"./file_01.ts\";\n\nconsole.log(a, b);\n"
         }
       }),
     )
@@ -2036,7 +2047,7 @@ fn lsp_diagnostics_refresh_dependents() {
   assert_eq!(
     maybe_params,
     Some(json!({
-      "uri": "file:///a/file_01.ts",
+      "uri": "file:///a/file_02.ts",
       "diagnostics": [
         {
           "range": {
@@ -2052,7 +2063,7 @@ fn lsp_diagnostics_refresh_dependents() {
           "severity": 1,
           "code": 2305,
           "source": "deno-ts",
-          "message": "Module '\"./file_00.ts\"' has no exported member 'b'."
+          "message": "Module '\"./file_01.ts\"' has no exported member 'b'."
         }
       ],
       "version": 1
@@ -2092,6 +2103,17 @@ fn lsp_diagnostics_refresh_dependents() {
   assert_eq!(method, "textDocument/publishDiagnostics");
   let (method, _) = client.read_notification::<Value>().unwrap();
   assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, maybe_params) = client
+    .read_notification::<lsp::PublishDiagnosticsParams>()
+    .unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  assert!(maybe_params.is_some());
+  let params = maybe_params.unwrap();
+  assert!(params.diagnostics.is_empty());
   let (method, maybe_params) = client
     .read_notification::<lsp::PublishDiagnosticsParams>()
     .unwrap();
