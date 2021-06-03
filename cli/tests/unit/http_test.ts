@@ -363,7 +363,7 @@ unitTest(
     serve(l);
 
     await delay(300);
-    let res = await fetch("http://localhost:4500/");
+    const res = await fetch("http://localhost:4500/");
     const _text = await res.text();
 
     // Close connection and listener.

@@ -14,7 +14,6 @@ use deno_core::futures::StreamExt;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::AsyncRefCell;
-use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Extension;
@@ -391,7 +390,6 @@ async fn op_http_response(
     let response_body_rid =
       state.borrow_mut().resource_table.add(ResponseBodyResource {
         body: AsyncRefCell::new(sender),
-        cancel: CancelHandle::default(),
         conn_rid: response_sender.conn_rid,
       });
 
@@ -494,12 +492,8 @@ async fn op_http_response_write(
     .ok_or_else(bad_resource_id)?;
 
   let mut body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
-  let cancel = RcRef::map(resource, |r| &r.cancel);
 
-  let mut send_data_fut = body
-    .send_data(Vec::from(&*buf).into())
-    .or_cancel(cancel)
-    .boxed_local();
+  let mut send_data_fut = body.send_data(Vec::from(&*buf).into()).boxed_local();
 
   poll_fn(|cx| {
     if let Poll::Ready(Err(e)) = conn_resource.poll(cx) {
@@ -511,7 +505,7 @@ async fn op_http_response_write(
 
     send_data_fut.poll_unpin(cx).map_err(AnyError::from)
   })
-  .await?
+  .await
   .unwrap(); // panic on send_data error
 
   Ok(())
@@ -549,17 +543,12 @@ impl Resource for ResponseSenderResource {
 
 struct ResponseBodyResource {
   body: AsyncRefCell<hyper::body::Sender>,
-  cancel: CancelHandle,
   conn_rid: ResourceId,
 }
 
 impl Resource for ResponseBodyResource {
   fn name(&self) -> Cow<str> {
     "responseBody".into()
-  }
-
-  fn close(self: Rc<Self>) {
-    self.cancel.cancel()
   }
 }
 
