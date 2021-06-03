@@ -107,6 +107,7 @@ struct ConnResource {
   hyper_connection: ConnType,
   deno_service: Service,
   addr: SocketAddr,
+  cancel: CancelHandle,
 }
 
 impl ConnResource {
@@ -123,6 +124,10 @@ impl ConnResource {
 impl Resource for ConnResource {
   fn name(&self) -> Cow<str> {
     "httpConnection".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel()
   }
 }
 
@@ -152,6 +157,8 @@ async fn op_http_request_next(
     .resource_table
     .get::<ConnResource>(conn_rid)
     .ok_or_else(bad_resource_id)?;
+
+  let cancel = RcRef::map(conn_resource.clone(), |r| &r.cancel);
 
   poll_fn(|cx| {
     let connection_closed = match conn_resource.poll(cx) {
@@ -257,6 +264,7 @@ async fn op_http_request_next(
       Poll::Pending
     }
   })
+  .try_or_cancel(cancel)
   .await
   .map_err(AnyError::from)
 }
@@ -298,6 +306,7 @@ fn op_http_start(
       hyper_connection: ConnType::Tcp(Rc::new(RefCell::new(hyper_connection))),
       deno_service,
       addr,
+      cancel: CancelHandle::default(),
     };
     let rid = state.resource_table.add(conn_resource);
     return Ok(rid);
@@ -320,6 +329,7 @@ fn op_http_start(
       hyper_connection: ConnType::Tls(Rc::new(RefCell::new(hyper_connection))),
       deno_service,
       addr,
+      cancel: CancelHandle::default(),
     };
     let rid = state.resource_table.add(conn_resource);
     return Ok(rid);
@@ -520,6 +530,10 @@ impl Resource for RequestBodyResource {
   fn name(&self) -> Cow<str> {
     "requestBody".into()
   }
+
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel()
+  }
 }
 
 struct ResponseSenderResource {
@@ -542,6 +556,10 @@ struct ResponseBodyResource {
 impl Resource for ResponseBodyResource {
   fn name(&self) -> Cow<str> {
     "responseBody".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel()
   }
 }
 
