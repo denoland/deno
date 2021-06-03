@@ -219,7 +219,7 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct RegistryConfigurationVariable {
+pub(crate) struct RegistryConfigurationVariable {
   /// The name of the variable.
   key: String,
   /// The URL with variable substitutions of the endpoint that will provide
@@ -228,7 +228,7 @@ struct RegistryConfigurationVariable {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct RegistryConfiguration {
+pub(crate) struct RegistryConfiguration {
   /// A Express-like path which describes how URLs are composed for a registry.
   schema: String,
   /// The variables denoted in the `schema` should have a variable entry.
@@ -339,7 +339,7 @@ impl ModuleRegistry {
   }
 
   /// Attempt to fetch the configuration for a specific origin.
-  async fn fetch_config(
+  pub(crate) async fn fetch_config(
     &self,
     origin: &str,
   ) -> Result<Vec<RegistryConfiguration>, AnyError> {
@@ -443,6 +443,11 @@ impl ModuleRegistry {
                         .await
                       {
                         let end = if p.is_some() { i + 1 } else { i };
+                        let end = if end > tokens.len() {
+                          tokens.len()
+                        } else {
+                          end
+                        };
                         let compiler = Compiler::new(&tokens[..end], None);
                         for (idx, item) in items.into_iter().enumerate() {
                           let label = if let Some(p) = &p {

@@ -896,8 +896,9 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
       let coverage_dir = PathBuf::from(coverage_dir);
       let mut coverage_collector =
         tools::coverage::CoverageCollector::new(coverage_dir, session);
-      coverage_collector.start_collecting().await?;
-
+      worker
+        .with_event_loop(coverage_collector.start_collecting().boxed_local())
+        .await?;
       Some(coverage_collector)
     } else {
       None
@@ -912,9 +913,10 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-    coverage_collector.stop_collecting().await?;
+    worker
+      .with_event_loop(coverage_collector.stop_collecting().boxed_local())
+      .await?;
   }
-
   Ok(())
 }
 

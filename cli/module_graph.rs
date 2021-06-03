@@ -12,6 +12,7 @@ use crate::config_file::IgnoredCompilerOptions;
 use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
 use crate::import_map::ImportMap;
+use crate::import_map::ImportMapError;
 use crate::info;
 use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
@@ -37,6 +38,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::url::Url;
 use deno_core::ModuleResolutionError;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
@@ -397,10 +399,17 @@ impl Module {
           Ok(specifier) => Some(specifier),
           Err(any_error) => {
             match any_error.downcast_ref::<ModuleResolutionError>() {
-              Some(ModuleResolutionError::ImportPrefixMissing(_, _)) => None,
-              _ => {
-                return Err(any_error);
+              Some(ModuleResolutionError::ImportPrefixMissing(..)) => {
+                Some(Url::parse(&format!("bare:{}", &desc.specifier)).unwrap())
               }
+              _ => match any_error.downcast_ref::<ImportMapError>() {
+                Some(ImportMapError::UnmappedBareSpecifier(..)) => Some(
+                  Url::parse(&format!("bare:{}", &desc.specifier)).unwrap(),
+                ),
+                _ => {
+                  return Err(any_error);
+                }
+              },
             }
           }
         };
@@ -447,10 +456,8 @@ impl Module {
   ) -> Result<ModuleSpecifier, AnyError> {
     let maybe_resolve = if let Some(import_map) = self.maybe_import_map.clone()
     {
-      import_map
-        .lock()
-        .unwrap()
-        .resolve(specifier, self.specifier.as_str())?
+      let import_map = import_map.lock().unwrap();
+      Some(import_map.resolve(specifier, self.specifier.as_str())?)
     } else {
       None
     };
@@ -1906,19 +1913,28 @@ impl GraphBuilder {
     }
     for (_, dep) in module.dependencies.iter() {
       let maybe_referrer = Some(dep.location.clone());
-      if let Some(specifier) = dep.maybe_code.as_ref() {
-        self.fetch(
-          specifier,
-          &maybe_referrer,
-          is_root_dynamic || dep.is_dynamic,
-        );
-      }
-      if let Some(specifier) = dep.maybe_type.as_ref() {
-        self.fetch(
-          specifier,
-          &maybe_referrer,
-          is_root_dynamic || dep.is_dynamic,
-        );
+      for maybe_specifier in &[dep.maybe_code.as_ref(), dep.maybe_type.as_ref()]
+      {
+        if let Some(&dep_specifier) = maybe_specifier.as_ref() {
+          if dep_specifier.scheme() == "bare" {
+            self.graph.modules.insert(
+              dep_specifier.clone(),
+              ModuleSlot::Err(Arc::new(
+                ModuleResolutionError::ImportPrefixMissing(
+                  dep_specifier.path().to_string(),
+                  Some(specifier.to_string()),
+                )
+                .into(),
+              )),
+            );
+          } else {
+            self.fetch(
+              dep_specifier,
+              &maybe_referrer,
+              is_root_dynamic || dep.is_dynamic,
+            );
+          }
+        }
       }
     }
     if let Some((_, specifier)) = module.maybe_types.as_ref() {
