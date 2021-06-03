@@ -56,9 +56,10 @@
       return normalizeAlgorithm({ name: algorithm }, op);
     }
 
+    const initialAlgorithm = webidl.converters["Algorithm"](algorithm);
     const registeredAlgorithms = supportedAlgorithms[op];
     const algorithmName = Object.keys(registeredAlgorithms)
-      .find((key) => key.toLowerCase() == algorithm.name.toLowerCase());
+      .find((key) => key.toLowerCase() == initialAlgorithm.name.toLowerCase());
 
     if (algorithmName === undefined) {
       throw new DOMException(
@@ -67,9 +68,13 @@
       );
     }
 
+    // TODO(caspervonb) Step 6 (create from webidl definition), when the need arises.
+    // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
     const normalizedAlgorithm = {};
     normalizedAlgorithm.name = algorithmName;
 
+    // TODO(caspervonb) Step 9 and 10, when the need arises.
+    // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
     return normalizedAlgorithm;
   }
 
