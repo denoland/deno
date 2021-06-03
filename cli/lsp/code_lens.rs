@@ -87,12 +87,21 @@ async fn resolve_implementation_code_lens(
       }
     };
     Ok(lsp::CodeLens {
+      range: code_lens.range,
       command: Some(command),
       data: None,
-      ..code_lens
     })
   } else {
-    Ok(code_lens)
+    let command = Some(lsp::Command {
+      title: "0 implementations".to_string(),
+      command: "".to_string(),
+      arguments: None,
+    });
+    Ok(lsp::CodeLens {
+      range: code_lens.range,
+      command,
+      data: None,
+    })
   }
 }
 
