@@ -323,11 +323,13 @@
       filename,
       type,
     ) {
+      const escapedField = this.#headerEscape(field);
+      const escapedFilename = this.#headerEscape(filename, true);
       /** @type {[string, string][]} */
       const headers = [
         [
           "Content-Disposition",
-          `form-data; name="${field}"; filename="${filename}"`,
+          `form-data; name="${escapedField}"; filename="${escapedFilename}"`,
         ],
         ["Content-Type", type || "application/octet-stream"],
       ];
@@ -340,7 +342,10 @@
      */
     #writeFieldHeaders(field) {
       /** @type {[string, string][]} */
-      const headers = [["Content-Disposition", `form-data; name="${field}"`]];
+      const headers = [[
+        "Content-Disposition",
+        `form-data; name="${this.#headerEscape(field)}"`,
+      ]];
       return this.#writeHeaders(headers);
     }
 
@@ -351,7 +356,7 @@
      */
     #writeField(field, value) {
       this.#writeFieldHeaders(field);
-      this.chunks.push(encoder.encode(value));
+      this.chunks.push(encoder.encode(this.#normalizeNewlines(value)));
     }
 
     /**
@@ -362,6 +367,32 @@
     #writeFile(field, value) {
       this.#writeFileHeaders(field, value.name, value.type);
       this.chunks.push(value[_byteSequence]);
+    }
+
+    /**
+     * @param {string} string
+     * @returns {string}
+     */
+    #normalizeNewlines(string) {
+      return string.replace(/\r(?!\n)|(?<!\r)\n/g, "\r\n");
+    }
+
+    /**
+     * Performs the percent-escaping and the normalization required for field
+     * names and filenames in Content-Disposition headers.
+     * @param {string} name
+     * @param {boolean} isFilename Whether we are encoding a filename. This
+     * skips the newline normalization that takes place for field names.
+     * @returns {string}
+     */
+    #headerEscape(name, isFilename = false) {
+      if (!isFilename) {
+        name = this.#normalizeNewlines(name);
+      }
+      return name
+        .replaceAll("\n", "%0A")
+        .replaceAll("\r", "%0D")
+        .replaceAll('"', "%22");
     }
   }
 
