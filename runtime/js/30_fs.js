@@ -344,7 +344,11 @@
     newpath,
     options,
   ) {
-    core.opSync("op_symlink_sync", { oldpath, newpath, options });
+    core.opSync("op_symlink_sync", {
+      oldpath: pathFromURL(oldpath),
+      newpath: pathFromURL(newpath),
+      options,
+    });
   }
 
   async function symlink(
@@ -352,7 +356,11 @@
     newpath,
     options,
   ) {
-    await core.opAsync("op_symlink_async", { oldpath, newpath, options });
+    await core.opAsync("op_symlink_async", {
+      oldpath: pathFromURL(oldpath),
+      newpath: pathFromURL(newpath),
+      options,
+    });
   }
 
   function fdatasyncSync(rid) {

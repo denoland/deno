@@ -2379,8 +2379,8 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission. */
   export function symlinkSync(
-    oldpath: string,
-    newpath: string,
+    oldpath: string | URL,
+    newpath: string | URL,
     options?: SymlinkOptions,
   ): void;
 
@@ -2396,8 +2396,8 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission. */
   export function symlink(
-    oldpath: string,
-    newpath: string,
+    oldpath: string | URL,
+    newpath: string | URL,
     options?: SymlinkOptions,
   ): Promise<void>;
 
