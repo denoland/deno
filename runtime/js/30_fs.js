@@ -58,7 +58,7 @@
   }
 
   function chdir(directory) {
-    core.opSync("op_chdir", directory);
+    core.opSync("op_chdir", pathFromURL(directory));
   }
 
   function makeTempDirSync(options = {}) {
