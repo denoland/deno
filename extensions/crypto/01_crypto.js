@@ -57,7 +57,7 @@
     }
 
     const initialAlgorithm = webidl.converters["Algorithm"](algorithm, {
-      context: "Argument 1"
+      context: "Argument 1",
     });
 
     const registeredAlgorithms = supportedAlgorithms[op];
