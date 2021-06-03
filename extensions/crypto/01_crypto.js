@@ -56,7 +56,10 @@
       return normalizeAlgorithm({ name: algorithm }, op);
     }
 
-    const initialAlgorithm = webidl.converters["Algorithm"](algorithm);
+    const initialAlgorithm = webidl.converters["Algorithm"](algorithm, {
+      context: "Argument 1"
+    });
+
     const registeredAlgorithms = supportedAlgorithms[op];
     const algorithmName = Object.keys(registeredAlgorithms)
       .find((key) => key.toLowerCase() == initialAlgorithm.name.toLowerCase());
