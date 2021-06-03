@@ -505,8 +505,7 @@ async fn op_http_response_write(
 
     send_data_fut.poll_unpin(cx).map_err(AnyError::from)
   })
-  .await
-  .unwrap(); // panic on send_data error
+  .await?;
 
   Ok(())
 }
