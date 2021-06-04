@@ -428,6 +428,8 @@ delete Object.prototype.__proto__;
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
+
+    performance.setTimeOrigin(Date.now());
     // Remove bootstrapping data from the global scope
     delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
@@ -475,7 +477,6 @@ delete Object.prototype.__proto__;
       resources: core.resources,
       close: core.close,
       memoryUsage: core.memoryUsage,
-      timeSinceEpoch: new Date(),
       ...denoNs,
     };
     Object.defineProperties(finalDenoNs, {
