@@ -58,7 +58,7 @@
   }
 
   function chdir(directory) {
-    core.opSync("op_chdir", directory);
+    core.opSync("op_chdir", pathFromURL(directory));
   }
 
   function makeTempDirSync(options = {}) {
@@ -156,11 +156,17 @@
   }
 
   function renameSync(oldpath, newpath) {
-    core.opSync("op_rename_sync", { oldpath, newpath });
+    core.opSync("op_rename_sync", {
+      oldpath: pathFromURL(oldpath),
+      newpath: pathFromURL(newpath),
+    });
   }
 
   async function rename(oldpath, newpath) {
-    await core.opAsync("op_rename_async", { oldpath, newpath });
+    await core.opAsync("op_rename_async", {
+      oldpath: pathFromURL(oldpath),
+      newpath: pathFromURL(newpath),
+    });
   }
 
   function parseFileInfo(response) {
@@ -338,7 +344,11 @@
     newpath,
     options,
   ) {
-    core.opSync("op_symlink_sync", { oldpath, newpath, options });
+    core.opSync("op_symlink_sync", {
+      oldpath: pathFromURL(oldpath),
+      newpath: pathFromURL(newpath),
+      options,
+    });
   }
 
   async function symlink(
@@ -346,7 +356,11 @@
     newpath,
     options,
   ) {
-    await core.opAsync("op_symlink_async", { oldpath, newpath, options });
+    await core.opAsync("op_symlink_async", {
+      oldpath: pathFromURL(oldpath),
+      newpath: pathFromURL(newpath),
+      options,
+    });
   }
 
   function fdatasyncSync(rid) {

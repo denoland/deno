@@ -627,6 +627,10 @@ impl Inner {
 
     if self.documents.is_diagnosable(&specifier) {
       self.analyze_dependencies(&specifier, &params.text_document.text);
+      self
+        .diagnostics_server
+        .invalidate(self.documents.dependents(&specifier))
+        .await;
       if let Err(err) = self.diagnostics_server.update() {
         error!("{}", err);
       }
@@ -645,6 +649,10 @@ impl Inner {
       Ok(Some(source)) => {
         if self.documents.is_diagnosable(&specifier) {
           self.analyze_dependencies(&specifier, &source);
+          self
+            .diagnostics_server
+            .invalidate(self.documents.dependents(&specifier))
+            .await;
           if let Err(err) = self.diagnostics_server.update() {
             error!("{}", err);
           }
@@ -2511,7 +2519,7 @@ impl Inner {
       if let Some(source) = self.documents.content(&referrer).unwrap() {
         self.analyze_dependencies(&referrer, &source);
       }
-      self.diagnostics_server.invalidate(&referrer).await;
+      self.diagnostics_server.invalidate(vec![referrer]).await;
     }
 
     self.diagnostics_server.update().map_err(|err| {

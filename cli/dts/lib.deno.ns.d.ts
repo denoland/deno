@@ -248,7 +248,7 @@ declare namespace Deno {
    *
    * Requires --allow-read.
    */
-  export function chdir(directory: string): void;
+  export function chdir(directory: string | URL): void;
 
   /**
    * Return a string representing the current working directory.
@@ -1322,7 +1322,10 @@ declare namespace Deno {
    * they are. It's always an error to rename anything to a non-empty directory.
    *
    * Requires `allow-read` and `allow-write` permissions. */
-  export function renameSync(oldpath: string, newpath: string): void;
+  export function renameSync(
+    oldpath: string | URL,
+    newpath: string | URL,
+  ): void;
 
   /** Renames (moves) `oldpath` to `newpath`.  Paths may be files or directories.
    * If `newpath` already exists and is not a directory, `rename()` replaces it.
@@ -1339,7 +1342,10 @@ declare namespace Deno {
    * they are. It's always an error to rename anything to a non-empty directory.
    *
    * Requires `allow-read` and `allow-write` permission. */
-  export function rename(oldpath: string, newpath: string): Promise<void>;
+  export function rename(
+    oldpath: string | URL,
+    newpath: string | URL,
+  ): Promise<void>;
 
   /** Synchronously reads and returns the entire contents of a file as utf8
    *  encoded string. Reading a directory throws an error.
@@ -2373,8 +2379,8 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission. */
   export function symlinkSync(
-    oldpath: string,
-    newpath: string,
+    oldpath: string | URL,
+    newpath: string | URL,
     options?: SymlinkOptions,
   ): void;
 
@@ -2390,8 +2396,8 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission. */
   export function symlink(
-    oldpath: string,
-    newpath: string,
+    oldpath: string | URL,
+    newpath: string | URL,
     options?: SymlinkOptions,
   ): Promise<void>;
 
