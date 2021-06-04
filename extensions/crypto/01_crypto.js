@@ -95,8 +95,9 @@
     }
   }
 
-  const subtle = {
+  class SubtleCrypto {
     async digest(algorithm, data) {
+      webidl.assertBranded(this, SubtleCrypto);
       webidl.requiredArguments(arguments.length, 2);
 
       algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
@@ -118,15 +119,21 @@
       );
 
       return result.buffer;
-    },
-  };
+    }
+  }
+
+  const subtle = new SubtleCrypto();
 
   window.crypto = {
     getRandomValues,
     subtle,
   };
+
+  window.SubtleCrypto = SubtleCrypto;
+
   window.__bootstrap.crypto = {
     getRandomValues,
     subtle,
+    SubtleCrypto,
   };
 })(this);
