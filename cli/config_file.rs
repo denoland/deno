@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::fs_util::canonicalize_path;
+use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::serde::Deserialize;
@@ -24,6 +25,7 @@ pub struct EmitConfigOptions {
   pub emit_decorator_metadata: bool,
   pub imports_not_used_as_values: String,
   pub inline_source_map: bool,
+  pub source_map: bool,
   pub jsx: String,
   pub jsx_factory: String,
   pub jsx_fragment_factory: String,
@@ -292,7 +294,23 @@ impl ConfigFile {
   }
 
   pub fn new(text: &str, path: &Path) -> Result<Self, AnyError> {
-    let jsonc = jsonc_parser::parse_to_serde_value(text)?.unwrap();
+    let jsonc = match jsonc_parser::parse_to_serde_value(text) {
+      Ok(None) => json!({}),
+      Ok(Some(value)) if value.is_object() => value,
+      Ok(Some(_)) => {
+        return Err(anyhow!(
+          "config file JSON {:?} should be an object",
+          path.to_str().unwrap()
+        ))
+      }
+      Err(e) => {
+        return Err(anyhow!(
+          "Unable to parse config file JSON {:?} because of {}",
+          path.to_str().unwrap(),
+          e.to_string()
+        ))
+      }
+    };
     let json: ConfigFileJson = serde_json::from_value(jsonc)?;
 
     Ok(Self {
@@ -340,6 +358,12 @@ mod tests {
   }
 
   #[test]
+  fn include_config_path_on_error() {
+    let error = ConfigFile::read("404.json").err().unwrap();
+    assert!(error.to_string().contains("404.json"));
+  }
+
+  #[test]
   fn test_json_merge() {
     let mut value_a = json!({
       "a": true,
@@ -384,6 +408,42 @@ mod tests {
         maybe_path: Some(config_path),
       }),
     );
+  }
+
+  #[test]
+  fn test_parse_config_with_empty_file() {
+    let config_text = "";
+    let config_path = PathBuf::from("/deno/tsconfig.json");
+    let config_file = ConfigFile::new(config_text, &config_path).unwrap();
+    let (options_value, _) =
+      config_file.as_compiler_options().expect("error parsing");
+    assert!(options_value.is_object());
+  }
+
+  #[test]
+  fn test_parse_config_with_commented_file() {
+    let config_text = r#"//{"foo":"bar"}"#;
+    let config_path = PathBuf::from("/deno/tsconfig.json");
+    let config_file = ConfigFile::new(config_text, &config_path).unwrap();
+    let (options_value, _) =
+      config_file.as_compiler_options().expect("error parsing");
+    assert!(options_value.is_object());
+  }
+
+  #[test]
+  fn test_parse_config_with_invalid_file() {
+    let config_text = "{foo:bar}";
+    let config_path = PathBuf::from("/deno/tsconfig.json");
+    // Emit error: Unable to parse config file JSON "<config_path>" because of Unexpected token on line 1 column 6.
+    assert!(ConfigFile::new(config_text, &config_path).is_err());
+  }
+
+  #[test]
+  fn test_parse_config_with_not_object_file() {
+    let config_text = "[]";
+    let config_path = PathBuf::from("/deno/tsconfig.json");
+    // Emit error: config file JSON "<config_path>" should be an object
+    assert!(ConfigFile::new(config_text, &config_path).is_err());
   }
 
   #[test]

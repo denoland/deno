@@ -706,7 +706,7 @@
     for (let i = 0; i < handlers.length; i++) {
       const listener = handlers[i];
 
-      let capture, once, passive, signal;
+      let capture, once, passive;
       if (typeof listener.options === "boolean") {
         capture = listener.options;
         once = false;
@@ -1117,6 +1117,10 @@
   }
 
   class MessageEvent extends Event {
+    get source() {
+      return null;
+    }
+
     constructor(type, eventInitDict) {
       super(type, {
         bubbles: eventInitDict?.bubbles ?? false,
@@ -1208,5 +1212,6 @@
   };
   window.__bootstrap.event = {
     setIsTrusted,
+    setTarget,
   };
 })(this);

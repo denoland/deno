@@ -16,7 +16,7 @@
   const { HTTP_TOKEN_CODE_POINT_RE, byteUpperCase } = window.__bootstrap.infra;
   const { URL } = window.__bootstrap.url;
   const { guardFromHeaders } = window.__bootstrap.headers;
-  const { InnerBody, mixinBody, extractBody } = window.__bootstrap.fetchBody;
+  const { mixinBody, extractBody } = window.__bootstrap.fetchBody;
   const { getLocationHref } = window.__bootstrap.location;
   const mimesniff = window.__bootstrap.mimesniff;
   const {
@@ -38,7 +38,7 @@
    * @property {() => string} url
    * @property {() => string} currentUrl
    * @property {[string, string][]} headerList
-   * @property {null | InnerBody} body
+   * @property {null | typeof __window.bootstrap.fetchBody.InnerBody} body
    * @property {"follow" | "error" | "manual"} redirectMode
    * @property {number} redirectCount
    * @property {string[]} urlList
@@ -61,7 +61,7 @@
    * @param {string} method
    * @param {string} url
    * @param {[string, string][]} headerList
-   * @param {InnerBody} body
+   * @param {typeof __window.bootstrap.fetchBody.InnerBody} body
    * @returns
    */
   function newInnerRequest(method, url, headerList = [], body = null) {
@@ -273,7 +273,7 @@
         ((init.body !== undefined && init.body !== null) ||
           inputBody !== null)
       ) {
-        throw new TypeError("HEAD and GET requests may not have a body.");
+        throw new TypeError("Request with GET/HEAD method cannot have body.");
       }
 
       // 34.
@@ -316,64 +316,9 @@
       return this[_headers];
     }
 
-    get destination() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get referrer() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get referrerPolicy() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get mode() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get credentials() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get cache() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
     get redirect() {
       webidl.assertBranded(this, Request);
       return this[_request].redirectMode;
-    }
-
-    get integrity() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get keepalive() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get isReloadNavigation() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get isHistoryNavigation() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get signal() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
     }
 
     clone() {
@@ -403,6 +348,28 @@
 
   mixinBody(Request, _body, _mimeType);
 
+  Object.defineProperty(Request.prototype, "method", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(Request.prototype, "url", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(Request.prototype, "headers", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(Request.prototype, "redirect", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(Request.prototype, "clone", {
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+
   webidl.converters["Request"] = webidl.createInterfaceConverter(
     "Request",
     Request,
@@ -416,46 +383,6 @@
     }
     return webidl.converters["USVString"](V, opts);
   };
-
-  webidl.converters["ReferrerPolicy"] = webidl.createEnumConverter(
-    "ReferrerPolicy",
-    [
-      "",
-      "no-referrer",
-      "no-referrer-when-downgrade",
-      "same-origin",
-      "origin",
-      "strict-origin",
-      "origin-when-cross-origin",
-      "strict-origin-when-cross-origin",
-      "unsafe-url",
-    ],
-  );
-  webidl.converters["RequestMode"] = webidl.createEnumConverter("RequestMode", [
-    "navigate",
-    "same-origin",
-    "no-cors",
-    "cors",
-  ]);
-  webidl.converters["RequestCredentials"] = webidl.createEnumConverter(
-    "RequestCredentials",
-    [
-      "omit",
-      "same-origin",
-      "include",
-    ],
-  );
-  webidl.converters["RequestCache"] = webidl.createEnumConverter(
-    "RequestCache",
-    [
-      "default",
-      "no-store",
-      "reload",
-      "no-cache",
-      "force-cache",
-      "only-if-cached",
-    ],
-  );
   webidl.converters["RequestRedirect"] = webidl.createEnumConverter(
     "RequestRedirect",
     [
@@ -475,23 +402,7 @@
           webidl.converters["BodyInit"],
         ),
       },
-      { key: "referrer", converter: webidl.converters["USVString"] },
-      { key: "referrerPolicy", converter: webidl.converters["ReferrerPolicy"] },
-      { key: "mode", converter: webidl.converters["RequestMode"] },
-      {
-        key: "credentials",
-        converter: webidl.converters["RequestCredentials"],
-      },
-      { key: "cache", converter: webidl.converters["RequestCache"] },
       { key: "redirect", converter: webidl.converters["RequestRedirect"] },
-      { key: "integrity", converter: webidl.converters["DOMString"] },
-      { key: "keepalive", converter: webidl.converters["boolean"] },
-      {
-        key: "signal",
-        converter: webidl.createNullableConverter(
-          webidl.converters["AbortSignal"],
-        ),
-      },
       { key: "client", converter: webidl.converters.any },
     ],
   );

@@ -11,6 +11,7 @@ use crate::module_graph::parse_ts_reference;
 use crate::module_graph::TypeScriptReference;
 use crate::tools::lint::create_linter;
 
+use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
@@ -23,6 +24,7 @@ use deno_lint::rules;
 use lspower::lsp;
 use lspower::lsp::Position;
 use lspower::lsp::Range;
+use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
@@ -56,10 +58,15 @@ lazy_static::lazy_static! {
   .iter()
   .cloned()
   .collect();
+
+  static ref IMPORT_SPECIFIER_RE: Regex = Regex::new(r#"\sfrom\s+["']([^"']*)["']"#).unwrap();
 }
+
+const SUPPORTED_EXTENSIONS: &[&str] = &[".ts", ".tsx", ".js", ".jsx", ".mjs"];
 
 /// Category of self-generated diagnostic messages (those not coming from)
 /// TypeScript.
+#[derive(Debug, PartialEq, Eq)]
 pub enum Category {
   /// A lint diagnostic, where the first element is the message.
   Lint {
@@ -70,6 +77,7 @@ pub enum Category {
 }
 
 /// A structure to hold a reference to a diagnostic message.
+#[derive(Debug, PartialEq, Eq)]
 pub struct Reference {
   category: Category,
   range: Range,
@@ -78,13 +86,24 @@ pub struct Reference {
 impl Reference {
   pub fn to_diagnostic(&self) -> lsp::Diagnostic {
     match &self.category {
-      Category::Lint { message, code, .. } => lsp::Diagnostic {
+      Category::Lint {
+        message,
+        code,
+        hint,
+      } => lsp::Diagnostic {
         range: self.range,
         severity: Some(lsp::DiagnosticSeverity::Warning),
         code: Some(lsp::NumberOrString::String(code.to_string())),
         code_description: None,
         source: Some("deno-lint".to_string()),
-        message: message.to_string(),
+        message: {
+          let mut msg = message.to_string();
+          if let Some(hint) = hint {
+            msg.push('\n');
+            msg.push_str(hint);
+          }
+          msg
+        },
         related_information: None,
         tags: None, // we should tag unused code
         data: None,
@@ -140,6 +159,7 @@ pub struct Dependency {
   pub maybe_code: Option<ResolvedDependency>,
   pub maybe_code_specifier_range: Option<Range>,
   pub maybe_type: Option<ResolvedDependency>,
+  pub maybe_type_specifier_range: Option<Range>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -194,13 +214,7 @@ pub fn resolve_import(
   maybe_import_map: &Option<ImportMap>,
 ) -> ResolvedDependency {
   let maybe_mapped = if let Some(import_map) = maybe_import_map {
-    if let Ok(maybe_specifier) =
-      import_map.resolve(specifier, referrer.as_str())
-    {
-      maybe_specifier
-    } else {
-      None
-    }
+    import_map.resolve(specifier, referrer.as_str()).ok()
   } else {
     None
   };
@@ -259,13 +273,24 @@ pub fn analyze_dependencies(
 
   // Parse leading comments for supported triple slash references.
   for comment in parsed_module.get_leading_comments().iter() {
-    if let Some(ts_reference) = parse_ts_reference(&comment.text) {
+    if let Some((ts_reference, span)) = parse_ts_reference(&comment) {
+      let loc = parsed_module.source_map.lookup_char_pos(span.lo);
       match ts_reference {
         TypeScriptReference::Path(import) => {
           let dep = dependencies.entry(import.clone()).or_default();
           let resolved_import =
             resolve_import(&import, specifier, maybe_import_map);
           dep.maybe_code = Some(resolved_import);
+          dep.maybe_code_specifier_range = Some(Range {
+            start: Position {
+              line: (loc.line - 1) as u32,
+              character: loc.col_display as u32,
+            },
+            end: Position {
+              line: (loc.line - 1) as u32,
+              character: (loc.col_display + import.chars().count() + 2) as u32,
+            },
+          });
         }
         TypeScriptReference::Types(import) => {
           let resolved_import =
@@ -273,11 +298,20 @@ pub fn analyze_dependencies(
           if media_type == &MediaType::JavaScript
             || media_type == &MediaType::Jsx
           {
-            maybe_type = Some(resolved_import)
-          } else {
-            let dep = dependencies.entry(import).or_default();
-            dep.maybe_type = Some(resolved_import);
+            maybe_type = Some(resolved_import.clone());
           }
+          let dep = dependencies.entry(import.clone()).or_default();
+          dep.maybe_type = Some(resolved_import);
+          dep.maybe_type_specifier_range = Some(Range {
+            start: Position {
+              line: (loc.line - 1) as u32,
+              character: loc.col_display as u32,
+            },
+            end: Position {
+              line: (loc.line - 1) as u32,
+              character: (loc.col_display + import.chars().count() + 2) as u32,
+            },
+          });
         }
       }
     }
@@ -294,7 +328,13 @@ pub fn analyze_dependencies(
     let maybe_resolved_type_dependency =
       // Check for `@deno-types` pragmas that affect the import
       if let Some(comment) = desc.leading_comments.last() {
-        parse_deno_types(&comment.text).as_ref().map(|deno_types| resolve_import(deno_types, specifier, maybe_import_map))
+        parse_deno_types(&comment).as_ref().map(|(deno_types, span)| {
+          (
+            resolve_import(deno_types, specifier, maybe_import_map),
+            deno_types.clone(),
+            parsed_module.source_map.lookup_char_pos(span.lo)
+          )
+        })
       } else {
         None
       };
@@ -304,6 +344,17 @@ pub fn analyze_dependencies(
     match desc.kind {
       swc_ecmascript::dep_graph::DependencyKind::ExportType
       | swc_ecmascript::dep_graph::DependencyKind::ImportType => {
+        dep.maybe_type_specifier_range = Some(Range {
+          start: Position {
+            line: (desc.specifier_line - 1) as u32,
+            character: desc.specifier_col as u32,
+          },
+          end: Position {
+            line: (desc.specifier_line - 1) as u32,
+            character: (desc.specifier_col + desc.specifier.chars().count() + 2)
+              as u32,
+          },
+        });
         dep.maybe_type = Some(resolved_import)
       }
       _ => {
@@ -321,8 +372,22 @@ pub fn analyze_dependencies(
         dep.maybe_code = Some(resolved_import);
       }
     }
-    if maybe_resolved_type_dependency.is_some() && dep.maybe_type.is_none() {
-      dep.maybe_type = maybe_resolved_type_dependency;
+    if dep.maybe_type.is_none() {
+      if let Some((resolved_dependency, specifier, loc)) =
+        maybe_resolved_type_dependency
+      {
+        dep.maybe_type_specifier_range = Some(Range {
+          start: Position {
+            line: (loc.line - 1) as u32,
+            character: (loc.col_display + 1) as u32,
+          },
+          end: Position {
+            line: (loc.line - 1) as u32,
+            character: (loc.col_display + 1 + specifier.chars().count()) as u32,
+          },
+        });
+        dep.maybe_type = Some(resolved_dependency);
+      }
     }
   }
 
@@ -350,6 +415,143 @@ fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
     Some(lsp::NumberOrString::Number(num)) => num.to_string(),
     _ => "".to_string(),
   }
+}
+
+/// Iterate over the supported extensions, concatenating the extension on the
+/// specifier, returning the first specifier that is resolve-able, otherwise
+/// None if none match.
+fn check_specifier(
+  specifier: &str,
+  referrer: &ModuleSpecifier,
+  snapshot: &language_server::StateSnapshot,
+  maybe_import_map: &Option<ImportMap>,
+) -> Option<String> {
+  for ext in SUPPORTED_EXTENSIONS {
+    let specifier_with_ext = format!("{}{}", specifier, ext);
+    if let ResolvedDependency::Resolved(resolved_specifier) =
+      resolve_import(&specifier_with_ext, referrer, maybe_import_map)
+    {
+      if snapshot.documents.contains_key(&resolved_specifier)
+        || snapshot.sources.contains_key(&resolved_specifier)
+      {
+        return Some(specifier_with_ext);
+      }
+    }
+  }
+
+  None
+}
+
+/// For a set of tsc changes, can them for any that contain something that looks
+/// like an import and rewrite the import specifier to include the extension
+pub(crate) fn fix_ts_import_changes(
+  referrer: &ModuleSpecifier,
+  changes: &[tsc::FileTextChanges],
+  language_server: &language_server::Inner,
+) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
+  let mut r = Vec::new();
+  let snapshot = language_server.snapshot()?;
+  for change in changes {
+    let mut text_changes = Vec::new();
+    for text_change in &change.text_changes {
+      if let Some(captures) =
+        IMPORT_SPECIFIER_RE.captures(&text_change.new_text)
+      {
+        let specifier = captures
+          .get(1)
+          .ok_or_else(|| anyhow!("Missing capture."))?
+          .as_str();
+        if let Some(new_specifier) = check_specifier(
+          specifier,
+          referrer,
+          &snapshot,
+          &language_server.maybe_import_map,
+        ) {
+          let new_text =
+            text_change.new_text.replace(specifier, &new_specifier);
+          text_changes.push(tsc::TextChange {
+            span: text_change.span.clone(),
+            new_text,
+          });
+        } else {
+          text_changes.push(text_change.clone());
+        }
+      } else {
+        text_changes.push(text_change.clone());
+      }
+    }
+    r.push(tsc::FileTextChanges {
+      file_name: change.file_name.clone(),
+      text_changes,
+      is_new_file: change.is_new_file,
+    });
+  }
+  Ok(r)
+}
+
+/// Fix tsc import code actions so that the module specifier is correct for
+/// resolution by Deno (includes the extension).
+fn fix_ts_import_action(
+  referrer: &ModuleSpecifier,
+  action: &tsc::CodeFixAction,
+  language_server: &language_server::Inner,
+) -> Result<tsc::CodeFixAction, AnyError> {
+  if action.fix_name == "import" {
+    let change = action
+      .changes
+      .get(0)
+      .ok_or_else(|| anyhow!("Unexpected action changes."))?;
+    let text_change = change
+      .text_changes
+      .get(0)
+      .ok_or_else(|| anyhow!("Missing text change."))?;
+    if let Some(captures) = IMPORT_SPECIFIER_RE.captures(&text_change.new_text)
+    {
+      let specifier = captures
+        .get(1)
+        .ok_or_else(|| anyhow!("Missing capture."))?
+        .as_str();
+      let snapshot = language_server.snapshot()?;
+      if let Some(new_specifier) = check_specifier(
+        specifier,
+        referrer,
+        &snapshot,
+        &language_server.maybe_import_map,
+      ) {
+        let description = action.description.replace(specifier, &new_specifier);
+        let changes = action
+          .changes
+          .iter()
+          .map(|c| {
+            let text_changes = c
+              .text_changes
+              .iter()
+              .map(|tc| tsc::TextChange {
+                span: tc.span.clone(),
+                new_text: tc.new_text.replace(specifier, &new_specifier),
+              })
+              .collect();
+            tsc::FileTextChanges {
+              file_name: c.file_name.clone(),
+              text_changes,
+              is_new_file: c.is_new_file,
+            }
+          })
+          .collect();
+
+        return Ok(tsc::CodeFixAction {
+          description,
+          changes,
+          commands: None,
+          fix_name: action.fix_name.clone(),
+          fix_id: None,
+          fix_all_description: None,
+        });
+      }
+    }
+  }
+
+  Ok(action.clone())
 }
 
 /// Determines if two TypeScript diagnostic codes are effectively equivalent.
@@ -482,6 +684,7 @@ impl CodeActionCollection {
   /// Add a TypeScript code fix action to the code actions collection.
   pub(crate) async fn add_ts_fix_action(
     &mut self,
+    specifier: &ModuleSpecifier,
     action: &tsc::CodeFixAction,
     diagnostic: &lsp::Diagnostic,
     language_server: &mut language_server::Inner,
@@ -499,6 +702,7 @@ impl CodeActionCollection {
         "The action returned from TypeScript is unsupported.",
       ));
     }
+    let action = fix_ts_import_action(specifier, action, language_server)?;
     let edit = ts_changes_to_edit(&action.changes, language_server).await?;
     let code_action = lsp::CodeAction {
       title: action.description.clone(),
@@ -651,6 +855,64 @@ mod tests {
   use deno_core::resolve_url;
 
   #[test]
+  fn test_reference_to_diagnostic() {
+    let range = Range {
+      start: Position {
+        line: 1,
+        character: 1,
+      },
+      end: Position {
+        line: 2,
+        character: 2,
+      },
+    };
+
+    let test_cases = [
+      (
+        Reference {
+          category: Category::Lint {
+            message: "message1".to_string(),
+            code: "code1".to_string(),
+            hint: None,
+          },
+          range,
+        },
+        lsp::Diagnostic {
+          range,
+          severity: Some(lsp::DiagnosticSeverity::Warning),
+          code: Some(lsp::NumberOrString::String("code1".to_string())),
+          source: Some("deno-lint".to_string()),
+          message: "message1".to_string(),
+          ..Default::default()
+        },
+      ),
+      (
+        Reference {
+          category: Category::Lint {
+            message: "message2".to_string(),
+            code: "code2".to_string(),
+            hint: Some("hint2".to_string()),
+          },
+          range,
+        },
+        lsp::Diagnostic {
+          range,
+          severity: Some(lsp::DiagnosticSeverity::Warning),
+          code: Some(lsp::NumberOrString::String("code2".to_string())),
+          source: Some("deno-lint".to_string()),
+          message: "message2\nhint2".to_string(),
+          ..Default::default()
+        },
+      ),
+    ];
+
+    for (input, expected) in test_cases.iter() {
+      let actual = input.to_diagnostic();
+      assert_eq!(&actual, expected);
+    }
+  }
+
+  #[test]
   fn test_as_lsp_range() {
     let fixture = deno_lint::diagnostic::Range {
       start: deno_lint::diagnostic::Position {
@@ -677,6 +939,38 @@ mod tests {
           character: 0,
         },
       }
+    );
+  }
+
+  #[test]
+  fn test_get_lint_references() {
+    let specifier = resolve_url("file:///a.ts").expect("bad specifier");
+    let source = "const foo = 42;";
+    let actual =
+      get_lint_references(&specifier, &MediaType::TypeScript, source).unwrap();
+
+    assert_eq!(
+      actual,
+      vec![Reference {
+        category: Category::Lint {
+          message: "`foo` is never used".to_string(),
+          code: "no-unused-vars".to_string(),
+          hint: Some(
+            "If this is intentional, prefix it with an underscore like `_foo`"
+              .to_string()
+          ),
+        },
+        range: Range {
+          start: Position {
+            line: 0,
+            character: 6,
+          },
+          end: Position {
+            line: 0,
+            character: 9,
+          }
+        }
+      }]
     );
   }
 
@@ -723,6 +1017,16 @@ mod tests {
             character: 58,
           }
         }),
+        maybe_type_specifier_range: Some(Range {
+          start: Position {
+            line: 7,
+            character: 20,
+          },
+          end: Position {
+            line: 7,
+            character: 62,
+          }
+        })
       })
     );
     assert_eq!(
@@ -743,6 +1047,7 @@ mod tests {
             character: 50,
           }
         }),
+        maybe_type_specifier_range: None,
       })
     );
   }

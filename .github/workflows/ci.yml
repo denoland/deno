@@ -169,14 +169,6 @@ jobs:
           cargo --version
           deno --version
 
-      # Work around https://github.com/actions/cache/issues/403 by using GNU tar
-      # instead of BSD tar.
-      - name: Install GNU tar
-        if: matrix.os == 'macos-10.15'
-        run: |
-          brew install gnu-tar
-          echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
-
       - name: Cache Cargo home
         uses: actions/cache@v2
         with:
@@ -210,13 +202,14 @@ jobs:
           path: |
             ./target
           key: |
-            dummy # Cache never be created for this key.
+            s0mth1ng_rand0m # Cache never be created for this key.
           restore-keys: |
             a-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ hashFiles('Cargo.lock') }}-
 
       # Skips saving cache in PR branches
       - name: Skip save cache (PR)
         run: echo "CACHE_SKIP_SAVE=true" >> $GITHUB_ENV
+        shell: bash
         if: github.ref != 'refs/heads/main'
 
       - name: Apply and update mtime cache
@@ -315,7 +308,19 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu') && matrix.kind == 'test' && matrix.profile == 'release'
         run: |
           deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts setup
-          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --quiet --release
+          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --quiet --release --json=wpt.json
+
+      - name: Upload wpt results to dl.deno.land
+        if: |
+          runner.os == 'Linux' &&
+          matrix.kind == 'test' &&
+          matrix.profile == 'release' &&
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/main'
+        run: |
+          gsutil cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json
+          echo $(git rev-parse HEAD) > wpt-latest.txt
+          gsutil cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt
 
       - name: Run web platform tests (debug)
         if: startsWith(matrix.os, 'ubuntu') && matrix.kind == 'test' && matrix.profile == 'debug'

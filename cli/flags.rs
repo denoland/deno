@@ -791,6 +791,11 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     .arg(Arg::with_name("file").takes_value(true).required(false))
     .arg(reload_arg().requires("file"))
     .arg(ca_file_arg())
+    .arg(
+      location_arg()
+        .conflicts_with("file")
+        .help("Show files used for origin bound APIs like the Web Storage API when running a script with '--location=<HREF>'")
+    )
     // TODO(lucacasonato): remove for 2.0
     .arg(no_check_arg().hidden(true))
     .arg(import_map_arg())
@@ -1577,6 +1582,7 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   reload_arg_parse(flags, matches);
   import_map_arg_parse(flags, matches);
+  location_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   let json = matches.is_present("json");
   flags.subcommand = DenoSubcommand::Info {

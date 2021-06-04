@@ -183,36 +183,45 @@ fn display_parts_to_string(parts: &[SymbolDisplayPart]) -> String {
 }
 
 fn get_tag_body_text(tag: &JsDocTagInfo) -> Option<String> {
-  tag.text.as_ref().map(|text| match tag.name.as_str() {
-    "example" => {
-      let caption_regex =
-        Regex::new(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)").unwrap();
-      if caption_regex.is_match(&text) {
-        caption_regex
-          .replace(text, |c: &Captures| {
-            format!("{}\n\n{}", &c[1], make_codeblock(&c[2]))
-          })
-          .to_string()
-      } else {
-        make_codeblock(text)
+  tag.text.as_ref().map(|display_parts| {
+    // TODO(@kitsonk) check logic in vscode about handling this API change in
+    // tsserver
+    let text = display_parts_to_string(display_parts);
+    match tag.name.as_str() {
+      "example" => {
+        let caption_regex =
+          Regex::new(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)").unwrap();
+        if caption_regex.is_match(&text) {
+          caption_regex
+            .replace(&text, |c: &Captures| {
+              format!("{}\n\n{}", &c[1], make_codeblock(&c[2]))
+            })
+            .to_string()
+        } else {
+          make_codeblock(&text)
+        }
       }
+      "author" => {
+        let email_match_regex =
+          Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap();
+        email_match_regex
+          .replace(&text, |c: &Captures| format!("{} {}", &c[1], &c[2]))
+          .to_string()
+      }
+      "default" => make_codeblock(&text),
+      _ => replace_links(&text),
     }
-    "author" => {
-      let email_match_regex = Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap();
-      email_match_regex
-        .replace(text, |c: &Captures| format!("{} {}", &c[1], &c[2]))
-        .to_string()
-    }
-    "default" => make_codeblock(text),
-    _ => replace_links(text),
   })
 }
 
 fn get_tag_documentation(tag: &JsDocTagInfo) -> String {
   match tag.name.as_str() {
     "augments" | "extends" | "param" | "template" => {
-      if let Some(text) = &tag.text {
+      if let Some(display_parts) = &tag.text {
         let part_regex = Regex::new(r"^(\S+)\s*-?\s*").unwrap();
+        // TODO(@kitsonk) check logic in vscode about handling this API change
+        // in tsserver
+        let text = display_parts_to_string(display_parts);
         let body: Vec<&str> = part_regex.split(&text).collect();
         if body.len() == 3 {
           let param = body[1];
@@ -474,7 +483,7 @@ pub struct SymbolDisplayPart {
 #[serde(rename_all = "camelCase")]
 pub struct JsDocTagInfo {
   name: String,
-  text: Option<String>,
+  text: Option<Vec<SymbolDisplayPart>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -925,8 +934,8 @@ impl DocumentHighlights {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TextChange {
-  span: TextSpan,
-  new_text: String,
+  pub span: TextSpan,
+  pub new_text: String,
 }
 
 impl TextChange {
@@ -944,10 +953,10 @@ impl TextChange {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct FileTextChanges {
-  file_name: String,
-  text_changes: Vec<TextChange>,
+  pub file_name: String,
+  pub text_changes: Vec<TextChange>,
   #[serde(skip_serializing_if = "Option::is_none")]
-  is_new_file: Option<bool>,
+  pub is_new_file: Option<bool>,
 }
 
 impl FileTextChanges {
@@ -2557,6 +2566,7 @@ mod tests {
   use crate::http_util::HeadersMap;
   use crate::lsp::analysis;
   use crate::lsp::documents::DocumentCache;
+  use crate::lsp::documents::LanguageId;
   use crate::lsp::sources::Sources;
   use crate::lsp::text::LineIndex;
   use std::path::Path;
@@ -2564,14 +2574,14 @@ mod tests {
   use tempfile::TempDir;
 
   fn mock_state_snapshot(
-    fixtures: &[(&str, &str, i32)],
+    fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
   ) -> StateSnapshot {
     let mut documents = DocumentCache::default();
-    for (specifier, source, version) in fixtures {
+    for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      documents.open(specifier.clone(), *version, source);
+      documents.open(specifier.clone(), *version, language_id.clone(), source);
       let media_type = MediaType::from(&specifier);
       if let Ok(parsed_module) =
         analysis::parse_module(&specifier, source, &media_type)
@@ -2596,7 +2606,7 @@ mod tests {
   fn setup(
     debug: bool,
     config: Value,
-    sources: &[(&str, &str, i32)],
+    sources: &[(&str, &str, i32, LanguageId)],
   ) -> (JsRuntime, StateSnapshot, PathBuf) {
     let temp_dir = TempDir::new().expect("could not create temp dir");
     let location = temp_dir.path().join("deps");
@@ -2679,7 +2689,12 @@ mod tests {
         "module": "esnext",
         "noEmit": true,
       }),
-      &[("file:///a.ts", r#"console.log("hello deno");"#, 1)],
+      &[(
+        "file:///a.ts",
+        r#"console.log("hello deno");"#,
+        1,
+        LanguageId::TypeScript,
+      )],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
@@ -2703,7 +2718,7 @@ mod tests {
               "character": 7
             },
             "fileName": "file:///a.ts",
-            "messageText": "Cannot find name 'console'. Do you need to change your target library? Try changing the `lib` compiler option to include 'dom'.",
+            "messageText": "Cannot find name 'console'. Do you need to change your target library? Try changing the \'lib\' compiler option to include 'dom'.",
             "sourceLine": "console.log(\"hello deno\");",
             "category": 1,
             "code": 2584
@@ -2724,7 +2739,12 @@ mod tests {
         "lib": ["esnext", "dom", "deno.ns"],
         "noEmit": true,
       }),
-      &[("file:///a.ts", r#"console.log(document.location);"#, 1)],
+      &[(
+        "file:///a.ts",
+        r#"console.log(document.location);"#,
+        1,
+        LanguageId::TypeScript,
+      )],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
@@ -2757,6 +2777,7 @@ mod tests {
         console.log(b);
       "#,
         1,
+        LanguageId::TypeScript,
       )],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
@@ -2786,6 +2807,7 @@ mod tests {
         import { A } from ".";
         "#,
         1,
+        LanguageId::TypeScript,
       )],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
@@ -2839,6 +2861,7 @@ mod tests {
         console.log(b);
       "#,
         1,
+        LanguageId::TypeScript,
       )],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
@@ -2875,6 +2898,7 @@ mod tests {
         import * as test from
       "#,
         1,
+        LanguageId::TypeScript,
       )],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
@@ -2932,7 +2956,12 @@ mod tests {
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
-      &[("file:///a.ts", r#"const url = new URL("b.js", import."#, 1)],
+      &[(
+        "file:///a.ts",
+        r#"const url = new URL("b.js", import."#,
+        1,
+        LanguageId::TypeScript,
+      )],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
@@ -2989,6 +3018,7 @@ mod tests {
           }
         "#,
         1,
+        LanguageId::TypeScript,
       )],
     );
     let cache = HttpCache::new(&location);
@@ -3090,7 +3120,7 @@ mod tests {
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
-      &[("file:///a.ts", fixture, 1)],
+      &[("file:///a.ts", fixture, 1, LanguageId::TypeScript)],
     );
     let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
     let result = request(
