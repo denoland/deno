@@ -103,6 +103,7 @@ pub struct AssetDocument {
   pub text: String,
   pub length: usize,
   pub line_index: LineIndex,
+  pub maybe_navigation_tree: Option<NavigationTree>,
 }
 
 impl AssetDocument {
@@ -112,6 +113,7 @@ impl AssetDocument {
       text: text.to_string(),
       length: text.encode_utf16().count(),
       line_index: LineIndex::new(text),
+      maybe_navigation_tree: None,
     }
   }
 }
@@ -149,6 +151,21 @@ impl Assets {
     v: Option<AssetDocument>,
   ) -> Option<Option<AssetDocument>> {
     self.0.insert(k, v)
+  }
+
+  pub fn set_navigation_tree(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    navigation_tree: NavigationTree,
+  ) -> Result<(), AnyError> {
+    let maybe_doc = self
+      .0
+      .get_mut(specifier)
+      .ok_or_else(|| anyhow!("Missing asset."))?;
+    maybe_doc
+      .as_mut()
+      .map(|d| d.maybe_navigation_tree = Some(navigation_tree));
+    Ok(())
   }
 }
 

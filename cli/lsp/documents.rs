@@ -2,6 +2,7 @@
 
 use super::analysis;
 use super::text::LineIndex;
+use super::tsc;
 
 use crate::media_type::MediaType;
 
@@ -65,6 +66,7 @@ pub struct DocumentData {
   bytes: Option<Vec<u8>>,
   language_id: LanguageId,
   line_index: Option<LineIndex>,
+  maybe_navigation_tree: Option<tsc::NavigationTree>,
   specifier: ModuleSpecifier,
   dependencies: Option<HashMap<String, analysis::Dependency>>,
   version: Option<i32>,
@@ -81,6 +83,7 @@ impl DocumentData {
       bytes: Some(source.as_bytes().to_owned()),
       language_id,
       line_index: Some(LineIndex::new(source)),
+      maybe_navigation_tree: None,
       specifier,
       dependencies: None,
       version: Some(version),
@@ -121,6 +124,7 @@ impl DocumentData {
     } else {
       Some(LineIndex::new(&content))
     };
+    self.maybe_navigation_tree = None;
     Ok(())
   }
 
@@ -189,6 +193,14 @@ impl DocumentCache {
   ) -> Option<HashMap<String, analysis::Dependency>> {
     let doc = self.docs.get(specifier)?;
     doc.dependencies.clone()
+  }
+
+  pub fn get_navigation_tree(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<tsc::NavigationTree> {
+    let doc = self.docs.get(specifier)?;
+    doc.maybe_navigation_tree.clone()
   }
 
   /// Determines if the specifier should be processed for diagnostics and other
@@ -267,6 +279,25 @@ impl DocumentCache {
   ) -> Result<(), AnyError> {
     if let Some(doc) = self.docs.get_mut(specifier) {
       doc.dependencies = maybe_dependencies;
+      Ok(())
+    } else {
+      Err(custom_error(
+        "NotFound",
+        format!(
+          "The specifier (\"{}\") does not exist in the document cache.",
+          specifier
+        ),
+      ))
+    }
+  }
+
+  pub fn set_navigation_tree(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    navigation_tree: tsc::NavigationTree,
+  ) -> Result<(), AnyError> {
+    if let Some(doc) = self.docs.get_mut(specifier) {
+      doc.maybe_navigation_tree = Some(navigation_tree);
       Ok(())
     } else {
       Err(custom_error(

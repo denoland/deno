@@ -16,7 +16,6 @@ use lspower::lsp::request::*;
 use lspower::lsp::*;
 use lspower::Client;
 use serde_json::from_value;
-use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
@@ -100,8 +99,6 @@ pub(crate) struct Inner {
   pub(crate) maybe_import_map: Option<ImportMap>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
-  /// A map of all the cached navigation trees.
-  navigation_trees: HashMap<ModuleSpecifier, tsc::NavigationTree>,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Performance,
   /// Cached sources that are read-only.
@@ -146,7 +143,6 @@ impl Inner {
       maybe_import_map_uri: Default::default(),
       module_registries,
       module_registries_location,
-      navigation_trees: Default::default(),
       performance,
       sources,
       ts_fixable_diagnostics: Default::default(),
@@ -268,9 +264,19 @@ impl Inner {
       "get_navigation_tree",
       Some(json!({ "specifier": specifier })),
     );
-    if let Some(navigation_tree) = self.navigation_trees.get(specifier) {
-      self.performance.measure(mark);
-      Ok(navigation_tree.clone())
+    let maybe_navigation_tree = if specifier.scheme() == "asset" {
+      self
+        .assets
+        .get(specifier)
+        .map(|o| o.clone().map(|a| a.maybe_navigation_tree).flatten())
+        .flatten()
+    } else if self.documents.contains_key(specifier) {
+      self.documents.get_navigation_tree(specifier)
+    } else {
+      self.sources.get_navigation_tree(specifier)
+    };
+    let navigation_tree = if let Some(navigation_tree) = maybe_navigation_tree {
+      navigation_tree
     } else {
       let navigation_tree: tsc::NavigationTree = self
         .ts_server
@@ -279,12 +285,23 @@ impl Inner {
           tsc::RequestMethod::GetNavigationTree(specifier.clone()),
         )
         .await?;
-      self
-        .navigation_trees
-        .insert(specifier.clone(), navigation_tree.clone());
-      self.performance.measure(mark);
-      Ok(navigation_tree)
-    }
+      if specifier.scheme() == "asset" {
+        self
+          .assets
+          .set_navigation_tree(specifier, navigation_tree.clone())?;
+      } else if self.documents.contains_key(specifier) {
+        self
+          .documents
+          .set_navigation_tree(specifier, navigation_tree.clone())?;
+      } else {
+        self
+          .sources
+          .set_navigation_tree(specifier, navigation_tree.clone())?;
+      }
+      navigation_tree
+    };
+    self.performance.measure(mark);
+    Ok(navigation_tree)
   }
 
   pub(crate) fn snapshot(&self) -> LspResult<StateSnapshot> {
@@ -657,7 +674,6 @@ impl Inner {
     }
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
     self.documents.close(&specifier);
-    self.navigation_trees.remove(&specifier);
 
     if self.documents.is_diagnosable(&specifier) {
       if let Err(err) = self.diagnostics_server.update() {
