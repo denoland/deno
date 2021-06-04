@@ -96,6 +96,10 @@
   }
 
   class SubtleCrypto {
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
     async digest(algorithm, data) {
       webidl.assertBranded(this, SubtleCrypto);
       webidl.requiredArguments(arguments.length, 2);
@@ -122,7 +126,7 @@
     }
   }
 
-  const subtle = new SubtleCrypto();
+  const subtle = webidl.createBranded(SubtleCrypto);
 
   window.crypto = {
     getRandomValues,
