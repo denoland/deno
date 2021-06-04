@@ -8,6 +8,8 @@
   const customInspect = Symbol.for("Deno.customInspect");
   let performanceEntries = [];
 
+  const timeOrigin = opNow();
+
   function findMostRecent(
     name,
     type,
@@ -211,6 +213,10 @@
       if (key != illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
       }
+    }
+
+    get timeOrigin() {
+      return timeOrigin;
     }
 
     clearMarks(markName) {
