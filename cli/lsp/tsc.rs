@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use super::analysis::CodeLensSource;
 use super::analysis::ResolvedDependency;
 use super::analysis::ResolvedDependencyErr;
+use super::code_lens;
 use super::config;
 use super::language_server;
 use super::language_server::StateSnapshot;
@@ -103,6 +103,7 @@ pub struct AssetDocument {
   pub text: String,
   pub length: usize,
   pub line_index: LineIndex,
+  pub maybe_navigation_tree: Option<NavigationTree>,
 }
 
 impl AssetDocument {
@@ -112,6 +113,7 @@ impl AssetDocument {
       text: text.to_string(),
       length: text.encode_utf16().count(),
       line_index: LineIndex::new(text),
+      maybe_navigation_tree: None,
     }
   }
 }
@@ -149,6 +151,22 @@ impl Assets {
     v: Option<AssetDocument>,
   ) -> Option<Option<AssetDocument>> {
     self.0.insert(k, v)
+  }
+
+  pub fn set_navigation_tree(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    navigation_tree: NavigationTree,
+  ) -> Result<(), AnyError> {
+    let maybe_doc = self
+      .0
+      .get_mut(specifier)
+      .ok_or_else(|| anyhow!("Missing asset."))?;
+    let doc = maybe_doc
+      .as_mut()
+      .ok_or_else(|| anyhow!("Cannot get doc mutable"))?;
+    doc.maybe_navigation_tree = Some(navigation_tree);
+    Ok(())
   }
 }
 
@@ -610,7 +628,7 @@ impl NavigationTree {
     &self,
     line_index: &LineIndex,
     specifier: &ModuleSpecifier,
-    source: &CodeLensSource,
+    source: &code_lens::CodeLensSource,
   ) -> lsp::CodeLens {
     let range = if let Some(name_span) = &self.name_span {
       name_span.to_range(line_index)
