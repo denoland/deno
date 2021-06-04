@@ -16,3 +16,4 @@ path = "lib.rs"
 [dependencies]
 deno_core = { version = "0.88.1", path = "../../core" }
 rand = "0.8.3"
+uuid = { version = "0.8.2", features = ["v4"] }

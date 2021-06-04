@@ -146,7 +146,7 @@
       "rsa_importKey.https.any.html": false,
       "symmetric_importKey.https.any.html": false
     },
-    "randomUUID.https.any.html": false,
+    "randomUUID.https.any.html": true,
     "sign_verify": {
       "ecdsa.https.any.html": false,
       "hmac.https.any.html": false,
@@ -155,7 +155,8 @@
     },
     "wrapKey_unwrapKey": {
       "wrapKey_unwrapKey.https.any.html": false
-    }
+    },
+    "randomUUID.any.html": true
   },
   "console": {
     "console-is-a-namespace.any.html": true,
