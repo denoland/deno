@@ -81,11 +81,18 @@
     return normalizedAlgorithm;
   }
 
-  function serializeAlgorithm(algorithm, op) {
-    const registeredAlgorithms = supportedAlgorithms[op];
-    const registeredKeys = Object.keys(registeredAlgorithms);
-
-    return registeredKeys.indexOf(algorithm.name);
+  // Should match op_crypto_subtle_digest() in extensions/crypto/lib.rs
+  function digestToId(name) {
+    switch (name) {
+      case "SHA-1":
+        return 0;
+      case "SHA-256":
+        return 1;
+      case "SHA-384":
+        return 2;
+      case "SHA-512":
+        return 3;
+    }
   }
 
   const subtle = {
@@ -106,7 +113,7 @@
 
       const result = await core.opAsync(
         "op_crypto_subtle_digest",
-        serializeAlgorithm(algorithm, "digest"),
+        digestToId(algorithm.name),
         data,
       );
 
