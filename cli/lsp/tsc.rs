@@ -162,9 +162,10 @@ impl Assets {
       .0
       .get_mut(specifier)
       .ok_or_else(|| anyhow!("Missing asset."))?;
-    maybe_doc
+    let doc = maybe_doc
       .as_mut()
-      .map(|d| d.maybe_navigation_tree = Some(navigation_tree));
+      .ok_or_else(|| anyhow!("Cannot get doc mutable"))?;
+    doc.maybe_navigation_tree = Some(navigation_tree);
     Ok(())
   }
 }
