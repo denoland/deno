@@ -475,6 +475,7 @@ delete Object.prototype.__proto__;
       resources: core.resources,
       close: core.close,
       memoryUsage: core.memoryUsage,
+      timeSinceEpoch: new Date(),
       ...denoNs,
     };
     Object.defineProperties(finalDenoNs, {

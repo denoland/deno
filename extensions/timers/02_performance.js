@@ -2,13 +2,12 @@
 "use strict";
 
 ((window) => {
+  const { timeSinceEpoch } = window;
   const { webidl, structuredClone } = window.__bootstrap;
   const { opNow } = window.__bootstrap.timers;
   const illegalConstructorKey = Symbol("illegalConstructorKey");
   const customInspect = Symbol.for("Deno.customInspect");
   let performanceEntries = [];
-
-  const timeOrigin = opNow();
 
   function findMostRecent(
     name,
@@ -216,7 +215,7 @@
     }
 
     get timeOrigin() {
-      return timeOrigin;
+      return timeSinceEpoch;
     }
 
     clearMarks(markName) {
