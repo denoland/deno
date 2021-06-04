@@ -2,7 +2,6 @@
 "use strict";
 
 ((window) => {
-  const { timeSinceEpoch } = window;
   const { webidl, structuredClone } = window.__bootstrap;
   const { opNow } = window.__bootstrap.timers;
   const illegalConstructorKey = Symbol("illegalConstructorKey");
