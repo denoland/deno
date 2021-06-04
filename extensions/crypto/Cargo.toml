@@ -15,6 +15,6 @@ path = "lib.rs"
 
 [dependencies]
 deno_core = { version = "0.88.1", path = "../../core" }
-tokio = { version = "1.4.0", features = ["full"] }
+tokio = { version = "1.6.1", features = ["full"] }
 rand = "0.8.3"
 ring = "0.16.20"
