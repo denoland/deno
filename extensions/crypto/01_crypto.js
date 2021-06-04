@@ -100,8 +100,9 @@
         context: "Argument 2",
       });
 
-      algorithm = normalizeAlgorithm(algorithm, "digest");
       data = data.slice(0);
+
+      algorithm = normalizeAlgorithm(algorithm, "digest");
 
       const result = await core.opAsync(
         "op_crypto_subtle_digest",
