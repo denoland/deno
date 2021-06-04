@@ -186,24 +186,7 @@
     "encodeInto.any.html": [
       "encodeInto() and a detached output buffer"
     ],
-    "idlharness.any.html": [
-      "TextDecoderStream interface: existence and properties of interface object",
-      "TextDecoderStream interface object length",
-      "TextDecoderStream interface object name",
-      "TextDecoderStream interface: existence and properties of interface prototype object",
-      "TextDecoderStream interface: existence and properties of interface prototype object's \"constructor\" property",
-      "TextDecoderStream interface: existence and properties of interface prototype object's @@unscopables property",
-      "TextDecoderStream interface: attribute encoding",
-      "TextDecoderStream interface: attribute fatal",
-      "TextDecoderStream interface: attribute ignoreBOM",
-      "TextEncoderStream interface: existence and properties of interface object",
-      "TextEncoderStream interface object length",
-      "TextEncoderStream interface object name",
-      "TextEncoderStream interface: existence and properties of interface prototype object",
-      "TextEncoderStream interface: existence and properties of interface prototype object's \"constructor\" property",
-      "TextEncoderStream interface: existence and properties of interface prototype object's @@unscopables property",
-      "TextEncoderStream interface: attribute encoding"
-    ],
+    "idlharness.any.html": true,
     "iso-2022-jp-decoder.any.html": true,
     "legacy-mb-schinese": {
       "gb18030": {
@@ -215,18 +198,20 @@
     },
     "replacement-encodings.any.html": false,
     "streams": {
-      "backpressure.any.html": false,
-      "decode-attributes.any.html": false,
-      "decode-bad-chunks.any.html": false,
-      "decode-ignore-bom.any.html": false,
-      "decode-incomplete-input.any.html": false,
-      "decode-non-utf8.any.html": false,
-      "decode-split-character.any.html": false,
-      "decode-utf8.any.html": false,
-      "encode-bad-chunks.any.html": false,
-      "encode-utf8.any.html": false,
-      "readable-writable-properties.any.html": false,
-      "realms.window.html": false
+      "backpressure.any.html": true,
+      "decode-attributes.any.html": true,
+      "decode-bad-chunks.any.html": true,
+      "decode-ignore-bom.any.html": true,
+      "decode-incomplete-input.any.html": true,
+      "decode-non-utf8.any.html": true,
+      "decode-split-character.any.html": true,
+      "decode-utf8.any.html": [
+        "decoding a transferred Uint8Array chunk should give no output",
+        "decoding a transferred ArrayBuffer chunk should give no output"
+      ],
+      "encode-bad-chunks.any.html": true,
+      "encode-utf8.any.html": true,
+      "readable-writable-properties.any.html": true
     },
     "textdecoder-arguments.any.html": true,
     "textdecoder-byte-order-marks.any.html": true,

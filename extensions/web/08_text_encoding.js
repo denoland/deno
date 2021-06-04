@@ -3,6 +3,7 @@
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
+/// <reference path="../fetch/lib.deno_fetch.d.ts" />
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
@@ -203,6 +204,197 @@
     configurable: true,
   });
 
+  class TextDecoderStream {
+    /** @type {TextDecoder} */
+    #decoder;
+    /** @type {TransformStream<BufferSource, string>} */
+    #transform;
+
+    /**
+     *
+     * @param {string} label
+     * @param {TextDecoderOptions} options
+     */
+    constructor(label = "utf-8", options = {}) {
+      const prefix = "Failed to construct 'TextDecoderStream'";
+      label = webidl.converters.DOMString(label, {
+        prefix,
+        context: "Argument 1",
+      });
+      options = webidl.converters.TextDecoderOptions(options, {
+        prefix,
+        context: "Argument 2",
+      });
+      this.#decoder = new TextDecoder(label, options);
+      this.#transform = new TransformStream({
+        // The transform and flush functions need access to TextDecoderStream's
+        // `this`, so they are defined as functions rather than methods.
+        transform: (chunk, controller) => {
+          try {
+            chunk = webidl.converters.BufferSource(chunk, {
+              allowShared: true,
+            });
+            const decoded = this.#decoder.decode(chunk, { stream: true });
+            if (decoded) {
+              controller.enqueue(decoded);
+            }
+            return Promise.resolve();
+          } catch (err) {
+            return Promise.reject(err);
+          }
+        },
+        flush: (controller) => {
+          try {
+            const final = this.#decoder.decode();
+            if (final) {
+              controller.enqueue(final);
+            }
+            return Promise.resolve();
+          } catch (err) {
+            return Promise.reject(err);
+          }
+        },
+      });
+      this[webidl.brand] = webidl.brand;
+    }
+
+    /** @returns {string} */
+    get encoding() {
+      webidl.assertBranded(this, TextDecoderStream);
+      return this.#decoder.encoding;
+    }
+
+    /** @returns {boolean} */
+    get fatal() {
+      webidl.assertBranded(this, TextDecoderStream);
+      return this.#decoder.fatal;
+    }
+
+    /** @returns {boolean} */
+    get ignoreBOM() {
+      webidl.assertBranded(this, TextDecoderStream);
+      return this.#decoder.ignoreBOM;
+    }
+
+    /** @returns {ReadableStream<string>} */
+    get readable() {
+      webidl.assertBranded(this, TextDecoderStream);
+      return this.#transform.readable;
+    }
+
+    /** @returns {WritableStream<BufferSource>} */
+    get writable() {
+      webidl.assertBranded(this, TextDecoderStream);
+      return this.#transform.writable;
+    }
+
+    get [Symbol.toStringTag]() {
+      return "TextDecoderStream";
+    }
+  }
+
+  Object.defineProperty(TextDecoderStream.prototype, "encoding", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(TextDecoderStream.prototype, "fatal", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(TextDecoderStream.prototype, "ignoreBOM", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(TextDecoderStream.prototype, "readable", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(TextDecoderStream.prototype, "writable", {
+    enumerable: true,
+    configurable: true,
+  });
+
+  class TextEncoderStream {
+    /** @type {string | null} */
+    #pendingHighSurrogate = null;
+    /** @type {TransformStream<string, Uint8Array>} */
+    #transform;
+
+    constructor() {
+      this.#transform = new TransformStream({
+        // The transform and flush functions need access to TextEncoderStream's
+        // `this`, so they are defined as functions rather than methods.
+        transform: (chunk, controller) => {
+          try {
+            chunk = webidl.converters.DOMString(chunk);
+            if (this.#pendingHighSurrogate !== null) {
+              chunk = this.#pendingHighSurrogate + chunk;
+            }
+            const lastCodeUnit = chunk.charCodeAt(chunk.length - 1);
+            if (0xD800 <= lastCodeUnit && lastCodeUnit <= 0xDBFF) {
+              this.#pendingHighSurrogate = chunk.slice(-1);
+              chunk = chunk.slice(0, -1);
+            } else {
+              this.#pendingHighSurrogate = null;
+            }
+            if (chunk) {
+              controller.enqueue(core.encode(chunk));
+            }
+            return Promise.resolve();
+          } catch (err) {
+            return Promise.reject(err);
+          }
+        },
+        flush: (controller) => {
+          try {
+            if (this.#pendingHighSurrogate !== null) {
+              controller.enqueue(new Uint8Array([0xEF, 0xBF, 0xBD]));
+            }
+            return Promise.resolve();
+          } catch (err) {
+            return Promise.reject(err);
+          }
+        },
+      });
+      this[webidl.brand] = webidl.brand;
+    }
+
+    /** @returns {string} */
+    get encoding() {
+      webidl.assertBranded(this, TextEncoderStream);
+      return "utf-8";
+    }
+
+    /** @returns {ReadableStream<Uint8Array>} */
+    get readable() {
+      webidl.assertBranded(this, TextEncoderStream);
+      return this.#transform.readable;
+    }
+
+    /** @returns {WritableStream<string>} */
+    get writable() {
+      webidl.assertBranded(this, TextEncoderStream);
+      return this.#transform.writable;
+    }
+
+    get [Symbol.toStringTag]() {
+      return "TextEncoderStream";
+    }
+  }
+
+  Object.defineProperty(TextEncoderStream.prototype, "encoding", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(TextEncoderStream.prototype, "readable", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(TextEncoderStream.prototype, "writable", {
+    enumerable: true,
+    configurable: true,
+  });
+
   webidl.converters.TextDecoderOptions = webidl.createDictionaryConverter(
     "TextDecoderOptions",
     [
@@ -259,6 +451,8 @@
   window.__bootstrap.encoding = {
     TextEncoder,
     TextDecoder,
+    TextEncoderStream,
+    TextDecoderStream,
     decode,
   };
 })(this);
