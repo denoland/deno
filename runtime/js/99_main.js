@@ -302,7 +302,8 @@ delete Object.prototype.__proto__;
     console: util.writable(
       new Console((msg, level) => core.print(msg, level > 1)),
     ),
-    crypto: util.readOnly(crypto),
+    crypto: util.readOnly(crypto.crypto),
+    Crypto: util.nonEnumerable(crypto.Crypto),
     fetch: util.writable(fetch.fetch),
     performance: util.writable(performance.performance),
     setInterval: util.writable(timers.setInterval),
