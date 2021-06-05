@@ -13,11 +13,7 @@
     getRandomValues(arrayBufferView) {
       webidl.assertBranded(this, Crypto);
 
-      if (!ArrayBuffer.isView(arrayBufferView)) {
-        throw new TypeError(
-          "Argument 1 does not implement interface ArrayBufferView",
-        );
-      }
+      arrayBufferView = webidl.converters.ArrayBufferView(arrayBufferView);
       if (
         !(
           arrayBufferView instanceof Int8Array ||
