@@ -1,0 +1,4 @@
+[WILDCARD]error: Uncaught (in promise) TypeError: Relative import path "unmapped" not prefixed with / or ./ or ../ and not in import map from "[WILDCARD]"
+await import("unmapped");
+^
+    at [WILDCARD]

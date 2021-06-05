@@ -83,10 +83,9 @@ impl ModuleLoader for CliModuleLoader {
 
     if !is_main {
       if let Some(import_map) = &self.import_map {
-        let result = import_map.resolve(specifier, referrer)?;
-        if let Some(r) = result {
-          return Ok(r);
-        }
+        return import_map
+          .resolve(specifier, referrer)
+          .map_err(AnyError::from);
       }
     }
 

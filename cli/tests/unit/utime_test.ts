@@ -3,6 +3,7 @@ import {
   assertEquals,
   assertThrows,
   assertThrowsAsync,
+  pathToAbsoluteFileUrl,
   unitTest,
 } from "./test_util.ts";
 
@@ -62,6 +63,25 @@ unitTest(
     const atime = 1000;
     const mtime = 50000;
     Deno.utimeSync(filename, atime, mtime);
+
+    const fileInfo = Deno.statSync(filename);
+    assertEquals(fileInfo.atime, new Date(atime * 1000));
+    assertEquals(fileInfo.mtime, new Date(mtime * 1000));
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  function utimeSyncUrlSuccess(): void {
+    const testDir = Deno.makeTempDirSync();
+    const filename = testDir + "/file.txt";
+    Deno.writeFileSync(filename, new TextEncoder().encode("hello"), {
+      mode: 0o666,
+    });
+
+    const atime = 1000;
+    const mtime = 50000;
+    Deno.utimeSync(pathToAbsoluteFileUrl(filename), atime, mtime);
 
     const fileInfo = Deno.statSync(filename);
     assertEquals(fileInfo.atime, new Date(atime * 1000));
@@ -170,6 +190,25 @@ unitTest(
     const atime = 1000;
     const mtime = 50000;
     await Deno.utime(filename, atime, mtime);
+
+    const fileInfo = Deno.statSync(filename);
+    assertEquals(fileInfo.atime, new Date(atime * 1000));
+    assertEquals(fileInfo.mtime, new Date(mtime * 1000));
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function utimeUrlSuccess(): Promise<void> {
+    const testDir = Deno.makeTempDirSync();
+    const filename = testDir + "/file.txt";
+    Deno.writeFileSync(filename, new TextEncoder().encode("hello"), {
+      mode: 0o666,
+    });
+
+    const atime = 1000;
+    const mtime = 50000;
+    await Deno.utime(pathToAbsoluteFileUrl(filename), atime, mtime);
 
     const fileInfo = Deno.statSync(filename);
     assertEquals(fileInfo.atime, new Date(atime * 1000));
