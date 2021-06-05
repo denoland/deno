@@ -2,6 +2,7 @@
 
 use super::analysis;
 use super::language_server;
+use super::lsp_custom;
 use super::tsc;
 
 use crate::fs_util::is_supported_ext;
@@ -9,6 +10,7 @@ use crate::media_type::MediaType;
 
 use deno_core::normalize_path;
 use deno_core::resolve_path;
+use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::url::Position;
@@ -34,6 +36,64 @@ pub struct CompletionItemData {
   pub tsc: Option<tsc::CompletionItemData>,
 }
 
+/// Check if the origin can be auto-configured for completions, and if so, send
+/// a notification to the client.
+async fn check_auto_config_registry(
+  url_str: &str,
+  snapshot: &language_server::StateSnapshot,
+  client: lspower::Client,
+) {
+  // check to see if auto discovery is enabled
+  if snapshot
+    .config
+    .settings
+    .workspace
+    .suggest
+    .imports
+    .auto_discover
+  {
+    if let Ok(specifier) = resolve_url(url_str) {
+      let scheme = specifier.scheme();
+      let path = &specifier[Position::BeforePath..];
+      if scheme.starts_with("http")
+        && !path.is_empty()
+        && url_str.ends_with(path)
+      {
+        // check to see if this origin is already explicitly set
+        let in_config = snapshot
+          .config
+          .settings
+          .workspace
+          .suggest
+          .imports
+          .hosts
+          .iter()
+          .any(|(h, _)| {
+            resolve_url(h).map(|u| u.origin()) == Ok(specifier.origin())
+          });
+        // if it isn't in the configuration, we will check to see if it supports
+        // suggestions and send a notification to the client.
+        if !in_config {
+          let origin = specifier.origin().ascii_serialization();
+          let suggestions = snapshot
+            .module_registries
+            .fetch_config(&origin)
+            .await
+            .is_ok();
+          client
+            .send_custom_notification::<lsp_custom::RegistryStateNotification>(
+              lsp_custom::RegistryStateNotificationParams {
+                origin,
+                suggestions,
+              },
+            )
+            .await;
+        }
+      }
+    }
+  }
+}
+
 /// Given a specifier, a position, and a snapshot, optionally return a
 /// completion response, which will be valid import completions for the specific
 /// context.
@@ -41,6 +101,7 @@ pub async fn get_import_completions(
   specifier: &ModuleSpecifier,
   position: &lsp::Position,
   state_snapshot: &language_server::StateSnapshot,
+  client: lspower::Client,
 ) -> Option<lsp::CompletionResponse> {
   if let Ok(Some(source)) = state_snapshot.documents.content(specifier) {
     let media_type = MediaType::from(specifier);
@@ -58,6 +119,8 @@ pub async fn get_import_completions(
       }
       // completion of modules from a module registry or cache
       if !current_specifier.is_empty() {
+        check_auto_config_registry(&current_specifier, state_snapshot, client)
+          .await;
         let offset = if position.character > range.start.character {
           (position.character - range.start.character) as usize
         } else {
@@ -281,16 +344,7 @@ impl Visit for ImportLocator {
       let start = self.source_map.lookup_char_pos(node.src.span.lo);
       let end = self.source_map.lookup_char_pos(node.src.span.hi);
       if span_includes_pos(&self.position, &start, &end) {
-        self.maybe_range = Some(lsp::Range {
-          start: lsp::Position {
-            line: (start.line - 1) as u32,
-            character: (start.col_display + 1) as u32,
-          },
-          end: lsp::Position {
-            line: (end.line - 1) as u32,
-            character: (end.col_display - 1) as u32,
-          },
-        });
+        self.maybe_range = Some(get_range_from_loc(&start, &end));
         self.maybe_specifier = Some(node.src.value.to_string());
       }
     }
@@ -306,6 +360,7 @@ impl Visit for ImportLocator {
         let start = self.source_map.lookup_char_pos(src.span.lo);
         let end = self.source_map.lookup_char_pos(src.span.hi);
         if span_includes_pos(&self.position, &start, &end) {
+          self.maybe_range = Some(get_range_from_loc(&start, &end));
           self.maybe_specifier = Some(src.value.to_string());
         }
       }
@@ -321,6 +376,7 @@ impl Visit for ImportLocator {
       let start = self.source_map.lookup_char_pos(node.src.span.lo);
       let end = self.source_map.lookup_char_pos(node.src.span.hi);
       if span_includes_pos(&self.position, &start, &end) {
+        self.maybe_range = Some(get_range_from_loc(&start, &end));
         self.maybe_specifier = Some(node.src.value.to_string());
       }
     }
@@ -335,9 +391,24 @@ impl Visit for ImportLocator {
       let start = self.source_map.lookup_char_pos(node.arg.span.lo);
       let end = self.source_map.lookup_char_pos(node.arg.span.hi);
       if span_includes_pos(&self.position, &start, &end) {
+        self.maybe_range = Some(get_range_from_loc(&start, &end));
         self.maybe_specifier = Some(node.arg.value.to_string());
       }
     }
+  }
+}
+
+/// Get LSP range from the provided SWC start and end locations.
+fn get_range_from_loc(start: &Loc, end: &Loc) -> lsp::Range {
+  lsp::Range {
+    start: lsp::Position {
+      line: (start.line - 1) as u32,
+      character: (start.col_display + 1) as u32,
+    },
+    end: lsp::Position {
+      line: (end.line - 1) as u32,
+      character: (end.col_display - 1) as u32,
+    },
   }
 }
 
@@ -488,6 +559,7 @@ mod tests {
   use crate::http_cache::HttpCache;
   use crate::lsp::analysis;
   use crate::lsp::documents::DocumentCache;
+  use crate::lsp::documents::LanguageId;
   use crate::lsp::sources::Sources;
   use crate::media_type::MediaType;
   use deno_core::resolve_url;
@@ -496,15 +568,15 @@ mod tests {
   use tempfile::TempDir;
 
   fn mock_state_snapshot(
-    fixtures: &[(&str, &str, i32)],
+    fixtures: &[(&str, &str, i32, LanguageId)],
     source_fixtures: &[(&str, &str)],
     location: &Path,
   ) -> language_server::StateSnapshot {
     let mut documents = DocumentCache::default();
-    for (specifier, source, version) in fixtures {
+    for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      documents.open(specifier.clone(), *version, source);
+      documents.open(specifier.clone(), *version, language_id.clone(), source);
       let media_type = MediaType::from(&specifier);
       let parsed_module =
         analysis::parse_module(&specifier, source, &media_type).unwrap();
@@ -537,7 +609,7 @@ mod tests {
   }
 
   fn setup(
-    documents: &[(&str, &str, i32)],
+    documents: &[(&str, &str, i32, LanguageId)],
     sources: &[(&str, &str)],
   ) -> language_server::StateSnapshot {
     let temp_dir = TempDir::new().expect("could not create temp dir");
@@ -643,12 +715,13 @@ mod tests {
   #[test]
   fn test_is_module_specifier_position() {
     let specifier = resolve_url("file:///a/b/c.ts").unwrap();
-    let source = r#"import * as a from """#;
+    let import_source = r#"import * as a from """#;
+    let export_source = r#"export * as a from """#;
     let media_type = MediaType::TypeScript;
     assert_eq!(
       is_module_specifier_position(
         &specifier,
-        source,
+        import_source,
         &media_type,
         &lsp::Position {
           line: 0,
@@ -660,7 +733,31 @@ mod tests {
     assert_eq!(
       is_module_specifier_position(
         &specifier,
-        source,
+        import_source,
+        &media_type,
+        &lsp::Position {
+          line: 0,
+          character: 20
+        }
+      ),
+      Some((
+        "".to_string(),
+        lsp::Range {
+          start: lsp::Position {
+            line: 0,
+            character: 20
+          },
+          end: lsp::Position {
+            line: 0,
+            character: 20
+          }
+        }
+      ))
+    );
+    assert_eq!(
+      is_module_specifier_position(
+        &specifier,
+        export_source,
         &media_type,
         &lsp::Position {
           line: 0,
@@ -775,46 +872,54 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_get_import_completions() {
+  async fn test_get_workspace_completions() {
     let specifier = resolve_url("file:///a/b/c.ts").unwrap();
-    let position = lsp::Position {
-      line: 0,
-      character: 21,
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 20,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 21,
+      },
     };
     let state_snapshot = setup(
       &[
-        ("file:///a/b/c.ts", "import * as d from \"h\"", 1),
-        ("file:///a/c.ts", r#""#, 1),
+        (
+          "file:///a/b/c.ts",
+          "import * as d from \"h\"",
+          1,
+          LanguageId::TypeScript,
+        ),
+        ("file:///a/c.ts", r#""#, 1, LanguageId::TypeScript),
       ],
       &[("https://deno.land/x/a/b/c.ts", "console.log(1);\n")],
     );
     let actual =
-      get_import_completions(&specifier, &position, &state_snapshot).await;
+      get_workspace_completions(&specifier, "h", &range, &state_snapshot);
     assert_eq!(
       actual,
-      Some(lsp::CompletionResponse::List(lsp::CompletionList {
-        is_incomplete: false,
-        items: vec![lsp::CompletionItem {
-          label: "https://deno.land/x/a/b/c.ts".to_string(),
-          kind: Some(lsp::CompletionItemKind::File),
-          detail: Some("(remote)".to_string()),
-          sort_text: Some("1".to_string()),
-          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range: lsp::Range {
-              start: lsp::Position {
-                line: 0,
-                character: 20
-              },
-              end: lsp::Position {
-                line: 0,
-                character: 21,
-              }
+      vec![lsp::CompletionItem {
+        label: "https://deno.land/x/a/b/c.ts".to_string(),
+        kind: Some(lsp::CompletionItemKind::File),
+        detail: Some("(remote)".to_string()),
+        sort_text: Some("1".to_string()),
+        text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+          range: lsp::Range {
+            start: lsp::Position {
+              line: 0,
+              character: 20
             },
-            new_text: "https://deno.land/x/a/b/c.ts".to_string(),
-          })),
-          ..Default::default()
-        }]
-      }))
+            end: lsp::Position {
+              line: 0,
+              character: 21,
+            }
+          },
+          new_text: "https://deno.land/x/a/b/c.ts".to_string(),
+        })),
+        ..Default::default()
+      }]
     );
   }
 }

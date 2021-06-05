@@ -9,9 +9,12 @@ use deno_core::error::generic_error;
 use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::op_async;
+use deno_core::op_sync;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -42,13 +45,17 @@ use crate::ops::io::UnixStreamResource;
 #[cfg(unix)]
 use std::path::Path;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_async(rt, "op_accept", op_accept);
-  super::reg_async(rt, "op_connect", op_connect);
-  super::reg_sync(rt, "op_listen", op_listen);
-  super::reg_async(rt, "op_datagram_receive", op_datagram_receive);
-  super::reg_async(rt, "op_datagram_send", op_datagram_send);
-  super::reg_async(rt, "op_dns_resolve", op_dns_resolve);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_accept", op_async(op_accept)),
+      ("op_connect", op_async(op_connect)),
+      ("op_listen", op_sync(op_listen)),
+      ("op_datagram_receive", op_async(op_datagram_receive)),
+      ("op_datagram_send", op_async(op_datagram_send)),
+      ("op_dns_resolve", op_async(op_dns_resolve)),
+    ])
+    .build()
 }
 
 #[derive(Serialize)]
@@ -93,7 +100,7 @@ pub(crate) struct AcceptArgs {
 async fn accept_tcp(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<OpConn, AnyError> {
   let rid = args.rid;
 
@@ -138,12 +145,12 @@ async fn accept_tcp(
 async fn op_accept(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
-  _buf: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<OpConn, AnyError> {
   match args.transport.as_str() {
-    "tcp" => accept_tcp(state, args, _buf).await,
+    "tcp" => accept_tcp(state, args, ()).await,
     #[cfg(unix)]
-    "unix" => net_unix::accept_unix(state, args, _buf).await,
+    "unix" => net_unix::accept_unix(state, args, ()).await,
     other => Err(bad_transport(other)),
   }
 }
@@ -281,7 +288,7 @@ struct ConnectArgs {
 async fn op_connect(
   state: Rc<RefCell<OpState>>,
   args: ConnectArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<OpConn, AnyError> {
   match args {
     ConnectArgs {
@@ -447,7 +454,7 @@ fn listen_udp(
 fn op_listen(
   state: &mut OpState,
   args: ListenArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<OpConn, AnyError> {
   match args {
     ListenArgs {
@@ -588,7 +595,7 @@ pub struct NameServer {
 async fn op_dns_resolve(
   state: Rc<RefCell<OpState>>,
   args: ResolveAddrArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<Vec<DnsReturnRecord>, AnyError> {
   let ResolveAddrArgs {
     query,

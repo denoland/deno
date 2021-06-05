@@ -2,9 +2,9 @@
 "use strict";
 
 ((window) => {
-  const { Request, dontValidateUrl, lazyHeaders, fastBody, Response } =
+  const { InnerBody } = window.__bootstrap.fetchBody;
+  const { Response, fromInnerRequest, toInnerResponse, newInnerRequest } =
     window.__bootstrap.fetch;
-  const { Headers } = window.__bootstrap.headers;
   const errors = window.__bootstrap.errors.errors;
   const core = window.Deno.core;
   const { ReadableStream } = window.__bootstrap.streams;
@@ -13,6 +13,8 @@
     const rid = Deno.core.opSync("op_http_start", conn.rid);
     return new HttpConn(rid);
   }
+
+  const connErrorSymbol = Symbol("connError");
 
   class HttpConn {
     #rid = 0;
@@ -35,9 +37,15 @@
           this.#rid,
         );
       } catch (error) {
+        // A connection error seen here would cause disrupted responses to throw
+        // a generic `BadResource` error. Instead store this error and replace
+        // those with it.
+        this[connErrorSymbol] = error;
         if (error instanceof errors.BadResource) {
           return null;
         } else if (error instanceof errors.Interrupted) {
+          return null;
+        } else if (error.message.includes("connection closed")) {
           return null;
         }
         throw error;
@@ -53,20 +61,20 @@
       ] = nextRequest;
 
       /** @type {ReadableStream<Uint8Array> | undefined} */
-      let body = undefined;
+      let body = null;
       if (typeof requestBodyRid === "number") {
         body = createRequestBodyStream(requestBodyRid);
       }
 
-      const request = new Request(url, {
-        body,
+      const innerRequest = newInnerRequest(
         method,
-        headers: headersList,
-        [dontValidateUrl]: true,
-        [lazyHeaders]: true,
-      });
+        url,
+        headersList,
+        body !== null ? new InnerBody(body) : null,
+      );
+      const request = fromInnerRequest(innerRequest, "immutable");
 
-      const respondWith = createRespondWith(responseSenderRid, this.#rid);
+      const respondWith = createRespondWith(this, responseSenderRid);
 
       return { request, respondWith };
     }
@@ -77,6 +85,7 @@
     }
 
     [Symbol.asyncIterator]() {
+      // deno-lint-ignore no-this-alias
       const httpConn = this;
       return {
         async next() {
@@ -96,17 +105,7 @@
     );
   }
 
-  /** IMPORTANT: Equivalent to `Array.from(headers).flat()` but more performant.
-   * Please preserve. */
-  function flattenHeaders(headers) {
-    const array = [];
-    for (const pair of headers) {
-      array.push(pair[0], pair[1]);
-    }
-    return array;
-  }
-
-  function createRespondWith(responseSenderRid) {
+  function createRespondWith(httpConn, responseSenderRid) {
     return async function respondWith(resp) {
       if (resp instanceof Promise) {
         resp = await resp;
@@ -117,49 +116,95 @@
           "First argument to respondWith must be a Response or a promise resolving to a Response.",
         );
       }
-      // If response body is Uint8Array it will be sent synchronously
-      // in a single op, in other case a "response body" resource will be
-      // created and we'll be streaming it.
-      const body = resp[fastBody]();
-      let zeroCopyBuf;
-      if (body instanceof ArrayBuffer) {
-        zeroCopyBuf = new Uint8Array(body);
-      } else if (!body) {
-        zeroCopyBuf = new Uint8Array(0);
+
+      const innerResp = toInnerResponse(resp);
+
+      // If response body length is known, it will be sent synchronously in a
+      // single op, in other case a "response body" resource will be created and
+      // we'll be streaming it.
+      /** @type {ReadableStream<Uint8Array> | Uint8Array | null} */
+      let respBody = null;
+      if (innerResp.body !== null) {
+        if (innerResp.body.unusable()) throw new TypeError("Body is unusable.");
+        if (innerResp.body.streamOrStatic instanceof ReadableStream) {
+          if (innerResp.body.length === null) {
+            respBody = innerResp.body.stream;
+          } else {
+            const reader = innerResp.body.stream.getReader();
+            const r1 = await reader.read();
+            if (r1.done) {
+              respBody = new Uint8Array(0);
+            } else {
+              respBody = r1.value;
+              const r2 = await reader.read();
+              if (!r2.done) throw new TypeError("Unreachable");
+            }
+          }
+        } else {
+          innerResp.body.streamOrStatic.consumed = true;
+          respBody = innerResp.body.streamOrStatic.body;
+        }
       } else {
-        zeroCopyBuf = null;
+        respBody = new Uint8Array(0);
       }
 
-      const responseBodyRid = await Deno.core.opAsync("op_http_response", [
-        responseSenderRid,
-        resp.status ?? 200,
-        flattenHeaders(resp.headers),
-      ], zeroCopyBuf);
+      let responseBodyRid;
+      try {
+        responseBodyRid = await Deno.core.opAsync("op_http_response", [
+          responseSenderRid,
+          innerResp.status ?? 200,
+          innerResp.headerList,
+        ], respBody instanceof Uint8Array ? respBody : null);
+      } catch (error) {
+        const connError = httpConn[connErrorSymbol];
+        if (error instanceof errors.BadResource && connError != null) {
+          // deno-lint-ignore no-ex-assign
+          error = new connError.constructor(connError.message);
+        }
+        if (respBody !== null && respBody instanceof ReadableStream) {
+          await respBody.cancel(error);
+        }
+        throw error;
+      }
 
       // If `respond` returns a responseBodyRid, we should stream the body
       // to that resource.
-      if (typeof responseBodyRid === "number") {
-        if (!body || !(body instanceof ReadableStream)) {
-          throw new Error(
-            "internal error: recieved responseBodyRid, but response has no body or is not a stream",
-          );
+      if (responseBodyRid !== null) {
+        try {
+          if (respBody === null || !(respBody instanceof ReadableStream)) {
+            throw new TypeError("Unreachable");
+          }
+          const reader = respBody.getReader();
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            if (!(value instanceof Uint8Array)) {
+              await reader.cancel(new TypeError("Value not a Uint8Array"));
+              break;
+            }
+            try {
+              await Deno.core.opAsync(
+                "op_http_response_write",
+                responseBodyRid,
+                value,
+              );
+            } catch (error) {
+              const connError = httpConn[connErrorSymbol];
+              if (error instanceof errors.BadResource && connError != null) {
+                // deno-lint-ignore no-ex-assign
+                error = new connError.constructor(connError.message);
+              }
+              await reader.cancel(error);
+              throw error;
+            }
+          }
+        } finally {
+          // Once all chunks are sent, and the request body is closed, we can
+          // close the response body.
+          try {
+            await Deno.core.opAsync("op_http_response_close", responseBodyRid);
+          } catch { /* pass */ }
         }
-        for await (const chunk of body) {
-          const data = new Uint8Array(
-            chunk.buffer,
-            chunk.byteOffset,
-            chunk.byteLength,
-          );
-          await Deno.core.opAsync(
-            "op_http_response_write",
-            responseBodyRid,
-            data,
-          );
-        }
-
-        // Once all chunks are sent, and the request body is closed, we can close
-        // the response body.
-        await Deno.core.opAsync("op_http_response_close", responseBodyRid);
       }
     };
   }

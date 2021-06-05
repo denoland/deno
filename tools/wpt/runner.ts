@@ -1,3 +1,4 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { delay, join, readLines, ROOT_PATH } from "../util.js";
 import { assert, ManifestTestOptions, release, runPy } from "./utils.ts";
 import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.3-alpha2/deno-dom-wasm.ts";
@@ -20,11 +21,14 @@ export async function runWithTestUtil<T>(
       if (req.status == 200) {
         break;
       }
-    } catch (err) {
+    } catch (_err) {
       // do nothing if this fails
     }
     const passedTime = performance.now() - start;
     if (passedTime > 15000) {
+      proc.kill(2);
+      await proc.status();
+      proc.close();
       throw new Error("Timed out while trying to start wpt test util.");
     }
   }
@@ -57,7 +61,7 @@ export interface TestCaseResult {
 
 export async function runSingleTest(
   url: URL,
-  options: ManifestTestOptions,
+  _options: ManifestTestOptions,
   reporter: (result: TestCaseResult) => void,
 ): Promise<TestResult> {
   const bundle = await generateBundle(url);
@@ -72,8 +76,11 @@ export async function runSingleTest(
       join(ROOT_PATH, `./target/${release ? "release" : "debug"}/deno`),
       "run",
       "-A",
+      "--unstable",
       "--location",
       url.toString(),
+      "--cert",
+      join(ROOT_PATH, `./test_util/wpt/tools/certs/cacert.pem`),
       tempFile,
       "[]",
     ],
@@ -96,6 +103,7 @@ export async function runSingleTest(
       reporter(result);
     } else {
       stderr += line + "\n";
+      console.error(stderr);
     }
   }
 

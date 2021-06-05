@@ -36,6 +36,10 @@ pub fn type_error(message: impl Into<Cow<'static, str>>) -> AnyError {
   custom_error("TypeError", message)
 }
 
+pub fn invalid_hostname(hostname: &str) -> AnyError {
+  type_error(format!("Invalid hostname: '{}'", hostname))
+}
+
 pub fn uri_error(message: impl Into<Cow<'static, str>>) -> AnyError {
   custom_error("URIError", message)
 }

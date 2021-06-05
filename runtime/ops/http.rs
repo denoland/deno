@@ -1,7 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ops::io::TcpStreamResource;
-use crate::ops::io::TlsServerStreamResource;
+use crate::ops::io::TlsStreamResource;
+use crate::ops::tls::TlsStream;
 use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
@@ -10,10 +11,12 @@ use deno_core::futures::future::poll_fn;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
+use deno_core::op_async;
+use deno_core::op_sync;
 use deno_core::AsyncRefCell;
-use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -32,6 +35,7 @@ use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::future::Future;
+use std::net::SocketAddr;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Context;
@@ -39,18 +43,19 @@ use std::task::Poll;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
 use tokio::sync::oneshot;
-use tokio_rustls::server::TlsStream;
 use tokio_util::io::StreamReader;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_sync(rt, "op_http_start", op_http_start);
-
-  super::reg_async(rt, "op_http_request_next", op_http_request_next);
-  super::reg_async(rt, "op_http_request_read", op_http_request_read);
-
-  super::reg_async(rt, "op_http_response", op_http_response);
-  super::reg_async(rt, "op_http_response_write", op_http_response_write);
-  super::reg_async(rt, "op_http_response_close", op_http_response_close);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_http_start", op_sync(op_http_start)),
+      ("op_http_request_next", op_async(op_http_request_next)),
+      ("op_http_request_read", op_async(op_http_request_read)),
+      ("op_http_response", op_async(op_http_response)),
+      ("op_http_response_write", op_async(op_http_response_write)),
+      ("op_http_response_close", op_async(op_http_response_close)),
+    ])
+    .build()
 }
 
 struct ServiceInner {
@@ -94,12 +99,14 @@ impl HyperService<Request<Body>> for Service {
 
 enum ConnType {
   Tcp(Rc<RefCell<Connection<TcpStream, Service, LocalExecutor>>>),
-  Tls(Rc<RefCell<Connection<TlsStream<TcpStream>, Service, LocalExecutor>>>),
+  Tls(Rc<RefCell<Connection<TlsStream, Service, LocalExecutor>>>),
 }
 
 struct ConnResource {
   hyper_connection: ConnType,
   deno_service: Service,
+  addr: SocketAddr,
+  cancel: CancelHandle,
 }
 
 impl ConnResource {
@@ -116,6 +123,10 @@ impl ConnResource {
 impl Resource for ConnResource {
   fn name(&self) -> Cow<str> {
     "httpConnection".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel()
   }
 }
 
@@ -138,13 +149,15 @@ struct NextRequestResponse(
 async fn op_http_request_next(
   state: Rc<RefCell<OpState>>,
   conn_rid: ResourceId,
-  _data: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<Option<NextRequestResponse>, AnyError> {
   let conn_resource = state
     .borrow()
     .resource_table
     .get::<ConnResource>(conn_rid)
     .ok_or_else(bad_resource_id)?;
+
+  let cancel = RcRef::map(conn_resource.clone(), |r| &r.cancel);
 
   poll_fn(|cx| {
     let connection_closed = match conn_resource.poll(cx) {
@@ -190,7 +203,23 @@ async fn op_http_request_next(
         headers.push((name, value));
       }
 
-      let url = req.uri().to_string();
+      let url = {
+        let scheme = {
+          match conn_resource.hyper_connection {
+            ConnType::Tcp(_) => "http",
+            ConnType::Tls(_) => "https",
+          }
+        };
+        let host: Cow<str> = if let Some(host) = req.uri().host() {
+          Cow::Borrowed(host)
+        } else if let Some(host) = req.headers().get("HOST") {
+          Cow::Borrowed(host.to_str()?)
+        } else {
+          Cow::Owned(conn_resource.addr.to_string())
+        };
+        let path = req.uri().path_and_query().unwrap();
+        format!("{}://{}{}", scheme, host, path)
+      };
 
       let has_body = if let Some(exact_size) = req.size_hint().exact() {
         exact_size > 0
@@ -234,6 +263,7 @@ async fn op_http_request_next(
       Poll::Pending
     }
   })
+  .try_or_cancel(cancel)
   .await
   .map_err(AnyError::from)
 }
@@ -255,7 +285,7 @@ fn should_ignore_error(e: &AnyError) -> bool {
 fn op_http_start(
   state: &mut OpState,
   tcp_stream_rid: ResourceId,
-  _data: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<ResourceId, AnyError> {
   let deno_service = Service::default();
 
@@ -267,12 +297,15 @@ fn op_http_start(
       .expect("Only a single use of this resource should happen");
     let (read_half, write_half) = resource.into_inner();
     let tcp_stream = read_half.reunite(write_half)?;
+    let addr = tcp_stream.local_addr()?;
     let hyper_connection = Http::new()
       .with_executor(LocalExecutor)
       .serve_connection(tcp_stream, deno_service.clone());
     let conn_resource = ConnResource {
       hyper_connection: ConnType::Tcp(Rc::new(RefCell::new(hyper_connection))),
       deno_service,
+      addr,
+      cancel: CancelHandle::default(),
     };
     let rid = state.resource_table.add(conn_resource);
     return Ok(rid);
@@ -280,12 +313,13 @@ fn op_http_start(
 
   if let Some(resource_rc) = state
     .resource_table
-    .take::<TlsServerStreamResource>(tcp_stream_rid)
+    .take::<TlsStreamResource>(tcp_stream_rid)
   {
     let resource = Rc::try_unwrap(resource_rc)
       .expect("Only a single use of this resource should happen");
     let (read_half, write_half) = resource.into_inner();
-    let tls_stream = read_half.unsplit(write_half);
+    let tls_stream = read_half.reunite(write_half);
+    let addr = tls_stream.get_ref().0.local_addr()?;
 
     let hyper_connection = Http::new()
       .with_executor(LocalExecutor)
@@ -293,6 +327,8 @@ fn op_http_start(
     let conn_resource = ConnResource {
       hyper_connection: ConnType::Tls(Rc::new(RefCell::new(hyper_connection))),
       deno_service,
+      addr,
+      cancel: CancelHandle::default(),
     };
     let rid = state.resource_table.add(conn_resource);
     return Ok(rid);
@@ -309,7 +345,7 @@ struct RespondArgs(
   // status:
   u16,
   // headers:
-  Vec<String>,
+  Vec<(String, String)>,
 );
 
 async fn op_http_response(
@@ -336,11 +372,9 @@ async fn op_http_response(
 
   let mut builder = Response::builder().status(status);
 
-  debug_assert_eq!(headers.len() % 2, 0);
-  let headers_count = headers.len() / 2;
-  builder.headers_mut().unwrap().reserve(headers_count);
-  for i in 0..headers_count {
-    builder = builder.header(&headers[2 * i], &headers[2 * i + 1]);
+  builder.headers_mut().unwrap().reserve(headers.len());
+  for (key, value) in &headers {
+    builder = builder.header(key, value);
   }
 
   let res;
@@ -356,7 +390,6 @@ async fn op_http_response(
     let response_body_rid =
       state.borrow_mut().resource_table.add(ResponseBodyResource {
         body: AsyncRefCell::new(sender),
-        cancel: CancelHandle::default(),
         conn_rid: response_sender.conn_rid,
       });
 
@@ -382,7 +415,7 @@ async fn op_http_response(
 async fn op_http_response_close(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _data: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -459,12 +492,8 @@ async fn op_http_response_write(
     .ok_or_else(bad_resource_id)?;
 
   let mut body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
-  let cancel = RcRef::map(resource, |r| &r.cancel);
 
-  let mut send_data_fut = body
-    .send_data(Vec::from(&*buf).into())
-    .or_cancel(cancel)
-    .boxed_local();
+  let mut send_data_fut = body.send_data(Vec::from(&*buf).into()).boxed_local();
 
   poll_fn(|cx| {
     if let Poll::Ready(Err(e)) = conn_resource.poll(cx) {
@@ -476,8 +505,7 @@ async fn op_http_response_write(
 
     send_data_fut.poll_unpin(cx).map_err(AnyError::from)
   })
-  .await?
-  .unwrap(); // panic on send_data error
+  .await?;
 
   Ok(())
 }
@@ -495,6 +523,10 @@ impl Resource for RequestBodyResource {
   fn name(&self) -> Cow<str> {
     "requestBody".into()
   }
+
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel()
+  }
 }
 
 struct ResponseSenderResource {
@@ -510,7 +542,6 @@ impl Resource for ResponseSenderResource {
 
 struct ResponseBodyResource {
   body: AsyncRefCell<hyper::body::Sender>,
-  cancel: CancelHandle,
   conn_rid: ResourceId,
 }
 
