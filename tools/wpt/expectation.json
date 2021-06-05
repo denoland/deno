@@ -174,7 +174,9 @@
       "event.any.html": true
     },
     "events": {
-      "AddEventListenerOptions-signal.any.html": true,
+      "AddEventListenerOptions-signal.any.html": [
+        "Passing null as the signal should throw"
+      ],
       "Event-isTrusted.any.html": true,
       "EventTarget-constructible.any.html": true,
       "Event-constructors.any.html": [
@@ -535,6 +537,7 @@
         "getReader({mode: \"byob\"}) throws on non-bytes streams",
         "ReadableStream with byte source can be constructed with no errors",
         "getReader({mode}) must perform ToString()",
+        "ReadableStream with byte source: autoAllocateChunkSize cannot be 0",
         "ReadableStreamBYOBReader can be constructed directly",
         "ReadableStreamBYOBReader constructor requires a ReadableStream argument",
         "ReadableStreamBYOBReader constructor requires an unlocked ReadableStream",
@@ -589,7 +592,8 @@
         "ReadableStream with byte source: respondWithNewView() with a zero-length view (in the closed state)",
         "ReadableStream with byte source: respondWithNewView() with a transferred non-zero-length view (in the readable state)",
         "ReadableStream with byte source: respondWithNewView() with a transferred zero-length view (in the closed state)"
-      ]
+      ],
+      "non-transferable-buffers.any.html": false
     },
     "readable-streams": {
       "async-iterator.any.html": [
@@ -648,6 +652,7 @@
     "writable-streams": {
       "aborting.any.html": false,
       "bad-strategies.any.html": [
+        "reject any non-function value for strategy.size",
         "Writable stream: invalid size beats invalid highWaterMark"
       ],
       "bad-underlying-sinks.any.html": true,
@@ -655,6 +660,8 @@
       "close.any.html": false,
       "constructor.any.html": [
         "underlyingSink argument should be converted after queuingStrategy argument",
+        "WritableStreamDefaultController constructor should throw",
+        "WritableStreamDefaultController constructor should throw when passed an initialised WritableStream",
         "WritableStreamDefaultWriter should throw unless passed a WritableStream"
       ],
       "count-queuing-strategy.any.html": true,
@@ -684,7 +691,9 @@
       "Performance interface: operation mark(DOMString, optional PerformanceMarkOptions)",
       "Performance interface: operation clearMarks(optional DOMString)",
       "Performance interface: operation measure(DOMString, optional (DOMString or PerformanceMeasureOptions), optional DOMString)",
-      "Performance interface: operation clearMeasures(optional DOMString)"
+      "Performance interface: operation clearMeasures(optional DOMString)",
+      "Performance interface: calling mark(DOMString, optional PerformanceMarkOptions) on performance with too few arguments must throw TypeError",
+      "Performance interface: calling measure(DOMString, optional (DOMString or PerformanceMeasureOptions), optional DOMString) on performance with too few arguments must throw TypeError"
     ],
     "mark-entry-constructor.any.html": true,
     "mark-errors.any.html": true,
@@ -743,10 +752,7 @@
         "toString.any.html": true,
         "type.tentative.any.html": false,
         "constructor-shared.tentative.any.html": true,
-        "constructor-types.tentative.any.html": [
-          "Zero minimum",
-          "Non-zero minimum"
-        ]
+        "constructor-types.tentative.any.html": false
       },
       "module": {
         "constructor.any.html": true,
@@ -766,12 +772,10 @@
         "toString.any.html": true,
         "constructor-reftypes.tentative.any.html": [
           "initialize externref table with default value",
-          "initialize anyfunc table with default value"
+          "initialize anyfunc table with default value",
+          "initialize anyfunc table with a bad default value"
         ],
-        "constructor-types.tentative.any.html": [
-          "Zero minimum",
-          "Non-zero minimum"
-        ],
+        "constructor-types.tentative.any.html": false,
         "grow-reftypes.tentative.any.html": false,
         "set-reftypes.tentative.any.html": false,
         "type.tentative.any.html": false
@@ -835,7 +839,6 @@
       "URL interface: attribute searchParams",
       "URL interface: attribute hash",
       "URL interface: operation toJSON()",
-      "URL interface: legacy window alias",
       "Stringification of new URL(\"http://foo\")",
       "URLSearchParams interface: operation append(USVString, USVString)",
       "URLSearchParams interface: operation delete(USVString)",
@@ -849,6 +852,12 @@
       "Stringification of new URLSearchParams(\"hi=there&thank=you\")"
     ],
     "url-constructor.any.html": [
+      "Parsing: <file://%43%7C> against <about:blank>",
+      "Parsing: <file://%43|> against <about:blank>",
+      "Parsing: <file://C%7C> against <about:blank>",
+      "Parsing: <file://%43%7C/> against <about:blank>",
+      "Parsing: <https://%43%7C/> against <about:blank>",
+      "Parsing: <asdf://%43|/> against <about:blank>",
       "Parsing: </> against <file://h/C:/a/b>",
       "Parsing: <file:\\\\//> against <about:blank>",
       "Parsing: <file:\\\\\\\\> against <about:blank>",
@@ -933,13 +942,30 @@
     "urlsearchparams-has.any.html": true,
     "urlsearchparams-set.any.html": true,
     "urlsearchparams-sort.any.html": true,
-    "urlsearchparams-stringifier.any.html": true
+    "urlsearchparams-stringifier.any.html": true,
+    "url-setters.any.html": [
+      "URL: Setting <http://example.net/path>.hostname = 'example.com:8080' : delimiter invalidates entire value",
+      "URL: Setting <http://example.net:8080/path>.hostname = 'example.com:' : delimiter invalidates entire value",
+      "URL: Setting <non-spec:/.//p>.hostname = 'h' Drop /. from path",
+      "URL: Setting <non-spec:/.//p>.hostname = ''",
+      "URL: Setting <file://monkey/>.pathname = '\\\\' File URLs and (back)slashes",
+      "URL: Setting <file:///unicorn>.pathname = '//\\/' File URLs and (back)slashes",
+      "URL: Setting <file:///unicorn>.pathname = '//monkey/..//' File URLs and (back)slashes",
+      "URL: Setting <non-spec:/>.pathname = '/.//p' Serialize /. in path",
+      "URL: Setting <non-spec:/>.pathname = '/..//p'",
+      "URL: Setting <non-spec:/>.pathname = '//p'",
+      "URL: Setting <non-spec:/.//>.pathname = 'p' Drop /. from path"
+    ]
   },
   "fetch": {
     "api": {
       "request": {
         "request-init-002.any.html": true,
-        "request-init-stream.any.html": true,
+        "request-init-stream.any.html": [
+          "Constructing a Request with a Request on which body.getReader() is called",
+          "Constructing a Request with a Request on which body.getReader().read() is called",
+          "Constructing a Request with a Request on which read() and releaseLock() are called"
+        ],
         "request-consume-empty.any.html": [
           "Consume empty FormData request body as text"
         ],
@@ -1123,6 +1149,7 @@
         "Response interface: operation redirect(USVString, optional unsigned short)",
         "Response interface: attribute body",
         "Response interface: attribute bodyUsed",
+        "Response interface: calling redirect(USVString, optional unsigned short) on new Response() with too few arguments must throw TypeError",
         "Window interface: operation fetch(RequestInfo, optional RequestInit)"
       ]
     },
