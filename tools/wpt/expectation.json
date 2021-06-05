@@ -92,14 +92,9 @@
       "successes_RSA-PSS.https.any.html": true,
       "successes_RSASSA-PKCS1-v1_5.https.any.html": true
     },
-    "historical.any.html": true,
+    "historical.any.html": false,
     "idlharness.https.any.html": [
-      "Crypto interface: existence and properties of interface object",
       "Crypto interface object length",
-      "Crypto interface object name",
-      "Crypto interface: existence and properties of interface prototype object",
-      "Crypto interface: existence and properties of interface prototype object's \"constructor\" property",
-      "Crypto interface: existence and properties of interface prototype object's @@unscopables property",
       "Crypto interface: attribute subtle",
       "Crypto interface: operation getRandomValues(ArrayBufferView)",
       "Crypto must be primary interface of crypto",
