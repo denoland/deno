@@ -35,7 +35,14 @@
   /** Clone a value in a similar way to structured cloning.  It is similar to a
  * StructureDeserialize(StructuredSerialize(...)). */
   function cloneValue(value) {
-    return Deno.core.deserialize(Deno.core.serialize(value));
+    try {
+      return Deno.core.deserialize(Deno.core.serialize(value));
+    } catch (e) {
+      if (e instanceof TypeError) {
+        throw new DOMException("Uncloneable value", "DataCloneError");
+      }
+      throw e;
+    }
   }
 
   const handlerSymbol = Symbol("eventHandlers");
