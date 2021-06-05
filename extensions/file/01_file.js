@@ -12,6 +12,7 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
 
   // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
@@ -85,9 +86,6 @@
     return finalBytes;
   }
 
-  const utf8Encoder = new TextEncoder();
-  const utf8Decoder = new TextDecoder();
-
   /** @typedef {BufferSource | Blob | string} BlobPart */
 
   /**
@@ -116,7 +114,7 @@
         if (endings == "native") {
           s = convertLineEndingsToNative(s);
         }
-        bytesArrays.push(utf8Encoder.encode(s));
+        bytesArrays.push(core.encode(s));
       } else {
         throw new TypeError("Unreachable code (invalild element type)");
       }
@@ -276,7 +274,7 @@
     async text() {
       webidl.assertBranded(this, Blob);
       const buffer = await this.arrayBuffer();
-      return utf8Decoder.decode(buffer);
+      return core.decode(new Uint8Array(buffer));
     }
 
     /**

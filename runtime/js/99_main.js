@@ -16,6 +16,8 @@ delete Object.prototype.__proto__;
   const errorStack = window.__bootstrap.errorStack;
   const os = window.__bootstrap.os;
   const timers = window.__bootstrap.timers;
+  const base64 = window.__bootstrap.base64;
+  const encoding = window.__bootstrap.encoding;
   const Console = window.__bootstrap.console.Console;
   const worker = window.__bootstrap.worker;
   const signals = window.__bootstrap.signals;
@@ -198,6 +200,12 @@ delete Object.prototype.__proto__;
         return new DOMException(msg, "NotSupported");
       },
     );
+    core.registerErrorBuilder(
+      "DOMExceptionInvalidCharacterError",
+      function DOMExceptionInvalidCharacterError(msg) {
+        return new DOMException(msg, "InvalidCharacterError");
+      },
+    );
   }
 
   class Navigator {
@@ -277,8 +285,8 @@ delete Object.prototype.__proto__;
     ),
     Request: util.nonEnumerable(fetch.Request),
     Response: util.nonEnumerable(fetch.Response),
-    TextDecoder: util.nonEnumerable(TextDecoder),
-    TextEncoder: util.nonEnumerable(TextEncoder),
+    TextDecoder: util.nonEnumerable(encoding.TextDecoder),
+    TextEncoder: util.nonEnumerable(encoding.TextEncoder),
     TransformStream: util.nonEnumerable(streams.TransformStream),
     URL: util.nonEnumerable(url.URL),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
@@ -289,14 +297,22 @@ delete Object.prototype.__proto__;
     WritableStreamDefaultWriter: util.nonEnumerable(
       streams.WritableStreamDefaultWriter,
     ),
-    atob: util.writable(atob),
-    btoa: util.writable(btoa),
+    ReadableByteStreamController: util.nonEnumerable(
+      streams.ReadableByteStreamController,
+    ),
+    TransformStreamDefaultController: util.nonEnumerable(
+      streams.TransformStreamDefaultController,
+    ),
+    atob: util.writable(base64.atob),
+    btoa: util.writable(base64.btoa),
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
     console: util.writable(
       new Console((msg, level) => core.print(msg, level > 1)),
     ),
-    crypto: util.readOnly(crypto),
+    crypto: util.readOnly(crypto.crypto),
+    Crypto: util.nonEnumerable(crypto.Crypto),
+    SubtleCrypto: util.nonEnumerable(crypto.SubtleCrypto),
     fetch: util.writable(fetch.fetch),
     performance: util.writable(performance.performance),
     setInterval: util.writable(timers.setInterval),

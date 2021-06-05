@@ -15,13 +15,9 @@ use lspower::jsonrpc::Result as LspResult;
 use lspower::lsp::request::*;
 use lspower::lsp::*;
 use lspower::Client;
-use regex::Regex;
 use serde_json::from_value;
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::fs;
@@ -31,10 +27,9 @@ use super::analysis::fix_ts_import_changes;
 use super::analysis::ts_changes_to_edit;
 use super::analysis::CodeActionCollection;
 use super::analysis::CodeActionData;
-use super::analysis::CodeLensData;
-use super::analysis::CodeLensSource;
 use super::analysis::ResolvedDependency;
 use super::capabilities;
+use super::code_lens;
 use super::completions;
 use super::config::Config;
 use super::config::ConfigSnapshot;
@@ -67,11 +62,6 @@ use crate::tools::fmt::get_typescript_config;
 pub const REGISTRIES_PATH: &str = "registries";
 const SOURCES_PATH: &str = "deps";
 
-lazy_static::lazy_static! {
-  static ref ABSTRACT_MODIFIER: Regex = Regex::new(r"\babstract\b").unwrap();
-  static ref EXPORT_MODIFIER: Regex = Regex::new(r"\bexport\b").unwrap();
-}
-
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::Mutex<Inner>>);
 
@@ -94,7 +84,7 @@ pub(crate) struct Inner {
   /// The LSP client that this LSP server is connected to.
   pub(crate) client: Client,
   /// Configuration information.
-  config: Config,
+  pub(crate) config: Config,
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The "in-memory" documents in the editor which can be updated and changed.
   documents: DocumentCache,
@@ -109,8 +99,6 @@ pub(crate) struct Inner {
   pub(crate) maybe_import_map: Option<ImportMap>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
-  /// A map of all the cached navigation trees.
-  navigation_trees: HashMap<ModuleSpecifier, tsc::NavigationTree>,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Performance,
   /// Cached sources that are read-only.
@@ -155,7 +143,6 @@ impl Inner {
       maybe_import_map_uri: Default::default(),
       module_registries,
       module_registries_location,
-      navigation_trees: Default::default(),
       performance,
       sources,
       ts_fixable_diagnostics: Default::default(),
@@ -224,7 +211,7 @@ impl Inner {
 
   /// Only searches already cached assets and documents for a line index.  If
   /// the line index cannot be found, `None` is returned.
-  fn get_line_index_sync(
+  pub fn get_line_index_sync(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<LineIndex> {
@@ -269,7 +256,7 @@ impl Inner {
     }
   }
 
-  async fn get_navigation_tree(
+  pub(crate) async fn get_navigation_tree(
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Result<tsc::NavigationTree, AnyError> {
@@ -277,9 +264,19 @@ impl Inner {
       "get_navigation_tree",
       Some(json!({ "specifier": specifier })),
     );
-    if let Some(navigation_tree) = self.navigation_trees.get(specifier) {
-      self.performance.measure(mark);
-      Ok(navigation_tree.clone())
+    let maybe_navigation_tree = if specifier.scheme() == "asset" {
+      self
+        .assets
+        .get(specifier)
+        .map(|o| o.clone().map(|a| a.maybe_navigation_tree).flatten())
+        .flatten()
+    } else if self.documents.contains_key(specifier) {
+      self.documents.get_navigation_tree(specifier)
+    } else {
+      self.sources.get_navigation_tree(specifier)
+    };
+    let navigation_tree = if let Some(navigation_tree) = maybe_navigation_tree {
+      navigation_tree
     } else {
       let navigation_tree: tsc::NavigationTree = self
         .ts_server
@@ -288,12 +285,23 @@ impl Inner {
           tsc::RequestMethod::GetNavigationTree(specifier.clone()),
         )
         .await?;
-      self
-        .navigation_trees
-        .insert(specifier.clone(), navigation_tree.clone());
-      self.performance.measure(mark);
-      Ok(navigation_tree)
-    }
+      if specifier.scheme() == "asset" {
+        self
+          .assets
+          .set_navigation_tree(specifier, navigation_tree.clone())?;
+      } else if self.documents.contains_key(specifier) {
+        self
+          .documents
+          .set_navigation_tree(specifier, navigation_tree.clone())?;
+      } else {
+        self
+          .sources
+          .set_navigation_tree(specifier, navigation_tree.clone())?;
+      }
+      navigation_tree
+    };
+    self.performance.measure(mark);
+    Ok(navigation_tree)
   }
 
   pub(crate) fn snapshot(&self) -> LspResult<StateSnapshot> {
@@ -674,7 +682,6 @@ impl Inner {
     }
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
     self.documents.close(&specifier);
-    self.navigation_trees.remove(&specifier);
 
     if self.documents.is_diagnosable(&specifier) {
       if let Err(err) = self.diagnostics_server.update() {
@@ -1090,302 +1097,36 @@ impl Inner {
     }
 
     let mark = self.performance.mark("code_lens", Some(&params));
-    let line_index = self.get_line_index_sync(&specifier).unwrap();
-    let navigation_tree =
-      self.get_navigation_tree(&specifier).await.map_err(|err| {
-        error!("Failed to retrieve nav tree: {}", err);
-        LspError::invalid_request()
+    let code_lenses = code_lens::tsc_code_lenses(&specifier, self)
+      .await
+      .map_err(|err| {
+        error!("Error getting code lenses for \"{}\": {}", specifier, err);
+        LspError::internal_error()
       })?;
-
-    // because we have to use this as a mutable in a closure, the compiler
-    // can't be sure when the vector will be mutated, and so a RefCell is
-    // required to "protect" the vector.
-    let cl = Rc::new(RefCell::new(Vec::new()));
-    navigation_tree.walk(&|i, mp| {
-      let mut code_lenses = cl.borrow_mut();
-      let workspace_settings = self.config.get_workspace_settings();
-
-      // TSC Implementations Code Lens
-      if workspace_settings.code_lens.implementations {
-        let source = CodeLensSource::Implementations;
-        match i.kind {
-          tsc::ScriptElementKind::InterfaceElement => {
-            code_lenses.push(i.to_code_lens(&line_index, &specifier, &source));
-          }
-          tsc::ScriptElementKind::ClassElement
-          | tsc::ScriptElementKind::MemberFunctionElement
-          | tsc::ScriptElementKind::MemberVariableElement
-          | tsc::ScriptElementKind::MemberGetAccessorElement
-          | tsc::ScriptElementKind::MemberSetAccessorElement => {
-            if ABSTRACT_MODIFIER.is_match(&i.kind_modifiers) {
-              code_lenses.push(i.to_code_lens(
-                &line_index,
-                &specifier,
-                &source,
-              ));
-            }
-          }
-          _ => (),
-        }
-      }
-
-      // TSC References Code Lens
-      if workspace_settings.code_lens.references {
-        let source = CodeLensSource::References;
-        if let Some(parent) = &mp {
-          if parent.kind == tsc::ScriptElementKind::EnumElement {
-            code_lenses.push(i.to_code_lens(&line_index, &specifier, &source));
-          }
-        }
-        match i.kind {
-          tsc::ScriptElementKind::FunctionElement => {
-            if workspace_settings.code_lens.references_all_functions {
-              code_lenses.push(i.to_code_lens(
-                &line_index,
-                &specifier,
-                &source,
-              ));
-            }
-          }
-          tsc::ScriptElementKind::ConstElement
-          | tsc::ScriptElementKind::LetElement
-          | tsc::ScriptElementKind::VariableElement => {
-            if EXPORT_MODIFIER.is_match(&i.kind_modifiers) {
-              code_lenses.push(i.to_code_lens(
-                &line_index,
-                &specifier,
-                &source,
-              ));
-            }
-          }
-          tsc::ScriptElementKind::ClassElement => {
-            if i.text != "<class>" {
-              code_lenses.push(i.to_code_lens(
-                &line_index,
-                &specifier,
-                &source,
-              ));
-            }
-          }
-          tsc::ScriptElementKind::InterfaceElement
-          | tsc::ScriptElementKind::TypeElement
-          | tsc::ScriptElementKind::EnumElement => {
-            code_lenses.push(i.to_code_lens(&line_index, &specifier, &source));
-          }
-          tsc::ScriptElementKind::LocalFunctionElement
-          | tsc::ScriptElementKind::MemberGetAccessorElement
-          | tsc::ScriptElementKind::MemberSetAccessorElement
-          | tsc::ScriptElementKind::ConstructorImplementationElement
-          | tsc::ScriptElementKind::MemberVariableElement => {
-            if let Some(parent) = &mp {
-              if parent.spans[0].start != i.spans[0].start {
-                match parent.kind {
-                  tsc::ScriptElementKind::ClassElement
-                  | tsc::ScriptElementKind::InterfaceElement
-                  | tsc::ScriptElementKind::TypeElement => {
-                    code_lenses.push(i.to_code_lens(
-                      &line_index,
-                      &specifier,
-                      &source,
-                    ));
-                  }
-                  _ => (),
-                }
-              }
-            }
-          }
-          _ => (),
-        }
-      }
-    });
-
     self.performance.measure(mark);
-    Ok(Some(Rc::try_unwrap(cl).unwrap().into_inner()))
+
+    Ok(Some(code_lenses))
   }
 
   async fn code_lens_resolve(
     &mut self,
-    params: CodeLens,
+    code_lens: CodeLens,
   ) -> LspResult<CodeLens> {
-    let mark = self.performance.mark("code_lens_resolve", Some(&params));
-    if let Some(data) = params.data.clone() {
-      let code_lens_data: CodeLensData = serde_json::from_value(data)
-        .map_err(|err| LspError::invalid_params(err.to_string()))?;
-      let code_lens = match code_lens_data.source {
-        CodeLensSource::Implementations => {
-          let line_index =
-            self.get_line_index_sync(&code_lens_data.specifier).unwrap();
-          let req = tsc::RequestMethod::GetImplementation((
-            code_lens_data.specifier.clone(),
-            line_index.offset_tsc(params.range.start)?,
-          ));
-          let maybe_implementations: Option<Vec<tsc::ImplementationLocation>> =
-            self
-              .ts_server
-              .request(self.snapshot()?, req)
-              .await
-              .map_err(|err| {
-                error!("Error processing TypeScript request: {}", err);
-                LspError::internal_error()
-              })?;
-          if let Some(implementations) = maybe_implementations {
-            let mut locations = Vec::new();
-            for implementation in implementations {
-              let implementation_specifier = resolve_url(
-                &implementation.document_span.file_name,
-              )
-              .map_err(|err| {
-                error!("Invalid specifier returned from TypeScript: {}", err);
-                LspError::internal_error()
-              })?;
-              let implementation_location =
-                implementation.to_location(&line_index, self);
-              if !(implementation_specifier == code_lens_data.specifier
-                && implementation_location.range.start == params.range.start)
-              {
-                locations.push(implementation_location);
-              }
-            }
-            let command = if !locations.is_empty() {
-              let title = if locations.len() > 1 {
-                format!("{} implementations", locations.len())
-              } else {
-                "1 implementation".to_string()
-              };
-              let url = self
-                .url_map
-                .normalize_specifier(&code_lens_data.specifier)
-                .map_err(|err| {
-                  error!("{}", err);
-                  LspError::internal_error()
-                })?;
-              Command {
-                title,
-                command: "deno.showReferences".to_string(),
-                arguments: Some(vec![
-                  serde_json::to_value(url).unwrap(),
-                  serde_json::to_value(params.range.start).unwrap(),
-                  serde_json::to_value(locations).unwrap(),
-                ]),
-              }
-            } else {
-              Command {
-                title: "0 implementations".to_string(),
-                command: "".to_string(),
-                arguments: None,
-              }
-            };
-            CodeLens {
-              range: params.range,
-              command: Some(command),
-              data: None,
-            }
-          } else {
-            let command = Command {
-              title: "0 implementations".to_string(),
-              command: "".to_string(),
-              arguments: None,
-            };
-            CodeLens {
-              range: params.range,
-              command: Some(command),
-              data: None,
-            }
-          }
-        }
-        CodeLensSource::References => {
-          let line_index =
-            self.get_line_index_sync(&code_lens_data.specifier).unwrap();
-          let req = tsc::RequestMethod::GetReferences((
-            code_lens_data.specifier.clone(),
-            line_index.offset_tsc(params.range.start)?,
-          ));
-          let maybe_references: Option<Vec<tsc::ReferenceEntry>> = self
-            .ts_server
-            .request(self.snapshot()?, req)
-            .await
-            .map_err(|err| {
-              error!("Error processing TypeScript request: {}", err);
-              LspError::internal_error()
-            })?;
-          if let Some(references) = maybe_references {
-            let mut locations = Vec::new();
-            for reference in references {
-              if reference.is_definition {
-                continue;
-              }
-              let reference_specifier = resolve_url(
-                &reference.document_span.file_name,
-              )
-              .map_err(|err| {
-                error!("Invalid specifier returned from TypeScript: {}", err);
-                LspError::internal_error()
-              })?;
-              let line_index = self
-                .get_line_index(reference_specifier)
-                .await
-                .map_err(|err| {
-                error!("Unable to get line index: {}", err);
-                LspError::internal_error()
-              })?;
-              locations.push(reference.to_location(&line_index, self));
-            }
-            let command = if !locations.is_empty() {
-              let title = if locations.len() > 1 {
-                format!("{} references", locations.len())
-              } else {
-                "1 reference".to_string()
-              };
-              let url = self
-                .url_map
-                .normalize_specifier(&code_lens_data.specifier)
-                .map_err(|err| {
-                  error!("{}", err);
-                  LspError::internal_error()
-                })?;
-              Command {
-                title,
-                command: "deno.showReferences".to_string(),
-                arguments: Some(vec![
-                  serde_json::to_value(url).unwrap(),
-                  serde_json::to_value(params.range.start).unwrap(),
-                  serde_json::to_value(locations).unwrap(),
-                ]),
-              }
-            } else {
-              Command {
-                title: "0 references".to_string(),
-                command: "".to_string(),
-                arguments: None,
-              }
-            };
-            CodeLens {
-              range: params.range,
-              command: Some(command),
-              data: None,
-            }
-          } else {
-            let command = Command {
-              title: "0 references".to_string(),
-              command: "".to_string(),
-              arguments: None,
-            };
-            CodeLens {
-              range: params.range,
-              command: Some(command),
-              data: None,
-            }
-          }
-        }
-      };
-      self.performance.measure(mark);
-      Ok(code_lens)
+    let mark = self.performance.mark("code_lens_resolve", Some(&code_lens));
+    let result = if code_lens.data.is_some() {
+      code_lens::resolve_code_lens(code_lens, self)
+        .await
+        .map_err(|err| {
+          error!("Error resolving code lens: {}", err);
+          LspError::internal_error()
+        })
     } else {
-      self.performance.measure(mark);
       Err(LspError::invalid_params(
         "Code lens is missing the \"data\" property.",
       ))
-    }
+    };
+    self.performance.measure(mark);
+    result
   }
 
   async fn document_highlight(

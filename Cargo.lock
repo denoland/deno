@@ -644,9 +644,11 @@ name = "deno_crypto"
 version = "0.21.1"
 dependencies = [
  "deno_core",
+ "deno_web",
  "rand 0.8.3",
  "ring",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -783,8 +785,11 @@ dependencies = [
 name = "deno_web"
 version = "0.38.1"
 dependencies = [
+ "base64 0.13.0",
  "deno_core",
+ "encoding_rs",
  "futures",
+ "serde",
 ]
 
 [[package]]
@@ -824,6 +829,7 @@ name = "deno_webstorage"
 version = "0.2.1"
 dependencies = [
  "deno_core",
+ "deno_web",
  "rusqlite",
  "serde",
 ]

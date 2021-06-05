@@ -15,7 +15,6 @@ use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleResolutionError;
@@ -392,21 +391,6 @@ pub fn analyze_dependencies(
   }
 
   (dependencies, maybe_type)
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub enum CodeLensSource {
-  #[serde(rename = "implementations")]
-  Implementations,
-  #[serde(rename = "references")]
-  References,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodeLensData {
-  pub source: CodeLensSource,
-  pub specifier: ModuleSpecifier,
 }
 
 fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
