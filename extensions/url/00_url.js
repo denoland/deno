@@ -58,14 +58,14 @@
       urls.set(this, null);
     }
 
-    #updateUrlSearch = () => {
+    #updateUrlSearch() {
       const url = urls.get(this);
       if (url == null) {
         return;
       }
       const parseArgs = { href: url.href, setSearch: this.toString() };
       parts.set(url, core.opSync("op_url_parse", parseArgs));
-    };
+    }
 
     append(name, value) {
       requiredArguments("URLSearchParams.append", arguments.length, 2);
@@ -227,7 +227,7 @@
       return `${this.constructor.name} ${inspect(object)}`;
     }
 
-    #updateSearchParams = () => {
+    #updateSearchParams() {
       if (this.#searchParams != null) {
         const params = paramLists.get(this.#searchParams);
         const newParams = core.opSync(
@@ -236,7 +236,7 @@
         );
         params.splice(0, params.length, ...newParams);
       }
-    };
+    }
 
     get hash() {
       return parts.get(this).hash;

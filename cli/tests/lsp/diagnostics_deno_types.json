@@ -1,0 +1,101 @@
+{
+  "uri": "file:///a/file.ts",
+  "diagnostics": [
+    {
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 21
+        },
+        "end": {
+          "line": 0,
+          "character": 51
+        }
+      },
+      "severity": 1,
+      "code": "no-cache",
+      "source": "deno",
+      "message": "Uncached or missing remote URL: \"https://example.com/a/b.d.ts\".",
+      "data": {
+        "specifier": "https://example.com/a/b.d.ts"
+      }
+    },
+    {
+      "range": {
+        "start": {
+          "line": 7,
+          "character": 19
+        },
+        "end": {
+          "line": 7,
+          "character": 47
+        }
+      },
+      "severity": 1,
+      "code": "no-cache",
+      "source": "deno",
+      "message": "Uncached or missing remote URL: \"https://example.com/a/e.js\".",
+      "data": {
+        "specifier": "https://example.com/a/e.js"
+      }
+    },
+    {
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 16
+        },
+        "end": {
+          "line": 6,
+          "character": 44
+        }
+      },
+      "severity": 1,
+      "code": "no-cache",
+      "source": "deno",
+      "message": "Uncached or missing remote URL: \"https://example.com/a/e.d.ts\".",
+      "data": {
+        "specifier": "https://example.com/a/e.d.ts"
+      }
+    },
+    {
+      "range": {
+        "start": {
+          "line": 4,
+          "character": 19
+        },
+        "end": {
+          "line": 4,
+          "character": 47
+        }
+      },
+      "severity": 1,
+      "code": "no-cache",
+      "source": "deno",
+      "message": "Uncached or missing remote URL: \"https://example.com/a/d.js\".",
+      "data": {
+        "specifier": "https://example.com/a/d.js"
+      }
+    },
+    {
+      "range": {
+        "start": {
+          "line": 3,
+          "character": 15
+        },
+        "end": {
+          "line": 3,
+          "character": 43
+        }
+      },
+      "severity": 1,
+      "code": "no-cache",
+      "source": "deno",
+      "message": "Uncached or missing remote URL: \"https://example.com/a/d.d.ts\".",
+      "data": {
+        "specifier": "https://example.com/a/d.d.ts"
+      }
+    }
+  ],
+  "version": 1
+}

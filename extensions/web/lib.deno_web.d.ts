@@ -189,7 +189,7 @@ declare class TextDecoder {
     options?: { fatal?: boolean; ignoreBOM?: boolean },
   );
   /** Returns the result of running encoding's decoder. */
-  decode(input?: BufferSource, options?: { stream?: false }): string;
+  decode(input?: BufferSource, options?: { stream?: boolean }): string;
   readonly [Symbol.toStringTag]: string;
 }
 

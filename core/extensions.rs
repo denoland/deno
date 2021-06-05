@@ -1,7 +1,8 @@
 use crate::error::AnyError;
 use crate::{OpFn, OpState};
 
-pub type SourcePair = (&'static str, &'static str);
+pub type SourcePair = (&'static str, Box<SourceLoadFn>);
+pub type SourceLoadFn = dyn Fn() -> Result<String, AnyError>;
 pub type OpPair = (&'static str, Box<OpFn>);
 pub type OpMiddlewareFn = dyn Fn(&'static str, Box<OpFn>) -> Box<OpFn>;
 pub type OpStateFn = dyn Fn(&mut OpState) -> Result<(), AnyError>;
@@ -24,10 +25,10 @@ impl Extension {
 
   /// returns JS source code to be loaded into the isolate (either at snapshotting,
   /// or at startup).  as a vector of a tuple of the file name, and the source code.
-  pub fn init_js(&self) -> Vec<SourcePair> {
+  pub fn init_js(&self) -> &[SourcePair] {
     match &self.js_files {
-      Some(files) => files.clone(),
-      None => vec![],
+      Some(files) => files,
+      None => &[],
     }
   }
 
@@ -104,8 +105,9 @@ impl ExtensionBuilder {
     }
   }
 }
-/// Helps embed JS files in an extension. Returns Vec<(&'static str, &'static str)>
-/// representing the filename and source code.
+/// Helps embed JS files in an extension. Returns Vec<(&'static str, Box<SourceLoadFn>)>
+/// representing the filename and source code. This is only meant for extensions
+/// that will be snapshotted, as code will be loaded at runtime.
 ///
 /// Example:
 /// ```ignore
@@ -121,7 +123,13 @@ macro_rules! include_js_files {
     vec![
       $((
         concat!($prefix, "/", $file),
-        include_str!($file),
+        Box::new(|| {
+          let c = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+          let path = c.join($file);
+          println!("cargo:rerun-if-changed={}", path.display());
+          let src = std::fs::read_to_string(path)?;
+          Ok(src)
+        }),
       ),)+
     ]
   };

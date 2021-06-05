@@ -19,6 +19,33 @@ use test_util as util;
 use tokio::task::LocalSet;
 
 #[test]
+fn typecheck_declarations_ns() {
+  let status = util::deno_cmd()
+    .arg("test")
+    .arg("--doc")
+    .arg(util::root_path().join("cli/dts/lib.deno.ns.d.ts"))
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
+fn typecheck_declarations_unstable() {
+  let status = util::deno_cmd()
+    .arg("test")
+    .arg("--doc")
+    .arg("--unstable")
+    .arg(util::root_path().join("cli/dts/lib.deno.unstable.d.ts"))
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+  assert!(status.success());
+}
+
+#[test]
 fn js_unit_tests_lint() {
   let status = util::deno_cmd()
     .arg("lint")
@@ -2819,9 +2846,19 @@ console.log("finish");
     output: "041_info_flag.out",
   });
 
+  itest!(_042_info_flag_location {
+    args: "info --location https://deno.land",
+    output: "041_info_flag_location.out",
+  });
+
   itest!(info_json {
     args: "info --json --unstable",
     output: "info_json.out",
+  });
+
+  itest!(info_json_location {
+    args: "info --json --unstable --location https://deno.land",
+    output: "info_json_location.out",
   });
 
   itest!(_042_dyn_import_evalcontext {
@@ -3093,6 +3130,18 @@ console.log("finish");
   itest!(_091_use_define_for_class_fields {
     args: "run 091_use_define_for_class_fields.ts",
     output: "091_use_define_for_class_fields.ts.out",
+    exit_code: 1,
+  });
+
+  itest!(_092_import_map_unmapped_bare_specifier {
+    args: "run --import-map import_maps/import_map.json 092_import_map_unmapped_bare_specifier.ts",
+    output: "092_import_map_unmapped_bare_specifier.ts.out",
+    exit_code: 1,
+  });
+
+  itest!(_095_cache_with_bare_import {
+    args: "cache 095_cache_with_bare_import.ts",
+    output: "095_cache_with_bare_import.ts.out",
     exit_code: 1,
   });
 
@@ -3438,9 +3487,9 @@ console.log("finish");
     http_server: true,
   });
 
-  itest!(error_027_bare_import_error {
-    args: "bundle error_027_bare_import_error.ts",
-    output: "error_027_bare_import_error.ts.out",
+  itest!(error_027_bundle_with_bare_import {
+    args: "bundle error_027_bundle_with_bare_import.ts",
+    output: "error_027_bundle_with_bare_import.ts.out",
     exit_code: 1,
   });
 
@@ -4394,12 +4443,13 @@ console.log("finish");
     #[test]
     fn branch() {
       let tempdir = TempDir::new().expect("tempdir fail");
+      let tempdir = tempdir.path().join("cov");
       let status = util::deno_cmd()
         .current_dir(util::root_path())
         .arg("test")
         .arg("--quiet")
         .arg("--unstable")
-        .arg(format!("--coverage={}", tempdir.path().to_str().unwrap()))
+        .arg(format!("--coverage={}", tempdir.to_str().unwrap()))
         .arg("cli/tests/coverage/branch_test.ts")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::inherit())
@@ -4413,7 +4463,7 @@ console.log("finish");
         .arg("coverage")
         .arg("--quiet")
         .arg("--unstable")
-        .arg(format!("{}/", tempdir.path().to_str().unwrap()))
+        .arg(format!("{}/", tempdir.to_str().unwrap()))
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::inherit())
         .output()
@@ -4442,7 +4492,7 @@ console.log("finish");
         .arg("--quiet")
         .arg("--unstable")
         .arg("--lcov")
-        .arg(format!("{}/", tempdir.path().to_str().unwrap()))
+        .arg(format!("{}/", tempdir.to_str().unwrap()))
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::inherit())
         .output()

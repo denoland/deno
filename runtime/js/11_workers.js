@@ -7,7 +7,6 @@
   const { getLocationHref } = window.__bootstrap.location;
   const { log, pathFromURL } = window.__bootstrap.util;
   const { defineEventHandler } = window.__bootstrap.webUtil;
-  const build = window.__bootstrap.build.build;
 
   function createWorker(
     specifier,
@@ -193,16 +192,16 @@
       this.#poll();
     }
 
-    #handleMessage = (data) => {
+    #handleMessage(data) {
       const msgEvent = new MessageEvent("message", {
         cancelable: false,
         data,
       });
 
       this.dispatchEvent(msgEvent);
-    };
+    }
 
-    #handleError = (e) => {
+    #handleError(e) {
       const event = new ErrorEvent("error", {
         cancelable: true,
         message: e.message,
@@ -220,7 +219,7 @@
       }
 
       return handled;
-    };
+    }
 
     #poll = async () => {
       while (!this.#terminated) {
