@@ -3881,5 +3881,7 @@
     TransformStream,
     WritableStream,
     WritableStreamDefaultWriter,
+    ReadableByteStreamController,
+    TransformStreamDefaultController,
   };
 })(this);
