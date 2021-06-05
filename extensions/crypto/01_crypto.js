@@ -134,14 +134,11 @@
   async function generateKey(algorithm, extractable, keyUsages) {
     const normalizedAlgorithm = normalize(algorithm);
 
-    const { key, err } = await core.opAsync("op_webcrypto_generate_key", {
+    const { key } = await core.opAsync("op_webcrypto_generate_key", {
       algorithm: normalizedAlgorithm,
       extractable,
       keyUsages,
     }, normalizedAlgorithm.publicExponent || new Uint8Array());
-
-    // A DOMError.
-    if (err) throw new Error(err);
 
     if (key.single) {
       const { keyType } = key.single.key;
@@ -180,14 +177,13 @@
     const hash = simpleAlg ? null : alg.hash;
     const algorithm = (simpleAlg ? alg : alg.name).toLowerCase();
 
-    const { signature, err } = await core.opAsync("op_webcrypto_sign_key", {
+    const { signature } = await core.opAsync("op_webcrypto_sign_key", {
       rid,
       algorithm,
       saltLength,
       hash,
     }, data);
 
-    if (err) throw new DOMException(err);
     return new Uint8Array(signature);
   }
 

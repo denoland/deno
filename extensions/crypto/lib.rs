@@ -4,6 +4,7 @@
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op_async;
@@ -34,6 +35,7 @@ use ring::signature::EcdsaKeyPair;
 use ring::signature::EcdsaSigningAlgorithm;
 use rsa::padding::PaddingScheme;
 use rsa::BigUint;
+use rsa::PublicKeyParts;
 use rsa::RSAPrivateKey;
 use rsa::RSAPublicKey;
 use sha1::Sha1;
@@ -42,11 +44,8 @@ use std::path::PathBuf;
 
 pub use rand; // Re-export rand
 
-mod error;
 mod key;
 
-use crate::error::DomError;
-use crate::error::WebCryptoError;
 use crate::key::Algorithm;
 use crate::key::KeyUsage;
 use crate::key::WebCryptoHash;
@@ -160,10 +159,7 @@ macro_rules! validate_usage {
   ($e: expr, $u: expr) => {
     for usage in $e {
       if !$u.contains(&usage) {
-        return Ok(GenerateKeyResult {
-          key: None,
-          err: Some(DomError("Invalid key usage".to_string())),
-        });
+        return Err(type_error("Invalid usage"));
       }
     }
   };
@@ -171,8 +167,7 @@ macro_rules! validate_usage {
 
 #[derive(Serialize)]
 pub struct GenerateKeyResult {
-  key: Option<JsCryptoKey>,
-  err: Option<DomError>,
+  key: JsCryptoKey,
 }
 
 pub async fn op_webcrypto_generate_key(
@@ -188,10 +183,10 @@ pub async fn op_webcrypto_generate_key(
     Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss => {
       validate_usage!(&args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
       let exp = zero_copy.ok_or_else(|| {
-        WebCryptoError::MissingArgument("publicExponent".to_string())
+        type_error("Missing argument publicExponent".to_string())
       })?;
       let modulus_length = args.algorithm.modulus_length.ok_or_else(|| {
-        WebCryptoError::MissingArgument("modulusLength".to_string())
+        type_error("Missing argument modulusLength".to_string())
       })?;
 
       let exponent = BigUint::from_bytes_be(&exp);
@@ -209,10 +204,12 @@ pub async fn op_webcrypto_generate_key(
         },
       )
       .await
-      .unwrap()?;
+      .unwrap()
+      .map_err(|e| type_error(e.to_string()))?;
 
-      // Extract public key from private key.
-      let public_key = private_key.to_public_key();
+      let public_key =
+        RSAPublicKey::new(private_key.n().clone(), private_key.e().clone())
+          .map_err(|e| type_error(e.to_string()))?;
 
       // Create webcrypto keypair.
       let webcrypto_key_public = WebCryptoKey::new_public(
@@ -248,22 +245,16 @@ pub async fn op_webcrypto_generate_key(
       );
 
       // Determine agreement from algorithm named_curve.
-      let agreement: Result<&RingAlgorithm, WebCryptoError> = args
+      let agreement: Result<&RingAlgorithm, AnyError> = args
         .algorithm
         .named_curve
-        .ok_or_else(|| {
-          WebCryptoError::MissingArgument("namedCurve".to_string())
-        })?
+        .ok_or_else(|| type_error("Missing argument namedCurve".to_string()))?
         .try_into();
       if agreement.is_err() {
-        return Ok(GenerateKeyResult {
-          key: None,
-          err: Some(DomError("namedCurve not supported".to_string())),
-        });
+        return Err(type_error("namedCurve not supported".to_string()));
       }
-      // Generate private key from agreement and ring rng.
-      let rng = RingRand::SystemRandom::new();
 
+      let rng = RingRand::SystemRandom::new();
       let private_key: EphemeralPrivateKey = tokio::task::spawn_blocking(
         move || -> Result<EphemeralPrivateKey, ring::error::Unspecified> {
           EphemeralPrivateKey::generate(&agreement.unwrap(), &rng)
@@ -304,18 +295,13 @@ pub async fn op_webcrypto_generate_key(
     Algorithm::Ecdsa => {
       validate_usage!(&args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
 
-      let curve: Result<&EcdsaSigningAlgorithm, WebCryptoError> = args
+      let curve: Result<&EcdsaSigningAlgorithm, AnyError> = args
         .algorithm
         .named_curve
-        .ok_or_else(|| {
-          WebCryptoError::MissingArgument("namedCurve".to_string())
-        })?
+        .ok_or_else(|| type_error("Missing argument namedCurve".to_string()))?
         .try_into();
       if curve.is_err() {
-        return Ok(GenerateKeyResult {
-          key: None,
-          err: Some(DomError("namedCurve not supported".to_string())),
-        });
+        return Err(type_error("namedCurve not supported".to_string()));
       }
       let rng = RingRand::SystemRandom::new();
       let private_key: EcdsaKeyPair = tokio::task::spawn_blocking(
@@ -361,7 +347,7 @@ pub async fn op_webcrypto_generate_key(
       let hash: HmacAlgorithm = args
         .algorithm
         .hash
-        .ok_or_else(|| WebCryptoError::MissingArgument("hash".to_string()))?
+        .ok_or_else(|| type_error("Missing argument hash".to_string()))?
         .into();
       let rng = RingRand::SystemRandom::new();
       let key: HmacKey = tokio::task::spawn_blocking(
@@ -384,13 +370,10 @@ pub async fn op_webcrypto_generate_key(
         rid: state.resource_table.add(resource),
       }
     }
-    _ => return Err(WebCryptoError::Unsupported.into()),
+    _ => return Err(type_error("Unsupported algorithm".to_string())),
   };
 
-  Ok(GenerateKeyResult {
-    key: Some(key),
-    err: None,
-  })
+  Ok(GenerateKeyResult { key })
 }
 
 #[derive(Deserialize)]
@@ -404,8 +387,7 @@ pub struct WebCryptoSignArg {
 
 #[derive(Serialize)]
 pub struct SignResult {
-  signature: Option<Vec<u8>>,
-  err: Option<DomError>,
+  signature: Vec<u8>,
 }
 
 pub async fn op_webcrypto_sign_key(
@@ -428,15 +410,12 @@ pub async fn op_webcrypto_sign_key(
       let private_key = &resource.key;
 
       if !resource.crypto_key.usages.contains(&KeyUsage::Sign) {
-        return Ok(SignResult {
-          signature: None,
-          err: Some(DomError("Invalid key usage".to_string())),
-        });
+        return Err(type_error("Invalid key usage".to_string()));
       }
 
       let padding = match resource
         .hash
-        .ok_or_else(|| WebCryptoError::MissingArgument("hash".to_string()))?
+        .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
         WebCryptoHash::Sha1 => PaddingScheme::PKCS1v15Sign {
           hash: Some(rsa::hash::Hash::SHA1),
@@ -464,20 +443,18 @@ pub async fn op_webcrypto_sign_key(
       let private_key = &resource.key;
 
       if !resource.crypto_key.usages.contains(&KeyUsage::Sign) {
-        return Ok(SignResult {
-          signature: None,
-          err: Some(DomError("Invalid key usage".to_string())),
-        });
+        return Err(type_error("Invalid key usage".to_string()));
       }
 
       let rng = OsRng;
-      let salt_len = args.salt_length.ok_or_else(|| {
-        WebCryptoError::MissingArgument("saltLength".to_string())
-      })? as usize;
+      let salt_len = args
+        .salt_length
+        .ok_or_else(|| type_error("Missing argument saltLength".to_string()))?
+        as usize;
 
       let (padding, digest_in) = match resource
         .hash
-        .ok_or_else(|| WebCryptoError::MissingArgument("hash".to_string()))?
+        .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
         WebCryptoHash::Sha1 => {
           let mut hasher = Sha1::new();
@@ -524,10 +501,7 @@ pub async fn op_webcrypto_sign_key(
       let key_pair = &resource.key;
 
       if !resource.crypto_key.usages.contains(&KeyUsage::Sign) {
-        return Ok(SignResult {
-          signature: None,
-          err: Some(DomError("Invalid key usage".to_string())),
-        });
+        return Err(type_error("Invalid key usage".to_string()));
       }
 
       // We only support P256-SHA256 & P384-SHA384. These are recommended signature pairs.
@@ -535,11 +509,10 @@ pub async fn op_webcrypto_sign_key(
       if let Some(hash) = args.hash {
         match hash {
           WebCryptoHash::Sha256 | WebCryptoHash::Sha384 => (),
-          _ => return Err(WebCryptoError::UnsupportedHash.into()),
+          _ => return Err(type_error("Unsupported algorithm")),
         }
       };
 
-      // Sign data using SecureRng and key.
       let rng = RingRand::SystemRandom::new();
       let signature = key_pair.sign(&rng, &data)?;
 
@@ -554,22 +527,16 @@ pub async fn op_webcrypto_sign_key(
       let key = &resource.key;
 
       if !resource.crypto_key.usages.contains(&KeyUsage::Sign) {
-        return Ok(SignResult {
-          signature: None,
-          err: Some(DomError("Invalid key usage".to_string())),
-        });
+        return Err(type_error("Invalid key usage".to_string()));
       }
 
       let signature = ring::hmac::sign(&key, &data);
       signature.as_ref().to_vec()
     }
-    _ => return Err(WebCryptoError::Unsupported.into()),
+    _ => return Err(type_error("Unsupported algorithm".to_string())),
   };
 
-  Ok(SignResult {
-    signature: Some(signature),
-    err: None,
-  })
+  Ok(SignResult { signature })
 }
 
 pub fn get_declaration() -> PathBuf {

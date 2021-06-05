@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::error::WebCryptoError;
+use deno_core::error::type_error;
+use deno_core::error::AnyError;
 use ring::agreement::Algorithm as RingAlgorithm;
 use ring::hmac::Algorithm as HmacAlgorithm;
 use ring::signature::EcdsaSigningAlgorithm;
@@ -39,19 +40,21 @@ pub enum WebCryptoNamedCurve {
 }
 
 impl TryInto<&RingAlgorithm> for WebCryptoNamedCurve {
-  type Error = WebCryptoError;
+  type Error = AnyError;
 
   fn try_into(self) -> Result<&'static RingAlgorithm, Self::Error> {
     match self {
       WebCryptoNamedCurve::P256 => Ok(&ring::agreement::ECDH_P256),
       WebCryptoNamedCurve::P384 => Ok(&ring::agreement::ECDH_P384),
-      WebCryptoNamedCurve::P521 => Err(WebCryptoError::Unsupported),
+      WebCryptoNamedCurve::P521 => {
+        Err(type_error("Unsupported algorithm".to_string()))
+      }
     }
   }
 }
 
 impl TryInto<&EcdsaSigningAlgorithm> for WebCryptoNamedCurve {
-  type Error = WebCryptoError;
+  type Error = AnyError;
 
   fn try_into(self) -> Result<&'static EcdsaSigningAlgorithm, Self::Error> {
     match self {
@@ -61,7 +64,9 @@ impl TryInto<&EcdsaSigningAlgorithm> for WebCryptoNamedCurve {
       WebCryptoNamedCurve::P384 => {
         Ok(&ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING)
       }
-      WebCryptoNamedCurve::P521 => Err(WebCryptoError::Unsupported),
+      WebCryptoNamedCurve::P521 => {
+        Err(type_error("Unsupported algorithm".to_string()))
+      }
     }
   }
 }

@@ -28,8 +28,22 @@
       "rsa.https.any.html": false
     },
     "generateKey": {
-      "successes_HMAC.https.any.js": true,
-      "successes_ECDH.https.any.js": [
+      "failures_AES-CBC.https.any.html": false,
+      "failures_AES-CTR.https.any.html": false,
+      "failures_AES-GCM.https.any.html": false,
+      "failures_AES-KW.https.any.html": false,
+      "failures_ECDH.https.any.html": false,
+      "failures_ECDSA.https.any.html": false,
+      "failures_HMAC.https.any.html": false,
+      "failures_RSA-OAEP.https.any.html": false,
+      "failures_RSA-PSS.https.any.html": false,
+      "failures_RSASSA-PKCS1-v1_5.https.any.html": false,
+      "successes_AES-CBC.https.any.html": false,
+      "successes_AES-CTR.https.any.html": false,
+      "successes_AES-GCM.https.any.html": false,
+      "successes_AES-KW.https.any.html": false,
+      "successes_HMAC.https.any.html": true,
+      "successes_ECDH.https.any.html": [
         "Success: generateKey({name: ECDH, namedCurve: P-521}, false, [deriveKey])",
         "Success: generateKey({name: ECDH, namedCurve: P-521}, true, [deriveKey])",
         "Success: generateKey({name: ECDH, namedCurve: P-521}, false, [deriveBits, deriveKey])",
@@ -55,7 +69,7 @@
         "Success: generateKey({name: Ecdh, namedCurve: P-521}, false, [deriveKey, deriveBits, deriveKey, deriveBits, deriveKey, deriveBits])",
         "Success: generateKey({name: Ecdh, namedCurve: P-521}, true, [deriveKey, deriveBits, deriveKey, deriveBits, deriveKey, deriveBits])"
       ],
-      "successes_ECDSA.https.any.js": [
+      "successes_ECDSA.https.any.html": [
         "Success: generateKey({name: ECDSA, namedCurve: P-521}, false, [sign])",
         "Success: generateKey({name: ECDSA, namedCurve: P-521}, true, [sign])",
         "Success: generateKey({name: ECDSA, namedCurve: P-521}, false, [verify, sign])",
@@ -75,8 +89,8 @@
         "Success: generateKey({name: Ecdsa, namedCurve: P-521}, false, [sign, verify, sign, sign, verify])",
         "Success: generateKey({name: Ecdsa, namedCurve: P-521}, true, [sign, verify, sign, sign, verify])"
       ],
-      "successes_RSA-PSS.https.any.js": true,
-      "successes_RSASSA-PKCS1-v1_5.https.any.js": true
+      "successes_RSA-PSS.https.any.html": true,
+      "successes_RSASSA-PKCS1-v1_5.https.any.html": true
     },
     "historical.any.html": true,
     "idlharness.https.any.html": [
