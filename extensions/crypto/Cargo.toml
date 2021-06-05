@@ -22,4 +22,4 @@ sha-1 = "0.9.4"
 sha2 = "0.9.3"
 serde = { version = "1.0.123", features = ["derive"] }
 tokio = { version = "1.6.1", features = ["full"] }
-
+uuid = { version = "0.8.2", features = ["v4"] }

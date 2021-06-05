@@ -192,13 +192,19 @@
     sign,
   };
 
+  function randomUUID() {
+    return core.opSync("op_crypto_random_uuid");
+  }
+
   window.crypto = {
     getRandomValues,
+    randomUUID,
     subtle,
     CryptoKey,
   };
   window.__bootstrap.crypto = {
     getRandomValues,
+    randomUUID,
     subtle,
     CryptoKey,
   };

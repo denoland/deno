@@ -663,6 +663,7 @@ dependencies = [
  "sha-1",
  "sha2",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

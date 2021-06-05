@@ -1,8 +1,12 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::file_fetcher::get_source_from_bytes;
+use crate::file_fetcher::strip_shebang;
 use crate::version;
+use data_url::DataUrl;
 use deno_core::error::type_error;
+use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::futures::FutureExt;
@@ -109,6 +113,19 @@ fn read_string_slice(
   Ok(string)
 }
 
+fn get_source_from_data_url(
+  specifier: &ModuleSpecifier,
+) -> Result<String, AnyError> {
+  let data_url = DataUrl::process(specifier.as_str())
+    .map_err(|e| uri_error(format!("{:?}", e)))?;
+  let mime = data_url.mime_type();
+  let charset = mime.get_parameter("charset").map(|v| v.to_string());
+  let (bytes, _) = data_url
+    .decode_to_vec()
+    .map_err(|e| uri_error(format!("{:?}", e)))?;
+  Ok(strip_shebang(get_source_from_bytes(bytes, charset)?))
+}
+
 const SPECIFIER: &str = "file://$deno$/bundle.js";
 
 struct EmbeddedModuleLoader(String);
@@ -121,12 +138,16 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _referrer: &str,
     _is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if specifier != SPECIFIER {
-      return Err(type_error(
-        "Self-contained binaries don't support module loading",
-      ));
+    if let Ok(module_specifier) = resolve_url(&specifier) {
+      if get_source_from_data_url(&module_specifier).is_ok()
+        || specifier == SPECIFIER
+      {
+        return Ok(module_specifier);
+      }
     }
-    Ok(resolve_url(specifier)?)
+    Err(type_error(
+      "Self-contained binaries don't support module loading",
+    ))
   }
 
   fn load(
@@ -137,13 +158,19 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let module_specifier = module_specifier.clone();
-    let code = self.0.to_string();
+    let is_data_uri = get_source_from_data_url(&module_specifier).ok();
+    let code = if let Some(ref source) = is_data_uri {
+      source.to_string()
+    } else {
+      self.0.to_string()
+    };
     async move {
-      if module_specifier.to_string() != SPECIFIER {
+      if is_data_uri.is_none() && module_specifier.to_string() != SPECIFIER {
         return Err(type_error(
           "Self-contained binaries don't support module loading",
         ));
       }
+
       Ok(deno_core::ModuleSource {
         code,
         module_url_specified: module_specifier.to_string(),

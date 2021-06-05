@@ -69,6 +69,7 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
         op_async(op_webcrypto_generate_key),
       ),
       ("op_webcrypto_sign_key", op_async(op_webcrypto_sign_key)),
+      ("op_crypto_random_uuid", op_sync(op_crypto_random_uuid)),
     ])
     .state(move |state| {
       if let Some(seed) = maybe_seed {
@@ -537,6 +538,25 @@ pub async fn op_webcrypto_sign_key(
   };
 
   Ok(SignResult { signature })
+}
+
+pub fn op_crypto_random_uuid(
+  state: &mut OpState,
+  _args: (),
+  _zero_copy: (),
+) -> Result<String, AnyError> {
+  let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
+  let uuid = if let Some(seeded_rng) = maybe_seeded_rng {
+    let mut bytes = [0u8; 16];
+    seeded_rng.fill(&mut bytes);
+    uuid::Builder::from_bytes(bytes)
+      .set_version(uuid::Version::Random)
+      .build()
+  } else {
+    uuid::Uuid::new_v4()
+  };
+
+  Ok(uuid.to_string())
 }
 
 pub fn get_declaration() -> PathBuf {
