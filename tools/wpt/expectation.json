@@ -70,7 +70,10 @@
       "successes_RSASSA-PKCS1-v1_5.https.any.html?21-30": false,
       "successes_RSASSA-PKCS1-v1_5.https.any.html?31-last": false
     },
-    "historical.any.html": true,
+    "historical.any.html": [
+      "Non-secure context window does not have access to crypto.subtle",
+      "Non-secure context window does not have access to SubtleCrypto"
+    ],
     "idlharness.https.any.html": [
       "Crypto interface: existence and properties of interface object",
       "Crypto interface object length",
@@ -96,11 +99,6 @@
       "CryptoKey interface: attribute algorithm",
       "CryptoKey interface: attribute usages",
       "SubtleCrypto interface: existence and properties of interface object",
-      "SubtleCrypto interface object length",
-      "SubtleCrypto interface object name",
-      "SubtleCrypto interface: existence and properties of interface prototype object",
-      "SubtleCrypto interface: existence and properties of interface prototype object's \"constructor\" property",
-      "SubtleCrypto interface: existence and properties of interface prototype object's @@unscopables property",
       "SubtleCrypto interface: operation encrypt(AlgorithmIdentifier, CryptoKey, BufferSource)",
       "SubtleCrypto interface: operation decrypt(AlgorithmIdentifier, CryptoKey, BufferSource)",
       "SubtleCrypto interface: operation sign(AlgorithmIdentifier, CryptoKey, BufferSource)",
@@ -113,7 +111,6 @@
       "SubtleCrypto interface: operation exportKey(KeyFormat, CryptoKey)",
       "SubtleCrypto interface: operation wrapKey(KeyFormat, CryptoKey, CryptoKey, AlgorithmIdentifier)",
       "SubtleCrypto interface: operation unwrapKey(KeyFormat, BufferSource, CryptoKey, AlgorithmIdentifier, AlgorithmIdentifier, boolean, sequence<KeyUsage>)",
-      "SubtleCrypto must be primary interface of crypto.subtle",
       "Stringification of crypto.subtle",
       "SubtleCrypto interface: crypto.subtle must inherit property \"encrypt(AlgorithmIdentifier, CryptoKey, BufferSource)\" with the proper type",
       "SubtleCrypto interface: calling encrypt(AlgorithmIdentifier, CryptoKey, BufferSource) on crypto.subtle with too few arguments must throw TypeError",
@@ -123,8 +120,6 @@
       "SubtleCrypto interface: calling sign(AlgorithmIdentifier, CryptoKey, BufferSource) on crypto.subtle with too few arguments must throw TypeError",
       "SubtleCrypto interface: crypto.subtle must inherit property \"verify(AlgorithmIdentifier, CryptoKey, BufferSource, BufferSource)\" with the proper type",
       "SubtleCrypto interface: calling verify(AlgorithmIdentifier, CryptoKey, BufferSource, BufferSource) on crypto.subtle with too few arguments must throw TypeError",
-      "SubtleCrypto interface: crypto.subtle must inherit property \"digest(AlgorithmIdentifier, BufferSource)\" with the proper type",
-      "SubtleCrypto interface: calling digest(AlgorithmIdentifier, BufferSource) on crypto.subtle with too few arguments must throw TypeError",
       "SubtleCrypto interface: crypto.subtle must inherit property \"generateKey(AlgorithmIdentifier, boolean, sequence<KeyUsage>)\" with the proper type",
       "SubtleCrypto interface: calling generateKey(AlgorithmIdentifier, boolean, sequence<KeyUsage>) on crypto.subtle with too few arguments must throw TypeError",
       "SubtleCrypto interface: crypto.subtle must inherit property \"deriveKey(AlgorithmIdentifier, CryptoKey, AlgorithmIdentifier, boolean, sequence<KeyUsage>)\" with the proper type",
