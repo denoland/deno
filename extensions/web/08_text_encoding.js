@@ -158,7 +158,7 @@
       const prefix = "Failed to execute 'encode' on 'TextEncoder'";
       input = webidl.converters.USVString(input, {
         prefix,
-        context: "Argument 2",
+        context: "Argument 1",
       });
       return core.encode(input);
     }
