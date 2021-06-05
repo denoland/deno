@@ -644,7 +644,6 @@ name = "deno_crypto"
 version = "0.21.1"
 dependencies = [
  "deno_core",
- "deno_web",
  "rand 0.8.3",
  "uuid",
 ]
@@ -824,7 +823,6 @@ name = "deno_webstorage"
 version = "0.2.1"
 dependencies = [
  "deno_core",
- "deno_web",
  "rusqlite",
  "serde",
 ]

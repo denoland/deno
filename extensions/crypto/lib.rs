@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op_sync;
@@ -38,16 +39,10 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
 
 pub fn op_crypto_get_random_values(
   state: &mut OpState,
-  mut zero_copy: ZeroCopyBuf,
-  _: (),
+  _args: (),
+  zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
-  if zero_copy.len() > 65536 {
-    return Err(
-      deno_web::DomExceptionQuotaExceededError::new(&format!("The ArrayBufferView's byte length ({}) exceeds the number of bytes of entropy available via this API (65536)", zero_copy.len()))
-        .into(),
-    );
-  }
-
+  let mut zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
   if let Some(seeded_rng) = maybe_seeded_rng {
     seeded_rng.fill(&mut *zero_copy);
@@ -61,8 +56,8 @@ pub fn op_crypto_get_random_values(
 
 pub fn op_crypto_random_uuid(
   state: &mut OpState,
-  _: (),
-  _: (),
+  _args: (),
+  _zero_copy: (),
 ) -> Result<String, AnyError> {
   let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
   let uuid = if let Some(seeded_rng) = maybe_seeded_rng {
