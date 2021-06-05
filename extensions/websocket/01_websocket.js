@@ -241,8 +241,7 @@
         sendTypedArray(new DataView(data));
       } else {
         const string = String(data);
-        const encoder = new TextEncoder();
-        const d = encoder.encode(string);
+        const d = core.encode(string);
         this.#bufferedAmount += d.size;
         core.opAsync("op_ws_send", {
           rid: this.#rid,
@@ -262,8 +261,7 @@
         );
       }
 
-      const encoder = new TextEncoder();
-      if (reason && encoder.encode(reason).byteLength > 123) {
+      if (reason && core.encode(reason).byteLength > 123) {
         throw new DOMException(
           "The close reason may not be longer than 123 bytes.",
           "SyntaxError",

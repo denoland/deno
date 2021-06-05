@@ -783,8 +783,11 @@ dependencies = [
 name = "deno_web"
 version = "0.38.1"
 dependencies = [
+ "base64 0.13.0",
  "deno_core",
+ "encoding_rs",
  "futures",
+ "serde",
 ]
 
 [[package]]
