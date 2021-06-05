@@ -115,7 +115,7 @@
       if (ArrayBuffer.isView(data)) {
         data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
       } else {
-        data = new Uint8Array(data, data.byteOffset, data.byteLength);
+        data = new Uint8Array(data);
       }
 
       data = data.slice();
