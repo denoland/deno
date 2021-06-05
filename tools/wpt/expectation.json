@@ -28,20 +28,6 @@
       "rsa.https.any.html": false
     },
     "generateKey": {
-      "failures_AES-CBC.https.any.html": false,
-      "failures_AES-CTR.https.any.html": false,
-      "failures_AES-GCM.https.any.html": false,
-      "failures_AES-KW.https.any.html": false,
-      "failures_ECDH.https.any.html": false,
-      "failures_ECDSA.https.any.html": false,
-      "failures_HMAC.https.any.html": false,
-      "failures_RSA-OAEP.https.any.html": false,
-      "failures_RSA-PSS.https.any.html": false,
-      "failures_RSASSA-PKCS1-v1_5.https.any.html": false,
-      "successes_AES-CBC.https.any.html": false,
-      "successes_AES-CTR.https.any.html": false,
-      "successes_AES-GCM.https.any.html": false,
-      "successes_AES-KW.https.any.html": false,
       "successes_HMAC.https.any.js": true,
       "successes_ECDH.https.any.js": [
         "Success: generateKey({name: ECDH, namedCurve: P-521}, false, [deriveKey])",
