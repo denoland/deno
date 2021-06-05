@@ -3,10 +3,58 @@
 
 ((window) => {
   const { opNow } = window.__bootstrap.timers;
-  const core = window.Deno.core;
   const illegalConstructorKey = Symbol("illegalConstructorKey");
   const customInspect = Symbol.for("Deno.customInspect");
   let performanceEntries = [];
+
+  // Duplicate code from runtime/js/01_web_util.js
+  const objectCloneMemo = new WeakMap();
+  function cloneArrayBuffer(
+    srcBuffer,
+    srcByteOffset,
+    srcLength,
+    _cloneConstructor,
+  ) {
+    return srcBuffer.slice(
+      srcByteOffset,
+      srcByteOffset + srcLength,
+    );
+  }
+  function cloneValue(value) {
+    if (value instanceof ArrayBuffer) {
+      const cloned = cloneArrayBuffer(
+        value,
+        0,
+        value.byteLength,
+        ArrayBuffer,
+      );
+      objectCloneMemo.set(value, cloned);
+      return cloned;
+    }
+    if (ArrayBuffer.isView(value)) {
+      const clonedBuffer = cloneValue(value.buffer);
+      let length;
+      if (value instanceof DataView) {
+        length = value.byteLength;
+      } else {
+        length = value.length;
+      }
+      return new (value.constructor)(
+        clonedBuffer,
+        value.byteOffset,
+        length,
+      );
+    }
+    try {
+      return Deno.core.deserialize(Deno.core.serialize(value));
+    } catch (e) {
+      if (e instanceof TypeError) {
+        throw new DOMException("Uncloneable value", "DataCloneError");
+      }
+      throw e;
+    }
+  }
+  // End of code from runtime/js/01_web_util.js
 
   function findMostRecent(
     name,
@@ -140,7 +188,7 @@
       if (startTime < 0) {
         throw new TypeError("startTime cannot be negative");
       }
-      this.#detail = core.deserialize(core.serialize(detail));
+      this.#detail = cloneValue(detail);
     }
 
     toJSON() {
@@ -186,7 +234,7 @@
         throw new TypeError("Illegal constructor.");
       }
       super(name, "measure", startTime, duration, illegalConstructorKey);
-      this.#detail = core.deserialize(core.serialize(detail));
+      this.#detail = cloneValue(detail);
     }
 
     toJSON() {
