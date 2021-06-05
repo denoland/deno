@@ -23,3 +23,5 @@ sha2 = "0.9.3"
 serde = { version = "1.0.123", features = ["derive"] }
 tokio = { version = "1.6.1", features = ["full"] }
 uuid = { version = "0.8.2", features = ["v4"] }
+lazy_static = "1.4.0"
+num-traits = "0.2.14"

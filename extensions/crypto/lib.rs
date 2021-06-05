@@ -21,6 +21,8 @@ use std::cell::RefCell;
 use std::convert::TryInto;
 use std::rc::Rc;
 
+use lazy_static::lazy_static;
+use num_traits::cast::FromPrimitive;
 use rand::rngs::OsRng;
 use rand::rngs::StdRng;
 use rand::thread_rng;
@@ -52,6 +54,12 @@ use crate::key::WebCryptoHash;
 use crate::key::WebCryptoKey;
 use crate::key::WebCryptoKeyPair;
 use crate::key::WebCryptoNamedCurve;
+
+// Whitelist for RSA public exponents.
+lazy_static! {
+  static ref PUB_EXPONENT_1: BigUint = BigUint::from_u64(3).unwrap();
+  static ref PUB_EXPONENT_2: BigUint = BigUint::from_u64(65537).unwrap();
+}
 
 pub fn init(maybe_seed: Option<u64>) -> Extension {
   Extension::builder()
@@ -191,7 +199,9 @@ pub async fn op_webcrypto_generate_key(
       })?;
 
       let exponent = BigUint::from_bytes_be(&exp);
-
+      if exponent != *PUB_EXPONENT_1 && exponent != *PUB_EXPONENT_2 {
+        return Err(type_error("Bad public exponent"));
+      }
       // Generate RSA private key based of exponent, bits and Rng.
       let mut rng = OsRng;
 
