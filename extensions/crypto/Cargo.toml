@@ -21,5 +21,5 @@ rsa = "0.4.0"
 sha-1 = "0.9.4"
 sha2 = "0.9.3"
 serde = { version = "1.0.123", features = ["derive"] }
-tokio = { version = "1.2.0", features = ["full"] }
+tokio = { version = "1.6.1", features = ["full"] }
 
