@@ -12,8 +12,12 @@
 
     getRandomValues(arrayBufferView) {
       webidl.assertBranded(this, Crypto);
-
-      arrayBufferView = webidl.converters.ArrayBufferView(arrayBufferView);
+      const prefix = "Failed to execute 'getRandomValues' on 'Crypto'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      arrayBufferView = webidl.converters.ArrayBufferView(arrayBufferView, {
+        prefix,
+        context: "Argument 1",
+      });
       if (
         !(
           arrayBufferView instanceof Int8Array ||
@@ -28,12 +32,6 @@
         throw new DOMException(
           "The provided ArrayBufferView is not an integer array type",
           "TypeMismatchError",
-        );
-      }
-      if (arrayBufferView.byteLength > 65536) {
-        throw new DOMException(
-          `The ArrayBufferView's byte length (${arrayBufferView.byteLength}) exceeds the number of bytes of entropy available via this API (65536)`,
-          "QuotaExceededError",
         );
       }
       const ui8 = new Uint8Array(
