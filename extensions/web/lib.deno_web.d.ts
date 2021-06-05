@@ -177,20 +177,32 @@ declare function atob(s: string): string;
  */
 declare function btoa(s: string): string;
 
+declare interface TextDecoderOptions {
+  fatal?: boolean;
+  ignoreBOM?: boolean;
+}
+
+declare interface TextDecodeOptions {
+  stream?: boolean;
+}
+
 declare class TextDecoder {
+  constructor(label?: string, options?: TextDecoderOptions);
+
   /** Returns encoding's name, lowercased. */
   readonly encoding: string;
   /** Returns `true` if error mode is "fatal", and `false` otherwise. */
   readonly fatal: boolean;
   /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
   readonly ignoreBOM = false;
-  constructor(
-    label?: string,
-    options?: { fatal?: boolean; ignoreBOM?: boolean },
-  );
   /** Returns the result of running encoding's decoder. */
-  decode(input?: BufferSource, options?: { stream?: boolean }): string;
-  readonly [Symbol.toStringTag]: string;
+
+  decode(input?: BufferSource, options?: TextDecodeOptions): string;
+}
+
+declare interface TextEncoderEncodeIntoResult {
+  read: number;
+  written: number;
 }
 
 declare class TextEncoder {
@@ -198,11 +210,7 @@ declare class TextEncoder {
   readonly encoding = "utf-8";
   /** Returns the result of running UTF-8's encoder. */
   encode(input?: string): Uint8Array;
-  encodeInto(
-    input: string,
-    dest: Uint8Array,
-  ): { read: number; written: number };
-  readonly [Symbol.toStringTag]: string;
+  encodeInto(input: string, dest: Uint8Array): TextEncoderEncodeIntoResult;
 }
 
 /** A controller object that allows you to abort one or more DOM requests as and

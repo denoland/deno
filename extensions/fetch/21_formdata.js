@@ -11,7 +11,8 @@
 /// <reference lib="esnext" />
 "use strict";
 
-((_window) => {
+((window) => {
+  const core = window.Deno.core;
   const webidl = globalThis.__bootstrap.webidl;
   const { Blob, File, _byteSequence } = globalThis.__bootstrap.file;
 
@@ -240,8 +241,6 @@
 
   webidl.mixinPairIterable("FormData", FormData, entryList, "name", "value");
 
-  const encoder = new TextEncoder();
-
   class MultipartBuilder {
     /**
      * @param {FormData} formData
@@ -270,7 +269,7 @@
         } else this.#writeField(name, value);
       }
 
-      this.chunks.push(encoder.encode(`\r\n--${this.boundary}--`));
+      this.chunks.push(core.encode(`\r\n--${this.boundary}--`));
 
       let totalLength = 0;
       for (const chunk of this.chunks) {
@@ -309,7 +308,7 @@
       }
       buf += `\r\n`;
 
-      this.chunks.push(encoder.encode(buf));
+      this.chunks.push(core.encode(buf));
     }
 
     /**
@@ -356,7 +355,7 @@
      */
     #writeField(field, value) {
       this.#writeFieldHeaders(field);
-      this.chunks.push(encoder.encode(this.#normalizeNewlines(value)));
+      this.chunks.push(core.encode(this.#normalizeNewlines(value)));
     }
 
     /**
@@ -428,7 +427,6 @@
 
   const LF = "\n".codePointAt(0);
   const CR = "\r".codePointAt(0);
-  const decoder = new TextDecoder("utf-8");
 
   class MultipartParser {
     /**
@@ -442,7 +440,7 @@
 
       this.boundary = `--${boundary}`;
       this.body = body;
-      this.boundaryChars = encoder.encode(this.boundary);
+      this.boundaryChars = core.encode(this.boundary);
     }
 
     /**
@@ -539,7 +537,7 @@
               });
               formData.append(name, blob, filename);
             } else {
-              formData.append(name, decoder.decode(content));
+              formData.append(name, core.decode(content));
             }
           }
         } else if (state === 5 && isNewLine) {
