@@ -116,14 +116,18 @@
     }
 
     async digest(algorithm, data) {
+     const prefix = "Failed to execute 'digest' on 'SubtleCrypto'";
+
       webidl.assertBranded(this, SubtleCrypto);
       webidl.requiredArguments(arguments.length, 2);
 
       algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+        prefix,
         context: "Argument 1",
       });
 
       data = webidl.converters.BufferSource(data, {
+        prefix,
         context: "Argument 2",
       });
 
