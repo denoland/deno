@@ -289,6 +289,12 @@ delete Object.prototype.__proto__;
     WritableStreamDefaultWriter: util.nonEnumerable(
       streams.WritableStreamDefaultWriter,
     ),
+    ReadableByteStreamController: util.nonEnumerable(
+      streams.ReadableByteStreamController,
+    ),
+    TransformStreamDefaultController: util.nonEnumerable(
+      streams.TransformStreamDefaultController,
+    ),
     atob: util.writable(atob),
     btoa: util.writable(btoa),
     clearInterval: util.writable(timers.clearInterval),
