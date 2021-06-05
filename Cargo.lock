@@ -658,6 +658,7 @@ dependencies = [
  "deno_core",
  "lazy_static",
  "num-traits",
+ "deno_web",
  "rand 0.8.3",
  "ring",
  "rsa",
@@ -843,6 +844,7 @@ name = "deno_webstorage"
 version = "0.2.1"
 dependencies = [
  "deno_core",
+ "deno_web",
  "rusqlite",
  "serde",
 ]

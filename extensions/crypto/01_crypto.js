@@ -26,18 +26,12 @@
         "TypeMismatchError",
       );
     }
-    if (arrayBufferView.byteLength > 65536) {
-      throw new DOMException(
-        `The ArrayBufferView's byte length (${arrayBufferView.byteLength}) exceeds the number of bytes of entropy available via this API (65536)`,
-        "QuotaExceededError",
-      );
-    }
     const ui8 = new Uint8Array(
       arrayBufferView.buffer,
       arrayBufferView.byteOffset,
       arrayBufferView.byteLength,
     );
-    core.opSync("op_crypto_get_random_values", null, ui8);
+    core.opSync("op_crypto_get_random_values", ui8);
     return arrayBufferView;
   }
 
