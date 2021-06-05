@@ -70,7 +70,6 @@
       "successes_RSASSA-PKCS1-v1_5.https.any.html?21-30": false,
       "successes_RSASSA-PKCS1-v1_5.https.any.html?31-last": false
     },
-    "historical.any.html": true,
     "idlharness.https.any.html": [
       "Crypto interface: existence and properties of interface object",
       "Crypto interface object length",
