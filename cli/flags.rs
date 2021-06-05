@@ -880,9 +880,9 @@ https://deno.land/manual/getting_started/setup_your_environment#editors-and-ides
 
 fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("lint")
-    .about("UNSTABLE: Lint source files")
+    .about("Lint source files")
     .long_about(
-      "UNSTABLE: Lint JavaScript/TypeScript source code.
+      "Lint JavaScript/TypeScript source code.
 
   deno lint
   deno lint myfile1.ts myfile2.js
