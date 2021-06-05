@@ -20,7 +20,8 @@
   const { parseFormData, formDataFromEntries, encodeFormData } =
     globalThis.__bootstrap.formData;
   const mimesniff = globalThis.__bootstrap.mimesniff;
-  const { isReadableStreamDisturbed } = globalThis.__bootstrap.streams;
+  const { isReadableStreamDisturbed, errorReadableStream } =
+    globalThis.__bootstrap.streams;
 
   class InnerBody {
     /** @type {ReadableStream<Uint8Array> | { body: Uint8Array, consumed: boolean }} */
@@ -103,6 +104,22 @@
       } else {
         this.streamOrStatic.consumed = true;
         return this.streamOrStatic.body;
+      }
+    }
+
+    cancel(error) {
+      if (this.streamOrStatic instanceof ReadableStream) {
+        this.streamOrStatic.cancel(error);
+      } else {
+        this.streamOrStatic.consumed = true;
+      }
+    }
+
+    error(error) {
+      if (this.streamOrStatic instanceof ReadableStream) {
+        errorReadableStream(this.streamOrStatic, error);
+      } else {
+        this.streamOrStatic.consumed = true;
       }
     }
 

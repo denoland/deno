@@ -72,7 +72,7 @@
         headersList,
         body !== null ? new InnerBody(body) : null,
       );
-      const request = fromInnerRequest(innerRequest, "immutable");
+      const request = fromInnerRequest(innerRequest, null, "immutable");
 
       const respondWith = createRespondWith(this, responseSenderRid);
 
