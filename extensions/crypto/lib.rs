@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op_sync;
@@ -21,10 +20,13 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       prefix "deno:extensions/crypto",
       "01_crypto.js",
     ))
-    .ops(vec![(
-      "op_crypto_get_random_values",
-      op_sync(op_crypto_get_random_values),
-    )])
+    .ops(vec![
+      (
+        "op_crypto_get_random_values",
+        op_sync(op_crypto_get_random_values),
+      ),
+      ("op_crypto_random_uuid", op_sync(op_crypto_random_uuid)),
+    ])
     .state(move |state| {
       if let Some(seed) = maybe_seed {
         state.put(StdRng::seed_from_u64(seed));
@@ -36,10 +38,16 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
 
 pub fn op_crypto_get_random_values(
   state: &mut OpState,
-  _args: (),
-  zero_copy: Option<ZeroCopyBuf>,
+  mut zero_copy: ZeroCopyBuf,
+  _: (),
 ) -> Result<(), AnyError> {
-  let mut zero_copy = zero_copy.ok_or_else(null_opbuf)?;
+  if zero_copy.len() > 65536 {
+    return Err(
+      deno_web::DomExceptionQuotaExceededError::new(&format!("The ArrayBufferView's byte length ({}) exceeds the number of bytes of entropy available via this API (65536)", zero_copy.len()))
+        .into(),
+    );
+  }
+
   let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
   if let Some(seeded_rng) = maybe_seeded_rng {
     seeded_rng.fill(&mut *zero_copy);
@@ -49,6 +57,25 @@ pub fn op_crypto_get_random_values(
   }
 
   Ok(())
+}
+
+pub fn op_crypto_random_uuid(
+  state: &mut OpState,
+  _: (),
+  _: (),
+) -> Result<String, AnyError> {
+  let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
+  let uuid = if let Some(seeded_rng) = maybe_seeded_rng {
+    let mut bytes = [0u8; 16];
+    seeded_rng.fill(&mut bytes);
+    uuid::Builder::from_bytes(bytes)
+      .set_version(uuid::Version::Random)
+      .build()
+  } else {
+    uuid::Uuid::new_v4()
+  };
+
+  Ok(uuid.to_string())
 }
 
 pub fn get_declaration() -> PathBuf {

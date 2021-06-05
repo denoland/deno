@@ -28,7 +28,7 @@ pub struct ClientCapabilities {
   pub line_folding_only: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeLensSettings {
   /// Flag for providing implementation code lenses.
@@ -53,16 +53,20 @@ impl Default for CodeLensSettings {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+fn is_true() -> bool {
+  true
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionSettings {
   #[serde(default)]
   pub complete_function_calls: bool,
-  #[serde(default)]
+  #[serde(default = "is_true")]
   pub names: bool,
-  #[serde(default)]
+  #[serde(default = "is_true")]
   pub paths: bool,
-  #[serde(default)]
+  #[serde(default = "is_true")]
   pub auto_imports: bool,
   #[serde(default)]
   pub imports: ImportCompletionSettings,
@@ -80,9 +84,15 @@ impl Default for CompletionSettings {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportCompletionSettings {
+  /// A flag that indicates if non-explicitly set origins should be checked for
+  /// supporting import suggestions.
+  #[serde(default = "is_true")]
+  pub auto_discover: bool,
+  /// A map of origins which have had explicitly set if import suggestions are
+  /// enabled.
   #[serde(default)]
   pub hosts: HashMap<String, bool>,
 }
@@ -90,6 +100,7 @@ pub struct ImportCompletionSettings {
 impl Default for ImportCompletionSettings {
   fn default() -> Self {
     Self {
+      auto_discover: true,
       hosts: HashMap::default(),
     }
   }
@@ -104,10 +115,11 @@ pub struct SpecifierSettings {
 }
 
 /// Deno language server specific settings that are applied to a workspace.
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSettings {
   /// A flag that indicates if Deno is enabled for the workspace.
+  #[serde(default)]
   pub enable: bool,
 
   /// An option that points to a path string of the config file to apply to
@@ -165,8 +177,8 @@ impl ConfigSnapshot {
 }
 
 enum ConfigRequest {
+  All,
   Specifier(ModuleSpecifier, ModuleSpecifier),
-  Workspace,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -197,12 +209,8 @@ impl Config {
         loop {
           match rx.recv().await {
             None => break,
-            Some(ConfigRequest::Workspace) => {
-              let mut items = vec![lsp::ConfigurationItem {
-                scope_uri: None,
-                section: Some(SETTINGS_SECTION.to_string()),
-              }];
-              let (specifier_uri_map, mut specifier_items): (
+            Some(ConfigRequest::All) => {
+              let (specifier_uri_map, items): (
                 Vec<(ModuleSpecifier, ModuleSpecifier)>,
                 Vec<lsp::ConfigurationItem>,
               ) = {
@@ -223,40 +231,18 @@ impl Config {
                     .collect(),
                 )
               };
-              items.append(&mut specifier_items);
               if let Ok(configs) = client.configuration(items).await {
                 let mut settings = settings_ref.write().unwrap();
                 for (i, value) in configs.into_iter().enumerate() {
-                  match i {
-                    0 => {
-                      match serde_json::from_value::<WorkspaceSettings>(value) {
-                        Ok(workspace_settings) => {
-                          settings.workspace = workspace_settings;
-                        }
-                        Err(err) => {
-                          error!(
-                            "Error converting workspace settings: {}",
-                            err
-                          );
-                        }
-                      }
+                  match serde_json::from_value::<SpecifierSettings>(value) {
+                    Ok(specifier_settings) => {
+                      let (specifier, uri) = specifier_uri_map[i].clone();
+                      settings
+                        .specifiers
+                        .insert(specifier, (uri, specifier_settings));
                     }
-                    _ => {
-                      match serde_json::from_value::<SpecifierSettings>(value) {
-                        Ok(specifier_settings) => {
-                          let (specifier, uri) =
-                            specifier_uri_map[i - 1].clone();
-                          settings
-                            .specifiers
-                            .insert(specifier, (uri, specifier_settings));
-                        }
-                        Err(err) => {
-                          error!(
-                            "Error converting specifier settings: {}",
-                            err
-                          );
-                        }
-                      }
+                    Err(err) => {
+                      error!("Error converting specifier settings: {}", err);
                     }
                   }
                 }
@@ -376,6 +362,16 @@ impl Config {
     }
   }
 
+  /// Update all currently cached specifier settings
+  pub async fn update_all_settings(&self) -> Result<(), AnyError> {
+    self
+      .tx
+      .send(ConfigRequest::All)
+      .await
+      .map_err(|_| anyhow!("Error sending config update task."))
+  }
+
+  /// Update a specific specifiers settings from the client.
   pub async fn update_specifier_settings(
     &self,
     specifier: &ModuleSpecifier,
@@ -384,14 +380,6 @@ impl Config {
     self
       .tx
       .send(ConfigRequest::Specifier(specifier.clone(), uri.clone()))
-      .await
-      .map_err(|_| anyhow!("Error sending config update task."))
-  }
-
-  pub async fn update_workspace_settings(&self) -> Result<(), AnyError> {
-    self
-      .tx
-      .send(ConfigRequest::Workspace)
       .await
       .map_err(|_| anyhow!("Error sending config update task."))
   }
@@ -443,5 +431,39 @@ mod tests {
       }))
       .expect("could not update");
     assert!(config.specifier_enabled(&specifier));
+  }
+
+  #[test]
+  fn test_set_workspace_settings_defaults() {
+    let config = setup();
+    config
+      .set_workspace_settings(json!({}))
+      .expect("could not update");
+    assert_eq!(
+      config.get_workspace_settings(),
+      WorkspaceSettings {
+        enable: false,
+        config: None,
+        import_map: None,
+        code_lens: CodeLensSettings {
+          implementations: false,
+          references: false,
+          references_all_functions: false,
+        },
+        internal_debug: false,
+        lint: false,
+        suggest: CompletionSettings {
+          complete_function_calls: false,
+          names: true,
+          paths: true,
+          auto_imports: true,
+          imports: ImportCompletionSettings {
+            auto_discover: true,
+            hosts: HashMap::new(),
+          }
+        },
+        unstable: false,
+      }
+    );
   }
 }

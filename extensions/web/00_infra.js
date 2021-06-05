@@ -8,6 +8,8 @@
 "use strict";
 
 ((window) => {
+  const core = Deno.core;
+
   const ASCII_DIGIT = ["\u0030-\u0039"];
   const ASCII_UPPER_ALPHA = ["\u0041-\u005A"];
   const ASCII_LOWER_ALPHA = ["\u0061-\u007A"];
@@ -178,6 +180,22 @@
     return { result: input.substring(positionStart, position + 1), position };
   }
 
+  /**
+   * @param {Uint8Array} data
+   * @returns {string}
+   */
+  function forgivingBase64Encode(data) {
+    return core.opSync("op_base64_encode", data);
+  }
+
+  /**
+   * @param {string} data
+   * @returns {Uint8Array}
+   */
+  function forgivingBase64Decode(data) {
+    return core.opSync("op_base64_decode", data);
+  }
+
   window.__bootstrap.infra = {
     collectSequenceOfCodepoints,
     ASCII_DIGIT,
@@ -199,5 +217,7 @@
     byteUpperCase,
     byteLowerCase,
     collectHttpQuotedString,
+    forgivingBase64Encode,
+    forgivingBase64Decode,
   };
 })(globalThis);

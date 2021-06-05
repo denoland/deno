@@ -38,7 +38,8 @@ export type ManifestTestVariation = [
   options: ManifestTestOptions,
 ];
 export interface ManifestTestOptions {
-  name?: string;
+  // deno-lint-ignore camelcase
+  script_metadata: [string, string][];
 }
 
 const MANIFEST_PATH = join(ROOT_PATH, "./tools/wpt/manifest.json");

@@ -6,20 +6,24 @@ use deno_core::error::AnyError;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::serialize_op_result;
-use deno_core::JsRuntime;
+use deno_core::Extension;
 use deno_core::Op;
 use deno_core::OpState;
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
-fn setup(runtime: &mut JsRuntime) {
-  runtime.register_op("pi_json", op_sync(|_, _: (), _: ()| Ok(314159)));
-  runtime.register_op("pi_async", op_async(op_pi_async));
-  runtime.register_op("nop", |state, _| {
-    Op::Sync(serialize_op_result(Ok(9), state))
-  });
-  runtime.sync_ops_cache();
+fn setup() -> Vec<Extension> {
+  vec![Extension::builder()
+    .ops(vec![
+      ("pi_json", op_sync(|_, _: (), _: ()| Ok(314159))),
+      ("pi_async", op_async(op_pi_async)),
+      (
+        "nop",
+        Box::new(|state, _| Op::Sync(serialize_op_result(Ok(9), state))),
+      ),
+    ])
+    .build()]
 }
 
 // this is a function since async closures aren't stable

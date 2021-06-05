@@ -1,8 +1,12 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::file_fetcher::get_source_from_bytes;
+use crate::file_fetcher::strip_shebang;
 use crate::version;
+use data_url::DataUrl;
 use deno_core::error::type_error;
+use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::futures::FutureExt;
@@ -15,6 +19,7 @@ use deno_core::v8_set_flags;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_file::BlobUrlStore;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsOptions;
@@ -108,6 +113,19 @@ fn read_string_slice(
   Ok(string)
 }
 
+fn get_source_from_data_url(
+  specifier: &ModuleSpecifier,
+) -> Result<String, AnyError> {
+  let data_url = DataUrl::process(specifier.as_str())
+    .map_err(|e| uri_error(format!("{:?}", e)))?;
+  let mime = data_url.mime_type();
+  let charset = mime.get_parameter("charset").map(|v| v.to_string());
+  let (bytes, _) = data_url
+    .decode_to_vec()
+    .map_err(|e| uri_error(format!("{:?}", e)))?;
+  Ok(strip_shebang(get_source_from_bytes(bytes, charset)?))
+}
+
 const SPECIFIER: &str = "file://$deno$/bundle.js";
 
 struct EmbeddedModuleLoader(String);
@@ -120,12 +138,16 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _referrer: &str,
     _is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if specifier != SPECIFIER {
-      return Err(type_error(
-        "Self-contained binaries don't support module loading",
-      ));
+    if let Ok(module_specifier) = resolve_url(&specifier) {
+      if get_source_from_data_url(&module_specifier).is_ok()
+        || specifier == SPECIFIER
+      {
+        return Ok(module_specifier);
+      }
     }
-    Ok(resolve_url(specifier)?)
+    Err(type_error(
+      "Self-contained binaries don't support module loading",
+    ))
   }
 
   fn load(
@@ -136,13 +158,19 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
     let module_specifier = module_specifier.clone();
-    let code = self.0.to_string();
+    let is_data_uri = get_source_from_data_url(&module_specifier).ok();
+    let code = if let Some(ref source) = is_data_uri {
+      source.to_string()
+    } else {
+      self.0.to_string()
+    };
     async move {
-      if module_specifier.to_string() != SPECIFIER {
+      if is_data_uri.is_none() && module_specifier.to_string() != SPECIFIER {
         return Err(type_error(
           "Self-contained binaries don't support module loading",
         ));
       }
+
       Ok(deno_core::ModuleSource {
         code,
         module_url_specified: module_specifier.to_string(),
@@ -160,6 +188,7 @@ pub async fn run(
   let main_module = resolve_url(SPECIFIER)?;
   let permissions = Permissions::from_options(&metadata.permissions);
   let blob_url_store = BlobUrlStore::default();
+  let broadcast_channel = InMemoryBroadcastChannel::default();
   let module_loader = Rc::new(EmbeddedModuleLoader(source_code));
   let create_web_worker_cb = Arc::new(|_| {
     todo!("Worker are currently not supported in standalone binaries");
@@ -191,15 +220,16 @@ pub async fn run(
     no_color: !colors::use_color(),
     get_error_class_fn: Some(&get_error_class_name),
     location: metadata.location,
-    location_data_dir: None,
+    origin_storage_dir: None,
     blob_url_store,
+    broadcast_channel,
   };
   let mut worker =
     MainWorker::from_options(main_module.clone(), permissions, &options);
   worker.bootstrap(&options);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;
-  worker.run_event_loop().await?;
+  worker.run_event_loop(true).await?;
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
   std::process::exit(0);
 }

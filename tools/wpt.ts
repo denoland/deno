@@ -165,7 +165,7 @@ async function run() {
       const result = await runSingleTest(
         test.url,
         test.options,
-        json ? () => {} : createReportTestCase(test.expectation),
+        createReportTestCase(test.expectation),
       );
       results.push({ test, result });
       reportVariation(result, test.expectation);
@@ -175,7 +175,21 @@ async function run() {
   });
 
   if (json) {
-    await Deno.writeTextFile(json, JSON.stringify(results));
+    const minifiedResults = [];
+    for (const result of results) {
+      const minified = {
+        file: result.test.path,
+        name:
+          Object.fromEntries(result.test.options.script_metadata ?? []).title ??
+            null,
+        cases: result.result.cases.map((case_) => ({
+          name: case_.name,
+          passed: case_.passed,
+        })),
+      };
+      minifiedResults.push(minified);
+    }
+    await Deno.writeTextFile(json, JSON.stringify(minifiedResults));
   }
   const code = reportFinal(results);
   Deno.exit(code);
@@ -335,8 +349,14 @@ function reportFinal(
   let finalExpectedFailedAndFailedCount = 0;
   const finalExpectedFailedButPassedTests: [string, TestCaseResult][] = [];
   const finalExpectedFailedButPassedFiles: string[] = [];
+  const finalFailedFiles: string[] = [];
   for (const { test, result } of results) {
-    const { failed, failedCount, expectedFailedButPassed } = analyzeTestResult(
+    const {
+      failed,
+      failedCount,
+      expectedFailedButPassed,
+      expectedFailedAndFailedCount,
+    } = analyzeTestResult(
       result,
       test.expectation,
     );
@@ -345,7 +365,7 @@ function reportFinal(
         finalExpectedFailedAndFailedCount += 1;
       } else {
         finalFailedCount += 1;
-        finalExpectedFailedButPassedFiles.push(test.path);
+        finalFailedFiles.push(test.path);
       }
     } else if (failedCount > 0) {
       finalFailedCount += 1;
@@ -355,6 +375,11 @@ function reportFinal(
       for (const case_ of expectedFailedButPassed) {
         finalExpectedFailedButPassedTests.push([test.path, case_]);
       }
+    } else if (
+      test.expectation === false &&
+      expectedFailedAndFailedCount != result.cases.length
+    ) {
+      finalExpectedFailedButPassedFiles.push(test.path);
     }
   }
   const finalPassedCount = finalTotalCount - finalFailedCount;
@@ -367,6 +392,14 @@ function reportFinal(
   for (const result of finalFailed) {
     console.log(
       `        ${JSON.stringify(`${result[0]} - ${result[1].name}`)}`,
+    );
+  }
+  if (finalFailedFiles.length > 0) {
+    console.log(`\nfile failures:\n`);
+  }
+  for (const result of finalFailedFiles) {
+    console.log(
+      `        ${JSON.stringify(result)}`,
     );
   }
   if (finalExpectedFailedButPassedTests.length > 0) {
@@ -384,13 +417,16 @@ function reportFinal(
     console.log(`        ${JSON.stringify(result)}`);
   }
 
+  const failed = (finalFailedCount > 0) ||
+    (finalExpectedFailedButPassedFiles.length > 0);
+
   console.log(
     `\nfinal result: ${
-      finalFailedCount > 0 ? red("failed") : green("ok")
+      failed ? red("failed") : green("ok")
     }. ${finalPassedCount} passed; ${finalFailedCount} failed; ${finalExpectedFailedAndFailedCount} expected failure; total ${finalTotalCount}\n`,
   );
 
-  return finalFailedCount > 0 ? 1 : 0;
+  return failed ? 1 : 0;
 }
 
 function analyzeTestResult(
@@ -461,7 +497,7 @@ function reportVariation(result: TestResult, expectation: boolean | string[]) {
     console.log(`\n${result.name}\n${result.message}\n${result.stack}`);
   }
 
-  if (failed.length > 0) {
+  if (failedCount > 0) {
     console.log(`\nfailures:\n`);
   }
   for (const result of failed) {

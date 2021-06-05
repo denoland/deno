@@ -147,6 +147,8 @@
             return this[bodySymbol].stream;
           }
         },
+        configurable: true,
+        enumerable: true,
       },
       bodyUsed: {
         /**
@@ -159,6 +161,8 @@
           }
           return false;
         },
+        configurable: true,
+        enumerable: true,
       },
       arrayBuffer: {
         /** @returns {Promise<ArrayBuffer>} */
@@ -167,6 +171,9 @@
           const body = await consumeBody(this);
           return packageData(body, "ArrayBuffer");
         },
+        writable: true,
+        configurable: true,
+        enumerable: true,
       },
       blob: {
         /** @returns {Promise<Blob>} */
@@ -175,6 +182,9 @@
           const body = await consumeBody(this);
           return packageData(body, "Blob", this[mimeTypeSymbol]);
         },
+        writable: true,
+        configurable: true,
+        enumerable: true,
       },
       formData: {
         /** @returns {Promise<FormData>} */
@@ -183,6 +193,9 @@
           const body = await consumeBody(this);
           return packageData(body, "FormData", this[mimeTypeSymbol]);
         },
+        writable: true,
+        configurable: true,
+        enumerable: true,
       },
       json: {
         /** @returns {Promise<any>} */
@@ -191,6 +204,9 @@
           const body = await consumeBody(this);
           return packageData(body, "JSON");
         },
+        writable: true,
+        configurable: true,
+        enumerable: true,
       },
       text: {
         /** @returns {Promise<string>} */
@@ -199,12 +215,13 @@
           const body = await consumeBody(this);
           return packageData(body, "text");
         },
+        writable: true,
+        configurable: true,
+        enumerable: true,
       },
     };
     return Object.defineProperties(prototype.prototype, mixin);
   }
-
-  const decoder = new TextDecoder();
 
   /**
    * https://fetch.spec.whatwg.org/#concept-body-package-data
@@ -244,13 +261,11 @@
         throw new TypeError("Missing content type");
       }
       case "JSON":
-        return JSON.parse(decoder.decode(bytes));
+        return JSON.parse(core.decode(bytes));
       case "text":
-        return decoder.decode(bytes);
+        return core.decode(bytes);
     }
   }
-
-  const encoder = new TextEncoder();
 
   /**
    * @param {BodyInit} object
@@ -286,10 +301,10 @@
       length = res.body.byteLength;
       contentType = res.contentType;
     } else if (object instanceof URLSearchParams) {
-      source = encoder.encode(object.toString());
+      source = core.encode(object.toString());
       contentType = "application/x-www-form-urlencoded;charset=UTF-8";
     } else if (typeof object === "string") {
-      source = encoder.encode(object);
+      source = core.encode(object);
       contentType = "text/plain;charset=UTF-8";
     } else if (object instanceof ReadableStream) {
       stream = object;
