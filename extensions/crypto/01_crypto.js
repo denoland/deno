@@ -41,10 +41,16 @@
     return arrayBufferView;
   }
 
+  function randomUUID() {
+    return core.opSync("op_crypto_random_uuid");
+  }
+
   window.crypto = {
     getRandomValues,
+    randomUUID,
   };
   window.__bootstrap.crypto = {
     getRandomValues,
+    randomUUID,
   };
 })(this);

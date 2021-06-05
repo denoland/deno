@@ -23,4 +23,5 @@ declare interface Crypto {
   >(
     array: T,
   ): T;
+  randomUUID(): string;
 }
