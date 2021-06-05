@@ -112,7 +112,13 @@
         context: "Argument 2",
       });
 
-      data = data.slice(0);
+      if (ArrayBuffer.isView(data)) {
+        data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+      } else {
+        data = new Uint8Array(data, data.byteOffset, data.byteLength);
+      }
+
+      data = data.slice();
 
       algorithm = normalizeAlgorithm(algorithm, "digest");
 
