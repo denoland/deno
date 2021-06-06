@@ -134,9 +134,10 @@ async function generateBundle(location: URL): Promise<string> {
     } else if (src) {
       const url = new URL(src, location);
       const res = await fetch(url);
-      if (!res.ok) throw new TypeError("Failed to bundle!");
-      const contents = await res.text();
-      scriptContents.push([url.href, contents]);
+      if (res.ok) {
+        const contents = await res.text();
+        scriptContents.push([url.href, contents]);
+      }
     } else {
       const url = new URL(`#${inlineScriptCount}`, location);
       inlineScriptCount++;

@@ -634,7 +634,7 @@
     "jsapi": {
       "constructor": {
         "compile.any.html": true,
-        "instantiate-bad-imports.any.html": false,
+        "instantiate-bad-imports.any.html": true,
         "instantiate.any.html": [
           "Synchronous options handling: Buffer argument"
         ],
@@ -653,21 +653,15 @@
         "Table interface: operation set(unsigned long, optional any)"
       ],
       "instance": {
-        "constructor-bad-imports.any.html": false,
+        "constructor-bad-imports.any.html": true,
         "constructor-caching.any.html": true,
         "constructor.any.html": true,
-        "exports.any.html": [
-          "Setting (sloppy mode)"
-        ],
+        "exports.any.html": true,
         "toString.any.html": true
       },
-      "interface.any.html": [
-        "WebAssembly: property descriptor"
-      ],
+      "interface.any.html": true,
       "memory": {
-        "buffer.any.html": [
-          "Setting (sloppy mode)"
-        ],
+        "buffer.any.html": true,
         "constructor.any.html": true,
         "grow.any.html": true,
         "toString.any.html": true,
@@ -687,9 +681,7 @@
         "constructor.any.html": true,
         "get-set.any.html": true,
         "grow.any.html": true,
-        "length.any.html": [
-          "Setting (sloppy mode)"
-        ],
+        "length.any.html": true,
         "toString.any.html": true,
         "constructor-reftypes.tentative.any.html": [
           "initialize externref table with default value",
