@@ -88,7 +88,6 @@
       "CryptoKey interface: attribute extractable",
       "CryptoKey interface: attribute algorithm",
       "CryptoKey interface: attribute usages",
-      "SubtleCrypto interface: existence and properties of interface object",
       "SubtleCrypto interface: operation encrypt(AlgorithmIdentifier, CryptoKey, BufferSource)",
       "SubtleCrypto interface: operation decrypt(AlgorithmIdentifier, CryptoKey, BufferSource)",
       "SubtleCrypto interface: operation sign(AlgorithmIdentifier, CryptoKey, BufferSource)",
