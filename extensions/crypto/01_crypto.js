@@ -99,7 +99,6 @@
     }
   }
 
-
   const subtle = webidl.createBranded(SubtleCrypto);
 
   class Crypto {
