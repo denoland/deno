@@ -5,6 +5,102 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
 
+  const supportedAlgorithms = {
+    "digest": {
+      "SHA-1": {},
+      "SHA-256": {},
+      "SHA-384": {},
+      "SHA-512": {},
+    },
+  };
+
+  function normalizeAlgorithm(algorithm, op) {
+    if (typeof algorithm == "string") {
+      return normalizeAlgorithm({ name: algorithm }, op);
+    }
+
+    const initialAlgorithm = webidl.converters["Algorithm"](algorithm, {
+      context: "Argument 1",
+    });
+
+    const registeredAlgorithms = supportedAlgorithms[op];
+    const algorithmName = Object.keys(registeredAlgorithms)
+      .find((key) => key.toLowerCase() == initialAlgorithm.name.toLowerCase());
+
+    if (algorithmName === undefined) {
+      throw new DOMException(
+        "Unrecognized algorithm name",
+        "NotSupportedError",
+      );
+    }
+
+    // TODO(caspervonb) Step 6 (create from webidl definition), when the need arises.
+    // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
+    const normalizedAlgorithm = {};
+    normalizedAlgorithm.name = algorithmName;
+
+    // TODO(caspervonb) Step 9 and 10, when the need arises.
+    // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
+    return normalizedAlgorithm;
+  }
+
+  // Should match op_crypto_subtle_digest() in extensions/crypto/lib.rs
+  function digestToId(name) {
+    switch (name) {
+      case "SHA-1":
+        return 0;
+      case "SHA-256":
+        return 1;
+      case "SHA-384":
+        return 2;
+      case "SHA-512":
+        return 3;
+    }
+  }
+
+  class SubtleCrypto {
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
+    async digest(algorithm, data) {
+      const prefix = "Failed to execute 'digest' on 'SubtleCrypto'";
+
+      webidl.assertBranded(this, SubtleCrypto);
+      webidl.requiredArguments(arguments.length, 2);
+
+      algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+        prefix,
+        context: "Argument 1",
+      });
+
+      data = webidl.converters.BufferSource(data, {
+        prefix,
+        context: "Argument 2",
+      });
+
+      if (ArrayBuffer.isView(data)) {
+        data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+      } else {
+        data = new Uint8Array(data);
+      }
+
+      data = data.slice();
+
+      algorithm = normalizeAlgorithm(algorithm, "digest");
+
+      const result = await core.opAsync(
+        "op_crypto_subtle_digest",
+        digestToId(algorithm.name),
+        data,
+      );
+
+      return result.buffer;
+    }
+  }
+
+  const subtle = webidl.createBranded(SubtleCrypto);
+
   class Crypto {
     constructor() {
       webidl.illegalConstructor();
@@ -48,6 +144,11 @@
       return core.opSync("op_crypto_random_uuid");
     }
 
+    get subtle() {
+      webidl.assertBranded(this, Crypto);
+      return subtle;
+    }
+
     get [Symbol.toStringTag]() {
       return "Crypto";
     }
@@ -57,7 +158,13 @@
     }
   }
 
+  Object.defineProperty(Crypto.prototype, "subtle", {
+    configurable: true,
+    enumerable: true,
+  });
+
   window.__bootstrap.crypto = {
+    SubtleCrypto,
     crypto: webidl.createBranded(Crypto),
     Crypto,
   };

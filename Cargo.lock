@@ -646,6 +646,8 @@ dependencies = [
  "deno_core",
  "deno_web",
  "rand 0.8.3",
+ "ring",
+ "tokio",
  "uuid",
 ]
 

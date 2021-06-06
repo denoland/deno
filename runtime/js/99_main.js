@@ -314,6 +314,7 @@ delete Object.prototype.__proto__;
     ),
     crypto: util.readOnly(crypto.crypto),
     Crypto: util.nonEnumerable(crypto.Crypto),
+    SubtleCrypto: util.nonEnumerable(crypto.SubtleCrypto),
     fetch: util.writable(fetch.fetch),
     performance: util.writable(performance.performance),
     setInterval: util.writable(timers.setInterval),
