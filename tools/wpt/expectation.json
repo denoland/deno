@@ -75,9 +75,7 @@
       "Non-secure context window does not have access to SubtleCrypto"
     ],
     "idlharness.https.any.html": [
-      "Crypto interface: attribute subtle",
       "Crypto interface: operation getRandomValues(ArrayBufferView)",
-      "Crypto interface: crypto must inherit property \"subtle\" with the proper type",
       "CryptoKey interface: existence and properties of interface object",
       "CryptoKey interface object length",
       "CryptoKey interface object name",
