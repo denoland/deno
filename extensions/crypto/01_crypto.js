@@ -189,8 +189,6 @@
     }
 
     async sign(alg, key, data) {
-      const prefix = "Failed to execute 'sign' on 'SubtleCrypto'";
-
       webidl.assertBranded(this, SubtleCrypto);
       webidl.requiredArguments(arguments.length, 3);
 
@@ -211,8 +209,6 @@
     }
 
     async generateKey(algorithm, extractable, keyUsages) {
-      const prefix = "Failed to execute 'generateKey' on 'SubtleCrypto'";
-
       webidl.assertBranded(this, SubtleCrypto);
       webidl.requiredArguments(arguments.length, 3);
 
