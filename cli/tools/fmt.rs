@@ -136,6 +136,7 @@ fn format_markdown(
             &text,
             &codeblock_config,
           )
+          .map_err(|e| e.to_string())
         }
       } else {
         Ok(text.to_string())
@@ -165,6 +166,7 @@ pub fn format_file(
     format_json(&file_text)
   } else {
     dprint_plugin_typescript::format_text(&file_path, &file_text, &config)
+      .map_err(|e| e.to_string())
   }
 }
 
