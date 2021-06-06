@@ -224,14 +224,18 @@
       })();
     }
 
-    const resp = await opFetchSend(requestRid).catch((err) => {
-      if (terminator.aborted) return;
-      throw err;
-    });
+    let resp;
     try {
-      core.close(cancelHandleRid);
-    } catch (_) {
-      // might have already been closed
+      resp = await opFetchSend(requestRid).catch((err) => {
+        if (terminator.aborted) return;
+        throw err;
+      });
+    } finally {
+      try {
+        core.close(cancelHandleRid);
+      } catch (_) {
+        // might have already been closed
+      }
     }
     if (terminator.aborted) return abortedNetworkError();
 
