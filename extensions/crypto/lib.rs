@@ -28,6 +28,7 @@ use rand::Rng;
 use rand::SeedableRng;
 use ring::agreement::Algorithm as RingAlgorithm;
 use ring::agreement::EphemeralPrivateKey;
+use ring::digest;
 use ring::hmac::Algorithm as HmacAlgorithm;
 use ring::hmac::Key as HmacKey;
 use ring::rand as RingRand;
@@ -41,6 +42,7 @@ use rsa::RSAPublicKey;
 use sha1::Sha1;
 use sha2::{Digest, Sha256, Sha384, Sha512};
 use std::path::PathBuf;
+use std::rc::Rc;
 
 pub use rand; // Re-export rand
 
@@ -63,6 +65,7 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:extensions/crypto",
+      "00_webidl.js",
       "01_crypto.js",
     ))
     .ops(vec![
@@ -75,6 +78,7 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
         op_async(op_webcrypto_generate_key),
       ),
       ("op_webcrypto_sign_key", op_async(op_webcrypto_sign_key)),
+      ("op_crypto_subtle_digest", op_async(op_crypto_subtle_digest)),
       ("op_crypto_random_uuid", op_sync(op_crypto_random_uuid)),
     ])
     .state(move |state| {
@@ -571,6 +575,28 @@ pub fn op_crypto_random_uuid(
   };
 
   Ok(uuid.to_string())
+}
+
+pub async fn op_crypto_subtle_digest(
+  _state: Rc<RefCell<OpState>>,
+  algorithm_id: i8,
+  data: Option<ZeroCopyBuf>,
+) -> Result<ZeroCopyBuf, AnyError> {
+  let algorithm = match algorithm_id {
+    0 => &digest::SHA1_FOR_LEGACY_USE_ONLY,
+    1 => &digest::SHA256,
+    2 => &digest::SHA384,
+    3 => &digest::SHA512,
+    _ => panic!("Invalid algorithm id"),
+  };
+
+  let input = data.ok_or_else(null_opbuf)?;
+  let output = tokio::task::spawn_blocking(move || {
+    digest::digest(algorithm, &input).as_ref().to_vec().into()
+  })
+  .await?;
+
+  Ok(output)
 }
 
 pub fn get_declaration() -> PathBuf {
