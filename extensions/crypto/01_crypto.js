@@ -252,11 +252,6 @@
       webidl.illegalConstructor();
     }
 
-    get subtle() {
-      webidl.assertBranded(this, Crypto);
-      return subtle;
-    }
-
     getRandomValues(arrayBufferView) {
       webidl.assertBranded(this, Crypto);
       const prefix = "Failed to execute 'getRandomValues' on 'Crypto'";
