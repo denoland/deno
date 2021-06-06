@@ -116,7 +116,7 @@
     }
 
     async digest(algorithm, data) {
-     const prefix = "Failed to execute 'digest' on 'SubtleCrypto'";
+      const prefix = "Failed to execute 'digest' on 'SubtleCrypto'";
 
       webidl.assertBranded(this, SubtleCrypto);
       webidl.requiredArguments(arguments.length, 2);
