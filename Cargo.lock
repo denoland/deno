@@ -656,9 +656,9 @@ name = "deno_crypto"
 version = "0.21.1"
 dependencies = [
  "deno_core",
+ "deno_web",
  "lazy_static",
  "num-traits",
- "deno_web",
  "rand 0.8.3",
  "ring",
  "rsa",

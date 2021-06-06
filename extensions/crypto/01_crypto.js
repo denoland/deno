@@ -151,7 +151,7 @@
     return new Uint8Array(signature);
   }
 
-  // TODO: This will be a class. Waiting for Casper's digest PR to add it.
+  // TODO(littledivy): This will be a class. Waiting for Casper's digest PR to add it.
   const subtle = {
     generateKey,
     sign,
