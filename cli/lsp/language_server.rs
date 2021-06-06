@@ -447,7 +447,15 @@ impl Inner {
         ))
       }?;
 
-      let config_file = ConfigFile::read(config_url.path())?;
+      let config_file = {
+        let buffer = config_url
+          .to_file_path()
+          .map_err(|_| anyhow!("Bad uri: \"{}\"", config_url))?;
+        let path = buffer
+          .to_str()
+          .ok_or_else(|| anyhow!("Bad uri: \"{}\"", config_url))?;
+        ConfigFile::read(path)?
+      };
       let (value, maybe_ignored_options) = config_file.as_compiler_options()?;
       tsconfig.merge(&value);
       self.maybe_config_uri = Some(config_url);
