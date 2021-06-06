@@ -38,8 +38,6 @@
     return core.opAsync("op_host_get_message", id);
   }
 
-  const decoder = new TextDecoder();
-
   /**
    * @param {string} permission
    * @return {boolean}
@@ -166,7 +164,7 @@
 
       this.#name = name;
       const hasSourceCode = false;
-      const sourceCode = decoder.decode(new Uint8Array());
+      const sourceCode = core.decode(new Uint8Array());
 
       if (
         specifier.startsWith("./") || specifier.startsWith("../") ||

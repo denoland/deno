@@ -3,37 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
-
-  function getRandomValues(arrayBufferView) {
-    if (!ArrayBuffer.isView(arrayBufferView)) {
-      throw new TypeError(
-        "Argument 1 does not implement interface ArrayBufferView",
-      );
-    }
-    if (
-      !(
-        arrayBufferView instanceof Int8Array ||
-        arrayBufferView instanceof Uint8Array ||
-        arrayBufferView instanceof Int16Array ||
-        arrayBufferView instanceof Uint16Array ||
-        arrayBufferView instanceof Int32Array ||
-        arrayBufferView instanceof Uint32Array ||
-        arrayBufferView instanceof Uint8ClampedArray
-      )
-    ) {
-      throw new DOMException(
-        "The provided ArrayBufferView is not an integer array type",
-        "TypeMismatchError",
-      );
-    }
-    const ui8 = new Uint8Array(
-      arrayBufferView.buffer,
-      arrayBufferView.byteOffset,
-      arrayBufferView.byteLength,
-    );
-    core.opSync("op_crypto_get_random_values", ui8);
-    return arrayBufferView;
-  }
+  const webidl = window.__bootstrap.webidl;
 
   // Represents a rid in a CryptoKey instance.
   const ridSymbol = Symbol();
@@ -181,25 +151,72 @@
     return new Uint8Array(signature);
   }
 
+  // TODO: This will be a class. Waiting for Casper's digest PR to add it.
   const subtle = {
     generateKey,
     sign,
   };
 
-  function randomUUID() {
-    return core.opSync("op_crypto_random_uuid");
+  class Crypto {
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
+    get subtle() {
+      webidl.assertBranded(this, Crypto);
+      return subtle;
+    }
+
+    getRandomValues(arrayBufferView) {
+      webidl.assertBranded(this, Crypto);
+      const prefix = "Failed to execute 'getRandomValues' on 'Crypto'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      arrayBufferView = webidl.converters.ArrayBufferView(arrayBufferView, {
+        prefix,
+        context: "Argument 1",
+      });
+      if (
+        !(
+          arrayBufferView instanceof Int8Array ||
+          arrayBufferView instanceof Uint8Array ||
+          arrayBufferView instanceof Int16Array ||
+          arrayBufferView instanceof Uint16Array ||
+          arrayBufferView instanceof Int32Array ||
+          arrayBufferView instanceof Uint32Array ||
+          arrayBufferView instanceof Uint8ClampedArray
+        )
+      ) {
+        throw new DOMException(
+          "The provided ArrayBufferView is not an integer array type",
+          "TypeMismatchError",
+        );
+      }
+      const ui8 = new Uint8Array(
+        arrayBufferView.buffer,
+        arrayBufferView.byteOffset,
+        arrayBufferView.byteLength,
+      );
+      core.opSync("op_crypto_get_random_values", ui8);
+      return arrayBufferView;
+    }
+
+    randomUUID() {
+      webidl.assertBranded(this, Crypto);
+      return core.opSync("op_crypto_random_uuid");
+    }
+
+    get [Symbol.toStringTag]() {
+      return "Crypto";
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({})}`;
+    }
   }
 
-  window.crypto = {
-    getRandomValues,
-    randomUUID,
-    subtle,
-    CryptoKey,
-  };
   window.__bootstrap.crypto = {
-    getRandomValues,
-    randomUUID,
-    subtle,
+    crypto: webidl.createBranded(Crypto),
+    Crypto,
     CryptoKey,
   };
 })(this);
