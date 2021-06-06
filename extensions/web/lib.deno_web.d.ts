@@ -195,8 +195,8 @@ declare class TextDecoder {
   readonly fatal: boolean;
   /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
   readonly ignoreBOM = false;
-  /** Returns the result of running encoding's decoder. */
 
+  /** Returns the result of running encoding's decoder. */
   decode(input?: BufferSource, options?: TextDecodeOptions): string;
 }
 
@@ -207,10 +207,31 @@ declare interface TextEncoderEncodeIntoResult {
 
 declare class TextEncoder {
   /** Returns "utf-8". */
-  readonly encoding = "utf-8";
+  readonly encoding: "utf-8";
   /** Returns the result of running UTF-8's encoder. */
   encode(input?: string): Uint8Array;
   encodeInto(input: string, dest: Uint8Array): TextEncoderEncodeIntoResult;
+}
+
+declare class TextDecoderStream {
+  /** Returns encoding's name, lowercased. */
+  readonly encoding: string;
+  /** Returns `true` if error mode is "fatal", and `false` otherwise. */
+  readonly fatal: boolean;
+  /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
+  readonly ignoreBOM = false;
+  constructor(label?: string, options?: TextDecoderOptions);
+  readonly readable: ReadableStream<string>;
+  readonly writable: WritableStream<BufferSource>;
+  readonly [Symbol.toStringTag]: string;
+}
+
+declare class TextEncoderStream {
+  /** Returns "utf-8". */
+  readonly encoding: "utf-8";
+  readonly readable: ReadableStream<Uint8Array>;
+  readonly writable: WritableStream<string>;
+  readonly [Symbol.toStringTag]: string;
 }
 
 /** A controller object that allows you to abort one or more DOM requests as and

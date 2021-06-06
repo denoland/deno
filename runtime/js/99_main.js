@@ -287,6 +287,8 @@ delete Object.prototype.__proto__;
     Response: util.nonEnumerable(fetch.Response),
     TextDecoder: util.nonEnumerable(encoding.TextDecoder),
     TextEncoder: util.nonEnumerable(encoding.TextEncoder),
+    TextDecoderStream: util.nonEnumerable(encoding.TextDecoderStream),
+    TextEncoderStream: util.nonEnumerable(encoding.TextEncoderStream),
     TransformStream: util.nonEnumerable(streams.TransformStream),
     URL: util.nonEnumerable(url.URL),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
