@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::AnyError;
+use crate::resolve_url_or_path;
 use crate::JsRuntime;
 use crate::Op;
 use crate::OpId;
@@ -382,13 +383,21 @@ fn eval_context(
   let source = match v8::Local::<v8::String>::try_from(args.get(0)) {
     Ok(s) => s,
     Err(_) => {
-      throw_type_error(scope, "Invalid argument");
+      throw_type_error(scope, "Missing first argument");
       return;
     }
   };
 
-  let url = v8::Local::<v8::String>::try_from(args.get(1))
-    .map(|n| Url::from_file_path(n.to_rust_string_lossy(scope)).unwrap());
+  let url = match v8::Local::<v8::String>::try_from(args.get(1)) {
+    Ok(s) => match resolve_url_or_path(&s.to_rust_string_lossy(scope)) {
+      Ok(s) => Some(s),
+      Err(err) => {
+        throw_type_error(scope, &format!("Invalid specifier: {}", err));
+        return;
+      }
+    },
+    Err(_) => None,
+  };
 
   #[derive(Serialize)]
   struct Output<'s>(Option<serde_v8::Value<'s>>, Option<ErrInfo<'s>>);
