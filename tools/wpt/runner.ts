@@ -47,8 +47,16 @@ export async function runWithTestUtil<T>(
 
 export interface TestResult {
   cases: TestCaseResult[];
+  harnessStatus: TestHarnessStatus | null;
+  duration: number;
   status: number;
   stderr: string;
+}
+
+export interface TestHarnessStatus {
+  status: number;
+  message: string | null;
+  stack: string | null;
 }
 
 export interface TestCaseResult {
@@ -70,6 +78,8 @@ export async function runSingleTest(
     suffix: ".js",
   });
   await Deno.writeTextFile(tempFile, bundle);
+
+  const startTime = new Date().getTime();
 
   const proc = Deno.run({
     cmd: [
@@ -94,6 +104,8 @@ export async function runSingleTest(
   const cases = [];
   let stderr = "";
 
+  let harnessStatus = null;
+
   const lines = readLines(proc.stderr);
   for await (const line of lines) {
     if (line.startsWith("{")) {
@@ -101,15 +113,21 @@ export async function runSingleTest(
       const result = { ...data, passed: data.status == 0 };
       cases.push(result);
       reporter(result);
+    } else if (line.startsWith("#$#$#{")) {
+      harnessStatus = JSON.parse(line.slice(5));
     } else {
       stderr += line + "\n";
       console.error(stderr);
     }
   }
 
+  const duration = new Date().getTime() - startTime;
+
   const { code } = await proc.status();
   return {
     status: code,
+    harnessStatus,
+    duration,
     cases,
     stderr,
   };

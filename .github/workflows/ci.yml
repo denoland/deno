@@ -177,8 +177,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key:
-            a-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: a-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -308,7 +307,7 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu') && matrix.kind == 'test' && matrix.profile == 'release'
         run: |
           deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts setup
-          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --quiet --release --json=wpt.json
+          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --quiet --release --json=wpt.json --wptreport=wptreport.json
 
       - name: Upload wpt results to dl.deno.land
         if: |
@@ -319,6 +318,7 @@ jobs:
           github.ref == 'refs/heads/main'
         run: |
           gsutil cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json
+          gsutil cp ./wptreport.json gs://dl.deno.land/wpt/$(git rev-parse HEAD)-wptreport.json
           echo $(git rev-parse HEAD) > wpt-latest.txt
           gsutil cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt
 
@@ -407,4 +407,3 @@ jobs:
           rm -rf target/*/examples/
           rm -rf target/*/gn_out/
           rm -rf target/*/*.zip
-
