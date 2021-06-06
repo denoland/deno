@@ -382,12 +382,11 @@ pub async fn op_fetch_response_read(
   Ok(read)
 }
 
+type CancelableResponseResult =
+  Result<Result<Response, reqwest::Error>, Canceled>;
+
 struct FetchRequestResource(
-  Pin<
-    Box<
-      dyn Future<Output = Result<Result<Response, reqwest::Error>, Canceled>>,
-    >,
-  >,
+  Pin<Box<dyn Future<Output = CancelableResponseResult>>>,
 );
 
 impl Resource for FetchRequestResource {
