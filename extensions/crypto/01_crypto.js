@@ -158,10 +158,7 @@
     }
   }
 
-  Object.defineProperty(Crypto.prototype, "subtle", {
-    configurable: true,
-    enumerable: true,
-  });
+  webidl.configurePrototype(Crypto);
 
   window.__bootstrap.crypto = {
     SubtleCrypto,

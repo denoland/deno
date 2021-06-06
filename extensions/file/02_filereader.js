@@ -328,6 +328,8 @@
     }
   }
 
+  webidl.configurePrototype(FileReader);
+
   Object.defineProperty(FileReader, "EMPTY", {
     writable: false,
     enumerable: true,

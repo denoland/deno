@@ -60,6 +60,9 @@
     }
   }
   defineEventHandler(AbortSignal.prototype, "abort");
+
+  webidl.configurePrototype(AbortSignal);
+
   class AbortController {
     #signal = new AbortSignal(illegalConstructorKey);
 
@@ -75,6 +78,8 @@
       return "AbortController";
     }
   }
+
+  webidl.configurePrototype(AbortController);
 
   const handlerSymbol = Symbol("eventHandlers");
 

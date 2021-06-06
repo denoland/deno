@@ -897,6 +897,26 @@
     return Object.assign(prototype.prototype, methods);
   }
 
+  function configurePrototype(prototype) {
+    const descriptors = Object.getOwnPropertyDescriptors(prototype.prototype);
+    for (const key in descriptors) {
+      if (key === "constructor") continue;
+      const descriptor = descriptors[key];
+      if ("value" in descriptor && typeof descriptor.value === "function") {
+        Object.defineProperty(prototype.prototype, key, {
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+      } else if ("get" in descriptor) {
+        Object.defineProperty(prototype.prototype, key, {
+          enumerable: true,
+          configurable: true,
+        });
+      }
+    }
+  }
+
   window.__bootstrap ??= {};
   window.__bootstrap.webidl = {
     makeException,
@@ -913,5 +933,6 @@
     assertBranded,
     illegalConstructor,
     mixinPairIterable,
+    configurePrototype,
   };
 })(this);

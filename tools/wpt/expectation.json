@@ -75,7 +75,6 @@
       "Non-secure context window does not have access to SubtleCrypto"
     ],
     "idlharness.https.any.html": [
-      "Crypto interface: operation getRandomValues(ArrayBufferView)",
       "CryptoKey interface: existence and properties of interface object",
       "CryptoKey interface object length",
       "CryptoKey interface object name",
@@ -1028,11 +1027,6 @@
         "redirect-to-dataurl.any.html": true
       },
       "idlharness.any.html": [
-        "Headers interface: operation append(ByteString, ByteString)",
-        "Headers interface: operation delete(ByteString)",
-        "Headers interface: operation get(ByteString)",
-        "Headers interface: operation has(ByteString)",
-        "Headers interface: operation set(ByteString, ByteString)",
         "Headers interface: iterable<ByteString, ByteString>",
         "Request interface: attribute destination",
         "Request interface: attribute referrer",
