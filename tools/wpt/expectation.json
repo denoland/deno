@@ -92,11 +92,13 @@
       "successes_RSA-PSS.https.any.html": true,
       "successes_RSASSA-PKCS1-v1_5.https.any.html": true
     },
-    "historical.any.html": false,
+    "historical.any.html": [
+      "Non-secure context window does not have access to crypto.subtle",
+      "Non-secure context window does not have access to CryptoKey"
+    ],
     "idlharness.https.any.html": [
       "Crypto interface: attribute subtle",
       "Crypto interface: operation getRandomValues(ArrayBufferView)",
-      "Crypto interface: crypto must inherit property \"subtle\" with the proper type",
       "CryptoKey interface object length",
       "CryptoKey interface: attribute type",
       "CryptoKey interface: attribute extractable",
