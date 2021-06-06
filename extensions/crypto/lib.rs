@@ -42,7 +42,6 @@ use rsa::RSAPublicKey;
 use sha1::Sha1;
 use sha2::{Digest, Sha256, Sha384, Sha512};
 use std::path::PathBuf;
-use std::rc::Rc;
 
 pub use rand; // Re-export rand
 
