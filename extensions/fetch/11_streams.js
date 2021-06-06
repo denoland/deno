@@ -3227,6 +3227,10 @@
     }
   }
 
+  function errorReadableStream(stream, e) {
+    readableStreamDefaultControllerError(stream[_controller], e);
+  }
+
   /** @template R */
   class ReadableStreamGenericReader {
     /** @type {Deferred<void>} */
@@ -3873,6 +3877,7 @@
   window.__bootstrap.streams = {
     // Non-Public
     isReadableStreamDisturbed,
+    errorReadableStream,
     // Exposed in global runtime scope
     ByteLengthQueuingStrategy,
     CountQueuingStrategy,

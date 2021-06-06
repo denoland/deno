@@ -82,6 +82,7 @@ declare namespace globalThis {
       function toInnerRequest(request: Request): InnerRequest;
       function fromInnerRequest(
         inner: InnerRequest,
+        signal: AbortSignal | null,
         guard:
           | "request"
           | "immutable"
