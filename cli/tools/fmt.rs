@@ -101,7 +101,7 @@ fn format_markdown(
   dprint_plugin_markdown::format_text(
     &file_text,
     &md_config,
-    Box::new(move |tag, text, line_width| {
+    move |tag, text, line_width| {
       let tag = tag.to_lowercase();
       if matches!(
         tag.as_str(),
@@ -140,8 +140,9 @@ fn format_markdown(
       } else {
         Ok(text.to_string())
       }
-    }),
+    },
   )
+  .map_err(|e| e.to_string())
 }
 
 /// Formats JSON and JSONC using the rules provided by .deno()
@@ -150,6 +151,7 @@ fn format_markdown(
 fn format_json(file_text: &str) -> Result<String, String> {
   let json_config = get_json_config();
   dprint_plugin_json::format_text(&file_text, &json_config)
+    .map_err(|e| e.to_string())
 }
 
 /// Formats a single TS, TSX, JS, JSX, JSONC, JSON, or MD file.
@@ -165,6 +167,7 @@ pub fn format_file(
     format_json(&file_text)
   } else {
     dprint_plugin_typescript::format_text(&file_path, &file_text, &config)
+      .map_err(|e| e.to_string())
   }
 }
 
