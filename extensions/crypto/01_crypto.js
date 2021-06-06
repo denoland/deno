@@ -207,13 +207,13 @@
 
     async generateKey(algorithm, extractable, keyUsages) {
       const normalizedAlgorithm = normalize(algorithm);
-  
+
       const { key } = await core.opAsync("op_webcrypto_generate_key", {
         algorithm: normalizedAlgorithm,
         extractable,
         keyUsages,
       }, normalizedAlgorithm.publicExponent || new Uint8Array());
-  
+
       if (key.single) {
         const { keyType } = key.single.key;
         const usages = validateUsages(keyUsages, keyType);
@@ -224,7 +224,7 @@
       } /* CryptoKeyPair */ else {
         const privateKeyType = key.pair.key.privateKey.keyType;
         const privateKeyUsages = validateUsages(keyUsages, privateKeyType);
-  
+
         const publicKeyType = key.pair.key.publicKey.keyType;
         const publicKeyUsages = validateUsages(keyUsages, publicKeyType);
         return {
@@ -243,7 +243,6 @@
         };
       }
     }
-  
   }
 
   const subtle = webidl.createBranded(SubtleCrypto);
