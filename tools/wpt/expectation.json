@@ -1095,7 +1095,6 @@
         "Window interface: operation fetch(RequestInfo, optional RequestInit)"
       ],
       "abort": {
-        "cache.https.any.html": false,
         "general.any.html": [
           "response.arrayBuffer() rejects if already aborted",
           "response.blob() rejects if already aborted",
