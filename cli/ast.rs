@@ -273,6 +273,9 @@ fn strip_config_from_emit_options(
       }
     },
     use_define_for_class_fields: true,
+    // TODO(bartlomieju): this could be changed to `false` to provide `export {}`
+    // in Typescript files without manual changes
+    no_empty_export: true,
   }
 }
 

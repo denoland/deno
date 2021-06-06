@@ -14,7 +14,10 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
+base64 = "0.13.0"
 deno_core = { version = "0.88.1", path = "../../core" }
+encoding_rs = "0.8.28"
+serde = "1.0"
 
 [dev-dependencies]
 futures = "0.3.15"

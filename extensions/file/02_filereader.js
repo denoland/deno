@@ -14,9 +14,9 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
-  const { decode } = window.__bootstrap.encoding;
+  const { forgivingBase64Encode } = window.__bootstrap.infra;
+  const { decode, TextDecoder } = window.__bootstrap.encoding;
   const { parseMimeType } = window.__bootstrap.mimesniff;
-  const base64 = window.__bootstrap.base64;
 
   const state = Symbol("[[state]]");
   const result = Symbol("[[result]]");
@@ -168,7 +168,7 @@
                   case "DataUrl": {
                     const mediaType = blob.type || "application/octet-stream";
                     this[result] = `data:${mediaType};base64,${
-                      base64.fromByteArray(bytes)
+                      forgivingBase64Encode(bytes)
                     }`;
                     break;
                   }

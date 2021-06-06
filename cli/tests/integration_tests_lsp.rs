@@ -31,7 +31,10 @@ fn init(init_path: &str) -> LspClient {
   client
 }
 
-fn did_open<V>(client: &mut LspClient, params: V)
+fn did_open<V>(
+  client: &mut LspClient,
+  params: V,
+) -> Vec<lsp::PublishDiagnosticsParams>
 where
   V: Serialize,
 {
@@ -45,12 +48,16 @@ where
     .write_response(id, json!({ "enable": true }))
     .unwrap();
 
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
+  let mut diagnostics = vec![];
+  for _ in 0..3 {
+    let (method, response) = client
+      .read_notification::<lsp::PublishDiagnosticsParams>()
+      .unwrap();
+    assert_eq!(method, "textDocument/publishDiagnostics");
+    diagnostics.push(response.unwrap());
+  }
+
+  diagnostics
 }
 
 fn shutdown(client: &mut LspClient) {
@@ -63,6 +70,47 @@ fn shutdown(client: &mut LspClient) {
 #[test]
 fn lsp_startup_shutdown() {
   let mut client = init("initialize_params.json");
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_init_tsconfig() {
+  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let tsconfig =
+    serde_json::to_vec_pretty(&load_fixture("lib.tsconfig.json")).unwrap();
+  fs::write(temp_dir.path().join("lib.tsconfig.json"), tsconfig).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert("config".to_string(), json!("./lib.tsconfig.json"));
+    params.initialization_options = Some(Value::Object(map));
+  }
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "location.pathname;\n"
+      }
+    }),
+  );
+
+  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
+  assert_eq!(diagnostics.count(), 0);
+
   shutdown(&mut client);
 }
 

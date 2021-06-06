@@ -2,6 +2,7 @@
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const { open, openSync } = window.__bootstrap.files;
   const { readAll, readAllSync } = window.__bootstrap.io;
 
@@ -29,8 +30,7 @@
     const file = openSync(path);
     try {
       const contents = readAllSync(file);
-      const decoder = new TextDecoder();
-      return decoder.decode(contents);
+      return core.decode(contents);
     } finally {
       file.close();
     }
@@ -40,8 +40,7 @@
     const file = await open(path);
     try {
       const contents = await readAll(file);
-      const decoder = new TextDecoder();
-      return decoder.decode(contents);
+      return core.decode(contents);
     } finally {
       file.close();
     }

@@ -177,31 +177,60 @@ declare function atob(s: string): string;
  */
 declare function btoa(s: string): string;
 
+declare interface TextDecoderOptions {
+  fatal?: boolean;
+  ignoreBOM?: boolean;
+}
+
+declare interface TextDecodeOptions {
+  stream?: boolean;
+}
+
 declare class TextDecoder {
+  constructor(label?: string, options?: TextDecoderOptions);
+
   /** Returns encoding's name, lowercased. */
   readonly encoding: string;
   /** Returns `true` if error mode is "fatal", and `false` otherwise. */
   readonly fatal: boolean;
   /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
   readonly ignoreBOM = false;
-  constructor(
-    label?: string,
-    options?: { fatal?: boolean; ignoreBOM?: boolean },
-  );
+
   /** Returns the result of running encoding's decoder. */
-  decode(input?: BufferSource, options?: { stream?: boolean }): string;
-  readonly [Symbol.toStringTag]: string;
+  decode(input?: BufferSource, options?: TextDecodeOptions): string;
+}
+
+declare interface TextEncoderEncodeIntoResult {
+  read: number;
+  written: number;
 }
 
 declare class TextEncoder {
   /** Returns "utf-8". */
-  readonly encoding = "utf-8";
+  readonly encoding: "utf-8";
   /** Returns the result of running UTF-8's encoder. */
   encode(input?: string): Uint8Array;
-  encodeInto(
-    input: string,
-    dest: Uint8Array,
-  ): { read: number; written: number };
+  encodeInto(input: string, dest: Uint8Array): TextEncoderEncodeIntoResult;
+}
+
+declare class TextDecoderStream {
+  /** Returns encoding's name, lowercased. */
+  readonly encoding: string;
+  /** Returns `true` if error mode is "fatal", and `false` otherwise. */
+  readonly fatal: boolean;
+  /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
+  readonly ignoreBOM = false;
+  constructor(label?: string, options?: TextDecoderOptions);
+  readonly readable: ReadableStream<string>;
+  readonly writable: WritableStream<BufferSource>;
+  readonly [Symbol.toStringTag]: string;
+}
+
+declare class TextEncoderStream {
+  /** Returns "utf-8". */
+  readonly encoding: "utf-8";
+  readonly readable: ReadableStream<Uint8Array>;
+  readonly writable: WritableStream<string>;
   readonly [Symbol.toStringTag]: string;
 }
 

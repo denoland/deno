@@ -26,9 +26,11 @@
     getDecodeSplitHeader,
   } = window.__bootstrap.headers;
   const { HttpClient } = window.__bootstrap.fetch;
+  const abortSignal = window.__bootstrap.abortSignal;
 
   const _request = Symbol("request");
   const _headers = Symbol("headers");
+  const _signal = Symbol("signal");
   const _mimeType = Symbol("mime type");
   const _body = Symbol("body");
 
@@ -145,6 +147,8 @@
     [_request];
     /** @type {Headers} */
     [_headers];
+    /** @type {AbortSignal} */
+    [_signal];
     get [_mimeType]() {
       let charset = null;
       let essence = null;
@@ -206,6 +210,9 @@
       let request;
       const baseURL = getLocationHref();
 
+      // 4.
+      let signal = null;
+
       // 5.
       if (typeof input === "string") {
         const parsedURL = new URL(input, baseURL);
@@ -213,7 +220,11 @@
       } else { // 6.
         if (!(input instanceof Request)) throw new TypeError("Unreachable");
         request = input[_request];
+        signal = input[_signal];
       }
+
+      // 12.
+      // TODO(lucacasonato): create a copy of `request`
 
       // 22.
       if (init.redirect !== undefined) {
@@ -225,6 +236,11 @@
         let method = init.method;
         method = validateAndNormalizeMethod(method);
         request.method = method;
+      }
+
+      // 26.
+      if (init.signal !== undefined) {
+        signal = init.signal;
       }
 
       // NOTE: non standard extension. This handles Deno.HttpClient parameter
@@ -241,6 +257,12 @@
 
       // 27.
       this[_request] = request;
+
+      // 28.
+      this[_signal] = abortSignal.newSignal();
+      if (signal !== null) {
+        abortSignal.follow(this[_signal], signal);
+      }
 
       // 29.
       this[_headers] = headersFromHeaderList(request.headerList, "request");
@@ -299,6 +321,9 @@
 
       // 40.
       request.body = finalBody;
+
+      // 41.
+      // TODO(lucacasonato): Extranious? https://github.com/whatwg/fetch/issues/1249
     }
 
     get method() {
@@ -321,13 +346,24 @@
       return this[_request].redirectMode;
     }
 
+    get signal() {
+      webidl.assertBranded(this, Request);
+      return this[_signal];
+    }
+
     clone() {
       webidl.assertBranded(this, Request);
       if (this[_body] && this[_body].unusable()) {
         throw new TypeError("Body is unusable.");
       }
       const newReq = cloneInnerRequest(this[_request]);
-      return fromInnerRequest(newReq, guardFromHeaders(this[_headers]));
+      const newSignal = abortSignal.newSignal();
+      abortSignal.follow(newSignal, this[_signal]);
+      return fromInnerRequest(
+        newReq,
+        newSignal,
+        guardFromHeaders(this[_headers]),
+      );
     }
 
     get [Symbol.toStringTag]() {
@@ -361,6 +397,10 @@
     configurable: true,
   });
   Object.defineProperty(Request.prototype, "redirect", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(Request.prototype, "signal", {
     enumerable: true,
     configurable: true,
   });
@@ -403,6 +443,12 @@
         ),
       },
       { key: "redirect", converter: webidl.converters["RequestRedirect"] },
+      {
+        key: "signal",
+        converter: webidl.createNullableConverter(
+          webidl.converters["AbortSignal"],
+        ),
+      },
       { key: "client", converter: webidl.converters.any },
     ],
   );
@@ -420,9 +466,10 @@
    * @param {"request" | "immutable" | "request-no-cors" | "response" | "none"} guard
    * @returns {Request}
    */
-  function fromInnerRequest(inner, guard) {
+  function fromInnerRequest(inner, signal, guard) {
     const request = webidl.createBranded(Request);
     request[_request] = inner;
+    request[_signal] = signal;
     request[_headers] = headersFromHeaderList(inner.headerList, guard);
     return request;
   }
