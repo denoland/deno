@@ -207,7 +207,7 @@ declare interface TextEncoderEncodeIntoResult {
 
 declare class TextEncoder {
   /** Returns "utf-8". */
-  readonly encoding = "utf-8";
+  readonly encoding: "utf-8";
   /** Returns the result of running UTF-8's encoder. */
   encode(input?: string): Uint8Array;
   encodeInto(input: string, dest: Uint8Array): TextEncoderEncodeIntoResult;
@@ -228,7 +228,7 @@ declare class TextDecoderStream {
 
 declare class TextEncoderStream {
   /** Returns "utf-8". */
-  readonly encoding = "utf-8";
+  readonly encoding: "utf-8";
   readonly readable: ReadableStream<Uint8Array>;
   readonly writable: WritableStream<string>;
   readonly [Symbol.toStringTag]: string;
