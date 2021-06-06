@@ -189,6 +189,11 @@
     }
 
     async sign(alg, key, data) {
+      const prefix = "Failed to execute 'sign' on 'SubtleCrypto'";
+
+      webidl.assertBranded(this, SubtleCrypto);
+      webidl.requiredArguments(arguments.length, 3);
+
       const rid = key[ridSymbol];
       const simpleAlg = typeof alg == "string";
       const saltLength = simpleAlg ? null : alg.saltLength;
@@ -206,6 +211,11 @@
     }
 
     async generateKey(algorithm, extractable, keyUsages) {
+      const prefix = "Failed to execute 'generateKey' on 'SubtleCrypto'";
+
+      webidl.assertBranded(this, SubtleCrypto);
+      webidl.requiredArguments(arguments.length, 3);
+
       const normalizedAlgorithm = normalize(algorithm);
 
       const { key } = await core.opAsync("op_webcrypto_generate_key", {
