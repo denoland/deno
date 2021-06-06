@@ -16,6 +16,8 @@ delete Object.prototype.__proto__;
   const errorStack = window.__bootstrap.errorStack;
   const os = window.__bootstrap.os;
   const timers = window.__bootstrap.timers;
+  const base64 = window.__bootstrap.base64;
+  const encoding = window.__bootstrap.encoding;
   const Console = window.__bootstrap.console.Console;
   const worker = window.__bootstrap.worker;
   const signals = window.__bootstrap.signals;
@@ -28,7 +30,10 @@ delete Object.prototype.__proto__;
   const fileReader = window.__bootstrap.fileReader;
   const webgpu = window.__bootstrap.webgpu;
   const webSocket = window.__bootstrap.webSocket;
+  const webStorage = window.__bootstrap.webStorage;
+  const broadcastChannel = window.__bootstrap.broadcastChannel;
   const file = window.__bootstrap.file;
+  const formData = window.__bootstrap.formData;
   const fetch = window.__bootstrap.fetch;
   const prompt = window.__bootstrap.prompt;
   const denoNs = window.__bootstrap.denoNs;
@@ -57,15 +62,13 @@ delete Object.prototype.__proto__;
     }
   }
 
-  const encoder = new TextEncoder();
-
   function workerClose() {
     if (isClosing) {
       return;
     }
 
     isClosing = true;
-    opCloseWorker();
+    core.opSync("op_worker_close");
   }
 
   // TODO(bartlomieju): remove these functions
@@ -74,75 +77,69 @@ delete Object.prototype.__proto__;
   const onerror = () => {};
 
   function postMessage(data) {
-    const dataJson = JSON.stringify(data);
-    const dataIntArray = encoder.encode(dataJson);
-    opPostMessage(dataIntArray);
+    const dataIntArray = core.serialize(data);
+    core.opSync("op_worker_post_message", null, dataIntArray);
   }
 
   let isClosing = false;
-  async function workerMessageRecvCallback(data) {
-    const msgEvent = new MessageEvent("message", {
-      cancelable: false,
-      data,
-    });
+  async function pollForMessages() {
+    while (!isClosing) {
+      const bufferMsg = await core.opAsync("op_worker_get_message");
+      const data = core.deserialize(bufferMsg);
 
-    try {
-      if (globalThis["onmessage"]) {
-        const result = globalThis.onmessage(msgEvent);
-        if (result && "then" in result) {
-          await result;
-        }
-      }
-      globalThis.dispatchEvent(msgEvent);
-    } catch (e) {
-      let handled = false;
-
-      const errorEvent = new ErrorEvent("error", {
-        cancelable: true,
-        message: e.message,
-        lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
-        colno: e.columnNumber ? e.columnNumber + 1 : undefined,
-        filename: e.fileName,
-        error: null,
+      const msgEvent = new MessageEvent("message", {
+        cancelable: false,
+        data,
       });
 
-      if (globalThis["onerror"]) {
-        const ret = globalThis.onerror(
-          e.message,
-          e.fileName,
-          e.lineNumber,
-          e.columnNumber,
-          e,
-        );
-        handled = ret === true;
-      }
+      try {
+        if (globalThis.onmessage) {
+          await globalThis.onmessage(msgEvent);
+        }
+        globalThis.dispatchEvent(msgEvent);
+      } catch (e) {
+        let handled = false;
 
-      globalThis.dispatchEvent(errorEvent);
-      if (errorEvent.defaultPrevented) {
-        handled = true;
-      }
+        const errorEvent = new ErrorEvent("error", {
+          cancelable: true,
+          message: e.message,
+          lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
+          colno: e.columnNumber ? e.columnNumber + 1 : undefined,
+          filename: e.fileName,
+          error: null,
+        });
 
-      if (!handled) {
-        throw e;
+        if (globalThis["onerror"]) {
+          const ret = globalThis.onerror(
+            e.message,
+            e.fileName,
+            e.lineNumber,
+            e.columnNumber,
+            e,
+          );
+          handled = ret === true;
+        }
+
+        globalThis.dispatchEvent(errorEvent);
+        if (errorEvent.defaultPrevented) {
+          handled = true;
+        }
+
+        if (!handled) {
+          core.opSync(
+            "op_worker_unhandled_error",
+            e.message,
+          );
+        }
       }
     }
   }
 
-  function opPostMessage(data) {
-    core.jsonOpSync("op_worker_post_message", null, data);
-  }
-
-  function opCloseWorker() {
-    core.jsonOpSync("op_worker_close");
-  }
-
   function opMainModule() {
-    return core.jsonOpSync("op_main_module");
+    return core.opSync("op_main_module");
   }
 
   function runtimeStart(runtimeOptions, source) {
-    core.ops();
-
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
     version.setVersions(
       runtimeOptions.denoVersion,
@@ -185,16 +182,29 @@ delete Object.prototype.__proto__;
     core.registerErrorClass("Http", errors.Http);
     core.registerErrorClass("Busy", errors.Busy);
     core.registerErrorClass("NotSupported", errors.NotSupported);
-    core.registerErrorClass("Error", Error);
-    core.registerErrorClass("RangeError", RangeError);
-    core.registerErrorClass("ReferenceError", ReferenceError);
-    core.registerErrorClass("SyntaxError", SyntaxError);
-    core.registerErrorClass("TypeError", TypeError);
-    core.registerErrorClass("URIError", URIError);
-    core.registerErrorClass(
+    core.registerErrorBuilder(
       "DOMExceptionOperationError",
-      DOMException,
-      "OperationError",
+      function DOMExceptionOperationError(msg) {
+        return new DOMException(msg, "OperationError");
+      },
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionQuotaExceededError",
+      function DOMExceptionQuotaExceededError(msg) {
+        return new DOMException(msg, "QuotaExceededError");
+      },
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionNotSupportedError",
+      function DOMExceptionNotSupportedError(msg) {
+        return new DOMException(msg, "NotSupported");
+      },
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionInvalidCharacterError",
+      function DOMExceptionInvalidCharacterError(msg) {
+        return new DOMException(msg, "InvalidCharacterError");
+      },
     );
   }
 
@@ -261,7 +271,7 @@ delete Object.prototype.__proto__;
     EventTarget: util.nonEnumerable(EventTarget),
     File: util.nonEnumerable(file.File),
     FileReader: util.nonEnumerable(fileReader.FileReader),
-    FormData: util.nonEnumerable(fetch.FormData),
+    FormData: util.nonEnumerable(formData.FormData),
     Headers: util.nonEnumerable(headers.Headers),
     MessageEvent: util.nonEnumerable(MessageEvent),
     Performance: util.nonEnumerable(performance.Performance),
@@ -275,25 +285,36 @@ delete Object.prototype.__proto__;
     ),
     Request: util.nonEnumerable(fetch.Request),
     Response: util.nonEnumerable(fetch.Response),
-    TextDecoder: util.nonEnumerable(TextDecoder),
-    TextEncoder: util.nonEnumerable(TextEncoder),
+    TextDecoder: util.nonEnumerable(encoding.TextDecoder),
+    TextEncoder: util.nonEnumerable(encoding.TextEncoder),
+    TextDecoderStream: util.nonEnumerable(encoding.TextDecoderStream),
+    TextEncoderStream: util.nonEnumerable(encoding.TextEncoderStream),
     TransformStream: util.nonEnumerable(streams.TransformStream),
     URL: util.nonEnumerable(url.URL),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
+    BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
     Worker: util.nonEnumerable(worker.Worker),
     WritableStream: util.nonEnumerable(streams.WritableStream),
     WritableStreamDefaultWriter: util.nonEnumerable(
       streams.WritableStreamDefaultWriter,
     ),
-    atob: util.writable(atob),
-    btoa: util.writable(btoa),
+    ReadableByteStreamController: util.nonEnumerable(
+      streams.ReadableByteStreamController,
+    ),
+    TransformStreamDefaultController: util.nonEnumerable(
+      streams.TransformStreamDefaultController,
+    ),
+    atob: util.writable(base64.atob),
+    btoa: util.writable(base64.btoa),
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
     console: util.writable(
       new Console((msg, level) => core.print(msg, level > 1)),
     ),
-    crypto: util.readOnly(crypto),
+    crypto: util.readOnly(crypto.crypto),
+    Crypto: util.nonEnumerable(crypto.Crypto),
+    SubtleCrypto: util.nonEnumerable(crypto.SubtleCrypto),
     fetch: util.writable(fetch.fetch),
     performance: util.writable(performance.performance),
     setInterval: util.writable(timers.setInterval),
@@ -302,7 +323,7 @@ delete Object.prototype.__proto__;
     GPU: util.nonEnumerable(webgpu.GPU),
     GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
     GPUAdapterLimits: util.nonEnumerable(webgpu.GPUAdapterLimits),
-    GPUAdapterFeatures: util.nonEnumerable(webgpu.GPUAdapterFeatures),
+    GPUSupportedFeatures: util.nonEnumerable(webgpu.GPUSupportedFeatures),
     GPUDevice: util.nonEnumerable(webgpu.GPUDevice),
     GPUQueue: util.nonEnumerable(webgpu.GPUQueue),
     GPUBuffer: util.nonEnumerable(webgpu.GPUBuffer),
@@ -357,6 +378,17 @@ delete Object.prototype.__proto__;
     alert: util.writable(prompt.alert),
     confirm: util.writable(prompt.confirm),
     prompt: util.writable(prompt.prompt),
+    localStorage: {
+      configurable: true,
+      enumerable: true,
+      get: webStorage.localStorage,
+    },
+    sessionStorage: {
+      configurable: true,
+      enumerable: true,
+      get: webStorage.sessionStorage,
+    },
+    Storage: util.nonEnumerable(webStorage.Storage),
   };
 
   const workerRuntimeGlobalProperties = {
@@ -377,7 +409,6 @@ delete Object.prototype.__proto__;
     // TODO(bartlomieju): should be readonly?
     close: util.nonEnumerable(workerClose),
     postMessage: util.writable(postMessage),
-    workerMessageRecvCallback: util.nonEnumerable(workerMessageRecvCallback),
   };
 
   let hasBootstrapped = false;
@@ -420,7 +451,6 @@ delete Object.prototype.__proto__;
 
     if (locationHref != null) {
       location.setLocationHref(locationHref);
-      fetch.setBaseUrl(locationHref);
     }
 
     registerErrors();
@@ -433,6 +463,7 @@ delete Object.prototype.__proto__;
       [internalSymbol]: internals,
       resources: core.resources,
       close: core.close,
+      memoryUsage: core.memoryUsage,
       ...denoNs,
     };
     Object.defineProperties(finalDenoNs, {
@@ -486,8 +517,9 @@ delete Object.prototype.__proto__;
       runtimeOptions;
 
     location.setLocationHref(locationHref);
-    fetch.setBaseUrl(locationHref);
     registerErrors();
+
+    pollForMessages();
 
     const internalSymbol = Symbol("Deno.internal");
 

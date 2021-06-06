@@ -46,6 +46,8 @@ use tokio_tungstenite::accept_async;
 #[cfg(unix)]
 pub use pty;
 
+pub mod lsp;
+
 const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
 const REDIRECT_PORT: u16 = 4546;
@@ -85,10 +87,6 @@ pub fn tests_path() -> PathBuf {
   root_path().join("cli").join("tests")
 }
 
-pub fn wpt_path() -> PathBuf {
-  root_path().join("test_util").join("wpt")
-}
-
 pub fn third_party_path() -> PathBuf {
   root_path().join("third_party")
 }
@@ -102,15 +100,6 @@ pub fn target_dir() -> PathBuf {
 pub fn deno_exe_path() -> PathBuf {
   // Something like /Users/rld/src/deno/target/debug/deps/deno
   let mut p = target_dir().join("deno");
-  if cfg!(windows) {
-    p.set_extension("exe");
-  }
-  p
-}
-
-pub fn denort_exe_path() -> PathBuf {
-  // Something like /Users/rld/src/deno/target/debug/deps/denort
-  let mut p = target_dir().join("denort");
   if cfg!(windows) {
     p.set_extension("exe");
   }
@@ -510,6 +499,30 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       );
       Ok(res)
     }
+    (_, "/xTypeScriptTypes.jsx") => {
+      let mut res = Response::new(Body::from("export const foo = 'foo';"));
+      res
+        .headers_mut()
+        .insert("Content-type", HeaderValue::from_static("text/jsx"));
+      res.headers_mut().insert(
+        "X-TypeScript-Types",
+        HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
+      );
+      Ok(res)
+    }
+    (_, "/xTypeScriptTypes.ts") => {
+      let mut res =
+        Response::new(Body::from("export const foo: string = 'foo';"));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      res.headers_mut().insert(
+        "X-TypeScript-Types",
+        HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
+      );
+      Ok(res)
+    }
     (_, "/xTypeScriptTypes.d.ts") => {
       let mut res = Response::new(Body::from("export const foo: 'foo';"));
       res.headers_mut().insert(
@@ -613,6 +626,18 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
         HeaderValue::from_static("application/javascript"),
       );
       Ok(res)
+    }
+    (_, "/.well-known/deno-import-intellisense.json") => {
+      let file_path = root_path()
+        .join("cli/tests/lsp/registries/deno-import-intellisense.json");
+      if let Ok(body) = tokio::fs::read(file_path).await {
+        Ok(custom_headers(
+          "/.well-known/deno-import-intellisense.json",
+          body,
+        ))
+      } else {
+        Ok(Response::new(Body::empty()))
+      }
     }
     _ => {
       let mut file_path = root_path();

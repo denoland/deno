@@ -18,7 +18,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
-use deno_core::ZeroCopyBuf;
 use deno_runtime::permissions::Permissions;
 use serde::Deserialize;
 use std::cell::RefCell;
@@ -28,15 +27,15 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_async(rt, "op_emit", op_emit);
+  super::reg_async(rt, "op_emit", op_emit);
 }
 
 #[derive(Debug, Deserialize)]
 enum RuntimeBundleType {
-  #[serde(rename = "esm")]
-  Esm,
-  #[serde(rename = "iife")]
-  Iife,
+  #[serde(rename = "module")]
+  Module,
+  #[serde(rename = "classic")]
+  Classic,
 }
 
 #[derive(Debug, Deserialize)]
@@ -54,27 +53,26 @@ struct EmitArgs {
 async fn op_emit(
   state: Rc<RefCell<OpState>>,
   args: Value,
-  _data: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<Value, AnyError> {
   deno_runtime::ops::check_unstable2(&state, "Deno.emit");
   let args: EmitArgs = serde_json::from_value(args)?;
   let root_specifier = args.root_specifier;
   let program_state = state.borrow().borrow::<Arc<ProgramState>>().clone();
-  let runtime_permissions = {
+  let mut runtime_permissions = {
     let state = state.borrow();
     state.borrow::<Permissions>().clone()
   };
   // when we are actually resolving modules without provided sources, we should
   // treat the root module as a dynamic import so that runtime permissions are
   // applied.
-  let mut is_dynamic = false;
   let handler: Arc<Mutex<dyn SpecifierHandler>> =
     if let Some(sources) = args.sources {
       Arc::new(Mutex::new(MemoryHandler::new(sources)))
     } else {
-      is_dynamic = true;
       Arc::new(Mutex::new(FetchHandler::new(
         &program_state,
+        runtime_permissions.clone(),
         runtime_permissions.clone(),
       )?))
     };
@@ -86,8 +84,14 @@ async fn op_emit(
     } else {
       let file = program_state
         .file_fetcher
-        .fetch(&import_map_specifier, &runtime_permissions)
-        .await?;
+        .fetch(&import_map_specifier, &mut runtime_permissions)
+        .await
+        .map_err(|e| {
+          generic_error(format!(
+            "Unable to load '{}' import map: {}",
+            import_map_specifier, e
+          ))
+        })?;
       ImportMap::from_json(import_map_specifier.as_str(), &file.source)?
     };
     Some(import_map)
@@ -98,18 +102,15 @@ async fn op_emit(
   };
   let mut builder = GraphBuilder::new(handler, maybe_import_map, None);
   let root_specifier = resolve_url_or_path(&root_specifier)?;
-  builder
-    .add(&root_specifier, is_dynamic)
-    .await
-    .map_err(|_| {
-      type_error(format!(
-        "Unable to handle the given specifier: {}",
-        &root_specifier
-      ))
-    })?;
+  builder.add(&root_specifier, false).await.map_err(|_| {
+    type_error(format!(
+      "Unable to handle the given specifier: {}",
+      &root_specifier
+    ))
+  })?;
   let bundle_type = match args.bundle {
-    Some(RuntimeBundleType::Esm) => BundleType::Esm,
-    Some(RuntimeBundleType::Iife) => BundleType::Iife,
+    Some(RuntimeBundleType::Module) => BundleType::Module,
+    Some(RuntimeBundleType::Classic) => BundleType::Classic,
     None => BundleType::None,
   };
   let graph = builder.get_graph();

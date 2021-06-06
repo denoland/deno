@@ -6,9 +6,10 @@ weekly, as necessary.
 
 The release dates for the upcoming minor releases are:
 
-- 1.9.0: April 13, 2021
-- 1.10.0: May 11, 2021
 - 1.11.0: June 8, 2021
+- 1.12.0: July 13, 2021
+- 1.13.0: August 10, 2021
+- 1.14.0: September 14, 2021
 
 Stable releases can be found on the
 [GitHub releases page](https://github.com/denoland/deno/releases).

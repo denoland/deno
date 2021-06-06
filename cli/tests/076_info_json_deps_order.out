@@ -10,10 +10,10 @@
           "code": "file://[WILDCARD]/cli/tests/recursive_imports/A.ts"
         }
       ],
-      "size": 46,
+      "size": 81,
       "mediaType": "TypeScript",
       "local": "[WILDCARD]076_info_json_deps_order.ts",
-      "checksum": "88b144f362d31ac42263648aadef727dd36d039d3b8ac0248fdaff25d4de415a"
+      "checksum": "5dd40fe33e5924cca513489ce568e86c9b9fe318a87975403c8923629018680d"
     },
     {
       "specifier": "file://[WILDCARD]/cli/tests/recursive_imports/A.ts",
@@ -81,5 +81,5 @@
       "checksum": "01b595d69514bfd001ba2cf421feabeaef559513f10697bf1a22781f8a8ed7f0"
     }
   ],
-  "size": 440
+  "size": 475
 }

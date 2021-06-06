@@ -10,8 +10,10 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 
+use deno_core::op_async;
+use deno_core::op_sync;
+use deno_core::Extension;
 use notify::event::Event as NotifyEvent;
 use notify::Error as NotifyError;
 use notify::EventKind;
@@ -27,9 +29,13 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use tokio::sync::mpsc;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_sync(rt, "op_fs_events_open", op_fs_events_open);
-  super::reg_json_async(rt, "op_fs_events_poll", op_fs_events_poll);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_fs_events_open", op_sync(op_fs_events_open)),
+      ("op_fs_events_poll", op_async(op_fs_events_poll)),
+    ])
+    .build()
 }
 
 struct FsEventsResource {
@@ -90,7 +96,7 @@ pub struct OpenArgs {
 fn op_fs_events_open(
   state: &mut OpState,
   args: OpenArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<ResourceId, AnyError> {
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, AnyError>>(16);
   let sender = std::sync::Mutex::new(sender);
@@ -109,7 +115,7 @@ fn op_fs_events_open(
   };
   for path in &args.paths {
     state
-      .borrow::<Permissions>()
+      .borrow_mut::<Permissions>()
       .read
       .check(&PathBuf::from(path))?;
     watcher.watch(path, recursive_mode)?;
@@ -126,7 +132,7 @@ fn op_fs_events_open(
 async fn op_fs_events_poll(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<Option<FsEvent>, AnyError> {
   let resource = state
     .borrow()

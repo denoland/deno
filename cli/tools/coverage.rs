@@ -13,7 +13,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
-use deno_runtime::inspector::InspectorSession;
+use deno_core::LocalInspectorSession;
 use deno_runtime::permissions::Permissions;
 use regex::Regex;
 use serde::Deserialize;
@@ -26,18 +26,17 @@ use uuid::Uuid;
 
 pub struct CoverageCollector {
   pub dir: PathBuf,
-  session: Box<InspectorSession>,
+  session: LocalInspectorSession,
 }
 
 impl CoverageCollector {
-  pub fn new(dir: PathBuf, session: Box<InspectorSession>) -> Self {
+  pub fn new(dir: PathBuf, session: LocalInspectorSession) -> Self {
     Self { dir, session }
   }
 
   pub async fn start_collecting(&mut self) -> Result<(), AnyError> {
     self.session.post_message("Debugger.enable", None).await?;
     self.session.post_message("Profiler.enable", None).await?;
-
     self
       .session
       .post_message(
@@ -45,7 +44,6 @@ impl CoverageCollector {
         Some(json!({"callCount": true, "detailed": true})),
       )
       .await?;
-
     Ok(())
   }
 
@@ -634,6 +632,7 @@ pub async fn cover_files(
       .prepare_module_load(
         module_specifier.clone(),
         TypeLib::UnstableDenoWindow,
+        Permissions::allow_all(),
         Permissions::allow_all(),
         false,
         program_state.maybe_import_map.clone(),

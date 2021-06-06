@@ -3,6 +3,12 @@
 Deno has a built-in test runner that you can use for testing JavaScript or
 TypeScript code.
 
+`deno test` will search in `./*` and `./**/*` recursively, for test files:
+
+- named `test.{ts, tsx, js, mjs, jsx}`,
+- or ending with `.test.{ts, tsx, js, mjs, jsx}`,
+- or ending with `_test.{ts, tsx, js, mjs, jsx}`
+
 ## Writing tests
 
 To define a test you need to call `Deno.test` with a name and function to be
@@ -248,13 +254,13 @@ formats by the `deno coverage` tool.
 git clone https://github.com/oakserver/oak && cd oak
 
 # Collect your coverage profile with deno test --coverage=<output_directory>
-deno test --coverage=cov_profile --unstable
+deno test --coverage=cov_profile
 
 # From this you can get a pretty printed diff of uncovered lines
-deno coverage --unstable cov_profile
+deno coverage cov_profile
 
 # Or generate an lcov report
-deno coverage --unstable cov_profile --lcov > cov_profile.lcov
+deno coverage cov_profile --lcov > cov_profile.lcov
 
 # Which can then be further processed by tools like genhtml
 genhtml -o cov_profile/html cov_profile.lcov
@@ -264,6 +270,6 @@ By default, `deno coverage` will exclude any files matching the regular
 expression `test\.(js|mjs|ts|jsx|tsx)` and only consider including files
 matching the regular expression `^file:`.
 
-These filters can be overriden using the `--exclude` and `--include` flags. A
+These filters can be overridden using the `--exclude` and `--include` flags. A
 source file's url must match both regular expressions for it to be a part of the
 report.

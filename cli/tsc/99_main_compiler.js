@@ -34,15 +34,16 @@ delete Object.prototype.__proto__;
     }
   }
 
+  function printStderr(msg) {
+    core.print(msg, true);
+  }
+
   function debug(...args) {
     if (logDebug) {
       const stringifiedArgs = args.map((arg) =>
         typeof arg === "string" ? arg : JSON.stringify(arg)
       ).join(" ");
-      // adding a non-zero integer value to the end of the debug string causes
-      // the message to be printed to stderr instead of stdout, which is better
-      // aligned to the behaviour of debug messages
-      core.print(`DEBUG ${logSource} - ${stringifiedArgs}\n`, 1);
+      printStderr(`DEBUG ${logSource} - ${stringifiedArgs}\n`);
     }
   }
 
@@ -52,7 +53,7 @@ delete Object.prototype.__proto__;
         ? String(arg)
         : JSON.stringify(arg)
     ).join(" ");
-    core.print(`ERROR ${logSource} = ${stringifiedArgs}\n`, 1);
+    printStderr(`ERROR ${logSource} = ${stringifiedArgs}\n`);
   }
 
   class AssertionError extends Error {
@@ -70,6 +71,9 @@ delete Object.prototype.__proto__;
 
   /** @type {Map<string, ts.SourceFile>} */
   const sourceFileCache = new Map();
+
+  /** @type {Map<string, string>} */
+  const scriptVersionCache = new Map();
 
   /** @param {ts.DiagnosticRelatedInformation} diagnostic */
   function fromRelatedInformation({
@@ -145,6 +149,9 @@ delete Object.prototype.__proto__;
     // TS2306: File 'file:///Users/rld/src/deno/cli/tests/subdir/amd_like.js' is
     // not a module.
     2306,
+    // TS2688: Cannot find type definition file for '...'.
+    // We ignore because type defintion files can end with '.ts'.
+    2688,
     // TS2691: An import path cannot end with a '.ts' extension. Consider
     // importing 'bad-module' instead.
     2691,
@@ -200,7 +207,7 @@ delete Object.prototype.__proto__;
       debug(
         `snapshot.getText(${start}, ${end}) specifier: ${specifier} version: ${version}`,
       );
-      return core.jsonOpSync("op_get_text", { specifier, version, start, end });
+      return core.opSync("op_get_text", { specifier, version, start, end });
     }
     /**
      * @returns {number}
@@ -208,7 +215,7 @@ delete Object.prototype.__proto__;
     getLength() {
       const { specifier, version } = this;
       debug(`snapshot.getLength() specifier: ${specifier} version: ${version}`);
-      return core.jsonOpSync("op_get_length", { specifier, version });
+      return core.opSync("op_get_length", { specifier, version });
     }
     /**
      * @param {ScriptSnapshot} oldSnapshot
@@ -221,7 +228,7 @@ delete Object.prototype.__proto__;
       debug(
         `snapshot.getLength() specifier: ${specifier} oldVersion: ${oldVersion} version: ${version}`,
       );
-      return core.jsonOpSync(
+      return core.opSync(
         "op_get_change_range",
         { specifier, oldLength, oldVersion, version },
       );
@@ -229,7 +236,7 @@ delete Object.prototype.__proto__;
     dispose() {
       const { specifier, version } = this;
       debug(`snapshot.dispose() specifier: ${specifier} version: ${version}`);
-      core.jsonOpSync("op_dispose", { specifier, version });
+      core.opSync("op_dispose", { specifier, version });
     }
   }
 
@@ -250,7 +257,7 @@ delete Object.prototype.__proto__;
     },
     readFile(specifier) {
       debug(`host.readFile("${specifier}")`);
-      return core.jsonOpSync("op_load", { specifier }).data;
+      return core.opSync("op_load", { specifier }).data;
     },
     getSourceFile(
       specifier,
@@ -272,7 +279,7 @@ delete Object.prototype.__proto__;
       specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
 
       /** @type {{ data: string; hash?: string; scriptKind: ts.ScriptKind }} */
-      const { data, hash, scriptKind } = core.jsonOpSync(
+      const { data, hash, scriptKind } = core.opSync(
         "op_load",
         { specifier },
       );
@@ -304,7 +311,7 @@ delete Object.prototype.__proto__;
       if (sourceFiles) {
         maybeSpecifiers = sourceFiles.map((sf) => sf.moduleName);
       }
-      return core.jsonOpSync(
+      return core.opSync(
         "op_emit",
         { maybeSpecifiers, fileName, data },
       );
@@ -326,7 +333,7 @@ delete Object.prototype.__proto__;
       debug(`  base: ${base}`);
       debug(`  specifiers: ${specifiers.join(", ")}`);
       /** @type {Array<[string, ts.Extension] | undefined>} */
-      const resolved = core.jsonOpSync("op_resolve", {
+      const resolved = core.opSync("op_resolve", {
         specifiers,
         base,
       });
@@ -349,7 +356,7 @@ delete Object.prototype.__proto__;
       }
     },
     createHash(data) {
-      return core.jsonOpSync("op_create_hash", { data }).hash;
+      return core.opSync("op_create_hash", { data }).hash;
     },
 
     // LanguageServiceHost
@@ -359,7 +366,7 @@ delete Object.prototype.__proto__;
     },
     getScriptFileNames() {
       debug("host.getScriptFileNames()");
-      return core.jsonOpSync("op_script_names", undefined);
+      return core.opSync("op_script_names", undefined);
     },
     getScriptVersion(specifier) {
       debug(`host.getScriptVersion("${specifier}")`);
@@ -367,7 +374,15 @@ delete Object.prototype.__proto__;
       if (sourceFile) {
         return sourceFile.version ?? "1";
       }
-      return core.jsonOpSync("op_script_version", { specifier });
+      // tsc neurotically requests the script version multiple times even though
+      // it can't possibly have changed, so we will memoize it on a per request
+      // basis.
+      if (scriptVersionCache.has(specifier)) {
+        return scriptVersionCache.get(specifier);
+      }
+      const scriptVersion = core.opSync("op_script_version", { specifier });
+      scriptVersionCache.set(specifier, scriptVersion);
+      return scriptVersion;
     },
     getScriptSnapshot(specifier) {
       debug(`host.getScriptSnapshot("${specifier}")`);
@@ -385,8 +400,7 @@ delete Object.prototype.__proto__;
           },
         };
       }
-      /** @type {string | undefined} */
-      const version = core.jsonOpSync("op_script_version", { specifier });
+      const version = host.getScriptVersion(specifier);
       if (version != null) {
         return new ScriptSnapshot(specifier, version);
       }
@@ -505,7 +519,7 @@ delete Object.prototype.__proto__;
     ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code));
     performanceProgram({ program });
 
-    core.jsonOpSync("op_respond", {
+    core.opSync("op_respond", {
       diagnostics: fromTypeScriptDiagnostic(diagnostics),
       stats: performanceEnd(),
     });
@@ -517,7 +531,7 @@ delete Object.prototype.__proto__;
    * @param {any} data
    */
   function respond(id, data = null) {
-    core.jsonOpSync("op_respond", { id, data });
+    core.opSync("op_respond", { id, data });
   }
 
   /**
@@ -525,6 +539,8 @@ delete Object.prototype.__proto__;
    */
   function serverRequest({ id, ...request }) {
     debug(`serverRequest()`, { id, ...request });
+    // evict all memoized source file versions
+    scriptVersionCache.clear();
     switch (request.method) {
       case "configure": {
         const { options, errors } = ts
@@ -660,6 +676,16 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "getEncodedSemanticClassifications": {
+        return respond(
+          id,
+          languageService.getEncodedSemanticClassifications(
+            request.specifier,
+            request.span,
+            ts.SemanticClassificationFormat.TwentyTwenty,
+          ),
+        );
+      }
       case "getImplementation": {
         return respond(
           id,
@@ -726,6 +752,33 @@ delete Object.prototype.__proto__;
           ts.getSupportedCodeFixes(),
         );
       }
+      case "prepareCallHierarchy": {
+        return respond(
+          id,
+          languageService.prepareCallHierarchy(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
+      case "provideCallHierarchyIncomingCalls": {
+        return respond(
+          id,
+          languageService.provideCallHierarchyIncomingCalls(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
+      case "provideCallHierarchyOutgoingCalls": {
+        return respond(
+          id,
+          languageService.provideCallHierarchyOutgoingCalls(
+            request.specifier,
+            request.position,
+          ),
+        );
+      }
       default:
         throw new TypeError(
           // @ts-ignore exhausted case statement sets type to never
@@ -741,7 +794,6 @@ delete Object.prototype.__proto__;
     }
     hasStarted = true;
     languageService = ts.createLanguageService(host);
-    core.ops();
     setLogDebug(debugFlag, "TSLS");
     debug("serverInit()");
   }
@@ -756,18 +808,13 @@ delete Object.prototype.__proto__;
       throw new Error("The compiler runtime already started.");
     }
     hasStarted = true;
-    core.ops();
     setLogDebug(!!debugFlag, "TS");
   }
-
-  // Setup the compiler runtime during the build process.
-  core.ops();
-  core.registerErrorClass("Error", Error);
 
   // A build time only op that provides some setup information that is used to
   // ensure the snapshot is setup properly.
   /** @type {{ buildSpecifier: string; libs: string[] }} */
-  const { buildSpecifier, libs } = core.jsonOpSync("op_build_info", {});
+  const { buildSpecifier, libs } = core.opSync("op_build_info", {});
   for (const lib of libs) {
     const specifier = `lib.${lib}.d.ts`;
     // we are using internal APIs here to "inject" our custom libraries into
