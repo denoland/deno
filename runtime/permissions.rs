@@ -605,8 +605,11 @@ impl UnaryPermission<EnvDescriptor> {
 
   pub fn request(&mut self, env: Option<&str>) -> PermissionState {
     if let Some(env) = env {
-      #[cfg(windows)]
-      let env = env.to_uppercase();
+      let env = if cfg!(windows) {
+        env.to_uppercase()
+      } else {
+        env.to_string()
+      };
       let state = self.query(Some(&env));
       if state == PermissionState::Prompt {
         if permission_prompt(&format!("env access to \"{}\"", env)) {
