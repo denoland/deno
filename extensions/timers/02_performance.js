@@ -2,59 +2,11 @@
 "use strict";
 
 ((window) => {
+  const { webidl, structuredClone } = window.__bootstrap;
   const { opNow } = window.__bootstrap.timers;
   const illegalConstructorKey = Symbol("illegalConstructorKey");
   const customInspect = Symbol.for("Deno.customInspect");
   let performanceEntries = [];
-
-  // Duplicate code from runtime/js/01_web_util.js
-  const objectCloneMemo = new WeakMap();
-  function cloneArrayBuffer(
-    srcBuffer,
-    srcByteOffset,
-    srcLength,
-    _cloneConstructor,
-  ) {
-    return srcBuffer.slice(
-      srcByteOffset,
-      srcByteOffset + srcLength,
-    );
-  }
-  function cloneValue(value) {
-    if (value instanceof ArrayBuffer) {
-      const cloned = cloneArrayBuffer(
-        value,
-        0,
-        value.byteLength,
-        ArrayBuffer,
-      );
-      objectCloneMemo.set(value, cloned);
-      return cloned;
-    }
-    if (ArrayBuffer.isView(value)) {
-      const clonedBuffer = cloneValue(value.buffer);
-      let length;
-      if (value instanceof DataView) {
-        length = value.byteLength;
-      } else {
-        length = value.length;
-      }
-      return new (value.constructor)(
-        clonedBuffer,
-        value.byteOffset,
-        length,
-      );
-    }
-    try {
-      return Deno.core.deserialize(Deno.core.serialize(value));
-    } catch (e) {
-      if (e instanceof TypeError) {
-        throw new DOMException("Uncloneable value", "DataCloneError");
-      }
-      throw e;
-    }
-  }
-  // End of code from runtime/js/01_web_util.js
 
   function findMostRecent(
     name,
@@ -165,11 +117,9 @@
       name,
       options = {},
     ) {
-      if (arguments.length < 1) {
-        throw new TypeError(
-          "PerformanceMark requires at least 1 argument, but only 0 present",
-        );
-      }
+      const prefix = "Failed to construct 'PerformanceMark'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+
       // ensure options is object-ish, or null-ish
       switch (typeof options) {
         case "object": // includes null
@@ -188,7 +138,7 @@
       if (startTime < 0) {
         throw new TypeError("startTime cannot be negative");
       }
-      this.#detail = cloneValue(detail);
+      this.#detail = structuredClone(detail);
     }
 
     toJSON() {
@@ -234,7 +184,7 @@
         throw new TypeError("Illegal constructor.");
       }
       super(name, "measure", startTime, duration, illegalConstructorKey);
-      this.#detail = cloneValue(detail);
+      this.#detail = structuredClone(detail);
     }
 
     toJSON() {
