@@ -51,8 +51,8 @@ if (Deno.args.includes("--ghstatus")) {
   );
   console.log(resp.status);
   console.log(resp.headers);
-  const body = await resp.text();
-  console.log(body);
+  const body2 = await resp.text();
+  console.log(body2);
 
   if (!resp.ok) {
     Deno.exit(1);
