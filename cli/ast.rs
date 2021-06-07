@@ -192,9 +192,6 @@ pub enum ImportsNotUsedAsValues {
 /// Options which can be adjusted when transpiling a module.
 #[derive(Debug, Clone)]
 pub struct EmitOptions {
-  /// Indicate if JavaScript is being checked/transformed as well, or if it is
-  /// only TypeScript.
-  pub check_js: bool,
   /// When emitting a legacy decorator, also emit experimental decorator meta
   /// data.  Defaults to `false`.
   pub emit_metadata: bool,
@@ -221,7 +218,6 @@ pub struct EmitOptions {
 impl Default for EmitOptions {
   fn default() -> Self {
     EmitOptions {
-      check_js: false,
       emit_metadata: false,
       imports_not_used_as_values: ImportsNotUsedAsValues::Remove,
       inline_source_map: true,
@@ -244,7 +240,6 @@ impl From<config_file::TsConfig> for EmitOptions {
         _ => ImportsNotUsedAsValues::Remove,
       };
     EmitOptions {
-      check_js: options.check_js,
       emit_metadata: options.emit_decorator_metadata,
       imports_not_used_as_values,
       inline_source_map: options.inline_source_map,
