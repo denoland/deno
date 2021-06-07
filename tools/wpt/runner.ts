@@ -7,7 +7,12 @@ export async function runWithTestUtil<T>(
   verbose: boolean,
   f: () => Promise<T>,
 ): Promise<T> {
-  const proc = runPy(["wpt", "serve"], {
+  const proc = runPy([
+    "wpt",
+    "serve",
+    "--config",
+    "../../tools/wpt/config.json",
+  ], {
     stdout: verbose ? "inherit" : "piped",
     stderr: verbose ? "inherit" : "piped",
   });
@@ -90,7 +95,7 @@ export async function runSingleTest(
       "--location",
       url.toString(),
       "--cert",
-      join(ROOT_PATH, `./test_util/wpt/tools/certs/cacert.pem`),
+      join(ROOT_PATH, `./tools/wpt/certs/cacert.pem`),
       tempFile,
       "[]",
     ],
