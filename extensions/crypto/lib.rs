@@ -176,7 +176,7 @@ macro_rules! validate_usage {
   ($e: expr, $u: expr) => {
     for usage in $e {
       if !$u.contains(&usage) {
-        return Err(type_error("Invalid usage"));
+        return Err(custom_error("SyntaxError", "Invalid usage"));
       }
     }
   };
@@ -202,9 +202,10 @@ pub async fn op_webcrypto_generate_key(
       let exp = zero_copy.ok_or_else(|| {
         type_error("Missing argument publicExponent".to_string())
       })?;
-      let modulus_length = args.algorithm.modulus_length.ok_or_else(|| {
-        type_error("Missing argument modulusLength".to_string())
-      })?;
+      let modulus_length = args
+        .algorithm
+        .modulus_length
+        .ok_or_else(|| not_supported())?;
 
       let exponent = BigUint::from_bytes_be(&exp);
       if exponent != *PUB_EXPONENT_1 && exponent != *PUB_EXPONENT_2 {
@@ -267,7 +268,7 @@ pub async fn op_webcrypto_generate_key(
       let agreement: Result<&RingAlgorithm, AnyError> = args
         .algorithm
         .named_curve
-        .ok_or_else(|| type_error("Missing argument namedCurve".to_string()))?
+        .ok_or_else(|| not_supported())?
         .try_into();
       if agreement.is_err() {
         return Err(not_supported());
@@ -317,7 +318,7 @@ pub async fn op_webcrypto_generate_key(
       let curve: Result<&EcdsaSigningAlgorithm, AnyError> = args
         .algorithm
         .named_curve
-        .ok_or_else(|| type_error("Missing argument namedCurve".to_string()))?
+        .ok_or_else(|| not_supported())?
         .try_into();
       if curve.is_err() {
         return Err(not_supported());
@@ -363,11 +364,8 @@ pub async fn op_webcrypto_generate_key(
     Algorithm::Hmac => {
       validate_usage!(&args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
 
-      let hash: HmacAlgorithm = args
-        .algorithm
-        .hash
-        .ok_or_else(|| type_error("Missing argument hash".to_string()))?
-        .into();
+      let hash: HmacAlgorithm =
+        args.algorithm.hash.ok_or_else(|| not_supported())?.into();
       let rng = RingRand::SystemRandom::new();
       let key: HmacKey = tokio::task::spawn_blocking(
         move || -> Result<HmacKey, ring::error::Unspecified> {
