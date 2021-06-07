@@ -1113,7 +1113,8 @@ impl Inner {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
     if !self.documents.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
-      || !self.config.get_workspace_settings().enabled_code_lens()
+      || !(self.config.get_workspace_settings().enabled_code_lens()
+        || self.config.specifier_code_lens_test(&specifier))
     {
       return Ok(None);
     }

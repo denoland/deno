@@ -1239,7 +1239,7 @@ fn lsp_code_lens_impl() {
 
 #[test]
 fn lsp_code_lens_test() {
-  let mut client = init("initialize_params.json");
+  let mut client = init("initialize_params_code_lens_test.json");
   did_open(
     &mut client,
     load_fixture("did_open_params_test_code_lens.json"),
