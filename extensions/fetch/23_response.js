@@ -377,39 +377,7 @@
 
   mixinBody(Response, _body, _mimeType);
 
-  Object.defineProperty(Response.prototype, "type", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(Response.prototype, "url", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(Response.prototype, "redirected", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(Response.prototype, "status", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(Response.prototype, "ok", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(Response.prototype, "statusText", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(Response.prototype, "headers", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(Response.prototype, "clone", {
-    enumerable: true,
-    writable: true,
-    configurable: true,
-  });
+  webidl.configurePrototype(Response);
 
   webidl.converters["Response"] = webidl.createInterfaceConverter(
     "Response",

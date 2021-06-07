@@ -298,6 +298,11 @@ declare namespace globalThis {
         keyKey: string | number | symbol,
         valueKey: string | number | symbol,
       ): void;
+
+      /**
+       * Configure prototype properties enumerability / writability / configurability.
+       */
+      declare function configurePrototype(prototype: any);
     }
   }
 }

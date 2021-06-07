@@ -121,23 +121,7 @@
     }
   }
 
-  Object.defineProperty(TextDecoder.prototype, "encoding", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(TextDecoder.prototype, "fatal", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(TextDecoder.prototype, "ignoreBOM", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(TextDecoder.prototype, "decode", {
-    enumerable: true,
-    writable: true,
-    configurable: true,
-  });
+  webidl.configurePrototype(TextDecoder);
 
   class TextEncoder {
     constructor() {
@@ -189,20 +173,7 @@
     }
   }
 
-  Object.defineProperty(TextEncoder.prototype, "encoding", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(TextEncoder.prototype, "encode", {
-    enumerable: true,
-    writable: true,
-    configurable: true,
-  });
-  Object.defineProperty(TextEncoder.prototype, "encodeInto", {
-    enumerable: true,
-    writable: true,
-    configurable: true,
-  });
+  webidl.configurePrototype(TextEncoder);
 
   class TextDecoderStream {
     /** @type {TextDecoder} */
@@ -293,26 +264,7 @@
     }
   }
 
-  Object.defineProperty(TextDecoderStream.prototype, "encoding", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(TextDecoderStream.prototype, "fatal", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(TextDecoderStream.prototype, "ignoreBOM", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(TextDecoderStream.prototype, "readable", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(TextDecoderStream.prototype, "writable", {
-    enumerable: true,
-    configurable: true,
-  });
+  webidl.configurePrototype(TextDecoderStream);
 
   class TextEncoderStream {
     /** @type {string | null} */
@@ -382,18 +334,7 @@
     }
   }
 
-  Object.defineProperty(TextEncoderStream.prototype, "encoding", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(TextEncoderStream.prototype, "readable", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(TextEncoderStream.prototype, "writable", {
-    enumerable: true,
-    configurable: true,
-  });
+  webidl.configurePrototype(TextEncoderStream);
 
   webidl.converters.TextDecoderOptions = webidl.createDictionaryConverter(
     "TextDecoderOptions",

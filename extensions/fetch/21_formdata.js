@@ -241,6 +241,8 @@
 
   webidl.mixinPairIterable("FormData", FormData, entryList, "name", "value");
 
+  webidl.configurePrototype(FormData);
+
   class MultipartBuilder {
     /**
      * @param {FormData} formData

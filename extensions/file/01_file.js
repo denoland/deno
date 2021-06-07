@@ -291,6 +291,8 @@
     }
   }
 
+  webidl.configurePrototype(Blob);
+
   webidl.converters["Blob"] = webidl.createInterfaceConverter("Blob", Blob);
   webidl.converters["BlobPart"] = (V, opts) => {
     // Union for ((ArrayBuffer or ArrayBufferView) or Blob or USVString)
@@ -391,6 +393,8 @@
       return this[_LastModfied];
     }
   }
+
+  webidl.configurePrototype(File);
 
   webidl.converters["FilePropertyBag"] = webidl.createDictionaryConverter(
     "FilePropertyBag",
