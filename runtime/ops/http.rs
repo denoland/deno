@@ -79,15 +79,18 @@ impl HyperService<Request<Body>> for Service {
     &mut self,
     _cx: &mut Context<'_>,
   ) -> Poll<Result<(), Self::Error>> {
-    if self.inner.borrow().is_some() {
+    let r = if self.inner.borrow().is_some() {
       Poll::Pending
     } else {
       Poll::Ready(Ok(()))
-    }
+    };
+    eprintln!("poll ready {:?}", r);
+    r
   }
 
   fn call(&mut self, req: Request<Body>) -> Self::Future {
     let (resp_tx, resp_rx) = oneshot::channel();
+    eprintln!("call service");
     self.inner.borrow_mut().replace(ServiceInner {
       request: req,
       response_tx: resp_tx,
@@ -159,7 +162,8 @@ async fn op_http_request_next(
 
   let cancel = RcRef::map(conn_resource.clone(), |r| &r.cancel);
 
-  poll_fn(|cx| {
+  let r = poll_fn(|cx| {
+    eprintln!("op_http_request_next started (poll conn) {}", conn_rid);
     let connection_closed = match conn_resource.poll(cx) {
       Poll::Pending => false,
       Poll::Ready(Ok(())) => {
@@ -184,11 +188,12 @@ async fn op_http_request_next(
         if should_ignore_error(&e) {
           true
         } else {
+          eprintln!("op_http_request_next errored {:#?}", e);
           return Poll::Ready(Err(e));
         }
       }
     };
-
+    eprintln!("op_http_request_next connection closed {:#?} has request: {}", connection_closed, conn_resource.deno_service.inner.borrow().is_some());
     if let Some(request_resource) =
       conn_resource.deno_service.inner.borrow_mut().take()
     {
@@ -260,12 +265,17 @@ async fn op_http_request_next(
     } else if connection_closed {
       Poll::Ready(Ok(None))
     } else {
+      eprintln!("returning pending");
       Poll::Pending
     }
   })
   .try_or_cancel(cancel)
   .await
-  .map_err(AnyError::from)
+  .map_err(AnyError::from);
+
+  eprintln!("op_http_request_next finished");
+
+  r
 }
 
 fn should_ignore_error(e: &AnyError) -> bool {
@@ -403,12 +413,14 @@ async fn op_http_response(
     return Err(type_error("internal communication error"));
   }
 
+  eprintln!("op_http_respond (poll conn)");
   poll_fn(|cx| match conn_resource.poll(cx) {
     Poll::Ready(x) => Poll::Ready(x),
     Poll::Pending => Poll::Ready(Ok(())),
   })
   .await?;
 
+  eprintln!("op_http_respond finished");
   Ok(maybe_response_body_rid)
 }
 
@@ -430,6 +442,7 @@ async fn op_http_response_close(
     .ok_or_else(bad_resource_id)?;
   drop(resource);
 
+  eprintln!("op_http_response close (poll conn)");
   poll_fn(|cx| match conn_resource.poll(cx) {
     Poll::Ready(x) => Poll::Ready(x),
     Poll::Pending => Poll::Ready(Ok(())),
@@ -461,6 +474,7 @@ async fn op_http_request_read(
   let mut read_fut = reader.read(&mut data).try_or_cancel(cancel).boxed_local();
 
   poll_fn(|cx| {
+    eprintln!("op_http_request_read (poll conn)");
     if let Poll::Ready(Err(e)) = conn_resource.poll(cx) {
       // close ConnResource
       // close RequestResource associated with connection
@@ -495,7 +509,9 @@ async fn op_http_response_write(
 
   let mut send_data_fut = body.send_data(Vec::from(&*buf).into()).boxed_local();
 
+  
   poll_fn(|cx| {
+    eprintln!("op_http_response_write started (poll conn)");
     if let Poll::Ready(Err(e)) = conn_resource.poll(cx) {
       // close ConnResource
       // close RequestResource associated with connection
@@ -506,6 +522,8 @@ async fn op_http_response_write(
     send_data_fut.poll_unpin(cx).map_err(AnyError::from)
   })
   .await?;
+
+  eprintln!("op_http_response_write finished");
 
   Ok(())
 }

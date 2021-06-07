@@ -32,10 +32,12 @@
     async nextRequest() {
       let nextRequest;
       try {
+        console.log("before next request");
         nextRequest = await Deno.core.opAsync(
           "op_http_request_next",
           this.#rid,
         );
+        console.log("after next request");
       } catch (error) {
         // A connection error seen here would cause disrupted responses to throw
         // a generic `BadResource` error. Instead store this error and replace
@@ -150,11 +152,13 @@
 
       let responseBodyRid;
       try {
+        console.log("before response");
         responseBodyRid = await Deno.core.opAsync("op_http_response", [
           responseSenderRid,
           innerResp.status ?? 200,
           innerResp.headerList,
         ], respBody instanceof Uint8Array ? respBody : null);
+        console.log("after response");
       } catch (error) {
         const connError = httpConn[connErrorSymbol];
         if (error instanceof errors.BadResource && connError != null) {
@@ -183,11 +187,13 @@
               break;
             }
             try {
+              console.log("before response write");
               await Deno.core.opAsync(
                 "op_http_response_write",
                 responseBodyRid,
                 value,
               );
+              console.log("after response write");
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
               if (error instanceof errors.BadResource && connError != null) {
