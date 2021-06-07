@@ -233,7 +233,8 @@
     "textdecoder-utf16-surrogates.any.html": true,
     "textencoder-constructor-non-utf.any.html": true,
     "textencoder-utf16-surrogates.any.html": true,
-    "unsupported-encodings.any.html": false
+    "unsupported-encodings.any.html": false,
+    "single-byte-decoder.window.html?TextDecoder": true
   },
   "hr-time": {
     "monotonic-clock.any.html": true,
@@ -506,6 +507,7 @@
         "calling respond() twice on the same byobRequest should throw",
         "calling respondWithNewView() twice on the same byobRequest should throw",
         "calling respond(0) twice on the same byobRequest should throw even when closed",
+        "calling respond() should throw when canceled",
         "pull() resolving should not make releaseLock() possible",
         "ReadableStream with byte source: default reader + autoAllocateChunkSize + byobRequest interaction",
         "ReadableStream with byte source: respondWithNewView() with a smaller view",
