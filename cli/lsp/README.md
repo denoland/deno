@@ -24,6 +24,7 @@ There are several settings that the language server supports for a workspace:
 - `deno.codeLens.implementations`
 - `deno.codeLens.references`
 - `deno.codeLens.referencesAllFunctions`
+- `deno.codeLens.test`
 - `deno.suggest.completeFunctionCalls`
 - `deno.suggest.names`
 - `deno.suggest.paths`
@@ -33,10 +34,11 @@ There are several settings that the language server supports for a workspace:
 - `deno.lint`
 - `deno.unstable`
 
-There are settings that are support on a per resource basis by the language
+There are settings that are supported on a per resource basis by the language
 server:
 
 - `deno.enable`
+- `deno.codeLens.test`
 
 There are several points in the process where Deno analyzes these settings.
 First, when the `initialize` request from the client, the
@@ -68,7 +70,24 @@ settings.
 If the client does not have the `workspaceConfiguration` capability, the
 language server will assume the workspace setting applies to all resources.
 
-## Custom requests
+## Commands
+
+There are several commands that might be issued by the language server to the
+client, which the client is expected to implement:
+
+- `deno.cache` - This is sent as a resolution code action when there is an
+  un-cached module specifier that is being imported into a module. It will be
+  sent with and argument that contains the resolved specifier as a string to be
+  cached.
+- `deno.showReferences` - This is sent as the command on some code lenses to
+  show locations of references. The arguments contain the specifier that is the
+  subject of the command, the start position of the target and the locations of
+  the references to show.
+- `deno.test` - This is sent as part of a test code lens to, of which the client
+  is expected to run a test based on the arguments, which are the specifier the
+  test is contained in and the name of the test to filter the tests on.
+
+## Requests
 
 The LSP currently supports the following custom requests. A client should
 implement these in order to have a fully functioning client that integrates well
@@ -115,9 +134,9 @@ with Deno:
   }
   ```
 
-## Custom notifications
+## Notifications
 
-There is currently one custom notification that is send from the server to the
+There is currently one custom notification that is sent from the server to the
 client:
 
 - `deno/registryStatus` - when `deno.suggest.imports.autoDiscover` is `true` and

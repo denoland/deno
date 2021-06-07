@@ -10,7 +10,7 @@
     "codeLens": {
       "implementations": true,
       "references": true,
-      "test": true
+      "test": false
     },
     "importMap": null,
     "lint": true,
