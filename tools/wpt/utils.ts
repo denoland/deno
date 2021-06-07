@@ -6,6 +6,7 @@ import { join, ROOT_PATH } from "../util.js";
 
 export const {
   json,
+  wptreport,
   quiet,
   release,
   rebuild,
@@ -14,7 +15,7 @@ export const {
 } = parse(Deno.args, {
   "--": true,
   boolean: ["quiet", "release", "no-interactive"],
-  string: ["json"],
+  string: ["json", "wptreport"],
 });
 
 /// PAGE ROOT
@@ -144,4 +145,55 @@ export async function cargoBuild() {
   const status = await proc.status();
   proc.close();
   assert(status.success, "cargo build failed");
+}
+
+/// WPTREPORT
+
+export async function generateRunInfo(): Promise<unknown> {
+  const oses = {
+    "windows": "win",
+    "darwin": "mac",
+    "linux": "linux",
+  };
+  const proc = Deno.run({
+    cmd: ["git", "rev-parse", "HEAD"],
+    cwd: join(ROOT_PATH, "test_util", "wpt"),
+    stdout: "piped",
+  });
+  await proc.status();
+  const revision = (new TextDecoder().decode(await proc.output())).trim();
+  proc.close();
+  const proc2 = Deno.run({
+    cmd: [
+      join(ROOT_PATH, `./target/${release ? "release" : "debug"}/deno`),
+      "eval",
+      "console.log(JSON.stringify(Deno.version))",
+    ],
+    cwd: join(ROOT_PATH, "test_util", "wpt"),
+    stdout: "piped",
+  });
+  await proc2.status();
+  const version = JSON.parse(new TextDecoder().decode(await proc2.output()));
+  proc2.close();
+  const runInfo = {
+    "os": oses[Deno.build.os],
+    "processor": Deno.build.arch,
+    "version": "unknown",
+    "os_version": "unknown",
+    "bits": 64,
+    "has_sandbox": true,
+    "webrender": false,
+    "automation": false,
+    "linux_distro": "unknown",
+    "revision": revision,
+    "python_version": 3,
+    "product": "deno",
+    "debug": false,
+    "browser_version": version.deno,
+    "browser_channel": version.deno.includes("+") ? "canary" : "stable",
+    "verify": false,
+    "wasm": false,
+    "headless": true,
+  };
+  return runInfo;
 }

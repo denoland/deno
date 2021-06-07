@@ -1,11 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
+use crate::file_fetcher::get_source_from_bytes;
+use crate::file_fetcher::strip_shebang;
 use crate::flags::Flags;
 use crate::ops;
 use crate::program_state::ProgramState;
-use crate::file_fetcher::get_source_from_bytes;
-use crate::file_fetcher::strip_shebang;
 use crate::version;
 use data_url::DataUrl;
 use deno_core::error::type_error;
