@@ -5,7 +5,6 @@
 import * as _ts from "../dts/typescript";
 
 declare global {
-  // deno-lint-ignore no-namespace
   namespace ts {
     var libs: string[];
     var libMap: Map<string, string>;
@@ -22,7 +21,6 @@ declare global {
     var performance: Performance;
   }
 
-  // deno-lint-ignore no-namespace
   namespace ts {
     export = _ts;
   }
@@ -34,9 +32,9 @@ declare global {
 
   interface DenoCore {
     // deno-lint-ignore no-explicit-any
-    jsonOpSync<T>(name: string, params: T): any;
+    opSync<T>(name: string, params: T): any;
     ops(): void;
-    print(msg: string, code?: number): void;
+    print(msg: string, stderr: bool): void;
     registerErrorClass(
       name: string,
       Ctor: typeof Error,
@@ -56,6 +54,7 @@ declare global {
     | GetDefinitionRequest
     | GetDiagnosticsRequest
     | GetDocumentHighlightsRequest
+    | GetEncodedSemanticClassifications
     | GetImplementationRequest
     | GetNavigationTree
     | GetOutliningSpans
@@ -63,7 +62,10 @@ declare global {
     | GetReferencesRequest
     | GetSignatureHelpItemsRequest
     | GetSmartSelectionRange
-    | GetSupportedCodeFixes;
+    | GetSupportedCodeFixes
+    | PrepareCallHierarchy
+    | ProvideCallHierarchyIncomingCalls
+    | ProvideCallHierarchyOutgoingCalls;
 
   interface BaseLanguageServerRequest {
     id: number;
@@ -141,6 +143,13 @@ declare global {
     filesToSearch: string[];
   }
 
+  interface GetEncodedSemanticClassifications
+    extends BaseLanguageServerRequest {
+    method: "getEncodedSemanticClassifications";
+    specifier: string;
+    span: ts.TextSpan;
+  }
+
   interface GetImplementationRequest extends BaseLanguageServerRequest {
     method: "getImplementation";
     specifier: string;
@@ -184,5 +193,25 @@ declare global {
 
   interface GetSupportedCodeFixes extends BaseLanguageServerRequest {
     method: "getSupportedCodeFixes";
+  }
+
+  interface PrepareCallHierarchy extends BaseLanguageServerRequest {
+    method: "prepareCallHierarchy";
+    specifier: string;
+    position: number;
+  }
+
+  interface ProvideCallHierarchyIncomingCalls
+    extends BaseLanguageServerRequest {
+    method: "provideCallHierarchyIncomingCalls";
+    specifier: string;
+    position: number;
+  }
+
+  interface ProvideCallHierarchyOutgoingCalls
+    extends BaseLanguageServerRequest {
+    method: "provideCallHierarchyOutgoingCalls";
+    specifier: string;
+    position: number;
   }
 }

@@ -14,11 +14,11 @@ use crate::module_graph::GraphBuilder;
 use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
 use crate::text_encoding;
-use deno_runtime::permissions::Permissions;
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
+use deno_runtime::permissions::Permissions;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -34,6 +34,7 @@ pub async fn cache(
   let program_state = Arc::new(ProgramState::build(Default::default()).await?);
   let handler = Arc::new(Mutex::new(FetchHandler::new(
     &program_state,
+    Permissions::allow_all(),
     Permissions::allow_all(),
   )?));
   let mut builder = GraphBuilder::new(handler, maybe_import_map.clone(), None);
@@ -104,6 +105,7 @@ struct Metadata {
   length_utf16: usize,
   line_index: LineIndex,
   maybe_types: Option<analysis::ResolvedDependency>,
+  maybe_warning: Option<String>,
   media_type: MediaType,
   source: String,
   version: String,
@@ -115,6 +117,7 @@ impl Metadata {
     source: &str,
     version: &str,
     media_type: &MediaType,
+    maybe_warning: Option<String>,
     maybe_import_map: &Option<ImportMap>,
   ) -> Self {
     let (dependencies, maybe_types) = if let Ok(parsed_module) =
@@ -137,6 +140,7 @@ impl Metadata {
       length_utf16: source.encode_utf16().count(),
       line_index,
       maybe_types,
+      maybe_warning,
       media_type: media_type.to_owned(),
       source: source.to_string(),
       version: version.to_string(),
@@ -179,6 +183,13 @@ impl Sources {
     self.0.lock().unwrap().get_maybe_types(specifier)
   }
 
+  pub fn get_maybe_warning(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<String> {
+    self.0.lock().unwrap().get_maybe_warning(specifier)
+  }
+
   pub fn get_media_type(
     &self,
     specifier: &ModuleSpecifier,
@@ -197,6 +208,10 @@ impl Sources {
     self.0.lock().unwrap().get_source(specifier)
   }
 
+  pub fn len(&self) -> usize {
+    self.0.lock().unwrap().metadata.len()
+  }
+
   pub fn resolve_import(
     &self,
     specifier: &str,
@@ -206,14 +221,7 @@ impl Sources {
   }
 
   pub fn specifiers(&self) -> Vec<ModuleSpecifier> {
-    self
-      .0
-      .lock()
-      .unwrap()
-      .metadata
-      .iter()
-      .map(|(s, _)| s.clone())
-      .collect()
+    self.0.lock().unwrap().metadata.keys().cloned().collect()
   }
 }
 
@@ -273,6 +281,14 @@ impl Inner {
     metadata.maybe_types
   }
 
+  fn get_maybe_warning(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<String> {
+    let metadata = self.get_metadata(&specifier)?;
+    metadata.maybe_warning
+  }
+
   fn get_media_type(
     &mut self,
     specifier: &ModuleSpecifier,
@@ -294,11 +310,11 @@ impl Inner {
     let path = self.get_path(specifier)?;
     let bytes = fs::read(path).ok()?;
     let scheme = specifier.scheme();
-    let (source, media_type, maybe_types) = if scheme == "file" {
+    let (source, media_type, maybe_types, maybe_warning) = if scheme == "file" {
       let maybe_charset =
         Some(text_encoding::detect_charset(&bytes).to_string());
       let source = get_source_from_bytes(bytes, maybe_charset).ok()?;
-      (source, MediaType::from(specifier), None)
+      (source, MediaType::from(specifier), None, None)
     } else {
       let cache_filename = self.http_cache.get_cache_filename(specifier)?;
       let headers = get_remote_headers(&cache_filename)?;
@@ -309,16 +325,18 @@ impl Inner {
       let maybe_types = headers.get("x-typescript-types").map(|s| {
         analysis::resolve_import(s, &specifier, &self.maybe_import_map)
       });
-      (source, media_type, maybe_types)
+      let maybe_warning = headers.get("x-deno-warning").cloned();
+      (source, media_type, maybe_types, maybe_warning)
     };
     let mut metadata = Metadata::new(
       specifier,
       &source,
       &version,
       &media_type,
+      maybe_warning,
       &self.maybe_import_map,
     );
-    if metadata.maybe_types.is_none() {
+    if maybe_types.is_some() {
       metadata.maybe_types = maybe_types;
     }
     self.metadata.insert(specifier.clone(), metadata.clone());
@@ -386,7 +404,22 @@ impl Inner {
       if let analysis::ResolvedDependency::Resolved(resolved_specifier) =
         type_dependency
       {
-        self.resolution_result(resolved_specifier)
+        // even if we have a module in the maybe_types slot, it doesn't mean
+        // that it is the actual module we should be using based on headers,
+        // so we check here and update properly.
+        if let Some(type_dependency) = self.get_maybe_types(resolved_specifier)
+        {
+          self.set_maybe_type(specifier, &referrer, &type_dependency);
+          if let analysis::ResolvedDependency::Resolved(type_specifier) =
+            type_dependency
+          {
+            self.resolution_result(&type_specifier)
+          } else {
+            self.resolution_result(resolved_specifier)
+          }
+        } else {
+          self.resolution_result(resolved_specifier)
+        }
       } else {
         None
       }
@@ -499,6 +532,56 @@ mod tests {
     let actual =
       sources.resolve_import("https://deno.land/x/lib.js", &specifier_dep);
     assert_eq!(actual, Some((specifier_type, MediaType::Dts)))
+  }
+
+  #[test]
+  /// This is a regression test for https://github.com/denoland/deno/issues/10031
+  fn test_resolve_dependency_import_types() {
+    let (sources, location) = setup();
+    let cache = HttpCache::new(&location);
+    let specifier_dep = resolve_url("https://deno.land/x/mod.ts").unwrap();
+    cache
+      .set(
+        &specifier_dep,
+        Default::default(),
+        b"import type { A } from \"https://deno.land/x/lib.js\";\nconst a: A = { a: \"a\" };",
+      )
+      .unwrap();
+    let specifier_code = resolve_url("https://deno.land/x/lib.js").unwrap();
+    let mut headers_code = HashMap::new();
+    headers_code
+      .insert("x-typescript-types".to_string(), "./lib.d.ts".to_string());
+    cache
+      .set(&specifier_code, headers_code, b"export const a = 1;")
+      .unwrap();
+    let specifier_type = resolve_url("https://deno.land/x/lib.d.ts").unwrap();
+    cache
+      .set(
+        &specifier_type,
+        Default::default(),
+        b"export const a: number;\nexport interface A { a: number; }\n",
+      )
+      .unwrap();
+    let actual =
+      sources.resolve_import("https://deno.land/x/lib.js", &specifier_dep);
+    assert_eq!(actual, Some((specifier_type, MediaType::Dts)))
+  }
+
+  #[test]
+  fn test_warning_header() {
+    let (sources, location) = setup();
+    let cache = HttpCache::new(&location);
+    let specifier = resolve_url("https://deno.land/x/lib.js").unwrap();
+    let mut headers = HashMap::new();
+    headers.insert(
+      "x-deno-warning".to_string(),
+      "this is a warning".to_string(),
+    );
+    cache
+      .set(&specifier, headers, b"export const a = 1;")
+      .unwrap();
+    let actual = sources.get_maybe_warning(&specifier);
+    assert_eq!(actual, Some("this is a warning".to_string()));
   }
 
   #[test]

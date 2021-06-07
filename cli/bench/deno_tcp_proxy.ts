@@ -15,14 +15,16 @@ async function handle(conn: Deno.Conn): Promise<void> {
   });
   try {
     await Promise.all([Deno.copy(conn, origin), Deno.copy(origin, conn)]);
-  } catch (err) {
-    if (err.message !== "read error" && err.message !== "write error") {
-      throw err;
+  } catch (e) {
+    if (
+      !(e instanceof Deno.errors.BrokenPipe) &&
+      !(e instanceof Deno.errors.ConnectionReset)
+    ) {
+      throw e;
     }
-  } finally {
-    conn.close();
-    origin.close();
   }
+  conn.close();
+  origin.close();
 }
 
 console.log(`Proxy listening on http://${addr}/`);

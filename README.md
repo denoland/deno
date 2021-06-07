@@ -1,6 +1,7 @@
 # Deno
 
 [![Build Status - Cirrus][]][Build status] [![Twitter handle][]][Twitter badge]
+[![Discord Chat](https://img.shields.io/discord/684898665143206084?logo=discord&style=social)](https://discord.gg/deno)
 
 <img align="right" src=docs/images/deno3.png height="150px">
 
@@ -79,10 +80,10 @@ for await (const req of s) {
 }
 ```
 
-You can find a more in depth introduction, examples, and environment setup
-guides in the [manual](https://deno.land/manual).
+You can find a deeper introduction, examples, and environment setup guides in
+the [manual](https://deno.land/manual).
 
-More in-depth info can be found in the runtime
+The complete API reference is available at the runtime
 [documentation](https://doc.deno.land).
 
 ### Contributing

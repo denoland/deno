@@ -1,0 +1,25 @@
+{
+  "uri": "file:///a/file.ts",
+  "diagnostics": [
+    {
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 19
+        },
+        "end": {
+          "line": 0,
+          "character": 49
+        }
+      },
+      "severity": 1,
+      "code": "no-cache",
+      "source": "deno",
+      "message": "Uncached or missing remote URL: \"https://deno.land/x/a/mod.ts\".",
+      "data": {
+        "specifier": "https://deno.land/x/a/mod.ts"
+      }
+    }
+  ],
+  "version": 1
+}

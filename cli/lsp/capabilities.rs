@@ -5,6 +5,7 @@
 ///! language server, which helps determine what messages are sent from the
 ///! client.
 ///!
+use lspower::lsp::CallHierarchyServerCapability;
 use lspower::lsp::ClientCapabilities;
 use lspower::lsp::CodeActionKind;
 use lspower::lsp::CodeActionOptions;
@@ -17,12 +18,19 @@ use lspower::lsp::ImplementationProviderCapability;
 use lspower::lsp::OneOf;
 use lspower::lsp::SaveOptions;
 use lspower::lsp::SelectionRangeProviderCapability;
+use lspower::lsp::SemanticTokensFullOptions;
+use lspower::lsp::SemanticTokensOptions;
+use lspower::lsp::SemanticTokensServerCapabilities;
 use lspower::lsp::ServerCapabilities;
 use lspower::lsp::SignatureHelpOptions;
 use lspower::lsp::TextDocumentSyncCapability;
 use lspower::lsp::TextDocumentSyncKind;
 use lspower::lsp::TextDocumentSyncOptions;
 use lspower::lsp::WorkDoneProgressOptions;
+use lspower::lsp::WorkspaceFoldersServerCapabilities;
+use lspower::lsp::WorkspaceServerCapabilities;
+
+use super::semantic_tokens::get_legend;
 
 fn code_action_capabilities(
   client_capabilities: &ClientCapabilities,
@@ -97,7 +105,8 @@ pub fn server_capabilities(
     )),
     references_provider: Some(OneOf::Left(true)),
     document_highlight_provider: Some(OneOf::Left(true)),
-    document_symbol_provider: None,
+    // TODO: Provide a label once https://github.com/gluon-lang/lsp-types/pull/207 is merged
+    document_symbol_provider: Some(OneOf::Left(true)),
     workspace_symbol_provider: None,
     code_action_provider: Some(code_action_provider),
     code_lens_provider: Some(CodeLensOptions {
@@ -114,9 +123,24 @@ pub fn server_capabilities(
     document_link_provider: None,
     color_provider: None,
     execute_command_provider: None,
-    call_hierarchy_provider: None,
-    semantic_tokens_provider: None,
-    workspace: None,
+    call_hierarchy_provider: Some(CallHierarchyServerCapability::Simple(true)),
+    semantic_tokens_provider: Some(
+      SemanticTokensServerCapabilities::SemanticTokensOptions(
+        SemanticTokensOptions {
+          legend: get_legend(),
+          range: Some(true),
+          full: Some(SemanticTokensFullOptions::Bool(true)),
+          ..Default::default()
+        },
+      ),
+    ),
+    workspace: Some(WorkspaceServerCapabilities {
+      workspace_folders: Some(WorkspaceFoldersServerCapabilities {
+        supported: Some(true),
+        change_notifications: None,
+      }),
+      file_operations: None,
+    }),
     experimental: None,
     linked_editing_range_provider: None,
     moniker_provider: None,

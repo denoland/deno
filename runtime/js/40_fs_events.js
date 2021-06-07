@@ -10,7 +10,7 @@
 
     constructor(paths, options) {
       const { recursive } = options;
-      this.#rid = core.jsonOpSync("op_fs_events_open", { recursive, paths });
+      this.#rid = core.opSync("op_fs_events_open", { recursive, paths });
     }
 
     get rid() {
@@ -19,7 +19,7 @@
 
     async next() {
       try {
-        const value = await core.jsonOpAsync("op_fs_events_poll", this.rid);
+        const value = await core.opAsync("op_fs_events_poll", this.rid);
         return value
           ? { value, done: false }
           : { value: undefined, done: true };
@@ -33,9 +33,15 @@
       }
     }
 
+    // TODO(kt3k): This is deprecated. Will be removed in v2.0.
+    // See https://github.com/denoland/deno/issues/10577 for details
     return(value) {
       core.close(this.rid);
       return Promise.resolve({ value, done: true });
+    }
+
+    close() {
+      core.close(this.rid);
     }
 
     [Symbol.asyncIterator]() {

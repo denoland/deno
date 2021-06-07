@@ -154,12 +154,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     V: Visitor<'de>,
   {
     if self.input.is_string() {
-      // TODO(@AaronO): implement a `.to_rust_string -> Option<String>` in rusty-v8
       let v8_string = v8::Local::<v8::String>::try_from(self.input).unwrap();
-      let string = match v8_to_rust_string(self.scope, v8_string) {
-        Some(string) => string,
-        None => return Err(Error::ExpectedUtf8),
-      };
+      let string = v8_string.to_rust_string_lossy(self.scope);
       visitor.visit_string(string)
     } else {
       Err(Error::ExpectedString)
@@ -307,6 +303,16 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       };
       let hack: u64 = unsafe { std::mem::transmute(mv) };
       return visitor.visit_u64(hack);
+    }
+
+    // Magic Buffer
+    if name == magic::buffer::BUF_NAME {
+      let zero_copy_buf =
+        v8::Local::<v8::ArrayBufferView>::try_from(self.input)
+          .map(|view| magic::zero_copy_buf::ZeroCopyBuf::new(self.scope, view))
+          .map_err(|_| Error::ExpectedArray)?;
+      let data: [u8; 32] = unsafe { std::mem::transmute(zero_copy_buf) };
+      return visitor.visit_bytes(&data);
     }
 
     // Regular struct
@@ -607,17 +613,5 @@ impl<'de, 'a, 'b, 's> de::VariantAccess<'de>
   ) -> Result<V::Value> {
     let mut d = Deserializer::new(self.scope, self.value, None);
     de::Deserializer::deserialize_struct(&mut d, "", fields, visitor)
-  }
-}
-
-// Like v8::String::to_rust_string_lossy except returns None on non-utf8
-fn v8_to_rust_string(
-  scope: &mut v8::HandleScope,
-  s: v8::Local<v8::String>,
-) -> Option<String> {
-  let string = s.to_rust_string_lossy(scope);
-  match string.find(std::char::REPLACEMENT_CHARACTER) {
-    Some(_) => None,
-    None => Some(string),
   }
 }

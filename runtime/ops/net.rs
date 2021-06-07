@@ -9,9 +9,12 @@ use deno_core::error::generic_error;
 use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::op_async;
+use deno_core::op_sync;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -42,13 +45,17 @@ use crate::ops::io::UnixStreamResource;
 #[cfg(unix)]
 use std::path::Path;
 
-pub fn init(rt: &mut deno_core::JsRuntime) {
-  super::reg_json_async(rt, "op_accept", op_accept);
-  super::reg_json_async(rt, "op_connect", op_connect);
-  super::reg_json_sync(rt, "op_listen", op_listen);
-  super::reg_json_async(rt, "op_datagram_receive", op_datagram_receive);
-  super::reg_json_async(rt, "op_datagram_send", op_datagram_send);
-  super::reg_json_async(rt, "op_dns_resolve", op_dns_resolve);
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_accept", op_async(op_accept)),
+      ("op_connect", op_async(op_connect)),
+      ("op_listen", op_sync(op_listen)),
+      ("op_datagram_receive", op_async(op_datagram_receive)),
+      ("op_datagram_send", op_async(op_datagram_send)),
+      ("op_dns_resolve", op_async(op_dns_resolve)),
+    ])
+    .build()
 }
 
 #[derive(Serialize)]
@@ -93,7 +100,7 @@ pub(crate) struct AcceptArgs {
 async fn accept_tcp(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<OpConn, AnyError> {
   let rid = args.rid;
 
@@ -138,12 +145,12 @@ async fn accept_tcp(
 async fn op_accept(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
-  _buf: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<OpConn, AnyError> {
   match args.transport.as_str() {
-    "tcp" => accept_tcp(state, args, _buf).await,
+    "tcp" => accept_tcp(state, args, ()).await,
     #[cfg(unix)]
-    "unix" => net_unix::accept_unix(state, args, _buf).await,
+    "unix" => net_unix::accept_unix(state, args, ()).await,
     other => Err(bad_transport(other)),
   }
 }
@@ -224,8 +231,8 @@ async fn op_datagram_send(
       transport_args: ArgsEnum::Ip(args),
     } if transport == "udp" => {
       {
-        let s = state.borrow();
-        s.borrow::<Permissions>()
+        let mut s = state.borrow_mut();
+        s.borrow_mut::<Permissions>()
           .net
           .check(&(&args.hostname, Some(args.port)))?;
       }
@@ -251,8 +258,8 @@ async fn op_datagram_send(
     } if transport == "unixpacket" => {
       let address_path = Path::new(&args.path);
       {
-        let s = state.borrow();
-        s.borrow::<Permissions>().write.check(&address_path)?;
+        let mut s = state.borrow_mut();
+        s.borrow_mut::<Permissions>().write.check(&address_path)?;
       }
       let resource = state
         .borrow()
@@ -281,7 +288,7 @@ struct ConnectArgs {
 async fn op_connect(
   state: Rc<RefCell<OpState>>,
   args: ConnectArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<OpConn, AnyError> {
   match args {
     ConnectArgs {
@@ -289,9 +296,9 @@ async fn op_connect(
       transport_args: ArgsEnum::Ip(args),
     } if transport == "tcp" => {
       {
-        let state_ = state.borrow();
+        let mut state_ = state.borrow_mut();
         state_
-          .borrow::<Permissions>()
+          .borrow_mut::<Permissions>()
           .net
           .check(&(&args.hostname, Some(args.port)))?;
       }
@@ -327,9 +334,15 @@ async fn op_connect(
       let address_path = Path::new(&args.path);
       super::check_unstable2(&state, "Deno.connect");
       {
-        let state_ = state.borrow();
-        state_.borrow::<Permissions>().read.check(&address_path)?;
-        state_.borrow::<Permissions>().write.check(&address_path)?;
+        let mut state_ = state.borrow_mut();
+        state_
+          .borrow_mut::<Permissions>()
+          .read
+          .check(&address_path)?;
+        state_
+          .borrow_mut::<Permissions>()
+          .write
+          .check(&address_path)?;
       }
       let path = args.path;
       let unix_stream = net_unix::UnixStream::connect(Path::new(&path)).await?;
@@ -353,9 +366,9 @@ async fn op_connect(
   }
 }
 
-struct TcpListenerResource {
-  listener: AsyncRefCell<TcpListener>,
-  cancel: CancelHandle,
+pub struct TcpListenerResource {
+  pub listener: AsyncRefCell<TcpListener>,
+  pub cancel: CancelHandle,
 }
 
 impl Resource for TcpListenerResource {
@@ -441,9 +454,8 @@ fn listen_udp(
 fn op_listen(
   state: &mut OpState,
   args: ListenArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<OpConn, AnyError> {
-  let permissions = state.borrow::<Permissions>();
   match args {
     ListenArgs {
       transport,
@@ -453,7 +465,10 @@ fn op_listen(
         if transport == "udp" {
           super::check_unstable(state, "Deno.listenDatagram");
         }
-        permissions.net.check(&(&args.hostname, Some(args.port)))?;
+        state
+          .borrow_mut::<Permissions>()
+          .net
+          .check(&(&args.hostname, Some(args.port)))?;
       }
       let addr = resolve_addr_sync(&args.hostname, args.port)?
         .next()
@@ -497,6 +512,7 @@ fn op_listen(
         if transport == "unixpacket" {
           super::check_unstable(state, "Deno.listenDatagram");
         }
+        let permissions = state.borrow_mut::<Permissions>();
         permissions.read.check(&address_path)?;
         permissions.write.check(&address_path)?;
       }
@@ -579,7 +595,7 @@ pub struct NameServer {
 async fn op_dns_resolve(
   state: Rc<RefCell<OpState>>,
   args: ResolveAddrArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<Vec<DnsReturnRecord>, AnyError> {
   let ResolveAddrArgs {
     query,
@@ -604,8 +620,8 @@ async fn op_dns_resolve(
   };
 
   {
-    let s = state.borrow();
-    let perm = s.borrow::<Permissions>();
+    let mut s = state.borrow_mut();
+    let perm = s.borrow_mut::<Permissions>();
 
     // Checks permission against the name servers which will be actually queried.
     for ns in config.name_servers() {

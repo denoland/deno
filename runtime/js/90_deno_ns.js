@@ -50,6 +50,8 @@
     lstat: __bootstrap.fs.lstat,
     truncateSync: __bootstrap.fs.truncateSync,
     truncate: __bootstrap.fs.truncate,
+    ftruncateSync: __bootstrap.fs.ftruncateSync,
+    ftruncate: __bootstrap.fs.ftruncate,
     errors: __bootstrap.errors.errors,
     // TODO(kt3k): Remove this export at v2
     // See https://github.com/denoland/deno/issues/9294
@@ -86,6 +88,8 @@
     connectTls: __bootstrap.tls.connectTls,
     listenTls: __bootstrap.tls.listenTls,
     sleepSync: __bootstrap.timers.sleepSync,
+    fstatSync: __bootstrap.fs.fstatSync,
+    fstat: __bootstrap.fs.fstat,
     fsyncSync: __bootstrap.fs.fsyncSync,
     fsync: __bootstrap.fs.fsync,
     fdatasyncSync: __bootstrap.fs.fdatasyncSync,
@@ -122,11 +126,8 @@
     listen: __bootstrap.netUnstable.listen,
     connect: __bootstrap.netUnstable.connect,
     listenDatagram: __bootstrap.netUnstable.listenDatagram,
+    serveHttp: __bootstrap.http.serveHttp,
     startTls: __bootstrap.tls.startTls,
-    fstatSync: __bootstrap.fs.fstatSync,
-    fstat: __bootstrap.fs.fstat,
-    ftruncateSync: __bootstrap.fs.ftruncateSync,
-    ftruncate: __bootstrap.fs.ftruncate,
     umask: __bootstrap.fs.umask,
     futime: __bootstrap.fs.futime,
     futimeSync: __bootstrap.fs.futimeSync,
@@ -134,5 +135,6 @@
     utimeSync: __bootstrap.fs.utimeSync,
     HttpClient: __bootstrap.fetch.HttpClient,
     createHttpClient: __bootstrap.fetch.createHttpClient,
+    http: __bootstrap.http,
   };
 })(this);

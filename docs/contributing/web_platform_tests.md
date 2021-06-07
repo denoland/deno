@@ -61,7 +61,7 @@ it.
 This will check that the python3 (or `python.exe` on Windows) is actually
 Python 3.
 
-You can specify the following flags to customize bahaviour:
+You can specify the following flags to customize behaviour:
 
 ```
 --rebuild
