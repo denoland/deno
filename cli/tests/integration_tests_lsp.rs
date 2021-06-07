@@ -2156,7 +2156,6 @@ fn lsp_diagnostics_deno_types() {
   shutdown(&mut client);
 }
 
-#[cfg(not(windows))]
 #[test]
 fn lsp_diagnostics_refresh_dependents() {
   let mut client = init("initialize_params.json");
@@ -2264,35 +2263,28 @@ fn lsp_diagnostics_refresh_dependents() {
   assert_eq!(method, "textDocument/publishDiagnostics");
   let (method, _) = client.read_notification::<Value>().unwrap();
   assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, maybe_params) = client
-    .read_notification::<lsp::PublishDiagnosticsParams>()
+  // ensure that the server publishes any inflight diagnostics
+  std::thread::sleep(std::time::Duration::from_millis(250));
+  client
+    .write_request::<_, _, Value>("shutdown", json!(null))
     .unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  assert!(maybe_params.is_some());
-  let params = maybe_params.unwrap();
-  assert!(params.diagnostics.is_empty());
-  let (method, maybe_params) = client
-    .read_notification::<lsp::PublishDiagnosticsParams>()
-    .unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  assert!(maybe_params.is_some());
-  let params = maybe_params.unwrap();
-  assert!(params.diagnostics.is_empty());
-  let (method, maybe_params) = client
-    .read_notification::<lsp::PublishDiagnosticsParams>()
-    .unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  assert!(maybe_params.is_some());
-  let params = maybe_params.unwrap();
-  assert!(params.diagnostics.is_empty());
+  client.write_notification("exit", json!(null)).unwrap();
 
-  shutdown(&mut client);
+  let queue_len = client.queue_len();
+  assert!(!client.queue_is_empty());
+  for i in 0..queue_len {
+    let (method, maybe_params) = client
+      .read_notification::<lsp::PublishDiagnosticsParams>()
+      .unwrap();
+    assert_eq!(method, "textDocument/publishDiagnostics");
+    // the last 3 diagnostic publishes should be the clear of any diagnostics
+    if queue_len - i <= 3 {
+      assert!(maybe_params.is_some());
+      let params = maybe_params.unwrap();
+      assert!(params.diagnostics.is_empty());
+    }
+  }
+  assert!(client.queue_is_empty());
 }
 
 #[derive(Deserialize)]
