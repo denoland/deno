@@ -48,26 +48,34 @@
 
   const now = opNow;
 
+  const _name = Symbol("[[name]]");
+  const _entryType = Symbol("[[entryType]]");
+  const _startTime = Symbol("[[startTime]]");
+  const _duration = Symbol("[[duration]]");
   class PerformanceEntry {
-    #name = "";
-    #entryType = "";
-    #startTime = 0;
-    #duration = 0;
+    [_name] = "";
+    [_entryType] = "";
+    [_startTime] = 0;
+    [_duration] = 0;
 
     get name() {
-      return this.#name;
+      webidl.assertBranded(this, PerformanceEntry);
+      return this[_name];
     }
 
     get entryType() {
-      return this.#entryType;
+      webidl.assertBranded(this, PerformanceEntry);
+      return this[_entryType];
     }
 
     get startTime() {
-      return this.#startTime;
+      webidl.assertBranded(this, PerformanceEntry);
+      return this[_startTime];
     }
 
     get duration() {
-      return this.#duration;
+      webidl.assertBranded(this, PerformanceEntry);
+      return this[_duration];
     }
 
     constructor(
@@ -75,41 +83,47 @@
       entryType = null,
       startTime = null,
       duration = null,
-      key = null,
+      key = undefined,
     ) {
-      if (key != illegalConstructorKey) {
-        throw new TypeError("Illegal constructor.");
+      if (key !== illegalConstructorKey) {
+        webidl.illegalConstructor();
       }
-      this.#name = name;
-      this.#entryType = entryType;
-      this.#startTime = startTime;
-      this.#duration = duration;
+      this[webidl.brand] = webidl.brand;
+
+      this[_name] = name;
+      this[_entryType] = entryType;
+      this[_startTime] = startTime;
+      this[_duration] = duration;
     }
 
     toJSON() {
+      webidl.assertBranded(this, PerformanceEntry);
       return {
-        name: this.#name,
-        entryType: this.#entryType,
-        startTime: this.#startTime,
-        duration: this.#duration,
+        name: this[_name],
+        entryType: this[_entryType],
+        startTime: this[_startTime],
+        duration: this[_duration],
       };
     }
 
-    [customInspect]() {
-      return `${this.constructor.name} { name: "${this.name}", entryType: "${this.entryType}", startTime: ${this.startTime}, duration: ${this.duration} }`;
+    [customInspect](inspect) {
+      return `${this.constructor.name} ${inspect(this.toJSON())}`;
     }
   }
 
+  const _detail = Symbol("[[detail]]");
   class PerformanceMark extends PerformanceEntry {
     [Symbol.toStringTag] = "PerformanceMark";
 
-    #detail = null;
+    [_detail] = null;
 
     get detail() {
-      return this.#detail;
+      webidl.assertBranded(this, PerformanceMark);
+      return this[_detail];
     }
 
     get entryType() {
+      webidl.assertBranded(this, PerformanceMark);
       return "mark";
     }
 
@@ -135,13 +149,15 @@
       const { detail = null, startTime = now() } = options ?? {};
 
       super(name, "mark", startTime, 0, illegalConstructorKey);
+      this[webidl.brand] = webidl.brand;
       if (startTime < 0) {
         throw new TypeError("startTime cannot be negative");
       }
-      this.#detail = structuredClone(detail);
+      this[_detail] = structuredClone(detail);
     }
 
     toJSON() {
+      webidl.assertBranded(this, PerformanceMark);
       return {
         name: this.name,
         entryType: this.entryType,
@@ -151,25 +167,23 @@
       };
     }
 
-    [customInspect]() {
-      return this.detail
-        ? `${this.constructor.name} {\n  detail: ${
-          JSON.stringify(this.detail, null, 2)
-        },\n  name: "${this.name}",\n  entryType: "${this.entryType}",\n  startTime: ${this.startTime},\n  duration: ${this.duration}\n}`
-        : `${this.constructor.name} { detail: ${this.detail}, name: "${this.name}", entryType: "${this.entryType}", startTime: ${this.startTime}, duration: ${this.duration} }`;
+    [customInspect](inspect) {
+      return `${this.constructor.name} ${inspect(this.toJSON())}`;
     }
   }
 
   class PerformanceMeasure extends PerformanceEntry {
     [Symbol.toStringTag] = "PerformanceMeasure";
 
-    #detail = null;
+    [_detail] = null;
 
     get detail() {
-      return this.#detail;
+      webidl.assertBranded(this, PerformanceMeasure);
+      return this[_detail];
     }
 
     get entryType() {
+      webidl.assertBranded(this, PerformanceMeasure);
       return "measure";
     }
 
@@ -178,16 +192,19 @@
       startTime,
       duration,
       detail = null,
-      key,
+      key = undefined,
     ) {
-      if (key != illegalConstructorKey) {
-        throw new TypeError("Illegal constructor.");
+      if (key !== illegalConstructorKey) {
+        webidl.illegalConstructor();
       }
-      super(name, "measure", startTime, duration, illegalConstructorKey);
-      this.#detail = structuredClone(detail);
+
+      super(name, "measure", startTime, duration, key);
+      this[webidl.brand] = webidl.brand;
+      this[_detail] = structuredClone(detail);
     }
 
     toJSON() {
+      webidl.assertBranded(this, PerformanceMeasure);
       return {
         name: this.name,
         entryType: this.entryType,
@@ -197,23 +214,18 @@
       };
     }
 
-    [customInspect]() {
-      return this.detail
-        ? `${this.constructor.name} {\n  detail: ${
-          JSON.stringify(this.detail, null, 2)
-        },\n  name: "${this.name}",\n  entryType: "${this.entryType}",\n  startTime: ${this.startTime},\n  duration: ${this.duration}\n}`
-        : `${this.constructor.name} { detail: ${this.detail}, name: "${this.name}", entryType: "${this.entryType}", startTime: ${this.startTime}, duration: ${this.duration} }`;
+    [customInspect](inspect) {
+      return `${this.constructor.name} ${inspect(this.toJSON())}`;
     }
   }
 
   class Performance {
-    constructor(key = null) {
-      if (key != illegalConstructorKey) {
-        throw new TypeError("Illegal constructor.");
-      }
+    constructor() {
+      webidl.illegalConstructor();
     }
 
     clearMarks(markName) {
+      webidl.assertBranded(this, Performance);
       if (markName == null) {
         performanceEntries = performanceEntries.filter(
           (entry) => entry.entryType !== "mark",
@@ -226,6 +238,7 @@
     }
 
     clearMeasures(measureName) {
+      webidl.assertBranded(this, Performance);
       if (measureName == null) {
         performanceEntries = performanceEntries.filter(
           (entry) => entry.entryType !== "measure",
@@ -239,6 +252,7 @@
     }
 
     getEntries() {
+      webidl.assertBranded(this, Performance);
       return filterByNameType();
     }
 
@@ -246,10 +260,12 @@
       name,
       type,
     ) {
+      webidl.assertBranded(this, Performance);
       return filterByNameType(name, type);
     }
 
     getEntriesByType(type) {
+      webidl.assertBranded(this, Performance);
       return filterByNameType(undefined, type);
     }
 
@@ -257,6 +273,7 @@
       markName,
       options = {},
     ) {
+      webidl.assertBranded(this, Performance);
       // 3.1.1.1 If the global object is a Window object and markName uses the
       // same name as a read only attribute in the PerformanceTiming interface,
       // throw a SyntaxError. - not implemented
@@ -271,6 +288,7 @@
       startOrMeasureOptions = {},
       endMark,
     ) {
+      webidl.assertBranded(this, Performance);
       if (
         startOrMeasureOptions && typeof startOrMeasureOptions === "object" &&
         Object.keys(startOrMeasureOptions).length > 0
@@ -348,17 +366,29 @@
     }
 
     now() {
+      webidl.assertBranded(this, Performance);
       return now();
     }
-  }
 
-  const performance = new Performance(illegalConstructorKey);
+    toJSON() {
+      webidl.assertBranded(this, Performance);
+      return {};
+    }
+
+    [customInspect](inspect) {
+      return `${this.constructor.name} ${inspect(this.toJSON())}`;
+    }
+
+    get [Symbol.toStringTag]() {
+      return "Performance";
+    }
+  }
 
   window.__bootstrap.performance = {
     PerformanceEntry,
     PerformanceMark,
     PerformanceMeasure,
     Performance,
-    performance,
+    performance: webidl.createBranded(Performance),
   };
 })(this);
