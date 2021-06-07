@@ -31,7 +31,10 @@ fn init(init_path: &str) -> LspClient {
   client
 }
 
-fn did_open<V>(client: &mut LspClient, params: V)
+fn did_open<V>(
+  client: &mut LspClient,
+  params: V,
+) -> Vec<lsp::PublishDiagnosticsParams>
 where
   V: Serialize,
 {
@@ -45,12 +48,16 @@ where
     .write_response(id, json!({ "enable": true }))
     .unwrap();
 
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
+  let mut diagnostics = vec![];
+  for _ in 0..3 {
+    let (method, response) = client
+      .read_notification::<lsp::PublishDiagnosticsParams>()
+      .unwrap();
+    assert_eq!(method, "textDocument/publishDiagnostics");
+    diagnostics.push(response.unwrap());
+  }
+
+  diagnostics
 }
 
 fn shutdown(client: &mut LspClient) {
@@ -63,6 +70,47 @@ fn shutdown(client: &mut LspClient) {
 #[test]
 fn lsp_startup_shutdown() {
   let mut client = init("initialize_params.json");
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_init_tsconfig() {
+  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let tsconfig =
+    serde_json::to_vec_pretty(&load_fixture("lib.tsconfig.json")).unwrap();
+  fs::write(temp_dir.path().join("lib.tsconfig.json"), tsconfig).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert("config".to_string(), json!("./lib.tsconfig.json"));
+    params.initialization_options = Some(Value::Object(map));
+  }
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "location.pathname;\n"
+      }
+    }),
+  );
+
+  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
+  assert_eq!(diagnostics.count(), 0);
+
   shutdown(&mut client);
 }
 
@@ -1092,7 +1140,7 @@ fn lsp_code_lens_impl() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "interface A {\n  b(): void;\n}\n\nclass B implements A {\n  b() {\n    console.log(\"b\");\n  }\n}\n"
+        "text": "interface A {\n  b(): void;\n}\n\nclass B implements A {\n  b() {\n    console.log(\"b\");\n  }\n}\n\ninterface C {\n  c: string;\n}\n"
       }
     }),
   );
@@ -1136,6 +1184,47 @@ fn lsp_code_lens_impl() {
   assert_eq!(
     maybe_res,
     Some(load_fixture("code_lens_resolve_response_impl.json"))
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "codeLens/resolve",
+      json!({
+        "range": {
+          "start": {
+            "line": 10,
+            "character": 10
+          },
+          "end": {
+            "line": 10,
+            "character": 11
+          }
+        },
+        "data": {
+          "specifier": "file:///a/file.ts",
+          "source": "implementations"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "range": {
+        "start": {
+          "line": 10,
+          "character": 10
+        },
+        "end": {
+          "line": 10,
+          "character": 11
+        }
+      },
+      "command": {
+        "title": "0 implementations",
+        "command": ""
+      }
+    }))
   );
   shutdown(&mut client);
 }
@@ -1222,6 +1311,79 @@ fn lsp_code_lens_non_doc_nav_tree() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_nav_tree_updates() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "interface A {\n  b(): void;\n}\n\nclass B implements A {\n  b() {\n    console.log(\"b\");\n  }\n}\n\ninterface C {\n  c: string;\n}\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeLens",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_lens_response_impl.json"))
+  );
+  client
+    .write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "version": 2
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": {
+                "line": 10,
+                "character": 0
+              },
+              "end": {
+                "line": 13,
+                "character": 0
+              }
+            },
+            "text": ""
+          }
+        ]
+      }),
+    )
+    .unwrap();
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeLens",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_lens_response_changed.json"))
+  );
   shutdown(&mut client);
 }
 
@@ -1991,6 +2153,145 @@ fn lsp_diagnostics_deno_types() {
   assert!(maybe_params.is_some());
   let params = maybe_params.unwrap();
   assert_eq!(params.diagnostics.len(), 5);
+  shutdown(&mut client);
+}
+
+#[cfg(not(windows))]
+#[test]
+fn lsp_diagnostics_refresh_dependents() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file_00.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export const a = \"a\";\n",
+      },
+    }),
+  );
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file_01.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export * from \"./file_00.ts\";\n",
+      },
+    }),
+  );
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file_02.ts",
+          "languageId": "typescript",
+          "version": 1,
+          "text": "import { a, b } from \"./file_01.ts\";\n\nconsole.log(a, b);\n"
+        }
+      }),
+    )
+    .unwrap();
+
+  let (id, method, _) = client.read_request::<Value>().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(id, json!({ "enable": false }))
+    .unwrap();
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, maybe_params) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  assert_eq!(
+    maybe_params,
+    Some(json!({
+      "uri": "file:///a/file_02.ts",
+      "diagnostics": [
+        {
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 12
+            },
+            "end": {
+              "line": 0,
+              "character": 13
+            }
+          },
+          "severity": 1,
+          "code": 2305,
+          "source": "deno-ts",
+          "message": "Module '\"./file_01.ts\"' has no exported member 'b'."
+        }
+      ],
+      "version": 1
+    }))
+  );
+  client
+    .write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file_00.ts",
+          "version": 2
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": {
+                "line": 1,
+                "character": 0
+              },
+              "end": {
+                "line": 1,
+                "character": 0
+              }
+            },
+            "text": "export const b = \"b\";\n"
+          }
+        ]
+      }),
+    )
+    .unwrap();
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, maybe_params) = client
+    .read_notification::<lsp::PublishDiagnosticsParams>()
+    .unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  assert!(maybe_params.is_some());
+  let params = maybe_params.unwrap();
+  assert!(params.diagnostics.is_empty());
+  let (method, maybe_params) = client
+    .read_notification::<lsp::PublishDiagnosticsParams>()
+    .unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  assert!(maybe_params.is_some());
+  let params = maybe_params.unwrap();
+  assert!(params.diagnostics.is_empty());
+  let (method, maybe_params) = client
+    .read_notification::<lsp::PublishDiagnosticsParams>()
+    .unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  assert!(maybe_params.is_some());
+  let params = maybe_params.unwrap();
+  assert!(params.diagnostics.is_empty());
+
   shutdown(&mut client);
 }
 

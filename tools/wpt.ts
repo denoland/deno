@@ -15,6 +15,7 @@ import {
   cargoBuild,
   checkPy3Available,
   Expectation,
+  generateRunInfo,
   getExpectation,
   getExpectFailForCase,
   getManifest,
@@ -26,6 +27,7 @@ import {
   rest,
   runPy,
   updateManifest,
+  wptreport,
 } from "./wpt/utils.ts";
 import {
   blue,
@@ -148,6 +150,7 @@ interface TestToRun {
 }
 
 async function run() {
+  const startTime = new Date().getTime();
   assert(Array.isArray(rest), "filter must be array");
   const expectation = getExpectation();
   const tests = discoverTestsToRun(
@@ -173,6 +176,7 @@ async function run() {
 
     return results;
   });
+  const endTime = new Date().getTime();
 
   if (json) {
     const minifiedResults = [];
@@ -191,8 +195,64 @@ async function run() {
     }
     await Deno.writeTextFile(json, JSON.stringify(minifiedResults));
   }
+
+  if (wptreport) {
+    const report = await generateWptreport(results, startTime, endTime);
+    await Deno.writeTextFile(wptreport, JSON.stringify(report));
+  }
+
   const code = reportFinal(results);
   Deno.exit(code);
+}
+
+async function generateWptreport(
+  results: { test: TestToRun; result: TestResult }[],
+  startTime: number,
+  endTime: number,
+) {
+  const runInfo = await generateRunInfo();
+  const reportResults = [];
+  for (const { test, result } of results) {
+    const status = result.status !== 0
+      ? "CRASH"
+      : result.harnessStatus?.status === 0
+      ? "OK"
+      : "ERROR";
+    const reportResult = {
+      test: test.url.pathname + test.url.search + test.url.hash,
+      subtests: result.cases.map((case_) => {
+        let expected = undefined;
+        if (!case_.passed) {
+          if (typeof test.expectation === "boolean") {
+            expected = test.expectation ? "PASS" : "FAIL";
+          } else {
+            expected = test.expectation.includes(case_.name) ? "FAIL" : "PASS";
+          }
+        }
+
+        return {
+          name: case_.name,
+          status: case_.passed ? "PASS" : "FAIL",
+          message: case_.message,
+          expected,
+          known_intermittent: [],
+        };
+      }),
+      status,
+      message: result.harnessStatus?.message ??
+        (result.stderr.trim() || null),
+      duration: result.duration,
+      expected: status === "OK" ? undefined : "OK",
+      "known_intermittent": [],
+    };
+    reportResults.push(reportResult);
+  }
+  return {
+    "run_info": runInfo,
+    "time_start": startTime,
+    "time_end": endTime,
+    "results": reportResults,
+  };
 }
 
 // Check that all expectations in the expectations file have a test that will be
@@ -349,8 +409,14 @@ function reportFinal(
   let finalExpectedFailedAndFailedCount = 0;
   const finalExpectedFailedButPassedTests: [string, TestCaseResult][] = [];
   const finalExpectedFailedButPassedFiles: string[] = [];
+  const finalFailedFiles: string[] = [];
   for (const { test, result } of results) {
-    const { failed, failedCount, expectedFailedButPassed } = analyzeTestResult(
+    const {
+      failed,
+      failedCount,
+      expectedFailedButPassed,
+      expectedFailedAndFailedCount,
+    } = analyzeTestResult(
       result,
       test.expectation,
     );
@@ -359,7 +425,7 @@ function reportFinal(
         finalExpectedFailedAndFailedCount += 1;
       } else {
         finalFailedCount += 1;
-        finalExpectedFailedButPassedFiles.push(test.path);
+        finalFailedFiles.push(test.path);
       }
     } else if (failedCount > 0) {
       finalFailedCount += 1;
@@ -369,6 +435,11 @@ function reportFinal(
       for (const case_ of expectedFailedButPassed) {
         finalExpectedFailedButPassedTests.push([test.path, case_]);
       }
+    } else if (
+      test.expectation === false &&
+      expectedFailedAndFailedCount != result.cases.length
+    ) {
+      finalExpectedFailedButPassedFiles.push(test.path);
     }
   }
   const finalPassedCount = finalTotalCount - finalFailedCount;
@@ -381,6 +452,14 @@ function reportFinal(
   for (const result of finalFailed) {
     console.log(
       `        ${JSON.stringify(`${result[0]} - ${result[1].name}`)}`,
+    );
+  }
+  if (finalFailedFiles.length > 0) {
+    console.log(`\nfile failures:\n`);
+  }
+  for (const result of finalFailedFiles) {
+    console.log(
+      `        ${JSON.stringify(result)}`,
     );
   }
   if (finalExpectedFailedButPassedTests.length > 0) {
@@ -398,13 +477,16 @@ function reportFinal(
     console.log(`        ${JSON.stringify(result)}`);
   }
 
+  const failed = (finalFailedCount > 0) ||
+    (finalExpectedFailedButPassedFiles.length > 0);
+
   console.log(
     `\nfinal result: ${
-      finalFailedCount > 0 ? red("failed") : green("ok")
+      failed ? red("failed") : green("ok")
     }. ${finalPassedCount} passed; ${finalFailedCount} failed; ${finalExpectedFailedAndFailedCount} expected failure; total ${finalTotalCount}\n`,
   );
 
-  return finalFailedCount > 0 ? 1 : 0;
+  return failed ? 1 : 0;
 }
 
 function analyzeTestResult(
@@ -475,7 +557,7 @@ function reportVariation(result: TestResult, expectation: boolean | string[]) {
     console.log(`\n${result.name}\n${result.message}\n${result.stack}`);
   }
 
-  if (failed.length > 0) {
+  if (failedCount > 0) {
     console.log(`\nfailures:\n`);
   }
   for (const result of failed) {

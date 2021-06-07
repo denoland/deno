@@ -48,6 +48,7 @@
    * @property {string} statusMessage
    * @property {[string, string][]} headerList
    * @property {null | typeof __window.bootstrap.fetchBody.InnerBody} body
+   * @property {boolean} aborted
    * @property {string} [error]
    */
 
@@ -92,12 +93,14 @@
       urlList,
       status: response.status,
       statusMessage: response.statusMessage,
+      aborted: response.aborted,
     };
   }
 
   const defaultInnerResponse = {
     type: "default",
     body: null,
+    aborted: false,
     url() {
       if (this.urlList.length == 0) return null;
       return this.urlList[this.urlList.length - 1];
@@ -125,6 +128,15 @@
     const resp = newInnerResponse(0);
     resp.type = "error";
     resp.error = error;
+    return resp;
+  }
+
+  /**
+   * @returns {InnerResponse}
+   */
+  function abortedNetworkError() {
+    const resp = networkError("aborted");
+    resp.aborted = true;
     return resp;
   }
 
@@ -446,4 +458,5 @@
   window.__bootstrap.fetch.redirectStatus = redirectStatus;
   window.__bootstrap.fetch.nullBodyStatus = nullBodyStatus;
   window.__bootstrap.fetch.networkError = networkError;
+  window.__bootstrap.fetch.abortedNetworkError = abortedNetworkError;
 })(globalThis);

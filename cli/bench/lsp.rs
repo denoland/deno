@@ -13,6 +13,7 @@ use std::time::Duration;
 use test_util::lsp::LspClient;
 use test_util::lsp::LspResponseError;
 
+static FIXTURE_CODE_LENS_TS: &str = include_str!("fixtures/code_lens.ts");
 static FIXTURE_DB_TS: &str = include_str!("fixtures/db.ts");
 static FIXTURE_DB_MESSAGES: &[u8] = include_bytes!("fixtures/db_messages.json");
 static FIXTURE_INIT_JSON: &[u8] =
@@ -119,6 +120,70 @@ fn bench_big_file_edits(deno_exe: &Path) -> Result<Duration, AnyError> {
   assert!(response_error.is_none());
 
   client.write_notification("exit", json!(null))?;
+
+  Ok(client.duration())
+}
+
+fn bench_code_lens(deno_exe: &Path) -> Result<Duration, AnyError> {
+  let mut client = LspClient::new(deno_exe)?;
+
+  let params: Value = serde_json::from_slice(FIXTURE_INIT_JSON)?;
+  let (_, maybe_err) =
+    client.write_request::<_, _, Value>("initialize", params)?;
+  assert!(maybe_err.is_none());
+  client.write_notification("initialized", json!({}))?;
+
+  client.write_notification(
+    "textDocument/didOpen",
+    json!({
+      "textDocument": {
+        "uri": "file:///fixtures/code_lens.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": FIXTURE_CODE_LENS_TS
+      }
+    }),
+  )?;
+
+  let (id, method, _): (u64, String, Option<Value>) = client.read_request()?;
+  assert_eq!(method, "workspace/configuration");
+
+  client.write_response(
+    id,
+    json!({
+      "enable": true
+    }),
+  )?;
+
+  let (method, _): (String, Option<Value>) = client.read_notification()?;
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _): (String, Option<Value>) = client.read_notification()?;
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _): (String, Option<Value>) = client.read_notification()?;
+  assert_eq!(method, "textDocument/publishDiagnostics");
+
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Vec<lsp::CodeLens>>(
+      "textDocument/codeLens",
+      json!({
+        "textDocument": {
+          "uri": "file:///fixtures/code_lens.ts"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+  let res = maybe_res.unwrap();
+  assert!(!res.is_empty());
+
+  for code_lens in res {
+    let (maybe_res, maybe_err) = client
+      .write_request::<_, _, lsp::CodeLens>("codeLens/resolve", code_lens)
+      .unwrap();
+    assert!(maybe_err.is_none());
+    assert!(maybe_res.is_some());
+  }
 
   Ok(client.duration())
 }
@@ -303,6 +368,16 @@ pub(crate) fn benchmarks(
     (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as u64;
   println!("      ({} runs, mean: {}ms)", times.len(), mean);
   exec_times.insert("find_replace".to_string(), mean);
+
+  println!("   - Code Lens");
+  let mut times = Vec::new();
+  for _ in 0..10 {
+    times.push(bench_code_lens(deno_exe)?);
+  }
+  let mean =
+    (times.iter().sum::<Duration>() / times.len() as u32).as_millis() as u64;
+  println!("      ({} runs, mean: {}ms)", times.len(), mean);
+  exec_times.insert("code_lens".to_string(), mean);
 
   println!("<- End benchmarking lsp");
 
