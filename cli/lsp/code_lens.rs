@@ -369,7 +369,6 @@ pub(crate) async fn collect(
   specifier: &ModuleSpecifier,
   language_server: &mut language_server::Inner,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
-  log::info!("collect: {}", specifier);
   let mut code_lenses = collect_test(specifier, language_server)?;
   code_lenses.extend(collect_tsc(specifier, language_server).await?);
 
