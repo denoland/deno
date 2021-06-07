@@ -7,7 +7,6 @@
   const { getLocationHref } = window.__bootstrap.location;
   const { log, pathFromURL } = window.__bootstrap.util;
   const { defineEventHandler } = window.__bootstrap.webUtil;
-  const build = window.__bootstrap.build.build;
 
   function createWorker(
     specifier,
@@ -38,8 +37,6 @@
   function hostGetMessage(id) {
     return core.opAsync("op_host_get_message", id);
   }
-
-  const decoder = new TextDecoder();
 
   /**
    * @param {string} permission
@@ -167,7 +164,7 @@
 
       this.#name = name;
       const hasSourceCode = false;
-      const sourceCode = decoder.decode(new Uint8Array());
+      const sourceCode = core.decode(new Uint8Array());
 
       if (
         specifier.startsWith("./") || specifier.startsWith("../") ||
@@ -193,16 +190,16 @@
       this.#poll();
     }
 
-    #handleMessage = (data) => {
+    #handleMessage(data) {
       const msgEvent = new MessageEvent("message", {
         cancelable: false,
         data,
       });
 
       this.dispatchEvent(msgEvent);
-    };
+    }
 
-    #handleError = (e) => {
+    #handleError(e) {
       const event = new ErrorEvent("error", {
         cancelable: true,
         message: e.message,
@@ -220,7 +217,7 @@
       }
 
       return handled;
-    };
+    }
 
     #poll = async () => {
       while (!this.#terminated) {

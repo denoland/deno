@@ -1,5 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertThrows,
+  pathToAbsoluteFileUrl,
+  unitTest,
+} from "./test_util.ts";
 
 function assertMissing(path: string): void {
   let caughtErr = false;
@@ -41,6 +47,22 @@ unitTest(
 );
 
 unitTest(
+  { perms: { read: true, write: true } },
+  function renameSyncWithURL(): void {
+    const testDir = Deno.makeTempDirSync();
+    const oldpath = testDir + "/oldpath";
+    const newpath = testDir + "/newpath";
+    Deno.mkdirSync(oldpath);
+    Deno.renameSync(
+      pathToAbsoluteFileUrl(oldpath),
+      pathToAbsoluteFileUrl(newpath),
+    );
+    assertDirectory(newpath);
+    assertMissing(oldpath);
+  },
+);
+
+unitTest(
   { perms: { read: false, write: true } },
   function renameSyncReadPerm(): void {
     assertThrows(() => {
@@ -70,6 +92,22 @@ unitTest(
     const newpath = testDir + "/newpath";
     Deno.mkdirSync(oldpath);
     await Deno.rename(oldpath, newpath);
+    assertDirectory(newpath);
+    assertMissing(oldpath);
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function renameWithURL(): Promise<void> {
+    const testDir = Deno.makeTempDirSync();
+    const oldpath = testDir + "/oldpath";
+    const newpath = testDir + "/newpath";
+    Deno.mkdirSync(oldpath);
+    await Deno.rename(
+      pathToAbsoluteFileUrl(oldpath),
+      pathToAbsoluteFileUrl(newpath),
+    );
     assertDirectory(newpath);
     assertMissing(oldpath);
   },

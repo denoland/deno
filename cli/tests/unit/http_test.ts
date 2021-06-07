@@ -272,3 +272,104 @@ unitTest(
     await promise;
   },
 );
+
+unitTest(
+  { perms: { net: true } },
+  async function httpServerNextRequestErrorExposedInResponse() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const event = await httpConn.nextRequest();
+      assert(event);
+      // Start polling for the next request before awaiting response.
+      const nextRequestPromise = httpConn.nextRequest();
+      const { respondWith } = event;
+      await assertThrowsAsync(
+        async () => {
+          let interval = 0;
+          await respondWith(
+            new Response(
+              new ReadableStream({
+                start(controller) {
+                  interval = setInterval(() => {
+                    const message = `data: ${Date.now()}\n\n`;
+                    controller.enqueue(new TextEncoder().encode(message));
+                  }, 200);
+                },
+                cancel() {
+                  clearInterval(interval);
+                },
+              }),
+            ),
+          );
+        },
+        Deno.errors.Http,
+        "connection closed",
+      );
+      // The error from `op_http_request_next` reroutes to `respondWith()`.
+      assertEquals(await nextRequestPromise, null);
+      listener.close();
+    })();
+
+    const resp = await fetch("http://127.0.0.1:4501/");
+    await resp.body!.cancel();
+    await promise;
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function httpServerEmptyBlobResponse() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      const httpConn = Deno.serveHttp(conn);
+      const event = await httpConn.nextRequest();
+      assert(event);
+      const { respondWith } = event;
+      await respondWith(new Response(new Blob([])));
+      httpConn.close();
+      listener.close();
+    })();
+
+    const resp = await fetch("http://127.0.0.1:4501/");
+    const respBody = await resp.text();
+    assertEquals("", respBody);
+    await promise;
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function httpServerNextRequestResolvesOnClose() {
+    const delay = (n: number) =>
+      new Promise((resolve) => setTimeout(resolve, n));
+    const httpConnList: Deno.HttpConn[] = [];
+
+    async function serve(l: Deno.Listener) {
+      for await (const conn of l) {
+        (async () => {
+          const c = Deno.serveHttp(conn);
+          httpConnList.push(c);
+          for await (const { respondWith } of c) {
+            respondWith(new Response("hello"));
+          }
+        })();
+      }
+    }
+
+    const l = Deno.listen({ port: 4500 });
+    serve(l);
+
+    await delay(300);
+    const res = await fetch("http://localhost:4500/");
+    const _text = await res.text();
+
+    // Close connection and listener.
+    httpConnList.forEach((conn) => conn.close());
+    l.close();
+
+    await delay(300);
+  },
+);

@@ -14,11 +14,25 @@ use std::error::Error;
 use std::fmt;
 
 #[derive(Debug)]
-pub struct ImportMapError(String);
+pub enum ImportMapError {
+  UnmappedBareSpecifier(String, Option<String>),
+  Other(String),
+}
 
 impl fmt::Display for ImportMapError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.pad(&self.0)
+    match self {
+      ImportMapError::UnmappedBareSpecifier(specifier, maybe_referrer) => write!(
+        f,
+        "Relative import path \"{}\" not prefixed with / or ./ or ../ and not in import map{}",
+        specifier,
+        match maybe_referrer {
+          Some(referrer) => format!(" from \"{}\"", referrer),
+          None => format!(""),
+        }
+      ),
+      ImportMapError::Other(message) => f.pad(message),
+    }
   }
 }
 
@@ -51,7 +65,7 @@ impl ImportMap {
     let v: Value = match serde_json::from_str(json_string) {
       Ok(v) => v,
       Err(_) => {
-        return Err(ImportMapError(
+        return Err(ImportMapError::Other(
           "Unable to parse import map JSON".to_string(),
         ));
       }
@@ -60,7 +74,7 @@ impl ImportMap {
     match v {
       Value::Object(_) => {}
       _ => {
-        return Err(ImportMapError(
+        return Err(ImportMapError::Other(
           "Import map JSON must be an object".to_string(),
         ));
       }
@@ -70,7 +84,7 @@ impl ImportMap {
     let normalized_imports = match &v.get("imports") {
       Some(imports_map) => {
         if !imports_map.is_object() {
-          return Err(ImportMapError(
+          return Err(ImportMapError::Other(
             "Import map's 'imports' must be an object".to_string(),
           ));
         }
@@ -84,7 +98,7 @@ impl ImportMap {
     let normalized_scopes = match &v.get("scopes") {
       Some(scope_map) => {
         if !scope_map.is_object() {
-          return Err(ImportMapError(
+          return Err(ImportMapError::Other(
             "Import map's 'scopes' must be an object".to_string(),
           ));
         }
@@ -252,7 +266,7 @@ impl ImportMap {
     // Order is preserved because of "preserve_order" feature of "serde_json".
     for (scope_prefix, potential_specifier_map) in scope_map.iter() {
       if !potential_specifier_map.is_object() {
-        return Err(ImportMapError(format!(
+        return Err(ImportMapError::Other(format!(
           "The value for the {:?} scope prefix must be an object",
           scope_prefix
         )));
@@ -341,7 +355,7 @@ impl ImportMap {
       if let Some(address) = maybe_address {
         return Ok(Some(address.clone()));
       } else {
-        return Err(ImportMapError(format!(
+        return Err(ImportMapError::Other(format!(
           "Blocked by null entry for \"{:?}\"",
           normalized_specifier
         )));
@@ -367,7 +381,7 @@ impl ImportMap {
       }
 
       if maybe_address.is_none() {
-        return Err(ImportMapError(format!(
+        return Err(ImportMapError::Other(format!(
           "Blocked by null entry for \"{:?}\"",
           specifier_key
         )));
@@ -383,7 +397,7 @@ impl ImportMap {
       let url = match resolution_result.join(after_prefix) {
         Ok(url) => url,
         Err(_) => {
-          return Err(ImportMapError(format!(
+          return Err(ImportMapError::Other(format!(
             "Failed to resolve the specifier \"{:?}\" as its after-prefix
             portion \"{:?}\" could not be URL-parsed relative to the URL prefix
             \"{:?}\" mapped to by the prefix \"{:?}\"",
@@ -396,7 +410,7 @@ impl ImportMap {
       };
 
       if !url.as_str().starts_with(resolution_result.as_str()) {
-        return Err(ImportMapError(format!(
+        return Err(ImportMapError::Other(format!(
           "The specifier \"{:?}\" backtracks above its prefix \"{:?}\"",
           normalized_specifier, specifier_key
         )));
@@ -417,7 +431,7 @@ impl ImportMap {
     &self,
     specifier: &str,
     referrer: &str,
-  ) -> Result<Option<Url>, ImportMapError> {
+  ) -> Result<Url, ImportMapError> {
     let as_url: Option<Url> =
       ImportMap::try_url_like_specifier(specifier, referrer);
     let normalized_specifier = if let Some(url) = as_url.as_ref() {
@@ -434,7 +448,7 @@ impl ImportMap {
     )?;
 
     // match found in scopes map
-    if scopes_match.is_some() {
+    if let Some(scopes_match) = scopes_match {
       return Ok(scopes_match);
     }
 
@@ -445,19 +459,19 @@ impl ImportMap {
     )?;
 
     // match found in import map
-    if imports_match.is_some() {
+    if let Some(imports_match) = imports_match {
       return Ok(imports_match);
     }
 
     // The specifier was able to be turned into a URL, but wasn't remapped into anything.
-    if as_url.is_some() {
+    if let Some(as_url) = as_url {
       return Ok(as_url);
     }
 
-    Err(ImportMapError(format!(
-      "Unmapped bare specifier {:?}",
-      specifier
-    )))
+    Err(ImportMapError::UnmappedBareSpecifier(
+      specifier.to_string(),
+      Some(referrer.to_string()),
+    ))
   }
 }
 
@@ -465,7 +479,6 @@ impl ImportMap {
 mod tests {
 
   use super::*;
-  use deno_core::resolve_import;
   use std::path::Path;
   use std::path::PathBuf;
   use walkdir::WalkDir;
@@ -652,15 +665,7 @@ mod tests {
           let maybe_resolved = import_map
             .resolve(&given_specifier, &base_url)
             .ok()
-            .map(|maybe_resolved| {
-              if let Some(specifier) = maybe_resolved {
-                specifier.to_string()
-              } else {
-                resolve_import(&given_specifier, &base_url)
-                  .unwrap()
-                  .to_string()
-              }
-            });
+            .map(|url| url.to_string());
           assert_eq!(expected_specifier, &maybe_resolved, "{}", test.name);
         }
         TestKind::Parse {

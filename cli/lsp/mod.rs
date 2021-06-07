@@ -6,11 +6,13 @@ use lspower::Server;
 
 mod analysis;
 mod capabilities;
+mod code_lens;
 mod completions;
 mod config;
 mod diagnostics;
 mod documents;
 pub(crate) mod language_server;
+mod lsp_custom;
 mod path_to_regex;
 mod performance;
 mod registries;

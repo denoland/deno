@@ -15,7 +15,7 @@
 ((window) => {
   const webidl = window.__bootstrap.webidl;
   const { HTTP_TAB_OR_SPACE, regexMatcher } = window.__bootstrap.infra;
-  const { InnerBody, extractBody, mixinBody } = window.__bootstrap.fetchBody;
+  const { extractBody, mixinBody } = window.__bootstrap.fetchBody;
   const { getLocationHref } = window.__bootstrap.location;
   const mimesniff = window.__bootstrap.mimesniff;
   const { URL } = window.__bootstrap.url;
@@ -47,7 +47,7 @@
    * @property {number} status
    * @property {string} statusMessage
    * @property {[string, string][]} headerList
-   * @property {null | InnerBody} body
+   * @property {null | typeof __window.bootstrap.fetchBody.InnerBody} body
    * @property {string} [error]
    */
 
@@ -364,6 +364,40 @@
   }
 
   mixinBody(Response, _body, _mimeType);
+
+  Object.defineProperty(Response.prototype, "type", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(Response.prototype, "url", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(Response.prototype, "redirected", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(Response.prototype, "status", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(Response.prototype, "ok", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(Response.prototype, "statusText", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(Response.prototype, "headers", {
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(Response.prototype, "clone", {
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
 
   webidl.converters["Response"] = webidl.createInterfaceConverter(
     "Response",

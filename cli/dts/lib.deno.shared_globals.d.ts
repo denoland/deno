@@ -12,6 +12,7 @@
 /// <reference lib="deno.fetch" />
 /// <reference lib="deno.websocket" />
 /// <reference lib="deno.crypto" />
+/// <reference lib="deno.broadcast_channel" />
 
 declare namespace WebAssembly {
   /**
@@ -571,7 +572,6 @@ declare class CustomEvent<T = any> extends Event {
 
 interface ErrorConstructor {
   /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */
-  // eslint-disable-next-line @typescript-eslint/ban-types
   captureStackTrace(error: Object, constructor?: Function): void;
   // TODO(nayeemrmn): Support `Error.prepareStackTrace()`. We currently use this
   // internally in a way that makes it unavailable for users.

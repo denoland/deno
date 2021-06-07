@@ -14,9 +14,9 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
-  const { decode } = window.__bootstrap.encoding;
+  const { forgivingBase64Encode } = window.__bootstrap.infra;
+  const { decode, TextDecoder } = window.__bootstrap.encoding;
   const { parseMimeType } = window.__bootstrap.mimesniff;
-  const base64 = window.__bootstrap.base64;
 
   const state = Symbol("[[state]]");
   const result = Symbol("[[result]]");
@@ -41,7 +41,7 @@
      * @param {Blob} blob
      * @param {{kind: "ArrayBuffer" | "Text" | "DataUrl" | "BinaryString", encoding?: string}} readtype
      */
-    #readOperation = (blob, readtype) => {
+    #readOperation(blob, readtype) {
       // 1. If fr’s state is "loading", throw an InvalidStateError DOMException.
       if (this[state] === "loading") {
         throw new DOMException(
@@ -168,7 +168,7 @@
                   case "DataUrl": {
                     const mediaType = blob.type || "application/octet-stream";
                     this[result] = `data:${mediaType};base64,${
-                      base64.fromByteArray(bytes)
+                      forgivingBase64Encode(bytes)
                     }`;
                     break;
                   }
@@ -221,7 +221,7 @@
           }
         }
       })();
-    };
+    }
 
     constructor() {
       super();
