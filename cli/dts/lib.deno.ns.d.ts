@@ -2167,7 +2167,7 @@ declare namespace Deno {
    * class A {
    *   x = 10;
    *   y = "hello";
-   *   [Symbol.for("Deno.customInspect")](inspect): string {
+   *   [Symbol.for("Deno.customInspect")](): string {
    *     return "x=" + this.x + ", y=" + this.y;
    *   }
    * }
