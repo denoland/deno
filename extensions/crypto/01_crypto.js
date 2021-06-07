@@ -113,7 +113,6 @@
       this.#usages = key.keyUsages;
       this.#extractable = key.extractable;
       const algorithm = key.algorithm;
-      algorithm.name = algorithm.name;
       let hash = algorithm.hash;
       if (typeof hash == "string") {
         hash = { name: hash };
