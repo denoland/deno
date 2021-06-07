@@ -611,11 +611,11 @@ impl UnaryPermission<EnvDescriptor> {
       if state == PermissionState::Prompt {
         if permission_prompt(&format!("env access to \"{}\"", env)) {
           self.granted_list.retain(|env_| env_.0 != env);
-          self.granted_list.insert(EnvDescriptor(env.to_string()));
+          self.granted_list.insert(EnvDescriptor(env));
           PermissionState::Granted
         } else {
           self.denied_list.retain(|env_| env_.0 != env);
-          self.denied_list.insert(EnvDescriptor(env.to_string()));
+          self.denied_list.insert(EnvDescriptor(env));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
