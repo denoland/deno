@@ -249,8 +249,7 @@
       "Performance interface: performance must inherit property \"timeOrigin\" with the proper type",
       "Performance interface: default toJSON operation on performance",
       "Window interface: attribute performance"
-    ],
-    "window-worker-timeOrigin.window.html": false
+    ]
   },
   "streams": {
     "idlharness.any.html": [
