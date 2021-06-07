@@ -33,6 +33,7 @@ pub fn init() -> Extension {
       "01_dom_exception.js",
       "01_mimesniff.js",
       "02_event.js",
+      "02_structured_clone.js",
       "03_abort_signal.js",
       "04_global_interfaces.js",
       "05_base64.js",

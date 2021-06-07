@@ -45,6 +45,7 @@ pub fn init<P: TimersPermission + 'static>() -> Extension {
     .js(include_js_files!(
       prefix "deno:extensions/timers",
       "01_timers.js",
+      "02_performance.js",
     ))
     .ops(vec![
       ("op_global_timer_stop", op_sync(op_global_timer_stop)),

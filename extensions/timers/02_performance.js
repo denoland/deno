@@ -2,10 +2,9 @@
 "use strict";
 
 ((window) => {
+  const { webidl, structuredClone } = window.__bootstrap;
   const { opNow } = window.__bootstrap.timers;
-  const { cloneValue, illegalConstructorKey } = window.__bootstrap.webUtil;
-  const { requiredArguments } = window.__bootstrap.webUtil;
-
+  const illegalConstructorKey = Symbol("illegalConstructorKey");
   const customInspect = Symbol.for("Deno.customInspect");
   let performanceEntries = [];
 
@@ -118,7 +117,8 @@
       name,
       options = {},
     ) {
-      requiredArguments("PerformanceMark", arguments.length, 1);
+      const prefix = "Failed to construct 'PerformanceMark'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
 
       // ensure options is object-ish, or null-ish
       switch (typeof options) {
@@ -138,7 +138,7 @@
       if (startTime < 0) {
         throw new TypeError("startTime cannot be negative");
       }
-      this.#detail = cloneValue(detail);
+      this.#detail = structuredClone(detail);
     }
 
     toJSON() {
@@ -184,7 +184,7 @@
         throw new TypeError("Illegal constructor.");
       }
       super(name, "measure", startTime, duration, illegalConstructorKey);
-      this.#detail = cloneValue(detail);
+      this.#detail = structuredClone(detail);
     }
 
     toJSON() {
