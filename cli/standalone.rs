@@ -3,6 +3,9 @@
 use crate::colors;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::strip_shebang;
+use crate::flags::Flags;
+use crate::ops;
+use crate::program_state::ProgramState;
 use crate::version;
 use data_url::DataUrl;
 use deno_core::error::type_error;
@@ -181,11 +184,33 @@ impl ModuleLoader for EmbeddedModuleLoader {
   }
 }
 
+fn metadata_to_flags(metadata: &Metadata) -> Flags {
+  let permissions = metadata.permissions.clone();
+  Flags {
+    argv: metadata.argv.clone(),
+    unstable: metadata.unstable,
+    seed: metadata.seed,
+    location: metadata.location.clone(),
+    allow_env: permissions.allow_env,
+    allow_hrtime: permissions.allow_hrtime,
+    allow_net: permissions.allow_net,
+    allow_plugin: permissions.allow_plugin,
+    allow_read: permissions.allow_read,
+    allow_run: permissions.allow_run,
+    allow_write: permissions.allow_write,
+    v8_flags: metadata.v8_flags.clone(),
+    log_level: metadata.log_level,
+    ..Default::default()
+  }
+}
+
 pub async fn run(
   source_code: String,
   metadata: Metadata,
 ) -> Result<(), AnyError> {
+  let flags = metadata_to_flags(&metadata);
   let main_module = resolve_url(SPECIFIER)?;
+  let program_state = ProgramState::build(flags).await?;
   let permissions = Permissions::from_options(&metadata.permissions);
   let blob_url_store = BlobUrlStore::default();
   let broadcast_channel = InMemoryBroadcastChannel::default();
@@ -226,6 +251,16 @@ pub async fn run(
   };
   let mut worker =
     MainWorker::from_options(main_module.clone(), permissions, &options);
+  {
+    let js_runtime = &mut worker.js_runtime;
+    js_runtime
+      .op_state()
+      .borrow_mut()
+      .put::<Arc<ProgramState>>(program_state.clone());
+    ops::errors::init(js_runtime);
+    ops::runtime_compiler::init(js_runtime);
+    js_runtime.sync_ops_cache();
+  }
   worker.bootstrap(&options);
   worker.execute_module(&main_module).await?;
   worker.execute("window.dispatchEvent(new Event('load'))")?;

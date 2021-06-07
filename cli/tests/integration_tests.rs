@@ -5877,6 +5877,38 @@ console.log("finish");
   }
 
   #[test]
+  fn standalone_compiler_ops() {
+    let dir = TempDir::new().expect("tempdir fail");
+    let exe = if cfg!(windows) {
+      dir.path().join("standalone_compiler_ops.exe")
+    } else {
+      dir.path().join("standalone_compiler_ops")
+    };
+    let output = util::deno_cmd()
+      .current_dir(util::root_path())
+      .arg("compile")
+      .arg("--unstable")
+      .arg("--output")
+      .arg(&exe)
+      .arg("./cli/tests/standalone_compiler_ops.ts")
+      .stdout(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    let output = Command::new(exe)
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    assert_eq!(output.stdout, b"Hello, Compiler API!\n");
+  }
+
+  #[test]
   fn compile_with_directory_exists_error() {
     let dir = TempDir::new().expect("tempdir fail");
     let exe = if cfg!(windows) {
