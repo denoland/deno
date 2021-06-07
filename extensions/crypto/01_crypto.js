@@ -4,6 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
+  const { algDict } = window.__bootstrap.crypto;
 
   const supportedAlgorithms = {
     "digest": {
@@ -12,8 +13,23 @@
       "SHA-384": {},
       "SHA-512": {},
     },
+    "generateKey": {
+      "RSASSA-PKCS1-v1_5": "RsaHashedKeyGenParams",
+      "RSA-PSS": "RsaHashedKeyGenParams",
+      "RSA-OAEP": "RsaHashedKeyGenParams",
+      "ECDSA": "EcKeyGenParams",
+      "ECDH": "EcKeyGenParams",
+      "HMAC": "HmacKeyGenParams",
+    },
+    "sign": {
+      "RSASSA-PKCS1-v1_5": {},
+      "RSA-PSS": "RsaPssParams",
+      "ECDSA": "EcdsaParams",
+      "HMAC": {},
+    },
   };
 
+  // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
   function normalizeAlgorithm(algorithm, op) {
     if (typeof algorithm == "string") {
       return normalizeAlgorithm({ name: algorithm }, op);
@@ -34,13 +50,38 @@
       );
     }
 
-    // TODO(caspervonb) Step 6 (create from webidl definition), when the need arises.
-    // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
-    const normalizedAlgorithm = {};
+    const desiredType = registeredAlgorithms[algorithmName];
+
+    if (typeof desiredType !== "string") {
+      return { name: algorithmName };
+    }
+
+    const normalizedAlgorithm = webidl.converters[desiredType](algorithm, {});
+
     normalizedAlgorithm.name = algorithmName;
 
-    // TODO(caspervonb) Step 9 and 10, when the need arises.
-    // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
+    for (const member of algDict[desiredType]) {
+      //for (const member of members) {
+      const idlValue = normalizedAlgorithm[member.key];
+      if (member.converters == webidl.converters["BufferSource"]) {
+        normalizedAlgorithm[member.key] = new Uint8Array(
+          ArrayBuffer.isView(idlValue) ? idlValue.buffer : idlValue,
+        );
+      } else if (
+        member.converters == webidl.converters["HashAlgorithmIdentifier"]
+      ) {
+        normalizedAlgorithm[member.key] = normalizeAlgorithm(
+          idlValue,
+          "digest",
+        );
+      } else if (
+        member.converters == webidl.converters["AlgorithmIdentifier"]
+      ) {
+        normalizedAlgorithm[member.key] = normalizeAlgorithm(idlValue, op);
+      }
+      //}
+    }
+
     return normalizedAlgorithm;
   }
 
@@ -58,8 +99,7 @@
     }
   }
 
-  // Represents a rid in a CryptoKey instance.
-  const ridSymbol = Symbol();
+  const ridSymbol = Symbol("[[rid]]");
 
   // The CryptoKey class. A JavaScript representation of a WebCrypto key.
   // Stores rid of the actual key along with read-only properties.
@@ -73,11 +113,7 @@
       this.#usages = key.keyUsages;
       this.#extractable = key.extractable;
       const algorithm = key.algorithm;
-      algorithm.name = algorithm.name?.toUpperCase();
-      if (algorithm.name.startsWith("RSASSA-PKCS1")) {
-        // As per spec, `v` cannot be upper case.
-        algorithm.name = "RSASSA-PKCS1-v1_5";
-      }
+      algorithm.name = algorithm.name;
       let hash = algorithm.hash;
       if (typeof hash == "string") {
         hash = { name: hash };
@@ -102,27 +138,6 @@
     get type() {
       return this.#keyType;
     }
-  }
-
-  // Normalize an algorithm object. makes it less painful to serialize.
-  function normalize(algorithm) {
-    if (algorithm.publicExponent) {
-      if (!(algorithm.publicExponent instanceof Uint8Array)) {
-        throw new DOMException(
-          "The provided publicExponent is not an Uint8Array",
-          "TypeMismatchError",
-        );
-      }
-    }
-
-    const hash = algorithm.hash;
-    // Normalizes { hash: { name: "SHA-256" } } to { hash: "SHA-256" }
-    if (hash && typeof hash !== "string") {
-      hash = hash.name;
-    }
-    // Algorithm names are not case-sensitive. We use lowercase for internal serialization.
-    const name = algorithm.name.toLowerCase();
-    return { ...algorithm, name, hash };
   }
 
   function validateUsages(usages, keyType) {
@@ -189,8 +204,15 @@
     }
 
     async sign(alg, key, data) {
+      const prefix = "Failed to execute 'sign' on 'SubtleCrypto'";
+
       webidl.assertBranded(this, SubtleCrypto);
       webidl.requiredArguments(arguments.length, 3);
+
+      data = webidl.converters.BufferSource(data, {
+        prefix,
+        context: "Argument 3",
+      });
 
       const rid = key[ridSymbol];
       const simpleAlg = typeof alg == "string";
@@ -203,7 +225,7 @@
         algorithm,
         saltLength,
         hash,
-      }, data);
+      }, new Uint8Array(ArrayBuffer.isView(data) ? data.buffer : data));
 
       return new Uint8Array(signature);
     }
@@ -212,13 +234,13 @@
       webidl.assertBranded(this, SubtleCrypto);
       webidl.requiredArguments(arguments.length, 3);
 
-      const normalizedAlgorithm = normalize(algorithm);
+      algorithm = normalizeAlgorithm(algorithm, "generateKey");
 
       const { key } = await core.opAsync("op_webcrypto_generate_key", {
-        algorithm: normalizedAlgorithm,
+        algorithm,
         extractable,
         keyUsages,
-      }, normalizedAlgorithm.publicExponent || new Uint8Array());
+      }, algorithm.publicExponent || new Uint8Array());
 
       if (key.single) {
         const { keyType } = key.single.key;

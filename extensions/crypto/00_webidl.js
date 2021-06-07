@@ -29,6 +29,14 @@
     "unwrapKey",
   ]);
 
+  webidl.converters["HashAlgorithmIdentifier"] = (V, opts) => {
+    if (typeof V == "object") {
+      return webidl.converters["object"](V, opts);
+    }
+
+    return webidl.converters["DOMString"](V, opts);
+  };
+
   const algorithmDictionary = [
     {
       key: "name",
@@ -39,6 +47,92 @@
   webidl.converters["Algorithm"] = webidl.createDictionaryConverter(
     "Algorithm",
     algorithmDictionary,
+  );
+
+  const rsaKeyGenDictionary = [
+    ...algorithmDictionary,
+    {
+      key: "publicExponent",
+      converter: webidl.converters["BufferSource"],
+    },
+    {
+      key: "modulusLength",
+      converter: webidl.converters["unsigned long"],
+    },
+  ];
+
+  webidl.converters["RsaKeyGenParams"] = webidl.createDictionaryConverter(
+    "RsaKeyGenParams",
+    rsaKeyGenDictionary,
+  );
+
+  const rsaHashedKeyGenDictionary = [
+    ...rsaKeyGenDictionary,
+    {
+      key: "hash",
+      converter: webidl.converters["HashAlgorithmIdentifier"],
+    },
+  ];
+
+  webidl.converters["RsaHashedKeyGenParams"] = webidl.createDictionaryConverter(
+    "RsaHashedKeyGenParams",
+    rsaHashedKeyGenDictionary,
+  );
+
+  const ecKeyGenDictionary = [
+    ...algorithmDictionary,
+    {
+      key: "namedCurve",
+      converter: webidl.converters["DOMString"],
+    },
+  ];
+
+  webidl.converters["EcKeyGenParams"] = webidl.createDictionaryConverter(
+    "EcKeyGenParams",
+    ecKeyGenDictionary,
+  );
+
+  const hmacKeyGenDictionary = [
+    ...algorithmDictionary,
+    {
+      key: "hash",
+      converter: webidl.converters["HashAlgorithmIdentifier"],
+    },
+    {
+      key: "length",
+      converter: webidl.converters["unsigned long"],
+    },
+  ];
+
+  webidl.converters["HmacKeyGenParams"] = webidl.createDictionaryConverter(
+    "HmacKeyGenParams",
+    hmacKeyGenDictionary,
+  );
+
+  const rsaPssDictionary = [
+    ...algorithmDictionary,
+    {
+      key: "saltLength",
+      converters: webidl.converters["unsigned long"],
+    },
+  ];
+
+  webidl.converters["RsaPssParams"] = webidl.createDictionaryConverter(
+    "RsaPssParams",
+    rsaPssDictionary,
+  );
+
+  const ecdsaDictionary = [
+    ...algorithmDictionary,
+    {
+      key: "hash",
+      converters: webidl.converters["HashAlgorithmIdentifier"],
+    },
+  ];
+
+  webidl.converters["EcdsaParams"] = webidl.createDictionaryConverter(
+    "EcdsaParams",
+    ecdsaDictionary,
   );
 
   const cryptoKeyDictionary = [
@@ -86,4 +180,14 @@
     "CryptoKeyPair",
     cryptoKeyPairDictionary,
   );
+
+  window.__bootstrap.crypto = {
+    algDict: {
+      "RsaHashedKeyGenParams": rsaKeyGenDictionary,
+      "EcKeyGenParams": ecKeyGenDictionary,
+      "HmacKeyGenParams": hmacKeyGenDictionary,
+      "RsaPssParams": rsaPssDictionary,
+      "EcdsaParams": ecdsaDictionary,
+    },
+  };
 })(this);

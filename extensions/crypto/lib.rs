@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::bad_resource_id;
+use deno_core::error::not_supported;
 use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -269,7 +270,7 @@ pub async fn op_webcrypto_generate_key(
         .ok_or_else(|| type_error("Missing argument namedCurve".to_string()))?
         .try_into();
       if agreement.is_err() {
-        return Err(type_error("namedCurve not supported".to_string()));
+        return Err(not_supported());
       }
 
       let rng = RingRand::SystemRandom::new();
@@ -319,7 +320,7 @@ pub async fn op_webcrypto_generate_key(
         .ok_or_else(|| type_error("Missing argument namedCurve".to_string()))?
         .try_into();
       if curve.is_err() {
-        return Err(type_error("namedCurve not supported".to_string()));
+        return Err(not_supported());
       }
       let rng = RingRand::SystemRandom::new();
       let private_key: EcdsaKeyPair = tokio::task::spawn_blocking(
@@ -388,7 +389,7 @@ pub async fn op_webcrypto_generate_key(
         rid: state.resource_table.add(resource),
       }
     }
-    _ => return Err(type_error("Unsupported algorithm".to_string())),
+    _ => return Err(not_supported()),
   };
 
   Ok(GenerateKeyResult { key })

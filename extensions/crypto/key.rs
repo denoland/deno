@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::type_error;
+use deno_core::error::not_supported;
 use deno_core::error::AnyError;
 use ring::agreement::Algorithm as RingAlgorithm;
 use ring::hmac::Algorithm as HmacAlgorithm;
@@ -46,9 +46,7 @@ impl TryInto<&RingAlgorithm> for WebCryptoNamedCurve {
     match self {
       WebCryptoNamedCurve::P256 => Ok(&ring::agreement::ECDH_P256),
       WebCryptoNamedCurve::P384 => Ok(&ring::agreement::ECDH_P384),
-      WebCryptoNamedCurve::P521 => {
-        Err(type_error("Unsupported algorithm".to_string()))
-      }
+      WebCryptoNamedCurve::P521 => Err(not_supported()),
     }
   }
 }
@@ -64,9 +62,7 @@ impl TryInto<&EcdsaSigningAlgorithm> for WebCryptoNamedCurve {
       WebCryptoNamedCurve::P384 => {
         Ok(&ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING)
       }
-      WebCryptoNamedCurve::P521 => {
-        Err(type_error("Unsupported algorithm".to_string()))
-      }
+      WebCryptoNamedCurve::P521 => Err(not_supported()),
     }
   }
 }
@@ -97,25 +93,25 @@ pub enum KeyUsage {
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
 pub enum Algorithm {
-  #[serde(rename = "rsassa-pkcs1-v1_5")]
+  #[serde(rename = "RSASSA-PKCS1-v1_5")]
   RsassaPkcs1v15,
-  #[serde(rename = "rsa-pss")]
+  #[serde(rename = "RSA-PSS")]
   RsaPss,
-  #[serde(rename = "rsa-oaep")]
+  #[serde(rename = "RSA-OAEP")]
   RsaOaep,
-  #[serde(rename = "ecdsa")]
+  #[serde(rename = "ECDSA")]
   Ecdsa,
-  #[serde(rename = "ecdh")]
+  #[serde(rename = "ECDH")]
   Ecdh,
-  #[serde(rename = "aes-ctr")]
+  #[serde(rename = "AES-CTR")]
   AesCtr,
-  #[serde(rename = "aes-cbc")]
+  #[serde(rename = "AES-CBC")]
   AesCbc,
-  #[serde(rename = "aes-gcm")]
+  #[serde(rename = "AES-GCM")]
   AesGcm,
-  #[serde(rename = "aes-kw")]
+  #[serde(rename = "AES-KW")]
   AesKw,
-  #[serde(rename = "hmac")]
+  #[serde(rename = "HMAC")]
   Hmac,
 }
 
