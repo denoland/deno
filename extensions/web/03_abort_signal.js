@@ -118,11 +118,25 @@
     AbortSignal,
   );
 
+  function newSignal() {
+    return new AbortSignal(illegalConstructorKey);
+  }
+
+  function follow(followingSignal, parentSignal) {
+    if (parentSignal.aborted) {
+      followingSignal[signalAbort]();
+    } else {
+      parentSignal[add](() => followingSignal[signalAbort]());
+    }
+  }
+
   window.AbortSignal = AbortSignal;
   window.AbortController = AbortController;
   window.__bootstrap.abortSignal = {
     add,
     signalAbort,
     remove,
+    follow,
+    newSignal,
   };
 })(this);

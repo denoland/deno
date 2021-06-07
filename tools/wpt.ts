@@ -15,6 +15,7 @@ import {
   cargoBuild,
   checkPy3Available,
   Expectation,
+  generateRunInfo,
   getExpectation,
   getExpectFailForCase,
   getManifest,
@@ -26,6 +27,7 @@ import {
   rest,
   runPy,
   updateManifest,
+  wptreport,
 } from "./wpt/utils.ts";
 import {
   blue,
@@ -148,6 +150,7 @@ interface TestToRun {
 }
 
 async function run() {
+  const startTime = new Date().getTime();
   assert(Array.isArray(rest), "filter must be array");
   const expectation = getExpectation();
   const tests = discoverTestsToRun(
@@ -173,6 +176,7 @@ async function run() {
 
     return results;
   });
+  const endTime = new Date().getTime();
 
   if (json) {
     const minifiedResults = [];
@@ -191,8 +195,64 @@ async function run() {
     }
     await Deno.writeTextFile(json, JSON.stringify(minifiedResults));
   }
+
+  if (wptreport) {
+    const report = await generateWptreport(results, startTime, endTime);
+    await Deno.writeTextFile(wptreport, JSON.stringify(report));
+  }
+
   const code = reportFinal(results);
   Deno.exit(code);
+}
+
+async function generateWptreport(
+  results: { test: TestToRun; result: TestResult }[],
+  startTime: number,
+  endTime: number,
+) {
+  const runInfo = await generateRunInfo();
+  const reportResults = [];
+  for (const { test, result } of results) {
+    const status = result.status !== 0
+      ? "CRASH"
+      : result.harnessStatus?.status === 0
+      ? "OK"
+      : "ERROR";
+    const reportResult = {
+      test: test.url.pathname + test.url.search + test.url.hash,
+      subtests: result.cases.map((case_) => {
+        let expected = undefined;
+        if (!case_.passed) {
+          if (typeof test.expectation === "boolean") {
+            expected = test.expectation ? "PASS" : "FAIL";
+          } else {
+            expected = test.expectation.includes(case_.name) ? "FAIL" : "PASS";
+          }
+        }
+
+        return {
+          name: case_.name,
+          status: case_.passed ? "PASS" : "FAIL",
+          message: case_.message,
+          expected,
+          known_intermittent: [],
+        };
+      }),
+      status,
+      message: result.harnessStatus?.message ??
+        (result.stderr.trim() || null),
+      duration: result.duration,
+      expected: status === "OK" ? undefined : "OK",
+      "known_intermittent": [],
+    };
+    reportResults.push(reportResult);
+  }
+  return {
+    "run_info": runInfo,
+    "time_start": startTime,
+    "time_end": endTime,
+    "results": reportResults,
+  };
 }
 
 // Check that all expectations in the expectations file have a test that will be

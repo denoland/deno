@@ -648,7 +648,7 @@
     "jsapi": {
       "constructor": {
         "compile.any.html": true,
-        "instantiate-bad-imports.any.html": false,
+        "instantiate-bad-imports.any.html": true,
         "instantiate.any.html": [
           "Synchronous options handling: Buffer argument"
         ],
@@ -667,21 +667,15 @@
         "Table interface: operation set(unsigned long, optional any)"
       ],
       "instance": {
-        "constructor-bad-imports.any.html": false,
+        "constructor-bad-imports.any.html": true,
         "constructor-caching.any.html": true,
         "constructor.any.html": true,
-        "exports.any.html": [
-          "Setting (sloppy mode)"
-        ],
+        "exports.any.html": true,
         "toString.any.html": true
       },
-      "interface.any.html": [
-        "WebAssembly: property descriptor"
-      ],
+      "interface.any.html": true,
       "memory": {
-        "buffer.any.html": [
-          "Setting (sloppy mode)"
-        ],
+        "buffer.any.html": true,
         "constructor.any.html": true,
         "grow.any.html": true,
         "toString.any.html": true,
@@ -701,9 +695,7 @@
         "constructor.any.html": true,
         "get-set.any.html": true,
         "grow.any.html": true,
-        "length.any.html": [
-          "Setting (sloppy mode)"
-        ],
+        "length.any.html": true,
         "toString.any.html": true,
         "constructor-reftypes.tentative.any.html": [
           "initialize externref table with default value",
@@ -1066,7 +1058,6 @@
         "Request interface: attribute keepalive",
         "Request interface: attribute isReloadNavigation",
         "Request interface: attribute isHistoryNavigation",
-        "Request interface: attribute signal",
         "Request interface: attribute body",
         "Request interface: attribute bodyUsed",
         "Request interface: new Request('about:blank') must inherit property \"destination\" with the proper type",
@@ -1079,14 +1070,22 @@
         "Request interface: new Request('about:blank') must inherit property \"keepalive\" with the proper type",
         "Request interface: new Request('about:blank') must inherit property \"isReloadNavigation\" with the proper type",
         "Request interface: new Request('about:blank') must inherit property \"isHistoryNavigation\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"signal\" with the proper type",
         "Response interface: operation error()",
         "Response interface: operation redirect(USVString, optional unsigned short)",
         "Response interface: attribute body",
         "Response interface: attribute bodyUsed",
         "Response interface: calling redirect(USVString, optional unsigned short) on new Response() with too few arguments must throw TypeError",
         "Window interface: operation fetch(RequestInfo, optional RequestInit)"
-      ]
+      ],
+      "abort": {
+        "general.any.html": [
+          "response.arrayBuffer() rejects if already aborted",
+          "response.blob() rejects if already aborted",
+          "response.formData() rejects if already aborted",
+          "response.json() rejects if already aborted",
+          "response.text() rejects if already aborted"
+        ]
+      }
     },
     "data-urls": {
       "base64.any.html": true,
