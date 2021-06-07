@@ -392,6 +392,8 @@
 
   webidl.mixinPairIterable("Headers", Headers, _iterableHeaders, 0, 1);
 
+  webidl.configurePrototype(Headers);
+
   webidl.converters["sequence<ByteString>"] = webidl
     .createSequenceConverter(webidl.converters["ByteString"]);
   webidl.converters["sequence<sequence<ByteString>>"] = webidl
