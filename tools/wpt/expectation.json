@@ -19,7 +19,7 @@
       "pbkdf2.https.any.html?8001-last": false
     },
     "digest": {
-      "digest.https.any.html": false
+      "digest.https.any.html": true
     },
     "encrypt_decrypt": {
       "aes_cbc.https.any.html": false,
@@ -70,21 +70,12 @@
       "successes_RSASSA-PKCS1-v1_5.https.any.html?21-30": false,
       "successes_RSASSA-PKCS1-v1_5.https.any.html?31-last": false
     },
-    "historical.any.html": true,
+    "historical.any.html": [
+      "Non-secure context window does not have access to crypto.subtle",
+      "Non-secure context window does not have access to SubtleCrypto"
+    ],
     "idlharness.https.any.html": [
-      "Crypto interface: existence and properties of interface object",
-      "Crypto interface object length",
-      "Crypto interface object name",
-      "Crypto interface: existence and properties of interface prototype object",
-      "Crypto interface: existence and properties of interface prototype object's \"constructor\" property",
-      "Crypto interface: existence and properties of interface prototype object's @@unscopables property",
-      "Crypto interface: attribute subtle",
       "Crypto interface: operation getRandomValues(ArrayBufferView)",
-      "Crypto must be primary interface of crypto",
-      "Stringification of crypto",
-      "Crypto interface: crypto must inherit property \"subtle\" with the proper type",
-      "Crypto interface: crypto must inherit property \"getRandomValues(ArrayBufferView)\" with the proper type",
-      "Crypto interface: calling getRandomValues(ArrayBufferView) on crypto with too few arguments must throw TypeError",
       "CryptoKey interface: existence and properties of interface object",
       "CryptoKey interface object length",
       "CryptoKey interface object name",
@@ -95,12 +86,6 @@
       "CryptoKey interface: attribute extractable",
       "CryptoKey interface: attribute algorithm",
       "CryptoKey interface: attribute usages",
-      "SubtleCrypto interface: existence and properties of interface object",
-      "SubtleCrypto interface object length",
-      "SubtleCrypto interface object name",
-      "SubtleCrypto interface: existence and properties of interface prototype object",
-      "SubtleCrypto interface: existence and properties of interface prototype object's \"constructor\" property",
-      "SubtleCrypto interface: existence and properties of interface prototype object's @@unscopables property",
       "SubtleCrypto interface: operation encrypt(AlgorithmIdentifier, CryptoKey, BufferSource)",
       "SubtleCrypto interface: operation decrypt(AlgorithmIdentifier, CryptoKey, BufferSource)",
       "SubtleCrypto interface: operation sign(AlgorithmIdentifier, CryptoKey, BufferSource)",
@@ -113,7 +98,6 @@
       "SubtleCrypto interface: operation exportKey(KeyFormat, CryptoKey)",
       "SubtleCrypto interface: operation wrapKey(KeyFormat, CryptoKey, CryptoKey, AlgorithmIdentifier)",
       "SubtleCrypto interface: operation unwrapKey(KeyFormat, BufferSource, CryptoKey, AlgorithmIdentifier, AlgorithmIdentifier, boolean, sequence<KeyUsage>)",
-      "SubtleCrypto must be primary interface of crypto.subtle",
       "Stringification of crypto.subtle",
       "SubtleCrypto interface: crypto.subtle must inherit property \"encrypt(AlgorithmIdentifier, CryptoKey, BufferSource)\" with the proper type",
       "SubtleCrypto interface: calling encrypt(AlgorithmIdentifier, CryptoKey, BufferSource) on crypto.subtle with too few arguments must throw TypeError",
@@ -123,8 +107,6 @@
       "SubtleCrypto interface: calling sign(AlgorithmIdentifier, CryptoKey, BufferSource) on crypto.subtle with too few arguments must throw TypeError",
       "SubtleCrypto interface: crypto.subtle must inherit property \"verify(AlgorithmIdentifier, CryptoKey, BufferSource, BufferSource)\" with the proper type",
       "SubtleCrypto interface: calling verify(AlgorithmIdentifier, CryptoKey, BufferSource, BufferSource) on crypto.subtle with too few arguments must throw TypeError",
-      "SubtleCrypto interface: crypto.subtle must inherit property \"digest(AlgorithmIdentifier, BufferSource)\" with the proper type",
-      "SubtleCrypto interface: calling digest(AlgorithmIdentifier, BufferSource) on crypto.subtle with too few arguments must throw TypeError",
       "SubtleCrypto interface: crypto.subtle must inherit property \"generateKey(AlgorithmIdentifier, boolean, sequence<KeyUsage>)\" with the proper type",
       "SubtleCrypto interface: calling generateKey(AlgorithmIdentifier, boolean, sequence<KeyUsage>) on crypto.subtle with too few arguments must throw TypeError",
       "SubtleCrypto interface: crypto.subtle must inherit property \"deriveKey(AlgorithmIdentifier, CryptoKey, AlgorithmIdentifier, boolean, sequence<KeyUsage>)\" with the proper type",
@@ -174,7 +156,9 @@
       "event.any.html": true
     },
     "events": {
-      "AddEventListenerOptions-signal.any.html": true,
+      "AddEventListenerOptions-signal.any.html": [
+        "Passing null as the signal should throw"
+      ],
       "Event-isTrusted.any.html": true,
       "EventTarget-constructible.any.html": true,
       "Event-constructors.any.html": [
@@ -194,37 +178,8 @@
     "encodeInto.any.html": [
       "encodeInto() and a detached output buffer"
     ],
-    "idlharness.any.html": [
-      "TextDecoder interface: existence and properties of interface object",
-      "TextDecoder interface: operation decode(optional BufferSource, optional TextDecodeOptions)",
-      "TextDecoder interface: attribute encoding",
-      "TextDecoder interface: attribute fatal",
-      "TextDecoder interface: attribute ignoreBOM",
-      "TextDecoder interface: new TextDecoder() must inherit property \"fatal\" with the proper type",
-      "TextDecoder interface: new TextDecoder() must inherit property \"ignoreBOM\" with the proper type",
-      "TextEncoder interface: existence and properties of interface object",
-      "TextEncoder interface: operation encode(optional USVString)",
-      "TextEncoder interface: operation encodeInto(USVString, Uint8Array)",
-      "TextEncoder interface: attribute encoding",
-      "TextEncoder interface: new TextEncoder() must inherit property \"encoding\" with the proper type",
-      "TextDecoderStream interface: existence and properties of interface object",
-      "TextDecoderStream interface object length",
-      "TextDecoderStream interface object name",
-      "TextDecoderStream interface: existence and properties of interface prototype object",
-      "TextDecoderStream interface: existence and properties of interface prototype object's \"constructor\" property",
-      "TextDecoderStream interface: existence and properties of interface prototype object's @@unscopables property",
-      "TextDecoderStream interface: attribute encoding",
-      "TextDecoderStream interface: attribute fatal",
-      "TextDecoderStream interface: attribute ignoreBOM",
-      "TextEncoderStream interface: existence and properties of interface object",
-      "TextEncoderStream interface object length",
-      "TextEncoderStream interface object name",
-      "TextEncoderStream interface: existence and properties of interface prototype object",
-      "TextEncoderStream interface: existence and properties of interface prototype object's \"constructor\" property",
-      "TextEncoderStream interface: existence and properties of interface prototype object's @@unscopables property",
-      "TextEncoderStream interface: attribute encoding"
-    ],
-    "iso-2022-jp-decoder.any.html": false,
+    "idlharness.any.html": true,
+    "iso-2022-jp-decoder.any.html": true,
     "legacy-mb-schinese": {
       "gb18030": {
         "gb18030-decoder.any.html": true
@@ -235,21 +190,24 @@
     },
     "replacement-encodings.any.html": false,
     "streams": {
-      "backpressure.any.html": false,
-      "decode-attributes.any.html": false,
-      "decode-bad-chunks.any.html": false,
-      "decode-ignore-bom.any.html": false,
-      "decode-incomplete-input.any.html": false,
-      "decode-non-utf8.any.html": false,
-      "decode-split-character.any.html": false,
-      "decode-utf8.any.html": false,
-      "encode-bad-chunks.any.html": false,
-      "encode-utf8.any.html": false,
-      "readable-writable-properties.any.html": false
+      "backpressure.any.html": true,
+      "decode-attributes.any.html": true,
+      "decode-bad-chunks.any.html": true,
+      "decode-ignore-bom.any.html": true,
+      "decode-incomplete-input.any.html": true,
+      "decode-non-utf8.any.html": true,
+      "decode-split-character.any.html": true,
+      "decode-utf8.any.html": [
+        "decoding a transferred Uint8Array chunk should give no output",
+        "decoding a transferred ArrayBuffer chunk should give no output"
+      ],
+      "encode-bad-chunks.any.html": true,
+      "encode-utf8.any.html": true,
+      "readable-writable-properties.any.html": true
     },
     "textdecoder-arguments.any.html": true,
     "textdecoder-byte-order-marks.any.html": true,
-    "textdecoder-copy.any.html": false,
+    "textdecoder-copy.any.html": true,
     "textdecoder-fatal-single-byte.any.html?1-1000": true,
     "textdecoder-fatal-single-byte.any.html?1001-2000": true,
     "textdecoder-fatal-single-byte.any.html?2001-3000": true,
@@ -258,46 +216,23 @@
     "textdecoder-fatal-single-byte.any.html?5001-6000": true,
     "textdecoder-fatal-single-byte.any.html?6001-7000": true,
     "textdecoder-fatal-single-byte.any.html?7001-last": true,
-    "textdecoder-fatal-streaming.any.html": [
-      "Fatal flag, streaming cases"
-    ],
+    "textdecoder-fatal-streaming.any.html": true,
     "textdecoder-fatal.any.html": true,
     "textdecoder-ignorebom.any.html": true,
     "textdecoder-labels.any.html": [
-      "cseucpkdfmtjapanese => EUC-JP",
-      "euc-jp => EUC-JP",
-      "x-euc-jp => EUC-JP",
-      "csiso2022jp => ISO-2022-JP",
-      "iso-2022-jp => ISO-2022-JP",
-      "csshiftjis => Shift_JIS",
-      "ms932 => Shift_JIS",
-      "ms_kanji => Shift_JIS",
-      "shift-jis => Shift_JIS",
-      "shift_jis => Shift_JIS",
-      "sjis => Shift_JIS",
-      "windows-31j => Shift_JIS",
-      "x-sjis => Shift_JIS",
-      "cseuckr => EUC-KR",
-      "csksc56011987 => EUC-KR",
-      "euc-kr => EUC-KR",
-      "iso-ir-149 => EUC-KR",
-      "korean => EUC-KR",
-      "ks_c_5601-1987 => EUC-KR",
-      "ks_c_5601-1989 => EUC-KR",
-      "ksc5601 => EUC-KR",
-      "ksc_5601 => EUC-KR",
-      "windows-949 => EUC-KR",
-      "x-user-defined => x-user-defined"
+      "unicode11utf8 => UTF-8",
+      "unicode20utf8 => UTF-8",
+      "x-unicode20utf8 => UTF-8",
+      "unicodefffe => UTF-16BE",
+      "csunicode => UTF-16LE",
+      "iso-10646-ucs-2 => UTF-16LE",
+      "ucs-2 => UTF-16LE",
+      "unicode => UTF-16LE",
+      "unicodefeff => UTF-16LE"
     ],
     "textdecoder-streaming.any.html": true,
     "textdecoder-utf16-surrogates.any.html": true,
-    "textencoder-constructor-non-utf.any.html": [
-      "Encoding argument supported for decode: EUC-JP",
-      "Encoding argument supported for decode: ISO-2022-JP",
-      "Encoding argument supported for decode: Shift_JIS",
-      "Encoding argument supported for decode: EUC-KR",
-      "Encoding argument supported for decode: x-user-defined"
-    ],
+    "textencoder-constructor-non-utf.any.html": true,
     "textencoder-utf16-surrogates.any.html": true,
     "unsupported-encodings.any.html": false
   },
@@ -369,17 +304,11 @@
       "ReadableStreamDefaultController must be primary interface of self.readableStreamDefaultController",
       "Stringification of self.readableStreamDefaultController",
       "ReadableByteStreamController interface: existence and properties of interface object",
-      "ReadableByteStreamController interface object length",
-      "ReadableByteStreamController interface object name",
-      "ReadableByteStreamController interface: existence and properties of interface prototype object",
-      "ReadableByteStreamController interface: existence and properties of interface prototype object's \"constructor\" property",
-      "ReadableByteStreamController interface: existence and properties of interface prototype object's @@unscopables property",
       "ReadableByteStreamController interface: attribute byobRequest",
       "ReadableByteStreamController interface: attribute desiredSize",
       "ReadableByteStreamController interface: operation close()",
       "ReadableByteStreamController interface: operation enqueue(ArrayBufferView)",
       "ReadableByteStreamController interface: operation error(optional any)",
-      "ReadableByteStreamController must be primary interface of self.readableByteStreamController",
       "Stringification of self.readableByteStreamController",
       "ReadableByteStreamController interface: self.readableByteStreamController must inherit property \"byobRequest\" with the proper type",
       "ReadableStreamBYOBRequest interface: existence and properties of interface object",
@@ -424,16 +353,10 @@
       "TransformStream interface: attribute writable",
       "Stringification of new TransformStream()",
       "TransformStreamDefaultController interface: existence and properties of interface object",
-      "TransformStreamDefaultController interface object length",
-      "TransformStreamDefaultController interface object name",
-      "TransformStreamDefaultController interface: existence and properties of interface prototype object",
-      "TransformStreamDefaultController interface: existence and properties of interface prototype object's \"constructor\" property",
-      "TransformStreamDefaultController interface: existence and properties of interface prototype object's @@unscopables property",
       "TransformStreamDefaultController interface: attribute desiredSize",
       "TransformStreamDefaultController interface: operation enqueue(optional any)",
       "TransformStreamDefaultController interface: operation error(optional any)",
       "TransformStreamDefaultController interface: operation terminate()",
-      "TransformStreamDefaultController must be primary interface of self.transformStreamDefaultController",
       "Stringification of self.transformStreamDefaultController",
       "ByteLengthQueuingStrategy interface: attribute highWaterMark",
       "ByteLengthQueuingStrategy interface: attribute size",
@@ -535,6 +458,7 @@
         "getReader({mode: \"byob\"}) throws on non-bytes streams",
         "ReadableStream with byte source can be constructed with no errors",
         "getReader({mode}) must perform ToString()",
+        "ReadableStream with byte source: autoAllocateChunkSize cannot be 0",
         "ReadableStreamBYOBReader can be constructed directly",
         "ReadableStreamBYOBReader constructor requires a ReadableStream argument",
         "ReadableStreamBYOBReader constructor requires an unlocked ReadableStream",
@@ -589,7 +513,8 @@
         "ReadableStream with byte source: respondWithNewView() with a zero-length view (in the closed state)",
         "ReadableStream with byte source: respondWithNewView() with a transferred non-zero-length view (in the readable state)",
         "ReadableStream with byte source: respondWithNewView() with a transferred zero-length view (in the closed state)"
-      ]
+      ],
+      "non-transferable-buffers.any.html": false
     },
     "readable-streams": {
       "async-iterator.any.html": [
@@ -648,6 +573,7 @@
     "writable-streams": {
       "aborting.any.html": false,
       "bad-strategies.any.html": [
+        "reject any non-function value for strategy.size",
         "Writable stream: invalid size beats invalid highWaterMark"
       ],
       "bad-underlying-sinks.any.html": true,
@@ -655,6 +581,8 @@
       "close.any.html": false,
       "constructor.any.html": [
         "underlyingSink argument should be converted after queuingStrategy argument",
+        "WritableStreamDefaultController constructor should throw",
+        "WritableStreamDefaultController constructor should throw when passed an initialised WritableStream",
         "WritableStreamDefaultWriter should throw unless passed a WritableStream"
       ],
       "count-queuing-strategy.any.html": true,
@@ -684,7 +612,9 @@
       "Performance interface: operation mark(DOMString, optional PerformanceMarkOptions)",
       "Performance interface: operation clearMarks(optional DOMString)",
       "Performance interface: operation measure(DOMString, optional (DOMString or PerformanceMeasureOptions), optional DOMString)",
-      "Performance interface: operation clearMeasures(optional DOMString)"
+      "Performance interface: operation clearMeasures(optional DOMString)",
+      "Performance interface: calling mark(DOMString, optional PerformanceMarkOptions) on performance with too few arguments must throw TypeError",
+      "Performance interface: calling measure(DOMString, optional (DOMString or PerformanceMeasureOptions), optional DOMString) on performance with too few arguments must throw TypeError"
     ],
     "mark-entry-constructor.any.html": true,
     "mark-errors.any.html": true,
@@ -743,10 +673,7 @@
         "toString.any.html": true,
         "type.tentative.any.html": false,
         "constructor-shared.tentative.any.html": true,
-        "constructor-types.tentative.any.html": [
-          "Zero minimum",
-          "Non-zero minimum"
-        ]
+        "constructor-types.tentative.any.html": false
       },
       "module": {
         "constructor.any.html": true,
@@ -766,12 +693,10 @@
         "toString.any.html": true,
         "constructor-reftypes.tentative.any.html": [
           "initialize externref table with default value",
-          "initialize anyfunc table with default value"
+          "initialize anyfunc table with default value",
+          "initialize anyfunc table with a bad default value"
         ],
-        "constructor-types.tentative.any.html": [
-          "Zero minimum",
-          "Non-zero minimum"
-        ],
+        "constructor-types.tentative.any.html": false,
         "grow-reftypes.tentative.any.html": false,
         "set-reftypes.tentative.any.html": false,
         "type.tentative.any.html": false
@@ -835,7 +760,6 @@
       "URL interface: attribute searchParams",
       "URL interface: attribute hash",
       "URL interface: operation toJSON()",
-      "URL interface: legacy window alias",
       "Stringification of new URL(\"http://foo\")",
       "URLSearchParams interface: operation append(USVString, USVString)",
       "URLSearchParams interface: operation delete(USVString)",
@@ -849,6 +773,12 @@
       "Stringification of new URLSearchParams(\"hi=there&thank=you\")"
     ],
     "url-constructor.any.html": [
+      "Parsing: <file://%43%7C> against <about:blank>",
+      "Parsing: <file://%43|> against <about:blank>",
+      "Parsing: <file://C%7C> against <about:blank>",
+      "Parsing: <file://%43%7C/> against <about:blank>",
+      "Parsing: <https://%43%7C/> against <about:blank>",
+      "Parsing: <asdf://%43|/> against <about:blank>",
       "Parsing: </> against <file://h/C:/a/b>",
       "Parsing: <file:\\\\//> against <about:blank>",
       "Parsing: <file:\\\\\\\\> against <about:blank>",
@@ -933,13 +863,30 @@
     "urlsearchparams-has.any.html": true,
     "urlsearchparams-set.any.html": true,
     "urlsearchparams-sort.any.html": true,
-    "urlsearchparams-stringifier.any.html": true
+    "urlsearchparams-stringifier.any.html": true,
+    "url-setters.any.html": [
+      "URL: Setting <http://example.net/path>.hostname = 'example.com:8080' : delimiter invalidates entire value",
+      "URL: Setting <http://example.net:8080/path>.hostname = 'example.com:' : delimiter invalidates entire value",
+      "URL: Setting <non-spec:/.//p>.hostname = 'h' Drop /. from path",
+      "URL: Setting <non-spec:/.//p>.hostname = ''",
+      "URL: Setting <file://monkey/>.pathname = '\\\\' File URLs and (back)slashes",
+      "URL: Setting <file:///unicorn>.pathname = '//\\/' File URLs and (back)slashes",
+      "URL: Setting <file:///unicorn>.pathname = '//monkey/..//' File URLs and (back)slashes",
+      "URL: Setting <non-spec:/>.pathname = '/.//p' Serialize /. in path",
+      "URL: Setting <non-spec:/>.pathname = '/..//p'",
+      "URL: Setting <non-spec:/>.pathname = '//p'",
+      "URL: Setting <non-spec:/.//>.pathname = 'p' Drop /. from path"
+    ]
   },
   "fetch": {
     "api": {
       "request": {
         "request-init-002.any.html": true,
-        "request-init-stream.any.html": true,
+        "request-init-stream.any.html": [
+          "Constructing a Request with a Request on which body.getReader() is called",
+          "Constructing a Request with a Request on which body.getReader().read() is called",
+          "Constructing a Request with a Request on which read() and releaseLock() are called"
+        ],
         "request-consume-empty.any.html": [
           "Consume empty FormData request body as text"
         ],
@@ -1123,6 +1070,7 @@
         "Response interface: operation redirect(USVString, optional unsigned short)",
         "Response interface: attribute body",
         "Response interface: attribute bodyUsed",
+        "Response interface: calling redirect(USVString, optional unsigned short) on new Response() with too few arguments must throw TypeError",
         "Window interface: operation fetch(RequestInfo, optional RequestInit)"
       ]
     },
@@ -1218,11 +1166,8 @@
     "storage_key_empty_string.window.html": true,
     "storage_length.window.html": true,
     "storage_local_setitem_quotaexceedederr.window.html": true,
-    "storage_local_window_open.window.html": false,
     "storage_removeitem.window.html": true,
     "storage_session_setitem_quotaexceedederr.window.html": true,
-    "storage_session_window_noopener.window.html": false,
-    "storage_session_window_open.window.html": false,
     "storage_set_value_enumerate.window.html": true,
     "storage_setitem.window.html": [
       "localStorage[] = \"\ud800\"",
