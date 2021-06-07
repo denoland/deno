@@ -45,7 +45,15 @@ where
   let (id, method, _) = client.read_request::<Value>().unwrap();
   assert_eq!(method, "workspace/configuration");
   client
-    .write_response(id, json!({ "enable": true }))
+    .write_response(
+      id,
+      json!({
+        "enable": true,
+        "codeLens": {
+          "test": true
+        }
+      }),
+    )
     .unwrap();
 
   let mut diagnostics = vec![];
@@ -1226,6 +1234,76 @@ fn lsp_code_lens_impl() {
       }
     }))
   );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_code_lens_test() {
+  let mut client = init("initialize_params_code_lens_test.json");
+  did_open(
+    &mut client,
+    load_fixture("did_open_params_test_code_lens.json"),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeLens",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_lens_response_test.json"))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_code_lens_test_disabled() {
+  let mut client = init("initialize_params_code_lens_test_disabled.json");
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      load_fixture("did_open_params_test_code_lens.json"),
+    )
+    .unwrap();
+
+  let (id, method, _) = client.read_request::<Value>().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(
+      id,
+      json!({
+        "enable": true,
+        "codeLens": {
+          "test": false
+        }
+      }),
+    )
+    .unwrap();
+
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeLens",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!([])));
   shutdown(&mut client);
 }
 

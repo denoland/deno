@@ -243,7 +243,10 @@ impl Inner {
   // moment
   /// Searches already cached assets and documents and returns its text
   /// content. If not found, `None` is returned.
-  fn get_text_content(&self, specifier: &ModuleSpecifier) -> Option<String> {
+  pub(crate) fn get_text_content(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<String> {
     if specifier.scheme() == "asset" {
       self
         .assets
@@ -253,6 +256,17 @@ impl Inner {
       self.documents.content(specifier).unwrap()
     } else {
       self.sources.get_source(specifier)
+    }
+  }
+
+  pub(crate) fn get_media_type(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<MediaType> {
+    if specifier.scheme() == "asset" || self.documents.contains_key(specifier) {
+      Some(MediaType::from(specifier))
+    } else {
+      self.sources.get_media_type(specifier)
     }
   }
 
@@ -1099,15 +1113,15 @@ impl Inner {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
     if !self.documents.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
-      || !self.config.get_workspace_settings().enabled_code_lens()
+      || !(self.config.get_workspace_settings().enabled_code_lens()
+        || self.config.specifier_code_lens_test(&specifier))
     {
       return Ok(None);
     }
 
     let mark = self.performance.mark("code_lens", Some(&params));
-    let code_lenses = code_lens::tsc_code_lenses(&specifier, self)
-      .await
-      .map_err(|err| {
+    let code_lenses =
+      code_lens::collect(&specifier, self).await.map_err(|err| {
         error!("Error getting code lenses for \"{}\": {}", specifier, err);
         LspError::internal_error()
       })?;

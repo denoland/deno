@@ -28,6 +28,10 @@ pub struct ClientCapabilities {
   pub line_folding_only: bool,
 }
 
+fn is_true() -> bool {
+  true
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeLensSettings {
@@ -41,6 +45,10 @@ pub struct CodeLensSettings {
   /// an impact, the `references` flag needs to be `true`.
   #[serde(default)]
   pub references_all_functions: bool,
+  /// Flag for providing test code lens on `Deno.test` statements.  There is
+  /// also the `test_args` setting, but this is not used by the server.
+  #[serde(default = "is_true")]
+  pub test: bool,
 }
 
 impl Default for CodeLensSettings {
@@ -49,12 +57,24 @@ impl Default for CodeLensSettings {
       implementations: false,
       references: false,
       references_all_functions: false,
+      test: true,
     }
   }
 }
 
-fn is_true() -> bool {
-  true
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeLensSpecifierSettings {
+  /// Flag for providing test code lens on `Deno.test` statements.  There is
+  /// also the `test_args` setting, but this is not used by the server.
+  #[serde(default = "is_true")]
+  pub test: bool,
+}
+
+impl Default for CodeLensSpecifierSettings {
+  fn default() -> Self {
+    Self { test: true }
+  }
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -109,9 +129,13 @@ impl Default for ImportCompletionSettings {
 /// Deno language server specific settings that can be applied uniquely to a
 /// specifier.
 #[derive(Debug, Default, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SpecifierSettings {
   /// A flag that indicates if Deno is enabled for this specifier or not.
   pub enable: bool,
+  /// Code lens specific settings for the resource.
+  #[serde(default)]
+  pub code_lens: CodeLensSpecifierSettings,
 }
 
 /// Deno language server specific settings that are applied to a workspace.
@@ -324,11 +348,21 @@ impl Config {
 
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
     let settings = self.settings.read().unwrap();
-    if let Some(specifier_settings) = settings.specifiers.get(specifier) {
-      specifier_settings.1.enable
-    } else {
-      settings.workspace.enable
-    }
+    settings
+      .specifiers
+      .get(specifier)
+      .map(|(_, s)| s.enable)
+      .unwrap_or_else(|| settings.workspace.enable)
+  }
+
+  pub fn specifier_code_lens_test(&self, specifier: &ModuleSpecifier) -> bool {
+    let settings = self.settings.read().unwrap();
+    let value = settings
+      .specifiers
+      .get(specifier)
+      .map(|(_, s)| s.code_lens.test)
+      .unwrap_or_else(|| settings.workspace.code_lens.test);
+    value
   }
 
   #[allow(clippy::redundant_closure_call)]
@@ -449,6 +483,7 @@ mod tests {
           implementations: false,
           references: false,
           references_all_functions: false,
+          test: true,
         },
         internal_debug: false,
         lint: false,
