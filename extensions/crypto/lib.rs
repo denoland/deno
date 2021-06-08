@@ -202,7 +202,6 @@ pub async fn op_webcrypto_generate_key(
   let mut state = state.borrow_mut();
   let key = match algorithm {
     Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss => {
-      validate_usage!(&args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
       let exp = zero_copy.ok_or_else(|| {
         type_error("Missing argument publicExponent".to_string())
       })?;
@@ -211,8 +210,14 @@ pub async fn op_webcrypto_generate_key(
 
       let exponent = BigUint::from_bytes_be(&exp);
       if exponent != *PUB_EXPONENT_1 && exponent != *PUB_EXPONENT_2 {
-        return Err(type_error("Bad public exponent"));
+        return Err(custom_error(
+          "DOMExceptionOperationError",
+          "Bad public exponent",
+        ));
       }
+
+      validate_usage!(&args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
+
       // Generate RSA private key based of exponent, bits and Rng.
       let mut rng = OsRng;
 
