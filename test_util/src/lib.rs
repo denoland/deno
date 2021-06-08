@@ -76,7 +76,10 @@ lazy_static! {
 }
 
 pub fn root_path() -> PathBuf {
-  PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/.."))
+  PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")))
+    .parent()
+    .unwrap()
+    .to_path_buf()
 }
 
 pub fn prebuilt_path() -> PathBuf {

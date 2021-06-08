@@ -3113,7 +3113,11 @@ console.log("finish");
   });
 
   itest!(_089_run_allow_list {
-    args: "run --allow-run=cat 089_run_allow_list.ts",
+    args: if cfg!(windows) {
+      "run --allow-run=cmd 089_run_allow_list.ts"
+    } else {
+      "run --allow-run=cat 089_run_allow_list.ts"
+    },
     output: "089_run_allow_list.ts.out",
   });
 
