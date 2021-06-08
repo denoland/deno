@@ -61,7 +61,6 @@
     normalizedAlgorithm.name = algorithmName;
 
     for (const member of algDict[desiredType]) {
-      //for (const member of members) {
       const idlValue = normalizedAlgorithm[member.key];
       if (member.converters == webidl.converters["BufferSource"]) {
         normalizedAlgorithm[member.key] = new Uint8Array(
@@ -79,7 +78,6 @@
       ) {
         normalizedAlgorithm[member.key] = normalizeAlgorithm(idlValue, op);
       }
-      //}
     }
 
     return normalizedAlgorithm;
@@ -101,8 +99,6 @@
 
   const ridSymbol = Symbol("[[rid]]");
 
-  // The CryptoKey class. A JavaScript representation of a WebCrypto key.
-  // Stores rid of the actual key along with read-only properties.
   class CryptoKey {
     #usages;
     #extractable;
