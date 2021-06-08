@@ -361,9 +361,13 @@ impl Inner {
           import_map_str
         ))
       }?;
-      let import_map_path = import_map_url
-        .to_file_path()
-        .map_err(|_| anyhow!("Bad file path."))?;
+      let import_map_path = import_map_url.to_file_path().map_err(|_| {
+        anyhow!("Cannot convert \"{}\" into a file path.", import_map_url)
+      })?;
+      info!(
+        "  Resolved import map: \"{}\"",
+        import_map_path.to_string_lossy()
+      );
       let import_map_json =
         fs::read_to_string(import_map_path).await.map_err(|err| {
           anyhow!(
@@ -460,6 +464,7 @@ impl Inner {
           config_str
         ))
       }?;
+      info!("  Resolved configuration file: \"{}\"", config_url);
 
       let config_file = {
         let buffer = config_url
@@ -527,6 +532,9 @@ impl Inner {
       env!("TARGET")
     );
     info!("  version: {}", version);
+    if let Ok(path) = std::env::current_exe() {
+      info!("  executable: {}", path.to_string_lossy());
+    }
 
     let server_info = ServerInfo {
       name: "deno-language-server".to_string(),
