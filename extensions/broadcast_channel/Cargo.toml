@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_broadcast_channel"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2018"
 description = "Implementation of BroadcastChannel API for Deno"
 authors = ["the Deno authors"]
@@ -15,6 +15,6 @@ path = "lib.rs"
 
 [dependencies]
 async-trait = "0.1"
-deno_core = { version = "0.88.0", path = "../../core" }
+deno_core = { version = "0.89.0", path = "../../core" }
 tokio = { version = "1.4.0", features = ["full"] }
 uuid = { version = "0.8.2", features = ["v4"] }
