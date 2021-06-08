@@ -442,10 +442,15 @@ async fn op_http_response_close(
     .ok_or_else(bad_resource_id)?;
   drop(resource);
 
-  eprintln!("op_http_response close (poll conn)");
   poll_fn(|cx| match conn_resource.poll(cx) {
-    Poll::Ready(x) => Poll::Ready(x),
-    Poll::Pending => Poll::Ready(Ok(())),
+    Poll::Ready(x) => {
+      eprintln!("op_http_response close (poll conn) ready {:?}", x);
+      Poll::Ready(x)
+    },
+    Poll::Pending => {
+      eprintln!("op_http_response close (poll conn) pending");
+      Poll::Ready(Ok(()))
+    },
   })
   .await
 }

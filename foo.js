@@ -22,20 +22,21 @@ function response(req) {
   if (path === '/main.css') {
     return new Response(css(), {headers: {'content-type': 'text/css'}})
   }
+  if (path === '/main2.css') {
+    return new Response(css(), {headers: {'content-type': 'text/css'}})
+  }
   throw Error(`unrecognized route ${path}`)
 }
 
 function html() {
-  // return stream(
-   return  `
+   return  stream(`
 <!doctype html>
 <link rel="icon" href="data:;base64,=">
 <link rel="stylesheet" type="text/css" href="/main.css">
-`.trim()
-// )
+`.trim())
 }
 
-function css() {return ""}
+function css() {return `asdfasdf`}
 
 // Quick and dirty way to make a readable stream from a string. Alternatively,
 // `readableStreamFromReader(file)` could be used.

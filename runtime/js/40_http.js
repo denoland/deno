@@ -210,6 +210,7 @@
           try {
             await Deno.core.opAsync("op_http_response_close", responseBodyRid);
           } catch { /* pass */ }
+          console.table(Deno.resources());
         }
       }
     };
