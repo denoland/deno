@@ -32,7 +32,7 @@
       "failures_AES-CTR.https.any.html": false,
       "failures_AES-GCM.https.any.html": false,
       "failures_AES-KW.https.any.html": false,
-      "failures_ECDH.https.any.html": false,
+      "failures_ECDH.https.any.html": true,
       "failures_ECDSA.https.any.html": false,
       "failures_HMAC.https.any.html": false,
       "failures_RSA-OAEP.https.any.html": false,

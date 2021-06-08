@@ -29,11 +29,31 @@
     "unwrapKey",
   ]);
 
+  const SupportedHashIdentifiers = [
+    "SHA-1",
+    "SHA-256",
+    "SHA-384",
+    "SHA-512",
+  ];
+
+  function validateHash(hash) {
+    const _hash = SupportedHashIdentifiers
+      .find((key) => key.toLowerCase() == hash.toLowerCase());
+    if (_hash == undefined) {
+      throw new DOMException(
+        "hash not supported",
+        "NotSupportedError",
+      );
+    }
+  }
+
   webidl.converters["HashAlgorithmIdentifier"] = (V, opts) => {
     if (typeof V == "object") {
+      validateHash(V.name);
       return webidl.converters["object"](V, opts);
     }
 
+    validateHash(V);
     return webidl.converters["DOMString"](V, opts);
   };
 
@@ -49,54 +69,70 @@
     algorithmDictionary,
   );
 
-  const rsaKeyGenDictionary = [
+  const RsaKeyGenDictionary = [
     ...algorithmDictionary,
     {
       key: "publicExponent",
       converter: webidl.converters["BufferSource"],
+      required: true,
     },
     {
       key: "modulusLength",
       converter: webidl.converters["unsigned long"],
+      required: true,
     },
   ];
 
   webidl.converters["RsaKeyGenParams"] = webidl.createDictionaryConverter(
     "RsaKeyGenParams",
-    rsaKeyGenDictionary,
+    RsaKeyGenDictionary,
   );
 
-  const rsaHashedKeyGenDictionary = [
-    ...rsaKeyGenDictionary,
+  const RsaHashedKeyGenDictionary = [
+    ...RsaKeyGenDictionary,
     {
       key: "hash",
       converter: webidl.converters["HashAlgorithmIdentifier"],
+      required: true,
     },
   ];
 
   webidl.converters["RsaHashedKeyGenParams"] = webidl.createDictionaryConverter(
     "RsaHashedKeyGenParams",
-    rsaHashedKeyGenDictionary,
+    RsaHashedKeyGenDictionary,
   );
 
-  const ecKeyGenDictionary = [
+  const SupportedNamedCurves = ["P-256", "P-384"];
+  const EcKeyGenDictionary = [
     ...algorithmDictionary,
     {
       key: "namedCurve",
-      converter: webidl.converters["DOMString"],
+      converter: (V, opts) => {
+        const namedCurve = SupportedNamedCurves
+          .find((key) => key.toLowerCase() == V.toLowerCase());
+        if (namedCurve == undefined) {
+          throw new DOMException(
+            "namedCurve not supported",
+            "NotSupportedError",
+          );
+        }
+        return webidl.converters["DOMString"](namedCurve, opts);
+      },
+      required: true,
     },
   ];
 
   webidl.converters["EcKeyGenParams"] = webidl.createDictionaryConverter(
     "EcKeyGenParams",
-    ecKeyGenDictionary,
+    EcKeyGenDictionary,
   );
 
-  const hmacKeyGenDictionary = [
+  const HmacKeyGenDictionary = [
     ...algorithmDictionary,
     {
       key: "hash",
       converter: webidl.converters["HashAlgorithmIdentifier"],
+      required: true,
     },
     {
       key: "length",
@@ -106,33 +142,35 @@
 
   webidl.converters["HmacKeyGenParams"] = webidl.createDictionaryConverter(
     "HmacKeyGenParams",
-    hmacKeyGenDictionary,
+    HmacKeyGenDictionary,
   );
 
-  const rsaPssDictionary = [
+  const RsaPssDictionary = [
     ...algorithmDictionary,
     {
       key: "saltLength",
       converters: webidl.converters["unsigned long"],
+      required: true,
     },
   ];
 
   webidl.converters["RsaPssParams"] = webidl.createDictionaryConverter(
     "RsaPssParams",
-    rsaPssDictionary,
+    RsaPssDictionary,
   );
 
-  const ecdsaDictionary = [
+  const EcdsaDictionary = [
     ...algorithmDictionary,
     {
       key: "hash",
       converters: webidl.converters["HashAlgorithmIdentifier"],
+      required: true,
     },
   ];
 
   webidl.converters["EcdsaParams"] = webidl.createDictionaryConverter(
     "EcdsaParams",
-    ecdsaDictionary,
+    EcdsaDictionary,
   );
 
   const cryptoKeyDictionary = [
@@ -183,11 +221,11 @@
 
   window.__bootstrap.crypto = {
     algDict: {
-      "RsaHashedKeyGenParams": rsaKeyGenDictionary,
-      "EcKeyGenParams": ecKeyGenDictionary,
-      "HmacKeyGenParams": hmacKeyGenDictionary,
-      "RsaPssParams": rsaPssDictionary,
-      "EcdsaParams": ecdsaDictionary,
+      "RsaHashedKeyGenParams": RsaKeyGenDictionary,
+      "EcKeyGenParams": EcKeyGenDictionary,
+      "HmacKeyGenParams": HmacKeyGenDictionary,
+      "RsaPssParams": RsaPssDictionary,
+      "EcdsaParams": EcdsaDictionary,
     },
   };
 })(this);

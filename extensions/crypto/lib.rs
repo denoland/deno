@@ -174,13 +174,16 @@ enum JsCryptoKey {
 }
 
 macro_rules! validate_usage {
-  ($e: expr, $u: expr) => {
+  ($e: expr, $u: expr) => {{
+    if $e.len() <= 0 {
+      return Err(custom_error("SyntaxError", "Invalid usage"));
+    };
     for usage in $e {
       if !$u.contains(&usage) {
         return Err(custom_error("SyntaxError", "Invalid usage"));
       }
     }
-  };
+  }};
 }
 
 #[derive(Serialize)]
