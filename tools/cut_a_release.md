@@ -35,6 +35,7 @@ between the crates, it must be done in specific order:
   changes
 - `deno_core` - all crates depend on `deno_core` so it must always be published
   first
+- `bench_util`
 - crates in `extensions/` directory
   - `deno_crypto` and `deno_webstorage` depend on `deno_web`, so the latter must
     be bumped and released first
