@@ -115,6 +115,6 @@ export function multiply(a: number, b: number): number {
 ```
 
 All functions, classes, constants and variables which need to be accessible
-inside external modules must be exported. Either by pretending them with the
+inside external modules must be exported. Either by prepending them with the
 `export` keyword or including them in an export statement at the bottom of the
 file.

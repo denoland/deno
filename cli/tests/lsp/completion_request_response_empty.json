@@ -1,0 +1,38 @@
+{
+  "isIncomplete": false,
+  "items": [
+    {
+      "label": ".",
+      "kind": 19,
+      "detail": "(local)",
+      "sortText": "1",
+      "insertText": "."
+    },
+    {
+      "label": "..",
+      "kind": 19,
+      "detail": "(local)",
+      "sortText": "1",
+      "insertText": ".."
+    },
+    {
+      "label": "http://localhost:4545",
+      "kind": 19,
+      "detail": "(registry)",
+      "sortText": "2",
+      "textEdit": {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 20
+          },
+          "end": {
+            "line": 0,
+            "character": 20
+          }
+        },
+        "newText": "http://localhost:4545"
+      }
+    }
+  ]
+}

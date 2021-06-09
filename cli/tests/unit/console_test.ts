@@ -316,12 +316,12 @@ unitTest(function consoleTestStringifyCircular(): void {
     stringify(console),
     `console {
   log: [Function: log],
-  debug: [Function: log],
-  info: [Function: log],
+  debug: [Function: debug],
+  info: [Function: info],
   dir: [Function: dir],
   dirxml: [Function: dir],
   warn: [Function: warn],
-  error: [Function: warn],
+  error: [Function: error],
   assert: [Function: assert],
   count: [Function: count],
   countReset: [Function: countReset],
@@ -341,6 +341,14 @@ unitTest(function consoleTestStringifyCircular(): void {
   assertEquals(
     stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
     'TAG { str: 1, [Symbol(sym)]: 2, [Symbol(Symbol.toStringTag)]: "TAG" }',
+  );
+  assertEquals(
+    stringify({
+      [Deno.customInspect]: function () {
+        return Deno.inspect(this);
+      },
+    }),
+    "[Circular]",
   );
   // test inspect is working the same
   assertEquals(stripColor(Deno.inspect(nestedObj)), nestedObjExpected);
@@ -853,7 +861,7 @@ unitTest(async function consoleTestStringifyPromises(): Promise<void> {
       rej(Error("Whoops"));
     });
     await rejectedPromise;
-  } catch (err) {
+  } catch (_err) {
     // pass
   }
   const strLines = stringify(rejectedPromise).split("\n");
@@ -878,11 +886,18 @@ unitTest(function consoleTestWithCustomInspectorError(): void {
     }
   }
 
+  const a = new A();
   assertThrows(
-    () => stringify(new A()),
+    () => stringify(a),
     Error,
     "BOOM",
     "Custom inspect won't attempt to parse if user defined function throws",
+  );
+  assertThrows(
+    () => stringify(a),
+    Error,
+    "BOOM",
+    "Inpsect should fail and maintain a clear CTX_STACK",
   );
 });
 
@@ -1191,9 +1206,9 @@ function mockConsole(f: ConsoleExamineFunc): void {
   const err = new StringBuffer();
   const both = new StringBuffer();
   const csl = new Console(
-    (x: string, isErr: boolean, printsNewLine: boolean): void => {
+    (x: string, level: number, printsNewLine: boolean): void => {
       const content = x + (printsNewLine ? "\n" : "");
-      const buf = isErr ? err : out;
+      const buf = level > 1 ? err : out;
       buf.add(content);
       both.add(content);
     },
@@ -1469,6 +1484,39 @@ unitTest(function consoleTable(): void {
 `,
     );
   });
+  mockConsole((console, out) => {
+    console.table([{ a: 0 }, { a: 1, b: 1 }, { a: 2 }, { a: 3, b: 3 }]);
+    assertEquals(
+      stripColor(out.toString()),
+      `┌───────┬───┬───┐
+│ (idx) │ a │ b │
+├───────┼───┼───┤
+│   0   │ 0 │   │
+│   1   │ 1 │ 1 │
+│   2   │ 2 │   │
+│   3   │ 3 │ 3 │
+└───────┴───┴───┘
+`,
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(
+      [{ a: 0 }, { a: 1, c: 1 }, { a: 2 }, { a: 3, c: 3 }],
+      ["a", "b", "c"],
+    );
+    assertEquals(
+      stripColor(out.toString()),
+      `┌───────┬───┬───┬───┐
+│ (idx) │ a │ b │ c │
+├───────┼───┼───┼───┤
+│   0   │ 0 │   │   │
+│   1   │ 1 │   │ 1 │
+│   2   │ 2 │   │   │
+│   3   │ 3 │   │ 3 │
+└───────┴───┴───┴───┘
+`,
+    );
+  });
 });
 
 // console.log(Error) test
@@ -1478,7 +1526,7 @@ unitTest(function consoleLogShouldNotThrowError(): void {
     try {
       console.log(new Error("foo"));
       result = 1;
-    } catch (e) {
+    } catch (_e) {
       result = 2;
     }
     assertEquals(result, 1);

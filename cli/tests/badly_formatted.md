@@ -26,3 +26,21 @@ function foo(): number {
   return       2;
 }
 ```
+
+```jsonc
+
+{
+  // Comment in JSON
+  "key":          "value",
+                "key2":      
+                "value2",
+}
+
+```
+
+```json
+{
+  "numbers":
+  ["1",      "2"]
+}
+```

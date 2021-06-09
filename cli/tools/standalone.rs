@@ -23,16 +23,14 @@ use crate::standalone::MAGIC_TRAILER;
 pub async fn get_base_binary(
   deno_dir: &DenoDir,
   target: Option<String>,
-  lite: bool,
 ) -> Result<Vec<u8>, AnyError> {
-  if target.is_none() && !lite {
+  if target.is_none() {
     let path = std::env::current_exe()?;
     return Ok(tokio::fs::read(path).await?);
   }
 
   let target = target.unwrap_or_else(|| env!("TARGET").to_string());
-  let exe_name = if lite { "denort" } else { "deno" };
-  let binary_name = format!("{}-{}.zip", exe_name, target);
+  let binary_name = format!("deno-{}.zip", target);
 
   let binary_path_suffix = if crate::version::is_canary() {
     format!("canary/{}/{}", crate::version::GIT_COMMIT_HASH, binary_name)
@@ -50,7 +48,7 @@ pub async fn get_base_binary(
   let archive_data = tokio::fs::read(binary_path).await?;
   let base_binary_path = crate::tools::upgrade::unpack(
     archive_data,
-    exe_name,
+    "deno",
     target.contains("windows"),
   )?;
   let base_binary = tokio::fs::read(base_binary_path).await?;
@@ -129,14 +127,25 @@ pub fn create_standalone_binary(
 /// is not already standalone binary it will return error instead.
 pub async fn write_standalone_binary(
   output: PathBuf,
+  target: Option<String>,
   final_bin: Vec<u8>,
 ) -> Result<(), AnyError> {
-  let output =
-    if cfg!(windows) && output.extension().unwrap_or_default() != "exe" {
-      PathBuf::from(output.display().to_string() + ".exe")
-    } else {
-      output
-    };
+  let output = match target {
+    Some(target) => {
+      if target.contains("windows") {
+        PathBuf::from(output.display().to_string() + ".exe")
+      } else {
+        output
+      }
+    }
+    None => {
+      if cfg!(windows) && output.extension().unwrap_or_default() != "exe" {
+        PathBuf::from(output.display().to_string() + ".exe")
+      } else {
+        output
+      }
+    }
+  };
 
   if output.exists() {
     // If the output is a directory, throw error
@@ -159,6 +168,10 @@ pub async fn write_standalone_binary(
     if !has_trailer {
       bail!("Could not compile: cannot overwrite {:?}.", &output);
     }
+
+    // Remove file if it was indeed a deno compiled binary, to avoid corruption
+    // (see https://github.com/denoland/deno/issues/10310)
+    std::fs::remove_file(&output)?;
   }
   tokio::fs::write(&output, final_bin).await?;
   #[cfg(unix)]
@@ -195,6 +208,7 @@ pub fn compile_to_runtime_flags(
     allow_read: flags.allow_read,
     allow_run: flags.allow_run,
     allow_write: flags.allow_write,
+    allow_usb: flags.allow_usb,
     cache_blocklist: vec![],
     ca_file: flags.ca_file,
     cached_only: false,
@@ -209,7 +223,7 @@ pub fn compile_to_runtime_flags(
     lock_write: false,
     log_level: flags.log_level,
     no_check: false,
-    no_prompts: flags.no_prompts,
+    prompt: flags.prompt,
     no_remote: false,
     reload: false,
     repl: false,

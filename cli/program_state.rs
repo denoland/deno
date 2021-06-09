@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::config_file::ConfigFile;
 use crate::deno_dir;
 use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
@@ -14,29 +15,26 @@ use crate::module_graph::TypeLib;
 use crate::source_maps::SourceMapGetter;
 use crate::specifier_handler::FetchHandler;
 use crate::version;
-use deno_runtime::inspector::InspectorServer;
+use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_runtime::deno_file::BlobUrlStore;
+use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::Permissions;
 
 use deno_core::error::anyhow;
 use deno_core::error::get_custom_error_class;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
+use deno_core::resolve_url;
 use deno_core::url::Url;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
+use log::debug;
+use log::warn;
 use std::collections::HashMap;
 use std::env;
 use std::fs::read;
 use std::sync::Arc;
 use std::sync::Mutex;
-
-pub fn exit_unstable(api_name: &str) {
-  eprintln!(
-    "Unstable API '{}'. The --unstable flag must be provided.",
-    api_name
-  );
-  std::process::exit(70);
-}
 
 /// This structure represents state of single "deno" program.
 ///
@@ -50,13 +48,16 @@ pub struct ProgramState {
   pub modules:
     Arc<Mutex<HashMap<ModuleSpecifier, Result<ModuleSource, AnyError>>>>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
+  pub maybe_config_file: Option<ConfigFile>,
   pub maybe_import_map: Option<ImportMap>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub ca_data: Option<Vec<u8>>,
+  pub blob_url_store: BlobUrlStore,
+  pub broadcast_channel: InMemoryBroadcastChannel,
 }
 
 impl ProgramState {
-  pub fn new(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
+  pub async fn build(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let dir = deno_dir::DenoDir::new(custom_root)?;
     let deps_cache_location = dir.root.join("deps");
@@ -77,11 +78,15 @@ impl ProgramState {
       CacheSetting::Use
     };
 
+    let blob_url_store = BlobUrlStore::default();
+    let broadcast_channel = InMemoryBroadcastChannel::default();
+
     let file_fetcher = FileFetcher::new(
       http_cache,
       cache_usage,
       !flags.no_remote,
       ca_data.clone(),
+      blob_url_store.clone(),
     )?;
 
     let lockfile = if let Some(filename) = &flags.lock {
@@ -91,25 +96,38 @@ impl ProgramState {
       None
     };
 
+    let maybe_config_file =
+      if let Some(config_path) = flags.config_path.as_ref() {
+        Some(ConfigFile::read(config_path)?)
+      } else {
+        None
+      };
+
     let maybe_import_map: Option<ImportMap> =
       match flags.import_map_path.as_ref() {
         None => None,
-        Some(file_path) => {
-          if !flags.unstable {
-            exit_unstable("--import-map")
-          }
-          Some(ImportMap::load(file_path)?)
+        Some(import_map_url) => {
+          let import_map_specifier =
+            deno_core::resolve_url_or_path(&import_map_url).context(
+              format!("Bad URL (\"{}\") for import map.", import_map_url),
+            )?;
+          let file = file_fetcher
+            .fetch(&import_map_specifier, &mut Permissions::allow_all())
+            .await
+            .context(format!(
+              "Unable to load '{}' import map",
+              import_map_specifier
+            ))?;
+          let import_map =
+            ImportMap::from_json(import_map_specifier.as_str(), &file.source)?;
+          Some(import_map)
         }
       };
 
     let maybe_inspect_host = flags.inspect.or(flags.inspect_brk);
-    let maybe_inspector_server = match maybe_inspect_host {
-      Some(host) => Some(Arc::new(InspectorServer::new(
-        host,
-        version::get_user_agent(),
-      ))),
-      None => None,
-    };
+    let maybe_inspector_server = maybe_inspect_host.map(|host| {
+      Arc::new(InspectorServer::new(host, version::get_user_agent()))
+    });
 
     let coverage_dir = flags
       .coverage_dir
@@ -123,45 +141,47 @@ impl ProgramState {
       file_fetcher,
       modules: Default::default(),
       lockfile,
+      maybe_config_file,
       maybe_import_map,
       maybe_inspector_server,
       ca_data,
+      blob_url_store,
+      broadcast_channel,
     };
     Ok(Arc::new(program_state))
   }
 
-  /// This function is called when new module load is
-  /// initialized by the JsRuntime. Its resposibility is to collect
-  /// all dependencies and if it is required then also perform TS typecheck
-  /// and traspilation.
-  pub async fn prepare_module_load(
+  /// Prepares a set of module specifiers for loading in one shot.
+  ///
+  pub async fn prepare_module_graph(
     self: &Arc<Self>,
-    specifier: ModuleSpecifier,
+    specifiers: Vec<ModuleSpecifier>,
     lib: TypeLib,
-    runtime_permissions: Permissions,
-    is_dynamic: bool,
+    root_permissions: Permissions,
+    dynamic_permissions: Permissions,
     maybe_import_map: Option<ImportMap>,
   ) -> Result<(), AnyError> {
-    let specifier = specifier.clone();
-    // Workers are subject to the current runtime permissions.  We do the
-    // permission check here early to avoid "wasting" time building a module
-    // graph for a module that cannot be loaded.
-    if lib == TypeLib::DenoWorker || lib == TypeLib::UnstableDenoWorker {
-      runtime_permissions.check_specifier(&specifier)?;
-    }
-    let handler =
-      Arc::new(Mutex::new(FetchHandler::new(self, runtime_permissions)?));
+    let handler = Arc::new(Mutex::new(FetchHandler::new(
+      self,
+      root_permissions,
+      dynamic_permissions,
+    )?));
+
     let mut builder =
       GraphBuilder::new(handler, maybe_import_map, self.lockfile.clone());
-    builder.add(&specifier, is_dynamic).await?;
+
+    for specifier in specifiers {
+      builder.add(&specifier, false).await?;
+    }
+
     let mut graph = builder.get_graph();
     let debug = self.flags.log_level == Some(log::Level::Debug);
-    let maybe_config_path = self.flags.config_path.clone();
+    let maybe_config_file = self.maybe_config_file.clone();
 
     let result_modules = if self.flags.no_check {
       let result_info = graph.transpile(TranspileOptions {
         debug,
-        maybe_config_path,
+        maybe_config_file,
         reload: self.flags.reload,
       })?;
       debug!("{}", result_info.stats);
@@ -174,7 +194,74 @@ impl ProgramState {
         debug,
         emit: true,
         lib,
-        maybe_config_path,
+        maybe_config_file,
+        reload: self.flags.reload,
+      })?;
+
+      debug!("{}", result_info.stats);
+      if let Some(ignored_options) = result_info.maybe_ignored_options {
+        eprintln!("{}", ignored_options);
+      }
+      if !result_info.diagnostics.is_empty() {
+        return Err(anyhow!(result_info.diagnostics));
+      }
+      result_info.loadable_modules
+    };
+
+    let mut loadable_modules = self.modules.lock().unwrap();
+    loadable_modules.extend(result_modules);
+
+    if let Some(ref lockfile) = self.lockfile {
+      let g = lockfile.lock().unwrap();
+      g.write()?;
+    }
+
+    Ok(())
+  }
+
+  /// This function is called when new module load is
+  /// initialized by the JsRuntime. Its resposibility is to collect
+  /// all dependencies and if it is required then also perform TS typecheck
+  /// and traspilation.
+  pub async fn prepare_module_load(
+    self: &Arc<Self>,
+    specifier: ModuleSpecifier,
+    lib: TypeLib,
+    root_permissions: Permissions,
+    dynamic_permissions: Permissions,
+    is_dynamic: bool,
+    maybe_import_map: Option<ImportMap>,
+  ) -> Result<(), AnyError> {
+    let specifier = specifier.clone();
+    let handler = Arc::new(Mutex::new(FetchHandler::new(
+      self,
+      root_permissions,
+      dynamic_permissions,
+    )?));
+    let mut builder =
+      GraphBuilder::new(handler, maybe_import_map, self.lockfile.clone());
+    builder.add(&specifier, is_dynamic).await?;
+    let mut graph = builder.get_graph();
+    let debug = self.flags.log_level == Some(log::Level::Debug);
+    let maybe_config_file = self.maybe_config_file.clone();
+
+    let result_modules = if self.flags.no_check {
+      let result_info = graph.transpile(TranspileOptions {
+        debug,
+        maybe_config_file,
+        reload: self.flags.reload,
+      })?;
+      debug!("{}", result_info.stats);
+      if let Some(ignored_options) = result_info.maybe_ignored_options {
+        warn!("{}", ignored_options);
+      }
+      result_info.loadable_modules
+    } else {
+      let result_info = graph.check(CheckOptions {
+        debug,
+        emit: true,
+        lib,
+        maybe_config_file,
         reload: self.flags.reload,
       })?;
 
@@ -252,7 +339,7 @@ impl ProgramState {
     match url.scheme() {
       // we should only be looking for emits for schemes that denote external
       // modules, which the disk_cache supports
-      "wasm" | "file" | "http" | "https" | "data" => (),
+      "wasm" | "file" | "http" | "https" | "data" | "blob" => (),
       _ => {
         return None;
       }
@@ -276,26 +363,14 @@ impl ProgramState {
       None
     }
   }
-
-  #[cfg(test)]
-  pub fn mock(
-    argv: Vec<String>,
-    maybe_flags: Option<flags::Flags>,
-  ) -> Arc<ProgramState> {
-    ProgramState::new(flags::Flags {
-      argv,
-      ..maybe_flags.unwrap_or_default()
-    })
-    .unwrap()
-  }
 }
 
 // TODO(@kitsonk) this is only temporary, but should be refactored to somewhere
 // else, like a refactored file_fetcher.
 impl SourceMapGetter for ProgramState {
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
-    if let Ok(specifier) = ModuleSpecifier::resolve_url(file_name) {
-      if let Some((code, maybe_map)) = self.get_emit(&specifier.as_url()) {
+    if let Ok(specifier) = resolve_url(file_name) {
+      if let Some((code, maybe_map)) = self.get_emit(&specifier) {
         let code = String::from_utf8(code).unwrap();
         source_map_from_code(code).or(maybe_map)
       } else if let Ok(source) = self.load(specifier, None) {
@@ -313,7 +388,7 @@ impl SourceMapGetter for ProgramState {
     file_name: &str,
     line_number: usize,
   ) -> Option<String> {
-    if let Ok(specifier) = ModuleSpecifier::resolve_url(file_name) {
+    if let Ok(specifier) = resolve_url(file_name) {
       self.file_fetcher.get_source(&specifier).map(|out| {
         // Do NOT use .lines(): it skips the terminating empty line.
         // (due to internally using .split_terminator() instead of .split())
@@ -344,16 +419,5 @@ fn source_map_from_code(code: String) -> Option<Vec<u8>> {
     }
   } else {
     None
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn thread_safe() {
-    fn f<S: Send + Sync>(_: S) {}
-    f(ProgramState::mock(vec![], None));
   }
 }

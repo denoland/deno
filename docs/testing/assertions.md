@@ -16,12 +16,14 @@ The assertions module provides 10 assertions:
 
 - `assert(expr: unknown, msg = ""): asserts expr`
 - `assertEquals(actual: unknown, expected: unknown, msg?: string): void`
+- `assertExists(actual: unknown,msg?: string): void`
 - `assertNotEquals(actual: unknown, expected: unknown, msg?: string): void`
 - `assertStrictEquals(actual: unknown, expected: unknown, msg?: string): void`
 - `assertStringIncludes(actual: string, expected: string, msg?: string): void`
 - `assertArrayIncludes(actual: unknown[], expected: unknown[], msg?: string): void`
 - `assertMatch(actual: string, expected: RegExp, msg?: string): void`
 - `assertNotMatch(actual: string, expected: RegExp, msg?: string): void`
+- `assertObjectMatch( actual: Record<PropertyKey, unknown>, expected: Record<PropertyKey, unknown>): void`
 - `assertThrows(fn: () => void, ErrorClass?: Constructor, msgIncludes = "", msg?: string): Error`
 - `assertThrowsAsync(fn: () => Promise<void>, ErrorClass?: Constructor, msgIncludes = "", msg?: string): Promise<Error>`
 
@@ -35,6 +37,19 @@ Deno.test("Test Assert", () => {
   assert(1);
   assert("Hello");
   assert(true);
+});
+```
+
+### Exists
+
+The `assertExists` can be used to check if a value is not `null` or `undefined`.
+
+```js
+assertExists("Denosaurus");
+Deno.test("Test Assert Exists", () => {
+  assertExists("Denosaurus");
+  assertExists(false);
+  assertExists(0);
 });
 ```
 
@@ -136,6 +151,21 @@ Deno.test("Test Assert Not Match", () => {
 });
 ```
 
+### Object
+
+Use `assertObjectMatch` to check that a JavaScript object matches a subset of
+the properties of an object.
+
+```js
+// Simple subset
+assertObjectMatch(
+  { foo: true, bar: false },
+  {
+    foo: true,
+  },
+);
+```
+
 ### Throws
 
 There are two ways to assert whether something throws an error in Deno,
@@ -199,5 +229,35 @@ rather than the standard CLI error message.
 ```js
 Deno.test("Test Assert Equal Fail Custom Message", () => {
   assertEquals(1, 2, "Values Don't Match!");
+});
+```
+
+### Custom Tests
+
+While Deno comes with powerful
+[assertions modules](https://deno.land/std@$STD_VERSION/testing/asserts.ts) but
+there is always something specific to the project you can add. Creating
+`custom assertion function` can improve readability and reduce the amount of
+code.
+
+```js
+function assertPowerOf(actual: number, expected: number, msg?: string): void {
+  let received = actual;
+  while (received % expected === 0) received = received / expected;
+  if (received !== 1) {
+    if (!msg) {
+      msg = `actual: "${actual}" expected to be a power of : "${expected}"`;
+    }
+    throw new AssertionError(msg);
+  }
+}
+```
+
+Use this matcher in your code like this:
+
+```js
+Deno.test("Test Assert PowerOf", () => {
+  assertPowerOf(8, 2);
+  assertPowerOf(11, 4);
 });
 ```

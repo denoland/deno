@@ -1,0 +1,26 @@
+{
+  "title": "Add all missing imports",
+  "kind": "quickfix",
+  "diagnostics": [
+    {
+      "range": {
+        "start": {
+          "line": 1,
+          "character": 12
+        },
+        "end": {
+          "line": 1,
+          "character": 15
+        }
+      },
+      "severity": 1,
+      "code": 2304,
+      "source": "deno-ts",
+      "message": "Cannot find name 'abc'."
+    }
+  ],
+  "data": {
+    "specifier": "file:///a/file01.ts",
+    "fixId": "fixMissingImport"
+  }
+}

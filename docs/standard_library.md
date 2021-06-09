@@ -14,11 +14,11 @@ Deno is released.
 
 We strongly suggest to always use imports with pinned version of standard
 library to avoid unintended changes. For example, rather than linking to the
-master branch of code, which may change at any time, potentially causing
+default branch of code, which may change at any time, potentially causing
 compilation errors or unexpected behavior:
 
 ```typescript
-// imports from master, this should be avoided
+// import the latest release, this should be avoided
 import { copy } from "https://deno.land/std/fs/copy.ts";
 ```
 

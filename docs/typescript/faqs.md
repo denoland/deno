@@ -6,9 +6,9 @@ Maybe. That is the best answer, we are afraid. For lots of reasons, Deno has
 chosen to have fully qualified module specifiers. In part this is because it
 treats TypeScript as a first class language. Also, Deno uses explicit module
 resolution, with no _magic_. This is effectively the same way browsers
-themselves work, thought they don't obviously support TypeScript directly. If
-the TypeScript modules use imports that don't have these design decisions in
-mind, they may not work under Deno.
+themselves work, though they don't obviously support TypeScript directly. If the
+TypeScript modules use imports that don't have these design decisions in mind,
+they may not work under Deno.
 
 Also, in recent versions of Deno (starting with 1.5), we have started to use a
 Rust library to do transformations of TypeScript to JavaScript in certain
@@ -52,6 +52,13 @@ that you control. You can also replace whole dependencies, using
 dependency of a dependency isn't being maintained or has some sort of breaking
 change you want to bypass while waiting for it to be updated.
 
+### How do I write code that works in Deno and a browser, but still type checks?
+
+You can do this by using a `tsconfig.json` file with the `--config` option on
+the command line and adjusting the `"lib"` option in the `"compilerOptions"` in
+the file. For more information see
+[Targeting Deno and the Browser](./configuration#targeting-deno-and-the-browser).
+
 ### Why are you forcing me to use isolated modules, why can't I use const enums with Deno, why do I need to do export type?
 
 As of Deno 1.5 we defaulted to _isolatedModules_ to `true` and in Deno 1.6 we
@@ -82,7 +89,7 @@ are using the TypeScript compiler to emit the code, it will follow the same
 This means that certain language features are not supportable. Those features
 are:
 
-- Re-exporting of types is ambigious and requires to know if the source module
+- Re-exporting of types is ambiguous and requires to know if the source module
   is exporting runtime code or just type information. Therefore, it is
   recommended that you use `import type` and `export type` for type only imports
   and exports. This will help ensure that when the code is emitted, that all the
@@ -114,3 +121,16 @@ compiler. Its main purpose is to ensure that TypeScript and JavaScript can run
 under Deno. The secondary ability to do TypeScript and JavaScript emitting via
 the runtime API `Deno.emit()` is intended to be simple and straight forward and
 support a certain set of use cases.
+
+### How do I combine Deno code with non-Deno code in my IDE?
+
+The Deno language server supports the ability to have a "per-resource"
+configuration of enabling Deno or not. This also requires a client IDE to
+support this ability. For Visual Studio Code the official
+[Deno extension](https://marketplace.visualstudio.com/items?itemName=denoland.vscode-deno)
+supports the vscode concept of
+[multi-root workspace](https://code.visualstudio.com/docs/editor/multi-root-workspaces).
+This means you just need to add folders to the workspace and set the
+`deno.enable` setting as required on each folder.
+
+For other IDEs, the client extensions needs to support the similar IDE concepts.

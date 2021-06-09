@@ -2,6 +2,7 @@
 
 use super::analysis;
 use super::text::LineIndex;
+use super::tsc;
 
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
@@ -14,11 +15,12 @@ use crate::module_graph::GraphBuilder;
 use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
 use crate::text_encoding;
-use deno_runtime::permissions::Permissions;
 
+use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
+use deno_runtime::permissions::Permissions;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -26,14 +28,16 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::SystemTime;
+use tsc::NavigationTree;
 
 pub async fn cache(
   specifier: &ModuleSpecifier,
   maybe_import_map: &Option<ImportMap>,
 ) -> Result<(), AnyError> {
-  let program_state = Arc::new(ProgramState::new(Default::default())?);
+  let program_state = Arc::new(ProgramState::build(Default::default()).await?);
   let handler = Arc::new(Mutex::new(FetchHandler::new(
     &program_state,
+    Permissions::allow_all(),
     Permissions::allow_all(),
   )?));
   let mut builder = GraphBuilder::new(handler, maybe_import_map.clone(), None);
@@ -55,12 +59,12 @@ fn resolve_remote_specifier(
   http_cache: &HttpCache,
   redirect_limit: isize,
 ) -> Option<ModuleSpecifier> {
-  let cache_filename = http_cache.get_cache_filename(specifier.as_url())?;
+  let cache_filename = http_cache.get_cache_filename(specifier)?;
   if redirect_limit >= 0 && cache_filename.is_file() {
     let headers = get_remote_headers(&cache_filename)?;
     if let Some(location) = headers.get("location") {
       let redirect =
-        ModuleSpecifier::resolve_import(location, specifier.as_str()).ok()?;
+        deno_core::resolve_import(location, specifier.as_str()).ok()?;
       resolve_remote_specifier(&redirect, http_cache, redirect_limit - 1)
     } else {
       Some(specifier.clone())
@@ -75,7 +79,7 @@ fn resolve_specifier(
   redirects: &mut HashMap<ModuleSpecifier, ModuleSpecifier>,
   http_cache: &HttpCache,
 ) -> Option<ModuleSpecifier> {
-  let scheme = specifier.as_url().scheme();
+  let scheme = specifier.scheme();
   if !SUPPORTED_SCHEMES.contains(&scheme) {
     return None;
   }
@@ -83,7 +87,7 @@ fn resolve_specifier(
   if scheme == "data" {
     Some(specifier.clone())
   } else if scheme == "file" {
-    let path = specifier.as_url().to_file_path().ok()?;
+    let path = specifier.to_file_path().ok()?;
     if path.is_file() {
       Some(specifier.clone())
     } else {
@@ -103,7 +107,9 @@ struct Metadata {
   dependencies: Option<HashMap<String, analysis::Dependency>>,
   length_utf16: usize,
   line_index: LineIndex,
+  maybe_navigation_tree: Option<tsc::NavigationTree>,
   maybe_types: Option<analysis::ResolvedDependency>,
+  maybe_warning: Option<String>,
   media_type: MediaType,
   source: String,
   version: String,
@@ -115,16 +121,19 @@ impl Metadata {
     source: &str,
     version: &str,
     media_type: &MediaType,
+    maybe_warning: Option<String>,
     maybe_import_map: &Option<ImportMap>,
   ) -> Self {
-    let (dependencies, maybe_types) = if let Some((dependencies, maybe_types)) =
-      analysis::analyze_dependencies(
+    let (dependencies, maybe_types) = if let Ok(parsed_module) =
+      analysis::parse_module(specifier, source, media_type)
+    {
+      let (deps, maybe_types) = analysis::analyze_dependencies(
         specifier,
-        source,
         media_type,
+        &parsed_module,
         maybe_import_map,
-      ) {
-      (Some(dependencies), maybe_types)
+      );
+      (Some(deps), maybe_types)
     } else {
       (None, None)
     };
@@ -134,7 +143,9 @@ impl Metadata {
       dependencies,
       length_utf16: source.encode_utf16().count(),
       line_index,
+      maybe_navigation_tree: None,
       maybe_types,
+      maybe_warning,
       media_type: media_type.to_owned(),
       source: source.to_string(),
       version: version.to_string(),
@@ -163,14 +174,6 @@ impl Sources {
     self.0.lock().unwrap().contains_key(specifier)
   }
 
-  /// Provides the length of the source content, calculated in a way that should
-  /// match the behavior of JavaScript, where strings are stored effectively as
-  /// `&[u16]` and when counting "chars" we need to represent the string as a
-  /// UTF-16 string in Rust.
-  pub fn get_length_utf16(&self, specifier: &ModuleSpecifier) -> Option<usize> {
-    self.0.lock().unwrap().get_length_utf16(specifier)
-  }
-
   pub fn get_line_index(
     &self,
     specifier: &ModuleSpecifier,
@@ -185,11 +188,25 @@ impl Sources {
     self.0.lock().unwrap().get_maybe_types(specifier)
   }
 
+  pub fn get_maybe_warning(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<String> {
+    self.0.lock().unwrap().get_maybe_warning(specifier)
+  }
+
   pub fn get_media_type(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<MediaType> {
     self.0.lock().unwrap().get_media_type(specifier)
+  }
+
+  pub fn get_navigation_tree(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<tsc::NavigationTree> {
+    self.0.lock().unwrap().get_navigation_tree(specifier)
   }
 
   pub fn get_script_version(
@@ -203,12 +220,32 @@ impl Sources {
     self.0.lock().unwrap().get_source(specifier)
   }
 
+  pub fn len(&self) -> usize {
+    self.0.lock().unwrap().metadata.len()
+  }
+
   pub fn resolve_import(
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     self.0.lock().unwrap().resolve_import(specifier, referrer)
+  }
+
+  pub fn specifiers(&self) -> Vec<ModuleSpecifier> {
+    self.0.lock().unwrap().metadata.keys().cloned().collect()
+  }
+
+  pub fn set_navigation_tree(
+    &self,
+    specifier: &ModuleSpecifier,
+    navigation_tree: tsc::NavigationTree,
+  ) -> Result<(), AnyError> {
+    self
+      .0
+      .lock()
+      .unwrap()
+      .set_navigation_tree(specifier, navigation_tree)
   }
 }
 
@@ -248,13 +285,6 @@ impl Inner {
     false
   }
 
-  fn get_length_utf16(&mut self, specifier: &ModuleSpecifier) -> Option<usize> {
-    let specifier =
-      resolve_specifier(specifier, &mut self.redirects, &self.http_cache)?;
-    let metadata = self.get_metadata(&specifier)?;
-    Some(metadata.length_utf16)
-  }
-
   fn get_line_index(
     &mut self,
     specifier: &ModuleSpecifier,
@@ -273,6 +303,14 @@ impl Inner {
       resolve_specifier(specifier, &mut self.redirects, &self.http_cache)?;
     let metadata = self.get_metadata(&specifier)?;
     metadata.maybe_types
+  }
+
+  fn get_maybe_warning(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<String> {
+    let metadata = self.get_metadata(&specifier)?;
+    metadata.maybe_warning
   }
 
   fn get_media_type(
@@ -295,15 +333,14 @@ impl Inner {
     let version = self.calculate_script_version(specifier)?;
     let path = self.get_path(specifier)?;
     let bytes = fs::read(path).ok()?;
-    let scheme = specifier.as_url().scheme();
-    let (source, media_type, maybe_types) = if scheme == "file" {
+    let scheme = specifier.scheme();
+    let (source, media_type, maybe_types, maybe_warning) = if scheme == "file" {
       let maybe_charset =
         Some(text_encoding::detect_charset(&bytes).to_string());
       let source = get_source_from_bytes(bytes, maybe_charset).ok()?;
-      (source, MediaType::from(specifier), None)
+      (source, MediaType::from(specifier), None, None)
     } else {
-      let cache_filename =
-        self.http_cache.get_cache_filename(specifier.as_url())?;
+      let cache_filename = self.http_cache.get_cache_filename(specifier)?;
       let headers = get_remote_headers(&cache_filename)?;
       let maybe_content_type = headers.get("content-type").cloned();
       let (media_type, maybe_charset) =
@@ -312,29 +349,41 @@ impl Inner {
       let maybe_types = headers.get("x-typescript-types").map(|s| {
         analysis::resolve_import(s, &specifier, &self.maybe_import_map)
       });
-      (source, media_type, maybe_types)
+      let maybe_warning = headers.get("x-deno-warning").cloned();
+      (source, media_type, maybe_types, maybe_warning)
     };
     let mut metadata = Metadata::new(
       specifier,
       &source,
       &version,
       &media_type,
+      maybe_warning,
       &self.maybe_import_map,
     );
-    if metadata.maybe_types.is_none() {
+    if maybe_types.is_some() {
       metadata.maybe_types = maybe_types;
     }
     self.metadata.insert(specifier.clone(), metadata.clone());
     Some(metadata)
   }
 
+  fn get_navigation_tree(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<tsc::NavigationTree> {
+    let specifier =
+      resolve_specifier(specifier, &mut self.redirects, &self.http_cache)?;
+    let metadata = self.get_metadata(&specifier)?;
+    metadata.maybe_navigation_tree
+  }
+
   fn get_path(&mut self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
-    if specifier.as_url().scheme() == "file" {
-      specifier.as_url().to_file_path().ok()
+    if specifier.scheme() == "file" {
+      specifier.to_file_path().ok()
     } else if let Some(path) = self.remotes.get(&specifier) {
       Some(path.clone())
     } else {
-      let path = self.http_cache.get_cache_filename(&specifier.as_url())?;
+      let path = self.http_cache.get_cache_filename(&specifier)?;
       if path.is_file() {
         self.remotes.insert(specifier.clone(), path.clone());
         Some(path)
@@ -389,7 +438,22 @@ impl Inner {
       if let analysis::ResolvedDependency::Resolved(resolved_specifier) =
         type_dependency
       {
-        self.resolution_result(resolved_specifier)
+        // even if we have a module in the maybe_types slot, it doesn't mean
+        // that it is the actual module we should be using based on headers,
+        // so we check here and update properly.
+        if let Some(type_dependency) = self.get_maybe_types(resolved_specifier)
+        {
+          self.set_maybe_type(specifier, &referrer, &type_dependency);
+          if let analysis::ResolvedDependency::Resolved(type_specifier) =
+            type_dependency
+          {
+            self.resolution_result(&type_specifier)
+          } else {
+            self.resolution_result(resolved_specifier)
+          }
+        } else {
+          self.resolution_result(resolved_specifier)
+        }
       } else {
         None
       }
@@ -431,11 +495,26 @@ impl Inner {
       }
     }
   }
+
+  fn set_navigation_tree(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    navigation_tree: NavigationTree,
+  ) -> Result<(), AnyError> {
+    let mut metadata = self
+      .metadata
+      .get_mut(specifier)
+      .ok_or_else(|| anyhow!("Specifier not found {}"))?;
+    metadata.maybe_navigation_tree = Some(navigation_tree);
+    Ok(())
+  }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_core::resolve_path;
+  use deno_core::resolve_url;
   use std::env;
   use tempfile::TempDir;
 
@@ -451,10 +530,8 @@ mod tests {
     let (sources, _) = setup();
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let tests = c.join("tests");
-    let specifier = ModuleSpecifier::resolve_path(
-      &tests.join("001_hello.js").to_string_lossy(),
-    )
-    .unwrap();
+    let specifier =
+      resolve_path(&tests.join("001_hello.js").to_string_lossy()).unwrap();
     let actual = sources.get_script_version(&specifier);
     assert!(actual.is_some());
   }
@@ -464,10 +541,8 @@ mod tests {
     let (sources, _) = setup();
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let tests = c.join("tests");
-    let specifier = ModuleSpecifier::resolve_path(
-      &tests.join("001_hello.js").to_string_lossy(),
-    )
-    .unwrap();
+    let specifier =
+      resolve_path(&tests.join("001_hello.js").to_string_lossy()).unwrap();
     let actual = sources.get_source(&specifier);
     assert!(actual.is_some());
     let actual = actual.unwrap();
@@ -475,50 +550,28 @@ mod tests {
   }
 
   #[test]
-  fn test_sources_get_length_utf16() {
-    let (sources, _) = setup();
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let tests = c.join("tests");
-    let specifier = ModuleSpecifier::resolve_path(
-      &tests.join("001_hello.js").to_string_lossy(),
-    )
-    .unwrap();
-    let actual = sources.get_length_utf16(&specifier);
-    assert!(actual.is_some());
-    let actual = actual.unwrap();
-    assert_eq!(actual, 28);
-  }
-
-  #[test]
   fn test_resolve_dependency_types() {
     let (sources, location) = setup();
     let cache = HttpCache::new(&location);
-    let specifier_dep =
-      ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts").unwrap();
+    let specifier_dep = resolve_url("https://deno.land/x/mod.ts").unwrap();
     cache
       .set(
-        specifier_dep.as_url(),
+        &specifier_dep,
         Default::default(),
         b"export * from \"https://deno.land/x/lib.js\";",
       )
       .unwrap();
-    let specifier_code =
-      ModuleSpecifier::resolve_url("https://deno.land/x/lib.js").unwrap();
+    let specifier_code = resolve_url("https://deno.land/x/lib.js").unwrap();
     let mut headers_code = HashMap::new();
     headers_code
       .insert("x-typescript-types".to_string(), "./lib.d.ts".to_string());
     cache
-      .set(
-        specifier_code.as_url(),
-        headers_code,
-        b"export const a = 1;",
-      )
+      .set(&specifier_code, headers_code, b"export const a = 1;")
       .unwrap();
-    let specifier_type =
-      ModuleSpecifier::resolve_url("https://deno.land/x/lib.d.ts").unwrap();
+    let specifier_type = resolve_url("https://deno.land/x/lib.d.ts").unwrap();
     cache
       .set(
-        specifier_type.as_url(),
+        &specifier_type,
         Default::default(),
         b"export const a: number;",
       )
@@ -529,22 +582,68 @@ mod tests {
   }
 
   #[test]
+  /// This is a regression test for https://github.com/denoland/deno/issues/10031
+  fn test_resolve_dependency_import_types() {
+    let (sources, location) = setup();
+    let cache = HttpCache::new(&location);
+    let specifier_dep = resolve_url("https://deno.land/x/mod.ts").unwrap();
+    cache
+      .set(
+        &specifier_dep,
+        Default::default(),
+        b"import type { A } from \"https://deno.land/x/lib.js\";\nconst a: A = { a: \"a\" };",
+      )
+      .unwrap();
+    let specifier_code = resolve_url("https://deno.land/x/lib.js").unwrap();
+    let mut headers_code = HashMap::new();
+    headers_code
+      .insert("x-typescript-types".to_string(), "./lib.d.ts".to_string());
+    cache
+      .set(&specifier_code, headers_code, b"export const a = 1;")
+      .unwrap();
+    let specifier_type = resolve_url("https://deno.land/x/lib.d.ts").unwrap();
+    cache
+      .set(
+        &specifier_type,
+        Default::default(),
+        b"export const a: number;\nexport interface A { a: number; }\n",
+      )
+      .unwrap();
+    let actual =
+      sources.resolve_import("https://deno.land/x/lib.js", &specifier_dep);
+    assert_eq!(actual, Some((specifier_type, MediaType::Dts)))
+  }
+
+  #[test]
+  fn test_warning_header() {
+    let (sources, location) = setup();
+    let cache = HttpCache::new(&location);
+    let specifier = resolve_url("https://deno.land/x/lib.js").unwrap();
+    let mut headers = HashMap::new();
+    headers.insert(
+      "x-deno-warning".to_string(),
+      "this is a warning".to_string(),
+    );
+    cache
+      .set(&specifier, headers, b"export const a = 1;")
+      .unwrap();
+    let actual = sources.get_maybe_warning(&specifier);
+    assert_eq!(actual, Some("this is a warning".to_string()));
+  }
+
+  #[test]
   fn test_resolve_dependency_evil_redirect() {
     let (sources, location) = setup();
     let cache = HttpCache::new(&location);
-    let evil_specifier =
-      ModuleSpecifier::resolve_url("https://deno.land/x/evil.ts").unwrap();
+    let evil_specifier = resolve_url("https://deno.land/x/evil.ts").unwrap();
     let mut evil_headers = HashMap::new();
     evil_headers
       .insert("location".to_string(), "file:///etc/passwd".to_string());
-    cache
-      .set(evil_specifier.as_url(), evil_headers, b"")
-      .unwrap();
-    let remote_specifier =
-      ModuleSpecifier::resolve_url("https://deno.land/x/mod.ts").unwrap();
+    cache.set(&evil_specifier, evil_headers, b"").unwrap();
+    let remote_specifier = resolve_url("https://deno.land/x/mod.ts").unwrap();
     cache
       .set(
-        remote_specifier.as_url(),
+        &remote_specifier,
         Default::default(),
         b"export * from \"./evil.ts\";",
       )
@@ -556,8 +655,8 @@ mod tests {
   #[test]
   fn test_sources_resolve_specifier_non_supported_schema() {
     let (sources, _) = setup();
-    let specifier = ModuleSpecifier::resolve_url("foo://a/b/c.ts")
-      .expect("could not create specifier");
+    let specifier =
+      resolve_url("foo://a/b/c.ts").expect("could not create specifier");
     let sources = sources.0.lock().unwrap();
     let mut redirects = sources.redirects.clone();
     let http_cache = sources.http_cache.clone();

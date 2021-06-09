@@ -67,7 +67,7 @@ idiom to specify the entry point in an executable script.
 
 Example:
 
-<!-- dprint-ignore -->
+<!-- deno-fmt-ignore -->
 
 ```ts
 // https://example.com/awesome/cli.ts

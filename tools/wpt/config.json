@@ -1,0 +1,11 @@
+{
+  "check_subdomains": false,
+  "ssl": {
+    "type": "openssl",
+    "openssl": {
+      "duration": 365,
+      "force_regenerate": false,
+      "base_path": "../../tools/wpt/certs"
+    }
+  }
+}

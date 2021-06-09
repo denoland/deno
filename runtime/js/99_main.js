@@ -11,29 +11,36 @@ delete Object.prototype.__proto__;
   const eventTarget = window.__bootstrap.eventTarget;
   const globalInterfaces = window.__bootstrap.globalInterfaces;
   const location = window.__bootstrap.location;
-  const dispatchMinimal = window.__bootstrap.dispatchMinimal;
   const build = window.__bootstrap.build;
   const version = window.__bootstrap.version;
   const errorStack = window.__bootstrap.errorStack;
   const os = window.__bootstrap.os;
   const timers = window.__bootstrap.timers;
+  const base64 = window.__bootstrap.base64;
+  const encoding = window.__bootstrap.encoding;
   const Console = window.__bootstrap.console.Console;
   const worker = window.__bootstrap.worker;
   const signals = window.__bootstrap.signals;
-  const { internalSymbol, internalObject } = window.__bootstrap.internals;
+  const internals = window.__bootstrap.internals;
   const performance = window.__bootstrap.performance;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
   const headers = window.__bootstrap.headers;
   const streams = window.__bootstrap.streams;
   const fileReader = window.__bootstrap.fileReader;
+  const webgpu = window.__bootstrap.webgpu;
+  const webusb = window.__bootstrap.usb;
   const webSocket = window.__bootstrap.webSocket;
+  const webStorage = window.__bootstrap.webStorage;
+  const broadcastChannel = window.__bootstrap.broadcastChannel;
   const file = window.__bootstrap.file;
+  const formData = window.__bootstrap.formData;
   const fetch = window.__bootstrap.fetch;
   const prompt = window.__bootstrap.prompt;
   const denoNs = window.__bootstrap.denoNs;
   const denoNsUnstable = window.__bootstrap.denoNsUnstable;
   const errors = window.__bootstrap.errors.errors;
+  const webidl = window.__bootstrap.webidl;
   const { defineEventHandler } = window.__bootstrap.webUtil;
 
   let windowIsClosing = false;
@@ -56,15 +63,13 @@ delete Object.prototype.__proto__;
     }
   }
 
-  const encoder = new TextEncoder();
-
   function workerClose() {
     if (isClosing) {
       return;
     }
 
     isClosing = true;
-    opCloseWorker();
+    core.opSync("op_worker_close");
   }
 
   // TODO(bartlomieju): remove these functions
@@ -73,80 +78,74 @@ delete Object.prototype.__proto__;
   const onerror = () => {};
 
   function postMessage(data) {
-    const dataJson = JSON.stringify(data);
-    const dataIntArray = encoder.encode(dataJson);
-    opPostMessage(dataIntArray);
+    const dataIntArray = core.serialize(data);
+    core.opSync("op_worker_post_message", null, dataIntArray);
   }
 
   let isClosing = false;
-  async function workerMessageRecvCallback(data) {
-    const msgEvent = new MessageEvent("message", {
-      cancelable: false,
-      data,
-    });
+  let globalDispatchEvent;
 
-    try {
-      if (globalThis["onmessage"]) {
-        const result = globalThis.onmessage(msgEvent);
-        if (result && "then" in result) {
-          await result;
-        }
-      }
-      globalThis.dispatchEvent(msgEvent);
-    } catch (e) {
-      let handled = false;
+  async function pollForMessages() {
+    if (!globalDispatchEvent) {
+      globalDispatchEvent = globalThis.dispatchEvent.bind(globalThis);
+    }
+    while (!isClosing) {
+      const bufferMsg = await core.opAsync("op_worker_get_message");
+      const data = core.deserialize(bufferMsg);
 
-      const errorEvent = new ErrorEvent("error", {
-        cancelable: true,
-        message: e.message,
-        lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
-        colno: e.columnNumber ? e.columnNumber + 1 : undefined,
-        filename: e.fileName,
-        error: null,
+      const msgEvent = new MessageEvent("message", {
+        cancelable: false,
+        data,
       });
 
-      if (globalThis["onerror"]) {
-        const ret = globalThis.onerror(
-          e.message,
-          e.fileName,
-          e.lineNumber,
-          e.columnNumber,
-          e,
-        );
-        handled = ret === true;
-      }
+      try {
+        if (globalThis.onmessage) {
+          await globalThis.onmessage(msgEvent);
+        }
+        globalDispatchEvent(msgEvent);
+      } catch (e) {
+        let handled = false;
 
-      globalThis.dispatchEvent(errorEvent);
-      if (errorEvent.defaultPrevented) {
-        handled = true;
-      }
+        const errorEvent = new ErrorEvent("error", {
+          cancelable: true,
+          message: e.message,
+          lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
+          colno: e.columnNumber ? e.columnNumber + 1 : undefined,
+          filename: e.fileName,
+          error: null,
+        });
 
-      if (!handled) {
-        throw e;
+        if (globalThis["onerror"]) {
+          const ret = globalThis.onerror(
+            e.message,
+            e.fileName,
+            e.lineNumber,
+            e.columnNumber,
+            e,
+          );
+          handled = ret === true;
+        }
+
+        globalDispatchEvent(errorEvent);
+        if (errorEvent.defaultPrevented) {
+          handled = true;
+        }
+
+        if (!handled) {
+          core.opSync(
+            "op_worker_unhandled_error",
+            e.message,
+          );
+        }
       }
     }
-  }
-
-  function opPostMessage(data) {
-    core.jsonOpSync("op_worker_post_message", {}, data);
-  }
-
-  function opCloseWorker() {
-    core.jsonOpSync("op_worker_close");
   }
 
   function opMainModule() {
-    return core.jsonOpSync("op_main_module");
+    return core.opSync("op_main_module");
   }
 
   function runtimeStart(runtimeOptions, source) {
-    const opsMap = core.ops();
-    for (const [name, opId] of Object.entries(opsMap)) {
-      if (name === "op_write" || name === "op_read") {
-        core.setAsyncHandler(opId, dispatchMinimal.asyncMsgFromRust);
-      }
-    }
-
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
     version.setVersions(
       runtimeOptions.denoVersion,
@@ -189,13 +188,93 @@ delete Object.prototype.__proto__;
     core.registerErrorClass("Http", errors.Http);
     core.registerErrorClass("Busy", errors.Busy);
     core.registerErrorClass("NotSupported", errors.NotSupported);
-    core.registerErrorClass("Error", Error);
-    core.registerErrorClass("RangeError", RangeError);
-    core.registerErrorClass("ReferenceError", ReferenceError);
-    core.registerErrorClass("SyntaxError", SyntaxError);
-    core.registerErrorClass("TypeError", TypeError);
-    core.registerErrorClass("URIError", URIError);
+    core.registerErrorBuilder(
+      "DOMExceptionOperationError",
+      function DOMExceptionOperationError(msg) {
+        return new DOMException(msg, "OperationError");
+      },
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionQuotaExceededError",
+      function DOMExceptionQuotaExceededError(msg) {
+        return new DOMException(msg, "QuotaExceededError");
+      },
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionNotSupportedError",
+      function DOMExceptionNotSupportedError(msg) {
+        return new DOMException(msg, "NotSupported");
+      },
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionInvalidCharacterError",
+      function DOMExceptionInvalidCharacterError(msg) {
+        return new DOMException(msg, "InvalidCharacterError");
+      },
+    );
   }
+
+  class Navigator {
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({})}`;
+    }
+  }
+
+  const navigator = webidl.createBranded(Navigator);
+
+  Object.defineProperties(Navigator.prototype, {
+    gpu: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, Navigator);
+        return webgpu.gpu;
+      },
+    },
+    usb: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, Navigator);
+        return webusb;
+      },
+    },
+  });
+
+  class WorkerNavigator {
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({})}`;
+    }
+  }
+
+  const workerNavigator = webidl.createBranded(WorkerNavigator);
+
+  Object.defineProperties(WorkerNavigator.prototype, {
+    gpu: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, WorkerNavigator);
+        return webgpu.gpu;
+      },
+    },
+    usb: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, Navigator);
+        return webusb;
+      },
+    },
+  });
 
   // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
   const windowOrWorkerGlobalScope = {
@@ -214,7 +293,7 @@ delete Object.prototype.__proto__;
     EventTarget: util.nonEnumerable(EventTarget),
     File: util.nonEnumerable(file.File),
     FileReader: util.nonEnumerable(fileReader.FileReader),
-    FormData: util.nonEnumerable(fetch.FormData),
+    FormData: util.nonEnumerable(formData.FormData),
     Headers: util.nonEnumerable(headers.Headers),
     MessageEvent: util.nonEnumerable(MessageEvent),
     Performance: util.nonEnumerable(performance.Performance),
@@ -228,27 +307,71 @@ delete Object.prototype.__proto__;
     ),
     Request: util.nonEnumerable(fetch.Request),
     Response: util.nonEnumerable(fetch.Response),
-    TextDecoder: util.nonEnumerable(TextDecoder),
-    TextEncoder: util.nonEnumerable(TextEncoder),
+    TextDecoder: util.nonEnumerable(encoding.TextDecoder),
+    TextEncoder: util.nonEnumerable(encoding.TextEncoder),
+    TextDecoderStream: util.nonEnumerable(encoding.TextDecoderStream),
+    TextEncoderStream: util.nonEnumerable(encoding.TextEncoderStream),
     TransformStream: util.nonEnumerable(streams.TransformStream),
     URL: util.nonEnumerable(url.URL),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
+    BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
     Worker: util.nonEnumerable(worker.Worker),
     WritableStream: util.nonEnumerable(streams.WritableStream),
     WritableStreamDefaultWriter: util.nonEnumerable(
       streams.WritableStreamDefaultWriter,
     ),
-    atob: util.writable(atob),
-    btoa: util.writable(btoa),
+    ReadableByteStreamController: util.nonEnumerable(
+      streams.ReadableByteStreamController,
+    ),
+    TransformStreamDefaultController: util.nonEnumerable(
+      streams.TransformStreamDefaultController,
+    ),
+    atob: util.writable(base64.atob),
+    btoa: util.writable(base64.btoa),
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
-    console: util.writable(new Console(core.print)),
-    crypto: util.readOnly(crypto),
+    console: util.writable(
+      new Console((msg, level) => core.print(msg, level > 1)),
+    ),
+    crypto: util.readOnly(crypto.crypto),
+    Crypto: util.nonEnumerable(crypto.Crypto),
+    SubtleCrypto: util.nonEnumerable(crypto.SubtleCrypto),
     fetch: util.writable(fetch.fetch),
     performance: util.writable(performance.performance),
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
+
+    GPU: util.nonEnumerable(webgpu.GPU),
+    GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
+    GPUAdapterLimits: util.nonEnumerable(webgpu.GPUAdapterLimits),
+    GPUSupportedFeatures: util.nonEnumerable(webgpu.GPUSupportedFeatures),
+    GPUDevice: util.nonEnumerable(webgpu.GPUDevice),
+    GPUQueue: util.nonEnumerable(webgpu.GPUQueue),
+    GPUBuffer: util.nonEnumerable(webgpu.GPUBuffer),
+    GPUBufferUsage: util.nonEnumerable(webgpu.GPUBufferUsage),
+    GPUMapMode: util.nonEnumerable(webgpu.GPUMapMode),
+    GPUTexture: util.nonEnumerable(webgpu.GPUTexture),
+    GPUTextureUsage: util.nonEnumerable(webgpu.GPUTextureUsage),
+    GPUTextureView: util.nonEnumerable(webgpu.GPUTextureView),
+    GPUSampler: util.nonEnumerable(webgpu.GPUSampler),
+    GPUBindGroupLayout: util.nonEnumerable(webgpu.GPUBindGroupLayout),
+    GPUPipelineLayout: util.nonEnumerable(webgpu.GPUPipelineLayout),
+    GPUBindGroup: util.nonEnumerable(webgpu.GPUBindGroup),
+    GPUShaderModule: util.nonEnumerable(webgpu.GPUShaderModule),
+    GPUShaderStage: util.nonEnumerable(webgpu.GPUShaderStage),
+    GPUComputePipeline: util.nonEnumerable(webgpu.GPUComputePipeline),
+    GPURenderPipeline: util.nonEnumerable(webgpu.GPURenderPipeline),
+    GPUColorWrite: util.nonEnumerable(webgpu.GPUColorWrite),
+    GPUCommandEncoder: util.nonEnumerable(webgpu.GPUCommandEncoder),
+    GPURenderPassEncoder: util.nonEnumerable(webgpu.GPURenderPassEncoder),
+    GPUComputePassEncoder: util.nonEnumerable(webgpu.GPUComputePassEncoder),
+    GPUCommandBuffer: util.nonEnumerable(webgpu.GPUCommandBuffer),
+    GPURenderBundleEncoder: util.nonEnumerable(webgpu.GPURenderBundleEncoder),
+    GPURenderBundle: util.nonEnumerable(webgpu.GPURenderBundle),
+    GPUQuerySet: util.nonEnumerable(webgpu.GPUQuerySet),
+    GPUOutOfMemoryError: util.nonEnumerable(webgpu.GPUOutOfMemoryError),
+    GPUValidationError: util.nonEnumerable(webgpu.GPUValidationError),
   };
 
   // The console seems to be the only one that should be writable and non-enumerable
@@ -262,6 +385,12 @@ delete Object.prototype.__proto__;
     Window: globalInterfaces.windowConstructorDescriptor,
     window: util.readOnly(globalThis),
     self: util.readOnly(globalThis),
+    Navigator: util.nonEnumerable(Navigator),
+    navigator: {
+      configurable: true,
+      enumerable: true,
+      get: () => navigator,
+    },
     // TODO(bartlomieju): from MDN docs (https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope)
     // it seems those two properties should be available to workers as well
     onload: util.writable(null),
@@ -271,6 +400,17 @@ delete Object.prototype.__proto__;
     alert: util.writable(prompt.alert),
     confirm: util.writable(prompt.confirm),
     prompt: util.writable(prompt.prompt),
+    localStorage: {
+      configurable: true,
+      enumerable: true,
+      get: webStorage.localStorage,
+    },
+    sessionStorage: {
+      configurable: true,
+      enumerable: true,
+      get: webStorage.sessionStorage,
+    },
+    Storage: util.nonEnumerable(webStorage.Storage),
   };
 
   const workerRuntimeGlobalProperties = {
@@ -279,13 +419,18 @@ delete Object.prototype.__proto__;
     WorkerGlobalScope: globalInterfaces.workerGlobalScopeConstructorDescriptor,
     DedicatedWorkerGlobalScope:
       globalInterfaces.dedicatedWorkerGlobalScopeConstructorDescriptor,
+    WorkerNavigator: util.nonEnumerable(WorkerNavigator),
+    navigator: {
+      configurable: true,
+      enumerable: true,
+      get: () => workerNavigator,
+    },
     self: util.readOnly(globalThis),
     onmessage: util.writable(onmessage),
     onerror: util.writable(onerror),
     // TODO(bartlomieju): should be readonly?
     close: util.nonEnumerable(workerClose),
     postMessage: util.writable(postMessage),
-    workerMessageRecvCallback: util.nonEnumerable(workerMessageRecvCallback),
   };
 
   let hasBootstrapped = false;
@@ -328,17 +473,19 @@ delete Object.prototype.__proto__;
 
     if (locationHref != null) {
       location.setLocationHref(locationHref);
-      fetch.setBaseUrl(locationHref);
     }
 
     registerErrors();
 
+    const internalSymbol = Symbol("Deno.internal");
+
     const finalDenoNs = {
       core,
       internal: internalSymbol,
-      [internalSymbol]: internalObject,
+      [internalSymbol]: internals,
       resources: core.resources,
       close: core.close,
+      memoryUsage: core.memoryUsage,
       ...denoNs,
     };
     Object.defineProperties(finalDenoNs, {
@@ -392,13 +539,16 @@ delete Object.prototype.__proto__;
       runtimeOptions;
 
     location.setLocationHref(locationHref);
-    fetch.setBaseUrl(locationHref);
     registerErrors();
+
+    pollForMessages();
+
+    const internalSymbol = Symbol("Deno.internal");
 
     const finalDenoNs = {
       core,
       internal: internalSymbol,
-      [internalSymbol]: internalObject,
+      [internalSymbol]: internals,
       resources: core.resources,
       close: core.close,
       ...denoNs,

@@ -1,10 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
-
-#[macro_use]
-extern crate lazy_static;
-
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
@@ -16,9 +12,8 @@ use hyper::Body;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
+use lazy_static::lazy_static;
 use os_pipe::pipe;
-#[cfg(unix)]
-pub use pty;
 use regex::Regex;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -48,6 +43,11 @@ use tokio_rustls::rustls;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
 
+#[cfg(unix)]
+pub use pty;
+
+pub mod lsp;
+
 const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
 const REDIRECT_PORT: u16 = 4546;
@@ -59,6 +59,7 @@ const AUTH_REDIRECT_PORT: u16 = 4551;
 const HTTPS_PORT: u16 = 5545;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
+const WS_CLOSE_PORT: u16 = 4244;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -86,10 +87,6 @@ pub fn tests_path() -> PathBuf {
   root_path().join("cli").join("tests")
 }
 
-pub fn wpt_path() -> PathBuf {
-  root_path().join("test_util").join("wpt")
-}
-
 pub fn third_party_path() -> PathBuf {
   root_path().join("third_party")
 }
@@ -103,15 +100,6 @@ pub fn target_dir() -> PathBuf {
 pub fn deno_exe_path() -> PathBuf {
   // Something like /Users/rld/src/deno/target/debug/deps/deno
   let mut p = target_dir().join("deno");
-  if cfg!(windows) {
-    p.set_extension("exe");
-  }
-  p
-}
-
-pub fn denort_exe_path() -> PathBuf {
-  // Something like /Users/rld/src/deno/target/debug/deps/denort
-  let mut p = target_dir().join("denort");
   if cfg!(windows) {
     p.set_extension("exe");
   }
@@ -142,6 +130,15 @@ pub fn test_server_path() -> PathBuf {
     p.set_extension("exe");
   }
   p
+}
+
+fn ensure_test_server_built() {
+  // if the test server doesn't exist then remind the developer to build first
+  if !test_server_path().exists() {
+    panic!(
+      "Test server not found. Please cargo build before running the tests."
+    );
+  }
 }
 
 /// Benchmark server that just serves "hello world" responses.
@@ -238,6 +235,20 @@ async fn run_ws_server(addr: &SocketAddr) {
             }
           })
           .await;
+      }
+    });
+  }
+}
+
+async fn run_ws_close_server(addr: &SocketAddr) {
+  let listener = TcpListener::bind(addr).await.unwrap();
+  while let Ok((stream, _addr)) = listener.accept().await {
+    tokio::spawn(async move {
+      let ws_stream_fut = accept_async(stream);
+
+      let ws_stream = ws_stream_fut.await;
+      if let Ok(mut ws_stream) = ws_stream {
+        ws_stream.close(None).await.unwrap();
       }
     });
   }
@@ -497,6 +508,30 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       );
       Ok(res)
     }
+    (_, "/xTypeScriptTypes.jsx") => {
+      let mut res = Response::new(Body::from("export const foo = 'foo';"));
+      res
+        .headers_mut()
+        .insert("Content-type", HeaderValue::from_static("text/jsx"));
+      res.headers_mut().insert(
+        "X-TypeScript-Types",
+        HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
+      );
+      Ok(res)
+    }
+    (_, "/xTypeScriptTypes.ts") => {
+      let mut res =
+        Response::new(Body::from("export const foo: string = 'foo';"));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      res.headers_mut().insert(
+        "X-TypeScript-Types",
+        HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
+      );
+      Ok(res)
+    }
     (_, "/xTypeScriptTypes.d.ts") => {
       let mut res = Response::new(Body::from("export const foo: 'foo';"));
       res.headers_mut().insert(
@@ -600,6 +635,18 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
         HeaderValue::from_static("application/javascript"),
       );
       Ok(res)
+    }
+    (_, "/.well-known/deno-import-intellisense.json") => {
+      let file_path = root_path()
+        .join("cli/tests/lsp/registries/deno-import-intellisense.json");
+      if let Ok(body) = tokio::fs::read(file_path).await {
+        Ok(custom_headers(
+          "/.well-known/deno-import-intellisense.json",
+          body,
+        ))
+      } else {
+        Ok(Response::new(Body::empty()))
+      }
     }
     _ => {
       let mut file_path = root_path();
@@ -781,6 +828,8 @@ pub async fn run_all_servers() {
   let ws_server_fut = run_ws_server(&ws_addr);
   let wss_addr = SocketAddr::from(([127, 0, 0, 1], WSS_PORT));
   let wss_server_fut = run_wss_server(&wss_addr);
+  let ws_close_addr = SocketAddr::from(([127, 0, 0, 1], WS_CLOSE_PORT));
+  let ws_close_server_fut = run_ws_close_server(&ws_close_addr);
 
   let main_server_fut = wrap_main_server();
   let main_server_https_fut = wrap_main_https_server();
@@ -790,6 +839,7 @@ pub async fn run_all_servers() {
       redirect_server_fut,
       ws_server_fut,
       wss_server_fut,
+      ws_close_server_fut,
       another_redirect_server_fut,
       auth_redirect_server_fut,
       inf_redirects_server_fut,
@@ -946,7 +996,7 @@ impl HttpServerCount {
             break;
           }
         } else {
-          panic!(maybe_line.unwrap_err());
+          panic!("{}", maybe_line.unwrap_err());
         }
       }
       self.test_server = Some(test_server);
@@ -1002,6 +1052,7 @@ impl Drop for HttpServerGuard {
 /// last instance of the HttpServerGuard is dropped, the subprocess will be
 /// killed.
 pub fn http_server() -> HttpServerGuard {
+  ensure_test_server_built();
   let mut g = lock_http_server();
   g.inc();
   HttpServerGuard {}
@@ -1133,11 +1184,15 @@ pub fn new_deno_dir() -> TempDir {
 }
 
 pub fn deno_cmd() -> Command {
-  let e = deno_exe_path();
   let deno_dir = new_deno_dir();
+  deno_cmd_with_deno_dir(deno_dir.path())
+}
+
+pub fn deno_cmd_with_deno_dir(deno_dir: &std::path::Path) -> Command {
+  let e = deno_exe_path();
   assert!(e.exists());
   let mut c = Command::new(e);
-  c.env("DENO_DIR", deno_dir.path());
+  c.env("DENO_DIR", deno_dir);
   c
 }
 

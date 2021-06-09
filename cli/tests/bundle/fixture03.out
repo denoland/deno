@@ -1,5 +1,5 @@
 const a = "a";
 const d = {
-    a: a
+    a
 };
 console.log(d);

@@ -5,9 +5,14 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
+/// <reference lib="deno.console" />
+/// <reference lib="deno.file" />
+/// <reference lib="deno.url" />
 /// <reference lib="deno.web" />
 /// <reference lib="deno.fetch" />
 /// <reference lib="deno.websocket" />
+/// <reference lib="deno.crypto" />
+/// <reference lib="deno.broadcast_channel" />
 
 declare namespace WebAssembly {
   /**
@@ -85,7 +90,7 @@ declare namespace WebAssembly {
     constructor(descriptor: MemoryDescriptor);
 
     /** An accessor property that returns the buffer contained in the memory. */
-    readonly buffer: ArrayBuffer;
+    readonly buffer: ArrayBuffer | SharedArrayBuffer;
 
     /**
      * Increases the size of the memory instance by a specified number of WebAssembly
@@ -166,6 +171,7 @@ declare namespace WebAssembly {
   export interface MemoryDescriptor {
     initial: number;
     maximum?: number;
+    shared?: boolean;
   }
 
   /** A `ModuleExportDescriptor` is the description of a declared export in a `WebAssembly.Module`. */
@@ -188,7 +194,7 @@ declare namespace WebAssembly {
     maximum?: number;
   }
 
-  /** The value returned from `WebAssembly.instantiate` and `WebAssembly.instantiateStreaming`. */
+  /** The value returned from `WebAssembly.instantiate`. */
   export interface WebAssemblyInstantiatedSource {
     /* A `WebAssembly.Instance` object that contains all the exported WebAssembly functions. */
     instance: Instance;
@@ -220,18 +226,6 @@ declare namespace WebAssembly {
   export function compile(bytes: BufferSource): Promise<Module>;
 
   /**
-   * The `WebAssembly.compileStreaming()` function compiles a `WebAssembly.Module`
-   * directly from a streamed underlying source.  This function is useful if it
-   * is necessary to a compile a module before it can be instantiated (otherwise,
-   * the `WebAssembly.instantiateStreaming()` function should be used).
-   *
-   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/compileStreaming)
-   */
-  export function compileStreaming(
-    source: Response | Promise<Response>,
-  ): Promise<Module>;
-
-  /**
    * The WebAssembly.instantiate() function allows you to compile and instantiate
    * WebAssembly code.
    *
@@ -261,18 +255,6 @@ declare namespace WebAssembly {
     moduleObject: Module,
     importObject?: Imports,
   ): Promise<Instance>;
-
-  /**
-   * The `WebAssembly.instantiateStreaming()` function compiles and instantiates a
-   * WebAssembly module directly from a streamed underlying source. This is the most
-   * efficient, optimized way to load WebAssembly code.
-   *
-   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/instantiateStreaming)
-   */
-  export function instantiateStreaming(
-    response: Response | PromiseLike<Response>,
-    importObject?: Imports,
-  ): Promise<WebAssemblyInstantiatedSource>;
 
   /**
    * The `WebAssembly.validate()` function validates a given typed array of
@@ -343,8 +325,6 @@ interface VoidFunction {
  */
 declare function queueMicrotask(func: VoidFunction): void;
 
-declare var crypto: Crypto;
-
 /** Registers an event listener in the global scope, which will be called
  * synchronously whenever the event `type` is dispatched.
  *
@@ -391,50 +371,7 @@ interface DOMStringList {
 
 type BufferSource = ArrayBufferView | ArrayBuffer;
 
-declare interface Console {
-  assert(condition?: boolean, ...data: any[]): void;
-  clear(): void;
-  count(label?: string): void;
-  countReset(label?: string): void;
-  debug(...data: any[]): void;
-  dir(item?: any, options?: any): void;
-  dirxml(...data: any[]): void;
-  error(...data: any[]): void;
-  group(...data: any[]): void;
-  groupCollapsed(...data: any[]): void;
-  groupEnd(): void;
-  info(...data: any[]): void;
-  log(...data: any[]): void;
-  table(tabularData?: any, properties?: string[]): void;
-  time(label?: string): void;
-  timeEnd(label?: string): void;
-  timeLog(label?: string, ...data: any[]): void;
-  timeStamp(label?: string): void;
-  trace(...data: any[]): void;
-  warn(...data: any[]): void;
-}
-
 declare var console: Console;
-
-declare interface Crypto {
-  readonly subtle: null;
-  getRandomValues<
-    T extends
-      | Int8Array
-      | Int16Array
-      | Int32Array
-      | Uint8Array
-      | Uint16Array
-      | Uint32Array
-      | Uint8ClampedArray
-      | Float32Array
-      | Float64Array
-      | DataView
-      | null,
-  >(
-    array: T,
-  ): T;
-}
 
 interface MessageEventInit<T = any> extends EventInit {
   data?: T;
@@ -635,7 +572,6 @@ declare class CustomEvent<T = any> extends Event {
 
 interface ErrorConstructor {
   /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */
-  // eslint-disable-next-line @typescript-eslint/ban-types
   captureStackTrace(error: Object, constructor?: Function): void;
   // TODO(nayeemrmn): Support `Error.prepareStackTrace()`. We currently use this
   // internally in a way that makes it unavailable for users.

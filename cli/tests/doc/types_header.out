@@ -1,0 +1,6 @@
+Download http://127.0.0.1:4545/xTypeScriptTypes.js
+Download http://127.0.0.1:4545/xTypeScriptTypes.d.ts
+Defined in http://127.0.0.1:4545/xTypeScriptTypes.d.ts:1:0 
+
+const foo: "foo"
+

@@ -295,3 +295,14 @@ Deno.test("Event Handlers order", async () => {
   };
   await promise;
 });
+
+Deno.test("Close without frame", async () => {
+  const promise = deferred();
+  const ws = new WebSocket("ws://localhost:4244");
+  ws.onerror = (): void => fail();
+  ws.onclose = (e): void => {
+    assertEquals(e.code, 1005);
+    promise.resolve();
+  };
+  await promise;
+});

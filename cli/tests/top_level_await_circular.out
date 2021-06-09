@@ -5,3 +5,5 @@ timeout loop 3
 timeout loop 4
 timeout loop 5
 error: Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promise.
+Pending dynamic modules:
+- [WILDCARD]tests/tla3/b.js

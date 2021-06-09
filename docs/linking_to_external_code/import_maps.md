@@ -1,18 +1,8 @@
 ## Import maps
 
-> This is an unstable feature. Learn more about
-> [unstable features](../runtime/stability.md).
-
 Deno supports [import maps](https://github.com/WICG/import-maps).
 
 You can use import maps with the `--import-map=<FILE>` CLI flag.
-
-Current limitations:
-
-- single import map.
-- no fallback URLs.
-- Deno does not support `std:` namespace.
-- supports only `file:`, `http:` and `https:` schemes.
 
 Example:
 
@@ -37,17 +27,18 @@ console.log(red("hello world"));
 Then:
 
 ```shell
-$ deno run --import-map=import_map.json --unstable color.ts
+$ deno run --import-map=import_map.json color.ts
 ```
 
-To use starting directory for absolute imports:
+To use your project root for absolute imports:
 
 **import_map.json**
 
 ```jsonc
 {
   "imports": {
-    "/": "./"
+    "/": "./",
+    "./": "./"
   }
 }
 ```
@@ -58,14 +49,5 @@ To use starting directory for absolute imports:
 import { MyUtil } from "/util.ts";
 ```
 
-You may map a different directory: (eg. src)
-
-**import_map.json**
-
-```jsonc
-{
-  "imports": {
-    "/": "./src/"
-  }
-}
-```
+This causes import specifiers starting with `/` to be resolved relative to the
+import map's URL or file path.

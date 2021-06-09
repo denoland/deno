@@ -15,12 +15,12 @@ For more details, view the chapter on
 ## `Deno` global
 
 All APIs that are not web standard are contained in the global `Deno` namespace.
-It has the APIs for reading from files, opening TCP sockets, and executing
-subprocesses, etc.
+It has the APIs for reading from files, opening TCP sockets, serving HTTP, and
+executing subprocesses, etc.
 
 The TypeScript definitions for the Deno namespaces can be found in the
 [`lib.deno.ns.d.ts`](https://github.com/denoland/deno/blob/$CLI_VERSION/cli/dts/lib.deno.ns.d.ts)
 file.
 
 The documentation for all of the Deno specific APIs can be found on
-[doc.deno.land](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/master/cli/dts/lib.deno.ns.d.ts).
+[doc.deno.land](https://doc.deno.land/https/raw.githubusercontent.com/denoland/deno/main/cli/dts/lib.deno.ns.d.ts).

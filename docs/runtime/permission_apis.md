@@ -1,8 +1,5 @@
 ## Permission APIs
 
-> This API is unstable. Learn more about
-> [unstable features](../runtime/stability.md).
-
 Permissions are granted from the CLI when running the `deno` command. User code
 will often assume its own set of required permissions, but there is no guarantee
 during execution that the set of _granted_ permissions will align with this.
@@ -43,7 +40,7 @@ const desc5 = { name: "hrtime" } as const;
 Check, by descriptor, if a permission is granted or not.
 
 ```ts
-// deno run --unstable --allow-read=/foo main.ts
+// deno run --allow-read=/foo main.ts
 
 const desc1 = { name: "read", path: "/foo" } as const;
 console.log(await Deno.permissions.query(desc1));
@@ -96,7 +93,7 @@ const desc4 = { name: "net", host: "127.0.0.1:8000" } as const;
 Request an ungranted permission from the user via CLI prompt.
 
 ```ts
-// deno run --unstable main.ts
+// deno run main.ts
 
 const desc1 = { name: "read", path: "/foo" } as const;
 const status1 = await Deno.permissions.request(desc1);
@@ -127,7 +124,7 @@ requests.
 Downgrade a permission from "granted" to "prompt".
 
 ```ts
-// deno run --unstable --allow-read=/foo main.ts
+// deno run --allow-read=/foo main.ts
 
 const desc = { name: "read", path: "/foo" } as const;
 console.log(await Deno.permissions.revoke(desc));
@@ -138,7 +135,7 @@ However, what happens when you try to revoke a permission which is _partial_ to
 one granted on the CLI?
 
 ```ts
-// deno run --unstable --allow-read=/foo main.ts
+// deno run --allow-read=/foo main.ts
 
 const desc = { name: "read", path: "/foo/bar" } as const;
 console.log(await Deno.permissions.revoke(desc));
@@ -175,7 +172,7 @@ set which the argument permission descriptor is _stronger than_. So to ensure
 whichever _explicitly granted permission descriptor_ is _stronger than_ `desc`.
 
 ```ts
-// deno run --unstable --allow-read=/foo main.ts
+// deno run --allow-read=/foo main.ts
 
 const desc = { name: "read", path: "/foo/bar" } as const;
 console.log(await Deno.permissions.revoke(desc)); // Insufficient.

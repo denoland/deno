@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 pub mod coverage;
+pub mod doc;
 pub mod fmt;
 pub mod installer;
 pub mod lint;
