@@ -2906,11 +2906,11 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d1c602ced78c18b33338c832d79595e75ac6fd204d20fd4cc462ce5af29a75e"
 dependencies = [
- "bencher",
  "rusty_v8",
  "serde",
- "serde_json",
 ]
 
 [[package]]
