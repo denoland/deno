@@ -105,8 +105,95 @@ and setting the `"noLib"` option to `true`.
 
 If you use the `--unstable` flag, Deno will change the `"lib"` option to
 `[ "deno.window", "deno.unstable" ]`. If you are trying to load a worker, that
-is type checked with `"deno.worker"` instead of `"deno.window"`.
+is type checked with `"deno.worker"` instead of `"deno.window"`. See
+[Type Checking Web Workers](./types#type-checking-web-workers) for more
+information on this.
 
 ### Using the "lib" property
 
-[TBC]
+Deno has several libraries built into it that are not present in other
+platforms, like `tsc`. This is what enables Deno to properly check code written
+for Deno. In some situations though, this automatic behavior can cause
+challenges, for example like writing code that is intended to also run in a
+browser. In these situations the `"lib"` property of a `tsconfig.json` can be
+used to modify the behavior of Deno when type checking code.
+
+The built-in libraries that are of interest to users:
+
+- `"deno.ns"` - This includes all the custom `Deno` global namespace APIs plus
+  the Deno additions to `import.meta`. This should generally not conflict with
+  other libraries or global types.
+- `"deno.unstable"` - This includes the addition unstable `Deno` global
+  namespace APIs.
+- `"deno.window"` - This is the "default" library used when checking Deno main
+  runtime scripts. It includes the `"deno.ns"` as well as other type libraries
+  for the extensions that are built into Deno. This library will conflict with
+  libraries like `"dom"` and `"dom.iterable"` that are standard TypeScript
+  libraries.
+- `"deno.worker"` - This is the library used when checking a Deno web worker
+  script. For more information about web workers, check out
+  [Type Checking Web Workers](./types#type-checking-web-workers).
+- `"dom.asynciterable"` - TypeScript currently does not include the DOM async
+  iterables that Deno implements (plus several browsers), so we have implemented
+  it ourselves until it becomes available in TypeScript.
+
+These are common libraries that Deno doesn't use, but are useful when writing
+code that is intended to also work in another runtime:
+
+- `"dom"` - The main browser global library that ships with TypeScript. The type
+  definitions conflict in many ways with `"deno.window"` and so if `"dom"` is
+  used, then consider using just `"deno.ns"` to expose the Deno specific APIs.
+- `"dom.iterable"` - The iterable extensions to the browser global library.
+- `"scripthost"` - The library for the Microsoft Windows Script Host.
+- `"webworker"` - The main library for web workers in the browser. Like `"dom"`
+  this will conflict with `"deno.window"` or `"deno.worker"`, so consider using
+  just `"deno.ns"` to expose the Deno specific APIs.
+- `"webworker.importscripts"` - The library that exposes the `importScripts()`
+  API in the web worker.
+- `"webworker.iterable"` - The library that adds iterables to objects within a
+  web worker. Modern browsers support this.
+
+#### Targeting Deno and the Browser
+
+A common use case is writing code that works in Deno and the browser, and have
+the code "sniff" to determine if it is running in the browser or in Deno. If
+that is the case a common configuration of a `tsconfig.json` would look like
+this:
+
+```json
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "lib": ["dom", "dom.iterable", "dom.asynciterable", "deno.ns"]
+  }
+}
+```
+
+This should allow most code to be type checked properly by Deno.
+
+If you expect to run the code in Deno with the `--unstable` flag, then you will
+want to add that library to the mix as well:
+
+```json
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "dom.asynciterable",
+      "deno.ns",
+      "deno.unstable"
+    ]
+  }
+}
+```
+
+Typically when you use the `"lib"` option in TypeScript, you need to include an
+"es" library as well. In the case of `"deno.ns"` and `"deno.unstable"`, they
+automatically include `"esnext"` when you bring them in.
+
+The biggest "danger" when doing something like this, is that the type checking
+is significantly looser, and there is no way to validate that you are doing
+sufficient and effective feature detection in your code, which may lead to what
+could be trivial errors becoming runtime errors.
