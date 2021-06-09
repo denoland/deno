@@ -121,7 +121,7 @@ of how the module is analyzed:
 /// <reference lib="deno.worker" />
 ```
 
-The first directive ensure that no other default libraries are used. If this is
+The first directive ensures that no other default libraries are used. If this is
 omitted, you will get some conflicting type definitions, because Deno will try
 to apply the standard Deno library as well. The second instructs Deno to apply
 the built in Deno worker type definitions plus dependent libraries (like

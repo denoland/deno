@@ -57,7 +57,7 @@ change you want to bypass while waiting for it to be updated.
 You can do this by using a `tsconfig.json` file with the `--config` option on
 the command line and adjusting the `"lib"` option in the `"compilerOptions"` in
 the file. For more information see
-[Targeting Deno and the Browser](./types#targeting-deno-and-the-browser).
+[Targeting Deno and the Browser](./configuration#targeting-deno-and-the-browser).
 
 ### Why are you forcing me to use isolated modules, why can't I use const enums with Deno, why do I need to do export type?
 

@@ -189,7 +189,7 @@ want to add that library to the mix as well:
 }
 ```
 
-Typically when you use the `"lib"` option in TypeScript, you need to include a
+Typically when you use the `"lib"` option in TypeScript, you need to include an
 "es" library as well. In the case of `"deno.ns"` and `"deno.unstable"`, they
 automatically include `"esnext"` when you bring them in.
 
