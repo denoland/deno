@@ -30,9 +30,6 @@ publish those crates.**
 This is done by running `cargo publish` in each crate, because of dependencies
 between the crates, it must be done in specific order:
 
-- `serde_v8` - `deno_core` depends on it, but this crate shouldn't change that
-  often, so you might want to skip publishing a new version if there are no
-  changes
 - `deno_core` - all crates depend on `deno_core` so it must always be published
   first
 - `bench_util`
