@@ -82,7 +82,12 @@ delete Object.prototype.__proto__;
   }
 
   let isClosing = false;
+  let globalDispatchEvent;
+
   async function pollForMessages() {
+    if (!globalDispatchEvent) {
+      globalDispatchEvent = globalThis.dispatchEvent.bind(globalThis);
+    }
     while (!isClosing) {
       const bufferMsg = await core.opAsync("op_worker_get_message");
       const data = core.deserialize(bufferMsg);
@@ -96,7 +101,7 @@ delete Object.prototype.__proto__;
         if (globalThis.onmessage) {
           await globalThis.onmessage(msgEvent);
         }
-        globalThis.dispatchEvent(msgEvent);
+        globalDispatchEvent(msgEvent);
       } catch (e) {
         let handled = false;
 
@@ -120,7 +125,7 @@ delete Object.prototype.__proto__;
           handled = ret === true;
         }
 
-        globalThis.dispatchEvent(errorEvent);
+        globalDispatchEvent(errorEvent);
         if (errorEvent.defaultPrevented) {
           handled = true;
         }
