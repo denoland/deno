@@ -298,7 +298,6 @@ impl WebWorker {
         ops::os::init(),
         ops::http::init(),
         ops::permissions::init(),
-        ops::plugin::init(),
         ops::process::init(),
         ops::signal::init(),
         ops::tls::init(),

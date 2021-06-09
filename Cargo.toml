@@ -7,7 +7,6 @@ members = [
   "core",
   "runtime",
   "serde_v8",
-  "test_plugin",
   "test_util",
   "extensions/broadcast_channel",
   "extensions/console",

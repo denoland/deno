@@ -127,7 +127,6 @@ impl MainWorker {
       ops::net::init(),
       ops::os::init(),
       ops::permissions::init(),
-      ops::plugin::init(),
       ops::process::init(),
       ops::signal::init(),
       ops::tls::init(),
