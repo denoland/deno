@@ -122,7 +122,7 @@ async function testFetchProgrammaticProxy(): Promise<void> {
       "run",
       "--quiet",
       "--reload",
-      "--allow-net",
+      "--allow-net=localhost:4545,localhost:4555",
       "--unstable",
       "045_programmatic_proxy_client.ts",
     ],

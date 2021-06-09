@@ -497,6 +497,12 @@ where
     permissions.check_read(&PathBuf::from(ca_file))?;
   }
 
+  if let Some(proxy) = args.proxy.clone() {
+    let permissions = state.borrow_mut::<FP>();
+    let url = Url::parse(&proxy.url)?;
+    permissions.check_net_url(&url)?;
+  }
+
   let defaults = state.borrow::<HttpClientDefaults>();
 
   let cert_data =

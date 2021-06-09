@@ -2,7 +2,7 @@
 
 const client = Deno.createHttpClient({
   proxy: {
-    url: "http://127.0.0.1:4555",
+    url: "http://localhost:4555",
     basicAuth: { username: "username", password: "password" },
   },
 });
