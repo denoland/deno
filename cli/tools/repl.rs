@@ -295,9 +295,191 @@ impl ReplEditor {
   }
 }
 
+struct ReplSession {
+  worker: MainWorker,
+  session: LocalInspectorSession,
+  pub context_id: u64,
+}
+
+impl ReplSession {
+  pub async fn initialize(mut worker: MainWorker) -> Result<Self, AnyError> {
+    let mut session = worker.create_inspector_session().await;
+
+    worker
+      .with_event_loop(
+        session.post_message("Runtime.enable", None).boxed_local(),
+      )
+      .await?;
+
+    // Enabling the runtime domain will always send trigger one executionContextCreated for each
+    // context the inspector knows about so we grab the execution context from that since
+    // our inspector does not support a default context (0 is an invalid context id).
+    let mut context_id: u64 = 0;
+    for notification in session.notifications() {
+      let method = notification.get("method").unwrap().as_str().unwrap();
+      let params = notification.get("params").unwrap();
+
+      if method == "Runtime.executionContextCreated" {
+        context_id = params
+          .get("context")
+          .unwrap()
+          .get("id")
+          .unwrap()
+          .as_u64()
+          .unwrap();
+      }
+    }
+
+    let mut repl_session = ReplSession {
+      worker,
+      session,
+      context_id,
+    };
+
+    // inject prelude
+    repl_session.evaluate_expression(PRELUDE).await?;
+
+    Ok(repl_session)
+  }
+
+  pub async fn is_closing(&mut self) -> Result<bool, AnyError> {
+    let closed = self
+      .evaluate_expression("(globalThis.closed)")
+      .await?
+      .get("result")
+      .unwrap()
+      .get("value")
+      .unwrap()
+      .as_bool()
+      .unwrap();
+
+    Ok(closed)
+  }
+
+  pub async fn post_message_with_event_loop(
+    &mut self,
+    method: &str,
+    params: Option<Value>,
+  ) -> Result<Value, AnyError> {
+    self
+      .worker
+      .with_event_loop(self.session.post_message(method, params).boxed_local())
+      .await
+  }
+
+  pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
+    self.worker.run_event_loop(false).await
+  }
+
+  pub async fn evaluate_line(&mut self, line: &str) -> Result<Value, AnyError> {
+    // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
+    // statement rather than an object literal so we interpret it as an expression statement
+    // to match the behavior found in a typical prompt including browser developer tools.
+    let wrapped_line = if line.trim_start().starts_with('{')
+      && !line.trim_end().ends_with(';')
+    {
+      format!("({})", &line)
+    } else {
+      line.to_string()
+    };
+
+    let evaluate_response = self
+      .evaluate_expression(&format!("'use strict'; void 0;\n{}", &wrapped_line))
+      .await?;
+
+    // If that fails, we retry it without wrapping in parens letting the error bubble up to the
+    // user if it is still an error.
+    let evaluate_response =
+      if evaluate_response.get("exceptionDetails").is_some()
+        && wrapped_line != line
+      {
+        self
+          .evaluate_expression(&format!("'use strict'; void 0;\n{}", &line))
+          .await?
+      } else {
+        evaluate_response
+      };
+
+    Ok(evaluate_response)
+  }
+
+  pub async fn set_last_thrown_error(
+    &mut self,
+    error: &Value,
+  ) -> Result<(), AnyError> {
+    self.post_message_with_event_loop(
+      "Runtime.callFunctionOn",
+      Some(json!({
+        "executionContextId": self.context_id,
+        "functionDeclaration": "function (object) { Deno[Deno.internal].lastThrownError = object; }",
+        "arguments": [
+          error,
+        ],
+      })),
+    ).await?;
+    Ok(())
+  }
+
+  pub async fn set_last_eval_result(
+    &mut self,
+    evaluate_result: &Value,
+  ) -> Result<(), AnyError> {
+    self.post_message_with_event_loop(
+      "Runtime.callFunctionOn",
+      Some(json!({
+        "executionContextId": self.context_id,
+        "functionDeclaration": "function (object) { Deno[Deno.internal].lastEvalResult = object; }",
+        "arguments": [
+          evaluate_result,
+        ],
+      })),
+    ).await?;
+    Ok(())
+  }
+
+  pub async fn get_eval_value(
+    &mut self,
+    evaluate_result: &Value,
+  ) -> Result<String, AnyError> {
+    // TODO(caspervonb) we should investigate using previews here but to keep things
+    // consistent with the previous implementation we just get the preview result from
+    // Deno.inspectArgs.
+    let inspect_response = self.post_message_with_event_loop(
+      "Runtime.callFunctionOn",
+      Some(json!({
+        "executionContextId": self.context_id,
+        "functionDeclaration": "function (object) { return Deno[Deno.internal].inspectArgs(['%o', object], { colors: !Deno.noColor }); }",
+        "arguments": [
+          evaluate_result,
+        ],
+      })),
+    ).await?;
+
+    let inspect_result = inspect_response.get("result").unwrap();
+    let value = inspect_result.get("value").unwrap().as_str().unwrap();
+
+    Ok(value.to_string())
+  }
+
+  async fn evaluate_expression(
+    &mut self,
+    expression: &str,
+  ) -> Result<Value, AnyError> {
+    self
+      .post_message_with_event_loop(
+        "Runtime.evaluate",
+        Some(json!({
+          "expression": expression,
+          "contextId": self.context_id,
+          "replMode": true,
+        })),
+      )
+      .await
+  }
+}
+
 async fn read_line_and_poll(
-  worker: &mut MainWorker,
-  session: &mut LocalInspectorSession,
+  repl_session: &mut ReplSession,
   message_rx: &Receiver<(String, Option<Value>)>,
   response_tx: &Sender<Result<Value, AnyError>>,
   editor: ReplEditor,
@@ -308,8 +490,8 @@ async fn read_line_and_poll(
 
   loop {
     for (method, params) in message_rx.try_iter() {
-      let result = worker
-        .with_event_loop(session.post_message(&method, params).boxed_local())
+      let result = repl_session
+        .post_message_with_event_loop(&method, params)
         .await;
       response_tx.send(result).unwrap();
     }
@@ -325,7 +507,7 @@ async fn read_line_and_poll(
       result = &mut line => {
         return result.unwrap();
       }
-      _ = worker.run_event_loop(false), if poll_worker => {
+      _ = repl_session.run_event_loop(), if poll_worker => {
         poll_worker = false;
       }
       _ = timeout => {
@@ -366,89 +548,16 @@ Object.defineProperty(globalThis, "_error", {
 });
 "#;
 
-async fn inject_prelude(
-  worker: &mut MainWorker,
-  session: &mut LocalInspectorSession,
-  context_id: u64,
-) -> Result<(), AnyError> {
-  worker
-    .with_event_loop(
-      session
-        .post_message(
-          "Runtime.evaluate",
-          Some(json!({
-            "expression": PRELUDE,
-            "contextId": context_id,
-          })),
-        )
-        .boxed_local(),
-    )
-    .await?;
-
-  Ok(())
-}
-
-async fn is_closing(
-  worker: &mut MainWorker,
-  session: &mut LocalInspectorSession,
-  context_id: u64,
-) -> Result<bool, AnyError> {
-  let closed = worker
-    .with_event_loop(
-      session
-        .post_message(
-          "Runtime.evaluate",
-          Some(json!({
-            "expression": "(globalThis.closed)",
-            "contextId": context_id,
-          })),
-        )
-        .boxed_local(),
-    )
-    .await?
-    .get("result")
-    .unwrap()
-    .get("value")
-    .unwrap()
-    .as_bool()
-    .unwrap();
-
-  Ok(closed)
-}
-
 pub async fn run(
   program_state: &ProgramState,
-  mut worker: MainWorker,
+  worker: MainWorker,
 ) -> Result<(), AnyError> {
-  let mut session = worker.create_inspector_session().await;
-
-  worker
-    .with_event_loop(session.post_message("Runtime.enable", None).boxed_local())
-    .await?;
-  // Enabling the runtime domain will always send trigger one executionContextCreated for each
-  // context the inspector knows about so we grab the execution context from that since
-  // our inspector does not support a default context (0 is an invalid context id).
-  let mut context_id: u64 = 0;
-  for notification in session.notifications() {
-    let method = notification.get("method").unwrap().as_str().unwrap();
-    let params = notification.get("params").unwrap();
-
-    if method == "Runtime.executionContextCreated" {
-      context_id = params
-        .get("context")
-        .unwrap()
-        .get("id")
-        .unwrap()
-        .as_u64()
-        .unwrap();
-    }
-  }
-
+  let mut repl_session = ReplSession::initialize(worker).await?;
   let (message_tx, message_rx) = sync_channel(1);
   let (response_tx, response_rx) = channel();
 
   let helper = EditorHelper {
-    context_id,
+    context_id: repl_session.context_id,
     message_tx,
     response_rx,
   };
@@ -459,12 +568,9 @@ pub async fn run(
   println!("Deno {}", crate::version::deno());
   println!("exit using ctrl+d or close()");
 
-  inject_prelude(&mut worker, &mut session, context_id).await?;
-
   loop {
     let line = read_line_and_poll(
-      &mut worker,
-      &mut session,
+      &mut repl_session,
       &message_rx,
       &response_tx,
       editor.clone(),
@@ -472,56 +578,11 @@ pub async fn run(
     .await;
     match line {
       Ok(line) => {
-        // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
-        // statement rather than an object literal so we interpret it as an expression statement
-        // to match the behavior found in a typical prompt including browser developer tools.
-        let wrapped_line = if line.trim_start().starts_with('{')
-          && !line.trim_end().ends_with(';')
-        {
-          format!("({})", &line)
-        } else {
-          line.clone()
-        };
-
-        let evaluate_response = worker.with_event_loop(
-          session.post_message(
-            "Runtime.evaluate",
-            Some(json!({
-              "expression": format!("'use strict'; void 0;\n{}", &wrapped_line),
-              "contextId": context_id,
-              "replMode": true,
-            })),
-          ).boxed_local()
-        )
-        .await?;
-
-        // If that fails, we retry it without wrapping in parens letting the error bubble up to the
-        // user if it is still an error.
-        let evaluate_response =
-          if evaluate_response.get("exceptionDetails").is_some()
-            && wrapped_line != line
-          {
-            worker
-              .with_event_loop(
-                session
-                  .post_message(
-                    "Runtime.evaluate",
-                    Some(json!({
-                      "expression": format!("'use strict'; void 0;\n{}", &line),
-                      "contextId": context_id,
-                      "replMode": true,
-                    })),
-                  )
-                  .boxed_local(),
-              )
-              .await?
-          } else {
-            evaluate_response
-          };
+        let evaluate_response = repl_session.evaluate_line(&line).await?;
 
         // We check for close and break here instead of making it a loop condition to get
         // consistent behavior in when the user evaluates a call to close().
-        if is_closing(&mut worker, &mut session, context_id).await? {
+        if repl_session.is_closing().await? {
           break;
         }
 
@@ -530,56 +591,15 @@ pub async fn run(
           evaluate_response.get("exceptionDetails");
 
         if evaluate_exception_details.is_some() {
-          worker.with_event_loop(
-            session.post_message(
-              "Runtime.callFunctionOn",
-              Some(json!({
-                "executionContextId": context_id,
-                "functionDeclaration": "function (object) { Deno[Deno.internal].lastThrownError = object; }",
-                "arguments": [
-                  evaluate_result,
-                ],
-              })),
-            ).boxed_local()
-          ).await?;
+          repl_session.set_last_thrown_error(evaluate_result).await?;
         } else {
-          worker.with_event_loop(
-            session.post_message(
-              "Runtime.callFunctionOn",
-              Some(json!({
-                "executionContextId": context_id,
-                "functionDeclaration": "function (object) { Deno[Deno.internal].lastEvalResult = object; }",
-                "arguments": [
-                  evaluate_result,
-                ],
-              })),
-            ).boxed_local()
-          ).await?;
+          repl_session.set_last_eval_result(evaluate_result).await?;
         }
 
-        // TODO(caspervonb) we should investigate using previews here but to keep things
-        // consistent with the previous implementation we just get the preview result from
-        // Deno.inspectArgs.
-        let inspect_response =
-          worker.with_event_loop(
-            session.post_message(
-              "Runtime.callFunctionOn",
-              Some(json!({
-                "executionContextId": context_id,
-                "functionDeclaration": "function (object) { return Deno[Deno.internal].inspectArgs(['%o', object], { colors: !Deno.noColor }); }",
-                "arguments": [
-                  evaluate_result,
-                ],
-              })),
-            ).boxed_local()
-          ).await?;
-
-        let inspect_result = inspect_response.get("result").unwrap();
-
-        let value = inspect_result.get("value").unwrap().as_str().unwrap();
+        let value = repl_session.get_eval_value(evaluate_result).await?;
         let output = match evaluate_exception_details {
           Some(_) => format!("Uncaught {}", value),
-          None => value.to_string(),
+          None => value,
         };
 
         println!("{}", output);
