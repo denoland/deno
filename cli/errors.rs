@@ -27,10 +27,7 @@ pub(crate) fn get_error_class_name(e: &AnyError) -> &'static str {
       e.downcast_ref::<ImportMapError>()
         .map(get_import_map_error_class)
     })
-    .or_else(|| {
-      e.downcast_ref::<Diagnostic>()
-        .map(get_diagnostic_class)
-    })
+    .or_else(|| e.downcast_ref::<Diagnostic>().map(get_diagnostic_class))
     .unwrap_or_else(|| {
       panic!(
         "Error '{}' contains boxed error of unknown type:{}",

@@ -381,11 +381,9 @@ pub fn parse_with_source_map(
   let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
 
   let sm = &source_map;
-  let module = parser.parse_module().map_err(move |err| {
-    Diagnostic {
-      location: sm.lookup_char_pos(err.span().lo).into(),
-      message: err.into_kind().msg().to_string(),
-    }
+  let module = parser.parse_module().map_err(move |err| Diagnostic {
+    location: sm.lookup_char_pos(err.span().lo).into(),
+    message: err.into_kind().msg().to_string(),
   })?;
   let leading_comments =
     comments.with_leading(module.span.lo, |comments| comments.to_vec());
