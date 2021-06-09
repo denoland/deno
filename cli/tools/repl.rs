@@ -21,6 +21,7 @@ use rustyline::Context;
 use rustyline::Editor;
 use rustyline_derive::{Helper, Hinter};
 use std::borrow::Cow;
+use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::sync_channel;
 use std::sync::mpsc::Receiver;
@@ -34,13 +35,13 @@ use tokio::pin;
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.
 #[derive(Helper, Hinter)]
-struct Helper {
+struct EditorHelper {
   context_id: u64,
   message_tx: SyncSender<(String, Option<Value>)>,
   response_rx: Receiver<Result<Value, AnyError>>,
 }
 
-impl Helper {
+impl EditorHelper {
   fn post_message(
     &self,
     method: &str,
@@ -59,7 +60,7 @@ fn is_word_boundary(c: char) -> bool {
   }
 }
 
-impl Completer for Helper {
+impl Completer for EditorHelper {
   type Candidate = String;
 
   fn complete(
@@ -141,7 +142,7 @@ impl Completer for Helper {
   }
 }
 
-impl Validator for Helper {
+impl Validator for EditorHelper {
   fn validate(
     &self,
     ctx: &mut ValidationContext,
@@ -189,7 +190,7 @@ impl Validator for Helper {
   }
 }
 
-impl Highlighter for Helper {
+impl Highlighter for EditorHelper {
   fn highlight_hint<'h>(&self, hint: &'h str) -> Cow<'h, str> {
     hint.into()
   }
@@ -256,15 +257,52 @@ impl Highlighter for Helper {
   }
 }
 
+#[derive(Clone)]
+struct ReplEditor {
+  inner: Arc<Mutex<Editor<EditorHelper>>>,
+  history_file_path: PathBuf,
+}
+
+impl ReplEditor {
+  pub fn new(helper: EditorHelper, history_file_path: PathBuf) -> Self {
+    let mut editor = Editor::new();
+    editor.set_helper(Some(helper));
+    editor.load_history(&history_file_path).unwrap_or(());
+
+    ReplEditor {
+      inner: Arc::new(Mutex::new(editor)),
+      history_file_path,
+    }
+  }
+
+  pub fn readline(&self) -> Result<String, ReadlineError> {
+    self.inner.lock().unwrap().readline("> ")
+  }
+
+  pub fn add_history_entry(&self, entry: String) {
+    self.inner.lock().unwrap().add_history_entry(entry);
+  }
+
+  pub fn save_history(&self) -> Result<(), AnyError> {
+    std::fs::create_dir_all(self.history_file_path.parent().unwrap())?;
+
+    self
+      .inner
+      .lock()
+      .unwrap()
+      .save_history(&self.history_file_path)?;
+    Ok(())
+  }
+}
+
 async fn read_line_and_poll(
   worker: &mut MainWorker,
   session: &mut LocalInspectorSession,
   message_rx: &Receiver<(String, Option<Value>)>,
   response_tx: &Sender<Result<Value, AnyError>>,
-  editor: Arc<Mutex<Editor<Helper>>>,
+  editor: ReplEditor,
 ) -> Result<String, ReadlineError> {
-  let mut line =
-    tokio::task::spawn_blocking(move || editor.lock().unwrap().readline("> "));
+  let mut line = tokio::task::spawn_blocking(move || editor.readline());
 
   let mut poll_worker = true;
 
@@ -350,7 +388,7 @@ async fn inject_prelude(
   Ok(())
 }
 
-pub async fn is_closing(
+async fn is_closing(
   worker: &mut MainWorker,
   session: &mut LocalInspectorSession,
   context_id: u64,
@@ -384,8 +422,6 @@ pub async fn run(
 ) -> Result<(), AnyError> {
   let mut session = worker.create_inspector_session().await;
 
-  let history_file = program_state.dir.root.join("deno_history.txt");
-
   worker
     .with_event_loop(session.post_message("Runtime.enable", None).boxed_local())
     .await?;
@@ -411,21 +447,14 @@ pub async fn run(
   let (message_tx, message_rx) = sync_channel(1);
   let (response_tx, response_rx) = channel();
 
-  let helper = Helper {
+  let helper = EditorHelper {
     context_id,
     message_tx,
     response_rx,
   };
 
-  let editor = Arc::new(Mutex::new(Editor::new()));
-
-  editor.lock().unwrap().set_helper(Some(helper));
-
-  editor
-    .lock()
-    .unwrap()
-    .load_history(history_file.to_str().unwrap())
-    .unwrap_or(());
+  let history_file_path = program_state.dir.root.join("deno_history.txt");
+  let editor = ReplEditor::new(helper, history_file_path);
 
   println!("Deno {}", crate::version::deno());
   println!("exit using ctrl+d or close()");
@@ -555,7 +584,7 @@ pub async fn run(
 
         println!("{}", output);
 
-        editor.lock().unwrap().add_history_entry(line.as_str());
+        editor.add_history_entry(line);
       }
       Err(ReadlineError::Interrupted) => {
         println!("exit using ctrl+d or close()");
@@ -571,11 +600,7 @@ pub async fn run(
     }
   }
 
-  std::fs::create_dir_all(history_file.parent().unwrap())?;
-  editor
-    .lock()
-    .unwrap()
-    .save_history(history_file.to_str().unwrap())?;
+  editor.save_history()?;
 
   Ok(())
 }
