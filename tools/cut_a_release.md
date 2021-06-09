@@ -34,10 +34,8 @@ between the crates, it must be done in specific order:
   first
 - `bench_util`
 - crates in `extensions/` directory
-  - `deno_crypto` and `deno_webstorage` depend on `deno_web`, so the latter must
-    be bumped and released first
-  - `deno_fetch` depends on `deno_file`, so the latter must be bumped and
-    released first
+  - `deno_fetch`, `deno_crypto` and `deno_webstorage` depend on `deno_web`, so
+    the latter must be bumped and released first
 - `runtime` - this crate depends on `deno_core` and all crates in `extensions/`
   directory
 

@@ -12,7 +12,6 @@ members = [
   "extensions/console",
   "extensions/crypto",
   "extensions/fetch",
-  "extensions/file",
   "extensions/timers",
   "extensions/url",
   "extensions/web",

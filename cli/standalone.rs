@@ -23,7 +23,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
-use deno_runtime::deno_file::BlobUrlStore;
+use deno_runtime::deno_web::BlobUrlStore;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsOptions;
 use deno_runtime::worker::MainWorker;

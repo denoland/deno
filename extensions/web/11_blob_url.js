@@ -9,7 +9,6 @@
 /// <reference path="../url/internal.d.ts" />
 /// <reference path="../url/lib.deno_url.d.ts" />
 /// <reference path="./internal.d.ts" />
-/// <reference path="./lib.deno_file.d.ts" />
 /// <reference lib="esnext" />
 "use strict";
 
