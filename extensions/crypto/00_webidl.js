@@ -149,7 +149,7 @@
     ...algorithmDictionary,
     {
       key: "saltLength",
-      converters: webidl.converters["unsigned long"],
+      converter: webidl.converters["unsigned long"],
       required: true,
     },
   ];
@@ -163,7 +163,7 @@
     ...algorithmDictionary,
     {
       key: "hash",
-      converters: webidl.converters["HashAlgorithmIdentifier"],
+      converter: webidl.converters["HashAlgorithmIdentifier"],
       required: true,
     },
   ];

@@ -204,22 +204,25 @@
       webidl.assertBranded(this, SubtleCrypto);
       webidl.requiredArguments(arguments.length, 3);
 
+      const rid = key[ridSymbol];
+
+      key = webidl.converters["CryptoKey"](key, {
+        prefix,
+        context: "Argument 2",
+      });
+
       data = webidl.converters.BufferSource(data, {
         prefix,
         context: "Argument 3",
       });
 
-      const rid = key[ridSymbol];
-      const simpleAlg = typeof alg == "string";
-      const saltLength = simpleAlg ? null : alg.saltLength;
-      const hash = simpleAlg ? null : alg.hash;
-      const algorithm = (simpleAlg ? alg : alg.name).toLowerCase();
+      alg = normalizeAlgorithm(alg, "sign");
 
       const { signature } = await core.opAsync("op_webcrypto_sign_key", {
         rid,
-        algorithm,
-        saltLength,
-        hash,
+        algorithm: alg.name,
+        saltLength: alg.saltLength,
+        hash: alg.hash,
       }, new Uint8Array(ArrayBuffer.isView(data) ? data.buffer : data));
 
       return new Uint8Array(signature);

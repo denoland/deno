@@ -53,3 +53,25 @@ unitTest(async function testGenerateHMACKey() {
   assert(key.usages.includes("sign"));
   closeResource();
 });
+
+unitTest(async function testSignECDSA() {
+  const key = await window.crypto.subtle.generateKey(
+    {
+      name: "ECDSA",
+      namedCurve: "P-384",
+    },
+    true,
+    ["sign", "verify"],
+  );
+
+  const encoder = new TextEncoder();
+  const encoded = encoder.encode("Hello, World!");
+  const signature = await window.crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-384" },
+    key.privateKey,
+    encoded,
+  );
+
+  assert(signature);
+  closeResource();
+});
