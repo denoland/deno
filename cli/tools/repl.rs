@@ -295,6 +295,37 @@ impl ReplEditor {
   }
 }
 
+static PRELUDE: &str = r#"
+Object.defineProperty(globalThis, "_", {
+  configurable: true,
+  get: () => Deno[Deno.internal].lastEvalResult,
+  set: (value) => {
+   Object.defineProperty(globalThis, "_", {
+     value: value,
+     writable: true,
+     enumerable: true,
+     configurable: true,
+   });
+   console.log("Last evaluation result is no longer saved to _.");
+  },
+});
+
+Object.defineProperty(globalThis, "_error", {
+  configurable: true,
+  get: () => Deno[Deno.internal].lastThrownError,
+  set: (value) => {
+   Object.defineProperty(globalThis, "_error", {
+     value: value,
+     writable: true,
+     enumerable: true,
+     configurable: true,
+   });
+
+   console.log("Last thrown error is no longer saved to _error.");
+  },
+});
+"#;
+
 struct ReplSession {
   worker: MainWorker,
   session: LocalInspectorSession,
@@ -516,37 +547,6 @@ async fn read_line_and_poll(
     }
   }
 }
-
-static PRELUDE: &str = r#"
-Object.defineProperty(globalThis, "_", {
-  configurable: true,
-  get: () => Deno[Deno.internal].lastEvalResult,
-  set: (value) => {
-   Object.defineProperty(globalThis, "_", {
-     value: value,
-     writable: true,
-     enumerable: true,
-     configurable: true,
-   });
-   console.log("Last evaluation result is no longer saved to _.");
-  },
-});
-
-Object.defineProperty(globalThis, "_error", {
-  configurable: true,
-  get: () => Deno[Deno.internal].lastThrownError,
-  set: (value) => {
-   Object.defineProperty(globalThis, "_error", {
-     value: value,
-     writable: true,
-     enumerable: true,
-     configurable: true,
-   });
-
-   console.log("Last thrown error is no longer saved to _error.");
-  },
-});
-"#;
 
 pub async fn run(
   program_state: &ProgramState,
