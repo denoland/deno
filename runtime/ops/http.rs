@@ -165,12 +165,12 @@ async fn op_http_request_next(
     let connection_closed = match conn_resource.poll(cx) {
       Poll::Pending => false,
       Poll::Ready(Ok(())) => {
-        // close ConnResource
-        state
+        // try to close ConnResource, but don't unwrap as it might
+        // already be closed
+        let _ = state
           .borrow_mut()
           .resource_table
-          .take::<ConnResource>(conn_rid)
-          .unwrap();
+          .take::<ConnResource>(conn_rid);
         true
       }
       Poll::Ready(Err(e)) => {
