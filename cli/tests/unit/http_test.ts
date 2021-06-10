@@ -380,6 +380,7 @@ unitTest(
 
 unitTest(
   { perms: { net: true } },
+  // Issue: https://github.com/denoland/deno/issues/10870
   async function httpServerHang() {
     // Quick and dirty way to make a readable stream from a string. Alternatively,
     // `readableStreamFromReader(file)` could be used.
