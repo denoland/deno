@@ -213,7 +213,7 @@ declare namespace Deno {
    * const { diagnostics } = await Deno.emit("file_with_compile_issues.ts");
    * console.table(diagnostics);  // Prints raw diagnostic data
    * console.log(Deno.formatDiagnostics(diagnostics));  // User friendly output of diagnostics
-   * console.log(Deno.formatDiagnostics([]));  // ""
+   * console.log(Deno.formatDiagnostics([]));  // An empty string
    * ```
    *
    * @param diagnostics An array of diagnostic items to format
