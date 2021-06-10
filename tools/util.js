@@ -17,12 +17,12 @@ async function getFilesFromGit(baseDir, cmd) {
     cmd,
     stdout: "piped",
   });
+  const output = new TextDecoder().decode(await p.output());
   const { success } = await p.status();
   if (!success) {
     throw new Error("gitLsFiles failed");
   }
 
-  const output = new TextDecoder().decode(await p.output());
   p.close();
 
   const files = output.split("\0").filter((line) => line.length > 0).map(

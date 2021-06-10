@@ -132,6 +132,15 @@ pub fn test_server_path() -> PathBuf {
   p
 }
 
+fn ensure_test_server_built() {
+  // if the test server doesn't exist then remind the developer to build first
+  if !test_server_path().exists() {
+    panic!(
+      "Test server not found. Please cargo build before running the tests."
+    );
+  }
+}
+
 /// Benchmark server that just serves "hello world" responses.
 async fn hyper_hello(port: u16) {
   println!("hyper hello");
@@ -1043,6 +1052,7 @@ impl Drop for HttpServerGuard {
 /// last instance of the HttpServerGuard is dropped, the subprocess will be
 /// killed.
 pub fn http_server() -> HttpServerGuard {
+  ensure_test_server_built();
   let mut g = lock_http_server();
   g.inc();
   HttpServerGuard {}

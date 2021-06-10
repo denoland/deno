@@ -3972,6 +3972,11 @@ console.log("finish");
     output: "fix_tsc_file_exists.out",
   });
 
+  itest!(fix_worker_dispatchevent {
+    args: "run --quiet --reload fix_worker_dispatchevent.ts",
+    output: "fix_worker_dispatchevent.ts.out",
+  });
+
   itest!(es_private_fields {
     args: "run --quiet --reload es_private_fields.js",
     output: "es_private_fields.js.out",

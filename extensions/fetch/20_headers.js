@@ -3,8 +3,7 @@
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../file/internal.d.ts" />
-/// <reference path="../file/lib.deno_file.d.ts" />
+/// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
 /// <reference path="./11_streams_types.d.ts" />
 /// <reference path="./lib.deno_fetch.d.ts" />
