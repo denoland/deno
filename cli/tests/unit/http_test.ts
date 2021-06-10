@@ -383,7 +383,7 @@ unitTest(
       return new Response(s).body!;
     }
 
-    const httpConns = [];
+    const httpConns: Deno.HttpConn[] = [];
     const promise = (async () => {
       let count = 0;
       const listener = Deno.listen({ port: 4501 });
