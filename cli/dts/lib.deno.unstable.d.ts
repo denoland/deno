@@ -206,8 +206,8 @@ declare namespace Deno {
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Format an array of diagnostic items and return them as a single string in a
-   * user friendly format. If the diagnostic items is an empty array, it will
-   * return an empty string.
+   * user friendly format. If there are no diagnostics then it will return an
+   * empty string.
    *
    * ```ts
    * const { diagnostics } = await Deno.emit("file_with_compile_issues.ts");
