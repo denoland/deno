@@ -17,7 +17,7 @@ path = "lib.rs"
 bytes = "1.0.1"
 data-url = "0.1.0"
 deno_core = { version = "0.89.0", path = "../../core" }
-deno_file = { version = "0.7.0", path = "../file" }
+deno_web = { version = "0.39.0", path = "../web" }
 http = "0.2.4"
 reqwest = { version = "0.11.3", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
 serde = { version = "1.0.125", features = ["derive"] }
