@@ -535,7 +535,6 @@ dependencies = [
  "deno_crypto",
  "deno_doc",
  "deno_fetch",
- "deno_file",
  "deno_lint",
  "deno_runtime",
  "deno_timers",
@@ -674,21 +673,13 @@ dependencies = [
  "bytes",
  "data-url",
  "deno_core",
- "deno_file",
+ "deno_web",
  "http",
  "reqwest",
  "serde",
  "tokio",
  "tokio-stream",
  "tokio-util",
-]
-
-[[package]]
-name = "deno_file"
-version = "0.7.0"
-dependencies = [
- "deno_core",
- "uuid",
 ]
 
 [[package]]
@@ -722,7 +713,6 @@ dependencies = [
  "deno_core",
  "deno_crypto",
  "deno_fetch",
- "deno_file",
  "deno_timers",
  "deno_url",
  "deno_web",
@@ -790,6 +780,7 @@ dependencies = [
  "encoding_rs",
  "futures",
  "serde",
+ "uuid",
 ]
 
 [[package]]
@@ -2906,11 +2897,11 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d1c602ced78c18b33338c832d79595e75ac6fd204d20fd4cc462ce5af29a75e"
 dependencies = [
- "bencher",
  "rusty_v8",
  "serde",
- "serde_json",
 ]
 
 [[package]]

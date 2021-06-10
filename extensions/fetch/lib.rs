@@ -25,7 +25,7 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 
 use data_url::DataUrl;
-use deno_file::BlobUrlStore;
+use deno_web::BlobUrlStore;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;

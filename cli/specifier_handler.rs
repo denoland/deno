@@ -574,7 +574,7 @@ pub mod tests {
   use crate::file_fetcher::CacheSetting;
   use crate::http_cache::HttpCache;
   use deno_core::resolve_url_or_path;
-  use deno_runtime::deno_file::BlobUrlStore;
+  use deno_runtime::deno_web::BlobUrlStore;
   use tempfile::TempDir;
 
   macro_rules! map (

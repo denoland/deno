@@ -6,7 +6,6 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 /// <reference lib="deno.console" />
-/// <reference lib="deno.file" />
 /// <reference lib="deno.url" />
 /// <reference lib="deno.web" />
 /// <reference lib="deno.fetch" />
