@@ -373,3 +373,45 @@ unitTest(
     await delay(300);
   },
 );
+
+unitTest(
+  { perms: { net: true } },
+  async function httpServerHang() {
+    // Quick and dirty way to make a readable stream from a string. Alternatively,
+    // `readableStreamFromReader(file)` could be used.
+    function stream(s: string): ReadableStream<Uint8Array> {
+      return new Response(s).body!;
+    }
+
+    const httpConns = [];
+    const promise = (async () => {
+      let count = 0;
+      const listener = Deno.listen({ port: 4501 });
+      for await (const conn of listener) {
+        (async () => {
+          const httpConn = Deno.serveHttp(conn);
+          httpConns.push(httpConn);
+          for await (const { respondWith } of httpConn) {
+            respondWith(new Response(stream("hello")));
+
+            count++;
+            if (count >= 2) {
+              listener.close();
+            }
+          }
+        })();
+      }
+    })();
+
+    const f1 = fetch("http://127.0.0.1:4501/");
+    const f2 = fetch("http://127.0.0.1:4501/");
+
+    const [res1, res2] = await Promise.all([f1, f2]);
+    assertEquals(await res1.text(), "hello");
+    assertEquals(await res2.text(), "hello");
+    await promise;
+    for (const conn of httpConns) {
+      conn.close();
+    }
+  },
+);
