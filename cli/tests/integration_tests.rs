@@ -825,6 +825,7 @@ mod integration {
       // the watcher process is still alive
       assert!(deno.try_wait().unwrap().is_none());
 
+      deno.kill().unwrap();
       drop(t);
     }
 
@@ -976,6 +977,7 @@ mod integration {
       // the watcher process is still alive
       assert!(child.try_wait().unwrap().is_none());
 
+      child.kill().unwrap();
       drop(t);
     }
 
