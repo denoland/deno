@@ -482,9 +482,10 @@ declare namespace Deno {
    * The result of `Deno.emit()` API.
    */
   export interface EmitResult {
-    /** Diagnostic messages returned from the type checker (`tsc`). Can
-     * be used with `Deno.formatDiagnostics` to display a user friendly
-     * string. */
+    /** Diagnostic messages returned from the type checker (`tsc`).
+     * 
+     * Can be used with `Deno.formatDiagnostics` to display a user
+     * friendly string. */
     diagnostics: Diagnostic[];
     /** Any emitted files.  If bundled, then the JavaScript will have the
      * key of `deno:///bundle.js` with an optional map (based on
