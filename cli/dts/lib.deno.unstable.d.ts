@@ -518,7 +518,7 @@ declare namespace Deno {
    *
    * @returns The result of the emit. If diagnostics are found, they can be used
    * with `Deno.formatDiagnostics` to construct a user friendly string, which
-   * has the same format/result `tsc` will provide.
+   * has the same format as CLI diagnostics.
    */
   export function emit(
     rootSpecifier: string | URL,
