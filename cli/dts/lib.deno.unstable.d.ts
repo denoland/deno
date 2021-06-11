@@ -483,7 +483,7 @@ declare namespace Deno {
    */
   export interface EmitResult {
     /** Diagnostic messages returned from the type checker (`tsc`).
-     * 
+     *
      * Can be used with `Deno.formatDiagnostics` to display a user
      * friendly string. */
     diagnostics: Diagnostic[];
