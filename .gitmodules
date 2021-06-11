@@ -4,7 +4,7 @@
 	shallow = true
 [submodule "test_util/wpt"]
 	path = test_util/wpt
-	url = https://github.com/denoland/wpt.git
+	url = https://github.com/web-platform-tests/wpt.git
 	shallow = true
 [submodule "test_util/std"]
 	path = test_util/std
