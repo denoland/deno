@@ -310,7 +310,7 @@ impl ParsedModule {
         legacy: true,
         emit_metadata: options.emit_metadata
       }),
-      DownlevelImportsFolder::new(),
+      // DownlevelImportsFolder::new(), // todo: make this conditional
       helpers::inject_helpers(),
       typescript::strip::strip_with_config(strip_config_from_emit_options(
         options
@@ -504,7 +504,9 @@ impl Fold for DownlevelImportsFolder {
     match &module_item {
       ModuleItem::ModuleDecl(ModuleDecl::Import(import_decl)) => {
         if import_decl.type_only {
-          return module_item;
+          return ModuleItem::Stmt(Stmt::Empty(EmptyStmt {
+            span: DUMMY_SP,
+          }));
         }
 
         ModuleItem::Stmt(Stmt::Decl(Decl::Var(VarDecl {
