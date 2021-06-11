@@ -310,6 +310,7 @@ impl ParsedModule {
         legacy: true,
         emit_metadata: options.emit_metadata
       }),
+      DownlevelImportsFolder::new(),
       helpers::inject_helpers(),
       typescript::strip::strip_with_config(strip_config_from_emit_options(
         options
@@ -479,6 +480,121 @@ pub fn lex(
   tokens.sort_by_key(|item| item.span.lo.0);
 
   tokens
+}
+
+struct DownlevelImportsFolder;
+
+impl DownlevelImportsFolder {
+  pub fn new() -> Self {
+    DownlevelImportsFolder
+  }
+}
+use swc_ecmascript::ast::ModuleItem;
+use swc_ecmascript::visit::noop_fold_type;
+use swc_ecmascript::visit::Fold;
+use swc_ecmascript::ast::Function;
+
+impl Fold for DownlevelImportsFolder {
+  noop_fold_type!(); // skip typescript specific nodes
+
+  fn fold_module_item(&mut self, module_item: ModuleItem) -> ModuleItem {
+    use swc_common::DUMMY_SP;
+    use swc_ecmascript::ast::*;
+
+    match &module_item {
+      ModuleItem::ModuleDecl(ModuleDecl::Import(import_decl)) => {
+        if import_decl.type_only {
+          return module_item;
+        }
+
+        ModuleItem::Stmt(Stmt::Decl(Decl::Var(VarDecl {
+          span: DUMMY_SP,
+          kind: VarDeclKind::Const,
+          declare: false,
+          decls: import_decl.specifiers.iter().map(|s| {
+            return VarDeclarator {
+              span: DUMMY_SP,
+              definite: false,
+              name: match s {
+                ImportSpecifier::Default(specifier) => Pat::Object(ObjectPat {
+                  span: DUMMY_SP,
+                  optional: false,
+                  props: vec![ObjectPatProp::KeyValue(KeyValuePatProp {
+                    key: PropName::Ident(Ident {
+                      span: DUMMY_SP,
+                      sym: "default".to_string().into(),
+                      optional: false,
+                    }),
+                    value: Box::new(Pat::Ident(BindingIdent {
+                      id: Ident {
+                        span: DUMMY_SP,
+                        sym: specifier.local.sym.clone(),
+                        optional: false,
+                      },
+                      type_ann: None,
+                    })),
+                  })],
+                  type_ann: None,
+                }),
+                ImportSpecifier::Named(specifier) => Pat::Object(ObjectPat {
+                  span: DUMMY_SP,
+                  optional: false,
+                  props: vec![ObjectPatProp::KeyValue(KeyValuePatProp {
+                    key: PropName::Ident(Ident {
+                      span: DUMMY_SP,
+                      sym: specifier.imported.as_ref().unwrap_or(&specifier.local).sym.clone(),
+                      optional: false,
+                    }),
+                    value: Box::new(Pat::Ident(BindingIdent {
+                      id: Ident {
+                        span: DUMMY_SP,
+                        sym: specifier.local.sym.clone(),
+                        optional: false,
+                      },
+                      type_ann: None,
+                    })),
+                  })],
+                  type_ann: None,
+                }),
+                ImportSpecifier::Namespace(specifier) => Pat::Ident(BindingIdent {
+                  id: Ident {
+                    span: DUMMY_SP,
+                    sym: specifier.local.sym.clone(),
+                    optional: false,
+                  },
+                  type_ann: None,
+                }),
+              },
+              init: Some(Box::new(Expr::Await(AwaitExpr {
+                span: DUMMY_SP,
+                arg: Box::new(Expr::Call(CallExpr {
+                  span: DUMMY_SP,
+                  callee: ExprOrSuper::Expr(Box::new(Expr::Ident(Ident {
+                    span: DUMMY_SP,
+                    sym: "import".into(),
+                    optional: false,
+                  }))),
+                  args: vec![ExprOrSpread {
+                    spread: None,
+                    expr: Box::new(Expr::Lit(Lit::Str(Str {
+                      span: DUMMY_SP,
+                      has_escape: false,
+                      kind: StrKind::Normal {
+                        contains_quote: false,
+                      },
+                      value: import_decl.src.value.clone(),
+                    })))
+                  }],
+                  type_args: None,
+                }))
+              })))
+            }
+          }).collect(),
+        })))
+      },
+      _ => module_item,
+    }
+  }
 }
 
 /// A low level function which transpiles a source module into an swc
