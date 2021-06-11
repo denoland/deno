@@ -2022,9 +2022,9 @@ mod integration {
         let mut output = String::new();
         master.read_to_string(&mut output).unwrap();
 
-        assert!(output.contains("Unexpected token ')'"));
-        assert!(output.contains("Unexpected token ']'"));
-        assert!(output.contains("Unexpected token '}'"));
+        assert!(output.contains("Unexpected token `)`"));
+        assert!(output.contains("Unexpected token `]`"));
+        assert!(output.contains("Unexpected token `}`"));
 
         fork.wait().unwrap();
       } else {
