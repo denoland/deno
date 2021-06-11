@@ -8,6 +8,7 @@ on:
     # Every night at 0:30 UTC. This is 20 minutes after `epochs/daily` branch is
     # triggered to be created in WPT repo.
     - cron: 30 0 * * *
+  workflow_dispatch:
 
 jobs:
   wpt:
@@ -64,8 +65,5 @@ jobs:
           deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --binary=(which deno) --quiet --release --json=wpt.json --wptreport=wptreport.json || true
 
       - name: Upload wpt results to wpt.fyi
-        env:
-          WPT_FYI_STAGING_USER: ${{ secrets.WPT_FYI_STAGING_USER }}
-          WPT_FYI_STAGING_PW: ${{ secrets.WPT_FYI_STAGING_PW }}
         run: |
           deno run -A ./tools/upload_wptfyi.js wptreport.json --from-raw-file
