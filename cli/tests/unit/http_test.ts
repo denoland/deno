@@ -10,6 +10,33 @@ import {
   unitTest,
 } from "./test_util.ts";
 
+async function writeRequestAndReadResponse(conn: Deno.Conn): Promise<string> {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+
+  const w = new BufWriter(conn);
+  const r = new BufReader(conn);
+  const body = `GET / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\n\r\n`;
+  const writeResult = await w.write(encoder.encode(body));
+  assertEquals(body.length, writeResult);
+  await w.flush();
+  const tpr = new TextProtoReader(r);
+  const statusLine = await tpr.readLine();
+  assert(statusLine !== null);
+  const headers = await tpr.readMIMEHeader();
+  assert(headers !== null);
+
+  const chunkedReader = chunkedBodyReader(headers, r);
+  const buf = new Uint8Array(5);
+  const dest = new Buffer();
+  let result: number | null;
+  while ((result = await chunkedReader.read(buf)) !== null) {
+    const len = Math.min(buf.byteLength, result);
+    await dest.write(buf.subarray(0, len));
+  }
+  return decoder.decode(dest.bytes());
+}
+
 unitTest({ perms: { net: true } }, async function httpServerBasic() {
   const promise = (async () => {
     const listener = Deno.listen({ port: 4501 });
@@ -409,36 +436,11 @@ unitTest(
     })();
 
     const clientConn = await Deno.connect({ port: 4501 });
-    const encoder = new TextEncoder();
 
-    async function requestAndReadResponse(conn: Deno.Conn): Promise<string> {
-      const w = new BufWriter(conn);
-      const r = new BufReader(conn);
-      const body = `GET / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\n\r\n`;
-      const writeResult = await w.write(encoder.encode(body));
-      assertEquals(body.length, writeResult);
-      await w.flush();
-      const tpr = new TextProtoReader(r);
-      const statusLine = await tpr.readLine();
-      assert(statusLine !== null);
-      const headers = await tpr.readMIMEHeader();
-      assert(headers !== null);
-
-      const chunkedReader = chunkedBodyReader(headers, r);
-      const buf = new Uint8Array(5);
-      const dest = new Buffer();
-      let result: number | null;
-      while ((result = await chunkedReader.read(buf)) !== null) {
-        const len = Math.min(buf.byteLength, result);
-        await dest.write(buf.subarray(0, len));
-      }
-      return new TextDecoder().decode(dest.bytes());
-    }
-
-    const r1 = await requestAndReadResponse(clientConn);
+    const r1 = await writeRequestAndReadResponse(clientConn);
     assertEquals(r1, "hello");
 
-    const r2 = await requestAndReadResponse(clientConn);
+    const r2 = await writeRequestAndReadResponse(clientConn);
     assertEquals(r2, "hello");
 
     clientConn.close();
