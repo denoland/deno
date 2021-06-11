@@ -18,5 +18,5 @@ window.add_completion_callback((_tests, harnessStatus) => {
   while (bytesWritten < data.byteLength) {
     bytesWritten += Deno.stderr.writeSync(data.subarray(bytesWritten));
   }
-  Deno.exit(0);
+  Deno.exit(harnessStatus.status === 0 ? 0 : 1);
 });
