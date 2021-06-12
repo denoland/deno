@@ -1088,12 +1088,12 @@ declare namespace Deno {
    *
    * ```ts
    * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
-   * const req = await fetch("https://myserver.com", { client });
+   * const response = await fetch("https://myserver.com", { client });
    * ```
    *
    * ```ts
    * const client = Deno.createHttpClient({ proxy: { url: "http://myproxy.com:8080" } });
-   * const req = await fetch("https://myserver.com", { client });
+   * const response = await fetch("https://myserver.com", { client });
    * ```
    */
   export function createHttpClient(
