@@ -174,6 +174,9 @@ pub struct WriteDescriptor(pub PathBuf);
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
 pub struct NetDescriptor(pub String, pub Option<u16>);
 
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+pub struct UsbDescriptor(pub u16);
+
 impl NetDescriptor {
   fn new<T: AsRef<str>>(host: &&(T, Option<u16>)) -> Self {
     NetDescriptor(host.0.as_ref().to_string(), host.1)
@@ -193,6 +196,91 @@ impl fmt::Display for NetDescriptor {
       None => self.0.clone(),
       Some(port) => format!("{}:{}", self.0, port),
     })
+  }
+}
+
+impl UnaryPermission<UsbDescriptor> {
+  pub fn query(&self, device: Option<u16>) -> PermissionState {
+    if self.global_state == PermissionState::Denied
+      && match device {
+        None => true,
+        Some(device) => {
+          self.denied_list.iter().any(|device_| device_.0 == device)
+        }
+      }
+    {
+      PermissionState::Denied
+    } else if self.global_state == PermissionState::Granted
+      || match device {
+        None => false,
+        Some(device) => {
+          self.granted_list.iter().any(|device_| device_.0 == device)
+        }
+      }
+    {
+      PermissionState::Granted
+    } else {
+      PermissionState::Prompt
+    }
+  }
+
+  pub fn request(
+    &mut self,
+    device: (Option<String>, Option<u16>),
+  ) -> PermissionState {
+    let state = self.query(device.1);
+    let name = device.0;
+    if let Some(device) = device.1 {
+      if state == PermissionState::Prompt {
+        let prompt_msg = if let Some(name) = name {
+          format!("usb access to \"{} ({})\"", name, device)
+        } else {
+          format!("usb access to \"{}\"", device)
+        };
+        if permission_prompt(&prompt_msg) {
+          self.granted_list.retain(|device_| device_.0 != device);
+          self.granted_list.insert(UsbDescriptor(device));
+          PermissionState::Granted
+        } else {
+          self.denied_list.retain(|device_| device_.0 != device);
+          self.denied_list.insert(UsbDescriptor(device));
+          self.global_state = PermissionState::Denied;
+          PermissionState::Denied
+        }
+      } else {
+        state
+      }
+    } else if state == PermissionState::Prompt {
+      if permission_prompt("usb access") {
+        self.granted_list.clear();
+        self.global_state = PermissionState::Granted;
+        PermissionState::Granted
+      } else {
+        self.global_state = PermissionState::Denied;
+        PermissionState::Denied
+      }
+    } else {
+      state
+    }
+  }
+
+  pub fn revoke(&mut self, device: Option<u16>) -> PermissionState {
+    if let Some(device) = device {
+      self.granted_list.retain(|device_| device_.0 != device);
+    } else {
+      self.granted_list.clear();
+      if self.global_state == PermissionState::Granted {
+        self.global_state = PermissionState::Prompt;
+      }
+    }
+    self.query(device)
+  }
+
+  pub fn check(&self, device: u16) -> Result<(), AnyError> {
+    self
+      .query(Some(device))
+      .check(self.name, Some(&format!("\"{}\"", device)), self.prompt)
+      .0
   }
 }
 
@@ -796,6 +884,7 @@ pub struct Permissions {
   pub run: UnaryPermission<RunDescriptor>,
   pub plugin: UnitPermission,
   pub hrtime: UnitPermission,
+  pub usb: UnaryPermission<UsbDescriptor>,
 }
 
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
@@ -807,6 +896,7 @@ pub struct PermissionsOptions {
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
+  pub allow_usb: Option<Vec<u16>>,
   pub prompt: bool,
 }
 
@@ -854,6 +944,23 @@ impl Permissions {
             .map(|x| NetDescriptor::from_string(x.clone()))
             .collect()
         })
+        .unwrap_or_else(HashSet::new),
+      denied_list: Default::default(),
+      prompt,
+    }
+  }
+
+  pub fn new_usb(
+    state: &Option<Vec<u16>>,
+    prompt: bool,
+  ) -> UnaryPermission<UsbDescriptor> {
+    UnaryPermission::<UsbDescriptor> {
+      name: "usb",
+      description: "access to usb device",
+      global_state: global_state_from_option(state),
+      granted_list: state
+        .as_ref()
+        .map(|v| v.iter().map(|x| UsbDescriptor(*x)).collect())
         .unwrap_or_else(HashSet::new),
       denied_list: Default::default(),
       prompt,
@@ -926,6 +1033,7 @@ impl Permissions {
       run: Permissions::new_run(&opts.allow_run, opts.prompt),
       plugin: Permissions::new_plugin(opts.allow_plugin, opts.prompt),
       hrtime: Permissions::new_hrtime(opts.allow_hrtime, opts.prompt),
+      usb: Permissions::new_usb(&opts.allow_usb, opts.prompt),
     }
   }
 
@@ -938,6 +1046,7 @@ impl Permissions {
       run: Permissions::new_run(&Some(vec![]), false),
       plugin: Permissions::new_plugin(true, false),
       hrtime: Permissions::new_hrtime(true, false),
+      usb: Permissions::new_usb(&Some(vec![]), false),
     }
   }
 
@@ -979,6 +1088,16 @@ impl deno_timers::TimersPermission for Permissions {
 
   fn check_unstable(&self, state: &OpState, api_name: &'static str) {
     crate::ops::check_unstable(state, api_name);
+  }
+}
+
+impl deno_webusb::WebUsbPermissions for Permissions {
+  fn check_usb(&self, device: u16) -> Result<(), AnyError> {
+    self.usb.check(device)
+  }
+
+  fn request_device(&mut self, device: (Option<String>, u16)) -> u8 {
+    self.usb.request((device.0, Some(device.1))) as u8
   }
 }
 
@@ -1448,6 +1567,10 @@ mod tests {
         state: PermissionState::Prompt,
         ..Default::default()
       },
+      usb: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        ..Permissions::new_usb(&Some(vec![0x8036]), false)
+      },
     };
     #[rustfmt::skip]
     {
@@ -1477,6 +1600,11 @@ mod tests {
       assert_eq!(perms2.plugin.query(), PermissionState::Prompt);
       assert_eq!(perms1.hrtime.query(), PermissionState::Granted);
       assert_eq!(perms2.hrtime.query(), PermissionState::Prompt);
+      assert_eq!(perms1.usb.query(None), PermissionState::Granted);
+      assert_eq!(perms1.usb.query(Some(0x8036)), PermissionState::Granted);
+      assert_eq!(perms2.usb.query(None), PermissionState::Prompt);
+      assert_eq!(perms2.usb.query(Some(0x8036)), PermissionState::Granted);
+      assert_eq!(perms2.usb.query(Some(0x8035)), PermissionState::Prompt);
     };
   }
 
@@ -1494,6 +1622,9 @@ mod tests {
       set_prompt_result(false);
       assert_eq!(perms.write.request(Some(&Path::new("/foo"))), PermissionState::Denied);
       assert_eq!(perms.write.query(Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
+      set_prompt_result(true);
+      assert_eq!(perms.usb.request((Some("Dummy Device".to_string()), Some(0x8010))), PermissionState::Granted);
+      assert_eq!(perms.usb.request((None, None)), PermissionState::Prompt);
       set_prompt_result(true);
       assert_eq!(perms.write.request(None), PermissionState::Denied);
       set_prompt_result(true);
@@ -1552,6 +1683,10 @@ mod tests {
         state: PermissionState::Denied,
         ..Default::default()
       },
+      usb: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        ..Permissions::new_usb(&Some(vec![0x8036]), false)
+      },
     };
     #[rustfmt::skip]
     {
@@ -1567,6 +1702,8 @@ mod tests {
       assert_eq!(perms.run.revoke(Some(&"deno".to_string())), PermissionState::Prompt);
       assert_eq!(perms.plugin.revoke(), PermissionState::Prompt);
       assert_eq!(perms.hrtime.revoke(), PermissionState::Denied);
+      assert_eq!(perms.usb.revoke(Some(0x8036)), PermissionState::Granted);
+      assert_eq!(perms.usb.revoke(None), PermissionState::Prompt);
     };
   }
 
@@ -1580,6 +1717,7 @@ mod tests {
       run: Permissions::new_run(&None, true),
       plugin: Permissions::new_plugin(false, true),
       hrtime: Permissions::new_hrtime(false, true),
+      usb: Permissions::new_usb(&None, true),
     };
 
     let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
@@ -1633,6 +1771,7 @@ mod tests {
       run: Permissions::new_run(&None, true),
       plugin: Permissions::new_plugin(false, true),
       hrtime: Permissions::new_hrtime(false, true),
+      usb: Permissions::new_usb(&None, true),
     };
 
     let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();

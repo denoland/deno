@@ -545,6 +545,7 @@ dependencies = [
  "deno_webidl",
  "deno_websocket",
  "deno_webstorage",
+ "deno_webusb",
  "dissimilar",
  "dprint-plugin-json",
  "dprint-plugin-markdown",
@@ -730,6 +731,7 @@ dependencies = [
  "deno_webidl",
  "deno_websocket",
  "deno_webstorage",
+ "deno_webusb",
  "dlopen",
  "encoding_rs",
  "filetime",
@@ -831,6 +833,16 @@ dependencies = [
  "deno_core",
  "deno_web",
  "rusqlite",
+ "serde",
+]
+
+[[package]]
+name = "deno_webusb"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "libusb1-sys",
+ "rusb",
  "serde",
 ]
 
@@ -1878,6 +1890,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "libusb1-sys"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e22e89d08bbe6816c6c5d446203b859eba35b8fa94bf1b7edb2f6d25d43f023f"
+dependencies = [
+ "cc",
+ "libc",
+ "pkg-config",
+ "vcpkg",
+]
+
+[[package]]
 name = "linked-hash-map"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2703,6 +2727,16 @@ dependencies = [
  "base64 0.13.0",
  "bitflags",
  "serde",
+]
+
+[[package]]
+name = "rusb"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c470dc7dc6e4710b6f85e9c4aa4650bc742260b39a36328180578db76fa258c1"
+dependencies = [
+ "libc",
+ "libusb1-sys",
 ]
 
 [[package]]

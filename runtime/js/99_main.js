@@ -25,6 +25,7 @@ delete Object.prototype.__proto__;
   const performance = window.__bootstrap.performance;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
+  const webusb = window.__bootstrap.usb;
   const headers = window.__bootstrap.headers;
   const streams = window.__bootstrap.streams;
   const fileReader = window.__bootstrap.fileReader;
@@ -234,6 +235,14 @@ delete Object.prototype.__proto__;
         return webgpu.gpu;
       },
     },
+    usb: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, Navigator);
+        return webusb;
+      },
+    },
   });
 
   class WorkerNavigator {
@@ -255,6 +264,14 @@ delete Object.prototype.__proto__;
       get() {
         webidl.assertBranded(this, WorkerNavigator);
         return webgpu.gpu;
+      },
+    },
+    usb: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, Navigator);
+        return webusb;
       },
     },
   });

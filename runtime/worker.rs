@@ -113,6 +113,7 @@ impl MainWorker {
         options.unstable,
       ),
       deno_webgpu::init(options.unstable),
+      deno_webusb::init::<Permissions>(options.unstable),
       deno_timers::init::<Permissions>(),
       // Metrics
       metrics::init(),

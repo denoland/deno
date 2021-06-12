@@ -10,6 +10,7 @@ use crate::permissions::ReadDescriptor;
 use crate::permissions::RunDescriptor;
 use crate::permissions::UnaryPermission;
 use crate::permissions::UnitPermission;
+use crate::permissions::UsbDescriptor;
 use crate::permissions::WriteDescriptor;
 use crate::web_worker::run_web_worker;
 use crate::web_worker::WebWorker;
@@ -178,6 +179,26 @@ fn merge_write_permission(
   Ok(main)
 }
 
+fn merge_usb_permission(
+  mut main: UnaryPermission<UsbDescriptor>,
+  worker: Option<UnaryPermission<UsbDescriptor>>,
+) -> Result<UnaryPermission<UsbDescriptor>, AnyError> {
+  if let Some(worker) = worker {
+    if (worker.global_state < main.global_state)
+      || !worker.granted_list.iter().all(|x| main.check(x.0).is_ok())
+    {
+      return Err(custom_error(
+        "PermissionDenied",
+        "Can't escalate parent thread permissions",
+      ));
+    } else {
+      main.global_state = worker.global_state;
+      main.granted_list = worker.granted_list;
+    }
+  }
+  Ok(main)
+}
+
 fn merge_env_permission(
   mut main: UnaryPermission<EnvDescriptor>,
   worker: Option<UnaryPermission<EnvDescriptor>>,
@@ -230,6 +251,7 @@ pub fn create_worker_permissions(
     read: merge_read_permission(main_perms.read, worker_perms.read)?,
     run: merge_run_permission(main_perms.run, worker_perms.run)?,
     write: merge_write_permission(main_perms.write, worker_perms.write)?,
+    usb: merge_usb_permission(main_perms.usb, worker_perms.usb)?,
   })
 }
 
@@ -249,6 +271,8 @@ pub struct PermissionsArg {
   run: Option<UnaryPermission<RunDescriptor>>,
   #[serde(default, deserialize_with = "as_unary_write_permission")]
   write: Option<UnaryPermission<WriteDescriptor>>,
+  #[serde(default, deserialize_with = "as_unary_usb_permission")]
+  usb: Option<UnaryPermission<UsbDescriptor>>,
 }
 
 fn as_permission_state<'de, D>(
@@ -318,6 +342,37 @@ impl<'de> de::Visitor<'de> for ParseBooleanOrStringVec {
   }
 }
 
+struct DevicePermissionBase {
+  devices: Vec<u16>,
+}
+
+struct ParseDeviceVec;
+
+impl<'de> de::Visitor<'de> for ParseDeviceVec {
+  type Value = DevicePermissionBase;
+
+  fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+    formatter.write_str("a vector of device product ids")
+  }
+
+  fn visit_seq<V>(
+    self,
+    mut visitor: V,
+  ) -> Result<DevicePermissionBase, V::Error>
+  where
+    V: SeqAccess<'de>,
+  {
+    let mut devices: Vec<u16> = Vec::new();
+
+    let mut value = visitor.next_element::<u16>()?;
+    while value.is_some() {
+      devices.push(value.unwrap());
+      value = visitor.next_element()?;
+    }
+    Ok(DevicePermissionBase { devices })
+  }
+}
+
 fn as_unary_net_permission<'de, D>(
   deserializer: D,
 ) -> Result<Option<UnaryPermission<NetDescriptor>>, D::Error>
@@ -374,6 +429,24 @@ where
   Ok(Some(UnaryPermission::<WriteDescriptor> {
     global_state: value.global_state,
     granted_list: resolve_write_allowlist(&Some(paths)),
+    ..Default::default()
+  }))
+}
+
+fn as_unary_usb_permission<'de, D>(
+  deserializer: D,
+) -> Result<Option<UnaryPermission<UsbDescriptor>>, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  let value: DevicePermissionBase =
+    deserializer.deserialize_any(ParseDeviceVec)?;
+
+  let devices: HashSet<UsbDescriptor> =
+    value.devices.into_iter().map(UsbDescriptor).collect();
+  Ok(Some(UnaryPermission::<UsbDescriptor> {
+    global_state: PermissionState::Prompt,
+    granted_list: devices,
     ..Default::default()
   }))
 }

@@ -33,6 +33,8 @@ deno_webgpu = { version = "0.9.0", path = "../extensions/webgpu" }
 deno_webidl = { version = "0.8.0", path = "../extensions/webidl" }
 deno_websocket = { version = "0.13.0", path = "../extensions/websocket" }
 deno_webstorage = { version = "0.3.0", path = "../extensions/webstorage" }
+deno_webusb = { version = "0.1.0", path = "../extensions/webusb" }
+
 regex = "1.4.3"
 serde = { version = "1.0.125", features = ["derive"] }
 

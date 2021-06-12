@@ -208,6 +208,7 @@ pub fn compile_to_runtime_flags(
     allow_read: flags.allow_read,
     allow_run: flags.allow_run,
     allow_write: flags.allow_write,
+    allow_usb: flags.allow_usb,
     cache_blocklist: vec![],
     ca_file: flags.ca_file,
     cached_only: false,
