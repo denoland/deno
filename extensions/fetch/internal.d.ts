@@ -52,11 +52,6 @@ declare namespace globalThis {
       declare function formDataFromEntries(entries: FormDataEntry[]): FormData;
     }
 
-    declare var streams: {
-      ReadableStream: typeof ReadableStream;
-      isReadableStreamDisturbed(stream: ReadableStream): boolean;
-    };
-
     declare namespace fetchBody {
       function mixinBody(
         prototype: any,
