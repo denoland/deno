@@ -825,6 +825,7 @@ mod integration {
       // the watcher process is still alive
       assert!(deno.try_wait().unwrap().is_none());
 
+      deno.kill().unwrap();
       drop(t);
     }
 
@@ -976,6 +977,7 @@ mod integration {
       // the watcher process is still alive
       assert!(child.try_wait().unwrap().is_none());
 
+      child.kill().unwrap();
       drop(t);
     }
 
@@ -3113,7 +3115,7 @@ console.log("finish");
   });
 
   itest!(_089_run_allow_list {
-    args: "run --allow-run=cat 089_run_allow_list.ts",
+    args: "run --allow-run=curl 089_run_allow_list.ts",
     output: "089_run_allow_list.ts.out",
   });
 
