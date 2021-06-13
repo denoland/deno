@@ -109,10 +109,10 @@
 
   const READ_PER_ITER = 32 * 1024;
 
-  async function readAll(r) {
+  async function readAll(r, options) {
     const buffers = [];
-
-    while (true) {
+    const signal = options?.signal ?? null;
+    while (!signal?.aborted) {
       const buf = new Uint8Array(READ_PER_ITER);
       const read = await r.read(buf);
       if (typeof read == "number") {
@@ -120,6 +120,9 @@
       } else {
         break;
       }
+    }
+    if (signal?.aborted) {
+      throw new DOMException('ABORT_ERR', 'The read operation was aborted.');
     }
 
     let totalLen = 0;
