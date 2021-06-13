@@ -122,7 +122,7 @@
       }
     }
     if (signal?.aborted) {
-      throw new DOMException('ABORT_ERR', 'The read operation was aborted.');
+      throw new DOMException("ABORT_ERR", "The read operation was aborted.");
     }
 
     let totalLen = 0;

@@ -96,7 +96,6 @@ unitTest(
   },
 );
 
-
 unitTest(
   { perms: { read: true } },
   async function readFileWithAbortSignal(): Promise<void> {
