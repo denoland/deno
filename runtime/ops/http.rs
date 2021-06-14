@@ -502,6 +502,9 @@ async fn op_http_response_write(
   let mut send_data_fut = body.send_data(Vec::from(&*buf).into()).boxed_local();
 
   poll_fn(|cx| {
+    let r = send_data_fut.poll_unpin(cx).map_err(AnyError::from);
+
+    // Poll connection so the data is flushed
     if let Poll::Ready(Err(e)) = conn_resource.poll(cx) {
       // close ConnResource
       // close RequestResource associated with connection
@@ -509,7 +512,7 @@ async fn op_http_response_write(
       return Poll::Ready(Err(e));
     }
 
-    send_data_fut.poll_unpin(cx).map_err(AnyError::from)
+    r
   })
   .await?;
 
