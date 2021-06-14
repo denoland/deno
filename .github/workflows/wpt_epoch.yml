@@ -49,7 +49,7 @@ jobs:
         shell: bash
         run: |
           git fetch origin refs/heads/epochs/daily:refs/remotes/origin/epochs/daily
-          git checkout --track origin/epochs/daily
+          git checkout --track epochs/daily
 
       - name: Configure hosts file for WPT (unix)
         if: runner.os != 'Windows'
