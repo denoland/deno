@@ -65,7 +65,7 @@ jobs:
         shell: bash
         run: |
           deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts setup
-          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --binary=(which deno) --quiet --release --json=wpt.json --wptreport=wptreport.json || true
+          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --binary=$(which deno) --quiet --release --json=wpt.json --wptreport=wptreport.json || true
 
       - name: Upload wpt results to wpt.fyi
         run: |
