@@ -1,10 +1,41 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+import { chunkedBodyReader } from "../../../test_util/std/http/_io.ts";
+import { BufReader, BufWriter } from "../../../test_util/std/io/bufio.ts";
+import { Buffer } from "../../../test_util/std/io/buffer.ts";
+import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
 import {
   assert,
   assertEquals,
   assertThrowsAsync,
   unitTest,
 } from "./test_util.ts";
+
+async function writeRequestAndReadResponse(conn: Deno.Conn): Promise<string> {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+
+  const w = new BufWriter(conn);
+  const r = new BufReader(conn);
+  const body = `GET / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\n\r\n`;
+  const writeResult = await w.write(encoder.encode(body));
+  assertEquals(body.length, writeResult);
+  await w.flush();
+  const tpr = new TextProtoReader(r);
+  const statusLine = await tpr.readLine();
+  assert(statusLine !== null);
+  const headers = await tpr.readMIMEHeader();
+  assert(headers !== null);
+
+  const chunkedReader = chunkedBodyReader(headers, r);
+  const buf = new Uint8Array(5);
+  const dest = new Buffer();
+  let result: number | null;
+  while ((result = await chunkedReader.read(buf)) !== null) {
+    const len = Math.min(buf.byteLength, result);
+    await dest.write(buf.subarray(0, len));
+  }
+  return decoder.decode(dest.bytes());
+}
 
 unitTest({ perms: { net: true } }, async function httpServerBasic() {
   const promise = (async () => {
@@ -371,5 +402,51 @@ unitTest(
     l.close();
 
     await delay(300);
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  // Issue: https://github.com/denoland/deno/issues/10870
+  async function httpServerHang() {
+    // Quick and dirty way to make a readable stream from a string. Alternatively,
+    // `readableStreamFromReader(file)` could be used.
+    function stream(s: string): ReadableStream<Uint8Array> {
+      return new Response(s).body!;
+    }
+
+    const httpConns: Deno.HttpConn[] = [];
+    const promise = (async () => {
+      let count = 0;
+      const listener = Deno.listen({ port: 4501 });
+      for await (const conn of listener) {
+        (async () => {
+          const httpConn = Deno.serveHttp(conn);
+          httpConns.push(httpConn);
+          for await (const { respondWith } of httpConn) {
+            respondWith(new Response(stream("hello")));
+
+            count++;
+            if (count >= 2) {
+              listener.close();
+            }
+          }
+        })();
+      }
+    })();
+
+    const clientConn = await Deno.connect({ port: 4501 });
+
+    const r1 = await writeRequestAndReadResponse(clientConn);
+    assertEquals(r1, "hello");
+
+    const r2 = await writeRequestAndReadResponse(clientConn);
+    assertEquals(r2, "hello");
+
+    clientConn.close();
+    await promise;
+    for (const conn of httpConns) {
+      conn.close();
+    }
   },
 );
