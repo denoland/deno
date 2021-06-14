@@ -144,6 +144,7 @@ export async function checkPy3Available() {
 }
 
 export async function cargoBuild() {
+  if (binary) return;
   const proc = Deno.run({
     cmd: ["cargo", "build", ...(release ? ["--release"] : [])],
     cwd: ROOT_PATH,

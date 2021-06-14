@@ -80,27 +80,27 @@ More details at https://deno.land/manual@main/contributing/web_platform_tests
 }
 
 async function setup() {
+  const hostsPath = Deno.build.os == "windows"
+    ? `${Deno.env.get("SystemRoot")}\\System32\\drivers\\etc\\hosts`
+    : "/etc/hosts";
   // TODO(lucacsonato): use this when 1.7.1 is released.
   // const records = await Deno.resolveDns("web-platform.test", "A");
   // const etcHostsConfigured = records[0] == "127.0.0.1";
-  const hostsFile = await Deno.readTextFile("/etc/hosts");
+  const hostsFile = await Deno.readTextFile(hostsPath);
   const etcHostsConfigured = hostsFile.includes("web-platform.test");
 
   if (etcHostsConfigured) {
-    console.log("/etc/hosts is already configured.");
+    console.log(hostsPath + " is already configured.");
   } else {
     const autoConfigure = autoConfig ||
       confirm(
-        "The WPT require certain entries to be present in your /etc/hosts file. Should these be configured automatically?",
+        `The WPT require certain entries to be present in your ${hostsPath} file. Should these be configured automatically?`,
       );
     if (autoConfigure) {
       const proc = runPy(["wpt", "make-hosts-file"], { stdout: "piped" });
       const status = await proc.status();
       assert(status.success, "wpt make-hosts-file should not fail");
       const entries = new TextDecoder().decode(await proc.output());
-      const hostsPath = Deno.build.os == "windows"
-        ? `${Deno.env.get("SystemRoot")}\\System32\\drivers\\etc\\hosts`
-        : "/etc/hosts";
       const file = await Deno.open(hostsPath, { append: true }).catch((err) => {
         if (err instanceof Deno.errors.PermissionDenied) {
           throw new Error(
@@ -116,9 +116,9 @@ async function setup() {
           "\n\n# Configured for Web Platform Tests (Deno)\n" + entries,
         ),
       );
-      console.log("Updated /etc/hosts");
+      console.log(`Updated ${hostsPath}`);
     } else {
-      console.log("Please configure the /etc/hosts entries manually.");
+      console.log(`Please configure the ${hostsPath} entries manually.`);
       if (Deno.build.os == "windows") {
         console.log("To do this run the following command in PowerShell:");
         console.log("");

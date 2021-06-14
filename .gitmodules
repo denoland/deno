@@ -2,11 +2,10 @@
 	path = third_party
 	url = https://github.com/denoland/deno_third_party.git
 	shallow = true
-[submodule "test_util/wpt"]
-	path = test_util/wpt
-	url = https://github.com/web-platform-tests/wpt.git
-	shallow = true
 [submodule "test_util/std"]
 	path = test_util/std
 	url = https://github.com/denoland/deno_std
 	shallow = true
+[submodule "test_util/wpt"]
+	path = test_util/wpt
+	url = https://github.com/web-platform-tests/wpt.git

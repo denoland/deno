@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         deno-version: [v1.x, canary]
-        os: [macOS-latest, ubuntu-latest-xl, windows-2019]
+        os: [ubuntu-latest-xl]
 
     steps:
       - name: Clone repository
@@ -46,7 +46,12 @@ jobs:
 
       - name: Switch WPT submodule to epochs/daily
         working-directory: test_util/wpt/
-        run: git reset origin/epochs/daily --hard
+        shell: bash
+        run: |
+          git remote set-branches origin '*'
+          git fetch origin
+          git checkout origin/epochs/daily
+          git checkout -b epochs/daily
 
       - name: Configure hosts file for WPT (unix)
         if: runner.os != 'Windows'
@@ -62,8 +67,11 @@ jobs:
         shell: bash
         run: |
           deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts setup
-          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --binary=(which deno) --quiet --release --json=wpt.json --wptreport=wptreport.json || true
+          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --binary=$(which deno) --quiet --release --json=wpt.json --wptreport=wptreport.json || true
 
       - name: Upload wpt results to wpt.fyi
+        env:
+          WPT_FYI_STAGING_USER: ${{ secrets.WPT_FYI_STAGING_USER }}
+          WPT_FYI_STAGING_PW: ${{ secrets.WPT_FYI_STAGING_PW }}
         run: |
           deno run -A ./tools/upload_wptfyi.js wptreport.json --from-raw-file
