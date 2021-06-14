@@ -48,7 +48,7 @@ jobs:
         working-directory: test_util/wpt/
         shell: bash
         run: |
-          git fetch origin epochs/daily
+          git fetch origin refs/heads/epochs/daily:refs/remotes/origin/epochs/daily
           git checkout --track origin/epochs/daily
 
       - name: Configure hosts file for WPT (unix)
