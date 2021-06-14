@@ -77,56 +77,6 @@
     }
   }
 
-  /**
-   * @param {(...args: any[]) => any} fn
-   * @param {boolean} enforcePromise
-   * @returns {(...args: any[]) => any}
-   */
-  function reflectApply(fn, enforcePromise) {
-    if (typeof fn !== "function") {
-      throw new TypeError("The property must be a function.");
-    }
-    return function (...args) {
-      if (enforcePromise) {
-        try {
-          return resolvePromiseWith(Reflect.apply(fn, this, args));
-        } catch (err) {
-          return Promise.reject(err);
-        }
-      }
-      return Reflect.apply(fn, this, args);
-    };
-  }
-
-  /**
-   * @template I
-   * @template O
-   * @param {Transformer<I, O>} transformer
-   * @returns {Transformer<I, O>}
-   */
-  function convertTransformer(transformer) {
-    const transformerDict = Object.create(null);
-    if (transformer === null) {
-      return transformerDict;
-    }
-    if ("flush" in transformer) {
-      transformerDict.flush = reflectApply(transformer.flush, true);
-    }
-    if ("readableType" in transformer) {
-      transformerDict.readableType = transformer.readableType;
-    }
-    if ("start" in transformer) {
-      transformerDict.start = reflectApply(transformer.start, false);
-    }
-    if ("transform" in transformer) {
-      transformerDict.transform = reflectApply(transformer.transform, true);
-    }
-    if ("writableType" in transformer) {
-      transformerDict.writableType = transformer.writableType;
-    }
-    return transformerDict;
-  }
-
   const originalPromise = Promise;
   const originalPromiseThen = Promise.prototype.then;
 
@@ -1926,13 +1876,33 @@
     };
     /** @type {(controller: TransformStreamDefaultController<O>) => Promise<void>} */
     let flushAlgorithm = () => resolvePromiseWith(undefined);
-    if ("transform" in transformerDict) {
+    if (transformerDict.transform !== undefined) {
       transformAlgorithm = (chunk, controller) =>
-        transformerDict.transform.call(transformer, chunk, controller);
+        webidl.invokeCallbackFunction(
+          transformerDict.transform,
+          [chunk, controller],
+          transformer,
+          webidl.converters["Promise<undefined>"],
+          {
+            prefix:
+              "Failed to call 'transformAlgorithm' on 'TransformStreamDefaultController'",
+            returnsPromise: true,
+          },
+        );
     }
-    if ("flush" in transformerDict) {
+    if (transformerDict.flush !== undefined) {
       flushAlgorithm = (controller) =>
-        transformerDict.flush.call(transformer, controller);
+        webidl.invokeCallbackFunction(
+          transformerDict.flush,
+          [controller],
+          transformer,
+          webidl.converters["Promise<undefined>"],
+          {
+            prefix:
+              "Failed to call 'flushAlgorithm' on 'TransformStreamDefaultController'",
+            returnsPromise: true,
+          },
+        );
     }
     setUpTransformStreamDefaultController(
       stream,
@@ -3289,6 +3259,8 @@
     }
   }
 
+  webidl.configurePrototype(ReadableStream);
+
   function errorReadableStream(stream, e) {
     readableStreamDefaultControllerError(stream[_controller], e);
   }
@@ -3610,16 +3582,42 @@
      * @param {QueuingStrategy<O>} readableStrategy
      */
     constructor(
-      transformer = null,
+      transformer = undefined,
       writableStrategy = {},
       readableStrategy = {},
     ) {
-      const transformerDict = convertTransformer(transformer);
-      if (transformerDict.readableType) {
-        throw new RangeError("readableType transformers not supported.");
+      const prefix = "Failed to construct 'TransformStream'";
+      if (transformer !== undefined) {
+        transformer = webidl.converters.object(transformer, {
+          prefix,
+          context: "Argument 1",
+        });
       }
-      if (transformerDict.writableType) {
-        throw new RangeError("writableType transformers not supported.");
+      writableStrategy = webidl.converters.QueuingStrategy(writableStrategy, {
+        prefix,
+        context: "Argument 2",
+      });
+      readableStrategy = webidl.converters.QueuingStrategy(readableStrategy, {
+        prefix,
+        context: "Argument 2",
+      });
+      this[webidl.brand] = webidl.brand;
+      if (transformer === undefined) {
+        transformer = null;
+      }
+      const transformerDict = webidl.converters.Transformer(transformer, {
+        prefix,
+        context: "transformer",
+      });
+      if (transformerDict.readableType !== undefined) {
+        throw new RangeError(
+          `${prefix}: readableType transformers not supported.`,
+        );
+      }
+      if (transformerDict.writableType !== undefined) {
+        throw new RangeError(
+          `${prefix}: writableType transformers not supported.`,
+        );
       }
       const readableHighWaterMark = extractHighWaterMark(readableStrategy, 0);
       const readableSizeAlgorithm = extractSizeAlgorithm(readableStrategy);
@@ -3640,9 +3638,18 @@
         transformer,
         transformerDict,
       );
-      if ("start" in transformerDict) {
+      if (transformerDict.start) {
         startPromise.resolve(
-          transformerDict.start.call(transformer, this[_controller]),
+          webidl.invokeCallbackFunction(
+            transformerDict.start,
+            [this[_controller]],
+            transformer,
+            webidl.converters.any,
+            {
+              prefix:
+                "Failed to call 'start' on 'TransformStreamDefaultController'",
+            },
+          ),
         );
       } else {
         startPromise.resolve(undefined);
@@ -3651,11 +3658,13 @@
 
     /** @returns {ReadableStream<O>} */
     get readable() {
+      webidl.assertBranded(this, TransformStream);
       return this[_readable];
     }
 
     /** @returns {WritableStream<I>} */
     get writable() {
+      webidl.assertBranded(this, TransformStream);
       return this[_writable];
     }
 
@@ -3665,6 +3674,8 @@
       }`;
     }
   }
+
+  webidl.configurePrototype(TransformStream);
 
   /** @template O */
   class TransformStreamDefaultController {
@@ -3773,6 +3784,7 @@
 
     /** @returns {boolean} */
     get locked() {
+      webidl.assertBranded(this, WritableStream);
       return isWritableStreamLocked(this);
     }
 
@@ -3781,6 +3793,10 @@
      * @returns {Promise<void>}
      */
     abort(reason) {
+      webidl.assertBranded(this, WritableStream);
+      if (reason !== undefined) {
+        reason = webidl.converters.any(reason);
+      }
       if (isWritableStreamLocked(this)) {
         return Promise.reject(
           new TypeError(
@@ -3793,6 +3809,7 @@
 
     /** @returns {Promise<void>} */
     close() {
+      webidl.assertBranded(this, WritableStream);
       if (isWritableStreamLocked(this)) {
         return Promise.reject(
           new TypeError(
@@ -3810,6 +3827,7 @@
 
     /** @returns {WritableStreamDefaultWriter<W>} */
     getWriter() {
+      webidl.assertBranded(this, WritableStream);
       return acquireWritableStreamDefaultWriter(this);
     }
 
@@ -3817,6 +3835,8 @@
       return `${this.constructor.name} ${inspect({ locked: this.locked })}`;
     }
   }
+
+  webidl.configurePrototype(WritableStream);
 
   /** @template W */
   class WritableStreamDefaultWriter {
@@ -4025,8 +4045,29 @@
         converter: webidl.converters.Function,
       },
     ]);
-
-  globalThis.webidl = webidl;
+  webidl.converters.Transformer = webidl
+    .createDictionaryConverter("Transformer", [
+      {
+        key: "start",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "transform",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "flush",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "readableType",
+        converter: webidl.converters.any,
+      },
+      {
+        key: "writableType",
+        converter: webidl.converters.any,
+      },
+    ]);
 
   webidl.converters.ReadableStreamReaderMode = webidl
     .createEnumConverter("ReadableStreamReaderMode", ["byob"]);
