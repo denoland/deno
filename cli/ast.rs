@@ -509,6 +509,38 @@ impl Fold for DownlevelImportsFolder {
           }));
         }
 
+        let initializer = Box::new(Expr::Await(AwaitExpr {
+          span: DUMMY_SP,
+          arg: Box::new(Expr::Call(CallExpr {
+            span: DUMMY_SP,
+            callee: ExprOrSuper::Expr(Box::new(Expr::Ident(Ident {
+              span: DUMMY_SP,
+              sym: "import".into(),
+              optional: false,
+            }))),
+            args: vec![ExprOrSpread {
+              spread: None,
+              expr: Box::new(Expr::Lit(Lit::Str(Str {
+                span: DUMMY_SP,
+                has_escape: false,
+                kind: StrKind::Normal {
+                  contains_quote: false,
+                },
+                value: import_decl.src.value.clone(),
+              })))
+            }],
+            type_args: None,
+          }))
+        }));
+
+        if import_decl.specifiers.is_empty() {
+          // `import "module.ts"` -> `await import("module.ts");`
+          return ModuleItem::Stmt(Stmt::Expr(ExprStmt {
+            span: DUMMY_SP,
+            expr: initializer,
+          }));
+        }
+
         ModuleItem::Stmt(Stmt::Decl(Decl::Var(VarDecl {
           span: DUMMY_SP,
           kind: VarDeclKind::Const,
@@ -567,29 +599,7 @@ impl Fold for DownlevelImportsFolder {
                   type_ann: None,
                 }),
               },
-              init: Some(Box::new(Expr::Await(AwaitExpr {
-                span: DUMMY_SP,
-                arg: Box::new(Expr::Call(CallExpr {
-                  span: DUMMY_SP,
-                  callee: ExprOrSuper::Expr(Box::new(Expr::Ident(Ident {
-                    span: DUMMY_SP,
-                    sym: "import".into(),
-                    optional: false,
-                  }))),
-                  args: vec![ExprOrSpread {
-                    spread: None,
-                    expr: Box::new(Expr::Lit(Lit::Str(Str {
-                      span: DUMMY_SP,
-                      has_escape: false,
-                      kind: StrKind::Normal {
-                        contains_quote: false,
-                      },
-                      value: import_decl.src.value.clone(),
-                    })))
-                  }],
-                  type_args: None,
-                }))
-              })))
+              init: Some(initializer.clone()),
             }
           }).collect(),
         })))
