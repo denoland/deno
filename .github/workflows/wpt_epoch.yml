@@ -47,9 +47,7 @@ jobs:
       - name: Switch WPT submodule to epochs/daily
         working-directory: test_util/wpt/
         shell: bash
-        run: |
-          git fetch --all
-          git checkout --track epochs/daily
+        run: git pull origin epochs/daily
 
       - name: Configure hosts file for WPT (unix)
         if: runner.os != 'Windows'
