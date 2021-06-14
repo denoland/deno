@@ -109,7 +109,10 @@
 
   const READ_PER_ITER = 32 * 1024;
 
-  async function readAll(r, options) {
+  async function readAll(r) {
+    return readAllInner(r);
+  }
+  async function readAllInner(r, options) {
     const buffers = [];
     const signal = options?.signal ?? null;
     while (!signal?.aborted) {
@@ -180,6 +183,7 @@
     write,
     writeSync,
     readAll,
+    readAllInner,
     readAllSync,
   };
 })(this);
