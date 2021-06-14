@@ -80,5 +80,10 @@ declare namespace globalThis {
         [globalThis.__bootstrap.file._byteSequence]: Uint8Array;
       };
     };
+
+    declare var streams: {
+      ReadableStream: typeof ReadableStream;
+      isReadableStreamDisturbed(stream: ReadableStream): boolean;
+    };
   }
 }
