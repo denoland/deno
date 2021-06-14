@@ -29,3 +29,7 @@ cli/tests/.test_coverage/
 # Flamegraphs
 /flamebench*.svg
 /flamegraph*.svg
+
+# WPT generated cert files
+/tools/wpt/certs/index.txt*
+/tools/wpt/certs/serial*
