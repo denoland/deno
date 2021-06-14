@@ -456,11 +456,11 @@ unitTest(
   { perms: { net: true } },
   // Issue: https://github.com/denoland/deno/issues/10930
   async function httpServerStreamingResponse() {
-    // This test writes enqueues a single chunk for readable
+    // This test enqueues a single chunk for readable
     // stream and waits for client to read that chunk and signal
-    // it before enqueue subsequent chunk. Issue linked above
+    // it before enqueueing subsequent chunk. Issue linked above
     // presented a situation where enqueued chunks were not
-    // written to the HTTP connection until the next chunk was written.
+    // written to the HTTP connection until the next chunk was enqueued.
 
     let counter = 0;
 
