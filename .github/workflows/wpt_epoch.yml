@@ -46,6 +46,7 @@ jobs:
 
       - name: Switch WPT submodule to epochs/daily
         working-directory: test_util/wpt/
+        shell: bash
         run: |
           COMMIT=$(./wpt rev-list --epoch 1d)
           git fetch origin $COMMIT
