@@ -1,12 +1,15 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
+/// <reference path="../webidl/internal.d.ts" />
 /// <reference path="./06_streams_types.d.ts" />
-/// <reference path="./lib.deno_fetch.d.ts" />
+/// <reference path="./lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 "use strict";
 
 ((window) => {
+  const webidl = window.__bootstrap.webidl;
+
   class AssertionError extends Error {
     constructor(msg) {
       super(msg);
@@ -122,69 +125,6 @@
       transformerDict.writableType = transformer.writableType;
     }
     return transformerDict;
-  }
-
-  /**
-   * @template W
-   * @param {UnderlyingSink<W>} underlyingSink
-   * @returns {UnderlyingSink<W>}
-   */
-  function convertUnderlyingSink(underlyingSink) {
-    const underlyingSinkDict = Object.create(null);
-    if (underlyingSink === null) {
-      return underlyingSinkDict;
-    }
-    if ("abort" in underlyingSink) {
-      underlyingSinkDict.abort = reflectApply(underlyingSink.abort, true);
-    }
-    if ("close" in underlyingSink) {
-      underlyingSinkDict.close = reflectApply(underlyingSink.close, true);
-    }
-    if ("start" in underlyingSink) {
-      underlyingSinkDict.start = reflectApply(underlyingSink.start, false);
-    }
-    if (underlyingSink.type) {
-      underlyingSinkDict.type = underlyingSink.type;
-    }
-    if ("write" in underlyingSink) {
-      underlyingSinkDict.write = reflectApply(underlyingSink.write, true);
-    }
-    return underlyingSinkDict;
-  }
-
-  /**
-   * @template R
-   * @param {UnderlyingSource<R>} underlyingSource
-   * @returns {UnderlyingSource<R>}
-   */
-  function convertUnderlyingSource(underlyingSource) {
-    const underlyingSourceDict = Object.create(null);
-    if (underlyingSource === null) {
-      throw new TypeError("Underlying source cannot be null");
-    }
-    if (underlyingSource === undefined) {
-      return underlyingSourceDict;
-    }
-    if ("cancel" in underlyingSource) {
-      underlyingSourceDict.cancel = reflectApply(underlyingSource.cancel, true);
-    }
-    if ("pull" in underlyingSource) {
-      underlyingSourceDict.pull = reflectApply(underlyingSource.pull, true);
-    }
-    if ("start" in underlyingSource) {
-      underlyingSourceDict.start = reflectApply(underlyingSource.start, false);
-    }
-    if (underlyingSource.type !== undefined) {
-      if (underlyingSourceDict.type === null) {
-        throw new TypeError("type cannot be null");
-      }
-      const type = String(underlyingSource.type);
-      if (type !== "bytes") {
-        throw new TypeError("invalid underlying source type");
-      }
-      underlyingSourceDict.type = type;
-    }
-    return underlyingSourceDict;
   }
 
   const originalPromise = Promise;
@@ -385,7 +325,7 @@
   ) {
     assert(isNonNegativeNumber(highWaterMark));
     /** @type {ReadableStream} */
-    const stream = Object.create(ReadableStream.prototype);
+    const stream = webidl.createBranded(ReadableStream);
     initializeReadableStream(stream);
     const controller = Object.create(ReadableStreamDefaultController.prototype);
     setUpReadableStreamDefaultController(
@@ -419,7 +359,7 @@
     sizeAlgorithm,
   ) {
     assert(isNonNegativeNumber(highWaterMark));
-    const stream = Object.create(WritableStream.prototype);
+    const stream = webidl.createBranded(WritableStream);
     initializeWritableStream(stream);
     const controller = Object.create(WritableStreamDefaultController.prototype);
     setUpWritableStreamDefaultController(
@@ -1757,17 +1697,46 @@
     let pullAlgorithm = () => resolvePromiseWith(undefined);
     /** @type {(reason: any) => Promise<void>} */
     let cancelAlgorithm = (_reason) => resolvePromiseWith(undefined);
-    if ("start" in underlyingSourceDict) {
+    if (underlyingSourceDict.start !== undefined) {
       startAlgorithm = () =>
-        underlyingSourceDict.start.call(underlyingSource, controller);
+        webidl.invokeCallbackFunction(
+          underlyingSourceDict.start,
+          [controller],
+          underlyingSource,
+          webidl.converters.any,
+          {
+            prefix:
+              "Failed to call 'startAlgorithm' on 'ReadableByteStreamController'",
+          },
+        );
     }
-    if ("pull" in underlyingSourceDict) {
+    if (underlyingSourceDict.pull !== undefined) {
       pullAlgorithm = () =>
-        underlyingSourceDict.pull.call(underlyingSource, controller);
+        webidl.invokeCallbackFunction(
+          underlyingSourceDict.pull,
+          [controller],
+          underlyingSource,
+          webidl.converters["Promise<undefined>"],
+          {
+            prefix:
+              "Failed to call 'pullAlgorithm' on 'ReadableByteStreamController'",
+            returnsPromise: true,
+          },
+        );
     }
-    if ("cancel" in underlyingSourceDict) {
+    if (underlyingSourceDict.cancel !== undefined) {
       cancelAlgorithm = (reason) =>
-        underlyingSourceDict.cancel.call(underlyingSource, reason);
+        webidl.invokeCallbackFunction(
+          underlyingSourceDict.cancel,
+          [reason],
+          underlyingSource,
+          webidl.converters["Promise<undefined>"],
+          {
+            prefix:
+              "Failed to call 'cancelAlgorithm' on 'ReadableByteStreamController'",
+            returnsPromise: true,
+          },
+        );
     }
     // 3.13.27.6 Let autoAllocateChunkSize be ? GetV(underlyingByteSource, "autoAllocateChunkSize").
     /** @type {undefined} */
@@ -1840,23 +1809,52 @@
     sizeAlgorithm,
   ) {
     const controller = new ReadableStreamDefaultController();
-    /** @type {(controller: ReadableStreamDefaultController<R>) => Promise<void>} */
+    /** @type {() => Promise<void>} */
     let startAlgorithm = () => undefined;
-    /** @type {(controller: ReadableStreamDefaultController<R>) => Promise<void>} */
+    /** @type {() => Promise<void>} */
     let pullAlgorithm = () => resolvePromiseWith(undefined);
     /** @type {(reason?: any) => Promise<void>} */
     let cancelAlgorithm = () => resolvePromiseWith(undefined);
-    if ("start" in underlyingSourceDict) {
+    if (underlyingSourceDict.start !== undefined) {
       startAlgorithm = () =>
-        underlyingSourceDict.start.call(underlyingSource, controller);
+        webidl.invokeCallbackFunction(
+          underlyingSourceDict.start,
+          [controller],
+          underlyingSource,
+          webidl.converters.any,
+          {
+            prefix:
+              "Failed to call 'startAlgorithm' on 'ReadableStreamDefaultController'",
+          },
+        );
     }
-    if ("pull" in underlyingSourceDict) {
+    if (underlyingSourceDict.pull !== undefined) {
       pullAlgorithm = () =>
-        underlyingSourceDict.pull.call(underlyingSource, controller);
+        webidl.invokeCallbackFunction(
+          underlyingSourceDict.pull,
+          [controller],
+          underlyingSource,
+          webidl.converters["Promise<undefined>"],
+          {
+            prefix:
+              "Failed to call 'pullAlgorithm' on 'ReadableStreamDefaultController'",
+            returnsPromise: true,
+          },
+        );
     }
-    if ("cancel" in underlyingSourceDict) {
+    if (underlyingSourceDict.cancel !== undefined) {
       cancelAlgorithm = (reason) =>
-        underlyingSourceDict.cancel.call(underlyingSource, reason);
+        webidl.invokeCallbackFunction(
+          underlyingSourceDict.cancel,
+          [reason],
+          underlyingSource,
+          webidl.converters["Promise<undefined>"],
+          {
+            prefix:
+              "Failed to call 'cancelAlgorithm' on 'ReadableStreamDefaultController'",
+            returnsPromise: true,
+          },
+        );
     }
     setUpReadableStreamDefaultController(
       stream,
@@ -2009,26 +2007,68 @@
     sizeAlgorithm,
   ) {
     const controller = new WritableStreamDefaultController();
+    /** @type {(controller: WritableStreamDefaultController<W>) => any} */
     let startAlgorithm = () => undefined;
-    /** @type {(chunk: W) => Promise<void>} */
+    /** @type {(chunk: W, controller: WritableStreamDefaultController<W>) => Promise<void>} */
     let writeAlgorithm = () => resolvePromiseWith(undefined);
     let closeAlgorithm = () => resolvePromiseWith(undefined);
     /** @type {(reason?: any) => Promise<void>} */
     let abortAlgorithm = () => resolvePromiseWith(undefined);
-    if ("start" in underlyingSinkDict) {
+
+    if (underlyingSinkDict.start !== undefined) {
       startAlgorithm = () =>
-        underlyingSinkDict.start.call(underlyingSink, controller);
+        webidl.invokeCallbackFunction(
+          underlyingSinkDict.start,
+          [controller],
+          underlyingSink,
+          webidl.converters.any,
+          {
+            prefix:
+              "Failed to call 'startAlgorithm' on 'WritableStreamDefaultController'",
+          },
+        );
     }
-    if ("write" in underlyingSinkDict) {
+    if (underlyingSinkDict.write !== undefined) {
       writeAlgorithm = (chunk) =>
-        underlyingSinkDict.write.call(underlyingSink, chunk, controller);
+        webidl.invokeCallbackFunction(
+          underlyingSinkDict.write,
+          [chunk, controller],
+          underlyingSink,
+          webidl.converters["Promise<undefined>"],
+          {
+            prefix:
+              "Failed to call 'writeAlgorithm' on 'WritableStreamDefaultController'",
+            returnsPromise: true,
+          },
+        );
     }
-    if ("close" in underlyingSinkDict) {
-      closeAlgorithm = () => underlyingSinkDict.close.call(underlyingSink);
+    if (underlyingSinkDict.close !== undefined) {
+      closeAlgorithm = () =>
+        webidl.invokeCallbackFunction(
+          underlyingSinkDict.close,
+          [],
+          underlyingSink,
+          webidl.converters["Promise<undefined>"],
+          {
+            prefix:
+              "Failed to call 'closeAlgorithm' on 'WritableStreamDefaultController'",
+            returnsPromise: true,
+          },
+        );
     }
-    if ("abort" in underlyingSinkDict) {
+    if (underlyingSinkDict.abort !== undefined) {
       abortAlgorithm = (reason) =>
-        underlyingSinkDict.abort.call(underlyingSink, reason);
+        webidl.invokeCallbackFunction(
+          underlyingSinkDict.abort,
+          [reason],
+          underlyingSink,
+          webidl.converters["Promise<undefined>"],
+          {
+            prefix:
+              "Failed to call 'abortAlgorithm' on 'WritableStreamDefaultController'",
+            returnsPromise: true,
+          },
+        );
     }
     setUpWritableStreamDefaultController(
       stream,
@@ -3048,13 +3088,31 @@
      * @param {UnderlyingSource<R>=} underlyingSource
      * @param {QueuingStrategy<R>=} strategy
      */
-    constructor(underlyingSource, strategy = {}) {
-      const underlyingSourceDict = convertUnderlyingSource(underlyingSource);
+    constructor(underlyingSource = undefined, strategy = {}) {
+      const prefix = "Failed to construct 'ReadableStream'";
+      if (underlyingSource !== undefined) {
+        underlyingSource = webidl.converters.object(underlyingSource, {
+          prefix,
+          context: "Argument 1",
+        });
+      }
+      strategy = webidl.converters.QueuingStrategy(strategy, {
+        prefix,
+        context: "Argument 2",
+      });
+      this[webidl.brand] = webidl.brand;
+      if (underlyingSource === undefined) {
+        underlyingSource = null;
+      }
+      const underlyingSourceDict = webidl.converters.UnderlyingSource(
+        underlyingSource,
+        { prefix, context: "underlyingSource" },
+      );
       initializeReadableStream(this);
       if (underlyingSourceDict.type === "bytes") {
         if (strategy.size !== undefined) {
           throw new RangeError(
-            `When underlying source is "bytes", strategy.size must be undefined.`,
+            `${prefix}: When underlying source is "bytes", strategy.size must be undefined.`,
           );
         }
         const highWaterMark = extractHighWaterMark(strategy, 0);
@@ -3081,6 +3139,7 @@
 
     /** @returns {boolean} */
     get locked() {
+      webidl.assertBranded(this, ReadableStream);
       return isReadableStreamLocked(this);
     }
 
@@ -3089,6 +3148,10 @@
      * @returns {Promise<void>}
      */
     cancel(reason) {
+      webidl.assertBranded(this, ReadableStream);
+      if (reason !== undefined) {
+        reason = webidl.converters.any(reason);
+      }
       if (isReadableStreamLocked(this)) {
         Promise.reject(new TypeError("Cannot cancel a locked ReadableStream."));
       }
@@ -3109,23 +3172,18 @@
      * @returns {ReadableStreamDefaultReader<R>}
      */
     getReader(options = {}) {
-      if (typeof options !== "object") {
-        throw new TypeError("options must be an object");
-      }
-      if (options === null) {
-        options = {};
-      }
-      /** @type {any} */
+      webidl.assertBranded(this, ReadableStream);
+      const prefix = "Failed to execute 'getReader' on 'ReadableStream'";
+      options = webidl.converters.ReadableStreamGetReaderOptions(options, {
+        prefix,
+        context: "Argument 1",
+      });
       let { mode } = options;
       if (mode === undefined) {
         return acquireReadableStreamDefaultReader(this);
       }
-      mode = String(mode);
-      if (mode !== "byob") {
-        throw new TypeError("Invalid mode.");
-      }
       // 3. Return ? AcquireReadableStreamBYOBReader(this).
-      throw new RangeError(`Unsupported mode "${String(mode)}"`);
+      throw new RangeError(`${prefix}: Unsupported mode '${mode}'`);
     }
 
     /**
@@ -3134,26 +3192,22 @@
      * @param {PipeOptions=} options
      * @returns {ReadableStream<T>}
      */
-    pipeThrough(
-      transform,
-      { preventClose, preventAbort, preventCancel, signal } = {},
-    ) {
-      if (!isReadableStream(this)) {
-        throw new TypeError("this must be a ReadableStream");
-      }
-      const { readable } = transform;
-      if (!isReadableStream(readable)) {
-        throw new TypeError("readable must be a ReadableStream");
-      }
-      const { writable } = transform;
-      if (!isWritableStream(writable)) {
-        throw new TypeError("writable must be a WritableStream");
-      }
+    pipeThrough(transform, options = {}) {
+      webidl.assertBranded(this, ReadableStream);
+      const prefix = "Failed to execute 'pipeThrough' on 'ReadableStream'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      transform = webidl.converters.ReadableWritablePair(transform, {
+        prefix,
+        context: "Argument 1",
+      });
+      options = webidl.converters.StreamPipeOptions(options, {
+        prefix,
+        context: "Argument 2",
+      });
+      const { readable, writable } = transform;
+      const { preventClose, preventAbort, preventCancel, signal } = options;
       if (isReadableStreamLocked(this)) {
         throw new TypeError("ReadableStream is already locked.");
-      }
-      if (signal !== undefined && !(signal instanceof AbortSignal)) {
-        throw new TypeError("signal must be an AbortSignal");
       }
       if (isWritableStreamLocked(writable)) {
         throw new TypeError("Target WritableStream is already locked.");
@@ -3161,9 +3215,9 @@
       const promise = readableStreamPipeTo(
         this,
         writable,
-        Boolean(preventClose),
-        Boolean(preventAbort),
-        Boolean(preventCancel),
+        preventClose,
+        preventAbort,
+        preventCancel,
         signal,
       );
       setPromiseIsHandledToTrue(promise);
@@ -3177,13 +3231,20 @@
      */
     pipeTo(
       destination,
-      {
-        preventClose = false,
-        preventAbort = false,
-        preventCancel = false,
-        signal,
-      } = {},
+      options = {},
     ) {
+      webidl.assertBranded(this, ReadableStream);
+      const prefix = "Failed to execute 'pipeTo' on 'ReadableStream'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      destination = webidl.converters.WritableStream(destination, {
+        prefix,
+        context: "Argument 1",
+      });
+      options = webidl.converters.StreamPipeOptions(options, {
+        prefix,
+        context: "Argument 2",
+      });
+      const { preventClose, preventAbort, preventCancel, signal } = options;
       if (isReadableStreamLocked(this)) {
         return Promise.reject(
           new TypeError("ReadableStream is already locked."),
@@ -3206,6 +3267,7 @@
 
     /** @returns {[ReadableStream<R>, ReadableStream<R>]} */
     tee() {
+      webidl.assertBranded(this, ReadableStream);
       return readableStreamTee(this, false);
     }
 
@@ -3672,11 +3734,29 @@
      * @param {UnderlyingSink<W>=} underlyingSink
      * @param {QueuingStrategy<W>=} strategy
      */
-    constructor(underlyingSink = null, strategy = {}) {
-      const underlyingSinkDict = convertUnderlyingSink(underlyingSink);
+    constructor(underlyingSink = undefined, strategy = {}) {
+      const prefix = "Failed to construct 'WritableStream'";
+      if (underlyingSink !== undefined) {
+        underlyingSink = webidl.converters.object(underlyingSink, {
+          prefix,
+          context: "Argument 1",
+        });
+      }
+      strategy = webidl.converters.QueuingStrategy(strategy, {
+        prefix,
+        context: "Argument 2",
+      });
+      this[webidl.brand] = webidl.brand;
+      if (underlyingSink === undefined) {
+        underlyingSink = null;
+      }
+      const underlyingSinkDict = webidl.converters.UnderlyingSink(
+        underlyingSink,
+        { prefix, context: "underlyingSink" },
+      );
       if (underlyingSinkDict.type != null) {
         throw new RangeError(
-          'WritableStream does not support "type" in the underlying sink.',
+          `${prefix}: WritableStream does not support 'type' in the underlying sink.`,
         );
       }
       initializeWritableStream(this);
@@ -3873,6 +3953,121 @@
       resetQueue(this);
     }
   }
+
+  webidl.converters.ReadableStream = webidl
+    .createInterfaceConverter("ReadableStream", ReadableStream);
+  webidl.converters.WritableStream = webidl
+    .createInterfaceConverter("WritableStream", WritableStream);
+
+  webidl.converters.ReadableStreamType = webidl.createEnumConverter(
+    "ReadableStreamType",
+    ["bytes"],
+  );
+
+  webidl.converters.UnderlyingSource = webidl
+    .createDictionaryConverter("UnderlyingSource", [
+      {
+        key: "start",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "pull",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "cancel",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "type",
+        converter: webidl.converters.ReadableStreamType,
+      },
+      {
+        key: "autoAllocateChunkSize",
+        converter: (V, opts) =>
+          webidl.converters["unsigned long long"](V, {
+            ...opts,
+            enforceRange: true,
+          }),
+      },
+    ]);
+  webidl.converters.UnderlyingSink = webidl
+    .createDictionaryConverter("UnderlyingSink", [
+      {
+        key: "start",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "write",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "close",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "abort",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "type",
+        converter: webidl.converters.any,
+      },
+    ]);
+  webidl.converters.QueuingStrategy = webidl
+    .createDictionaryConverter("QueuingStrategy", [
+      {
+        key: "highWaterMark",
+        converter: webidl.converters["unrestricted double"],
+      },
+      {
+        key: "size",
+        converter: webidl.converters.Function,
+      },
+    ]);
+
+  globalThis.webidl = webidl;
+
+  webidl.converters.ReadableStreamReaderMode = webidl
+    .createEnumConverter("ReadableStreamReaderMode", ["byob"]);
+  webidl.converters.ReadableStreamGetReaderOptions = webidl
+    .createDictionaryConverter("ReadableStreamGetReaderOptions", [{
+      key: "mode",
+      converter: webidl.converters.ReadableStreamReaderMode,
+    }]);
+
+  webidl.converters.ReadableWritablePair = webidl
+    .createDictionaryConverter("ReadableWritablePair", [
+      {
+        key: "readable",
+        converter: webidl.converters.ReadableStream,
+        required: true,
+      },
+      {
+        key: "writable",
+        converter: webidl.converters.WritableStream,
+        required: true,
+      },
+    ]);
+  webidl.converters.StreamPipeOptions = webidl
+    .createDictionaryConverter("StreamPipeOptions", [
+      {
+        key: "preventClose",
+        defaultValue: false,
+        converter: webidl.converters.boolean,
+      },
+      {
+        key: "preventAbort",
+        defaultValue: false,
+        converter: webidl.converters.boolean,
+      },
+      {
+        key: "preventCancel",
+        defaultValue: false,
+        converter: webidl.converters.boolean,
+      },
+      { key: "signal", converter: webidl.converters.AbortSignal },
+    ]);
 
   window.__bootstrap.streams = {
     // Non-Public

@@ -256,7 +256,6 @@
   },
   "streams": {
     "idlharness.any.html": [
-      "ReadableStream interface object length",
       "ReadableStream interface: attribute locked",
       "ReadableStream interface: operation cancel(optional any)",
       "ReadableStream interface: operation getReader(optional ReadableStreamGetReaderOptions)",
@@ -375,60 +374,24 @@
         "a signal argument '-1' should cause pipeTo() to reject",
         "a signal argument '[object AbortSignal]' should cause pipeTo() to reject"
       ],
-      "close-propagation-backward.any.html": [
-        "Closing must be propagated backward: starts closed; preventCancel = null (falsy); fulfilled cancel promise",
-        "Closing must be propagated backward: starts closed; preventCancel = 0 (falsy); fulfilled cancel promise",
-        "Closing must be propagated backward: starts closed; preventCancel = -0 (falsy); fulfilled cancel promise",
-        "Closing must be propagated backward: starts closed; preventCancel = NaN (falsy); fulfilled cancel promise",
-        "Closing must be propagated backward: starts closed; preventCancel =  (falsy); fulfilled cancel promise",
-        "Closing must be propagated backward: starts closed; preventCancel = a (truthy)",
-        "Closing must be propagated backward: starts closed; preventCancel = 1 (truthy)",
-        "Closing must be propagated backward: starts closed; preventCancel = Symbol() (truthy)",
-        "Closing must be propagated backward: starts closed; preventCancel = [object Object] (truthy)"
-      ],
-      "close-propagation-forward.any.html": [
-        "Closing must be propagated forward: starts closed; preventClose = null (falsy); fulfilled close promise",
-        "Closing must be propagated forward: starts closed; preventClose = 0 (falsy); fulfilled close promise",
-        "Closing must be propagated forward: starts closed; preventClose = -0 (falsy); fulfilled close promise",
-        "Closing must be propagated forward: starts closed; preventClose = NaN (falsy); fulfilled close promise",
-        "Closing must be propagated forward: starts closed; preventClose =  (falsy); fulfilled close promise",
-        "Closing must be propagated forward: starts closed; preventClose = a (truthy)",
-        "Closing must be propagated forward: starts closed; preventClose = 1 (truthy)",
-        "Closing must be propagated forward: starts closed; preventClose = Symbol() (truthy)",
-        "Closing must be propagated forward: starts closed; preventClose = [object Object] (truthy)"
-      ],
-      "error-propagation-backward.any.html": [
-        "Errors must be propagated backward: becomes errored before piping due to write; preventCancel = null (falsy); fulfilled cancel promise",
-        "Errors must be propagated backward: becomes errored before piping due to write; preventCancel = 0 (falsy); fulfilled cancel promise",
-        "Errors must be propagated backward: becomes errored before piping due to write; preventCancel = -0 (falsy); fulfilled cancel promise",
-        "Errors must be propagated backward: becomes errored before piping due to write; preventCancel = NaN (falsy); fulfilled cancel promise",
-        "Errors must be propagated backward: becomes errored before piping due to write; preventCancel =  (falsy); fulfilled cancel promise",
-        "Errors must be propagated backward: becomes errored before piping due to write; preventCancel = a (truthy)",
-        "Errors must be propagated backward: becomes errored before piping due to write; preventCancel = 1 (truthy)",
-        "Errors must be propagated backward: becomes errored before piping due to write; preventCancel = Symbol() (truthy)",
-        "Errors must be propagated backward: becomes errored before piping due to write; preventCancel = [object Object] (truthy)"
-      ],
-      "error-propagation-forward.any.html": [
-        "Errors must be propagated forward: starts errored; preventAbort = null (falsy); fulfilled abort promise",
-        "Errors must be propagated forward: starts errored; preventAbort = 0 (falsy); fulfilled abort promise",
-        "Errors must be propagated forward: starts errored; preventAbort = -0 (falsy); fulfilled abort promise",
-        "Errors must be propagated forward: starts errored; preventAbort = NaN (falsy); fulfilled abort promise",
-        "Errors must be propagated forward: starts errored; preventAbort =  (falsy); fulfilled abort promise",
-        "Errors must be propagated forward: starts errored; preventAbort = a (truthy)",
-        "Errors must be propagated forward: starts errored; preventAbort = 1 (truthy)",
-        "Errors must be propagated forward: starts errored; preventAbort = Symbol() (truthy)",
-        "Errors must be propagated forward: starts errored; preventAbort = [object Object] (truthy)"
-      ],
+      "close-propagation-backward.any.html": true,
+      "close-propagation-forward.any.html": true,
+      "error-propagation-backward.any.html": true,
+      "error-propagation-forward.any.html": true,
       "flow-control.any.html": true,
       "general.any.html": [
         "pipeTo must check the brand of its ReadableStream this value",
-        "pipeTo must check the brand of its WritableStream argument",
-        "pipeTo() promise should resolve if null is passed"
+        "pipeTo must check the brand of its WritableStream argument"
       ],
       "multiple-propagation.any.html": true,
       "pipe-through.any.html": true,
       "then-interception.any.html": true,
-      "throwing-options.any.html": false,
+      "throwing-options.any.html": [
+        "pipeTo should stop after getting preventAbort throws",
+        "pipeTo should stop after getting preventCancel throws",
+        "pipeTo should stop after getting preventClose throws",
+        "pipeTo should stop after getting signal throws"
+      ],
       "transform-streams.any.html": true
     },
     "queuing-strategies.any.html": true,
@@ -515,7 +478,8 @@
         "ReadableStream with byte source: respondWithNewView() with a transferred non-zero-length view (in the readable state)",
         "ReadableStream with byte source: respondWithNewView() with a transferred zero-length view (in the closed state)"
       ],
-      "non-transferable-buffers.any.html": false
+      "non-transferable-buffers.any.html": false,
+      "enqueue-with-detached-buffer.window.html": false
     },
     "readable-streams": {
       "async-iterator.any.html": [
@@ -540,7 +504,7 @@
       "bad-strategies.any.html": true,
       "bad-underlying-sources.any.html": true,
       "cancel.any.html": false,
-      "constructor.any.html": false,
+      "constructor.any.html": true,
       "count-queuing-strategy-integration.any.html": true,
       "default-reader.any.html": true,
       "floating-point-total-queue-size.any.html": true,
@@ -573,15 +537,11 @@
     },
     "writable-streams": {
       "aborting.any.html": false,
-      "bad-strategies.any.html": [
-        "reject any non-function value for strategy.size",
-        "Writable stream: invalid size beats invalid highWaterMark"
-      ],
+      "bad-strategies.any.html": true,
       "bad-underlying-sinks.any.html": true,
       "byte-length-queuing-strategy.any.html": true,
       "close.any.html": false,
       "constructor.any.html": [
-        "underlyingSink argument should be converted after queuingStrategy argument",
         "WritableStreamDefaultController constructor should throw",
         "WritableStreamDefaultController constructor should throw when passed an initialised WritableStream",
         "WritableStreamDefaultWriter should throw unless passed a WritableStream"
@@ -594,6 +554,10 @@
       "reentrant-strategy.any.html": true,
       "start.any.html": true,
       "write.any.html": true
+    },
+    "queuing-strategies-size-function-per-global.window.html": false,
+    "transferable": {
+      "deserialize-error.window.html": false
     }
   },
   "user-timing": {
