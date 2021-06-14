@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         deno-version: [v1.x, canary]
-        os: [macOS-latest, ubuntu-latest-xl, windows-2019]
+        os: [ubuntu-latest-xl]
 
     steps:
       - name: Clone repository
@@ -48,9 +48,8 @@ jobs:
         working-directory: test_util/wpt/
         shell: bash
         run: |
-          COMMIT=$(./wpt rev-list --epoch 1d)
-          git fetch origin $COMMIT
-          git reset $COMMIT --hard
+          git fetch origin epochs/daily
+          git checkout --track origin/epochs/daily
 
       - name: Configure hosts file for WPT (unix)
         if: runner.os != 'Windows'
