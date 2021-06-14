@@ -48,6 +48,7 @@ jobs:
         working-directory: test_util/wpt/
         shell: bash
         run: |
+          git remote set-branches origin '*'
           git fetch origin
           git checkout origin/epochs/daily
           git checkout -b epochs/daily
