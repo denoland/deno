@@ -3148,7 +3148,7 @@
         prefix,
         context: "Argument 1",
       });
-      let { mode } = options;
+      const { mode } = options;
       if (mode === undefined) {
         return acquireReadableStreamDefaultReader(this);
       }

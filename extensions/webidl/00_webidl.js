@@ -781,7 +781,7 @@
     opts,
   ) {
     try {
-      let rv = Reflect.apply(callable, thisArg, args);
+      const rv = Reflect.apply(callable, thisArg, args);
       return returnValueConverter(rv, {
         prefix: opts.prefix,
         context: "return value",
