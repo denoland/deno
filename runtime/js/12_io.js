@@ -110,7 +110,7 @@
   const READ_PER_ITER = 32 * 1024;
 
   async function readAll(r) {
-    return readAllInner(r);
+    return await readAllInner(r);
   }
   async function readAllInner(r, options) {
     const buffers = [];
