@@ -249,6 +249,24 @@ declare namespace globalThis {
       ): (v: any, opts: ValueConverterOpts) => T[];
 
       /**
+       * Create a converter that converts a Promise of the inner type.
+       */
+      declare function createPromiseConverter<T>(
+        converter: (v: any, opts: ValueConverterOpts) => T,
+      ): (v: any, opts: ValueConverterOpts) => Promise<T>;
+
+      /**
+       * Invoke a callback function.
+       */
+      declare function invokeCallbackFunction<T>(
+        callable: (...args: any) => any,
+        args: any[],
+        thisArg: any,
+        returnValueConverter: (v: any, opts: ValueConverterOpts) => T,
+        opts: ConverterOpts & { returnsPromise?: boolean },
+      ): T;
+
+      /**
        * Throw an illegal constructor error.
        */
       declare function illegalConstructor(): never;
