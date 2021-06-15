@@ -365,17 +365,15 @@ impl Config {
     value
   }
 
-  #[allow(clippy::redundant_closure_call)]
   pub fn update_capabilities(
     &mut self,
     capabilities: &lsp::ClientCapabilities,
   ) {
     if let Some(experimental) = &capabilities.experimental {
-      let get_bool =
-        |k: &str| experimental.get(k).and_then(|it| it.as_bool()) == Some(true);
-
-      self.client_capabilities.status_notification =
-        get_bool("statusNotification");
+      self.client_capabilities.status_notification = experimental
+        .get("statusNotification")
+        .and_then(|it| it.as_bool())
+        == Some(true)
     }
 
     if let Some(workspace) = &capabilities.workspace {
