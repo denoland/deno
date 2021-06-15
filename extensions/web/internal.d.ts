@@ -70,5 +70,20 @@ declare namespace globalThis {
       atob(data: string): string;
       btoa(data: string): string;
     };
+
+    declare var file: {
+      Blob: typeof Blob & {
+        [globalThis.__bootstrap.file._byteSequence]: Uint8Array;
+      };
+      readonly _byteSequence: unique symbol;
+      File: typeof File & {
+        [globalThis.__bootstrap.file._byteSequence]: Uint8Array;
+      };
+    };
+
+    declare var streams: {
+      ReadableStream: typeof ReadableStream;
+      isReadableStreamDisturbed(stream: ReadableStream): boolean;
+    };
   }
 }

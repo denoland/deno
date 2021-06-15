@@ -7,7 +7,7 @@ try {
 }
 
 const proc = Deno.run({
-  cmd: ["cat", "089_run_allow_list.ts"],
+  cmd: ["curl", "--help"],
   stdout: "null",
 });
 console.log((await proc.status()).success);

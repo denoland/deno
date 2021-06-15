@@ -19,7 +19,7 @@ use deno_core::futures;
 use deno_core::futures::future::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_fetch::reqwest;
-use deno_runtime::deno_file::BlobUrlStore;
+use deno_runtime::deno_web::BlobUrlStore;
 use deno_runtime::permissions::Permissions;
 use log::debug;
 use log::info;
@@ -579,7 +579,7 @@ mod tests {
   use deno_core::error::get_custom_error_class;
   use deno_core::resolve_url;
   use deno_core::resolve_url_or_path;
-  use deno_runtime::deno_file::Blob;
+  use deno_runtime::deno_web::Blob;
   use std::rc::Rc;
   use tempfile::TempDir;
 

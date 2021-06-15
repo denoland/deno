@@ -28,7 +28,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::ZeroCopyBuf;
-use deno_file::BlobUrlStore;
+use deno_web::BlobUrlStore;
 use log::debug;
 use std::cell::RefCell;
 use std::env;
@@ -255,11 +255,7 @@ impl WebWorker {
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
-      deno_web::init(),
-      deno_file::init(
-        options.blob_url_store.clone(),
-        Some(main_module.clone()),
-      ),
+      deno_web::init(options.blob_url_store.clone(), Some(main_module.clone())),
       deno_fetch::init::<Permissions>(
         options.user_agent.clone(),
         options.ca_data.clone(),

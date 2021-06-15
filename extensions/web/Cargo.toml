@@ -18,6 +18,7 @@ base64 = "0.13.0"
 deno_core = { version = "0.89.0", path = "../../core" }
 encoding_rs = "0.8.28"
 serde = "1.0"
+uuid = { version = "0.8.2", features = ["v4"] }
 
 [dev-dependencies]
 futures = "0.3.15"
