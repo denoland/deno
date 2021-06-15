@@ -7,3 +7,30 @@ introduced, which through `localStorage` allows persistent storage, whereas
 To use persistent storage, you need to pass the `--location` flag. The location
 for persistent storage is listed in `deno info`, and additionally passing the
 `--location` will give you the path for the specified origin.
+
+### Example
+
+The following snippet accesses the current domain's local Storage object and
+adds a data item to it using Storage.setItem().
+
+```ts
+localStorage.setItem("myDemo", "Deno App");
+```
+
+The syntax for reading the localStorage item is as follows:
+
+```ts
+const cat = localStorage.getItem("myDemo");
+```
+
+The syntax for removing the localStorage item is as follows:
+
+```ts
+localStorage.removeItem("myDemo");
+```
+
+The syntax for removing all the localStorage items is as follows:
+
+```ts
+localStorage.clear();
+```
