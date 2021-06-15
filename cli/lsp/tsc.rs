@@ -1868,7 +1868,6 @@ struct SourceSnapshotArgs {
 
 /// The language service is dropping a reference to a source file snapshot, and
 /// we can drop our version of that document.
-#[allow(clippy::unnecessary_wraps)]
 fn op_dispose(
   state: &mut State,
   args: SourceSnapshotArgs,
@@ -2091,13 +2090,11 @@ fn op_resolve(
   Ok(resolved)
 }
 
-#[allow(clippy::unnecessary_wraps)]
 fn op_respond(state: &mut State, args: Response) -> Result<bool, AnyError> {
   state.response = Some(args);
   Ok(true)
 }
 
-#[allow(clippy::unnecessary_wraps)]
 fn op_script_names(
   state: &mut State,
   _args: Value,
