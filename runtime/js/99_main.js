@@ -304,8 +304,14 @@ delete Object.prototype.__proto__;
     WritableStreamDefaultWriter: util.nonEnumerable(
       streams.WritableStreamDefaultWriter,
     ),
+    WritableStreamDefaultController: util.nonEnumerable(
+      streams.WritableStreamDefaultController,
+    ),
     ReadableByteStreamController: util.nonEnumerable(
       streams.ReadableByteStreamController,
+    ),
+    ReadableStreamDefaultController: util.nonEnumerable(
+      streams.ReadableStreamDefaultController,
     ),
     TransformStreamDefaultController: util.nonEnumerable(
       streams.TransformStreamDefaultController,

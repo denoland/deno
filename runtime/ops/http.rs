@@ -66,6 +66,7 @@ struct ServiceInner {
 #[derive(Clone, Default)]
 struct Service {
   inner: Rc<RefCell<Option<ServiceInner>>>,
+  waker: Rc<deno_core::futures::task::AtomicWaker>,
 }
 
 impl HyperService<Request<Body>> for Service {
@@ -160,15 +161,16 @@ async fn op_http_request_next(
   let cancel = RcRef::map(conn_resource.clone(), |r| &r.cancel);
 
   poll_fn(|cx| {
+    conn_resource.deno_service.waker.register(cx.waker());
     let connection_closed = match conn_resource.poll(cx) {
       Poll::Pending => false,
       Poll::Ready(Ok(())) => {
-        // close ConnResource
-        state
+        // try to close ConnResource, but don't unwrap as it might
+        // already be closed
+        let _ = state
           .borrow_mut()
           .resource_table
-          .take::<ConnResource>(conn_rid)
-          .unwrap();
+          .take::<ConnResource>(conn_rid);
         true
       }
       Poll::Ready(Err(e)) => {
@@ -188,7 +190,6 @@ async fn op_http_request_next(
         }
       }
     };
-
     if let Some(request_resource) =
       conn_resource.deno_service.inner.borrow_mut().take()
     {
@@ -409,6 +410,9 @@ async fn op_http_response(
   })
   .await?;
 
+  if maybe_response_body_rid.is_none() {
+    conn_resource.deno_service.waker.wake();
+  }
   Ok(maybe_response_body_rid)
 }
 
@@ -430,11 +434,13 @@ async fn op_http_response_close(
     .ok_or_else(bad_resource_id)?;
   drop(resource);
 
-  poll_fn(|cx| match conn_resource.poll(cx) {
+  let r = poll_fn(|cx| match conn_resource.poll(cx) {
     Poll::Ready(x) => Poll::Ready(x),
     Poll::Pending => Poll::Ready(Ok(())),
   })
-  .await
+  .await;
+  conn_resource.deno_service.waker.wake();
+  r
 }
 
 async fn op_http_request_read(
@@ -496,6 +502,9 @@ async fn op_http_response_write(
   let mut send_data_fut = body.send_data(Vec::from(&*buf).into()).boxed_local();
 
   poll_fn(|cx| {
+    let r = send_data_fut.poll_unpin(cx).map_err(AnyError::from);
+
+    // Poll connection so the data is flushed
     if let Poll::Ready(Err(e)) = conn_resource.poll(cx) {
       // close ConnResource
       // close RequestResource associated with connection
@@ -503,7 +512,7 @@ async fn op_http_response_write(
       return Poll::Ready(Err(e));
     }
 
-    send_data_fut.poll_unpin(cx).map_err(AnyError::from)
+    r
   })
   .await?;
 

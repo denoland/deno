@@ -566,6 +566,7 @@
   converters["sequence<double>"] = createSequenceConverter(
     converters["double"],
   );
+  converters["Promise<undefined>"] = createPromiseConverter(() => undefined);
 
   function requiredArguments(length, required, opts = {}) {
     if (length < required) {
@@ -576,11 +577,6 @@
       } required, but only ${length} present.`;
       throw new TypeError(errMsg);
     }
-  }
-
-  function isEmptyObject(V) {
-    for (const _ in V) return false;
-    return true;
   }
 
   function createDictionaryConverter(name, ...dictionaries) {
@@ -642,10 +638,8 @@
 
       const idlDict = { ...defaultValues };
 
-      // NOTE: fast path Null and Undefined and empty objects.
-      if (
-        (V === undefined || V === null || isEmptyObject(V)) && !hasRequiredKey
-      ) {
+      // NOTE: fast path Null and Undefined.
+      if ((V === undefined || V === null) && !hasRequiredKey) {
         return idlDict;
       }
 
@@ -772,6 +766,31 @@
       }
       return result;
     };
+  }
+
+  function createPromiseConverter(converter) {
+    return (V, opts) => Promise.resolve(V).then((V) => converter(V, opts));
+  }
+
+  function invokeCallbackFunction(
+    callable,
+    args,
+    thisArg,
+    returnValueConverter,
+    opts,
+  ) {
+    try {
+      const rv = Reflect.apply(callable, thisArg, args);
+      return returnValueConverter(rv, {
+        prefix: opts.prefix,
+        context: "return value",
+      });
+    } catch (err) {
+      if (opts.returnsPromise === true) {
+        return Promise.reject(err);
+      }
+      throw err;
+    }
   }
 
   const brand = Symbol("[[webidl.brand]]");
@@ -927,6 +946,8 @@
     createNullableConverter,
     createSequenceConverter,
     createRecordConverter,
+    createPromiseConverter,
+    invokeCallbackFunction,
     createInterfaceConverter,
     brand,
     createBranded,

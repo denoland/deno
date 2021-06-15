@@ -46,6 +46,7 @@ pub fn init(
       "03_abort_signal.js",
       "04_global_interfaces.js",
       "05_base64.js",
+      "06_streams.js",
       "08_text_encoding.js",
       "09_file.js",
       "10_filereader.js",

@@ -55,10 +55,6 @@
     return run(str, code(35, 39));
   }
 
-  function dim(str) {
-    return run(str, code(2, 22));
-  }
-
   // https://github.com/chalk/ansi-regex/blob/2b56fb0c7a07108e5b54241e8faec160d393aedb/index.js
   const ANSI_PATTERN = new RegExp(
     [
@@ -87,7 +83,6 @@
     white,
     gray,
     magenta,
-    dim,
     stripColor,
     maybeColor,
   };
