@@ -90,16 +90,17 @@
   /** @typedef {BufferSource | Blob | string} BlobPart */
 
   /**
-     * @param {BlobPart[]} parts
-     * @param {string} endings
-     */
+   * @param {BlobPart[]} parts
+   * @param {string} endings
+   * @returns {{ parts: (Uint8Array|Blob)[], size: number }}
+   */
   function processBlobParts(parts, endings) {
     /** @type {(Uint8Array|Blob)[]} */
-    const bytesArrays = [];
+    const parts = [];
     let size = 0;
     for (const element of parts) {
       if (element instanceof ArrayBuffer) {
-        bytesArrays.push(new Uint8Array(element.slice(0)));
+        parts.push(new Uint8Array(element.slice(0)));
         size += element.byteLength;
       } else if (ArrayBuffer.isView(element)) {
         const buffer = element.buffer.slice(
@@ -107,19 +108,19 @@
           element.byteOffset + element.byteLength,
         );
         size += element.byteLength;
-        bytesArrays.push(new Uint8Array(buffer));
+        parts.push(new Uint8Array(buffer));
       } else if (element instanceof Blob) {
-        bytesArrays.push(element);
+        parts.push(element);
         size += element.size;
       } else if (typeof element === "string") {
         const chunk = core.encode(endings == "native" ? convertLineEndingsToNative(element) : element);
         size += chunk.byteLength;
-        bytesArrays.push(chunk);
+        parts.push(chunk);
       } else {
         throw new TypeError("Unreachable code (invalid element type)");
       }
     }
-    return {bytesArrays, size};
+    return {parts, size};
   }
 
   /**
@@ -162,12 +163,12 @@
 
       this[webidl.brand] = webidl.brand;
 
-      const {bytesArrays, size} = processBlobParts(
+      const {parts, size} = processBlobParts(
         blobParts,
         options.endings,
       )
       /** @type {Uint8Array|Blob} */
-      this.#parts = bytesArrays;
+      this.#parts = parts;
       this[_Size] = size;
       this.#type = normalizeType(options.type);
     }
@@ -190,28 +191,54 @@
      * @param {string} [contentType]
      * @returns {Blob}
      */
-    slice(start = 0, end = this.size, contentType = '') {
+    slice(start, end, contentType) {
       webidl.assertBranded(this, Blob);
       const prefix = "Failed to execute 'slice' on 'Blob'";
-      start = webidl.converters["long long"](start, {
-        clamp: true,
-        context: "Argument 1",
-        prefix,
-      });
-      end = webidl.converters["long long"](end, {
-        clamp: true,
-        context: "Argument 2",
-        prefix,
-      });
-      contentType = webidl.converters["DOMString"](contentType, {
-        context: "Argument 3",
-        prefix,
-      });
+      if (start !== undefined) {
+        start = webidl.converters["long long"](start, {
+          clamp: true,
+          context: "Argument 1",
+          prefix,
+        });
+      }
+      if (end !== undefined) {
+        end = webidl.converters["long long"](end, {
+          clamp: true,
+          context: "Argument 2",
+          prefix,
+        });
+      }
+      if (contentType !== undefined) {
+        contentType = webidl.converters["DOMString"](contentType, {
+          context: "Argument 3",
+          prefix,
+        });
+      }
 
-      const {size} = this;
-
-      let relativeStart = start < 0 ? Math.max(size + start, 0) : Math.min(start, size);
-      let relativeEnd = end < 0 ? Math.max(size + end, 0) : Math.min(end, size);
+      // deno-lint-ignore no-this-alias
+      const O = this;
+      /** @type {number} */
+      let relativeStart;
+      if (start === undefined) {
+        relativeStart = 0;
+      } else {
+        if (start < 0) {
+          relativeStart = Math.max(O.size + start, 0);
+        } else {
+          relativeStart = Math.min(start, O.size);
+        }
+      }
+      /** @type {number} */
+      let relativeEnd;
+      if (end === undefined) {
+        relativeEnd = O.size;
+      } else {
+        if (end < 0) {
+          relativeEnd = Math.max(O.size + end, 0);
+        } else {
+          relativeEnd = Math.min(end, O.size);
+        }
+      }
 
       const span = Math.max(relativeEnd - relativeStart, 0);
       const parts = this.#parts;
