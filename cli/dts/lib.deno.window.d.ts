@@ -67,6 +67,31 @@ declare function confirm(message?: string): boolean;
  */
 declare function prompt(message?: string, defaultValue?: string): string | null;
 
+/** Registers an event listener in the global scope, which will be called
+ * synchronously whenever the event `type` is dispatched.
+ *
+ *     addEventListener('unload', () => { console.log('All finished!'); });
+ *     ...
+ *     dispatchEvent(new Event('unload'));
+ */
+declare function addEventListener(
+  type: string,
+  callback: EventListenerOrEventListenerObject | null,
+  options?: boolean | AddEventListenerOptions | undefined,
+): void;
+
+/** Remove a previously registered event listener from the global scope
+ *
+ *     const lstnr = () => { console.log('hello'); };
+ *     addEventListener('load', lstnr);
+ *     removeEventListener('load', lstnr);
+ */
+declare function removeEventListener(
+  type: string,
+  callback: EventListenerOrEventListenerObject | null,
+  options?: boolean | EventListenerOptions | undefined,
+): void;
+
 // TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
 // The types there must first be split into window, worker and global types.
 /** The location (URL) of the object it is linked to. Changes done on it are
