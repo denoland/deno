@@ -14,7 +14,6 @@
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
-  const { byteLowerCase } = window.__bootstrap.infra;
   const { errorReadableStream } = window.__bootstrap.streams;
   const { InnerBody, extractBody } = window.__bootstrap.fetchBody;
   const {
