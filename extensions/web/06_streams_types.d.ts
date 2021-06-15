@@ -40,6 +40,13 @@ interface VoidFunction {
   (): void;
 }
 
+interface ReadableStreamGenericReader<T> {
+  readonly closed: Promise<void>;
+  cancel(reason?: any): Promise<void>;
+}
+
+interface ReadableStreamDefaultReader extends ReadableStreamGenericReader {}
+
 // ** Ambient Definitions and Interfaces not provided by fetch **
 
 declare function queueMicrotask(callback: VoidFunction): void;
