@@ -11,12 +11,14 @@
 "use strict";
 
 ((window) => {
+  const Deno = window.Deno;
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
 
   // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
   // host os.
   const isWindows = false;
+  const POOL_SIZE = 65536;
 
   /**
    * @param {string} input
@@ -67,22 +69,22 @@
     return result;
   }
 
-  /**
-   * @param  {...Uint8Array} bytesArrays
-   * @returns {Uint8Array}
-   */
-  function concatUint8Arrays(...bytesArrays) {
-    let byteLength = 0;
-    for (const bytes of bytesArrays) {
-      byteLength += bytes.byteLength;
+  /** @param {(Blob | Uint8Array)[]} parts */
+  async function * toIterator (parts) {
+    for (const part of parts) {
+      if (part instanceof Blob) {
+        yield * part.stream();
+      } else if (ArrayBuffer.isView(part)) {
+        let position = part.byteOffset;
+        const end = part.byteOffset + part.byteLength;
+        while (position !== end) {
+          const size = Math.min(end - position, POOL_SIZE);
+          const chunk = part.buffer.slice(position, position + size);
+          position += chunk.byteLength;
+          yield new Uint8Array(chunk);
+        }
+      }
     }
-    const finalBytes = new Uint8Array(byteLength);
-    let current = 0;
-    for (const bytes of bytesArrays) {
-      finalBytes.set(bytes, current);
-      current += bytes.byteLength;
-    }
-    return finalBytes;
   }
 
   /** @typedef {BufferSource | Blob | string} BlobPart */
@@ -90,35 +92,34 @@
   /**
      * @param {BlobPart[]} parts
      * @param {string} endings
-     * @returns {Uint8Array}
      */
   function processBlobParts(parts, endings) {
-    /** @type {Uint8Array[]} */
+    /** @type {(Uint8Array|Blob)[]} */
     const bytesArrays = [];
+    let size = 0;
     for (const element of parts) {
       if (element instanceof ArrayBuffer) {
         bytesArrays.push(new Uint8Array(element.slice(0)));
+        size += element.byteLength;
       } else if (ArrayBuffer.isView(element)) {
         const buffer = element.buffer.slice(
           element.byteOffset,
           element.byteOffset + element.byteLength,
         );
+        size += element.byteLength;
         bytesArrays.push(new Uint8Array(buffer));
       } else if (element instanceof Blob) {
-        bytesArrays.push(
-          new Uint8Array(element[_byteSequence].buffer.slice(0)),
-        );
+        bytesArrays.push(element);
+        size += element.size;
       } else if (typeof element === "string") {
-        let s = element;
-        if (endings == "native") {
-          s = convertLineEndingsToNative(s);
-        }
-        bytesArrays.push(core.encode(s));
+        const chunk = core.encode(endings == "native" ? convertLineEndingsToNative(element) : element);
+        size += chunk.byteLength;
+        bytesArrays.push(chunk);
       } else {
-        throw new TypeError("Unreachable code (invalild element type)");
+        throw new TypeError("Unreachable code (invalid element type)");
       }
     }
-    return concatUint8Arrays(...bytesArrays);
+    return {bytesArrays, size};
   }
 
   /**
@@ -133,8 +134,6 @@
     return normalizedType.toLowerCase();
   }
 
-  const _byteSequence = Symbol("[[ByteSequence]]");
-
   class Blob {
     get [Symbol.toStringTag]() {
       return "Blob";
@@ -143,8 +142,8 @@
     /** @type {string} */
     #type;
 
-    /** @type {Uint8Array} */
-    [_byteSequence];
+    /** @type {(Uint8Array|Blob)[]} */
+    #parts;
 
     /**
      * @param {BlobPart[]} blobParts
@@ -163,18 +162,20 @@
 
       this[webidl.brand] = webidl.brand;
 
-      /** @type {Uint8Array} */
-      this[_byteSequence] = processBlobParts(
+      const {bytesArrays, size} = processBlobParts(
         blobParts,
         options.endings,
-      );
+      )
+      /** @type {Uint8Array|Blob} */
+      this.#parts = bytesArrays;
+      this[_Size] = size;
       this.#type = normalizeType(options.type);
     }
 
     /** @returns {number} */
     get size() {
       webidl.assertBranded(this, Blob);
-      return this[_byteSequence].byteLength;
+      return this[_Size];
     }
 
     /** @returns {string} */
@@ -189,54 +190,60 @@
      * @param {string} [contentType]
      * @returns {Blob}
      */
-    slice(start, end, contentType) {
+    slice(start = 0, end = this.size, contentType = '') {
       webidl.assertBranded(this, Blob);
       const prefix = "Failed to execute 'slice' on 'Blob'";
-      if (start !== undefined) {
-        start = webidl.converters["long long"](start, {
-          clamp: true,
-          context: "Argument 1",
-          prefix,
-        });
-      }
-      if (end !== undefined) {
-        end = webidl.converters["long long"](end, {
-          clamp: true,
-          context: "Argument 2",
-          prefix,
-        });
-      }
-      if (contentType !== undefined) {
-        contentType = webidl.converters["DOMString"](contentType, {
-          context: "Argument 3",
-          prefix,
-        });
+      start = webidl.converters["long long"](start, {
+        clamp: true,
+        context: "Argument 1",
+        prefix,
+      });
+      end = webidl.converters["long long"](end, {
+        clamp: true,
+        context: "Argument 2",
+        prefix,
+      });
+      contentType = webidl.converters["DOMString"](contentType, {
+        context: "Argument 3",
+        prefix,
+      });
+
+      const {size} = this;
+
+      let relativeStart = start < 0 ? Math.max(size + start, 0) : Math.min(start, size);
+      let relativeEnd = end < 0 ? Math.max(size + end, 0) : Math.min(end, size);
+
+      const span = Math.max(relativeEnd - relativeStart, 0);
+      const parts = this.#parts;
+      const blobParts = [];
+      let added = 0;
+
+      for (const part of parts) {
+        const size = ArrayBuffer.isView(part) ? part.byteLength : part.size;
+        if (relativeStart && size <= relativeStart) {
+          // Skip the beginning and change the relative
+          // start & end position as we skip the unwanted parts
+          relativeStart -= size;
+          relativeEnd -= size;
+        } else {
+          let chunk
+          if (ArrayBuffer.isView(part)) {
+            chunk = part.subarray(relativeStart, Math.min(size, relativeEnd));
+            added += chunk.byteLength
+          } else {
+            chunk = part.slice(relativeStart, Math.min(size, relativeEnd));
+            added += chunk.size
+          }
+          blobParts.push(chunk);
+          relativeStart = 0; // All next sequential parts should start at 0
+
+          // don't add the overflow to new blobParts
+          if (added >= span) {
+            break;
+          }
+        }
       }
 
-      // deno-lint-ignore no-this-alias
-      const O = this;
-      /** @type {number} */
-      let relativeStart;
-      if (start === undefined) {
-        relativeStart = 0;
-      } else {
-        if (start < 0) {
-          relativeStart = Math.max(O.size + start, 0);
-        } else {
-          relativeStart = Math.min(start, O.size);
-        }
-      }
-      /** @type {number} */
-      let relativeEnd;
-      if (end === undefined) {
-        relativeEnd = O.size;
-      } else {
-        if (end < 0) {
-          relativeEnd = Math.max(O.size + end, 0);
-        } else {
-          relativeEnd = Math.min(end, O.size);
-        }
-      }
       /** @type {string} */
       let relativeContentType;
       if (contentType === undefined) {
@@ -244,9 +251,12 @@
       } else {
         relativeContentType = normalizeType(contentType);
       }
-      return new Blob([
-        O[_byteSequence].buffer.slice(relativeStart, relativeEnd),
-      ], { type: relativeContentType });
+
+      const blob = new Blob([], {type: relativeContentType});
+      blob[_Size] = span;
+      blob.#parts = blobParts;
+
+      return blob;
     }
 
     /**
@@ -254,14 +264,14 @@
      */
     stream() {
       webidl.assertBranded(this, Blob);
-      const bytes = this[_byteSequence];
+      const partIterator = toIterator(this.#parts);
       const stream = new ReadableStream({
         type: "bytes",
         /** @param {ReadableByteStreamController} controller */
-        start(controller) {
-          const chunk = new Uint8Array(bytes.buffer.slice(0));
-          if (chunk.byteLength > 0) controller.enqueue(chunk);
-          controller.close();
+        async pull (controller) {
+          const {value} = await partIterator.next();
+          if (!value) return controller.close()
+          controller.enqueue(value);
         },
       });
       return stream;
@@ -282,9 +292,12 @@
     async arrayBuffer() {
       webidl.assertBranded(this, Blob);
       const stream = this.stream();
-      let bytes = new Uint8Array();
+      const bytes = new Uint8Array(this.size);
+      let offset = 0;
+
       for await (const chunk of stream) {
-        bytes = concatUint8Arrays(bytes, chunk);
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
       }
       return bytes.buffer;
     }
@@ -333,6 +346,7 @@
   );
 
   const _Name = Symbol("[[Name]]");
+  const _Size = Symbol("[[Size]]");
   const _LastModfied = Symbol("[[LastModified]]");
 
   class File extends Blob {
@@ -406,9 +420,81 @@
     ],
   );
 
+  /**
+   * This is a blob backed up by a file on the disk
+   * with minium requirement. Its wrapped around a Blob as a blobPart
+   * so you have no direct access to this.
+   *
+   * @author Jimmy Wärting
+   * @private
+   */
+  class BlobDataItem extends Blob {
+    #path;
+    #start;
+
+    constructor(options) {
+      super();
+      this.#path = options.path;
+      this.#start = options.start;
+      this[_Size] = options.size;
+      this.lastModified = options.lastModified;
+    }
+
+    /**
+     * Slicing arguments is first validated and formatted
+     * to not be out of range by Blob.prototype.slice
+     */
+    slice(start, end) {
+      return new BlobDataItem({
+        path: this.#path,
+        lastModified: this.lastModified,
+        size: end - start,
+        start
+      });
+    }
+
+    async * stream() {
+      const {mtime} = await Deno.stat(this.#path)
+      if (mtime > this.lastModified) {
+        throw new DOMException('The requested file could not be read, ' +
+        'typically due to permission problems that have occurred after ' +
+        'a reference to a file was acquired.', 'NotReadableError');
+      }
+      if (this.size) {
+        const r = await Deno.open(this.#path, { read: true });
+        let length = this.size;
+        await r.seek(this.#start, Deno.SeekMode.Start);
+        while (length) {
+          const p = new Uint8Array(Math.min(length, POOL_SIZE));
+          length -= await r.read(p);
+          yield p
+        }
+      }
+    }
+  }
+
+  // TODO: Make this function public
+  /** @returns {Promise<File>} */
+  async function getFile (path, type = '') {
+    const stat = await Deno.stat(path);
+    const blobDataItem = new BlobDataItem({
+      path,
+      size: stat.size,
+      lastModified: stat.mtime.getTime(),
+      start: 0
+    });
+
+    // TODO: import basename?
+    const file = new File([blobDataItem], basename(path), {
+      type, lastModified: blobDataItem.lastModified
+    });
+
+    return file;
+  }
+
   window.__bootstrap.file = {
     Blob,
-    _byteSequence,
+    getFile, // TODO: expose somehow? Write doc?
     File,
   };
 })(this);
