@@ -619,7 +619,6 @@
         }
       }
     }
-    console.log(allMembers);
 
     return function (V, opts = {}) {
       const typeV = type(V);
