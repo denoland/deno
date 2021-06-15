@@ -366,10 +366,10 @@
    * @param {number} defaultHWM
    */
   function extractHighWaterMark(strategy, defaultHWM) {
-    if (!("highWaterMark" in strategy)) {
+    if (strategy.highWaterMark === undefined) {
       return defaultHWM;
     }
-    const highWaterMark = Number(strategy.highWaterMark);
+    const highWaterMark = strategy.highWaterMark;
     if (Number.isNaN(highWaterMark) || highWaterMark < 0) {
       throw RangeError(
         `Expected highWaterMark to be a positive number or Infinity, got "${highWaterMark}".`,
@@ -384,12 +384,17 @@
    * @return {(chunk: T) => number}
    */
   function extractSizeAlgorithm(strategy) {
-    const { size } = strategy;
-
-    if (!size) {
+    if (strategy.size === undefined) {
       return () => 1;
     }
-    return (chunk) => size(chunk);
+    return (chunk) =>
+      webidl.invokeCallbackFunction(
+        strategy.size,
+        [chunk],
+        undefined,
+        webidl.converters["unrestricted double"],
+        { prefix: "Failed to call `sizeAlgorithm`" },
+      );
   }
 
   /**
@@ -1031,6 +1036,10 @@
     if (reader === undefined) {
       return;
     }
+    /** @type {Deferred<void>} */
+    const closedPromise = reader[_closedPromise];
+    closedPromise.reject(e);
+    setPromiseIsHandledToTrue(closedPromise.promise);
     if (isReadableStreamDefaultReader(reader)) {
       /** @type {Array<ReadRequest<R>>} */
       const readRequests = reader[_readRequests];
@@ -1040,10 +1049,6 @@
       reader[_readRequests] = [];
     }
     // 3.5.6.8 Otherwise, support BYOB Reader
-    /** @type {Deferred<void>} */
-    const closedPromise = reader[_closedPromise];
-    closedPromise.reject(e);
-    setPromiseIsHandledToTrue(closedPromise.promise);
   }
 
   /**
@@ -3158,7 +3163,9 @@
         return Promise.reject(err);
       }
       if (isReadableStreamLocked(this)) {
-        Promise.reject(new TypeError("Cannot cancel a locked ReadableStream."));
+        return Promise.reject(
+          new TypeError("Cannot cancel a locked ReadableStream."),
+        );
       }
       return readableStreamCancel(this, reason);
     }
