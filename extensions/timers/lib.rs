@@ -122,6 +122,12 @@ pub fn op_global_timer_start(
   timeout: u64,
   _: (),
 ) -> Result<(), AnyError> {
+  // According to spec, minimum allowed timeout is 4 ms.
+  // https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timers
+  // TODO(#10974) Per spec this is actually a little more complicated than this.
+  // The minimum timeout depends on the nesting level of the timeout.
+  let timeout = std::cmp::max(timeout, 4);
+
   let deadline = Instant::now() + Duration::from_millis(timeout);
   let global_timer = state.borrow_mut::<GlobalTimer>();
   global_timer.new_timeout(deadline);
