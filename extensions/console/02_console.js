@@ -429,10 +429,8 @@
     inspectOptions,
   ) {
     const proxyDetails = core.getProxyDetails(value);
-    if (proxyDetails != null) {
-      return inspectOptions.showProxy
-        ? inspectProxy(proxyDetails, level, inspectOptions)
-        : inspectValue(proxyDetails[0], level, inspectOptions);
+    if (proxyDetails != null && inspectOptions.showProxy) {
+      return inspectProxy(proxyDetails, level, inspectOptions);
     }
 
     const green = maybeColor(colors.green, inspectOptions);
