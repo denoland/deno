@@ -1737,15 +1737,39 @@ unitTest(function inspectIterableLimit(): void {
 unitTest(function inspectProxy(): void {
   assertEquals(
     stripColor(Deno.inspect(
-      new Proxy([1, 2, 3], { get(): void {} }),
+      new Proxy([1, 2, 3], {}),
     )),
     "[ 1, 2, 3 ]",
   );
   assertEquals(
     stripColor(Deno.inspect(
-      new Proxy({ key: "value" }, { get(): void {} }),
+      new Proxy({ key: "value" }, {}),
     )),
     `{ key: "value" }`,
+  );
+  assertEquals(
+    stripColor(Deno.inspect(
+      new Proxy({}, {
+        get(_target, key) {
+          if (key === Symbol.toStringTag) {
+            return "MyProxy";
+          } else {
+            return 5;
+          }
+        },
+        getOwnPropertyDescriptor() {
+          return {
+            enumerable: true,
+            configurable: true,
+            value: 5,
+          };
+        },
+        ownKeys() {
+          return ["prop1", "prop2"];
+        },
+      }),
+    )),
+    `MyProxy { prop1: 5, prop2: 5 }`,
   );
   assertEquals(
     stripColor(Deno.inspect(
