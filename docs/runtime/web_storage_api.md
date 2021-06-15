@@ -10,8 +10,8 @@ for persistent storage is listed in `deno info`, and additionally passing the
 
 ### Example
 
-The following snippet accesses the current domain's local Storage object and
-adds a data item to it using Storage.setItem().
+The following snippet accesses the local storage bucket for the current origin
+and adds a data item to it using `setItem()`.
 
 ```ts
 localStorage.setItem("myDemo", "Deno App");
