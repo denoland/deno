@@ -25,7 +25,7 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 
 use data_url::DataUrl;
-use deno_file::BlobUrlStore;
+use deno_web::BlobUrlStore;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -61,7 +61,6 @@ pub fn init<P: FetchPermissions + 'static>(
     .js(include_js_files!(
       prefix "deno:extensions/fetch",
       "01_fetch_util.js",
-      "11_streams.js",
       "20_headers.js",
       "21_formdata.js",
       "22_body.js",

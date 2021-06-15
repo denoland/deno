@@ -206,12 +206,14 @@ declare namespace Deno {
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Format an array of diagnostic items and return them as a single string in a
-   * user friendly format.
+   * user friendly format. If there are no diagnostics then it will return an
+   * empty string.
    *
    * ```ts
    * const { diagnostics } = await Deno.emit("file_with_compile_issues.ts");
    * console.table(diagnostics);  // Prints raw diagnostic data
    * console.log(Deno.formatDiagnostics(diagnostics));  // User friendly output of diagnostics
+   * console.log(Deno.formatDiagnostics([]));  // An empty string
    * ```
    *
    * @param diagnostics An array of diagnostic items to format
@@ -480,7 +482,10 @@ declare namespace Deno {
    * The result of `Deno.emit()` API.
    */
   export interface EmitResult {
-    /** Diagnostic messages returned from the type checker (`tsc`). */
+    /** Diagnostic messages returned from the type checker (`tsc`).
+     *
+     * Can be used with `Deno.formatDiagnostics` to display a user
+     * friendly string. */
     diagnostics: Diagnostic[];
     /** Any emitted files.  If bundled, then the JavaScript will have the
      * key of `deno:///bundle.js` with an optional map (based on
@@ -510,6 +515,10 @@ declare namespace Deno {
    *                      `deno run`. If sources are provided, it should match
    *                      one of the names of the sources.
    * @param options  A set of options to be used with the emit.
+   *
+   * @returns The result of the emit. If diagnostics are found, they can be used
+   * with `Deno.formatDiagnostics` to construct a user friendly string, which
+   * has the same format as CLI diagnostics.
    */
   export function emit(
     rootSpecifier: string | URL,

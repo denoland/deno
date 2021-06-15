@@ -6,6 +6,33 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.11.0 / 2021.06.08
+
+- feat: Add FsWatcher interface (#10798)
+- feat: Add origin data dir to deno info (#10589)
+- feat: Initialize runtime_compiler ops in `deno compile` (#10052)
+- feat: Make 'deno lint' stable (#10851)
+- feat: Support data uri dynamic imports in `deno compile` (#9936)
+- feat: upgrade to TypeScript 4.3 (#9960)
+- feat(extensions): add BroadcastChannel
+- feat(extensions/crypto): implement randomUUID (#10848)
+- feat(extensions/crypto): implement subtle.digest (#10796)
+- feat(extensions/fetch): implement abort (#10863)
+- feat(extensions/web): Implement TextDecoderStream and TextEncoderStream
+  (#10842)
+- feat(lsp): add test code lens (#10874)
+- feat(lsp): registry auto discovery (#10813)
+- fix: change Crypto to interface (#10853)
+- fix: Support the stream option to TextDecoder#decode (#10805)
+- fix(extensions/fetch): implement newline normalization and escapes in the
+  multipart/form-data serializer (#10832)
+- fix(runtime/http): Hang in `Deno.serveHttp` (#10836)
+- fix(streams): expose ReadableByteStreamController &
+  TransformStreamDefaultController (#10855)
+
+Release notes for std version 0.98.0:
+https://github.com/denoland/deno_std/releases/tag/0.98.0
+
 ### 1.10.3 / 2021.05.31
 
 - feat(lsp): diagnostics for deno types and triple-slash refs (#10699)

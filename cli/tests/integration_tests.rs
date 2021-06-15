@@ -825,6 +825,7 @@ mod integration {
       // the watcher process is still alive
       assert!(deno.try_wait().unwrap().is_none());
 
+      deno.kill().unwrap();
       drop(t);
     }
 
@@ -976,6 +977,7 @@ mod integration {
       // the watcher process is still alive
       assert!(child.try_wait().unwrap().is_none());
 
+      child.kill().unwrap();
       drop(t);
     }
 
@@ -2085,6 +2087,35 @@ mod integration {
 
     #[cfg(unix)]
     #[test]
+    fn pty_complete_declarations() {
+      use std::io::Read;
+      use util::pty::fork::*;
+      let deno_exe = util::deno_exe_path();
+      let fork = Fork::from_ptmx().unwrap();
+      if let Ok(mut master) = fork.is_parent() {
+        master.write_all(b"class MyClass {}\n").unwrap();
+        master.write_all(b"My\t\n").unwrap();
+        master.write_all(b"let myVar;\n").unwrap();
+        master.write_all(b"myV\t\n").unwrap();
+        master.write_all(b"close();\n").unwrap();
+
+        let mut output = String::new();
+        master.read_to_string(&mut output).unwrap();
+
+        assert!(output.contains("> MyClass"));
+        assert!(output.contains("> myVar"));
+
+        fork.wait().unwrap();
+      } else {
+        std::env::set_var("NO_COLOR", "1");
+        let err = exec::Command::new(deno_exe).arg("repl").exec();
+        println!("err {}", err);
+        unreachable!()
+      }
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn pty_ignore_symbols() {
       use std::io::Read;
       use util::pty::fork::*;
@@ -3113,7 +3144,7 @@ console.log("finish");
   });
 
   itest!(_089_run_allow_list {
-    args: "run --allow-run=cat 089_run_allow_list.ts",
+    args: "run --allow-run=curl 089_run_allow_list.ts",
     output: "089_run_allow_list.ts.out",
   });
 
@@ -3964,6 +3995,11 @@ console.log("finish");
   itest!(fix_tsc_file_exists {
     args: "run --quiet --reload tsc/test.js",
     output: "fix_tsc_file_exists.out",
+  });
+
+  itest!(fix_worker_dispatchevent {
+    args: "run --quiet --reload fix_worker_dispatchevent.ts",
+    output: "fix_worker_dispatchevent.ts.out",
   });
 
   itest!(es_private_fields {
