@@ -8,6 +8,9 @@ To use persistent storage, you need to pass the `--location` flag. The location
 for persistent storage is listed in `deno info`, and additionally passing the
 `--location` will give you the path for the specified origin.
 
+To learn more about the Web Storage APIs, visit the
+[MDN page on Web Storage](https://developer.mozilla.org/en-US/docs/Web/API/Storage).
+
 ### Example
 
 The following snippet accesses the local storage bucket for the current origin
