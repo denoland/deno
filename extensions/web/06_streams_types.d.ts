@@ -42,10 +42,9 @@ interface VoidFunction {
 
 interface ReadableStreamGenericReader<T> {
   readonly closed: Promise<void>;
+  // deno-lint-ignore no-explicit-any
   cancel(reason?: any): Promise<void>;
 }
-
-interface ReadableStreamDefaultReader extends ReadableStreamGenericReader {}
 
 // ** Ambient Definitions and Interfaces not provided by fetch **
 
