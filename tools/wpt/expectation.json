@@ -433,7 +433,9 @@
       "bad-strategies.any.html": true,
       "bad-underlying-sinks.any.html": true,
       "byte-length-queuing-strategy.any.html": true,
-      "close.any.html": false,
+      "close.any.html": [
+        "when close is called on a WritableStream in waiting state, ready should be fulfilled immediately even if close takes a long time"
+      ],
       "constructor.any.html": true,
       "count-queuing-strategy.any.html": true,
       "error.any.html": true,
