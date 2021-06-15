@@ -810,6 +810,7 @@
         "stream-safe-creation.any.html": [
           "throwing Object.prototype.start accessor should not affect stream creation by 'fetch'",
           "Object.prototype.start accessor returning invalid value should not affect stream creation by 'fetch'",
+          "throwing Object.prototype.type accessor should not affect stream creation by 'fetch'",
           "throwing Object.prototype.size accessor should not affect stream creation by 'fetch'",
           "Object.prototype.size accessor returning invalid value should not affect stream creation by 'fetch'",
           "throwing Object.prototype.highWaterMark accessor should not affect stream creation by 'fetch'",
