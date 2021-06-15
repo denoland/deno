@@ -14,7 +14,6 @@
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
-  const { byteLowerCase } = window.__bootstrap.infra;
   const { errorReadableStream } = window.__bootstrap.streams;
   const { InnerBody, extractBody } = window.__bootstrap.fetchBody;
   const {
@@ -290,9 +289,8 @@
    * @returns {Promise<InnerResponse>}
    */
   function httpRedirectFetch(request, response, terminator) {
-    const locationHeaders = response.headerList.filter((entry) =>
-      byteLowerCase(entry[0]) === "location"
-    );
+    const locationHeaders = response.headerList
+      .filter((entry) => entry[0] === "location");
     if (locationHeaders.length === 0) {
       return response;
     }
@@ -327,11 +325,7 @@
       request.method = "GET";
       request.body = null;
       for (let i = 0; i < request.headerList.length; i++) {
-        if (
-          REQUEST_BODY_HEADER_NAMES.includes(
-            byteLowerCase(request.headerList[i][0]),
-          )
-        ) {
+        if (REQUEST_BODY_HEADER_NAMES.includes(request.headerList[i][0])) {
           request.headerList.splice(i, 1);
           i--;
         }
@@ -384,8 +378,8 @@
       }
       requestObject.signal[abortSignal.add](onabort);
 
-      if (!requestObject.headers.has("Accept")) {
-        request.headerList.push(["Accept", "*/*"]);
+      if (!requestObject.headers.has("accept")) {
+        request.headerList.push(["accept", "*/*"]);
       }
 
       // 12.
