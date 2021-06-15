@@ -54,7 +54,7 @@ declare class WorkerNavigator {
 
 declare var navigator: WorkerNavigator;
 
-interface DedicatedWorkerGlobalScopeEventMap extends WorkerGlobalScope {
+interface DedicatedWorkerGlobalScopeEventMap extends WorkerGlobalScopeEventMap {
   "message": MessageEvent;
   "messageerror": MessageEvent;
 }
