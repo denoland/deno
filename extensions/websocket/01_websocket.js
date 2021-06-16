@@ -148,6 +148,9 @@
       return this[_binaryType];
     }
     set binaryType(value) {
+      value = webidl.converters.DOMString(value, {
+        prefix: "Failed to set 'binaryType' on 'WebSocket'",
+      });
       if (value === "blob" || value === "arraybuffer") {
         this[_binaryType] = value;
       }
