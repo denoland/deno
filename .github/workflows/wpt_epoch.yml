@@ -50,7 +50,7 @@ jobs:
         run: |
           git remote set-branches origin '*'
           git fetch origin
-          git checkout origin/epochs/daily
+          git checkout $(./wpt rev-list --epoch 1d)
           git checkout -b epochs/daily
 
       - name: Configure hosts file for WPT (unix)
