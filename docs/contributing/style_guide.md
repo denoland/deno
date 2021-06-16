@@ -197,9 +197,9 @@ export type { Person } from "./my_file.ts";
 
 ### Minimize dependencies; do not make circular imports.
 
-Although `std` has no external dependencies, we must still be
-careful to keep internal dependencies simple and manageable. In particular, be
-careful not to introduce circular imports.
+Although `std` has no external dependencies, we must still be careful to keep
+internal dependencies simple and manageable. In particular, be careful not to
+introduce circular imports.
 
 ### If a filename starts with an underscore: `_foo.ts`, do not link to it.
 
@@ -263,17 +263,19 @@ And not:
 ```
 
 Code examples should utilize markdown format, like so:
-```ts
+
+````ts
 /** A straight forward comment and an example:
  * ```ts
  * import { foo } from "deno";
  * foo("bar");
- * ``` 
+ * ```
  */
-```
+````
 
-Code examples should not contain additional comments and must not be indented. It is already inside a
-comment. If it needs further comments it is not a good example.
+Code examples should not contain additional comments and must not be indented.
+It is already inside a comment. If it needs further comments it is not a good
+example.
 
 ### Resolve linting problems using directives
 
@@ -292,9 +294,8 @@ problems, but it should be used scarcely.
 ### Each module should come with a test module.
 
 Every module with public functionality `foo.ts` should come with a test module
-`foo_test.ts`. A test for a `std` module should go in `std/tests` due to
-their different contexts, otherwise it should just be a sibling to the tested
-module.
+`foo_test.ts`. A test for a `std` module should go in `std/tests` due to their
+different contexts, otherwise it should just be a sibling to the tested module.
 
 ### Unit Tests should be explicit.
 
