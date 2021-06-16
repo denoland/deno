@@ -160,6 +160,7 @@
 
     constructor(url, protocols = []) {
       super();
+      this[webidl.brand] = webidl.brand;
       const prefix = "Failed to construct 'WebSocket'";
       webidl.requiredArguments(arguments.length, 1, {
         prefix,
@@ -272,6 +273,7 @@
     }
 
     send(data) {
+      webidl.assertBranded(this, WebSocket);
       const prefix = "Failed to execute 'send' on 'WebSocket'";
 
       requiredArguments("WebSocket.send", arguments.length, 1, {
@@ -319,6 +321,7 @@
     }
 
     close(code = undefined, reason = undefined) {
+      webidl.assertBranded(this, WebSocket);
       const prefix = "Failed to execute 'close' on 'WebSocket'";
 
       if (code !== undefined) {
