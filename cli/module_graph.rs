@@ -972,11 +972,7 @@ impl Graph {
 
   /// Indicates if the module graph contains the supplied specifier or not.
   pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
-    if let ModuleSlot::Module(_) = self.get_module(specifier) {
-      true
-    } else {
-      false
-    }
+    matches!(self.get_module(specifier), ModuleSlot::Module(_))
   }
 
   /// Emit the module graph in a specific format.  This is specifically designed

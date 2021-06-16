@@ -1829,7 +1829,7 @@ impl<'a> State<'a> {
     self
       .specifiers
       .get(&specifier_str)
-      .unwrap_or_else(|| &specifier_str)
+      .unwrap_or(&specifier_str)
       .to_string()
   }
 
