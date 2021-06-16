@@ -1102,10 +1102,11 @@ impl Graph {
           }
         }
         BundleType::None => {
+          let check_js = config.get_check_js();
           let emit_options: ast::EmitOptions = config.into();
           for (_, module_slot) in self.modules.iter_mut() {
             if let ModuleSlot::Module(module) = module_slot {
-              if !(emit_options.check_js
+              if !(check_js
                 || module.media_type == MediaType::Jsx
                 || module.media_type == MediaType::Tsx
                 || module.media_type == MediaType::TypeScript)
@@ -1669,6 +1670,7 @@ impl Graph {
       .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
 
     let config = ts_config.as_bytes();
+    let check_js = ts_config.get_check_js();
     let emit_options: ast::EmitOptions = ts_config.into();
     let mut emit_count = 0_u32;
     for (_, module_slot) in self.modules.iter_mut() {
@@ -1683,7 +1685,7 @@ impl Graph {
         }
         // if we don't have check_js enabled, we won't touch non TypeScript or JSX
         // modules
-        if !(emit_options.check_js
+        if !(check_js
           || module.media_type == MediaType::Jsx
           || module.media_type == MediaType::Tsx
           || module.media_type == MediaType::TypeScript)

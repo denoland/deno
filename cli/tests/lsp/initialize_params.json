@@ -9,7 +9,8 @@
     "enable": true,
     "codeLens": {
       "implementations": true,
-      "references": true
+      "references": true,
+      "test": true
     },
     "importMap": null,
     "lint": true,
