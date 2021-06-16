@@ -309,11 +309,6 @@
     "queuing-strategies.any.html": true,
     "readable-byte-streams": {
       "bad-buffers-and-views.any.html": [
-        "ReadableStream with byte source: read()ing from a closed stream still transfers the buffer",
-        "ReadableStream with byte source: read()ing from a stream with queued chunks still transfers the buffer",
-        "ReadableStream with byte source: reading into an already-detached buffer rejects",
-        "ReadableStream with byte source: reading into a zero-length buffer rejects",
-        "ReadableStream with byte source: reading into a zero-length view on a non-zero-length buffer rejects",
         "ReadableStream with byte source: respond() throws if the BYOB request's buffer has been detached (in the readable state)",
         "ReadableStream with byte source: respond() throws if the BYOB request's buffer has been detached (in the closed state)",
         "ReadableStream with byte source: respondWithNewView() throws if the supplied view's buffer has been detached (in the readable state)",
@@ -326,7 +321,12 @@
         "ReadableStream with byte source: respondWithNewView() throws if the supplied view is non-zero-length (in the closed state)",
         "ReadableStream with byte source: respondWithNewView() throws if the supplied view's buffer has a different length (in the closed state)",
         "ReadableStream with byte source: enqueue() throws if the BYOB request's buffer has been detached (in the readable state)",
-        "ReadableStream with byte source: enqueue() throws if the BYOB request's buffer has been detached (in the closed state)"
+        "ReadableStream with byte source: enqueue() throws if the BYOB request's buffer has been detached (in the closed state)",
+        "ReadableStream with byte source: read()ing from a closed stream still transfers the buffer",
+        "ReadableStream with byte source: read()ing from a stream with queued chunks still transfers the buffer",
+        "ReadableStream with byte source: reading into an already-detached buffer rejects",
+        "ReadableStream with byte source: reading into a zero-length buffer rejects",
+        "ReadableStream with byte source: reading into a zero-length view on a non-zero-length buffer rejects"
       ],
       "construct-byob-request.any.html": false,
       "general.any.html": [
@@ -424,16 +424,16 @@
       "properties.any.html": true,
       "reentrant-strategies.any.html": true,
       "strategies.any.html": true,
-      "terminate.any.html": [
-        "controller.terminate() inside flush() should not prevent writer.close() from succeeding"
-      ]
+      "terminate.any.html": true
     },
     "writable-streams": {
-      "aborting.any.html": false,
+      "aborting.any.html": true,
       "bad-strategies.any.html": true,
       "bad-underlying-sinks.any.html": true,
       "byte-length-queuing-strategy.any.html": true,
-      "close.any.html": false,
+      "close.any.html": [
+        "when close is called on a WritableStream in waiting state, ready should be fulfilled immediately even if close takes a long time"
+      ],
       "constructor.any.html": true,
       "count-queuing-strategy.any.html": true,
       "error.any.html": true,

@@ -2808,7 +2808,7 @@
   function writableStreamHasOperationMarkedInFlight(stream) {
     if (
       stream[_inFlightWriteRequest] === undefined &&
-      stream[_controller][_inFlightCloseRequest] === undefined
+      stream[_inFlightCloseRequest] === undefined
     ) {
       return false;
     }
@@ -2857,11 +2857,11 @@
     assert(stream[_storedError] === undefined);
     assert(stream[_state] === "writable");
     const controller = stream[_controller];
-    assert(controller);
+    assert(controller !== undefined);
     stream[_state] = "erroring";
     stream[_storedError] = reason;
     const writer = stream[_writer];
-    if (writer) {
+    if (writer !== undefined) {
       writableStreamDefaultWriterEnsureReadyPromiseRejected(writer, reason);
     }
     if (
