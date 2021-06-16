@@ -586,34 +586,7 @@
     "historical.any.html": [
       "<a> and <area>.searchParams should be undefined"
     ],
-    "idlharness.any.html": [
-      "URL interface object length",
-      "URL interface: attribute href",
-      "URL interface: stringifier",
-      "URL interface: attribute origin",
-      "URL interface: attribute protocol",
-      "URL interface: attribute username",
-      "URL interface: attribute password",
-      "URL interface: attribute host",
-      "URL interface: attribute hostname",
-      "URL interface: attribute port",
-      "URL interface: attribute pathname",
-      "URL interface: attribute search",
-      "URL interface: attribute searchParams",
-      "URL interface: attribute hash",
-      "URL interface: operation toJSON()",
-      "Stringification of new URL(\"http://foo\")",
-      "URLSearchParams interface: operation append(USVString, USVString)",
-      "URLSearchParams interface: operation delete(USVString)",
-      "URLSearchParams interface: operation get(USVString)",
-      "URLSearchParams interface: operation getAll(USVString)",
-      "URLSearchParams interface: operation has(USVString)",
-      "URLSearchParams interface: operation set(USVString, USVString)",
-      "URLSearchParams interface: operation sort()",
-      "URLSearchParams interface: iterable<USVString, USVString>",
-      "URLSearchParams interface: stringifier",
-      "Stringification of new URLSearchParams(\"hi=there&thank=you\")"
-    ],
+    "idlharness.any.html": true,
     "url-constructor.any.html": [
       "Parsing: <file://%43%7C> against <about:blank>",
       "Parsing: <file://%43|> against <about:blank>",
@@ -879,7 +852,6 @@
         "redirect-to-dataurl.any.html": true
       },
       "idlharness.any.html": [
-        "Headers interface: iterable<ByteString, ByteString>",
         "Request interface: attribute destination",
         "Request interface: attribute referrer",
         "Request interface: attribute referrerPolicy",

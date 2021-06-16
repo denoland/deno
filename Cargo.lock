@@ -766,6 +766,7 @@ version = "0.9.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
+ "deno_webidl",
  "idna",
  "percent-encoding",
  "serde",
