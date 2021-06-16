@@ -568,6 +568,17 @@
   );
   converters["Promise<undefined>"] = createPromiseConverter(() => undefined);
 
+  converters["sequence<ByteString>"] = createSequenceConverter(
+    converters.ByteString,
+  );
+  converters["sequence<sequence<ByteString>>"] = createSequenceConverter(
+    converters["sequence<ByteString>"],
+  );
+  converters["record<ByteString, ByteString>"] = createRecordConverter(
+    converters.ByteString,
+    converters.ByteString,
+  );
+
   function requiredArguments(length, required, opts = {}) {
     if (length < required) {
       const errMsg = `${
@@ -708,7 +719,7 @@
   // https://heycam.github.io/webidl/#es-sequence
   function createSequenceConverter(converter) {
     return function (V, opts = {}) {
-      if (typeof V !== "object") {
+      if (type(V) !== "Object") {
         throw makeException(
           TypeError,
           "can not be converted to sequence.",
@@ -746,7 +757,7 @@
 
   function createRecordConverter(keyConverter, valueConverter) {
     return (V, opts) => {
-      if (typeof V !== "object") {
+      if (type(V) !== "Object") {
         throw makeException(
           TypeError,
           "can not be converted to dictionary.",
@@ -879,41 +890,64 @@
       return iterator;
     }
 
-    const methods = {
-      entries() {
-        assertBranded(this, prototype);
-        return createDefaultIterator(this, "key+value");
+    function entries() {
+      assertBranded(this, prototype);
+      return createDefaultIterator(this, "key+value");
+    }
+
+    const properties = {
+      entries: {
+        value: entries,
+        writable: true,
+        enumerable: true,
+        configurable: true,
       },
-      [Symbol.iterator]() {
-        assertBranded(this, prototype);
-        return createDefaultIterator(this, "key+value");
+      [Symbol.iterator]: {
+        value: entries,
+        writable: true,
+        enumerable: false,
+        configurable: true,
       },
-      keys() {
-        assertBranded(this, prototype);
-        return createDefaultIterator(this, "key");
+      keys: {
+        value: function keys() {
+          assertBranded(this, prototype);
+          return createDefaultIterator(this, "key");
+        },
+        writable: true,
+        enumerable: true,
+        configurable: true,
       },
-      values() {
-        assertBranded(this, prototype);
-        return createDefaultIterator(this, "value");
+      values: {
+        value: function values() {
+          assertBranded(this, prototype);
+          return createDefaultIterator(this, "value");
+        },
+        writable: true,
+        enumerable: true,
+        configurable: true,
       },
-      forEach(idlCallback, thisArg) {
-        assertBranded(this, prototype);
-        const prefix = `Failed to execute 'forEach' on '${name}'`;
-        requiredArguments(arguments.length, 1, { prefix });
-        idlCallback = converters["Function"](idlCallback, {
-          prefix,
-          context: "Argument 1",
-        });
-        idlCallback = idlCallback.bind(thisArg ?? globalThis);
-        const pairs = this[dataSymbol];
-        for (let i = 0; i < pairs.length; i++) {
-          const entry = pairs[i];
-          idlCallback(entry[valueKey], entry[keyKey], this);
-        }
+      forEach: {
+        value: function forEach(idlCallback, thisArg = undefined) {
+          assertBranded(this, prototype);
+          const prefix = `Failed to execute 'forEach' on '${name}'`;
+          requiredArguments(arguments.length, 1, { prefix });
+          idlCallback = converters["Function"](idlCallback, {
+            prefix,
+            context: "Argument 1",
+          });
+          idlCallback = idlCallback.bind(thisArg ?? globalThis);
+          const pairs = this[dataSymbol];
+          for (let i = 0; i < pairs.length; i++) {
+            const entry = pairs[i];
+            idlCallback(entry[valueKey], entry[keyKey], this);
+          }
+        },
+        writable: true,
+        enumerable: true,
+        configurable: true,
       },
     };
-
-    return Object.assign(prototype.prototype, methods);
+    return Object.defineProperties(prototype.prototype, properties);
   }
 
   function configurePrototype(prototype) {
@@ -938,6 +972,7 @@
 
   window.__bootstrap ??= {};
   window.__bootstrap.webidl = {
+    type,
     makeException,
     converters,
     requiredArguments,
