@@ -148,6 +148,7 @@
   async function mainFetch(req, recursive, terminator) {
     /** @type {ReadableStream<Uint8Array> | Uint8Array | null} */
     let reqBody = null;
+
     if (req.body !== null) {
       if (req.body.streamOrStatic instanceof ReadableStream) {
         if (req.body.length === null) {
@@ -269,9 +270,13 @@
     if (nullBodyStatus(response.status)) {
       core.close(resp.responseRid);
     } else {
-      response.body = new InnerBody(
-        createResponseBodyStream(resp.responseRid, terminator),
-      );
+      if (req.method === "HEAD" || req.method === "OPTIONS") {
+        response.body = null;
+      } else {
+        response.body = new InnerBody(
+          createResponseBodyStream(resp.responseRid, terminator)
+        );
+      }
     }
 
     if (recursive) return response;
@@ -289,14 +294,15 @@
    * @returns {Promise<InnerResponse>}
    */
   function httpRedirectFetch(request, response, terminator) {
-    const locationHeaders = response.headerList
-      .filter((entry) => entry[0] === "location");
+    const locationHeaders = response.headerList.filter(
+      (entry) => entry[0] === "location"
+    );
     if (locationHeaders.length === 0) {
       return response;
     }
     const locationURL = new URL(
       locationHeaders[0][1],
-      response.url() ?? undefined,
+      response.url() ?? undefined
     );
     if (locationURL.hash === "") {
       locationURL.hash = request.currentUrl().hash;
@@ -309,18 +315,20 @@
     }
     request.redirectCount++;
     if (
-      response.status !== 303 && request.body !== null &&
+      response.status !== 303 &&
+      request.body !== null &&
       request.body.source === null
     ) {
       return networkError(
-        "Can not redeliver a streaming request body after a redirect",
+        "Can not redeliver a streaming request body after a redirect"
       );
     }
     if (
       ((response.status === 301 || response.status === 302) &&
         request.method === "POST") ||
       (response.status === 303 &&
-        (request.method !== "GET" && request.method !== "HEAD"))
+        request.method !== "GET" &&
+        request.method !== "HEAD")
     ) {
       request.method = "GET";
       request.body = null;
@@ -330,9 +338,6 @@
           i--;
         }
       }
-    }
-    if (request.method === "HEAD" || request.method === "OPTIONS") {
-      request.body = null;
     }
     if (request.body !== null) {
       const res = extractBody(request.body.source);
