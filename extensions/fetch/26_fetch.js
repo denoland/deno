@@ -331,6 +331,9 @@
         }
       }
     }
+    if (request.method === "HEAD" || request.method === "OPTIONS") {
+      request.body = null;
+    }
     if (request.body !== null) {
       const res = extractBody(request.body.source);
       request.body = res.body;
