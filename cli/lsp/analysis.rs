@@ -5,6 +5,7 @@ use super::tsc;
 
 use crate::ast;
 use crate::import_map::ImportMap;
+use crate::lsp::documents::DocumentData;
 use crate::media_type::MediaType;
 use crate::module_graph::parse_deno_types;
 use crate::module_graph::parse_ts_reference;
@@ -665,6 +666,102 @@ impl CodeActionCollection {
     Ok(())
   }
 
+  pub(crate) fn add_deno_lint_ignore_action(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    document: Option<&DocumentData>,
+    diagnostic: &lsp::Diagnostic,
+  ) -> Result<(), AnyError> {
+    let code = diagnostic
+      .code
+      .as_ref()
+      .map(|v| match v {
+        lsp::NumberOrString::String(v) => v.to_owned(),
+        _ => "".to_string(),
+      })
+      .unwrap();
+
+    let line_content = if let Some(doc) = document {
+      doc
+        .content_line(diagnostic.range.start.line as usize)
+        .ok()
+        .flatten()
+    } else {
+      None
+    };
+
+    let mut changes = HashMap::new();
+    changes.insert(
+      specifier.clone(),
+      vec![lsp::TextEdit {
+        new_text: append_whitespace(
+          format!("// deno-lint-ignore {}\n", code),
+          line_content,
+        ),
+        range: lsp::Range {
+          start: lsp::Position {
+            line: diagnostic.range.start.line,
+            character: 0,
+          },
+          end: lsp::Position {
+            line: diagnostic.range.start.line,
+            character: 0,
+          },
+        },
+      }],
+    );
+    let ignore_error_action = lsp::CodeAction {
+      title: format!("Disable {} for this line", code),
+      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      diagnostics: Some(vec![diagnostic.clone()]),
+      command: None,
+      is_preferred: None,
+      disabled: None,
+      data: None,
+      edit: Some(lsp::WorkspaceEdit {
+        changes: Some(changes),
+        change_annotations: None,
+        document_changes: None,
+      }),
+    };
+    self.actions.push(CodeActionKind::Deno(ignore_error_action));
+
+    let mut changes = HashMap::new();
+    changes.insert(
+      specifier.clone(),
+      vec![lsp::TextEdit {
+        new_text: "// deno-lint-ignore-file\n".to_string(),
+        range: lsp::Range {
+          start: lsp::Position {
+            line: 0,
+            character: 0,
+          },
+          end: lsp::Position {
+            line: 0,
+            character: 0,
+          },
+        },
+      }],
+    );
+    let ignore_file_action = lsp::CodeAction {
+      title: "Ignore lint errors for the entire file".to_string(),
+      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      diagnostics: Some(vec![diagnostic.clone()]),
+      command: None,
+      is_preferred: None,
+      disabled: None,
+      data: None,
+      edit: Some(lsp::WorkspaceEdit {
+        changes: Some(changes),
+        change_annotations: None,
+        document_changes: None,
+      }),
+    };
+    self.actions.push(CodeActionKind::Deno(ignore_file_action));
+
+    Ok(())
+  }
+
   /// Add a TypeScript code fix action to the code actions collection.
   pub(crate) async fn add_ts_fix_action(
     &mut self,
@@ -830,6 +927,18 @@ impl CodeActionCollection {
         }
       }
     }
+  }
+}
+
+/// Append the initial whitespace present in line_content to content.
+fn append_whitespace(content: String, line_content: Option<String>) -> String {
+  if let Some(line) = line_content {
+    let whitespaces =
+      line.chars().position(|c| !c.is_whitespace()).unwrap_or(0);
+    let whitespace = &line[0..whitespaces];
+    format!("{}{}", &whitespace, content)
+  } else {
+    content
   }
 }
 
