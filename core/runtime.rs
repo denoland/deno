@@ -948,7 +948,11 @@ impl JsRuntime {
     receiver
   }
 
-  pub(crate) fn dynamic_import_reject(&mut self, id: ModuleLoadId, err: AnyError) {
+  pub(crate) fn dynamic_import_reject(
+    &mut self,
+    id: ModuleLoadId,
+    err: AnyError,
+  ) {
     let mut module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
 
@@ -972,7 +976,11 @@ impl JsRuntime {
     scope.perform_microtask_checkpoint();
   }
 
-  pub(crate) fn dynamic_import_resolve(&mut self, id: ModuleLoadId, mod_id: ModuleId) {
+  pub(crate) fn dynamic_import_resolve(
+    &mut self,
+    id: ModuleLoadId,
+    mod_id: ModuleId,
+  ) {
     let mut module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
 

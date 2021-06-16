@@ -7,8 +7,8 @@ use crate::error::generic_error;
 use crate::error::AnyError;
 use crate::module_specifier::ModuleSpecifier;
 use crate::runtime::exception_to_err_result;
-use crate::OpState;
 use crate::JsRuntime;
+use crate::OpState;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
@@ -763,7 +763,9 @@ impl ModuleMap {
                     // Keep importing until it's fully drained
                     self.add_pending_dynamic_import(load);
                   }
-                  Err(err) => js_runtime.dynamic_import_reject(dyn_import_id, err),
+                  Err(err) => {
+                    js_runtime.dynamic_import_reject(dyn_import_id, err)
+                  }
                 }
               }
               Err(err) => {
@@ -822,6 +824,7 @@ impl ModuleMap {
     }
   }
 
+  #[allow(clippy::type_complexity)]
   pub fn poll_pending_dynamic_imports(
     &mut self,
     cx: &mut Context,
