@@ -274,7 +274,7 @@
         response.body = null;
       } else {
         response.body = new InnerBody(
-          createResponseBodyStream(resp.responseRid, terminator)
+          createResponseBodyStream(resp.responseRid, terminator),
         );
       }
     }
@@ -295,14 +295,14 @@
    */
   function httpRedirectFetch(request, response, terminator) {
     const locationHeaders = response.headerList.filter(
-      (entry) => entry[0] === "location"
+      (entry) => entry[0] === "location",
     );
     if (locationHeaders.length === 0) {
       return response;
     }
     const locationURL = new URL(
       locationHeaders[0][1],
-      response.url() ?? undefined
+      response.url() ?? undefined,
     );
     if (locationURL.hash === "") {
       locationURL.hash = request.currentUrl().hash;
@@ -320,7 +320,7 @@
       request.body.source === null
     ) {
       return networkError(
-        "Can not redeliver a streaming request body after a redirect"
+        "Can not redeliver a streaming request body after a redirect",
       );
     }
     if (
