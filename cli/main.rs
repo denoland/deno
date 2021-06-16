@@ -663,6 +663,7 @@ async fn bundle_command(
         .filter_map(|specifier| specifier.to_file_path().ok())
         .collect();
 
+      // TODO(bartlomieju): flags is leaking here - it should use path from `ImportMap` struct
       if let Some(import_map) = program_state.flags.import_map_path.as_ref() {
         paths_to_watch
           .push(fs_util::resolve_from_cwd(std::path::Path::new(import_map))?);
@@ -828,6 +829,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         .filter_map(|specifier| specifier.to_file_path().ok())
         .collect();
 
+      // TODO(bartlomieju): flags is leaking here - it should use path from `ImportMap` struct
       if let Some(import_map) = program_state.flags.import_map_path.as_ref() {
         paths_to_watch
           .push(fs_util::resolve_from_cwd(std::path::Path::new(import_map))?);

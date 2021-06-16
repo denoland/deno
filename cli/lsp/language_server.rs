@@ -97,6 +97,7 @@ pub(crate) struct Inner {
   maybe_config_uri: Option<Url>,
   /// An optional import map which is used to resolve modules.
   pub(crate) maybe_import_map: Option<ImportMap>,
+  // TODO(bartlomieju): this should be stored on `ImportMap` itself
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
   /// A collection of measurements which instrument that performance of the LSP.
@@ -333,6 +334,10 @@ impl Inner {
     })
   }
 
+  // TODO(bartlomieju): this function should use the same logic for loading import map
+  // as in `ProgramState`.
+  // TODO(bartlomieju): should take into account fact that import map might be provided
+  // in config file
   pub async fn update_import_map(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_import_map", None::<()>);
     let (maybe_import_map, maybe_root_uri) = {

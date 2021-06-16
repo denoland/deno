@@ -150,6 +150,8 @@ pub struct WorkspaceSettings {
   /// code within the workspace.
   pub config: Option<String>,
 
+  // TODO(bartlomieju): need to properly handle situation if import map
+  // is provided in `config` field
   /// An option that points to a path string of the import map to apply to the
   /// code within the workspace.
   pub import_map: Option<String>,

@@ -106,6 +106,8 @@ impl ProgramState {
 
     let mut maybe_import_map = None;
 
+    // TODO(bartlomieju): file path/URL to import map should be stored on it
+    // TODO(bartlomieju): most of this logic should probably be moved to `import_map.rs`
     if let Some(config_file) = &maybe_config_file {
       if let Some(import_map_value) = &config_file.json.import_map {
         if flags.import_map_path.is_some() {
