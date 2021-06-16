@@ -19,6 +19,9 @@ delete Object.prototype.__proto__;
   let logDebug = false;
   let logSource = "JS";
 
+  /** @type {string=} */
+  let cwd;
+
   // The map from the normalized specifier to the original.
   // TypeScript normalizes the specifier in its internal processing,
   // but the original specifier is needed when looking up the source from the runtime.
@@ -251,9 +254,10 @@ delete Object.prototype.__proto__;
    *
    * @type {ts.CompilerHost & ts.LanguageServiceHost} */
   const host = {
-    fileExists(fileName) {
-      debug(`host.fileExists("${fileName}")`);
-      return false;
+    fileExists(specifier) {
+      debug(`host.fileExists("${specifier}")`);
+      specifier = normalizedToOriginalMap.get(specifier) ?? specifier;
+      return core.opSync("op_exists", { specifier });
     },
     readFile(specifier) {
       debug(`host.readFile("${specifier}")`);
@@ -317,7 +321,8 @@ delete Object.prototype.__proto__;
       );
     },
     getCurrentDirectory() {
-      return CACHE;
+      debug(`host.getCurrentDirectory()`);
+      return cwd ?? core.opSync("op_cwd", null);
     },
     getCanonicalFileName(fileName) {
       return fileName;
@@ -787,12 +792,13 @@ delete Object.prototype.__proto__;
     }
   }
 
-  /** @param {{ debug: boolean; }} init */
-  function serverInit({ debug: debugFlag }) {
+  /** @param {{ debug: boolean; rootUri?: string; }} init */
+  function serverInit({ debug: debugFlag, rootUri }) {
     if (hasStarted) {
       throw new Error("The language server has already been initialized.");
     }
     hasStarted = true;
+    cwd = rootUri;
     languageService = ts.createLanguageService(host);
     setLogDebug(debugFlag, "TSLS");
     debug("serverInit()");

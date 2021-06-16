@@ -21,6 +21,12 @@ fn load_fixture(path: &str) -> Value {
   serde_json::from_str(&fixture_str).unwrap()
 }
 
+fn load_fixture_str(path: &str) -> String {
+  let fixtures_path = root_path().join("cli/tests/lsp");
+  let path = fixtures_path.join(path);
+  fs::read_to_string(path).unwrap()
+}
+
 fn init(init_path: &str) -> LspClient {
   let deno_exe = deno_exe_path();
   let mut client = LspClient::new(&deno_exe).unwrap();
@@ -112,6 +118,85 @@ fn lsp_init_tsconfig() {
         "languageId": "typescript",
         "version": 1,
         "text": "location.pathname;\n"
+      }
+    }),
+  );
+
+  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
+  assert_eq!(diagnostics.count(), 0);
+
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_tsconfig_types() {
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let tsconfig =
+    serde_json::to_vec_pretty(&load_fixture("types.tsconfig.json")).unwrap();
+  fs::write(temp_dir.path().join("types.tsconfig.json"), tsconfig).unwrap();
+  let a_dts = load_fixture_str("a.d.ts");
+  fs::write(temp_dir.path().join("a.d.ts"), a_dts).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert("config".to_string(), json!("./types.tsconfig.json"));
+    params.initialization_options = Some(Value::Object(map));
+  }
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": Url::from_file_path(temp_dir.path().join("test.ts")).unwrap(),
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(a);\n"
+      }
+    }),
+  );
+
+  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
+  assert_eq!(diagnostics.count(), 0);
+
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_triple_slash_types() {
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let a_dts = load_fixture_str("a.d.ts");
+  fs::write(temp_dir.path().join("a.d.ts"), a_dts).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": Url::from_file_path(temp_dir.path().join("test.ts")).unwrap(),
+        "languageId": "typescript",
+        "version": 1,
+        "text": "/// <reference types=\"./a.d.ts\" />\n\nconsole.log(a);\n"
       }
     }),
   );
