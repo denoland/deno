@@ -144,11 +144,7 @@
     "console-label-conversion.any.html": true,
     "console-namespace-object-class-string.any.html": true,
     "console-tests-historical.any.html": true,
-    "idlharness.any.html": [
-      "console namespace: operation table(optional any, optional sequence<DOMString>)",
-      "console namespace: operation dir(optional any, optional object?)",
-      "console namespace: operation dirxml(any...)"
-    ]
+    "idlharness.any.html": true
   },
   "dom": {
     "abort": {
