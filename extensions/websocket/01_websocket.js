@@ -112,42 +112,52 @@
 
     [_readyState] = CONNECTING;
     get readyState() {
+      webidl.assertBranded(this, WebSocket);
       return this[_readyState];
     }
 
     get CONNECTING() {
+      webidl.assertBranded(this, WebSocket);
       return CONNECTING;
     }
     get OPEN() {
+      webidl.assertBranded(this, WebSocket);
       return OPEN;
     }
     get CLOSING() {
+      webidl.assertBranded(this, WebSocket);
       return CLOSING;
     }
     get CLOSED() {
+      webidl.assertBranded(this, WebSocket);
       return CLOSED;
     }
 
     [_extensions] = "";
     get extensions() {
+      webidl.assertBranded(this, WebSocket);
       return this[_extensions];
     }
 
     [_protocol] = "";
     get protocol() {
+      webidl.assertBranded(this, WebSocket);
       return this[_protocol];
     }
 
     [_url] = "";
     get url() {
+      webidl.assertBranded(this, WebSocket);
       return this[_url];
     }
 
     [_binaryType] = "blob";
     get binaryType() {
+      webidl.assertBranded(this, WebSocket);
       return this[_binaryType];
     }
     set binaryType(value) {
+      webidl.assertBranded(this, WebSocket);
       value = webidl.converters.DOMString(value, {
         prefix: "Failed to set 'binaryType' on 'WebSocket'",
       });
@@ -158,6 +168,7 @@
 
     [_bufferedAmount] = 0;
     get bufferedAmount() {
+      webidl.assertBranded(this, WebSocket);
       return this[_bufferedAmount];
     }
 
