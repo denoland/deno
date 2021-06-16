@@ -8,16 +8,6 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
-use deno_runtime::deno_broadcast_channel;
-use deno_runtime::deno_console;
-use deno_runtime::deno_crypto;
-use deno_runtime::deno_fetch;
-use deno_runtime::deno_file;
-use deno_runtime::deno_url;
-use deno_runtime::deno_web;
-use deno_runtime::deno_webgpu;
-use deno_runtime::deno_websocket;
-use deno_runtime::deno_webstorage;
 use regex::Regex;
 use std::collections::HashMap;
 use std::env;
@@ -69,7 +59,6 @@ fn create_compiler_snapshot(
   op_crate_libs.insert("deno.console", deno_console::get_declaration());
   op_crate_libs.insert("deno.url", deno_url::get_declaration());
   op_crate_libs.insert("deno.web", deno_web::get_declaration());
-  op_crate_libs.insert("deno.file", deno_file::get_declaration());
   op_crate_libs.insert("deno.fetch", deno_fetch::get_declaration());
   op_crate_libs.insert("deno.webgpu", deno_webgpu::get_declaration());
   op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
@@ -131,6 +120,10 @@ fn create_compiler_snapshot(
     "es2020.sharedmemory",
     "es2020.string",
     "es2020.symbol.wellknown",
+    "es2021",
+    "es2021.promise",
+    "es2021.string",
+    "es2021.weakref",
     "esnext",
     "esnext.intl",
     "esnext.promise",
@@ -280,10 +273,6 @@ fn main() {
   println!(
     "cargo:rustc-env=DENO_WEB_LIB_PATH={}",
     deno_web::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_FILE_LIB_PATH={}",
-    deno_file::get_declaration().display()
   );
   println!(
     "cargo:rustc-env=DENO_FETCH_LIB_PATH={}",

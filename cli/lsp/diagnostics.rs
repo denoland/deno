@@ -120,8 +120,11 @@ impl DiagnosticsServer {
       .collect()
   }
 
-  pub(crate) async fn invalidate(&self, specifier: &ModuleSpecifier) {
-    self.collection.lock().await.versions.remove(specifier);
+  pub(crate) async fn invalidate(&self, specifiers: Vec<ModuleSpecifier>) {
+    let mut collection = self.collection.lock().await;
+    for specifier in specifiers {
+      collection.versions.remove(&specifier);
+    }
   }
 
   pub(crate) fn start(
@@ -222,17 +225,6 @@ impl<'a> From<&'a diagnostics::Position> for lsp::Position {
   }
 }
 
-/// Check if diagnostics can be generated for the provided media type.
-pub fn is_diagnosable(media_type: MediaType) -> bool {
-  matches!(
-    media_type,
-    MediaType::TypeScript
-      | MediaType::JavaScript
-      | MediaType::Tsx
-      | MediaType::Jsx
-  )
-}
-
 fn get_diagnostic_message(diagnostic: &diagnostics::Diagnostic) -> String {
   if let Some(message) = diagnostic.message_text.clone() {
     message
@@ -322,13 +314,16 @@ async fn generate_lint_diagnostics(
     let mut diagnostics_vec = Vec::new();
     if workspace_settings.lint {
       for specifier in documents.open_specifiers() {
+        if !documents.is_diagnosable(specifier) {
+          continue;
+        }
         let version = documents.version(specifier);
         let current_version = collection
           .lock()
           .await
           .get_version(specifier, &DiagnosticSource::DenoLint);
         let media_type = MediaType::from(specifier);
-        if version != current_version && is_diagnosable(media_type) {
+        if version != current_version {
           if let Ok(Some(source_code)) = documents.content(specifier) {
             if let Ok(references) = analysis::get_lint_references(
               specifier,
@@ -366,12 +361,15 @@ async fn generate_ts_diagnostics(
       .open_specifiers()
       .iter()
       .filter_map(|&s| {
-        let version = snapshot.documents.version(s);
-        let current_version =
-          collection.get_version(s, &DiagnosticSource::TypeScript);
-        let media_type = MediaType::from(s);
-        if version != current_version && is_diagnosable(media_type) {
-          Some(s.clone())
+        if snapshot.documents.is_diagnosable(s) {
+          let version = snapshot.documents.version(s);
+          let current_version =
+            collection.get_version(s, &DiagnosticSource::TypeScript);
+          if version != current_version {
+            Some(s.clone())
+          } else {
+            None
+          }
         } else {
           None
         }

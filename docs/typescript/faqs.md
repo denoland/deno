@@ -52,6 +52,13 @@ that you control. You can also replace whole dependencies, using
 dependency of a dependency isn't being maintained or has some sort of breaking
 change you want to bypass while waiting for it to be updated.
 
+### How do I write code that works in Deno and a browser, but still type checks?
+
+You can do this by using a `tsconfig.json` file with the `--config` option on
+the command line and adjusting the `"lib"` option in the `"compilerOptions"` in
+the file. For more information see
+[Targeting Deno and the Browser](./configuration#targeting-deno-and-the-browser).
+
 ### Why are you forcing me to use isolated modules, why can't I use const enums with Deno, why do I need to do export type?
 
 As of Deno 1.5 we defaulted to _isolatedModules_ to `true` and in Deno 1.6 we

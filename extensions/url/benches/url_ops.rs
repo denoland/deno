@@ -6,11 +6,14 @@ use deno_core::Extension;
 
 fn setup() -> Vec<Extension> {
   vec![
+    deno_webidl::init(),
     deno_url::init(),
     Extension::builder()
       .js(vec![(
         "setup",
-        "const { URL } = globalThis.__bootstrap.url;",
+        Box::new(|| {
+          Ok(r#"const { URL } = globalThis.__bootstrap.url;"#.to_owned())
+        }),
       )])
       .build(),
   ]

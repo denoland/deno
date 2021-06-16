@@ -204,9 +204,11 @@ object. Responding with a basic "hello world" would look like this:
 async function handle(conn: Deno.Conn) {
   const httpConn = Deno.serveHttp(conn);
   for await (const requestEvent of httpConn) {
-    await requestEvent.respondWith(new Response("hello world"), {
-      status: 200,
-    });
+    await requestEvent.respondWith(
+      new Response("hello world", {
+        status: 200,
+      }),
+    );
   }
 }
 ```

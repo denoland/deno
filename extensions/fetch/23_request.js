@@ -3,10 +3,9 @@
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../file/internal.d.ts" />
-/// <reference path="../file/lib.deno_file.d.ts" />
+/// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
-/// <reference path="./11_streams_types.d.ts" />
+/// <reference path="../web/06_streams_types.d.ts" />
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 "use strict";
@@ -26,9 +25,11 @@
     getDecodeSplitHeader,
   } = window.__bootstrap.headers;
   const { HttpClient } = window.__bootstrap.fetch;
+  const abortSignal = window.__bootstrap.abortSignal;
 
   const _request = Symbol("request");
   const _headers = Symbol("headers");
+  const _signal = Symbol("signal");
   const _mimeType = Symbol("mime type");
   const _body = Symbol("body");
 
@@ -145,14 +146,14 @@
     [_request];
     /** @type {Headers} */
     [_headers];
+    /** @type {AbortSignal} */
+    [_signal];
     get [_mimeType]() {
       let charset = null;
       let essence = null;
       let mimeType = null;
-      const values = getDecodeSplitHeader(
-        headerListFromHeaders(this[_headers]),
-        "Content-Type",
-      );
+      const headerList = headerListFromHeaders(this[_headers]);
+      const values = getDecodeSplitHeader(headerList, "content-type");
       if (values === null) return null;
       for (const value of values) {
         const temporaryMimeType = mimesniff.parseMimeType(value);
@@ -206,6 +207,9 @@
       let request;
       const baseURL = getLocationHref();
 
+      // 4.
+      let signal = null;
+
       // 5.
       if (typeof input === "string") {
         const parsedURL = new URL(input, baseURL);
@@ -213,7 +217,11 @@
       } else { // 6.
         if (!(input instanceof Request)) throw new TypeError("Unreachable");
         request = input[_request];
+        signal = input[_signal];
       }
+
+      // 12.
+      // TODO(lucacasonato): create a copy of `request`
 
       // 22.
       if (init.redirect !== undefined) {
@@ -225,6 +233,11 @@
         let method = init.method;
         method = validateAndNormalizeMethod(method);
         request.method = method;
+      }
+
+      // 26.
+      if (init.signal !== undefined) {
+        signal = init.signal;
       }
 
       // NOTE: non standard extension. This handles Deno.HttpClient parameter
@@ -241,6 +254,12 @@
 
       // 27.
       this[_request] = request;
+
+      // 28.
+      this[_signal] = abortSignal.newSignal();
+      if (signal !== null) {
+        abortSignal.follow(this[_signal], signal);
+      }
 
       // 29.
       this[_headers] = headersFromHeaderList(request.headerList, "request");
@@ -273,7 +292,7 @@
         ((init.body !== undefined && init.body !== null) ||
           inputBody !== null)
       ) {
-        throw new TypeError("HEAD and GET requests may not have a body.");
+        throw new TypeError("Request with GET/HEAD method cannot have body.");
       }
 
       // 34.
@@ -299,6 +318,9 @@
 
       // 40.
       request.body = finalBody;
+
+      // 41.
+      // TODO(lucacasonato): Extranious? https://github.com/whatwg/fetch/issues/1249
     }
 
     get method() {
@@ -316,64 +338,14 @@
       return this[_headers];
     }
 
-    get destination() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get referrer() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get referrerPolicy() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get mode() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get credentials() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get cache() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
     get redirect() {
       webidl.assertBranded(this, Request);
       return this[_request].redirectMode;
     }
 
-    get integrity() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get keepalive() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get isReloadNavigation() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
-    get isHistoryNavigation() {
-      webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
-    }
-
     get signal() {
       webidl.assertBranded(this, Request);
-      throw new TypeError("This property is not implemented.");
+      return this[_signal];
     }
 
     clone() {
@@ -382,7 +354,13 @@
         throw new TypeError("Body is unusable.");
       }
       const newReq = cloneInnerRequest(this[_request]);
-      return fromInnerRequest(newReq, guardFromHeaders(this[_headers]));
+      const newSignal = abortSignal.newSignal();
+      abortSignal.follow(newSignal, this[_signal]);
+      return fromInnerRequest(
+        newReq,
+        newSignal,
+        guardFromHeaders(this[_headers]),
+      );
     }
 
     get [Symbol.toStringTag]() {
@@ -403,6 +381,8 @@
 
   mixinBody(Request, _body, _mimeType);
 
+  webidl.configurePrototype(Request);
+
   webidl.converters["Request"] = webidl.createInterfaceConverter(
     "Request",
     Request,
@@ -416,46 +396,6 @@
     }
     return webidl.converters["USVString"](V, opts);
   };
-
-  webidl.converters["ReferrerPolicy"] = webidl.createEnumConverter(
-    "ReferrerPolicy",
-    [
-      "",
-      "no-referrer",
-      "no-referrer-when-downgrade",
-      "same-origin",
-      "origin",
-      "strict-origin",
-      "origin-when-cross-origin",
-      "strict-origin-when-cross-origin",
-      "unsafe-url",
-    ],
-  );
-  webidl.converters["RequestMode"] = webidl.createEnumConverter("RequestMode", [
-    "navigate",
-    "same-origin",
-    "no-cors",
-    "cors",
-  ]);
-  webidl.converters["RequestCredentials"] = webidl.createEnumConverter(
-    "RequestCredentials",
-    [
-      "omit",
-      "same-origin",
-      "include",
-    ],
-  );
-  webidl.converters["RequestCache"] = webidl.createEnumConverter(
-    "RequestCache",
-    [
-      "default",
-      "no-store",
-      "reload",
-      "no-cache",
-      "force-cache",
-      "only-if-cached",
-    ],
-  );
   webidl.converters["RequestRedirect"] = webidl.createEnumConverter(
     "RequestRedirect",
     [
@@ -475,17 +415,7 @@
           webidl.converters["BodyInit"],
         ),
       },
-      { key: "referrer", converter: webidl.converters["USVString"] },
-      { key: "referrerPolicy", converter: webidl.converters["ReferrerPolicy"] },
-      { key: "mode", converter: webidl.converters["RequestMode"] },
-      {
-        key: "credentials",
-        converter: webidl.converters["RequestCredentials"],
-      },
-      { key: "cache", converter: webidl.converters["RequestCache"] },
       { key: "redirect", converter: webidl.converters["RequestRedirect"] },
-      { key: "integrity", converter: webidl.converters["DOMString"] },
-      { key: "keepalive", converter: webidl.converters["boolean"] },
       {
         key: "signal",
         converter: webidl.createNullableConverter(
@@ -509,9 +439,10 @@
    * @param {"request" | "immutable" | "request-no-cors" | "response" | "none"} guard
    * @returns {Request}
    */
-  function fromInnerRequest(inner, guard) {
+  function fromInnerRequest(inner, signal, guard) {
     const request = webidl.createBranded(Request);
     request[_request] = inner;
+    request[_signal] = signal;
     request[_headers] = headersFromHeaderList(inner.headerList, guard);
     return request;
   }

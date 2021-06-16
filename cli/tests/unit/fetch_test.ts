@@ -1139,3 +1139,13 @@ unitTest(
     assertEquals(actual, expected);
   },
 );
+
+unitTest({}, function fetchWritableRespProps(): void {
+  const original = new Response("https://deno.land", {
+    status: 404,
+    headers: { "x-deno": "foo" },
+  });
+  const new_ = new Response("https://deno.land", original);
+  assertEquals(original.status, new_.status);
+  assertEquals(new_.headers.get("x-deno"), "foo");
+});

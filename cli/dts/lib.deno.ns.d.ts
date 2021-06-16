@@ -248,7 +248,7 @@ declare namespace Deno {
    *
    * Requires --allow-read.
    */
-  export function chdir(directory: string): void;
+  export function chdir(directory: string | URL): void;
 
   /**
    * Return a string representing the current working directory.
@@ -1322,7 +1322,10 @@ declare namespace Deno {
    * they are. It's always an error to rename anything to a non-empty directory.
    *
    * Requires `allow-read` and `allow-write` permissions. */
-  export function renameSync(oldpath: string, newpath: string): void;
+  export function renameSync(
+    oldpath: string | URL,
+    newpath: string | URL,
+  ): void;
 
   /** Renames (moves) `oldpath` to `newpath`.  Paths may be files or directories.
    * If `newpath` already exists and is not a directory, `rename()` replaces it.
@@ -1339,7 +1342,10 @@ declare namespace Deno {
    * they are. It's always an error to rename anything to a non-empty directory.
    *
    * Requires `allow-read` and `allow-write` permission. */
-  export function rename(oldpath: string, newpath: string): Promise<void>;
+  export function rename(
+    oldpath: string | URL,
+    newpath: string | URL,
+  ): Promise<void>;
 
   /** Synchronously reads and returns the entire contents of a file as utf8
    *  encoded string. Reading a directory throws an error.
@@ -1949,6 +1955,25 @@ declare namespace Deno {
     paths: string[];
   }
 
+  /**
+   * FsWatcher is returned by `Deno.watchFs` function when you start watching
+   * the file system. You can iterate over this interface to get the file
+   * system events, and also you can stop watching the file system by calling
+   * `.close()` method.
+   */
+  export interface FsWatcher extends AsyncIterable<FsEvent> {
+    /** The resource id of the `FsWatcher`. */
+    readonly rid: number;
+    /** Stops watching the file system and closes the watcher resource. */
+    close(): void;
+    /** @deprecated
+     * Stops watching the file system and closes the watcher resource.
+     * Will be removed at 2.0.
+     */
+    return?(value?: any): Promise<IteratorResult<FsEvent>>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<FsEvent>;
+  }
+
   /** Watch for file system events against one or more `paths`, which can be files
    * or directories.  These paths must exist already.  One user action (e.g.
    * `touch test.file`) can  generate multiple file system events.  Likewise,
@@ -1967,15 +1992,13 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission.
    *
-   * Call `watcher.return()` to stop watching.
+   * Call `watcher.close()` to stop watching.
    *
    * ```ts
    * const watcher = Deno.watchFs("/");
    *
    * setTimeout(() => {
-   *   if (watcher.return) {
-   *     watcher.return();
-   *   }
+   *   watcher.close();
    * }, 5000);
    *
    * for await (const event of watcher) {
@@ -1986,7 +2009,7 @@ declare namespace Deno {
   export function watchFs(
     paths: string | string[],
     options?: { recursive: boolean },
-  ): AsyncIterableIterator<FsEvent>;
+  ): FsWatcher;
 
   export class Process<T extends RunOptions = RunOptions> {
     readonly rid: number;
@@ -2356,8 +2379,8 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission. */
   export function symlinkSync(
-    oldpath: string,
-    newpath: string,
+    oldpath: string | URL,
+    newpath: string | URL,
     options?: SymlinkOptions,
   ): void;
 
@@ -2373,8 +2396,8 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission. */
   export function symlink(
-    oldpath: string,
-    newpath: string,
+    oldpath: string | URL,
+    newpath: string | URL,
     options?: SymlinkOptions,
   ): Promise<void>;
 
