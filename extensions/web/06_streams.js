@@ -4403,6 +4403,7 @@
     // Non-Public
     isReadableStreamDisturbed,
     errorReadableStream,
+    writableStreamClose,
     // Exposed in global runtime scope
     ByteLengthQueuingStrategy,
     CountQueuingStrategy,

@@ -59,13 +59,13 @@ Deno.test("websocket error", async () => {
   await Promise.all([
     assertThrowsAsync(
       () => ws.connection,
-      Error,
-      "UnexpectedEof: tls handshake eof",
+      Deno.errors.UnexpectedEof,
+      "tls handshake eof",
     ),
     assertThrowsAsync(
       () => ws.closed,
-      Error,
-      "UnexpectedEof: tls handshake eof",
+      Deno.errors.UnexpectedEof,
+      "tls handshake eof",
     ),
   ]);
 });

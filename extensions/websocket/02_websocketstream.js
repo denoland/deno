@@ -4,6 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
+  const { writableStreamClose } = window.__bootstrap.streams;
 
   webidl.converters["sequence<USVString>"] = webidl.createSequenceConverter(
     webidl.converters["USVString"],
@@ -211,7 +212,7 @@
               start: (controller) => {
                 this.closed.then(() => {
                   controller.close();
-                  writable.close();
+                  writableStreamClose(writable);
                 });
               },
               pull: async (controller) => {
