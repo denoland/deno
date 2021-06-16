@@ -2,13 +2,9 @@ use crate::tools::test_runner::TestEvent;
 use crate::tools::test_runner::TestMessage;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-use deno_core::ZeroCopyBuf;
 use deno_runtime::ops::worker_host::create_worker_permissions;
 use deno_runtime::ops::worker_host::PermissionsArg;
 use deno_runtime::permissions::Permissions;
@@ -31,17 +27,15 @@ struct PermissionsHolder(Uuid, Permissions);
 
 pub fn op_pledge_test_permissions(
   state: &mut OpState,
-  args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
+  args: PermissionsArg,
+  _: (),
 ) -> Result<Uuid, AnyError> {
   deno_runtime::ops::check_unstable(state, "Deno.test.permissions");
 
   let token = Uuid::new_v4();
   let parent_permissions = state.borrow::<Permissions>().clone();
-  let worker_permissions = {
-    let permissions: PermissionsArg = serde_json::from_value(args)?;
-    create_worker_permissions(parent_permissions.clone(), permissions)?
-  };
+  let worker_permissions =
+    create_worker_permissions(parent_permissions.clone(), args)?;
 
   state.put::<PermissionsHolder>(PermissionsHolder(token, parent_permissions));
 
@@ -54,7 +48,7 @@ pub fn op_pledge_test_permissions(
 pub fn op_restore_test_permissions(
   state: &mut OpState,
   token: Uuid,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<(), AnyError> {
   deno_runtime::ops::check_unstable(state, "Deno.test.permissions");
 
@@ -79,10 +73,9 @@ struct PostTestMessageArgs {
 
 fn op_post_test_message(
   state: &mut OpState,
-  args: Value,
-  _zero_copy: Option<ZeroCopyBuf>,
-) -> Result<Value, AnyError> {
-  let args: PostTestMessageArgs = serde_json::from_value(args)?;
+  args: PostTestMessageArgs,
+  _: (),
+) -> Result<bool, AnyError> {
   let origin = state.borrow::<ModuleSpecifier>().to_string();
   let message = args.message;
 
@@ -91,8 +84,8 @@ fn op_post_test_message(
   let sender = state.borrow::<Sender<TestEvent>>().clone();
 
   if sender.send(event).is_err() {
-    Ok(json!(false))
+    Ok(false)
   } else {
-    Ok(json!(true))
+    Ok(true)
   }
 }

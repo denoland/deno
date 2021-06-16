@@ -74,10 +74,10 @@ There is also the `.accept()` method on the listener which can be used:
 const server = Deno.listen({ port: 8080 });
 
 while (true) {
-  const conn = server.accept();
-  if (conn) {
+  try {
+    const conn = await server.accept();
     // ... handle the connection ...
-  } else {
+  } catch (err) {
     // The listener has closed
     break;
   }
@@ -122,8 +122,8 @@ await the next request. It would look something like this:
 const server = Deno.listen({ port: 8080 });
 
 while (true) {
-  const conn = server.accept();
-  if (conn) {
+  try {
+    const conn = await server.accept();
     (async () => {
       const httpConn = Deno.serveHttp(conn);
       while (true) {
@@ -136,7 +136,7 @@ while (true) {
         }
       }
     })();
-  } else {
+  } catch (err) {
     // The listener has closed
     break;
   }
@@ -204,9 +204,11 @@ object. Responding with a basic "hello world" would look like this:
 async function handle(conn: Deno.Conn) {
   const httpConn = Deno.serveHttp(conn);
   for await (const requestEvent of httpConn) {
-    await requestEvent.respondWith(new Response("hello world"), {
-      status: 200,
-    });
+    await requestEvent.respondWith(
+      new Response("hello world", {
+        status: 200,
+      }),
+    );
   }
 }
 ```

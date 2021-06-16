@@ -46,6 +46,8 @@ use tokio_tungstenite::accept_async;
 #[cfg(unix)]
 pub use pty;
 
+pub mod lsp;
+
 const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
 const REDIRECT_PORT: u16 = 4546;
@@ -74,7 +76,10 @@ lazy_static! {
 }
 
 pub fn root_path() -> PathBuf {
-  PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/.."))
+  PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")))
+    .parent()
+    .unwrap()
+    .to_path_buf()
 }
 
 pub fn prebuilt_path() -> PathBuf {
@@ -83,10 +88,6 @@ pub fn prebuilt_path() -> PathBuf {
 
 pub fn tests_path() -> PathBuf {
   root_path().join("cli").join("tests")
-}
-
-pub fn wpt_path() -> PathBuf {
-  root_path().join("test_util").join("wpt")
 }
 
 pub fn third_party_path() -> PathBuf {
@@ -132,6 +133,15 @@ pub fn test_server_path() -> PathBuf {
     p.set_extension("exe");
   }
   p
+}
+
+fn ensure_test_server_built() {
+  // if the test server doesn't exist then remind the developer to build first
+  if !test_server_path().exists() {
+    panic!(
+      "Test server not found. Please cargo build before running the tests."
+    );
+  }
 }
 
 /// Benchmark server that just serves "hello world" responses.
@@ -494,6 +504,30 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       res.headers_mut().insert(
         "Content-type",
         HeaderValue::from_static("application/javascript"),
+      );
+      res.headers_mut().insert(
+        "X-TypeScript-Types",
+        HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
+      );
+      Ok(res)
+    }
+    (_, "/xTypeScriptTypes.jsx") => {
+      let mut res = Response::new(Body::from("export const foo = 'foo';"));
+      res
+        .headers_mut()
+        .insert("Content-type", HeaderValue::from_static("text/jsx"));
+      res.headers_mut().insert(
+        "X-TypeScript-Types",
+        HeaderValue::from_static("./xTypeScriptTypes.d.ts"),
+      );
+      Ok(res)
+    }
+    (_, "/xTypeScriptTypes.ts") => {
+      let mut res =
+        Response::new(Body::from("export const foo: string = 'foo';"));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
       );
       res.headers_mut().insert(
         "X-TypeScript-Types",
@@ -1021,6 +1055,7 @@ impl Drop for HttpServerGuard {
 /// last instance of the HttpServerGuard is dropped, the subprocess will be
 /// killed.
 pub fn http_server() -> HttpServerGuard {
+  ensure_test_server_built();
   let mut g = lock_http_server();
   g.inc();
   HttpServerGuard {}

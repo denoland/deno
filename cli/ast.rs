@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::config_file;
 use crate::media_type::MediaType;
-use crate::tsc_config;
 
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
@@ -11,23 +11,16 @@ use std::error::Error;
 use std::fmt;
 use std::ops::Range;
 use std::rc::Rc;
-use std::sync::Arc;
-use std::sync::Mutex;
 use swc_common::chain;
 use swc_common::comments::Comment;
 use swc_common::comments::CommentKind;
 use swc_common::comments::SingleThreadedComments;
-use swc_common::errors::Diagnostic;
-use swc_common::errors::DiagnosticBuilder;
-use swc_common::errors::Emitter;
-use swc_common::errors::Handler;
-use swc_common::errors::HandlerFlags;
 use swc_common::FileName;
 use swc_common::Globals;
-use swc_common::Loc;
 use swc_common::SourceFile;
 use swc_common::SourceMap;
 use swc_common::Span;
+use swc_common::Spanned;
 use swc_ecmascript::ast::Module;
 use swc_ecmascript::ast::Program;
 use swc_ecmascript::codegen::text_writer::JsWriter;
@@ -89,57 +82,18 @@ impl std::fmt::Display for Location {
   }
 }
 
-/// A buffer for collecting diagnostic messages from the AST parser.
-#[derive(Debug)]
-pub struct DiagnosticBuffer(Vec<String>);
+/// A diagnostic from the AST parser.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct Diagnostic {
+  pub location: Location,
+  pub message: String,
+}
 
-impl Error for DiagnosticBuffer {}
+impl Error for Diagnostic {}
 
-impl fmt::Display for DiagnosticBuffer {
+impl fmt::Display for Diagnostic {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    let s = self.0.join(",");
-    f.pad(&s)
-  }
-}
-
-impl DiagnosticBuffer {
-  pub fn from_error_buffer<F>(error_buffer: ErrorBuffer, get_loc: F) -> Self
-  where
-    F: Fn(Span) -> Loc,
-  {
-    let s = error_buffer.0.lock().unwrap().clone();
-    let diagnostics = s
-      .iter()
-      .map(|d| {
-        let mut msg = d.message();
-
-        if let Some(span) = d.span.primary_span() {
-          let loc = get_loc(span);
-          let file_name = match &loc.file.name {
-            FileName::Custom(n) => n,
-            _ => unreachable!(),
-          };
-          msg = format!(
-            "{} at {}:{}:{}",
-            msg, file_name, loc.line, loc.col_display
-          );
-        }
-
-        msg
-      })
-      .collect::<Vec<String>>();
-
-    Self(diagnostics)
-  }
-}
-
-/// A buffer for collecting errors from the AST parser.
-#[derive(Debug, Clone, Default)]
-pub struct ErrorBuffer(Arc<Mutex<Vec<Diagnostic>>>);
-
-impl Emitter for ErrorBuffer {
-  fn emit(&mut self, db: &DiagnosticBuilder) {
-    self.0.lock().unwrap().push((**db).clone());
+    write!(f, "{} at {}", self.message, self.location)
   }
 }
 
@@ -192,9 +146,6 @@ pub enum ImportsNotUsedAsValues {
 /// Options which can be adjusted when transpiling a module.
 #[derive(Debug, Clone)]
 pub struct EmitOptions {
-  /// Indicate if JavaScript is being checked/transformed as well, or if it is
-  /// only TypeScript.
-  pub check_js: bool,
   /// When emitting a legacy decorator, also emit experimental decorator meta
   /// data.  Defaults to `false`.
   pub emit_metadata: bool,
@@ -205,6 +156,9 @@ pub struct EmitOptions {
   /// Should the source map be inlined in the emitted code file, or provided
   /// as a separate file.  Defaults to `true`.
   pub inline_source_map: bool,
+  // Should a corresponding .map file be created for the output. This should be
+  // false if inline_source_map is true. Defaults to `false`.
+  pub source_map: bool,
   /// When transforming JSX, what value should be used for the JSX factory.
   /// Defaults to `React.createElement`.
   pub jsx_factory: String,
@@ -218,10 +172,10 @@ pub struct EmitOptions {
 impl Default for EmitOptions {
   fn default() -> Self {
     EmitOptions {
-      check_js: false,
       emit_metadata: false,
       imports_not_used_as_values: ImportsNotUsedAsValues::Remove,
       inline_source_map: true,
+      source_map: false,
       jsx_factory: "React.createElement".into(),
       jsx_fragment_factory: "React.Fragment".into(),
       transform_jsx: true,
@@ -229,9 +183,9 @@ impl Default for EmitOptions {
   }
 }
 
-impl From<tsc_config::TsConfig> for EmitOptions {
-  fn from(config: tsc_config::TsConfig) -> Self {
-    let options: tsc_config::EmitConfigOptions =
+impl From<config_file::TsConfig> for EmitOptions {
+  fn from(config: config_file::TsConfig) -> Self {
+    let options: config_file::EmitConfigOptions =
       serde_json::from_value(config.0).unwrap();
     let imports_not_used_as_values =
       match options.imports_not_used_as_values.as_str() {
@@ -240,10 +194,10 @@ impl From<tsc_config::TsConfig> for EmitOptions {
         _ => ImportsNotUsedAsValues::Remove,
       };
     EmitOptions {
-      check_js: options.check_js,
       emit_metadata: options.emit_decorator_metadata,
       imports_not_used_as_values,
       inline_source_map: options.inline_source_map,
+      source_map: options.source_map,
       jsx_factory: options.jsx_factory,
       jsx_fragment_factory: options.jsx_fragment_factory,
       transform_jsx: options.jsx == "react",
@@ -268,6 +222,9 @@ fn strip_config_from_emit_options(
       }
     },
     use_define_for_class_fields: true,
+    // TODO(bartlomieju): this could be changed to `false` to provide `export {}`
+    // in Typescript files without manual changes
+    no_empty_export: true,
   }
 }
 
@@ -302,6 +259,22 @@ impl ParsedModule {
   /// be located.
   pub fn get_leading_comments(&self) -> Vec<Comment> {
     self.leading_comments.clone()
+  }
+
+  /// Get the module's comments.
+  pub fn get_comments(&self) -> Vec<Comment> {
+    let mut comments = Vec::new();
+    let (leading_comments, trailing_comments) = self.comments.borrow_all();
+
+    for value in leading_comments.values() {
+      comments.append(&mut value.clone());
+    }
+
+    for value in trailing_comments.values() {
+      comments.append(&mut value.clone());
+    }
+
+    comments
   }
 
   /// Get a location for a given span within the module.
@@ -400,31 +373,17 @@ pub fn parse_with_source_map(
     FileName::Custom(specifier.to_string()),
     source.to_string(),
   );
-  let error_buffer = ErrorBuffer::default();
   let syntax = get_syntax(media_type);
   let input = StringInput::from(&*source_file);
   let comments = SingleThreadedComments::default();
-
-  let handler = Handler::with_emitter_and_flags(
-    Box::new(error_buffer.clone()),
-    HandlerFlags {
-      can_emit_warnings: true,
-      dont_buffer_diagnostics: true,
-      ..HandlerFlags::default()
-    },
-  );
 
   let lexer = Lexer::new(syntax, TARGET, input, Some(&comments));
   let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
 
   let sm = &source_map;
-  let module = parser.parse_module().map_err(move |err| {
-    let mut diagnostic = err.into_diagnostic(&handler);
-    diagnostic.emit();
-
-    DiagnosticBuffer::from_error_buffer(error_buffer, |span| {
-      sm.lookup_char_pos(span.lo)
-    })
+  let module = parser.parse_module().map_err(move |err| Diagnostic {
+    location: sm.lookup_char_pos(err.span().lo).into(),
+    message: err.into_kind().msg().to_string(),
   })?;
   let leading_comments =
     comments.with_leading(module.span.lo, |comments| comments.to_vec());

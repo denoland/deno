@@ -47,6 +47,7 @@ jobs:
 
     env:
       RUST_BACKTRACE: full
+      RUSTC_FORCE_INCREMENTAL: 1
       CARGO_TERM_COLOR: always
 
     steps:
@@ -76,7 +77,7 @@ jobs:
       - name: Install rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.51.0
+          rust-version: 1.52.1
 
       - name: Install clippy and rustfmt
         if: matrix.kind == 'lint'
@@ -91,10 +92,7 @@ jobs:
           curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
           echo "$HOME/.deno/bin" >> $GITHUB_PATH
 
-      # TODO(ry) Enable on all OSes https://github.com/denoland/deno/issues/10378
       - name: Error on Warning
-        if: |
-          !startsWith(matrix.os, 'windows')
         run: echo "RUSTFLAGS=-D warnings" >> $GITHUB_ENV
 
       - name: Install Deno (Windows)
@@ -171,14 +169,6 @@ jobs:
           cargo --version
           deno --version
 
-      # Work around https://github.com/actions/cache/issues/403 by using GNU tar
-      # instead of BSD tar.
-      - name: Install GNU tar
-        if: matrix.os == 'macos-10.15'
-        run: |
-          brew install gnu-tar
-          echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
-
       - name: Cache Cargo home
         uses: actions/cache@v2
         with:
@@ -187,16 +177,39 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key:
-            a-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: a-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
-      - name: Cache build output
-        uses: actions/cache@v2
+      # In main branch, always creates fresh cache
+      - name: Cache build output (main)
+        # TODO(kt3k): Change the version to the released version
+        # when https://github.com/actions/cache/pull/489 (or 571) is merged.
+        uses: actions/cache@03e00da99d75a2204924908e1cca7902cafce66b
+        if: github.ref == 'refs/heads/main'
         with:
           path: |
             ./target
-          key:
-            a-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ hashFiles('Cargo.lock') }}
+          key: |
+            a-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+
+      # Restores cache from the latest main branch's Cache
+      - name: Cache build output (PR)
+        # TODO(kt3k): Change the version to the released version
+        # when https://github.com/actions/cache/pull/489 (or 571) is merged.
+        uses: actions/cache@03e00da99d75a2204924908e1cca7902cafce66b
+        if: github.ref != 'refs/heads/main'
+        with:
+          path: |
+            ./target
+          key: |
+            s0mth1ng_rand0m # Cache never be created for this key.
+          restore-keys: |
+            a-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ hashFiles('Cargo.lock') }}-
+
+      # Skips saving cache in PR branches
+      - name: Skip save cache (PR)
+        run: echo "CACHE_SKIP_SAVE=true" >> $GITHUB_ENV
+        shell: bash
+        if: github.ref != 'refs/heads/main'
 
       - name: Apply and update mtime cache
         uses: ./.github/mtime_cache
@@ -294,7 +307,35 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu') && matrix.kind == 'test' && matrix.profile == 'release'
         run: |
           deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts setup
-          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --quiet --release
+          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --quiet --release --json=wpt.json --wptreport=wptreport.json
+          gzip ./wptreport.json
+
+      - name: Upload wpt results to dl.deno.land
+        if: |
+          runner.os == 'Linux' &&
+          matrix.kind == 'test' &&
+          matrix.profile == 'release' &&
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/main'
+        run: |
+          gsutil cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json
+          gsutil cp ./wptreport.json.gz gs://dl.deno.land/wpt/$(git rev-parse HEAD)-wptreport.json.gz
+          echo $(git rev-parse HEAD) > wpt-latest.txt
+          gsutil cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt
+
+      - name: Upload wpt results to wpt.fyi
+        if: |
+          runner.os == 'Linux' &&
+          matrix.kind == 'test' &&
+          matrix.profile == 'release' &&
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/main'
+        env:
+          WPT_FYI_STAGING_USER: ${{ secrets.WPT_FYI_STAGING_USER }}
+          WPT_FYI_STAGING_PW: ${{ secrets.WPT_FYI_STAGING_PW }}
+          GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
+        run: |
+          deno run -A ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
 
       - name: Run web platform tests (debug)
         if: startsWith(matrix.os, 'ubuntu') && matrix.kind == 'test' && matrix.profile == 'debug'
@@ -381,4 +422,3 @@ jobs:
           rm -rf target/*/examples/
           rm -rf target/*/gn_out/
           rm -rf target/*/*.zip
-

@@ -19,7 +19,7 @@ use deno_core::futures;
 use deno_core::futures::future::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_fetch::reqwest;
-use deno_runtime::deno_file::BlobUrlStore;
+use deno_runtime::deno_web::BlobUrlStore;
 use deno_runtime::permissions::Permissions;
 use log::debug;
 use log::info;
@@ -178,33 +178,7 @@ pub fn map_content_type(
   if let Some(content_type) = maybe_content_type {
     let mut content_types = content_type.split(';');
     let content_type = content_types.next().unwrap();
-    let media_type = match content_type.trim().to_lowercase().as_ref() {
-      "application/typescript"
-      | "text/typescript"
-      | "video/vnd.dlna.mpeg-tts"
-      | "video/mp2t"
-      | "application/x-typescript" => {
-        map_js_like_extension(specifier, MediaType::TypeScript)
-      }
-      "application/javascript"
-      | "text/javascript"
-      | "application/ecmascript"
-      | "text/ecmascript"
-      | "application/x-javascript"
-      | "application/node" => {
-        map_js_like_extension(specifier, MediaType::JavaScript)
-      }
-      "text/jsx" => MediaType::Jsx,
-      "text/tsx" => MediaType::Tsx,
-      "application/json" | "text/json" => MediaType::Json,
-      "application/wasm" => MediaType::Wasm,
-      // Handle plain and possibly webassembly
-      "text/plain" | "application/octet-stream" => MediaType::from(specifier),
-      _ => {
-        debug!("unknown content type: {}", content_type);
-        MediaType::Unknown
-      }
-    };
+    let media_type = MediaType::from_content_type(specifier, content_type);
     let charset = content_types
       .map(str::trim)
       .find_map(|s| s.strip_prefix("charset="))
@@ -216,57 +190,8 @@ pub fn map_content_type(
   }
 }
 
-/// Used to augment media types by using the path part of a module specifier to
-/// resolve to a more accurate media type.
-fn map_js_like_extension(
-  specifier: &ModuleSpecifier,
-  default: MediaType,
-) -> MediaType {
-  let path = if specifier.scheme() == "file" {
-    if let Ok(path) = specifier.to_file_path() {
-      path
-    } else {
-      PathBuf::from(specifier.path())
-    }
-  } else {
-    PathBuf::from(specifier.path())
-  };
-  match path.extension() {
-    None => default,
-    Some(os_str) => match os_str.to_str() {
-      None => default,
-      Some("jsx") => MediaType::Jsx,
-      Some("tsx") => MediaType::Tsx,
-      // Because DTS files do not have a separate media type, or a unique
-      // extension, we have to "guess" at those things that we consider that
-      // look like TypeScript, and end with `.d.ts` are DTS files.
-      Some("ts") => {
-        if default == MediaType::TypeScript {
-          match path.file_stem() {
-            None => default,
-            Some(os_str) => {
-              if let Some(file_stem) = os_str.to_str() {
-                if file_stem.ends_with(".d") {
-                  MediaType::Dts
-                } else {
-                  default
-                }
-              } else {
-                default
-              }
-            }
-          }
-        } else {
-          default
-        }
-      }
-      Some(_) => default,
-    },
-  }
-}
-
 /// Remove shebangs from the start of source code strings
-fn strip_shebang(mut value: String) -> String {
+pub fn strip_shebang(mut value: String) -> String {
   if value.starts_with("#!") {
     if let Some(mid) = value.find('\n') {
       let (_, rest) = value.split_at(mid);
@@ -327,7 +252,12 @@ impl FileFetcher {
     let (media_type, maybe_charset) =
       map_content_type(specifier, maybe_content_type);
     let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
-    let maybe_types = headers.get("x-typescript-types").cloned();
+    let maybe_types = match media_type {
+      MediaType::JavaScript | MediaType::Jsx => {
+        headers.get("x-typescript-types").cloned()
+      }
+      _ => None,
+    };
 
     Ok(File {
       local,
@@ -649,7 +579,7 @@ mod tests {
   use deno_core::error::get_custom_error_class;
   use deno_core::resolve_url;
   use deno_core::resolve_url_or_path;
-  use deno_runtime::deno_file::Blob;
+  use deno_runtime::deno_web::Blob;
   use std::rc::Rc;
   use tempfile::TempDir;
 
@@ -1593,7 +1523,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_fetch_remote_with_types() {
+  async fn test_fetch_remote_javascript_with_types() {
     let specifier =
       resolve_url_or_path("http://127.0.0.1:4545/xTypeScriptTypes.js").unwrap();
     let (file, _) = test_fetch_remote(&specifier).await;
@@ -1601,6 +1531,27 @@ mod tests {
       file.maybe_types,
       Some("./xTypeScriptTypes.d.ts".to_string())
     );
+  }
+
+  #[tokio::test]
+  async fn test_fetch_remote_jsx_with_types() {
+    let specifier =
+      resolve_url_or_path("http://127.0.0.1:4545/xTypeScriptTypes.jsx")
+        .unwrap();
+    let (file, _) = test_fetch_remote(&specifier).await;
+    assert_eq!(file.media_type, MediaType::Jsx,);
+    assert_eq!(
+      file.maybe_types,
+      Some("./xTypeScriptTypes.d.ts".to_string())
+    );
+  }
+
+  #[tokio::test]
+  async fn test_fetch_remote_typescript_with_types() {
+    let specifier =
+      resolve_url_or_path("http://127.0.0.1:4545/xTypeScriptTypes.ts").unwrap();
+    let (file, _) = test_fetch_remote(&specifier).await;
+    assert_eq!(file.maybe_types, None);
   }
 
   #[tokio::test]

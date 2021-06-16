@@ -10,7 +10,6 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
 use std::io::Error;
@@ -71,7 +70,7 @@ pub struct SetRawArgs {
 fn op_set_raw(
   state: &mut OpState,
   args: SetRawArgs,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.setRaw");
 
@@ -221,7 +220,7 @@ fn op_set_raw(
 fn op_isatty(
   state: &mut OpState,
   rid: ResourceId,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<bool, AnyError> {
   let isatty: bool = StdFileResource::with(state, rid, move |r| match r {
     Ok(std_file) => {
@@ -255,7 +254,7 @@ struct ConsoleSize {
 fn op_console_size(
   state: &mut OpState,
   rid: ResourceId,
-  _zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<ConsoleSize, AnyError> {
   super::check_unstable(state, "Deno.consoleSize");
 

@@ -429,15 +429,13 @@
     inspectOptions,
   ) {
     const proxyDetails = core.getProxyDetails(value);
-    if (proxyDetails != null) {
-      return inspectOptions.showProxy
-        ? inspectProxy(proxyDetails, level, inspectOptions)
-        : inspectValue(proxyDetails[0], level, inspectOptions);
+    if (proxyDetails != null && inspectOptions.showProxy) {
+      return inspectProxy(proxyDetails, level, inspectOptions);
     }
 
     const green = maybeColor(colors.green, inspectOptions);
     const yellow = maybeColor(colors.yellow, inspectOptions);
-    const dim = maybeColor(colors.dim, inspectOptions);
+    const gray = maybeColor(colors.gray, inspectOptions);
     const cyan = maybeColor(colors.cyan, inspectOptions);
     const bold = maybeColor(colors.bold, inspectOptions);
     const red = maybeColor(colors.red, inspectOptions);
@@ -450,8 +448,8 @@
         return yellow(Object.is(value, -0) ? "-0" : `${value}`);
       case "boolean": // booleans are yellow
         return yellow(String(value));
-      case "undefined": // undefined is dim
-        return dim(String(value));
+      case "undefined": // undefined is gray
+        return gray(String(value));
       case "symbol": // Symbols are green
         return green(maybeQuoteSymbol(value));
       case "bigint": // Bigints are yellow
@@ -583,7 +581,7 @@
     level,
     inspectOptions,
   ) {
-    const dim = maybeColor(colors.dim, inspectOptions);
+    const gray = maybeColor(colors.gray, inspectOptions);
     const options = {
       typeName: "Array",
       displayName: "",
@@ -599,7 +597,7 @@
           }
           const emptyItems = i - index;
           const ending = emptyItems > 1 ? "s" : "";
-          return dim(`<${emptyItems} empty item${ending}>`);
+          return gray(`<${emptyItems} empty item${ending}>`);
         } else {
           return inspectValueWithQuotes(val, level, inspectOptions);
         }

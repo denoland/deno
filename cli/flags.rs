@@ -96,6 +96,7 @@ pub enum DenoSubcommand {
     script: String,
   },
   Test {
+    doc: bool,
     no_run: bool,
     fail_fast: bool,
     quiet: bool,
@@ -790,6 +791,11 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     .arg(Arg::with_name("file").takes_value(true).required(false))
     .arg(reload_arg().requires("file"))
     .arg(ca_file_arg())
+    .arg(
+      location_arg()
+        .conflicts_with("file")
+        .help("Show files used for origin bound APIs like the Web Storage API when running a script with '--location=<HREF>'")
+    )
     // TODO(lucacasonato): remove for 2.0
     .arg(no_check_arg().hidden(true))
     .arg(import_map_arg())
@@ -874,9 +880,9 @@ https://deno.land/manual/getting_started/setup_your_environment#editors-and-ides
 
 fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("lint")
-    .about("UNSTABLE: Lint source files")
+    .about("Lint source files")
     .long_about(
-      "UNSTABLE: Lint JavaScript/TypeScript source code.
+      "Lint JavaScript/TypeScript source code.
 
   deno lint
   deno lint myfile1.ts myfile2.js
@@ -985,6 +991,12 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(false),
     )
     .arg(
+      Arg::with_name("doc")
+        .long("doc")
+        .help("UNSTABLE: type check code blocks")
+        .takes_value(false),
+    )
+    .arg(
       Arg::with_name("fail-fast")
         .long("fail-fast")
         .alias("failfast")
@@ -1030,6 +1042,11 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .help("List of file names to run")
         .takes_value(true)
         .multiple(true),
+    )
+    .arg(
+      watch_arg()
+        .conflicts_with("no-run")
+        .conflicts_with("coverage"),
     )
     .arg(script_arg().last(true))
     .about("Run tests")
@@ -1565,6 +1582,7 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   reload_arg_parse(flags, matches);
   import_map_arg_parse(flags, matches);
+  location_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   let json = matches.is_present("json");
   flags.subcommand = DenoSubcommand::Info {
@@ -1662,10 +1680,13 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
 
   let no_run = matches.is_present("no-run");
+  let doc = matches.is_present("doc");
   let fail_fast = matches.is_present("fail-fast");
   let allow_none = matches.is_present("allow-none");
   let quiet = matches.is_present("quiet");
   let filter = matches.value_of("filter").map(String::from);
+
+  flags.watch = matches.is_present("watch");
 
   if matches.is_present("script_arg") {
     let script_arg: Vec<String> = matches
@@ -1704,6 +1725,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.coverage_dir = matches.value_of("coverage").map(String::from);
   flags.subcommand = DenoSubcommand::Test {
     no_run,
+    doc,
     fail_fast,
     quiet,
     include,
@@ -3350,6 +3372,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Test {
           no_run: true,
+          doc: false,
           fail_fast: false,
           filter: Some("- foo".to_string()),
           allow_none: true,

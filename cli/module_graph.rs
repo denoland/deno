@@ -7,8 +7,12 @@ use crate::ast::Location;
 use crate::ast::ParsedModule;
 use crate::checksum;
 use crate::colors;
+use crate::config_file::ConfigFile;
+use crate::config_file::IgnoredCompilerOptions;
+use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
 use crate::import_map::ImportMap;
+use crate::import_map::ImportMapError;
 use crate::info;
 use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
@@ -19,8 +23,6 @@ use crate::specifier_handler::Emit;
 use crate::specifier_handler::FetchFuture;
 use crate::specifier_handler::SpecifierHandler;
 use crate::tsc;
-use crate::tsc_config::IgnoredCompilerOptions;
-use crate::tsc_config::TsConfig;
 use crate::version;
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
@@ -36,6 +38,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::url::Url;
 use deno_core::ModuleResolutionError;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
@@ -51,6 +54,9 @@ use std::result;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
+use swc_common::comments::Comment;
+use swc_common::BytePos;
+use swc_common::Span;
 
 lazy_static::lazy_static! {
   /// Matched the `@deno-types` pragma.
@@ -187,35 +193,48 @@ pub enum TypeScriptReference {
   Types(String),
 }
 
+fn match_to_span(comment: &Comment, m: &regex::Match) -> Span {
+  Span {
+    lo: comment.span.lo + BytePos((m.start() + 1) as u32),
+    hi: comment.span.lo + BytePos((m.end() + 1) as u32),
+    ctxt: comment.span.ctxt,
+  }
+}
+
 /// Determine if a comment contains a triple slash reference and optionally
 /// return its kind and value.
-pub fn parse_ts_reference(comment: &str) -> Option<TypeScriptReference> {
-  if !TRIPLE_SLASH_REFERENCE_RE.is_match(comment) {
+pub fn parse_ts_reference(
+  comment: &Comment,
+) -> Option<(TypeScriptReference, Span)> {
+  if !TRIPLE_SLASH_REFERENCE_RE.is_match(&comment.text) {
     None
-  } else if let Some(captures) = PATH_REFERENCE_RE.captures(comment) {
-    Some(TypeScriptReference::Path(
-      captures.get(1).unwrap().as_str().to_string(),
+  } else if let Some(captures) = PATH_REFERENCE_RE.captures(&comment.text) {
+    let m = captures.get(1).unwrap();
+    Some((
+      TypeScriptReference::Path(m.as_str().to_string()),
+      match_to_span(comment, &m),
     ))
   } else {
-    TYPES_REFERENCE_RE.captures(comment).map(|captures| {
-      TypeScriptReference::Types(captures.get(1).unwrap().as_str().to_string())
+    TYPES_REFERENCE_RE.captures(&comment.text).map(|captures| {
+      let m = captures.get(1).unwrap();
+      (
+        TypeScriptReference::Types(m.as_str().to_string()),
+        match_to_span(comment, &m),
+      )
     })
   }
 }
 
 /// Determine if a comment contains a `@deno-types` pragma and optionally return
 /// its value.
-pub fn parse_deno_types(comment: &str) -> Option<String> {
-  if let Some(captures) = DENO_TYPES_RE.captures(comment) {
-    if let Some(m) = captures.get(1) {
-      Some(m.as_str().to_string())
-    } else if let Some(m) = captures.get(2) {
-      Some(m.as_str().to_string())
-    } else {
-      panic!("unreachable");
-    }
+pub fn parse_deno_types(comment: &Comment) -> Option<(String, Span)> {
+  let captures = DENO_TYPES_RE.captures(&comment.text)?;
+  if let Some(m) = captures.get(1) {
+    Some((m.as_str().to_string(), match_to_span(comment, &m)))
+  } else if let Some(m) = captures.get(2) {
+    Some((m.as_str().to_string(), match_to_span(comment, &m)))
   } else {
-    None
+    unreachable!();
   }
 }
 
@@ -326,7 +345,7 @@ impl Module {
 
     // parse out any triple slash references
     for comment in parsed_module.get_leading_comments().iter() {
-      if let Some(ts_reference) = parse_ts_reference(&comment.text) {
+      if let Some((ts_reference, _)) = parse_ts_reference(&comment) {
         let location = parsed_module.get_location(&comment.span);
         match ts_reference {
           TypeScriptReference::Path(import) => {
@@ -380,10 +399,17 @@ impl Module {
           Ok(specifier) => Some(specifier),
           Err(any_error) => {
             match any_error.downcast_ref::<ModuleResolutionError>() {
-              Some(ModuleResolutionError::ImportPrefixMissing(_, _)) => None,
-              _ => {
-                return Err(any_error);
+              Some(ModuleResolutionError::ImportPrefixMissing(..)) => {
+                Some(Url::parse(&format!("bare:{}", &desc.specifier)).unwrap())
               }
+              _ => match any_error.downcast_ref::<ImportMapError>() {
+                Some(ImportMapError::UnmappedBareSpecifier(..)) => Some(
+                  Url::parse(&format!("bare:{}", &desc.specifier)).unwrap(),
+                ),
+                _ => {
+                  return Err(any_error);
+                }
+              },
             }
           }
         };
@@ -391,7 +417,7 @@ impl Module {
       // Parse out any `@deno-types` pragmas and modify dependency
       let maybe_type = if !desc.leading_comments.is_empty() {
         let comment = desc.leading_comments.last().unwrap();
-        if let Some(deno_types) = parse_deno_types(&comment.text).as_ref() {
+        if let Some((deno_types, _)) = parse_deno_types(&comment).as_ref() {
           Some(self.resolve_import(deno_types, Some(location.clone()))?)
         } else {
           None
@@ -430,10 +456,8 @@ impl Module {
   ) -> Result<ModuleSpecifier, AnyError> {
     let maybe_resolve = if let Some(import_map) = self.maybe_import_map.clone()
     {
-      import_map
-        .lock()
-        .unwrap()
-        .resolve(specifier, self.specifier.as_str())?
+      let import_map = import_map.lock().unwrap();
+      Some(import_map.resolve(specifier, self.specifier.as_str())?)
     } else {
       None
     };
@@ -579,10 +603,10 @@ impl Serialize for TypeLib {
 pub struct BundleOptions {
   /// If `true` then debug logging will be output from the isolate.
   pub debug: bool,
-  /// An optional string that points to a user supplied TypeScript configuration
-  /// file that augments the the default configuration passed to the TypeScript
+  /// An optional config file with user supplied TypeScript configuration
+  /// that augments the the default configuration passed to the TypeScript
   /// compiler.
-  pub maybe_config_path: Option<String>,
+  pub maybe_config_file: Option<ConfigFile>,
 }
 
 #[derive(Debug, Default)]
@@ -593,10 +617,10 @@ pub struct CheckOptions {
   pub emit: bool,
   /// The base type libraries that should be used when type checking.
   pub lib: TypeLib,
-  /// An optional string that points to a user supplied TypeScript configuration
-  /// file that augments the the default configuration passed to the TypeScript
+  /// An optional config file with user supplied TypeScript configuration
+  /// that augments the the default configuration passed to the TypeScript
   /// compiler.
-  pub maybe_config_path: Option<String>,
+  pub maybe_config_file: Option<ConfigFile>,
   /// Ignore any previously emits and ensure that all files are emitted from
   /// source.
   pub reload: bool,
@@ -642,10 +666,10 @@ pub struct EmitOptions {
 pub struct TranspileOptions {
   /// If `true` then debug logging will be output from the isolate.
   pub debug: bool,
-  /// An optional string that points to a user supplied TypeScript configuration
-  /// file that augments the the default configuration passed to the TypeScript
+  /// An optional config file with user supplied TypeScript configuration
+  /// that augments the the default configuration passed to the TypeScript
   /// compiler.
-  pub maybe_config_path: Option<String>,
+  pub maybe_config_file: Option<ConfigFile>,
   /// Ignore any previously emits and ensure that all files are emitted from
   /// source.
   pub reload: bool,
@@ -768,15 +792,16 @@ impl Graph {
       "checkJs": false,
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
-      "inlineSourceMap": true,
+      "inlineSourceMap": false,
+      "sourceMap": false,
       "jsx": "react",
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
     }));
-    let maybe_ignored_options =
-      ts_config.merge_tsconfig(options.maybe_config_path)?;
+    let maybe_ignored_options = ts_config
+      .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
 
-    let s = self.emit_bundle(
+    let (src, _) = self.emit_bundle(
       &root_specifier,
       &ts_config.into(),
       &BundleType::Module,
@@ -786,7 +811,7 @@ impl Graph {
       ("Total time".to_string(), start.elapsed().as_millis() as u32),
     ]);
 
-    Ok((s, stats, maybe_ignored_options))
+    Ok((src, stats, maybe_ignored_options))
   }
 
   /// Type check the module graph, corresponding to the options provided.
@@ -823,8 +848,8 @@ impl Graph {
         "noEmit": true,
       }));
     }
-    let maybe_ignored_options =
-      config.merge_tsconfig(options.maybe_config_path)?;
+    let maybe_ignored_options = config
+      .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
 
     // Short circuit if none of the modules require an emit, or all of the
     // modules that require an emit have a valid emit.  There is also an edge
@@ -944,6 +969,7 @@ impl Graph {
       "experimentalDecorators": true,
       "importsNotUsedAsValues": "remove",
       "inlineSourceMap": false,
+      "sourceMap": false,
       "isolatedModules": true,
       "jsx": "react",
       "jsxFactory": "React.createElement",
@@ -957,6 +983,8 @@ impl Graph {
     let opts = match options.bundle_type {
       BundleType::Module | BundleType::Classic => json!({
         "noEmit": true,
+        "removeComments": true,
+        "sourceMap": true,
       }),
       BundleType::None => json!({
         "outDir": "deno://",
@@ -1007,12 +1035,15 @@ impl Graph {
             "Only a single root module supported."
           );
           let specifier = &graph.roots[0];
-          let s = graph.emit_bundle(
+          let (src, maybe_src_map) = graph.emit_bundle(
             specifier,
             &config.into(),
             &options.bundle_type,
           )?;
-          emitted_files.insert("deno:///bundle.js".to_string(), s);
+          emitted_files.insert("deno:///bundle.js".to_string(), src);
+          if let Some(src_map) = maybe_src_map {
+            emitted_files.insert("deno:///bundle.js.map".to_string(), src_map);
+          }
         }
         BundleType::None => {
           for emitted_file in &response.emitted_files {
@@ -1059,19 +1090,23 @@ impl Graph {
             "Only a single root module supported."
           );
           let specifier = &self.roots[0];
-          let s = self.emit_bundle(
+          let (src, maybe_src_map) = self.emit_bundle(
             specifier,
             &config.into(),
             &options.bundle_type,
           )?;
           emit_count += 1;
-          emitted_files.insert("deno:///bundle.js".to_string(), s);
+          emitted_files.insert("deno:///bundle.js".to_string(), src);
+          if let Some(src_map) = maybe_src_map {
+            emitted_files.insert("deno:///bundle.js.map".to_string(), src_map);
+          }
         }
         BundleType::None => {
+          let check_js = config.get_check_js();
           let emit_options: ast::EmitOptions = config.into();
           for (_, module_slot) in self.modules.iter_mut() {
             if let ModuleSlot::Module(module) = module_slot {
-              if !(emit_options.check_js
+              if !(check_js
                 || module.media_type == MediaType::Jsx
                 || module.media_type == MediaType::Tsx
                 || module.media_type == MediaType::TypeScript)
@@ -1117,7 +1152,7 @@ impl Graph {
     specifier: &ModuleSpecifier,
     emit_options: &ast::EmitOptions,
     bundle_type: &BundleType,
-  ) -> Result<String, AnyError> {
+  ) -> Result<(String, Option<String>), AnyError> {
     let cm = Rc::new(swc_common::SourceMap::new(
       swc_common::FilePathMapping::empty(),
     ));
@@ -1149,13 +1184,17 @@ impl Graph {
       .bundle(entries)
       .context("Unable to output bundle during Graph::bundle().")?;
     let mut buf = Vec::new();
+    let mut src_map_buf = Vec::new();
     {
       let mut emitter = swc_ecmascript::codegen::Emitter {
         cfg: swc_ecmascript::codegen::Config { minify: false },
         cm: cm.clone(),
         comments: None,
         wr: Box::new(swc_ecmascript::codegen::text_writer::JsWriter::new(
-          cm, "\n", &mut buf, None,
+          cm.clone(),
+          "\n",
+          &mut buf,
+          Some(&mut src_map_buf),
         )),
       };
 
@@ -1163,8 +1202,24 @@ impl Graph {
         .emit_module(&output[0].module)
         .context("Unable to emit bundle during Graph::bundle().")?;
     }
+    let mut src = String::from_utf8(buf)
+      .context("Emitted bundle is an invalid utf-8 string.")?;
+    let mut map: Option<String> = None;
+    {
+      let mut buf = Vec::new();
+      cm.build_source_map_from(&mut src_map_buf, None)
+        .to_writer(&mut buf)?;
 
-    String::from_utf8(buf).context("Emitted bundle is an invalid utf-8 string.")
+      if emit_options.inline_source_map {
+        src.push_str("//# sourceMappingURL=data:application/json;base64,");
+        let encoded_map = base64::encode(buf);
+        src.push_str(&encoded_map);
+      } else if emit_options.source_map {
+        map = Some(String::from_utf8(buf)?);
+      }
+    }
+
+    Ok((src, map))
   }
 
   /// Update the handler with any modules that are marked as _dirty_ and update
@@ -1246,6 +1301,18 @@ impl Graph {
       s = redirect;
     }
     self.modules.get_mut(s)
+  }
+
+  pub fn get_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<&Module, AnyError> {
+    let s = self.resolve_specifier(specifier);
+    match self.get_module(s) {
+      ModuleSlot::Module(m) => Ok(m.as_ref()),
+      ModuleSlot::Err(e) => Err(anyhow!(e.to_string())),
+      _ => Err(GraphError::MissingSpecifier(specifier.clone()).into()),
+    }
   }
 
   /// Consume graph and return list of all module specifiers contained in the
@@ -1593,15 +1660,17 @@ impl Graph {
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
       "inlineSourceMap": true,
+      "sourceMap": false,
       "jsx": "react",
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
     }));
 
-    let maybe_ignored_options =
-      ts_config.merge_tsconfig(options.maybe_config_path)?;
+    let maybe_ignored_options = ts_config
+      .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
 
     let config = ts_config.as_bytes();
+    let check_js = ts_config.get_check_js();
     let emit_options: ast::EmitOptions = ts_config.into();
     let mut emit_count = 0_u32;
     for (_, module_slot) in self.modules.iter_mut() {
@@ -1616,7 +1685,7 @@ impl Graph {
         }
         // if we don't have check_js enabled, we won't touch non TypeScript or JSX
         // modules
-        if !(emit_options.check_js
+        if !(check_js
           || module.media_type == MediaType::Jsx
           || module.media_type == MediaType::Tsx
           || module.media_type == MediaType::TypeScript)
@@ -1762,7 +1831,7 @@ impl GraphBuilder {
         }
         Some(Ok(cached_module)) => {
           let is_root = &cached_module.specifier == specifier;
-          self.visit(cached_module, is_root)?;
+          self.visit(cached_module, is_root, is_dynamic)?;
         }
         _ => {}
       }
@@ -1810,6 +1879,7 @@ impl GraphBuilder {
     &mut self,
     cached_module: CachedModule,
     is_root: bool,
+    is_root_dynamic: bool,
   ) -> Result<(), AnyError> {
     let specifier = cached_module.specifier.clone();
     let requested_specifier = cached_module.requested_specifier.clone();
@@ -1845,15 +1915,32 @@ impl GraphBuilder {
     }
     for (_, dep) in module.dependencies.iter() {
       let maybe_referrer = Some(dep.location.clone());
-      if let Some(specifier) = dep.maybe_code.as_ref() {
-        self.fetch(specifier, &maybe_referrer, dep.is_dynamic);
-      }
-      if let Some(specifier) = dep.maybe_type.as_ref() {
-        self.fetch(specifier, &maybe_referrer, dep.is_dynamic);
+      for maybe_specifier in &[dep.maybe_code.as_ref(), dep.maybe_type.as_ref()]
+      {
+        if let Some(&dep_specifier) = maybe_specifier.as_ref() {
+          if dep_specifier.scheme() == "bare" {
+            self.graph.modules.insert(
+              dep_specifier.clone(),
+              ModuleSlot::Err(Arc::new(
+                ModuleResolutionError::ImportPrefixMissing(
+                  dep_specifier.path().to_string(),
+                  Some(specifier.to_string()),
+                )
+                .into(),
+              )),
+            );
+          } else {
+            self.fetch(
+              dep_specifier,
+              &maybe_referrer,
+              is_root_dynamic || dep.is_dynamic,
+            );
+          }
+        }
       }
     }
     if let Some((_, specifier)) = module.maybe_types.as_ref() {
-      self.fetch(specifier, &None, false);
+      self.fetch(specifier, &None, is_root_dynamic);
     }
     if specifier != requested_specifier {
       self
@@ -2166,7 +2253,7 @@ pub mod tests {
         debug: false,
         emit: true,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: None,
+        maybe_config_file: None,
         reload: false,
       })
       .expect("should have checked");
@@ -2188,7 +2275,7 @@ pub mod tests {
         debug: false,
         emit: false,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: None,
+        maybe_config_file: None,
         reload: false,
       })
       .expect("should have checked");
@@ -2205,7 +2292,7 @@ pub mod tests {
         debug: false,
         emit: true,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: None,
+        maybe_config_file: None,
         reload: false,
       })
       .expect("should have checked");
@@ -2229,7 +2316,7 @@ pub mod tests {
         debug: false,
         emit: false,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: None,
+        maybe_config_file: None,
         reload: false,
       })
       .expect("should have checked");
@@ -2251,7 +2338,7 @@ pub mod tests {
         debug: false,
         emit: true,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: None,
+        maybe_config_file: None,
         reload: false,
       })
       .expect("should have checked");
@@ -2272,7 +2359,7 @@ pub mod tests {
         debug: false,
         emit: false,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: None,
+        maybe_config_file: None,
         reload: false,
       })
       .expect("should have checked");
@@ -2284,14 +2371,14 @@ pub mod tests {
     let specifier = resolve_url_or_path("file:///tests/checkwithconfig.ts")
       .expect("could not resolve module");
     let (graph, handler) = setup(specifier.clone()).await;
+    let config_file =
+      ConfigFile::read("tests/module_graph/tsconfig_01.json").unwrap();
     let result_info = graph
       .check(CheckOptions {
         debug: false,
         emit: true,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: Some(
-          "tests/module_graph/tsconfig_01.json".to_string(),
-        ),
+        maybe_config_file: Some(config_file),
         reload: true,
       })
       .expect("should have checked");
@@ -2305,14 +2392,14 @@ pub mod tests {
 
     // let's do it all over again to ensure that the versions are determinstic
     let (graph, handler) = setup(specifier).await;
+    let config_file =
+      ConfigFile::read("tests/module_graph/tsconfig_01.json").unwrap();
     let result_info = graph
       .check(CheckOptions {
         debug: false,
         emit: true,
         lib: TypeLib::DenoWindow,
-        maybe_config_path: Some(
-          "tests/module_graph/tsconfig_01.json".to_string(),
-        ),
+        maybe_config_file: Some(config_file),
         reload: true,
       })
       .expect("should have checked");
@@ -2391,9 +2478,10 @@ pub mod tests {
       .expect("should have emitted");
     assert!(result_info.diagnostics.is_empty());
     assert!(result_info.maybe_ignored_options.is_none());
-    assert_eq!(emitted_files.len(), 1);
+    assert_eq!(emitted_files.len(), 2);
     let actual = emitted_files.get("deno:///bundle.js");
     assert!(actual.is_some());
+    assert!(emitted_files.contains_key("deno:///bundle.js.map"));
     let actual = actual.unwrap();
     assert!(actual.contains("const b = \"b\";"));
     assert!(actual.contains("console.log(mod);"));
@@ -2533,10 +2621,12 @@ pub mod tests {
     let specifier = resolve_url_or_path("https://deno.land/x/transpile.tsx")
       .expect("could not resolve module");
     let (mut graph, handler) = setup(specifier).await;
+    let config_file =
+      ConfigFile::read("tests/module_graph/tsconfig.json").unwrap();
     let result_info = graph
       .transpile(TranspileOptions {
         debug: false,
-        maybe_config_path: Some("tests/module_graph/tsconfig.json".to_string()),
+        maybe_config_file: Some(config_file),
         reload: false,
       })
       .unwrap();

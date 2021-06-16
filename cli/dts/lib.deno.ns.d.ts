@@ -84,6 +84,7 @@ declare namespace Deno {
     BadResource: ErrorConstructor;
     Http: ErrorConstructor;
     Busy: ErrorConstructor;
+    NotSupported: ErrorConstructor;
   };
 
   /** The current process id of the runtime. */
@@ -98,7 +99,7 @@ declare namespace Deno {
     fn: () => void | Promise<void>;
     name: string;
     ignore?: boolean;
-    /** If at lease one test has `only` set to true, only run tests that have
+    /** If at least one test has `only` set to true, only run tests that have
      * `only` set to true and fail the test suite. */
     only?: boolean;
     /** Check that the number of async completed ops after the test is the same
@@ -177,12 +178,12 @@ declare namespace Deno {
   export function exit(code?: number): never;
 
   export const env: {
-    /** Retrieve the value of an environment variable. Returns undefined if that
+    /** Retrieve the value of an environment variable. Returns `undefined` if that
      * key doesn't exist.
      *
      * ```ts
      * console.log(Deno.env.get("HOME"));  // e.g. outputs "/home/alice"
-     * console.log(Deno.env.get("MADE_UP_VAR"));  // outputs "Undefined"
+     * console.log(Deno.env.get("MADE_UP_VAR"));  // outputs "undefined"
      * ```
      * Requires `allow-env` permission. */
     get(key: string): string | undefined;
@@ -201,7 +202,7 @@ declare namespace Deno {
      *
      * ```ts
      * Deno.env.set("SOME_VAR", "Value");
-     * Deno.env.delete("SOME_VAR");  // outputs "Undefined"
+     * Deno.env.delete("SOME_VAR");  // outputs "undefined"
      * ```
      *
      * Requires `allow-env` permission. */
@@ -247,7 +248,7 @@ declare namespace Deno {
    *
    * Requires --allow-read.
    */
-  export function chdir(directory: string): void;
+  export function chdir(directory: string | URL): void;
 
   /**
    * Return a string representing the current working directory.
@@ -321,9 +322,9 @@ declare namespace Deno {
   export interface ReaderSync {
     /** Reads up to `p.byteLength` bytes into `p`. It resolves to the number
      * of bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error
-     * encountered. Even if `read()` returns `n` < `p.byteLength`, it may use
+     * encountered. Even if `readSync()` returns `n` < `p.byteLength`, it may use
      * all of `p` as scratch space during the call. If some data is available
-     * but not `p.byteLength` bytes, `read()` conventionally returns what is
+     * but not `p.byteLength` bytes, `readSync()` conventionally returns what is
      * available instead of waiting for more.
      *
      * When `readSync()` encounters end-of-file condition, it returns EOF
@@ -651,6 +652,7 @@ declare namespace Deno {
    * ```ts
    * const file = Deno.openSync('hello.txt', {read: true, write: true, truncate: true, create: true});
    * Deno.writeSync(file.rid, new TextEncoder().encode("Hello world"));
+   *
    * // advance cursor 6 bytes
    * const cursorPosition = Deno.seekSync(file.rid, 6, Deno.SeekMode.Start);
    * console.log(cursorPosition);  // 6
@@ -663,6 +665,9 @@ declare namespace Deno {
    *
    * ```ts
    * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
+   * const file = Deno.openSync('hello.txt', {read: true, write: true, truncate: true, create: true});
+   * Deno.writeSync(file.rid, new TextEncoder().encode("Hello world"));
+   *
    * // Seek 6 bytes from the start of the file
    * console.log(Deno.seekSync(file.rid, 6, Deno.SeekMode.Start)); // "6"
    * // Seek 2 more bytes from the current position
@@ -681,8 +686,10 @@ declare namespace Deno {
    * The call resolves to the new position within the resource (bytes from the start).
    *
    * ```ts
+   * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
    * const file = await Deno.open('hello.txt', {read: true, write: true, truncate: true, create: true});
    * await Deno.write(file.rid, new TextEncoder().encode("Hello world"));
+   *
    * // advance cursor 6 bytes
    * const cursorPosition = await Deno.seek(file.rid, 6, Deno.SeekMode.Start);
    * console.log(cursorPosition);  // 6
@@ -695,6 +702,9 @@ declare namespace Deno {
    *
    * ```ts
    * // Given file.rid pointing to file with "Hello world", which is 11 bytes long:
+   * const file = await Deno.open('hello.txt', {read: true, write: true, truncate: true, create: true});
+   * await Deno.write(file.rid, new TextEncoder().encode("Hello world"));
+   *
    * // Seek 6 bytes from the start of the file
    * console.log(await Deno.seek(file.rid, 6, Deno.SeekMode.Start)); // "6"
    * // Seek 2 more bytes from the current position
@@ -1312,7 +1322,10 @@ declare namespace Deno {
    * they are. It's always an error to rename anything to a non-empty directory.
    *
    * Requires `allow-read` and `allow-write` permissions. */
-  export function renameSync(oldpath: string, newpath: string): void;
+  export function renameSync(
+    oldpath: string | URL,
+    newpath: string | URL,
+  ): void;
 
   /** Renames (moves) `oldpath` to `newpath`.  Paths may be files or directories.
    * If `newpath` already exists and is not a directory, `rename()` replaces it.
@@ -1329,7 +1342,10 @@ declare namespace Deno {
    * they are. It's always an error to rename anything to a non-empty directory.
    *
    * Requires `allow-read` and `allow-write` permission. */
-  export function rename(oldpath: string, newpath: string): Promise<void>;
+  export function rename(
+    oldpath: string | URL,
+    newpath: string | URL,
+  ): Promise<void>;
 
   /** Synchronously reads and returns the entire contents of a file as utf8
    *  encoded string. Reading a directory throws an error.
@@ -1458,7 +1474,7 @@ declare namespace Deno {
    * Requires `allow-read` permission for the target path.
    * Also requires `allow-read` permission for the CWD if the target path is
    * relative.*/
-  export function realPathSync(path: string): string;
+  export function realPathSync(path: string | URL): string;
 
   /** Resolves to the absolute normalized path, with symbolic links resolved.
    *
@@ -1474,7 +1490,7 @@ declare namespace Deno {
    * Requires `allow-read` permission for the target path.
    * Also requires `allow-read` permission for the CWD if the target path is
    * relative.*/
-  export function realPath(path: string): Promise<string>;
+  export function realPath(path: string | URL): Promise<string>;
 
   export interface DirEntry {
     name: string;
@@ -1939,6 +1955,25 @@ declare namespace Deno {
     paths: string[];
   }
 
+  /**
+   * FsWatcher is returned by `Deno.watchFs` function when you start watching
+   * the file system. You can iterate over this interface to get the file
+   * system events, and also you can stop watching the file system by calling
+   * `.close()` method.
+   */
+  export interface FsWatcher extends AsyncIterable<FsEvent> {
+    /** The resource id of the `FsWatcher`. */
+    readonly rid: number;
+    /** Stops watching the file system and closes the watcher resource. */
+    close(): void;
+    /** @deprecated
+     * Stops watching the file system and closes the watcher resource.
+     * Will be removed at 2.0.
+     */
+    return?(value?: any): Promise<IteratorResult<FsEvent>>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<FsEvent>;
+  }
+
   /** Watch for file system events against one or more `paths`, which can be files
    * or directories.  These paths must exist already.  One user action (e.g.
    * `touch test.file`) can  generate multiple file system events.  Likewise,
@@ -1957,11 +1992,15 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission.
    *
-   * Call `watcher.return()` to stop watching.
+   * Call `watcher.close()` to stop watching.
    *
    * ```ts
    * const watcher = Deno.watchFs("/");
-   * setTimeout(() => { watcher.return(); }, 5000);
+   *
+   * setTimeout(() => {
+   *   watcher.close();
+   * }, 5000);
+   *
    * for await (const event of watcher) {
    *    console.log(">>>> event", event);
    * }
@@ -1970,7 +2009,7 @@ declare namespace Deno {
   export function watchFs(
     paths: string | string[],
     options?: { recursive: boolean },
-  ): AsyncIterableIterator<FsEvent>;
+  ): FsWatcher;
 
   export class Process<T extends RunOptions = RunOptions> {
     readonly rid: number;
@@ -1995,7 +2034,7 @@ declare namespace Deno {
      * `stderr` use:
      *
      * ```ts
-     * const p = Deno.run({ cmd, stderr: 'piped', stdout: 'piped' });
+     * const p = Deno.run({ cmd: [ "echo", "hello world" ], stderr: 'piped', stdout: 'piped' });
      * const [status, stdout, stderr] = await Promise.all([
      *   p.status(),
      *   p.output(),
@@ -2113,11 +2152,12 @@ declare namespace Deno {
    * `console.log()`.
    *
    * ```ts
-   * const obj = {};
-   * obj.propA = 10;
-   * obj.propB = "hello";
-   * const objAsString = Deno.inspect(obj); // { propA: 10, propB: "hello" }
-   * console.log(obj);  // prints same value as objAsString, e.g. { propA: 10, propB: "hello" }
+   * const obj = {
+   *   a: 10,
+   *   b: "hello",
+   * };
+   * const objAsString = Deno.inspect(obj); // { a: 10, b: "hello" }
+   * console.log(obj);  // prints same value as objAsString, e.g. { a: 10, b: "hello" }
    * ```
    *
    * You can also register custom inspect functions, via the `customInspect` Deno
@@ -2131,15 +2171,16 @@ declare namespace Deno {
    *     return "x=" + this.x + ", y=" + this.y;
    *   }
    * }
-   * ```
    *
-   *      const inStringFormat = Deno.inspect(new A()); // "x=10, y=hello"
-   *      console.log(inStringFormat);  // prints "x=10, y=hello"
+   * const inStringFormat = Deno.inspect(new A()); // "x=10, y=hello"
+   * console.log(inStringFormat);  // prints "x=10, y=hello"
+   * ```
    *
    * Finally, you can also specify the depth to which it will format.
    *
-   *      Deno.inspect({a: {b: {c: {d: 'hello'}}}}, {depth: 2}); // { a: { b: [Object] } }
-   *
+   * ```ts
+   * Deno.inspect({a: {b: {c: {d: 'hello'}}}}, {depth: 2}); // { a: { b: [Object] } }
+   * ```
    */
   export function inspect(value: unknown, options?: InspectOptions): string;
 
@@ -2246,9 +2287,7 @@ declare namespace Deno {
      *
      * ```ts
      * const status = await Deno.permissions.query({ name: "read", path: "/etc" });
-     * if (status.state === "granted") {
-     *   data = await Deno.readFile("/etc/passwd");
-     * }
+     * console.log(status.state);
      * ```
      */
     query(desc: PermissionDescriptor): Promise<PermissionStatus>;
@@ -2257,6 +2296,7 @@ declare namespace Deno {
      *
      * ```ts
      * import { assert } from "https://deno.land/std/testing/asserts.ts";
+     *
      * const status = await Deno.permissions.revoke({ name: "run" });
      * assert(status.state !== "granted")
      * ```
@@ -2285,7 +2325,7 @@ declare namespace Deno {
     /** The LLVM target triple */
     target: string;
     /** Instruction set architecture */
-    arch: "x86_64";
+    arch: "x86_64" | "aarch64";
     /** Operating system */
     os: "darwin" | "linux" | "windows";
     /** Computer vendor */
@@ -2339,8 +2379,8 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission. */
   export function symlinkSync(
-    oldpath: string,
-    newpath: string,
+    oldpath: string | URL,
+    newpath: string | URL,
     options?: SymlinkOptions,
   ): void;
 
@@ -2356,8 +2396,8 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission. */
   export function symlink(
-    oldpath: string,
-    newpath: string,
+    oldpath: string | URL,
+    newpath: string | URL,
     options?: SymlinkOptions,
   ): Promise<void>;
 

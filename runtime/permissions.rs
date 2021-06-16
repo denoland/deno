@@ -605,17 +605,20 @@ impl UnaryPermission<EnvDescriptor> {
 
   pub fn request(&mut self, env: Option<&str>) -> PermissionState {
     if let Some(env) = env {
-      #[cfg(windows)]
-      let env = env.to_uppercase();
+      let env = if cfg!(windows) {
+        env.to_uppercase()
+      } else {
+        env.to_string()
+      };
       let state = self.query(Some(&env));
       if state == PermissionState::Prompt {
         if permission_prompt(&format!("env access to \"{}\"", env)) {
           self.granted_list.retain(|env_| env_.0 != env);
-          self.granted_list.insert(EnvDescriptor(env.to_string()));
+          self.granted_list.insert(EnvDescriptor(env));
           PermissionState::Granted
         } else {
           self.denied_list.retain(|env_| env_.0 != env);
-          self.denied_list.insert(EnvDescriptor(env.to_string()));
+          self.denied_list.insert(EnvDescriptor(env));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
@@ -1054,9 +1057,9 @@ fn permission_prompt(message: &str) -> bool {
   if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
     return false;
   };
-  let opts = "[g/d (g = grant, d = deny)] ";
+  let opts = "[y/n (y = yes allow, n = no deny)] ";
   let msg = format!(
-    "{}  ️Deno requests {}. Grant? {}",
+    "{}  ️Deno requests {}. Allow? {}",
     PERMISSION_EMOJI, message, opts
   );
   // print to stderr so that if deno is > to a file this is still displayed.
@@ -1073,8 +1076,8 @@ fn permission_prompt(message: &str) -> bool {
       Some(v) => v,
     };
     match ch.to_ascii_lowercase() {
-      'g' => return true,
-      'd' => return false,
+      'y' => return true,
+      'n' => return false,
       _ => {
         // If we don't get a recognized option try again.
         let msg_again = format!("Unrecognized option '{}' {}", ch, opts);

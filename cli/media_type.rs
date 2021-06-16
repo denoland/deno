@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use data_url::DataUrl;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::ModuleSpecifier;
@@ -45,34 +46,40 @@ impl fmt::Display for MediaType {
 
 impl<'a> From<&'a Path> for MediaType {
   fn from(path: &'a Path) -> Self {
-    MediaType::from_path(path)
+    Self::from_path(path)
   }
 }
 
 impl<'a> From<&'a PathBuf> for MediaType {
   fn from(path: &'a PathBuf) -> Self {
-    MediaType::from_path(path)
+    Self::from_path(path)
   }
 }
 
 impl<'a> From<&'a String> for MediaType {
   fn from(specifier: &'a String) -> Self {
-    MediaType::from_path(&PathBuf::from(specifier))
+    Self::from_path(&PathBuf::from(specifier))
   }
 }
 
 impl<'a> From<&'a ModuleSpecifier> for MediaType {
   fn from(specifier: &'a ModuleSpecifier) -> Self {
-    let path = if specifier.scheme() == "file" {
-      if let Ok(path) = specifier.to_file_path() {
-        path
+    if specifier.scheme() != "data" {
+      let path = if specifier.scheme() == "file" {
+        if let Ok(path) = specifier.to_file_path() {
+          path
+        } else {
+          PathBuf::from(specifier.path())
+        }
       } else {
         PathBuf::from(specifier.path())
-      }
+      };
+      Self::from_path(&path)
+    } else if let Ok(data_url) = DataUrl::process(specifier.as_str()) {
+      Self::from_content_type(specifier, data_url.mime_type().to_string())
     } else {
-      PathBuf::from(specifier.path())
-    };
-    MediaType::from_path(&path)
+      Self::Unknown
+    }
   }
 }
 
@@ -83,6 +90,40 @@ impl Default for MediaType {
 }
 
 impl MediaType {
+  pub fn from_content_type<S: AsRef<str>>(
+    specifier: &ModuleSpecifier,
+    content_type: S,
+  ) -> Self {
+    match content_type.as_ref().trim().to_lowercase().as_ref() {
+      "application/typescript"
+      | "text/typescript"
+      | "video/vnd.dlna.mpeg-tts"
+      | "video/mp2t"
+      | "application/x-typescript" => {
+        map_js_like_extension(specifier, Self::TypeScript)
+      }
+      "application/javascript"
+      | "text/javascript"
+      | "application/ecmascript"
+      | "text/ecmascript"
+      | "application/x-javascript"
+      | "application/node" => {
+        map_js_like_extension(specifier, Self::JavaScript)
+      }
+      "text/jsx" => Self::Jsx,
+      "text/tsx" => Self::Tsx,
+      "application/json" | "text/json" => Self::Json,
+      "application/wasm" => Self::Wasm,
+      // Handle plain and possibly webassembly
+      "text/plain" | "application/octet-stream"
+        if specifier.scheme() != "data" =>
+      {
+        Self::from(specifier)
+      }
+      _ => Self::Unknown,
+    }
+  }
+
   fn from_path(path: &Path) -> Self {
     match path.extension() {
       None => match path.file_name() {
@@ -197,6 +238,55 @@ where
   }
 }
 
+/// Used to augment media types by using the path part of a module specifier to
+/// resolve to a more accurate media type.
+fn map_js_like_extension(
+  specifier: &ModuleSpecifier,
+  default: MediaType,
+) -> MediaType {
+  let path = if specifier.scheme() == "file" {
+    if let Ok(path) = specifier.to_file_path() {
+      path
+    } else {
+      PathBuf::from(specifier.path())
+    }
+  } else {
+    PathBuf::from(specifier.path())
+  };
+  match path.extension() {
+    None => default,
+    Some(os_str) => match os_str.to_str() {
+      None => default,
+      Some("jsx") => MediaType::Jsx,
+      Some("tsx") => MediaType::Tsx,
+      // Because DTS files do not have a separate media type, or a unique
+      // extension, we have to "guess" at those things that we consider that
+      // look like TypeScript, and end with `.d.ts` are DTS files.
+      Some("ts") => {
+        if default == MediaType::TypeScript {
+          match path.file_stem() {
+            None => default,
+            Some(os_str) => {
+              if let Some(file_stem) = os_str.to_str() {
+                if file_stem.ends_with(".d") {
+                  MediaType::Dts
+                } else {
+                  default
+                }
+              } else {
+                default
+              }
+            }
+          }
+        } else {
+          default
+        }
+      }
+      Some(_) => default,
+    },
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -245,11 +335,60 @@ mod tests {
       ("https://deno.land/x/mod.ts", MediaType::TypeScript),
       ("https://deno.land/x/mod.js", MediaType::JavaScript),
       ("https://deno.land/x/mod.txt", MediaType::Unknown),
+      ("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=", MediaType::TypeScript),
+      ("data:application/javascript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=", MediaType::JavaScript),
+      ("data:text/plain;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=", MediaType::Unknown),
     ];
 
     for (specifier, expected) in fixtures {
       let actual = deno_core::resolve_url_or_path(specifier).unwrap();
       assert_eq!(MediaType::from(&actual), expected);
+    }
+  }
+
+  #[test]
+  fn test_from_content_type() {
+    let fixtures = vec![
+      (
+        "https://deno.land/x/mod.ts",
+        "application/typescript",
+        MediaType::TypeScript,
+      ),
+      (
+        "https://deno.land/x/mod.d.ts",
+        "application/typescript",
+        MediaType::Dts,
+      ),
+      ("https://deno.land/x/mod.tsx", "text/tsx", MediaType::Tsx),
+      (
+        "https://deno.land/x/mod.js",
+        "application/javascript",
+        MediaType::JavaScript,
+      ),
+      ("https://deno.land/x/mod.jsx", "text/jsx", MediaType::Jsx),
+      (
+        "https://deno.land/x/mod.ts",
+        "text/plain",
+        MediaType::TypeScript,
+      ),
+      (
+        "https://deno.land/x/mod.js",
+        "text/plain",
+        MediaType::JavaScript,
+      ),
+      (
+        "https://deno.land/x/mod.wasm",
+        "text/plain",
+        MediaType::Wasm,
+      ),
+    ];
+
+    for (specifier, content_type, expected) in fixtures {
+      let fixture = deno_core::resolve_url_or_path(specifier).unwrap();
+      assert_eq!(
+        MediaType::from_content_type(&fixture, content_type),
+        expected
+      );
     }
   }
 

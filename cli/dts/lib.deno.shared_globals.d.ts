@@ -6,12 +6,12 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 /// <reference lib="deno.console" />
-/// <reference lib="deno.file" />
 /// <reference lib="deno.url" />
 /// <reference lib="deno.web" />
 /// <reference lib="deno.fetch" />
 /// <reference lib="deno.websocket" />
 /// <reference lib="deno.crypto" />
+/// <reference lib="deno.broadcast_channel" />
 
 declare namespace WebAssembly {
   /**
@@ -324,19 +324,6 @@ interface VoidFunction {
  */
 declare function queueMicrotask(func: VoidFunction): void;
 
-/** Registers an event listener in the global scope, which will be called
- * synchronously whenever the event `type` is dispatched.
- *
- *     addEventListener('unload', () => { console.log('All finished!'); });
- *     ...
- *     dispatchEvent(new Event('unload'));
- */
-declare function addEventListener(
-  type: string,
-  callback: EventListenerOrEventListenerObject | null,
-  options?: boolean | AddEventListenerOptions | undefined,
-): void;
-
 /** Dispatches an event in the global scope, synchronously invoking any
  * registered event listeners for this event in the appropriate order. Returns
  * false if event is cancelable and at least one of the event handlers which
@@ -345,18 +332,6 @@ declare function addEventListener(
  *     dispatchEvent(new Event('unload'));
  */
 declare function dispatchEvent(event: Event): boolean;
-
-/** Remove a previously registered event listener from the global scope
- *
- *     const lstnr = () => { console.log('hello'); };
- *     addEventListener('load', lstnr);
- *     removeEventListener('load', lstnr);
- */
-declare function removeEventListener(
-  type: string,
-  callback: EventListenerOrEventListenerObject | null,
-  options?: boolean | EventListenerOptions | undefined,
-): void;
 
 interface DOMStringList {
   /** Returns the number of strings in strings. */
@@ -571,7 +546,6 @@ declare class CustomEvent<T = any> extends Event {
 
 interface ErrorConstructor {
   /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */
-  // eslint-disable-next-line @typescript-eslint/ban-types
   captureStackTrace(error: Object, constructor?: Function): void;
   // TODO(nayeemrmn): Support `Error.prepareStackTrace()`. We currently use this
   // internally in a way that makes it unavailable for users.

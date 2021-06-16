@@ -1,3 +1,3 @@
-new Promise((resolve, reject) => {
+new Promise((_resolve, reject) => {
   reject(new Error("rejection"));
 });

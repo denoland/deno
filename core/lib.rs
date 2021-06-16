@@ -6,13 +6,13 @@ pub mod error;
 mod extensions;
 mod flags;
 mod gotham_state;
+mod inspector;
 mod module_specifier;
 mod modules;
 mod normalize_path;
 mod ops;
 mod ops_builtin;
 mod ops_json;
-pub mod plugin_api;
 mod resources;
 mod runtime;
 
@@ -38,6 +38,9 @@ pub use crate::async_cell::AsyncRefFuture;
 pub use crate::async_cell::RcLike;
 pub use crate::async_cell::RcRef;
 pub use crate::flags::v8_set_flags;
+pub use crate::inspector::InspectorSessionProxy;
+pub use crate::inspector::JsRuntimeInspector;
+pub use crate::inspector::LocalInspectorSession;
 pub use crate::module_specifier::resolve_import;
 pub use crate::module_specifier::resolve_path;
 pub use crate::module_specifier::resolve_url;
@@ -52,6 +55,8 @@ pub use crate::modules::ModuleLoader;
 pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::NoopModuleLoader;
+// TODO(bartlomieju): this struct should be implementation
+// detail nad not be public
 pub use crate::modules::RecursiveModuleLoad;
 pub use crate::normalize_path::normalize_path;
 pub use crate::ops::serialize_op_result;

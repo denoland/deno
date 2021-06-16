@@ -4,6 +4,7 @@
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.shared_globals" />
 /// <reference lib="deno.webgpu" />
+/// <reference lib="deno.webstorage" />
 /// <reference lib="esnext" />
 
 declare class Window extends EventTarget {
@@ -22,12 +23,16 @@ declare class Window extends EventTarget {
   navigator: Navigator;
   Location: typeof Location;
   location: Location;
+  localStorage: Storage;
+  sessionStorage: Storage;
 }
 
 declare var window: Window & typeof globalThis;
 declare var self: Window & typeof globalThis;
 declare var onload: ((this: Window, ev: Event) => any) | null;
 declare var onunload: ((this: Window, ev: Event) => any) | null;
+declare var localStorage: Storage;
+declare var sessionStorage: Storage;
 
 declare class Navigator {
   constructor();
@@ -61,6 +66,31 @@ declare function confirm(message?: string): boolean;
  * @param defaultValue
  */
 declare function prompt(message?: string, defaultValue?: string): string | null;
+
+/** Registers an event listener in the global scope, which will be called
+ * synchronously whenever the event `type` is dispatched.
+ *
+ *     addEventListener('unload', () => { console.log('All finished!'); });
+ *     ...
+ *     dispatchEvent(new Event('unload'));
+ */
+declare function addEventListener(
+  type: string,
+  callback: EventListenerOrEventListenerObject | null,
+  options?: boolean | AddEventListenerOptions | undefined,
+): void;
+
+/** Remove a previously registered event listener from the global scope
+ *
+ *     const lstnr = () => { console.log('hello'); };
+ *     addEventListener('load', lstnr);
+ *     removeEventListener('load', lstnr);
+ */
+declare function removeEventListener(
+  type: string,
+  callback: EventListenerOrEventListenerObject | null,
+  options?: boolean | EventListenerOptions | undefined,
+): void;
 
 // TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
 // The types there must first be split into window, worker and global types.

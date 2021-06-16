@@ -3,10 +3,9 @@
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../file/internal.d.ts" />
-/// <reference path="../file/lib.deno_file.d.ts" />
+/// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
-/// <reference path="./11_streams_types.d.ts" />
+/// <reference path="../web/06_streams_types.d.ts" />
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 "use strict";
@@ -96,13 +95,7 @@
 
     // 7.
     const list = headers[_headerList];
-    const lowercaseName = byteLowerCase(name);
-    for (let i = 0; i < list.length; i++) {
-      if (byteLowerCase(list[i][0]) === lowercaseName) {
-        name = list[i][0];
-        break;
-      }
-    }
+    name = byteLowerCase(name);
     list.push([name, value]);
   }
 
@@ -113,9 +106,9 @@
    */
   function getHeader(list, name) {
     const lowercaseName = byteLowerCase(name);
-    const entries = list.filter((entry) =>
-      byteLowerCase(entry[0]) === lowercaseName
-    ).map((entry) => entry[1]);
+    const entries = list
+      .filter((entry) => entry[0] === lowercaseName)
+      .map((entry) => entry[1]);
     if (entries.length === 0) {
       return null;
     } else {
@@ -178,32 +171,42 @@
     get [_iterableHeaders]() {
       const list = this[_headerList];
 
-      const headers = [];
-      const headerNamesSet = new Set();
+      // The order of steps are not similar to the ones suggested by the
+      // spec but produce the same result.
+      const headers = {};
+      const cookies = [];
       for (const entry of list) {
-        headerNamesSet.add(byteLowerCase(entry[0]));
-      }
-      const names = [...headerNamesSet].sort();
-      for (const name of names) {
-        // The following if statement, and if block of the following statement
-        // are not spec compliant. `set-cookie` is the only header that can not
-        // be concatentated, so must be given to the user as multiple headers.
+        const name = entry[0];
+        const value = entry[1];
+        if (value === null) throw new TypeError("Unreachable");
+        // The following if statement is not spec compliant.
+        // `set-cookie` is the only header that can not be concatentated,
+        // so must be given to the user as multiple headers.
         // The else block of the if statement is spec compliant again.
-        if (name == "set-cookie") {
-          const setCookie = list.filter((entry) =>
-            byteLowerCase(entry[0]) === "set-cookie"
-          );
-          if (setCookie.length === 0) throw new TypeError("Unreachable");
-          for (const entry of setCookie) {
-            headers.push([name, entry[1]]);
-          }
+        if (name === "set-cookie") {
+          cookies.push([name, value]);
         } else {
-          const value = getHeader(list, name);
-          if (value === null) throw new TypeError("Unreachable");
-          headers.push([name, value]);
+          // The following code has the same behaviour as getHeader()
+          // at the end of loop. But it avoids looping through the entire
+          // list to combine multiple values with same header name. It
+          // instead gradually combines them as they are found.
+          let header = headers[name];
+          if (header && header.length > 0) {
+            header += "\x2C\x20" + value;
+          } else {
+            header = value;
+          }
+          headers[name] = header;
         }
       }
-      return headers;
+
+      return [...Object.entries(headers), ...cookies].sort((a, b) => {
+        const akey = a[0];
+        const bkey = b[0];
+        if (akey > bkey) return 1;
+        if (akey < bkey) return -1;
+        return 0;
+      });
     }
 
     /** @param {HeadersInit} [init] */
@@ -261,9 +264,9 @@
       }
 
       const list = this[_headerList];
-      const lowercaseName = byteLowerCase(name);
+      name = byteLowerCase(name);
       for (let i = 0; i < list.length; i++) {
-        if (byteLowerCase(list[i][0]) === lowercaseName) {
+        if (list[i][0] === name) {
           list.splice(i, 1);
           i--;
         }
@@ -305,9 +308,9 @@
       }
 
       const list = this[_headerList];
-      const lowercaseName = byteLowerCase(name);
+      name = byteLowerCase(name);
       for (let i = 0; i < list.length; i++) {
-        if (byteLowerCase(list[i][0]) === lowercaseName) {
+        if (list[i][0] === name) {
           return true;
         }
       }
@@ -349,10 +352,10 @@
       }
 
       const list = this[_headerList];
-      const lowercaseName = byteLowerCase(name);
+      name = byteLowerCase(name);
       let added = false;
       for (let i = 0; i < list.length; i++) {
-        if (byteLowerCase(list[i][0]) === lowercaseName) {
+        if (list[i][0] === name) {
           if (!added) {
             list[i][1] = value;
             added = true;
@@ -381,6 +384,8 @@
   }
 
   webidl.mixinPairIterable("Headers", Headers, _iterableHeaders, 0, 1);
+
+  webidl.configurePrototype(Headers);
 
   webidl.converters["sequence<ByteString>"] = webidl
     .createSequenceConverter(webidl.converters["ByteString"]);
