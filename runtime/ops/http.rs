@@ -154,7 +154,7 @@ impl Resource for ConnResource {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NextRequestResponse(
-  // request_body_rid:
+  // request_rid:
   Option<ResourceId>,
   // response_sender_rid:
   ResourceId,
@@ -247,18 +247,14 @@ async fn op_http_request_next(
         true
       };
 
-      let maybe_request_body_rid = if has_body {
-        let stream: BytesStream = Box::pin(req.into_body().map(|r| {
-          r.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
-        }));
-        let stream_reader = StreamReader::new(stream);
+      let maybe_request_rid = if has_body {
         let mut state = state.borrow_mut();
-        let request_body_rid = state.resource_table.add(RequestBodyResource {
+        let request_rid = state.resource_table.add(RequestResource {
           conn_rid,
-          reader: AsyncRefCell::new(stream_reader),
+          inner: AsyncRefCell::new(RequestOrStreamReader::Request(Some(req))),
           cancel: CancelHandle::default(),
         });
-        Some(request_body_rid)
+        Some(request_rid)
       } else {
         None
       };
@@ -271,7 +267,7 @@ async fn op_http_request_next(
         });
 
       Poll::Ready(Ok(Some(NextRequestResponse(
-        maybe_request_body_rid,
+        maybe_request_rid,
         response_sender_rid,
         method,
         headers,
@@ -472,7 +468,7 @@ async fn op_http_request_read(
   let resource = state
     .borrow()
     .resource_table
-    .get::<RequestBodyResource>(rid as u32)
+    .get::<RequestResource>(rid as u32)
     .ok_or_else(bad_resource_id)?;
 
   let conn_resource = state
@@ -481,8 +477,29 @@ async fn op_http_request_read(
     .get::<ConnResource>(resource.conn_rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut reader = RcRef::map(&resource, |r| &r.reader).borrow_mut().await;
+  let mut inner = RcRef::map(resource.clone(), |r| &r.inner)
+    .borrow_mut()
+    .await;
+
+  match &mut *inner {
+    RequestOrStreamReader::Request(req) => {
+      let req = req.take().unwrap();
+      let stream: BytesStream = Box::pin(req.into_body().map(|r| {
+        r.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
+      }));
+      let reader = StreamReader::new(stream);
+      *inner = RequestOrStreamReader::StreamReader(reader);
+    }
+    _ => {}
+  };
+
+  let reader = match &mut *inner {
+    RequestOrStreamReader::StreamReader(reader) => reader,
+    _ => unreachable!(),
+  };
+
   let cancel = RcRef::map(resource, |r| &r.cancel);
+
   let mut read_fut = reader.read(&mut data).try_or_cancel(cancel).boxed_local();
 
   poll_fn(|cx| {
@@ -575,15 +592,20 @@ async fn op_http_upgrade_websocket(
 type BytesStream =
   Pin<Box<dyn Stream<Item = std::io::Result<bytes::Bytes>> + Unpin>>;
 
-struct RequestBodyResource {
+enum RequestOrStreamReader {
+  Request(Option<Request<hyper::Body>>),
+  StreamReader(StreamReader<BytesStream, bytes::Bytes>),
+}
+
+struct RequestResource {
   conn_rid: ResourceId,
-  reader: AsyncRefCell<StreamReader<BytesStream, bytes::Bytes>>,
+  inner: AsyncRefCell<RequestOrStreamReader>,
   cancel: CancelHandle,
 }
 
-impl Resource for RequestBodyResource {
+impl Resource for RequestResource {
   fn name(&self) -> Cow<str> {
-    "requestBody".into()
+    "request".into()
   }
 
   fn close(self: Rc<Self>) {
