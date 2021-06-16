@@ -133,7 +133,6 @@ delete Object.prototype.__proto__;
   // analysis in Rust operates on fully resolved URLs,
   // it makes sense to use the same scheme here.
   const ASSETS = "asset:///";
-  const CACHE = "cache:///";
 
   /** Diagnostics that are intentionally ignored when compiling TypeScript in
    * Deno, as they provide misleading or incorrect information. */
