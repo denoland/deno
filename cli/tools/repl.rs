@@ -17,6 +17,8 @@ use rustyline::highlight::Highlighter;
 use rustyline::validate::ValidationContext;
 use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
+use rustyline::CompletionType;
+use rustyline::Config;
 use rustyline::Context;
 use rustyline::Editor;
 use rustyline_derive::{Helper, Hinter};
@@ -302,7 +304,11 @@ struct ReplEditor {
 
 impl ReplEditor {
   pub fn new(helper: EditorHelper, history_file_path: PathBuf) -> Self {
-    let mut editor = Editor::new();
+    let editor_config = Config::builder()
+      .completion_type(CompletionType::List)
+      .build();
+
+    let mut editor = Editor::with_config(editor_config);
     editor.set_helper(Some(helper));
     editor.load_history(&history_file_path).unwrap_or(());
 
