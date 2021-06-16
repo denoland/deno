@@ -105,9 +105,7 @@
     }
   }
 
-  defineProperty(DOMException.prototype, "message", { enumerable: true });
-  defineProperty(DOMException.prototype, "name", { enumerable: true });
-  defineProperty(DOMException.prototype, "code", { enumerable: true });
+  webidl.configurePrototype(DOMException);
 
   for (
     const [key, value] of Object.entries({

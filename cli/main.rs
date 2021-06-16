@@ -261,8 +261,10 @@ pub fn write_json_to_stdout<T>(value: &T) -> Result<(), AnyError>
 where
   T: ?Sized + serde::ser::Serialize,
 {
-  let writer = std::io::BufWriter::new(std::io::stdout());
-  serde_json::to_writer_pretty(writer, value).map_err(AnyError::from)
+  let mut writer = std::io::BufWriter::new(std::io::stdout());
+  serde_json::to_writer_pretty(&mut writer, value)?;
+  writeln!(&mut writer)?;
+  Ok(())
 }
 
 fn print_cache_info(
@@ -327,13 +329,11 @@ fn print_cache_info(
 }
 
 pub fn get_types(unstable: bool) -> String {
-  let mut types = format!(
-    "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+  let mut types = vec![
     crate::tsc::DENO_NS_LIB,
     crate::tsc::DENO_CONSOLE_LIB,
     crate::tsc::DENO_URL_LIB,
     crate::tsc::DENO_WEB_LIB,
-    crate::tsc::DENO_FILE_LIB,
     crate::tsc::DENO_FETCH_LIB,
     crate::tsc::DENO_WEBGPU_LIB,
     crate::tsc::DENO_WEBSOCKET_LIB,
@@ -342,13 +342,13 @@ pub fn get_types(unstable: bool) -> String {
     crate::tsc::DENO_BROADCAST_CHANNEL_LIB,
     crate::tsc::SHARED_GLOBALS_LIB,
     crate::tsc::WINDOW_LIB,
-  );
+  ];
 
   if unstable {
-    types.push_str(&format!("\n{}", crate::tsc::UNSTABLE_NS_LIB,));
+    types.push(crate::tsc::UNSTABLE_NS_LIB);
   }
 
-  types
+  types.join("\n")
 }
 
 async fn compile_command(
@@ -896,8 +896,9 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
       let coverage_dir = PathBuf::from(coverage_dir);
       let mut coverage_collector =
         tools::coverage::CoverageCollector::new(coverage_dir, session);
-      coverage_collector.start_collecting().await?;
-
+      worker
+        .with_event_loop(coverage_collector.start_collecting().boxed_local())
+        .await?;
       Some(coverage_collector)
     } else {
       None
@@ -912,9 +913,10 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   worker.execute("window.dispatchEvent(new Event('unload'))")?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-    coverage_collector.stop_collecting().await?;
+    worker
+      .with_event_loop(coverage_collector.stop_collecting().boxed_local())
+      .await?;
   }
-
   Ok(())
 }
 

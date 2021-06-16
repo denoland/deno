@@ -15,7 +15,6 @@ use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleResolutionError;
@@ -214,13 +213,7 @@ pub fn resolve_import(
   maybe_import_map: &Option<ImportMap>,
 ) -> ResolvedDependency {
   let maybe_mapped = if let Some(import_map) = maybe_import_map {
-    if let Ok(maybe_specifier) =
-      import_map.resolve(specifier, referrer.as_str())
-    {
-      maybe_specifier
-    } else {
-      None
-    }
+    import_map.resolve(specifier, referrer.as_str()).ok()
   } else {
     None
   };
@@ -398,21 +391,6 @@ pub fn analyze_dependencies(
   }
 
   (dependencies, maybe_type)
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub enum CodeLensSource {
-  #[serde(rename = "implementations")]
-  Implementations,
-  #[serde(rename = "references")]
-  References,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodeLensData {
-  pub source: CodeLensSource,
-  pub specifier: ModuleSpecifier,
 }
 
 fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {

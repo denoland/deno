@@ -76,7 +76,10 @@ lazy_static! {
 }
 
 pub fn root_path() -> PathBuf {
-  PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/.."))
+  PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")))
+    .parent()
+    .unwrap()
+    .to_path_buf()
 }
 
 pub fn prebuilt_path() -> PathBuf {
@@ -130,6 +133,15 @@ pub fn test_server_path() -> PathBuf {
     p.set_extension("exe");
   }
   p
+}
+
+fn ensure_test_server_built() {
+  // if the test server doesn't exist then remind the developer to build first
+  if !test_server_path().exists() {
+    panic!(
+      "Test server not found. Please cargo build before running the tests."
+    );
+  }
 }
 
 /// Benchmark server that just serves "hello world" responses.
@@ -1043,6 +1055,7 @@ impl Drop for HttpServerGuard {
 /// last instance of the HttpServerGuard is dropped, the subprocess will be
 /// killed.
 pub fn http_server() -> HttpServerGuard {
+  ensure_test_server_built();
   let mut g = lock_http_server();
   g.inc();
   HttpServerGuard {}
