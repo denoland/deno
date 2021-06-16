@@ -694,7 +694,7 @@ impl CodeActionCollection {
     changes.insert(
       specifier.clone(),
       vec![lsp::TextEdit {
-        new_text: append_whitespace(
+        new_text: prepend_whitespace(
           format!("// deno-lint-ignore {}\n", code),
           line_content,
         ),
@@ -930,8 +930,8 @@ impl CodeActionCollection {
   }
 }
 
-/// Append the initial whitespace present in line_content to content.
-fn append_whitespace(content: String, line_content: Option<String>) -> String {
+/// Prepend the whitespace characters found at the start of line_content to content.
+fn prepend_whitespace(content: String, line_content: Option<String>) -> String {
   if let Some(line) = line_content {
     let whitespaces =
       line.chars().position(|c| !c.is_whitespace()).unwrap_or(0);
