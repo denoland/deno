@@ -1149,3 +1149,20 @@ unitTest({}, function fetchWritableRespProps(): void {
   assertEquals(original.status, new_.status);
   assertEquals(new_.headers.get("x-deno"), "foo");
 });
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchFilterOutCustomHostHeader(): Promise<
+    void
+  > {
+    const client = Deno.createHttpClient({});
+    const response = await fetch("http://localhost:4545/echo_server", {
+      headers: { 'Host': 'example.com' }
+    });
+    assertEquals(
+      response.headers.get("host"),
+      "localhost:4545",
+    );
+    client.close();
+  },
+);
