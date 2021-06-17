@@ -85,7 +85,7 @@ pub enum DenoSubcommand {
     force: bool,
   },
   Lsp {
-    parent_pid: Option<usize>,
+    parent_pid: Option<u32>,
   },
   Lint {
     files: Vec<PathBuf>,

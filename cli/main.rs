@@ -470,7 +470,7 @@ async fn install_command(
   tools::installer::install(flags, &module_url, args, name, root, force)
 }
 
-async fn lsp_command(parent_pid: Option<usize>) -> Result<(), AnyError> {
+async fn lsp_command(parent_pid: Option<u32>) -> Result<(), AnyError> {
   lsp::start(parent_pid).await
 }
 

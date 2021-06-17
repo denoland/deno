@@ -6,7 +6,7 @@ use tokio::time::Duration;
 /// Starts a task that will check for the existence of the
 /// provided process id. Once that process no longer exists
 /// it will terminate the current process.
-pub fn start(parent_process_id: usize) {
+pub fn start(parent_process_id: u32) {
   tokio::task::spawn(async move {
     loop {
       sleep(Duration::from_secs(30)).await;
@@ -20,19 +20,15 @@ pub fn start(parent_process_id: usize) {
 }
 
 #[cfg(unix)]
-fn is_process_active(process_id: usize) -> bool {
-  use libc::stat;
-  use std::ffi::CString;
-
+fn is_process_active(process_id: u32) -> bool {
   unsafe {
-    let path = CString::new(format!("/proc/{}", process_id)).unwrap();
-    let mut stat_result: stat = std::mem::zeroed();
-    stat(path.as_ptr(), &mut stat_result) >= 0
+    let kill_result = libc::kill(process_id as i32, 0);
+    kill_result == 0
   }
 }
 
 #[cfg(windows)]
-fn is_process_active(process_id: usize) -> bool {
+fn is_process_active(process_id: u32) -> bool {
   use winapi::shared::minwindef::DWORD;
   use winapi::shared::minwindef::FALSE;
   use winapi::shared::ntdef::NULL;
@@ -71,7 +67,7 @@ mod test {
     // launch a long running process
     let mut child = Command::new(deno_exe_path()).arg("lsp").spawn().unwrap();
 
-    let pid = child.id() as usize;
+    let pid = child.id();
     assert_eq!(is_process_active(pid), true);
     child.kill().unwrap();
     child.wait().unwrap();

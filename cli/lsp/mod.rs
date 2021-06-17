@@ -23,7 +23,7 @@ mod text;
 mod tsc;
 mod urls;
 
-pub async fn start(parent_pid: Option<usize>) -> Result<(), AnyError> {
+pub async fn start(parent_pid: Option<u32>) -> Result<(), AnyError> {
   let stdin = tokio::io::stdin();
   let stdout = tokio::io::stdout();
 
