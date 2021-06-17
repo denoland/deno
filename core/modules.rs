@@ -256,51 +256,6 @@ impl RecursiveModuleLoad {
     }
   }
 
-  pub async fn prepare(self) -> (ModuleLoadId, Result<Self, AnyError>) {
-    let (module_specifier, maybe_referrer) = match self.state {
-      LoadState::ResolveMain(ref specifier, _) => {
-        let spec =
-          match self
-            .loader
-            .resolve(self.op_state.clone(), specifier, ".", true)
-          {
-            Ok(spec) => spec,
-            Err(e) => return (self.id, Err(e)),
-          };
-        (spec, None)
-      }
-      LoadState::ResolveImport(ref specifier, ref referrer) => {
-        let spec = match self.loader.resolve(
-          self.op_state.clone(),
-          specifier,
-          referrer,
-          false,
-        ) {
-          Ok(spec) => spec,
-          Err(e) => return (self.id, Err(e)),
-        };
-        (spec, Some(referrer.to_string()))
-      }
-      _ => unreachable!(),
-    };
-
-    let prepare_result = self
-      .loader
-      .prepare_load(
-        self.op_state.clone(),
-        self.id,
-        &module_specifier,
-        maybe_referrer,
-        self.is_dynamic_import(),
-      )
-      .await;
-
-    match prepare_result {
-      Ok(()) => (self.id, Ok(self)),
-      Err(e) => (self.id, Err(e)),
-    }
-  }
-
   fn add_root(&mut self) -> Result<(), AnyError> {
     let module_specifier = match self.state {
       LoadState::ResolveMain(ref specifier, _) => {
@@ -648,17 +603,32 @@ impl ModuleMap {
     self.info.get(id)
   }
 
-  pub fn load_main(
+  pub async fn load_main(
     &self,
     specifier: &str,
     code: Option<String>,
-  ) -> RecursiveModuleLoad {
-    RecursiveModuleLoad::main(
+  ) -> Result<RecursiveModuleLoad, AnyError> {
+    let module_specifier =
+      self
+        .loader
+        .resolve(self.op_state.clone(), specifier, ".", true)?;
+    let load = RecursiveModuleLoad::main(
       self.op_state.clone(),
       specifier,
       code,
       self.loader.clone(),
-    )
+    );
+    load
+      .loader
+      .prepare_load(
+        load.op_state.clone(),
+        load.id,
+        &module_specifier,
+        None,
+        false,
+      )
+      .await?;
+    Ok(load)
   }
 
   // Initiate loading of a module graph imported using `import()`.
@@ -675,7 +645,37 @@ impl ModuleMap {
       self.loader.clone(),
     );
     self.dynamic_import_map.insert(load.id, resolver_handle);
-    let fut = load.prepare().boxed_local();
+    let resolve_result =
+      load
+        .loader
+        .resolve(load.op_state.clone(), specifier, referrer, false);
+    let fut = match resolve_result {
+      Ok(module_specifier) => {
+        if self.is_registered(&module_specifier) {
+          async move { (load.id, Ok(load)) }.boxed_local()
+        } else {
+          let referrer = Some(referrer.to_string());
+          async move {
+            let prepare_result = load
+              .loader
+              .prepare_load(
+                load.op_state.clone(),
+                load.id,
+                &module_specifier,
+                referrer,
+                true,
+              )
+              .await;
+            match prepare_result {
+              Ok(()) => (load.id, Ok(load)),
+              Err(error) => (load.id, Err(error)),
+            }
+          }
+          .boxed_local()
+        }
+      }
+      Err(error) => async move { (load.id, Err(error)) }.boxed_local(),
+    };
     self.preparing_dynamic_imports.push(fut);
   }
 
@@ -1128,7 +1128,6 @@ mod tests {
         )
         .unwrap();
 
-      assert_eq!(count.load(Ordering::Relaxed), 0);
       // We should get an error here.
       let result = runtime.poll_event_loop(cx, false);
       if let Poll::Ready(Ok(_)) = result {

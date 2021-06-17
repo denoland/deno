@@ -598,6 +598,7 @@ async fn create_module_graph_and_maybe_check(
         lib,
         maybe_config_file: program_state.maybe_config_file.clone(),
         reload: program_state.flags.reload,
+        ..Default::default()
       })?;
 
     debug!("{}", result_info.stats);
