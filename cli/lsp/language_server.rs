@@ -504,7 +504,7 @@ impl Inner {
     specifier: &ModuleSpecifier,
   ) -> Result<Option<AssetDocument>, AnyError> {
     if let Some(maybe_asset) = self.assets.get(specifier) {
-      return Ok(maybe_asset.clone());
+      Ok(maybe_asset.clone())
     } else {
       let maybe_asset =
         tsc::get_asset(&specifier, &self.ts_server, self.snapshot()?).await?;
