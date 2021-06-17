@@ -272,6 +272,7 @@
     } else {
       if (req.method === "HEAD" || req.method === "OPTIONS") {
         response.body = null;
+        core.close(resp.responseRid);
       } else {
         response.body = new InnerBody(
           createResponseBodyStream(resp.responseRid, terminator),
