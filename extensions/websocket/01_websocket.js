@@ -471,5 +471,7 @@
   defineEventHandler(WebSocket.prototype, "close");
   defineEventHandler(WebSocket.prototype, "open");
 
+  webidl.configurePrototype(WebSocket);
+
   window.__bootstrap.webSocket = { WebSocket };
 })(this);
