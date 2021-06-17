@@ -5480,6 +5480,27 @@ console.log("finish");
   }
 
   #[test]
+  fn websocket() {
+    let _g = util::http_server();
+
+    let script = util::tests_path().join("websocket_test.ts");
+    let root_ca = util::tests_path().join("tls/RootCA.pem");
+    let status = util::deno_cmd()
+      .arg("test")
+      .arg("--unstable")
+      .arg("--allow-net")
+      .arg("--cert")
+      .arg(root_ca)
+      .arg(script)
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+
+    assert!(status.success());
+  }
+
+  #[test]
   fn exec_path() {
     let output = util::deno_cmd()
       .current_dir(util::root_path())
