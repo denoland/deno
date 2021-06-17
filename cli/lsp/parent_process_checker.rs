@@ -32,24 +32,18 @@ fn is_process_active(process_id: u32) -> bool {
   use winapi::shared::minwindef::DWORD;
   use winapi::shared::minwindef::FALSE;
   use winapi::shared::ntdef::NULL;
+  use winapi::shared::winerror::WAIT_TIMEOUT;
   use winapi::um::handleapi::CloseHandle;
-  use winapi::um::minwinbase::STILL_ACTIVE;
-  use winapi::um::processthreadsapi::GetExitCodeProcess;
   use winapi::um::processthreadsapi::OpenProcess;
-  use winapi::um::winnt::PROCESS_QUERY_INFORMATION;
+  use winapi::um::synchapi::WaitForSingleObject;
+  use winapi::um::winnt::SYNCHRONIZE;
 
   unsafe {
-    let process =
-      OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, process_id as DWORD);
+    let process = OpenProcess(SYNCHRONIZE, FALSE, process_id as DWORD);
     let result = if process == NULL {
       false
     } else {
-      let mut exit_code = 0;
-      if GetExitCodeProcess(process, &mut exit_code) != FALSE {
-        exit_code == STILL_ACTIVE
-      } else {
-        false
-      }
+      WaitForSingleObject(process, 0) == WAIT_TIMEOUT
     };
     CloseHandle(process);
     result
