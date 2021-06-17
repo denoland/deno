@@ -509,7 +509,6 @@ fn op_create_worker(
   Ok(worker_id)
 }
 
-#[allow(clippy::unnecessary_wraps)]
 fn op_host_terminate_worker(
   state: &mut OpState,
   id: WorkerId,

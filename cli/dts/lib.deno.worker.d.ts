@@ -6,34 +6,45 @@
 /// <reference lib="deno.webgpu" />
 /// <reference lib="esnext" />
 
-declare class WorkerGlobalScope {
-  new(): WorkerGlobalScope;
-  self: WorkerGlobalScope & typeof globalThis;
-  onmessage:
-    | ((
-      this: WorkerGlobalScope & typeof globalThis,
-      ev: MessageEvent,
-    ) => any)
-    | null;
-  onmessageerror:
-    | ((
-      this: WorkerGlobalScope & typeof globalThis,
-      ev: MessageEvent,
-    ) => any)
-    | null;
-  onerror:
-    | ((
-      this: WorkerGlobalScope & typeof globalThis,
-      ev: ErrorEvent,
-    ) => any)
-    | null;
-  close: () => void;
-  postMessage: (message: any) => void;
+interface WorkerGlobalScopeEventMap {
+  "error": ErrorEvent;
+}
+
+declare class WorkerGlobalScope extends EventTarget {
+  readonly location: WorkerLocation;
+  readonly navigator: WorkerNavigator;
+  onerror: ((this: WorkerGlobalScope, ev: ErrorEvent) => any) | null;
+
+  readonly self: WorkerGlobalScope & typeof globalThis;
+
+  addEventListener<K extends keyof WorkerGlobalScopeEventMap>(
+    type: K,
+    listener: (
+      this: WorkerGlobalScope,
+      ev: WorkerGlobalScopeEventMap[K],
+    ) => any,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  removeEventListener<K extends keyof WorkerGlobalScopeEventMap>(
+    type: K,
+    listener: (
+      this: WorkerGlobalScope,
+      ev: WorkerGlobalScopeEventMap[K],
+    ) => any,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ): void;
+
   Deno: typeof Deno;
-  WorkerNavigator: typeof WorkerNavigator;
-  navigator: WorkerNavigator;
-  WorkerLocation: typeof WorkerLocation;
-  location: WorkerLocation;
 }
 
 declare class WorkerNavigator {
@@ -43,33 +54,93 @@ declare class WorkerNavigator {
 
 declare var navigator: WorkerNavigator;
 
-declare class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
-  new(): DedicatedWorkerGlobalScope;
-  name: string;
+interface DedicatedWorkerGlobalScopeEventMap extends WorkerGlobalScopeEventMap {
+  "message": MessageEvent;
+  "messageerror": MessageEvent;
 }
 
-declare var self: WorkerGlobalScope & typeof globalThis;
+declare class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
+  readonly name: string;
+  onmessage:
+    | ((this: DedicatedWorkerGlobalScope, ev: MessageEvent) => any)
+    | null;
+  onmessageerror:
+    | ((this: DedicatedWorkerGlobalScope, ev: MessageEvent) => any)
+    | null;
+  close(): void;
+  postMessage(message: any): void;
+  addEventListener<K extends keyof DedicatedWorkerGlobalScopeEventMap>(
+    type: K,
+    listener: (
+      this: DedicatedWorkerGlobalScope,
+      ev: DedicatedWorkerGlobalScopeEventMap[K],
+    ) => any,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  removeEventListener<K extends keyof DedicatedWorkerGlobalScopeEventMap>(
+    type: K,
+    listener: (
+      this: DedicatedWorkerGlobalScope,
+      ev: DedicatedWorkerGlobalScopeEventMap[K],
+    ) => any,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ): void;
+}
+
+declare var name: string;
 declare var onmessage:
-  | ((
-    this: WorkerGlobalScope & typeof globalThis,
-    ev: MessageEvent,
-  ) => any)
+  | ((this: DedicatedWorkerGlobalScope, ev: MessageEvent) => any)
   | null;
 declare var onmessageerror:
-  | ((
-    this: WorkerGlobalScope & typeof globalThis,
-    ev: MessageEvent,
-  ) => any)
+  | ((this: DedicatedWorkerGlobalScope, ev: MessageEvent) => any)
   | null;
+declare function close(): void;
+declare function postMessage(message: any): void;
+declare var navigator: WorkerNavigator;
 declare var onerror:
-  | ((
-    this: WorkerGlobalScope & typeof globalThis,
-    ev: ErrorEvent,
-  ) => any)
+  | ((this: DedicatedWorkerGlobalScope, ev: ErrorEvent) => any)
   | null;
-declare var close: () => void;
-declare var name: string;
-declare var postMessage: (message: any) => void;
+declare var self: WorkerGlobalScope & typeof globalThis;
+declare function addEventListener<
+  K extends keyof DedicatedWorkerGlobalScopeEventMap,
+>(
+  type: K,
+  listener: (
+    this: DedicatedWorkerGlobalScope,
+    ev: DedicatedWorkerGlobalScopeEventMap[K],
+  ) => any,
+  options?: boolean | AddEventListenerOptions,
+): void;
+declare function addEventListener(
+  type: string,
+  listener: EventListenerOrEventListenerObject,
+  options?: boolean | AddEventListenerOptions,
+): void;
+declare function removeEventListener<
+  K extends keyof DedicatedWorkerGlobalScopeEventMap,
+>(
+  type: K,
+  listener: (
+    this: DedicatedWorkerGlobalScope,
+    ev: DedicatedWorkerGlobalScopeEventMap[K],
+  ) => any,
+  options?: boolean | EventListenerOptions,
+): void;
+declare function removeEventListener(
+  type: string,
+  listener: EventListenerOrEventListenerObject,
+  options?: boolean | EventListenerOptions,
+): void;
 
 // TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
 // The types there must first be split into window, worker and global types.

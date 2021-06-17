@@ -344,7 +344,6 @@
     opStartGlobalTimer(timeout);
     await opWaitGlobalTimer();
     pendingEvents--;
-    // eslint-disable-next-line @typescript-eslint/no-use-before-define
     prepareReadyTimers();
   }
 

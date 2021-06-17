@@ -14,6 +14,8 @@
     return new HttpConn(rid);
   }
 
+  const connErrorSymbol = Symbol("connError");
+
   class HttpConn {
     #rid = 0;
 
@@ -35,9 +37,15 @@
           this.#rid,
         );
       } catch (error) {
+        // A connection error seen here would cause disrupted responses to throw
+        // a generic `BadResource` error. Instead store this error and replace
+        // those with it.
+        this[connErrorSymbol] = error;
         if (error instanceof errors.BadResource) {
           return null;
         } else if (error instanceof errors.Interrupted) {
+          return null;
+        } else if (error.message.includes("connection closed")) {
           return null;
         }
         throw error;
@@ -64,9 +72,9 @@
         headersList,
         body !== null ? new InnerBody(body) : null,
       );
-      const request = fromInnerRequest(innerRequest, "immutable");
+      const request = fromInnerRequest(innerRequest, null, "immutable");
 
-      const respondWith = createRespondWith(responseSenderRid, this.#rid);
+      const respondWith = createRespondWith(this, responseSenderRid);
 
       return { request, respondWith };
     }
@@ -77,6 +85,7 @@
     }
 
     [Symbol.asyncIterator]() {
+      // deno-lint-ignore no-this-alias
       const httpConn = this;
       return {
         async next() {
@@ -96,7 +105,7 @@
     );
   }
 
-  function createRespondWith(responseSenderRid) {
+  function createRespondWith(httpConn, responseSenderRid) {
     return async function respondWith(resp) {
       if (resp instanceof Promise) {
         resp = await resp;
@@ -123,10 +132,13 @@
           } else {
             const reader = innerResp.body.stream.getReader();
             const r1 = await reader.read();
-            if (r1.done) throw new TypeError("Unreachable");
-            respBody = r1.value;
-            const r2 = await reader.read();
-            if (!r2.done) throw new TypeError("Unreachable");
+            if (r1.done) {
+              respBody = new Uint8Array(0);
+            } else {
+              respBody = r1.value;
+              const r2 = await reader.read();
+              if (!r2.done) throw new TypeError("Unreachable");
+            }
           }
         } else {
           innerResp.body.streamOrStatic.consumed = true;
@@ -144,6 +156,11 @@
           innerResp.headerList,
         ], respBody instanceof Uint8Array ? respBody : null);
       } catch (error) {
+        const connError = httpConn[connErrorSymbol];
+        if (error instanceof errors.BadResource && connError != null) {
+          // deno-lint-ignore no-ex-assign
+          error = new connError.constructor(connError.message);
+        }
         if (respBody !== null && respBody instanceof ReadableStream) {
           await respBody.cancel(error);
         }
@@ -172,6 +189,11 @@
                 value,
               );
             } catch (error) {
+              const connError = httpConn[connErrorSymbol];
+              if (error instanceof errors.BadResource && connError != null) {
+                // deno-lint-ignore no-ex-assign
+                error = new connError.constructor(connError.message);
+              }
               await reader.cancel(error);
               throw error;
             }
@@ -179,7 +201,9 @@
         } finally {
           // Once all chunks are sent, and the request body is closed, we can
           // close the response body.
-          await Deno.core.opAsync("op_http_response_close", responseBodyRid);
+          try {
+            await Deno.core.opAsync("op_http_response_close", responseBodyRid);
+          } catch { /* pass */ }
         }
       }
     };

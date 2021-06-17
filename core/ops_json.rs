@@ -134,7 +134,7 @@ mod tests {
     "#,
       )
       .unwrap();
-    let e = runtime.run_event_loop().await.unwrap_err().to_string();
+    let e = runtime.run_event_loop(false).await.unwrap_err().to_string();
     println!("{}", e);
     assert!(e.contains("Error: foo"));
     assert!(e.contains("at async f1 (<init>:"));

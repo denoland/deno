@@ -49,8 +49,7 @@ Follow Rust conventions and be consistent with existing code.
 
 ## TypeScript
 
-The TypeScript portions of the codebase include `cli/js` for the built-ins and
-the standard library `std`.
+The TypeScript portion of the code base is the standard library `std`.
 
 ### Use TypeScript instead of JavaScript.
 
@@ -198,9 +197,9 @@ export type { Person } from "./my_file.ts";
 
 ### Minimize dependencies; do not make circular imports.
 
-Although `cli/js` and `std` have no external dependencies, we must still be
-careful to keep internal dependencies simple and manageable. In particular, be
-careful not to introduce circular imports.
+Although `std` has no external dependencies, we must still be careful to keep
+internal dependencies simple and manageable. In particular, be careful not to
+introduce circular imports.
 
 ### If a filename starts with an underscore: `_foo.ts`, do not link to it.
 
@@ -263,21 +262,20 @@ And not:
  */
 ```
 
-Code examples should not utilise the triple-back tick (\`\`\`) notation or tags.
-They should just be marked by indentation, which requires a break before the
-block and 6 additional spaces for each line of the example. This is 4 more than
-the first column of the comment. For example:
+Code examples should utilize markdown format, like so:
 
-```ts
+````ts
 /** A straight forward comment and an example:
- *
- *       import { foo } from "deno";
- *       foo("bar");
+ * ```ts
+ * import { foo } from "deno";
+ * foo("bar");
+ * ```
  */
-```
+````
 
-Code examples should not contain additional comments. It is already inside a
-comment. If it needs further comments it is not a good example.
+Code examples should not contain additional comments and must not be indented.
+It is already inside a comment. If it needs further comments it is not a good
+example.
 
 ### Resolve linting problems using directives
 
@@ -296,9 +294,8 @@ problems, but it should be used scarcely.
 ### Each module should come with a test module.
 
 Every module with public functionality `foo.ts` should come with a test module
-`foo_test.ts`. A test for a `cli/js` module should go in `cli/js/tests` due to
-their different contexts, otherwise it should just be a sibling to the tested
-module.
+`foo_test.ts`. A test for a `std` module should go in `std/tests` due to their
+different contexts, otherwise it should just be a sibling to the tested module.
 
 ### Unit Tests should be explicit.
 

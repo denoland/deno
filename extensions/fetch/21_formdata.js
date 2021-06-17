@@ -3,15 +3,15 @@
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../file/internal.d.ts" />
-/// <reference path="../file/lib.deno_file.d.ts" />
+/// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
-/// <reference path="./11_streams_types.d.ts" />
+/// <reference path="../web/06_streams_types.d.ts" />
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 "use strict";
 
 ((window) => {
+  const core = window.Deno.core;
   const webidl = globalThis.__bootstrap.webidl;
   const { Blob, File, _byteSequence } = globalThis.__bootstrap.file;
 
@@ -240,7 +240,7 @@
 
   webidl.mixinPairIterable("FormData", FormData, entryList, "name", "value");
 
-  const encoder = new TextEncoder();
+  webidl.configurePrototype(FormData);
 
   class MultipartBuilder {
     /**
@@ -270,7 +270,7 @@
         } else this.#writeField(name, value);
       }
 
-      this.chunks.push(encoder.encode(`\r\n--${this.boundary}--`));
+      this.chunks.push(core.encode(`\r\n--${this.boundary}--`));
 
       let totalLength = 0;
       for (const chunk of this.chunks) {
@@ -287,20 +287,20 @@
       return finalBuffer;
     }
 
-    #createBoundary = () => {
+    #createBoundary() {
       return (
         "----------" +
         Array.from(Array(32))
           .map(() => Math.random().toString(36)[2] || 0)
           .join("")
       );
-    };
+    }
 
     /**
      * @param {[string, string][]} headers
      * @returns {void}
      */
-    #writeHeaders = (headers) => {
+    #writeHeaders(headers) {
       let buf = (this.chunks.length === 0) ? "" : "\r\n";
 
       buf += `--${this.boundary}\r\n`;
@@ -309,8 +309,8 @@
       }
       buf += `\r\n`;
 
-      this.chunks.push(encoder.encode(buf));
-    };
+      this.chunks.push(core.encode(buf));
+    }
 
     /**
      * @param {string} field
@@ -318,51 +318,82 @@
      * @param {string} [type]
      * @returns {void}
      */
-    #writeFileHeaders = (
+    #writeFileHeaders(
       field,
       filename,
       type,
-    ) => {
+    ) {
+      const escapedField = this.#headerEscape(field);
+      const escapedFilename = this.#headerEscape(filename, true);
       /** @type {[string, string][]} */
       const headers = [
         [
           "Content-Disposition",
-          `form-data; name="${field}"; filename="${filename}"`,
+          `form-data; name="${escapedField}"; filename="${escapedFilename}"`,
         ],
         ["Content-Type", type || "application/octet-stream"],
       ];
       return this.#writeHeaders(headers);
-    };
+    }
 
     /**
      * @param {string} field
      * @returns {void}
      */
-    #writeFieldHeaders = (field) => {
+    #writeFieldHeaders(field) {
       /** @type {[string, string][]} */
-      const headers = [["Content-Disposition", `form-data; name="${field}"`]];
+      const headers = [[
+        "Content-Disposition",
+        `form-data; name="${this.#headerEscape(field)}"`,
+      ]];
       return this.#writeHeaders(headers);
-    };
+    }
 
     /**
      * @param {string} field
      * @param {string} value
      * @returns {void}
      */
-    #writeField = (field, value) => {
+    #writeField(field, value) {
       this.#writeFieldHeaders(field);
-      this.chunks.push(encoder.encode(value));
-    };
+      this.chunks.push(core.encode(this.#normalizeNewlines(value)));
+    }
 
     /**
      * @param {string} field
      * @param {File} value
      * @returns {void}
      */
-    #writeFile = (field, value) => {
+    #writeFile(field, value) {
       this.#writeFileHeaders(field, value.name, value.type);
       this.chunks.push(value[_byteSequence]);
-    };
+    }
+
+    /**
+     * @param {string} string
+     * @returns {string}
+     */
+    #normalizeNewlines(string) {
+      return string.replace(/\r(?!\n)|(?<!\r)\n/g, "\r\n");
+    }
+
+    /**
+     * Performs the percent-escaping and the normalization required for field
+     * names and filenames in Content-Disposition headers.
+     * @param {string} name
+     * @param {boolean} isFilename Whether we are encoding a filename. This
+     * skips the newline normalization that takes place for field names.
+     * @returns {string}
+     */
+    #headerEscape(name, isFilename = false) {
+      if (!isFilename) {
+        name = this.#normalizeNewlines(name);
+      }
+      return name
+        .replaceAll("\n", "%0A")
+        .replaceAll("\r", "%0D")
+        .replaceAll('"', "%22");
+    }
   }
 
   /**
@@ -397,7 +428,6 @@
 
   const LF = "\n".codePointAt(0);
   const CR = "\r".codePointAt(0);
-  const decoder = new TextDecoder("utf-8");
 
   class MultipartParser {
     /**
@@ -411,14 +441,14 @@
 
       this.boundary = `--${boundary}`;
       this.body = body;
-      this.boundaryChars = encoder.encode(this.boundary);
+      this.boundaryChars = core.encode(this.boundary);
     }
 
     /**
      * @param {string} headersText
      * @returns {{ headers: Headers, disposition: Map<string, string> }}
      */
-    #parseHeaders = (headersText) => {
+    #parseHeaders(headersText) {
       const headers = new Headers();
       const rawHeaders = headersText.split("\r\n");
       for (const rawHeader of rawHeaders) {
@@ -436,7 +466,7 @@
       );
 
       return { headers, disposition };
-    };
+    }
 
     /**
      * @returns {FormData}
@@ -508,7 +538,7 @@
               });
               formData.append(name, blob, filename);
             } else {
-              formData.append(name, decoder.decode(content));
+              formData.append(name, core.decode(content));
             }
           }
         } else if (state === 5 && isNewLine) {

@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::AnyError;
+use crate::resolve_url_or_path;
 use crate::JsRuntime;
 use crate::Op;
 use crate::OpId;
@@ -8,6 +9,7 @@ use crate::OpPayload;
 use crate::OpTable;
 use crate::PromiseId;
 use crate::ZeroCopyBuf;
+use log::debug;
 use rusty_v8 as v8;
 use serde::Serialize;
 use serde_v8::to_v8;
@@ -179,8 +181,18 @@ pub extern "C" fn host_import_module_dynamically_callback(
   let resolver_handle = v8::Global::new(scope, resolver);
   {
     let state_rc = JsRuntime::state(scope);
-    let mut state = state_rc.borrow_mut();
-    state.dyn_import_cb(resolver_handle, &specifier_str, &referrer_name_str);
+    let module_map_rc = JsRuntime::module_map(scope);
+
+    debug!(
+      "dyn_import specifier {} referrer {} ",
+      specifier_str, referrer_name_str
+    );
+    module_map_rc.borrow_mut().load_dynamic_import(
+      &specifier_str,
+      &referrer_name_str,
+      resolver_handle,
+    );
+    state_rc.borrow_mut().notify_new_dynamic_import();
   }
 
   // Map errors from module resolution (not JS errors from module execution) to
@@ -218,12 +230,11 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   meta: v8::Local<v8::Object>,
 ) {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
-  let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow();
+  let module_map_rc = JsRuntime::module_map(scope);
+  let module_map = module_map_rc.borrow();
 
   let module_global = v8::Global::new(scope, module);
-  let info = state
-    .module_map
+  let info = module_map
     .get_info(&module_global)
     .expect("Module not found");
 
@@ -372,13 +383,21 @@ fn eval_context(
   let source = match v8::Local::<v8::String>::try_from(args.get(0)) {
     Ok(s) => s,
     Err(_) => {
-      throw_type_error(scope, "Invalid argument");
+      throw_type_error(scope, "Missing first argument");
       return;
     }
   };
 
-  let url = v8::Local::<v8::String>::try_from(args.get(1))
-    .map(|n| Url::from_file_path(n.to_rust_string_lossy(scope)).unwrap());
+  let url = match v8::Local::<v8::String>::try_from(args.get(1)) {
+    Ok(s) => match resolve_url_or_path(&s.to_rust_string_lossy(scope)) {
+      Ok(s) => Some(s),
+      Err(err) => {
+        throw_type_error(scope, &format!("Invalid specifier: {}", err));
+        return;
+      }
+    },
+    Err(_) => None,
+  };
 
   #[derive(Serialize)]
   struct Output<'s>(Option<serde_v8::Value<'s>>, Option<ErrInfo<'s>>);
@@ -573,7 +592,11 @@ fn queue_microtask(
   };
 }
 
-// Called by V8 during `Isolate::mod_instantiate`.
+/// Called by V8 during `JsRuntime::instantiate_module`.
+///
+/// This function borrows `ModuleMap` from the isolate slot,
+/// so it is crucial to ensure there are no existing borrows
+/// of `ModuleMap` when `JsRuntime::instantiate_module` is called.
 pub fn module_resolve_callback<'s>(
   context: v8::Local<'s, v8::Context>,
   specifier: v8::Local<'s, v8::String>,
@@ -582,32 +605,22 @@ pub fn module_resolve_callback<'s>(
 ) -> Option<v8::Local<'s, v8::Module>> {
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
-  let state_rc = JsRuntime::state(scope);
-  let state = state_rc.borrow();
+  let module_map_rc = JsRuntime::module_map(scope);
+  let module_map = module_map_rc.borrow();
 
   let referrer_global = v8::Global::new(scope, referrer);
-  let referrer_info = state
-    .module_map
+
+  let referrer_info = module_map
     .get_info(&referrer_global)
     .expect("ModuleInfo not found");
   let referrer_name = referrer_info.name.to_string();
 
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
-  let resolved_specifier = state
-    .loader
-    .resolve(
-      state.op_state.clone(),
-      &specifier_str,
-      &referrer_name,
-      false,
-    )
-    .expect("Module should have been already resolved");
-
-  if let Some(id) = state.module_map.get_id(resolved_specifier.as_str()) {
-    if let Some(handle) = state.module_map.get_handle(id) {
-      return Some(v8::Local::new(scope, handle));
-    }
+  let maybe_module =
+    module_map.resolve_callback(scope, &specifier_str, &referrer_name);
+  if let Some(module) = maybe_module {
+    return Some(module);
   }
 
   let msg = format!(

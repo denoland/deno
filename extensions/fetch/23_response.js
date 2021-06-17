@@ -4,10 +4,9 @@
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../url/internal.d.ts" />
-/// <reference path="../file/internal.d.ts" />
-/// <reference path="../file/lib.deno_file.d.ts" />
+/// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
-/// <reference path="./11_streams_types.d.ts" />
+/// <reference path="../web/06_streams_types.d.ts" />
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 "use strict";
@@ -15,7 +14,7 @@
 ((window) => {
   const webidl = window.__bootstrap.webidl;
   const { HTTP_TAB_OR_SPACE, regexMatcher } = window.__bootstrap.infra;
-  const { InnerBody, extractBody, mixinBody } = window.__bootstrap.fetchBody;
+  const { extractBody, mixinBody } = window.__bootstrap.fetchBody;
   const { getLocationHref } = window.__bootstrap.location;
   const mimesniff = window.__bootstrap.mimesniff;
   const { URL } = window.__bootstrap.url;
@@ -47,7 +46,8 @@
    * @property {number} status
    * @property {string} statusMessage
    * @property {[string, string][]} headerList
-   * @property {null | InnerBody} body
+   * @property {null | typeof __window.bootstrap.fetchBody.InnerBody} body
+   * @property {boolean} aborted
    * @property {string} [error]
    */
 
@@ -92,12 +92,14 @@
       urlList,
       status: response.status,
       statusMessage: response.statusMessage,
+      aborted: response.aborted,
     };
   }
 
   const defaultInnerResponse = {
     type: "default",
     body: null,
+    aborted: false,
     url() {
       if (this.urlList.length == 0) return null;
       return this.urlList[this.urlList.length - 1];
@@ -128,6 +130,15 @@
     return resp;
   }
 
+  /**
+   * @returns {InnerResponse}
+   */
+  function abortedNetworkError() {
+    const resp = networkError("aborted");
+    resp.aborted = true;
+    return resp;
+  }
+
   class Response {
     /** @type {InnerResponse} */
     [_response];
@@ -137,10 +148,8 @@
       let charset = null;
       let essence = null;
       let mimeType = null;
-      const values = getDecodeSplitHeader(
-        headerListFromHeaders(this[_headers]),
-        "Content-Type",
-      );
+      const headerList = headerListFromHeaders(this[_headers]);
+      const values = getDecodeSplitHeader(headerList, "content-type");
       if (values === null) return null;
       for (const value of values) {
         const temporaryMimeType = mimesniff.parseMimeType(value);
@@ -209,7 +218,7 @@
       }
       const inner = newInnerResponse(status);
       inner.type = "default";
-      inner.headerList.push(["Location", parsedURL.href]);
+      inner.headerList.push(["location", parsedURL.href]);
       const response = webidl.createBranded(Response);
       response[_response] = inner;
       response[_headers] = headersFromHeaderList(
@@ -365,6 +374,8 @@
 
   mixinBody(Response, _body, _mimeType);
 
+  webidl.configurePrototype(Response);
+
   webidl.converters["Response"] = webidl.createInterfaceConverter(
     "Response",
     Response,
@@ -412,4 +423,5 @@
   window.__bootstrap.fetch.redirectStatus = redirectStatus;
   window.__bootstrap.fetch.nullBodyStatus = nullBodyStatus;
   window.__bootstrap.fetch.networkError = networkError;
+  window.__bootstrap.fetch.abortedNetworkError = abortedNetworkError;
 })(globalThis);
