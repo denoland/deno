@@ -38,19 +38,6 @@
   const CLOSING = 2;
   const CLOSED = 3;
 
-  function requiredArguments(
-    name,
-    length,
-    required,
-  ) {
-    if (length < required) {
-      const errMsg = `${name} requires at least ${required} argument${
-        required === 1 ? "" : "s"
-      }, but only ${length} present`;
-      throw new TypeError(errMsg);
-    }
-  }
-
   /**
    * Tries to close the resource (and ignores BadResource errors).
    * @param {number} rid
@@ -290,7 +277,7 @@
       webidl.assertBranded(this, WebSocket);
       const prefix = "Failed to execute 'send' on 'WebSocket'";
 
-      requiredArguments("WebSocket.send", arguments.length, 1, {
+      webidl.requiredArguments("WebSocket.send", arguments.length, 1, {
         prefix,
       });
       data = webidl.converters.WebSocketSend(data, {
