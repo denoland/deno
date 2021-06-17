@@ -234,7 +234,7 @@
         this[_extensions] = create.extensions;
         this[_protocol] = create.protocol;
 
-        if (this.readyState === CLOSING) {
+        if (this[_readyState] === CLOSING) {
           core.opAsync("op_ws_close", {
             rid: this[_rid],
           }).then(() => {
@@ -285,7 +285,7 @@
         context: "Argument 1",
       });
 
-      if (this.readyState !== OPEN) {
+      if (this[_readyState] !== OPEN) {
         throw new DOMException("readyState not OPEN", "InvalidStateError");
       }
 
@@ -310,13 +310,13 @@
       } else {
         const string = String(data);
         const d = core.encode(string);
-        this[_bufferedAmount] += d.size;
+        this[_bufferedAmount] += d.byteLength;
         core.opAsync("op_ws_send", {
           rid: this[_rid],
           kind: "text",
           text: string,
         }).then(() => {
-          this[_bufferedAmount] -= d.size;
+          this[_bufferedAmount] -= d.byteLength;
         });
       }
     }
@@ -354,9 +354,9 @@
         }
       }
 
-      if (this.readyState === CONNECTING) {
+      if (this[_readyState] === CONNECTING) {
         this[_readyState] = CLOSING;
-      } else if (this.readyState === OPEN) {
+      } else if (this[_readyState] === OPEN) {
         this[_readyState] = CLOSING;
 
         core.opAsync("op_ws_close", {
@@ -378,7 +378,7 @@
     }
 
     async #eventLoop() {
-      while (this.readyState === OPEN) {
+      while (this[_readyState] === OPEN) {
         const { kind, value } = await core.opAsync(
           "op_ws_next_event",
           this[_rid],
@@ -388,7 +388,7 @@
           case "string": {
             const event = new MessageEvent("message", {
               data: value,
-              origin: this.url,
+              origin: this[_url],
             });
             event.target = this;
             this.dispatchEvent(event);
@@ -405,7 +405,7 @@
 
             const event = new MessageEvent("message", {
               data,
-              origin: this.url,
+              origin: this[_url],
             });
             event.target = this;
             this.dispatchEvent(event);
