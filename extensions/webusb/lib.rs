@@ -42,6 +42,7 @@ pub fn init<P: WebUsbPermissions + 'static>(unstable: bool) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:extensions/webusb",
+      "00_webidl.js",
       "01_webusb.js",
     ))
     .ops(vec![

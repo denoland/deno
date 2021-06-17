@@ -240,7 +240,7 @@ delete Object.prototype.__proto__;
       enumerable: true,
       get() {
         webidl.assertBranded(this, Navigator);
-        return webusb;
+        return webusb.usb;
       },
     },
   });
@@ -271,7 +271,7 @@ delete Object.prototype.__proto__;
       enumerable: true,
       get() {
         webidl.assertBranded(this, Navigator);
-        return webusb;
+        return webusb.usb;
       },
     },
   });
@@ -372,6 +372,9 @@ delete Object.prototype.__proto__;
     GPUQuerySet: util.nonEnumerable(webgpu.GPUQuerySet),
     GPUOutOfMemoryError: util.nonEnumerable(webgpu.GPUOutOfMemoryError),
     GPUValidationError: util.nonEnumerable(webgpu.GPUValidationError),
+
+    USBDevice: util.nonEnumerable(webusb.UsbDevice),
+    USBConfiguration: util.nonEnumerable(webusb.USBConfiguration),
   };
 
   // The console seems to be the only one that should be writable and non-enumerable

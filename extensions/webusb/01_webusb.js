@@ -28,15 +28,180 @@
     }
   }
 
+  // https://wicg.github.io/webusb/#check-the-validity-of-the-control-transfer-parameters
+  function validateControlSetup(configuration, setup) {
+    if (configuration) {
+      // 4.
+      if (setup.recipient == "interface") {
+        // 1.
+        const interfaceNumber = setup.index & 0xFF;
+        // 2.
+        const _interface = configuration.interfaces.find((itf) =>
+          itf.interfaceNumber == interfaceNumber
+        );
+
+        if (!_interface) {
+          throw new DOMException(
+            "Interface does not exist in active configuration.",
+            "NotFoundError",
+          );
+        }
+
+        // 3.
+        if (!_interface.claimed) {
+          throw new DOMException(
+            "Interface must be claimed first.",
+            "InvalidStateError",
+          );
+        }
+      } // 5.
+      else if (setup.recipient == "endpoint") {
+        // 1.
+        const endpointNumber = setup.index & (1 << 4);
+
+        // 2.
+        const direction = ((setup.index >>> 8) & 1) == 1 ? "in" : "out";
+
+        // 3.
+        const _interface = configuration.interfaces.find((itf) =>
+          itf.alternates.find((alt) =>
+            alt.endpoints.find((ep) => {
+              return endpointNumber == ep.endpointNumber &&
+                direction == ep.direction;
+            })
+          )
+        );
+
+        if (!_interface) {
+          throw new DOMException(
+            "Interface does not exist in active configuration.",
+            "NotFoundError",
+          );
+        }
+
+        // 4.
+        if (!_interface.claimed) {
+          throw new DOMException(
+            "Interface must be claimed first.",
+            "InvalidStateError",
+          );
+        }
+      }
+    }
+  }
+
+  const USBDeviceDictionary = [
+    {
+      key: "usbVersionMajor",
+      converter: webidl.converters["octet"],
+    },
+    {
+      key: "usbVersionMinor",
+      converter: webidl.converters["octet"],
+    },
+    {
+      key: "usbVersionSubminor",
+      converter: webidl.converters["octet"],
+    },
+    {
+      key: "deviceClass",
+      converter: webidl.converters["octet"],
+    },
+    {
+      key: "deviceSubclass",
+      converter: webidl.converters["octet"],
+    },
+    {
+      key: "deviceProtocol",
+      converter: webidl.converters["octet"],
+    },
+    {
+      key: "vendorId",
+      converter: webidl.converters["unsigned short"],
+    },
+    {
+      key: "productId",
+      converter: webidl.converters["unsigned short"],
+    },
+    {
+      key: "deviceVersionMajor",
+      converter: webidl.converters["octet"],
+    },
+    {
+      key: "deviceVersionMinor",
+      converter: webidl.converters["octet"],
+    },
+    {
+      key: "deviceVersionSubminor",
+      converter: webidl.converters["octet"],
+    },
+    {
+      key: "manufacturerName",
+      converter: webidl.converters["DOMString"],
+    },
+    {
+      key: "productName",
+      converter: webidl.converters["DOMString"],
+    },
+    {
+      key: "serialNumber",
+      converter: webidl.converters["DOMString"],
+    },
+    {
+      key: "configuration",
+      converter: webidl.converters["USBConfiguration"],
+    },
+    {
+      key: "configurations",
+      converter: webidl.converters["seqeunce<USBConfiguration>"],
+    },
+  ];
+
+  function mixinDevice(prototype, deviceSymbol) {
+    for (const idx in USBDeviceDictionary) {
+      const key = USBDeviceDictionary[idx].key;
+      Object.defineProperty(prototype.prototype, key, {
+        get() {
+          webidl.assertBranded(this, prototype);
+          if (this[deviceSymbol] == null) {
+            return null;
+          } else {
+            return this[deviceSymbol][key];
+          }
+        },
+        configurable: true,
+        enumerable: true,
+      });
+    }
+  }
+
+  const _device = Symbol("device");
+
   class UsbDevice {
+    // Represents a `USBDevice` in closed state. It is used to open a device.
     #rid;
+    // Represents a `USBDeviceHandle`. The actual device handle.
+    // Should always be non-null when `this.open` is true.
     #deviceHandleRid;
+    // `USBDevice` properties.
+    #device = null;
+
+    get [_device]() {
+      return this.#device;
+    }
+
     constructor(device, rid) {
-      Object.assign(this, device);
-      this.configurations = device.configurations.map((config) =>
+      if (device.configuration) {
+        device.configuration = new UsbConfiguration(device.configuration);
+      }
+
+      device.configurations = device.configurations.map((config) =>
         new UsbConfiguration(config)
       );
+
+      this.#device = device;
       this.#rid = rid;
+      this.#deviceHandleRid = null;
       this.opened = false;
     }
 
@@ -71,12 +236,13 @@
 
       // 4.
       if (!_interface.claimed) {
-        // 5.
-        await core.opAsync(
-          "op_webusb_claim_interface",
-          { rid: this.#deviceHandleRid, interfaceNumber },
-        );
-
+        if (!usbTest[_initialized]) {
+          // 5.
+          await core.opAsync(
+            "op_webusb_claim_interface",
+            { rid: this.#deviceHandleRid, interfaceNumber },
+          );
+        }
         // 6.
         _interface.claimed = true;
       }
@@ -114,11 +280,12 @@
       // 5.
       if (_interface.claimed) {
         // 6.
-        await core.opAsync(
-          "op_webusb_release_interface",
-          { rid: this.#deviceHandleRid, interfaceNumber },
-        );
-
+        if (!usbTest[_initialized]) {
+          await core.opAsync(
+            "op_webusb_release_interface",
+            { rid: this.#deviceHandleRid, interfaceNumber },
+          );
+        }
         // 7.
         _interface.claimed = false;
       }
@@ -153,10 +320,12 @@
         );
       }
 
-      await core.opAsync(
-        "op_webusb_select_configuration",
-        { rid: this.#deviceHandleRid, configurationValue },
-      );
+      if (!usbTest[_initialized]) {
+        await core.opAsync(
+          "op_webusb_select_configuration",
+          { rid: this.#deviceHandleRid, configurationValue },
+        );
+      }
 
       // 7.
       this.configuration = configuration;
@@ -206,10 +375,12 @@
       }
 
       // 5. 6.
-      await core.opAsync(
-        "op_webusb_select_alternate_interface",
-        { rid: this.#deviceHandleRid, interfaceNumber, alternateSetting },
-      );
+      if (!usbTest[_initialized]) {
+        await core.opAsync(
+          "op_webusb_select_alternate_interface",
+          { rid: this.#deviceHandleRid, interfaceNumber, alternateSetting },
+        );
+      }
     }
 
     async clearHalt(direction, endpointNumber) {
@@ -259,11 +430,13 @@
         );
       }
 
-      // 4
-      await core.opAsync(
-        "op_webusb_clear_halt",
-        { rid: this.#deviceHandleRid, direction, endpointNumber },
-      );
+      if (!usbTest[_initialized]) {
+        // 4
+        await core.opAsync(
+          "op_webusb_clear_halt",
+          { rid: this.#deviceHandleRid, direction, endpointNumber },
+        );
+      }
     }
 
     async controlTransferIn(setup, length) {
@@ -290,72 +463,28 @@
       }
 
       // 4.
-      if (this.configuration) {
-        // https://wicg.github.io/webusb/#check-the-validity-of-the-control-transfer-parameters
+      validateControlSetup(this.configuration, setup);
 
-        // 4.
-        if (setup.recipient == "interface") {
-          // 1.
-          const interfaceNumber = setup.index & 0xFF;
-          // 2.
-          const _interface = this.configuration.interfaces.find((itf) =>
-            itf.interfaceNumber == interfaceNumber
-          );
-
-          if (!_interface) {
-            throw new DOMException(
-              "Interface does not exist in active configuration.",
-              "NotFoundError",
-            );
-          }
-
-          // 3.
-          if (!_interface.claimed) {
-            throw new DOMException(
-              "Interface must be claimed first.",
-              "InvalidStateError",
-            );
-          }
-        } // 5.
-        else if (setup.recipient == "endpoint") {
-          // 1.
-          const endpointNumber = setup.index & (1 << 4);
-
-          // 2.
-          const direction = ((setup.index >>> 8) & 1) == 1 ? "in" : "out";
-
-          // 3.
-          const _interface = this.configuration.interfaces.find((itf) =>
-            itf.alternates.find((alt) =>
-              alt.endpoints.find((ep) => {
-                return endpointNumber == ep.endpointNumber &&
-                  direction == ep.direction;
-              })
-            )
-          );
-
-          if (!_interface) {
-            throw new DOMException(
-              "Interface does not exist in active configuration.",
-              "NotFoundError",
-            );
-          }
-
-          // 4.
-          if (!_interface.claimed) {
-            throw new DOMException(
-              "Interface must be claimed first.",
-              "InvalidStateError",
-            );
-          }
-        }
+      if (!usbTest[_initialized]) {
+        // 5 to 12.
+        return await core.opAsync(
+          "op_webusb_control_transfer_in",
+          { rid: this.#deviceHandleRid, setup, length },
+        );
+      } else {
+        return {
+          status: "ok",
+          data: new Uint8Array([
+            length >> 8,
+            length & 0xff,
+            setup.request,
+            setup.value >> 8,
+            setup.value & 0xff,
+            setup.index >> 8,
+            setup.index & 0xff,
+          ]),
+        };
       }
-
-      // 5 to 12.
-      return await core.opAsync(
-        "op_webusb_control_transfer_in",
-        { rid: this.#deviceHandleRid, setup, length },
-      );
     }
 
     async controlTransferOut(setup, data) {
@@ -382,72 +511,21 @@
       }
 
       // 3.
-      // https://wicg.github.io/webusb/#check-the-validity-of-the-control-transfer-parameters
-      if (this.configuration) {
-        // 4.
-        if (setup.recipient == "interface") {
-          // 1.
-          const interfaceNumber = setup.index & 0xFF;
-          // 2.
-          const _interface = this.configuration.interfaces.find((itf) =>
-            itf.interfaceNumber == interfaceNumber
-          );
+      validateControlSetup(this.configuration, setup);
 
-          if (!_interface) {
-            throw new DOMException(
-              "Interface does not exist in active configuration.",
-              "NotFoundError",
-            );
-          }
-
-          // 3.
-          if (!_interface.claimed) {
-            throw new DOMException(
-              "Interface must be claimed first.",
-              "InvalidStateError",
-            );
-          }
-        } // 5.
-        else if (setup.recipient == "endpoint") {
-          // 1.
-          const endpointNumber = setup.index & (1 << 4);
-
-          // 2.
-          const direction = ((setup.index >>> 8) & 1) == 1 ? "in" : "out";
-
-          // 3.
-          const _interface = this.configuration.interfaces.find((itf) =>
-            itf.alternates.find((alt) =>
-              alt.endpoints.find((ep) => {
-                return endpointNumber == ep.endpointNumber &&
-                  direction == ep.direction;
-              })
-            )
-          );
-
-          if (!_interface) {
-            throw new DOMException(
-              "Interface does not exist in active configuration.",
-              "NotFoundError",
-            );
-          }
-
-          // 4.
-          if (!_interface.claimed) {
-            throw new DOMException(
-              "Interface must be claimed first.",
-              "InvalidStateError",
-            );
-          }
-        }
+      if (!usbTest[_initialized]) {
+        // 4 to 9.
+        return await core.opAsync(
+          "op_webusb_control_transfer_out",
+          { rid: this.#deviceHandleRid, setup },
+          new Uint8Array(data),
+        );
+      } else {
+        return {
+          status: "ok",
+          bytesWritten: data.byteLength,
+        };
       }
-
-      // 4 to 9.
-      return await core.opAsync(
-        "op_webusb_control_transfer_out",
-        { rid: this.#deviceHandleRid, setup },
-        new Uint8Array(data),
-      );
     }
 
     async transferIn(endpointNumber, length) {
@@ -498,11 +576,22 @@
         );
       }
 
-      // 6 to 15.
-      return await core.opAsync(
-        "op_webusb_transfer_in",
-        { rid: this.#deviceHandleRid, endpointNumber, length },
-      );
+      if (!usbTest[_initialized]) {
+        // 6 to 15.
+        return await core.opAsync(
+          "op_webusb_transfer_in",
+          { rid: this.#deviceHandleRid, endpointNumber, length },
+        );
+      } else {
+        let data = new Array(length);
+        for (let i = 0; i < length; ++i) {
+          data[i] = i & 0xff;
+        }
+        return {
+          status: "ok",
+          data,
+        };
+      }
     }
 
     async transferOut(endpointNumber, data) {
@@ -553,12 +642,19 @@
         );
       }
 
-      // 5 to 11.
-      return await core.opAsync(
-        "op_webusb_transfer_out",
-        { rid: this.#deviceHandleRid, endpointNumber },
-        new Uint8Array(data),
-      );
+      if (!usbTest[_initialized]) {
+        // 5 to 11.
+        return await core.opAsync(
+          "op_webusb_transfer_out",
+          { rid: this.#deviceHandleRid, endpointNumber },
+          new Uint8Array(data),
+        );
+      } else {
+        return {
+          status: "ok",
+          bytesWritten: data.byteLength,
+        };
+      }
     }
 
     async reset() {
@@ -572,11 +668,13 @@
         );
       }
 
-      // 4 to 6.
-      await core.opAsync(
-        "op_webusb_reset",
-        { rid: this.#deviceHandleRid },
-      );
+      if (!usbTest[_initialized]) {
+        // 4 to 6.
+        await core.opAsync(
+          "op_webusb_reset",
+          { rid: this.#deviceHandleRid },
+        );
+      }
     }
 
     async open() {
@@ -584,13 +682,16 @@
 
       // 3.
       if (!this.opened) {
-        const { rid } = await core.opAsync(
-          "op_webusb_open_device",
-          { rid: this.#rid },
-        );
+        if (!usbTest[_initialized]) {
+          const { rid } = await core.opAsync(
+            "op_webusb_open_device",
+            { rid: this.#rid },
+          );
 
-        // 5.
-        this.#deviceHandleRid = rid;
+          // 5.
+          this.#deviceHandleRid = rid;
+        }
+
         this.opened = true;
       }
     }
@@ -600,9 +701,11 @@
 
       // 3.
       if (this.opened) {
-        await core.opAsync("op_webusb_close_device", {
-          rid: this.#deviceHandleRid,
-        });
+        if (!usbTest[_initialized]) {
+          await core.opAsync("op_webusb_close_device", {
+            rid: this.#deviceHandleRid,
+          });
+        }
 
         // 7.
         this.opened = false;
@@ -610,36 +713,91 @@
     }
   }
 
-  async function getDevices() {
-    const devices = await core.opAsync("op_webusb_get_devices", {});
-    return devices.map(({ rid, usbdevice }) => new UsbDevice(usbdevice, rid));
+  mixinDevice(UsbDevice, _device);
+
+  webidl.configurePrototype(UsbDevice);
+
+  const _initialized = Symbol("initialized");
+  const _devices = Symbol("devices");
+
+  class USBTest {
+    static #initialized = false;
+    static #devices = [];
+
+    constructor() {
+      USBTest.#initialized = false;
+    }
+
+    get [_initialized]() {
+      return USBTest.#initialized;
+    }
+
+    get [_devices]() {
+      return USBTest.#devices;
+    }
+
+    async initialize() {
+      USBTest.#initialized = true;
+    }
+
+    async addFakeDevice(deviceInit) {
+      USBTest.#devices.push(deviceInit);
+    }
+
+    async reset() {
+      USBTest.#devices = [];
+      USBTest.#initialized = false;
+    }
   }
 
-  async function requestDevice({ filter }) {
-    // Request device. This adds it to the permission state.
-    await core.opAsync("op_webusb_request_device", { ...filter });
-    // We re-use getDevices method here and filter through the allowed devices.
-    const devices = await getDevices();
-    return devices.filter((device) =>
-      device.productId == filter.productId ||
-      device.vendorId == filter.vendorId ||
-      device.deviceProtocol == filter.protocolCode ||
-      device.deviceSubclass == filter.subclassCode ||
-      device.deviceClass == filter.classCode ||
-      device.serialNumber == filter.serialNumber
-    );
+  const usbTest = webidl.createBranded(USBTest);
+
+  class USB {
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
+    async getDevices() {
+      let devices;
+      if (!usbTest[_initialized]) {
+        devices = await core.opAsync("op_webusb_get_devices", {});
+      } else {
+        devices = usbTest[_devices].map((usbdevice) => {
+          return {
+            rid: null,
+            usbdevice,
+          };
+        });
+      }
+
+      return devices.map(({ rid, usbdevice }) => new UsbDevice(usbdevice, rid));
+    }
+
+    async requestDevice({ filter }) {
+      if (!usbTest[_initialized]) {
+        // Request device. This adds it to the permission state.
+        await core.opAsync("op_webusb_request_device", { ...filter });
+      }
+      // We re-use getDevices method here and filter through the allowed devices.
+      const devices = await this.getDevices();
+      return devices.filter((device) =>
+        device.productId == filter.productId ||
+        device.vendorId == filter.vendorId ||
+        device.deviceProtocol == filter.protocolCode ||
+        device.deviceSubclass == filter.subclassCode ||
+        device.deviceClass == filter.classCode ||
+        device.serialNumber == filter.serialNumber
+      );
+    }
+
+    get test() {
+      return usbTest;
+    }
   }
 
-  window.usb = {
-    requestDevice,
-    getDevices,
-    UsbDevice,
-    UsbConfiguration,
-  };
   window.__bootstrap = window.__bootstrap || {};
   window.__bootstrap.usb = {
-    requestDevice,
-    getDevices,
+    usb: webidl.createBranded(USB),
     UsbDevice,
     UsbConfiguration,
   };
