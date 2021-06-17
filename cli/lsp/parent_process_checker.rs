@@ -1,0 +1,79 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+use tokio::time::sleep;
+use tokio::time::Duration;
+
+/// Starts a task that will check for the existence of the
+/// provided process id. Once that process no longer exists
+/// it will terminate the current process.
+pub fn start(parent_process_id: usize) {
+  tokio::task::spawn(async move {
+    loop {
+      sleep(Duration::from_secs(30)).await;
+
+      if !is_process_active(parent_process_id) {
+        eprintln!("Parent process lost. Exiting.");
+        std::process::exit(1);
+      }
+    }
+  });
+}
+
+#[cfg(unix)]
+fn is_process_active(process_id: usize) -> bool {
+  use libc::stat;
+  use std::ffi::CString;
+
+  unsafe {
+    let path = CString::new(format!("/proc/{}", process_id)).unwrap();
+    let mut stat_result: stat = std::mem::zeroed();
+    stat(path.as_ptr(), &mut stat_result) >= 0
+  }
+}
+
+#[cfg(windows)]
+fn is_process_active(process_id: usize) -> bool {
+  use winapi::shared::minwindef::DWORD;
+  use winapi::shared::minwindef::FALSE;
+  use winapi::shared::ntdef::NULL;
+  use winapi::um::handleapi::CloseHandle;
+  use winapi::um::minwinbase::STILL_ACTIVE;
+  use winapi::um::processthreadsapi::GetExitCodeProcess;
+  use winapi::um::processthreadsapi::OpenProcess;
+  use winapi::um::winnt::PROCESS_QUERY_INFORMATION;
+
+  unsafe {
+    let process =
+      OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, process_id as DWORD);
+    let result = if process == NULL {
+      false
+    } else {
+      let mut exit_code = 0;
+      if GetExitCodeProcess(process, &mut exit_code) != FALSE {
+        exit_code == STILL_ACTIVE
+      } else {
+        false
+      }
+    };
+    CloseHandle(process);
+    result
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::is_process_active;
+  use std::process::Command;
+  use test_util::deno_exe_path;
+
+  #[test]
+  fn process_active() {
+    // launch a long running process
+    let mut child = Command::new(deno_exe_path()).arg("lsp").spawn().unwrap();
+
+    let pid = child.id() as usize;
+    assert_eq!(is_process_active(pid), true);
+    child.kill().unwrap();
+    assert_eq!(is_process_active(pid), false);
+  }
+}
