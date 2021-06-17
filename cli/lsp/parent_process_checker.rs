@@ -74,6 +74,7 @@ mod test {
     let pid = child.id() as usize;
     assert_eq!(is_process_active(pid), true);
     child.kill().unwrap();
+    child.wait().unwrap();
     assert_eq!(is_process_active(pid), false);
   }
 }
