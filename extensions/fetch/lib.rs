@@ -30,6 +30,7 @@ use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
 use reqwest::header::USER_AGENT;
+use reqwest::header::HOST;
 use reqwest::redirect::Policy;
 use reqwest::Body;
 use reqwest::Client;
@@ -193,7 +194,9 @@ where
       for (key, value) in args.headers {
         let name = HeaderName::from_bytes(key.as_bytes()).unwrap();
         let v = HeaderValue::from_str(&value).unwrap();
-        request = request.header(name, v);
+        if name != HOST {
+          request = request.header(name, v);
+        }
       }
 
       let cancel_handle = CancelHandle::new_rc();
