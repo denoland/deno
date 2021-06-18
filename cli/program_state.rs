@@ -188,7 +188,7 @@ impl ProgramState {
         debug,
         maybe_config_file,
         reload: self.flags.reload,
-        reload_exclusions: reload_exclusions.clone(),
+        reload_exclusions,
       })?;
       debug!("{}", result_info.stats);
       if let Some(ignored_options) = result_info.maybe_ignored_options {
@@ -261,7 +261,7 @@ impl ProgramState {
         debug,
         maybe_config_file,
         reload: self.flags.reload,
-        reload_exclusions: reload_exclusions.clone(),
+        reload_exclusions,
       })?;
       debug!("{}", result_info.stats);
       if let Some(ignored_options) = result_info.maybe_ignored_options {
