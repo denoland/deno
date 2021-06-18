@@ -11,7 +11,6 @@
 "use strict";
 
 ((window) => {
-  const Deno = window.Deno;
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
 
@@ -70,10 +69,10 @@
   }
 
   /** @param {(Blob | Uint8Array)[]} parts */
-  async function * toIterator (parts) {
+  async function* toIterator(parts) {
     for (const part of parts) {
       if (part instanceof Blob) {
-        yield * part.stream();
+        yield* part.stream();
       } else if (ArrayBuffer.isView(part)) {
         let position = part.byteOffset;
         const end = part.byteOffset + part.byteLength;
@@ -96,11 +95,11 @@
    */
   function processBlobParts(parts, endings) {
     /** @type {(Uint8Array|Blob)[]} */
-    const parts = [];
+    const processedParts = [];
     let size = 0;
     for (const element of parts) {
       if (element instanceof ArrayBuffer) {
-        parts.push(new Uint8Array(element.slice(0)));
+        processedParts.push(new Uint8Array(element.slice(0)));
         size += element.byteLength;
       } else if (ArrayBuffer.isView(element)) {
         const buffer = element.buffer.slice(
@@ -108,19 +107,21 @@
           element.byteOffset + element.byteLength,
         );
         size += element.byteLength;
-        parts.push(new Uint8Array(buffer));
+        processedParts.push(new Uint8Array(buffer));
       } else if (element instanceof Blob) {
-        parts.push(element);
+        processedParts.push(element);
         size += element.size;
       } else if (typeof element === "string") {
-        const chunk = core.encode(endings == "native" ? convertLineEndingsToNative(element) : element);
+        const chunk = core.encode(
+          endings == "native" ? convertLineEndingsToNative(element) : element,
+        );
         size += chunk.byteLength;
-        parts.push(chunk);
+        processedParts.push(chunk);
       } else {
         throw new TypeError("Unreachable code (invalid element type)");
       }
     }
-    return {parts, size};
+    return { parts: processedParts, size };
   }
 
   /**
@@ -143,7 +144,7 @@
     /** @type {string} */
     #type;
 
-    /** @type {(Uint8Array|Blob)[]} */
+    /** @type {(Uint8Array | Blob)[]} */
     #parts;
 
     /**
@@ -163,10 +164,10 @@
 
       this[webidl.brand] = webidl.brand;
 
-      const {parts, size} = processBlobParts(
+      const { parts, size } = processBlobParts(
         blobParts,
         options.endings,
-      )
+      );
       /** @type {Uint8Array|Blob} */
       this.#parts = parts;
       this[_Size] = size;
@@ -253,13 +254,13 @@
           relativeStart -= size;
           relativeEnd -= size;
         } else {
-          let chunk
+          let chunk;
           if (ArrayBuffer.isView(part)) {
             chunk = part.subarray(relativeStart, Math.min(size, relativeEnd));
-            added += chunk.byteLength
+            added += chunk.byteLength;
           } else {
             chunk = part.slice(relativeStart, Math.min(size, relativeEnd));
-            added += chunk.size
+            added += chunk.size;
           }
           blobParts.push(chunk);
           relativeStart = 0; // All next sequential parts should start at 0
@@ -279,7 +280,7 @@
         relativeContentType = normalizeType(contentType);
       }
 
-      const blob = new Blob([], {type: relativeContentType});
+      const blob = new Blob([], { type: relativeContentType });
       blob[_Size] = span;
       blob.#parts = blobParts;
 
@@ -295,9 +296,9 @@
       const stream = new ReadableStream({
         type: "bytes",
         /** @param {ReadableByteStreamController} controller */
-        async pull (controller) {
-          const {value} = await partIterator.next();
-          if (!value) return controller.close()
+        async pull(controller) {
+          const { value } = await partIterator.next();
+          if (!value) return controller.close();
           controller.enqueue(value);
         },
       });
@@ -377,10 +378,6 @@
   const _LastModfied = Symbol("[[LastModified]]");
 
   class File extends Blob {
-    get [Symbol.toStringTag]() {
-      return "File";
-    }
-
     /** @type {string} */
     [_Name];
     /** @type {number} */
@@ -432,6 +429,10 @@
       webidl.assertBranded(this, File);
       return this[_LastModfied];
     }
+
+    get [Symbol.toStringTag]() {
+      return "File";
+    }
   }
 
   webidl.configurePrototype(File);
@@ -451,9 +452,6 @@
    * This is a blob backed up by a file on the disk
    * with minium requirement. Its wrapped around a Blob as a blobPart
    * so you have no direct access to this.
-   *
-   * @author Jimmy Wärting
-   * @private
    */
   class BlobDataItem extends Blob {
     #path;
@@ -476,16 +474,19 @@
         path: this.#path,
         lastModified: this.lastModified,
         size: end - start,
-        start
+        start,
       });
     }
 
-    async * stream() {
-      const {mtime} = await Deno.stat(this.#path)
+    async *stream() {
+      const { mtime } = await Deno.stat(this.#path);
       if (mtime > this.lastModified) {
-        throw new DOMException('The requested file could not be read, ' +
-        'typically due to permission problems that have occurred after ' +
-        'a reference to a file was acquired.', 'NotReadableError');
+        throw new DOMException(
+          "The requested file could not be read, " +
+            "typically due to permission problems that have occurred after " +
+            "a reference to a file was acquired.",
+          "NotReadableError",
+        );
       }
       if (this.size) {
         const r = await Deno.open(this.#path, { read: true });
@@ -494,7 +495,7 @@
         while (length) {
           const p = new Uint8Array(Math.min(length, POOL_SIZE));
           length -= await r.read(p);
-          yield p
+          yield p;
         }
       }
     }
@@ -502,18 +503,19 @@
 
   // TODO: Make this function public
   /** @returns {Promise<File>} */
-  async function getFile (path, type = '') {
+  async function getFile(path, type = "") {
     const stat = await Deno.stat(path);
     const blobDataItem = new BlobDataItem({
       path,
       size: stat.size,
       lastModified: stat.mtime.getTime(),
-      start: 0
+      start: 0,
     });
 
     // TODO: import basename?
     const file = new File([blobDataItem], basename(path), {
-      type, lastModified: blobDataItem.lastModified
+      type,
+      lastModified: blobDataItem.lastModified,
     });
 
     return file;
@@ -521,7 +523,6 @@
 
   window.__bootstrap.file = {
     Blob,
-    getFile, // TODO: expose somehow? Write doc?
     File,
   };
 })(this);
