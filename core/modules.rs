@@ -256,6 +256,39 @@ impl RecursiveModuleLoad {
     }
   }
 
+  pub async fn prepare(&self) -> Result<(), AnyError> {
+    let (module_specifier, maybe_referrer) = match self.state {
+      LoadState::ResolveMain(ref specifier, _) => {
+        let spec =
+          self
+            .loader
+            .resolve(self.op_state.clone(), specifier, ".", true)?;
+        (spec, None)
+      }
+      LoadState::ResolveImport(ref specifier, ref referrer) => {
+        let spec = self.loader.resolve(
+          self.op_state.clone(),
+          specifier,
+          referrer,
+          false,
+        )?;
+        (spec, Some(referrer.to_string()))
+      }
+      _ => unreachable!(),
+    };
+
+    self
+      .loader
+      .prepare_load(
+        self.op_state.clone(),
+        self.id,
+        &module_specifier,
+        maybe_referrer,
+        self.is_dynamic_import(),
+      )
+      .await
+  }
+
   fn add_root(&mut self) -> Result<(), AnyError> {
     let module_specifier = match self.state {
       LoadState::ResolveMain(ref specifier, _) => {
@@ -608,26 +641,13 @@ impl ModuleMap {
     specifier: &str,
     code: Option<String>,
   ) -> Result<RecursiveModuleLoad, AnyError> {
-    let module_specifier =
-      self
-        .loader
-        .resolve(self.op_state.clone(), specifier, ".", true)?;
     let load = RecursiveModuleLoad::main(
       self.op_state.clone(),
       specifier,
       code,
       self.loader.clone(),
     );
-    load
-      .loader
-      .prepare_load(
-        load.op_state.clone(),
-        load.id,
-        &module_specifier,
-        None,
-        false,
-      )
-      .await?;
+    load.prepare().await?;
     Ok(load)
   }
 
@@ -654,24 +674,8 @@ impl ModuleMap {
         if self.is_registered(&module_specifier) {
           async move { (load.id, Ok(load)) }.boxed_local()
         } else {
-          let referrer = Some(referrer.to_string());
-          async move {
-            let prepare_result = load
-              .loader
-              .prepare_load(
-                load.op_state.clone(),
-                load.id,
-                &module_specifier,
-                referrer,
-                true,
-              )
-              .await;
-            match prepare_result {
-              Ok(()) => (load.id, Ok(load)),
-              Err(error) => (load.id, Err(error)),
-            }
-          }
-          .boxed_local()
+          async move { (load.id, load.prepare().await.map(|()| load)) }
+            .boxed_local()
         }
       }
       Err(error) => async move { (load.id, Err(error)) }.boxed_local(),
