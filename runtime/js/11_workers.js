@@ -230,7 +230,7 @@
 
         switch (type) {
           case 0: { // Message
-            const msg = core.deserialize(data, { withSharedArrayBuffer: true });
+            const msg = core.deserialize(data);
             this.#handleMessage(msg);
             break;
           }
@@ -273,9 +273,7 @@
         return;
       }
 
-      const bufferMsg = core.serialize(message, {
-        withSharedArrayBuffer: true,
-      });
+      const bufferMsg = core.serialize(message);
       hostPostMessage(this.#id, bufferMsg);
     }
 

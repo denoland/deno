@@ -11,7 +11,6 @@ use crate::PromiseId;
 use crate::ZeroCopyBuf;
 use log::debug;
 use rusty_v8 as v8;
-use serde::Deserialize;
 use serde::Serialize;
 use serde_v8::to_v8;
 use std::convert::TryFrom;
@@ -518,9 +517,7 @@ fn decode(
   };
 }
 
-struct SerializeDeserialize {
-  with_shared_array_buffer: bool,
-}
+struct SerializeDeserialize;
 
 impl v8::ValueSerializerImpl for SerializeDeserialize {
   #[allow(unused_variables)]
@@ -538,9 +535,6 @@ impl v8::ValueSerializerImpl for SerializeDeserialize {
     scope: &mut HandleScope<'s>,
     shared_array_buffer: Local<'s, SharedArrayBuffer>,
   ) -> Option<u32> {
-    if !self.with_shared_array_buffer {
-      return None;
-    }
     let state_rc = JsRuntime::state(scope);
     let state = state_rc.borrow_mut();
     if let Some(transfer_buffer) = &state.transfer_buffer {
@@ -559,9 +553,6 @@ impl v8::ValueDeserializerImpl for SerializeDeserialize {
     scope: &mut HandleScope<'s>,
     transfer_id: u32,
   ) -> Option<Local<'s, SharedArrayBuffer>> {
-    if !self.with_shared_array_buffer {
-      return None;
-    }
     let state_rc = JsRuntime::state(scope);
     let state = state_rc.borrow_mut();
     if let Some(transfer_buffer) = &state.transfer_buffer {
@@ -575,28 +566,12 @@ impl v8::ValueDeserializerImpl for SerializeDeserialize {
   }
 }
 
-#[derive(Default, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-struct SerializerOptions {
-  #[serde(default)]
-  with_shared_array_buffer: bool,
-}
-
 fn serialize(
   scope: &mut v8::HandleScope,
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let opts: SerializerOptions = match serde_v8::from_v8(scope, args.get(1)) {
-    Ok(opts) => opts,
-    Err(_) => {
-      throw_type_error(scope, "Invalid argument");
-      return;
-    }
-  };
-  let serialize_deserialize = Box::new(SerializeDeserialize {
-    with_shared_array_buffer: opts.with_shared_array_buffer,
-  });
+  let serialize_deserialize = Box::new(SerializeDeserialize);
   let mut value_serializer =
     v8::ValueSerializer::new(scope, serialize_deserialize);
   match value_serializer.write_value(scope.get_current_context(), args.get(0)) {
@@ -625,16 +600,7 @@ fn deserialize(
   };
   let buf = &zero_copy;
 
-  let opts: SerializerOptions = match serde_v8::from_v8(scope, args.get(1)) {
-    Ok(opts) => opts,
-    Err(_) => {
-      throw_type_error(scope, "Invalid argument");
-      return;
-    }
-  };
-  let serialize_deserialize = Box::new(SerializeDeserialize {
-    with_shared_array_buffer: opts.with_shared_array_buffer,
-  });
+  let serialize_deserialize = Box::new(SerializeDeserialize);
   let mut value_deserializer =
     v8::ValueDeserializer::new(scope, serialize_deserialize, buf);
   let value = value_deserializer.read_value(scope.get_current_context());
