@@ -448,6 +448,60 @@
     ],
   );
 
+  // TODO(lucacasonato): once BlobReference is GC'd in JS, the Rust blob part
+  // should be deallocated.
+  /**
+   * An opaque reference to a blob part in Rust. This could be backed by a file,
+   * in memory storage, or something else.
+   */
+  class BlobReference {
+    /** @type {string} */
+    #id;
+
+    /**
+     * Don't use directly. Use `BlobReference.fromUint8Array`.
+     * @param {string} id
+     */
+    constructor(id) {
+      this.#id = id;
+    }
+
+    /**
+     * Create a new blob part from a Uint8Array.
+     *
+     * @param {Uint8Array} data
+     * @returns {BlobReference}
+     */
+    static fromUint8Array(data) {
+      const id = core.opSync("op_blob_create_part", data);
+      return new BlobReference(id);
+    }
+
+    /**
+     * Create a new BlobReference by slicing this BlobReference. This is a copy
+     * free operation - the sliced reference will still reference the original
+     * underlying bytes.
+     *
+     * @param {number} start
+     * @param {number} len
+     * @returns {BlobReference}
+     */
+    slice(start, len) {
+      const id = core.opSync("op_blob_slice_part", this.#id, { start, len });
+      return new BlobReference(id);
+    }
+
+    // TODO(lucacasonato): this should be a stream!
+    /**
+     * Read the entire contents of the reference blob.
+     *
+     * @returns {Promise<Uint8Array>}
+     */
+    read() {
+      return core.opAsync("op_blob_read_part", this.#id);
+    }
+  }
+
   /**
    * This is a blob backed up by a file on the disk
    * with minium requirement. Its wrapped around a Blob as a blobPart
