@@ -161,7 +161,7 @@ Deno.test({
     const promise = deferred();
 
     const busyWorker = new Worker(
-      new URL("busy_worker.js", import.meta.url).href,
+      new URL("busy_worker.js", import.meta.url),
       { type: "module" },
     );
 
@@ -194,7 +194,7 @@ Deno.test({
     const promise = deferred();
 
     const racyWorker = new Worker(
-      new URL("racy_worker.js", import.meta.url).href,
+      new URL("racy_worker.js", import.meta.url),
       { type: "module" },
     );
 
@@ -219,7 +219,7 @@ Deno.test({
     const promise2 = deferred();
 
     const worker = new Worker(
-      new URL("event_worker.js", import.meta.url).href,
+      new URL("event_worker.js", import.meta.url),
       { type: "module" },
     );
 
@@ -263,7 +263,7 @@ Deno.test({
     const promise1 = deferred();
 
     const worker = new Worker(
-      new URL("event_worker_scope.js", import.meta.url).href,
+      new URL("event_worker_scope.js", import.meta.url),
       { type: "module" },
     );
 
@@ -292,11 +292,11 @@ Deno.test({
     const promise2 = deferred();
 
     const regularWorker = new Worker(
-      new URL("non_deno_worker.js", import.meta.url).href,
+      new URL("non_deno_worker.js", import.meta.url),
       { type: "module" },
     );
     const denoWorker = new Worker(
-      new URL("deno_worker.ts", import.meta.url).href,
+      new URL("deno_worker.ts", import.meta.url),
       {
         type: "module",
         deno: {
