@@ -248,7 +248,7 @@ pub async fn run(
     origin_storage_dir: None,
     blob_url_store,
     broadcast_channel,
-    transfer_buffer: None,
+    shared_array_buffer_store: None,
   };
   let mut worker =
     MainWorker::from_options(main_module.clone(), permissions, &options);

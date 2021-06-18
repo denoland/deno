@@ -99,15 +99,15 @@ struct ModEvaluate {
 }
 
 #[derive(Default, Clone)]
-pub struct TransferBuffer(Arc<Mutex<TransferBufferInner>>);
+pub struct SharedArrayBufferStore(Arc<Mutex<SharedArrayBufferStoreInner>>);
 
 #[derive(Default)]
-pub struct TransferBufferInner {
+pub struct SharedArrayBufferStoreInner {
   buffers: HashMap<u32, v8::SharedRef<v8::BackingStore>>,
   last_id: u32,
 }
 
-impl TransferBuffer {
+impl SharedArrayBufferStore {
   pub(crate) fn insert(
     &self,
     backing_store: v8::SharedRef<v8::BackingStore>,
@@ -143,7 +143,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
-  pub(crate) transfer_buffer: Option<TransferBuffer>,
+  pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   waker: AtomicWaker,
 }
 
@@ -244,9 +244,9 @@ pub struct RuntimeOptions {
 
   /// The buffer to use for transferring SharedArrayBuffers between isolates.
   /// If multiple isolates should have the possibility of sharing
-  /// SharedArrayBuffers, they should use the same TransferBuffer. If no
-  /// TransferBuffer is specified, SharedArrayBuffer can not be serialized.
-  pub transfer_buffer: Option<TransferBuffer>,
+  /// SharedArrayBuffers, they should use the same SharedArrayBufferStore. If no
+  /// SharedArrayBufferStore is specified, SharedArrayBuffer can not be serialized.
+  pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
 }
 
 impl JsRuntime {
@@ -340,7 +340,7 @@ impl JsRuntime {
       js_error_create_fn,
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
-      transfer_buffer: options.transfer_buffer,
+      shared_array_buffer_store: options.shared_array_buffer_store,
       op_state: op_state.clone(),
       have_unpolled_ops: false,
       waker: AtomicWaker::new(),

@@ -15,7 +15,7 @@ use crate::module_graph::TypeLib;
 use crate::source_maps::SourceMapGetter;
 use crate::specifier_handler::FetchHandler;
 use crate::version;
-use deno_core::TransferBuffer;
+use deno_core::SharedArrayBufferStore;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_web::BlobUrlStore;
 use deno_runtime::inspector_server::InspectorServer;
@@ -55,7 +55,7 @@ pub struct ProgramState {
   pub ca_data: Option<Vec<u8>>,
   pub blob_url_store: BlobUrlStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
-  pub transfer_buffer: TransferBuffer,
+  pub shared_array_buffer_store: SharedArrayBufferStore,
 }
 
 impl ProgramState {
@@ -82,7 +82,7 @@ impl ProgramState {
 
     let blob_url_store = BlobUrlStore::default();
     let broadcast_channel = InMemoryBroadcastChannel::default();
-    let transfer_buffer = TransferBuffer::default();
+    let shared_array_buffer_store = SharedArrayBufferStore::default();
 
     let file_fetcher = FileFetcher::new(
       http_cache,
@@ -150,7 +150,7 @@ impl ProgramState {
       ca_data,
       blob_url_store,
       broadcast_channel,
-      transfer_buffer,
+      shared_array_buffer_store,
     };
     Ok(Arc::new(program_state))
   }

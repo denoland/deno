@@ -537,9 +537,9 @@ impl v8::ValueSerializerImpl for SerializeDeserialize {
   ) -> Option<u32> {
     let state_rc = JsRuntime::state(scope);
     let state = state_rc.borrow_mut();
-    if let Some(transfer_buffer) = &state.transfer_buffer {
+    if let Some(shared_array_buffer_store) = &state.shared_array_buffer_store {
       let backing_store = shared_array_buffer.get_backing_store();
-      let id = transfer_buffer.insert(backing_store);
+      let id = shared_array_buffer_store.insert(backing_store);
       Some(id)
     } else {
       None
@@ -555,8 +555,8 @@ impl v8::ValueDeserializerImpl for SerializeDeserialize {
   ) -> Option<Local<'s, SharedArrayBuffer>> {
     let state_rc = JsRuntime::state(scope);
     let state = state_rc.borrow_mut();
-    if let Some(transfer_buffer) = &state.transfer_buffer {
-      let backing_store = transfer_buffer.take(transfer_id)?;
+    if let Some(shared_array_buffer_store) = &state.shared_array_buffer_store {
+      let backing_store = shared_array_buffer_store.take(transfer_id)?;
       let shared_array_buffer =
         v8::SharedArrayBuffer::with_backing_store(scope, &backing_store);
       Some(shared_array_buffer)
