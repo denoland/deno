@@ -275,7 +275,7 @@ impl ProgramState {
         lib,
         maybe_config_file,
         reload: self.flags.reload,
-        reload_exclusions: reload_exclusions,
+        reload_exclusions,
       })?;
 
       debug!("{}", result_info.stats);
