@@ -405,7 +405,7 @@ declare class Worker extends EventTarget {
   onmessage?: (e: MessageEvent) => void;
   onmessageerror?: (e: MessageEvent) => void;
   constructor(
-    specifier: string,
+    specifier: string | URL,
     options?: WorkerOptions,
   );
   postMessage(message: any, transfer: ArrayBuffer[]): void;
