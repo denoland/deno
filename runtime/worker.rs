@@ -23,6 +23,7 @@ use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
+use deno_core::TransferBuffer;
 use deno_web::BlobUrlStore;
 use log::debug;
 use std::env;
@@ -72,6 +73,7 @@ pub struct WorkerOptions {
   pub origin_storage_dir: Option<std::path::PathBuf>,
   pub blob_url_store: BlobUrlStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
+  pub transfer_buffer: Option<TransferBuffer>,
 }
 
 impl MainWorker {
@@ -140,6 +142,7 @@ impl MainWorker {
       startup_snapshot: Some(js::deno_isolate_init()),
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
+      transfer_buffer: options.transfer_buffer.clone(),
       extensions,
       attach_inspector: options.attach_inspector,
       ..Default::default()
@@ -307,6 +310,7 @@ mod tests {
       origin_storage_dir: None,
       blob_url_store: BlobUrlStore::default(),
       broadcast_channel: InMemoryBroadcastChannel::default(),
+      transfer_buffer: None,
     };
 
     MainWorker::from_options(main_module, permissions, &options)

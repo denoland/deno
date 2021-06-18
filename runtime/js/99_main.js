@@ -77,7 +77,7 @@ delete Object.prototype.__proto__;
   const onerror = () => {};
 
   function postMessage(data) {
-    const dataIntArray = core.serialize(data);
+    const dataIntArray = core.serialize(data, { withSharedArrayBuffer: true });
     core.opSync("op_worker_post_message", null, dataIntArray);
   }
 
@@ -90,7 +90,7 @@ delete Object.prototype.__proto__;
     }
     while (!isClosing) {
       const bufferMsg = await core.opAsync("op_worker_get_message");
-      const data = core.deserialize(bufferMsg);
+      const data = core.deserialize(bufferMsg, { withSharedArrayBuffer: true });
 
       const msgEvent = new MessageEvent("message", {
         cancelable: false,

@@ -769,3 +769,27 @@ Deno.test({
     worker.terminate();
   },
 });
+
+Deno.test({
+  name: "worker SharedArrayBuffer",
+  fn: async function (): Promise<void> {
+    const promise = deferred();
+    const workerOptions: WorkerOptions = { type: "module" };
+    const w = new Worker(
+      new URL("shared_array_buffer.ts", import.meta.url).href,
+      workerOptions,
+    );
+    const sab = new SharedArrayBuffer(1);
+    const u8 = new Uint8Array(sab);
+    assertEquals(u8[0], 0);
+    w.onmessage = (e): void => {
+      w.postMessage(sab);
+      w.onmessage = (e): void => {
+        assertEquals(u8[0], 1);
+        promise.resolve();
+      };
+    };
+    await promise;
+    w.terminate();
+  },
+});

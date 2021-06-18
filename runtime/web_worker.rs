@@ -27,6 +27,7 @@ use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
+use deno_core::TransferBuffer;
 use deno_core::ZeroCopyBuf;
 use deno_web::BlobUrlStore;
 use log::debug;
@@ -230,6 +231,7 @@ pub struct WebWorkerOptions {
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub blob_url_store: BlobUrlStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
+  pub transfer_buffer: Option<TransferBuffer>,
 }
 
 impl WebWorker {
@@ -315,6 +317,7 @@ impl WebWorker {
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
       attach_inspector: options.attach_inspector,
+      transfer_buffer: options.transfer_buffer.clone(),
       extensions,
       ..Default::default()
     });
@@ -558,6 +561,7 @@ mod tests {
       get_error_class_fn: None,
       blob_url_store: BlobUrlStore::default(),
       broadcast_channel: InMemoryBroadcastChannel::default(),
+      transfer_buffer: None,
     };
 
     let mut worker = WebWorker::from_options(
