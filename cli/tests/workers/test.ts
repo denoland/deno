@@ -782,9 +782,9 @@ Deno.test({
     const sab = new SharedArrayBuffer(1);
     const u8 = new Uint8Array(sab);
     assertEquals(u8[0], 0);
-    w.onmessage = (e): void => {
+    w.onmessage = (): void => {
       w.postMessage(sab);
-      w.onmessage = (e): void => {
+      w.onmessage = (): void => {
         assertEquals(u8[0], 1);
         promise.resolve();
       };

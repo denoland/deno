@@ -9,6 +9,6 @@ setInterval(() => {
   console.log(new Uint8Array(sab));
 }, 100);
 
-worker.onmessage = (e) => {
+worker.onmessage = () => {
   worker.postMessage(sab);
 };
