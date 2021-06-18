@@ -30,7 +30,6 @@ use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use log::debug;
 use log::warn;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
@@ -189,7 +188,7 @@ impl ProgramState {
         debug,
         maybe_config_file,
         reload: self.flags.reload,
-        reload_exclusions: Cow::Borrowed(&reload_exclusions),
+        reload_exclusions: reload_exclusions.clone(),
       })?;
       debug!("{}", result_info.stats);
       if let Some(ignored_options) = result_info.maybe_ignored_options {
@@ -203,7 +202,7 @@ impl ProgramState {
         lib,
         maybe_config_file,
         reload: self.flags.reload,
-        reload_exclusions: Cow::Borrowed(&reload_exclusions),
+        reload_exclusions,
       })?;
 
       debug!("{}", result_info.stats);
@@ -262,7 +261,7 @@ impl ProgramState {
         debug,
         maybe_config_file,
         reload: self.flags.reload,
-        reload_exclusions: Cow::Borrowed(&reload_exclusions),
+        reload_exclusions: reload_exclusions.clone(),
       })?;
       debug!("{}", result_info.stats);
       if let Some(ignored_options) = result_info.maybe_ignored_options {
@@ -276,7 +275,7 @@ impl ProgramState {
         lib,
         maybe_config_file,
         reload: self.flags.reload,
-        reload_exclusions: Cow::Borrowed(&reload_exclusions),
+        reload_exclusions: reload_exclusions,
       })?;
 
       debug!("{}", result_info.stats);

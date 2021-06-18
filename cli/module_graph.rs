@@ -44,7 +44,6 @@ use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use log::debug;
 use regex::Regex;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::error::Error;
@@ -611,7 +610,7 @@ pub struct BundleOptions {
 }
 
 #[derive(Debug, Default)]
-pub struct CheckOptions<'a> {
+pub struct CheckOptions {
   /// If `true` then debug logging will be output from the isolate.
   pub debug: bool,
   /// Utilise the emit from `tsc` to update the emitted code for modules.
@@ -628,7 +627,7 @@ pub struct CheckOptions<'a> {
   /// A set of module specifiers to be excluded from the effect of
   /// `CheckOptions::reload` if it is `true`. Perhaps because they have already
   /// reloaded once in this process.
-  pub reload_exclusions: Cow<'a, HashSet<ModuleSpecifier>>,
+  pub reload_exclusions: HashSet<ModuleSpecifier>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -668,7 +667,7 @@ pub struct EmitOptions {
 
 /// A structure which provides options when transpiling modules.
 #[derive(Debug, Default)]
-pub struct TranspileOptions<'a> {
+pub struct TranspileOptions {
   /// If `true` then debug logging will be output from the isolate.
   pub debug: bool,
   /// An optional config file with user supplied TypeScript configuration
@@ -681,7 +680,7 @@ pub struct TranspileOptions<'a> {
   /// A set of module specifiers to be excluded from the effect of
   /// `CheckOptions::reload` if it is `true`. Perhaps because they have already
   /// reloaded once in this process.
-  pub reload_exclusions: Cow<'a, HashSet<ModuleSpecifier>>,
+  pub reload_exclusions: HashSet<ModuleSpecifier>,
 }
 
 #[derive(Debug, Clone)]
