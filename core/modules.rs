@@ -1157,7 +1157,7 @@ mod tests {
       _is_main: bool,
     ) -> Result<ModuleSpecifier, AnyError> {
       let c = self.resolve_count.fetch_add(1, Ordering::Relaxed);
-      assert!(c < 6);
+      assert!(c < 5);
       assert_eq!(specifier, "./b.js");
       assert_eq!(referrer, "file:///dyn_import3.js");
       let s = crate::resolve_import(specifier, referrer).unwrap();
@@ -1234,13 +1234,13 @@ mod tests {
         runtime.poll_event_loop(cx, false),
         Poll::Ready(Ok(_))
       ));
-      assert_eq!(resolve_count.load(Ordering::Relaxed), 6);
+      assert_eq!(resolve_count.load(Ordering::Relaxed), 5);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
       assert!(matches!(
         runtime.poll_event_loop(cx, false),
         Poll::Ready(Ok(_))
       ));
-      assert_eq!(resolve_count.load(Ordering::Relaxed), 6);
+      assert_eq!(resolve_count.load(Ordering::Relaxed), 5);
       assert_eq!(load_count.load(Ordering::Relaxed), 2);
     })
   }
