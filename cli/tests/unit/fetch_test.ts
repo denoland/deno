@@ -1150,7 +1150,7 @@ unitTest({}, function fetchWritableRespProps(): void {
   assertEquals(new_.headers.get("x-deno"), "foo");
 });
 
-function returnHostHeaderServer(addr: string): void {
+function returnHostHeaderServer(addr: string): Deno.Listener {
   const [hostname, port] = addr.split(":");
   const listener = Deno.listen({
     hostname,
@@ -1173,8 +1173,10 @@ function returnHostHeaderServer(addr: string): void {
         );
       });
 
-    listener.close();
+      httpConn.close();
   });
+
+  return listener;
 }
 
 unitTest(
@@ -1183,10 +1185,12 @@ unitTest(
     void
   > {
     const addr = "127.0.0.1:4502";
-    returnHostHeaderServer(addr);
+    const listener = returnHostHeaderServer(addr);
     const response = await fetch(`http://${addr}/`, {
       headers: { "Host": "example.com" },
     });
+    await response.text();
+    listener.close();
 
     assertEquals(response.headers.get("Host"), addr);
   },
