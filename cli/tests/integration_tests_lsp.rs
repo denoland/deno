@@ -957,7 +957,8 @@ fn lsp_rename() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "let variable = 'a';\nconsole.log(variable);"
+        // this should not rename in comments and strings
+        "text": "let variable = 'a'; // variable\nconsole.log(variable);\n\"variable\";\n"
       }
     }),
   );
