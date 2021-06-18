@@ -2319,7 +2319,13 @@ pub enum RequestMethod {
   /// Configure the compilation settings for the server.
   Configure(TsConfig),
   /// Get rename locations at a given position.
-  FindRenameLocations((ModuleSpecifier, u32, bool, bool, bool)),
+  FindRenameLocations {
+    specifier: ModuleSpecifier,
+    position: u32,
+    find_in_strings: bool,
+    find_in_comments: bool,
+    provide_prefix_and_suffix_text_for_rename: bool,
+  },
   /// Retrieve the text of an assets that exists in memory in the isolate.
   GetAsset(ModuleSpecifier),
   /// Retrieve code fixes for a range of a file with the provided error codes.
@@ -2370,13 +2376,13 @@ impl RequestMethod {
         "method": "configure",
         "compilerOptions": config,
       }),
-      RequestMethod::FindRenameLocations((
+      RequestMethod::FindRenameLocations {
         specifier,
         position,
         find_in_strings,
         find_in_comments,
         provide_prefix_and_suffix_text_for_rename,
-      )) => {
+      } => {
         json!({
           "id": id,
           "method": "findRenameLocations",
