@@ -331,13 +331,6 @@
           clamp: true,
           context: "Argument 1",
         });
-
-        if (!(code === 1000 || (3000 <= code && code < 5000))) {
-          throw new DOMException(
-            "The close code must be either 1000 or in the range of 3000 to 4999.",
-            "InvalidAccessError",
-          );
-        }
       }
 
       if (reason !== undefined) {
@@ -345,13 +338,22 @@
           prefix,
           context: "Argument 2",
         });
+      }
 
-        if (core.encode(reason).byteLength > 123) {
-          throw new DOMException(
-            "The close reason may not be longer than 123 bytes.",
-            "SyntaxError",
-          );
-        }
+      if (
+        code !== undefined && !(code === 1000 || (3000 <= code && code < 5000))
+      ) {
+        throw new DOMException(
+          "The close code must be either 1000 or in the range of 3000 to 4999.",
+          "InvalidAccessError",
+        );
+      }
+
+      if (reason !== undefined && core.encode(reason).byteLength > 123) {
+        throw new DOMException(
+          "The close reason may not be longer than 123 bytes.",
+          "SyntaxError",
+        );
       }
 
       if (this[_readyState] === CONNECTING) {
