@@ -242,7 +242,6 @@
       "Performance interface: attribute timeOrigin",
       "Performance interface: operation toJSON()",
       "Stringification of performance",
-      "Performance interface: performance must inherit property \"timeOrigin\" with the proper type",
       "Performance interface: performance must inherit property \"toJSON()\" with the proper type",
       "Performance interface: default toJSON operation on performance",
       "Window interface: attribute performance"
