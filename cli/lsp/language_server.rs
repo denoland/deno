@@ -1769,8 +1769,8 @@ impl Inner {
     let req = tsc::RequestMethod::FindRenameLocations((
       specifier,
       line_index.offset_tsc(params.text_document_position.position)?,
-      true,
-      true,
+      false,
+      false,
       false,
     ));
 
