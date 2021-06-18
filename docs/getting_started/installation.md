@@ -57,7 +57,8 @@ executable bit on macOS and Linux.
 
 ### Docker
 
-For more information and instructions on the official Docker images: [https://github.com/denoland/deno_docker](https://github.com/denoland/deno_docker)
+For more information and instructions on the official Docker images:
+[https://github.com/denoland/deno_docker](https://github.com/denoland/deno_docker)
 
 ### Testing your installation
 
