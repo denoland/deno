@@ -180,16 +180,21 @@ impl ModuleLoader for FsModuleLoader {
   }
 }
 
-#[derive(Debug, Eq, PartialEq)]
-enum Kind {
-  Main,
-  DynamicImport,
+/// Describes the entrypoint of a recursive module load.
+#[derive(Debug)]
+enum LoadInit {
+  /// Main module specifier.
+  Main(String),
+  /// Main module specifier with synthetic code for that module which bypasses
+  /// the loader.
+  MainWithCode(String, String),
+  /// Dynamic import specifier with referrer.
+  DynamicImport(String, String),
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum LoadState {
-  ResolveMain(String, Option<String>),
-  ResolveImport(String, String),
+  Init,
   LoadingRoot,
   LoadingImports,
   Done,
@@ -198,7 +203,7 @@ pub enum LoadState {
 /// This future is used to implement parallel async module loading.
 pub struct RecursiveModuleLoad {
   op_state: Rc<RefCell<OpState>>,
-  kind: Kind,
+  init: LoadInit,
   // TODO(bartlomieju): in future this value should
   // be randomized
   pub id: ModuleLoadId,
@@ -217,9 +222,12 @@ impl RecursiveModuleLoad {
     code: Option<String>,
     loader: Rc<dyn ModuleLoader>,
   ) -> Self {
-    let kind = Kind::Main;
-    let state = LoadState::ResolveMain(specifier.to_owned(), code);
-    Self::new(op_state, kind, state, loader)
+    let init = if let Some(code) = code {
+      LoadInit::MainWithCode(specifier.to_string(), code)
+    } else {
+      LoadInit::Main(specifier.to_string())
+    };
+    Self::new(op_state, init, loader)
   }
 
   pub fn dynamic_import(
@@ -228,28 +236,26 @@ impl RecursiveModuleLoad {
     referrer: &str,
     loader: Rc<dyn ModuleLoader>,
   ) -> Self {
-    let kind = Kind::DynamicImport;
-    let state =
-      LoadState::ResolveImport(specifier.to_owned(), referrer.to_owned());
-    Self::new(op_state, kind, state, loader)
+    let init =
+      LoadInit::DynamicImport(specifier.to_string(), referrer.to_string());
+    Self::new(op_state, init, loader)
   }
 
   pub fn is_dynamic_import(&self) -> bool {
-    self.kind != Kind::Main
+    matches!(self.init, LoadInit::DynamicImport(..))
   }
 
   fn new(
     op_state: Rc<RefCell<OpState>>,
-    kind: Kind,
-    state: LoadState,
+    init: LoadInit,
     loader: Rc<dyn ModuleLoader>,
   ) -> Self {
     Self {
       id: NEXT_LOAD_ID.fetch_add(1, Ordering::SeqCst),
       root_module_id: None,
       op_state,
-      kind,
-      state,
+      init,
+      state: LoadState::Init,
       loader,
       pending: FuturesUnordered::new(),
       is_pending: HashSet::new(),
@@ -257,15 +263,16 @@ impl RecursiveModuleLoad {
   }
 
   pub async fn prepare(&self) -> Result<(), AnyError> {
-    let (module_specifier, maybe_referrer) = match self.state {
-      LoadState::ResolveMain(ref specifier, _) => {
+    let (module_specifier, maybe_referrer) = match self.init {
+      LoadInit::Main(ref specifier)
+      | LoadInit::MainWithCode(ref specifier, _) => {
         let spec =
           self
             .loader
             .resolve(self.op_state.clone(), specifier, ".", true)?;
         (spec, None)
       }
-      LoadState::ResolveImport(ref specifier, ref referrer) => {
+      LoadInit::DynamicImport(ref specifier, ref referrer) => {
         let spec = self.loader.resolve(
           self.op_state.clone(),
           specifier,
@@ -274,7 +281,6 @@ impl RecursiveModuleLoad {
         )?;
         (spec, Some(referrer.to_string()))
       }
-      _ => unreachable!(),
     };
 
     self
@@ -287,46 +293,6 @@ impl RecursiveModuleLoad {
         self.is_dynamic_import(),
       )
       .await
-  }
-
-  fn add_root(&mut self) -> Result<(), AnyError> {
-    let module_specifier = match self.state {
-      LoadState::ResolveMain(ref specifier, _) => {
-        self
-          .loader
-          .resolve(self.op_state.clone(), specifier, ".", true)?
-      }
-      LoadState::ResolveImport(ref specifier, ref referrer) => self
-        .loader
-        .resolve(self.op_state.clone(), specifier, referrer, false)?,
-
-      _ => unreachable!(),
-    };
-
-    let load_fut = match &self.state {
-      LoadState::ResolveMain(_, Some(code)) => {
-        futures::future::ok(ModuleSource {
-          code: code.to_owned(),
-          module_url_specified: module_specifier.to_string(),
-          module_url_found: module_specifier.to_string(),
-        })
-        .boxed()
-      }
-      _ => self
-        .loader
-        .load(
-          self.op_state.clone(),
-          &module_specifier,
-          None,
-          self.is_dynamic_import(),
-        )
-        .boxed_local(),
-    };
-
-    self.pending.push(load_fut);
-
-    self.state = LoadState::LoadingRoot;
-    Ok(())
   }
 
   pub fn is_currently_loading_main_module(&self) -> bool {
@@ -378,10 +344,38 @@ impl Stream for RecursiveModuleLoad {
   ) -> Poll<Option<Self::Item>> {
     let inner = self.get_mut();
     match inner.state {
-      LoadState::ResolveMain(..) | LoadState::ResolveImport(..) => {
-        if let Err(e) = inner.add_root() {
-          return Poll::Ready(Some(Err(e)));
-        }
+      LoadState::Init => {
+        let resolve_result = match inner.init {
+          LoadInit::Main(ref specifier)
+          | LoadInit::MainWithCode(ref specifier, _) => {
+            inner
+              .loader
+              .resolve(inner.op_state.clone(), specifier, ".", true)
+          }
+          LoadInit::DynamicImport(ref specifier, ref referrer) => inner
+            .loader
+            .resolve(inner.op_state.clone(), specifier, referrer, false),
+        };
+        let module_specifier = match resolve_result {
+          Ok(url) => url,
+          Err(error) => return Poll::Ready(Some(Err(error))),
+        };
+        let load_fut = match inner.init {
+          LoadInit::MainWithCode(_, ref code) => {
+            futures::future::ok(ModuleSource {
+              code: code.clone(),
+              module_url_specified: module_specifier.to_string(),
+              module_url_found: module_specifier.to_string(),
+            })
+            .boxed()
+          }
+          LoadInit::Main(..) | LoadInit::DynamicImport(..) => inner
+            .loader
+            .load(inner.op_state.clone(), &module_specifier, None, false)
+            .boxed_local(),
+        };
+        inner.pending.push(load_fut);
+        inner.state = LoadState::LoadingRoot;
         inner.try_poll_next_unpin(cx)
       }
       LoadState::LoadingRoot | LoadState::LoadingImports => {
