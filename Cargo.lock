@@ -690,7 +690,7 @@ checksum = "08a749e74bfdc6dd0ce058d32ce3ff91c326ac649a7d28a648afc2ddc126434f"
 dependencies = [
  "anyhow",
  "derive_more",
- "dprint-swc-ecma-ast-view",
+ "dprint-swc-ecma-ast-view 0.20.0",
  "if_chain",
  "log",
  "once_cell",
@@ -911,16 +911,16 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.46.0"
+version = "0.46.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "920f97045333dc153ed59632fa7b0af2b78c7296f592b1a05d1b9412ee06b915"
+checksum = "a2415a2015399b9f5343f1f3401c20c415d0fe7cb16000c7e001c8038d618899"
 dependencies = [
  "dprint-core",
- "dprint-swc-ecma-ast-view",
+ "dprint-swc-ecma-ast-view 0.21.0",
  "fnv",
  "serde",
  "swc_common",
- "swc_ecmascript 0.36.3",
+ "swc_ecmascript 0.39.0",
 ]
 
 [[package]]
@@ -935,6 +935,20 @@ dependencies = [
  "swc_atoms",
  "swc_common",
  "swc_ecmascript 0.36.3",
+]
+
+[[package]]
+name = "dprint-swc-ecma-ast-view"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77d3e8cf5128933adc5b3b9955730c4ebda2335fdbb24da4f53f004ee7764a10"
+dependencies = [
+ "bumpalo",
+ "fnv",
+ "num-bigint",
+ "swc_atoms",
+ "swc_common",
+ "swc_ecmascript 0.39.0",
 ]
 
 [[package]]
