@@ -558,9 +558,15 @@ async fn eval_command(
   program_state.file_fetcher.insert_cached(file);
   debug!("main_module {}", &main_module);
   worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  worker.execute_script(
+    "[native code]",
+    "window.dispatchEvent(new Event('load'))",
+  )?;
   worker.run_event_loop(false).await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  worker.execute_script(
+    "[native code]",
+    "window.dispatchEvent(new Event('unload'))",
+  )?;
   Ok(())
 }
 
@@ -794,9 +800,15 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
 
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  worker.execute_script(
+    "[native code]",
+    "window.dispatchEvent(new Event('load'))",
+  )?;
   worker.run_event_loop(false).await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  worker.execute_script(
+    "[native code]",
+    "window.dispatchEvent(new Event('unload'))",
+  )?;
   Ok(())
 }
 
@@ -863,9 +875,15 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         );
         debug!("main_module {}", main_module);
         worker.execute_module(&main_module).await?;
-        worker.execute("window.dispatchEvent(new Event('load'))")?;
+        worker.execute_script(
+          "[native code]",
+          "window.dispatchEvent(new Event('load'))",
+        )?;
         worker.run_event_loop(false).await?;
-        worker.execute("window.dispatchEvent(new Event('unload'))")?;
+        worker.execute_script(
+          "[native code]",
+          "window.dispatchEvent(new Event('unload'))",
+        )?;
         Ok(())
       }
     };
@@ -906,11 +924,17 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
 
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  worker.execute_script(
+    "[native code]",
+    "window.dispatchEvent(new Event('load'))",
+  )?;
   worker
     .run_event_loop(maybe_coverage_collector.is_none())
     .await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  worker.execute_script(
+    "[native code]",
+    "window.dispatchEvent(new Event('unload'))",
+  )?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     worker
