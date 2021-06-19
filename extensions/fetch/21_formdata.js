@@ -13,7 +13,7 @@
 ((window) => {
   const core = window.Deno.core;
   const webidl = globalThis.__bootstrap.webidl;
-  const { Blob, File, _byteSequence } = globalThis.__bootstrap.file;
+  const { Blob, File } = globalThis.__bootstrap.file;
 
   const entryList = Symbol("entry list");
 
@@ -25,10 +25,10 @@
    */
   function createEntry(name, value, filename) {
     if (value instanceof Blob && !(value instanceof File)) {
-      value = new File([value[_byteSequence]], "blob", { type: value.type });
+      value = new File([value], "blob", { type: value.type });
     }
     if (value instanceof File && filename !== undefined) {
-      value = new File([value[_byteSequence]], filename, {
+      value = new File([value], filename, {
         type: value.type,
         lastModified: value.lastModified,
       });
