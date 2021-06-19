@@ -20,6 +20,7 @@ use crate::tsc::ResolveArgs;
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::located_script_name;
 use deno_core::op_sync;
 use deno_core::resolve_url;
 use deno_core::serde::de;
@@ -2176,7 +2177,7 @@ pub fn start(debug: bool) -> Result<JsRuntime, AnyError> {
   let init_config = json!({ "debug": debug });
   let init_src = format!("globalThis.serverInit({});", init_config);
 
-  runtime.execute_script(&format!("deno:{}", std::file!()), &init_src)?;
+  runtime.execute_script(&located_script_name!(), &init_src)?;
   Ok(runtime)
 }
 
@@ -2556,7 +2557,7 @@ pub fn request(
   let request_params = method.to_value(id);
   let mark = performance.mark("request", Some(request_params.clone()));
   let request_src = format!("globalThis.serverRequest({});", request_params);
-  runtime.execute_script(&format!("deno:{}", std::file!()), &request_src)?;
+  runtime.execute_script(&located_script_name!(), &request_src)?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();

@@ -10,6 +10,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::stream::StreamExt;
 use deno_core::futures::Future;
+use deno_core::located_script_name;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
@@ -182,7 +183,7 @@ impl MainWorker {
       serde_json::to_string_pretty(&runtime_options).unwrap()
     );
     self
-      .execute_script(&format!("deno:{}", std::file!()), &script)
+      .execute_script(&located_script_name!(), &script)
       .expect("Failed to execute bootstrap script");
   }
 

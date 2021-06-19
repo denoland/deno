@@ -55,6 +55,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
+use deno_core::located_script_name;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -559,12 +560,12 @@ async fn eval_command(
   debug!("main_module {}", &main_module);
   worker.execute_module(&main_module).await?;
   worker.execute_script(
-    &format!("deno:{}", std::file!()),
+    &located_script_name!(),
     "window.dispatchEvent(new Event('load'))",
   )?;
   worker.run_event_loop(false).await?;
   worker.execute_script(
-    &format!("deno:{}", std::file!()),
+    &located_script_name!(),
     "window.dispatchEvent(new Event('unload'))",
   )?;
   Ok(())
@@ -801,12 +802,12 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   worker.execute_script(
-    &format!("deno:{}", std::file!()),
+    &located_script_name!(),
     "window.dispatchEvent(new Event('load'))",
   )?;
   worker.run_event_loop(false).await?;
   worker.execute_script(
-    &format!("deno:{}", std::file!()),
+    &located_script_name!(),
     "window.dispatchEvent(new Event('unload'))",
   )?;
   Ok(())
@@ -876,12 +877,12 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         debug!("main_module {}", main_module);
         worker.execute_module(&main_module).await?;
         worker.execute_script(
-          &format!("deno:{}", std::file!()),
+          &located_script_name!(),
           "window.dispatchEvent(new Event('load'))",
         )?;
         worker.run_event_loop(false).await?;
         worker.execute_script(
-          &format!("deno:{}", std::file!()),
+          &located_script_name!(),
           "window.dispatchEvent(new Event('unload'))",
         )?;
         Ok(())
@@ -925,14 +926,14 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   worker.execute_script(
-    &format!("deno:{}", std::file!()),
+    &located_script_name!(),
     "window.dispatchEvent(new Event('load'))",
   )?;
   worker
     .run_event_loop(maybe_coverage_collector.is_none())
     .await?;
   worker.execute_script(
-    &format!("deno:{}", std::file!()),
+    &located_script_name!(),
     "window.dispatchEvent(new Event('unload'))",
   )?;
 

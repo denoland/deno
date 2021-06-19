@@ -16,6 +16,7 @@ use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::located_script_name;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
@@ -303,7 +304,7 @@ pub async fn run_test_file(
   execute_result?;
 
   worker.execute_script(
-    &format!("deno:{}", std::file!()),
+    &located_script_name!(),
     "window.dispatchEvent(new Event('load'))",
   )?;
 
@@ -314,7 +315,7 @@ pub async fn run_test_file(
     .run_event_loop(maybe_coverage_collector.is_none())
     .await?;
   worker.execute_script(
-    &format!("deno:{}", std::file!()),
+    &located_script_name!(),
     "window.dispatchEvent(new Event('unload'))",
   )?;
 

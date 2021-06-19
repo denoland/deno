@@ -12,6 +12,7 @@ use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
+use deno_core::located_script_name;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
@@ -371,7 +372,7 @@ impl WebWorker {
       runtime_options_str, self.name, options.use_deno_namespace, self.id
     );
     self
-      .execute_script(&format!("deno:{}", std::file!()), &script)
+      .execute_script(&located_script_name!(), &script)
       .expect("Failed to execute worker bootstrap script");
   }
 
@@ -494,7 +495,7 @@ pub fn run_web_worker(
 
   // Execute provided source code immediately
   let result = if let Some(source_code) = maybe_source_code {
-    worker.execute_script(&format!("deno:{}", std::file!()), &source_code)
+    worker.execute_script(&located_script_name!(), &source_code)
   } else {
     // TODO(bartlomieju): add "type": "classic", ie. ability to load
     // script instead of module
