@@ -144,11 +144,7 @@
     "console-label-conversion.any.html": true,
     "console-namespace-object-class-string.any.html": true,
     "console-tests-historical.any.html": true,
-    "idlharness.any.html": [
-      "console namespace: operation table(optional any, optional sequence<DOMString>)",
-      "console namespace: operation dir(optional any, optional object?)",
-      "console namespace: operation dirxml(any...)"
-    ]
+    "idlharness.any.html": true
   },
   "dom": {
     "abort": {
@@ -238,9 +234,7 @@
   },
   "hr-time": {
     "monotonic-clock.any.html": true,
-    "basic.any.html": [
-      "Performance interface extends EventTarget."
-    ],
+    "basic.any.html": ["Performance interface extends EventTarget."],
     "idlharness.any.html": [
       "Performance interface: existence and properties of interface object",
       "Performance interface: existence and properties of interface prototype object",
@@ -252,7 +246,8 @@
       "Performance interface: performance must inherit property \"toJSON()\" with the proper type",
       "Performance interface: default toJSON operation on performance",
       "Window interface: attribute performance"
-    ]
+    ],
+    "window-worker-timeOrigin.window.html": false
   },
   "streams": {
     "idlharness.any.html": [
@@ -590,34 +585,7 @@
     "historical.any.html": [
       "<a> and <area>.searchParams should be undefined"
     ],
-    "idlharness.any.html": [
-      "URL interface object length",
-      "URL interface: attribute href",
-      "URL interface: stringifier",
-      "URL interface: attribute origin",
-      "URL interface: attribute protocol",
-      "URL interface: attribute username",
-      "URL interface: attribute password",
-      "URL interface: attribute host",
-      "URL interface: attribute hostname",
-      "URL interface: attribute port",
-      "URL interface: attribute pathname",
-      "URL interface: attribute search",
-      "URL interface: attribute searchParams",
-      "URL interface: attribute hash",
-      "URL interface: operation toJSON()",
-      "Stringification of new URL(\"http://foo\")",
-      "URLSearchParams interface: operation append(USVString, USVString)",
-      "URLSearchParams interface: operation delete(USVString)",
-      "URLSearchParams interface: operation get(USVString)",
-      "URLSearchParams interface: operation getAll(USVString)",
-      "URLSearchParams interface: operation has(USVString)",
-      "URLSearchParams interface: operation set(USVString, USVString)",
-      "URLSearchParams interface: operation sort()",
-      "URLSearchParams interface: iterable<USVString, USVString>",
-      "URLSearchParams interface: stringifier",
-      "Stringification of new URLSearchParams(\"hi=there&thank=you\")"
-    ],
+    "idlharness.any.html": true,
     "url-constructor.any.html": [
       "Parsing: <file://%43%7C> against <about:blank>",
       "Parsing: <file://%43|> against <about:blank>",
@@ -796,9 +764,7 @@
         "response-url.sub.any.html": true,
         "scheme-about.any.html": true,
         "scheme-blob.sub.any.html": true,
-        "scheme-data.any.html": [
-          "Fetching [HEAD] data:,response%27s%20body is OK"
-        ],
+        "scheme-data.any.html": true,
         "scheme-others.sub.any.html": true,
         "stream-response.any.html": true,
         "stream-safe-creation.any.html": [
@@ -883,7 +849,6 @@
         "redirect-to-dataurl.any.html": true
       },
       "idlharness.any.html": [
-        "Headers interface: iterable<ByteString, ByteString>",
         "Request interface: attribute destination",
         "Request interface: attribute referrer",
         "Request interface: attribute referrerPolicy",

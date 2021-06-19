@@ -670,7 +670,7 @@ pub mod tests {
         .unwrap();
     let cached_module: CachedModule =
       file_fetcher.fetch(specifier, None, false).await.unwrap();
-    assert_eq!(cached_module.is_remote, true);
+    assert!(cached_module.is_remote);
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let specifier = resolve_url_or_path(
       c.join("tests/subdir/mod1.ts").as_os_str().to_str().unwrap(),
@@ -678,7 +678,7 @@ pub mod tests {
     .unwrap();
     let cached_module: CachedModule =
       file_fetcher.fetch(specifier, None, false).await.unwrap();
-    assert_eq!(cached_module.is_remote, false);
+    assert!(!cached_module.is_remote);
   }
 
   #[tokio::test]
@@ -716,7 +716,7 @@ pub mod tests {
     assert_eq!(actual.requested_specifier, specifier);
     assert_eq!(actual.specifier, specifier);
     assert_eq!(actual.media_type, MediaType::TypeScript);
-    assert_eq!(actual.is_remote, false);
+    assert!(!actual.is_remote);
 
     let specifier = resolve_url_or_path("file:///b.ts").unwrap();
     let actual: CachedModule = handler
@@ -727,7 +727,7 @@ pub mod tests {
     assert_eq!(actual.requested_specifier, specifier);
     assert_eq!(actual.specifier, specifier);
     assert_eq!(actual.media_type, MediaType::TypeScript);
-    assert_eq!(actual.is_remote, false);
+    assert!(!actual.is_remote);
 
     let specifier = resolve_url_or_path("https://deno.land/x/c.js").unwrap();
     let actual: CachedModule = handler
@@ -738,7 +738,7 @@ pub mod tests {
     assert_eq!(actual.requested_specifier, specifier);
     assert_eq!(actual.specifier, specifier);
     assert_eq!(actual.media_type, MediaType::JavaScript);
-    assert_eq!(actual.is_remote, true);
+    assert!(actual.is_remote);
 
     let specifier = resolve_url_or_path("https://deno.land/x/d.d.ts").unwrap();
     let actual: CachedModule = handler
@@ -749,7 +749,7 @@ pub mod tests {
     assert_eq!(actual.requested_specifier, specifier);
     assert_eq!(actual.specifier, specifier);
     assert_eq!(actual.media_type, MediaType::Dts);
-    assert_eq!(actual.is_remote, true);
+    assert!(actual.is_remote);
 
     let specifier =
       resolve_url_or_path("https://deno.land/x/missing.ts").unwrap();
@@ -767,7 +767,7 @@ pub mod tests {
     assert_eq!(actual.requested_specifier, specifier);
     assert_eq!(actual.specifier, specifier);
     assert_eq!(actual.media_type, MediaType::TypeScript);
-    assert_eq!(actual.is_remote, false);
+    assert!(!actual.is_remote);
 
     let specifier = resolve_url_or_path("file:///C:/a.ts").unwrap();
     let actual: CachedModule = handler
@@ -778,6 +778,6 @@ pub mod tests {
     assert_eq!(actual.requested_specifier, specifier);
     assert_eq!(actual.specifier, specifier);
     assert_eq!(actual.media_type, MediaType::TypeScript);
-    assert_eq!(actual.is_remote, false);
+    assert!(!actual.is_remote);
   }
 }
