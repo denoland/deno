@@ -75,8 +75,10 @@ struct IsolateAllocations {
 /// and an optional zero copy buffer, each async Op is tied to a Promise in JavaScript.
 pub struct JsRuntime {
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
-  // an safety issue with SnapshotCreator. See JsRuntime::drop.
+  // a safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
+  // This is an Option<Box<JsRuntimeInspector> instead of just Box<JsRuntimeInspector>
+  // to workaround a safety issue. See JsRuntime::drop.
   inspector: Option<Box<JsRuntimeInspector>>,
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
@@ -205,9 +207,6 @@ pub struct RuntimeOptions {
   /// V8 platform instance to use. Used when Deno initializes V8
   /// (which it only does once), otherwise it's silenty dropped.
   pub v8_platform: Option<v8::UniquePtr<v8::Platform>>,
-
-  /// Create a V8 inspector and attach to the runtime.
-  pub attach_inspector: bool,
 }
 
 impl JsRuntime {
@@ -268,13 +267,8 @@ impl JsRuntime {
       (isolate, None)
     };
 
-    let maybe_inspector = if options.attach_inspector {
-      let inspector =
-        JsRuntimeInspector::new(&mut isolate, global_context.clone());
-      Some(inspector)
-    } else {
-      None
-    };
+    let inspector =
+      JsRuntimeInspector::new(&mut isolate, global_context.clone());
 
     let loader = options
       .module_loader
@@ -316,7 +310,7 @@ impl JsRuntime {
 
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
-      inspector: maybe_inspector,
+      inspector: Some(inspector),
       snapshot_creator: maybe_snapshot_creator,
       has_snapshotted: false,
       allocations: IsolateAllocations::default(),
@@ -347,8 +341,8 @@ impl JsRuntime {
     self.v8_isolate.as_mut().unwrap()
   }
 
-  pub fn inspector(&mut self) -> Option<&mut Box<JsRuntimeInspector>> {
-    self.inspector.as_mut()
+  pub fn inspector(&mut self) -> &mut Box<JsRuntimeInspector> {
+    self.inspector.as_mut().unwrap()
   }
 
   pub fn handle_scope(&mut self) -> v8::HandleScope {
@@ -511,6 +505,8 @@ impl JsRuntime {
     // TODO(piscisaureus): The rusty_v8 type system should enforce this.
     state.borrow_mut().global_context.take();
 
+    self.inspector.take();
+
     // Overwrite existing ModuleMap to drop v8::Global handles
     self
       .v8_isolate()
@@ -609,8 +605,8 @@ impl JsRuntime {
     cx: &mut Context,
     wait_for_inspector: bool,
   ) -> Poll<Result<(), AnyError>> {
-    // We always poll the inspector if it exists.
-    let _ = self.inspector().map(|i| i.poll_unpin(cx));
+    // We always poll the inspector first
+    let _ = self.inspector().poll_unpin(cx);
 
     let state_rc = Self::state(self.v8_isolate());
     let module_map_rc = Self::module_map(self.v8_isolate());

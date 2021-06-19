@@ -218,7 +218,6 @@ pub struct WebWorkerOptions {
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub use_deno_namespace: bool,
-  pub attach_inspector: bool,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub apply_source_maps: bool,
   /// Sets `Deno.version.deno` in JS runtime.
@@ -314,17 +313,15 @@ impl WebWorker {
       startup_snapshot: Some(js::deno_isolate_init()),
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
-      attach_inspector: options.attach_inspector,
       extensions,
       ..Default::default()
     });
 
-    if let Some(inspector) = js_runtime.inspector() {
-      if let Some(server) = options.maybe_inspector_server.clone() {
-        let session_sender = inspector.get_session_sender();
-        let deregister_rx = inspector.add_deregister_handler();
-        server.register_inspector(session_sender, deregister_rx);
-      }
+    if let Some(server) = options.maybe_inspector_server.clone() {
+      let inspector = js_runtime.inspector();
+      let session_sender = inspector.get_session_sender();
+      let deregister_rx = inspector.add_deregister_handler();
+      server.register_inspector(session_sender, deregister_rx);
     }
 
     let (internal_handle, external_handle) = {
@@ -550,7 +547,6 @@ mod tests {
       create_web_worker_cb,
       js_error_create_fn: None,
       use_deno_namespace: false,
-      attach_inspector: false,
       maybe_inspector_server: None,
       runtime_version: "x".to_string(),
       ts_version: "x".to_string(),
