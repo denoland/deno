@@ -1125,11 +1125,7 @@ impl JsRuntime {
   ) -> Result<ModuleId, AnyError> {
     let mut module_map_rc = Self::module_map(self.v8_isolate());
 
-    let load = module_map_rc.load_main(specifier.as_str(), code);
-
-    let (_load_id, prepare_result) = load.prepare().await;
-
-    let mut load = prepare_result?;
+    let mut load = module_map_rc.load_main(specifier.as_str(), code).await?;
 
     while let Some(info_result) = load.next().await {
       let info = info_result?;
@@ -1138,7 +1134,8 @@ impl JsRuntime {
     }
 
     let root_id = load.expect_finished();
-    self.instantiate_module(root_id).map(|_| root_id)
+    self.instantiate_module(root_id)?;
+    Ok(root_id)
   }
 
   fn poll_pending_ops(

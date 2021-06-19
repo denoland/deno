@@ -470,8 +470,8 @@ async fn install_command(
   tools::installer::install(flags, &module_url, args, name, root, force)
 }
 
-async fn lsp_command() -> Result<(), AnyError> {
-  lsp::start().await
+async fn lsp_command(parent_pid: Option<u32>) -> Result<(), AnyError> {
+  lsp::start(parent_pid).await
 }
 
 async fn lint_command(
@@ -598,6 +598,7 @@ async fn create_module_graph_and_maybe_check(
         lib,
         maybe_config_file: program_state.maybe_config_file.clone(),
         reload: program_state.flags.reload,
+        ..Default::default()
       })?;
 
     debug!("{}", result_info.stats);
@@ -1264,7 +1265,7 @@ fn get_subcommand(
     } => {
       install_command(flags, module_url, args, name, root, force).boxed_local()
     }
-    DenoSubcommand::Lsp => lsp_command().boxed_local(),
+    DenoSubcommand::Lsp { parent_pid } => lsp_command(parent_pid).boxed_local(),
     DenoSubcommand::Lint {
       files,
       rules,

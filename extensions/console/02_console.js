@@ -1521,7 +1521,7 @@
       );
     };
 
-    dir = (obj, options = {}) => {
+    dir = (obj = undefined, options = {}) => {
       this.#printFunc(
         inspectArgs([obj], { ...getConsoleInspectOptions(), ...options }) +
           "\n",
@@ -1594,7 +1594,7 @@
       }
     };
 
-    table = (data, properties) => {
+    table = (data = undefined, properties = undefined) => {
       if (properties !== undefined && !Array.isArray(properties)) {
         throw new Error(
           "The 'properties' argument must be of type Array. " +

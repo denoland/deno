@@ -504,7 +504,7 @@ impl Inner {
     specifier: &ModuleSpecifier,
   ) -> Result<Option<AssetDocument>, AnyError> {
     if let Some(maybe_asset) = self.assets.get(specifier) {
-      return Ok(maybe_asset.clone());
+      Ok(maybe_asset.clone())
     } else {
       let maybe_asset =
         tsc::get_asset(&specifier, &self.ts_server, self.snapshot()?).await?;
@@ -1766,13 +1766,14 @@ impl Inner {
         )));
       };
 
-    let req = tsc::RequestMethod::FindRenameLocations((
+    let req = tsc::RequestMethod::FindRenameLocations {
       specifier,
-      line_index.offset_tsc(params.text_document_position.position)?,
-      true,
-      true,
-      false,
-    ));
+      position: line_index
+        .offset_tsc(params.text_document_position.position)?,
+      find_in_strings: false,
+      find_in_comments: false,
+      provide_prefix_and_suffix_text_for_rename: false,
+    };
 
     let maybe_locations: Option<Vec<tsc::RenameLocation>> = self
       .ts_server
