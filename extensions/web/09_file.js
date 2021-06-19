@@ -68,21 +68,10 @@
     return result;
   }
 
-  /** @param {(Blob | Uint8Array)[]} parts */
+  /** @param {(BlobReference | Blob)[]} parts */
   async function* toIterator(parts) {
     for (const part of parts) {
-      if (part instanceof Blob) {
-        yield* part.stream();
-      } else if (ArrayBuffer.isView(part)) {
-        let position = part.byteOffset;
-        const end = part.byteOffset + part.byteLength;
-        while (position !== end) {
-          const size = Math.min(end - position, POOL_SIZE);
-          const chunk = part.buffer.slice(position, position + size);
-          position += chunk.byteLength;
-          yield new Uint8Array(chunk);
-        }
-      }
+      yield* part.stream();
     }
   }
 
@@ -91,23 +80,21 @@
   /**
    * @param {BlobPart[]} parts
    * @param {string} endings
-   * @returns {{ parts: (Uint8Array|Blob)[], size: number }}
+   * @returns {{ parts: (BlobReference|Blob)[], size: number }}
    */
   function processBlobParts(parts, endings) {
-    /** @type {(Uint8Array|Blob)[]} */
+    /** @type {(BlobReference|Blob)[]} */
     const processedParts = [];
     let size = 0;
     for (const element of parts) {
       if (element instanceof ArrayBuffer) {
-        processedParts.push(new Uint8Array(element.slice(0)));
+        const chunk = new Uint8Array(element.slice(0));
+        processedParts.push(BlobReference.fromUint8Array(chunk));
         size += element.byteLength;
       } else if (ArrayBuffer.isView(element)) {
-        const buffer = element.buffer.slice(
-          element.byteOffset,
-          element.byteOffset + element.byteLength,
-        );
+        const chunk = new Uint8Array(element.buffer, element.byteOffset, element.byteLength);
         size += element.byteLength;
-        processedParts.push(new Uint8Array(buffer));
+        processedParts.push(BlobReference.fromUint8Array(chunk));
       } else if (element instanceof Blob) {
         processedParts.push(element);
         size += element.size;
@@ -116,7 +103,7 @@
           endings == "native" ? convertLineEndingsToNative(element) : element,
         );
         size += chunk.byteLength;
-        processedParts.push(chunk);
+        processedParts.push(BlobReference.fromUint8Array(chunk));
       } else {
         throw new TypeError("Unreachable code (invalid element type)");
       }
@@ -144,7 +131,7 @@
     /** @type {string} */
     #type;
 
-    /** @type {(Uint8Array | Blob)[]} */
+    /** @type {(BlobReference | Blob)[]} */
     #parts;
 
     /**
@@ -168,7 +155,7 @@
         blobParts,
         options.endings,
       );
-      /** @type {Uint8Array|Blob} */
+
       this.#parts = parts;
       this[_Size] = size;
       this.#type = normalizeType(options.type);
@@ -247,21 +234,16 @@
       let added = 0;
 
       for (const part of parts) {
-        const size = ArrayBuffer.isView(part) ? part.byteLength : part.size;
+        const size = part.size;
         if (relativeStart && size <= relativeStart) {
           // Skip the beginning and change the relative
           // start & end position as we skip the unwanted parts
           relativeStart -= size;
           relativeEnd -= size;
         } else {
-          let chunk;
-          if (ArrayBuffer.isView(part)) {
-            chunk = part.subarray(relativeStart, Math.min(size, relativeEnd));
-            added += chunk.byteLength;
-          } else {
-            chunk = part.slice(relativeStart, Math.min(size, relativeEnd));
-            added += chunk.size;
-          }
+          const chunk = part.slice(relativeStart, Math.min(part.size, relativeEnd));
+          added += chunk.size;
+          relativeEnd -= chunk.size;
           blobParts.push(chunk);
           relativeStart = 0; // All next sequential parts should start at 0
 
@@ -375,13 +357,13 @@
 
   const _Name = Symbol("[[Name]]");
   const _Size = Symbol("[[Size]]");
-  const _LastModfied = Symbol("[[LastModified]]");
+  const _LastModified = Symbol("[[LastModified]]");
 
   class File extends Blob {
     /** @type {string} */
     [_Name];
     /** @type {number} */
-    [_LastModfied];
+    [_LastModified];
 
     /**
      * @param {BlobPart[]} fileBits
@@ -411,10 +393,10 @@
       this[_Name] = fileName;
       if (options.lastModified === undefined) {
         /** @type {number} */
-        this[_LastModfied] = new Date().getTime();
+        this[_LastModified] = new Date().getTime();
       } else {
         /** @type {number} */
-        this[_LastModfied] = options.lastModified;
+        this[_LastModified] = options.lastModified;
       }
     }
 
@@ -427,7 +409,7 @@
     /** @returns {number} */
     get lastModified() {
       webidl.assertBranded(this, File);
-      return this[_LastModfied];
+      return this[_LastModified];
     }
 
     get [Symbol.toStringTag]() {
@@ -455,15 +437,14 @@
    * in memory storage, or something else.
    */
   class BlobReference {
-    /** @type {string} */
-    #id;
-
     /**
      * Don't use directly. Use `BlobReference.fromUint8Array`.
      * @param {string} id
+     * @param {number} size
      */
-    constructor(id) {
-      this.#id = id;
+    constructor(id, size) {
+      this._id = id;
+      this.size = size;
     }
 
     /**
@@ -474,7 +455,7 @@
      */
     static fromUint8Array(data) {
       const id = core.opSync("op_blob_create_part", data);
-      return new BlobReference(id);
+      return new BlobReference(id, data.byteLength);
     }
 
     /**
@@ -483,24 +464,34 @@
      * underlying bytes.
      *
      * @param {number} start
-     * @param {number} len
+     * @param {number} end
      * @returns {BlobReference}
      */
-    slice(start, len) {
-      const id = core.opSync("op_blob_slice_part", this.#id, { start, len });
-      return new BlobReference(id);
+    slice(start, end) {
+      const size = end - start;
+      const id = core.opSync("op_blob_slice_part", this._id, { start, len: size });
+      return new BlobReference(id, size);
     }
 
-    // TODO(lucacasonato): this should be a stream!
     /**
      * Read the entire contents of the reference blob.
-     *
-     * @returns {Promise<Uint8Array>}
+     * @returns {AsyncGenerator<Uint8Array>}
      */
-    read() {
-      return core.opAsync("op_blob_read_part", this.#id);
+    async *stream() {
+      let position = 0;
+      const end = this.size;
+      while (position !== end) {
+        const size = Math.min(end - position, POOL_SIZE);
+        const chunk = this.slice(position, position + size);
+        position += chunk.size;
+        yield core.opAsync("op_blob_read_part", chunk._id);
+      }
     }
   }
+
+  // TODO(jimmywarting): Maybe remove BlobDataItem?
+  // Came to the realization that this is is
+  // very much like the new BlobReferences Perhaps don't use this anymore...?
 
   /**
    * This is a blob backed up by a file on the disk
