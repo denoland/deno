@@ -1173,7 +1173,7 @@ function returnHostHeaderServer(addr: string): Deno.Listener {
         );
       });
 
-      httpConn.close();
+    httpConn.close();
   });
 
   return listener;
