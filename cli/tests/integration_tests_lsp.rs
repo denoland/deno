@@ -31,7 +31,10 @@ fn init(init_path: &str) -> LspClient {
   client
 }
 
-fn did_open<V>(client: &mut LspClient, params: V)
+fn did_open<V>(
+  client: &mut LspClient,
+  params: V,
+) -> Vec<lsp::PublishDiagnosticsParams>
 where
   V: Serialize,
 {
@@ -42,15 +45,27 @@ where
   let (id, method, _) = client.read_request::<Value>().unwrap();
   assert_eq!(method, "workspace/configuration");
   client
-    .write_response(id, json!({ "enable": true }))
+    .write_response(
+      id,
+      json!({
+        "enable": true,
+        "codeLens": {
+          "test": true
+        }
+      }),
+    )
     .unwrap();
 
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
+  let mut diagnostics = vec![];
+  for _ in 0..3 {
+    let (method, response) = client
+      .read_notification::<lsp::PublishDiagnosticsParams>()
+      .unwrap();
+    assert_eq!(method, "textDocument/publishDiagnostics");
+    diagnostics.push(response.unwrap());
+  }
+
+  diagnostics
 }
 
 fn shutdown(client: &mut LspClient) {
@@ -63,6 +78,47 @@ fn shutdown(client: &mut LspClient) {
 #[test]
 fn lsp_startup_shutdown() {
   let mut client = init("initialize_params.json");
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_init_tsconfig() {
+  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let tsconfig =
+    serde_json::to_vec_pretty(&load_fixture("lib.tsconfig.json")).unwrap();
+  fs::write(temp_dir.path().join("lib.tsconfig.json"), tsconfig).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert("config".to_string(), json!("./lib.tsconfig.json"));
+    params.initialization_options = Some(Value::Object(map));
+  }
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "location.pathname;\n"
+      }
+    }),
+  );
+
+  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
+  assert_eq!(diagnostics.count(), 0);
+
   shutdown(&mut client);
 }
 
@@ -901,7 +957,8 @@ fn lsp_rename() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "let variable = 'a';\nconsole.log(variable);"
+        // this should not rename in comments and strings
+        "text": "let variable = 'a'; // variable\nconsole.log(variable);\n\"variable\";\n"
       }
     }),
   );
@@ -1092,7 +1149,7 @@ fn lsp_code_lens_impl() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "interface A {\n  b(): void;\n}\n\nclass B implements A {\n  b() {\n    console.log(\"b\");\n  }\n}\n"
+        "text": "interface A {\n  b(): void;\n}\n\nclass B implements A {\n  b() {\n    console.log(\"b\");\n  }\n}\n\ninterface C {\n  c: string;\n}\n"
       }
     }),
   );
@@ -1137,6 +1194,117 @@ fn lsp_code_lens_impl() {
     maybe_res,
     Some(load_fixture("code_lens_resolve_response_impl.json"))
   );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "codeLens/resolve",
+      json!({
+        "range": {
+          "start": {
+            "line": 10,
+            "character": 10
+          },
+          "end": {
+            "line": 10,
+            "character": 11
+          }
+        },
+        "data": {
+          "specifier": "file:///a/file.ts",
+          "source": "implementations"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "range": {
+        "start": {
+          "line": 10,
+          "character": 10
+        },
+        "end": {
+          "line": 10,
+          "character": 11
+        }
+      },
+      "command": {
+        "title": "0 implementations",
+        "command": ""
+      }
+    }))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_code_lens_test() {
+  let mut client = init("initialize_params_code_lens_test.json");
+  did_open(
+    &mut client,
+    load_fixture("did_open_params_test_code_lens.json"),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeLens",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_lens_response_test.json"))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_code_lens_test_disabled() {
+  let mut client = init("initialize_params_code_lens_test_disabled.json");
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      load_fixture("did_open_params_test_code_lens.json"),
+    )
+    .unwrap();
+
+  let (id, method, _) = client.read_request::<Value>().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(
+      id,
+      json!({
+        "enable": true,
+        "codeLens": {
+          "test": false
+        }
+      }),
+    )
+    .unwrap();
+
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeLens",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!([])));
   shutdown(&mut client);
 }
 
@@ -1222,6 +1390,79 @@ fn lsp_code_lens_non_doc_nav_tree() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_nav_tree_updates() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "interface A {\n  b(): void;\n}\n\nclass B implements A {\n  b() {\n    console.log(\"b\");\n  }\n}\n\ninterface C {\n  c: string;\n}\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeLens",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_lens_response_impl.json"))
+  );
+  client
+    .write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "version": 2
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": {
+                "line": 10,
+                "character": 0
+              },
+              "end": {
+                "line": 13,
+                "character": 0
+              }
+            },
+            "text": ""
+          }
+        ]
+      }),
+    )
+    .unwrap();
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeLens",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_lens_response_changed.json"))
+  );
   shutdown(&mut client);
 }
 
@@ -1398,6 +1639,11 @@ fn lsp_code_actions_deno_cache() {
       }
     }))
     .unwrap();
+  let (id, method, _) = client.read_request::<Value>().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(id, json!({ "enable": true }))
+    .unwrap();
   let (method, _) = client.read_notification::<Value>().unwrap();
   assert_eq!(method, "textDocument/publishDiagnostics");
   let (method, _) = client.read_notification::<Value>().unwrap();
@@ -1416,6 +1662,57 @@ fn lsp_code_actions_deno_cache() {
   assert_eq!(
     maybe_res,
     Some(load_fixture("code_action_response_cache.json"))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_code_actions_imports() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file00.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export const abc = \"abc\";\nexport const def = \"def\";\n"
+      }
+    }),
+  );
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file01.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "\nconsole.log(abc);\nconsole.log(def)\n"
+      }
+    }),
+  );
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeAction",
+      load_fixture("code_action_params_imports.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_action_response_imports.json"))
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "codeAction/resolve",
+      load_fixture("code_action_resolve_params_imports.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_action_resolve_response_imports.json"))
   );
   shutdown(&mut client);
 }
@@ -1784,6 +2081,53 @@ fn lsp_completions_registry_empty() {
 }
 
 #[test]
+fn lsp_auto_discover_registry() {
+  let _g = http_server();
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import * as a from \"http://localhost:4545/x/a@\""
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": {
+          "line": 0,
+          "character": 46
+        },
+        "context": {
+          "triggerKind": 2,
+          "triggerCharacter": "@"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+  let (method, maybe_res) = client.read_notification().unwrap();
+  assert_eq!(method, "deno/registryState");
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "origin": "http://localhost:4545",
+      "suggestions": true,
+    }))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_diagnostics_warn() {
   let _g = http_server();
   let mut client = init("initialize_params.json");
@@ -1849,6 +2193,177 @@ fn lsp_diagnostics_warn() {
     })
   );
   shutdown(&mut client);
+}
+
+#[test]
+fn lsp_diagnostics_deno_types() {
+  let mut client = init("initialize_params.json");
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      load_fixture("did_open_params_deno_types.json"),
+    )
+    .unwrap();
+  let (id, method, _) = client.read_request::<Value>().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(id, json!({ "enable": true }))
+    .unwrap();
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/documentSymbol",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_res.is_some());
+  assert!(maybe_err.is_none());
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, maybe_params) = client
+    .read_notification::<lsp::PublishDiagnosticsParams>()
+    .unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  assert!(maybe_params.is_some());
+  let params = maybe_params.unwrap();
+  assert_eq!(params.diagnostics.len(), 5);
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_diagnostics_refresh_dependents() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file_00.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export const a = \"a\";\n",
+      },
+    }),
+  );
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file_01.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export * from \"./file_00.ts\";\n",
+      },
+    }),
+  );
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file_02.ts",
+          "languageId": "typescript",
+          "version": 1,
+          "text": "import { a, b } from \"./file_01.ts\";\n\nconsole.log(a, b);\n"
+        }
+      }),
+    )
+    .unwrap();
+
+  let (id, method, _) = client.read_request::<Value>().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(id, json!({ "enable": false }))
+    .unwrap();
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, maybe_params) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  assert_eq!(
+    maybe_params,
+    Some(json!({
+      "uri": "file:///a/file_02.ts",
+      "diagnostics": [
+        {
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 12
+            },
+            "end": {
+              "line": 0,
+              "character": 13
+            }
+          },
+          "severity": 1,
+          "code": 2305,
+          "source": "deno-ts",
+          "message": "Module '\"./file_01.ts\"' has no exported member 'b'."
+        }
+      ],
+      "version": 1
+    }))
+  );
+  client
+    .write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file_00.ts",
+          "version": 2
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": {
+                "line": 1,
+                "character": 0
+              },
+              "end": {
+                "line": 1,
+                "character": 0
+              }
+            },
+            "text": "export const b = \"b\";\n"
+          }
+        ]
+      }),
+    )
+    .unwrap();
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  // ensure that the server publishes any inflight diagnostics
+  std::thread::sleep(std::time::Duration::from_millis(250));
+  client
+    .write_request::<_, _, Value>("shutdown", json!(null))
+    .unwrap();
+  client.write_notification("exit", json!(null)).unwrap();
+
+  let queue_len = client.queue_len();
+  assert!(!client.queue_is_empty());
+  for i in 0..queue_len {
+    let (method, maybe_params) = client
+      .read_notification::<lsp::PublishDiagnosticsParams>()
+      .unwrap();
+    assert_eq!(method, "textDocument/publishDiagnostics");
+    // the last 3 diagnostic publishes should be the clear of any diagnostics
+    if queue_len - i <= 3 {
+      assert!(maybe_params.is_some());
+      let params = maybe_params.unwrap();
+      assert!(params.diagnostics.is_empty());
+    }
+  }
+  assert!(client.queue_is_empty());
 }
 
 #[derive(Deserialize)]
@@ -1976,6 +2491,56 @@ fn lsp_format_json() {
 }
 
 #[test]
+fn lsp_json_no_diagnostics() {
+  let mut client = init("initialize_params.json");
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.json",
+          "languageId": "json",
+          "version": 1,
+          "text": "{\"key\":\"value\"}"
+        }
+      }),
+    )
+    .unwrap();
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/semanticTokens/full",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.json"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.json"
+        },
+        "position": {
+          "line": 0,
+          "character": 3
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_format_markdown() {
   let mut client = init("initialize_params.json");
   client
@@ -2026,6 +2591,146 @@ fn lsp_format_markdown() {
         "newText": "\n"
       }
     ]))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_markdown_no_diagnostics() {
+  let mut client = init("initialize_params.json");
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.md",
+          "languageId": "markdown",
+          "version": 1,
+          "text": "# Hello World"
+        }
+      }),
+    )
+    .unwrap();
+
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/semanticTokens/full",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.md"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.md"
+        },
+        "position": {
+          "line": 0,
+          "character": 3
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!(null)));
+
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_configuration_did_change() {
+  let _g = http_server();
+  let mut client = init("initialize_params_did_config_change.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import * as a from \"http://localhost:4545/x/a@\""
+      }
+    }),
+  );
+  client
+    .write_notification(
+      "workspace/didChangeConfiguration",
+      json!({
+        "settings": {}
+      }),
+    )
+    .unwrap();
+  let (id, method, _) = client.read_request::<Value>().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(
+      id,
+      json!([{
+        "enable": true,
+        "codeLens": {
+          "implementations": true,
+          "references": true
+        },
+        "importMap": null,
+        "lint": true,
+        "suggest": {
+          "autoImports": true,
+          "completeFunctionCalls": false,
+          "names": true,
+          "paths": true,
+          "imports": {
+            "hosts": {
+              "http://localhost:4545/": true
+            }
+          }
+        },
+        "unstable": false
+      }]),
+    )
+    .unwrap();
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/completion",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": {
+          "line": 0,
+          "character": 46
+        },
+        "context": {
+          "triggerKind": 2,
+          "triggerCharacter": "@"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  if let Some(lsp::CompletionResponse::List(list)) = maybe_res {
+    assert!(!list.is_incomplete);
+    assert_eq!(list.items.len(), 3);
+  } else {
+    panic!("unexpected response");
+  }
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "completionItem/resolve",
+      load_fixture("completion_resolve_params_registry.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("completion_resolve_response_registry.json"))
   );
   shutdown(&mut client);
 }

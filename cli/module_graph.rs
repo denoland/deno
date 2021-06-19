@@ -12,6 +12,7 @@ use crate::config_file::IgnoredCompilerOptions;
 use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
 use crate::import_map::ImportMap;
+use crate::import_map::ImportMapError;
 use crate::info;
 use crate::lockfile::Lockfile;
 use crate::media_type::MediaType;
@@ -37,6 +38,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::url::Url;
 use deno_core::ModuleResolutionError;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
@@ -52,6 +54,9 @@ use std::result;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
+use swc_common::comments::Comment;
+use swc_common::BytePos;
+use swc_common::Span;
 
 lazy_static::lazy_static! {
   /// Matched the `@deno-types` pragma.
@@ -188,35 +193,48 @@ pub enum TypeScriptReference {
   Types(String),
 }
 
+fn match_to_span(comment: &Comment, m: &regex::Match) -> Span {
+  Span {
+    lo: comment.span.lo + BytePos((m.start() + 1) as u32),
+    hi: comment.span.lo + BytePos((m.end() + 1) as u32),
+    ctxt: comment.span.ctxt,
+  }
+}
+
 /// Determine if a comment contains a triple slash reference and optionally
 /// return its kind and value.
-pub fn parse_ts_reference(comment: &str) -> Option<TypeScriptReference> {
-  if !TRIPLE_SLASH_REFERENCE_RE.is_match(comment) {
+pub fn parse_ts_reference(
+  comment: &Comment,
+) -> Option<(TypeScriptReference, Span)> {
+  if !TRIPLE_SLASH_REFERENCE_RE.is_match(&comment.text) {
     None
-  } else if let Some(captures) = PATH_REFERENCE_RE.captures(comment) {
-    Some(TypeScriptReference::Path(
-      captures.get(1).unwrap().as_str().to_string(),
+  } else if let Some(captures) = PATH_REFERENCE_RE.captures(&comment.text) {
+    let m = captures.get(1).unwrap();
+    Some((
+      TypeScriptReference::Path(m.as_str().to_string()),
+      match_to_span(comment, &m),
     ))
   } else {
-    TYPES_REFERENCE_RE.captures(comment).map(|captures| {
-      TypeScriptReference::Types(captures.get(1).unwrap().as_str().to_string())
+    TYPES_REFERENCE_RE.captures(&comment.text).map(|captures| {
+      let m = captures.get(1).unwrap();
+      (
+        TypeScriptReference::Types(m.as_str().to_string()),
+        match_to_span(comment, &m),
+      )
     })
   }
 }
 
 /// Determine if a comment contains a `@deno-types` pragma and optionally return
 /// its value.
-pub fn parse_deno_types(comment: &str) -> Option<String> {
-  if let Some(captures) = DENO_TYPES_RE.captures(comment) {
-    if let Some(m) = captures.get(1) {
-      Some(m.as_str().to_string())
-    } else if let Some(m) = captures.get(2) {
-      Some(m.as_str().to_string())
-    } else {
-      panic!("unreachable");
-    }
+pub fn parse_deno_types(comment: &Comment) -> Option<(String, Span)> {
+  let captures = DENO_TYPES_RE.captures(&comment.text)?;
+  if let Some(m) = captures.get(1) {
+    Some((m.as_str().to_string(), match_to_span(comment, &m)))
+  } else if let Some(m) = captures.get(2) {
+    Some((m.as_str().to_string(), match_to_span(comment, &m)))
   } else {
-    None
+    unreachable!();
   }
 }
 
@@ -327,7 +345,7 @@ impl Module {
 
     // parse out any triple slash references
     for comment in parsed_module.get_leading_comments().iter() {
-      if let Some(ts_reference) = parse_ts_reference(&comment.text) {
+      if let Some((ts_reference, _)) = parse_ts_reference(&comment) {
         let location = parsed_module.get_location(&comment.span);
         match ts_reference {
           TypeScriptReference::Path(import) => {
@@ -381,10 +399,17 @@ impl Module {
           Ok(specifier) => Some(specifier),
           Err(any_error) => {
             match any_error.downcast_ref::<ModuleResolutionError>() {
-              Some(ModuleResolutionError::ImportPrefixMissing(_, _)) => None,
-              _ => {
-                return Err(any_error);
+              Some(ModuleResolutionError::ImportPrefixMissing(..)) => {
+                Some(Url::parse(&format!("bare:{}", &desc.specifier)).unwrap())
               }
+              _ => match any_error.downcast_ref::<ImportMapError>() {
+                Some(ImportMapError::UnmappedBareSpecifier(..)) => Some(
+                  Url::parse(&format!("bare:{}", &desc.specifier)).unwrap(),
+                ),
+                _ => {
+                  return Err(any_error);
+                }
+              },
             }
           }
         };
@@ -392,7 +417,7 @@ impl Module {
       // Parse out any `@deno-types` pragmas and modify dependency
       let maybe_type = if !desc.leading_comments.is_empty() {
         let comment = desc.leading_comments.last().unwrap();
-        if let Some(deno_types) = parse_deno_types(&comment.text).as_ref() {
+        if let Some((deno_types, _)) = parse_deno_types(&comment).as_ref() {
           Some(self.resolve_import(deno_types, Some(location.clone()))?)
         } else {
           None
@@ -431,10 +456,8 @@ impl Module {
   ) -> Result<ModuleSpecifier, AnyError> {
     let maybe_resolve = if let Some(import_map) = self.maybe_import_map.clone()
     {
-      import_map
-        .lock()
-        .unwrap()
-        .resolve(specifier, self.specifier.as_str())?
+      let import_map = import_map.lock().unwrap();
+      Some(import_map.resolve(specifier, self.specifier.as_str())?)
     } else {
       None
     };
@@ -601,6 +624,10 @@ pub struct CheckOptions {
   /// Ignore any previously emits and ensure that all files are emitted from
   /// source.
   pub reload: bool,
+  /// A set of module specifiers to be excluded from the effect of
+  /// `CheckOptions::reload` if it is `true`. Perhaps because they have already
+  /// reloaded once in this process.
+  pub reload_exclusions: HashSet<ModuleSpecifier>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -650,6 +677,10 @@ pub struct TranspileOptions {
   /// Ignore any previously emits and ensure that all files are emitted from
   /// source.
   pub reload: bool,
+  /// A set of module specifiers to be excluded from the effect of
+  /// `CheckOptions::reload` if it is `true`. Perhaps because they have already
+  /// reloaded once in this process.
+  pub reload_exclusions: HashSet<ModuleSpecifier>,
 }
 
 #[derive(Debug, Clone)]
@@ -828,15 +859,14 @@ impl Graph {
     let maybe_ignored_options = config
       .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
 
+    let needs_reload = options.reload
+      && !self
+        .roots
+        .iter()
+        .all(|u| options.reload_exclusions.contains(u));
     // Short circuit if none of the modules require an emit, or all of the
-    // modules that require an emit have a valid emit.  There is also an edge
-    // case where there are multiple imports of a dynamic module during a
-    // single invocation, if that is the case, even if there is a reload, we
-    // will simply look at if the emit is invalid, to avoid two checks for the
-    // same programme.
-    if !self.needs_emit(&config)
-      || (self.is_emit_valid(&config)
-        && (!options.reload || self.roots_dynamic))
+    // modules that require an emit have a valid emit.
+    if !self.needs_emit(&config) || self.is_emit_valid(&config) && !needs_reload
     {
       debug!("graph does not need to be checked or emitted.");
       return Ok(ResultInfo {
@@ -1079,10 +1109,11 @@ impl Graph {
           }
         }
         BundleType::None => {
+          let check_js = config.get_check_js();
           let emit_options: ast::EmitOptions = config.into();
           for (_, module_slot) in self.modules.iter_mut() {
             if let ModuleSlot::Module(module) = module_slot {
-              if !(emit_options.check_js
+              if !(check_js
                 || module.media_type == MediaType::Jsx
                 || module.media_type == MediaType::Tsx
                 || module.media_type == MediaType::TypeScript)
@@ -1646,9 +1677,10 @@ impl Graph {
       .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
 
     let config = ts_config.as_bytes();
+    let check_js = ts_config.get_check_js();
     let emit_options: ast::EmitOptions = ts_config.into();
     let mut emit_count = 0_u32;
-    for (_, module_slot) in self.modules.iter_mut() {
+    for (specifier, module_slot) in self.modules.iter_mut() {
       if let ModuleSlot::Module(module) = module_slot {
         // TODO(kitsonk) a lot of this logic should be refactored into `Module` as
         // we start to support other methods on the graph.  Especially managing
@@ -1660,15 +1692,18 @@ impl Graph {
         }
         // if we don't have check_js enabled, we won't touch non TypeScript or JSX
         // modules
-        if !(emit_options.check_js
+        if !(check_js
           || module.media_type == MediaType::Jsx
           || module.media_type == MediaType::Tsx
           || module.media_type == MediaType::TypeScript)
         {
           continue;
         }
+
+        let needs_reload =
+          options.reload && !options.reload_exclusions.contains(specifier);
         // skip modules that already have a valid emit
-        if !options.reload && module.is_emit_valid(&config) {
+        if module.is_emit_valid(&config) && !needs_reload {
           continue;
         }
         let parsed_module = module.parse()?;
@@ -1890,19 +1925,28 @@ impl GraphBuilder {
     }
     for (_, dep) in module.dependencies.iter() {
       let maybe_referrer = Some(dep.location.clone());
-      if let Some(specifier) = dep.maybe_code.as_ref() {
-        self.fetch(
-          specifier,
-          &maybe_referrer,
-          is_root_dynamic || dep.is_dynamic,
-        );
-      }
-      if let Some(specifier) = dep.maybe_type.as_ref() {
-        self.fetch(
-          specifier,
-          &maybe_referrer,
-          is_root_dynamic || dep.is_dynamic,
-        );
+      for maybe_specifier in &[dep.maybe_code.as_ref(), dep.maybe_type.as_ref()]
+      {
+        if let Some(&dep_specifier) = maybe_specifier.as_ref() {
+          if dep_specifier.scheme() == "bare" {
+            self.graph.modules.insert(
+              dep_specifier.clone(),
+              ModuleSlot::Err(Arc::new(
+                ModuleResolutionError::ImportPrefixMissing(
+                  dep_specifier.path().to_string(),
+                  Some(specifier.to_string()),
+                )
+                .into(),
+              )),
+            );
+          } else {
+            self.fetch(
+              dep_specifier,
+              &maybe_referrer,
+              is_root_dynamic || dep.is_dynamic,
+            );
+          }
+        }
       }
     }
     if let Some((_, specifier)) = module.maybe_types.as_ref() {
@@ -2221,6 +2265,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: None,
         reload: false,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
@@ -2243,6 +2288,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: None,
         reload: false,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.diagnostics.is_empty());
@@ -2260,6 +2306,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: None,
         reload: false,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
@@ -2284,6 +2331,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: None,
         reload: false,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
@@ -2306,6 +2354,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: None,
         reload: false,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
@@ -2327,6 +2376,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: None,
         reload: false,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.diagnostics.is_empty());
@@ -2346,6 +2396,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: Some(config_file),
         reload: true,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
@@ -2367,6 +2418,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: Some(config_file),
         reload: true,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
@@ -2594,6 +2646,7 @@ pub mod tests {
         debug: false,
         maybe_config_file: Some(config_file),
         reload: false,
+        ..Default::default()
       })
       .unwrap();
     assert_eq!(

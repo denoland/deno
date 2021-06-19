@@ -170,12 +170,12 @@ mod tests {
     let mut cache_location = temp_dir.path().to_owned();
     assert!(fs::remove_dir(&cache_location).is_ok());
     cache_location.push("foo");
-    assert_eq!(cache_location.is_dir(), false);
+    assert!(!cache_location.is_dir());
     let cache = DiskCache::new(&cache_location);
     cache
       .ensure_dir_exists(&cache.location)
       .expect("Testing expect:");
-    assert_eq!(cache_location.is_dir(), true);
+    assert!(cache_location.is_dir());
   }
 
   #[test]

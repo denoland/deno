@@ -350,7 +350,6 @@ async fn op_fstat_async(
   Ok(get_stat(metadata))
 }
 
-#[allow(clippy::unnecessary_wraps)]
 fn op_umask(
   state: &mut OpState,
   mask: Option<u32>,

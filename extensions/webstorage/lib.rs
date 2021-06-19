@@ -13,9 +13,9 @@ use std::fmt;
 use std::path::PathBuf;
 
 #[derive(Clone)]
-struct LocationDataDir(PathBuf);
+struct OriginStorageDir(PathBuf);
 
-pub fn init(location_data_dir: Option<PathBuf>) -> Extension {
+pub fn init(origin_storage_dir: Option<PathBuf>) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:extensions/webstorage",
@@ -34,8 +34,8 @@ pub fn init(location_data_dir: Option<PathBuf>) -> Extension {
       ),
     ])
     .state(move |state| {
-      if let Some(location_data_dir) = location_data_dir.clone() {
-        state.put(LocationDataDir(location_data_dir));
+      if let Some(origin_storage_dir) = origin_storage_dir.clone() {
+        state.put(OriginStorageDir(origin_storage_dir));
       }
       Ok(())
     })
@@ -55,7 +55,7 @@ fn get_webstorage(
 ) -> Result<&Connection, AnyError> {
   let conn = if persistent {
     if state.try_borrow::<LocalStorage>().is_none() {
-      let path = state.try_borrow::<LocationDataDir>().ok_or_else(|| {
+      let path = state.try_borrow::<OriginStorageDir>().ok_or_else(|| {
         DomExceptionNotSupportedError::new(
           "LocalStorage is not supported in this context.",
         )
@@ -138,8 +138,10 @@ pub fn op_webstorage_set(
 
   if size >= 5000000 {
     return Err(
-      DomExceptionQuotaExceededError::new("Exceeded maximum storage size")
-        .into(),
+      deno_web::DomExceptionQuotaExceededError::new(
+        "Exceeded maximum storage size",
+      )
+      .into(),
     );
   }
 
@@ -210,34 +212,6 @@ pub fn op_webstorage_iterate_keys(
     .collect();
 
   Ok(keys)
-}
-
-#[derive(Debug)]
-pub struct DomExceptionQuotaExceededError {
-  pub msg: String,
-}
-
-impl DomExceptionQuotaExceededError {
-  pub fn new(msg: &str) -> Self {
-    DomExceptionQuotaExceededError {
-      msg: msg.to_string(),
-    }
-  }
-}
-
-impl fmt::Display for DomExceptionQuotaExceededError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.pad(&self.msg)
-  }
-}
-
-impl std::error::Error for DomExceptionQuotaExceededError {}
-
-pub fn get_quota_exceeded_error_class_name(
-  e: &AnyError,
-) -> Option<&'static str> {
-  e.downcast_ref::<DomExceptionQuotaExceededError>()
-    .map(|_| "DOMExceptionQuotaExceededError")
 }
 
 #[derive(Debug)]

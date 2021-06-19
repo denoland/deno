@@ -15,8 +15,9 @@ use crate::module_graph::TypeLib;
 use crate::source_maps::SourceMapGetter;
 use crate::specifier_handler::FetchHandler;
 use crate::version;
-use deno_runtime::deno_file::BlobUrlStore;
-use deno_runtime::inspector::InspectorServer;
+use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_runtime::deno_web::BlobUrlStore;
+use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::Permissions;
 
 use deno_core::error::anyhow;
@@ -30,6 +31,7 @@ use deno_core::ModuleSpecifier;
 use log::debug;
 use log::warn;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::env;
 use std::fs::read;
 use std::sync::Arc;
@@ -52,6 +54,7 @@ pub struct ProgramState {
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub ca_data: Option<Vec<u8>>,
   pub blob_url_store: BlobUrlStore,
+  pub broadcast_channel: InMemoryBroadcastChannel,
 }
 
 impl ProgramState {
@@ -77,6 +80,7 @@ impl ProgramState {
     };
 
     let blob_url_store = BlobUrlStore::default();
+    let broadcast_channel = InMemoryBroadcastChannel::default();
 
     let file_fetcher = FileFetcher::new(
       http_cache,
@@ -143,6 +147,7 @@ impl ProgramState {
       maybe_inspector_server,
       ca_data,
       blob_url_store,
+      broadcast_channel,
     };
     Ok(Arc::new(program_state))
   }
@@ -173,12 +178,17 @@ impl ProgramState {
     let mut graph = builder.get_graph();
     let debug = self.flags.log_level == Some(log::Level::Debug);
     let maybe_config_file = self.maybe_config_file.clone();
+    let reload_exclusions = {
+      let modules = self.modules.lock().unwrap();
+      modules.keys().cloned().collect::<HashSet<_>>()
+    };
 
     let result_modules = if self.flags.no_check {
       let result_info = graph.transpile(TranspileOptions {
         debug,
         maybe_config_file,
         reload: self.flags.reload,
+        reload_exclusions,
       })?;
       debug!("{}", result_info.stats);
       if let Some(ignored_options) = result_info.maybe_ignored_options {
@@ -192,6 +202,7 @@ impl ProgramState {
         lib,
         maybe_config_file,
         reload: self.flags.reload,
+        reload_exclusions,
       })?;
 
       debug!("{}", result_info.stats);
@@ -240,12 +251,17 @@ impl ProgramState {
     let mut graph = builder.get_graph();
     let debug = self.flags.log_level == Some(log::Level::Debug);
     let maybe_config_file = self.maybe_config_file.clone();
+    let reload_exclusions = {
+      let modules = self.modules.lock().unwrap();
+      modules.keys().cloned().collect::<HashSet<_>>()
+    };
 
     let result_modules = if self.flags.no_check {
       let result_info = graph.transpile(TranspileOptions {
         debug,
         maybe_config_file,
         reload: self.flags.reload,
+        reload_exclusions,
       })?;
       debug!("{}", result_info.stats);
       if let Some(ignored_options) = result_info.maybe_ignored_options {
@@ -259,6 +275,7 @@ impl ProgramState {
         lib,
         maybe_config_file,
         reload: self.flags.reload,
+        reload_exclusions,
       })?;
 
       debug!("{}", result_info.stats);

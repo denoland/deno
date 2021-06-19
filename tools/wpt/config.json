@@ -1,0 +1,6 @@
+{
+  "check_subdomains": false,
+  "ssl": {
+    "type": "pregenerated"
+  }
+}

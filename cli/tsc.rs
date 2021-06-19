@@ -33,7 +33,6 @@ pub static DENO_NS_LIB: &str = include_str!("dts/lib.deno.ns.d.ts");
 pub static DENO_CONSOLE_LIB: &str = include_str!(env!("DENO_CONSOLE_LIB_PATH"));
 pub static DENO_URL_LIB: &str = include_str!(env!("DENO_URL_LIB_PATH"));
 pub static DENO_WEB_LIB: &str = include_str!(env!("DENO_WEB_LIB_PATH"));
-pub static DENO_FILE_LIB: &str = include_str!(env!("DENO_FILE_LIB_PATH"));
 pub static DENO_FETCH_LIB: &str = include_str!(env!("DENO_FETCH_LIB_PATH"));
 pub static DENO_WEBGPU_LIB: &str = include_str!(env!("DENO_WEBGPU_LIB_PATH"));
 pub static DENO_WEBSOCKET_LIB: &str =
@@ -41,6 +40,8 @@ pub static DENO_WEBSOCKET_LIB: &str =
 pub static DENO_WEBSTORAGE_LIB: &str =
   include_str!(env!("DENO_WEBSTORAGE_LIB_PATH"));
 pub static DENO_CRYPTO_LIB: &str = include_str!(env!("DENO_CRYPTO_LIB_PATH"));
+pub static DENO_BROADCAST_CHANNEL_LIB: &str =
+  include_str!(env!("DENO_BROADCAST_CHANNEL_LIB_PATH"));
 pub static SHARED_GLOBALS_LIB: &str =
   include_str!("dts/lib.deno.shared_globals.d.ts");
 pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");
@@ -71,6 +72,7 @@ lazy_static::lazy_static! {
     ("lib.es2018.full.d.ts", inc!("lib.es2018.full.d.ts")),
     ("lib.es2019.full.d.ts", inc!("lib.es2019.full.d.ts")),
     ("lib.es2020.full.d.ts", inc!("lib.es2020.full.d.ts")),
+    ("lib.es2021.full.d.ts", inc!("lib.es2021.full.d.ts")),
     ("lib.esnext.full.d.ts", inc!("lib.esnext.full.d.ts")),
     ("lib.scripthost.d.ts", inc!("lib.scripthost.d.ts")),
     ("lib.webworker.d.ts", inc!("lib.webworker.d.ts")),

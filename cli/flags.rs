@@ -84,7 +84,9 @@ pub enum DenoSubcommand {
     root: Option<PathBuf>,
     force: bool,
   },
-  Lsp,
+  Lsp {
+    parent_pid: Option<u32>,
+  },
   Lint {
     files: Vec<PathBuf>,
     ignore: Vec<PathBuf>,
@@ -791,6 +793,11 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     .arg(Arg::with_name("file").takes_value(true).required(false))
     .arg(reload_arg().requires("file"))
     .arg(ca_file_arg())
+    .arg(
+      location_arg()
+        .conflicts_with("file")
+        .help("Show files used for origin bound APIs like the Web Storage API when running a script with '--location=<HREF>'")
+    )
     // TODO(lucacasonato): remove for 2.0
     .arg(no_check_arg().hidden(true))
     .arg(import_map_arg())
@@ -871,13 +878,23 @@ go-to-definition support and automatic code formatting.
 
 How to connect various editors and IDEs to 'deno lsp':
 https://deno.land/manual/getting_started/setup_your_environment#editors-and-ides")
+    .arg(
+      Arg::with_name("parent-pid")
+        .long("parent-pid")
+        .help("The parent process id to periodically check for the existence of or exit")
+        .takes_value(true)
+        .validator(|val: String| match val.parse::<usize>() {
+          Ok(_) => Ok(()),
+          Err(_) => Err("parent-pid should be a number".to_string()),
+        }),
+    )
 }
 
 fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
   SubCommand::with_name("lint")
-    .about("UNSTABLE: Lint source files")
+    .about("Lint source files")
     .long_about(
-      "UNSTABLE: Lint JavaScript/TypeScript source code.
+      "Lint JavaScript/TypeScript source code.
 
   deno lint
   deno lint myfile1.ts myfile2.js
@@ -1577,6 +1594,7 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   reload_arg_parse(flags, matches);
   import_map_arg_parse(flags, matches);
+  location_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
   let json = matches.is_present("json");
   flags.subcommand = DenoSubcommand::Info {
@@ -1615,8 +1633,11 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 }
 
-fn lsp_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
-  flags.subcommand = DenoSubcommand::Lsp;
+fn lsp_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  let parent_pid = matches
+    .value_of("parent-pid")
+    .map(|val| val.parse().unwrap());
+  flags.subcommand = DenoSubcommand::Lsp { parent_pid };
 }
 
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -2302,10 +2323,24 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Lsp,
+        subcommand: DenoSubcommand::Lsp { parent_pid: None },
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec!["deno", "lsp", "--parent-pid", "5"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lsp {
+          parent_pid: Some(5),
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "lsp", "--parent-pid", "invalid-arg"]);
+    assert!(r.is_err());
   }
 
   #[test]

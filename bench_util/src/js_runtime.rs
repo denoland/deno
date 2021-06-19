@@ -72,5 +72,5 @@ pub fn bench_js_async(
 
 async fn inner_async(src: &str, runtime: &mut JsRuntime) {
   runtime.execute("inner_loop", src).unwrap();
-  runtime.run_event_loop().await.unwrap();
+  runtime.run_event_loop(false).await.unwrap();
 }

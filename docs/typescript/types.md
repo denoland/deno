@@ -101,6 +101,62 @@ When seeing this header, Deno would attempt to retrieve
 `https://example.com/coolLib.d.ts` and use that when type checking the original
 module.
 
+### Type Checking Web Workers
+
+When Deno loads a TypeScript module in a web worker, it will automatically type
+check the module and its dependencies against the Deno web worker library. This
+can present a challenge in other contexts like `deno cache`, `deno bundle`, or
+in editors. There are a couple of ways to instruct Deno to use the worker
+libraries instead of the standard Deno libraries.
+
+#### Using triple-slash directives
+
+This option couples the library settings with the code itself. By adding the
+following triple-slash directives near the top of the entry point file for the
+worker script, Deno will now type check it as a Deno worker script, irrespective
+of how the module is analyzed:
+
+```ts
+/// <reference no-default-lib="true" />
+/// <reference lib="deno.worker" />
+```
+
+The first directive ensures that no other default libraries are used. If this is
+omitted, you will get some conflicting type definitions, because Deno will try
+to apply the standard Deno library as well. The second instructs Deno to apply
+the built in Deno worker type definitions plus dependent libraries (like
+`"esnext"`).
+
+When you run a `deno cache` or `deno bundle` command or use an IDE which uses
+the Deno language server, Deno should automatically detect these directives and
+apply the correct libraries when type checking.
+
+The one disadvantage of this, is that it makes the code less portable to other
+non-Deno platforms like `tsc`, as it is only Deno which has the `"deno.worker"`
+library built into it.
+
+#### Using a `tsconfig.json` file
+
+Another option is to use a `tsconfig.json` file that is configured to apply the
+library files. A minimal file that would work would look something like this:
+
+```json
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "lib": ["deno.worker"]
+  }
+}
+```
+
+Then when running a command on the command line, you would need to pass the
+`--config tsconfig.json` argument, or if you are using an IDE which leverages
+the Deno language server, set the `deno.config` setting.
+
+If you also have non-worker scripts, you will either need to omit the `--config`
+argument, or have one that is configured to meet the needs of your non-worker
+scripts.
+
 ### Important points
 
 #### Type declaration semantics

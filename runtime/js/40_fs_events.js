@@ -33,9 +33,15 @@
       }
     }
 
+    // TODO(kt3k): This is deprecated. Will be removed in v2.0.
+    // See https://github.com/denoland/deno/issues/10577 for details
     return(value) {
       core.close(this.rid);
       return Promise.resolve({ value, done: true });
+    }
+
+    close() {
+      core.close(this.rid);
     }
 
     [Symbol.asyncIterator]() {

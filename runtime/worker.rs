@@ -1,17 +1,16 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::inspector::DenoInspector;
-use crate::inspector::InspectorServer;
-use crate::inspector::InspectorSession;
+use crate::inspector_server::InspectorServer;
 use crate::js;
 use crate::metrics;
 use crate::ops;
 use crate::permissions::Permissions;
+use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
 use deno_core::error::Context as ErrorContext;
 use deno_core::futures::future::poll_fn;
-use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
+use deno_core::futures::Future;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
@@ -19,13 +18,15 @@ use deno_core::Extension;
 use deno_core::GetErrorClassFn;
 use deno_core::JsErrorCreateFn;
 use deno_core::JsRuntime;
+use deno_core::LocalInspectorSession;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
-use deno_file::BlobUrlStore;
+use deno_web::BlobUrlStore;
 use log::debug;
 use std::env;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::task::Context;
@@ -39,7 +40,6 @@ use std::task::Poll;
 /// All `WebWorker`s created during program execution
 /// are descendants of this worker.
 pub struct MainWorker {
-  inspector: Option<Box<DenoInspector>>,
   pub js_runtime: JsRuntime,
   should_break_on_first_statement: bool,
 }
@@ -69,8 +69,9 @@ pub struct WorkerOptions {
   pub no_color: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub location: Option<Url>,
-  pub location_data_dir: Option<std::path::PathBuf>,
+  pub origin_storage_dir: Option<std::path::PathBuf>,
   pub blob_url_store: BlobUrlStore,
+  pub broadcast_channel: InMemoryBroadcastChannel,
 }
 
 impl MainWorker {
@@ -95,8 +96,7 @@ impl MainWorker {
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
-      deno_web::init(),
-      deno_file::init(options.blob_url_store.clone(), options.location.clone()),
+      deno_web::init(options.blob_url_store.clone(), options.location.clone()),
       deno_fetch::init::<Permissions>(
         options.user_agent.clone(),
         options.ca_data.clone(),
@@ -105,8 +105,12 @@ impl MainWorker {
         options.user_agent.clone(),
         options.ca_data.clone(),
       ),
-      deno_webstorage::init(options.location_data_dir.clone()),
+      deno_webstorage::init(options.origin_storage_dir.clone()),
       deno_crypto::init(options.seed),
+      deno_broadcast_channel::init(
+        options.broadcast_channel.clone(),
+        options.unstable,
+      ),
       deno_webgpu::init(options.unstable),
       deno_timers::init::<Permissions>(),
       // Metrics
@@ -137,23 +141,22 @@ impl MainWorker {
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
       extensions,
+      attach_inspector: options.attach_inspector,
       ..Default::default()
     });
 
-    let inspector = if options.attach_inspector {
-      Some(DenoInspector::new(
-        &mut js_runtime,
-        options.maybe_inspector_server.clone(),
-      ))
-    } else {
-      None
-    };
+    let mut should_break_on_first_statement = false;
 
-    let should_break_on_first_statement =
-      inspector.is_some() && options.should_break_on_first_statement;
+    if let Some(inspector) = js_runtime.inspector() {
+      if let Some(server) = options.maybe_inspector_server.clone() {
+        let session_sender = inspector.get_session_sender();
+        let deregister_rx = inspector.add_deregister_handler();
+        server.register_inspector(session_sender, deregister_rx);
+      }
+      should_break_on_first_statement = options.should_break_on_first_statement;
+    }
 
     Self {
-      inspector,
       js_runtime,
       should_break_on_first_statement,
     }
@@ -212,15 +215,13 @@ impl MainWorker {
     tokio::select! {
       maybe_result = receiver.next() => {
         debug!("received module evaluate {:#?}", maybe_result);
-        let result = maybe_result.expect("Module evaluation result not provided.");
-        return result;
+        maybe_result.expect("Module evaluation result not provided.")
       }
 
-      event_loop_result = self.run_event_loop() => {
+      event_loop_result = self.run_event_loop(false) => {
         event_loop_result?;
         let maybe_result = receiver.next().await;
-        let result = maybe_result.expect("Module evaluation result not provided.");
-        return result;
+        maybe_result.expect("Module evaluation result not provided.")
       }
     }
   }
@@ -228,8 +229,8 @@ impl MainWorker {
   fn wait_for_inspector_session(&mut self) {
     if self.should_break_on_first_statement {
       self
-        .inspector
-        .as_mut()
+        .js_runtime
+        .inspector()
         .unwrap()
         .wait_for_session_and_break_on_next_statement()
     }
@@ -237,31 +238,41 @@ impl MainWorker {
 
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
-  pub fn create_inspector_session(&mut self) -> Box<InspectorSession> {
-    let inspector = self.inspector.as_mut().unwrap();
-
-    InspectorSession::new(&mut **inspector)
+  pub async fn create_inspector_session(&mut self) -> LocalInspectorSession {
+    let inspector = self.js_runtime.inspector().unwrap();
+    inspector.create_local_session()
   }
 
   pub fn poll_event_loop(
     &mut self,
     cx: &mut Context,
+    wait_for_inspector: bool,
   ) -> Poll<Result<(), AnyError>> {
-    // We always poll the inspector if it exists.
-    let _ = self.inspector.as_mut().map(|i| i.poll_unpin(cx));
-    self.js_runtime.poll_event_loop(cx)
+    self.js_runtime.poll_event_loop(cx, wait_for_inspector)
   }
 
-  pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
-    poll_fn(|cx| self.poll_event_loop(cx)).await
+  pub async fn run_event_loop(
+    &mut self,
+    wait_for_inspector: bool,
+  ) -> Result<(), AnyError> {
+    poll_fn(|cx| self.poll_event_loop(cx, wait_for_inspector)).await
   }
-}
 
-impl Drop for MainWorker {
-  fn drop(&mut self) {
-    // The Isolate object must outlive the Inspector object, but this is
-    // currently not enforced by the type system.
-    self.inspector.take();
+  /// A utility function that runs provided future concurrently with the event loop.
+  ///
+  /// Useful when using a local inspector session.
+  pub async fn with_event_loop<'a, T>(
+    &mut self,
+    mut fut: Pin<Box<dyn Future<Output = T> + 'a>>,
+  ) -> T {
+    loop {
+      tokio::select! {
+        result = &mut fut => {
+          return result;
+        }
+        _ = self.run_event_loop(false) => {}
+      };
+    }
   }
 }
 
@@ -293,8 +304,9 @@ mod tests {
       no_color: true,
       get_error_class_fn: None,
       location: None,
-      location_data_dir: None,
+      origin_storage_dir: None,
       blob_url_store: BlobUrlStore::default(),
+      broadcast_channel: InMemoryBroadcastChannel::default(),
     };
 
     MainWorker::from_options(main_module, permissions, &options)
@@ -312,7 +324,7 @@ mod tests {
     if let Err(err) = result {
       eprintln!("execute_mod err {:?}", err);
     }
-    if let Err(e) = worker.run_event_loop().await {
+    if let Err(e) = worker.run_event_loop(false).await {
       panic!("Future got unexpected error: {:?}", e);
     }
   }
@@ -329,7 +341,7 @@ mod tests {
     if let Err(err) = result {
       eprintln!("execute_mod err {:?}", err);
     }
-    if let Err(e) = worker.run_event_loop().await {
+    if let Err(e) = worker.run_event_loop(false).await {
       panic!("Future got unexpected error: {:?}", e);
     }
   }

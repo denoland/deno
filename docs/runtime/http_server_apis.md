@@ -127,10 +127,10 @@ while (true) {
     (async () => {
       const httpConn = Deno.serveHttp(conn);
       while (true) {
-        const requestEvent = await httpConn.nextRequest();
-        if (requestEvent) {
+        try {
+          const requestEvent = await httpConn.nextRequest();
           // ... handle requestEvent ...
-        } else {
+        } catch (err) {
           // the connection has finished
           break;
         }
@@ -204,9 +204,11 @@ object. Responding with a basic "hello world" would look like this:
 async function handle(conn: Deno.Conn) {
   const httpConn = Deno.serveHttp(conn);
   for await (const requestEvent of httpConn) {
-    await requestEvent.respondWith(new Response("hello world"), {
-      status: 200,
-    });
+    await requestEvent.respondWith(
+      new Response("hello world", {
+        status: 200,
+      }),
+    );
   }
 }
 ```

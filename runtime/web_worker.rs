@@ -1,12 +1,12 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use crate::colors;
-use crate::inspector::DenoInspector;
-use crate::inspector::InspectorServer;
+use crate::inspector_server::InspectorServer;
 use crate::js;
 use crate::metrics;
 use crate::ops;
 use crate::permissions::Permissions;
 use crate::tokio_util::create_basic_runtime;
+use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
 use deno_core::error::Context as ErrorContext;
 use deno_core::futures::channel::mpsc;
@@ -28,7 +28,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::ZeroCopyBuf;
-use deno_file::BlobUrlStore;
+use deno_web::BlobUrlStore;
 use log::debug;
 use std::cell::RefCell;
 use std::env;
@@ -198,7 +198,6 @@ fn create_handles(
 /// `WebWorker`.
 pub struct WebWorker {
   id: WorkerId,
-  inspector: Option<Box<DenoInspector>>,
   pub js_runtime: JsRuntime,
   pub name: String,
   internal_handle: WebWorkerInternalHandle,
@@ -230,6 +229,7 @@ pub struct WebWorkerOptions {
   pub no_color: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub blob_url_store: BlobUrlStore,
+  pub broadcast_channel: InMemoryBroadcastChannel,
 }
 
 impl WebWorker {
@@ -255,11 +255,7 @@ impl WebWorker {
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
-      deno_web::init(),
-      deno_file::init(
-        options.blob_url_store.clone(),
-        Some(main_module.clone()),
-      ),
+      deno_web::init(options.blob_url_store.clone(), Some(main_module.clone())),
       deno_fetch::init::<Permissions>(
         options.user_agent.clone(),
         options.ca_data.clone(),
@@ -267,6 +263,10 @@ impl WebWorker {
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
         options.ca_data.clone(),
+      ),
+      deno_broadcast_channel::init(
+        options.broadcast_channel.clone(),
+        options.unstable,
       ),
       deno_crypto::init(options.seed),
       deno_webgpu::init(options.unstable),
@@ -314,18 +314,18 @@ impl WebWorker {
       startup_snapshot: Some(js::deno_isolate_init()),
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
+      attach_inspector: options.attach_inspector,
       extensions,
       ..Default::default()
     });
 
-    let inspector = if options.attach_inspector {
-      Some(DenoInspector::new(
-        &mut js_runtime,
-        options.maybe_inspector_server.clone(),
-      ))
-    } else {
-      None
-    };
+    if let Some(inspector) = js_runtime.inspector() {
+      if let Some(server) = options.maybe_inspector_server.clone() {
+        let session_sender = inspector.get_session_sender();
+        let deregister_rx = inspector.add_deregister_handler();
+        server.register_inspector(session_sender, deregister_rx);
+      }
+    }
 
     let (internal_handle, external_handle) = {
       let handle = js_runtime.v8_isolate().thread_safe_handle();
@@ -338,7 +338,6 @@ impl WebWorker {
 
     Self {
       id: worker_id,
-      inspector,
       js_runtime,
       name,
       internal_handle,
@@ -409,18 +408,16 @@ impl WebWorker {
         // If `None` is returned it means that runtime was destroyed before
         // evaluation was complete. This can happen in Web Worker when `self.close()`
         // is called at top level.
-        let result = maybe_result.unwrap_or(Ok(()));
-        return result;
+        maybe_result.unwrap_or(Ok(()))
       }
 
-      event_loop_result = self.run_event_loop() => {
+      event_loop_result = self.run_event_loop(false) => {
         if self.internal_handle.is_terminated() {
            return Ok(());
         }
         event_loop_result?;
         let maybe_result = receiver.next().await;
-        let result = maybe_result.unwrap_or(Ok(()));
-        return result;
+        maybe_result.unwrap_or(Ok(()))
       }
     }
   }
@@ -433,15 +430,14 @@ impl WebWorker {
   pub fn poll_event_loop(
     &mut self,
     cx: &mut Context,
+    wait_for_inspector: bool,
   ) -> Poll<Result<(), AnyError>> {
     // If awakened because we are terminating, just return Ok
     if self.internal_handle.is_terminated() {
       return Poll::Ready(Ok(()));
     }
 
-    // We always poll the inspector if it exists.
-    let _ = self.inspector.as_mut().map(|i| i.poll_unpin(cx));
-    match self.js_runtime.poll_event_loop(cx) {
+    match self.js_runtime.poll_event_loop(cx, wait_for_inspector) {
       Poll::Ready(r) => {
         // If js ended because we are terminating, just return Ok
         if self.internal_handle.is_terminated() {
@@ -467,16 +463,11 @@ impl WebWorker {
     }
   }
 
-  pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
-    poll_fn(|cx| self.poll_event_loop(cx)).await
-  }
-}
-
-impl Drop for WebWorker {
-  fn drop(&mut self) {
-    // The Isolate object must outlive the Inspector object, but this is
-    // currently not enforced by the type system.
-    self.inspector.take();
+  pub async fn run_event_loop(
+    &mut self,
+    wait_for_inspector: bool,
+  ) -> Result<(), AnyError> {
+    poll_fn(|cx| self.poll_event_loop(cx, wait_for_inspector)).await
   }
 }
 
@@ -532,7 +523,7 @@ pub fn run_web_worker(
     return Ok(());
   }
 
-  let result = rt.block_on(worker.run_event_loop());
+  let result = rt.block_on(worker.run_event_loop(true));
   debug!("Worker thread shuts down {}", &name);
   result
 }
@@ -566,6 +557,7 @@ mod tests {
       no_color: true,
       get_error_class_fn: None,
       blob_url_store: BlobUrlStore::default(),
+      broadcast_channel: InMemoryBroadcastChannel::default(),
     };
 
     let mut worker = WebWorker::from_options(
@@ -601,7 +593,7 @@ mod tests {
       worker.execute(source).unwrap();
       let handle = worker.thread_safe_handle();
       handle_sender.send(handle).unwrap();
-      let r = tokio_util::run_basic(worker.run_event_loop());
+      let r = tokio_util::run_basic(worker.run_event_loop(false));
       assert!(r.is_ok())
     });
 
@@ -648,7 +640,7 @@ mod tests {
       worker.execute("onmessage = () => { close(); }").unwrap();
       let handle = worker.thread_safe_handle();
       handle_sender.send(handle).unwrap();
-      let r = tokio_util::run_basic(worker.run_event_loop());
+      let r = tokio_util::run_basic(worker.run_event_loop(false));
       assert!(r.is_ok())
     });
 
