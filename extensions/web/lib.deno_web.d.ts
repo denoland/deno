@@ -648,3 +648,7 @@ interface TransformStreamDefaultControllerTransformCallback<I, O> {
     controller: TransformStreamDefaultController<O>,
   ): void | PromiseLike<void>;
 }
+
+interface PostMessageOptions {
+  transfer?: any[];
+}

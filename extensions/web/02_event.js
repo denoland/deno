@@ -1129,6 +1129,7 @@
       });
 
       this.data = eventInitDict?.data ?? null;
+      this.ports = eventInitDict?.ports ?? [];
       this.origin = eventInitDict?.origin ?? "";
       this.lastEventId = eventInitDict?.lastEventId ?? "";
     }

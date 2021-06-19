@@ -382,10 +382,6 @@ declare class ErrorEvent extends Event {
   constructor(type: string, eventInitDict?: ErrorEventInit);
 }
 
-interface PostMessageOptions {
-  transfer?: any[];
-}
-
 interface AbstractWorkerEventMap {
   "error": ErrorEvent;
 }
