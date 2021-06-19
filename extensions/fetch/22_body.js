@@ -16,7 +16,7 @@
   const core = window.Deno.core;
   const webidl = globalThis.__bootstrap.webidl;
   const { parseUrlEncoded } = globalThis.__bootstrap.url;
-  const { parseFormData, formDataFromEntries, encodeFormData } =
+  const { parseFormData, formDataFromEntries, formDataToBlob } =
     globalThis.__bootstrap.formData;
   const mimesniff = globalThis.__bootstrap.mimesniff;
   const { isReadableStreamDisturbed, errorReadableStream } =
@@ -311,11 +311,11 @@
       const copy = u8.slice(0, u8.byteLength);
       source = copy;
     } else if (object instanceof FormData) {
-      const res = encodeFormData(object);
-      stream = { body: res.body, consumed: false };
-      source = object;
-      length = res.body.byteLength;
-      contentType = res.contentType;
+      const res = formDataToBlob(object);
+      stream = res.stream();
+      source = res;
+      length = res.size;
+      contentType = res.type;
     } else if (object instanceof URLSearchParams) {
       source = core.encode(object.toString());
       contentType = "application/x-www-form-urlencoded;charset=UTF-8";

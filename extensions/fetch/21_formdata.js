@@ -242,170 +242,40 @@
 
   webidl.configurePrototype(FormData);
 
-  class MultipartBuilder {
-    /**
-     * @param {FormData} formData
-     */
-    constructor(formData) {
-      this.entryList = formData[entryList];
-      this.boundary = this.#createBoundary();
-      /** @type {Uint8Array[]} */
-      this.chunks = [];
-    }
-
-    /**
-     * @returns {string}
-     */
-    getContentType() {
-      return `multipart/form-data; boundary=${this.boundary}`;
-    }
-
-    /**
-     * @returns {Uint8Array}
-     */
-    getBody() {
-      for (const { name, value } of this.entryList) {
-        if (value instanceof File) {
-          this.#writeFile(name, value);
-        } else this.#writeField(name, value);
-      }
-
-      this.chunks.push(core.encode(`\r\n--${this.boundary}--`));
-
-      let totalLength = 0;
-      for (const chunk of this.chunks) {
-        totalLength += chunk.byteLength;
-      }
-
-      const finalBuffer = new Uint8Array(totalLength);
-      let i = 0;
-      for (const chunk of this.chunks) {
-        finalBuffer.set(chunk, i);
-        i += chunk.byteLength;
-      }
-
-      return finalBuffer;
-    }
-
-    #createBoundary() {
-      return (
-        "----------" +
-        Array.from(Array(32))
-          .map(() => Math.random().toString(36)[2] || 0)
-          .join("")
-      );
-    }
-
-    /**
-     * @param {[string, string][]} headers
-     * @returns {void}
-     */
-    #writeHeaders(headers) {
-      let buf = (this.chunks.length === 0) ? "" : "\r\n";
-
-      buf += `--${this.boundary}\r\n`;
-      for (const [key, value] of headers) {
-        buf += `${key}: ${value}\r\n`;
-      }
-      buf += `\r\n`;
-
-      this.chunks.push(core.encode(buf));
-    }
-
-    /**
-     * @param {string} field
-     * @param {string} filename
-     * @param {string} [type]
-     * @returns {void}
-     */
-    #writeFileHeaders(
-      field,
-      filename,
-      type,
-    ) {
-      const escapedField = this.#headerEscape(field);
-      const escapedFilename = this.#headerEscape(filename, true);
-      /** @type {[string, string][]} */
-      const headers = [
-        [
-          "Content-Disposition",
-          `form-data; name="${escapedField}"; filename="${escapedFilename}"`,
-        ],
-        ["Content-Type", type || "application/octet-stream"],
-      ];
-      return this.#writeHeaders(headers);
-    }
-
-    /**
-     * @param {string} field
-     * @returns {void}
-     */
-    #writeFieldHeaders(field) {
-      /** @type {[string, string][]} */
-      const headers = [[
-        "Content-Disposition",
-        `form-data; name="${this.#headerEscape(field)}"`,
-      ]];
-      return this.#writeHeaders(headers);
-    }
-
-    /**
-     * @param {string} field
-     * @param {string} value
-     * @returns {void}
-     */
-    #writeField(field, value) {
-      this.#writeFieldHeaders(field);
-      this.chunks.push(core.encode(this.#normalizeNewlines(value)));
-    }
-
-    /**
-     * @param {string} field
-     * @param {File} value
-     * @returns {void}
-     */
-    #writeFile(field, value) {
-      this.#writeFileHeaders(field, value.name, value.type);
-      this.chunks.push(value[_byteSequence]);
-    }
-
-    /**
-     * @param {string} string
-     * @returns {string}
-     */
-    #normalizeNewlines(string) {
-      return string.replace(/\r(?!\n)|(?<!\r)\n/g, "\r\n");
-    }
-
-    /**
-     * Performs the percent-escaping and the normalization required for field
-     * names and filenames in Content-Disposition headers.
-     * @param {string} name
-     * @param {boolean} isFilename Whether we are encoding a filename. This
-     * skips the newline normalization that takes place for field names.
-     * @returns {string}
-     */
-    #headerEscape(name, isFilename = false) {
-      if (!isFilename) {
-        name = this.#normalizeNewlines(name);
-      }
-      return name
-        .replaceAll("\n", "%0A")
-        .replaceAll("\r", "%0D")
-        .replaceAll('"', "%22");
-    }
-  }
+  const escape = (str) =>
+    str.replace(/\n/g, "%0A").replace(/\r/g, "%0D").replace(/"/g, "%22");
 
   /**
-   * @param {FormData} formdata
-   * @returns {{body: Uint8Array, contentType: string}}
+   * convert FormData to a Blob synchronous without reading all of the files
+   * @param {globalThis.FormData} formData
    */
-  function encodeFormData(formdata) {
-    const builder = new MultipartBuilder(formdata);
-    return {
-      body: builder.getBody(),
-      contentType: builder.getContentType(),
-    };
+  function formDataToBlob(formData) {
+    const boundary = `${Math.random()}${Math.random()}`
+      .replaceAll(".", "").slice(-28).padStart(32, "-");
+    const chunks = [];
+    const prefix = `--${boundary}\r\nContent-Disposition: form-data; name="`;
+
+    for (const [name, value] of formData) {
+      if (typeof value === "string") {
+        chunks.push(
+          prefix + escape(name) + '"' + CRLF + CRLF +
+            value.replace(/\r(?!\n)|(?<!\r)\n/g, CRLF) + CRLF,
+        );
+      } else {
+        chunks.push(
+          prefix + escape(name) + `"; filename="${escape(value.name)}"` + CRLF +
+            `Content-Type: ${value.type || "application/octet-stream"}\r\n\r\n`,
+          value,
+          CRLF,
+        );
+      }
+    }
+
+    chunks.push(`--${boundary}--`);
+
+    return new Blob(chunks, {
+      type: "multipart/form-data; boundary=" + boundary,
+    });
   }
 
   /**
@@ -426,8 +296,9 @@
     return params;
   }
 
-  const LF = "\n".codePointAt(0);
-  const CR = "\r".codePointAt(0);
+  const CRLF = "\r\n";
+  const LF = CRLF.codePointAt(1);
+  const CR = CRLF.codePointAt(0);
 
   class MultipartParser {
     /**
@@ -575,7 +446,7 @@
 
   globalThis.__bootstrap.formData = {
     FormData,
-    encodeFormData,
+    formDataToBlob,
     parseFormData,
     formDataFromEntries,
   };
