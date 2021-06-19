@@ -559,12 +559,12 @@ async fn eval_command(
   debug!("main_module {}", &main_module);
   worker.execute_module(&main_module).await?;
   worker.execute_script(
-    "[native code]",
+    &format!("deno:{}", std::file!()),
     "window.dispatchEvent(new Event('load'))",
   )?;
   worker.run_event_loop(false).await?;
   worker.execute_script(
-    "[native code]",
+    &format!("deno:{}", std::file!()),
     "window.dispatchEvent(new Event('unload'))",
   )?;
   Ok(())
@@ -801,12 +801,12 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   worker.execute_script(
-    "[native code]",
+    &format!("deno:{}", std::file!()),
     "window.dispatchEvent(new Event('load'))",
   )?;
   worker.run_event_loop(false).await?;
   worker.execute_script(
-    "[native code]",
+    &format!("deno:{}", std::file!()),
     "window.dispatchEvent(new Event('unload'))",
   )?;
   Ok(())
@@ -876,12 +876,12 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         debug!("main_module {}", main_module);
         worker.execute_module(&main_module).await?;
         worker.execute_script(
-          "[native code]",
+          &format!("deno:{}", std::file!()),
           "window.dispatchEvent(new Event('load'))",
         )?;
         worker.run_event_loop(false).await?;
         worker.execute_script(
-          "[native code]",
+          &format!("deno:{}", std::file!()),
           "window.dispatchEvent(new Event('unload'))",
         )?;
         Ok(())
@@ -925,14 +925,14 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
   worker.execute_script(
-    "[native code]",
+    &format!("deno:{}", std::file!()),
     "window.dispatchEvent(new Event('load'))",
   )?;
   worker
     .run_event_loop(maybe_coverage_collector.is_none())
     .await?;
   worker.execute_script(
-    "[native code]",
+    &format!("deno:{}", std::file!()),
     "window.dispatchEvent(new Event('unload'))",
   )?;
 

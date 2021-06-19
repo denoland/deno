@@ -371,7 +371,7 @@ impl WebWorker {
       runtime_options_str, self.name, options.use_deno_namespace, self.id
     );
     self
-      .execute_script("[native code]", &script)
+      .execute_script(&format!("deno:{}", std::file!()), &script)
       .expect("Failed to execute worker bootstrap script");
   }
 
@@ -494,7 +494,7 @@ pub fn run_web_worker(
 
   // Execute provided source code immediately
   let result = if let Some(source_code) = maybe_source_code {
-    worker.execute_script("[native code]", &source_code)
+    worker.execute_script(&format!("deno:{}", std::file!()), &source_code)
   } else {
     // TODO(bartlomieju): add "type": "classic", ie. ability to load
     // script instead of module

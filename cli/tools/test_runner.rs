@@ -303,7 +303,7 @@ pub async fn run_test_file(
   execute_result?;
 
   worker.execute_script(
-    "[native code]",
+    &format!("deno:{}", std::file!()),
     "window.dispatchEvent(new Event('load'))",
   )?;
 
@@ -314,7 +314,7 @@ pub async fn run_test_file(
     .run_event_loop(maybe_coverage_collector.is_none())
     .await?;
   worker.execute_script(
-    "[native code]",
+    &format!("deno:{}", std::file!()),
     "window.dispatchEvent(new Event('unload'))",
   )?;
 

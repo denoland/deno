@@ -264,12 +264,12 @@ pub async fn run(
   worker.bootstrap(&options);
   worker.execute_module(&main_module).await?;
   worker.execute_script(
-    "[native code]",
+    &format!("deno:{}", std::file!()),
     "window.dispatchEvent(new Event('load'))",
   )?;
   worker.run_event_loop(true).await?;
   worker.execute_script(
-    "[native code]",
+    &format!("deno:{}", std::file!()),
     "window.dispatchEvent(new Event('unload'))",
   )?;
   std::process::exit(0);

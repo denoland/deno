@@ -512,10 +512,10 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   let request_str = request_value.to_string();
   let exec_source = format!("globalThis.exec({})", request_str);
 
-  runtime
-    .execute_script("[native code]", startup_source)
+  worker
+    .execute_script(&format!("deno:{}", std::file!()), startup_source)
     .context("Could not properly start the compiler runtime.")?;
-  runtime.execute_script("[native code]", &exec_source)?;
+  worker.execute_script(&format!("deno:{}", std::file!()), &exec_source)?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();

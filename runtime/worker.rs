@@ -182,7 +182,7 @@ impl MainWorker {
       serde_json::to_string_pretty(&runtime_options).unwrap()
     );
     self
-      .execute_script("[native code]", &script)
+      .execute_script(&format!("deno:{}", std::file!()), &script)
       .expect("Failed to execute bootstrap script");
   }
 
