@@ -2176,7 +2176,7 @@ pub fn start(debug: bool) -> Result<JsRuntime, AnyError> {
   let init_config = json!({ "debug": debug });
   let init_src = format!("globalThis.serverInit({});", init_config);
 
-  worker.execute_script(&format!("deno:{}", std::file!()), &init_src)?;
+  runtime.execute_script(&format!("deno:{}", std::file!()), &init_src)?;
   Ok(runtime)
 }
 
@@ -2556,7 +2556,7 @@ pub fn request(
   let request_params = method.to_value(id);
   let mark = performance.mark("request", Some(request_params.clone()));
   let request_src = format!("globalThis.serverRequest({});", request_params);
-  worker.execute_script(&format!("deno:{}", std::file!()), &request_src)?;
+  runtime.execute_script(&format!("deno:{}", std::file!()), &request_src)?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();
