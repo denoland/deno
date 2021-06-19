@@ -1766,13 +1766,14 @@ impl Inner {
         )));
       };
 
-    let req = tsc::RequestMethod::FindRenameLocations((
+    let req = tsc::RequestMethod::FindRenameLocations {
       specifier,
-      line_index.offset_tsc(params.text_document_position.position)?,
-      true,
-      true,
-      false,
-    ));
+      position: line_index
+        .offset_tsc(params.text_document_position.position)?,
+      find_in_strings: false,
+      find_in_comments: false,
+      provide_prefix_and_suffix_text_for_rename: false,
+    };
 
     let maybe_locations: Option<Vec<tsc::RenameLocation>> = self
       .ts_server
