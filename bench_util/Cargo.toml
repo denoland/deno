@@ -15,7 +15,7 @@ publish = true
 [dependencies]
 bencher = "0.1"
 deno_core = { version = "0.90.0", path = "../core" }
-tokio = { version = "1.7.0", features = ["full"] }
+tokio = { version = "1.7.1", features = ["full"] }
 
 [[bench]]
 name = "op_baseline"
