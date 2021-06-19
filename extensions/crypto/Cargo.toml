@@ -16,7 +16,7 @@ path = "lib.rs"
 [dependencies]
 deno_core = { version = "0.90.0", path = "../../core" }
 deno_web = { version = "0.40.0", path = "../web" }
-tokio = { version = "1.7.0", features = ["full"] }
+tokio = { version = "1.7.1", features = ["full"] }
 rand = "0.8.3"
 ring = "0.16.20"
 uuid = { version = "0.8.2", features = ["v4"] }
