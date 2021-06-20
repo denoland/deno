@@ -244,9 +244,9 @@
 
   const escape = (str, isFilename) =>
     (isFilename ? str : str.replace(/\r?\n|\r/g, "\r\n"))
-    .replace(/\n/g, "%0A")
-    .replace(/\r/g, "%0D")
-    .replace(/"/g, "%22");
+      .replace(/\n/g, "%0A")
+      .replace(/\r/g, "%0D")
+      .replace(/"/g, "%22");
 
   /**
    * convert FormData to a Blob synchronous without reading all of the files
@@ -266,7 +266,8 @@
         );
       } else {
         chunks.push(
-          prefix + escape(name) + `"; filename="${escape(value.name, true)}"` + CRLF +
+          prefix + escape(name) + `"; filename="${escape(value.name, true)}"` +
+            CRLF +
             `Content-Type: ${value.type || "application/octet-stream"}\r\n\r\n`,
           value,
           CRLF,
