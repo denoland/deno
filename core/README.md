@@ -16,16 +16,15 @@ keeps track of all pending tasks (async ops, dynamic module loads). It is user's
 responsibility to drive that loop by using `JsRuntime::run_event_loop` method -
 it must be executed in the context of Rust's future executor (eg. tokio, smol).
 
-In order to bind Rust functions into JavaScript, use the `Deno.core.opSync()` 
-and `Deno.core.opAsync()` functions to trigger the "op_fn" callback in 
-`JsRuntime::register_op` on Rust side. A conventional way to handle "op_fn" 
-callbacks is to use the `op_sync` and `op_async` functions. 
+In order to bind Rust functions into JavaScript, use the `Deno.core.opSync()`
+and `Deno.core.opAsync()` functions to trigger the "op_fn" callback in
+`JsRuntime::register_op` on Rust side. A conventional way to handle "op_fn"
+callbacks is to use the `op_sync` and `op_async` functions.
 
-Documentation for this crate is thin at the moment. 
-Please see
-[hello_world.rs](https://github.com/denoland/deno/blob/main/core/examples/hello_world.rs) 
+Documentation for this crate is thin at the moment. Please see
+[hello_world.rs](https://github.com/denoland/deno/blob/main/core/examples/hello_world.rs)
 and
-[http_bench_json_ops.rs](https://github.com/denoland/deno/blob/main/core/examples/http_bench_json_ops.rs) 
+[http_bench_json_ops.rs](https://github.com/denoland/deno/blob/main/core/examples/http_bench_json_ops.rs)
 as examples of usage.
 
 TypeScript support and lots of other functionality are not available at this
