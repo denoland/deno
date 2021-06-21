@@ -579,6 +579,10 @@
     converters.ByteString,
   );
 
+  converters["sequence<DOMString>"] = createSequenceConverter(
+    converters.DOMString,
+  );
+
   function requiredArguments(length, required, opts = {}) {
     if (length < required) {
       const errMsg = `${

@@ -624,6 +624,10 @@ pub struct CheckOptions {
   /// Ignore any previously emits and ensure that all files are emitted from
   /// source.
   pub reload: bool,
+  /// A set of module specifiers to be excluded from the effect of
+  /// `CheckOptions::reload` if it is `true`. Perhaps because they have already
+  /// reloaded once in this process.
+  pub reload_exclusions: HashSet<ModuleSpecifier>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -673,6 +677,10 @@ pub struct TranspileOptions {
   /// Ignore any previously emits and ensure that all files are emitted from
   /// source.
   pub reload: bool,
+  /// A set of module specifiers to be excluded from the effect of
+  /// `CheckOptions::reload` if it is `true`. Perhaps because they have already
+  /// reloaded once in this process.
+  pub reload_exclusions: HashSet<ModuleSpecifier>,
 }
 
 #[derive(Debug, Clone)]
@@ -851,15 +859,14 @@ impl Graph {
     let maybe_ignored_options = config
       .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
 
+    let needs_reload = options.reload
+      && !self
+        .roots
+        .iter()
+        .all(|u| options.reload_exclusions.contains(u));
     // Short circuit if none of the modules require an emit, or all of the
-    // modules that require an emit have a valid emit.  There is also an edge
-    // case where there are multiple imports of a dynamic module during a
-    // single invocation, if that is the case, even if there is a reload, we
-    // will simply look at if the emit is invalid, to avoid two checks for the
-    // same programme.
-    if !self.needs_emit(&config)
-      || (self.is_emit_valid(&config)
-        && (!options.reload || self.roots_dynamic))
+    // modules that require an emit have a valid emit.
+    if !self.needs_emit(&config) || self.is_emit_valid(&config) && !needs_reload
     {
       debug!("graph does not need to be checked or emitted.");
       return Ok(ResultInfo {
@@ -1673,7 +1680,7 @@ impl Graph {
     let check_js = ts_config.get_check_js();
     let emit_options: ast::EmitOptions = ts_config.into();
     let mut emit_count = 0_u32;
-    for (_, module_slot) in self.modules.iter_mut() {
+    for (specifier, module_slot) in self.modules.iter_mut() {
       if let ModuleSlot::Module(module) = module_slot {
         // TODO(kitsonk) a lot of this logic should be refactored into `Module` as
         // we start to support other methods on the graph.  Especially managing
@@ -1692,8 +1699,11 @@ impl Graph {
         {
           continue;
         }
+
+        let needs_reload =
+          options.reload && !options.reload_exclusions.contains(specifier);
         // skip modules that already have a valid emit
-        if !options.reload && module.is_emit_valid(&config) {
+        if module.is_emit_valid(&config) && !needs_reload {
           continue;
         }
         let parsed_module = module.parse()?;
@@ -2255,6 +2265,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: None,
         reload: false,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
@@ -2277,6 +2288,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: None,
         reload: false,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.diagnostics.is_empty());
@@ -2294,6 +2306,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: None,
         reload: false,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
@@ -2318,6 +2331,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: None,
         reload: false,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
@@ -2340,6 +2354,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: None,
         reload: false,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
@@ -2361,6 +2376,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: None,
         reload: false,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.diagnostics.is_empty());
@@ -2380,6 +2396,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: Some(config_file),
         reload: true,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
@@ -2401,6 +2418,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: Some(config_file),
         reload: true,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
@@ -2628,6 +2646,7 @@ pub mod tests {
         debug: false,
         maybe_config_file: Some(config_file),
         reload: false,
+        ..Default::default()
       })
       .unwrap();
     assert_eq!(

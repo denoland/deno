@@ -31,6 +31,7 @@ use deno_core::ModuleSpecifier;
 use log::debug;
 use log::warn;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::env;
 use std::fs::read;
 use std::sync::Arc;
@@ -177,12 +178,17 @@ impl ProgramState {
     let mut graph = builder.get_graph();
     let debug = self.flags.log_level == Some(log::Level::Debug);
     let maybe_config_file = self.maybe_config_file.clone();
+    let reload_exclusions = {
+      let modules = self.modules.lock().unwrap();
+      modules.keys().cloned().collect::<HashSet<_>>()
+    };
 
     let result_modules = if self.flags.no_check {
       let result_info = graph.transpile(TranspileOptions {
         debug,
         maybe_config_file,
         reload: self.flags.reload,
+        reload_exclusions,
       })?;
       debug!("{}", result_info.stats);
       if let Some(ignored_options) = result_info.maybe_ignored_options {
@@ -196,6 +202,7 @@ impl ProgramState {
         lib,
         maybe_config_file,
         reload: self.flags.reload,
+        reload_exclusions,
       })?;
 
       debug!("{}", result_info.stats);
@@ -244,12 +251,17 @@ impl ProgramState {
     let mut graph = builder.get_graph();
     let debug = self.flags.log_level == Some(log::Level::Debug);
     let maybe_config_file = self.maybe_config_file.clone();
+    let reload_exclusions = {
+      let modules = self.modules.lock().unwrap();
+      modules.keys().cloned().collect::<HashSet<_>>()
+    };
 
     let result_modules = if self.flags.no_check {
       let result_info = graph.transpile(TranspileOptions {
         debug,
         maybe_config_file,
         reload: self.flags.reload,
+        reload_exclusions,
       })?;
       debug!("{}", result_info.stats);
       if let Some(ignored_options) = result_info.maybe_ignored_options {
@@ -263,6 +275,7 @@ impl ProgramState {
         lib,
         maybe_config_file,
         reload: self.flags.reload,
+        reload_exclusions,
       })?;
 
       debug!("{}", result_info.stats);

@@ -957,7 +957,8 @@ fn lsp_rename() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "let variable = 'a';\nconsole.log(variable);"
+        // this should not rename in comments and strings
+        "text": "let variable = 'a'; // variable\nconsole.log(variable);\n\"variable\";\n"
       }
     }),
   );
@@ -2730,6 +2731,34 @@ fn lsp_configuration_did_change() {
   assert_eq!(
     maybe_res,
     Some(load_fixture("completion_resolve_response_registry.json"))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_code_actions_ignore_lint() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "let message = 'Hello, Deno!';\nconsole.log(message);\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeAction",
+      load_fixture("code_action_ignore_lint_params.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_action_ignore_lint_response.json"))
   );
   shutdown(&mut client);
 }
