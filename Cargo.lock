@@ -595,7 +595,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -604,7 +604,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -614,14 +614,14 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_core"
-version = "0.90.0"
+version = "0.91.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -640,7 +640,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.23.0"
+version = "0.24.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -668,7 +668,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.31.0"
+version = "0.32.0"
 dependencies = [
  "bytes",
  "data-url",
@@ -704,7 +704,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "atty",
  "bytes",
@@ -753,7 +753,7 @@ dependencies = [
 
 [[package]]
 name = "deno_timers"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -762,7 +762,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -774,7 +774,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.40.0"
+version = "0.41.0"
 dependencies = [
  "base64 0.13.0",
  "deno_core",
@@ -786,7 +786,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "deno_core",
  "serde",
@@ -797,14 +797,14 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_websocket"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "deno_core",
  "http",
@@ -818,7 +818,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "deno_core",
  "deno_web",
