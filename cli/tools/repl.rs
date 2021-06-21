@@ -1,6 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast;
+use crate::ast::Diagnostic;
+use crate::ast::ImportsNotUsedAsValues;
 use crate::ast::TokenOrComment;
 use crate::colors;
 use crate::media_type::MediaType;
@@ -50,47 +52,34 @@ impl EditorHelper {
     self.message_tx.send((method.to_string(), params))?;
     self.response_rx.recv()?
   }
-}
 
-fn is_word_boundary(c: char) -> bool {
-  if c == '.' {
-    false
-  } else {
-    char::is_ascii_whitespace(&c) || char::is_ascii_punctuation(&c)
+  fn get_global_lexical_scope_names(&self) -> Vec<String> {
+    let evaluate_response = self
+      .post_message(
+        "Runtime.globalLexicalScopeNames",
+        Some(json!({
+          "executionContextId": self.context_id,
+        })),
+      )
+      .unwrap();
+
+    evaluate_response
+      .get("names")
+      .unwrap()
+      .as_array()
+      .unwrap()
+      .iter()
+      .map(|n| n.as_str().unwrap().to_string())
+      .collect()
   }
-}
 
-impl Completer for EditorHelper {
-  type Candidate = String;
-
-  fn complete(
-    &self,
-    line: &str,
-    pos: usize,
-    _ctx: &Context<'_>,
-  ) -> Result<(usize, Vec<String>), ReadlineError> {
-    let start = line[..pos].rfind(is_word_boundary).map_or_else(|| 0, |i| i);
-    let end = line[pos..]
-      .rfind(is_word_boundary)
-      .map_or_else(|| pos, |i| pos + i);
-
-    let word = &line[start..end];
-    let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
-    let word = word.strip_suffix(is_word_boundary).unwrap_or(word);
-
-    let fallback = format!(".{}", word);
-
-    let (prefix, suffix) = match word.rfind('.') {
-      Some(index) => word.split_at(index),
-      None => ("globalThis", fallback.as_str()),
-    };
-
+  fn get_expression_property_names(&self, expr: &str) -> Vec<String> {
     let evaluate_response = self
       .post_message(
         "Runtime.evaluate",
         Some(json!({
           "contextId": self.context_id,
-          "expression": prefix,
+          "expression": expr,
           "throwOnSideEffect": true,
           "timeout": 200,
         })),
@@ -98,8 +87,7 @@ impl Completer for EditorHelper {
       .unwrap();
 
     if evaluate_response.get("exceptionDetails").is_some() {
-      let candidates = Vec::new();
-      return Ok((pos, candidates));
+      return Vec::new();
     }
 
     if let Some(result) = evaluate_response.get("result") {
@@ -113,32 +101,83 @@ impl Completer for EditorHelper {
 
         if let Ok(get_properties_response) = get_properties_response {
           if let Some(result) = get_properties_response.get("result") {
-            let candidates = result
+            let property_names = result
               .as_array()
               .unwrap()
               .iter()
-              .filter_map(|r| {
-                let name = r.get("name").unwrap().as_str().unwrap().to_string();
-
-                if name.starts_with("Symbol(") {
-                  return None;
-                }
-
-                if name.starts_with(&suffix[1..]) {
-                  return Some(name);
-                }
-
-                None
-              })
+              .map(|r| r.get("name").unwrap().as_str().unwrap().to_string())
               .collect();
 
-            return Ok((pos - (suffix.len() - 1), candidates));
+            return property_names;
           }
         }
       }
     }
 
-    Ok((pos, Vec::new()))
+    Vec::new()
+  }
+}
+
+fn is_word_boundary(c: char) -> bool {
+  if c == '.' {
+    false
+  } else {
+    char::is_ascii_whitespace(&c) || char::is_ascii_punctuation(&c)
+  }
+}
+
+fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
+  let start = line[..cursor_pos]
+    .rfind(is_word_boundary)
+    .map_or_else(|| 0, |i| i);
+  let end = line[cursor_pos..]
+    .rfind(is_word_boundary)
+    .map_or_else(|| cursor_pos, |i| cursor_pos + i);
+
+  let word = &line[start..end];
+  let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
+  let word = word.strip_suffix(is_word_boundary).unwrap_or(word);
+
+  word
+}
+
+impl Completer for EditorHelper {
+  type Candidate = String;
+
+  fn complete(
+    &self,
+    line: &str,
+    pos: usize,
+    _ctx: &Context<'_>,
+  ) -> Result<(usize, Vec<String>), ReadlineError> {
+    let expr = get_expr_from_line_at_pos(line, pos);
+
+    // check if the expression is in the form `obj.prop`
+    if let Some(index) = expr.rfind('.') {
+      let sub_expr = &expr[..index];
+      let prop_name = &expr[index + 1..];
+      let candidates = self
+        .get_expression_property_names(sub_expr)
+        .into_iter()
+        .filter(|n| !n.starts_with("Symbol(") && n.starts_with(prop_name))
+        .collect();
+
+      Ok((pos - prop_name.len(), candidates))
+    } else {
+      // combine results of declarations and globalThis properties
+      let mut candidates = self
+        .get_expression_property_names("globalThis")
+        .into_iter()
+        .chain(self.get_global_lexical_scope_names())
+        .filter(|n| n.starts_with(expr))
+        .collect::<Vec<_>>();
+
+      // sort and remove duplicates
+      candidates.sort();
+      candidates.dedup(); // make sure to sort first
+
+      Ok((pos - expr.len(), candidates))
+    }
   }
 }
 
@@ -150,7 +189,7 @@ impl Validator for EditorHelper {
     let mut stack: Vec<Token> = Vec::new();
     let mut in_template = false;
 
-    for item in ast::lex("", ctx.input(), &MediaType::JavaScript) {
+    for item in ast::lex("", ctx.input(), &MediaType::TypeScript) {
       if let TokenOrComment::Token(token) = item.inner {
         match token {
           Token::BackQuote => in_template = !in_template,
@@ -210,7 +249,7 @@ impl Highlighter for EditorHelper {
   fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
     let mut out_line = String::from(line);
 
-    for item in ast::lex("", line, &MediaType::JavaScript) {
+    for item in ast::lex("", line, &MediaType::TypeScript) {
       // Adding color adds more bytes to the string,
       // so an offset is needed to stop spans falling out of sync.
       let offset = out_line.len() - line.len();
@@ -402,7 +441,48 @@ impl ReplSession {
     self.worker.run_event_loop(false).await
   }
 
-  pub async fn evaluate_line(&mut self, line: &str) -> Result<Value, AnyError> {
+  pub async fn evaluate_line_and_get_output(
+    &mut self,
+    line: &str,
+  ) -> Result<String, AnyError> {
+    match self.evaluate_line_with_object_wrapping(line).await {
+      Ok(evaluate_response) => {
+        let evaluate_result = evaluate_response.get("result").unwrap();
+        let evaluate_exception_details =
+          evaluate_response.get("exceptionDetails");
+
+        if evaluate_exception_details.is_some() {
+          self.set_last_thrown_error(evaluate_result).await?;
+        } else {
+          self.set_last_eval_result(evaluate_result).await?;
+        }
+
+        let value = self.get_eval_value(evaluate_result).await?;
+        Ok(match evaluate_exception_details {
+          Some(_) => format!("Uncaught {}", value),
+          None => value,
+        })
+      }
+      Err(err) => {
+        // handle a parsing diagnostic
+        match err.downcast_ref::<Diagnostic>() {
+          Some(diagnostic) => Ok(format!(
+            "{}: {} at {}:{}",
+            colors::red("parse error"),
+            diagnostic.message,
+            diagnostic.location.line,
+            diagnostic.location.col
+          )),
+          None => Err(err),
+        }
+      }
+    }
+  }
+
+  async fn evaluate_line_with_object_wrapping(
+    &mut self,
+    line: &str,
+  ) -> Result<Value, AnyError> {
     // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
     // statement rather than an object literal so we interpret it as an expression statement
     // to match the behavior found in a typical prompt including browser developer tools.
@@ -414,9 +494,7 @@ impl ReplSession {
       line.to_string()
     };
 
-    let evaluate_response = self
-      .evaluate_expression(&format!("'use strict'; void 0;\n{}", &wrapped_line))
-      .await?;
+    let evaluate_response = self.evaluate_ts_expression(&wrapped_line).await?;
 
     // If that fails, we retry it without wrapping in parens letting the error bubble up to the
     // user if it is still an error.
@@ -424,9 +502,7 @@ impl ReplSession {
       if evaluate_response.get("exceptionDetails").is_some()
         && wrapped_line != line
       {
-        self
-          .evaluate_expression(&format!("'use strict'; void 0;\n{}", &line))
-          .await?
+        self.evaluate_ts_expression(&line).await?
       } else {
         evaluate_response
       };
@@ -434,7 +510,7 @@ impl ReplSession {
     Ok(evaluate_response)
   }
 
-  pub async fn set_last_thrown_error(
+  async fn set_last_thrown_error(
     &mut self,
     error: &Value,
   ) -> Result<(), AnyError> {
@@ -451,7 +527,7 @@ impl ReplSession {
     Ok(())
   }
 
-  pub async fn set_last_eval_result(
+  async fn set_last_eval_result(
     &mut self,
     evaluate_result: &Value,
   ) -> Result<(), AnyError> {
@@ -490,6 +566,34 @@ impl ReplSession {
     let value = inspect_result.get("value").unwrap().as_str().unwrap();
 
     Ok(value.to_string())
+  }
+
+  async fn evaluate_ts_expression(
+    &mut self,
+    expression: &str,
+  ) -> Result<Value, AnyError> {
+    let parsed_module =
+      crate::ast::parse("repl.ts", &expression, &crate::MediaType::TypeScript)?;
+
+    let transpiled_src = parsed_module
+      .transpile(&crate::ast::EmitOptions {
+        emit_metadata: false,
+        source_map: false,
+        inline_source_map: false,
+        imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
+        // JSX is not supported in the REPL
+        transform_jsx: false,
+        jsx_factory: "React.createElement".into(),
+        jsx_fragment_factory: "React.Fragment".into(),
+      })?
+      .0;
+
+    self
+      .evaluate_expression(&format!(
+        "'use strict'; void 0;\n{}",
+        transpiled_src
+      ))
+      .await
   }
 
   async fn evaluate_expression(
@@ -578,29 +682,13 @@ pub async fn run(
     .await;
     match line {
       Ok(line) => {
-        let evaluate_response = repl_session.evaluate_line(&line).await?;
+        let output = repl_session.evaluate_line_and_get_output(&line).await?;
 
         // We check for close and break here instead of making it a loop condition to get
         // consistent behavior in when the user evaluates a call to close().
         if repl_session.is_closing().await? {
           break;
         }
-
-        let evaluate_result = evaluate_response.get("result").unwrap();
-        let evaluate_exception_details =
-          evaluate_response.get("exceptionDetails");
-
-        if evaluate_exception_details.is_some() {
-          repl_session.set_last_thrown_error(evaluate_result).await?;
-        } else {
-          repl_session.set_last_eval_result(evaluate_result).await?;
-        }
-
-        let value = repl_session.get_eval_value(evaluate_result).await?;
-        let output = match evaluate_exception_details {
-          Some(_) => format!("Uncaught {}", value),
-          None => value,
-        };
 
         println!("{}", output);
 

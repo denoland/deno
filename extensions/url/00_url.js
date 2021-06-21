@@ -3,23 +3,24 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const webidl = window.__bootstrap.webidl;
 
-  function requiredArguments(name, length, required) {
-    if (length < required) {
-      const errMsg = `${name} requires at least ${required} argument${
-        required === 1 ? "" : "s"
-      }, but only ${length} present`;
-      throw new TypeError(errMsg);
-    }
-  }
-
-  const paramLists = new WeakMap();
-  const urls = new WeakMap();
+  const _list = Symbol("list");
+  const _urlObject = Symbol("url object");
 
   class URLSearchParams {
-    #params = [];
+    [_list];
+    [_urlObject] = null;
 
     constructor(init = "") {
+      const prefix = "Failed to construct 'URL'";
+      init = webidl.converters
+        ["sequence<sequence<USVString>> or record<USVString, USVString> or USVString"](
+          init,
+          { prefix, context: "Argument 1" },
+        );
+      this[webidl.brand] = webidl.brand;
+
       if (typeof init === "string") {
         // Overload: USVString
         // If init is a string and starts with U+003F (?),
@@ -27,59 +28,65 @@
         if (init[0] == "?") {
           init = init.slice(1);
         }
-
-        this.#params = core.opSync("op_url_parse_search_params", init);
-      } else if (
-        Array.isArray(init) ||
-        typeof init?.[Symbol.iterator] == "function"
-      ) {
+        this[_list] = core.opSync("op_url_parse_search_params", init);
+      } else if (Array.isArray(init)) {
         // Overload: sequence<sequence<USVString>>
-        for (const pair of init) {
-          // If pair does not contain exactly two items, then throw a TypeError.
+        this[_list] = init.map((pair, i) => {
           if (pair.length !== 2) {
             throw new TypeError(
-              "URLSearchParams.constructor sequence argument must only contain pair elements",
+              `${prefix}: Item ${i +
+                0} in the parameter list does have length 2 exactly.`,
             );
           }
-          this.#params.push([String(pair[0]), String(pair[1])]);
-        }
-      } else if (Object(init) !== init) {
-        // pass
-      } else if (init instanceof URLSearchParams) {
-        this.#params = [...init.#params];
+          return [pair[0], pair[1]];
+        });
       } else {
         // Overload: record<USVString, USVString>
-        for (const key of Object.keys(init)) {
-          this.#params.push([key, String(init[key])]);
-        }
+        this[_list] = Object.keys(init).map((key) => [key, init[key]]);
       }
-
-      paramLists.set(this, this.#params);
-      urls.set(this, null);
     }
 
     #updateUrlSearch() {
-      const url = urls.get(this);
-      if (url == null) {
+      const url = this[_urlObject];
+      if (url === null) {
         return;
       }
-      const parseArgs = { href: url.href, setSearch: this.toString() };
-      parts.set(url, core.opSync("op_url_parse", parseArgs));
+      const parts = core.opSync("op_url_parse", {
+        href: url.href,
+        setSearch: this.toString(),
+      });
+      url[_url] = parts;
     }
 
     append(name, value) {
-      requiredArguments("URLSearchParams.append", arguments.length, 2);
-      this.#params.push([String(name), String(value)]);
+      webidl.assertBranded(this, URLSearchParams);
+      const prefix = "Failed to execute 'append' on 'URLSearchParams'";
+      webidl.requiredArguments(arguments.length, 2, { prefix });
+      name = webidl.converters.USVString(name, {
+        prefix,
+        context: "Argument 1",
+      });
+      value = webidl.converters.USVString(value, {
+        prefix,
+        context: "Argument 2",
+      });
+      this[_list].push([name, value]);
       this.#updateUrlSearch();
     }
 
     delete(name) {
-      requiredArguments("URLSearchParams.delete", arguments.length, 1);
-      name = String(name);
+      webidl.assertBranded(this, URLSearchParams);
+      const prefix = "Failed to execute 'append' on 'URLSearchParams'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      name = webidl.converters.USVString(name, {
+        prefix,
+        context: "Argument 1",
+      });
+      const list = this[_list];
       let i = 0;
-      while (i < this.#params.length) {
-        if (this.#params[i][0] === name) {
-          this.#params.splice(i, 1);
+      while (i < list.length) {
+        if (list[i][0] === name) {
+          list.splice(i, 1);
         } else {
           i++;
         }
@@ -88,54 +95,77 @@
     }
 
     getAll(name) {
-      requiredArguments("URLSearchParams.getAll", arguments.length, 1);
-      name = String(name);
+      webidl.assertBranded(this, URLSearchParams);
+      const prefix = "Failed to execute 'getAll' on 'URLSearchParams'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      name = webidl.converters.USVString(name, {
+        prefix,
+        context: "Argument 1",
+      });
       const values = [];
-      for (const entry of this.#params) {
+      for (const entry of this[_list]) {
         if (entry[0] === name) {
           values.push(entry[1]);
         }
       }
-
       return values;
     }
 
     get(name) {
-      requiredArguments("URLSearchParams.get", arguments.length, 1);
-      name = String(name);
-      for (const entry of this.#params) {
+      webidl.assertBranded(this, URLSearchParams);
+      const prefix = "Failed to execute 'get' on 'URLSearchParams'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      name = webidl.converters.USVString(name, {
+        prefix,
+        context: "Argument 1",
+      });
+      for (const entry of this[_list]) {
         if (entry[0] === name) {
           return entry[1];
         }
       }
-
       return null;
     }
 
     has(name) {
-      requiredArguments("URLSearchParams.has", arguments.length, 1);
-      name = String(name);
-      return this.#params.some((entry) => entry[0] === name);
+      webidl.assertBranded(this, URLSearchParams);
+      const prefix = "Failed to execute 'has' on 'URLSearchParams'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      name = webidl.converters.USVString(name, {
+        prefix,
+        context: "Argument 1",
+      });
+      return this[_list].some((entry) => entry[0] === name);
     }
 
     set(name, value) {
-      requiredArguments("URLSearchParams.set", arguments.length, 2);
+      webidl.assertBranded(this, URLSearchParams);
+      const prefix = "Failed to execute 'set' on 'URLSearchParams'";
+      webidl.requiredArguments(arguments.length, 2, { prefix });
+      name = webidl.converters.USVString(name, {
+        prefix,
+        context: "Argument 1",
+      });
+      value = webidl.converters.USVString(value, {
+        prefix,
+        context: "Argument 2",
+      });
+
+      const list = this[_list];
 
       // If there are any name-value pairs whose name is name, in list,
       // set the value of the first such name-value pair to value
       // and remove the others.
-      name = String(name);
-      value = String(value);
       let found = false;
       let i = 0;
-      while (i < this.#params.length) {
-        if (this.#params[i][0] === name) {
+      while (i < list.length) {
+        if (list[i][0] === name) {
           if (!found) {
-            this.#params[i][1] = value;
+            list[i][1] = value;
             found = true;
             i++;
           } else {
-            this.#params.splice(i, 1);
+            list.splice(i, 1);
           }
         } else {
           i++;
@@ -145,69 +175,51 @@
       // Otherwise, append a new name-value pair whose name is name
       // and value is value, to list.
       if (!found) {
-        this.#params.push([String(name), String(value)]);
+        list.push([name, value]);
       }
 
       this.#updateUrlSearch();
     }
 
     sort() {
-      this.#params.sort((a, b) => (a[0] === b[0] ? 0 : a[0] > b[0] ? 1 : -1));
+      webidl.assertBranded(this, URLSearchParams);
+      this[_list].sort((a, b) => (a[0] === b[0] ? 0 : a[0] > b[0] ? 1 : -1));
       this.#updateUrlSearch();
     }
 
-    forEach(callbackfn, thisArg) {
-      requiredArguments("URLSearchParams.forEach", arguments.length, 1);
-
-      if (typeof thisArg !== "undefined") {
-        callbackfn = callbackfn.bind(thisArg);
-      }
-
-      for (const [key, value] of this.#params) {
-        callbackfn(value, key, this);
-      }
-    }
-
-    *keys() {
-      for (const [key] of this.#params) {
-        yield key;
-      }
-    }
-
-    *values() {
-      for (const [, value] of this.#params) {
-        yield value;
-      }
-    }
-
-    *entries() {
-      yield* this.#params;
-    }
-
-    *[Symbol.iterator]() {
-      yield* this.#params;
-    }
-
     toString() {
-      return core.opSync("op_url_stringify_search_params", this.#params);
+      webidl.assertBranded(this, URLSearchParams);
+      return core.opSync("op_url_stringify_search_params", this[_list]);
+    }
+
+    get [Symbol.toStringTag]() {
+      return "URLSearchParams";
     }
   }
 
-  const parts = new WeakMap();
+  webidl.mixinPairIterable("URLSearchParams", URLSearchParams, _list, 0, 1);
+
+  webidl.configurePrototype(URLSearchParams);
+
+  const _url = Symbol("url");
 
   class URL {
-    #searchParams = null;
+    [_url];
+    #queryObject = null;
 
-    constructor(url, base) {
-      new.target;
-
-      if (url instanceof URL && base === undefined) {
-        parts.set(this, parts.get(url));
-      } else {
-        base = base !== undefined ? String(base) : base;
-        const parseArgs = { href: String(url), baseHref: base };
-        parts.set(this, core.opSync("op_url_parse", parseArgs));
+    constructor(url, base = undefined) {
+      const prefix = "Failed to construct 'URL'";
+      url = webidl.converters.USVString(url, { prefix, context: "Argument 1" });
+      if (base !== undefined) {
+        base = webidl.converters.USVString(base, {
+          prefix,
+          context: "Argument 2",
+        });
       }
+      this[webidl.brand] = webidl.brand;
+
+      const parts = core.opSync("op_url_parse", { href: url, baseHref: base });
+      this[_url] = parts;
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
@@ -228,8 +240,8 @@
     }
 
     #updateSearchParams() {
-      if (this.#searchParams != null) {
-        const params = paramLists.get(this.#searchParams);
+      if (this.#queryObject !== null) {
+        const params = this.#queryObject[_list];
         const newParams = core.opSync(
           "op_url_parse_search_params",
           this.search.slice(1),
@@ -239,122 +251,208 @@
     }
 
     get hash() {
-      return parts.get(this).hash;
+      webidl.assertBranded(this, URL);
+      return this[_url].hash;
     }
 
     set hash(value) {
+      webidl.assertBranded(this, URL);
+      const prefix = "Failed to set 'hash' on 'URL'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      value = webidl.converters.USVString(value, {
+        prefix,
+        context: "Argument 1",
+      });
       try {
-        const parseArgs = { href: this.href, setHash: String(value) };
-        parts.set(this, core.opSync("op_url_parse", parseArgs));
+        this[_url] = core.opSync("op_url_parse", {
+          href: this.href,
+          setHash: value,
+        });
       } catch {
         /* pass */
       }
     }
 
     get host() {
-      return parts.get(this).host;
+      webidl.assertBranded(this, URL);
+      return this[_url].host;
     }
 
     set host(value) {
+      webidl.assertBranded(this, URL);
+      const prefix = "Failed to set 'host' on 'URL'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      value = webidl.converters.USVString(value, {
+        prefix,
+        context: "Argument 1",
+      });
       try {
-        const parseArgs = { href: this.href, setHost: String(value) };
-        parts.set(this, core.opSync("op_url_parse", parseArgs));
+        this[_url] = core.opSync("op_url_parse", {
+          href: this.href,
+          setHost: value,
+        });
       } catch {
         /* pass */
       }
     }
 
     get hostname() {
-      return parts.get(this).hostname;
+      webidl.assertBranded(this, URL);
+      return this[_url].hostname;
     }
 
     set hostname(value) {
+      webidl.assertBranded(this, URL);
+      const prefix = "Failed to set 'hostname' on 'URL'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      value = webidl.converters.USVString(value, {
+        prefix,
+        context: "Argument 1",
+      });
       try {
-        const parseArgs = { href: this.href, setHostname: String(value) };
-        parts.set(this, core.opSync("op_url_parse", parseArgs));
+        this[_url] = core.opSync("op_url_parse", {
+          href: this.href,
+          setHostname: value,
+        });
       } catch {
         /* pass */
       }
     }
 
     get href() {
-      return parts.get(this).href;
+      webidl.assertBranded(this, URL);
+      return this[_url].href;
     }
 
     set href(value) {
-      try {
-        const parseArgs = { href: String(value) };
-        parts.set(this, core.opSync("op_url_parse", parseArgs));
-      } catch {
-        throw new TypeError("Invalid URL");
-      }
+      webidl.assertBranded(this, URL);
+      const prefix = "Failed to set 'href' on 'URL'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      value = webidl.converters.USVString(value, {
+        prefix,
+        context: "Argument 1",
+      });
+      this[_url] = core.opSync("op_url_parse", {
+        href: value,
+      });
       this.#updateSearchParams();
     }
 
     get origin() {
-      return parts.get(this).origin;
+      webidl.assertBranded(this, URL);
+      return this[_url].origin;
     }
 
     get password() {
-      return parts.get(this).password;
+      webidl.assertBranded(this, URL);
+      return this[_url].password;
     }
 
     set password(value) {
+      webidl.assertBranded(this, URL);
+      const prefix = "Failed to set 'password' on 'URL'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      value = webidl.converters.USVString(value, {
+        prefix,
+        context: "Argument 1",
+      });
       try {
-        const parseArgs = { href: this.href, setPassword: String(value) };
-        parts.set(this, core.opSync("op_url_parse", parseArgs));
+        this[_url] = core.opSync("op_url_parse", {
+          href: this.href,
+          setPassword: value,
+        });
       } catch {
         /* pass */
       }
     }
 
     get pathname() {
-      return parts.get(this).pathname;
+      webidl.assertBranded(this, URL);
+      return this[_url].pathname;
     }
 
     set pathname(value) {
+      webidl.assertBranded(this, URL);
+      const prefix = "Failed to set 'pathname' on 'URL'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      value = webidl.converters.USVString(value, {
+        prefix,
+        context: "Argument 1",
+      });
       try {
-        const parseArgs = { href: this.href, setPathname: String(value) };
-        parts.set(this, core.opSync("op_url_parse", parseArgs));
+        this[_url] = core.opSync("op_url_parse", {
+          href: this.href,
+          setPathname: value,
+        });
       } catch {
         /* pass */
       }
     }
 
     get port() {
-      return parts.get(this).port;
+      webidl.assertBranded(this, URL);
+      return this[_url].port;
     }
 
     set port(value) {
+      webidl.assertBranded(this, URL);
+      const prefix = "Failed to set 'port' on 'URL'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      value = webidl.converters.USVString(value, {
+        prefix,
+        context: "Argument 1",
+      });
       try {
-        const parseArgs = { href: this.href, setPort: String(value) };
-        parts.set(this, core.opSync("op_url_parse", parseArgs));
+        this[_url] = core.opSync("op_url_parse", {
+          href: this.href,
+          setPort: value,
+        });
       } catch {
         /* pass */
       }
     }
 
     get protocol() {
-      return parts.get(this).protocol;
+      webidl.assertBranded(this, URL);
+      return this[_url].protocol;
     }
 
     set protocol(value) {
+      webidl.assertBranded(this, URL);
+      const prefix = "Failed to set 'protocol' on 'URL'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      value = webidl.converters.USVString(value, {
+        prefix,
+        context: "Argument 1",
+      });
       try {
-        const parseArgs = { href: this.href, setProtocol: String(value) };
-        parts.set(this, core.opSync("op_url_parse", parseArgs));
+        this[_url] = core.opSync("op_url_parse", {
+          href: this.href,
+          setProtocol: value,
+        });
       } catch {
         /* pass */
       }
     }
 
     get search() {
-      return parts.get(this).search;
+      webidl.assertBranded(this, URL);
+      return this[_url].search;
     }
 
     set search(value) {
+      webidl.assertBranded(this, URL);
+      const prefix = "Failed to set 'search' on 'URL'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      value = webidl.converters.USVString(value, {
+        prefix,
+        context: "Argument 1",
+      });
       try {
-        const parseArgs = { href: this.href, setSearch: String(value) };
-        parts.set(this, core.opSync("op_url_parse", parseArgs));
+        this[_url] = core.opSync("op_url_parse", {
+          href: this.href,
+          setSearch: value,
+        });
         this.#updateSearchParams();
       } catch {
         /* pass */
@@ -362,34 +460,52 @@
     }
 
     get username() {
-      return parts.get(this).username;
+      webidl.assertBranded(this, URL);
+      return this[_url].username;
     }
 
     set username(value) {
+      webidl.assertBranded(this, URL);
+      const prefix = "Failed to set 'username' on 'URL'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      value = webidl.converters.USVString(value, {
+        prefix,
+        context: "Argument 1",
+      });
       try {
-        const parseArgs = { href: this.href, setUsername: String(value) };
-        parts.set(this, core.opSync("op_url_parse", parseArgs));
+        this[_url] = core.opSync("op_url_parse", {
+          href: this.href,
+          setUsername: value,
+        });
       } catch {
         /* pass */
       }
     }
 
     get searchParams() {
-      if (this.#searchParams == null) {
-        this.#searchParams = new URLSearchParams(this.search);
-        urls.set(this.#searchParams, this);
+      if (this.#queryObject == null) {
+        this.#queryObject = new URLSearchParams(this.search);
+        this.#queryObject[_urlObject] = this;
       }
-      return this.#searchParams;
+      return this.#queryObject;
     }
 
     toString() {
+      webidl.assertBranded(this, URL);
       return this.href;
     }
 
     toJSON() {
+      webidl.assertBranded(this, URL);
       return this.href;
     }
+
+    get [Symbol.toStringTag]() {
+      return "URL";
+    }
   }
+
+  webidl.configurePrototype(URL);
 
   /**
    * This function implements application/x-www-form-urlencoded parsing.
@@ -400,6 +516,20 @@
   function parseUrlEncoded(bytes) {
     return core.opSync("op_url_parse_search_params", null, bytes);
   }
+
+  webidl
+    .converters[
+      "sequence<sequence<USVString>> or record<USVString, USVString> or USVString"
+    ] = (V, opts) => {
+      // Union for (sequence<sequence<USVString>> or record<USVString, USVString> or USVString)
+      if (webidl.type(V) === "Object" && V !== null) {
+        if (V[Symbol.iterator] !== undefined) {
+          return webidl.converters["sequence<sequence<ByteString>>"](V, opts);
+        }
+        return webidl.converters["record<ByteString, ByteString>"](V, opts);
+      }
+      return webidl.converters.USVString(V, opts);
+    };
 
   window.__bootstrap.url = {
     URL,

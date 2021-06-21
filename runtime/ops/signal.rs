@@ -56,7 +56,6 @@ impl Resource for SignalStreamResource {
 }
 
 #[cfg(unix)]
-#[allow(clippy::unnecessary_wraps)]
 fn op_signal_bind(
   state: &mut OpState,
   signo: i32,

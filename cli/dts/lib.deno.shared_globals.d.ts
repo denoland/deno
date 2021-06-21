@@ -324,19 +324,6 @@ interface VoidFunction {
  */
 declare function queueMicrotask(func: VoidFunction): void;
 
-/** Registers an event listener in the global scope, which will be called
- * synchronously whenever the event `type` is dispatched.
- *
- *     addEventListener('unload', () => { console.log('All finished!'); });
- *     ...
- *     dispatchEvent(new Event('unload'));
- */
-declare function addEventListener(
-  type: string,
-  callback: EventListenerOrEventListenerObject | null,
-  options?: boolean | AddEventListenerOptions | undefined,
-): void;
-
 /** Dispatches an event in the global scope, synchronously invoking any
  * registered event listeners for this event in the appropriate order. Returns
  * false if event is cancelable and at least one of the event handlers which
@@ -345,18 +332,6 @@ declare function addEventListener(
  *     dispatchEvent(new Event('unload'));
  */
 declare function dispatchEvent(event: Event): boolean;
-
-/** Remove a previously registered event listener from the global scope
- *
- *     const lstnr = () => { console.log('hello'); };
- *     addEventListener('load', lstnr);
- *     removeEventListener('load', lstnr);
- */
-declare function removeEventListener(
-  type: string,
-  callback: EventListenerOrEventListenerObject | null,
-  options?: boolean | EventListenerOptions | undefined,
-): void;
 
 interface DOMStringList {
   /** Returns the number of strings in strings. */
@@ -371,24 +346,6 @@ interface DOMStringList {
 type BufferSource = ArrayBufferView | ArrayBuffer;
 
 declare var console: Console;
-
-interface MessageEventInit<T = any> extends EventInit {
-  data?: T;
-  origin?: string;
-  lastEventId?: string;
-}
-
-declare class MessageEvent<T = any> extends Event {
-  /**
-   * Returns the data of the message.
-   */
-  readonly data: T;
-  /**
-   * Returns the last event ID string, for server-sent events.
-   */
-  readonly lastEventId: string;
-  constructor(type: string, eventInitDict?: MessageEventInit);
-}
 
 interface ErrorEventInit extends EventInit {
   message?: string;
@@ -405,10 +362,6 @@ declare class ErrorEvent extends Event {
   readonly colno: number;
   readonly error: any;
   constructor(type: string, eventInitDict?: ErrorEventInit);
-}
-
-interface PostMessageOptions {
-  transfer?: any[];
 }
 
 interface AbstractWorkerEventMap {
@@ -430,7 +383,7 @@ declare class Worker extends EventTarget {
   onmessage?: (e: MessageEvent) => void;
   onmessageerror?: (e: MessageEvent) => void;
   constructor(
-    specifier: string,
+    specifier: string | URL,
     options?: WorkerOptions,
   );
   postMessage(message: any, transfer: ArrayBuffer[]): void;

@@ -163,6 +163,10 @@ fn create_compiler_snapshot(
       }))
     }),
   );
+  js_runtime.register_op(
+    "op_cwd",
+    op_sync(move |_state, _args: Value, _: ()| Ok(json!("cache:///"))),
+  );
   // using the same op that is used in `tsc.rs` for loading modules and reading
   // files, but a slightly different implementation at build time.
   js_runtime.register_op(
