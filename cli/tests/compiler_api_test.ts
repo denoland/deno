@@ -409,6 +409,7 @@ Deno.test({
 
 Deno.test({
   name: `Deno.emit() - graph errors as diagnostics`,
+  ignore: Deno.build.os === "windows",
   async fn() {
     const { diagnostics } = await Deno.emit("/a.ts", {
       sources: {
