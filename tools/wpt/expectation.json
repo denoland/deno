@@ -234,7 +234,9 @@
   },
   "hr-time": {
     "monotonic-clock.any.html": true,
-    "basic.any.html": ["Performance interface extends EventTarget."],
+    "basic.any.html": [
+      "Performance interface extends EventTarget."
+    ],
     "idlharness.any.html": [
       "Performance interface: existence and properties of interface object",
       "Performance interface: existence and properties of interface prototype object",
@@ -587,6 +589,8 @@
     ],
     "idlharness.any.html": true,
     "url-constructor.any.html": [
+      "Parsing: <foo://ho|st/> against <about:blank>",
+      "Parsing: <http://ho%7Cst/> against <about:blank>",
       "Parsing: <file://%43%7C> against <about:blank>",
       "Parsing: <file://%43|> against <about:blank>",
       "Parsing: <file://C%7C> against <about:blank>",
@@ -898,9 +902,7 @@
   "FileAPI": {
     "blob": {
       "Blob-array-buffer.any.html": true,
-      "Blob-constructor.any.html": [
-        "Passing a FrozenArray as the blobParts array should work (FrozenArray<MessagePort>)."
-      ],
+      "Blob-constructor.any.html": true,
       "Blob-slice-overflow.any.html": true,
       "Blob-slice.any.html": true,
       "Blob-stream.any.html": true,
@@ -1010,7 +1012,33 @@
         "postMessage results in correct event"
       ],
       "interface.any.html": true
-    }
+    },
+    "message-channels": {
+      "basics.any.html": true,
+      "close.any.html": true,
+      "dictionary-transferrable.any.html": false,
+      "implied-start.any.html": true,
+      "no-start.any.html": true,
+      "user-activation.tentative.any.html": false,
+      "worker-post-after-close.any.html": false,
+      "worker.any.html": false
+    },
+    "Channel_postMessage_Blob.any.html": false,
+    "Channel_postMessage_DataCloneErr.any.html": true,
+    "Channel_postMessage_clone_port.any.html": true,
+    "Channel_postMessage_clone_port_error.any.html": true,
+    "Channel_postMessage_event_properties.any.html": true,
+    "Channel_postMessage_ports_readonly_array.any.html": false,
+    "Channel_postMessage_target_source.any.html": true,
+    "Channel_postMessage_transfer_xsite_incoming_messages.window.html": false,
+    "Channel_postMessage_with_transfer_entangled.any.html": true,
+    "Channel_postMessage_with_transfer_incoming_messages.any.html": true,
+    "Channel_postMessage_with_transfer_outgoing_messages.any.html": true,
+    "MessageEvent-trusted.any.html": false,
+    "MessageEvent-trusted.window.html": false,
+    "MessageEvent.any.html": true,
+    "MessagePort_initial_disabled.any.html": true,
+    "MessagePort_onmessage_start.any.html": true
   },
   "xhr": {
     "formdata": {

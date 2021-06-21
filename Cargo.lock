@@ -781,6 +781,7 @@ dependencies = [
  "encoding_rs",
  "futures",
  "serde",
+ "tokio",
  "uuid",
 ]
 
