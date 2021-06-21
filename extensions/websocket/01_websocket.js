@@ -277,7 +277,7 @@
       webidl.assertBranded(this, WebSocket);
       const prefix = "Failed to execute 'send' on 'WebSocket'";
 
-      webidl.requiredArguments("WebSocket.send", arguments.length, 1, {
+      webidl.requiredArguments(arguments.length, 1, {
         prefix,
       });
       data = webidl.converters.WebSocketSend(data, {
