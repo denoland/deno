@@ -101,6 +101,67 @@ When seeing this header, Deno would attempt to retrieve
 `https://example.com/coolLib.d.ts` and use that when type checking the original
 module.
 
+### Using ambient or global types
+
+Overall it is better to use module/UMD type definitions with Deno, where a
+module expressly imports the types it depends upon. Modular type definitions can
+express
+[augmentation of the global scope](https://www.typescriptlang.org/docs/handbook/declaration-files/templates/global-modifying-module-d-ts.html)
+via the `declare global` in the type definition. For example:
+
+```ts
+declare global {
+  var AGlobalString: string;
+}
+```
+
+This would make `AGlobalString` available in the global namespace when importing
+the type definition.
+
+In some cases though, when leveraging other existing type libraries, it may not
+be possible to leverage modular type definitions. Therefore there are ways to
+include arbitrary type definitions when type checking programmes.
+
+#### Using a triple-slash directive
+
+This option couples the type definitions to the code itself. By adding a
+triple-slash `types` directive near the type of a module, type checking the file
+will include the type definition. For example:
+
+```ts
+/// <reference types="./types.d.ts" />
+```
+
+The specifier provided is resolved just like any other specifier in Deno, which
+means it requires an extension, and is relative to the module referencing it. It
+can be a fully qualified URL as well:
+
+```ts
+/// <reference types="https://deno.land/x/pkg@1.0.0/types.d.ts" />
+```
+
+#### Using a `tsconfig.json` file
+
+Another option is to use a `tsconfig.json` file that is configured to include
+the type definitions, by supplying a `"types"` value to the `"compilerOptions"`.
+For example:
+
+```json
+{
+  "compilerOptions": {
+    "types": [
+      "./types.d.ts",
+      "https://deno.land/x/pkg@1.0.0/types.d.ts",
+      "/Users/me/pkg/types.d.ts"
+    ]
+  }
+}
+```
+
+Like the triple-slash reference above, the specifier supplied in the `"types"`
+array will be resolved like other specifiers in Deno. In the case of relative
+specifiers, it will be resolved relative to the path to the `tsconfig.json`.
+
 ### Type Checking Web Workers
 
 When Deno loads a TypeScript module in a web worker, it will automatically type

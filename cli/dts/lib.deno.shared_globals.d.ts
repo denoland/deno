@@ -347,24 +347,6 @@ type BufferSource = ArrayBufferView | ArrayBuffer;
 
 declare var console: Console;
 
-interface MessageEventInit<T = any> extends EventInit {
-  data?: T;
-  origin?: string;
-  lastEventId?: string;
-}
-
-declare class MessageEvent<T = any> extends Event {
-  /**
-   * Returns the data of the message.
-   */
-  readonly data: T;
-  /**
-   * Returns the last event ID string, for server-sent events.
-   */
-  readonly lastEventId: string;
-  constructor(type: string, eventInitDict?: MessageEventInit);
-}
-
 interface ErrorEventInit extends EventInit {
   message?: string;
   filename?: string;
@@ -380,10 +362,6 @@ declare class ErrorEvent extends Event {
   readonly colno: number;
   readonly error: any;
   constructor(type: string, eventInitDict?: ErrorEventInit);
-}
-
-interface PostMessageOptions {
-  transfer?: any[];
 }
 
 interface AbstractWorkerEventMap {
@@ -405,7 +383,7 @@ declare class Worker extends EventTarget {
   onmessage?: (e: MessageEvent) => void;
   onmessageerror?: (e: MessageEvent) => void;
   constructor(
-    specifier: string,
+    specifier: string | URL,
     options?: WorkerOptions,
   );
   postMessage(message: any, transfer: ArrayBuffer[]): void;
