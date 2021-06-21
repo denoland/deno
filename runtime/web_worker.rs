@@ -8,16 +8,15 @@ use crate::permissions::Permissions;
 use crate::tokio_util::create_basic_runtime;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
-use deno_core::error::Context as ErrorContext;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
+use deno_core::located_script_name;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_core::GetErrorClassFn;
@@ -370,17 +369,17 @@ impl WebWorker {
       runtime_options_str, self.name, options.use_deno_namespace, self.id
     );
     self
-      .execute(&script)
+      .execute_script(&located_script_name!(), &script)
       .expect("Failed to execute worker bootstrap script");
   }
 
-  /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
-  pub fn execute(&mut self, js_source: &str) -> Result<(), AnyError> {
-    let path = env::current_dir()
-      .context("Failed to get current working directory")?
-      .join("__anonymous__");
-    let url = Url::from_file_path(path).unwrap();
-    self.js_runtime.execute(url.as_str(), js_source)
+  /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
+  pub fn execute_script(
+    &mut self,
+    name: &str,
+    source_code: &str,
+  ) -> Result<(), AnyError> {
+    self.js_runtime.execute_script(name, source_code)
   }
 
   /// Loads and instantiates specified JavaScript module.
@@ -493,7 +492,7 @@ pub fn run_web_worker(
 
   // Execute provided source code immediately
   let result = if let Some(source_code) = maybe_source_code {
-    worker.execute(&source_code)
+    worker.execute_script(&located_script_name!(), &source_code)
   } else {
     // TODO(bartlomieju): add "type": "classic", ie. ability to load
     // script instead of module
@@ -586,7 +585,7 @@ mod tests {
             console.log("after postMessage");
           }
           "#;
-      worker.execute(source).unwrap();
+      worker.execute_script("a", source).unwrap();
       let handle = worker.thread_safe_handle();
       handle_sender.send(handle).unwrap();
       let r = tokio_util::run_basic(worker.run_event_loop(false));
@@ -633,7 +632,9 @@ mod tests {
 
     let join_handle = std::thread::spawn(move || {
       let mut worker = create_test_web_worker();
-      worker.execute("onmessage = () => { close(); }").unwrap();
+      worker
+        .execute_script("a", "onmessage = () => { close(); }")
+        .unwrap();
       let handle = worker.thread_safe_handle();
       handle_sender.send(handle).unwrap();
       let r = tokio_util::run_basic(worker.run_event_loop(false));

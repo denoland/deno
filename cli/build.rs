@@ -29,7 +29,7 @@ fn create_snapshot(
     let display_path = file.strip_prefix(display_root).unwrap();
     let display_path_str = display_path.display().to_string();
     js_runtime
-      .execute(
+      .execute_script(
         &("deno:".to_string() + &display_path_str.replace('\\', "/")),
         &std::fs::read_to_string(&file).unwrap(),
       )

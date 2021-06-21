@@ -10,6 +10,7 @@ use deno_core::error::anyhow;
 use deno_core::error::bail;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
+use deno_core::located_script_name;
 use deno_core::op_sync;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::de;
@@ -556,9 +557,9 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   let exec_source = format!("globalThis.exec({})", request_str);
 
   runtime
-    .execute("[native code]", startup_source)
+    .execute_script(&located_script_name!(), startup_source)
     .context("Could not properly start the compiler runtime.")?;
-  runtime.execute("[native_code]", &exec_source)?;
+  runtime.execute_script(&located_script_name!(), &exec_source)?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();
@@ -672,7 +673,7 @@ mod tests {
       ..Default::default()
     });
     js_runtime
-      .execute(
+      .execute_script(
         "<anon>",
         r#"
       if (!(startup)) {
