@@ -108,6 +108,9 @@ async fn op_emit(
       &root_specifier
     ))
   })?;
+  builder
+    .analyze_compiler_options(&args.compiler_options)
+    .await?;
   let bundle_type = match args.bundle {
     Some(RuntimeBundleType::Module) => BundleType::Module,
     Some(RuntimeBundleType::Classic) => BundleType::Classic,

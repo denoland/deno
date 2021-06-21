@@ -174,6 +174,7 @@ impl ProgramState {
     for specifier in specifiers {
       builder.add(&specifier, false).await?;
     }
+    builder.analyze_config_file(&self.maybe_config_file).await?;
 
     let mut graph = builder.get_graph();
     let debug = self.flags.log_level == Some(log::Level::Debug);
@@ -248,6 +249,7 @@ impl ProgramState {
     let mut builder =
       GraphBuilder::new(handler, maybe_import_map, self.lockfile.clone());
     builder.add(&specifier, is_dynamic).await?;
+    builder.analyze_config_file(&self.maybe_config_file).await?;
     let mut graph = builder.get_graph();
     let debug = self.flags.log_level == Some(log::Level::Debug);
     let maybe_config_file = self.maybe_config_file.clone();

@@ -3421,7 +3421,19 @@ console.log("finish");
     output: "config.ts.out",
   });
 
-  itest!(emtpy_typescript {
+  itest!(config_types {
+    args:
+      "run --reload --quiet --config config_types.tsconfig.json config_types.ts",
+    output: "config_types.ts.out",
+  });
+
+  itest!(config_types_remote {
+    http_server: true,
+    args: "run --reload --quiet --config config_types_remote.tsconfig.json config_types.ts",
+    output: "config_types.ts.out",
+  });
+
+  itest!(empty_typescript {
     args: "run --reload subdir/empty.ts",
     output_str: Some("Check file:[WILDCARD]tests/subdir/empty.ts\n"),
   });
@@ -4121,6 +4133,17 @@ console.log("finish");
     args:
       "cache --reload http://localhost:4548/cli/tests/subdir/redirects/a.ts",
     output: "redirect_cache.out",
+  });
+
+  itest!(reference_types {
+    args: "run --reload --quiet reference_types.ts",
+    output: "reference_types.ts.out",
+  });
+
+  itest!(references_types_remote {
+    http_server: true,
+    args: "run --reload --quiet reference_types_remote.ts",
+    output: "reference_types_remote.ts.out",
   });
 
   itest!(deno_doc_types_header_direct {

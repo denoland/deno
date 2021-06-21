@@ -93,6 +93,56 @@ Deno.test({
 });
 
 Deno.test({
+  name: "Deno.emit() - type references can be loaded",
+  async fn() {
+    const { diagnostics, files, ignoredOptions, stats } = await Deno.emit(
+      "file:///a.ts",
+      {
+        sources: {
+          "file:///a.ts": `/// <reference types="./b.d.ts" />
+          const b = new B();
+          console.log(b.b);`,
+          "file:///b.d.ts": `declare class B {
+            b: string;
+          }`,
+        },
+      },
+    );
+    assertEquals(diagnostics.length, 0);
+    assert(!ignoredOptions);
+    assertEquals(stats.length, 12);
+    const keys = Object.keys(files).sort();
+    assertEquals(keys, ["file:///a.ts.js", "file:///a.ts.js.map"]);
+  },
+});
+
+Deno.test({
+  name: "Deno.emit() - compilerOptions.types",
+  async fn() {
+    const { diagnostics, files, ignoredOptions, stats } = await Deno.emit(
+      "file:///a.ts",
+      {
+        compilerOptions: {
+          types: ["file:///b.d.ts"],
+        },
+        sources: {
+          "file:///a.ts": `const b = new B();
+          console.log(b.b);`,
+          "file:///b.d.ts": `declare class B {
+            b: string;
+          }`,
+        },
+      },
+    );
+    assertEquals(diagnostics.length, 0);
+    assert(!ignoredOptions);
+    assertEquals(stats.length, 12);
+    const keys = Object.keys(files).sort();
+    assertEquals(keys, ["file:///a.ts.js", "file:///a.ts.js.map"]);
+  },
+});
+
+Deno.test({
   name: "Deno.emit() - import maps",
   async fn() {
     const { diagnostics, files, ignoredOptions, stats } = await Deno.emit(

@@ -427,6 +427,9 @@ async fn info_command(
       program_state.lockfile.clone(),
     );
     builder.add(&specifier, false).await?;
+    builder
+      .analyze_config_file(&program_state.maybe_config_file)
+      .await?;
     let graph = builder.get_graph();
     let info = graph.info()?;
 
@@ -575,6 +578,9 @@ async fn create_module_graph_and_maybe_check(
     program_state.lockfile.clone(),
   );
   builder.add(&module_specifier, false).await?;
+  builder
+    .analyze_config_file(&program_state.maybe_config_file)
+    .await?;
   let module_graph = builder.get_graph();
 
   if !program_state.flags.no_check {
@@ -813,6 +819,9 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         program_state.lockfile.clone(),
       );
       builder.add(&main_module, false).await?;
+      builder
+        .analyze_config_file(&program_state.maybe_config_file)
+        .await?;
       let module_graph = builder.get_graph();
 
       // Find all local files in graph
@@ -1024,6 +1033,9 @@ async fn test_command(
         for specifier in test_modules.iter() {
           builder.add(specifier, false).await?;
         }
+        builder
+          .analyze_config_file(&program_state.maybe_config_file)
+          .await?;
         let graph = builder.get_graph();
 
         for specifier in doc_modules {
