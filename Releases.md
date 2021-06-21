@@ -18,9 +18,6 @@ https://github.com/denoland/deno_install
 - fix: Worker accepts specifier as URL (#11038)
 - fix(lsp): do not rename in strings and comments (#11041)
 
-Release notes for std version 0.100.0:
-https://github.com/denoland/deno_std/releases/tag/0.100.0
-
 ### 1.11.1 / 2021.06.15
 
 - feat(unstable): add additional logging information in LSP (#10890)
