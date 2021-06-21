@@ -620,6 +620,7 @@ pub struct DenoFixData {
 #[derive(Debug, Clone)]
 enum CodeActionKind {
   Deno(lsp::CodeAction),
+  DenoLint(lsp::CodeAction),
   Tsc(lsp::CodeAction, tsc::CodeFixAction),
 }
 
@@ -724,7 +725,9 @@ impl CodeActionCollection {
         document_changes: None,
       }),
     };
-    self.actions.push(CodeActionKind::Deno(ignore_error_action));
+    self
+      .actions
+      .push(CodeActionKind::DenoLint(ignore_error_action));
 
     let mut changes = HashMap::new();
     changes.insert(
@@ -757,7 +760,9 @@ impl CodeActionCollection {
         document_changes: None,
       }),
     };
-    self.actions.push(CodeActionKind::Deno(ignore_file_action));
+    self
+      .actions
+      .push(CodeActionKind::DenoLint(ignore_file_action));
 
     Ok(())
   }
@@ -876,6 +881,7 @@ impl CodeActionCollection {
       .map(|i| match i {
         CodeActionKind::Tsc(c, _) => lsp::CodeActionOrCommand::CodeAction(c),
         CodeActionKind::Deno(c) => lsp::CodeActionOrCommand::CodeAction(c),
+        CodeActionKind::DenoLint(c) => lsp::CodeActionOrCommand::CodeAction(c),
       })
       .collect()
   }
