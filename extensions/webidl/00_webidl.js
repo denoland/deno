@@ -564,7 +564,10 @@
     converters.USVString,
   );
   converters["sequence<double>"] = createSequenceConverter(
-    converters["double"],
+    converters.double,
+  );
+  converters["sequence<object>"] = createSequenceConverter(
+    converters.object,
   );
   converters["Promise<undefined>"] = createPromiseConverter(() => undefined);
 
@@ -626,6 +629,7 @@
             get() {
               return member.defaultValue;
             },
+            enumerable: true,
           });
         }
       }

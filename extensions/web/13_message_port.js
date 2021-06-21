@@ -12,6 +12,7 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { setEventTargetData } = window.__bootstrap.eventTarget;
+  const { defineEventHandler } = window.__bootstrap.event;
 
   class MessageChannel {
     /** @type {MessagePort} */
@@ -49,7 +50,10 @@
     }
   }
 
+  webidl.configurePrototype(MessageChannel);
+
   const _id = Symbol("id");
+  const _enabled = Symbol("enabled");
 
   /**
    * @param {number} id
@@ -64,7 +68,9 @@
 
   class MessagePort extends EventTarget {
     /** @type {number | null} */
-    [_id];
+    [_id] = null;
+    /** @type {boolean} */
+    [_enabled] = false;
 
     constructor() {
       super();
@@ -76,41 +82,83 @@
      * @param {object[] | PostMessageOptions} transferOrOptions
      */
     postMessage(message, transferOrOptions = {}) {
-      let transfer = [];
-      if (Array.isArray(transferOrOptions)) {
-        transfer = transferOrOptions;
-      } else if (Array.isArray(transferOrOptions.transfer)) {
-        transfer = transferOrOptions.transfer;
+      webidl.assertBranded(this, MessagePort);
+      const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      message = webidl.converters.any(message);
+      let options;
+      if (
+        webidl.type(transferOrOptions) === "Object" &&
+        transferOrOptions !== undefined &&
+        transferOrOptions[Symbol.iterator] !== undefined
+      ) {
+        const transfer = webidl.converters["sequence<object>"](
+          transferOrOptions,
+          { prefix, context: "Argument 2" },
+        );
+        options = { transfer };
+      } else {
+        options = webidl.converters.PostMessageOptions(transferOrOptions, {
+          prefix,
+          context: "Argument 2",
+        });
       }
-
+      const { transfer } = options;
+      if (transfer.includes(this)) {
+        throw new DOMException("Can not tranfer self", "DataCloneError");
+      }
       const data = serializeJsMessageData(message, transfer);
+      if (this[_id] === null) return;
       core.opSync("op_message_port_post_message", this[_id], data);
     }
 
     start() {
+      webidl.assertBranded(this, MessagePort);
+      if (this[_enabled]) return;
       (async () => {
+        this[_enabled] = true;
         while (true) {
+          if (this[_id] === null) break;
           const data = await core.opAsync(
             "op_message_port_recv_message",
             this[_id],
           );
           if (data === null) break;
-          const [message, transfer] = deserializeJsMessageData(data);
+          let message, transfer;
+          try {
+            const v = deserializeJsMessageData(data);
+            message = v[0];
+            transfer = v[1];
+          } catch (err) {
+            const event = new MessageEvent("messageerror", { data: err });
+            this.dispatchEvent(event);
+            return;
+          }
           const event = new MessageEvent("message", {
             data: message,
             ports: transfer,
           });
           this.dispatchEvent(event);
         }
+        this[_enabled] = false;
       })();
     }
 
     close() {
+      webidl.assertBranded(this, MessagePort);
       if (this[_id] !== null) {
         core.close(this[_id]);
+        this[_id] = null;
       }
     }
   }
+
+  defineEventHandler(MessagePort.prototype, "message", function (self) {
+    self.start();
+  });
+  defineEventHandler(MessagePort.prototype, "messageerror");
+
+  webidl.configurePrototype(MessagePort);
 
   /**
    * @returns {[number, number]}
@@ -162,6 +210,7 @@
         if (id === null) {
           throw new TypeError("Can not transfer disentangled message port");
         }
+        transferable[_id] = null;
         serializedTransferables.push({ kind: "messagePort", data: id });
       } else {
         throw new TypeError("Value not transferable");
@@ -173,6 +222,19 @@
       transferables: serializedTransferables,
     };
   }
+
+  webidl.converters.PostMessageOptions = webidl.createDictionaryConverter(
+    "PostMessageOptions",
+    [
+      {
+        key: "transfer",
+        converter: webidl.converters["sequence<object>"],
+        get defaultValue() {
+          return [];
+        },
+      },
+    ],
+  );
 
   window.__bootstrap.messagePort = {
     MessageChannel,
