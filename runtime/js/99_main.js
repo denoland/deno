@@ -36,6 +36,7 @@ delete Object.prototype.__proto__;
   const formData = window.__bootstrap.formData;
   const fetch = window.__bootstrap.fetch;
   const prompt = window.__bootstrap.prompt;
+  const messagePort = window.__bootstrap.messagePort;
   const denoNs = window.__bootstrap.denoNs;
   const denoNsUnstable = window.__bootstrap.denoNsUnstable;
   const errors = window.__bootstrap.errors.errors;
@@ -299,6 +300,8 @@ delete Object.prototype.__proto__;
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
     BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
+    MessageChannel: util.nonEnumerable(messagePort.MessageChannel),
+    MessagePort: util.nonEnumerable(messagePort.MessagePort),
     Worker: util.nonEnumerable(worker.Worker),
     WritableStream: util.nonEnumerable(streams.WritableStream),
     WritableStreamDefaultWriter: util.nonEnumerable(
