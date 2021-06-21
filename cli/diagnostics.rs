@@ -235,13 +235,14 @@ impl Diagnostic {
       _ => "",
     };
 
+    let code = if self.code >= 900001 {
+      "".to_string()
+    } else {
+      colors::bold(format!("TS{} ", self.code)).to_string()
+    };
+
     if !category.is_empty() {
-      write!(
-        f,
-        "{} [{}]: ",
-        colors::bold(&format!("TS{}", self.code)),
-        category
-      )
+      write!(f, "{}[{}]: ", code, category)
     } else {
       Ok(())
     }
