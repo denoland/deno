@@ -492,10 +492,9 @@ delete Object.prototype.__proto__;
       Object.assign(finalDenoNs, denoNsUnstable);
     }
 
-    // Setup `Deno` global - we're actually overriding already
-    // existing global `Deno` with `Deno` namespace from "./deno.ts".
-    util.immutableDefine(globalThis, "Deno", finalDenoNs);
-    Object.freeze(globalThis.Deno);
+    // Setup `Deno` global - we're actually overriding already existing global
+    // `Deno` with `Deno` namespace from "./deno.ts".
+    Object.defineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
     Object.freeze(globalThis.Deno.core);
     Object.freeze(globalThis.Deno.core.sharedQueue);
     signals.setSignals();
