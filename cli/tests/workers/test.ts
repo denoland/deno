@@ -779,13 +779,17 @@ Deno.test({
       new URL("shared_array_buffer.ts", import.meta.url).href,
       workerOptions,
     );
-    const sab = new SharedArrayBuffer(1);
-    const u8 = new Uint8Array(sab);
-    assertEquals(u8[0], 0);
+    const sab1 = new SharedArrayBuffer(1);
+    const sab2 = new SharedArrayBuffer(1);
+    const bytes1 = new Uint8Array(sab1);
+    const bytes2 = new Uint8Array(sab2);
+    assertEquals(bytes1[0], 0);
+    assertEquals(bytes2[0], 0);
     w.onmessage = (): void => {
-      w.postMessage(sab);
+      w.postMessage([sab1, sab2]);
       w.onmessage = (): void => {
-        assertEquals(u8[0], 1);
+        assertEquals(bytes1[0], 1);
+        assertEquals(bytes2[0], 2);
         promise.resolve();
       };
     };
