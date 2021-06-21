@@ -6,7 +6,7 @@
 /// <reference path="../url/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
-/// <reference path="./11_streams_types.d.ts" />
+/// <reference path="../web/06_streams_types.d.ts" />
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 "use strict";
@@ -148,10 +148,8 @@
       let charset = null;
       let essence = null;
       let mimeType = null;
-      const values = getDecodeSplitHeader(
-        headerListFromHeaders(this[_headers]),
-        "Content-Type",
-      );
+      const headerList = headerListFromHeaders(this[_headers]);
+      const values = getDecodeSplitHeader(headerList, "content-type");
       if (values === null) return null;
       for (const value of values) {
         const temporaryMimeType = mimesniff.parseMimeType(value);
@@ -220,7 +218,7 @@
       }
       const inner = newInnerResponse(status);
       inner.type = "default";
-      inner.headerList.push(["Location", parsedURL.href]);
+      inner.headerList.push(["location", parsedURL.href]);
       const response = webidl.createBranded(Response);
       response[_response] = inner;
       response[_headers] = headersFromHeaderList(

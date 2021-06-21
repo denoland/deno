@@ -62,8 +62,8 @@ unitTest(function DenoNamespaceEqualsWindowDeno(): void {
   assert(Deno === window.Deno);
 });
 
-unitTest(function DenoNamespaceIsFrozen(): void {
-  assert(Object.isFrozen(Deno));
+unitTest(function DenoNamespaceIsNotFrozen(): void {
+  assert(!Object.isFrozen(Deno));
 });
 
 unitTest(function webAssemblyExists(): void {
@@ -77,46 +77,14 @@ declare global {
   }
 }
 
-unitTest(function DenoNamespaceImmutable(): void {
-  const denoCopy = window.Deno;
-  try {
-    // deno-lint-ignore no-explicit-any
-    (Deno as any) = 1;
-  } catch {
-    // pass
-  }
-  assert(denoCopy === Deno);
-  try {
-    // deno-lint-ignore no-explicit-any
-    (window as any).Deno = 1;
-  } catch {
-    // pass
-  }
-  assert(denoCopy === Deno);
-  try {
-    // deno-lint-ignore no-explicit-any
-    delete (window as any).Deno;
-  } catch {
-    // pass
-  }
-  assert(denoCopy === Deno);
+unitTest(function DenoNamespaceConfigurable() {
+  const desc = Object.getOwnPropertyDescriptor(globalThis, "Deno");
+  assert(desc);
+  assert(desc.configurable);
+  assert(!desc.writable);
+});
 
-  const { readFile } = Deno;
-  try {
-    // deno-lint-ignore no-explicit-any
-    (Deno as any).readFile = 1;
-  } catch {
-    // pass
-  }
-  assert(readFile === Deno.readFile);
-  try {
-    // deno-lint-ignore no-explicit-any
-    delete (window as any).Deno.readFile;
-  } catch {
-    // pass
-  }
-  assert(readFile === Deno.readFile);
-
+unitTest(function DenoCoreNamespaceIsImmutable(): void {
   const { print } = Deno.core;
   try {
     Deno.core.print = 1;

@@ -86,7 +86,6 @@ impl Resource for TestResource {
   }
 }
 
-#[allow(clippy::unnecessary_wraps)]
 fn op_test_resource_table_add(
   state: &mut OpState,
   text: String,

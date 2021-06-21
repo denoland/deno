@@ -32,7 +32,7 @@ The following permissions are available:
 - **--allow-read=\<allow-read\>** Allow file system read access. You can specify
   an optional, comma-separated list of directories or files to provide an
   allow-list of allowed file system access.
-- **--allow-run=\<allow-run\>**Allow running subprocesses. Since Deno 1.9, You
+- **--allow-run=\<allow-run\>** Allow running subprocesses. Since Deno 1.9, You
   can specify an options, comma-separated list of subprocesses to provide an
   allow-list of allowed subprocesses. Be aware that subprocesses are not run in
   a sandbox and therefore do not have the same security restrictions as the deno

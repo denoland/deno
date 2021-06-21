@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { delay, join, readLines, ROOT_PATH, toFileUrl } from "../util.js";
-import { assert, ManifestTestOptions, release, runPy } from "./utils.ts";
+import { assert, denoBinary, ManifestTestOptions, runPy } from "./utils.ts";
 import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.3-alpha2/deno-dom-wasm.ts";
 
 export async function runWithTestUtil<T>(
@@ -88,7 +88,7 @@ export async function runSingleTest(
 
   const proc = Deno.run({
     cmd: [
-      join(ROOT_PATH, `./target/${release ? "release" : "debug"}/deno`),
+      denoBinary(),
       "run",
       "-A",
       "--unstable",
@@ -122,7 +122,7 @@ export async function runSingleTest(
       harnessStatus = JSON.parse(line.slice(5));
     } else {
       stderr += line + "\n";
-      console.error(stderr);
+      console.error(line);
     }
   }
 

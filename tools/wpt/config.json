@@ -1,11 +1,11 @@
 {
   "check_subdomains": false,
   "ssl": {
-    "type": "openssl",
-    "openssl": {
-      "duration": 365,
-      "force_regenerate": false,
-      "base_path": "../../tools/wpt/certs"
+    "type": "pregenerated",
+    "pregenerated": {
+      "ca_cert_path": "../../tools/wpt/certs/cacert.pem",
+      "host_cert_path": "../../tools/wpt/certs/web-platform.test.pem",
+      "host_key_path": "../../tools/wpt/certs/web-platform.test.key"
     }
   }
 }

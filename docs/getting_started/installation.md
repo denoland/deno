@@ -55,9 +55,10 @@ Deno binaries can also be installed manually, by downloading a zip file at
 These packages contain just a single executable file. You will have to set the
 executable bit on macOS and Linux.
 
-Official Docker images are not available at the current time
-([issue#3356](https://github.com/denoland/deno/issues/3356)), but
-[community images](https://github.com/hayd/deno-docker) are available.
+### Docker
+
+For more information and instructions on the official Docker images:
+[https://github.com/denoland/deno_docker](https://github.com/denoland/deno_docker)
 
 ### Testing your installation
 

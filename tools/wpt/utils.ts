@@ -12,13 +12,19 @@ export const {
   rebuild,
   ["--"]: rest,
   ["auto-config"]: autoConfig,
+  binary,
 } = parse(Deno.args, {
   "--": true,
   boolean: ["quiet", "release", "no-interactive"],
-  string: ["json", "wptreport"],
+  string: ["json", "wptreport", "binary"],
 });
 
-/// PAGE ROOT
+export function denoBinary() {
+  if (binary) {
+    return binary;
+  }
+  return join(ROOT_PATH, `./target/${release ? "release" : "debug"}/deno`);
+}
 
 /// WPT TEST MANIFEST
 
@@ -138,6 +144,7 @@ export async function checkPy3Available() {
 }
 
 export async function cargoBuild() {
+  if (binary) return;
   const proc = Deno.run({
     cmd: ["cargo", "build", ...(release ? ["--release"] : [])],
     cwd: ROOT_PATH,
@@ -164,11 +171,7 @@ export async function generateRunInfo(): Promise<unknown> {
   const revision = (new TextDecoder().decode(await proc.output())).trim();
   proc.close();
   const proc2 = Deno.run({
-    cmd: [
-      join(ROOT_PATH, `./target/${release ? "release" : "debug"}/deno`),
-      "eval",
-      "console.log(JSON.stringify(Deno.version))",
-    ],
+    cmd: [denoBinary(), "eval", "console.log(JSON.stringify(Deno.version))"],
     cwd: join(ROOT_PATH, "test_util", "wpt"),
     stdout: "piped",
   });
