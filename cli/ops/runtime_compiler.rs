@@ -118,12 +118,14 @@ async fn op_emit(
   };
   let graph = builder.get_graph();
   let debug = program_state.flags.log_level == Some(log::Level::Debug);
-  let (files, result_info) = graph.emit(EmitOptions {
+  let graph_errors = graph.get_errors();
+  let (files, mut result_info) = graph.emit(EmitOptions {
     bundle_type,
     check: args.check.unwrap_or(true),
     debug,
     maybe_user_config: args.compiler_options,
   })?;
+  result_info.diagnostics.extend_graph_errors(graph_errors);
 
   Ok(json!({
     "diagnostics": result_info.diagnostics,

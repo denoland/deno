@@ -1273,6 +1273,18 @@ impl Graph {
     Ok(())
   }
 
+  /// Retrieve the first module loading error from the graph and return it.
+  pub fn get_errors(&self) -> HashMap<ModuleSpecifier, String> {
+    self
+      .modules
+      .iter()
+      .filter_map(|(s, sl)| match sl {
+        ModuleSlot::Err(err) => Some((s.clone(), err.to_string())),
+        _ => None,
+      })
+      .collect()
+  }
+
   /// Retrieve a map that contains a representation of each module in the graph
   /// which can be used to provide code to a module loader without holding all
   /// the state to be able to operate on the graph.
