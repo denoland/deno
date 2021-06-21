@@ -6,6 +6,18 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.11.2 / 2021.06.21
+
+- feat(unstable, lsp): quick fix actions to ignore lint errors (#10627)
+- fix: add support for module es2020 to Deno.emit (#11065)
+- fix: align Console to spec (#10983)
+- fix: align URL / URLSearchParams to spec (#11005)
+- fix: align Websocket to spec (#11010)
+- fix: closing / aborting WritableStream is racy (#10982)
+- fix: fetch with method HEAD should not have body (#11003)
+- fix: Worker accepts specifier as URL (#11038)
+- fix(lsp): do not rename in strings and comments (#11041)
+
 ### 1.11.1 / 2021.06.15
 
 - feat(unstable): add additional logging information in LSP (#10890)
