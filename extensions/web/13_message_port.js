@@ -198,7 +198,12 @@
    * @returns {globalThis.__bootstrap.messagePort.MessageData}
    */
   function serializeJsMessageData(data, tranferables) {
-    const serializedData = core.serialize(data);
+    let serializedData;
+    try {
+      serializedData = core.serialize(data);
+    } catch (err) {
+      throw new DOMException(err.message, "DataCloneError");
+    }
 
     /** @type {globalThis.__bootstrap.messagePort.Transferable[]} */
     const serializedTransferables = [];
@@ -208,12 +213,15 @@
         webidl.assertBranded(transferable, MessagePort);
         const id = transferable[_id];
         if (id === null) {
-          throw new TypeError("Can not transfer disentangled message port");
+          throw new DOMException(
+            "Can not transfer disentangled message port",
+            "DataCloneError",
+          );
         }
         transferable[_id] = null;
         serializedTransferables.push({ kind: "messagePort", data: id });
       } else {
-        throw new TypeError("Value not transferable");
+        throw new DOMException("Value not transferable", "DataCloneError");
       }
     }
 

@@ -1010,7 +1010,35 @@
         "postMessage results in correct event"
       ],
       "interface.any.html": true
-    }
+    },
+    "message-channels": {
+      "basics.any.html": true,
+      "close.any.html": [
+        "close() detaches a MessagePort (but not the one its entangled with)"
+      ],
+      "dictionary-transferrable.any.html": false,
+      "implied-start.any.html": true,
+      "no-start.any.html": true,
+      "user-activation.tentative.any.html": false,
+      "worker-post-after-close.any.html": false,
+      "worker.any.html": false
+    },
+    "Channel_postMessage_Blob.any.html": false,
+    "Channel_postMessage_DataCloneErr.any.html": true,
+    "Channel_postMessage_clone_port.any.html": true,
+    "Channel_postMessage_clone_port_error.any.html": true,
+    "Channel_postMessage_event_properties.any.html": true,
+    "Channel_postMessage_ports_readonly_array.any.html": false,
+    "Channel_postMessage_target_source.any.html": true,
+    "Channel_postMessage_transfer_xsite_incoming_messages.window.html": false,
+    "Channel_postMessage_with_transfer_entangled.any.html": true,
+    "Channel_postMessage_with_transfer_incoming_messages.any.html": true,
+    "Channel_postMessage_with_transfer_outgoing_messages.any.html": true,
+    "MessageEvent-trusted.any.html": false,
+    "MessageEvent-trusted.window.html": false,
+    "MessageEvent.any.html": true,
+    "MessagePort_initial_disabled.any.html": true,
+    "MessagePort_onmessage_start.any.html": true
   },
   "xhr": {
     "formdata": {

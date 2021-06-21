@@ -24,7 +24,6 @@ type MessagePortMessage = (Vec<u8>, Vec<Transferable>);
 pub struct MessagePort {
   rx: RefCell<UnboundedReceiver<MessagePortMessage>>,
   tx: UnboundedSender<MessagePortMessage>,
-  cancel: Rc<CancelHandle>,
 }
 
 impl MessagePort {
@@ -51,9 +50,7 @@ impl MessagePort {
       .rx
       .try_borrow_mut()
       .map_err(|_| type_error("Port receiver is already borrowed"))?;
-    if let Ok(Some((data, transferables))) =
-      rx.recv().or_cancel(&self.cancel).await
-    {
+    if let Some((data, transferables)) = rx.recv().await {
       let js_transferables =
         serialize_transferables(&mut state.borrow_mut(), transferables);
       return Ok(Some(JsMessageData {
@@ -63,27 +60,20 @@ impl MessagePort {
     }
     Ok(None)
   }
-
-  pub fn disentangle(&self) {
-    self.cancel.cancel()
-  }
 }
+
 pub fn create_entangled_message_port() -> (MessagePort, MessagePort) {
   let (port1_tx, port2_rx) = unbounded_channel::<MessagePortMessage>();
   let (port2_tx, port1_rx) = unbounded_channel::<MessagePortMessage>();
 
-  let cancel = CancelHandle::new_rc();
-
   let port1 = MessagePort {
     rx: RefCell::new(port1_rx),
     tx: port1_tx,
-    cancel: cancel.clone(),
   };
 
   let port2 = MessagePort {
     rx: RefCell::new(port2_rx),
     tx: port2_tx,
-    cancel,
   };
 
   (port1, port2)
@@ -100,7 +90,6 @@ impl Resource for MessagePortResource {
   }
 
   fn close(self: Rc<Self>) {
-    self.port.disentangle();
     self.cancel.cancel();
   }
 }
@@ -209,10 +198,10 @@ pub async fn op_message_port_recv_message(
 ) -> Result<Option<JsMessageData>, AnyError> {
   let resource = {
     let state = state.borrow();
-    state
-      .resource_table
-      .get::<MessagePortResource>(rid)
-      .ok_or_else(bad_resource_id)?
+    match state.resource_table.get::<MessagePortResource>(rid) {
+      Some(resource) => resource,
+      None => return Ok(None),
+    }
   };
   let cancel = RcRef::map(resource.clone(), |r| &r.cancel);
   resource.port.recv(state.clone()).or_cancel(cancel).await?
