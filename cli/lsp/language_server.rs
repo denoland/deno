@@ -976,6 +976,7 @@ impl Inner {
             }
             _ => false,
           },
+          "deno-lint" => matches!(&d.code, Some(_)),
           "deno" => match &d.code {
             Some(NumberOrString::String(code)) => {
               code == "no-cache" || code == "no-cache-data"
@@ -1049,6 +1050,16 @@ impl Inner {
               LspError::internal_error()
             })?
         }
+        Some("deno-lint") => code_actions
+          .add_deno_lint_ignore_action(
+            &specifier,
+            self.documents.docs.get(&specifier),
+            diagnostic,
+          )
+          .map_err(|err| {
+            error!("Unable to fix lint error: {}", err);
+            LspError::internal_error()
+          })?,
         _ => (),
       }
     }
