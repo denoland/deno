@@ -6,6 +6,7 @@ use deno_core::Extension;
 
 fn setup() -> Vec<Extension> {
   vec![
+    deno_webidl::init(),
     deno_url::init(),
     Extension::builder()
       .js(vec![(

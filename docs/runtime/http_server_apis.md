@@ -127,10 +127,10 @@ while (true) {
     (async () => {
       const httpConn = Deno.serveHttp(conn);
       while (true) {
-        const requestEvent = await httpConn.nextRequest();
-        if (requestEvent) {
+        try {
+          const requestEvent = await httpConn.nextRequest();
           // ... handle requestEvent ...
-        } else {
+        } catch (err) {
           // the connection has finished
           break;
         }

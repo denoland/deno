@@ -197,3 +197,10 @@ The biggest "danger" when doing something like this, is that the type checking
 is significantly looser, and there is no way to validate that you are doing
 sufficient and effective feature detection in your code, which may lead to what
 could be trivial errors becoming runtime errors.
+
+### Using the "types" property
+
+The `"types"` property in `"compilerOptions"` can be used to specify arbitrary
+type definitions to include when type checking a programme. For more information
+on this see
+[Using ambient or global types](./types#using-ambient-or-global-types).
