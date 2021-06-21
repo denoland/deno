@@ -11,8 +11,8 @@ TypeScript code.
 
 ## Writing tests
 
-To define a test you need to call `Deno.test` with a name and function to be
-tested. There are two styles you can use.
+To define a test you need to register it with a call to `Deno.test` with a name
+and function to be tested. There are two styles you can use.
 
 ```ts
 import { assertEquals } from "https://deno.land/std@$STD_VERSION/testing/asserts.ts";
@@ -33,24 +33,6 @@ Deno.test({
 });
 ```
 
-## Assertions
-
-There are some useful assertion utilities at
-https://deno.land/std@$STD_VERSION/testing#usage to make testing easier:
-
-```ts
-import {
-  assertArrayIncludes,
-  assertEquals,
-} from "https://deno.land/std@$STD_VERSION/testing/asserts.ts";
-
-Deno.test("hello world", () => {
-  const x = 1 + 2;
-  assertEquals(x, 3);
-  assertArrayIncludes([1, 2, 3, 4, 5, 6], [3], "Expected 3 to be in the array");
-});
-```
-
 ### Async functions
 
 You can also test asynchronous code by passing a test function that returns a
@@ -68,58 +50,6 @@ Deno.test("async hello world", async () => {
   if (x !== 3) {
     throw Error("x should be equal to 3");
   }
-});
-```
-
-### Resource and async op sanitizers
-
-Certain actions in Deno create resources in the resource table
-([learn more here](./contributing/architecture.md)). These resources should be
-closed after you are done using them.
-
-For each test definition, the test runner checks that all resources created in
-this test have been closed. This is to prevent resource 'leaks'. This is enabled
-by default for all tests, but can be disabled by setting the `sanitizeResources`
-boolean to false in the test definition.
-
-The same is true for async operation like interacting with the filesystem. The
-test runner checks that each operation you start in the test is completed before
-the end of the test. This is enabled by default for all tests, but can be
-disabled by setting the `sanitizeOps` boolean to false in the test definition.
-
-```ts
-Deno.test({
-  name: "leaky test",
-  fn() {
-    Deno.open("hello.txt");
-  },
-  sanitizeResources: false,
-  sanitizeOps: false,
-});
-```
-
-### Exit sanitizer
-
-There's also the exit sanitizer which ensures that tested code doesn't call
-Deno.exit() signaling a false test success.
-
-This is enabled by default for all tests, but can be disabled by setting the
-`sanitizeExit` boolean to false in thetest definition.
-
-```ts
-Deno.test({
-  name: "false success",
-  fn() {
-    Deno.exit(0);
-  },
-  sanitizeExit: false,
-});
-
-Deno.test({
-  name: "failing test",
-  fn() {
-    throw new Error("this test fails");
-  },
 });
 ```
 
@@ -237,39 +167,3 @@ failure, you can specify the `--fail-fast` flag when running the suite.
 ```shell
 deno test --fail-fast
 ```
-
-## Test coverage
-
-Deno will collect test coverage into a directory for your code if you specify
-the `--coverage` flag when starting `deno test`.
-
-This coverage information is acquired directly from the JavaScript engine (V8)
-which is very accurate.
-
-This can then be further processed from the internal format into well known
-formats by the `deno coverage` tool.
-
-```
-# Go into your project's working directory
-git clone https://github.com/oakserver/oak && cd oak
-
-# Collect your coverage profile with deno test --coverage=<output_directory>
-deno test --coverage=cov_profile
-
-# From this you can get a pretty printed diff of uncovered lines
-deno coverage cov_profile
-
-# Or generate an lcov report
-deno coverage cov_profile --lcov > cov_profile.lcov
-
-# Which can then be further processed by tools like genhtml
-genhtml -o cov_profile/html cov_profile.lcov
-```
-
-By default, `deno coverage` will exclude any files matching the regular
-expression `test\.(js|mjs|ts|jsx|tsx)` and only consider including files
-matching the regular expression `^file:`.
-
-These filters can be overridden using the `--exclude` and `--include` flags. A
-source file's url must match both regular expressions for it to be a part of the
-report.
