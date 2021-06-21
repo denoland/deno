@@ -6,13 +6,24 @@ a reasonable and expected way.
 ### Resource sanitizer
 
 Certain actions in Deno create resources in the resource table
-([learn more here](./contributing/architecture.md)). These resources should be
-closed after you are done using them.
+([learn more here](./contributing/architecture.md)).
+
+These resources should be closed after you are done using them.
 
 For each test definition, the test runner checks that all resources created in
 this test have been closed. This is to prevent resource 'leaks'. This is enabled
 by default for all tests, but can be disabled by setting the `sanitizeResources`
 boolean to false in the test definition.
+
+```ts
+Deno.test({
+  name: "leaky resource test",
+  async fn() {
+    await Deno.open("hello.txt");
+  },
+  sanitizeResources: false,
+});
+```
 
 ### Op sanitizer
 
@@ -23,11 +34,10 @@ disabled by setting the `sanitizeOps` boolean to false in the test definition.
 
 ```ts
 Deno.test({
-  name: "leaky test",
+  name: "leaky operation test",
   fn() {
-    Deno.open("hello.txt");
+    setTimeout(function() {}, 1000);
   },
-  sanitizeResources: false,
   sanitizeOps: false,
 });
 ```
