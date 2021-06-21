@@ -1180,42 +1180,9 @@ declare namespace Deno {
 
   export function memoryUsage(): MemoryUsage;
 
-  export interface WebSocketConnEventString {
-    kind: "text";
-    value: string;
-  }
-
-  export interface WebSocketConnEventBinary {
-    kind: "binary";
-    value: Uint8Array;
-  }
-
-  export interface WebSocketConnEventClose {
-    kind: "close";
-    value: { code: number; reason: string };
-  }
-
-  export type WebSocketConnEvent =
-    | WebSocketConnEventString
-    | WebSocketConnEventBinary
-    | WebSocketConnEventClose;
-
-  export interface WebSocketConn extends AsyncIterable<WebSocketConnEvent> {
-    send(kind: "text", data: string): Promise<void>;
-    send(kind: "binary", data: Uint8Array): Promise<void>;
-
-    close(code?: number, reason?: string): Promise<void>;
-  }
-
-  export interface WebSocketUpgrade {
-    response: Response;
-    ws: WebSocketConn;
-  }
-
   export interface RequestEvent {
     readonly request: Request;
     respondWith(r: Response | Promise<Response>): Promise<void>;
-    upgradeWebSocket(): Promise<WebSocketUpgrade>;
   }
 
   export interface HttpConn extends AsyncIterable<RequestEvent> {
@@ -1242,6 +1209,13 @@ declare namespace Deno {
    * then the underlying HttpConn resource is closed automatically.
    */
   export function serveHttp(conn: Conn): HttpConn;
+
+  export interface WebSocketUpgrade {
+    response: Response;
+    websocket: WebSocketStream;
+  }
+
+  export function upgradeWebsocket(request: Request): WebSocketUpgrade;
 
   /** **UNSTABLE**: New option, yet to be vetted. */
   export interface TestDefinition {

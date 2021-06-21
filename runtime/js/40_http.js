@@ -2,6 +2,7 @@
 "use strict";
 
 ((window) => {
+  const webidl = window.__bootstrap.webidl;
   const { InnerBody } = window.__bootstrap.fetchBody;
   const { Response, fromInnerRequest, toInnerResponse, newInnerRequest } =
     window.__bootstrap.fetch;
@@ -75,9 +76,8 @@
       const request = fromInnerRequest(innerRequest, null, "immutable");
 
       const respondWith = createRespondWith(this, responseSenderRid);
-      const upgradeWebSocket = createUpgradeWebSocket(requestBodyRid);
 
-      return { request, respondWith, upgradeWebSocket };
+      return { request, respondWith };
     }
 
     /** @returns {void} */
@@ -207,6 +207,16 @@
           } catch { /* pass */ }
         }
       }
+
+      const ws = resp[_ws];
+      if (ws) {
+        // TODO: request rid
+        core.opAsync("op_http_upgrade_websocket").then((rid) => {
+          ws[Symbol.for("[[rid]]")] = rid;
+          // TODO: protocols & extensions
+          ws[Symbol.for("[[readyState]]")] = WebSocket.OPEN;
+        });
+      }
     };
   }
 
@@ -244,67 +254,43 @@
     });
   }
 
-  function createUpgradeWebSocket(rid) {
-    return async function upgradeWebSocket() {
-      const { key, rid } = await core.opAsync(
-        "op_http_upgrade_websocket",
-        rid,
-      );
+  const _ws = Symbol("[[associated_ws]]");
 
-      const response = new Response(undefined, {
-        status: 101,
-        headers: {
-          "Upgrade": "websocket",
-          "Connection": "Upgrade",
-          "Sec-WebSocket-Accept": key,
-        },
-      });
+  async function upgradeWebSocket(request) {
+    if (request.headers["Upgrade"] !== "websocket") {
+      // Throw
+    }
 
-      const ws = {
-        async *[Symbol.asyncIterator]() {
-          let data = await core.opAsync(
-            "op_http_ws_next_event",
-            rid,
-          );
+    if (request.headers["Connection"] !== "Upgrade") {
+      // Throw
+    }
 
-          if (data.kind === "error") {
-            throw new Error(data.value);
-          } else if (data.kind === "close") {
-            return data;
-          } else {
-            yield data;
-          }
-        },
-        async send(data) {
-          if (typeof data === "string") {
-            await core.opAsync("op_http_ws_close", {
-              rid,
-              kind: "text",
-              text: data,
-            });
-          } else if (data instanceof Uint8Array) {
-            await core.opAsync("op_http_ws_close", {
-              rid,
-              kind: "binary",
-            }, data);
-          } else {
-            throw new TypeError("Only string or Uint8Array can be sent");
-          }
-        },
-        async close(code, reason) {
-          await core.opAsync("op_http_ws_close", {
-            rid,
-            code,
-            reason,
-          });
-        },
-      };
+    if (!request.headers["Sec-WebSocket-Key"]) {
+      // Throw
+    }
 
-      return { response, ws };
-    };
+    const key = new TextEncoder().encode(
+      request.headers["Sec-WebSocket-Key"] +
+        "258EAFA5-E914-47DA-95CA-C5AB0DC85B11",
+    );
+    const accept = await crypto.subtle.digest("SHA-1", key);
+
+    const response = new Response(undefined, {
+      status: 101,
+      headers: {
+        "Upgrade": "websocket",
+        "Connection": "Upgrade",
+        "Sec-WebSocket-Accept": btoa(new TextDecoder().decode(accept)),
+      },
+    });
+    const websocket = webidl.createBranded(WebSocket);
+    response[_ws] = websocket;
+
+    return { response, websocket };
   }
 
   window.__bootstrap.http = {
     serveHttp,
+    upgradeWebSocket,
   };
 })(this);

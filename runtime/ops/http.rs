@@ -23,9 +23,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
-use deno_websocket::tokio_tungstenite::tungstenite::Message;
 use deno_websocket::tokio_tungstenite::WebSocketStream;
-use deno_websocket::WsStreamResource;
 use hyper::body::HttpBody;
 use hyper::http;
 use hyper::server::conn::Connection;
@@ -540,18 +538,11 @@ async fn op_http_response_write(
   Ok(())
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HttpUpgradeWebsocketResponse {
-  rid: ResourceId,
-  key: String,
-}
-
 async fn op_http_upgrade_websocket(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   _data: Option<ZeroCopyBuf>,
-) -> Result<HttpUpgradeWebsocketResponse, AnyError> {
+) -> Result<ResourceId, AnyError> {
   let conn_resource = state
     .borrow()
     .resource_table
@@ -559,18 +550,6 @@ async fn op_http_upgrade_websocket(
     .ok_or_else(bad_resource_id)?;
 
   let service = conn_resource.deno_service.inner.borrow_mut().ok_or("")?; // TODO
-
-  let key = service
-    .request
-    .headers()
-    .get(http::header::SEC_WEBSOCKET_KEY)
-    .ok_or("failed to read ws key from headers")?; // TODO
-  let digest = ring::digest::digest(
-    &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
-    format!("{}258EAFA5-E914-47DA-95CA-C5AB0DC85B11", key.to_str()?).as_bytes(),
-  );
-  let return_key = base64::encode(digest);
-
   let upgraded = service.request.on_upgrade().await?;
   let stream =
     deno_websocket::tokio_tungstenite::WebSocketStream::from_raw_socket(
@@ -582,16 +561,15 @@ async fn op_http_upgrade_websocket(
 
   let (ws_tx, ws_rx) = stream.split();
 
-  let rid = state.borrow_mut().resource_table.add(WsStreamResource {
-    rx: AsyncRefCell::new(ws_rx),
-    tx: AsyncRefCell::new(ws_tx),
-    cancel: Default::default(),
-  });
+  let rid = state.borrow_mut().resource_table.add(
+    deno_websocket::WsStreamResource::WsStreamResource {
+      rx: AsyncRefCell::new(ws_rx),
+      tx: AsyncRefCell::new(ws_tx),
+      cancel: Default::default(),
+    },
+  );
 
-  Ok(HttpUpgradeWebsocketResponse {
-    key: return_key,
-    rid,
-  })
+  Ok(rid)
 }
 
 type BytesStream =
