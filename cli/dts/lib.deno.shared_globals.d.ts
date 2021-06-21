@@ -347,24 +347,6 @@ type BufferSource = ArrayBufferView | ArrayBuffer;
 
 declare var console: Console;
 
-interface MessageEventInit<T = any> extends EventInit {
-  data?: T;
-  origin?: string;
-  lastEventId?: string;
-}
-
-declare class MessageEvent<T = any> extends Event {
-  /**
-   * Returns the data of the message.
-   */
-  readonly data: T;
-  /**
-   * Returns the last event ID string, for server-sent events.
-   */
-  readonly lastEventId: string;
-  constructor(type: string, eventInitDict?: MessageEventInit);
-}
-
 interface ErrorEventInit extends EventInit {
   message?: string;
   filename?: string;
