@@ -558,35 +558,40 @@ async fn op_http_response_write(
 async fn op_http_upgrade_websocket(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _data: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<ResourceId, AnyError> {
-  let conn_resource = state
+  let req_resource = state
     .borrow()
     .resource_table
-    .get::<ConnResource>(rid)
+    .get::<RequestResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
-  let service = conn_resource.deno_service.inner.borrow_mut().ok_or("")?; // TODO
-  let upgraded = service.request.on_upgrade().await?;
-  let stream =
-    deno_websocket::tokio_tungstenite::WebSocketStream::from_raw_socket(
-      upgraded,
-      deno_websocket::tokio_tungstenite::tungstenite::protocol::Role::Server,
-      None,
-    )
-    .await;
+  let mut inner = RcRef::map(&req_resource, |r| &r.inner).borrow_mut().await;
 
-  let (ws_tx, ws_rx) = stream.split();
+  if let RequestOrStreamReader::Request(req) = inner {
+    let upgraded = req.unwrap().on_upgrade().await?;
+    let stream =
+      deno_websocket::tokio_tungstenite::WebSocketStream::from_raw_socket(
+        upgraded,
+        deno_websocket::tokio_tungstenite::tungstenite::protocol::Role::Server,
+        None,
+      )
+      .await;
 
-  let rid = state.borrow_mut().resource_table.add(
-    deno_websocket::WsStreamResource::WsStreamResource {
-      rx: AsyncRefCell::new(ws_rx),
-      tx: AsyncRefCell::new(ws_tx),
-      cancel: Default::default(),
-    },
-  );
+    let (ws_tx, ws_rx) = stream.split();
 
-  Ok(rid)
+    let rid = state.borrow_mut().resource_table.add(
+      deno_websocket::WsStreamResource::WsStreamResource {
+        rx: AsyncRefCell::new(ws_rx),
+        tx: AsyncRefCell::new(ws_tx),
+        cancel: Default::default(),
+      },
+    );
+
+    Ok(rid)
+  } else {
+    Err(AnyError::msg("Stream resource")) // TODO: better error
+  }
 }
 
 type BytesStream =

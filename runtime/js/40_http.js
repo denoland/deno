@@ -3,6 +3,7 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
+  const { forgivingBase64Encode } = window.__bootstrap.infra;
   const { InnerBody } = window.__bootstrap.fetchBody;
   const { Response, fromInnerRequest, toInnerResponse, newInnerRequest } =
     window.__bootstrap.fetch;
@@ -75,7 +76,11 @@
       );
       const request = fromInnerRequest(innerRequest, null, "immutable");
 
-      const respondWith = createRespondWith(this, responseSenderRid);
+      const respondWith = createRespondWith(
+        this,
+        responseSenderRid,
+        requestRid,
+      );
 
       return { request, respondWith };
     }
@@ -106,7 +111,7 @@
     );
   }
 
-  function createRespondWith(httpConn, responseSenderRid) {
+  function createRespondWith(httpConn, responseSenderRid, requestRid) {
     return async function respondWith(resp) {
       if (resp instanceof Promise) {
         resp = await resp;
@@ -210,11 +215,41 @@
 
       const ws = resp[_ws];
       if (ws) {
-        // TODO: request rid
-        core.opAsync("op_http_upgrade_websocket").then((rid) => {
+        const _readyState = Symbol("[[readyState]]");
+
+        core.opAsync("op_http_upgrade_websocket", requestRid).then((rid) => {
           ws[Symbol.for("[[rid]]")] = rid;
           // TODO: protocols & extensions
-          ws[Symbol.for("[[readyState]]")] = WebSocket.OPEN;
+
+          if (ws[_readyState] === WebSocket.CLOSING) {
+            core.opAsync("op_ws_close", {
+              rid,
+            }).then(() => {
+              ws[_readyState] = WebSocket.CLOSED;
+
+              const errEvent = new ErrorEvent("error");
+              errEvent.target = ws;
+              ws.dispatchEvent(errEvent);
+
+              const event = new CloseEvent("close");
+              event.target = ws;
+              ws.dispatchEvent(event);
+
+              try {
+                core.close(rid);
+              } catch (err) {
+                // Ignore error if the socket has already been closed.
+                if (!(err instanceof Deno.errors.BadResource)) throw err;
+              }
+            });
+          } else {
+            ws[_readyState] = WebSocket.OPEN;
+            const event = new Event("open");
+            event.target = ws;
+            ws.dispatchEvent(event);
+
+            ws[Symbol.for("[[eventLoop]]")]();
+          }
         });
       }
     };
@@ -280,7 +315,7 @@
       headers: {
         "Upgrade": "websocket",
         "Connection": "Upgrade",
-        "Sec-WebSocket-Accept": btoa(new TextDecoder().decode(accept)),
+        "Sec-WebSocket-Accept": forgivingBase64Encode(new Uint8Array(accept)),
       },
     });
     const websocket = webidl.createBranded(WebSocket);

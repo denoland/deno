@@ -94,6 +94,7 @@
   const _protocol = Symbol("[[protocol]]");
   const _binaryType = Symbol("[[binaryType]]");
   const _bufferedAmount = Symbol("[[bufferedAmount]]");
+  const _eventLoop = Symbol("[[eventLoop]]");
   class WebSocket extends EventTarget {
     [_rid];
 
@@ -255,7 +256,7 @@
           event.target = this;
           this.dispatchEvent(event);
 
-          this.#eventLoop();
+          this[_eventLoop]();
         }
       }).catch((err) => {
         this[_readyState] = CLOSED;
@@ -379,7 +380,7 @@
       }
     }
 
-    async #eventLoop() {
+    async [_eventLoop]() {
       while (this[_readyState] === OPEN) {
         const { kind, value } = await core.opAsync(
           "op_ws_next_event",
