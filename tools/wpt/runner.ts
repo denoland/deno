@@ -122,7 +122,7 @@ export async function runSingleTest(
       harnessStatus = JSON.parse(line.slice(5));
     } else {
       stderr += line + "\n";
-      console.error(stderr);
+      console.error(line);
     }
   }
 

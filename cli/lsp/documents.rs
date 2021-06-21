@@ -139,12 +139,22 @@ impl DocumentData {
       Ok(None)
     }
   }
+
+  pub fn content_line(&self, line: usize) -> Result<Option<String>, AnyError> {
+    let content = self.content().ok().flatten();
+    if let Some(content) = content {
+      let lines = content.lines().into_iter().collect::<Vec<&str>>();
+      Ok(Some(lines[line].to_string()))
+    } else {
+      Ok(None)
+    }
+  }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct DocumentCache {
   dependents_graph: HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>>,
-  docs: HashMap<ModuleSpecifier, DocumentData>,
+  pub docs: HashMap<ModuleSpecifier, DocumentData>,
 }
 
 impl DocumentCache {

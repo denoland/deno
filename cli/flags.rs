@@ -84,7 +84,9 @@ pub enum DenoSubcommand {
     root: Option<PathBuf>,
     force: bool,
   },
-  Lsp,
+  Lsp {
+    parent_pid: Option<u32>,
+  },
   Lint {
     files: Vec<PathBuf>,
     ignore: Vec<PathBuf>,
@@ -876,6 +878,16 @@ go-to-definition support and automatic code formatting.
 
 How to connect various editors and IDEs to 'deno lsp':
 https://deno.land/manual/getting_started/setup_your_environment#editors-and-ides")
+    .arg(
+      Arg::with_name("parent-pid")
+        .long("parent-pid")
+        .help("The parent process id to periodically check for the existence of or exit")
+        .takes_value(true)
+        .validator(|val: String| match val.parse::<usize>() {
+          Ok(_) => Ok(()),
+          Err(_) => Err("parent-pid should be a number".to_string()),
+        }),
+    )
 }
 
 fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1621,8 +1633,11 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 }
 
-fn lsp_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
-  flags.subcommand = DenoSubcommand::Lsp;
+fn lsp_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  let parent_pid = matches
+    .value_of("parent-pid")
+    .map(|val| val.parse().unwrap());
+  flags.subcommand = DenoSubcommand::Lsp { parent_pid };
 }
 
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -2308,10 +2323,24 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Lsp,
+        subcommand: DenoSubcommand::Lsp { parent_pid: None },
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec!["deno", "lsp", "--parent-pid", "5"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lsp {
+          parent_pid: Some(5),
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "lsp", "--parent-pid", "invalid-arg"]);
+    assert!(r.is_err());
   }
 
   #[test]

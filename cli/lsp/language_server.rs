@@ -504,7 +504,7 @@ impl Inner {
     specifier: &ModuleSpecifier,
   ) -> Result<Option<AssetDocument>, AnyError> {
     if let Some(maybe_asset) = self.assets.get(specifier) {
-      return Ok(maybe_asset.clone());
+      Ok(maybe_asset.clone())
     } else {
       let maybe_asset =
         tsc::get_asset(&specifier, &self.ts_server, self.snapshot()?).await?;
@@ -976,6 +976,7 @@ impl Inner {
             }
             _ => false,
           },
+          "deno-lint" => matches!(&d.code, Some(_)),
           "deno" => match &d.code {
             Some(NumberOrString::String(code)) => {
               code == "no-cache" || code == "no-cache-data"
@@ -1049,6 +1050,16 @@ impl Inner {
               LspError::internal_error()
             })?
         }
+        Some("deno-lint") => code_actions
+          .add_deno_lint_ignore_action(
+            &specifier,
+            self.documents.docs.get(&specifier),
+            diagnostic,
+          )
+          .map_err(|err| {
+            error!("Unable to fix lint error: {}", err);
+            LspError::internal_error()
+          })?,
         _ => (),
       }
     }
@@ -1766,13 +1777,14 @@ impl Inner {
         )));
       };
 
-    let req = tsc::RequestMethod::FindRenameLocations((
+    let req = tsc::RequestMethod::FindRenameLocations {
       specifier,
-      line_index.offset_tsc(params.text_document_position.position)?,
-      true,
-      true,
-      false,
-    ));
+      position: line_index
+        .offset_tsc(params.text_document_position.position)?,
+      find_in_strings: false,
+      find_in_comments: false,
+      provide_prefix_and_suffix_text_for_rename: false,
+    };
 
     let maybe_locations: Option<Vec<tsc::RenameLocation>> = self
       .ts_server
