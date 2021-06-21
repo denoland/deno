@@ -2022,9 +2022,9 @@ mod integration {
         let mut output = String::new();
         master.read_to_string(&mut output).unwrap();
 
-        assert!(output.contains("Unexpected token ')'"));
-        assert!(output.contains("Unexpected token ']'"));
-        assert!(output.contains("Unexpected token '}'"));
+        assert!(output.contains("Unexpected token `)`"));
+        assert!(output.contains("Unexpected token `]`"));
+        assert!(output.contains("Unexpected token `}`"));
 
         fork.wait().unwrap();
       } else {
@@ -2232,6 +2232,59 @@ mod integration {
     }
 
     #[test]
+    fn typescript() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec![
+          "function add(a: number, b: number) { return a + b }",
+          "const result: number = add(1, 2) as number;",
+          "result",
+        ]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("undefined\nundefined\n3\n"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn typescript_declarations() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec![
+          "namespace Test { export enum Values { A, B, C } }",
+          "Test.Values.A",
+          "Test.Values.C",
+          "interface MyInterface { prop: string; }",
+          "type MyTypeAlias = string;",
+        ]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("undefined\n0\n2\nundefined\nundefined\n"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn typescript_decorators() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec![
+          "function dec(target) { target.prototype.test = () => 2; }",
+          "@dec class Test {}",
+          "new Test().test()",
+        ]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("undefined\nundefined\n2\n"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
     fn eof() {
       let (out, err) = util::run_and_collect_output(
         true,
@@ -2362,11 +2415,30 @@ mod integration {
       let (out, err) = util::run_and_collect_output(
         true,
         "repl",
-        Some(vec!["syntax error"]),
-        None,
+        Some(vec![
+          "syntax error",
+          "2", // ensure it keeps accepting input after
+        ]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
         false,
       );
-      assert!(out.contains("Unexpected identifier"));
+      assert!(
+        out.ends_with("parse error: Expected ';', '}' or <eof> at 1:7\n2\n")
+      );
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn syntax_error_jsx() {
+      // JSX is not supported in the REPL
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["const element = <div />;"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.contains("Unexpected token `>`"));
       assert!(err.is_empty());
     }
 
