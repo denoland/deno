@@ -589,6 +589,8 @@
     ],
     "idlharness.any.html": true,
     "url-constructor.any.html": [
+      "Parsing: <foo://ho|st/> against <about:blank>",
+      "Parsing: <http://ho%7Cst/> against <about:blank>",
       "Parsing: <file://%43%7C> against <about:blank>",
       "Parsing: <file://%43|> against <about:blank>",
       "Parsing: <file://C%7C> against <about:blank>",
@@ -1013,9 +1015,7 @@
     },
     "message-channels": {
       "basics.any.html": true,
-      "close.any.html": [
-        "close() detaches a MessagePort (but not the one its entangled with)"
-      ],
+      "close.any.html": true,
       "dictionary-transferrable.any.html": false,
       "implied-start.any.html": true,
       "no-start.any.html": true,
