@@ -147,13 +147,15 @@
     return bag;
   }
 
+  const _size = Symbol("Size");
+
   class Blob {
     get [Symbol.toStringTag]() {
       return "Blob";
     }
 
     #type = "";
-    #size = 0;
+    [_size] = 0;
 
     /**
      * @param {BlobPart[]} blobParts
@@ -178,14 +180,14 @@
       );
 
       blobPartMap.set(this, parts);
-      this.#size = size;
+      this[_size] = size;
       this.#type = normalizeType(options.type);
     }
 
     /** @returns {number} */
     get size() {
       webidl.assertBranded(this, Blob);
-      return this.#size;
+      return this[_size];
     }
 
     /** @returns {string} */
@@ -287,13 +289,8 @@
 
       const blob = new Blob([], { type: relativeContentType });
       blobPartMap.set(blob, blobParts);
-      this.#setSize.apply(blob, span);
-      this.#setSize.apply(blob, [span]);
+      this[_size] = span;
       return blob;
-    }
-
-    #setSize(size) {
-      this.#size = size;
     }
 
     /**
@@ -331,7 +328,6 @@
       const stream = this.stream();
       const bytes = new Uint8Array(this.size);
       let offset = 0;
-
       for await (const chunk of stream) {
         bytes.set(chunk, offset);
         offset += chunk.byteLength;

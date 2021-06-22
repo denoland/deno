@@ -151,15 +151,18 @@
 
     if (req.body !== null) {
       if (req.body.streamOrStatic instanceof ReadableStream) {
-        if (req.body.length === null) {
+        if (req.body.length === null || req.body.source instanceof Blob) {
           reqBody = req.body.stream;
         } else {
           const reader = req.body.stream.getReader();
           const r1 = await reader.read();
-          if (r1.done) throw new TypeError("Unreachable");
-          reqBody = r1.value;
-          const r2 = await reader.read();
-          if (!r2.done) throw new TypeError("Unreachable");
+          if (r1.done) {
+            reqBody = new Uint8Array(0);
+          } else {
+            reqBody = r1.value;
+            const r2 = await reader.read();
+            if (!r2.done) throw new TypeError("Unreachable");
+          }
         }
       } else {
         req.body.streamOrStatic.consumed = true;
