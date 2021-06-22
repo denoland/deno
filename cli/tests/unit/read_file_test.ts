@@ -95,3 +95,25 @@ unitTest(
     assertEquals(resourcesBefore, Deno.resources());
   },
 );
+
+unitTest(
+  { perms: { read: true } },
+  async function readFileWithAbortSignal(): Promise<void> {
+    const ac = new AbortController();
+    queueMicrotask(() => ac.abort());
+    await assertThrowsAsync(async () => {
+      await Deno.readFile("cli/tests/fixture.json", { signal: ac.signal });
+    });
+  },
+);
+
+unitTest(
+  { perms: { read: true } },
+  async function readTextileWithAbortSignal(): Promise<void> {
+    const ac = new AbortController();
+    queueMicrotask(() => ac.abort());
+    await assertThrowsAsync(async () => {
+      await Deno.readTextFile("cli/tests/fixture.json", { signal: ac.signal });
+    });
+  },
+);
