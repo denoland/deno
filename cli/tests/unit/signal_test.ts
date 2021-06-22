@@ -154,6 +154,35 @@ unitTest(
   },
 );
 
+// https://github.com/denoland/deno/issues/9806
+unitTest(
+  { ignore: Deno.build.os === "windows", perms: { run: true } },
+  async function signalPromiseTest2(): Promise<void> {
+    const resolvable = deferred();
+    // This prevents the program from exiting.
+    const t = setInterval(() => {}, 1000);
+
+    let called = false;
+    const sig = Deno.signal(Deno.Signal.SIGUSR1);
+    sig.then(() => {
+      called = true;
+    });
+    setTimeout(() => {
+      sig.dispose();
+      setTimeout(() => {
+        resolvable.resolve();
+      }, 10);
+    }, 10);
+
+    clearInterval(t);
+    await resolvable;
+
+    // Promise callback is not called because it didn't get
+    // the corresponding signal.
+    assert(!called);
+  },
+);
+
 unitTest(
   { ignore: Deno.build.os === "windows", perms: { run: true } },
   function signalShorthandsTest(): void {

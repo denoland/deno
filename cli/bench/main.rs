@@ -439,7 +439,7 @@ struct BenchResult {
  we replace the harness with our own runner here.
 */
 fn main() -> Result<()> {
-  if env::args().find(|s| s == "--bench").is_none() {
+  if !env::args().any(|s| s == "--bench") {
     return Ok(());
   }
 

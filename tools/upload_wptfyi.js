@@ -2,14 +2,28 @@
 // passed, will automatically add a status check to the commit with a link to
 // the wpt.fyi page.
 
+import { gzip } from "https://deno.land/x/compress@v0.3.8/gzip/mod.ts";
+
 const user = Deno.env.get("WPT_FYI_STAGING_USER");
 const password = Deno.env.get("WPT_FYI_STAGING_PW");
 
-const commit = Deno.args[0];
+const fromRawFile = Deno.args.includes("--from-raw-file");
 
 const form = new FormData();
-form.set("labels", "experimental");
-form.set("result_url", `https://dl.deno.land/wpt/${commit}-wptreport.json.gz`);
+form.set("labels", "master,actions");
+
+if (fromRawFile) {
+  const file = Deno.args[0];
+  const raw = Deno.readFileSync(file);
+  const gzipped = gzip(raw);
+  form.set("result_file", new Blob([gzipped]));
+} else {
+  const commit = Deno.args[0];
+  form.set(
+    "result_url",
+    `https://dl.deno.land/wpt/${commit}-wptreport.json.gz`,
+  );
+}
 
 const basicAuthToken = btoa(`${user}:${password}`);
 
@@ -30,10 +44,11 @@ if (!resp.ok) {
   Deno.exit(1);
 }
 
-if (Deno.args.includes("--ghstatus")) {
+if (!fromRawFile && Deno.args.includes("--ghstatus")) {
   const githubToken = Deno.env.get("GITHUB_TOKEN");
   const taskId = body.split(" ")[1];
   const url = `https://staging.wpt.fyi/results/?run_id=${taskId}`;
+  const commit = Deno.args[0];
   const resp = await fetch(
     `https://api.github.com/repos/denoland/deno/statuses/${commit}`,
     {

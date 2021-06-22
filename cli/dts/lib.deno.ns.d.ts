@@ -90,6 +90,24 @@ declare namespace Deno {
   /** The current process id of the runtime. */
   export const pid: number;
 
+  /**
+   * The pid of the current process's parent.
+   */
+  export const ppid: number;
+
+  export interface MemoryUsage {
+    rss: number;
+    heapTotal: number;
+    heapUsed: number;
+    external: number;
+  }
+
+  /**
+   * Returns an object describing the memory usage of the Deno process measured
+   * in bytes.
+   */
+  export function memoryUsage(): MemoryUsage;
+
   /** Reflects the `NO_COLOR` environment variable at program start.
    *
    * See: https://no-color.org/ */

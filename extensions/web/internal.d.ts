@@ -4,9 +4,6 @@
 /// <reference lib="esnext" />
 
 declare namespace globalThis {
-  declare var TextEncoder: typeof TextEncoder;
-  declare var TextDecoder: typeof TextDecoder;
-
   declare namespace __bootstrap {
     declare var infra: {
       collectSequenceOfCodepoints(
@@ -80,5 +77,21 @@ declare namespace globalThis {
         [globalThis.__bootstrap.file._byteSequence]: Uint8Array;
       };
     };
+
+    declare var streams: {
+      ReadableStream: typeof ReadableStream;
+      isReadableStreamDisturbed(stream: ReadableStream): boolean;
+    };
+
+    declare namespace messagePort {
+      declare type Transferable = {
+        kind: "messagePort";
+        data: number;
+      };
+      declare interface MessageData {
+        data: Uint8Array;
+        transferables: Transferable[];
+      }
+    }
   }
 }

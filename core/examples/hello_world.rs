@@ -27,7 +27,7 @@ fn main() {
   // contains a Deno.core object with several functions for interacting with it.
   // You can find its definition in core.js.
   runtime
-    .execute(
+    .execute_script(
       "<usage>",
       r#"
 // Print helper function, calling Deno.core.print()

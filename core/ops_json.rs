@@ -119,7 +119,7 @@ mod tests {
     runtime.register_op("op_throw", op_async(op_throw));
     runtime.sync_ops_cache();
     runtime
-      .execute(
+      .execute_script(
         "<init>",
         r#"
     async function f1() {
