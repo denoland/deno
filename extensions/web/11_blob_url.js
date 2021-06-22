@@ -15,7 +15,7 @@
 ((window) => {
   const core = Deno.core;
   const webidl = window.__bootstrap.webidl;
-  const { _byteSequence } = window.__bootstrap.file;
+  const { getParts } = window.__bootstrap.file;
   const { URL } = window.__bootstrap.url;
 
   /**
@@ -33,7 +33,7 @@
     const url = core.opSync(
       "op_file_create_object_url",
       blob.type,
-      blob[_byteSequence],
+      getParts(blob),
     );
 
     return url;

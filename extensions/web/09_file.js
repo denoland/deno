@@ -92,7 +92,11 @@
         processedParts.push(BlobReference.fromUint8Array(chunk));
         size += element.byteLength;
       } else if (ArrayBuffer.isView(element)) {
-        const chunk = new Uint8Array(element.buffer, element.byteOffset, element.byteLength);
+        const chunk = new Uint8Array(
+          element.buffer,
+          element.byteOffset,
+          element.byteLength,
+        );
         size += element.byteLength;
         processedParts.push(BlobReference.fromUint8Array(chunk));
       } else if (element instanceof Blob) {
@@ -123,16 +127,33 @@
     return normalizedType.toLowerCase();
   }
 
+  /** @type {WeakMap<Blob, any>} */
+  const blobPartMap = new WeakMap();
+
+  /**
+   * Get all Parts as a flat array containing all references
+   * @param {Blob} blob
+   * @param {string[]} bag
+   * @returns {string[]}
+   */
+  function getParts(blob, bag = []) {
+    for (const part of blobPartMap.get(blob)) {
+      if (part instanceof Blob) {
+        getParts(part, bag);
+      } else {
+        bag.push(part._id);
+      }
+    }
+    return bag;
+  }
+
   class Blob {
     get [Symbol.toStringTag]() {
       return "Blob";
     }
 
-    /** @type {string} */
-    #type;
-
-    /** @type {(BlobReference | Blob)[]} */
-    #parts;
+    #type = "";
+    #size = 0;
 
     /**
      * @param {BlobPart[]} blobParts
@@ -156,15 +177,15 @@
         options.endings,
       );
 
-      this.#parts = parts;
-      this[_Size] = size;
+      blobPartMap.set(this, parts);
+      this.#size = size;
       this.#type = normalizeType(options.type);
     }
 
     /** @returns {number} */
     get size() {
       webidl.assertBranded(this, Blob);
-      return this[_Size];
+      return this.#size;
     }
 
     /** @returns {string} */
@@ -229,11 +250,10 @@
       }
 
       const span = Math.max(relativeEnd - relativeStart, 0);
-      const parts = this.#parts;
       const blobParts = [];
       let added = 0;
 
-      for (const part of parts) {
+      for (const part of blobPartMap.get(this)) {
         const size = part.size;
         if (relativeStart && size <= relativeStart) {
           // Skip the beginning and change the relative
@@ -241,7 +261,10 @@
           relativeStart -= size;
           relativeEnd -= size;
         } else {
-          const chunk = part.slice(relativeStart, Math.min(part.size, relativeEnd));
+          const chunk = part.slice(
+            relativeStart,
+            Math.min(part.size, relativeEnd),
+          );
           added += chunk.size;
           relativeEnd -= chunk.size;
           blobParts.push(chunk);
@@ -263,10 +286,13 @@
       }
 
       const blob = new Blob([], { type: relativeContentType });
-      blob[_Size] = span;
-      blob.#parts = blobParts;
-
+      blobPartMap.set(blob, blobParts);
+      this.#setSize.apply(blob, span);
       return blob;
+    }
+
+    #setSize(size) {
+      this.#size = size;
     }
 
     /**
@@ -274,7 +300,7 @@
      */
     stream() {
       webidl.assertBranded(this, Blob);
-      const partIterator = toIterator(this.#parts);
+      const partIterator = toIterator(blobPartMap.get(this));
       const stream = new ReadableStream({
         type: "bytes",
         /** @param {ReadableByteStreamController} controller */
@@ -356,7 +382,6 @@
   );
 
   const _Name = Symbol("[[Name]]");
-  const _Size = Symbol("[[Size]]");
   const _LastModified = Symbol("[[LastModified]]");
 
   class File extends Blob {
@@ -469,7 +494,10 @@
      */
     slice(start, end) {
       const size = end - start;
-      const id = core.opSync("op_blob_slice_part", this._id, { start, len: size });
+      const id = core.opSync("op_blob_slice_part", this._id, {
+        start,
+        len: size,
+      });
       return new BlobReference(id, size);
     }
 
@@ -489,84 +517,25 @@
     }
   }
 
-  // TODO(jimmywarting): Maybe remove BlobDataItem?
-  // Came to the realization that this is is
-  // very much like the new BlobReferences Perhaps don't use this anymore...?
+  /*
+  Pseudo code for getting a file backed up by the filesystem
+  https://github.com/denoland/deno/issues/11018
 
-  /**
-   * This is a blob backed up by a file on the disk
-   * with minium requirement. Its wrapped around a Blob as a blobPart
-   * so you have no direct access to this.
-   */
-  class BlobDataItem extends Blob {
-    #path;
-    #start;
-
-    constructor(options) {
-      super();
-      this.#path = options.path;
-      this.#start = options.start;
-      this[_Size] = options.size;
-      this.lastModified = options.lastModified;
-    }
-
-    /**
-     * Slicing arguments is first validated and formatted
-     * to not be out of range by Blob.prototype.slice
-     */
-    slice(start, end) {
-      return new BlobDataItem({
-        path: this.#path,
-        lastModified: this.lastModified,
-        size: end - start,
-        start,
-      });
-    }
-
-    async *stream() {
-      const { mtime } = await Deno.stat(this.#path);
-      if (mtime > this.lastModified) {
-        throw new DOMException(
-          "The requested file could not be read, " +
-            "typically due to permission problems that have occurred after " +
-            "a reference to a file was acquired.",
-          "NotReadableError",
-        );
-      }
-      if (this.size) {
-        const r = await Deno.open(this.#path, { read: true });
-        let length = this.size;
-        await r.seek(this.#start, Deno.SeekMode.Start);
-        while (length) {
-          const p = new Uint8Array(Math.min(length, POOL_SIZE));
-          length -= await r.read(p);
-          yield p;
-        }
-      }
-    }
-  }
-
-  // TODO: Make this function public
-  /** @returns {Promise<File>} */
   async function getFile(path, type = "") {
     const stat = await Deno.stat(path);
-    const blobDataItem = new BlobDataItem({
-      path,
-      size: stat.size,
-      lastModified: stat.mtime.getTime(),
-      start: 0,
-    });
+    const lastModified = stat.mtime.getTime();
+    const fileName = basename(path);
+    const blobReference = BlobReference.fromFilePath(path, [permission?]);
 
-    // TODO: import basename?
-    const file = new File([blobDataItem], basename(path), {
+    return new File([blobReference], fileName, {
       type,
-      lastModified: blobDataItem.lastModified,
+      lastModified
     });
-
-    return file;
   }
+  */
 
   window.__bootstrap.file = {
+    getParts,
     Blob,
     File,
   };
