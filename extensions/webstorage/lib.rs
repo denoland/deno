@@ -136,7 +136,7 @@ pub fn op_webstorage_set(
     conn.prepare("SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'")?;
   let size: u32 = stmt.query_row(params![], |row| row.get(0))?;
 
-  if size >= 5000000 {
+  if size >= 10000000 {
     return Err(
       deno_web::DomExceptionQuotaExceededError::new(
         "Exceeded maximum storage size",
