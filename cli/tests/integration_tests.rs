@@ -2867,7 +2867,6 @@ console.log("finish");
   }
 
   #[test]
-  #[ignore]
   fn info_api() {
     let _g = util::http_server();
     let status = util::deno_cmd()

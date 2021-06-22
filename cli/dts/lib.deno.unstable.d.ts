@@ -658,13 +658,47 @@ declare namespace Deno {
    *
    * ## Example
    *
+   * Getting the information for a remote module:
+   *
    * ```ts
-   * const graph = await Deno.info("https://deno.land/x/std/testing/asserts.ts");
+   * const info = await Deno.info("https://deno.land/x/std/testing/asserts.ts");
    * console.log(graph.modules.map((dep) => dep.specifier));
    * // Would log out 3 module specifiers like:
    * //   https://deno.land/std/fmt/colors.ts
    * //   https://deno.land/std/testing/_diff.ts
    * //   https://deno.land/std/testing/asserts.ts
+   * ```
+   *
+   * Using an import map file:
+   *
+   * ```ts
+   * const info = await Deno.info("./example.ts", {
+   *   importMap: "./import-map.json"
+   * });
+   * console.log(info);
+   * ```
+   *
+   * Using an import map object:
+   *
+   * ```ts
+   * const info = await Deno.info("./example.ts", {
+   *   importMap: {
+   *     imports: {
+   *       "colors": "https://deno.land/std/fmt/colors.ts"
+   *     }
+   *   }
+   * });
+   * console.log(info);
+   * ```
+   *
+   * Include module checksums and local file system paths:
+   *
+   * ```ts
+   * const info = await Deno.info("./example.ts", {
+   *   checksums: true,
+   *   paths: true,
+   * });
+   * console.log(info);
    * ```
    *
    * @param specifier The specifier that serves as the entry point for the
