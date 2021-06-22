@@ -215,7 +215,7 @@
 
       const ws = resp[_ws];
       if (ws) {
-        const _readyState = Symbol("[[readyState]]");
+        const _readyState = Symbol.for("[[readyState]]");
 
         core.opAsync("op_http_upgrade_websocket", requestRid).then((rid) => {
           ws[Symbol.for("[[rid]]")] = rid;
