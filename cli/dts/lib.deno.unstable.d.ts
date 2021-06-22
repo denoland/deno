@@ -1089,6 +1089,17 @@ declare namespace Deno {
     /** A certificate authority to use when validating TLS certificates. Certificate data must be PEM encoded.
      */
     caData?: string;
+    proxy?: Proxy;
+  }
+
+  export interface Proxy {
+    url: string;
+    basicAuth?: BasicAuth;
+  }
+
+  export interface BasicAuth {
+    username: string;
+    password: string;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1096,7 +1107,12 @@ declare namespace Deno {
    *
    * ```ts
    * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
-   * const req = await fetch("https://myserver.com", { client });
+   * const response = await fetch("https://myserver.com", { client });
+   * ```
+   *
+   * ```ts
+   * const client = Deno.createHttpClient({ proxy: { url: "http://myproxy.com:8080" } });
+   * const response = await fetch("https://myserver.com", { client });
    * ```
    */
   export function createHttpClient(
