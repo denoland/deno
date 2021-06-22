@@ -564,7 +564,10 @@
     converters.USVString,
   );
   converters["sequence<double>"] = createSequenceConverter(
-    converters["double"],
+    converters.double,
+  );
+  converters["sequence<object>"] = createSequenceConverter(
+    converters.object,
   );
   converters["Promise<undefined>"] = createPromiseConverter(() => undefined);
 
@@ -577,6 +580,10 @@
   converters["record<ByteString, ByteString>"] = createRecordConverter(
     converters.ByteString,
     converters.ByteString,
+  );
+
+  converters["sequence<DOMString>"] = createSequenceConverter(
+    converters.DOMString,
   );
 
   function requiredArguments(length, required, opts = {}) {
@@ -626,6 +633,7 @@
             get() {
               return member.defaultValue;
             },
+            enumerable: true,
           });
         }
       }

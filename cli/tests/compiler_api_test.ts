@@ -93,6 +93,56 @@ Deno.test({
 });
 
 Deno.test({
+  name: "Deno.emit() - type references can be loaded",
+  async fn() {
+    const { diagnostics, files, ignoredOptions, stats } = await Deno.emit(
+      "file:///a.ts",
+      {
+        sources: {
+          "file:///a.ts": `/// <reference types="./b.d.ts" />
+          const b = new B();
+          console.log(b.b);`,
+          "file:///b.d.ts": `declare class B {
+            b: string;
+          }`,
+        },
+      },
+    );
+    assertEquals(diagnostics.length, 0);
+    assert(!ignoredOptions);
+    assertEquals(stats.length, 12);
+    const keys = Object.keys(files).sort();
+    assertEquals(keys, ["file:///a.ts.js", "file:///a.ts.js.map"]);
+  },
+});
+
+Deno.test({
+  name: "Deno.emit() - compilerOptions.types",
+  async fn() {
+    const { diagnostics, files, ignoredOptions, stats } = await Deno.emit(
+      "file:///a.ts",
+      {
+        compilerOptions: {
+          types: ["file:///b.d.ts"],
+        },
+        sources: {
+          "file:///a.ts": `const b = new B();
+          console.log(b.b);`,
+          "file:///b.d.ts": `declare class B {
+            b: string;
+          }`,
+        },
+      },
+    );
+    assertEquals(diagnostics.length, 0);
+    assert(!ignoredOptions);
+    assertEquals(stats.length, 12);
+    const keys = Object.keys(files).sort();
+    assertEquals(keys, ["file:///a.ts.js", "file:///a.ts.js.map"]);
+  },
+});
+
+Deno.test({
   name: "Deno.emit() - import maps",
   async fn() {
     const { diagnostics, files, ignoredOptions, stats } = await Deno.emit(
@@ -404,5 +454,51 @@ Deno.test({
     assertEquals(Object.keys(files).length, 2);
     assert(files["deno:///bundle.js"]);
     assert(files["deno:///bundle.js.map"]);
+  },
+});
+
+Deno.test({
+  name: `Deno.emit() - graph errors as diagnostics`,
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const { diagnostics } = await Deno.emit("/a.ts", {
+      sources: {
+        "/a.ts": `import { b } from "./b.ts";
+        console.log(b);`,
+      },
+    });
+    assert(diagnostics);
+    assertEquals(diagnostics, [
+      {
+        category: 1,
+        code: 2305,
+        start: { line: 0, character: 9 },
+        end: { line: 0, character: 10 },
+        messageText:
+          `Module '"deno:///missing_dependency.d.ts"' has no exported member 'b'.`,
+        messageChain: null,
+        source: null,
+        sourceLine: 'import { b } from "./b.ts";',
+        fileName: "file:///a.ts",
+        relatedInformation: null,
+      },
+      {
+        category: 1,
+        code: 900001,
+        start: null,
+        end: null,
+        messageText: "Unable to find specifier in sources: file:///b.ts",
+        messageChain: null,
+        source: null,
+        sourceLine: null,
+        fileName: "file:///b.ts",
+        relatedInformation: null,
+      },
+    ]);
+    assert(
+      Deno.formatDiagnostics(diagnostics).includes(
+        "Unable to find specifier in sources: file:///b.ts",
+      ),
+    );
   },
 });

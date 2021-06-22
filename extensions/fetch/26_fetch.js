@@ -148,6 +148,7 @@
   async function mainFetch(req, recursive, terminator) {
     /** @type {ReadableStream<Uint8Array> | Uint8Array | null} */
     let reqBody = null;
+
     if (req.body !== null) {
       if (req.body.streamOrStatic instanceof ReadableStream) {
         if (req.body.length === null) {
@@ -269,9 +270,14 @@
     if (nullBodyStatus(response.status)) {
       core.close(resp.responseRid);
     } else {
-      response.body = new InnerBody(
-        createResponseBodyStream(resp.responseRid, terminator),
-      );
+      if (req.method === "HEAD" || req.method === "OPTIONS") {
+        response.body = null;
+        core.close(resp.responseRid);
+      } else {
+        response.body = new InnerBody(
+          createResponseBodyStream(resp.responseRid, terminator),
+        );
+      }
     }
 
     if (recursive) return response;
@@ -289,8 +295,9 @@
    * @returns {Promise<InnerResponse>}
    */
   function httpRedirectFetch(request, response, terminator) {
-    const locationHeaders = response.headerList
-      .filter((entry) => entry[0] === "location");
+    const locationHeaders = response.headerList.filter(
+      (entry) => entry[0] === "location",
+    );
     if (locationHeaders.length === 0) {
       return response;
     }
@@ -309,7 +316,8 @@
     }
     request.redirectCount++;
     if (
-      response.status !== 303 && request.body !== null &&
+      response.status !== 303 &&
+      request.body !== null &&
       request.body.source === null
     ) {
       return networkError(
@@ -320,7 +328,8 @@
       ((response.status === 301 || response.status === 302) &&
         request.method === "POST") ||
       (response.status === 303 &&
-        (request.method !== "GET" && request.method !== "HEAD"))
+        request.method !== "GET" &&
+        request.method !== "HEAD")
     ) {
       request.method = "GET";
       request.body = null;
