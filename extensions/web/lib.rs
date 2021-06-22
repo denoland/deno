@@ -41,7 +41,9 @@ pub use crate::blob::InMemoryBlobPart;
 use crate::message_port::op_message_port_create_entangled;
 use crate::message_port::op_message_port_post_message;
 use crate::message_port::op_message_port_recv_message;
+pub use crate::message_port::create_entangled_message_port;
 pub use crate::message_port::JsMessageData;
+pub use crate::message_port::MessagePort;
 
 /// Load and execute the javascript code.
 pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {

@@ -1,15 +1,15 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::web_worker::WebWorkerInternalHandle;
-use crate::web_worker::WorkerEvent;
+use crate::web_worker::WorkerControlEvent;
 use deno_core::error::generic_error;
-use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::op_async;
 use deno_core::op_sync;
+use deno_core::CancelFuture;
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::ZeroCopyBuf;
+use deno_web::JsMessageData;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -17,7 +17,7 @@ pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
       ("op_worker_post_message", op_sync(op_worker_post_message)),
-      ("op_worker_get_message", op_async(op_worker_get_message)),
+      ("op_worker_recv_message", op_async(op_worker_recv_message)),
       // Notify host that guest worker closes.
       ("op_worker_close", op_sync(op_worker_close)),
       // Notify host that guest worker has unhandled error.
@@ -31,30 +31,28 @@ pub fn init() -> Extension {
 
 fn op_worker_post_message(
   state: &mut OpState,
+  data: JsMessageData,
   _: (),
-  buf: Option<ZeroCopyBuf>,
 ) -> Result<(), AnyError> {
-  let buf = buf.ok_or_else(null_opbuf)?;
   let handle = state.borrow::<WebWorkerInternalHandle>().clone();
-  handle
-    .post_event(WorkerEvent::Message(buf))
-    .expect("Failed to post message to host");
+  handle.port.send(state, data)?;
   Ok(())
 }
 
-async fn op_worker_get_message(
+async fn op_worker_recv_message(
   state: Rc<RefCell<OpState>>,
   _: (),
   _: (),
-) -> Result<ZeroCopyBuf, AnyError> {
-  let temp = {
-    let a = state.borrow();
-    a.borrow::<WebWorkerInternalHandle>().clone()
+) -> Result<Option<JsMessageData>, AnyError> {
+  let handle = {
+    let state = state.borrow();
+    state.borrow::<WebWorkerInternalHandle>().clone()
   };
-
-  let maybe_data = temp.get_message().await;
-
-  Ok(maybe_data.unwrap_or_else(ZeroCopyBuf::empty))
+  handle
+    .port
+    .recv(state.clone())
+    .or_cancel(handle.cancel)
+    .await?
 }
 
 fn op_worker_close(state: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
@@ -77,7 +75,7 @@ fn op_worker_unhandled_error(
 ) -> Result<(), AnyError> {
   let sender = state.borrow::<WebWorkerInternalHandle>().clone();
   sender
-    .post_event(WorkerEvent::Error(generic_error(message)))
+    .post_event(WorkerControlEvent::Error(generic_error(message)))
     .expect("Failed to propagate error event to parent worker");
   Ok(())
 }

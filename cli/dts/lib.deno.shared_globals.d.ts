@@ -386,7 +386,7 @@ declare class Worker extends EventTarget {
     specifier: string | URL,
     options?: WorkerOptions,
   );
-  postMessage(message: any, transfer: ArrayBuffer[]): void;
+  postMessage(message: any, transfer: Transferable[]): void;
   postMessage(message: any, options?: PostMessageOptions): void;
   addEventListener<K extends keyof WorkerEventMap>(
     type: K,
