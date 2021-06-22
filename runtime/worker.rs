@@ -113,6 +113,7 @@ impl MainWorker {
       ),
       deno_webgpu::init(options.unstable),
       deno_timers::init::<Permissions>(),
+      deno_ffi::init(),
       // Metrics
       metrics::init(),
       // Runtime ops

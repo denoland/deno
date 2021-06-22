@@ -13,6 +13,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "abort_on_panic"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "955f37ac58af2416bac687c8ab66a4ccba282229bd7422a28d2281a5e66a6116"
+
+[[package]]
 name = "adler"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -535,6 +541,7 @@ dependencies = [
  "deno_crypto",
  "deno_doc",
  "deno_fetch",
+ "deno_ffi",
  "deno_lint",
  "deno_runtime",
  "deno_timers",
@@ -683,6 +690,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_ffi"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "dlopen",
+ "libffi",
+ "serde",
+]
+
+[[package]]
 name = "deno_lint"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -713,6 +730,7 @@ dependencies = [
  "deno_core",
  "deno_crypto",
  "deno_fetch",
+ "deno_ffi",
  "deno_timers",
  "deno_url",
  "deno_web",
@@ -1873,6 +1891,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "18794a8ad5b29321f790b55d93dfba91e125cb1a9edbd4f8e3150acc771c1a5e"
 
 [[package]]
+name = "libffi"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f4fcb8a029c57c99c3465a2ae1a41b9cbbf7cdb7b52e482e1e3c7301686372ae"
+dependencies = [
+ "abort_on_panic",
+ "libc",
+ "libffi-sys",
+]
+
+[[package]]
+name = "libffi-sys"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e91e835dcfc5532b8b680fc903d6a3ae1db5dc6a40175d75e25c19c2353994d"
+dependencies = [
+ "cc",
+ "make-cmd",
+]
+
+[[package]]
 name = "libloading"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1976,6 +2015,12 @@ dependencies = [
  "quote 1.0.9",
  "syn 1.0.65",
 ]
+
+[[package]]
+name = "make-cmd"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8ca8afbe8af1785e09636acb5a41e08a765f5f0340568716c18a8700ba3c0d3"
 
 [[package]]
 name = "malloc_buf"
