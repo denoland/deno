@@ -15,9 +15,11 @@ use uuid::Uuid;
 
 use crate::Location;
 
+pub type PartMap = HashMap<Uuid, Arc<Box<dyn BlobPart + Send + Sync>>>;
+
 #[derive(Clone, Default, Debug)]
 pub struct BlobStore {
-  parts: Arc<Mutex<HashMap<Uuid, Arc<Box<dyn BlobPart + Send + Sync>>>>>,
+  parts: Arc<Mutex<PartMap>>,
   object_urls: Arc<Mutex<HashMap<Url, Arc<Blob>>>>,
 }
 

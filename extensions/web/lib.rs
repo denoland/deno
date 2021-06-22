@@ -38,10 +38,10 @@ pub use crate::blob::BlobPart;
 pub use crate::blob::BlobStore;
 pub use crate::blob::InMemoryBlobPart;
 
+pub use crate::message_port::create_entangled_message_port;
 use crate::message_port::op_message_port_create_entangled;
 use crate::message_port::op_message_port_post_message;
 use crate::message_port::op_message_port_recv_message;
-pub use crate::message_port::create_entangled_message_port;
 pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
 
