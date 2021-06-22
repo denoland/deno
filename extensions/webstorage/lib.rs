@@ -123,6 +123,7 @@ pub fn op_webstorage_key(
 pub struct SetArgs {
   key_name: String,
   key_value: String,
+  key_limit_storage: u32
 }
 
 pub fn op_webstorage_set(
@@ -130,16 +131,17 @@ pub fn op_webstorage_set(
   args: SetArgs,
   persistent: bool,
 ) -> Result<(), AnyError> {
+
   let conn = get_webstorage(state, persistent)?;
 
   let mut stmt =
     conn.prepare("SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'")?;
   let size: u32 = stmt.query_row(params![], |row| row.get(0))?;
 
-  if size >= 5000000 {
+  if size >= args.key_limit_storage {
     return Err(
       deno_web::DomExceptionQuotaExceededError::new(
-        "Exceeded maximum storage size",
+        "Exceeded maximum storage size ",
       )
       .into(),
     );
