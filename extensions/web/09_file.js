@@ -288,6 +288,7 @@
       const blob = new Blob([], { type: relativeContentType });
       blobPartMap.set(blob, blobParts);
       this.#setSize.apply(blob, span);
+      this.#setSize.apply(blob, [span]);
       return blob;
     }
 
