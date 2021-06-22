@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::web_worker::WebWorkerSelfHandle;
+use crate::web_worker::WebWorkerInternalHandle;
 use crate::web_worker::WorkerControlEvent;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -34,7 +34,7 @@ fn op_worker_post_message(
   data: JsMessageData,
   _: (),
 ) -> Result<(), AnyError> {
-  let handle = state.borrow::<WebWorkerSelfHandle>().clone();
+  let handle = state.borrow::<WebWorkerInternalHandle>().clone();
   handle.port.send(state, data)?;
   Ok(())
 }
@@ -46,7 +46,7 @@ async fn op_worker_recv_message(
 ) -> Result<Option<JsMessageData>, AnyError> {
   let handle = {
     let state = state.borrow();
-    state.borrow::<WebWorkerSelfHandle>().clone()
+    state.borrow::<WebWorkerInternalHandle>().clone()
   };
   handle
     .port
@@ -57,7 +57,7 @@ async fn op_worker_recv_message(
 
 fn op_worker_close(state: &mut OpState, _: (), _: ()) -> Result<(), AnyError> {
   // Notify parent that we're finished
-  let mut handle = state.borrow_mut::<WebWorkerSelfHandle>().clone();
+  let mut handle = state.borrow_mut::<WebWorkerInternalHandle>().clone();
 
   handle.terminate();
   Ok(())
@@ -73,7 +73,7 @@ fn op_worker_unhandled_error(
   message: String,
   _: (),
 ) -> Result<(), AnyError> {
-  let sender = state.borrow::<WebWorkerSelfHandle>().clone();
+  let sender = state.borrow::<WebWorkerInternalHandle>().clone();
   sender
     .post_event(WorkerControlEvent::Error(generic_error(message)))
     .expect("Failed to propagate error event to parent worker");

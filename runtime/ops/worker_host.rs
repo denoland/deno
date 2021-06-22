@@ -19,14 +19,12 @@ use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::error::JsError;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::serde::de;
 use deno_core::serde::de::SeqAccess;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
-use deno_core::serde_json::json;
 use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -529,42 +527,6 @@ fn op_host_terminate_worker(
     .expect("Panic in worker thread")
     .expect("Panic in worker event loop");
   Ok(())
-}
-
-use deno_core::serde::Serialize;
-use deno_core::serde::Serializer;
-
-impl Serialize for WorkerControlEvent {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let type_id = match &self {
-      WorkerControlEvent::TerminalError(_) => 1_i32,
-      WorkerControlEvent::Error(_) => 2_i32,
-      WorkerControlEvent::Close => 3_i32,
-    };
-
-    match self {
-      WorkerControlEvent::TerminalError(error)
-      | WorkerControlEvent::Error(error) => {
-        let value = match error.downcast_ref::<JsError>() {
-          Some(js_error) => json!({
-            "message": js_error.message,
-            "fileName": js_error.script_resource_name,
-            "lineNumber": js_error.line_number,
-            "columnNumber": js_error.start_column,
-          }),
-          None => json!({
-            "message": error.to_string(),
-          }),
-        };
-
-        Serialize::serialize(&(type_id, value), serializer)
-      }
-      _ => Serialize::serialize(&(type_id, ()), serializer),
-    }
-  }
 }
 
 /// Try to remove worker from workers table - NOTE: `Worker.terminate()`

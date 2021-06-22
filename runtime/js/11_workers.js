@@ -194,7 +194,7 @@
         options?.name,
       );
       this.#id = id;
-      this.#pollCtrl();
+      this.#pollControl();
       this.#pollMessages();
     }
     #handleError(e) {
@@ -217,7 +217,7 @@
       return handled;
     }
 
-    #pollCtrl = async () => {
+    #pollControl = async () => {
       while (!this.#terminated) {
         const [type, data] = await hostRecvCtrl(this.#id);
 

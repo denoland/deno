@@ -9,6 +9,7 @@ use crate::tokio_util::create_basic_runtime;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
 use deno_core::error::Context as ErrorContext;
+use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::future::FutureExt;
@@ -65,9 +66,44 @@ pub enum WorkerControlEvent {
   Close,
 }
 
+use deno_core::serde::Serializer;
+
+impl Serialize for WorkerControlEvent {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let type_id = match &self {
+      WorkerControlEvent::TerminalError(_) => 1_i32,
+      WorkerControlEvent::Error(_) => 2_i32,
+      WorkerControlEvent::Close => 3_i32,
+    };
+
+    match self {
+      WorkerControlEvent::TerminalError(error)
+      | WorkerControlEvent::Error(error) => {
+        let value = match error.downcast_ref::<JsError>() {
+          Some(js_error) => json!({
+            "message": js_error.message,
+            "fileName": js_error.script_resource_name,
+            "lineNumber": js_error.line_number,
+            "columnNumber": js_error.start_column,
+          }),
+          None => json!({
+            "message": error.to_string(),
+          }),
+        };
+
+        Serialize::serialize(&(type_id, value), serializer)
+      }
+      _ => Serialize::serialize(&(type_id, ()), serializer),
+    }
+  }
+}
+
 // Channels used for communication with worker's parent
 #[derive(Clone)]
-pub struct WebWorkerSelfHandle {
+pub struct WebWorkerInternalHandle {
   sender: mpsc::Sender<WorkerControlEvent>,
   pub port: Rc<MessagePort>,
   pub cancel: Rc<CancelHandle>,
@@ -75,7 +111,7 @@ pub struct WebWorkerSelfHandle {
   isolate_handle: v8::IsolateHandle,
 }
 
-impl WebWorkerSelfHandle {
+impl WebWorkerInternalHandle {
   /// Post WorkerEvent to parent as a worker
   pub fn post_event(&self, event: WorkerControlEvent) -> Result<(), AnyError> {
     let mut sender = self.sender.clone();
@@ -171,11 +207,11 @@ impl WebWorkerHandle {
 
 fn create_handles(
   isolate_handle: v8::IsolateHandle,
-) -> (WebWorkerSelfHandle, SendableWebWorkerHandle) {
+) -> (WebWorkerInternalHandle, SendableWebWorkerHandle) {
   let (parent_port, worker_port) = create_entangled_message_port();
   let (ctrl_tx, ctrl_rx) = mpsc::channel::<WorkerControlEvent>(1);
   let terminated = Arc::new(AtomicBool::new(false));
-  let internal_handle = WebWorkerSelfHandle {
+  let internal_handle = WebWorkerInternalHandle {
     sender: ctrl_tx,
     port: Rc::new(parent_port),
     terminated: terminated.clone(),
@@ -199,7 +235,7 @@ pub struct WebWorker {
   id: WorkerId,
   pub js_runtime: JsRuntime,
   pub name: String,
-  internal_handle: WebWorkerSelfHandle,
+  internal_handle: WebWorkerInternalHandle,
   pub use_deno_namespace: bool,
   pub main_module: ModuleSpecifier,
 }
