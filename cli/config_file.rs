@@ -31,6 +31,14 @@ pub struct EmitConfigOptions {
   pub jsx_fragment_factory: String,
 }
 
+/// There are certain compiler options that can impact what modules are part of
+/// a module graph, which need to be deserialized into a structure for analysis.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompilerOptions {
+  pub types: Option<Vec<String>>,
+}
+
 /// A structure that represents a set of options that were ignored and the
 /// path those options came from.
 #[derive(Debug, Clone, PartialEq)]
@@ -90,7 +98,6 @@ pub const IGNORED_COMPILER_OPTIONS: &[&str] = &[
   "sourceMap",
   "sourceRoot",
   "target",
-  "types",
   "useDefineForClassFields",
 ];
 

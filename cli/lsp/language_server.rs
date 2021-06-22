@@ -70,6 +70,7 @@ pub struct StateSnapshot {
   pub assets: Assets,
   pub config: ConfigSnapshot,
   pub documents: DocumentCache,
+  pub maybe_config_uri: Option<ModuleSpecifier>,
   pub module_registries: registries::ModuleRegistry,
   pub performance: Performance,
   pub sources: Sources,
@@ -92,6 +93,9 @@ pub(crate) struct Inner {
   module_registries: registries::ModuleRegistry,
   /// The path to the module registries cache
   module_registries_location: PathBuf,
+  /// An optional configuration file which has been specified in the client
+  /// options.
+  maybe_config_file: Option<ConfigFile>,
   /// An optional URL which provides the location of a TypeScript configuration
   /// file which will be used by the Deno LSP.
   maybe_config_uri: Option<Url>,
@@ -139,6 +143,7 @@ impl Inner {
       config,
       diagnostics_server,
       documents: Default::default(),
+      maybe_config_file: Default::default(),
       maybe_config_uri: Default::default(),
       maybe_import_map: Default::default(),
       maybe_import_map_uri: Default::default(),
@@ -327,6 +332,7 @@ impl Inner {
         LspError::internal_error()
       })?,
       documents: self.documents.clone(),
+      maybe_config_uri: self.maybe_config_uri.clone(),
       module_registries: self.module_registries.clone(),
       performance: self.performance.clone(),
       sources: self.sources.clone(),
@@ -482,6 +488,7 @@ impl Inner {
       };
       let (value, maybe_ignored_options) = config_file.as_compiler_options()?;
       tsconfig.merge(&value);
+      self.maybe_config_file = Some(config_file);
       self.maybe_config_uri = Some(config_url);
       if let Some(ignored_options) = maybe_ignored_options {
         // TODO(@kitsonk) turn these into diagnostics that can be sent to the
@@ -509,7 +516,7 @@ impl Inner {
     specifier: &ModuleSpecifier,
   ) -> Result<Option<AssetDocument>, AnyError> {
     if let Some(maybe_asset) = self.assets.get(specifier) {
-      return Ok(maybe_asset.clone());
+      Ok(maybe_asset.clone())
     } else {
       let maybe_asset =
         tsc::get_asset(&specifier, &self.ts_server, self.snapshot()?).await?;
@@ -981,6 +988,7 @@ impl Inner {
             }
             _ => false,
           },
+          "deno-lint" => matches!(&d.code, Some(_)),
           "deno" => match &d.code {
             Some(NumberOrString::String(code)) => {
               code == "no-cache" || code == "no-cache-data"
@@ -1054,6 +1062,16 @@ impl Inner {
               LspError::internal_error()
             })?
         }
+        Some("deno-lint") => code_actions
+          .add_deno_lint_ignore_action(
+            &specifier,
+            self.documents.docs.get(&specifier),
+            diagnostic,
+          )
+          .map_err(|err| {
+            error!("Unable to fix lint error: {}", err);
+            LspError::internal_error()
+          })?,
         _ => (),
       }
     }
@@ -1771,13 +1789,14 @@ impl Inner {
         )));
       };
 
-    let req = tsc::RequestMethod::FindRenameLocations((
+    let req = tsc::RequestMethod::FindRenameLocations {
       specifier,
-      line_index.offset_tsc(params.text_document_position.position)?,
-      true,
-      true,
-      false,
-    ));
+      position: line_index
+        .offset_tsc(params.text_document_position.position)?,
+      find_in_strings: false,
+      find_in_comments: false,
+      provide_prefix_and_suffix_text_for_rename: false,
+    };
 
     let maybe_locations: Option<Vec<tsc::RenameLocation>> = self
       .ts_server
@@ -2274,20 +2293,28 @@ impl Inner {
     if !params.uris.is_empty() {
       for identifier in &params.uris {
         let specifier = self.url_map.normalize_url(&identifier.uri);
-        sources::cache(&specifier, &self.maybe_import_map)
-          .await
-          .map_err(|err| {
-            error!("{}", err);
-            LspError::internal_error()
-          })?;
-      }
-    } else {
-      sources::cache(&referrer, &self.maybe_import_map)
+        sources::cache(
+          &specifier,
+          &self.maybe_import_map,
+          &self.maybe_config_file,
+        )
         .await
         .map_err(|err| {
           error!("{}", err);
           LspError::internal_error()
         })?;
+      }
+    } else {
+      sources::cache(
+        &referrer,
+        &self.maybe_import_map,
+        &self.maybe_config_file,
+      )
+      .await
+      .map_err(|err| {
+        error!("{}", err);
+        LspError::internal_error()
+      })?;
     }
     // now that we have dependencies loaded, we need to re-analyze them and
     // invalidate some diagnostics

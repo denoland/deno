@@ -10,6 +10,7 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use log::error;
+use lsp::WorkspaceFolder;
 use lspower::lsp;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -190,6 +191,7 @@ pub struct ConfigSnapshot {
   pub client_capabilities: ClientCapabilities,
   pub root_uri: Option<Url>,
   pub settings: Settings,
+  pub workspace_folders: Option<Vec<lsp::WorkspaceFolder>>,
 }
 
 impl ConfigSnapshot {
@@ -220,6 +222,7 @@ pub struct Config {
   pub root_uri: Option<Url>,
   settings: Arc<RwLock<Settings>>,
   tx: mpsc::Sender<ConfigRequest>,
+  pub workspace_folders: Option<Vec<WorkspaceFolder>>,
 }
 
 impl Config {
@@ -321,6 +324,7 @@ impl Config {
       root_uri: None,
       settings,
       tx,
+      workspace_folders: None,
     }
   }
 
@@ -345,6 +349,7 @@ impl Config {
         .try_read()
         .map_err(|_| anyhow!("Error reading settings."))?
         .clone(),
+      workspace_folders: self.workspace_folders.clone(),
     })
   }
 
