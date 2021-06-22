@@ -41,8 +41,8 @@ winres = "0.1.11"
 
 [dependencies]
 deno_core = { version = "0.91.0", path = "../core" }
-deno_doc = "0.5.0"
-deno_lint = "0.6.1"
+deno_doc = "0.6.0"
+deno_lint = "0.7.0"
 deno_runtime = { version = "0.18.0", path = "../runtime" }
 
 atty = "0.2.14"
