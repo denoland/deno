@@ -1129,6 +1129,7 @@
       });
 
       this.data = eventInitDict?.data ?? null;
+      this.ports = eventInitDict?.ports ?? [];
       this.origin = eventInitDict?.origin ?? "";
       this.lastEventId = eventInitDict?.lastEventId ?? "";
     }
@@ -1196,6 +1197,46 @@
     }
   }
 
+  const _eventHandlers = Symbol("eventHandlers");
+
+  function makeWrappedHandler(handler) {
+    function wrappedHandler(...args) {
+      if (typeof wrappedHandler.handler !== "function") {
+        return;
+      }
+      return wrappedHandler.handler.call(this, ...args);
+    }
+    wrappedHandler.handler = handler;
+    return wrappedHandler;
+  }
+
+  // TODO(benjamingr) reuse this here and websocket where possible
+  function defineEventHandler(emitter, name, init) {
+    // HTML specification section 8.1.5.1
+    Object.defineProperty(emitter, `on${name}`, {
+      get() {
+        return this[_eventHandlers]?.get(name)?.handler;
+      },
+      set(value) {
+        if (!this[_eventHandlers]) {
+          this[_eventHandlers] = new Map();
+        }
+        let handlerWrapper = this[_eventHandlers]?.get(name);
+        if (handlerWrapper) {
+          console.log("foo");
+          handlerWrapper.handler = value;
+        } else {
+          handlerWrapper = makeWrappedHandler(value);
+          this.addEventListener(name, handlerWrapper);
+          init?.(this);
+        }
+        this[_eventHandlers].set(name, handlerWrapper);
+      },
+      configurable: true,
+      enumerable: true,
+    });
+  }
+
   window.Event = Event;
   window.EventTarget = EventTarget;
   window.ErrorEvent = ErrorEvent;
@@ -1213,5 +1254,6 @@
   window.__bootstrap.event = {
     setIsTrusted,
     setTarget,
+    defineEventHandler,
   };
 })(this);

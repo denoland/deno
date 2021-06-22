@@ -15,6 +15,11 @@ async function proxyServer(): Promise<void> {
 
 async function proxyRequest(req: ServerRequest): Promise<void> {
   console.log(`Proxy request to: ${req.url}`);
+  const proxyAuthorization = req.headers.get("proxy-authorization");
+  if (proxyAuthorization) {
+    console.log(`proxy-authorization: ${proxyAuthorization}`);
+    req.headers.delete("proxy-authorization");
+  }
   const resp = await fetch(req.url, {
     method: req.method,
     headers: req.headers,
@@ -110,9 +115,28 @@ async function testModuleDownloadNoProxy(): Promise<void> {
   http.close();
 }
 
+async function testFetchProgrammaticProxy(): Promise<void> {
+  const c = Deno.run({
+    cmd: [
+      Deno.execPath(),
+      "run",
+      "--quiet",
+      "--reload",
+      "--allow-net=localhost:4545,localhost:4555",
+      "--unstable",
+      "045_programmatic_proxy_client.ts",
+    ],
+    stdout: "piped",
+  });
+  const status = await c.status();
+  assertEquals(status.code, 0);
+  c.close();
+}
+
 proxyServer();
 await testFetch();
 await testModuleDownload();
 await testFetchNoProxy();
 await testModuleDownloadNoProxy();
+await testFetchProgrammaticProxy();
 Deno.exit(0);

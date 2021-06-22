@@ -1,12 +1,15 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
+/// <reference path="../webidl/internal.d.ts" />
 /// <reference path="./06_streams_types.d.ts" />
-/// <reference path="./lib.deno_fetch.d.ts" />
+/// <reference path="./lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 "use strict";
 
 ((window) => {
+  const webidl = window.__bootstrap.webidl;
+
   class AssertionError extends Error {
     constructor(msg) {
       super(msg);
@@ -72,119 +75,6 @@
       this.#state = "fulfilled";
       this.#resolve(value);
     }
-  }
-
-  /**
-   * @param {(...args: any[]) => any} fn
-   * @param {boolean} enforcePromise
-   * @returns {(...args: any[]) => any}
-   */
-  function reflectApply(fn, enforcePromise) {
-    if (typeof fn !== "function") {
-      throw new TypeError("The property must be a function.");
-    }
-    return function (...args) {
-      if (enforcePromise) {
-        try {
-          return resolvePromiseWith(Reflect.apply(fn, this, args));
-        } catch (err) {
-          return Promise.reject(err);
-        }
-      }
-      return Reflect.apply(fn, this, args);
-    };
-  }
-
-  /**
-   * @template I
-   * @template O
-   * @param {Transformer<I, O>} transformer
-   * @returns {Transformer<I, O>}
-   */
-  function convertTransformer(transformer) {
-    const transformerDict = Object.create(null);
-    if (transformer === null) {
-      return transformerDict;
-    }
-    if ("flush" in transformer) {
-      transformerDict.flush = reflectApply(transformer.flush, true);
-    }
-    if ("readableType" in transformer) {
-      transformerDict.readableType = transformer.readableType;
-    }
-    if ("start" in transformer) {
-      transformerDict.start = reflectApply(transformer.start, false);
-    }
-    if ("transform" in transformer) {
-      transformerDict.transform = reflectApply(transformer.transform, true);
-    }
-    if ("writableType" in transformer) {
-      transformerDict.writableType = transformer.writableType;
-    }
-    return transformerDict;
-  }
-
-  /**
-   * @template W
-   * @param {UnderlyingSink<W>} underlyingSink
-   * @returns {UnderlyingSink<W>}
-   */
-  function convertUnderlyingSink(underlyingSink) {
-    const underlyingSinkDict = Object.create(null);
-    if (underlyingSink === null) {
-      return underlyingSinkDict;
-    }
-    if ("abort" in underlyingSink) {
-      underlyingSinkDict.abort = reflectApply(underlyingSink.abort, true);
-    }
-    if ("close" in underlyingSink) {
-      underlyingSinkDict.close = reflectApply(underlyingSink.close, true);
-    }
-    if ("start" in underlyingSink) {
-      underlyingSinkDict.start = reflectApply(underlyingSink.start, false);
-    }
-    if (underlyingSink.type) {
-      underlyingSinkDict.type = underlyingSink.type;
-    }
-    if ("write" in underlyingSink) {
-      underlyingSinkDict.write = reflectApply(underlyingSink.write, true);
-    }
-    return underlyingSinkDict;
-  }
-
-  /**
-   * @template R
-   * @param {UnderlyingSource<R>} underlyingSource
-   * @returns {UnderlyingSource<R>}
-   */
-  function convertUnderlyingSource(underlyingSource) {
-    const underlyingSourceDict = Object.create(null);
-    if (underlyingSource === null) {
-      throw new TypeError("Underlying source cannot be null");
-    }
-    if (underlyingSource === undefined) {
-      return underlyingSourceDict;
-    }
-    if ("cancel" in underlyingSource) {
-      underlyingSourceDict.cancel = reflectApply(underlyingSource.cancel, true);
-    }
-    if ("pull" in underlyingSource) {
-      underlyingSourceDict.pull = reflectApply(underlyingSource.pull, true);
-    }
-    if ("start" in underlyingSource) {
-      underlyingSourceDict.start = reflectApply(underlyingSource.start, false);
-    }
-    if (underlyingSource.type !== undefined) {
-      if (underlyingSourceDict.type === null) {
-        throw new TypeError("type cannot be null");
-      }
-      const type = String(underlyingSource.type);
-      if (type !== "bytes") {
-        throw new TypeError("invalid underlying source type");
-      }
-      underlyingSourceDict.type = type;
-    }
-    return underlyingSourceDict;
   }
 
   const originalPromise = Promise;
@@ -323,6 +213,7 @@
   const _errorSteps = Symbol("[[ErrorSteps]]");
   const _flushAlgorithm = Symbol("[[flushAlgorithm]]");
   const _globalObject = Symbol("[[globalObject]]");
+  const _highWaterMark = Symbol("[[highWaterMark]]");
   const _inFlightCloseRequest = Symbol("[[inFlightCloseRequest]]");
   const _inFlightWriteRequest = Symbol("[[inFlightWriteRequest]]");
   const _pendingAbortRequest = Symbol("[pendingAbortRequest]");
@@ -385,9 +276,9 @@
   ) {
     assert(isNonNegativeNumber(highWaterMark));
     /** @type {ReadableStream} */
-    const stream = Object.create(ReadableStream.prototype);
+    const stream = webidl.createBranded(ReadableStream);
     initializeReadableStream(stream);
-    const controller = Object.create(ReadableStreamDefaultController.prototype);
+    const controller = webidl.createBranded(ReadableStreamDefaultController);
     setUpReadableStreamDefaultController(
       stream,
       controller,
@@ -419,9 +310,9 @@
     sizeAlgorithm,
   ) {
     assert(isNonNegativeNumber(highWaterMark));
-    const stream = Object.create(WritableStream.prototype);
+    const stream = webidl.createBranded(WritableStream);
     initializeWritableStream(stream);
-    const controller = Object.create(WritableStreamDefaultController.prototype);
+    const controller = webidl.createBranded(WritableStreamDefaultController);
     setUpWritableStreamDefaultController(
       stream,
       controller,
@@ -475,10 +366,10 @@
    * @param {number} defaultHWM
    */
   function extractHighWaterMark(strategy, defaultHWM) {
-    if (!("highWaterMark" in strategy)) {
+    if (strategy.highWaterMark === undefined) {
       return defaultHWM;
     }
-    const highWaterMark = Number(strategy.highWaterMark);
+    const highWaterMark = strategy.highWaterMark;
     if (Number.isNaN(highWaterMark) || highWaterMark < 0) {
       throw RangeError(
         `Expected highWaterMark to be a positive number or Infinity, got "${highWaterMark}".`,
@@ -493,12 +384,17 @@
    * @return {(chunk: T) => number}
    */
   function extractSizeAlgorithm(strategy) {
-    const { size } = strategy;
-
-    if (!size) {
+    if (strategy.size === undefined) {
       return () => 1;
     }
-    return (chunk) => size(chunk);
+    return (chunk) =>
+      webidl.invokeCallbackFunction(
+        strategy.size,
+        [chunk],
+        undefined,
+        webidl.converters["unrestricted double"],
+        { prefix: "Failed to call `sizeAlgorithm`" },
+      );
   }
 
   /**
@@ -1140,6 +1036,10 @@
     if (reader === undefined) {
       return;
     }
+    /** @type {Deferred<void>} */
+    const closedPromise = reader[_closedPromise];
+    closedPromise.reject(e);
+    setPromiseIsHandledToTrue(closedPromise.promise);
     if (isReadableStreamDefaultReader(reader)) {
       /** @type {Array<ReadRequest<R>>} */
       const readRequests = reader[_readRequests];
@@ -1149,10 +1049,6 @@
       reader[_readRequests] = [];
     }
     // 3.5.6.8 Otherwise, support BYOB Reader
-    /** @type {Deferred<void>} */
-    const closedPromise = reader[_closedPromise];
-    closedPromise.reject(e);
-    setPromiseIsHandledToTrue(closedPromise.promise);
   }
 
   /**
@@ -1750,24 +1646,53 @@
     underlyingSourceDict,
     highWaterMark,
   ) {
-    const controller = new ReadableByteStreamController();
+    const controller = webidl.createBranded(ReadableByteStreamController);
     /** @type {() => void} */
     let startAlgorithm = () => undefined;
     /** @type {() => Promise<void>} */
     let pullAlgorithm = () => resolvePromiseWith(undefined);
     /** @type {(reason: any) => Promise<void>} */
     let cancelAlgorithm = (_reason) => resolvePromiseWith(undefined);
-    if ("start" in underlyingSourceDict) {
+    if (underlyingSourceDict.start !== undefined) {
       startAlgorithm = () =>
-        underlyingSourceDict.start.call(underlyingSource, controller);
+        webidl.invokeCallbackFunction(
+          underlyingSourceDict.start,
+          [controller],
+          underlyingSource,
+          webidl.converters.any,
+          {
+            prefix:
+              "Failed to call 'startAlgorithm' on 'ReadableByteStreamController'",
+          },
+        );
     }
-    if ("pull" in underlyingSourceDict) {
+    if (underlyingSourceDict.pull !== undefined) {
       pullAlgorithm = () =>
-        underlyingSourceDict.pull.call(underlyingSource, controller);
+        webidl.invokeCallbackFunction(
+          underlyingSourceDict.pull,
+          [controller],
+          underlyingSource,
+          webidl.converters["Promise<undefined>"],
+          {
+            prefix:
+              "Failed to call 'pullAlgorithm' on 'ReadableByteStreamController'",
+            returnsPromise: true,
+          },
+        );
     }
-    if ("cancel" in underlyingSourceDict) {
+    if (underlyingSourceDict.cancel !== undefined) {
       cancelAlgorithm = (reason) =>
-        underlyingSourceDict.cancel.call(underlyingSource, reason);
+        webidl.invokeCallbackFunction(
+          underlyingSourceDict.cancel,
+          [reason],
+          underlyingSource,
+          webidl.converters["Promise<undefined>"],
+          {
+            prefix:
+              "Failed to call 'cancelAlgorithm' on 'ReadableByteStreamController'",
+            returnsPromise: true,
+          },
+        );
     }
     // 3.13.27.6 Let autoAllocateChunkSize be ? GetV(underlyingByteSource, "autoAllocateChunkSize").
     /** @type {undefined} */
@@ -1839,24 +1764,53 @@
     highWaterMark,
     sizeAlgorithm,
   ) {
-    const controller = new ReadableStreamDefaultController();
-    /** @type {(controller: ReadableStreamDefaultController<R>) => Promise<void>} */
+    const controller = webidl.createBranded(ReadableStreamDefaultController);
+    /** @type {() => Promise<void>} */
     let startAlgorithm = () => undefined;
-    /** @type {(controller: ReadableStreamDefaultController<R>) => Promise<void>} */
+    /** @type {() => Promise<void>} */
     let pullAlgorithm = () => resolvePromiseWith(undefined);
     /** @type {(reason?: any) => Promise<void>} */
     let cancelAlgorithm = () => resolvePromiseWith(undefined);
-    if ("start" in underlyingSourceDict) {
+    if (underlyingSourceDict.start !== undefined) {
       startAlgorithm = () =>
-        underlyingSourceDict.start.call(underlyingSource, controller);
+        webidl.invokeCallbackFunction(
+          underlyingSourceDict.start,
+          [controller],
+          underlyingSource,
+          webidl.converters.any,
+          {
+            prefix:
+              "Failed to call 'startAlgorithm' on 'ReadableStreamDefaultController'",
+          },
+        );
     }
-    if ("pull" in underlyingSourceDict) {
+    if (underlyingSourceDict.pull !== undefined) {
       pullAlgorithm = () =>
-        underlyingSourceDict.pull.call(underlyingSource, controller);
+        webidl.invokeCallbackFunction(
+          underlyingSourceDict.pull,
+          [controller],
+          underlyingSource,
+          webidl.converters["Promise<undefined>"],
+          {
+            prefix:
+              "Failed to call 'pullAlgorithm' on 'ReadableStreamDefaultController'",
+            returnsPromise: true,
+          },
+        );
     }
-    if ("cancel" in underlyingSourceDict) {
+    if (underlyingSourceDict.cancel !== undefined) {
       cancelAlgorithm = (reason) =>
-        underlyingSourceDict.cancel.call(underlyingSource, reason);
+        webidl.invokeCallbackFunction(
+          underlyingSourceDict.cancel,
+          [reason],
+          underlyingSource,
+          webidl.converters["Promise<undefined>"],
+          {
+            prefix:
+              "Failed to call 'cancelAlgorithm' on 'ReadableStreamDefaultController'",
+            returnsPromise: true,
+          },
+        );
     }
     setUpReadableStreamDefaultController(
       stream,
@@ -1916,7 +1870,7 @@
     transformerDict,
   ) {
     /** @type {TransformStreamDefaultController<O>} */
-    const controller = new TransformStreamDefaultController();
+    const controller = webidl.createBranded(TransformStreamDefaultController);
     /** @type {(chunk: O, controller: TransformStreamDefaultController<O>) => Promise<void>} */
     let transformAlgorithm = (chunk) => {
       try {
@@ -1928,13 +1882,33 @@
     };
     /** @type {(controller: TransformStreamDefaultController<O>) => Promise<void>} */
     let flushAlgorithm = () => resolvePromiseWith(undefined);
-    if ("transform" in transformerDict) {
+    if (transformerDict.transform !== undefined) {
       transformAlgorithm = (chunk, controller) =>
-        transformerDict.transform.call(transformer, chunk, controller);
+        webidl.invokeCallbackFunction(
+          transformerDict.transform,
+          [chunk, controller],
+          transformer,
+          webidl.converters["Promise<undefined>"],
+          {
+            prefix:
+              "Failed to call 'transformAlgorithm' on 'TransformStreamDefaultController'",
+            returnsPromise: true,
+          },
+        );
     }
-    if ("flush" in transformerDict) {
+    if (transformerDict.flush !== undefined) {
       flushAlgorithm = (controller) =>
-        transformerDict.flush.call(transformer, controller);
+        webidl.invokeCallbackFunction(
+          transformerDict.flush,
+          [controller],
+          transformer,
+          webidl.converters["Promise<undefined>"],
+          {
+            prefix:
+              "Failed to call 'flushAlgorithm' on 'TransformStreamDefaultController'",
+            returnsPromise: true,
+          },
+        );
     }
     setUpTransformStreamDefaultController(
       stream,
@@ -2008,27 +1982,69 @@
     highWaterMark,
     sizeAlgorithm,
   ) {
-    const controller = new WritableStreamDefaultController();
+    const controller = webidl.createBranded(WritableStreamDefaultController);
+    /** @type {(controller: WritableStreamDefaultController<W>) => any} */
     let startAlgorithm = () => undefined;
-    /** @type {(chunk: W) => Promise<void>} */
+    /** @type {(chunk: W, controller: WritableStreamDefaultController<W>) => Promise<void>} */
     let writeAlgorithm = () => resolvePromiseWith(undefined);
     let closeAlgorithm = () => resolvePromiseWith(undefined);
     /** @type {(reason?: any) => Promise<void>} */
     let abortAlgorithm = () => resolvePromiseWith(undefined);
-    if ("start" in underlyingSinkDict) {
+
+    if (underlyingSinkDict.start !== undefined) {
       startAlgorithm = () =>
-        underlyingSinkDict.start.call(underlyingSink, controller);
+        webidl.invokeCallbackFunction(
+          underlyingSinkDict.start,
+          [controller],
+          underlyingSink,
+          webidl.converters.any,
+          {
+            prefix:
+              "Failed to call 'startAlgorithm' on 'WritableStreamDefaultController'",
+          },
+        );
     }
-    if ("write" in underlyingSinkDict) {
+    if (underlyingSinkDict.write !== undefined) {
       writeAlgorithm = (chunk) =>
-        underlyingSinkDict.write.call(underlyingSink, chunk, controller);
+        webidl.invokeCallbackFunction(
+          underlyingSinkDict.write,
+          [chunk, controller],
+          underlyingSink,
+          webidl.converters["Promise<undefined>"],
+          {
+            prefix:
+              "Failed to call 'writeAlgorithm' on 'WritableStreamDefaultController'",
+            returnsPromise: true,
+          },
+        );
     }
-    if ("close" in underlyingSinkDict) {
-      closeAlgorithm = () => underlyingSinkDict.close.call(underlyingSink);
+    if (underlyingSinkDict.close !== undefined) {
+      closeAlgorithm = () =>
+        webidl.invokeCallbackFunction(
+          underlyingSinkDict.close,
+          [],
+          underlyingSink,
+          webidl.converters["Promise<undefined>"],
+          {
+            prefix:
+              "Failed to call 'closeAlgorithm' on 'WritableStreamDefaultController'",
+            returnsPromise: true,
+          },
+        );
     }
-    if ("abort" in underlyingSinkDict) {
+    if (underlyingSinkDict.abort !== undefined) {
       abortAlgorithm = (reason) =>
-        underlyingSinkDict.abort.call(underlyingSink, reason);
+        webidl.invokeCallbackFunction(
+          underlyingSinkDict.abort,
+          [reason],
+          underlyingSink,
+          webidl.converters["Promise<undefined>"],
+          {
+            prefix:
+              "Failed to call 'abortAlgorithm' on 'WritableStreamDefaultController'",
+            returnsPromise: true,
+          },
+        );
     }
     setUpWritableStreamDefaultController(
       stream,
@@ -2792,7 +2808,7 @@
   function writableStreamHasOperationMarkedInFlight(stream) {
     if (
       stream[_inFlightWriteRequest] === undefined &&
-      stream[_controller][_inFlightCloseRequest] === undefined
+      stream[_inFlightCloseRequest] === undefined
     ) {
       return false;
     }
@@ -2841,11 +2857,11 @@
     assert(stream[_storedError] === undefined);
     assert(stream[_state] === "writable");
     const controller = stream[_controller];
-    assert(controller);
+    assert(controller !== undefined);
     stream[_state] = "erroring";
     stream[_storedError] = reason;
     const writer = stream[_writer];
-    if (writer) {
+    if (writer !== undefined) {
       writableStreamDefaultWriterEnsureReadyPromiseRejected(writer, reason);
     }
     if (
@@ -2955,29 +2971,44 @@
   }, asyncIteratorPrototype);
 
   class ByteLengthQueuingStrategy {
-    /** @type {number} */
-    highWaterMark;
-
     /** @param {{ highWaterMark: number }} init */
     constructor(init) {
-      if (
-        typeof init !== "object" || init === null || !("highWaterMark" in init)
-      ) {
-        throw new TypeError(
-          "init must be an object that contains a property named highWaterMark",
-        );
-      }
-      const { highWaterMark } = init;
+      const prefix = "Failed to construct 'ByteLengthQueuingStrategy'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      init = webidl.converters.QueuingStrategyInit(init, {
+        prefix,
+        context: "Argument 1",
+      });
+      this[webidl.brand] = webidl.brand;
       this[_globalObject] = window;
-      this.highWaterMark = Number(highWaterMark);
+      this[_highWaterMark] = init.highWaterMark;
+    }
+
+    /** @returns {number} */
+    get highWaterMark() {
+      webidl.assertBranded(this, ByteLengthQueuingStrategy);
+      return this[_highWaterMark];
     }
 
     /** @returns {(chunk: ArrayBufferView) => number} */
     get size() {
+      webidl.assertBranded(this, ByteLengthQueuingStrategy);
       initializeByteLengthSizeFunction(this[_globalObject]);
       return byteSizeFunctionWeakMap.get(this[_globalObject]);
     }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${
+        inspect({ highWaterMark: this.highWaterMark, size: this.size })
+      }`;
+    }
+
+    get [Symbol.toStringTag]() {
+      return "ByteLengthQueuingStrategy";
+    }
   }
+
+  webidl.configurePrototype(ByteLengthQueuingStrategy);
 
   /** @type {WeakMap<typeof globalThis, (chunk: ArrayBufferView) => number>} */
   const byteSizeFunctionWeakMap = new WeakMap();
@@ -2992,29 +3023,44 @@
   }
 
   class CountQueuingStrategy {
-    /** @type {number} */
-    highWaterMark;
-
     /** @param {{ highWaterMark: number }} init */
     constructor(init) {
-      if (
-        typeof init !== "object" || init === null || !("highWaterMark" in init)
-      ) {
-        throw new TypeError(
-          "init must be an object that contains a property named highWaterMark",
-        );
-      }
-      const { highWaterMark } = init;
+      const prefix = "Failed to construct 'CountQueuingStrategy'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      init = webidl.converters.QueuingStrategyInit(init, {
+        prefix,
+        context: "Argument 1",
+      });
+      this[webidl.brand] = webidl.brand;
       this[_globalObject] = window;
-      this.highWaterMark = Number(highWaterMark);
+      this[_highWaterMark] = init.highWaterMark;
+    }
+
+    /** @returns {number} */
+    get highWaterMark() {
+      webidl.assertBranded(this, CountQueuingStrategy);
+      return this[_highWaterMark];
     }
 
     /** @returns {(chunk: any) => 1} */
     get size() {
+      webidl.assertBranded(this, CountQueuingStrategy);
       initializeCountSizeFunction(this[_globalObject]);
       return countSizeFunctionWeakMap.get(this[_globalObject]);
     }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${
+        inspect({ highWaterMark: this.highWaterMark, size: this.size })
+      }`;
+    }
+
+    get [Symbol.toStringTag]() {
+      return "CountQueuingStrategy";
+    }
   }
+
+  webidl.configurePrototype(CountQueuingStrategy);
 
   /** @type {WeakMap<typeof globalThis, () => 1>} */
   const countSizeFunctionWeakMap = new WeakMap();
@@ -3048,13 +3094,31 @@
      * @param {UnderlyingSource<R>=} underlyingSource
      * @param {QueuingStrategy<R>=} strategy
      */
-    constructor(underlyingSource, strategy = {}) {
-      const underlyingSourceDict = convertUnderlyingSource(underlyingSource);
+    constructor(underlyingSource = undefined, strategy = {}) {
+      const prefix = "Failed to construct 'ReadableStream'";
+      if (underlyingSource !== undefined) {
+        underlyingSource = webidl.converters.object(underlyingSource, {
+          prefix,
+          context: "Argument 1",
+        });
+      }
+      strategy = webidl.converters.QueuingStrategy(strategy, {
+        prefix,
+        context: "Argument 2",
+      });
+      this[webidl.brand] = webidl.brand;
+      if (underlyingSource === undefined) {
+        underlyingSource = null;
+      }
+      const underlyingSourceDict = webidl.converters.UnderlyingSource(
+        underlyingSource,
+        { prefix, context: "underlyingSource" },
+      );
       initializeReadableStream(this);
       if (underlyingSourceDict.type === "bytes") {
         if (strategy.size !== undefined) {
           throw new RangeError(
-            `When underlying source is "bytes", strategy.size must be undefined.`,
+            `${prefix}: When underlying source is "bytes", strategy.size must be undefined.`,
           );
         }
         const highWaterMark = extractHighWaterMark(strategy, 0);
@@ -3081,6 +3145,7 @@
 
     /** @returns {boolean} */
     get locked() {
+      webidl.assertBranded(this, ReadableStream);
       return isReadableStreamLocked(this);
     }
 
@@ -3088,9 +3153,19 @@
      * @param {any=} reason
      * @returns {Promise<void>}
      */
-    cancel(reason) {
+    cancel(reason = undefined) {
+      try {
+        webidl.assertBranded(this, ReadableStream);
+        if (reason !== undefined) {
+          reason = webidl.converters.any(reason);
+        }
+      } catch (err) {
+        return Promise.reject(err);
+      }
       if (isReadableStreamLocked(this)) {
-        Promise.reject(new TypeError("Cannot cancel a locked ReadableStream."));
+        return Promise.reject(
+          new TypeError("Cannot cancel a locked ReadableStream."),
+        );
       }
       return readableStreamCancel(this, reason);
     }
@@ -3109,23 +3184,18 @@
      * @returns {ReadableStreamDefaultReader<R>}
      */
     getReader(options = {}) {
-      if (typeof options !== "object") {
-        throw new TypeError("options must be an object");
-      }
-      if (options === null) {
-        options = {};
-      }
-      /** @type {any} */
-      let { mode } = options;
+      webidl.assertBranded(this, ReadableStream);
+      const prefix = "Failed to execute 'getReader' on 'ReadableStream'";
+      options = webidl.converters.ReadableStreamGetReaderOptions(options, {
+        prefix,
+        context: "Argument 1",
+      });
+      const { mode } = options;
       if (mode === undefined) {
         return acquireReadableStreamDefaultReader(this);
       }
-      mode = String(mode);
-      if (mode !== "byob") {
-        throw new TypeError("Invalid mode.");
-      }
       // 3. Return ? AcquireReadableStreamBYOBReader(this).
-      throw new RangeError(`Unsupported mode "${String(mode)}"`);
+      throw new RangeError(`${prefix}: Unsupported mode '${mode}'`);
     }
 
     /**
@@ -3134,26 +3204,22 @@
      * @param {PipeOptions=} options
      * @returns {ReadableStream<T>}
      */
-    pipeThrough(
-      transform,
-      { preventClose, preventAbort, preventCancel, signal } = {},
-    ) {
-      if (!isReadableStream(this)) {
-        throw new TypeError("this must be a ReadableStream");
-      }
-      const { readable } = transform;
-      if (!isReadableStream(readable)) {
-        throw new TypeError("readable must be a ReadableStream");
-      }
-      const { writable } = transform;
-      if (!isWritableStream(writable)) {
-        throw new TypeError("writable must be a WritableStream");
-      }
+    pipeThrough(transform, options = {}) {
+      webidl.assertBranded(this, ReadableStream);
+      const prefix = "Failed to execute 'pipeThrough' on 'ReadableStream'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      transform = webidl.converters.ReadableWritablePair(transform, {
+        prefix,
+        context: "Argument 1",
+      });
+      options = webidl.converters.StreamPipeOptions(options, {
+        prefix,
+        context: "Argument 2",
+      });
+      const { readable, writable } = transform;
+      const { preventClose, preventAbort, preventCancel, signal } = options;
       if (isReadableStreamLocked(this)) {
         throw new TypeError("ReadableStream is already locked.");
-      }
-      if (signal !== undefined && !(signal instanceof AbortSignal)) {
-        throw new TypeError("signal must be an AbortSignal");
       }
       if (isWritableStreamLocked(writable)) {
         throw new TypeError("Target WritableStream is already locked.");
@@ -3161,9 +3227,9 @@
       const promise = readableStreamPipeTo(
         this,
         writable,
-        Boolean(preventClose),
-        Boolean(preventAbort),
-        Boolean(preventCancel),
+        preventClose,
+        preventAbort,
+        preventCancel,
         signal,
       );
       setPromiseIsHandledToTrue(promise);
@@ -3175,15 +3241,23 @@
      * @param {PipeOptions=} options
      * @returns {Promise<void>}
      */
-    pipeTo(
-      destination,
-      {
-        preventClose = false,
-        preventAbort = false,
-        preventCancel = false,
-        signal,
-      } = {},
-    ) {
+    pipeTo(destination, options = {}) {
+      try {
+        webidl.assertBranded(this, ReadableStream);
+        const prefix = "Failed to execute 'pipeTo' on 'ReadableStream'";
+        webidl.requiredArguments(arguments.length, 1, { prefix });
+        destination = webidl.converters.WritableStream(destination, {
+          prefix,
+          context: "Argument 1",
+        });
+        options = webidl.converters.StreamPipeOptions(options, {
+          prefix,
+          context: "Argument 2",
+        });
+      } catch (err) {
+        return Promise.reject(err);
+      }
+      const { preventClose, preventAbort, preventCancel, signal } = options;
       if (isReadableStreamLocked(this)) {
         return Promise.reject(
           new TypeError("ReadableStream is already locked."),
@@ -3206,72 +3280,82 @@
 
     /** @returns {[ReadableStream<R>, ReadableStream<R>]} */
     tee() {
+      webidl.assertBranded(this, ReadableStream);
       return readableStreamTee(this, false);
     }
 
+    // TODO(lucacasonato): should be moved to webidl crate
     /**
      * @param {ReadableStreamIteratorOptions=} options
      * @returns {AsyncIterableIterator<R>}
      */
-    [Symbol.asyncIterator]({ preventCancel } = {}) {
+    values(options = {}) {
+      webidl.assertBranded(this, ReadableStream);
+      const prefix = "Failed to execute 'values' on 'ReadableStream'";
+      options = webidl.converters.ReadableStreamIteratorOptions(options, {
+        prefix,
+        context: "Argument 1",
+      });
       /** @type {AsyncIterableIterator<R>} */
       const iterator = Object.create(readableStreamAsyncIteratorPrototype);
       const reader = acquireReadableStreamDefaultReader(this);
       iterator[_reader] = reader;
-      iterator[_preventCancel] = preventCancel;
+      iterator[_preventCancel] = options.preventCancel;
       return iterator;
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
       return `${this.constructor.name} ${inspect({ locked: this.locked })}`;
     }
+
+    get [Symbol.toStringTag]() {
+      return "ReadableStream";
+    }
   }
+
+  // TODO(lucacasonato): should be moved to webidl crate
+  ReadableStream.prototype[Symbol.asyncIterator] =
+    ReadableStream.prototype.values;
+  Object.defineProperty(ReadableStream.prototype, Symbol.asyncIterator, {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  });
+
+  webidl.configurePrototype(ReadableStream);
 
   function errorReadableStream(stream, e) {
     readableStreamDefaultControllerError(stream[_controller], e);
   }
 
   /** @template R */
-  class ReadableStreamGenericReader {
+  class ReadableStreamDefaultReader {
     /** @type {Deferred<void>} */
     [_closedPromise];
     /** @type {ReadableStream<R> | undefined} */
     [_stream];
-
-    get closed() {
-      return this[_closedPromise].promise;
-    }
-
-    /**
-     * @param {any} reason
-     * @returns {Promise<void>}
-     */
-    cancel(reason) {
-      if (this[_stream] === undefined) {
-        return Promise.reject(
-          new TypeError("Reader has no associated stream."),
-        );
-      }
-      return readableStreamReaderGenericCancel(this, reason);
-    }
-  }
-
-  /** @template R */
-  class ReadableStreamDefaultReader extends ReadableStreamGenericReader {
     /** @type {ReadRequest[]} */
     [_readRequests];
 
     /** @param {ReadableStream<R>} stream */
     constructor(stream) {
-      if (!(stream instanceof ReadableStream)) {
-        throw new TypeError("stream is not a ReadableStream");
-      }
-      super();
+      const prefix = "Failed to construct 'ReadableStreamDefaultReader'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      stream = webidl.converters.ReadableStream(stream, {
+        prefix,
+        context: "Argument 1",
+      });
+      this[webidl.brand] = webidl.brand;
       setUpReadableStreamDefaultReader(this, stream);
     }
 
     /** @returns {Promise<ReadableStreamReadResult<R>>} */
     read() {
+      try {
+        webidl.assertBranded(this, ReadableStreamDefaultReader);
+      } catch (err) {
+        return Promise.reject(err);
+      }
       if (this[_stream] === undefined) {
         return Promise.reject(
           new TypeError("Reader has no associated stream."),
@@ -3297,6 +3381,7 @@
 
     /** @returns {void} */
     releaseLock() {
+      webidl.assertBranded(this, ReadableStreamDefaultReader);
       if (this[_stream] === undefined) {
         return;
       }
@@ -3308,10 +3393,47 @@
       readableStreamReaderGenericRelease(this);
     }
 
+    get closed() {
+      try {
+        webidl.assertBranded(this, ReadableStreamDefaultReader);
+      } catch (err) {
+        return Promise.reject(err);
+      }
+      return this[_closedPromise].promise;
+    }
+
+    /**
+     * @param {any} reason
+     * @returns {Promise<void>}
+     */
+    cancel(reason = undefined) {
+      try {
+        webidl.assertBranded(this, ReadableStreamDefaultReader);
+        if (reason !== undefined) {
+          reason = webidl.converters.any(reason);
+        }
+      } catch (err) {
+        return Promise.reject(err);
+      }
+
+      if (this[_stream] === undefined) {
+        return Promise.reject(
+          new TypeError("Reader has no associated stream."),
+        );
+      }
+      return readableStreamReaderGenericCancel(this, reason);
+    }
+
     [Symbol.for("Deno.customInspect")](inspect) {
       return `${this.constructor.name} ${inspect({ closed: this.closed })}`;
     }
+
+    get [Symbol.toStringTag]() {
+      return "ReadableStreamDefaultReader";
+    }
   }
+
+  webidl.configurePrototype(ReadableStreamDefaultReader);
 
   class ReadableByteStreamController {
     /** @type {number | undefined} */
@@ -3339,17 +3461,24 @@
     /** @type {ReadableStream<ArrayBuffer>} */
     [_stream];
 
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
     get byobRequest() {
+      webidl.assertBranded(this, ReadableByteStreamController);
       return undefined;
     }
 
     /** @returns {number | null} */
     get desiredSize() {
+      webidl.assertBranded(this, ReadableByteStreamController);
       return readableByteStreamControllerGetDesiredSize(this);
     }
 
     /** @returns {void} */
     close() {
+      webidl.assertBranded(this, ReadableByteStreamController);
       if (this[_closeRequested] === true) {
         throw new TypeError("Closed already requested.");
       }
@@ -3366,11 +3495,27 @@
      * @returns {void}
      */
     enqueue(chunk) {
+      webidl.assertBranded(this, ReadableByteStreamController);
+      const prefix =
+        "Failed to execute 'enqueue' on 'ReadableByteStreamController'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      const arg1 = "Argument 1";
+      chunk = webidl.converters.ArrayBufferView(chunk, {
+        prefix,
+        context: arg1,
+      });
       if (chunk.byteLength === 0) {
-        throw new TypeError("chunk must have a non-zero byteLength.");
+        throw webidl.makeException(TypeError, "length must be non-zero", {
+          prefix,
+          context: arg1,
+        });
       }
       if (chunk.buffer.byteLength === 0) {
-        throw new TypeError("chunk's buffer must have a non-zero byteLength.");
+        throw webidl.makeException(
+          TypeError,
+          "buffer length must be non-zero",
+          { prefix, context: arg1 },
+        );
       }
       if (this[_closeRequested] === true) {
         throw new TypeError(
@@ -3389,8 +3534,22 @@
      * @param {any=} e
      * @returns {void}
      */
-    error(e) {
+    error(e = undefined) {
+      webidl.assertBranded(this, ReadableByteStreamController);
+      if (e !== undefined) {
+        e = webidl.converters.any(e);
+      }
       readableByteStreamControllerError(this, e);
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${
+        inspect({ desiredSize: this.desiredSize })
+      }`;
+    }
+
+    get [Symbol.toStringTag]() {
+      return "ReadableByteStreamController";
     }
 
     /**
@@ -3433,6 +3592,8 @@
     }
   }
 
+  webidl.configurePrototype(ReadableByteStreamController);
+
   /** @template R */
   class ReadableStreamDefaultController {
     /** @type {(reason: any) => Promise<void>} */
@@ -3458,13 +3619,19 @@
     /** @type {ReadableStream<R>} */
     [_stream];
 
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
     /** @returns {number | null} */
     get desiredSize() {
+      webidl.assertBranded(this, ReadableStreamDefaultController);
       return readableStreamDefaultControllerGetDesiredSize(this);
     }
 
     /** @returns {void} */
     close() {
+      webidl.assertBranded(this, ReadableStreamDefaultController);
       if (readableStreamDefaultControllerCanCloseOrEnqueue(this) === false) {
         throw new TypeError("The stream controller cannot close or enqueue.");
       }
@@ -3475,7 +3642,11 @@
      * @param {R} chunk
      * @returns {void}
      */
-    enqueue(chunk) {
+    enqueue(chunk = undefined) {
+      webidl.assertBranded(this, ReadableStreamDefaultController);
+      if (chunk !== undefined) {
+        chunk = webidl.converters.any(chunk);
+      }
       if (readableStreamDefaultControllerCanCloseOrEnqueue(this) === false) {
         throw new TypeError("The stream controller cannot close or enqueue.");
       }
@@ -3486,8 +3657,22 @@
      * @param {any=} e
      * @returns {void}
      */
-    error(e) {
+    error(e = undefined) {
+      webidl.assertBranded(this, ReadableStreamDefaultController);
+      if (e !== undefined) {
+        e = webidl.converters.any(e);
+      }
       readableStreamDefaultControllerError(this, e);
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${
+        inspect({ desiredSize: this.desiredSize })
+      }`;
+    }
+
+    get [Symbol.toStringTag]() {
+      return "ReadableStreamDefaultController";
     }
 
     /**
@@ -3523,6 +3708,8 @@
     }
   }
 
+  webidl.configurePrototype(ReadableStreamDefaultController);
+
   /**
    * @template I
    * @template O
@@ -3548,16 +3735,42 @@
      * @param {QueuingStrategy<O>} readableStrategy
      */
     constructor(
-      transformer = null,
+      transformer = undefined,
       writableStrategy = {},
       readableStrategy = {},
     ) {
-      const transformerDict = convertTransformer(transformer);
-      if (transformerDict.readableType) {
-        throw new RangeError("readableType transformers not supported.");
+      const prefix = "Failed to construct 'TransformStream'";
+      if (transformer !== undefined) {
+        transformer = webidl.converters.object(transformer, {
+          prefix,
+          context: "Argument 1",
+        });
       }
-      if (transformerDict.writableType) {
-        throw new RangeError("writableType transformers not supported.");
+      writableStrategy = webidl.converters.QueuingStrategy(writableStrategy, {
+        prefix,
+        context: "Argument 2",
+      });
+      readableStrategy = webidl.converters.QueuingStrategy(readableStrategy, {
+        prefix,
+        context: "Argument 2",
+      });
+      this[webidl.brand] = webidl.brand;
+      if (transformer === undefined) {
+        transformer = null;
+      }
+      const transformerDict = webidl.converters.Transformer(transformer, {
+        prefix,
+        context: "transformer",
+      });
+      if (transformerDict.readableType !== undefined) {
+        throw new RangeError(
+          `${prefix}: readableType transformers not supported.`,
+        );
+      }
+      if (transformerDict.writableType !== undefined) {
+        throw new RangeError(
+          `${prefix}: writableType transformers not supported.`,
+        );
       }
       const readableHighWaterMark = extractHighWaterMark(readableStrategy, 0);
       const readableSizeAlgorithm = extractSizeAlgorithm(readableStrategy);
@@ -3578,9 +3791,18 @@
         transformer,
         transformerDict,
       );
-      if ("start" in transformerDict) {
+      if (transformerDict.start) {
         startPromise.resolve(
-          transformerDict.start.call(transformer, this[_controller]),
+          webidl.invokeCallbackFunction(
+            transformerDict.start,
+            [this[_controller]],
+            transformer,
+            webidl.converters.any,
+            {
+              prefix:
+                "Failed to call 'start' on 'TransformStreamDefaultController'",
+            },
+          ),
         );
       } else {
         startPromise.resolve(undefined);
@@ -3589,11 +3811,13 @@
 
     /** @returns {ReadableStream<O>} */
     get readable() {
+      webidl.assertBranded(this, TransformStream);
       return this[_readable];
     }
 
     /** @returns {WritableStream<I>} */
     get writable() {
+      webidl.assertBranded(this, TransformStream);
       return this[_writable];
     }
 
@@ -3602,7 +3826,13 @@
         inspect({ readable: this.readable, writable: this.writable })
       }`;
     }
+
+    get [Symbol.toStringTag]() {
+      return "TransformStream";
+    }
   }
+
+  webidl.configurePrototype(TransformStream);
 
   /** @template O */
   class TransformStreamDefaultController {
@@ -3613,8 +3843,13 @@
     /** @type {(chunk: O, controller: this) => Promise<void>} */
     [_transformAlgorithm];
 
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
     /** @returns {number | null} */
     get desiredSize() {
+      webidl.assertBranded(this, TransformStreamDefaultController);
       const readableController = this[_stream][_readable][_controller];
       return readableStreamDefaultControllerGetDesiredSize(
         /** @type {ReadableStreamDefaultController<O>} */ (readableController),
@@ -3625,7 +3860,11 @@
      * @param {O} chunk
      * @returns {void}
      */
-    enqueue(chunk) {
+    enqueue(chunk = undefined) {
+      webidl.assertBranded(this, TransformStreamDefaultController);
+      if (chunk !== undefined) {
+        chunk = webidl.converters.any(chunk);
+      }
       transformStreamDefaultControllerEnqueue(this, chunk);
     }
 
@@ -3633,15 +3872,32 @@
      * @param {any=} reason
      * @returns {void}
      */
-    error(reason) {
+    error(reason = undefined) {
+      webidl.assertBranded(this, TransformStreamDefaultController);
+      if (reason !== undefined) {
+        reason = webidl.converters.any(reason);
+      }
       transformStreamDefaultControllerError(this, reason);
     }
 
     /** @returns {void} */
     terminate() {
+      webidl.assertBranded(this, TransformStreamDefaultController);
       transformStreamDefaultControllerTerminate(this);
     }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${
+        inspect({ desiredSize: this.desiredSize })
+      }`;
+    }
+
+    get [Symbol.toStringTag]() {
+      return "TransformStreamDefaultController";
+    }
   }
+
+  webidl.configurePrototype(TransformStreamDefaultController);
 
   /** @template W */
   class WritableStream {
@@ -3672,11 +3928,29 @@
      * @param {UnderlyingSink<W>=} underlyingSink
      * @param {QueuingStrategy<W>=} strategy
      */
-    constructor(underlyingSink = null, strategy = {}) {
-      const underlyingSinkDict = convertUnderlyingSink(underlyingSink);
+    constructor(underlyingSink = undefined, strategy = {}) {
+      const prefix = "Failed to construct 'WritableStream'";
+      if (underlyingSink !== undefined) {
+        underlyingSink = webidl.converters.object(underlyingSink, {
+          prefix,
+          context: "Argument 1",
+        });
+      }
+      strategy = webidl.converters.QueuingStrategy(strategy, {
+        prefix,
+        context: "Argument 2",
+      });
+      this[webidl.brand] = webidl.brand;
+      if (underlyingSink === undefined) {
+        underlyingSink = null;
+      }
+      const underlyingSinkDict = webidl.converters.UnderlyingSink(
+        underlyingSink,
+        { prefix, context: "underlyingSink" },
+      );
       if (underlyingSinkDict.type != null) {
         throw new RangeError(
-          'WritableStream does not support "type" in the underlying sink.',
+          `${prefix}: WritableStream does not support 'type' in the underlying sink.`,
         );
       }
       initializeWritableStream(this);
@@ -3693,6 +3967,7 @@
 
     /** @returns {boolean} */
     get locked() {
+      webidl.assertBranded(this, WritableStream);
       return isWritableStreamLocked(this);
     }
 
@@ -3700,7 +3975,15 @@
      * @param {any=} reason
      * @returns {Promise<void>}
      */
-    abort(reason) {
+    abort(reason = undefined) {
+      try {
+        webidl.assertBranded(this, WritableStream);
+      } catch (err) {
+        return Promise.reject(err);
+      }
+      if (reason !== undefined) {
+        reason = webidl.converters.any(reason);
+      }
       if (isWritableStreamLocked(this)) {
         return Promise.reject(
           new TypeError(
@@ -3713,6 +3996,11 @@
 
     /** @returns {Promise<void>} */
     close() {
+      try {
+        webidl.assertBranded(this, WritableStream);
+      } catch (err) {
+        return Promise.reject(err);
+      }
       if (isWritableStreamLocked(this)) {
         return Promise.reject(
           new TypeError(
@@ -3730,13 +4018,20 @@
 
     /** @returns {WritableStreamDefaultWriter<W>} */
     getWriter() {
+      webidl.assertBranded(this, WritableStream);
       return acquireWritableStreamDefaultWriter(this);
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
       return `${this.constructor.name} ${inspect({ locked: this.locked })}`;
     }
+
+    get [Symbol.toStringTag]() {
+      return "WritableStream";
+    }
   }
+
+  webidl.configurePrototype(WritableStream);
 
   /** @template W */
   class WritableStreamDefaultWriter {
@@ -3749,17 +4044,33 @@
     /** @type {WritableStream<W>} */
     [_stream];
 
+    /**
+     * @param {WritableStream<W>} stream
+     */
     constructor(stream) {
+      const prefix = "Failed to construct 'WritableStreamDefaultWriter'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      stream = webidl.converters.WritableStream(stream, {
+        prefix,
+        context: "Argument 1",
+      });
+      this[webidl.brand] = webidl.brand;
       setUpWritableStreamDefaultWriter(this, stream);
     }
 
     /** @returns {Promise<void>} */
     get closed() {
+      try {
+        webidl.assertBranded(this, WritableStreamDefaultWriter);
+      } catch (err) {
+        return Promise.reject(err);
+      }
       return this[_closedPromise].promise;
     }
 
     /** @returns {number} */
     get desiredSize() {
+      webidl.assertBranded(this, WritableStreamDefaultWriter);
       if (this[_stream] === undefined) {
         throw new TypeError(
           "A writable stream is not associated with the writer.",
@@ -3770,6 +4081,11 @@
 
     /** @returns {Promise<void>} */
     get ready() {
+      try {
+        webidl.assertBranded(this, WritableStreamDefaultWriter);
+      } catch (err) {
+        return Promise.reject(err);
+      }
       return this[_readyPromise].promise;
     }
 
@@ -3777,7 +4093,15 @@
      * @param {any} reason
      * @returns {Promise<void>}
      */
-    abort(reason) {
+    abort(reason = undefined) {
+      try {
+        webidl.assertBranded(this, WritableStreamDefaultWriter);
+      } catch (err) {
+        return Promise.reject(err);
+      }
+      if (reason !== undefined) {
+        reason = webidl.converters.any(reason);
+      }
       if (this[_stream] === undefined) {
         return Promise.reject(
           new TypeError("A writable stream is not associated with the writer."),
@@ -3788,6 +4112,11 @@
 
     /** @returns {Promise<void>} */
     close() {
+      try {
+        webidl.assertBranded(this, WritableStreamDefaultWriter);
+      } catch (err) {
+        return Promise.reject(err);
+      }
       const stream = this[_stream];
       if (stream === undefined) {
         return Promise.reject(
@@ -3804,6 +4133,7 @@
 
     /** @returns {void} */
     releaseLock() {
+      webidl.assertBranded(this, WritableStreamDefaultWriter);
       const stream = this[_stream];
       if (stream === undefined) {
         return;
@@ -3816,7 +4146,15 @@
      * @param {W} chunk
      * @returns {Promise<void>}
      */
-    write(chunk) {
+    write(chunk = undefined) {
+      try {
+        webidl.assertBranded(this, WritableStreamDefaultWriter);
+        if (chunk !== undefined) {
+          chunk = webidl.converters.any(chunk);
+        }
+      } catch (err) {
+        return Promise.reject(err);
+      }
       if (this[_stream] === undefined) {
         return Promise.reject(
           new TypeError("A writable stream is not associate with the writer."),
@@ -3824,7 +4162,23 @@
       }
       return writableStreamDefaultWriterWrite(this, chunk);
     }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${
+        inspect({
+          closed: this.closed,
+          desiredSize: this.desiredSize,
+          ready: this.ready,
+        })
+      }`;
+    }
+
+    get [Symbol.toStringTag]() {
+      return "WritableStreamDefaultWriter";
+    }
   }
+
+  webidl.configurePrototype(WritableStreamDefaultWriter);
 
   /** @template W */
   class WritableStreamDefaultController {
@@ -3847,16 +4201,32 @@
     /** @type {(chunk: W, controller: this) => Promise<void>} */
     [_writeAlgorithm];
 
+    constructor() {
+      webidl.illegalConstructor();
+    }
+
     /**
      * @param {any=} e
      * @returns {void}
      */
-    error(e) {
+    error(e = undefined) {
+      webidl.assertBranded(this, WritableStreamDefaultController);
+      if (e !== undefined) {
+        e = webidl.converters.any(e);
+      }
       const state = this[_stream][_state];
       if (state !== "writable") {
         return;
       }
       writableStreamDefaultControllerError(this, e);
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({})}`;
+    }
+
+    get [Symbol.toStringTag]() {
+      return "WritableStreamDefaultController";
     }
 
     /**
@@ -3874,6 +4244,161 @@
     }
   }
 
+  webidl.configurePrototype(WritableStreamDefaultController);
+
+  webidl.converters.ReadableStream = webidl
+    .createInterfaceConverter("ReadableStream", ReadableStream);
+  webidl.converters.WritableStream = webidl
+    .createInterfaceConverter("WritableStream", WritableStream);
+
+  webidl.converters.ReadableStreamType = webidl.createEnumConverter(
+    "ReadableStreamType",
+    ["bytes"],
+  );
+
+  webidl.converters.UnderlyingSource = webidl
+    .createDictionaryConverter("UnderlyingSource", [
+      {
+        key: "start",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "pull",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "cancel",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "type",
+        converter: webidl.converters.ReadableStreamType,
+      },
+      {
+        key: "autoAllocateChunkSize",
+        converter: (V, opts) =>
+          webidl.converters["unsigned long long"](V, {
+            ...opts,
+            enforceRange: true,
+          }),
+      },
+    ]);
+  webidl.converters.UnderlyingSink = webidl
+    .createDictionaryConverter("UnderlyingSink", [
+      {
+        key: "start",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "write",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "close",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "abort",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "type",
+        converter: webidl.converters.any,
+      },
+    ]);
+  webidl.converters.Transformer = webidl
+    .createDictionaryConverter("Transformer", [
+      {
+        key: "start",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "transform",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "flush",
+        converter: webidl.converters.Function,
+      },
+      {
+        key: "readableType",
+        converter: webidl.converters.any,
+      },
+      {
+        key: "writableType",
+        converter: webidl.converters.any,
+      },
+    ]);
+  webidl.converters.QueuingStrategy = webidl
+    .createDictionaryConverter("QueuingStrategy", [
+      {
+        key: "highWaterMark",
+        converter: webidl.converters["unrestricted double"],
+      },
+      {
+        key: "size",
+        converter: webidl.converters.Function,
+      },
+    ]);
+  webidl.converters.QueuingStrategyInit = webidl
+    .createDictionaryConverter("QueuingStrategyInit", [
+      {
+        key: "highWaterMark",
+        converter: webidl.converters["unrestricted double"],
+        required: true,
+      },
+    ]);
+
+  webidl.converters.ReadableStreamIteratorOptions = webidl
+    .createDictionaryConverter("ReadableStreamIteratorOptions", [
+      {
+        key: "preventCancel",
+        defaultValue: false,
+        converter: webidl.converters.boolean,
+      },
+    ]);
+
+  webidl.converters.ReadableStreamReaderMode = webidl
+    .createEnumConverter("ReadableStreamReaderMode", ["byob"]);
+  webidl.converters.ReadableStreamGetReaderOptions = webidl
+    .createDictionaryConverter("ReadableStreamGetReaderOptions", [{
+      key: "mode",
+      converter: webidl.converters.ReadableStreamReaderMode,
+    }]);
+
+  webidl.converters.ReadableWritablePair = webidl
+    .createDictionaryConverter("ReadableWritablePair", [
+      {
+        key: "readable",
+        converter: webidl.converters.ReadableStream,
+        required: true,
+      },
+      {
+        key: "writable",
+        converter: webidl.converters.WritableStream,
+        required: true,
+      },
+    ]);
+  webidl.converters.StreamPipeOptions = webidl
+    .createDictionaryConverter("StreamPipeOptions", [
+      {
+        key: "preventClose",
+        defaultValue: false,
+        converter: webidl.converters.boolean,
+      },
+      {
+        key: "preventAbort",
+        defaultValue: false,
+        converter: webidl.converters.boolean,
+      },
+      {
+        key: "preventCancel",
+        defaultValue: false,
+        converter: webidl.converters.boolean,
+      },
+      { key: "signal", converter: webidl.converters.AbortSignal },
+    ]);
+
   window.__bootstrap.streams = {
     // Non-Public
     isReadableStreamDisturbed,
@@ -3886,7 +4411,9 @@
     TransformStream,
     WritableStream,
     WritableStreamDefaultWriter,
+    WritableStreamDefaultController,
     ReadableByteStreamController,
+    ReadableStreamDefaultController,
     TransformStreamDefaultController,
   };
 })(this);

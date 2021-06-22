@@ -100,7 +100,6 @@ impl GlobalTimer {
   }
 }
 
-#[allow(clippy::unnecessary_wraps)]
 pub fn op_global_timer_stop(
   state: &mut OpState,
   _args: (),
@@ -118,12 +117,17 @@ pub fn op_global_timer_stop(
 //
 // See https://github.com/denoland/deno/issues/7599 for more
 // details.
-#[allow(clippy::unnecessary_wraps)]
 pub fn op_global_timer_start(
   state: &mut OpState,
   timeout: u64,
   _: (),
 ) -> Result<(), AnyError> {
+  // According to spec, minimum allowed timeout is 4 ms.
+  // https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timers
+  // TODO(#10974) Per spec this is actually a little more complicated than this.
+  // The minimum timeout depends on the nesting level of the timeout.
+  let timeout = std::cmp::max(timeout, 4);
+
   let deadline = Instant::now() + Duration::from_millis(timeout);
   let global_timer = state.borrow_mut::<GlobalTimer>();
   global_timer.new_timeout(deadline);
@@ -150,7 +154,6 @@ pub async fn op_global_timer(
 // since the start time of the deno runtime.
 // If the High precision flag is not set, the
 // nanoseconds are rounded on 2ms.
-#[allow(clippy::unnecessary_wraps)]
 pub fn op_now<TP>(
   state: &mut OpState,
   _argument: (),
@@ -176,7 +179,6 @@ where
   Ok(result)
 }
 
-#[allow(clippy::unnecessary_wraps)]
 pub fn op_sleep_sync<TP>(
   state: &mut OpState,
   millis: u64,

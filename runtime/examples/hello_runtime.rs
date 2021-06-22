@@ -32,7 +32,6 @@ async fn main() -> Result<(), AnyError> {
     seed: None,
     js_error_create_fn: None,
     create_web_worker_cb,
-    attach_inspector: false,
     maybe_inspector_server: None,
     should_break_on_first_statement: false,
     module_loader,
