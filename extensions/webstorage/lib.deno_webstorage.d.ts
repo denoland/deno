@@ -33,6 +33,12 @@ interface Storage {
    * Throws a "QuotaExceededError" DOMException exception if the new value couldn't be set. (Setting could fail if, e.g., the user has disabled storage for the site, or if the quota has been exceeded.)
    */
   setItem(key: string, value: string): void;
+
+  /**
+   * Sets the storage limits. By default deno takes 5MB.
+   */
+  setLimitStorage(size: number): void;
+
   [name: string]: any;
 }
 
