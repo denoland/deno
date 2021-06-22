@@ -6,12 +6,12 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 /// <reference lib="deno.console" />
-/// <reference lib="deno.file" />
 /// <reference lib="deno.url" />
 /// <reference lib="deno.web" />
 /// <reference lib="deno.fetch" />
 /// <reference lib="deno.websocket" />
 /// <reference lib="deno.crypto" />
+/// <reference lib="deno.broadcast_channel" />
 
 declare namespace WebAssembly {
   /**
@@ -89,7 +89,7 @@ declare namespace WebAssembly {
     constructor(descriptor: MemoryDescriptor);
 
     /** An accessor property that returns the buffer contained in the memory. */
-    readonly buffer: ArrayBuffer;
+    readonly buffer: ArrayBuffer | SharedArrayBuffer;
 
     /**
      * Increases the size of the memory instance by a specified number of WebAssembly
@@ -170,6 +170,7 @@ declare namespace WebAssembly {
   export interface MemoryDescriptor {
     initial: number;
     maximum?: number;
+    shared?: boolean;
   }
 
   /** A `ModuleExportDescriptor` is the description of a declared export in a `WebAssembly.Module`. */
@@ -192,7 +193,7 @@ declare namespace WebAssembly {
     maximum?: number;
   }
 
-  /** The value returned from `WebAssembly.instantiate` and `WebAssembly.instantiateStreaming`. */
+  /** The value returned from `WebAssembly.instantiate`. */
   export interface WebAssemblyInstantiatedSource {
     /* A `WebAssembly.Instance` object that contains all the exported WebAssembly functions. */
     instance: Instance;
@@ -224,18 +225,6 @@ declare namespace WebAssembly {
   export function compile(bytes: BufferSource): Promise<Module>;
 
   /**
-   * The `WebAssembly.compileStreaming()` function compiles a `WebAssembly.Module`
-   * directly from a streamed underlying source.  This function is useful if it
-   * is necessary to a compile a module before it can be instantiated (otherwise,
-   * the `WebAssembly.instantiateStreaming()` function should be used).
-   *
-   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/compileStreaming)
-   */
-  export function compileStreaming(
-    source: Response | Promise<Response>,
-  ): Promise<Module>;
-
-  /**
    * The WebAssembly.instantiate() function allows you to compile and instantiate
    * WebAssembly code.
    *
@@ -265,18 +254,6 @@ declare namespace WebAssembly {
     moduleObject: Module,
     importObject?: Imports,
   ): Promise<Instance>;
-
-  /**
-   * The `WebAssembly.instantiateStreaming()` function compiles and instantiates a
-   * WebAssembly module directly from a streamed underlying source. This is the most
-   * efficient, optimized way to load WebAssembly code.
-   *
-   * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/instantiateStreaming)
-   */
-  export function instantiateStreaming(
-    response: Response | PromiseLike<Response>,
-    importObject?: Imports,
-  ): Promise<WebAssemblyInstantiatedSource>;
 
   /**
    * The `WebAssembly.validate()` function validates a given typed array of
@@ -347,19 +324,6 @@ interface VoidFunction {
  */
 declare function queueMicrotask(func: VoidFunction): void;
 
-/** Registers an event listener in the global scope, which will be called
- * synchronously whenever the event `type` is dispatched.
- *
- *     addEventListener('unload', () => { console.log('All finished!'); });
- *     ...
- *     dispatchEvent(new Event('unload'));
- */
-declare function addEventListener(
-  type: string,
-  callback: EventListenerOrEventListenerObject | null,
-  options?: boolean | AddEventListenerOptions | undefined,
-): void;
-
 /** Dispatches an event in the global scope, synchronously invoking any
  * registered event listeners for this event in the appropriate order. Returns
  * false if event is cancelable and at least one of the event handlers which
@@ -368,18 +332,6 @@ declare function addEventListener(
  *     dispatchEvent(new Event('unload'));
  */
 declare function dispatchEvent(event: Event): boolean;
-
-/** Remove a previously registered event listener from the global scope
- *
- *     const lstnr = () => { console.log('hello'); };
- *     addEventListener('load', lstnr);
- *     removeEventListener('load', lstnr);
- */
-declare function removeEventListener(
-  type: string,
-  callback: EventListenerOrEventListenerObject | null,
-  options?: boolean | EventListenerOptions | undefined,
-): void;
 
 interface DOMStringList {
   /** Returns the number of strings in strings. */
@@ -394,24 +346,6 @@ interface DOMStringList {
 type BufferSource = ArrayBufferView | ArrayBuffer;
 
 declare var console: Console;
-
-interface MessageEventInit<T = any> extends EventInit {
-  data?: T;
-  origin?: string;
-  lastEventId?: string;
-}
-
-declare class MessageEvent<T = any> extends Event {
-  /**
-   * Returns the data of the message.
-   */
-  readonly data: T;
-  /**
-   * Returns the last event ID string, for server-sent events.
-   */
-  readonly lastEventId: string;
-  constructor(type: string, eventInitDict?: MessageEventInit);
-}
 
 interface ErrorEventInit extends EventInit {
   message?: string;
@@ -428,10 +362,6 @@ declare class ErrorEvent extends Event {
   readonly colno: number;
   readonly error: any;
   constructor(type: string, eventInitDict?: ErrorEventInit);
-}
-
-interface PostMessageOptions {
-  transfer?: any[];
 }
 
 interface AbstractWorkerEventMap {
@@ -453,7 +383,7 @@ declare class Worker extends EventTarget {
   onmessage?: (e: MessageEvent) => void;
   onmessageerror?: (e: MessageEvent) => void;
   constructor(
-    specifier: string,
+    specifier: string | URL,
     options?: WorkerOptions,
   );
   postMessage(message: any, transfer: ArrayBuffer[]): void;
@@ -594,7 +524,6 @@ declare class CustomEvent<T = any> extends Event {
 
 interface ErrorConstructor {
   /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */
-  // eslint-disable-next-line @typescript-eslint/ban-types
   captureStackTrace(error: Object, constructor?: Function): void;
   // TODO(nayeemrmn): Support `Error.prepareStackTrace()`. We currently use this
   // internally in a way that makes it unavailable for users.

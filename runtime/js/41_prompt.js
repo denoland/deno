@@ -5,7 +5,6 @@
   const { isatty } = window.__bootstrap.tty;
   const LF = "\n".charCodeAt(0);
   const CR = "\r".charCodeAt(0);
-  const decoder = new TextDecoder();
   const core = window.Deno.core;
 
   function alert(message = "Alert") {
@@ -70,7 +69,7 @@
       }
       buf.push(c[0]);
     }
-    return decoder.decode(new Uint8Array(buf));
+    return core.decode(new Uint8Array(buf));
   }
 
   window.__bootstrap.prompt = {

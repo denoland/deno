@@ -10,6 +10,7 @@ use crate::http_util::FetchOnceResult;
 use crate::media_type::MediaType;
 use crate::text_encoding;
 use crate::version::get_user_agent;
+use data_url::DataUrl;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::uri_error;
@@ -18,7 +19,7 @@ use deno_core::futures;
 use deno_core::futures::future::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_fetch::reqwest;
-use deno_runtime::deno_file::BlobUrlStore;
+use deno_runtime::deno_web::BlobUrlStore;
 use deno_runtime::permissions::Permissions;
 use log::debug;
 use log::info;
@@ -58,7 +59,7 @@ pub struct File {
 
 /// Simple struct implementing in-process caching to prevent multiple
 /// fs reads/net fetches for same file.
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 struct FileCache(Arc<Mutex<HashMap<ModuleSpecifier, File>>>);
 
 impl FileCache {
@@ -153,40 +154,6 @@ pub fn get_source_from_bytes(
   Ok(source)
 }
 
-fn get_source_from_data_url(
-  specifier: &ModuleSpecifier,
-) -> Result<(String, MediaType, String), AnyError> {
-  if specifier.scheme() != "data" {
-    return Err(custom_error(
-      "BadScheme",
-      format!("Unexpected scheme of \"{}\"", specifier.scheme()),
-    ));
-  }
-  let path = specifier.path();
-  let mut parts = path.splitn(2, ',');
-  let media_type_part =
-    percent_encoding::percent_decode_str(parts.next().unwrap())
-      .decode_utf8()?;
-  let data_part = if let Some(data) = parts.next() {
-    data
-  } else {
-    return Err(custom_error(
-      "BadUrl",
-      "The data URL is badly formed, missing a comma.",
-    ));
-  };
-  let (media_type, maybe_charset) =
-    map_content_type(specifier, Some(media_type_part.to_string()));
-  let is_base64 = media_type_part.rsplit(';').any(|p| p == "base64");
-  let bytes = if is_base64 {
-    base64::decode(data_part)?
-  } else {
-    percent_encoding::percent_decode_str(data_part).collect()
-  };
-  let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
-  Ok((source, media_type, media_type_part.to_string()))
-}
-
 /// Return a validated scheme for a given module specifier.
 fn get_validated_scheme(
   specifier: &ModuleSpecifier,
@@ -211,33 +178,7 @@ pub fn map_content_type(
   if let Some(content_type) = maybe_content_type {
     let mut content_types = content_type.split(';');
     let content_type = content_types.next().unwrap();
-    let media_type = match content_type.trim().to_lowercase().as_ref() {
-      "application/typescript"
-      | "text/typescript"
-      | "video/vnd.dlna.mpeg-tts"
-      | "video/mp2t"
-      | "application/x-typescript" => {
-        map_js_like_extension(specifier, MediaType::TypeScript)
-      }
-      "application/javascript"
-      | "text/javascript"
-      | "application/ecmascript"
-      | "text/ecmascript"
-      | "application/x-javascript"
-      | "application/node" => {
-        map_js_like_extension(specifier, MediaType::JavaScript)
-      }
-      "text/jsx" => MediaType::Jsx,
-      "text/tsx" => MediaType::Tsx,
-      "application/json" | "text/json" => MediaType::Json,
-      "application/wasm" => MediaType::Wasm,
-      // Handle plain and possibly webassembly
-      "text/plain" | "application/octet-stream" => MediaType::from(specifier),
-      _ => {
-        debug!("unknown content type: {}", content_type);
-        MediaType::Unknown
-      }
-    };
+    let media_type = MediaType::from_content_type(specifier, content_type);
     let charset = content_types
       .map(str::trim)
       .find_map(|s| s.strip_prefix("charset="))
@@ -249,57 +190,8 @@ pub fn map_content_type(
   }
 }
 
-/// Used to augment media types by using the path part of a module specifier to
-/// resolve to a more accurate media type.
-fn map_js_like_extension(
-  specifier: &ModuleSpecifier,
-  default: MediaType,
-) -> MediaType {
-  let path = if specifier.scheme() == "file" {
-    if let Ok(path) = specifier.to_file_path() {
-      path
-    } else {
-      PathBuf::from(specifier.path())
-    }
-  } else {
-    PathBuf::from(specifier.path())
-  };
-  match path.extension() {
-    None => default,
-    Some(os_str) => match os_str.to_str() {
-      None => default,
-      Some("jsx") => MediaType::Jsx,
-      Some("tsx") => MediaType::Tsx,
-      // Because DTS files do not have a separate media type, or a unique
-      // extension, we have to "guess" at those things that we consider that
-      // look like TypeScript, and end with `.d.ts` are DTS files.
-      Some("ts") => {
-        if default == MediaType::TypeScript {
-          match path.file_stem() {
-            None => default,
-            Some(os_str) => {
-              if let Some(file_stem) = os_str.to_str() {
-                if file_stem.ends_with(".d") {
-                  MediaType::Dts
-                } else {
-                  default
-                }
-              } else {
-                default
-              }
-            }
-          }
-        } else {
-          default
-        }
-      }
-      Some(_) => default,
-    },
-  }
-}
-
 /// Remove shebangs from the start of source code strings
-fn strip_shebang(mut value: String) -> String {
+pub fn strip_shebang(mut value: String) -> String {
   if value.starts_with("#!") {
     if let Some(mid) = value.find('\n') {
       let (_, rest) = value.split_at(mid);
@@ -312,7 +204,7 @@ fn strip_shebang(mut value: String) -> String {
 }
 
 /// A structure for resolving, fetching and caching source files.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct FileFetcher {
   auth_tokens: AuthTokens,
   allow_remote: bool,
@@ -360,7 +252,12 @@ impl FileFetcher {
     let (media_type, maybe_charset) =
       map_content_type(specifier, maybe_content_type);
     let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
-    let maybe_types = headers.get("x-typescript-types").cloned();
+    let maybe_types = match media_type {
+      MediaType::JavaScript | MediaType::Jsx => {
+        headers.get("x-typescript-types").cloned()
+      }
+      _ => None,
+    };
 
     Ok(File {
       local,
@@ -430,8 +327,18 @@ impl FileFetcher {
       ));
     }
 
-    let (source, media_type, content_type) =
-      get_source_from_data_url(specifier)?;
+    let data_url = DataUrl::process(specifier.as_str())
+      .map_err(|e| uri_error(format!("{:?}", e)))?;
+    let mime = data_url.mime_type();
+    let charset = mime.get_parameter("charset").map(|v| v.to_string());
+    let (bytes, _) = data_url
+      .decode_to_vec()
+      .map_err(|e| uri_error(format!("{:?}", e)))?;
+    let source = strip_shebang(get_source_from_bytes(bytes, charset)?);
+    let content_type = format!("{}", mime);
+    let (media_type, _) =
+      map_content_type(specifier, Some(content_type.clone()));
+
     let local =
       self
         .http_cache
@@ -475,7 +382,7 @@ impl FileFetcher {
     }
 
     let blob_url_storage = self.blob_url_store.borrow();
-    let blob = blob_url_storage.get(specifier)?.ok_or_else(|| {
+    let blob = blob_url_storage.get(specifier.clone())?.ok_or_else(|| {
       custom_error(
         "NotFound",
         format!("Blob URL not found: \"{}\".", specifier),
@@ -516,7 +423,7 @@ impl FileFetcher {
   fn fetch_remote(
     &self,
     specifier: &ModuleSpecifier,
-    permissions: &Permissions,
+    permissions: &mut Permissions,
     redirect_limit: i64,
   ) -> Pin<Box<dyn Future<Output = Result<File, AnyError>> + Send>> {
     debug!("FileFetcher::fetch_remote() - specifier: {}", specifier);
@@ -560,7 +467,7 @@ impl FileFetcher {
     };
     let maybe_auth_token = self.auth_tokens.get(&specifier);
     let specifier = specifier.clone();
-    let permissions = permissions.clone();
+    let mut permissions = permissions.clone();
     let client = self.http_client.clone();
     let file_fetcher = self.clone();
     // A single pass of fetch either yields code or yields a redirect.
@@ -580,7 +487,7 @@ impl FileFetcher {
         FetchOnceResult::Redirect(redirect_url, headers) => {
           file_fetcher.http_cache.set(&specifier, headers, &[])?;
           file_fetcher
-            .fetch_remote(&redirect_url, &permissions, redirect_limit - 1)
+            .fetch_remote(&redirect_url, &mut permissions, redirect_limit - 1)
             .await
         }
         FetchOnceResult::Code(bytes, headers) => {
@@ -600,7 +507,7 @@ impl FileFetcher {
   pub async fn fetch(
     &self,
     specifier: &ModuleSpecifier,
-    permissions: &Permissions,
+    permissions: &mut Permissions,
   ) -> Result<File, AnyError> {
     debug!("FileFetcher::fetch() - specifier: {}", specifier);
     let scheme = get_validated_scheme(specifier)?;
@@ -672,7 +579,7 @@ mod tests {
   use deno_core::error::get_custom_error_class;
   use deno_core::resolve_url;
   use deno_core::resolve_url_or_path;
-  use deno_runtime::deno_file::Blob;
+  use deno_runtime::deno_web::Blob;
   use std::rc::Rc;
   use tempfile::TempDir;
 
@@ -718,7 +625,7 @@ mod tests {
   async fn test_fetch(specifier: &ModuleSpecifier) -> (File, FileFetcher) {
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result = file_fetcher
-      .fetch(specifier, &Permissions::allow_all())
+      .fetch(specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     (result.unwrap(), file_fetcher)
@@ -730,7 +637,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result: Result<File, AnyError> = file_fetcher
-      .fetch_remote(specifier, &Permissions::allow_all(), 1)
+      .fetch_remote(specifier, &mut Permissions::allow_all(), 1)
       .await;
     assert!(result.is_ok());
     let (_, headers) = file_fetcher.http_cache.get(specifier).unwrap();
@@ -760,39 +667,6 @@ mod tests {
     let specifier = resolve_url_or_path(p.to_str().unwrap()).unwrap();
     let (file, _) = test_fetch(&specifier).await;
     assert_eq!(file.source, expected);
-  }
-
-  #[test]
-  fn test_get_source_from_data_url() {
-    let fixtures = vec![
-      ("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=", true, MediaType::TypeScript, "application/typescript;base64", "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"),
-      ("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=?a=b&b=c", true, MediaType::TypeScript, "application/typescript;base64", "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"),
-      ("data:text/plain,Hello%2C%20Deno!", true, MediaType::Unknown, "text/plain", "Hello, Deno!"),
-      ("data:,Hello%2C%20Deno!", true, MediaType::Unknown, "", "Hello, Deno!"),
-      ("data:application/javascript,console.log(\"Hello, Deno!\");%0A", true, MediaType::JavaScript, "application/javascript", "console.log(\"Hello, Deno!\");\n"),
-      ("data:text/jsx;base64,ZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24oKSB7CiAgcmV0dXJuIDxkaXY+SGVsbG8gRGVubyE8L2Rpdj4KfQo=", true, MediaType::Jsx, "text/jsx;base64", "export default function() {\n  return <div>Hello Deno!</div>\n}\n"),
-      ("data:text/tsx;base64,ZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24oKSB7CiAgcmV0dXJuIDxkaXY+SGVsbG8gRGVubyE8L2Rpdj4KfQo=", true, MediaType::Tsx, "text/tsx;base64", "export default function() {\n  return <div>Hello Deno!</div>\n}\n"),
-    ];
-
-    for (
-      url_str,
-      expected_ok,
-      expected_media_type,
-      expected_media_type_str,
-      expected,
-    ) in fixtures
-    {
-      let specifier = resolve_url(url_str).unwrap();
-      let actual = get_source_from_data_url(&specifier);
-      assert_eq!(actual.is_ok(), expected_ok);
-      if expected_ok {
-        let (actual, actual_media_type, actual_media_type_str) =
-          actual.unwrap();
-        assert_eq!(actual, expected);
-        assert_eq!(actual_media_type, expected_media_type);
-        assert_eq!(actual_media_type_str, expected_media_type_str);
-      }
-    }
   }
 
   #[test]
@@ -1011,7 +885,7 @@ mod tests {
     file_fetcher.insert_cached(file.clone());
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let result_file = result.unwrap();
@@ -1028,7 +902,7 @@ mod tests {
     .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1059,7 +933,7 @@ mod tests {
     let specifier = resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1089,7 +963,7 @@ mod tests {
     );
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1113,7 +987,7 @@ mod tests {
         .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1136,7 +1010,7 @@ mod tests {
     metadata.write(&cache_filename).unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1157,7 +1031,7 @@ mod tests {
     metadata.write(&cache_filename).unwrap();
 
     let result = file_fetcher_02
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1179,7 +1053,7 @@ mod tests {
     )
     .expect("setup failed");
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1214,7 +1088,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1234,7 +1108,7 @@ mod tests {
     )
     .expect("could not create file fetcher");
     let result = file_fetcher_02
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1273,7 +1147,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1334,7 +1208,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1406,7 +1280,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1426,7 +1300,7 @@ mod tests {
     )
     .expect("could not create file fetcher");
     let result = file_fetcher_02
-      .fetch(&redirected_specifier, &Permissions::allow_all())
+      .fetch(&redirected_specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1453,12 +1327,12 @@ mod tests {
     .unwrap();
 
     let result = file_fetcher
-      .fetch_remote(&specifier, &Permissions::allow_all(), 2)
+      .fetch_remote(&specifier, &mut Permissions::allow_all(), 2)
       .await;
     assert!(result.is_ok());
 
     let result = file_fetcher
-      .fetch_remote(&specifier, &Permissions::allow_all(), 1)
+      .fetch_remote(&specifier, &mut Permissions::allow_all(), 1)
       .await;
     assert!(result.is_err());
 
@@ -1491,7 +1365,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1539,7 +1413,7 @@ mod tests {
       resolve_url("http://localhost:4545/cli/tests/002_hello.ts").unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -1574,7 +1448,7 @@ mod tests {
       resolve_url("http://localhost:4545/cli/tests/002_hello.ts").unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -1582,12 +1456,12 @@ mod tests {
     assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/cli/tests/002_hello.ts\", --cached-only is specified.");
 
     let result = file_fetcher_02
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
     let result = file_fetcher_01
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
 
@@ -1605,7 +1479,7 @@ mod tests {
     fs::write(fixture_path.clone(), r#"console.log("hello deno");"#)
       .expect("could not write file");
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1614,7 +1488,7 @@ mod tests {
     fs::write(fixture_path, r#"console.log("goodbye deno");"#)
       .expect("could not write file");
     let result = file_fetcher
-      .fetch(&specifier, &Permissions::allow_all())
+      .fetch(&specifier, &mut Permissions::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1649,7 +1523,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_fetch_remote_with_types() {
+  async fn test_fetch_remote_javascript_with_types() {
     let specifier =
       resolve_url_or_path("http://127.0.0.1:4545/xTypeScriptTypes.js").unwrap();
     let (file, _) = test_fetch_remote(&specifier).await;
@@ -1657,6 +1531,27 @@ mod tests {
       file.maybe_types,
       Some("./xTypeScriptTypes.d.ts".to_string())
     );
+  }
+
+  #[tokio::test]
+  async fn test_fetch_remote_jsx_with_types() {
+    let specifier =
+      resolve_url_or_path("http://127.0.0.1:4545/xTypeScriptTypes.jsx")
+        .unwrap();
+    let (file, _) = test_fetch_remote(&specifier).await;
+    assert_eq!(file.media_type, MediaType::Jsx,);
+    assert_eq!(
+      file.maybe_types,
+      Some("./xTypeScriptTypes.d.ts".to_string())
+    );
+  }
+
+  #[tokio::test]
+  async fn test_fetch_remote_typescript_with_types() {
+    let specifier =
+      resolve_url_or_path("http://127.0.0.1:4545/xTypeScriptTypes.ts").unwrap();
+    let (file, _) = test_fetch_remote(&specifier).await;
+    assert_eq!(file.maybe_types, None);
   }
 
   #[tokio::test]

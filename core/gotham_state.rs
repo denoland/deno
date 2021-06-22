@@ -4,13 +4,14 @@
 // Copyright 2017 Gotham Project Developers. MIT license.
 
 use log::trace;
+use std::any::type_name;
 use std::any::Any;
 use std::any::TypeId;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 #[derive(Default)]
 pub struct GothamState {
-  data: HashMap<TypeId, Box<dyn Any>>,
+  data: BTreeMap<TypeId, Box<dyn Any>>,
 }
 
 impl GothamState {
@@ -38,9 +39,7 @@ impl GothamState {
 
   /// Borrows a value from the `GothamState` storage.
   pub fn borrow<T: 'static>(&self) -> &T {
-    self
-      .try_borrow()
-      .expect("required type is not present in GothamState container")
+    self.try_borrow().unwrap_or_else(|| missing::<T>())
   }
 
   /// Tries to mutably borrow a value from the `GothamState` storage.
@@ -52,9 +51,7 @@ impl GothamState {
 
   /// Mutably borrows a value from the `GothamState` storage.
   pub fn borrow_mut<T: 'static>(&mut self) -> &mut T {
-    self
-      .try_borrow_mut()
-      .expect("required type is not present in GothamState container")
+    self.try_borrow_mut().unwrap_or_else(|| missing::<T>())
   }
 
   /// Tries to move a value out of the `GothamState` storage and return ownership.
@@ -77,10 +74,15 @@ impl GothamState {
   ///
   /// If a value of type `T` is not present in `GothamState`.
   pub fn take<T: 'static>(&mut self) -> T {
-    self
-      .try_take()
-      .expect("required type is not present in GothamState container")
+    self.try_take().unwrap_or_else(|| missing::<T>())
   }
+}
+
+fn missing<T: 'static>() -> ! {
+  panic!(
+    "required type {} is not present in GothamState container",
+    type_name::<T>()
+  );
 }
 
 #[cfg(test)]
@@ -178,5 +180,14 @@ mod tests {
     assert_eq!(state.take::<Alias1>(), "alias2");
     assert!(state.try_take::<Alias1>().is_none());
     assert!(state.try_take::<Alias2>().is_none());
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "required type deno_core::gotham_state::tests::MyStruct is not present in GothamState container"
+  )]
+  fn missing() {
+    let state = GothamState::default();
+    let _ = state.borrow::<MyStruct>();
   }
 }

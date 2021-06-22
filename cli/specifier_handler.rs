@@ -222,9 +222,10 @@ impl CompiledFileMetadata {
 pub struct FetchHandler {
   /// An instance of disk where generated (emitted) files are stored.
   disk_cache: DiskCache,
-  /// The set of current runtime permissions which need to be applied to
-  /// dynamic imports.
-  runtime_permissions: Permissions,
+  /// The set permissions which are used for root modules (static imports).
+  root_permissions: Permissions,
+  /// The set of permissions which are used for dynamic imports.
+  dynamic_permissions: Permissions,
   /// A clone of the `program_state` file fetcher.
   file_fetcher: FileFetcher,
 }
@@ -232,7 +233,8 @@ pub struct FetchHandler {
 impl FetchHandler {
   pub fn new(
     program_state: &Arc<ProgramState>,
-    runtime_permissions: Permissions,
+    root_permissions: Permissions,
+    dynamic_permissions: Permissions,
   ) -> Result<Self, AnyError> {
     let custom_root = env::var("DENO_DIR").map(String::into).ok();
     let deno_dir = DenoDir::new(custom_root)?;
@@ -241,7 +243,8 @@ impl FetchHandler {
 
     Ok(FetchHandler {
       disk_cache,
-      runtime_permissions,
+      root_permissions,
+      dynamic_permissions,
       file_fetcher,
     })
   }
@@ -257,17 +260,17 @@ impl SpecifierHandler for FetchHandler {
     // When the module graph fetches dynamic modules, the set of dynamic
     // permissions need to be applied.  Other static imports have all
     // permissions.
-    let permissions = if is_dynamic {
-      self.runtime_permissions.clone()
+    let mut permissions = if is_dynamic {
+      self.dynamic_permissions.clone()
     } else {
-      Permissions::allow_all()
+      self.root_permissions.clone()
     };
     let file_fetcher = self.file_fetcher.clone();
     let disk_cache = self.disk_cache.clone();
 
     async move {
       let source_file = file_fetcher
-        .fetch(&requested_specifier, &permissions)
+        .fetch(&requested_specifier, &mut permissions)
         .await
         .map_err(|err| {
           let err = if let Some(e) = err.downcast_ref::<std::io::Error>() {
@@ -571,7 +574,7 @@ pub mod tests {
   use crate::file_fetcher::CacheSetting;
   use crate::http_cache::HttpCache;
   use deno_core::resolve_url_or_path;
-  use deno_runtime::deno_file::BlobUrlStore;
+  use deno_runtime::deno_web::BlobUrlStore;
   use tempfile::TempDir;
 
   macro_rules! map (
@@ -603,7 +606,8 @@ pub mod tests {
 
     let fetch_handler = FetchHandler {
       disk_cache,
-      runtime_permissions: Permissions::default(),
+      root_permissions: Permissions::allow_all(),
+      dynamic_permissions: Permissions::default(),
       file_fetcher,
     };
 
@@ -666,7 +670,7 @@ pub mod tests {
         .unwrap();
     let cached_module: CachedModule =
       file_fetcher.fetch(specifier, None, false).await.unwrap();
-    assert_eq!(cached_module.is_remote, true);
+    assert!(cached_module.is_remote);
     let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let specifier = resolve_url_or_path(
       c.join("tests/subdir/mod1.ts").as_os_str().to_str().unwrap(),
@@ -674,7 +678,7 @@ pub mod tests {
     .unwrap();
     let cached_module: CachedModule =
       file_fetcher.fetch(specifier, None, false).await.unwrap();
-    assert_eq!(cached_module.is_remote, false);
+    assert!(!cached_module.is_remote);
   }
 
   #[tokio::test]
@@ -712,7 +716,7 @@ pub mod tests {
     assert_eq!(actual.requested_specifier, specifier);
     assert_eq!(actual.specifier, specifier);
     assert_eq!(actual.media_type, MediaType::TypeScript);
-    assert_eq!(actual.is_remote, false);
+    assert!(!actual.is_remote);
 
     let specifier = resolve_url_or_path("file:///b.ts").unwrap();
     let actual: CachedModule = handler
@@ -723,7 +727,7 @@ pub mod tests {
     assert_eq!(actual.requested_specifier, specifier);
     assert_eq!(actual.specifier, specifier);
     assert_eq!(actual.media_type, MediaType::TypeScript);
-    assert_eq!(actual.is_remote, false);
+    assert!(!actual.is_remote);
 
     let specifier = resolve_url_or_path("https://deno.land/x/c.js").unwrap();
     let actual: CachedModule = handler
@@ -734,7 +738,7 @@ pub mod tests {
     assert_eq!(actual.requested_specifier, specifier);
     assert_eq!(actual.specifier, specifier);
     assert_eq!(actual.media_type, MediaType::JavaScript);
-    assert_eq!(actual.is_remote, true);
+    assert!(actual.is_remote);
 
     let specifier = resolve_url_or_path("https://deno.land/x/d.d.ts").unwrap();
     let actual: CachedModule = handler
@@ -745,7 +749,7 @@ pub mod tests {
     assert_eq!(actual.requested_specifier, specifier);
     assert_eq!(actual.specifier, specifier);
     assert_eq!(actual.media_type, MediaType::Dts);
-    assert_eq!(actual.is_remote, true);
+    assert!(actual.is_remote);
 
     let specifier =
       resolve_url_or_path("https://deno.land/x/missing.ts").unwrap();
@@ -763,7 +767,7 @@ pub mod tests {
     assert_eq!(actual.requested_specifier, specifier);
     assert_eq!(actual.specifier, specifier);
     assert_eq!(actual.media_type, MediaType::TypeScript);
-    assert_eq!(actual.is_remote, false);
+    assert!(!actual.is_remote);
 
     let specifier = resolve_url_or_path("file:///C:/a.ts").unwrap();
     let actual: CachedModule = handler
@@ -774,6 +778,6 @@ pub mod tests {
     assert_eq!(actual.requested_specifier, specifier);
     assert_eq!(actual.specifier, specifier);
     assert_eq!(actual.media_type, MediaType::TypeScript);
-    assert_eq!(actual.is_remote, false);
+    assert!(!actual.is_remote);
   }
 }

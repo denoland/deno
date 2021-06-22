@@ -111,18 +111,19 @@ impl From<tokio::net::TcpStream> for TcpStream {
 
 fn create_js_runtime() -> JsRuntime {
   let mut runtime = JsRuntime::new(Default::default());
-  runtime.register_op("listen", deno_core::json_op_sync(op_listen));
-  runtime.register_op("close", deno_core::json_op_sync(op_close));
-  runtime.register_op("accept", deno_core::json_op_async(op_accept));
-  runtime.register_op("read", deno_core::json_op_async(op_read));
-  runtime.register_op("write", deno_core::json_op_async(op_write));
+  runtime.register_op("listen", deno_core::op_sync(op_listen));
+  runtime.register_op("close", deno_core::op_sync(op_close));
+  runtime.register_op("accept", deno_core::op_async(op_accept));
+  runtime.register_op("read", deno_core::op_async(op_read));
+  runtime.register_op("write", deno_core::op_async(op_write));
+  runtime.sync_ops_cache();
   runtime
 }
 
 fn op_listen(
   state: &mut OpState,
   _args: (),
-  _bufs: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<ResourceId, AnyError> {
   log::debug!("listen");
   let addr = "127.0.0.1:4544".parse::<SocketAddr>().unwrap();
@@ -136,7 +137,7 @@ fn op_listen(
 fn op_close(
   state: &mut OpState,
   rid: ResourceId,
-  _buf: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<(), AnyError> {
   log::debug!("close rid={}", rid);
   state
@@ -149,7 +150,7 @@ fn op_close(
 async fn op_accept(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  _buf: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<ResourceId, AnyError> {
   log::debug!("accept rid={}", rid);
 
@@ -217,12 +218,12 @@ fn main() {
 
   let future = async move {
     js_runtime
-      .execute(
+      .execute_script(
         "http_bench_json_ops.js",
         include_str!("http_bench_json_ops.js"),
       )
       .unwrap();
-    js_runtime.run_event_loop().await
+    js_runtime.run_event_loop(false).await
   };
   runtime.block_on(future).unwrap();
 }

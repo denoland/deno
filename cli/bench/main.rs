@@ -75,7 +75,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/workers_large_message_bench.ts",
+      "cli/tests/workers/bench_large_message.ts",
     ],
     None,
   ),
@@ -87,6 +87,11 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   (
     "text_encoder",
     &["run", "cli/tests/text_encoder_perf.js"],
+    None,
+  ),
+  (
+    "text_encoder_into",
+    &["run", "cli/tests/text_encoder_into_perf.js"],
     None,
   ),
   (
@@ -226,12 +231,6 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, u64>> {
   sizes.insert(
     "deno".to_string(),
     test_util::deno_exe_path().metadata()?.len(),
-  );
-
-  // add up size for denort
-  sizes.insert(
-    "denort".to_string(),
-    test_util::denort_exe_path().metadata()?.len(),
   );
 
   // add up size for everything in target/release/deps/libswc*
@@ -440,7 +439,7 @@ struct BenchResult {
  we replace the harness with our own runner here.
 */
 fn main() -> Result<()> {
-  if env::args().find(|s| s == "--bench").is_none() {
+  if !env::args().any(|s| s == "--bench") {
     return Ok(());
   }
 

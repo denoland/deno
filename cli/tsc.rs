@@ -1,18 +1,21 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
 use crate::media_type::MediaType;
 use crate::module_graph::Graph;
 use crate::module_graph::Stats;
-use crate::tsc_config::TsConfig;
 
 use deno_core::error::anyhow;
 use deno_core::error::bail;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
-use deno_core::json_op_sync;
+use deno_core::located_script_name;
+use deno_core::op_sync;
 use deno_core::resolve_url_or_path;
+use deno_core::serde::de;
 use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -32,12 +35,15 @@ pub static DENO_NS_LIB: &str = include_str!("dts/lib.deno.ns.d.ts");
 pub static DENO_CONSOLE_LIB: &str = include_str!(env!("DENO_CONSOLE_LIB_PATH"));
 pub static DENO_URL_LIB: &str = include_str!(env!("DENO_URL_LIB_PATH"));
 pub static DENO_WEB_LIB: &str = include_str!(env!("DENO_WEB_LIB_PATH"));
-pub static DENO_FILE_LIB: &str = include_str!(env!("DENO_FILE_LIB_PATH"));
 pub static DENO_FETCH_LIB: &str = include_str!(env!("DENO_FETCH_LIB_PATH"));
 pub static DENO_WEBGPU_LIB: &str = include_str!(env!("DENO_WEBGPU_LIB_PATH"));
 pub static DENO_WEBSOCKET_LIB: &str =
   include_str!(env!("DENO_WEBSOCKET_LIB_PATH"));
+pub static DENO_WEBSTORAGE_LIB: &str =
+  include_str!(env!("DENO_WEBSTORAGE_LIB_PATH"));
 pub static DENO_CRYPTO_LIB: &str = include_str!(env!("DENO_CRYPTO_LIB_PATH"));
+pub static DENO_BROADCAST_CHANNEL_LIB: &str =
+  include_str!(env!("DENO_BROADCAST_CHANNEL_LIB_PATH"));
 pub static SHARED_GLOBALS_LIB: &str =
   include_str!("dts/lib.deno.shared_globals.d.ts");
 pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");
@@ -68,6 +74,7 @@ lazy_static::lazy_static! {
     ("lib.es2018.full.d.ts", inc!("lib.es2018.full.d.ts")),
     ("lib.es2019.full.d.ts", inc!("lib.es2019.full.d.ts")),
     ("lib.es2020.full.d.ts", inc!("lib.es2020.full.d.ts")),
+    ("lib.es2021.full.d.ts", inc!("lib.es2021.full.d.ts")),
     ("lib.esnext.full.d.ts", inc!("lib.esnext.full.d.ts")),
     ("lib.scripthost.d.ts", inc!("lib.scripthost.d.ts")),
     ("lib.webworker.d.ts", inc!("lib.webworker.d.ts")),
@@ -174,6 +181,7 @@ pub struct Request {
   pub debug: bool,
   pub graph: Arc<Mutex<Graph>>,
   pub hash_data: Vec<Vec<u8>>,
+  pub maybe_config_specifier: Option<ModuleSpecifier>,
   pub maybe_tsbuildinfo: Option<String>,
   /// A vector of strings that represent the root/entry point modules for the
   /// program.
@@ -198,6 +206,7 @@ struct State {
   hash_data: Vec<Vec<u8>>,
   emitted_files: Vec<EmittedFile>,
   graph: Arc<Mutex<Graph>>,
+  maybe_config_specifier: Option<ModuleSpecifier>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
   root_map: HashMap<String, ModuleSpecifier>,
@@ -207,6 +216,7 @@ impl State {
   pub fn new(
     graph: Arc<Mutex<Graph>>,
     hash_data: Vec<Vec<u8>>,
+    maybe_config_specifier: Option<ModuleSpecifier>,
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
     data_url_map: HashMap<String, ModuleSpecifier>,
@@ -216,6 +226,7 @@ impl State {
       hash_data,
       emitted_files: Default::default(),
       graph,
+      maybe_config_specifier,
       maybe_tsbuildinfo,
       maybe_response: None,
       root_map,
@@ -223,11 +234,18 @@ impl State {
   }
 }
 
-fn op<F>(op_fn: F) -> Box<OpFn>
+fn normalize_specifier(specifier: &str) -> Result<ModuleSpecifier, AnyError> {
+  resolve_url_or_path(&specifier.replace(".d.ts.d.ts", ".d.ts"))
+    .map_err(|err| err.into())
+}
+
+fn op<F, V, R>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(&mut State, Value) -> Result<Value, AnyError> + 'static,
+  F: Fn(&mut State, V) -> Result<R, AnyError> + 'static,
+  V: de::DeserializeOwned,
+  R: Serialize + 'static,
 {
-  json_op_sync(move |s, args, _bufs| {
+  op_sync(move |s, args, _: ()| {
     let state = s.borrow_mut::<State>();
     op_fn(state, args)
   })
@@ -241,13 +259,22 @@ struct CreateHashArgs {
   data: String,
 }
 
-fn create_hash(state: &mut State, args: Value) -> Result<Value, AnyError> {
+fn op_create_hash(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: CreateHashArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_create_hash\".")?;
   let mut data = vec![v.data.as_bytes().to_owned()];
   data.extend_from_slice(&state.hash_data);
   let hash = crate::checksum::gen(&data);
   Ok(json!({ "hash": hash }))
+}
+
+fn op_cwd(state: &mut State, _args: Value) -> Result<String, AnyError> {
+  if let Some(config_specifier) = &state.maybe_config_specifier {
+    let cwd = config_specifier.join("./")?;
+    Ok(cwd.to_string())
+  } else {
+    Ok("cache:///".to_string())
+  }
 }
 
 #[derive(Debug, Deserialize)]
@@ -264,7 +291,7 @@ struct EmitArgs {
   maybe_specifiers: Option<Vec<String>>,
 }
 
-fn emit(state: &mut State, args: Value) -> Result<Value, AnyError> {
+fn op_emit(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: EmitArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_emit\".")?;
   match v.file_name.as_ref() {
@@ -280,7 +307,7 @@ fn emit(state: &mut State, args: Value) -> Result<Value, AnyError> {
             } else if let Some(remapped_specifier) = state.root_map.get(s) {
               remapped_specifier.clone()
             } else {
-              resolve_url_or_path(s).unwrap()
+              normalize_specifier(s).unwrap()
             }
           })
           .collect();
@@ -296,15 +323,34 @@ fn emit(state: &mut State, args: Value) -> Result<Value, AnyError> {
 }
 
 #[derive(Debug, Deserialize)]
+struct ExistsArgs {
+  /// The fully qualified specifier that should be loaded.
+  specifier: String,
+}
+
+fn op_exists(state: &mut State, args: ExistsArgs) -> Result<bool, AnyError> {
+  if let Ok(specifier) = normalize_specifier(&args.specifier) {
+    if specifier.scheme() == "asset" || specifier.scheme() == "data" {
+      Ok(true)
+    } else {
+      let graph = state.graph.lock().unwrap();
+      Ok(graph.contains(&specifier))
+    }
+  } else {
+    Ok(false)
+  }
+}
+
+#[derive(Debug, Deserialize)]
 struct LoadArgs {
   /// The fully qualified specifier that should be loaded.
   specifier: String,
 }
 
-fn load(state: &mut State, args: Value) -> Result<Value, AnyError> {
+fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: LoadArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_load\".")?;
-  let specifier = resolve_url_or_path(&v.specifier)
+  let specifier = normalize_specifier(&v.specifier)
     .context("Error converting a string module specifier for \"op_load\".")?;
   let mut hash: Option<String> = None;
   let mut media_type = MediaType::Unknown;
@@ -348,7 +394,7 @@ fn load(state: &mut State, args: Value) -> Result<Value, AnyError> {
   )
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolveArgs {
   /// The base specifier that the supplied specifier strings should be resolved
@@ -358,7 +404,7 @@ pub struct ResolveArgs {
   pub specifiers: Vec<String>,
 }
 
-fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
+fn op_resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: ResolveArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_resolve\".")?;
   let mut resolved: Vec<(String, String)> = Vec::new();
@@ -367,7 +413,7 @@ fn resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   } else if let Some(remapped_base) = state.root_map.get(&v.base) {
     remapped_base.clone()
   } else {
-    resolve_url_or_path(&v.base).context(
+    normalize_specifier(&v.base).context(
       "Error converting a string module specifier for \"op_resolve\".",
     )?
   };
@@ -432,7 +478,7 @@ struct RespondArgs {
   pub stats: Stats,
 }
 
-fn respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
+fn op_respond(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: RespondArgs = serde_json::from_value(args)
     .context("Error converting the result for \"op_respond\".")?;
   state.maybe_response = Some(v);
@@ -485,17 +531,21 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     op_state.put(State::new(
       request.graph.clone(),
       request.hash_data.clone(),
+      request.maybe_config_specifier.clone(),
       request.maybe_tsbuildinfo.clone(),
       root_map,
       data_url_map,
     ));
   }
 
-  runtime.register_op("op_create_hash", op(create_hash));
-  runtime.register_op("op_emit", op(emit));
-  runtime.register_op("op_load", op(load));
-  runtime.register_op("op_resolve", op(resolve));
-  runtime.register_op("op_respond", op(respond));
+  runtime.register_op("op_cwd", op(op_cwd));
+  runtime.register_op("op_create_hash", op(op_create_hash));
+  runtime.register_op("op_emit", op(op_emit));
+  runtime.register_op("op_exists", op(op_exists));
+  runtime.register_op("op_load", op(op_load));
+  runtime.register_op("op_resolve", op(op_resolve));
+  runtime.register_op("op_respond", op(op_respond));
+  runtime.sync_ops_cache();
 
   let startup_source = "globalThis.startup({ legacyFlag: false })";
   let request_value = json!({
@@ -507,9 +557,9 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   let exec_source = format!("globalThis.exec({})", request_str);
 
   runtime
-    .execute("[native code]", startup_source)
+    .execute_script(&located_script_name!(), startup_source)
     .context("Could not properly start the compiler runtime.")?;
-  runtime.execute("[native_code]", &exec_source)?;
+  runtime.execute_script(&located_script_name!(), &exec_source)?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();
@@ -535,11 +585,11 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::config_file::TsConfig;
   use crate::diagnostics::Diagnostic;
   use crate::diagnostics::DiagnosticCategory;
   use crate::module_graph::tests::MockSpecifierHandler;
   use crate::module_graph::GraphBuilder;
-  use crate::tsc_config::TsConfig;
   use std::env;
   use std::path::PathBuf;
   use std::sync::Mutex;
@@ -567,6 +617,7 @@ mod tests {
     State::new(
       graph,
       hash_data,
+      None,
       maybe_tsbuildinfo,
       HashMap::new(),
       HashMap::new(),
@@ -608,6 +659,7 @@ mod tests {
       debug: false,
       graph,
       hash_data,
+      maybe_config_specifier: None,
       maybe_tsbuildinfo: None,
       root_names: vec![(specifier.clone(), MediaType::TypeScript)],
     };
@@ -621,7 +673,7 @@ mod tests {
       ..Default::default()
     });
     js_runtime
-      .execute(
+      .execute_script(
         "<anon>",
         r#"
       if (!(startup)) {
@@ -637,7 +689,7 @@ mod tests {
   async fn test_create_hash() {
     let mut state = setup(None, Some(vec![b"something".to_vec()]), None).await;
     let actual =
-      create_hash(&mut state, json!({ "data": "some sort of content" }))
+      op_create_hash(&mut state, json!({ "data": "some sort of content" }))
         .expect("could not invoke op");
     assert_eq!(
       actual,
@@ -678,7 +730,7 @@ mod tests {
   #[tokio::test]
   async fn test_emit() {
     let mut state = setup(None, None, None).await;
-    let actual = emit(
+    let actual = op_emit(
       &mut state,
       json!({
         "data": "some file content",
@@ -706,7 +758,7 @@ mod tests {
   #[tokio::test]
   async fn test_emit_tsbuildinfo() {
     let mut state = setup(None, None, None).await;
-    let actual = emit(
+    let actual = op_emit(
       &mut state,
       json!({
         "data": "some file content",
@@ -730,7 +782,7 @@ mod tests {
       Some("some content".to_string()),
     )
     .await;
-    let actual = load(
+    let actual = op_load(
       &mut state,
       json!({ "specifier": "https://deno.land/x/mod.ts"}),
     )
@@ -762,7 +814,7 @@ mod tests {
     )
     .await;
     let value =
-      load(&mut state, json!({ "specifier": "asset:///lib.dom.d.ts" }))
+      op_load(&mut state, json!({ "specifier": "asset:///lib.dom.d.ts" }))
         .expect("should have invoked op");
     let actual: LoadResponse =
       serde_json::from_value(value).expect("failed to deserialize");
@@ -781,7 +833,7 @@ mod tests {
     )
     .await;
     let actual =
-      load(&mut state, json!({ "specifier": "deno:///.tsbuildinfo"}))
+      op_load(&mut state, json!({ "specifier": "deno:///.tsbuildinfo"}))
         .expect("should have invoked op");
     assert_eq!(
       actual,
@@ -796,7 +848,7 @@ mod tests {
   #[tokio::test]
   async fn test_load_missing_specifier() {
     let mut state = setup(None, None, None).await;
-    let actual = load(
+    let actual = op_load(
       &mut state,
       json!({ "specifier": "https://deno.land/x/mod.ts"}),
     )
@@ -819,7 +871,7 @@ mod tests {
       None,
     )
     .await;
-    let actual = resolve(
+    let actual = op_resolve(
       &mut state,
       json!({ "base": "https://deno.land/x/a.ts", "specifiers": [ "./b.ts" ]}),
     )
@@ -835,7 +887,7 @@ mod tests {
       None,
     )
     .await;
-    let actual = resolve(
+    let actual = op_resolve(
       &mut state,
       json!({ "base": "https://deno.land/x/a.ts", "specifiers": [ "./bad.ts" ]}),
     ).expect("should have not errored");
@@ -848,7 +900,7 @@ mod tests {
   #[tokio::test]
   async fn test_respond() {
     let mut state = setup(None, None, None).await;
-    let actual = respond(
+    let actual = op_respond(
       &mut state,
       json!({
         "diagnostics": [

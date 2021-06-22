@@ -298,7 +298,7 @@ unitTest(
     const sendLen = await socket.send(sendBuf, socket.addr);
     assertEquals(sendLen, 3);
 
-    const [recvBuf, recvAddr] = await recvPromise;
+    const [recvBuf, _recvAddr] = await recvPromise;
     assertEquals(recvBuf.length, 3);
     assertEquals(1, recvBuf[0]);
     assertEquals(2, recvBuf[1]);
@@ -375,7 +375,7 @@ unitTest(
     const sendLen = await socket.send(sendBuf, socket.addr);
     assertEquals(sendLen, 3);
 
-    const [recvBuf, recvAddr] = await recvPromise;
+    const [recvBuf, _recvAddr] = await recvPromise;
     assertEquals(recvBuf.length, 3);
     assertEquals(1, recvBuf[0]);
     assertEquals(2, recvBuf[1]);

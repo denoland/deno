@@ -228,7 +228,7 @@ unitTest(
       fr.addEventListener("loadend", () => {
         out += "1";
       });
-      fr.onloadend = (ev): void => {
+      fr.onloadend = (_ev): void => {
         out += "2";
       };
       fr.addEventListener("loadend", () => {

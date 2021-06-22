@@ -8,16 +8,16 @@
   const { assert, pathFromURL } = window.__bootstrap.util;
 
   function opKill(pid, signo) {
-    core.jsonOpSync("op_kill", { pid, signo });
+    core.opSync("op_kill", { pid, signo });
   }
 
   function opRunStatus(rid) {
-    return core.jsonOpAsync("op_run_status", rid);
+    return core.opAsync("op_run_status", rid);
   }
 
   function opRun(request) {
     assert(request.cmd.length > 0);
-    return core.jsonOpSync("op_run", request);
+    return core.opSync("op_run", request);
   }
 
   async function runStatus(rid) {

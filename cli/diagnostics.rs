@@ -6,7 +6,9 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
+use deno_core::ModuleSpecifier;
 use regex::Regex;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
@@ -14,20 +16,32 @@ const MAX_SOURCE_LINE_LENGTH: usize = 150;
 
 const UNSTABLE_DENO_PROPS: &[&str] = &[
   "CompilerOptions",
+  "CreateHttpClientOptions",
   "DatagramConn",
   "Diagnostic",
   "DiagnosticCategory",
   "DiagnosticItem",
   "DiagnosticMessageChain",
+  "EmitOptions",
+  "EmitResult",
   "HttpClient",
+  "HttpConn",
   "LinuxSignal",
   "Location",
+  "MXRecord",
   "MacOSSignal",
+  "Metrics",
+  "OpMetrics",
+  "RecordType",
+  "RequestEvent",
+  "ResolveDnsOptions",
+  "SRVRecord",
+  "SetRawOptions",
   "Signal",
   "SignalStream",
   "StartTlsOptions",
-  "SymlinkOptions",
-  "TranspileOnlyResult",
+  "SystemCpuInfo",
+  "SystemMemoryInfo",
   "UnixConnectOptions",
   "UnixListenOptions",
   "applySourceMap",
@@ -38,26 +52,24 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "formatDiagnostics",
   "futime",
   "futimeSync",
-  "fstat",
-  "fstatSync",
-  "ftruncate",
-  "ftruncateSync",
   "hostname",
   "kill",
   "listen",
   "listenDatagram",
   "loadavg",
-  "mainModule",
   "openPlugin",
   "osRelease",
   "ppid",
+  "resolveDns",
+  "serveHttp",
   "setRaw",
   "shutdown",
   "signal",
   "signals",
+  "sleepSync",
   "startTls",
-  "systemMemoryInfo",
   "systemCpuInfo",
+  "systemMemoryInfo",
   "umask",
   "utime",
   "utimeSync",
@@ -223,13 +235,14 @@ impl Diagnostic {
       _ => "",
     };
 
+    let code = if self.code >= 900001 {
+      "".to_string()
+    } else {
+      colors::bold(format!("TS{} ", self.code)).to_string()
+    };
+
     if !category.is_empty() {
-      write!(
-        f,
-        "{} [{}]: ",
-        colors::bold(&format!("TS{}", self.code)),
-        category
-      )
+      write!(f, "{}[{}]: ", code, category)
     } else {
       Ok(())
     }
@@ -347,6 +360,24 @@ impl Diagnostics {
   #[cfg(test)]
   pub fn new(diagnostics: Vec<Diagnostic>) -> Self {
     Diagnostics(diagnostics)
+  }
+
+  pub fn extend_graph_errors(
+    &mut self,
+    errors: HashMap<ModuleSpecifier, String>,
+  ) {
+    self.0.extend(errors.into_iter().map(|(s, e)| Diagnostic {
+      category: DiagnosticCategory::Error,
+      code: 900001,
+      start: None,
+      end: None,
+      message_text: Some(e),
+      message_chain: None,
+      source: None,
+      source_line: None,
+      file_name: Some(s.to_string()),
+      related_information: None,
+    }));
   }
 
   pub fn is_empty(&self) -> bool {

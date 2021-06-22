@@ -73,19 +73,19 @@
       this.#off = 0;
     }
 
-    #tryGrowByReslice = (n) => {
+    #tryGrowByReslice(n) {
       const l = this.#buf.byteLength;
       if (n <= this.capacity - l) {
         this.#reslice(l + n);
         return l;
       }
       return -1;
-    };
+    }
 
-    #reslice = (len) => {
+    #reslice(len) {
       assert(len <= this.#buf.buffer.byteLength);
       this.#buf = new Uint8Array(this.#buf.buffer, 0, len);
-    };
+    }
 
     readSync(p) {
       if (this.empty()) {
@@ -117,7 +117,7 @@
       return Promise.resolve(n);
     }
 
-    #grow = (n) => {
+    #grow(n) {
       const m = this.length;
       // If buffer is empty, reset to recover space.
       if (m === 0 && this.#off !== 0) {
@@ -147,7 +147,7 @@
       this.#off = 0;
       this.#reslice(Math.min(m + n, MAX_SIZE));
       return m;
-    };
+    }
 
     grow(n) {
       if (n < 0) {

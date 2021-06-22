@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::config_file::ConfigFile;
 use crate::deno_dir;
 use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
@@ -14,8 +15,9 @@ use crate::module_graph::TypeLib;
 use crate::source_maps::SourceMapGetter;
 use crate::specifier_handler::FetchHandler;
 use crate::version;
-use deno_runtime::deno_file::BlobUrlStore;
-use deno_runtime::inspector::InspectorServer;
+use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_runtime::deno_web::BlobUrlStore;
+use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::Permissions;
 
 use deno_core::error::anyhow;
@@ -29,18 +31,11 @@ use deno_core::ModuleSpecifier;
 use log::debug;
 use log::warn;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::env;
 use std::fs::read;
 use std::sync::Arc;
 use std::sync::Mutex;
-
-pub fn exit_unstable(api_name: &str) {
-  eprintln!(
-    "Unstable API '{}'. The --unstable flag must be provided.",
-    api_name
-  );
-  std::process::exit(70);
-}
 
 /// This structure represents state of single "deno" program.
 ///
@@ -54,10 +49,12 @@ pub struct ProgramState {
   pub modules:
     Arc<Mutex<HashMap<ModuleSpecifier, Result<ModuleSource, AnyError>>>>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
+  pub maybe_config_file: Option<ConfigFile>,
   pub maybe_import_map: Option<ImportMap>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub ca_data: Option<Vec<u8>>,
   pub blob_url_store: BlobUrlStore,
+  pub broadcast_channel: InMemoryBroadcastChannel,
 }
 
 impl ProgramState {
@@ -83,6 +80,7 @@ impl ProgramState {
     };
 
     let blob_url_store = BlobUrlStore::default();
+    let broadcast_channel = InMemoryBroadcastChannel::default();
 
     let file_fetcher = FileFetcher::new(
       http_cache,
@@ -99,6 +97,13 @@ impl ProgramState {
       None
     };
 
+    let maybe_config_file =
+      if let Some(config_path) = flags.config_path.as_ref() {
+        Some(ConfigFile::read(config_path)?)
+      } else {
+        None
+      };
+
     let maybe_import_map: Option<ImportMap> =
       match flags.import_map_path.as_ref() {
         None => None,
@@ -108,8 +113,12 @@ impl ProgramState {
               format!("Bad URL (\"{}\") for import map.", import_map_url),
             )?;
           let file = file_fetcher
-            .fetch(&import_map_specifier, &Permissions::allow_all())
-            .await?;
+            .fetch(&import_map_specifier, &mut Permissions::allow_all())
+            .await
+            .context(format!(
+              "Unable to load '{}' import map",
+              import_map_specifier
+            ))?;
           let import_map =
             ImportMap::from_json(import_map_specifier.as_str(), &file.source)?;
           Some(import_map)
@@ -133,47 +142,54 @@ impl ProgramState {
       file_fetcher,
       modules: Default::default(),
       lockfile,
+      maybe_config_file,
       maybe_import_map,
       maybe_inspector_server,
       ca_data,
       blob_url_store,
+      broadcast_channel,
     };
     Ok(Arc::new(program_state))
   }
 
-  /// This function is called when new module load is
-  /// initialized by the JsRuntime. Its resposibility is to collect
-  /// all dependencies and if it is required then also perform TS typecheck
-  /// and traspilation.
-  pub async fn prepare_module_load(
+  /// Prepares a set of module specifiers for loading in one shot.
+  ///
+  pub async fn prepare_module_graph(
     self: &Arc<Self>,
-    specifier: ModuleSpecifier,
+    specifiers: Vec<ModuleSpecifier>,
     lib: TypeLib,
-    runtime_permissions: Permissions,
-    is_dynamic: bool,
+    root_permissions: Permissions,
+    dynamic_permissions: Permissions,
     maybe_import_map: Option<ImportMap>,
   ) -> Result<(), AnyError> {
-    let specifier = specifier.clone();
-    // Workers are subject to the current runtime permissions.  We do the
-    // permission check here early to avoid "wasting" time building a module
-    // graph for a module that cannot be loaded.
-    if lib == TypeLib::DenoWorker || lib == TypeLib::UnstableDenoWorker {
-      runtime_permissions.check_specifier(&specifier)?;
-    }
-    let handler =
-      Arc::new(Mutex::new(FetchHandler::new(self, runtime_permissions)?));
+    let handler = Arc::new(Mutex::new(FetchHandler::new(
+      self,
+      root_permissions,
+      dynamic_permissions,
+    )?));
+
     let mut builder =
       GraphBuilder::new(handler, maybe_import_map, self.lockfile.clone());
-    builder.add(&specifier, is_dynamic).await?;
+
+    for specifier in specifiers {
+      builder.add(&specifier, false).await?;
+    }
+    builder.analyze_config_file(&self.maybe_config_file).await?;
+
     let mut graph = builder.get_graph();
     let debug = self.flags.log_level == Some(log::Level::Debug);
-    let maybe_config_path = self.flags.config_path.clone();
+    let maybe_config_file = self.maybe_config_file.clone();
+    let reload_exclusions = {
+      let modules = self.modules.lock().unwrap();
+      modules.keys().cloned().collect::<HashSet<_>>()
+    };
 
     let result_modules = if self.flags.no_check {
       let result_info = graph.transpile(TranspileOptions {
         debug,
-        maybe_config_path,
+        maybe_config_file,
         reload: self.flags.reload,
+        reload_exclusions,
       })?;
       debug!("{}", result_info.stats);
       if let Some(ignored_options) = result_info.maybe_ignored_options {
@@ -185,8 +201,83 @@ impl ProgramState {
         debug,
         emit: true,
         lib,
-        maybe_config_path,
+        maybe_config_file,
         reload: self.flags.reload,
+        reload_exclusions,
+      })?;
+
+      debug!("{}", result_info.stats);
+      if let Some(ignored_options) = result_info.maybe_ignored_options {
+        eprintln!("{}", ignored_options);
+      }
+      if !result_info.diagnostics.is_empty() {
+        return Err(anyhow!(result_info.diagnostics));
+      }
+      result_info.loadable_modules
+    };
+
+    let mut loadable_modules = self.modules.lock().unwrap();
+    loadable_modules.extend(result_modules);
+
+    if let Some(ref lockfile) = self.lockfile {
+      let g = lockfile.lock().unwrap();
+      g.write()?;
+    }
+
+    Ok(())
+  }
+
+  /// This function is called when new module load is
+  /// initialized by the JsRuntime. Its resposibility is to collect
+  /// all dependencies and if it is required then also perform TS typecheck
+  /// and traspilation.
+  pub async fn prepare_module_load(
+    self: &Arc<Self>,
+    specifier: ModuleSpecifier,
+    lib: TypeLib,
+    root_permissions: Permissions,
+    dynamic_permissions: Permissions,
+    is_dynamic: bool,
+    maybe_import_map: Option<ImportMap>,
+  ) -> Result<(), AnyError> {
+    let specifier = specifier.clone();
+    let handler = Arc::new(Mutex::new(FetchHandler::new(
+      self,
+      root_permissions,
+      dynamic_permissions,
+    )?));
+    let mut builder =
+      GraphBuilder::new(handler, maybe_import_map, self.lockfile.clone());
+    builder.add(&specifier, is_dynamic).await?;
+    builder.analyze_config_file(&self.maybe_config_file).await?;
+    let mut graph = builder.get_graph();
+    let debug = self.flags.log_level == Some(log::Level::Debug);
+    let maybe_config_file = self.maybe_config_file.clone();
+    let reload_exclusions = {
+      let modules = self.modules.lock().unwrap();
+      modules.keys().cloned().collect::<HashSet<_>>()
+    };
+
+    let result_modules = if self.flags.no_check {
+      let result_info = graph.transpile(TranspileOptions {
+        debug,
+        maybe_config_file,
+        reload: self.flags.reload,
+        reload_exclusions,
+      })?;
+      debug!("{}", result_info.stats);
+      if let Some(ignored_options) = result_info.maybe_ignored_options {
+        warn!("{}", ignored_options);
+      }
+      result_info.loadable_modules
+    } else {
+      let result_info = graph.check(CheckOptions {
+        debug,
+        emit: true,
+        lib,
+        maybe_config_file,
+        reload: self.flags.reload,
+        reload_exclusions,
       })?;
 
       debug!("{}", result_info.stats);
