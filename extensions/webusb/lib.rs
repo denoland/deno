@@ -10,10 +10,8 @@ use deno_core::op_async;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::AsyncRefCell;
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
 use libusb1_sys::constants::*;
@@ -31,7 +29,9 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Mutex;
 
 pub use rusb; // Re-export rusb
 
@@ -408,11 +408,11 @@ pub struct ControlTransferInArgs {
 }
 
 pub struct UsbResource {
-  device: Device<Context>,
+  device: Arc<Device<Context>>,
 }
 
 pub struct UsbHandleResource {
-  handle: AsyncRefCell<DeviceHandle<Context>>,
+  handle: Arc<Mutex<DeviceHandle<Context>>>,
 }
 
 impl Resource for UsbHandleResource {
@@ -439,11 +439,9 @@ fn transfer_type(
       let endpoint_desc = descriptor
         .endpoint_descriptors()
         .find(|s| s.address() == addr);
-      if endpoint_desc.is_none() {
-        continue;
+      if let Some(endpoint_desc) = endpoint_desc {
+        return Some(endpoint_desc.transfer_type());
       }
-      // TODO(littledivy): Do not unwrap.
-      return Some(endpoint_desc.unwrap().transfer_type());
     }
   }
   None
@@ -451,71 +449,72 @@ fn transfer_type(
 
 pub async fn op_webusb_open_device(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  rid: u32,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let args: OpenArgs = serde_json::from_value(args)?;
-  let rid = args.rid;
-
   let resource = state
     .borrow()
     .resource_table
     .get::<UsbResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
-  let handle = resource.device.open()?;
+  let device = resource.device.clone();
+  let handle = tokio::task::spawn_blocking(
+    move || -> Result<DeviceHandle<Context>, rusb::Error> { device.open() },
+  )
+  .await??;
+
   let rid = state.borrow_mut().resource_table.add(UsbHandleResource {
-    handle: AsyncRefCell::new(handle),
+    handle: Arc::new(Mutex::new(handle)),
   });
   Ok(json!({ "rid": rid }))
 }
 
 pub async fn op_webusb_reset(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  rid: u32,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  // Note: Reusing `OpenArgs` struct here. The rid is for the device handle.
-  let args: OpenArgs = serde_json::from_value(args)?;
-  let rid = args.rid;
-
   let resource = state
     .borrow()
     .resource_table
     .get::<UsbHandleResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut handle = RcRef::map(resource, |r| &r.handle).borrow_mut().await;
-  handle.reset()?;
+  let handle = resource.handle.clone();
+  let mut handle = handle.lock_owned().await;
+
+  tokio::task::spawn_blocking(move || -> Result<(), rusb::Error> {
+    handle.reset()
+  })
+  .await??;
+
   Ok(json!({}))
 }
 
 pub async fn op_webusb_close_device(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  rid: u32,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  // Note: Reusing `OpenArgs` struct here. The rid is for the device handle.
-  let args: OpenArgs = serde_json::from_value(args)?;
-  let rid = args.rid;
-
   let resource = state
     .borrow_mut()
     .resource_table
     .take::<UsbHandleResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
-  let handle = RcRef::map(resource, |r| &r.handle).borrow_mut().await;
+  let handle = resource.handle.clone();
+  let handle = handle.lock_owned().await;
+
   drop(handle);
   Ok(json!({}))
 }
 
 pub async fn op_webusb_select_configuration(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: SelectConfigurationArgs,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let args: SelectConfigurationArgs = serde_json::from_value(args)?;
   let rid = args.rid;
   let configuration_value = args.configuration_value;
 
@@ -525,8 +524,14 @@ pub async fn op_webusb_select_configuration(
     .get::<UsbHandleResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut handle = RcRef::map(resource, |r| &r.handle).borrow_mut().await;
-  handle.set_active_configuration(configuration_value)?;
+  let handle = resource.handle.clone();
+  let mut handle = handle.lock_owned().await;
+
+  tokio::task::spawn_blocking(move || -> Result<(), rusb::Error> {
+    handle.set_active_configuration(configuration_value)
+  })
+  .await??;
+
   Ok(json!({}))
 }
 
@@ -539,7 +544,6 @@ pub async fn op_webusb_transfer_out(
   let rid = args.rid;
   let endpoint_number = args.endpoint_number;
 
-  // Ported from the Chromium codebase.
   // https://chromium.googlesource.com/chromium/src/+/master/services/device/usb/usb_device_handle_impl.cc#789
   let endpoint_addr = EP_DIR_OUT | endpoint_number;
 
@@ -549,7 +553,8 @@ pub async fn op_webusb_transfer_out(
     .get::<UsbHandleResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
-  let handle = RcRef::map(resource, |r| &r.handle).borrow_mut().await;
+  let handle = resource.handle.clone();
+  let handle = handle.lock_owned().await;
 
   let cnf = handle
     .device() // -> Device<T>
@@ -597,14 +602,12 @@ pub async fn op_webusb_transfer_out(
 
 pub async fn op_webusb_transfer_in(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: TransferInArgs,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let args: TransferInArgs = serde_json::from_value(args)?;
   let rid = args.rid;
   let endpoint_number = args.endpoint_number;
 
-  // Ported from the Chromium codebase.
   // https://chromium.googlesource.com/chromium/src/+/master/services/device/usb/usb_device_handle_impl.cc#789
   let endpoint_addr = EP_DIR_IN | endpoint_number;
 
@@ -614,7 +617,9 @@ pub async fn op_webusb_transfer_in(
     .get::<UsbHandleResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
-  let handle = RcRef::map(resource, |r| &r.handle).borrow_mut().await;
+  let handle = resource.handle.clone();
+  let handle = handle.lock_owned().await;
+
   let cnf = handle
     .device() // -> Device<T>
     .active_config_descriptor()?; // -> ConfigDescriptor<T>
@@ -667,10 +672,9 @@ pub async fn op_webusb_transfer_in(
 
 pub async fn op_webusb_control_transfer_in(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: ControlTransferInArgs,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let args: ControlTransferInArgs = serde_json::from_value(args)?;
   let rid = args.rid;
   let setup = args.setup;
   let length = args.length;
@@ -696,19 +700,26 @@ pub async fn op_webusb_control_transfer_in(
     .get::<UsbHandleResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
-  let handle = RcRef::map(resource, |r| &r.handle).borrow_mut().await;
-  let mut buf = vec![0u8; length];
-  // http://libusb.sourceforge.net/api-1.0/group__libusb__syncio.html
-  // For unlimited timeout, use value `0`.
-  let data = handle.read_control(
-    req_type,
-    setup.request,
-    setup.value,
-    setup.index,
-    &mut buf,
-    Duration::new(0, 0),
-  )?;
+  let handle = resource.handle.clone();
+  let handle = handle.lock_owned().await;
 
+  let data =
+    tokio::task::spawn_blocking(move || -> Result<Vec<u8>, rusb::Error> {
+      let mut buf = vec![0u8; length];
+      // http://libusb.sourceforge.net/api-1.0/group__libusb__syncio.html
+      // For unlimited timeout, use value `0`.
+      handle.read_control(
+        req_type,
+        setup.request,
+        setup.value,
+        setup.index,
+        &mut buf,
+        Duration::new(0, 0),
+      )?;
+
+      Ok(buf)
+    })
+    .await??;
   Ok(json!({ "data": data }))
 }
 
@@ -720,8 +731,6 @@ pub async fn op_webusb_control_transfer_out(
   let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let rid = args.rid;
   let setup = args.setup;
-
-  let buf = &*zero_copy;
 
   let req = match setup.request_type {
     WebUsbRequestType::Standard => rusb::RequestType::Standard,
@@ -744,32 +753,37 @@ pub async fn op_webusb_control_transfer_out(
     .get::<UsbHandleResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
-  let handle = RcRef::map(resource, |r| &r.handle).borrow_mut().await;
-  // http://libusb.sourceforge.net/api-1.0/group__libusb__syncio.html
-  // For unlimited timeout, use value `0`.
-  match handle.write_control(
-    req_type,
-    setup.request,
-    setup.value,
-    setup.index,
-    &buf,
-    Duration::new(0, 0),
-  ) {
-    Ok(bytes_written) => Ok(
-      json!({ "bytesWritten": bytes_written, "status": WebUsbTransferStatus::Completed }),
-    ),
-    Err(err) => Ok(
-      json!({ "bytesWritten": 0, "status": WebUsbTransferStatus::from_rusb_error(err) }),
-    ),
-  }
+  let handle = resource.handle.clone();
+  let handle = handle.lock_owned().await;
+
+  tokio::task::spawn_blocking(move || -> Result<Value, AnyError> {
+    let buf = &*zero_copy;
+
+    // http://libusb.sourceforge.net/api-1.0/group__libusb__syncio.html
+    // For unlimited timeout, use value `0`.
+    match handle.write_control(
+      req_type,
+      setup.request,
+      setup.value,
+      setup.index,
+      &buf,
+      Duration::new(0, 0),
+    ) {
+      Ok(bytes_written) => Ok(
+        json!({ "bytesWritten": bytes_written, "status": WebUsbTransferStatus::Completed }),
+      ),
+      Err(err) => Ok(
+        json!({ "bytesWritten": 0, "status": WebUsbTransferStatus::from_rusb_error(err) }),
+      ),
+    }
+  }).await?
 }
 
 pub async fn op_webusb_clear_halt(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: ClearHaltArgs,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let args: ClearHaltArgs = serde_json::from_value(args)?;
   let rid = args.rid;
   let direction: Direction = args.direction;
 
@@ -786,17 +800,22 @@ pub async fn op_webusb_clear_halt(
     .get::<UsbHandleResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut handle = RcRef::map(resource, |r| &r.handle).borrow_mut().await;
-  handle.clear_halt(endpoint)?;
+  let handle = resource.handle.clone();
+  let mut handle = handle.lock_owned().await;
+
+  tokio::task::spawn_blocking(move || -> Result<(), rusb::Error> {
+    handle.clear_halt(endpoint)
+  })
+  .await??;
+
   Ok(json!({}))
 }
 
 pub async fn op_webusb_select_alternate_interface(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: SelectAlternateInterfaceArgs,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let args: SelectAlternateInterfaceArgs = serde_json::from_value(args)?;
   let rid = args.rid;
   let interface_number = args.interface_number;
   let alternate_setting = args.alternate_setting;
@@ -807,17 +826,22 @@ pub async fn op_webusb_select_alternate_interface(
     .get::<UsbHandleResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut handle = RcRef::map(resource, |r| &r.handle).borrow_mut().await;
-  handle.set_alternate_setting(interface_number, alternate_setting)?;
+  let handle = resource.handle.clone();
+  let mut handle = handle.lock_owned().await;
+
+  tokio::task::spawn_blocking(move || -> Result<(), rusb::Error> {
+    handle.set_alternate_setting(interface_number, alternate_setting)
+  })
+  .await??;
+
   Ok(json!({}))
 }
 
 pub async fn op_webusb_release_interface(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: ClaimInterfaceArgs,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let args: ClaimInterfaceArgs = serde_json::from_value(args)?;
   let rid = args.rid;
   let interface_number = args.interface_number;
 
@@ -827,17 +851,22 @@ pub async fn op_webusb_release_interface(
     .get::<UsbHandleResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut handle = RcRef::map(resource, |r| &r.handle).borrow_mut().await;
-  handle.release_interface(interface_number)?;
+  let handle = resource.handle.clone();
+  let mut handle = handle.lock_owned().await;
+
+  tokio::task::spawn_blocking(move || -> Result<(), rusb::Error> {
+    handle.release_interface(interface_number)
+  })
+  .await??;
+
   Ok(json!({}))
 }
 
 pub async fn op_webusb_claim_interface(
   state: Rc<RefCell<OpState>>,
-  args: Value,
+  args: ClaimInterfaceArgs,
   _zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<Value, AnyError> {
-  let args: ClaimInterfaceArgs = serde_json::from_value(args)?;
   let rid = args.rid;
   let interface_number = args.interface_number;
 
@@ -847,8 +876,14 @@ pub async fn op_webusb_claim_interface(
     .get::<UsbHandleResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut handle = RcRef::map(resource, |r| &r.handle).borrow_mut().await;
-  handle.claim_interface(interface_number)?;
+  let handle = resource.handle.clone();
+  let mut handle = handle.lock_owned().await;
+
+  tokio::task::spawn_blocking(move || -> Result<(), rusb::Error> {
+    handle.claim_interface(interface_number)
+  })
+  .await??;
+
   Ok(json!({}))
 }
 
@@ -1015,7 +1050,9 @@ where
       // Explicitly close the device.
       drop(handle);
 
-      let rid = state.resource_table.add(UsbResource { device });
+      let rid = state.resource_table.add(UsbResource {
+        device: Arc::new(device),
+      });
       usbdevices.push(Device { usbdevice, rid });
     }
   }

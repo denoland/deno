@@ -835,6 +835,7 @@ dependencies = [
  "libusb1-sys",
  "rusb",
  "serde",
+ "tokio",
 ]
 
 [[package]]

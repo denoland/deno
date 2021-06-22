@@ -176,33 +176,20 @@
   }
 
   const _device = Symbol("device");
+  const _rid = Symbol("rid");
+  const _handle = Symbol("handle");
 
   class UsbDevice {
     // Represents a `USBDevice` in closed state. It is used to open a device.
-    #rid;
+    [_rid];
     // Represents a `USBDeviceHandle`. The actual device handle.
     // Should always be non-null when `this.open` is true.
-    #deviceHandleRid;
+    [_handle] = null;
     // `USBDevice` properties.
-    #device = null;
+    [_device];
 
-    get [_device]() {
-      return this.#device;
-    }
-
-    constructor(device, rid) {
-      if (device.configuration) {
-        device.configuration = new UsbConfiguration(device.configuration);
-      }
-
-      device.configurations = device.configurations.map((config) =>
-        new UsbConfiguration(config)
-      );
-
-      this.#device = device;
-      this.#rid = rid;
-      this.#deviceHandleRid = null;
-      this.opened = false;
+    constructor() {
+      webidl.illegalConstructor();
     }
 
     async claimInterface(interfaceNumber) {
@@ -240,7 +227,7 @@
           // 5.
           await core.opAsync(
             "op_webusb_claim_interface",
-            { rid: this.#deviceHandleRid, interfaceNumber },
+            { rid: this[_handle], interfaceNumber },
           );
         }
         // 6.
@@ -283,7 +270,7 @@
         if (!usbTest[_initialized]) {
           await core.opAsync(
             "op_webusb_release_interface",
-            { rid: this.#deviceHandleRid, interfaceNumber },
+            { rid: this[_handle], interfaceNumber },
           );
         }
         // 7.
@@ -323,7 +310,7 @@
       if (!usbTest[_initialized]) {
         await core.opAsync(
           "op_webusb_select_configuration",
-          { rid: this.#deviceHandleRid, configurationValue },
+          { rid: this[_handle], configurationValue },
         );
       }
 
@@ -378,7 +365,7 @@
       if (!usbTest[_initialized]) {
         await core.opAsync(
           "op_webusb_select_alternate_interface",
-          { rid: this.#deviceHandleRid, interfaceNumber, alternateSetting },
+          { rid: this[_handle], interfaceNumber, alternateSetting },
         );
       }
     }
@@ -434,7 +421,7 @@
         // 4
         await core.opAsync(
           "op_webusb_clear_halt",
-          { rid: this.#deviceHandleRid, direction, endpointNumber },
+          { rid: this[_handle], direction, endpointNumber },
         );
       }
     }
@@ -469,7 +456,7 @@
         // 5 to 12.
         return await core.opAsync(
           "op_webusb_control_transfer_in",
-          { rid: this.#deviceHandleRid, setup, length },
+          { rid: this[_handle], setup, length },
         );
       } else {
         return {
@@ -517,7 +504,7 @@
         // 4 to 9.
         return await core.opAsync(
           "op_webusb_control_transfer_out",
-          { rid: this.#deviceHandleRid, setup },
+          { rid: this[_handle], setup },
           new Uint8Array(data),
         );
       } else {
@@ -533,12 +520,12 @@
 
       webidl.assertBranded(this, UsbDevice);
 
-      endpointNumber = webidl.converters["octet"](interfaceNumber, {
+      endpointNumber = webidl.converters["octet"](endpointNumber, {
         prefix,
         context: "Argument 1",
       });
 
-      length = webidl.converters["unsigned long"](alternateSetting, {
+      length = webidl.converters["unsigned long"](length, {
         prefix,
         context: "Argument 2",
       });
@@ -548,7 +535,7 @@
         itf.alternates.find((alt) =>
           alt.endpoints.find((ep) => {
             return endpointNumber == ep.endpointNumber &&
-              direction == "in";
+              ep.direction == "in";
           })
         )
       );
@@ -580,7 +567,7 @@
         // 6 to 15.
         return await core.opAsync(
           "op_webusb_transfer_in",
-          { rid: this.#deviceHandleRid, endpointNumber, length },
+          { rid: this[_handle], endpointNumber, length },
         );
       } else {
         let data = new Array(length);
@@ -599,12 +586,12 @@
 
       webidl.assertBranded(this, UsbDevice);
 
-      endpointNumber = webidl.converters["octet"](interfaceNumber, {
+      endpointNumber = webidl.converters["octet"](endpointNumber, {
         prefix,
         context: "Argument 1",
       });
 
-      data = webidl.converters["BufferSource"](alternateSetting, {
+      data = webidl.converters["BufferSource"](data, {
         prefix,
         context: "Argument 2",
       });
@@ -614,7 +601,7 @@
         itf.alternates.find((alt) =>
           alt.endpoints.find((ep) => {
             return endpointNumber == ep.endpointNumber &&
-              direction == "out";
+              ep.direction == "out";
           })
         )
       );
@@ -646,7 +633,7 @@
         // 5 to 11.
         return await core.opAsync(
           "op_webusb_transfer_out",
-          { rid: this.#deviceHandleRid, endpointNumber },
+          { rid: this[_handle], endpointNumber },
           new Uint8Array(data),
         );
       } else {
@@ -672,7 +659,7 @@
         // 4 to 6.
         await core.opAsync(
           "op_webusb_reset",
-          { rid: this.#deviceHandleRid },
+          this[_handle],
         );
       }
     }
@@ -685,11 +672,11 @@
         if (!usbTest[_initialized]) {
           const { rid } = await core.opAsync(
             "op_webusb_open_device",
-            { rid: this.#rid },
+            this[_rid],
           );
 
           // 5.
-          this.#deviceHandleRid = rid;
+          this[_handle] = rid;
         }
 
         this.opened = true;
@@ -702,14 +689,19 @@
       // 3.
       if (this.opened) {
         if (!usbTest[_initialized]) {
-          await core.opAsync("op_webusb_close_device", {
-            rid: this.#deviceHandleRid,
-          });
+          await core.opAsync(
+            "op_webusb_close_device",
+            this[_handle],
+          );
         }
 
         // 7.
         this.opened = false;
       }
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({})}`;
     }
   }
 
@@ -770,7 +762,21 @@
         });
       }
 
-      return devices.map(({ rid, usbdevice }) => new UsbDevice(usbdevice, rid));
+      return devices.map(({ rid, usbdevice }) => {
+        let device = webidl.createBranded(UsbDevice);
+        device[_rid] = rid;
+        if (usbdevice.configuration) {
+          usbdevice.configuration = new UsbConfiguration(
+            usbdevice.configuration,
+          );
+        }
+
+        usbdevice.configurations = usbdevice.configurations.map((config) =>
+          new UsbConfiguration(config)
+        );
+        device[_device] = usbdevice;
+        return device;
+      });
     }
 
     async requestDevice({ filter }) {
