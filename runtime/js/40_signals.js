@@ -236,7 +236,15 @@
       f,
       g,
     ) {
-      return this.#pollingPromise.then(() => {}).then(f, g);
+      return this.#pollingPromise.then((done) => {
+        if (done) {
+          // If pollingPromise returns true, then
+          // this signal stream is finished and the promise API
+          // should never be resolved.
+          return new Promise(() => {});
+        }
+        return;
+      }).then(f, g);
     }
 
     async next() {
