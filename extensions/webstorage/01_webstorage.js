@@ -30,6 +30,10 @@
       return core.opSync("op_webstorage_key", index, this[_persistent]);
     }
 
+    setLimitStorage(size) {
+      this.size = size;
+    }
+
     setItem(key, value) {
       webidl.assertBranded(this, Storage);
       const prefix = "Failed to execute 'setItem' on 'Storage'";
@@ -43,10 +47,15 @@
         context: "Argument 2",
       });
 
-      core.opSync("op_webstorage_set", {
-        keyName: key,
-        keyValue: value,
-      }, this[_persistent]);
+      const sizeLimit = this.size || 500000;
+
+      core.opSync("op_webstorage_set",{
+            keyName: key,
+            keyValue: value,
+            keyLimitStorage: sizeLimit,
+          },
+           this[_persistent]
+      );
     }
 
     getItem(key) {
