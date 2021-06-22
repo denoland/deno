@@ -23,13 +23,9 @@ mod text;
 mod tsc;
 mod urls;
 
-pub async fn start(parent_pid: Option<u32>) -> Result<(), AnyError> {
+pub async fn start() -> Result<(), AnyError> {
   let stdin = tokio::io::stdin();
   let stdout = tokio::io::stdout();
-
-  if let Some(parent_pid) = parent_pid {
-    parent_process_checker::start(parent_pid);
-  }
 
   let (service, messages) =
     LspService::new(language_server::LanguageServer::new);
