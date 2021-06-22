@@ -49,13 +49,11 @@
 
       const sizeLimit = this.size || 500000;
 
-      core.opSync("op_webstorage_set",{
-            keyName: key,
-            keyValue: value,
-            keyLimitStorage: sizeLimit,
-          },
-           this[_persistent]
-      );
+      core.opSync("op_webstorage_set", {
+        keyName: key,
+        keyValue: value,
+        keyLimitStorage: sizeLimit,
+      }, this[_persistent]);
     }
 
     getItem(key) {

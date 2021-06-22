@@ -123,7 +123,7 @@ pub fn op_webstorage_key(
 pub struct SetArgs {
   key_name: String,
   key_value: String,
-  key_limit_storage: u32
+  key_limit_storage: u32,
 }
 
 pub fn op_webstorage_set(
@@ -131,7 +131,6 @@ pub fn op_webstorage_set(
   args: SetArgs,
   persistent: bool,
 ) -> Result<(), AnyError> {
-
   let conn = get_webstorage(state, persistent)?;
 
   let mut stmt =
