@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_web"
-version = "0.40.0"
+version = "0.41.0"
 edition = "2018"
 description = "Collection of Web APIs"
 authors = ["the Deno authors"]
@@ -15,9 +15,10 @@ path = "lib.rs"
 
 [dependencies]
 base64 = "0.13.0"
-deno_core = { version = "0.90.0", path = "../../core" }
+deno_core = { version = "0.91.0", path = "../../core" }
 encoding_rs = "0.8.28"
 serde = "1.0"
+tokio = "1.7"
 uuid = { version = "0.8.2", features = ["v4"] }
 
 [dev-dependencies]

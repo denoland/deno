@@ -325,6 +325,7 @@ declare namespace Deno {
       | "umd"
       | "es6"
       | "es2015"
+      | "es2020"
       | "esnext";
     /** Do not generate custom helper functions like `__extends` in compiled
      * output. Defaults to `false`. */
@@ -421,11 +422,25 @@ declare namespace Deno {
       | "es2019"
       | "es2020"
       | "esnext";
-    /** List of names of type definitions to include. Defaults to `undefined`.
+    /** List of names of type definitions to include when type checking.
+     * Defaults to `undefined`.
      *
      * The type definitions are resolved according to the normal Deno resolution
-     * irrespective of if sources are provided on the call. Like other Deno
-     * modules, there is no "magical" resolution. For example:
+     * irrespective of if sources are provided on the call. In addition, unlike
+     * passing the `--config` option on startup, there is no base to resolve
+     * relative specifiers, so the specifiers here have to be fully qualified
+     * URLs or paths.  For example:
+     *
+     * ```ts
+     * Deno.emit("./a.ts", {
+     *   compilerOptions: {
+     *     types: [
+     *       "https://deno.land/x/pkg/types.d.ts",
+     *       "/Users/me/pkg/types.d.ts",
+     *     ]
+     *   }
+     * });
+     * ```
      */
     types?: string[];
     /** Emit class fields with ECMAScript-standard semantics. Defaults to
@@ -1055,11 +1070,6 @@ declare namespace Deno {
   export function hostname(): string;
 
   /** **UNSTABLE**: New API, yet to be vetted.
-   * The pid of the current process's parent.
-   */
-  export const ppid: number;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
    * A custom HttpClient for use with `fetch`.
    *
    * ```ts
@@ -1079,6 +1089,17 @@ declare namespace Deno {
     /** A certificate authority to use when validating TLS certificates. Certificate data must be PEM encoded.
      */
     caData?: string;
+    proxy?: Proxy;
+  }
+
+  export interface Proxy {
+    url: string;
+    basicAuth?: BasicAuth;
+  }
+
+  export interface BasicAuth {
+    username: string;
+    password: string;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1086,7 +1107,12 @@ declare namespace Deno {
    *
    * ```ts
    * const client = Deno.createHttpClient({ caData: await Deno.readTextFile("./ca.pem") });
-   * const req = await fetch("https://myserver.com", { client });
+   * const response = await fetch("https://myserver.com", { client });
+   * ```
+   *
+   * ```ts
+   * const client = Deno.createHttpClient({ proxy: { url: "http://myproxy.com:8080" } });
+   * const response = await fetch("https://myserver.com", { client });
    * ```
    */
   export function createHttpClient(
@@ -1155,15 +1181,6 @@ declare namespace Deno {
     bytesSentData: number;
     bytesReceived: number;
   }
-
-  export interface MemoryUsage {
-    rss: number;
-    heapTotal: number;
-    heapUsed: number;
-    external: number;
-  }
-
-  export function memoryUsage(): MemoryUsage;
 
   export interface RequestEvent {
     readonly request: Request;

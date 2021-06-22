@@ -1,6 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast;
+use crate::ast::Diagnostic;
+use crate::ast::ImportsNotUsedAsValues;
 use crate::ast::TokenOrComment;
 use crate::colors;
 use crate::media_type::MediaType;
@@ -17,6 +19,8 @@ use rustyline::highlight::Highlighter;
 use rustyline::validate::ValidationContext;
 use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
+use rustyline::CompletionType;
+use rustyline::Config;
 use rustyline::Context;
 use rustyline::Editor;
 use rustyline_derive::{Helper, Hinter};
@@ -187,7 +191,7 @@ impl Validator for EditorHelper {
     let mut stack: Vec<Token> = Vec::new();
     let mut in_template = false;
 
-    for item in ast::lex("", ctx.input(), &MediaType::JavaScript) {
+    for item in ast::lex("", ctx.input(), &MediaType::TypeScript) {
       if let TokenOrComment::Token(token) = item.inner {
         match token {
           Token::BackQuote => in_template = !in_template,
@@ -247,7 +251,7 @@ impl Highlighter for EditorHelper {
   fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
     let mut out_line = String::from(line);
 
-    for item in ast::lex("", line, &MediaType::JavaScript) {
+    for item in ast::lex("", line, &MediaType::TypeScript) {
       // Adding color adds more bytes to the string,
       // so an offset is needed to stop spans falling out of sync.
       let offset = out_line.len() - line.len();
@@ -302,7 +306,11 @@ struct ReplEditor {
 
 impl ReplEditor {
   pub fn new(helper: EditorHelper, history_file_path: PathBuf) -> Self {
-    let mut editor = Editor::new();
+    let editor_config = Config::builder()
+      .completion_type(CompletionType::List)
+      .build();
+
+    let mut editor = Editor::with_config(editor_config);
     editor.set_helper(Some(helper));
     editor.load_history(&history_file_path).unwrap_or(());
 
@@ -439,7 +447,48 @@ impl ReplSession {
     self.worker.run_event_loop(false).await
   }
 
-  pub async fn evaluate_line(&mut self, line: &str) -> Result<Value, AnyError> {
+  pub async fn evaluate_line_and_get_output(
+    &mut self,
+    line: &str,
+  ) -> Result<String, AnyError> {
+    match self.evaluate_line_with_object_wrapping(line).await {
+      Ok(evaluate_response) => {
+        let evaluate_result = evaluate_response.get("result").unwrap();
+        let evaluate_exception_details =
+          evaluate_response.get("exceptionDetails");
+
+        if evaluate_exception_details.is_some() {
+          self.set_last_thrown_error(evaluate_result).await?;
+        } else {
+          self.set_last_eval_result(evaluate_result).await?;
+        }
+
+        let value = self.get_eval_value(evaluate_result).await?;
+        Ok(match evaluate_exception_details {
+          Some(_) => format!("Uncaught {}", value),
+          None => value,
+        })
+      }
+      Err(err) => {
+        // handle a parsing diagnostic
+        match err.downcast_ref::<Diagnostic>() {
+          Some(diagnostic) => Ok(format!(
+            "{}: {} at {}:{}",
+            colors::red("parse error"),
+            diagnostic.message,
+            diagnostic.location.line,
+            diagnostic.location.col
+          )),
+          None => Err(err),
+        }
+      }
+    }
+  }
+
+  async fn evaluate_line_with_object_wrapping(
+    &mut self,
+    line: &str,
+  ) -> Result<Value, AnyError> {
     // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
     // statement rather than an object literal so we interpret it as an expression statement
     // to match the behavior found in a typical prompt including browser developer tools.
@@ -451,9 +500,7 @@ impl ReplSession {
       line.to_string()
     };
 
-    let evaluate_response = self
-      .evaluate_expression(&format!("'use strict'; void 0;\n{}", &wrapped_line))
-      .await?;
+    let evaluate_response = self.evaluate_ts_expression(&wrapped_line).await?;
 
     // If that fails, we retry it without wrapping in parens letting the error bubble up to the
     // user if it is still an error.
@@ -461,9 +508,7 @@ impl ReplSession {
       if evaluate_response.get("exceptionDetails").is_some()
         && wrapped_line != line
       {
-        self
-          .evaluate_expression(&format!("'use strict'; void 0;\n{}", &line))
-          .await?
+        self.evaluate_ts_expression(&line).await?
       } else {
         evaluate_response
       };
@@ -471,7 +516,7 @@ impl ReplSession {
     Ok(evaluate_response)
   }
 
-  pub async fn set_last_thrown_error(
+  async fn set_last_thrown_error(
     &mut self,
     error: &Value,
   ) -> Result<(), AnyError> {
@@ -488,7 +533,7 @@ impl ReplSession {
     Ok(())
   }
 
-  pub async fn set_last_eval_result(
+  async fn set_last_eval_result(
     &mut self,
     evaluate_result: &Value,
   ) -> Result<(), AnyError> {
@@ -527,6 +572,34 @@ impl ReplSession {
     let value = inspect_result.get("value").unwrap().as_str().unwrap();
 
     Ok(value.to_string())
+  }
+
+  async fn evaluate_ts_expression(
+    &mut self,
+    expression: &str,
+  ) -> Result<Value, AnyError> {
+    let parsed_module =
+      crate::ast::parse("repl.ts", &expression, &crate::MediaType::TypeScript)?;
+
+    let transpiled_src = parsed_module
+      .transpile(&crate::ast::EmitOptions {
+        emit_metadata: false,
+        source_map: false,
+        inline_source_map: false,
+        imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
+        // JSX is not supported in the REPL
+        transform_jsx: false,
+        jsx_factory: "React.createElement".into(),
+        jsx_fragment_factory: "React.Fragment".into(),
+      })?
+      .0;
+
+    self
+      .evaluate_expression(&format!(
+        "'use strict'; void 0;\n{}",
+        transpiled_src
+      ))
+      .await
   }
 
   async fn evaluate_expression(
@@ -615,29 +688,13 @@ pub async fn run(
     .await;
     match line {
       Ok(line) => {
-        let evaluate_response = repl_session.evaluate_line(&line).await?;
+        let output = repl_session.evaluate_line_and_get_output(&line).await?;
 
         // We check for close and break here instead of making it a loop condition to get
         // consistent behavior in when the user evaluates a call to close().
         if repl_session.is_closing().await? {
           break;
         }
-
-        let evaluate_result = evaluate_response.get("result").unwrap();
-        let evaluate_exception_details =
-          evaluate_response.get("exceptionDetails");
-
-        if evaluate_exception_details.is_some() {
-          repl_session.set_last_thrown_error(evaluate_result).await?;
-        } else {
-          repl_session.set_last_eval_result(evaluate_result).await?;
-        }
-
-        let value = repl_session.get_eval_value(evaluate_result).await?;
-        let output = match evaluate_exception_details {
-          Some(_) => format!("Uncaught {}", value),
-          None => value,
-        };
 
         println!("{}", output);
 
