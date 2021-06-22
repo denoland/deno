@@ -162,7 +162,6 @@ fn v8_init(v8_platform: Option<v8::UniquePtr<v8::Platform>>) {
     // See https://github.com/denoland/deno/issues/2544
     " --experimental-wasm-threads",
     " --no-wasm-async-compilation",
-    " --harmony-top-level-await",
     " --harmony-import-assertions",
     " --no-validate-asm",
   );
@@ -1139,9 +1138,9 @@ impl JsRuntime {
     }
   }
 
-  /// "deno_core" runs V8 with "--harmony-top-level-await"
-  /// flag on - it means that each module evaluation returns a promise
-  /// from V8.
+  /// "deno_core" runs V8 with Top Level Await enabled. It means that each
+  /// module evaluation returns a promise from V8.
+  /// Feature docs: https://v8.dev/features/top-level-await
   ///
   /// This promise resolves after all dependent modules have also
   /// resolved. Each dependent module may perform calls to "import()" and APIs
