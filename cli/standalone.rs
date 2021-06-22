@@ -13,6 +13,7 @@ use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::futures::FutureExt;
+use deno_core::located_script_name;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -262,9 +263,15 @@ pub async fn run(
   }
   worker.bootstrap(&options);
   worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('load'))",
+  )?;
   worker.run_event_loop(true).await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('unload'))",
+  )?;
   std::process::exit(0);
 }
 

@@ -1008,7 +1008,7 @@ mod tests {
     runtime.sync_ops_cache();
 
     runtime
-      .execute(
+      .execute_script(
         "setup.js",
         r#"
         function assert(cond) {
@@ -1116,7 +1116,7 @@ mod tests {
       });
 
       runtime
-        .execute(
+        .execute_script(
           "file:///dyn_import2.js",
           r#"
         (async () => {
@@ -1201,7 +1201,7 @@ mod tests {
 
       // Dynamically import mod_b
       runtime
-        .execute(
+        .execute_script(
           "file:///dyn_import3.js",
           r#"
           (async () => {
@@ -1251,7 +1251,7 @@ mod tests {
       });
       runtime.sync_ops_cache();
       runtime
-        .execute(
+        .execute_script(
           "file:///dyn_import3.js",
           r#"
           (async () => {

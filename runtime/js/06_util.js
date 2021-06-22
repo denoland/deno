@@ -117,6 +117,7 @@
     return {
       value,
       writable: true,
+      enumerable: false,
       configurable: true,
     };
   }
@@ -125,6 +126,8 @@
     return {
       value,
       enumerable: true,
+      writable: false,
+      configurable: true,
     };
   }
 
@@ -132,6 +135,7 @@
     return {
       get: getter,
       enumerable: true,
+      configurable: true,
     };
   }
 
