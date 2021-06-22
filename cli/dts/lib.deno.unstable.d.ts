@@ -662,7 +662,7 @@ declare namespace Deno {
    *
    * ```ts
    * const info = await Deno.info("https://deno.land/x/std/testing/asserts.ts");
-   * console.log(graph.modules.map((dep) => dep.specifier));
+   * console.log(info.modules.map((dep) => dep.specifier));
    * // Would log out 3 module specifiers like:
    * //   https://deno.land/std/fmt/colors.ts
    * //   https://deno.land/std/testing/_diff.ts
