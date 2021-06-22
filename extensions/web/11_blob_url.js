@@ -31,7 +31,7 @@
     });
 
     const url = core.opSync(
-      "op_file_create_object_url",
+      "op_blob_create_object_url",
       blob.type,
       getParts(blob),
     );
@@ -51,10 +51,7 @@
       prefix,
     });
 
-    core.opSync(
-      "op_file_revoke_object_url",
-      url,
-    );
+    core.opSync("op_blob_revoke_object_url", url);
   }
 
   URL.createObjectURL = createObjectURL;
