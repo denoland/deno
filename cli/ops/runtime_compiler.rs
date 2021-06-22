@@ -6,6 +6,7 @@ use crate::info::ModuleGraphInfo;
 use crate::module_graph::BundleType;
 use crate::module_graph::EmitOptions;
 use crate::module_graph::GraphBuilder;
+use crate::module_graph::InfoOptions;
 use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
 use crate::specifier_handler::MemoryHandler;
@@ -15,13 +16,15 @@ use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
+use deno_core::resolve_path;
 use deno_core::resolve_url_or_path;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_runtime::deno_fetch::FetchPermissions;
 use deno_runtime::permissions::Permissions;
-use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -137,10 +140,34 @@ async fn op_emit(
   }))
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+struct ImportMapValue {
+  imports: Value,
+  scopes: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum StringOrImportMap {
+  ImportMap(ImportMapValue),
+  String(String),
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InfoArgsOptions {
+  #[serde(default)]
+  checksums: bool,
+  import_map: Option<StringOrImportMap>,
+  #[serde(default)]
+  paths: bool,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct InfoArgs {
   specifier: String,
+  options: Option<InfoArgsOptions>,
 }
 
 async fn op_info(
@@ -168,7 +195,38 @@ async fn op_info(
     runtime_permissions.clone(),
     runtime_permissions.clone(),
   )?));
-  let mut builder = GraphBuilder::new(handler, None, None);
+  let maybe_import_map = if let Some(options) = &args.options {
+    match &options.import_map {
+      Some(StringOrImportMap::ImportMap(value)) => {
+        let cwd = std::env::current_dir()?;
+        let base_url = resolve_path(cwd.to_string_lossy().as_ref())?;
+        Some(ImportMap::from_json(
+          base_url.as_str(),
+          &json!(value).to_string(),
+        )?)
+      }
+      Some(StringOrImportMap::String(str)) => {
+        let import_map_specifier = resolve_url_or_path(str)
+          .context(format!("Bad URL (\"{}\") for import map.", str))?;
+        let file = program_state
+          .file_fetcher
+          .fetch(&import_map_specifier, &mut runtime_permissions)
+          .await
+          .context(format!(
+            "Unable to load \"{}\" import map.",
+            import_map_specifier
+          ))?;
+        Some(ImportMap::from_json(
+          import_map_specifier.as_str(),
+          &file.source,
+        )?)
+      }
+      _ => None,
+    }
+  } else {
+    None
+  };
+  let mut builder = GraphBuilder::new(handler, maybe_import_map, None);
   builder.add(&specifier, true).await.map_err(|_| {
     type_error(format!(
       "Unable to handle the given specifier: {}",
@@ -176,5 +234,12 @@ async fn op_info(
     ))
   })?;
   let graph = builder.get_graph();
-  graph.info()
+  let options = args
+    .options
+    .map(|i| InfoOptions {
+      checksums: i.checksums,
+      paths: i.paths,
+    })
+    .unwrap_or_default();
+  graph.info(options)
 }

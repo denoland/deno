@@ -43,8 +43,22 @@
   }
 
   /**
+   * @typedef {object} OpInfoImportMap
+   * @property {Record<string, string>} imports
+   * @property {Record<string, Record<string, string>>=} scopes
+   */
+
+  /**
+   * @typedef {object} OpInfoRequestOptions
+   * @property {boolean=} checksums
+   * @property {(string | OpInfoImportMap)=} importMap
+   * @property {boolean=} paths
+   */
+
+  /**
    * @typedef {object} OpInfoRequest
    * @property {string} specifier
+   * @property {OpInfoRequestOptions=} options
    */
 
   /**
@@ -126,9 +140,10 @@
 
   /**
    * @param {string | URL} specifier
+   * @param {object=} options
    * @returns {Promise<OpInfoResponse>}
    */
-  function info(specifier) {
+  function info(specifier, options) {
     util.log(`Deno.info`, { specifier });
     if (!specifier) {
       return Promise.reject(
@@ -138,7 +153,13 @@
     if (typeof specifier !== "string") {
       specifier = String(specifier);
     }
-    return opInfo({ specifier });
+    if (
+      options && options.importMap && typeof options.importMap !== "string" &&
+      !("imports" in options.importMap)
+    ) {
+      options.importMap = String(options.importMap);
+    }
+    return opInfo({ specifier, options });
   }
 
   // These correspond to the cli::media_type::MediaType display trait

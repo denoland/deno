@@ -583,16 +583,28 @@ declare namespace Deno {
     mediaType?: ModuleGraphMediaType;
     /** The path to the local file. For local modules this will be the local
      * file path, for remote modules and data URLs, this would be the path to
-     * the file in the Deno cache. */
+     * the file in the Deno cache.
+     *
+     * By default, this is not included in the output. Set the `paths` option
+     * to `true` in the options to have this information populated. */
     local?: string;
     /** The checksum of the local source file. This can be used to validate if
-     * the current on disk version matches the version described here. */
+     * the current on disk version matches the version described here.
+     *
+     * By default, this is not included in the output. Set the `checksums`
+     * option to `true` in the options to have this information populated. */
     checksum?: string;
     /** The path to an emitted version of the module, if the module requires
-     * transpilation to be loaded into the Deno runtime. */
+     * transpilation to be loaded into the Deno runtime.
+     *
+     * By default, this is not included in the output. Set the `paths` option
+     * to `true` in the options to have this information populated. */
     emit?: string;
     /** The path to an optionally emitted source map between the original and
-     * emitted version of the file. */
+     * emitted version of the file.
+     *
+     * By default, this is not included in the output. Set the `paths` option
+     * to `true` in the options to have this information populated. */
     map?: string;
     /** If when resolving the module, Deno encountered an error and the module
      * is unavailable, the text of that error will be indicated here. */
@@ -609,19 +621,61 @@ declare namespace Deno {
     size: number;
   }
 
+  interface InfoOptions {
+    /** If `true` populate the `checksum` property in the module graph
+     * entries. This is the checksum that is used by Deno to "lock" the
+     * dependency and could have security implications if exposed. Therefore,
+     * this is `false` by default. */
+    checksums?: boolean;
+    /** A string, URL pointing to a import map or an object providing the import
+     * map to be used when resolving modules.
+     *
+     * In order to resolve relative modules, import maps need a "base" which is
+     * the import map itself. When an object is passed as a value the current
+     * working directory for the Deno process will be used. */
+    importMap?: string | URL | ImportMap;
+    /** If `true` populate the `local`, `emit` and `map` fields in the module
+     * graph entries. These are fully qualified local filesystem paths, which
+     * could leak sensitive information. Therefore, this is `false` by default.
+     */
+    paths?: boolean;
+  }
+
   /**
    * **UNSTABLE**: new API, yet to be finalized.
    *
    * Similar to the command line functionality `deno info --json`, the API
    * provides information about a module and its dependencies.
    *
-   * Requires `allow/read` permissions to access local modules and the cache and
-   * potentially `allow/net` permissions if there are .
+   * Requires `allow/read` permissions to access local modules and cached
+   * modules as well as `allow/net` permissions if there are remote modules that
+   * are not cached.
+   *
+   * A security note that local module specifiers that get resolved in the graph
+   * will contain the full local path to a module as a URL string. This
+   * information may leak sensitive information about the host system if sent to
+   * an un-trusted source.
+   *
+   * ## Example
+   *
+   * ```ts
+   * const graph = await Deno.info("https://deno.land/x/std/testing/asserts.ts");
+   * console.log(graph.modules.map((dep) => dep.specifier));
+   * // Would log out 3 module specifiers like:
+   * //   https://deno.land/std/fmt/colors.ts
+   * //   https://deno.land/std/testing/_diff.ts
+   * //   https://deno.land/std/testing/asserts.ts
+   * ```
    *
    * @param specifier The specifier that serves as the entry point for the
    *                  module graph.
+   * @param options   Options to be used when calculating the info for a module
+   *                  graph.
    */
-  export function info(specifier: string | URL): Promise<ModuleGraph>;
+  export function info(
+    specifier: string | URL,
+    options?: InfoOptions,
+  ): Promise<ModuleGraph>;
 
   /** **UNSTABLE**: Should not have same name as `window.location` type. */
   interface Location {

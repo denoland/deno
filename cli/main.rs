@@ -432,7 +432,10 @@ async fn info_command(
       .analyze_config_file(&program_state.maybe_config_file)
       .await?;
     let graph = builder.get_graph();
-    let info = graph.info()?;
+    let info = graph.info(module_graph::InfoOptions {
+      checksums: true,
+      paths: true,
+    })?;
 
     if json {
       write_json_to_stdout(&json!(info))
@@ -698,7 +701,13 @@ async fn bundle_command(
     let flags = flags.clone();
     let out_file = out_file.clone();
     async move {
-      info!("{} {}", colors::green("Bundle"), module_graph.info()?.root);
+      info!(
+        "{} {}",
+        colors::green("Bundle"),
+        module_graph
+          .info(module_graph::InfoOptions::default())?
+          .root
+      );
 
       let output =
         bundle_module_graph(module_graph, program_state, flags, debug)?;
