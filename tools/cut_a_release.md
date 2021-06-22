@@ -8,7 +8,7 @@ cut.**
 
 1. Open a PR on the `deno_std` repo that bumps the version in `version.ts` and
    updates `Releases.md`
-2. Create a tag with the version number (with `v` prefix).
+2. Create a tag with the version number (_without_ `v` prefix).
 
 ## Updating the main repo
 
