@@ -3,13 +3,10 @@ use swc_ecmascript::ast as swc_ast;
 use swc_ecmascript::visit::noop_fold_type;
 use swc_ecmascript::visit::Fold;
 
+/// Transforms import declarations to variable declarations
+/// with a dynamic import. This is used to provide import
+/// declaration support in the REPL.
 pub struct DownlevelImportsFolder;
-
-impl DownlevelImportsFolder {
-  pub fn new() -> Self {
-    DownlevelImportsFolder
-  }
-}
 
 impl Fold for DownlevelImportsFolder {
   noop_fold_type!(); // skip typescript specific nodes
@@ -22,10 +19,12 @@ impl Fold for DownlevelImportsFolder {
 
     match &module_item {
       ModuleItem::ModuleDecl(ModuleDecl::Import(import_decl)) => {
+        // Handle type only imports
         if import_decl.type_only {
           return ModuleItem::Stmt(Stmt::Empty(EmptyStmt { span: DUMMY_SP }));
         }
 
+        // The initializer (ex. `await import('./mod.ts')`)
         let initializer = Box::new(Expr::Await(AwaitExpr {
           span: DUMMY_SP,
           arg: Box::new(Expr::Call(CallExpr {
@@ -50,14 +49,16 @@ impl Fold for DownlevelImportsFolder {
           })),
         }));
 
+        // Handle imports for the side effects
+        // ex. `import "module.ts"` -> `await import("module.ts");`
         if import_decl.specifiers.is_empty() {
-          // `import "module.ts"` -> `await import("module.ts");`
           return ModuleItem::Stmt(Stmt::Expr(ExprStmt {
             span: DUMMY_SP,
             expr: initializer,
           }));
         }
 
+        // Collect the specifiers and create the variable statement
         let named_import_props = import_decl
           .specifiers
           .iter()
@@ -78,16 +79,16 @@ impl Fold for DownlevelImportsFolder {
             ImportSpecifier::Namespace(_) => None,
           })
           .collect::<Vec<_>>();
-        let namespace_import_name = import_decl
-          .specifiers
-          .iter()
-          .filter_map(|specifier| match specifier {
-            ImportSpecifier::Namespace(specifier) => {
-              Some(create_binding_ident(specifier.local.sym.to_string()))
-            }
-            _ => None,
-          })
-          .next();
+        let namespace_import_name =
+          import_decl
+            .specifiers
+            .iter()
+            .find_map(|specifier| match specifier {
+              ImportSpecifier::Namespace(specifier) => {
+                Some(create_binding_ident(specifier.local.sym.to_string()))
+              }
+              _ => None,
+            });
 
         ModuleItem::Stmt(Stmt::Decl(Decl::Var(VarDecl {
           span: DUMMY_SP,
@@ -259,7 +260,7 @@ mod test {
     test_transform(
       DownlevelImportsFolder,
       r#"import myDefault, * as mod from "./mod.ts";"#,
-      r#"const { default: myDefault  } = await import("./mod.ts"), mod = await import("./mod.ts");"#
+      r#"const { default: myDefault  } = await import("./mod.ts"), mod = await import("./mod.ts");"#,
     );
   }
 
