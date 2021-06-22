@@ -3976,12 +3976,6 @@ console.log("finish");
     output: "unstable_enabled_js.out",
   });
 
-  itest!(unstable_disabled_ts2551 {
-    args: "run --reload unstable_ts2551.ts",
-    exit_code: 1,
-    output: "unstable_disabled_ts2551.out",
-  });
-
   itest!(unstable_worker {
     args: "run --reload --unstable --quiet --allow-read unstable_worker.ts",
     output: "unstable_worker.ts.out",

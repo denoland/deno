@@ -1070,11 +1070,6 @@ declare namespace Deno {
   export function hostname(): string;
 
   /** **UNSTABLE**: New API, yet to be vetted.
-   * The pid of the current process's parent.
-   */
-  export const ppid: number;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
    * A custom HttpClient for use with `fetch`.
    *
    * ```ts
@@ -1170,15 +1165,6 @@ declare namespace Deno {
     bytesSentData: number;
     bytesReceived: number;
   }
-
-  export interface MemoryUsage {
-    rss: number;
-    heapTotal: number;
-    heapUsed: number;
-    external: number;
-  }
-
-  export function memoryUsage(): MemoryUsage;
 
   export interface RequestEvent {
     readonly request: Request;
