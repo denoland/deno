@@ -3,10 +3,9 @@
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../file/internal.d.ts" />
-/// <reference path="../file/lib.deno_file.d.ts" />
+/// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
-/// <reference path="./11_streams_types.d.ts" />
+/// <reference path="../web/06_streams_types.d.ts" />
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 "use strict";
@@ -240,6 +239,8 @@
   }
 
   webidl.mixinPairIterable("FormData", FormData, entryList, "name", "value");
+
+  webidl.configurePrototype(FormData);
 
   class MultipartBuilder {
     /**

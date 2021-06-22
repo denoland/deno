@@ -7,6 +7,7 @@ use crate::ast::Location;
 use crate::ast::ParsedModule;
 use crate::checksum;
 use crate::colors;
+use crate::config_file::CompilerOptions;
 use crate::config_file::ConfigFile;
 use crate::config_file::IgnoredCompilerOptions;
 use crate::config_file::TsConfig;
@@ -31,11 +32,13 @@ use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::stream::StreamExt;
+use deno_core::resolve_import;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
+use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
@@ -624,6 +627,10 @@ pub struct CheckOptions {
   /// Ignore any previously emits and ensure that all files are emitted from
   /// source.
   pub reload: bool,
+  /// A set of module specifiers to be excluded from the effect of
+  /// `CheckOptions::reload` if it is `true`. Perhaps because they have already
+  /// reloaded once in this process.
+  pub reload_exclusions: HashSet<ModuleSpecifier>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -673,6 +680,10 @@ pub struct TranspileOptions {
   /// Ignore any previously emits and ensure that all files are emitted from
   /// source.
   pub reload: bool,
+  /// A set of module specifiers to be excluded from the effect of
+  /// `CheckOptions::reload` if it is `true`. Perhaps because they have already
+  /// reloaded once in this process.
+  pub reload_exclusions: HashSet<ModuleSpecifier>,
 }
 
 #[derive(Debug, Clone)]
@@ -851,15 +862,14 @@ impl Graph {
     let maybe_ignored_options = config
       .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
 
+    let needs_reload = options.reload
+      && !self
+        .roots
+        .iter()
+        .all(|u| options.reload_exclusions.contains(u));
     // Short circuit if none of the modules require an emit, or all of the
-    // modules that require an emit have a valid emit.  There is also an edge
-    // case where there are multiple imports of a dynamic module during a
-    // single invocation, if that is the case, even if there is a reload, we
-    // will simply look at if the emit is invalid, to avoid two checks for the
-    // same programme.
-    if !self.needs_emit(&config)
-      || (self.is_emit_valid(&config)
-        && (!options.reload || self.roots_dynamic))
+    // modules that require an emit have a valid emit.
+    if !self.needs_emit(&config) || self.is_emit_valid(&config) && !needs_reload
     {
       debug!("graph does not need to be checked or emitted.");
       return Ok(ResultInfo {
@@ -883,11 +893,20 @@ impl Graph {
       vec![config.as_bytes(), version::deno().as_bytes().to_owned()];
     let graph = Arc::new(Mutex::new(self));
 
+    let maybe_config_specifier =
+      if let Some(config_file) = &options.maybe_config_file {
+        ModuleSpecifier::from_file_path(&config_file.path).ok()
+      } else {
+        None
+      };
+    debug!("maybe_config_specifier: {:?}", maybe_config_specifier);
+
     let response = tsc::exec(tsc::Request {
       config: config.clone(),
       debug: options.debug,
       graph: graph.clone(),
       hash_data,
+      maybe_config_specifier,
       maybe_tsbuildinfo,
       root_names,
     })?;
@@ -949,6 +968,11 @@ impl Graph {
       maybe_ignored_options,
       stats: response.stats,
     })
+  }
+
+  /// Indicates if the module graph contains the supplied specifier or not.
+  pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
+    matches!(self.get_module(specifier), ModuleSlot::Module(_))
   }
 
   /// Emit the module graph in a specific format.  This is specifically designed
@@ -1018,6 +1042,7 @@ impl Graph {
         debug: options.debug,
         graph: graph.clone(),
         hash_data,
+        maybe_config_specifier: None,
         maybe_tsbuildinfo: None,
         root_names,
       })?;
@@ -1102,10 +1127,11 @@ impl Graph {
           }
         }
         BundleType::None => {
+          let check_js = config.get_check_js();
           let emit_options: ast::EmitOptions = config.into();
           for (_, module_slot) in self.modules.iter_mut() {
             if let ModuleSlot::Module(module) = module_slot {
-              if !(emit_options.check_js
+              if !(check_js
                 || module.media_type == MediaType::Jsx
                 || module.media_type == MediaType::Tsx
                 || module.media_type == MediaType::TypeScript)
@@ -1245,6 +1271,18 @@ impl Graph {
     }
 
     Ok(())
+  }
+
+  /// Retrieve the first module loading error from the graph and return it.
+  pub fn get_errors(&self) -> HashMap<ModuleSpecifier, String> {
+    self
+      .modules
+      .iter()
+      .filter_map(|(s, sl)| match sl {
+        ModuleSlot::Err(err) => Some((s.clone(), err.to_string())),
+        _ => None,
+      })
+      .collect()
   }
 
   /// Retrieve a map that contains a representation of each module in the graph
@@ -1669,9 +1707,10 @@ impl Graph {
       .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
 
     let config = ts_config.as_bytes();
+    let check_js = ts_config.get_check_js();
     let emit_options: ast::EmitOptions = ts_config.into();
     let mut emit_count = 0_u32;
-    for (_, module_slot) in self.modules.iter_mut() {
+    for (specifier, module_slot) in self.modules.iter_mut() {
       if let ModuleSlot::Module(module) = module_slot {
         // TODO(kitsonk) a lot of this logic should be refactored into `Module` as
         // we start to support other methods on the graph.  Especially managing
@@ -1683,15 +1722,18 @@ impl Graph {
         }
         // if we don't have check_js enabled, we won't touch non TypeScript or JSX
         // modules
-        if !(emit_options.check_js
+        if !(check_js
           || module.media_type == MediaType::Jsx
           || module.media_type == MediaType::Tsx
           || module.media_type == MediaType::TypeScript)
         {
           continue;
         }
+
+        let needs_reload =
+          options.reload && !options.reload_exclusions.contains(specifier);
         // skip modules that already have a valid emit
-        if !options.reload && module.is_emit_valid(&config) {
+        if module.is_emit_valid(&config) && !needs_reload {
           continue;
         }
         let parsed_module = module.parse()?;
@@ -1817,26 +1859,7 @@ impl GraphBuilder {
     specifier: &ModuleSpecifier,
     is_dynamic: bool,
   ) -> Result<(), AnyError> {
-    self.fetch(specifier, &None, is_dynamic);
-
-    loop {
-      match self.pending.next().await {
-        Some(Err((specifier, err))) => {
-          self
-            .graph
-            .modules
-            .insert(specifier, ModuleSlot::Err(Arc::new(err)));
-        }
-        Some(Ok(cached_module)) => {
-          let is_root = &cached_module.specifier == specifier;
-          self.visit(cached_module, is_root, is_dynamic)?;
-        }
-        _ => {}
-      }
-      if self.pending.is_empty() {
-        break;
-      }
-    }
+    self.insert(specifier, is_dynamic).await?;
 
     if !self.graph.roots.contains(specifier) {
       self.graph.roots.push(specifier.clone());
@@ -1847,6 +1870,53 @@ impl GraphBuilder {
       }
     }
 
+    Ok(())
+  }
+
+  /// Analyze compiler options, identifying any specifiers that need to be
+  /// resolved and added to the graph.
+  pub async fn analyze_compiler_options(
+    &mut self,
+    maybe_compiler_options: &Option<HashMap<String, Value>>,
+  ) -> Result<(), AnyError> {
+    if let Some(user_config) = maybe_compiler_options {
+      if let Some(value) = user_config.get("types") {
+        let types: Vec<String> = serde_json::from_value(value.clone())?;
+        for specifier in types {
+          if let Ok(specifier) = resolve_url_or_path(&specifier) {
+            self.insert(&specifier, false).await?;
+          }
+        }
+      }
+    }
+    Ok(())
+  }
+
+  /// Analyze a config file, identifying any specifiers that need to be resolved
+  /// and added to the graph.
+  pub async fn analyze_config_file(
+    &mut self,
+    maybe_config_file: &Option<ConfigFile>,
+  ) -> Result<(), AnyError> {
+    if let Some(config_file) = maybe_config_file {
+      let referrer = ModuleSpecifier::from_file_path(&config_file.path)
+        .map_err(|_| {
+          anyhow!("Could not convert file path: \"{:?}\"", config_file.path)
+        })?;
+      if let Some(compiler_options) = &config_file.json.compiler_options {
+        let compiler_options: CompilerOptions =
+          serde_json::from_value(compiler_options.clone())?;
+        if let Some(types) = compiler_options.types {
+          for specifier in types {
+            if let Ok(specifier) =
+              resolve_import(&specifier, &referrer.to_string())
+            {
+              self.insert(&specifier, false).await?;
+            }
+          }
+        }
+      }
+    }
     Ok(())
   }
 
@@ -1868,6 +1938,37 @@ impl GraphBuilder {
         handler.fetch(specifier.clone(), maybe_referrer.clone(), is_dynamic);
       self.pending.push(future);
     }
+  }
+
+  /// An internal method that fetches the specifier and recursively fetches any
+  /// of the dependencies, adding them to the graph.
+  async fn insert(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    is_dynamic: bool,
+  ) -> Result<(), AnyError> {
+    self.fetch(specifier, &None, is_dynamic);
+
+    loop {
+      match self.pending.next().await {
+        Some(Err((specifier, err))) => {
+          self
+            .graph
+            .modules
+            .insert(specifier, ModuleSlot::Err(Arc::new(err)));
+        }
+        Some(Ok(cached_module)) => {
+          let is_root = &cached_module.specifier == specifier;
+          self.visit(cached_module, is_root, is_dynamic)?;
+        }
+        _ => {}
+      }
+      if self.pending.is_empty() {
+        break;
+      }
+    }
+
+    Ok(())
   }
 
   /// Visit a module that has been fetched, hydrating the module, analyzing its
@@ -2253,6 +2354,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: None,
         reload: false,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
@@ -2275,6 +2377,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: None,
         reload: false,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.diagnostics.is_empty());
@@ -2292,6 +2395,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: None,
         reload: false,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
@@ -2316,6 +2420,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: None,
         reload: false,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
@@ -2338,6 +2443,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: None,
         reload: false,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
@@ -2359,6 +2465,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: None,
         reload: false,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.diagnostics.is_empty());
@@ -2378,6 +2485,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: Some(config_file),
         reload: true,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
@@ -2399,6 +2507,7 @@ pub mod tests {
         lib: TypeLib::DenoWindow,
         maybe_config_file: Some(config_file),
         reload: true,
+        ..Default::default()
       })
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
@@ -2626,6 +2735,7 @@ pub mod tests {
         debug: false,
         maybe_config_file: Some(config_file),
         reload: false,
+        ..Default::default()
       })
       .unwrap();
     assert_eq!(

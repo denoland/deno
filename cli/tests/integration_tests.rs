@@ -825,6 +825,7 @@ mod integration {
       // the watcher process is still alive
       assert!(deno.try_wait().unwrap().is_none());
 
+      deno.kill().unwrap();
       drop(t);
     }
 
@@ -976,6 +977,7 @@ mod integration {
       // the watcher process is still alive
       assert!(child.try_wait().unwrap().is_none());
 
+      child.kill().unwrap();
       drop(t);
     }
 
@@ -2020,9 +2022,9 @@ mod integration {
         let mut output = String::new();
         master.read_to_string(&mut output).unwrap();
 
-        assert!(output.contains("Unexpected token ')'"));
-        assert!(output.contains("Unexpected token ']'"));
-        assert!(output.contains("Unexpected token '}'"));
+        assert!(output.contains("Unexpected token `)`"));
+        assert!(output.contains("Unexpected token `]`"));
+        assert!(output.contains("Unexpected token `}`"));
 
         fork.wait().unwrap();
       } else {
@@ -2073,6 +2075,35 @@ mod integration {
         master.read_to_string(&mut output).unwrap();
 
         assert!(output.contains("Symbol(Symbol.iterator)"));
+
+        fork.wait().unwrap();
+      } else {
+        std::env::set_var("NO_COLOR", "1");
+        let err = exec::Command::new(deno_exe).arg("repl").exec();
+        println!("err {}", err);
+        unreachable!()
+      }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pty_complete_declarations() {
+      use std::io::Read;
+      use util::pty::fork::*;
+      let deno_exe = util::deno_exe_path();
+      let fork = Fork::from_ptmx().unwrap();
+      if let Ok(mut master) = fork.is_parent() {
+        master.write_all(b"class MyClass {}\n").unwrap();
+        master.write_all(b"My\t\n").unwrap();
+        master.write_all(b"let myVar;\n").unwrap();
+        master.write_all(b"myV\t\n").unwrap();
+        master.write_all(b"close();\n").unwrap();
+
+        let mut output = String::new();
+        master.read_to_string(&mut output).unwrap();
+
+        assert!(output.contains("> MyClass"));
+        assert!(output.contains("> myVar"));
 
         fork.wait().unwrap();
       } else {
@@ -2197,6 +2228,59 @@ mod integration {
         Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
         false,
       );
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn typescript() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec![
+          "function add(a: number, b: number) { return a + b }",
+          "const result: number = add(1, 2) as number;",
+          "result",
+        ]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("undefined\nundefined\n3\n"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn typescript_declarations() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec![
+          "namespace Test { export enum Values { A, B, C } }",
+          "Test.Values.A",
+          "Test.Values.C",
+          "interface MyInterface { prop: string; }",
+          "type MyTypeAlias = string;",
+        ]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("undefined\n0\n2\nundefined\nundefined\n"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn typescript_decorators() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec![
+          "function dec(target) { target.prototype.test = () => 2; }",
+          "@dec class Test {}",
+          "new Test().test()",
+        ]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("undefined\nundefined\n2\n"));
       assert!(err.is_empty());
     }
 
@@ -2331,11 +2415,30 @@ mod integration {
       let (out, err) = util::run_and_collect_output(
         true,
         "repl",
-        Some(vec!["syntax error"]),
-        None,
+        Some(vec![
+          "syntax error",
+          "2", // ensure it keeps accepting input after
+        ]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
         false,
       );
-      assert!(out.contains("Unexpected identifier"));
+      assert!(
+        out.ends_with("parse error: Expected ';', '}' or <eof> at 1:7\n2\n")
+      );
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn syntax_error_jsx() {
+      // JSX is not supported in the REPL
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["const element = <div />;"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.contains("Unexpected token `>`"));
       assert!(err.is_empty());
     }
 
@@ -3113,7 +3216,7 @@ console.log("finish");
   });
 
   itest!(_089_run_allow_list {
-    args: "run --allow-run=cat 089_run_allow_list.ts",
+    args: "run --allow-run=curl 089_run_allow_list.ts",
     output: "089_run_allow_list.ts.out",
   });
 
@@ -3318,7 +3421,19 @@ console.log("finish");
     output: "config.ts.out",
   });
 
-  itest!(emtpy_typescript {
+  itest!(config_types {
+    args:
+      "run --reload --quiet --config config_types.tsconfig.json config_types.ts",
+    output: "config_types.ts.out",
+  });
+
+  itest!(config_types_remote {
+    http_server: true,
+    args: "run --reload --quiet --config config_types_remote.tsconfig.json config_types.ts",
+    output: "config_types.ts.out",
+  });
+
+  itest!(empty_typescript {
     args: "run --reload subdir/empty.ts",
     output_str: Some("Check file:[WILDCARD]tests/subdir/empty.ts\n"),
   });
@@ -3972,6 +4087,11 @@ console.log("finish");
     output: "fix_tsc_file_exists.out",
   });
 
+  itest!(fix_worker_dispatchevent {
+    args: "run --quiet --reload fix_worker_dispatchevent.ts",
+    output: "fix_worker_dispatchevent.ts.out",
+  });
+
   itest!(es_private_fields {
     args: "run --quiet --reload es_private_fields.js",
     output: "es_private_fields.js.out",
@@ -4013,6 +4133,17 @@ console.log("finish");
     args:
       "cache --reload http://localhost:4548/cli/tests/subdir/redirects/a.ts",
     output: "redirect_cache.out",
+  });
+
+  itest!(reference_types {
+    args: "run --reload --quiet reference_types.ts",
+    output: "reference_types.ts.out",
+  });
+
+  itest!(references_types_remote {
+    http_server: true,
+    args: "run --reload --quiet reference_types_remote.ts",
+    output: "reference_types_remote.ts.out",
   });
 
   itest!(deno_doc_types_header_direct {
@@ -5504,25 +5635,6 @@ console.log("finish");
     assert!(stderr.contains("BadResource"));
   }
 
-  #[cfg(not(windows))]
-  #[test]
-  fn should_not_panic_on_not_found_cwd() {
-    let output = util::deno_cmd()
-      .current_dir(util::root_path())
-      .arg("run")
-      .arg("--allow-write")
-      .arg("--allow-read")
-      .arg("cli/tests/dont_panic_not_found_cwd.ts")
-      .stderr(std::process::Stdio::piped())
-      .spawn()
-      .unwrap()
-      .wait_with_output()
-      .unwrap();
-    assert!(!output.status.success());
-    let stderr = std::str::from_utf8(&output.stderr).unwrap().trim();
-    assert!(stderr.contains("Failed to get current working directory"));
-  }
-
   #[cfg(windows)]
   // Clippy suggests to remove the `NoStd` prefix from all variants. I disagree.
   #[allow(clippy::enum_variant_names)]
@@ -5874,6 +5986,38 @@ console.log("finish");
       .unwrap();
     assert!(output.status.success());
     assert_eq!(output.stdout, b"Hello Deno!\n");
+  }
+
+  #[test]
+  fn standalone_compiler_ops() {
+    let dir = TempDir::new().expect("tempdir fail");
+    let exe = if cfg!(windows) {
+      dir.path().join("standalone_compiler_ops.exe")
+    } else {
+      dir.path().join("standalone_compiler_ops")
+    };
+    let output = util::deno_cmd()
+      .current_dir(util::root_path())
+      .arg("compile")
+      .arg("--unstable")
+      .arg("--output")
+      .arg(&exe)
+      .arg("./cli/tests/standalone_compiler_ops.ts")
+      .stdout(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    let output = Command::new(exe)
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+    assert!(output.status.success());
+    assert_eq!(output.stdout, b"Hello, Compiler API!\n");
   }
 
   #[test]

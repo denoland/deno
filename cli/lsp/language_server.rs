@@ -70,6 +70,7 @@ pub struct StateSnapshot {
   pub assets: Assets,
   pub config: ConfigSnapshot,
   pub documents: DocumentCache,
+  pub maybe_config_uri: Option<ModuleSpecifier>,
   pub module_registries: registries::ModuleRegistry,
   pub performance: Performance,
   pub sources: Sources,
@@ -92,6 +93,9 @@ pub(crate) struct Inner {
   module_registries: registries::ModuleRegistry,
   /// The path to the module registries cache
   module_registries_location: PathBuf,
+  /// An optional configuration file which has been specified in the client
+  /// options.
+  maybe_config_file: Option<ConfigFile>,
   /// An optional URL which provides the location of a TypeScript configuration
   /// file which will be used by the Deno LSP.
   maybe_config_uri: Option<Url>,
@@ -138,6 +142,7 @@ impl Inner {
       config,
       diagnostics_server,
       documents: Default::default(),
+      maybe_config_file: Default::default(),
       maybe_config_uri: Default::default(),
       maybe_import_map: Default::default(),
       maybe_import_map_uri: Default::default(),
@@ -243,7 +248,10 @@ impl Inner {
   // moment
   /// Searches already cached assets and documents and returns its text
   /// content. If not found, `None` is returned.
-  fn get_text_content(&self, specifier: &ModuleSpecifier) -> Option<String> {
+  pub(crate) fn get_text_content(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<String> {
     if specifier.scheme() == "asset" {
       self
         .assets
@@ -253,6 +261,17 @@ impl Inner {
       self.documents.content(specifier).unwrap()
     } else {
       self.sources.get_source(specifier)
+    }
+  }
+
+  pub(crate) fn get_media_type(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<MediaType> {
+    if specifier.scheme() == "asset" || self.documents.contains_key(specifier) {
+      Some(MediaType::from(specifier))
+    } else {
+      self.sources.get_media_type(specifier)
     }
   }
 
@@ -312,6 +331,7 @@ impl Inner {
         LspError::internal_error()
       })?,
       documents: self.documents.clone(),
+      maybe_config_uri: self.maybe_config_uri.clone(),
       module_registries: self.module_registries.clone(),
       performance: self.performance.clone(),
       sources: self.sources.clone(),
@@ -347,9 +367,13 @@ impl Inner {
           import_map_str
         ))
       }?;
-      let import_map_path = import_map_url
-        .to_file_path()
-        .map_err(|_| anyhow!("Bad file path."))?;
+      let import_map_path = import_map_url.to_file_path().map_err(|_| {
+        anyhow!("Cannot convert \"{}\" into a file path.", import_map_url)
+      })?;
+      info!(
+        "  Resolved import map: \"{}\"",
+        import_map_path.to_string_lossy()
+      );
       let import_map_json =
         fs::read_to_string(import_map_path).await.map_err(|err| {
           anyhow!(
@@ -446,6 +470,7 @@ impl Inner {
           config_str
         ))
       }?;
+      info!("  Resolved configuration file: \"{}\"", config_url);
 
       let config_file = {
         let buffer = config_url
@@ -458,6 +483,7 @@ impl Inner {
       };
       let (value, maybe_ignored_options) = config_file.as_compiler_options()?;
       tsconfig.merge(&value);
+      self.maybe_config_file = Some(config_file);
       self.maybe_config_uri = Some(config_url);
       if let Some(ignored_options) = maybe_ignored_options {
         // TODO(@kitsonk) turn these into diagnostics that can be sent to the
@@ -485,7 +511,7 @@ impl Inner {
     specifier: &ModuleSpecifier,
   ) -> Result<Option<AssetDocument>, AnyError> {
     if let Some(maybe_asset) = self.assets.get(specifier) {
-      return Ok(maybe_asset.clone());
+      Ok(maybe_asset.clone())
     } else {
       let maybe_asset =
         tsc::get_asset(&specifier, &self.ts_server, self.snapshot()?).await?;
@@ -513,6 +539,9 @@ impl Inner {
       env!("TARGET")
     );
     info!("  version: {}", version);
+    if let Ok(path) = std::env::current_exe() {
+      info!("  executable: {}", path.to_string_lossy());
+    }
 
     let server_info = ServerInfo {
       name: "deno-language-server".to_string(),
@@ -954,6 +983,7 @@ impl Inner {
             }
             _ => false,
           },
+          "deno-lint" => matches!(&d.code, Some(_)),
           "deno" => match &d.code {
             Some(NumberOrString::String(code)) => {
               code == "no-cache" || code == "no-cache-data"
@@ -1027,6 +1057,16 @@ impl Inner {
               LspError::internal_error()
             })?
         }
+        Some("deno-lint") => code_actions
+          .add_deno_lint_ignore_action(
+            &specifier,
+            self.documents.docs.get(&specifier),
+            diagnostic,
+          )
+          .map_err(|err| {
+            error!("Unable to fix lint error: {}", err);
+            LspError::internal_error()
+          })?,
         _ => (),
       }
     }
@@ -1099,15 +1139,15 @@ impl Inner {
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
     if !self.documents.is_diagnosable(&specifier)
       || !self.config.specifier_enabled(&specifier)
-      || !self.config.get_workspace_settings().enabled_code_lens()
+      || !(self.config.get_workspace_settings().enabled_code_lens()
+        || self.config.specifier_code_lens_test(&specifier))
     {
       return Ok(None);
     }
 
     let mark = self.performance.mark("code_lens", Some(&params));
-    let code_lenses = code_lens::tsc_code_lenses(&specifier, self)
-      .await
-      .map_err(|err| {
+    let code_lenses =
+      code_lens::collect(&specifier, self).await.map_err(|err| {
         error!("Error getting code lenses for \"{}\": {}", specifier, err);
         LspError::internal_error()
       })?;
@@ -1744,13 +1784,14 @@ impl Inner {
         )));
       };
 
-    let req = tsc::RequestMethod::FindRenameLocations((
+    let req = tsc::RequestMethod::FindRenameLocations {
       specifier,
-      line_index.offset_tsc(params.text_document_position.position)?,
-      true,
-      true,
-      false,
-    ));
+      position: line_index
+        .offset_tsc(params.text_document_position.position)?,
+      find_in_strings: false,
+      find_in_comments: false,
+      provide_prefix_and_suffix_text_for_rename: false,
+    };
 
     let maybe_locations: Option<Vec<tsc::RenameLocation>> = self
       .ts_server
@@ -2247,20 +2288,28 @@ impl Inner {
     if !params.uris.is_empty() {
       for identifier in &params.uris {
         let specifier = self.url_map.normalize_url(&identifier.uri);
-        sources::cache(&specifier, &self.maybe_import_map)
-          .await
-          .map_err(|err| {
-            error!("{}", err);
-            LspError::internal_error()
-          })?;
-      }
-    } else {
-      sources::cache(&referrer, &self.maybe_import_map)
+        sources::cache(
+          &specifier,
+          &self.maybe_import_map,
+          &self.maybe_config_file,
+        )
         .await
         .map_err(|err| {
           error!("{}", err);
           LspError::internal_error()
         })?;
+      }
+    } else {
+      sources::cache(
+        &referrer,
+        &self.maybe_import_map,
+        &self.maybe_config_file,
+      )
+      .await
+      .map_err(|err| {
+        error!("{}", err);
+        LspError::internal_error()
+      })?;
     }
     // now that we have dependencies loaded, we need to re-analyze them and
     // invalidate some diagnostics

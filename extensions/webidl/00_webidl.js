@@ -564,7 +564,26 @@
     converters.USVString,
   );
   converters["sequence<double>"] = createSequenceConverter(
-    converters["double"],
+    converters.double,
+  );
+  converters["sequence<object>"] = createSequenceConverter(
+    converters.object,
+  );
+  converters["Promise<undefined>"] = createPromiseConverter(() => undefined);
+
+  converters["sequence<ByteString>"] = createSequenceConverter(
+    converters.ByteString,
+  );
+  converters["sequence<sequence<ByteString>>"] = createSequenceConverter(
+    converters["sequence<ByteString>"],
+  );
+  converters["record<ByteString, ByteString>"] = createRecordConverter(
+    converters.ByteString,
+    converters.ByteString,
+  );
+
+  converters["sequence<DOMString>"] = createSequenceConverter(
+    converters.DOMString,
   );
 
   function requiredArguments(length, required, opts = {}) {
@@ -576,11 +595,6 @@
       } required, but only ${length} present.`;
       throw new TypeError(errMsg);
     }
-  }
-
-  function isEmptyObject(V) {
-    for (const _ in V) return false;
-    return true;
   }
 
   function createDictionaryConverter(name, ...dictionaries) {
@@ -619,6 +633,7 @@
             get() {
               return member.defaultValue;
             },
+            enumerable: true,
           });
         }
       }
@@ -642,10 +657,8 @@
 
       const idlDict = { ...defaultValues };
 
-      // NOTE: fast path Null and Undefined and empty objects.
-      if (
-        (V === undefined || V === null || isEmptyObject(V)) && !hasRequiredKey
-      ) {
+      // NOTE: fast path Null and Undefined.
+      if ((V === undefined || V === null) && !hasRequiredKey) {
         return idlDict;
       }
 
@@ -714,7 +727,7 @@
   // https://heycam.github.io/webidl/#es-sequence
   function createSequenceConverter(converter) {
     return function (V, opts = {}) {
-      if (typeof V !== "object") {
+      if (type(V) !== "Object") {
         throw makeException(
           TypeError,
           "can not be converted to sequence.",
@@ -752,7 +765,7 @@
 
   function createRecordConverter(keyConverter, valueConverter) {
     return (V, opts) => {
-      if (typeof V !== "object") {
+      if (type(V) !== "Object") {
         throw makeException(
           TypeError,
           "can not be converted to dictionary.",
@@ -772,6 +785,31 @@
       }
       return result;
     };
+  }
+
+  function createPromiseConverter(converter) {
+    return (V, opts) => Promise.resolve(V).then((V) => converter(V, opts));
+  }
+
+  function invokeCallbackFunction(
+    callable,
+    args,
+    thisArg,
+    returnValueConverter,
+    opts,
+  ) {
+    try {
+      const rv = Reflect.apply(callable, thisArg, args);
+      return returnValueConverter(rv, {
+        prefix: opts.prefix,
+        context: "return value",
+      });
+    } catch (err) {
+      if (opts.returnsPromise === true) {
+        return Promise.reject(err);
+      }
+      throw err;
+    }
   }
 
   const brand = Symbol("[[webidl.brand]]");
@@ -860,45 +898,89 @@
       return iterator;
     }
 
-    const methods = {
-      entries() {
-        assertBranded(this, prototype);
-        return createDefaultIterator(this, "key+value");
+    function entries() {
+      assertBranded(this, prototype);
+      return createDefaultIterator(this, "key+value");
+    }
+
+    const properties = {
+      entries: {
+        value: entries,
+        writable: true,
+        enumerable: true,
+        configurable: true,
       },
-      [Symbol.iterator]() {
-        assertBranded(this, prototype);
-        return createDefaultIterator(this, "key+value");
+      [Symbol.iterator]: {
+        value: entries,
+        writable: true,
+        enumerable: false,
+        configurable: true,
       },
-      keys() {
-        assertBranded(this, prototype);
-        return createDefaultIterator(this, "key");
+      keys: {
+        value: function keys() {
+          assertBranded(this, prototype);
+          return createDefaultIterator(this, "key");
+        },
+        writable: true,
+        enumerable: true,
+        configurable: true,
       },
-      values() {
-        assertBranded(this, prototype);
-        return createDefaultIterator(this, "value");
+      values: {
+        value: function values() {
+          assertBranded(this, prototype);
+          return createDefaultIterator(this, "value");
+        },
+        writable: true,
+        enumerable: true,
+        configurable: true,
       },
-      forEach(idlCallback, thisArg) {
-        assertBranded(this, prototype);
-        const prefix = `Failed to execute 'forEach' on '${name}'`;
-        requiredArguments(arguments.length, 1, { prefix });
-        idlCallback = converters["Function"](idlCallback, {
-          prefix,
-          context: "Argument 1",
-        });
-        idlCallback = idlCallback.bind(thisArg ?? globalThis);
-        const pairs = this[dataSymbol];
-        for (let i = 0; i < pairs.length; i++) {
-          const entry = pairs[i];
-          idlCallback(entry[valueKey], entry[keyKey], this);
-        }
+      forEach: {
+        value: function forEach(idlCallback, thisArg = undefined) {
+          assertBranded(this, prototype);
+          const prefix = `Failed to execute 'forEach' on '${name}'`;
+          requiredArguments(arguments.length, 1, { prefix });
+          idlCallback = converters["Function"](idlCallback, {
+            prefix,
+            context: "Argument 1",
+          });
+          idlCallback = idlCallback.bind(thisArg ?? globalThis);
+          const pairs = this[dataSymbol];
+          for (let i = 0; i < pairs.length; i++) {
+            const entry = pairs[i];
+            idlCallback(entry[valueKey], entry[keyKey], this);
+          }
+        },
+        writable: true,
+        enumerable: true,
+        configurable: true,
       },
     };
+    return Object.defineProperties(prototype.prototype, properties);
+  }
 
-    return Object.assign(prototype.prototype, methods);
+  function configurePrototype(prototype) {
+    const descriptors = Object.getOwnPropertyDescriptors(prototype.prototype);
+    for (const key in descriptors) {
+      if (key === "constructor") continue;
+      const descriptor = descriptors[key];
+      if ("value" in descriptor && typeof descriptor.value === "function") {
+        Object.defineProperty(prototype.prototype, key, {
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+      } else if ("get" in descriptor) {
+        Object.defineProperty(prototype.prototype, key, {
+          enumerable: true,
+          configurable: true,
+        });
+      }
+    }
   }
 
   window.__bootstrap ??= {};
   window.__bootstrap.webidl = {
+    type,
     makeException,
     converters,
     requiredArguments,
@@ -907,11 +989,14 @@
     createNullableConverter,
     createSequenceConverter,
     createRecordConverter,
+    createPromiseConverter,
+    invokeCallbackFunction,
     createInterfaceConverter,
     brand,
     createBranded,
     assertBranded,
     illegalConstructor,
     mixinPairIterable,
+    configurePrototype,
   };
 })(this);

@@ -3,10 +3,9 @@
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../file/internal.d.ts" />
-/// <reference path="../file/lib.deno_file.d.ts" />
+/// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
-/// <reference path="./11_streams_types.d.ts" />
+/// <reference path="../web/06_streams_types.d.ts" />
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 "use strict";
@@ -153,10 +152,8 @@
       let charset = null;
       let essence = null;
       let mimeType = null;
-      const values = getDecodeSplitHeader(
-        headerListFromHeaders(this[_headers]),
-        "Content-Type",
-      );
+      const headerList = headerListFromHeaders(this[_headers]);
+      const values = getDecodeSplitHeader(headerList, "content-type");
       if (values === null) return null;
       for (const value of values) {
         const temporaryMimeType = mimesniff.parseMimeType(value);
@@ -384,31 +381,7 @@
 
   mixinBody(Request, _body, _mimeType);
 
-  Object.defineProperty(Request.prototype, "method", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(Request.prototype, "url", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(Request.prototype, "headers", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(Request.prototype, "redirect", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(Request.prototype, "signal", {
-    enumerable: true,
-    configurable: true,
-  });
-  Object.defineProperty(Request.prototype, "clone", {
-    enumerable: true,
-    writable: true,
-    configurable: true,
-  });
+  webidl.configurePrototype(Request);
 
   webidl.converters["Request"] = webidl.createInterfaceConverter(
     "Request",

@@ -1,13 +1,18 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { delay, join, readLines, ROOT_PATH, toFileUrl } from "../util.js";
-import { assert, ManifestTestOptions, release, runPy } from "./utils.ts";
+import { assert, denoBinary, ManifestTestOptions, runPy } from "./utils.ts";
 import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.3-alpha2/deno-dom-wasm.ts";
 
 export async function runWithTestUtil<T>(
   verbose: boolean,
   f: () => Promise<T>,
 ): Promise<T> {
-  const proc = runPy(["wpt", "serve"], {
+  const proc = runPy([
+    "wpt",
+    "serve",
+    "--config",
+    "../../tools/wpt/config.json",
+  ], {
     stdout: verbose ? "inherit" : "piped",
     stderr: verbose ? "inherit" : "piped",
   });
@@ -83,14 +88,14 @@ export async function runSingleTest(
 
   const proc = Deno.run({
     cmd: [
-      join(ROOT_PATH, `./target/${release ? "release" : "debug"}/deno`),
+      denoBinary(),
       "run",
       "-A",
       "--unstable",
       "--location",
       url.toString(),
       "--cert",
-      join(ROOT_PATH, `./test_util/wpt/tools/certs/cacert.pem`),
+      join(ROOT_PATH, `./tools/wpt/certs/cacert.pem`),
       tempFile,
       "[]",
     ],
@@ -117,7 +122,7 @@ export async function runSingleTest(
       harnessStatus = JSON.parse(line.slice(5));
     } else {
       stderr += line + "\n";
-      console.error(stderr);
+      console.error(line);
     }
   }
 
@@ -163,9 +168,13 @@ async function generateBundle(location: URL): Promise<string> {
     }
   }
 
-  return scriptContents.map(([url, contents]) =>
-    `Deno.core.evalContext(${JSON.stringify(contents)}, ${
-      JSON.stringify(url)
-    });`
-  ).join("\n");
+  return scriptContents.map(([url, contents]) => `
+(function() {
+  const [_,err] = Deno.core.evalContext(${JSON.stringify(contents)}, ${
+    JSON.stringify(url)
+  });
+  if (err !== null) {
+    throw err?.thrown;
+  }
+})();`).join("\n");
 }

@@ -10,6 +10,7 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use log::error;
+use lsp::WorkspaceFolder;
 use lspower::lsp;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -28,6 +29,10 @@ pub struct ClientCapabilities {
   pub line_folding_only: bool,
 }
 
+fn is_true() -> bool {
+  true
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeLensSettings {
@@ -41,6 +46,10 @@ pub struct CodeLensSettings {
   /// an impact, the `references` flag needs to be `true`.
   #[serde(default)]
   pub references_all_functions: bool,
+  /// Flag for providing test code lens on `Deno.test` statements.  There is
+  /// also the `test_args` setting, but this is not used by the server.
+  #[serde(default = "is_true")]
+  pub test: bool,
 }
 
 impl Default for CodeLensSettings {
@@ -49,12 +58,24 @@ impl Default for CodeLensSettings {
       implementations: false,
       references: false,
       references_all_functions: false,
+      test: true,
     }
   }
 }
 
-fn is_true() -> bool {
-  true
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeLensSpecifierSettings {
+  /// Flag for providing test code lens on `Deno.test` statements.  There is
+  /// also the `test_args` setting, but this is not used by the server.
+  #[serde(default = "is_true")]
+  pub test: bool,
+}
+
+impl Default for CodeLensSpecifierSettings {
+  fn default() -> Self {
+    Self { test: true }
+  }
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -109,9 +130,13 @@ impl Default for ImportCompletionSettings {
 /// Deno language server specific settings that can be applied uniquely to a
 /// specifier.
 #[derive(Debug, Default, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SpecifierSettings {
   /// A flag that indicates if Deno is enabled for this specifier or not.
   pub enable: bool,
+  /// Code lens specific settings for the resource.
+  #[serde(default)]
+  pub code_lens: CodeLensSpecifierSettings,
 }
 
 /// Deno language server specific settings that are applied to a workspace.
@@ -164,6 +189,7 @@ pub struct ConfigSnapshot {
   pub client_capabilities: ClientCapabilities,
   pub root_uri: Option<Url>,
   pub settings: Settings,
+  pub workspace_folders: Option<Vec<lsp::WorkspaceFolder>>,
 }
 
 impl ConfigSnapshot {
@@ -194,6 +220,7 @@ pub struct Config {
   pub root_uri: Option<Url>,
   settings: Arc<RwLock<Settings>>,
   tx: mpsc::Sender<ConfigRequest>,
+  pub workspace_folders: Option<Vec<WorkspaceFolder>>,
 }
 
 impl Config {
@@ -295,6 +322,7 @@ impl Config {
       root_uri: None,
       settings,
       tx,
+      workspace_folders: None,
     }
   }
 
@@ -319,29 +347,38 @@ impl Config {
         .try_read()
         .map_err(|_| anyhow!("Error reading settings."))?
         .clone(),
+      workspace_folders: self.workspace_folders.clone(),
     })
   }
 
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
     let settings = self.settings.read().unwrap();
-    if let Some(specifier_settings) = settings.specifiers.get(specifier) {
-      specifier_settings.1.enable
-    } else {
-      settings.workspace.enable
-    }
+    settings
+      .specifiers
+      .get(specifier)
+      .map(|(_, s)| s.enable)
+      .unwrap_or_else(|| settings.workspace.enable)
   }
 
-  #[allow(clippy::redundant_closure_call)]
+  pub fn specifier_code_lens_test(&self, specifier: &ModuleSpecifier) -> bool {
+    let settings = self.settings.read().unwrap();
+    let value = settings
+      .specifiers
+      .get(specifier)
+      .map(|(_, s)| s.code_lens.test)
+      .unwrap_or_else(|| settings.workspace.code_lens.test);
+    value
+  }
+
   pub fn update_capabilities(
     &mut self,
     capabilities: &lsp::ClientCapabilities,
   ) {
     if let Some(experimental) = &capabilities.experimental {
-      let get_bool =
-        |k: &str| experimental.get(k).and_then(|it| it.as_bool()) == Some(true);
-
-      self.client_capabilities.status_notification =
-        get_bool("statusNotification");
+      self.client_capabilities.status_notification = experimental
+        .get("statusNotification")
+        .and_then(|it| it.as_bool())
+        == Some(true)
     }
 
     if let Some(workspace) = &capabilities.workspace {
@@ -449,6 +486,7 @@ mod tests {
           implementations: false,
           references: false,
           references_all_functions: false,
+          test: true,
         },
         internal_debug: false,
         lint: false,
