@@ -17,7 +17,6 @@
   // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
   // host os.
   const isWindows = false;
-  const POOL_SIZE = 65536;
 
   /**
    * @param {string} input
@@ -256,6 +255,10 @@
       let added = 0;
 
       for (const part of blobPartMap.get(this)) {
+        // don't add the overflow to new blobParts
+        if (added >= span) {
+          break;
+        }
         const size = part.size;
         if (relativeStart && size <= relativeStart) {
           // Skip the beginning and change the relative
@@ -271,11 +274,6 @@
           relativeEnd -= chunk.size;
           blobParts.push(chunk);
           relativeStart = 0; // All next sequential parts should start at 0
-
-          // don't add the overflow to new blobParts
-          if (added >= span) {
-            break;
-          }
         }
       }
 
@@ -289,7 +287,7 @@
 
       const blob = new Blob([], { type: relativeContentType });
       blobPartMap.set(blob, blobParts);
-      this[_size] = span;
+      blob[_size] = span;
       return blob;
     }
 
@@ -453,6 +451,8 @@
   );
 
   // TODO(lucacasonato): once BlobReference is GC'd in JS, the Rust blob part
+  // TODO(lucacasonato): get a better stream from Rust in BlobReference#stream
+
   // should be deallocated.
   /**
    * An opaque reference to a blob part in Rust. This could be backed by a file,
@@ -503,14 +503,16 @@
      * @returns {AsyncGenerator<Uint8Array>}
      */
     async *stream() {
-      let position = 0;
-      const end = this.size;
-      while (position !== end) {
-        const size = Math.min(end - position, POOL_SIZE);
-        const chunk = this.slice(position, position + size);
-        position += chunk.size;
-        yield core.opAsync("op_blob_read_part", chunk._id);
-      }
+      yield core.opAsync("op_blob_read_part", this._id);
+
+      // let position = 0;
+      // const end = this.size;
+      // while (position !== end) {
+      //   const size = Math.min(end - position, 65536);
+      //   const chunk = this.slice(position, position + size);
+      //   position += chunk.size;
+      //   yield core.opAsync("op_blob_read_part", chunk._id);
+      // }
     }
   }
 
