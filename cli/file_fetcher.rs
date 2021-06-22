@@ -959,12 +959,11 @@ mod tests {
       "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"
         .as_bytes()
         .to_vec();
-    let len = bytes.len();
 
     let specifier = blob_store.insert_object_url(
       Blob {
         media_type: "application/typescript".to_string(),
-        parts: vec![Arc::new(Box::new(InMemoryBlobPart { 0: bytes }))],
+        parts: vec![Arc::new(Box::new(InMemoryBlobPart::from(bytes)))],
       },
       None,
     );

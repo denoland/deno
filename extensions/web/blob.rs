@@ -116,6 +116,12 @@ pub trait BlobPart: Debug {
 #[derive(Debug)]
 pub struct InMemoryBlobPart(Vec<u8>);
 
+impl From<Vec<u8>> for InMemoryBlobPart {
+  fn from(vec: Vec<u8>) -> Self {
+    Self(vec)
+  }
+}
+
 #[async_trait]
 impl BlobPart for InMemoryBlobPart {
   async fn read(&self) -> Result<&[u8], AnyError> {
