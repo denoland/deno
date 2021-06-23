@@ -176,6 +176,7 @@
       headers: req.headerList,
       clientRid: req.clientRid,
       hasBody: reqBody !== null,
+      bodyLength: req.body?.length,
     }, reqBody instanceof Uint8Array ? reqBody : null);
 
     function onAbort() {

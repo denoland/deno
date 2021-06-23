@@ -126,9 +126,6 @@
     return normalizedType.toLowerCase();
   }
 
-  /** @type {WeakMap<Blob, any>} */
-  const blobPartMap = new WeakMap();
-
   /**
    * Get all Parts as a flat array containing all references
    * @param {Blob} blob
@@ -136,7 +133,7 @@
    * @returns {string[]}
    */
   function getParts(blob, bag = []) {
-    for (const part of blobPartMap.get(blob)) {
+    for (const part of blob[_parts]) {
       if (part instanceof Blob) {
         getParts(part, bag);
       } else {
@@ -147,6 +144,7 @@
   }
 
   const _size = Symbol("Size");
+  const _parts = Symbol("Parts");
 
   class Blob {
     get [Symbol.toStringTag]() {
@@ -155,6 +153,7 @@
 
     #type = "";
     [_size] = 0;
+    [_parts];
 
     /**
      * @param {BlobPart[]} blobParts
@@ -178,7 +177,7 @@
         options.endings,
       );
 
-      blobPartMap.set(this, parts);
+      this[_parts] = parts;
       this[_size] = size;
       this.#type = normalizeType(options.type);
     }
@@ -254,7 +253,7 @@
       const blobParts = [];
       let added = 0;
 
-      for (const part of blobPartMap.get(this)) {
+      for (const part of this[_parts]) {
         // don't add the overflow to new blobParts
         if (added >= span) {
           break;
@@ -286,7 +285,7 @@
       }
 
       const blob = new Blob([], { type: relativeContentType });
-      blobPartMap.set(blob, blobParts);
+      blob[_parts] = blobParts;
       blob[_size] = span;
       return blob;
     }
@@ -296,14 +295,18 @@
      */
     stream() {
       webidl.assertBranded(this, Blob);
-      const partIterator = toIterator(blobPartMap.get(this));
+      const partIterator = toIterator(this[_parts]);
       const stream = new ReadableStream({
         type: "bytes",
         /** @param {ReadableByteStreamController} controller */
         async pull(controller) {
-          const { value } = await partIterator.next();
-          if (!value) return controller.close();
-          controller.enqueue(value);
+          while (true) {
+            const { value, done } = await partIterator.next();
+            if (done) return controller.close();
+            if (value.byteLength > 0) {
+              return controller.enqueue(value);
+            }
+          }
         },
       });
       return stream;

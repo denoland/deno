@@ -151,6 +151,10 @@
         this[_id] = null;
       }
     }
+
+    get [Symbol.toStringTag]() {
+      return "MessagePort";
+    }
   }
 
   defineEventHandler(MessagePort.prototype, "message", function (self) {

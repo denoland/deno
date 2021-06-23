@@ -26,6 +26,7 @@ use deno_core::ZeroCopyBuf;
 
 use data_url::DataUrl;
 use deno_web::BlobStore;
+use http::header::CONTENT_LENGTH;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -129,6 +130,7 @@ pub struct FetchArgs {
   headers: Vec<(String, String)>,
   client_rid: Option<u32>,
   has_body: bool,
+  body_length: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -175,6 +177,14 @@ where
           None => {
             // If no body is passed, we return a writer for streaming the body.
             let (tx, rx) = mpsc::channel::<std::io::Result<Vec<u8>>>(1);
+
+            // If the size of the body is known, we include a content-length
+            // header explicitly.
+            if let Some(body_size) = args.body_length {
+              request =
+                request.header(CONTENT_LENGTH, HeaderValue::from(body_size))
+            }
+
             request = request.body(Body::wrap_stream(ReceiverStream::new(rx)));
 
             let request_body_rid =
@@ -387,7 +397,11 @@ pub async fn op_fetch_request_write(
     .ok_or_else(bad_resource_id)?;
   let body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
-  body.send(Ok(buf)).or_cancel(cancel).await??;
+  body
+    .send(Ok(buf))
+    .or_cancel(cancel)
+    .await?
+    .map_err(|_| type_error("receiver dropped"))?;
 
   Ok(())
 }
