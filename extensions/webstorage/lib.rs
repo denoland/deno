@@ -15,6 +15,8 @@ use std::path::PathBuf;
 #[derive(Clone)]
 struct OriginStorageDir(PathBuf);
 
+const MAX_STORAGE_BYTES: u32 = 10 * 1024 * 1024;
+
 pub fn init(origin_storage_dir: Option<PathBuf>) -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -136,7 +138,7 @@ pub fn op_webstorage_set(
     conn.prepare("SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'")?;
   let size: u32 = stmt.query_row(params![], |row| row.get(0))?;
 
-  if size >= 5000000 {
+  if size >= MAX_STORAGE_BYTES {
     return Err(
       deno_web::DomExceptionQuotaExceededError::new(
         "Exceeded maximum storage size",
