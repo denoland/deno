@@ -39,6 +39,7 @@ use super::diagnostics::DiagnosticSource;
 use super::documents::DocumentCache;
 use super::documents::LanguageId;
 use super::lsp_custom;
+use super::parent_process_checker;
 use super::performance::Performance;
 use super::registries;
 use super::sources;
@@ -529,6 +530,11 @@ impl Inner {
   ) -> LspResult<InitializeResult> {
     info!("Starting Deno language server...");
     let mark = self.performance.mark("initialize", Some(&params));
+
+    // exit this process when the parent is lost
+    if let Some(parent_pid) = params.process_id {
+      parent_process_checker::start(parent_pid)
+    }
 
     let capabilities = capabilities::server_capabilities(&params.capabilities);
 
