@@ -700,11 +700,7 @@
     "api": {
       "request": {
         "request-init-002.any.html": true,
-        "request-init-stream.any.html": [
-          "Constructing a Request with a Request on which body.getReader() is called",
-          "Constructing a Request with a Request on which body.getReader().read() is called",
-          "Constructing a Request with a Request on which read() and releaseLock() are called"
-        ],
+        "request-init-stream.any.html": true,
         "request-consume-empty.any.html": [
           "Consume empty FormData request body as text"
         ],

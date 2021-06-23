@@ -4246,6 +4246,13 @@
 
   webidl.configurePrototype(WritableStreamDefaultController);
 
+  /**
+   * @param {ReadableStream} stream
+   */
+  function createProxy(stream) {
+    return stream.pipeThrough(new TransformStream());
+  }
+
   webidl.converters.ReadableStream = webidl
     .createInterfaceConverter("ReadableStream", ReadableStream);
   webidl.converters.WritableStream = webidl
@@ -4403,6 +4410,7 @@
     // Non-Public
     isReadableStreamDisturbed,
     errorReadableStream,
+    createProxy,
     // Exposed in global runtime scope
     ByteLengthQueuingStrategy,
     CountQueuingStrategy,
