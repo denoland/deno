@@ -216,6 +216,16 @@ jobs:
         with:
           cache-path: ./target
 
+      - name: Shallow clone crates.io index
+        shell: bash
+        run: |
+          if [ ! -d ~/.cargo/registry/index/github.com-1ecc6299db9ec823/.git ]
+          then
+            git clone --depth 1 --no-checkout                      \
+                      https://github.com/rust-lang/crates.io-index \
+                      ~/.cargo/registry/index/github.com-1ecc6299db9ec823
+          fi
+
       - name: test_format.js
         if: matrix.kind == 'lint'
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check
