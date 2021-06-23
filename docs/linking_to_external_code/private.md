@@ -4,7 +4,7 @@ There maybe instances where you want to load a remote module that is located in
 a _private_ repository, like a private repository on GitHub.
 
 Deno supports sending bearer tokens when requesting a remote module. Bearer
-tokens are the predominate type of access token used with OAuth 2.0 and is
+tokens are the predominant type of access token used with OAuth 2.0 and is
 broadly supported by hosting services (e.g. GitHub, Gitlab, BitBucket,
 Cloudsmith, etc.).
 
