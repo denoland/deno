@@ -256,6 +256,8 @@
       for (const part of this[_parts]) {
         // don't add the overflow to new blobParts
         if (added >= span) {
+          // Could maybe be possible to remove variable `added`
+          // and only use relativeEnd?
           break;
         }
         const size = part.size;
@@ -270,7 +272,7 @@
             Math.min(part.size, relativeEnd),
           );
           added += chunk.size;
-          relativeEnd -= chunk.size;
+          relativeEnd -= part.size;
           blobParts.push(chunk);
           relativeStart = 0; // All next sequential parts should start at 0
         }
