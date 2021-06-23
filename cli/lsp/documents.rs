@@ -11,7 +11,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::ModuleSpecifier;
-use lspower::lsp::TextDocumentContentChangeEvent;
+use lspower::lsp;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Range;
@@ -47,6 +47,20 @@ impl FromStr for LanguageId {
   }
 }
 
+impl<'a> From<&'a LanguageId> for MediaType {
+  fn from(id: &'a LanguageId) -> MediaType {
+    match id {
+      LanguageId::JavaScript => MediaType::JavaScript,
+      LanguageId::Json => MediaType::Json,
+      LanguageId::JsonC => MediaType::Json,
+      LanguageId::Jsx => MediaType::Jsx,
+      LanguageId::Markdown => MediaType::Unknown,
+      LanguageId::Tsx => MediaType::Tsx,
+      LanguageId::TypeScript => MediaType::TypeScript,
+    }
+  }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 enum IndexValid {
   All,
@@ -65,6 +79,7 @@ impl IndexValid {
 #[derive(Debug, Clone)]
 pub struct DocumentData {
   bytes: Option<Vec<u8>>,
+  import_ranges: Option<analysis::ImportRanges>,
   language_id: LanguageId,
   line_index: Option<LineIndex>,
   maybe_navigation_tree: Option<tsc::NavigationTree>,
@@ -80,10 +95,17 @@ impl DocumentData {
     language_id: LanguageId,
     source: &str,
   ) -> Self {
+    let import_ranges = analysis::analyze_import_ranges(
+      &specifier,
+      source,
+      &(&language_id).into(),
+    )
+    .ok();
     Self {
       bytes: Some(source.as_bytes().to_owned()),
       language_id,
       line_index: Some(LineIndex::new(source)),
+      import_ranges,
       maybe_navigation_tree: None,
       specifier,
       dependencies: None,
@@ -93,7 +115,7 @@ impl DocumentData {
 
   pub fn apply_content_changes(
     &mut self,
-    content_changes: Vec<TextDocumentContentChangeEvent>,
+    content_changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<(), AnyError> {
     if self.bytes.is_none() {
       return Ok(());
@@ -125,6 +147,12 @@ impl DocumentData {
     } else {
       Some(LineIndex::new(&content))
     };
+    self.import_ranges = analysis::analyze_import_ranges(
+      &self.specifier,
+      content,
+      &(&self.language_id).into(),
+    )
+    .ok();
     self.maybe_navigation_tree = None;
     Ok(())
   }
@@ -148,6 +176,14 @@ impl DocumentData {
     } else {
       Ok(None)
     }
+  }
+
+  fn is_specifier_position(
+    &self,
+    position: &lsp::Position,
+  ) -> Option<analysis::TextRange> {
+    let import_ranges = self.import_ranges.as_ref()?;
+    import_ranges.contains(position)
   }
 }
 
@@ -193,7 +229,7 @@ impl DocumentCache {
     &mut self,
     specifier: &ModuleSpecifier,
     version: i32,
-    content_changes: Vec<TextDocumentContentChangeEvent>,
+    content_changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<Option<String>, AnyError> {
     if !self.contains_key(specifier) {
       return Err(custom_error(
@@ -289,6 +325,17 @@ impl DocumentCache {
   /// Determines if the specifier can be processed for formatting.
   pub fn is_formattable(&self, specifier: &ModuleSpecifier) -> bool {
     self.docs.contains_key(specifier)
+  }
+
+  /// Determines if the position in the document is within a range of a module
+  /// specifier, returning the text range if true.
+  pub fn is_specifier_position(
+    &self,
+    specifier: &ModuleSpecifier,
+    position: &lsp::Position,
+  ) -> Option<analysis::TextRange> {
+    let document = self.docs.get(specifier)?;
+    document.is_specifier_position(position)
   }
 
   pub fn len(&self) -> usize {
