@@ -29,7 +29,7 @@ use std::rc::Rc;
 ///
 /// ...it can be invoked from JS using the provided name, for example:
 /// ```js
-/// let result = Deno.core.opSync("function_name", args);
+/// let result = Deno.core.opSync("hello", args);
 /// ```
 ///
 /// `runtime.sync_ops_cache()` must be called after registering new ops
@@ -68,7 +68,7 @@ where
 ///
 /// ...it can be invoked from JS using the provided name, for example:
 /// ```js
-/// let future = Deno.core.opAsync("function_name", args);
+/// let future = Deno.core.opAsync("hello", args);
 /// ```
 ///
 /// `runtime.sync_ops_cache()` must be called after registering new ops
