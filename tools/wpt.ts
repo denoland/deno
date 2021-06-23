@@ -197,7 +197,7 @@ async function run() {
   }
 
   if (wptreport) {
-    const report = await generateWptreport(results, startTime, endTime);
+    const report = await generateWptReport(results, startTime, endTime);
     await Deno.writeTextFile(wptreport, JSON.stringify(report));
   }
 
@@ -205,7 +205,7 @@ async function run() {
   Deno.exit(code);
 }
 
-async function generateWptreport(
+async function generateWptReport(
   results: { test: TestToRun; result: TestResult }[],
   startTime: number,
   endTime: number,
