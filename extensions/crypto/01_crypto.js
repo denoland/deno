@@ -101,7 +101,7 @@
   const _algorithm = Symbol("[[algorithm]]");
   const _extractable = Symbol("[[extractable]]");
   const _usages = Symbol("[[usages]]");
-  const _type = Symbol("[[_type]]");
+  const _type = Symbol("[[type]]");
 
   class CryptoKey {
     [_usages];
@@ -140,7 +140,7 @@
   }
 
   function constructKey(algorithm, extractable, usages, type, handle) {
-    let key = Object.create(CryptoKey);
+    let key = webidl.createBranded(CryptoKey);
     key[_algorithm] = algorithm;
     key[_extractable] = extractable;
     key[_usages] = usages;
@@ -311,7 +311,7 @@
       });
 
       // https://github.com/denoland/deno/pull/9614#issuecomment-866049433
-      if (extractable) {
+      if (!extractable) {
         throw new DOMError(
           "SecurityError",
           "Extractable keys are not supported",
@@ -401,6 +401,7 @@
         const pkcsMaterial = await core.opAsync(
           "op_webcrypto_generate_key",
           algorithm,
+          algorithm.publicExponent || new Uint8Array(),
         );
         const index = keys.push({ type: "pkcs8", data: pkcsMaterial }) - 1;
 
