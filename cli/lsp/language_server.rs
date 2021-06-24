@@ -324,6 +324,59 @@ impl Inner {
     Ok(navigation_tree)
   }
 
+  fn merge_user_tsconfig(
+    &mut self,
+    maybe_config: &Option<String>,
+    maybe_root_uri: &Option<Url>,
+    tsconfig: &mut TsConfig,
+  ) -> Result<(), AnyError> {
+    self.maybe_config_file = None;
+    self.maybe_config_uri = None;
+    if let Some(config_str) = maybe_config {
+      if !config_str.is_empty() {
+        info!("Updating TypeScript configuration from: \"{}\"", config_str);
+        let config_url = if let Ok(url) = Url::from_file_path(config_str) {
+          Ok(url)
+        } else if let Some(root_uri) = maybe_root_uri {
+          let root_path = root_uri
+            .to_file_path()
+            .map_err(|_| anyhow!("Bad root_uri: {}", root_uri))?;
+          let config_path = root_path.join(config_str);
+          Url::from_file_path(config_path).map_err(|_| {
+            anyhow!("Bad file path for configuration file: \"{}\"", config_str)
+          })
+        } else {
+          Err(anyhow!(
+            "The path to the configuration file (\"{}\") is not resolvable.",
+            config_str
+          ))
+        }?;
+        info!("  Resolved configuration file: \"{}\"", config_url);
+
+        let config_file = {
+          let buffer = config_url
+            .to_file_path()
+            .map_err(|_| anyhow!("Bad uri: \"{}\"", config_url))?;
+          let path = buffer
+            .to_str()
+            .ok_or_else(|| anyhow!("Bad uri: \"{}\"", config_url))?;
+          ConfigFile::read(path)?
+        };
+        let (value, maybe_ignored_options) =
+          config_file.as_compiler_options()?;
+        tsconfig.merge(&value);
+        self.maybe_config_file = Some(config_file);
+        self.maybe_config_uri = Some(config_url);
+        if let Some(ignored_options) = maybe_ignored_options {
+          // TODO(@kitsonk) turn these into diagnostics that can be sent to the
+          // client
+          warn!("{}", ignored_options);
+        }
+      }
+    }
+    Ok(())
+  }
+
   pub(crate) fn snapshot(&self) -> LspResult<StateSnapshot> {
     Ok(StateSnapshot {
       assets: self.assets.clone(),
@@ -453,44 +506,10 @@ impl Inner {
       }
       (workspace_settings.config, config.root_uri.clone())
     };
-    if let Some(config_str) = &maybe_config {
-      info!("Updating TypeScript configuration from: \"{}\"", config_str);
-      let config_url = if let Ok(url) = Url::from_file_path(config_str) {
-        Ok(url)
-      } else if let Some(root_uri) = &maybe_root_uri {
-        let root_path = root_uri
-          .to_file_path()
-          .map_err(|_| anyhow!("Bad root_uri: {}", root_uri))?;
-        let config_path = root_path.join(config_str);
-        Url::from_file_path(config_path).map_err(|_| {
-          anyhow!("Bad file path for configuration file: \"{}\"", config_str)
-        })
-      } else {
-        Err(anyhow!(
-          "The path to the configuration file (\"{}\") is not resolvable.",
-          config_str
-        ))
-      }?;
-      info!("  Resolved configuration file: \"{}\"", config_url);
-
-      let config_file = {
-        let buffer = config_url
-          .to_file_path()
-          .map_err(|_| anyhow!("Bad uri: \"{}\"", config_url))?;
-        let path = buffer
-          .to_str()
-          .ok_or_else(|| anyhow!("Bad uri: \"{}\"", config_url))?;
-        ConfigFile::read(path)?
-      };
-      let (value, maybe_ignored_options) = config_file.as_compiler_options()?;
-      tsconfig.merge(&value);
-      self.maybe_config_file = Some(config_file);
-      self.maybe_config_uri = Some(config_url);
-      if let Some(ignored_options) = maybe_ignored_options {
-        // TODO(@kitsonk) turn these into diagnostics that can be sent to the
-        // client
-        warn!("{}", ignored_options);
-      }
+    if let Err(err) =
+      self.merge_user_tsconfig(&maybe_config, &maybe_root_uri, &mut tsconfig)
+    {
+      self.client.show_message(MessageType::Warning, err).await;
     }
     let _ok: bool = self
       .ts_server

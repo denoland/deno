@@ -12,7 +12,7 @@
       "references": true,
       "test": true
     },
-    "config": "",
+    "config": "bad_tsconfig.json",
     "importMap": null,
     "lint": true,
     "suggest": {
