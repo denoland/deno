@@ -182,7 +182,12 @@ impl Inner {
           }
         }
       }
-      if let Err(err) = self.documents.set_dependencies(specifier, Some(deps)) {
+      let dep_ranges = analysis::analyze_dependency_ranges(&parsed_module).ok();
+      if let Err(err) =
+        self
+          .documents
+          .set_dependencies(specifier, Some(deps), dep_ranges)
+      {
         error!("{}", err);
       }
     }
@@ -950,12 +955,13 @@ impl Inner {
     }
 
     let mark = self.performance.mark("hover", Some(&params));
-    let hover = if let Some(text_range) = self.documents.is_specifier_position(
-      &specifier,
-      &params.text_document_position_params.position,
-    ) {
+    let hover = if let Some(dependency_range) =
+      self.documents.is_specifier_position(
+        &specifier,
+        &params.text_document_position_params.position,
+      ) {
       if let Some(dependencies) = &self.documents.dependencies(&specifier) {
-        if let Some(dep) = dependencies.get(&text_range.text) {
+        if let Some(dep) = dependencies.get(&dependency_range.specifier) {
           let value = match (&dep.maybe_code, &dep.maybe_type) {
             (Some(code_dep), Some(type_dep)) => {
               format!(
@@ -979,7 +985,7 @@ impl Inner {
             (None, None) => {
               error!(
                 "Unexpected state hovering on dependency. Dependency \"{}\" in \"{}\" not found.",
-                text_range.text,
+                dependency_range.specifier,
                 specifier
               );
               "".to_string()
@@ -990,7 +996,7 @@ impl Inner {
               kind: MarkupKind::Markdown,
               value,
             }),
-            range: Some(text_range.range),
+            range: Some(dependency_range.range),
           })
         } else {
           None

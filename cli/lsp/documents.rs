@@ -79,12 +79,12 @@ impl IndexValid {
 #[derive(Debug, Clone)]
 pub struct DocumentData {
   bytes: Option<Vec<u8>>,
-  import_ranges: Option<analysis::ImportRanges>,
+  dependencies: Option<HashMap<String, analysis::Dependency>>,
+  dependency_ranges: Option<analysis::DependencyRanges>,
   language_id: LanguageId,
   line_index: Option<LineIndex>,
   maybe_navigation_tree: Option<tsc::NavigationTree>,
   specifier: ModuleSpecifier,
-  dependencies: Option<HashMap<String, analysis::Dependency>>,
   version: Option<i32>,
 }
 
@@ -95,20 +95,14 @@ impl DocumentData {
     language_id: LanguageId,
     source: &str,
   ) -> Self {
-    let import_ranges = analysis::analyze_import_ranges(
-      &specifier,
-      source,
-      &(&language_id).into(),
-    )
-    .ok();
     Self {
       bytes: Some(source.as_bytes().to_owned()),
+      dependencies: None,
+      dependency_ranges: None,
       language_id,
       line_index: Some(LineIndex::new(source)),
-      import_ranges,
       maybe_navigation_tree: None,
       specifier,
-      dependencies: None,
       version: Some(version),
     }
   }
@@ -147,12 +141,6 @@ impl DocumentData {
     } else {
       Some(LineIndex::new(&content))
     };
-    self.import_ranges = analysis::analyze_import_ranges(
-      &self.specifier,
-      content,
-      &(&self.language_id).into(),
-    )
-    .ok();
     self.maybe_navigation_tree = None;
     Ok(())
   }
@@ -178,11 +166,13 @@ impl DocumentData {
     }
   }
 
+  /// Determines if a position within the document is within a dependency range
+  /// and if so, returns the range with the text of the specifier.
   fn is_specifier_position(
     &self,
     position: &lsp::Position,
-  ) -> Option<analysis::TextRange> {
-    let import_ranges = self.import_ranges.as_ref()?;
+  ) -> Option<analysis::DependencyRange> {
+    let import_ranges = self.dependency_ranges.as_ref()?;
     import_ranges.contains(position)
   }
 }
@@ -333,7 +323,7 @@ impl DocumentCache {
     &self,
     specifier: &ModuleSpecifier,
     position: &lsp::Position,
-  ) -> Option<analysis::TextRange> {
+  ) -> Option<analysis::DependencyRange> {
     let document = self.docs.get(specifier)?;
     document.is_specifier_position(position)
   }
@@ -393,9 +383,11 @@ impl DocumentCache {
     &mut self,
     specifier: &ModuleSpecifier,
     maybe_dependencies: Option<HashMap<String, analysis::Dependency>>,
+    maybe_dependency_ranges: Option<analysis::DependencyRanges>,
   ) -> Result<(), AnyError> {
     if let Some(doc) = self.docs.get_mut(specifier) {
       doc.dependencies = maybe_dependencies;
+      doc.dependency_ranges = maybe_dependency_ranges;
       self.calculate_dependents();
       Ok(())
     } else {

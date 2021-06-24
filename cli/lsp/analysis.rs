@@ -989,23 +989,40 @@ fn get_range_from_loc(start: &Loc, end: &Loc) -> lsp::Range {
   lsp::Range {
     start: lsp::Position {
       line: (start.line - 1) as u32,
-      character: (start.col_display + 1) as u32,
+      character: start.col_display as u32,
     },
     end: lsp::Position {
       line: (end.line - 1) as u32,
-      character: (end.col_display - 1) as u32,
+      character: end.col_display as u32,
+    },
+  }
+}
+
+/// Narrow the range to only include
+fn narrow_range(range: lsp::Range) -> lsp::Range {
+  lsp::Range {
+    start: lsp::Position {
+      line: range.start.line,
+      character: range.start.character + 1,
+    },
+    end: lsp::Position {
+      line: range.end.line,
+      character: range.end.character - 1,
     },
   }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TextRange {
+pub struct DependencyRange {
+  /// The LSP Range is inclusive the the quotes around the specifier.
   pub range: lsp::Range,
-  pub text: String,
+  /// The text of the specifier within the document.
+  pub specifier: String,
 }
 
-impl TextRange {
-  fn includes(&self, position: &lsp::Position) -> bool {
+impl DependencyRange {
+  /// Determine if the position is within the range
+  fn within(&self, position: &lsp::Position) -> bool {
     (position.line > self.range.start.line
       || position.line == self.range.start.line
         && position.character >= self.range.start.character)
@@ -1016,33 +1033,33 @@ impl TextRange {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct ImportRanges(Vec<TextRange>);
+pub struct DependencyRanges(Vec<DependencyRange>);
 
-impl ImportRanges {
-  pub fn contains(&self, position: &lsp::Position) -> Option<TextRange> {
-    self.0.iter().find(|r| r.includes(position)).cloned()
+impl DependencyRanges {
+  pub fn contains(&self, position: &lsp::Position) -> Option<DependencyRange> {
+    self.0.iter().find(|r| r.within(position)).cloned()
   }
 }
 
-struct ImportRangeCollector {
-  import_ranges: ImportRanges,
+struct DependencyRangeCollector {
+  import_ranges: DependencyRanges,
   source_map: Rc<SourceMap>,
 }
 
-impl ImportRangeCollector {
+impl DependencyRangeCollector {
   pub fn new(source_map: Rc<SourceMap>) -> Self {
     Self {
-      import_ranges: ImportRanges::default(),
+      import_ranges: DependencyRanges::default(),
       source_map,
     }
   }
 
-  pub fn take(self) -> ImportRanges {
+  pub fn take(self) -> DependencyRanges {
     self.import_ranges
   }
 }
 
-impl Visit for ImportRangeCollector {
+impl Visit for DependencyRangeCollector {
   fn visit_import_decl(
     &mut self,
     node: &swc_ast::ImportDecl,
@@ -1050,9 +1067,9 @@ impl Visit for ImportRangeCollector {
   ) {
     let start = self.source_map.lookup_char_pos(node.src.span.lo);
     let end = self.source_map.lookup_char_pos(node.src.span.hi);
-    self.import_ranges.0.push(TextRange {
-      range: get_range_from_loc(&start, &end),
-      text: node.src.value.to_string(),
+    self.import_ranges.0.push(DependencyRange {
+      range: narrow_range(get_range_from_loc(&start, &end)),
+      specifier: node.src.value.to_string(),
     });
   }
 
@@ -1064,9 +1081,9 @@ impl Visit for ImportRangeCollector {
     if let Some(src) = &node.src {
       let start = self.source_map.lookup_char_pos(src.span.lo);
       let end = self.source_map.lookup_char_pos(src.span.hi);
-      self.import_ranges.0.push(TextRange {
-        range: get_range_from_loc(&start, &end),
-        text: src.value.to_string(),
+      self.import_ranges.0.push(DependencyRange {
+        range: narrow_range(get_range_from_loc(&start, &end)),
+        specifier: src.value.to_string(),
       });
     }
   }
@@ -1078,9 +1095,9 @@ impl Visit for ImportRangeCollector {
   ) {
     let start = self.source_map.lookup_char_pos(node.src.span.lo);
     let end = self.source_map.lookup_char_pos(node.src.span.hi);
-    self.import_ranges.0.push(TextRange {
-      range: get_range_from_loc(&start, &end),
-      text: node.src.value.to_string(),
+    self.import_ranges.0.push(DependencyRange {
+      range: narrow_range(get_range_from_loc(&start, &end)),
+      specifier: node.src.value.to_string(),
     });
   }
 
@@ -1091,23 +1108,20 @@ impl Visit for ImportRangeCollector {
   ) {
     let start = self.source_map.lookup_char_pos(node.arg.span.lo);
     let end = self.source_map.lookup_char_pos(node.arg.span.hi);
-    self.import_ranges.0.push(TextRange {
-      range: get_range_from_loc(&start, &end),
-      text: node.arg.value.to_string(),
+    self.import_ranges.0.push(DependencyRange {
+      range: narrow_range(get_range_from_loc(&start, &end)),
+      specifier: node.arg.value.to_string(),
     });
   }
 }
 
 /// Analyze a document for import ranges, which then can be used to identify if
 /// a particular position within the document as inside an import range.
-pub fn analyze_import_ranges(
-  specifier: &ModuleSpecifier,
-  source: &str,
-  media_type: &MediaType,
-) -> Result<ImportRanges, AnyError> {
-  let parsed_module = parse_module(specifier, source, media_type)?;
+pub fn analyze_dependency_ranges(
+  parsed_module: &ast::ParsedModule,
+) -> Result<DependencyRanges, AnyError> {
   let mut collector =
-    ImportRangeCollector::new(parsed_module.source_map.clone());
+    DependencyRangeCollector::new(parsed_module.source_map.clone());
   parsed_module
     .module
     .visit_with(&swc_ast::Invalid { span: DUMMY_SP }, &mut collector);
@@ -1318,12 +1332,13 @@ mod tests {
   }
 
   #[test]
-  fn test_analyze_import_ranges() {
+  fn test_analyze_dependency_ranges() {
     let specifier = resolve_url("file:///a.ts").unwrap();
     let source =
       "import * as a from \"./b.ts\";\nexport * as a from \"./c.ts\";\n";
     let media_type = MediaType::TypeScript;
-    let result = analyze_import_ranges(&specifier, source, &media_type);
+    let parsed_module = parse_module(&specifier, source, &media_type).unwrap();
+    let result = analyze_dependency_ranges(&parsed_module);
     assert!(result.is_ok());
     let actual = result.unwrap();
     assert_eq!(
@@ -1338,7 +1353,7 @@ mod tests {
         line: 0,
         character: 22,
       }),
-      Some(TextRange {
+      Some(DependencyRange {
         range: lsp::Range {
           start: lsp::Position {
             line: 0,
@@ -1349,7 +1364,7 @@ mod tests {
             character: 26,
           },
         },
-        text: "./b.ts".to_string(),
+        specifier: "./b.ts".to_string(),
       })
     );
     assert_eq!(
@@ -1357,7 +1372,7 @@ mod tests {
         line: 1,
         character: 22,
       }),
-      Some(TextRange {
+      Some(DependencyRange {
         range: lsp::Range {
           start: lsp::Position {
             line: 1,
@@ -1368,7 +1383,7 @@ mod tests {
             character: 26,
           },
         },
-        text: "./c.ts".to_string(),
+        specifier: "./c.ts".to_string(),
       })
     );
   }
