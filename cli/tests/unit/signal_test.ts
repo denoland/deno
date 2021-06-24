@@ -149,7 +149,7 @@ unitTest(
     const res = await p.status();
     assertEquals(res.code, 0);
     p.close();
-  }
+  },
 );
 
 unitTest(
