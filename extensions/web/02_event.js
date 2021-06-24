@@ -150,27 +150,23 @@
     get type() {
       return this[_attributes].type;
     }
-    set type(_) {
-      // this is a no-op because this member is readonly
-    }
+
     get target() {
       return this[_attributes].target;
     }
-    set target(_) {
-      // this is a no-op because this member is readonly
-    }
+
     get srcElement() {
       return null;
     }
+
     set srcElement(_) {
-      // this is a no-op because this member is readonly
+      // this member is deprecated
     }
+
     get currentTarget() {
       return this[_attributes].currentTarget;
     }
-    set currentTarget(_) {
-      // this is a no-op because this member is readonly
-    }
+
     composedPath() {
       const path = this[_path];
       if (path.length === 0) {
@@ -279,67 +275,51 @@
     get NONE() {
       return Event.NONE;
     }
-    set NONE(_) {
-      // this is a no-op because this member is readonly
-    }
+
     get CAPTURING_PHASE() {
       return Event.CAPTURING_PHASE;
     }
-    set CAPTURING_PHASE(_) {
-      // this is a no-op because this member is readonly
-    }
+
     get AT_TARGET() {
       return Event.AT_TARGET;
     }
-    set AT_TARGET(_) {
-      // this is a no-op because this member is readonly
-    }
+
     get BUBBLING_PHASE() {
       return Event.BUBBLING_PHASE;
     }
-    set BUBBLING_PHASE(_) {
-      // this is a no-op because this member is readonly
-    }
+
     static get NONE() {
       return 0;
     }
-    static set NONE(_) {
-      // this is a no-op because this member is readonly
-    }
+
     static get CAPTURING_PHASE() {
       return 1;
     }
-    static set CAPTURING_PHASE(_) {
-      // this is a no-op because this member is readonly
-    }
+
     static get AT_TARGET() {
       return 2;
     }
-    static set AT_TARGET(_) {
-      // this is a no-op because this member is readonly
-    }
+
     static get BUBBLING_PHASE() {
       return 3;
     }
-    static set BUBBLING_PHASE(_) {
-      // this is a no-op because this member is readonly
-    }
+
     get eventPhase() {
       return this[_attributes].eventPhase;
-    }
-    set eventPhase(_) {
-      // this is a no-op because this member is readonly
     }
 
     stopPropagation() {
       this[_stopPropagationFlag] = true;
     }
+
     get cancelBubble() {
       return this[_stopPropagationFlag];
     }
+
     set cancelBubble(value) {
       this[_stopPropagationFlag] = webidl.converters.boolean(value);
     }
+
     stopImmediatePropagation() {
       this[_stopPropagationFlag] = true;
       this[_stopImmediatePropagationFlag] = true;
@@ -348,39 +328,33 @@
     get bubbles() {
       return this[_attributes].bubbles;
     }
-    set bubbles(_) {
-      // this is a no-op because this member is readonly
-    }
+
     get cancelable() {
       return this[_attributes].cancelable;
     }
-    set cancelable(value) {
-      // this is a no-op because this member is readonly
-    }
+
     get returnValue() {
       return !this[_canceledFlag];
     }
+
     set returnValue(value) {
       if (!webidl.converters.boolean(value)) {
         this[_canceledFlag] = true;
       }
     }
+
     preventDefault() {
       if (this[_attributes].cancelable && !this[_inPassiveListener]) {
         this[_canceledFlag] = true;
       }
     }
+
     get defaultPrevented() {
       return this[_canceledFlag];
     }
-    set defaultPrevented(_) {
-      // this is a no-op because this member is readonly
-    }
+
     get composed() {
       return this[_attributes].composed;
-    }
-    set composed(_) {
-      // this is a no-op because this member is readonly
     }
 
     get initialized() {
@@ -389,9 +363,6 @@
 
     get timeStamp() {
       return this[_attributes].timeStamp;
-    }
-    set timeStamp(_) {
-      // this is a no-op because this member is readonly
     }
   }
 
