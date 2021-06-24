@@ -4,14 +4,9 @@ import {
   assertEquals,
   assertThrows,
   deferred,
+  delay,
   unitTest,
 } from "./test_util.ts";
-
-function defer(n: number): Promise<void> {
-  return new Promise((resolve: () => void, _) => {
-    setTimeout(resolve, n);
-  });
-}
 
 unitTest(
   { ignore: Deno.build.os !== "windows" },
@@ -113,11 +108,11 @@ unitTest(
     let c = 0;
     const sig = Deno.signal(Deno.Signal.SIGUSR1);
     setTimeout(async () => {
-      await defer(20);
+      await delay(20);
       for (const _ of Array(3)) {
         // Sends SIGUSR1 3 times.
         Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
-        await defer(20);
+        await delay(20);
       }
       sig.dispose();
       resolvable.resolve();
