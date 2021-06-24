@@ -124,56 +124,6 @@ pub struct WebCryptoKey {
   pub usages: Vec<KeyUsage>,
 }
 
-impl WebCryptoKey {
-  pub fn new_private(
-    algorithm: Algorithm,
-    extractable: bool,
-    usages: Vec<KeyUsage>,
-  ) -> Self {
-    Self {
-      key_type: KeyType::Private,
-      extractable,
-      algorithm,
-      usages,
-    }
-  }
-
-  pub fn new_public(
-    algorithm: Algorithm,
-    extractable: bool,
-    usages: Vec<KeyUsage>,
-  ) -> Self {
-    Self {
-      key_type: KeyType::Public,
-      extractable,
-      algorithm,
-      usages,
-    }
-  }
-
-  pub fn new_secret(
-    algorithm: Algorithm,
-    extractable: bool,
-    usages: Vec<KeyUsage>,
-  ) -> Self {
-    Self {
-      key_type: KeyType::Secret,
-      extractable,
-      algorithm,
-      usages,
-    }
-  }
-}
-
-impl WebCryptoKeyPair {
-  pub fn new(public_key: WebCryptoKey, private_key: WebCryptoKey) -> Self {
-    Self {
-      public_key,
-      private_key,
-    }
-  }
-}
-
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct WebCryptoKeyPair {

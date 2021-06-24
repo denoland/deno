@@ -34,10 +34,12 @@ use ring::digest;
 use ring::hmac::Algorithm as HmacAlgorithm;
 use ring::hmac::Key as HmacKey;
 use ring::rand as RingRand;
+use ring::rand::SecureRandom;
 use ring::signature::EcdsaKeyPair;
 use ring::signature::EcdsaSigningAlgorithm;
 use rsa::padding::PaddingScheme;
 use rsa::BigUint;
+use rsa::PrivateKeyEncoding;
 use rsa::PublicKeyParts;
 use rsa::RSAPrivateKey;
 use rsa::RSAPublicKey;
@@ -114,32 +116,6 @@ pub fn op_crypto_get_random_values(
   Ok(())
 }
 
-struct CryptoKeyResource<A> {
-  crypto_key: WebCryptoKey,
-  key: A,
-  hash: Option<WebCryptoHash>,
-}
-
-// `impl_resource` will use the type name as the resource name.
-macro_rules! impl_resource {
-  ($($t:ty),+) => {
-    $(impl Resource for CryptoKeyResource<$t> {
-      fn name(&self) -> Cow<str> {
-        stringify!($t).into()
-      }
-    })*
-  }
-}
-
-impl_resource! {
-  RSAPublicKey,
-  RSAPrivateKey,
-  EcdsaKeyPair,
-  ring::agreement::PublicKey,
-  EphemeralPrivateKey,
-  HmacKey
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WebCryptoAlgorithmArg {
@@ -151,53 +127,12 @@ pub struct WebCryptoAlgorithmArg {
   named_curve: Option<WebCryptoNamedCurve>,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WebCryptoGenerateKeyArg {
-  algorithm: WebCryptoAlgorithmArg,
-  extractable: bool,
-  key_usages: Vec<KeyUsage>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-enum JsCryptoKey {
-  Single {
-    key: WebCryptoKey,
-    rid: u32,
-  },
-  Pair {
-    key: WebCryptoKeyPair,
-    private_rid: u32,
-    public_rid: u32,
-  },
-}
-
-macro_rules! validate_usage {
-  ($e: expr, $u: expr) => {{
-    if $e.len() <= 0 {
-      return Err(custom_error("SyntaxError", "Invalid usage"));
-    };
-    for usage in $e {
-      if !$u.contains(&usage) {
-        return Err(custom_error("SyntaxError", "Invalid usage"));
-      }
-    }
-  }};
-}
-
-#[derive(Serialize)]
-pub struct GenerateKeyResult {
-  key: JsCryptoKey,
-}
-
 pub async fn op_webcrypto_generate_key(
   state: Rc<RefCell<OpState>>,
-  args: WebCryptoGenerateKeyArg,
+  args: WebCryptoAlgorithmArg,
   zero_copy: Option<ZeroCopyBuf>,
-) -> Result<GenerateKeyResult, AnyError> {
-  let extractable = args.extractable;
-  let algorithm = args.algorithm.name;
+) -> Result<ZeroCopyBuf, AnyError> {
+  let algorithm = args.name;
 
   let mut state = state.borrow_mut();
   let key = match algorithm {
@@ -205,8 +140,7 @@ pub async fn op_webcrypto_generate_key(
       let exp = zero_copy.ok_or_else(|| {
         type_error("Missing argument publicExponent".to_string())
       })?;
-      let modulus_length =
-        args.algorithm.modulus_length.ok_or_else(not_supported)?;
+      let modulus_length = args.modulus_length.ok_or_else(not_supported)?;
 
       let exponent = BigUint::from_bytes_be(&exp);
       if exponent != *PUB_EXPONENT_1 && exponent != *PUB_EXPONENT_2 {
@@ -216,9 +150,6 @@ pub async fn op_webcrypto_generate_key(
         ));
       }
 
-      validate_usage!(&args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
-
-      // Generate RSA private key based of exponent, bits and Rng.
       let mut rng = OsRng;
 
       let private_key: RSAPrivateKey = tokio::task::spawn_blocking(
@@ -234,210 +165,79 @@ pub async fn op_webcrypto_generate_key(
       .unwrap()
       .map_err(|e| type_error(e.to_string()))?;
 
-      let public_key =
-        RSAPublicKey::new(private_key.n().clone(), private_key.e().clone())
-          .map_err(|e| type_error(e.to_string()))?;
-
-      // Create webcrypto keypair.
-      let webcrypto_key_public = WebCryptoKey::new_public(
-        algorithm,
-        extractable,
-        args.key_usages.clone(),
-      );
-      let webcrypto_key_private =
-        WebCryptoKey::new_private(algorithm, extractable, args.key_usages);
-      let crypto_key = WebCryptoKeyPair::new(
-        webcrypto_key_public.clone(),
-        webcrypto_key_private.clone(),
-      );
-
-      JsCryptoKey::Pair {
-        key: crypto_key,
-        private_rid: state.resource_table.add(CryptoKeyResource {
-          crypto_key: webcrypto_key_private,
-          key: private_key,
-          hash: args.algorithm.hash,
-        }),
-        public_rid: state.resource_table.add(CryptoKeyResource {
-          crypto_key: webcrypto_key_public,
-          key: public_key,
-          hash: args.algorithm.hash,
-        }),
-      }
-    }
-    Algorithm::Ecdh => {
-      validate_usage!(
-        &args.key_usages,
-        vec![KeyUsage::DeriveKey, KeyUsage::DeriveBits]
-      );
-
-      // Determine agreement from algorithm named_curve.
-      let agreement: Result<&RingAlgorithm, AnyError> = args
-        .algorithm
-        .named_curve
-        .ok_or_else(not_supported)?
-        .try_into();
-      if agreement.is_err() {
-        return Err(not_supported());
-      }
-
-      let rng = RingRand::SystemRandom::new();
-      let private_key: EphemeralPrivateKey = tokio::task::spawn_blocking(
-        move || -> Result<EphemeralPrivateKey, ring::error::Unspecified> {
-          EphemeralPrivateKey::generate(&agreement.unwrap(), &rng)
-        },
-      )
-      .await
-      .unwrap()?;
-
-      // Extract public key.
-      let public_key = private_key.compute_public_key()?;
-      // Create webcrypto keypair.
-      let webcrypto_key_public = WebCryptoKey::new_public(
-        algorithm,
-        extractable,
-        args.key_usages.clone(),
-      );
-      let webcrypto_key_private =
-        WebCryptoKey::new_private(algorithm, extractable, args.key_usages);
-      let crypto_key = WebCryptoKeyPair::new(
-        webcrypto_key_public.clone(),
-        webcrypto_key_private.clone(),
-      );
-
-      JsCryptoKey::Pair {
-        key: crypto_key,
-        private_rid: state.resource_table.add(CryptoKeyResource {
-          crypto_key: webcrypto_key_private,
-          key: private_key,
-          hash: args.algorithm.hash,
-        }),
-        public_rid: state.resource_table.add(CryptoKeyResource {
-          crypto_key: webcrypto_key_public,
-          key: public_key,
-          hash: args.algorithm.hash,
-        }),
-      }
+      private_key.to_pkcs8()?
     }
     Algorithm::Ecdsa => {
-      validate_usage!(&args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
-
-      let curve: Result<&EcdsaSigningAlgorithm, AnyError> = args
-        .algorithm
-        .named_curve
-        .ok_or_else(not_supported)?
-        .try_into();
+      let curve: Result<&EcdsaSigningAlgorithm, AnyError> =
+        args.named_curve.ok_or_else(not_supported)?.try_into();
       if curve.is_err() {
         return Err(not_supported());
       }
       let rng = RingRand::SystemRandom::new();
-      let private_key: EcdsaKeyPair = tokio::task::spawn_blocking(
-        move || -> Result<EcdsaKeyPair, ring::error::Unspecified> {
+      let private_key: Vec<u8> = tokio::task::spawn_blocking(
+        move || -> Result<Vec<u8>, ring::error::Unspecified> {
           let curve = curve.unwrap();
           let pkcs8 = EcdsaKeyPair::generate_pkcs8(curve, &rng)?;
-          Ok(EcdsaKeyPair::from_pkcs8(&curve, pkcs8.as_ref())?)
+          Ok(pkcs8.as_ref().to_vec())
         },
       )
       .await
       .unwrap()?;
 
-      // Create webcrypto keypair.
-      let webcrypto_key_public = WebCryptoKey::new_public(
-        algorithm,
-        extractable,
-        args.key_usages.clone(),
-      );
-      let webcrypto_key_private =
-        WebCryptoKey::new_private(algorithm, extractable, args.key_usages);
-      let crypto_key = WebCryptoKeyPair::new(
-        webcrypto_key_public,
-        webcrypto_key_private.clone(),
-      );
-
-      let rid = state.resource_table.add(CryptoKeyResource {
-        crypto_key: webcrypto_key_private,
-        key: private_key,
-        hash: args.algorithm.hash,
-      });
-
-      JsCryptoKey::Pair {
-        key: crypto_key,
-        private_rid: rid,
-        // NOTE: We're using the same Resource for public and private key since they are part
-        //       of the same interface in `ring`.
-        public_rid: rid,
-      }
+      private_key
     }
     Algorithm::Hmac => {
-      validate_usage!(&args.key_usages, vec![KeyUsage::Sign, KeyUsage::Verify]);
+      let hash: HmacAlgorithm = args.hash.ok_or_else(not_supported)?.into();
 
-      let hash: HmacAlgorithm =
-        args.algorithm.hash.ok_or_else(not_supported)?.into();
       let rng = RingRand::SystemRandom::new();
-      let key: HmacKey = tokio::task::spawn_blocking(
-        move || -> Result<HmacKey, ring::error::Unspecified> {
-          HmacKey::generate(hash, &rng)
-        },
-      )
-      .await
-      .unwrap()?;
+      let mut key_bytes = [0; ring::digest::MAX_OUTPUT_LEN];
+      let key_bytes = &mut key_bytes[..hash.digest_algorithm().output_len];
+      rng.fill(key_bytes)?;
 
-      let crypto_key =
-        WebCryptoKey::new_secret(algorithm, extractable, args.key_usages);
-      let resource = CryptoKeyResource {
-        crypto_key: crypto_key.clone(),
-        key,
-        hash: args.algorithm.hash,
-      };
-      JsCryptoKey::Single {
-        key: crypto_key,
-        rid: state.resource_table.add(resource),
-      }
+      key_bytes.to_vec()
     }
     _ => return Err(not_supported()),
   };
 
-  Ok(GenerateKeyResult { key })
+  Ok(key.into())
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum KeyFormat {
+  Raw,
+  Pcks8,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub struct KeyData {
+  r#type: KeyFormat,
+  data: ZeroCopyBuf,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WebCryptoSignArg {
-  rid: u32,
+  key: KeyData,
   algorithm: Algorithm,
   salt_length: Option<u32>,
   hash: Option<WebCryptoHash>,
-}
-
-#[derive(Serialize)]
-pub struct SignResult {
-  signature: Vec<u8>,
+  named_curve: Option<WebCryptoNamedCurve>,
 }
 
 pub async fn op_webcrypto_sign_key(
   state: Rc<RefCell<OpState>>,
   args: WebCryptoSignArg,
   zero_copy: Option<ZeroCopyBuf>,
-) -> Result<SignResult, AnyError> {
+) -> Result<ZeroCopyBuf, AnyError> {
   let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
-  let state = state.borrow();
   let data = &*zero_copy;
   let algorithm = args.algorithm;
 
   let signature = match algorithm {
     Algorithm::RsassaPkcs1v15 => {
-      let resource = state
-        .resource_table
-        .get::<CryptoKeyResource<RSAPrivateKey>>(args.rid)
-        .ok_or_else(bad_resource_id)?;
-
-      let private_key = &resource.key;
-
-      if !resource.crypto_key.usages.contains(&KeyUsage::Sign) {
-        return Err(type_error("Invalid key usage".to_string()));
-      }
-
-      let padding = match resource
+      let private_key = RSAPrivateKey::from_pkcs8(&*args.key.data)?;
+      let padding = match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
@@ -455,28 +255,18 @@ pub async fn op_webcrypto_sign_key(
         },
       };
 
-      // Sign data based on computed padding and return buffer
       private_key.sign(padding, &data)?
     }
     Algorithm::RsaPss => {
-      let resource = state
-        .resource_table
-        .get::<CryptoKeyResource<RSAPrivateKey>>(args.rid)
-        .ok_or_else(bad_resource_id)?;
+      let private_key = RSAPrivateKey::from_pkcs8(&*args.key.data)?;
 
-      let private_key = &resource.key;
-
-      if !resource.crypto_key.usages.contains(&KeyUsage::Sign) {
-        return Err(type_error("Invalid key usage".to_string()));
-      }
-
-      let rng = OsRng;
       let salt_len = args
         .salt_length
         .ok_or_else(|| type_error("Missing argument saltLength".to_string()))?
         as usize;
 
-      let (padding, digest_in) = match resource
+      let rng = OsRng;
+      let (padding, digest_in) = match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
@@ -518,16 +308,10 @@ pub async fn op_webcrypto_sign_key(
       private_key.sign(padding, &digest_in)?
     }
     Algorithm::Ecdsa => {
-      let resource = state
-        .resource_table
-        .get::<CryptoKeyResource<EcdsaKeyPair>>(args.rid)
-        .ok_or_else(bad_resource_id)?;
-      let key_pair = &resource.key;
+      let curve: &EcdsaSigningAlgorithm =
+        args.named_curve.ok_or_else(not_supported)?.try_into()?;
 
-      if !resource.crypto_key.usages.contains(&KeyUsage::Sign) {
-        return Err(type_error("Invalid key usage".to_string()));
-      }
-
+      let key_pair = EcdsaKeyPair::from_pkcs8(curve, &*args.key.data)?;
       // We only support P256-SHA256 & P384-SHA384. These are recommended signature pairs.
       // https://briansmith.org/rustdoc/ring/signature/index.html#statics
       if let Some(hash) = args.hash {
@@ -544,15 +328,9 @@ pub async fn op_webcrypto_sign_key(
       signature.as_ref().to_vec()
     }
     Algorithm::Hmac => {
-      let resource = state
-        .resource_table
-        .get::<CryptoKeyResource<HmacKey>>(args.rid)
-        .ok_or_else(bad_resource_id)?;
-      let key = &resource.key;
+      let hash: HmacAlgorithm = args.hash.ok_or_else(not_supported)?.into();
 
-      if !resource.crypto_key.usages.contains(&KeyUsage::Sign) {
-        return Err(type_error("Invalid key usage".to_string()));
-      }
+      let key = HmacKey::new(hash, &*args.key.data);
 
       let signature = ring::hmac::sign(&key, &data);
       signature.as_ref().to_vec()
@@ -560,7 +338,7 @@ pub async fn op_webcrypto_sign_key(
     _ => return Err(type_error("Unsupported algorithm".to_string())),
   };
 
-  Ok(SignResult { signature })
+  Ok(signature.into())
 }
 
 pub fn op_crypto_random_uuid(

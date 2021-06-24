@@ -97,42 +97,56 @@
     }
   }
 
-  const ridSymbol = Symbol("[[rid]]");
+  const _handle = Symbol("[[handle]]");
+  const _algorithm = Symbol("[[algorithm]]");
+  const _extractable = Symbol("[[extractable]]");
+  const _usages = Symbol("[[usages]]");
+  const _type = Symbol("[[_type]]");
 
   class CryptoKey {
-    #usages;
-    #extractable;
-    #algorithm;
-    #keyType;
+    [_usages];
+    [_algorithm];
+    [_extractable];
+    [_type];
+    [_handle];
 
-    constructor(key, rid) {
-      this.#usages = key.keyUsages;
-      this.#extractable = key.extractable;
-      const algorithm = key.algorithm;
-      let hash = algorithm.hash;
-      if (typeof hash == "string") {
-        hash = { name: hash };
-      }
-      this.#algorithm = { ...algorithm, hash };
-      this.#keyType = key.keyType;
-      this[ridSymbol] = rid;
+    constructor() {
+      webidl.illegalConstructor();
     }
 
     get usages() {
-      return this.#usages;
+      return this[_usages];
     }
 
     get extractable() {
-      return this.#extractable;
+      return this[_extractable];
     }
 
     get algorithm() {
-      return this.#algorithm;
+      return this[_algorithm];
     }
 
     get type() {
-      return this.#keyType;
+      return this[_type];
     }
+
+    get [Symbol.toStringTag]() {
+      return "CryptoKey";
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `${this.constructor.name} ${inspect({})}`;
+    }
+  }
+
+  function constructKey(algorithm, extractable, usages, type, handle) {
+    let key = Object.create(CryptoKey);
+    key[_algorithm] = algorithm;
+    key[_extractable] = extractable;
+    key[_usages] = usages;
+    key[_type] = type;
+    key[_handle] = handle;
+    return key;
   }
 
   function validateUsages(usages, keyType) {
@@ -157,6 +171,8 @@
 
     return validUsages;
   }
+
+  let keys = [];
 
   class SubtleCrypto {
     constructor() {
@@ -198,13 +214,11 @@
       return result.buffer;
     }
 
-    async sign(alg, key, data) {
+    async sign(algorithm, key, data) {
       const prefix = "Failed to execute 'sign' on 'SubtleCrypto'";
 
       webidl.assertBranded(this, SubtleCrypto);
       webidl.requiredArguments(arguments.length, 3);
-
-      const rid = key[ridSymbol];
 
       key = webidl.converters["CryptoKey"](key, {
         prefix,
@@ -216,56 +230,206 @@
         context: "Argument 3",
       });
 
-      alg = normalizeAlgorithm(alg, "sign");
+      algorithm = normalizeAlgorithm(algorithm, "sign");
 
-      const { signature } = await core.opAsync("op_webcrypto_sign_key", {
-        rid,
-        algorithm: alg.name,
-        saltLength: alg.saltLength,
-        hash: alg.hash,
-      }, new Uint8Array(ArrayBuffer.isView(data) ? data.buffer : data));
+      const index = key[_handle];
+      const keyData = keys[index];
 
-      return new Uint8Array(signature);
+      data = new Uint8Array(ArrayBuffer.isView(data) ? data.buffer : data);
+
+      if (algorithm.name == "HMAC") {
+        const hashAlgorithm = key[_algorithm].hash;
+
+        const signature = await core.opAsync("op_webcrypto_sign_key", {
+          key: keyData,
+          algorithm: "HMAC",
+          hash: hashAlgorithm,
+        }, data);
+
+        return signature;
+      } else if (algorithm.name == "ECDSA") {
+        // 1.
+        if (key[_type] !== "private") {
+          throw new DOMError("InvalidAccessError", "Key type not supported");
+        }
+
+        const namedCurve = key[_algorithm].namedCurve;
+        // 2 to 6.
+        const signature = await core.opAsync("op_webcrypto_sign_key", {
+          key: keyData,
+          algorithm: "ECDSA",
+          hash: algorithm.hash,
+          namedCurve,
+        }, data);
+
+        return signature;
+      } else if (algorithm.name == "RSA-PSS") {
+        // 1.
+        if (key[_type] !== "private") {
+          throw new DOMError("InvalidAccessError", "Key type not supported");
+        }
+
+        // 2.
+        const hashAlgorithm = key[_algorithm].hash;
+        const signature = await core.opAsync("op_webcrypto_sign_key", {
+          key: keyData,
+          algorithm: "RSA-PSS",
+          hash: hashAlgorithm,
+          saltLength: algorithm.saltLength,
+        }, data);
+
+        return signature;
+      } else if (algorithm.name == "RSASSA-PKCS1-v1_5") {
+        // 1.
+        if (key[_type] !== "private") {
+          throw new DOMError("InvalidAccessError", "Key type not supported");
+        }
+
+        // 2.
+        const hashAlgorithm = key[_algorithm].hash;
+        const signature = await core.opAsync("op_webcrypto_sign_key", {
+          key: keyData,
+          algorithm: "RSASSA-PKCS1-v1_5",
+          hash: hashAlgorithm,
+        }, data);
+
+        return signature;
+      }
     }
 
     async generateKey(algorithm, extractable, keyUsages) {
+      const prefix = "Failed to execute 'generateKey' on 'SubtleCrypto'";
+
       webidl.assertBranded(this, SubtleCrypto);
       webidl.requiredArguments(arguments.length, 3);
 
       algorithm = normalizeAlgorithm(algorithm, "generateKey");
 
-      const { key } = await core.opAsync("op_webcrypto_generate_key", {
-        algorithm,
-        extractable,
-        keyUsages,
-      }, algorithm.publicExponent || new Uint8Array());
+      extractable = webidl.converters["boolean"](extractable, {
+        prefix,
+        context: "Argument 2",
+      });
 
-      if (key.single) {
-        const { keyType } = key.single.key;
-        const usages = validateUsages(keyUsages, keyType);
-        return new CryptoKey(
-          { keyType, algorithm, extractable, keyUsages: usages },
-          key.single.rid,
+      // https://github.com/denoland/deno/pull/9614#issuecomment-866049433
+      if (extractable) {
+        throw new DOMError(
+          "SecurityError",
+          "Extractable keys are not supported",
         );
-      } /* CryptoKeyPair */ else {
-        const privateKeyType = key.pair.key.privateKey.keyType;
-        const privateKeyUsages = validateUsages(keyUsages, privateKeyType);
+      }
 
-        const publicKeyType = key.pair.key.publicKey.keyType;
-        const publicKeyUsages = validateUsages(keyUsages, publicKeyType);
+      if (algorithm.name == "HMAC") {
+        // 1.
+        const illegal = keyUsages.find((usage) =>
+          !["sign", "verify"].includes(usage)
+        );
+        if (illegal) {
+          throw new SyntaxError("Invalid usage");
+        }
+
+        // 2.
+        if (algorithm.length == 0) {
+          throw new DOMError("OperationError", "Invalid key length");
+        }
+
+        // 3.
+        const rawMaterial = await core.opAsync(
+          "op_webcrypto_generate_key",
+          algorithm,
+        );
+        const index = keys.push({ type: "raw", data: rawMaterial }) - 1;
+
+        // 11 to 13.
+        const key = constructKey(
+          { name: "HMAC", hash: algorithm.hash },
+          extractable,
+          keyUsages,
+          "secret",
+          index,
+        );
+
+        // 14.
+        return key;
+      } else if (algorithm.name == "ECDSA") {
+        // 1.
+        const illegal = keyUsages.find((usage) =>
+          !["sign", "verify"].includes(usage)
+        );
+        if (illegal) {
+          throw new SyntaxError("Invalid usage");
+        }
+
+        // 3.
+        const pkcsMaterial = await core.opAsync(
+          "op_webcrypto_generate_key",
+          algorithm,
+        );
+        const index = keys.push({ type: "pkcs8", data: pkcsMaterial }) - 1;
+
+        const alg = { name: "ECDSA", namedCurve: algorithm.namedCurve };
+        const publicKey = constructKey(
+          alg,
+          extractable,
+          keyUsages,
+          "public",
+          index,
+        );
+        const privateKey = constructKey(
+          alg,
+          extractable,
+          keyUsages,
+          "private",
+          index,
+        );
+
         return {
-          privateKey: new CryptoKey({
-            keyType: privateKeyType,
-            algorithm,
-            extractable,
-            keyUsages: privateKeyUsages,
-          }, key.pair.private_rid),
-          publicKey: new CryptoKey({
-            keyType: publicKeyType,
-            algorithm,
-            extractable: true,
-            keyUsages: publicKeyUsages,
-          }, key.pair.public_rid),
+          publicKey,
+          privateKey,
+        };
+      } else if (
+        algorithm.name == "RSA-PSS" || algorithm.name == "RSASSA-PKCS1-v1_5"
+      ) {
+        // 1.
+        const illegal = keyUsages.find((usage) =>
+          !["sign", "verify"].includes(usage)
+        );
+        if (illegal) {
+          throw new SyntaxError("Invalid usage");
+        }
+
+        // 2.
+        const pkcsMaterial = await core.opAsync(
+          "op_webcrypto_generate_key",
+          algorithm,
+        );
+        const index = keys.push({ type: "pkcs8", data: pkcsMaterial }) - 1;
+
+        // 4 to 8.
+        const alg = {
+          name: algorithm.name,
+          modulusLength: algorithm.modulusLength,
+          publicExponent: algorithm.publicExponent,
+          hash: algorithm.hash,
+        };
+        const publicKey = constructKey(
+          alg,
+          extractable,
+          keyUsages,
+          "public",
+          index,
+        );
+        const privateKey = constructKey(
+          alg,
+          extractable,
+          keyUsages,
+          "private",
+          index,
+        );
+
+        // 19 to 22.
+        return {
+          publicKey,
+          privateKey,
         };
       }
     }
