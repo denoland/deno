@@ -669,11 +669,7 @@
     "url-tojson.any.html": true,
     "urlencoded-parser.any.html": true,
     "urlsearchparams-append.any.html": true,
-    "urlsearchparams-constructor.any.html": [
-      "Construct with 2 unpaired surrogates (no trailing)",
-      "Construct with 3 unpaired surrogates (no leading)",
-      "Construct with object with NULL, non-ASCII, and surrogate keys"
-    ],
+    "urlsearchparams-constructor.any.html": true,
     "urlsearchparams-delete.any.html": true,
     "urlsearchparams-foreach.any.html": true,
     "urlsearchparams-get.any.html": true,
