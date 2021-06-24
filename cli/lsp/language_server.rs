@@ -182,7 +182,12 @@ impl Inner {
           }
         }
       }
-      if let Err(err) = self.documents.set_dependencies(specifier, Some(deps)) {
+      let dep_ranges = analysis::analyze_dependency_ranges(&parsed_module).ok();
+      if let Err(err) =
+        self
+          .documents
+          .set_dependencies(specifier, Some(deps), dep_ranges)
+      {
         error!("{}", err);
       }
     }
@@ -948,37 +953,83 @@ impl Inner {
     {
       return Ok(None);
     }
-    let mark = self.performance.mark("hover", Some(&params));
 
-    let line_index =
-      if let Some(line_index) = self.get_line_index_sync(&specifier) {
-        line_index
+    let mark = self.performance.mark("hover", Some(&params));
+    let hover = if let Some(dependency_range) =
+      self.documents.is_specifier_position(
+        &specifier,
+        &params.text_document_position_params.position,
+      ) {
+      if let Some(dependencies) = &self.documents.dependencies(&specifier) {
+        if let Some(dep) = dependencies.get(&dependency_range.specifier) {
+          let value = match (&dep.maybe_code, &dep.maybe_type) {
+            (Some(code_dep), Some(type_dep)) => {
+              format!(
+                "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
+                code_dep.as_hover_text(),
+                type_dep.as_hover_text()
+              )
+            }
+            (Some(code_dep), None) => {
+              format!(
+                "**Resolved Dependency**\n\n**Code**: {}\n",
+                code_dep.as_hover_text()
+              )
+            }
+            (None, Some(type_dep)) => {
+              format!(
+                "**Resolved Dependency**\n\n**Types**: {}\n",
+                type_dep.as_hover_text()
+              )
+            }
+            (None, None) => {
+              error!(
+                "Unexpected state hovering on dependency. Dependency \"{}\" in \"{}\" not found.",
+                dependency_range.specifier,
+                specifier
+              );
+              "".to_string()
+            }
+          };
+          Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+              kind: MarkupKind::Markdown,
+              value,
+            }),
+            range: Some(dependency_range.range),
+          })
+        } else {
+          None
+        }
       } else {
-        return Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )));
-      };
-    let req = tsc::RequestMethod::GetQuickInfo((
-      specifier,
-      line_index.offset_tsc(params.text_document_position_params.position)?,
-    ));
-    let maybe_quick_info: Option<tsc::QuickInfo> = self
-      .ts_server
-      .request(self.snapshot()?, req)
-      .await
-      .map_err(|err| {
-        error!("Unable to get quick info: {}", err);
-        LspError::internal_error()
-      })?;
-    if let Some(quick_info) = maybe_quick_info {
-      let hover = quick_info.to_hover(&line_index);
-      self.performance.measure(mark);
-      Ok(Some(hover))
+        None
+      }
     } else {
-      self.performance.measure(mark);
-      Ok(None)
-    }
+      let line_index =
+        if let Some(line_index) = self.get_line_index_sync(&specifier) {
+          line_index
+        } else {
+          return Err(LspError::invalid_params(format!(
+            "An unexpected specifier ({}) was provided.",
+            specifier
+          )));
+        };
+      let req = tsc::RequestMethod::GetQuickInfo((
+        specifier,
+        line_index.offset_tsc(params.text_document_position_params.position)?,
+      ));
+      let maybe_quick_info: Option<tsc::QuickInfo> = self
+        .ts_server
+        .request(self.snapshot()?, req)
+        .await
+        .map_err(|err| {
+          error!("Unable to get quick info: {}", err);
+          LspError::internal_error()
+        })?;
+      maybe_quick_info.map(|qi| qi.to_hover(&line_index))
+    };
+    self.performance.measure(mark);
+    Ok(hover)
   }
 
   async fn code_action(
