@@ -228,16 +228,6 @@ jobs:
             deno --version
           fi
 
-      - name: Cache Cargo home
-        uses: actions/cache@v2
-        with:
-          # See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: z-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
-
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
         # TODO(kt3k): Change the version to the released version
