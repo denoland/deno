@@ -2370,6 +2370,18 @@ mod integration {
     }
 
     #[test]
+    fn import_declarations() {
+      let (out, _) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["import './subdir/auto_print_hello.ts';"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.contains("hello!\n"));
+    }
+
+    #[test]
     fn eval_unterminated() {
       let (out, err) = util::run_and_collect_output(
         true,

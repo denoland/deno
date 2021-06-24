@@ -43,6 +43,8 @@ use swc_ecmascript::transforms::react;
 use swc_ecmascript::transforms::typescript;
 use swc_ecmascript::visit::FoldWith;
 
+mod transforms;
+
 static TARGET: JscTarget = JscTarget::Es2020;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -167,6 +169,9 @@ pub struct EmitOptions {
   pub jsx_fragment_factory: String,
   /// Should JSX be transformed or preserved.  Defaults to `true`.
   pub transform_jsx: bool,
+  /// Should import declarations be transformed to variable declarations.
+  /// This should only be set to true for the REPL.  Defaults to `false`.
+  pub repl_imports: bool,
 }
 
 impl Default for EmitOptions {
@@ -179,6 +184,7 @@ impl Default for EmitOptions {
       jsx_factory: "React.createElement".into(),
       jsx_fragment_factory: "React.Fragment".into(),
       transform_jsx: true,
+      repl_imports: false,
     }
   }
 }
@@ -201,6 +207,7 @@ impl From<config_file::TsConfig> for EmitOptions {
       jsx_factory: options.jsx_factory,
       jsx_fragment_factory: options.jsx_fragment_factory,
       transform_jsx: options.jsx == "react",
+      repl_imports: false,
     }
   }
 }
@@ -306,10 +313,12 @@ impl ParsedModule {
     );
     let mut passes = chain!(
       Optional::new(jsx_pass, options.transform_jsx),
+      Optional::new(transforms::DownlevelImportsFolder, options.repl_imports),
       proposals::decorators::decorators(proposals::decorators::Config {
         legacy: true,
         emit_metadata: options.emit_metadata
       }),
+      // DownlevelImportsFolder::new(), // todo: make this conditional
       helpers::inject_helpers(),
       typescript::strip::strip_with_config(strip_config_from_emit_options(
         options
