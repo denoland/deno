@@ -241,18 +241,15 @@
             this[_readyState] = CLOSED;
 
             const errEvent = new ErrorEvent("error");
-            errEvent.target = this;
             this.dispatchEvent(errEvent);
 
             const event = new CloseEvent("close");
-            event.target = this;
             this.dispatchEvent(event);
             tryClose(this[_rid]);
           });
         } else {
           this[_readyState] = OPEN;
           const event = new Event("open");
-          event.target = this;
           this.dispatchEvent(event);
 
           this.#eventLoop();
@@ -264,11 +261,9 @@
           "error",
           { error: err, message: err.toString() },
         );
-        errorEv.target = this;
         this.dispatchEvent(errorEv);
 
         const closeEv = new CloseEvent("close");
-        closeEv.target = this;
         this.dispatchEvent(closeEv);
       });
     }
@@ -372,7 +367,6 @@
             code: code ?? 1005,
             reason,
           });
-          event.target = this;
           this.dispatchEvent(event);
           tryClose(this[_rid]);
         });
@@ -392,7 +386,6 @@
               data: value,
               origin: this[_url],
             });
-            event.target = this;
             this.dispatchEvent(event);
             break;
           }
@@ -409,7 +402,6 @@
               data,
               origin: this[_url],
             });
-            event.target = this;
             this.dispatchEvent(event);
             break;
           }
@@ -428,7 +420,6 @@
               code: value.code,
               reason: value.reason,
             });
-            event.target = this;
             this.dispatchEvent(event);
             tryClose(this[_rid]);
             break;
@@ -439,11 +430,9 @@
             const errorEv = new ErrorEvent("error", {
               message: value,
             });
-            errorEv.target = this;
             this.dispatchEvent(errorEv);
 
             const closeEv = new CloseEvent("close");
-            closeEv.target = this;
             this.dispatchEvent(closeEv);
             tryClose(this[_rid]);
             break;

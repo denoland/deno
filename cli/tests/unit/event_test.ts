@@ -138,17 +138,17 @@ unitTest(function inspectEvent(): void {
   assertEquals(
     Deno.inspect(Event.prototype),
     `Event {
-  bubbles: [Getter/Setter],
-  cancelable: [Getter/Setter],
-  composed: [Getter/Setter],
-  currentTarget: [Getter/Setter],
-  defaultPrevented: [Getter/Setter],
-  eventPhase: [Getter/Setter],
+  bubbles: [Getter],
+  cancelable: [Getter],
+  composed: [Getter],
+  currentTarget: [Getter],
+  defaultPrevented: [Getter],
+  eventPhase: [Getter],
   srcElement: [Getter/Setter],
-  target: [Getter/Setter],
+  target: [Getter],
   returnValue: [Getter/Setter],
-  timeStamp: [Getter/Setter],
-  type: [Getter/Setter]
+  timeStamp: [Getter],
+  type: [Getter]
 }`,
   );
 
