@@ -436,7 +436,7 @@
         context: "Argument 1",
       });
 
-      length = webidl.converters["unsigned short"](data, {
+      length = webidl.converters["unsigned short"](length, {
         prefix,
         context: "Argument 2",
       });
