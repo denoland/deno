@@ -144,7 +144,7 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return buildCustomInspectOutput(this, EVENT_PROPS, inspect);
+      return inspect(buildFilteredPropertyInspectObject(this, EVENT_PROPS));
     }
 
     get type() {
@@ -395,9 +395,41 @@
     }
   }
 
-  function buildCustomInspectOutput(object, keys, inspect) {
-    const inspectObject = Object.fromEntries(keys.map((k) => [k, object[k]]));
-    return `${object.constructor.name} ${inspect(inspectObject)}`;
+  function buildFilteredPropertyInspectObject(object, keys) {
+    // forward the subset of properties from `object` without evaluating
+    // as evaluation could lead to an error, which is better handled
+    // in the inspect code
+    return new Proxy({}, {
+      get(_target, key) {
+        if (key === Symbol.toStringTag) {
+          return object.constructor?.name;
+        } else if (keys.includes(key)) {
+          return Reflect.get(object, key);
+        } else {
+          return undefined;
+        }
+      },
+      getOwnPropertyDescriptor(_target, key) {
+        if (!keys.includes(key)) {
+          return undefined;
+        }
+
+        return Reflect.getOwnPropertyDescriptor(object, key) ??
+          (object.prototype &&
+            Reflect.getOwnPropertyDescriptor(object.prototype, key)) ??
+          {
+            configurable: true,
+            enumerable: true,
+            value: object[key],
+          };
+      },
+      has(_target, key) {
+        return keys.includes(key);
+      },
+      ownKeys() {
+        return keys;
+      },
+    });
   }
 
   function defineEnumerableProps(
@@ -1053,14 +1085,14 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return buildCustomInspectOutput(this, [
+      return inspect(buildFilteredPropertyInspectObject(this, [
         ...EVENT_PROPS,
         "message",
         "filename",
         "lineno",
         "colno",
         "error",
-      ], inspect);
+      ]));
     }
   }
 
@@ -1107,12 +1139,12 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return buildCustomInspectOutput(this, [
+      return inspect(buildFilteredPropertyInspectObject(this, [
         ...EVENT_PROPS,
         "wasClean",
         "code",
         "reason",
-      ], inspect);
+      ]));
     }
   }
 
@@ -1135,12 +1167,12 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return buildCustomInspectOutput(this, [
+      return inspect(buildFilteredPropertyInspectObject(this, [
         ...EVENT_PROPS,
         "data",
         "origin",
         "lastEventId",
-      ], inspect);
+      ]));
     }
   }
 
@@ -1165,10 +1197,10 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return buildCustomInspectOutput(this, [
+      return inspect(buildFilteredPropertyInspectObject(this, [
         ...EVENT_PROPS,
         "detail",
-      ], inspect);
+      ]));
     }
   }
 
@@ -1188,12 +1220,12 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return buildCustomInspectOutput(this, [
+      return inspect(buildFilteredPropertyInspectObject(this, [
         ...EVENT_PROPS,
         "lengthComputable",
         "loaded",
         "total",
-      ], inspect);
+      ]));
     }
   }
 
