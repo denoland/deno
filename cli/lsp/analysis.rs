@@ -998,7 +998,8 @@ fn get_range_from_loc(start: &Loc, end: &Loc) -> lsp::Range {
   }
 }
 
-/// Narrow the range to only include
+/// Narrow the range to only include the text of the specifier, excluding the
+/// quotes.
 fn narrow_range(range: lsp::Range) -> lsp::Range {
   lsp::Range {
     start: lsp::Position {
@@ -1014,7 +1015,7 @@ fn narrow_range(range: lsp::Range) -> lsp::Range {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DependencyRange {
-  /// The LSP Range is inclusive the the quotes around the specifier.
+  /// The LSP Range is inclusive of the quotes around the specifier.
   pub range: lsp::Range,
   /// The text of the specifier within the document.
   pub specifier: String,
