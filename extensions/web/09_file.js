@@ -147,10 +147,6 @@
   const _parts = Symbol("Parts");
 
   class Blob {
-    get [Symbol.toStringTag]() {
-      return "Blob";
-    }
-
     #type = "";
     [_size] = 0;
     [_parts];
@@ -336,6 +332,14 @@
         offset += chunk.byteLength;
       }
       return bytes.buffer;
+    }
+
+    get [Symbol.toStringTag]() {
+      return "Blob";
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `Blob ${inspect({ size: this.size, type: this.#type })}`;
     }
   }
 
