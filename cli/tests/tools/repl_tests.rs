@@ -3,7 +3,7 @@ use test_util as util;
 #[cfg(unix)]
 #[test]
 fn pty_multiline() {
-  use std::io::Read;
+  use std::io::{Read, Write};
   use util::pty::fork::*;
   let deno_exe = util::deno_exe_path();
   let fork = Fork::from_ptmx().unwrap();
@@ -48,7 +48,7 @@ fn pty_multiline() {
 #[cfg(unix)]
 #[test]
 fn pty_unpaired_braces() {
-  use std::io::Read;
+  use std::io::{Read, Write};
   use util::pty::fork::*;
   let deno_exe = util::deno_exe_path();
   let fork = Fork::from_ptmx().unwrap();
@@ -77,7 +77,7 @@ fn pty_unpaired_braces() {
 #[cfg(unix)]
 #[test]
 fn pty_bad_input() {
-  use std::io::Read;
+  use std::io::{Read, Write};
   use util::pty::fork::*;
   let deno_exe = util::deno_exe_path();
   let fork = Fork::from_ptmx().unwrap();
@@ -102,7 +102,7 @@ fn pty_bad_input() {
 #[cfg(unix)]
 #[test]
 fn pty_complete_symbol() {
-  use std::io::Read;
+  use std::io::{Read, Write};
   use util::pty::fork::*;
   let deno_exe = util::deno_exe_path();
   let fork = Fork::from_ptmx().unwrap();
@@ -127,7 +127,7 @@ fn pty_complete_symbol() {
 #[cfg(unix)]
 #[test]
 fn pty_complete_declarations() {
-  use std::io::Read;
+  use std::io::{Read, Write};
   use util::pty::fork::*;
   let deno_exe = util::deno_exe_path();
   let fork = Fork::from_ptmx().unwrap();
@@ -156,7 +156,7 @@ fn pty_complete_declarations() {
 #[cfg(unix)]
 #[test]
 fn pty_ignore_symbols() {
-  use std::io::Read;
+  use std::io::{Read, Write};
   use util::pty::fork::*;
   let deno_exe = util::deno_exe_path();
   let fork = Fork::from_ptmx().unwrap();
