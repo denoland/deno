@@ -140,7 +140,7 @@
   }
 
   function constructKey(algorithm, extractable, usages, type, handle) {
-    let key = webidl.createBranded(CryptoKey);
+    const key = webidl.createBranded(CryptoKey);
     key[_algorithm] = algorithm;
     key[_extractable] = extractable;
     key[_usages] = usages;
@@ -155,7 +155,7 @@
     return a.includes(b) ? [b] : [];
   }
 
-  let keys = [];
+  const keys = [];
 
   class SubtleCrypto {
     constructor() {
