@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::not_supported;
 use deno_core::error::null_opbuf;
@@ -11,12 +10,9 @@ use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
-use serde::Serialize;
 
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::convert::TryInto;
 use std::rc::Rc;
@@ -28,8 +24,6 @@ use rand::rngs::StdRng;
 use rand::thread_rng;
 use rand::Rng;
 use rand::SeedableRng;
-use ring::agreement::Algorithm as RingAlgorithm;
-use ring::agreement::EphemeralPrivateKey;
 use ring::digest;
 use ring::hmac::Algorithm as HmacAlgorithm;
 use ring::hmac::Key as HmacKey;
@@ -40,9 +34,7 @@ use ring::signature::EcdsaSigningAlgorithm;
 use rsa::padding::PaddingScheme;
 use rsa::BigUint;
 use rsa::PrivateKeyEncoding;
-use rsa::PublicKeyParts;
 use rsa::RSAPrivateKey;
-use rsa::RSAPublicKey;
 use sha1::Sha1;
 use sha2::{Digest, Sha256, Sha384, Sha512};
 use std::path::PathBuf;
@@ -54,7 +46,6 @@ mod key;
 use crate::key::Algorithm;
 use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
-use crate::key::KeyUsage;
 
 // Whitelist for RSA public exponents.
 lazy_static! {
@@ -123,13 +114,12 @@ pub struct AlgorithmArg {
 }
 
 pub async fn op_crypto_generate_key(
-  state: Rc<RefCell<OpState>>,
+  _state: Rc<RefCell<OpState>>,
   args: AlgorithmArg,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<ZeroCopyBuf, AnyError> {
   let algorithm = args.name;
 
-  let mut state = state.borrow_mut();
   let key = match algorithm {
     Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss => {
       let exp = zero_copy.ok_or_else(|| {
@@ -196,6 +186,7 @@ pub async fn op_crypto_generate_key(
 
   Ok(key.into())
 }
+
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum KeyFormat {
@@ -206,6 +197,8 @@ pub enum KeyFormat {
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub struct KeyData {
+  // TODO(littledivy): Kept here to be used to importKey() in future.
+  #[allow(dead_code)]
   r#type: KeyFormat,
   data: ZeroCopyBuf,
 }
@@ -221,7 +214,7 @@ pub struct SignArg {
 }
 
 pub async fn op_crypto_sign_key(
-  state: Rc<RefCell<OpState>>,
+  _state: Rc<RefCell<OpState>>,
   args: SignArg,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<ZeroCopyBuf, AnyError> {
