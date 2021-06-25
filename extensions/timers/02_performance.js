@@ -7,6 +7,11 @@
   const illegalConstructorKey = Symbol("illegalConstructorKey");
   const customInspect = Symbol.for("Deno.customInspect");
   let performanceEntries = [];
+  let timeSinceEpoch;
+
+  function setTimeOrigin(timestamp) {
+    timeSinceEpoch = timestamp;
+  }
 
   function findMostRecent(
     name,
@@ -213,6 +218,10 @@
       }
     }
 
+    get timeOrigin() {
+      return timeSinceEpoch;
+    }
+
     clearMarks(markName) {
       if (markName == null) {
         performanceEntries = performanceEntries.filter(
@@ -360,5 +369,6 @@
     PerformanceMeasure,
     Performance,
     performance,
+    setTimeOrigin,
   };
 })(this);
