@@ -80,6 +80,8 @@ fn js_unit_tests() {
   assert!(status.success());
 }
 
+// resolve submodules from the current directory
+// rather than the "integration" sub directory
 #[path = ""]
 mod integration {
   use super::*;
