@@ -6,6 +6,14 @@
   const webidl = window.__bootstrap.webidl;
   const { algDict } = window.__bootstrap.crypto;
 
+  const supportedNamedCurves = ["P-256", "P-384", "P-512"];
+  const supportedHashIdentifiers = [
+    "SHA-1",
+    "SHA-256",
+    "SHA-384",
+    "SHA-512",
+  ];
+
   const supportedAlgorithms = {
     "digest": {
       "SHA-1": {},
@@ -60,6 +68,19 @@
 
     normalizedAlgorithm.name = algorithmName;
 
+    if (normalizeAlgorithm.namedCurve) {
+      const namedCurve = supportedNamedCurves
+        .find((key) =>
+          key.toLowerCase() == normalizeAlgorithm.namedCurve.toLowerCase()
+        );
+      if (namedCurve == undefined) {
+        throw new DOMException(
+          "namedCurve not supported",
+          "NotSupportedError",
+        );
+      }
+    }
+
     for (const member of algDict[desiredType]) {
       const idlValue = normalizedAlgorithm[member.key];
       if (member.converters == webidl.converters["BufferSource"]) {
@@ -77,6 +98,19 @@
         member.converters == webidl.converters["AlgorithmIdentifier"]
       ) {
         normalizedAlgorithm[member.key] = normalizeAlgorithm(idlValue, op);
+      }
+    }
+
+    if (normalizeAlgorithm.hash) {
+      const hash = supportedHashIdentifiers
+        .find((key) =>
+          key.toLowerCase() == normalizeAlgorithm.hash.toLowerCase()
+        );
+      if (hash == undefined) {
+        throw new DOMException(
+          "hash not supported",
+          "NotSupportedError",
+        );
       }
     }
 
@@ -209,7 +243,7 @@
       });
 
       algorithm = normalizeAlgorithm(algorithm, "sign");
-      
+
       const index = key[_handle];
       const keyData = keys[index];
 

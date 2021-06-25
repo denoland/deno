@@ -29,31 +29,11 @@
     "unwrapKey",
   ]);
 
-  const SupportedHashIdentifiers = [
-    "SHA-1",
-    "SHA-256",
-    "SHA-384",
-    "SHA-512",
-  ];
-
-  function validateHash(hash) {
-    const _hash = SupportedHashIdentifiers
-      .find((key) => key.toLowerCase() == hash.toLowerCase());
-    if (_hash == undefined) {
-      throw new DOMException(
-        "hash not supported",
-        "NotSupportedError",
-      );
-    }
-  }
-
   webidl.converters["HashAlgorithmIdentifier"] = (V, opts) => {
     if (typeof V == "object") {
-      validateHash(V.name);
       return webidl.converters["object"](V, opts);
     }
 
-    validateHash(V);
     return webidl.converters["DOMString"](V, opts);
   };
 
@@ -102,22 +82,11 @@
     RsaHashedKeyGenDictionary,
   );
 
-  const SupportedNamedCurves = ["P-256", "P-384", "P-512"];
   const EcKeyGenDictionary = [
     ...algorithmDictionary,
     {
       key: "namedCurve",
-      converter: (V, opts) => {
-        const namedCurve = SupportedNamedCurves
-          .find((key) => key.toLowerCase() == V.toLowerCase());
-        if (namedCurve == undefined) {
-          throw new DOMException(
-            "namedCurve not supported",
-            "NotSupportedError",
-          );
-        }
-        return webidl.converters["DOMString"](namedCurve, opts);
-      },
+      converter: webidl.converters["DOMString"],
       required: true,
     },
   ];
