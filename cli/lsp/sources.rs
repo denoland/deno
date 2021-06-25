@@ -2,7 +2,9 @@
 
 use super::analysis;
 use super::text::LineIndex;
+use super::tsc;
 
+use crate::config_file::ConfigFile;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
@@ -15,6 +17,7 @@ use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
 use crate::text_encoding;
 
+use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
@@ -26,10 +29,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::SystemTime;
+use tsc::NavigationTree;
 
 pub async fn cache(
   specifier: &ModuleSpecifier,
   maybe_import_map: &Option<ImportMap>,
+  maybe_config_file: &Option<ConfigFile>,
 ) -> Result<(), AnyError> {
   let program_state = Arc::new(ProgramState::build(Default::default()).await?);
   let handler = Arc::new(Mutex::new(FetchHandler::new(
@@ -38,6 +43,7 @@ pub async fn cache(
     Permissions::allow_all(),
   )?));
   let mut builder = GraphBuilder::new(handler, maybe_import_map.clone(), None);
+  builder.analyze_config_file(maybe_config_file).await?;
   builder.add(specifier, false).await
 }
 
@@ -104,6 +110,7 @@ struct Metadata {
   dependencies: Option<HashMap<String, analysis::Dependency>>,
   length_utf16: usize,
   line_index: LineIndex,
+  maybe_navigation_tree: Option<tsc::NavigationTree>,
   maybe_types: Option<analysis::ResolvedDependency>,
   maybe_warning: Option<String>,
   media_type: MediaType,
@@ -139,6 +146,7 @@ impl Metadata {
       dependencies,
       length_utf16: source.encode_utf16().count(),
       line_index,
+      maybe_navigation_tree: None,
       maybe_types,
       maybe_warning,
       media_type: media_type.to_owned(),
@@ -197,6 +205,13 @@ impl Sources {
     self.0.lock().unwrap().get_media_type(specifier)
   }
 
+  pub fn get_navigation_tree(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<tsc::NavigationTree> {
+    self.0.lock().unwrap().get_navigation_tree(specifier)
+  }
+
   pub fn get_script_version(
     &self,
     specifier: &ModuleSpecifier,
@@ -222,6 +237,18 @@ impl Sources {
 
   pub fn specifiers(&self) -> Vec<ModuleSpecifier> {
     self.0.lock().unwrap().metadata.keys().cloned().collect()
+  }
+
+  pub fn set_navigation_tree(
+    &self,
+    specifier: &ModuleSpecifier,
+    navigation_tree: tsc::NavigationTree,
+  ) -> Result<(), AnyError> {
+    self
+      .0
+      .lock()
+      .unwrap()
+      .set_navigation_tree(specifier, navigation_tree)
   }
 }
 
@@ -343,6 +370,16 @@ impl Inner {
     Some(metadata)
   }
 
+  fn get_navigation_tree(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<tsc::NavigationTree> {
+    let specifier =
+      resolve_specifier(specifier, &mut self.redirects, &self.http_cache)?;
+    let metadata = self.get_metadata(&specifier)?;
+    metadata.maybe_navigation_tree
+  }
+
   fn get_path(&mut self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
     if specifier.scheme() == "file" {
       specifier.to_file_path().ok()
@@ -460,6 +497,19 @@ impl Inner {
         }
       }
     }
+  }
+
+  fn set_navigation_tree(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    navigation_tree: NavigationTree,
+  ) -> Result<(), AnyError> {
+    let mut metadata = self
+      .metadata
+      .get_mut(specifier)
+      .ok_or_else(|| anyhow!("Specifier not found {}"))?;
+    metadata.maybe_navigation_tree = Some(navigation_tree);
+    Ok(())
   }
 }
 

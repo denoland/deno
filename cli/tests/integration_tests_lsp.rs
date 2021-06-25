@@ -21,6 +21,12 @@ fn load_fixture(path: &str) -> Value {
   serde_json::from_str(&fixture_str).unwrap()
 }
 
+fn load_fixture_str(path: &str) -> String {
+  let fixtures_path = root_path().join("cli/tests/lsp");
+  let path = fixtures_path.join(path);
+  fs::read_to_string(path).unwrap()
+}
+
 fn init(init_path: &str) -> LspClient {
   let deno_exe = deno_exe_path();
   let mut client = LspClient::new(&deno_exe).unwrap();
@@ -31,7 +37,10 @@ fn init(init_path: &str) -> LspClient {
   client
 }
 
-fn did_open<V>(client: &mut LspClient, params: V)
+fn did_open<V>(
+  client: &mut LspClient,
+  params: V,
+) -> Vec<lsp::PublishDiagnosticsParams>
 where
   V: Serialize,
 {
@@ -42,15 +51,27 @@ where
   let (id, method, _) = client.read_request::<Value>().unwrap();
   assert_eq!(method, "workspace/configuration");
   client
-    .write_response(id, json!({ "enable": true }))
+    .write_response(
+      id,
+      json!({
+        "enable": true,
+        "codeLens": {
+          "test": true
+        }
+      }),
+    )
     .unwrap();
 
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _) = client.read_notification::<Value>().unwrap();
-  assert_eq!(method, "textDocument/publishDiagnostics");
+  let mut diagnostics = vec![];
+  for _ in 0..3 {
+    let (method, response) = client
+      .read_notification::<lsp::PublishDiagnosticsParams>()
+      .unwrap();
+    assert_eq!(method, "textDocument/publishDiagnostics");
+    diagnostics.push(response.unwrap());
+  }
+
+  diagnostics
 }
 
 fn shutdown(client: &mut LspClient) {
@@ -63,6 +84,126 @@ fn shutdown(client: &mut LspClient) {
 #[test]
 fn lsp_startup_shutdown() {
   let mut client = init("initialize_params.json");
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_init_tsconfig() {
+  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let tsconfig =
+    serde_json::to_vec_pretty(&load_fixture("lib.tsconfig.json")).unwrap();
+  fs::write(temp_dir.path().join("lib.tsconfig.json"), tsconfig).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert("config".to_string(), json!("./lib.tsconfig.json"));
+    params.initialization_options = Some(Value::Object(map));
+  }
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "location.pathname;\n"
+      }
+    }),
+  );
+
+  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
+  assert_eq!(diagnostics.count(), 0);
+
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_tsconfig_types() {
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let tsconfig =
+    serde_json::to_vec_pretty(&load_fixture("types.tsconfig.json")).unwrap();
+  fs::write(temp_dir.path().join("types.tsconfig.json"), tsconfig).unwrap();
+  let a_dts = load_fixture_str("a.d.ts");
+  fs::write(temp_dir.path().join("a.d.ts"), a_dts).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert("config".to_string(), json!("./types.tsconfig.json"));
+    params.initialization_options = Some(Value::Object(map));
+  }
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": Url::from_file_path(temp_dir.path().join("test.ts")).unwrap(),
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(a);\n"
+      }
+    }),
+  );
+
+  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
+  assert_eq!(diagnostics.count(), 0);
+
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_triple_slash_types() {
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let a_dts = load_fixture_str("a.d.ts");
+  fs::write(temp_dir.path().join("a.d.ts"), a_dts).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": Url::from_file_path(temp_dir.path().join("test.ts")).unwrap(),
+        "languageId": "typescript",
+        "version": 1,
+        "text": "/// <reference types=\"./a.d.ts\" />\n\nconsole.log(a);\n"
+      }
+    }),
+  );
+
+  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
+  assert_eq!(diagnostics.count(), 0);
+
   shutdown(&mut client);
 }
 
@@ -901,7 +1042,8 @@ fn lsp_rename() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "let variable = 'a';\nconsole.log(variable);"
+        // this should not rename in comments and strings
+        "text": "let variable = 'a'; // variable\nconsole.log(variable);\n\"variable\";\n"
       }
     }),
   );
@@ -1092,7 +1234,7 @@ fn lsp_code_lens_impl() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "interface A {\n  b(): void;\n}\n\nclass B implements A {\n  b() {\n    console.log(\"b\");\n  }\n}\n"
+        "text": "interface A {\n  b(): void;\n}\n\nclass B implements A {\n  b() {\n    console.log(\"b\");\n  }\n}\n\ninterface C {\n  c: string;\n}\n"
       }
     }),
   );
@@ -1137,6 +1279,117 @@ fn lsp_code_lens_impl() {
     maybe_res,
     Some(load_fixture("code_lens_resolve_response_impl.json"))
   );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "codeLens/resolve",
+      json!({
+        "range": {
+          "start": {
+            "line": 10,
+            "character": 10
+          },
+          "end": {
+            "line": 10,
+            "character": 11
+          }
+        },
+        "data": {
+          "specifier": "file:///a/file.ts",
+          "source": "implementations"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "range": {
+        "start": {
+          "line": 10,
+          "character": 10
+        },
+        "end": {
+          "line": 10,
+          "character": 11
+        }
+      },
+      "command": {
+        "title": "0 implementations",
+        "command": ""
+      }
+    }))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_code_lens_test() {
+  let mut client = init("initialize_params_code_lens_test.json");
+  did_open(
+    &mut client,
+    load_fixture("did_open_params_test_code_lens.json"),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeLens",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_lens_response_test.json"))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_code_lens_test_disabled() {
+  let mut client = init("initialize_params_code_lens_test_disabled.json");
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      load_fixture("did_open_params_test_code_lens.json"),
+    )
+    .unwrap();
+
+  let (id, method, _) = client.read_request::<Value>().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(
+      id,
+      json!({
+        "enable": true,
+        "codeLens": {
+          "test": false
+        }
+      }),
+    )
+    .unwrap();
+
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeLens",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(maybe_res, Some(json!([])));
   shutdown(&mut client);
 }
 
@@ -1222,6 +1475,79 @@ fn lsp_code_lens_non_doc_nav_tree() {
     .unwrap();
   assert!(maybe_err.is_none());
   assert!(maybe_res.is_some());
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_nav_tree_updates() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "interface A {\n  b(): void;\n}\n\nclass B implements A {\n  b() {\n    console.log(\"b\");\n  }\n}\n\ninterface C {\n  c: string;\n}\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeLens",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_lens_response_impl.json"))
+  );
+  client
+    .write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "version": 2
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": {
+                "line": 10,
+                "character": 0
+              },
+              "end": {
+                "line": 13,
+                "character": 0
+              }
+            },
+            "text": ""
+          }
+        ]
+      }),
+    )
+    .unwrap();
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeLens",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_lens_response_changed.json"))
+  );
   shutdown(&mut client);
 }
 
@@ -1994,6 +2320,137 @@ fn lsp_diagnostics_deno_types() {
   shutdown(&mut client);
 }
 
+#[test]
+fn lsp_diagnostics_refresh_dependents() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file_00.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export const a = \"a\";\n",
+      },
+    }),
+  );
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file_01.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export * from \"./file_00.ts\";\n",
+      },
+    }),
+  );
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file_02.ts",
+          "languageId": "typescript",
+          "version": 1,
+          "text": "import { a, b } from \"./file_01.ts\";\n\nconsole.log(a, b);\n"
+        }
+      }),
+    )
+    .unwrap();
+
+  let (id, method, _) = client.read_request::<Value>().unwrap();
+  assert_eq!(method, "workspace/configuration");
+  client
+    .write_response(id, json!({ "enable": false }))
+    .unwrap();
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, maybe_params) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  assert_eq!(
+    maybe_params,
+    Some(json!({
+      "uri": "file:///a/file_02.ts",
+      "diagnostics": [
+        {
+          "range": {
+            "start": {
+              "line": 0,
+              "character": 12
+            },
+            "end": {
+              "line": 0,
+              "character": 13
+            }
+          },
+          "severity": 1,
+          "code": 2305,
+          "source": "deno-ts",
+          "message": "Module '\"./file_01.ts\"' has no exported member 'b'."
+        }
+      ],
+      "version": 1
+    }))
+  );
+  client
+    .write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file_00.ts",
+          "version": 2
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": {
+                "line": 1,
+                "character": 0
+              },
+              "end": {
+                "line": 1,
+                "character": 0
+              }
+            },
+            "text": "export const b = \"b\";\n"
+          }
+        ]
+      }),
+    )
+    .unwrap();
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  let (method, _) = client.read_notification::<Value>().unwrap();
+  assert_eq!(method, "textDocument/publishDiagnostics");
+  // ensure that the server publishes any inflight diagnostics
+  std::thread::sleep(std::time::Duration::from_millis(250));
+  client
+    .write_request::<_, _, Value>("shutdown", json!(null))
+    .unwrap();
+  client.write_notification("exit", json!(null)).unwrap();
+
+  let queue_len = client.queue_len();
+  assert!(!client.queue_is_empty());
+  for i in 0..queue_len {
+    let (method, maybe_params) = client
+      .read_notification::<lsp::PublishDiagnosticsParams>()
+      .unwrap();
+    assert_eq!(method, "textDocument/publishDiagnostics");
+    // the last 3 diagnostic publishes should be the clear of any diagnostics
+    if queue_len - i <= 3 {
+      assert!(maybe_params.is_some());
+      let params = maybe_params.unwrap();
+      assert!(params.diagnostics.is_empty());
+    }
+  }
+  assert!(client.queue_is_empty());
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PerformanceAverage {
@@ -2359,6 +2816,34 @@ fn lsp_configuration_did_change() {
   assert_eq!(
     maybe_res,
     Some(load_fixture("completion_resolve_response_registry.json"))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_code_actions_ignore_lint() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "let message = 'Hello, Deno!';\nconsole.log(message);\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeAction",
+      load_fixture("code_action_ignore_lint_params.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_action_ignore_lint_response.json"))
   );
   shutdown(&mut client);
 }

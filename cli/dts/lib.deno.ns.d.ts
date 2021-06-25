@@ -90,6 +90,24 @@ declare namespace Deno {
   /** The current process id of the runtime. */
   export const pid: number;
 
+  /**
+   * The pid of the current process's parent.
+   */
+  export const ppid: number;
+
+  export interface MemoryUsage {
+    rss: number;
+    heapTotal: number;
+    heapUsed: number;
+    external: number;
+  }
+
+  /**
+   * Returns an object describing the memory usage of the Deno process measured
+   * in bytes.
+   */
+  export function memoryUsage(): MemoryUsage;
+
   /** Reflects the `NO_COLOR` environment variable at program start.
    *
    * See: https://no-color.org/ */
@@ -248,7 +266,7 @@ declare namespace Deno {
    *
    * Requires --allow-read.
    */
-  export function chdir(directory: string): void;
+  export function chdir(directory: string | URL): void;
 
   /**
    * Return a string representing the current working directory.
@@ -843,6 +861,15 @@ declare namespace Deno {
     mode?: number;
   }
 
+  export interface ReadFileOptions {
+    /**
+     * An abort signal to allow cancellation of the file read operation.
+     * If the signal becomes aborted the readFile operation will be stopped
+     * and the promise returned will be rejected with an AbortError.
+     */
+    signal?: AbortSignal;
+  }
+
   /**
    *
    *  Check if a given resource id (`rid`) is a TTY.
@@ -1322,7 +1349,10 @@ declare namespace Deno {
    * they are. It's always an error to rename anything to a non-empty directory.
    *
    * Requires `allow-read` and `allow-write` permissions. */
-  export function renameSync(oldpath: string, newpath: string): void;
+  export function renameSync(
+    oldpath: string | URL,
+    newpath: string | URL,
+  ): void;
 
   /** Renames (moves) `oldpath` to `newpath`.  Paths may be files or directories.
    * If `newpath` already exists and is not a directory, `rename()` replaces it.
@@ -1339,7 +1369,10 @@ declare namespace Deno {
    * they are. It's always an error to rename anything to a non-empty directory.
    *
    * Requires `allow-read` and `allow-write` permission. */
-  export function rename(oldpath: string, newpath: string): Promise<void>;
+  export function rename(
+    oldpath: string | URL,
+    newpath: string | URL,
+  ): Promise<void>;
 
   /** Synchronously reads and returns the entire contents of a file as utf8
    *  encoded string. Reading a directory throws an error.
@@ -1361,7 +1394,10 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-read` permission. */
-  export function readTextFile(path: string | URL): Promise<string>;
+  export function readTextFile(
+    path: string | URL,
+    options?: ReadFileOptions,
+  ): Promise<string>;
 
   /** Synchronously reads and returns the entire contents of a file as an array
    * of bytes. `TextDecoder` can be used to transform the bytes to string if
@@ -1387,7 +1423,10 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-read` permission. */
-  export function readFile(path: string | URL): Promise<Uint8Array>;
+  export function readFile(
+    path: string | URL,
+    options?: ReadFileOptions,
+  ): Promise<Uint8Array>;
 
   /** A FileInfo describes a file and is returned by `stat`, `lstat`,
    * `statSync`, `lstatSync`. */
@@ -2373,8 +2412,8 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission. */
   export function symlinkSync(
-    oldpath: string,
-    newpath: string,
+    oldpath: string | URL,
+    newpath: string | URL,
     options?: SymlinkOptions,
   ): void;
 
@@ -2390,8 +2429,8 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission. */
   export function symlink(
-    oldpath: string,
-    newpath: string,
+    oldpath: string | URL,
+    newpath: string | URL,
     options?: SymlinkOptions,
   ): Promise<void>;
 

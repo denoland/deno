@@ -16,6 +16,8 @@ delete Object.prototype.__proto__;
   const errorStack = window.__bootstrap.errorStack;
   const os = window.__bootstrap.os;
   const timers = window.__bootstrap.timers;
+  const base64 = window.__bootstrap.base64;
+  const encoding = window.__bootstrap.encoding;
   const Console = window.__bootstrap.console.Console;
   const worker = window.__bootstrap.worker;
   const signals = window.__bootstrap.signals;
@@ -34,11 +36,14 @@ delete Object.prototype.__proto__;
   const formData = window.__bootstrap.formData;
   const fetch = window.__bootstrap.fetch;
   const prompt = window.__bootstrap.prompt;
+  const messagePort = window.__bootstrap.messagePort;
   const denoNs = window.__bootstrap.denoNs;
   const denoNsUnstable = window.__bootstrap.denoNsUnstable;
   const errors = window.__bootstrap.errors.errors;
   const webidl = window.__bootstrap.webidl;
   const { defineEventHandler } = window.__bootstrap.webUtil;
+  const { deserializeJsMessageData, serializeJsMessageData } =
+    window.__bootstrap.messagePort;
 
   let windowIsClosing = false;
 
@@ -74,27 +79,58 @@ delete Object.prototype.__proto__;
   const onmessage = () => {};
   const onerror = () => {};
 
-  function postMessage(data) {
-    const dataIntArray = core.serialize(data);
-    core.opSync("op_worker_post_message", null, dataIntArray);
+  function postMessage(message, transferOrOptions = {}) {
+    const prefix =
+      "Failed to execute 'postMessage' on 'DedicatedWorkerGlobalScope'";
+    webidl.requiredArguments(arguments.length, 1, { prefix });
+    message = webidl.converters.any(message);
+    let options;
+    if (
+      webidl.type(transferOrOptions) === "Object" &&
+      transferOrOptions !== undefined &&
+      transferOrOptions[Symbol.iterator] !== undefined
+    ) {
+      const transfer = webidl.converters["sequence<object>"](
+        transferOrOptions,
+        { prefix, context: "Argument 2" },
+      );
+      options = { transfer };
+    } else {
+      options = webidl.converters.PostMessageOptions(transferOrOptions, {
+        prefix,
+        context: "Argument 2",
+      });
+    }
+    const { transfer } = options;
+    const data = serializeJsMessageData(message, transfer);
+    core.opSync("op_worker_post_message", data);
   }
 
   let isClosing = false;
+  let globalDispatchEvent;
+
   async function pollForMessages() {
+    if (!globalDispatchEvent) {
+      globalDispatchEvent = globalThis.dispatchEvent.bind(globalThis);
+    }
     while (!isClosing) {
-      const bufferMsg = await core.opAsync("op_worker_get_message");
-      const data = core.deserialize(bufferMsg);
+      const data = await core.opAsync("op_worker_recv_message");
+      if (data === null) break;
+      const v = deserializeJsMessageData(data);
+      const message = v[0];
+      const transfer = v[1];
 
       const msgEvent = new MessageEvent("message", {
         cancelable: false,
-        data,
+        data: message,
+        ports: transfer,
       });
 
       try {
         if (globalThis.onmessage) {
           await globalThis.onmessage(msgEvent);
         }
-        globalThis.dispatchEvent(msgEvent);
+        globalDispatchEvent(msgEvent);
       } catch (e) {
         let handled = false;
 
@@ -118,7 +154,7 @@ delete Object.prototype.__proto__;
           handled = ret === true;
         }
 
-        globalThis.dispatchEvent(errorEvent);
+        globalDispatchEvent(errorEvent);
         if (errorEvent.defaultPrevented) {
           handled = true;
         }
@@ -196,6 +232,12 @@ delete Object.prototype.__proto__;
       "DOMExceptionNotSupportedError",
       function DOMExceptionNotSupportedError(msg) {
         return new DOMException(msg, "NotSupported");
+      },
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionInvalidCharacterError",
+      function DOMExceptionInvalidCharacterError(msg) {
+        return new DOMException(msg, "InvalidCharacterError");
       },
     );
   }
@@ -277,26 +319,44 @@ delete Object.prototype.__proto__;
     ),
     Request: util.nonEnumerable(fetch.Request),
     Response: util.nonEnumerable(fetch.Response),
-    TextDecoder: util.nonEnumerable(TextDecoder),
-    TextEncoder: util.nonEnumerable(TextEncoder),
+    TextDecoder: util.nonEnumerable(encoding.TextDecoder),
+    TextEncoder: util.nonEnumerable(encoding.TextEncoder),
+    TextDecoderStream: util.nonEnumerable(encoding.TextDecoderStream),
+    TextEncoderStream: util.nonEnumerable(encoding.TextEncoderStream),
     TransformStream: util.nonEnumerable(streams.TransformStream),
     URL: util.nonEnumerable(url.URL),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
     BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
+    MessageChannel: util.nonEnumerable(messagePort.MessageChannel),
+    MessagePort: util.nonEnumerable(messagePort.MessagePort),
     Worker: util.nonEnumerable(worker.Worker),
     WritableStream: util.nonEnumerable(streams.WritableStream),
     WritableStreamDefaultWriter: util.nonEnumerable(
       streams.WritableStreamDefaultWriter,
     ),
-    atob: util.writable(atob),
-    btoa: util.writable(btoa),
+    WritableStreamDefaultController: util.nonEnumerable(
+      streams.WritableStreamDefaultController,
+    ),
+    ReadableByteStreamController: util.nonEnumerable(
+      streams.ReadableByteStreamController,
+    ),
+    ReadableStreamDefaultController: util.nonEnumerable(
+      streams.ReadableStreamDefaultController,
+    ),
+    TransformStreamDefaultController: util.nonEnumerable(
+      streams.TransformStreamDefaultController,
+    ),
+    atob: util.writable(base64.atob),
+    btoa: util.writable(base64.btoa),
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
     console: util.writable(
       new Console((msg, level) => core.print(msg, level > 1)),
     ),
-    crypto: util.readOnly(crypto),
+    crypto: util.readOnly(crypto.crypto),
+    Crypto: util.nonEnumerable(crypto.Crypto),
+    SubtleCrypto: util.nonEnumerable(crypto.SubtleCrypto),
     fetch: util.writable(fetch.fetch),
     performance: util.writable(performance.performance),
     setInterval: util.writable(timers.setInterval),
@@ -460,10 +520,9 @@ delete Object.prototype.__proto__;
       Object.assign(finalDenoNs, denoNsUnstable);
     }
 
-    // Setup `Deno` global - we're actually overriding already
-    // existing global `Deno` with `Deno` namespace from "./deno.ts".
-    util.immutableDefine(globalThis, "Deno", finalDenoNs);
-    Object.freeze(globalThis.Deno);
+    // Setup `Deno` global - we're actually overriding already existing global
+    // `Deno` with `Deno` namespace from "./deno.ts".
+    Object.defineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
     Object.freeze(globalThis.Deno.core);
     Object.freeze(globalThis.Deno.core.sharedQueue);
     signals.setSignals();

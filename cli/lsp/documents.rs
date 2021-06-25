@@ -2,6 +2,7 @@
 
 use super::analysis;
 use super::text::LineIndex;
+use super::tsc;
 
 use crate::media_type::MediaType;
 
@@ -12,6 +13,7 @@ use deno_core::error::Context;
 use deno_core::ModuleSpecifier;
 use lspower::lsp::TextDocumentContentChangeEvent;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::ops::Range;
 use std::str::FromStr;
 
@@ -65,6 +67,7 @@ pub struct DocumentData {
   bytes: Option<Vec<u8>>,
   language_id: LanguageId,
   line_index: Option<LineIndex>,
+  maybe_navigation_tree: Option<tsc::NavigationTree>,
   specifier: ModuleSpecifier,
   dependencies: Option<HashMap<String, analysis::Dependency>>,
   version: Option<i32>,
@@ -81,6 +84,7 @@ impl DocumentData {
       bytes: Some(source.as_bytes().to_owned()),
       language_id,
       line_index: Some(LineIndex::new(source)),
+      maybe_navigation_tree: None,
       specifier,
       dependencies: None,
       version: Some(version),
@@ -121,6 +125,7 @@ impl DocumentData {
     } else {
       Some(LineIndex::new(&content))
     };
+    self.maybe_navigation_tree = None;
     Ok(())
   }
 
@@ -134,14 +139,56 @@ impl DocumentData {
       Ok(None)
     }
   }
+
+  pub fn content_line(&self, line: usize) -> Result<Option<String>, AnyError> {
+    let content = self.content().ok().flatten();
+    if let Some(content) = content {
+      let lines = content.lines().into_iter().collect::<Vec<&str>>();
+      Ok(Some(lines[line].to_string()))
+    } else {
+      Ok(None)
+    }
+  }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct DocumentCache {
-  docs: HashMap<ModuleSpecifier, DocumentData>,
+  dependents_graph: HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>>,
+  pub docs: HashMap<ModuleSpecifier, DocumentData>,
 }
 
 impl DocumentCache {
+  /// Calculate a graph of dependents and set it on the structure.
+  fn calculate_dependents(&mut self) {
+    let mut dependents_graph: HashMap<
+      ModuleSpecifier,
+      HashSet<ModuleSpecifier>,
+    > = HashMap::new();
+    for (specifier, data) in &self.docs {
+      if let Some(dependencies) = &data.dependencies {
+        for dependency in dependencies.values() {
+          if let Some(analysis::ResolvedDependency::Resolved(dep_specifier)) =
+            &dependency.maybe_code
+          {
+            dependents_graph
+              .entry(dep_specifier.clone())
+              .or_default()
+              .insert(specifier.clone());
+          }
+          if let Some(analysis::ResolvedDependency::Resolved(dep_specifier)) =
+            &dependency.maybe_type
+          {
+            dependents_graph
+              .entry(dep_specifier.clone())
+              .or_default()
+              .insert(specifier.clone());
+          }
+        }
+      }
+    }
+    self.dependents_graph = dependents_graph;
+  }
+
   pub fn change(
     &mut self,
     specifier: &ModuleSpecifier,
@@ -166,6 +213,7 @@ impl DocumentCache {
 
   pub fn close(&mut self, specifier: &ModuleSpecifier) {
     self.docs.remove(specifier);
+    self.calculate_dependents();
   }
 
   pub fn contains_key(&self, specifier: &ModuleSpecifier) -> bool {
@@ -183,12 +231,31 @@ impl DocumentCache {
     }
   }
 
+  // For a given specifier, get all open documents which directly or indirectly
+  // depend upon the specifier.
+  pub fn dependents(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Vec<ModuleSpecifier> {
+    let mut dependents = HashSet::new();
+    self.recurse_dependents(specifier, &mut dependents);
+    dependents.into_iter().collect()
+  }
+
   pub fn dependencies(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<HashMap<String, analysis::Dependency>> {
     let doc = self.docs.get(specifier)?;
     doc.dependencies.clone()
+  }
+
+  pub fn get_navigation_tree(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<tsc::NavigationTree> {
+    let doc = self.docs.get(specifier)?;
+    doc.maybe_navigation_tree.clone()
   }
 
   /// Determines if the specifier should be processed for diagnostics and other
@@ -260,6 +327,21 @@ impl DocumentCache {
       .collect()
   }
 
+  fn recurse_dependents(
+    &self,
+    specifier: &ModuleSpecifier,
+    dependents: &mut HashSet<ModuleSpecifier>,
+  ) {
+    if let Some(deps) = self.dependents_graph.get(specifier) {
+      for dep in deps {
+        if !dependents.contains(dep) {
+          dependents.insert(dep.clone());
+          self.recurse_dependents(dep, dependents);
+        }
+      }
+    }
+  }
+
   pub fn set_dependencies(
     &mut self,
     specifier: &ModuleSpecifier,
@@ -267,6 +349,26 @@ impl DocumentCache {
   ) -> Result<(), AnyError> {
     if let Some(doc) = self.docs.get_mut(specifier) {
       doc.dependencies = maybe_dependencies;
+      self.calculate_dependents();
+      Ok(())
+    } else {
+      Err(custom_error(
+        "NotFound",
+        format!(
+          "The specifier (\"{}\") does not exist in the document cache.",
+          specifier
+        ),
+      ))
+    }
+  }
+
+  pub fn set_navigation_tree(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    navigation_tree: tsc::NavigationTree,
+  ) -> Result<(), AnyError> {
+    if let Some(doc) = self.docs.get_mut(specifier) {
+      doc.maybe_navigation_tree = Some(navigation_tree);
       Ok(())
     } else {
       Err(custom_error(

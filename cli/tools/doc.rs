@@ -125,6 +125,9 @@ pub async fn print_docs(
       program_state.lockfile.clone(),
     );
     builder.add(&root_specifier, false).await?;
+    builder
+      .analyze_config_file(&program_state.maybe_config_file)
+      .await?;
     let graph = builder.get_graph();
 
     let doc_parser = doc::DocParser::new(Box::new(graph), private);

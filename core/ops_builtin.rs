@@ -61,10 +61,10 @@ pub fn op_print(
   is_err: bool,
 ) -> Result<(), AnyError> {
   if is_err {
-    eprint!("{}", msg);
+    stderr().write_all(msg.as_bytes())?;
     stderr().flush().unwrap();
   } else {
-    print!("{}", msg);
+    stdout().write_all(msg.as_bytes())?;
     stdout().flush().unwrap();
   }
   Ok(())

@@ -105,7 +105,7 @@
     constructor(name) {
       super();
 
-      const prefix = "Failed to construct 'broadcastChannel'";
+      const prefix = "Failed to construct 'BroadcastChannel'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
       this[_name] = webidl.converters["DOMString"](name, {

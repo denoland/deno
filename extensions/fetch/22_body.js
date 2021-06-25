@@ -5,10 +5,9 @@
 /// <reference path="../url/internal.d.ts" />
 /// <reference path="../url/lib.deno_url.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../file/internal.d.ts" />
-/// <reference path="../file/lib.deno_file.d.ts" />
+/// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
-/// <reference path="./11_streams_types.d.ts" />
+/// <reference path="../web/06_streams_types.d.ts" />
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 "use strict";
@@ -17,10 +16,11 @@
   const core = window.Deno.core;
   const webidl = globalThis.__bootstrap.webidl;
   const { parseUrlEncoded } = globalThis.__bootstrap.url;
-  const { parseFormData, formDataFromEntries, encodeFormData } =
+  const { parseFormData, formDataFromEntries, formDataToBlob } =
     globalThis.__bootstrap.formData;
   const mimesniff = globalThis.__bootstrap.mimesniff;
-  const { isReadableStreamDisturbed } = globalThis.__bootstrap.streams;
+  const { isReadableStreamDisturbed, errorReadableStream, createProxy } =
+    globalThis.__bootstrap.streams;
 
   class InnerBody {
     /** @type {ReadableStream<Uint8Array> | { body: Uint8Array, consumed: boolean }} */
@@ -106,6 +106,22 @@
       }
     }
 
+    cancel(error) {
+      if (this.streamOrStatic instanceof ReadableStream) {
+        this.streamOrStatic.cancel(error);
+      } else {
+        this.streamOrStatic.consumed = true;
+      }
+    }
+
+    error(error) {
+      if (this.streamOrStatic instanceof ReadableStream) {
+        errorReadableStream(this.streamOrStatic, error);
+      } else {
+        this.streamOrStatic.consumed = true;
+      }
+    }
+
     /**
      * @returns {InnerBody}
      */
@@ -116,6 +132,23 @@
       second.source = core.deserialize(core.serialize(this.source));
       second.length = this.length;
       return second;
+    }
+
+    /**
+     * @returns {InnerBody}
+     */
+    createProxy() {
+      let proxyStreamOrStatic;
+      if (this.streamOrStatic instanceof ReadableStream) {
+        proxyStreamOrStatic = createProxy(this.streamOrStatic);
+      } else {
+        proxyStreamOrStatic = { ...this.streamOrStatic };
+        this.streamOrStatic.consumed = true;
+      }
+      const proxy = new InnerBody(proxyStreamOrStatic);
+      proxy.source = this.source;
+      proxy.length = this.length;
+      return proxy;
     }
   }
 
@@ -223,8 +256,6 @@
     return Object.defineProperties(prototype.prototype, mixin);
   }
 
-  const decoder = new TextDecoder();
-
   /**
    * https://fetch.spec.whatwg.org/#concept-body-package-data
    * @param {Uint8Array} bytes
@@ -263,13 +294,11 @@
         throw new TypeError("Missing content type");
       }
       case "JSON":
-        return JSON.parse(decoder.decode(bytes));
+        return JSON.parse(core.decode(bytes));
       case "text":
-        return decoder.decode(bytes);
+        return core.decode(bytes);
     }
   }
-
-  const encoder = new TextEncoder();
 
   /**
    * @param {BodyInit} object
@@ -299,16 +328,16 @@
       const copy = u8.slice(0, u8.byteLength);
       source = copy;
     } else if (object instanceof FormData) {
-      const res = encodeFormData(object);
-      stream = { body: res.body, consumed: false };
-      source = object;
-      length = res.body.byteLength;
-      contentType = res.contentType;
+      const res = formDataToBlob(object);
+      stream = res.stream();
+      source = res;
+      length = res.size;
+      contentType = res.type;
     } else if (object instanceof URLSearchParams) {
-      source = encoder.encode(object.toString());
+      source = core.encode(object.toString());
       contentType = "application/x-www-form-urlencoded;charset=UTF-8";
     } else if (typeof object === "string") {
-      source = encoder.encode(object);
+      source = core.encode(object);
       contentType = "text/plain;charset=UTF-8";
     } else if (object instanceof ReadableStream) {
       stream = object;

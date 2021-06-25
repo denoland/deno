@@ -15,6 +15,8 @@ use std::path::PathBuf;
 #[derive(Clone)]
 struct OriginStorageDir(PathBuf);
 
+const MAX_STORAGE_BYTES: u32 = 10 * 1024 * 1024;
+
 pub fn init(origin_storage_dir: Option<PathBuf>) -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -136,10 +138,12 @@ pub fn op_webstorage_set(
     conn.prepare("SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'")?;
   let size: u32 = stmt.query_row(params![], |row| row.get(0))?;
 
-  if size >= 5000000 {
+  if size >= MAX_STORAGE_BYTES {
     return Err(
-      DomExceptionQuotaExceededError::new("Exceeded maximum storage size")
-        .into(),
+      deno_web::DomExceptionQuotaExceededError::new(
+        "Exceeded maximum storage size",
+      )
+      .into(),
     );
   }
 
@@ -210,34 +214,6 @@ pub fn op_webstorage_iterate_keys(
     .collect();
 
   Ok(keys)
-}
-
-#[derive(Debug)]
-pub struct DomExceptionQuotaExceededError {
-  pub msg: String,
-}
-
-impl DomExceptionQuotaExceededError {
-  pub fn new(msg: &str) -> Self {
-    DomExceptionQuotaExceededError {
-      msg: msg.to_string(),
-    }
-  }
-}
-
-impl fmt::Display for DomExceptionQuotaExceededError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.pad(&self.msg)
-  }
-}
-
-impl std::error::Error for DomExceptionQuotaExceededError {}
-
-pub fn get_quota_exceeded_error_class_name(
-  e: &AnyError,
-) -> Option<&'static str> {
-  e.downcast_ref::<DomExceptionQuotaExceededError>()
-    .map(|_| "DOMExceptionQuotaExceededError")
 }
 
 #[derive(Debug)]

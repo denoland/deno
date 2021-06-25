@@ -10,15 +10,13 @@ window.add_result_callback(({ message, name, stack, status }) => {
   }
 });
 
-window.add_completion_callback((_tests, _harnessStatus) => {
-  Deno.exit(0);
+window.add_completion_callback((_tests, harnessStatus) => {
+  const data = new TextEncoder().encode(
+    `#$#$#${JSON.stringify(harnessStatus)}\n`,
+  );
+  let bytesWritten = 0;
+  while (bytesWritten < data.byteLength) {
+    bytesWritten += Deno.stderr.writeSync(data.subarray(bytesWritten));
+  }
+  Deno.exit(harnessStatus.status === 0 ? 0 : 1);
 });
-
-globalThis.document = {
-  // document.body shim for FileAPI/file/File-constructor.any.html test
-  body: {
-    toString() {
-      return "[object HTMLBodyElement]";
-    },
-  },
-};

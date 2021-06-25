@@ -5,6 +5,7 @@ use super::tsc;
 
 use crate::ast;
 use crate::import_map::ImportMap;
+use crate::lsp::documents::DocumentData;
 use crate::media_type::MediaType;
 use crate::module_graph::parse_deno_types;
 use crate::module_graph::parse_ts_reference;
@@ -15,7 +16,6 @@ use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleResolutionError;
@@ -394,21 +394,6 @@ pub fn analyze_dependencies(
   (dependencies, maybe_type)
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub enum CodeLensSource {
-  #[serde(rename = "implementations")]
-  Implementations,
-  #[serde(rename = "references")]
-  References,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodeLensData {
-  pub source: CodeLensSource,
-  pub specifier: ModuleSpecifier,
-}
-
 fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
   match code {
     Some(lsp::NumberOrString::String(str)) => str.clone(),
@@ -635,6 +620,7 @@ pub struct DenoFixData {
 #[derive(Debug, Clone)]
 enum CodeActionKind {
   Deno(lsp::CodeAction),
+  DenoLint(lsp::CodeAction),
   Tsc(lsp::CodeAction, tsc::CodeFixAction),
 }
 
@@ -678,6 +664,106 @@ impl CodeActionCollection {
       };
       self.actions.push(CodeActionKind::Deno(code_action));
     }
+    Ok(())
+  }
+
+  pub(crate) fn add_deno_lint_ignore_action(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    document: Option<&DocumentData>,
+    diagnostic: &lsp::Diagnostic,
+  ) -> Result<(), AnyError> {
+    let code = diagnostic
+      .code
+      .as_ref()
+      .map(|v| match v {
+        lsp::NumberOrString::String(v) => v.to_owned(),
+        _ => "".to_string(),
+      })
+      .unwrap();
+
+    let line_content = if let Some(doc) = document {
+      doc
+        .content_line(diagnostic.range.start.line as usize)
+        .ok()
+        .flatten()
+    } else {
+      None
+    };
+
+    let mut changes = HashMap::new();
+    changes.insert(
+      specifier.clone(),
+      vec![lsp::TextEdit {
+        new_text: prepend_whitespace(
+          format!("// deno-lint-ignore {}\n", code),
+          line_content,
+        ),
+        range: lsp::Range {
+          start: lsp::Position {
+            line: diagnostic.range.start.line,
+            character: 0,
+          },
+          end: lsp::Position {
+            line: diagnostic.range.start.line,
+            character: 0,
+          },
+        },
+      }],
+    );
+    let ignore_error_action = lsp::CodeAction {
+      title: format!("Disable {} for this line", code),
+      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      diagnostics: Some(vec![diagnostic.clone()]),
+      command: None,
+      is_preferred: None,
+      disabled: None,
+      data: None,
+      edit: Some(lsp::WorkspaceEdit {
+        changes: Some(changes),
+        change_annotations: None,
+        document_changes: None,
+      }),
+    };
+    self
+      .actions
+      .push(CodeActionKind::DenoLint(ignore_error_action));
+
+    let mut changes = HashMap::new();
+    changes.insert(
+      specifier.clone(),
+      vec![lsp::TextEdit {
+        new_text: "// deno-lint-ignore-file\n".to_string(),
+        range: lsp::Range {
+          start: lsp::Position {
+            line: 0,
+            character: 0,
+          },
+          end: lsp::Position {
+            line: 0,
+            character: 0,
+          },
+        },
+      }],
+    );
+    let ignore_file_action = lsp::CodeAction {
+      title: "Ignore lint errors for the entire file".to_string(),
+      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      diagnostics: Some(vec![diagnostic.clone()]),
+      command: None,
+      is_preferred: None,
+      disabled: None,
+      data: None,
+      edit: Some(lsp::WorkspaceEdit {
+        changes: Some(changes),
+        change_annotations: None,
+        document_changes: None,
+      }),
+    };
+    self
+      .actions
+      .push(CodeActionKind::DenoLint(ignore_file_action));
+
     Ok(())
   }
 
@@ -795,6 +881,7 @@ impl CodeActionCollection {
       .map(|i| match i {
         CodeActionKind::Tsc(c, _) => lsp::CodeActionOrCommand::CodeAction(c),
         CodeActionKind::Deno(c) => lsp::CodeActionOrCommand::CodeAction(c),
+        CodeActionKind::DenoLint(c) => lsp::CodeActionOrCommand::CodeAction(c),
       })
       .collect()
   }
@@ -846,6 +933,18 @@ impl CodeActionCollection {
         }
       }
     }
+  }
+}
+
+/// Prepend the whitespace characters found at the start of line_content to content.
+fn prepend_whitespace(content: String, line_content: Option<String>) -> String {
+  if let Some(line) = line_content {
+    let whitespaces =
+      line.chars().position(|c| !c.is_whitespace()).unwrap_or(0);
+    let whitespace = &line[0..whitespaces];
+    format!("{}{}", &whitespace, content)
+  } else {
+    content
   }
 }
 

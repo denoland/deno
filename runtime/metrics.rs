@@ -25,7 +25,6 @@ struct MetricsReturn {
   ops: Value,
 }
 
-#[allow(clippy::unnecessary_wraps)]
 fn op_metrics(
   state: &mut OpState,
   _args: (),
