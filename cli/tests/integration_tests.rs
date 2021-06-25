@@ -80,10 +80,11 @@ fn js_unit_tests() {
   assert!(status.success());
 }
 
+#[path = ""]
 mod integration {
   use super::*;
 
-  #[path = "../tools/repl_tests.rs"]
+  #[path = "tools/repl_tests.rs"]
   mod repl;
 
   macro_rules! itest(
