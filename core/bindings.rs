@@ -35,6 +35,9 @@ lazy_static::lazy_static! {
         function: queue_microtask.map_fn_to()
       },
       v8::ExternalReference {
+        function: create_host_object.map_fn_to()
+      },
+      v8::ExternalReference {
         function: encode.map_fn_to()
       },
       v8::ExternalReference {
@@ -130,6 +133,7 @@ pub fn initialize_context<'s>(
   set_func(scope, core_val, "getPromiseDetails", get_promise_details);
   set_func(scope, core_val, "getProxyDetails", get_proxy_details);
   set_func(scope, core_val, "memoryUsage", memory_usage);
+  set_func(scope, core_val, "createHostObject", create_host_object);
 
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
@@ -589,6 +593,18 @@ fn queue_microtask(
     Err(_) => {
       throw_type_error(scope, "Invalid argument");
     }
+  };
+}
+
+fn create_host_object(
+  scope: &mut v8::HandleScope,
+  _args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let template = v8::ObjectTemplate::new(scope);
+  template.set_internal_field_count(1);
+  if let Some(obj) = template.new_instance(scope) {
+    rv.set(obj.into());
   };
 }
 
