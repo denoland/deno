@@ -1020,6 +1020,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(
       Arg::with_name("bail")
       .long("bail")
+      .short("b")
       .help("Exit the test suite immediately upon n number of failing test suite")
       .min_values(1)
     )
