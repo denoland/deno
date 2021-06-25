@@ -247,7 +247,7 @@ delete Object.prototype.__proto__;
       webidl.illegalConstructor();
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect({})}`;
     }
   }
@@ -270,7 +270,7 @@ delete Object.prototype.__proto__;
       webidl.illegalConstructor();
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect({})}`;
     }
   }

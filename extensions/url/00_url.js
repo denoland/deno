@@ -222,7 +222,7 @@
       this[_url] = parts;
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       const object = {
         href: this.href,
         origin: this.origin,

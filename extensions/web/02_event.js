@@ -143,7 +143,7 @@
       });
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return inspect(buildFilteredPropertyInspectObject(this, EVENT_PROPS));
     }
 
@@ -1055,7 +1055,7 @@
       return "ErrorEvent";
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return inspect(buildFilteredPropertyInspectObject(this, [
         ...EVENT_PROPS,
         "message",
@@ -1109,7 +1109,7 @@
       this.#reason = reason;
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return inspect(buildFilteredPropertyInspectObject(this, [
         ...EVENT_PROPS,
         "wasClean",
@@ -1137,7 +1137,7 @@
       this.lastEventId = eventInitDict?.lastEventId ?? "";
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return inspect(buildFilteredPropertyInspectObject(this, [
         ...EVENT_PROPS,
         "data",
@@ -1167,7 +1167,7 @@
       return "CustomEvent";
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return inspect(buildFilteredPropertyInspectObject(this, [
         ...EVENT_PROPS,
         "detail",
@@ -1190,7 +1190,7 @@
       this.total = eventInitDict?.total ?? 0;
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return inspect(buildFilteredPropertyInspectObject(this, [
         ...EVENT_PROPS,
         "lengthComputable",

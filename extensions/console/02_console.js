@@ -203,7 +203,7 @@
   function inspectFunction(value, level, inspectOptions) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
     if (customInspect in value && typeof value[customInspect] === "function") {
-      return String(value[customInspect]());
+      return String(value[customInspect](inspect));
     }
     // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
     let cstrName = Object.getPrototypeOf(value)?.constructor?.name;
@@ -901,22 +901,22 @@
     inspectOptions,
   ) {
     if (customInspect in value && typeof value[customInspect] === "function") {
-      return String(value[customInspect]());
+      return String(value[customInspect](inspect));
     }
-    // This non-unique symbol is used to support extensions, ie.
-    // in extensions/web we don't want to depend on unique "Deno.customInspect"
-    // symbol defined in the public API. Internal only, shouldn't be used
-    // by users.
-    const nonUniqueCustomInspect = Symbol.for("Deno.customInspect");
+    // This non-unique symbol is used to support op_crates, ie.
+    // in extensions/web we don't want to depend on public
+    // Symbol.for("Deno.customInspect") symbol defined in the public API.
+    // Internal only, shouldn't be used by users.
+    const privateCustomInspect = Symbol.for("Deno.privateCustomInspect");
     if (
-      nonUniqueCustomInspect in value &&
-      typeof value[nonUniqueCustomInspect] === "function"
+      privateCustomInspect in value &&
+      typeof value[privateCustomInspect] === "function"
     ) {
       // TODO(nayeemrmn): `inspect` is passed as an argument because custom
       // inspect implementations in `extensions` need it, but may not have access
       // to the `Deno` namespace in web workers. Remove when the `Deno`
       // namespace is always enabled.
-      return String(value[nonUniqueCustomInspect](inspect));
+      return String(value[privateCustomInspect](inspect));
     }
     if (value instanceof Error) {
       return String(value.stack);
@@ -1760,7 +1760,7 @@
     }
   }
 
-  const customInspect = Symbol("Deno.customInspect");
+  const customInspect = Symbol.for("Deno.customInspect");
 
   function inspect(
     value,
