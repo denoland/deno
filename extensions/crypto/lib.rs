@@ -52,11 +52,9 @@ pub use rand; // Re-export rand
 mod key;
 
 use crate::key::Algorithm;
+use crate::key::CryptoHash;
+use crate::key::CryptoNamedCurve;
 use crate::key::KeyUsage;
-use crate::key::WebCryptoHash;
-use crate::key::WebCryptoKey;
-use crate::key::WebCryptoKeyPair;
-use crate::key::WebCryptoNamedCurve;
 
 // Whitelist for RSA public exponents.
 lazy_static! {
@@ -76,11 +74,8 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
         "op_crypto_get_random_values",
         op_sync(op_crypto_get_random_values),
       ),
-      (
-        "op_webcrypto_generate_key",
-        op_async(op_webcrypto_generate_key),
-      ),
-      ("op_webcrypto_sign_key", op_async(op_webcrypto_sign_key)),
+      ("op_crypto_generate_key", op_async(op_crypto_generate_key)),
+      ("op_crypto_sign_key", op_async(op_crypto_sign_key)),
       ("op_crypto_subtle_digest", op_async(op_crypto_subtle_digest)),
       ("op_crypto_random_uuid", op_sync(op_crypto_random_uuid)),
     ])
@@ -118,18 +113,18 @@ pub fn op_crypto_get_random_values(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WebCryptoAlgorithmArg {
+pub struct AlgorithmArg {
   name: Algorithm,
   modulus_length: Option<u32>,
-  hash: Option<WebCryptoHash>,
+  hash: Option<CryptoHash>,
   #[allow(dead_code)]
   length: Option<u32>,
-  named_curve: Option<WebCryptoNamedCurve>,
+  named_curve: Option<CryptoNamedCurve>,
 }
 
-pub async fn op_webcrypto_generate_key(
+pub async fn op_crypto_generate_key(
   state: Rc<RefCell<OpState>>,
-  args: WebCryptoAlgorithmArg,
+  args: AlgorithmArg,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<ZeroCopyBuf, AnyError> {
   let algorithm = args.name;
@@ -217,17 +212,17 @@ pub struct KeyData {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WebCryptoSignArg {
+pub struct SignArg {
   key: KeyData,
   algorithm: Algorithm,
   salt_length: Option<u32>,
-  hash: Option<WebCryptoHash>,
-  named_curve: Option<WebCryptoNamedCurve>,
+  hash: Option<CryptoHash>,
+  named_curve: Option<CryptoNamedCurve>,
 }
 
-pub async fn op_webcrypto_sign_key(
+pub async fn op_crypto_sign_key(
   state: Rc<RefCell<OpState>>,
-  args: WebCryptoSignArg,
+  args: SignArg,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<ZeroCopyBuf, AnyError> {
   let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
@@ -241,16 +236,16 @@ pub async fn op_webcrypto_sign_key(
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
-        WebCryptoHash::Sha1 => PaddingScheme::PKCS1v15Sign {
+        CryptoHash::Sha1 => PaddingScheme::PKCS1v15Sign {
           hash: Some(rsa::hash::Hash::SHA1),
         },
-        WebCryptoHash::Sha256 => PaddingScheme::PKCS1v15Sign {
+        CryptoHash::Sha256 => PaddingScheme::PKCS1v15Sign {
           hash: Some(rsa::hash::Hash::SHA2_256),
         },
-        WebCryptoHash::Sha384 => PaddingScheme::PKCS1v15Sign {
+        CryptoHash::Sha384 => PaddingScheme::PKCS1v15Sign {
           hash: Some(rsa::hash::Hash::SHA2_384),
         },
-        WebCryptoHash::Sha512 => PaddingScheme::PKCS1v15Sign {
+        CryptoHash::Sha512 => PaddingScheme::PKCS1v15Sign {
           hash: Some(rsa::hash::Hash::SHA2_512),
         },
       };
@@ -270,7 +265,7 @@ pub async fn op_webcrypto_sign_key(
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
-        WebCryptoHash::Sha1 => {
+        CryptoHash::Sha1 => {
           let mut hasher = Sha1::new();
           hasher.update(&data);
           (
@@ -278,7 +273,7 @@ pub async fn op_webcrypto_sign_key(
             hasher.finalize()[..].to_vec(),
           )
         }
-        WebCryptoHash::Sha256 => {
+        CryptoHash::Sha256 => {
           let mut hasher = Sha256::new();
           hasher.update(&data);
           (
@@ -286,7 +281,7 @@ pub async fn op_webcrypto_sign_key(
             hasher.finalize()[..].to_vec(),
           )
         }
-        WebCryptoHash::Sha384 => {
+        CryptoHash::Sha384 => {
           let mut hasher = Sha384::new();
           hasher.update(&data);
           (
@@ -294,7 +289,7 @@ pub async fn op_webcrypto_sign_key(
             hasher.finalize()[..].to_vec(),
           )
         }
-        WebCryptoHash::Sha512 => {
+        CryptoHash::Sha512 => {
           let mut hasher = Sha512::new();
           hasher.update(&data);
           (
@@ -316,7 +311,7 @@ pub async fn op_webcrypto_sign_key(
       // https://briansmith.org/rustdoc/ring/signature/index.html#statics
       if let Some(hash) = args.hash {
         match hash {
-          WebCryptoHash::Sha256 | WebCryptoHash::Sha384 => (),
+          CryptoHash::Sha256 | CryptoHash::Sha384 => (),
           _ => return Err(type_error("Unsupported algorithm")),
         }
       };

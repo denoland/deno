@@ -102,7 +102,7 @@
     RsaHashedKeyGenDictionary,
   );
 
-  const SupportedNamedCurves = ["P-256", "P-384"];
+  const SupportedNamedCurves = ["P-256", "P-384", "P-512"];
   const EcKeyGenDictionary = [
     ...algorithmDictionary,
     {

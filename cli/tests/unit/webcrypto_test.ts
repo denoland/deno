@@ -1,21 +1,5 @@
 import { assert, assertEquals, unitTest } from "./test_util.ts";
 
-// Close all crypto key resources to avoid resource leaks.
-function closeResource() {
-  const resources = Deno.resources();
-
-  for (const i of Object.keys(resources)) {
-    const rid = Number(i);
-    if (
-      ["RSAPublicKey", "RSAPrivateKey", "EcdsaKeyPair", "HmacKey"].includes(
-        resources[rid],
-      )
-    ) {
-      Deno.close(rid);
-    }
-  }
-}
-
 unitTest(async function testGenerateRSAKey() {
   const subtle = window.crypto.subtle;
   assert(subtle);
@@ -35,7 +19,6 @@ unitTest(async function testGenerateRSAKey() {
   assert(keyPair.publicKey);
   assertEquals(keyPair.privateKey.extractable, true);
   assert(keyPair.privateKey.usages.includes("sign"));
-  closeResource();
 });
 
 unitTest(async function testGenerateHMACKey() {
@@ -51,7 +34,6 @@ unitTest(async function testGenerateHMACKey() {
   assert(key);
   assertEquals(key.extractable, true);
   assert(key.usages.includes("sign"));
-  closeResource();
 });
 
 unitTest(async function testSignECDSA() {
@@ -73,5 +55,4 @@ unitTest(async function testSignECDSA() {
   );
 
   assert(signature);
-  closeResource();
 });

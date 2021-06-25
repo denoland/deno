@@ -18,7 +18,7 @@ pub enum KeyType {
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone)]
-pub enum WebCryptoHash {
+pub enum CryptoHash {
   #[serde(rename = "SHA-1")]
   Sha1,
   #[serde(rename = "SHA-256")]
@@ -30,7 +30,7 @@ pub enum WebCryptoHash {
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone)]
-pub enum WebCryptoNamedCurve {
+pub enum CryptoNamedCurve {
   #[serde(rename = "P-256")]
   P256,
   #[serde(rename = "P-384")]
@@ -39,41 +39,41 @@ pub enum WebCryptoNamedCurve {
   P521,
 }
 
-impl TryInto<&RingAlgorithm> for WebCryptoNamedCurve {
+impl TryInto<&RingAlgorithm> for CryptoNamedCurve {
   type Error = AnyError;
 
   fn try_into(self) -> Result<&'static RingAlgorithm, Self::Error> {
     match self {
-      WebCryptoNamedCurve::P256 => Ok(&ring::agreement::ECDH_P256),
-      WebCryptoNamedCurve::P384 => Ok(&ring::agreement::ECDH_P384),
-      WebCryptoNamedCurve::P521 => Err(not_supported()),
+      CryptoNamedCurve::P256 => Ok(&ring::agreement::ECDH_P256),
+      CryptoNamedCurve::P384 => Ok(&ring::agreement::ECDH_P384),
+      CryptoNamedCurve::P521 => Err(not_supported()),
     }
   }
 }
 
-impl TryInto<&EcdsaSigningAlgorithm> for WebCryptoNamedCurve {
+impl TryInto<&EcdsaSigningAlgorithm> for CryptoNamedCurve {
   type Error = AnyError;
 
   fn try_into(self) -> Result<&'static EcdsaSigningAlgorithm, Self::Error> {
     match self {
-      WebCryptoNamedCurve::P256 => {
+      CryptoNamedCurve::P256 => {
         Ok(&ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING)
       }
-      WebCryptoNamedCurve::P384 => {
+      CryptoNamedCurve::P384 => {
         Ok(&ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING)
       }
-      WebCryptoNamedCurve::P521 => Err(not_supported()),
+      CryptoNamedCurve::P521 => Err(not_supported()),
     }
   }
 }
 
-impl From<WebCryptoHash> for HmacAlgorithm {
-  fn from(hash: WebCryptoHash) -> HmacAlgorithm {
+impl From<CryptoHash> for HmacAlgorithm {
+  fn from(hash: CryptoHash) -> HmacAlgorithm {
     match hash {
-      WebCryptoHash::Sha1 => ring::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
-      WebCryptoHash::Sha256 => ring::hmac::HMAC_SHA256,
-      WebCryptoHash::Sha384 => ring::hmac::HMAC_SHA384,
-      WebCryptoHash::Sha512 => ring::hmac::HMAC_SHA512,
+      CryptoHash::Sha1 => ring::hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
+      CryptoHash::Sha256 => ring::hmac::HMAC_SHA256,
+      CryptoHash::Sha384 => ring::hmac::HMAC_SHA384,
+      CryptoHash::Sha512 => ring::hmac::HMAC_SHA512,
     }
   }
 }
@@ -113,20 +113,4 @@ pub enum Algorithm {
   AesKw,
   #[serde(rename = "HMAC")]
   Hmac,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct WebCryptoKey {
-  pub key_type: KeyType,
-  pub extractable: bool,
-  pub algorithm: Algorithm,
-  pub usages: Vec<KeyUsage>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct WebCryptoKeyPair {
-  pub public_key: WebCryptoKey,
-  pub private_key: WebCryptoKey,
 }

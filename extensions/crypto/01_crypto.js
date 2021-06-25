@@ -149,27 +149,10 @@
     return key;
   }
 
-  function validateUsages(usages, keyType) {
-    let validUsages = [];
-    if (keyType == "public") {
-      ["encrypt", "verify", "wrapKey"].forEach((usage) => {
-        if (usages.includes(usage)) {
-          validUsages.push(usage);
-        }
-      });
-    } else if (keyType == "private") {
-      ["decrypt", "sign", "unwrapKey", "deriveKey", "deriveBits"].forEach(
-        (usage) => {
-          if (usages.includes(usage)) {
-            validUsages.push(usage);
-          }
-        },
-      );
-    } /* secret */ else {
-      validUsages = usages;
-    }
-
-    return validUsages;
+  // https://w3c.github.io/webcrypto/#concept-usage-intersection
+  // TODO(littledivy): When the need arises, make `b` a list.
+  function usageIntersection(a, b) {
+    return a.includes(b) ? [b] : [];
   }
 
   let keys = [];
@@ -220,17 +203,12 @@
       webidl.assertBranded(this, SubtleCrypto);
       webidl.requiredArguments(arguments.length, 3);
 
-      key = webidl.converters["CryptoKey"](key, {
-        prefix,
-        context: "Argument 2",
-      });
+      algorithm = normalizeAlgorithm(algorithm, "sign");
 
       data = webidl.converters.BufferSource(data, {
         prefix,
         context: "Argument 3",
       });
-
-      algorithm = normalizeAlgorithm(algorithm, "sign");
 
       const index = key[_handle];
       const keyData = keys[index];
@@ -238,9 +216,9 @@
       data = new Uint8Array(ArrayBuffer.isView(data) ? data.buffer : data);
 
       if (algorithm.name == "HMAC") {
-        const hashAlgorithm = key[_algorithm].hash;
+        const hashAlgorithm = key[_algorithm].hash.name;
 
-        const signature = await core.opAsync("op_webcrypto_sign_key", {
+        const signature = await core.opAsync("op_crypto_sign_key", {
           key: keyData,
           algorithm: "HMAC",
           hash: hashAlgorithm,
@@ -250,12 +228,15 @@
       } else if (algorithm.name == "ECDSA") {
         // 1.
         if (key[_type] !== "private") {
-          throw new DOMError("InvalidAccessError", "Key type not supported");
+          throw new DOMException(
+            "Key type not supported",
+            "InvalidAccessError",
+          );
         }
 
         const namedCurve = key[_algorithm].namedCurve;
         // 2 to 6.
-        const signature = await core.opAsync("op_webcrypto_sign_key", {
+        const signature = await core.opAsync("op_crypto_sign_key", {
           key: keyData,
           algorithm: "ECDSA",
           hash: algorithm.hash,
@@ -266,12 +247,15 @@
       } else if (algorithm.name == "RSA-PSS") {
         // 1.
         if (key[_type] !== "private") {
-          throw new DOMError("InvalidAccessError", "Key type not supported");
+          throw new DOMException(
+            "Key type not supported",
+            "InvalidAccessError",
+          );
         }
 
         // 2.
-        const hashAlgorithm = key[_algorithm].hash;
-        const signature = await core.opAsync("op_webcrypto_sign_key", {
+        const hashAlgorithm = key[_algorithm].hash.name;
+        const signature = await core.opAsync("op_crypto_sign_key", {
           key: keyData,
           algorithm: "RSA-PSS",
           hash: hashAlgorithm,
@@ -282,12 +266,15 @@
       } else if (algorithm.name == "RSASSA-PKCS1-v1_5") {
         // 1.
         if (key[_type] !== "private") {
-          throw new DOMError("InvalidAccessError", "Key type not supported");
+          throw new DOMException(
+            "Key type not supported",
+            "InvalidAccessError",
+          );
         }
 
         // 2.
-        const hashAlgorithm = key[_algorithm].hash;
-        const signature = await core.opAsync("op_webcrypto_sign_key", {
+        const hashAlgorithm = key[_algorithm].hash.name;
+        const signature = await core.opAsync("op_crypto_sign_key", {
           key: keyData,
           algorithm: "RSASSA-PKCS1-v1_5",
           hash: hashAlgorithm,
@@ -312,10 +299,14 @@
 
       // https://github.com/denoland/deno/pull/9614#issuecomment-866049433
       if (!extractable) {
-        throw new DOMError(
-          "SecurityError",
+        throw new DOMException(
           "Extractable keys are not supported",
+          "SecurityError",
         );
+      }
+
+      if (keyUsages.length == 0) {
+        throw new SyntaxError("Usages must not be empty");
       }
 
       if (algorithm.name == "HMAC") {
@@ -329,19 +320,23 @@
 
         // 2.
         if (algorithm.length == 0) {
-          throw new DOMError("OperationError", "Invalid key length");
+          throw new DOMException("Invalid key length", "OperationError");
         }
 
         // 3.
         const rawMaterial = await core.opAsync(
-          "op_webcrypto_generate_key",
+          "op_crypto_generate_key",
           algorithm,
         );
         const index = keys.push({ type: "raw", data: rawMaterial }) - 1;
 
         // 11 to 13.
         const key = constructKey(
-          { name: "HMAC", hash: algorithm.hash },
+          {
+            name: "HMAC",
+            hash: { name: algorithm.hash },
+            length: algorithm.length,
+          },
           extractable,
           keyUsages,
           "secret",
@@ -361,7 +356,7 @@
 
         // 3.
         const pkcsMaterial = await core.opAsync(
-          "op_webcrypto_generate_key",
+          "op_crypto_generate_key",
           algorithm,
         );
         const index = keys.push({ type: "pkcs8", data: pkcsMaterial }) - 1;
@@ -370,14 +365,14 @@
         const publicKey = constructKey(
           alg,
           extractable,
-          keyUsages,
+          usageIntersection(keyUsages, "verify"),
           "public",
           index,
         );
         const privateKey = constructKey(
           alg,
           extractable,
-          keyUsages,
+          usageIntersection(keyUsages, "sign"),
           "private",
           index,
         );
@@ -399,7 +394,7 @@
 
         // 2.
         const pkcsMaterial = await core.opAsync(
-          "op_webcrypto_generate_key",
+          "op_crypto_generate_key",
           algorithm,
           algorithm.publicExponent || new Uint8Array(),
         );
@@ -410,19 +405,19 @@
           name: algorithm.name,
           modulusLength: algorithm.modulusLength,
           publicExponent: algorithm.publicExponent,
-          hash: algorithm.hash,
+          hash: { name: algorithm.hash },
         };
         const publicKey = constructKey(
           alg,
           extractable,
-          keyUsages,
+          usageIntersection(keyUsages, "verify"),
           "public",
           index,
         );
         const privateKey = constructKey(
           alg,
           extractable,
-          keyUsages,
+          usageIntersection(keyUsages, "sign"),
           "private",
           index,
         );
