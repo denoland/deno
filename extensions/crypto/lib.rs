@@ -191,7 +191,7 @@ pub async fn op_crypto_generate_key(
 #[serde(rename_all = "lowercase")]
 pub enum KeyFormat {
   Raw,
-  Pcks8,
+  Pkcs8,
 }
 
 #[derive(Deserialize)]
