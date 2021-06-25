@@ -190,7 +190,7 @@
 
   window.__bootstrap.crypto = {
     algDict: {
-      "RsaHashedKeyGenParams": RsaKeyGenDictionary,
+      "RsaHashedKeyGenParams": RsaHashedKeyGenDictionary,
       "EcKeyGenParams": EcKeyGenDictionary,
       "HmacKeyGenParams": HmacKeyGenDictionary,
       "RsaPssParams": RsaPssDictionary,

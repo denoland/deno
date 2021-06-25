@@ -7,12 +7,6 @@
   const { algDict } = window.__bootstrap.crypto;
 
   const supportedNamedCurves = ["P-256", "P-384", "P-512"];
-  const supportedHashIdentifiers = [
-    "SHA-1",
-    "SHA-256",
-    "SHA-384",
-    "SHA-512",
-  ];
 
   const supportedAlgorithms = {
     "digest": {
@@ -83,34 +77,21 @@
 
     for (const member of algDict[desiredType]) {
       const idlValue = normalizedAlgorithm[member.key];
-      if (member.converters == webidl.converters["BufferSource"]) {
+      if (member.converter == webidl.converters["BufferSource"]) {
         normalizedAlgorithm[member.key] = new Uint8Array(
           ArrayBuffer.isView(idlValue) ? idlValue.buffer : idlValue,
         );
       } else if (
-        member.converters == webidl.converters["HashAlgorithmIdentifier"]
+        member.converter == webidl.converters["HashAlgorithmIdentifier"]
       ) {
         normalizedAlgorithm[member.key] = normalizeAlgorithm(
           idlValue,
           "digest",
         );
       } else if (
-        member.converters == webidl.converters["AlgorithmIdentifier"]
+        member.converter == webidl.converters["AlgorithmIdentifier"]
       ) {
         normalizedAlgorithm[member.key] = normalizeAlgorithm(idlValue, op);
-      }
-    }
-
-    if (normalizeAlgorithm.hash) {
-      const hash = supportedHashIdentifiers
-        .find((key) =>
-          key.toLowerCase() == normalizeAlgorithm.hash.toLowerCase()
-        );
-      if (hash == undefined) {
-        throw new DOMException(
-          "hash not supported",
-          "NotSupportedError",
-        );
       }
     }
 
@@ -237,12 +218,12 @@
       webidl.assertBranded(this, SubtleCrypto);
       webidl.requiredArguments(arguments.length, 3);
 
+      algorithm = normalizeAlgorithm(algorithm, "sign");
+
       data = webidl.converters.BufferSource(data, {
         prefix,
         context: "Argument 3",
       });
-
-      algorithm = normalizeAlgorithm(algorithm, "sign");
 
       const index = key[_handle];
       const keyData = keys[index];
@@ -273,7 +254,7 @@
         const signature = await core.opAsync("op_crypto_sign_key", {
           key: keyData,
           algorithm: "ECDSA",
-          hash: algorithm.hash,
+          hash: algorithm.hash.name,
           namedCurve,
         }, data);
 
@@ -360,7 +341,10 @@
         // 3.
         const rawMaterial = await core.opAsync(
           "op_crypto_generate_key",
-          algorithm,
+          {
+            ...algorithm,
+            hash: algorithm.hash.name,
+          },
         );
         const index = keys.push({ type: "raw", data: rawMaterial }) - 1;
 
@@ -368,7 +352,7 @@
         const key = constructKey(
           {
             name: "HMAC",
-            hash: { name: algorithm.hash },
+            hash: algorithm.hash,
             length: algorithm.length,
           },
           extractable,
@@ -429,7 +413,10 @@
         // 2.
         const pkcsMaterial = await core.opAsync(
           "op_crypto_generate_key",
-          algorithm,
+          {
+            ...algorithm,
+            hash: algorithm.hash.name,
+          },
           algorithm.publicExponent || new Uint8Array(),
         );
         const index = keys.push({ type: "pkcs8", data: pkcsMaterial }) - 1;
@@ -439,7 +426,7 @@
           name: algorithm.name,
           modulusLength: algorithm.modulusLength,
           publicExponent: algorithm.publicExponent,
-          hash: { name: algorithm.hash },
+          hash: algorithm.hash,
         };
         const publicKey = constructKey(
           alg,
