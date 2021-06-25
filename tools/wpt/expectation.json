@@ -1535,10 +1535,19 @@
         "Bad algorithm property: generateKey({name: ECDH, namedCurve: P-512}, true, [])",
         "Bad algorithm property: generateKey({name: ECDH, namedCurve: P-512}, false, [deriveKey, deriveBits, deriveKey, deriveBits, deriveKey, deriveBits])",
         "Bad algorithm property: generateKey({name: ECDH, namedCurve: P-512}, true, [deriveKey, deriveBits, deriveKey, deriveBits, deriveKey, deriveBits])",
+        "Bad algorithm property: generateKey({name: ECDH, namedCurve: Curve25519}, false, [deriveKey])",
+        "Bad algorithm property: generateKey({name: ECDH, namedCurve: Curve25519}, true, [deriveKey])",
+        "Bad algorithm property: generateKey({name: ECDH, namedCurve: Curve25519}, false, [deriveBits, deriveKey])",
+        "Bad algorithm property: generateKey({name: ECDH, namedCurve: Curve25519}, true, [deriveBits, deriveKey])",
+        "Bad algorithm property: generateKey({name: ECDH, namedCurve: Curve25519}, false, [deriveBits])",
+        "Bad algorithm property: generateKey({name: ECDH, namedCurve: Curve25519}, true, [deriveBits])",
+        "Bad algorithm property: generateKey({name: ECDH, namedCurve: Curve25519}, false, [])",
+        "Bad algorithm property: generateKey({name: ECDH, namedCurve: Curve25519}, true, [])",
+        "Bad algorithm property: generateKey({name: ECDH, namedCurve: Curve25519}, false, [deriveKey, deriveBits, deriveKey, deriveBits, deriveKey, deriveBits])",
+        "Bad algorithm property: generateKey({name: ECDH, namedCurve: Curve25519}, true, [deriveKey, deriveBits, deriveKey, deriveBits, deriveKey, deriveBits])",
         "Empty usages: generateKey({name: ECDH, namedCurve: P-256}, false, [])",
         "Empty usages: generateKey({name: ECDH, namedCurve: P-384}, false, [])",
-        "Empty usages: generateKey({name: ECDH, namedCurve: P-521}, false, [])",
-        "Empty usages: generateKey({name: ECDH, namedCurve: P-521}, true, [])"
+        "Empty usages: generateKey({name: ECDH, namedCurve: P-521}, false, [])"
       ],
       "failures_ECDSA.https.any.html": [
         "Bad algorithm property: generateKey({name: ECDSA, namedCurve: P-512}, false, [sign])",
