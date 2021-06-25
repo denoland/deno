@@ -35,11 +35,11 @@ import {
   green,
   red,
   yellow,
-} from "https://deno.land/std@0.84.0/fmt/colors.ts";
+} from "../test_util/std/fmt/colors.ts";
 import {
   writeAll,
   writeAllSync,
-} from "https://deno.land/std@0.95.0/io/util.ts";
+} from "../test_util/std/io/util.ts";
 import { saveExpectation } from "./wpt/utils.ts";
 
 const command = Deno.args[0];
