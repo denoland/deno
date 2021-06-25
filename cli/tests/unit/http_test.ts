@@ -8,6 +8,7 @@ import {
   assertEquals,
   assertThrowsAsync,
   deferred,
+  delay,
   unitTest,
 } from "./test_util.ts";
 
@@ -375,8 +376,6 @@ unitTest(
 unitTest(
   { perms: { net: true } },
   async function httpServerNextRequestResolvesOnClose() {
-    const delay = (n: number) =>
-      new Promise((resolve) => setTimeout(resolve, n));
     const httpConnList: Deno.HttpConn[] = [];
 
     async function serve(l: Deno.Listener) {
