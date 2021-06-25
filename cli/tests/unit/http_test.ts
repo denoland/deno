@@ -56,9 +56,12 @@ unitTest({ perms: { net: true } }, async function httpServerBasic() {
   const resp = await fetch("http://127.0.0.1:4501/", {
     headers: { "connection": "close" },
   });
+  const clone = resp.clone();
   const text = await resp.text();
   assertEquals(text, "Hello World");
   assertEquals(resp.headers.get("foo"), "bar");
+  const cloneText = await clone.text();
+  assertEquals(cloneText, "Hello World");
   await promise;
 });
 
