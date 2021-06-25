@@ -55,6 +55,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
+use deno_core::located_script_name;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -91,8 +92,6 @@ fn create_web_worker_callback(
       PrettyJsError::create(source_mapped_error)
     });
 
-    let attach_inspector = program_state.maybe_inspector_server.is_some()
-      || program_state.coverage_dir.is_some();
     let maybe_inspector_server = program_state.maybe_inspector_server.clone();
 
     let module_loader = CliModuleLoader::new_for_worker(
@@ -117,7 +116,6 @@ fn create_web_worker_callback(
       create_web_worker_cb,
       js_error_create_fn: Some(js_error_create_fn),
       use_deno_namespace: args.use_deno_namespace,
-      attach_inspector,
       maybe_inspector_server,
       runtime_version: version::deno(),
       ts_version: version::TYPESCRIPT.to_string(),
@@ -127,7 +125,7 @@ fn create_web_worker_callback(
       broadcast_channel: program_state.broadcast_channel.clone(),
     };
 
-    let mut worker = WebWorker::from_options(
+    let (mut worker, external_handle) = WebWorker::from_options(
       args.name,
       args.permissions,
       args.main_module,
@@ -153,7 +151,7 @@ fn create_web_worker_callback(
     }
     worker.bootstrap(&options);
 
-    worker
+    (worker, external_handle)
   })
 }
 
@@ -173,9 +171,6 @@ pub fn create_main_worker(
     PrettyJsError::create(source_mapped_error)
   });
 
-  let attach_inspector = program_state.maybe_inspector_server.is_some()
-    || program_state.flags.repl
-    || program_state.coverage_dir.is_some();
   let maybe_inspector_server = program_state.maybe_inspector_server.clone();
   let should_break_on_first_statement =
     program_state.flags.inspect_brk.is_some();
@@ -195,7 +190,6 @@ pub fn create_main_worker(
     seed: program_state.flags.seed,
     js_error_create_fn: Some(js_error_create_fn),
     create_web_worker_cb,
-    attach_inspector,
     maybe_inspector_server,
     should_break_on_first_statement,
     module_loader,
@@ -434,6 +428,9 @@ async fn info_command(
       program_state.lockfile.clone(),
     );
     builder.add(&specifier, false).await?;
+    builder
+      .analyze_config_file(&program_state.maybe_config_file)
+      .await?;
     let graph = builder.get_graph();
     let info = graph.info()?;
 
@@ -470,8 +467,8 @@ async fn install_command(
   tools::installer::install(flags, &module_url, args, name, root, force)
 }
 
-async fn lsp_command(parent_pid: Option<u32>) -> Result<(), AnyError> {
-  lsp::start(parent_pid).await
+async fn lsp_command() -> Result<(), AnyError> {
+  lsp::start().await
 }
 
 async fn lint_command(
@@ -558,9 +555,15 @@ async fn eval_command(
   program_state.file_fetcher.insert_cached(file);
   debug!("main_module {}", &main_module);
   worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('load'))",
+  )?;
   worker.run_event_loop(false).await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('unload'))",
+  )?;
   Ok(())
 }
 
@@ -582,6 +585,9 @@ async fn create_module_graph_and_maybe_check(
     program_state.lockfile.clone(),
   );
   builder.add(&module_specifier, false).await?;
+  builder
+    .analyze_config_file(&program_state.maybe_config_file)
+    .await?;
   let module_graph = builder.get_graph();
 
   if !program_state.flags.no_check {
@@ -795,9 +801,15 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
 
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('load'))",
+  )?;
   worker.run_event_loop(false).await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('unload'))",
+  )?;
   Ok(())
 }
 
@@ -820,6 +832,9 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         program_state.lockfile.clone(),
       );
       builder.add(&main_module, false).await?;
+      builder
+        .analyze_config_file(&program_state.maybe_config_file)
+        .await?;
       let module_graph = builder.get_graph();
 
       // Find all local files in graph
@@ -864,9 +879,15 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         );
         debug!("main_module {}", main_module);
         worker.execute_module(&main_module).await?;
-        worker.execute("window.dispatchEvent(new Event('load'))")?;
+        worker.execute_script(
+          &located_script_name!(),
+          "window.dispatchEvent(new Event('load'))",
+        )?;
         worker.run_event_loop(false).await?;
-        worker.execute("window.dispatchEvent(new Event('unload'))")?;
+        worker.execute_script(
+          &located_script_name!(),
+          "window.dispatchEvent(new Event('unload'))",
+        )?;
         Ok(())
       }
     };
@@ -907,11 +928,17 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
 
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('load'))",
+  )?;
   worker
     .run_event_loop(maybe_coverage_collector.is_none())
     .await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('unload'))",
+  )?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     worker
@@ -1031,6 +1058,9 @@ async fn test_command(
         for specifier in test_modules.iter() {
           builder.add(specifier, false).await?;
         }
+        builder
+          .analyze_config_file(&program_state.maybe_config_file)
+          .await?;
         let graph = builder.get_graph();
 
         for specifier in doc_modules {
@@ -1265,7 +1295,7 @@ fn get_subcommand(
     } => {
       install_command(flags, module_url, args, name, root, force).boxed_local()
     }
-    DenoSubcommand::Lsp { parent_pid } => lsp_command(parent_pid).boxed_local(),
+    DenoSubcommand::Lsp => lsp_command().boxed_local(),
     DenoSubcommand::Lint {
       files,
       rules,

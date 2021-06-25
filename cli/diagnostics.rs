@@ -6,7 +6,9 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
+use deno_core::ModuleSpecifier;
 use regex::Regex;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
@@ -233,13 +235,14 @@ impl Diagnostic {
       _ => "",
     };
 
+    let code = if self.code >= 900001 {
+      "".to_string()
+    } else {
+      colors::bold(format!("TS{} ", self.code)).to_string()
+    };
+
     if !category.is_empty() {
-      write!(
-        f,
-        "{} [{}]: ",
-        colors::bold(&format!("TS{}", self.code)),
-        category
-      )
+      write!(f, "{}[{}]: ", code, category)
     } else {
       Ok(())
     }
@@ -357,6 +360,24 @@ impl Diagnostics {
   #[cfg(test)]
   pub fn new(diagnostics: Vec<Diagnostic>) -> Self {
     Diagnostics(diagnostics)
+  }
+
+  pub fn extend_graph_errors(
+    &mut self,
+    errors: HashMap<ModuleSpecifier, String>,
+  ) {
+    self.0.extend(errors.into_iter().map(|(s, e)| Diagnostic {
+      category: DiagnosticCategory::Error,
+      code: 900001,
+      start: None,
+      end: None,
+      message_text: Some(e),
+      message_chain: None,
+      source: None,
+      source_line: None,
+      file_name: Some(s.to_string()),
+      related_information: None,
+    }));
   }
 
   pub fn is_empty(&self) -> bool {
@@ -606,46 +627,5 @@ mod tests {
     let diagnostics: Diagnostics = serde_json::from_value(value).unwrap();
     let actual = diagnostics.to_string();
     assert_eq!(strip_ansi_codes(&actual), "TS2552 [ERROR]: Cannot find name \'foo_Bar\'. Did you mean \'foo_bar\'?\nfoo_Bar();\n~~~~~~~\n    at test.ts:8:1\n\n    \'foo_bar\' is declared here.\n    function foo_bar() {\n             ~~~~~~~\n        at test.ts:4:10");
-  }
-
-  #[test]
-  fn test_unstable_suggestion() {
-    let value = json![
-      {
-        "start": {
-          "line": 0,
-          "character": 17
-        },
-        "end": {
-          "line": 0,
-          "character": 21
-        },
-        "fileName": "file:///cli/tests/unstable_ts2551.ts",
-        "messageText": "Property 'ppid' does not exist on type 'typeof Deno'. Did you mean 'pid'?",
-        "sourceLine": "console.log(Deno.ppid);",
-        "relatedInformation": [
-          {
-            "start": {
-              "line": 89,
-              "character": 15
-            },
-            "end": {
-              "line": 89,
-              "character": 18
-            },
-            "fileName": "asset:///lib.deno.ns.d.ts",
-            "messageText": "'pid' is declared here.",
-            "sourceLine": "  export const pid: number;",
-            "category": 3,
-            "code": 2728
-          }
-        ],
-        "category": 1,
-        "code": 2551
-      }
-    ];
-    let diagnostics: Diagnostic = serde_json::from_value(value).unwrap();
-    let actual = diagnostics.to_string();
-    assert_eq!(strip_ansi_codes(&actual), "TS2551 [ERROR]: Property \'ppid\' does not exist on type \'typeof Deno\'. \'Deno.ppid\' is an unstable API. Did you forget to run with the \'--unstable\' flag, or did you mean \'pid\'?\nconsole.log(Deno.ppid);\n                 ~~~~\n    at file:///cli/tests/unstable_ts2551.ts:1:18\n\n    \'pid\' is declared here.\n      export const pid: number;\n                   ~~~\n        at asset:///lib.deno.ns.d.ts:90:16");
   }
 }

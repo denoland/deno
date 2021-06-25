@@ -222,7 +222,7 @@
       this[_url] = parts;
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       const object = {
         href: this.href,
         origin: this.origin,
@@ -524,9 +524,9 @@
       // Union for (sequence<sequence<USVString>> or record<USVString, USVString> or USVString)
       if (webidl.type(V) === "Object" && V !== null) {
         if (V[Symbol.iterator] !== undefined) {
-          return webidl.converters["sequence<sequence<ByteString>>"](V, opts);
+          return webidl.converters["sequence<sequence<USVString>>"](V, opts);
         }
-        return webidl.converters["record<ByteString, ByteString>"](V, opts);
+        return webidl.converters["record<USVString, USVString>"](V, opts);
       }
       return webidl.converters.USVString(V, opts);
     };

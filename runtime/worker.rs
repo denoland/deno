@@ -7,10 +7,10 @@ use crate::ops;
 use crate::permissions::Permissions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
-use deno_core::error::Context as ErrorContext;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::stream::StreamExt;
 use deno_core::futures::Future;
+use deno_core::located_script_name;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
@@ -58,7 +58,6 @@ pub struct WorkerOptions {
   // of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
-  pub attach_inspector: bool,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub should_break_on_first_statement: bool,
   /// Sets `Deno.version.deno` in JS runtime.
@@ -100,6 +99,7 @@ impl MainWorker {
       deno_fetch::init::<Permissions>(
         options.user_agent.clone(),
         options.ca_data.clone(),
+        None,
       ),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
@@ -141,24 +141,19 @@ impl MainWorker {
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
       extensions,
-      attach_inspector: options.attach_inspector,
       ..Default::default()
     });
 
-    let mut should_break_on_first_statement = false;
-
-    if let Some(inspector) = js_runtime.inspector() {
-      if let Some(server) = options.maybe_inspector_server.clone() {
-        let session_sender = inspector.get_session_sender();
-        let deregister_rx = inspector.add_deregister_handler();
-        server.register_inspector(session_sender, deregister_rx);
-      }
-      should_break_on_first_statement = options.should_break_on_first_statement;
+    if let Some(server) = options.maybe_inspector_server.clone() {
+      let inspector = js_runtime.inspector();
+      let session_sender = inspector.get_session_sender();
+      let deregister_rx = inspector.add_deregister_handler();
+      server.register_inspector(session_sender, deregister_rx);
     }
 
     Self {
       js_runtime,
-      should_break_on_first_statement,
+      should_break_on_first_statement: options.should_break_on_first_statement,
     }
   }
 
@@ -183,17 +178,17 @@ impl MainWorker {
       serde_json::to_string_pretty(&runtime_options).unwrap()
     );
     self
-      .execute(&script)
+      .execute_script(&located_script_name!(), &script)
       .expect("Failed to execute bootstrap script");
   }
 
-  /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
-  pub fn execute(&mut self, js_source: &str) -> Result<(), AnyError> {
-    let path = env::current_dir()
-      .context("Failed to get current working directory")?
-      .join("__anonymous__");
-    let url = Url::from_file_path(path).unwrap();
-    self.js_runtime.execute(url.as_str(), js_source)
+  /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
+  pub fn execute_script(
+    &mut self,
+    name: &str,
+    source_code: &str,
+  ) -> Result<(), AnyError> {
+    self.js_runtime.execute_script(name, source_code)
   }
 
   /// Loads and instantiates specified JavaScript module.
@@ -231,7 +226,6 @@ impl MainWorker {
       self
         .js_runtime
         .inspector()
-        .unwrap()
         .wait_for_session_and_break_on_next_statement()
     }
   }
@@ -239,7 +233,7 @@ impl MainWorker {
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
   pub async fn create_inspector_session(&mut self) -> LocalInspectorSession {
-    let inspector = self.js_runtime.inspector().unwrap();
+    let inspector = self.js_runtime.inspector();
     inspector.create_local_session()
   }
 
@@ -295,7 +289,6 @@ mod tests {
       seed: None,
       js_error_create_fn: None,
       create_web_worker_cb: Arc::new(|_| unreachable!()),
-      attach_inspector: false,
       maybe_inspector_server: None,
       should_break_on_first_statement: false,
       module_loader: Rc::new(deno_core::FsModuleLoader),

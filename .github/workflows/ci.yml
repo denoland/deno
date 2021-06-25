@@ -21,38 +21,39 @@ jobs:
             kind: test
             profile: release
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
+            kind: test
+            profile: release
+            use_sysroot: true
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
             kind: bench
             profile: release
+            use_sysroot: true
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
+            kind: test
+            profile: debug
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
             kind: lint
             profile: debug
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
-            kind: test
-            profile: debug
-          # Warning: Do not upgrade test_release to newer version of ubuntu
-          # runners. We need to link against older version of glibc in order to
-          # run on older systems. glibc in 20.04 is not compatible with 18.04.
-          # See #9484.
-          - os: ubuntu-18.04
-            kind: test
-            profile: release
 
       # Always run main branch builds to completion. This allows the cache to
       # stay mostly up-to-date in situations where a single job fails due to
       # e.g. a flaky test.
       # Don't fast-fail on tag build because publishing binaries shouldn't be
       # prevented if if any of the stages fails (which can be a false negative).
-      fail-fast: ${{ github.event_name == 'pull_request' || (github.ref !=
-        'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) }}
+      fail-fast: ${{ github.event_name == 'pull_request' ||
+        (github.ref != 'refs/heads/main' &&
+        !startsWith(github.ref, 'refs/tags/')) }}
 
     env:
+      CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full
       RUSTC_FORCE_INCREMENTAL: 1
-      CARGO_TERM_COLOR: always
 
     steps:
       - name: Configure git
-        run: git config --global core.symlinks true
+        run: |
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
 
       - name: Clone repository
         uses: actions/checkout@v2
@@ -72,9 +73,10 @@ jobs:
           startsWith(github.ref, 'refs/tags/')
         run: |
           mkdir -p target/release
-          tar --exclude=.cargo_home --exclude=".git*" --exclude=target --exclude=third_party/prebuilt -czvf target/release/deno_src.tar.gz -C .. deno
+          tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \
+              -czvf target/release/deno_src.tar.gz -C .. deno
 
-      - name: Install rust
+      - name: Install Rust
         uses: hecrj/setup-rust-action@v1
         with:
           rust-version: 1.53.0
@@ -86,32 +88,20 @@ jobs:
           rustup component add rustfmt
 
       - name: Install Deno
-        if: |
-          !startsWith(matrix.os, 'windows')
-        run: |-
+        if: matrix.kind == 'lint'
+        run: |
           curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
           echo "$HOME/.deno/bin" >> $GITHUB_PATH
-
-      - name: Error on Warning
-        run: echo "RUSTFLAGS=-D warnings" >> $GITHUB_ENV
-
-      - name: Install Deno (Windows)
-        if: startsWith(matrix.os, 'windows')
-        run: |-
-          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
-          echo "$HOME/.deno/bin" >> $env:GITHUB_PATH
 
       - name: Install Python
         uses: actions/setup-python@v1
         with:
-          python-version: "3.8"
-          architecture: x64
+          python-version: 3.8
 
       - name: Install Node
         uses: actions/setup-node@v2
         with:
-          node-version: "16"
-          check-latest: true
+          node-version: 16
 
       - name: Remove unused versions of Python
         if: startsWith(matrix.os, 'windows')
@@ -151,23 +141,92 @@ jobs:
           service_account_key: ${{ secrets.GCP_SA_KEY }}
           export_default_credentials: true
 
-      - name: Configure canary build
-        if: |
-          matrix.kind == 'test' &&
-          matrix.profile == 'release' &&
-          github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/main'
-        shell: bash
+      - name: Error on warning
+        # TODO(piscisaureus): enable this on Windows again.
+        if: "!matrix.use_sysroot && !startsWith(matrix.os, 'windows')"
+        run: echo "RUSTFLAGS=-D warnings" >> $GITHUB_ENV
+
+      - name: Set up Linux sysroot with Ubuntu 18.04 and LLVM
+        if: matrix.use_sysroot
         run: |
-          echo "DENO_CANARY=true" >> $GITHUB_ENV
+          sudo apt-get update
+          sudo apt-get install debootstrap
+
+          # Note: git, nc, strace, and time, are needed to run the benchmarks.
+          sudo debootstrap                                                     \
+                 --include=ca-certificates,curl,git,netcat-openbsd,strace,time \
+                 --no-merged-usr --variant=minbase bionic /sysroot             \
+                 http://azure.archive.ubuntu.com/ubuntu
+          sudo mount --rbind /dev /sysroot/dev
+          sudo mount --rbind /sys /sysroot/sys
+          sudo mount --rbind /home /sysroot/home
+          sudo mount -t proc /proc /sysroot/proc
+
+          sudo ln --force --target /sysroot/etc \
+                  /etc/passwd /etc/shadow /etc/group /etc/gshadow
+
+          # Install clang-12 and lld-12 into the chroot environment.
+          echo "deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-12 main" |
+            sudo dd of=/sysroot/etc/apt/sources.list.d/llvm-toolchain-bionic-12.list
+          curl https://apt.llvm.org/llvm-snapshot.gpg.key |
+            gpg --dearmor                                 |
+            sudo dd of=/sysroot/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
+          sudo chroot /sysroot apt update -y
+          sudo chroot /sysroot apt install --no-install-recommends -y \
+                                           clang-12 lld-12
+
+          # Make rust available inside the chroot environment.
+          sudo mkdir -p /sysroot/usr/share/rust
+          sudo mount --rbind /usr/share/rust /sysroot/usr/share/rust
+
+          # Make node (needed to run the benchmarks) available.
+          sudo ln --target /sysroot/usr/bin "$(which node)"
+
+          cat >> ~/.bash_profile << ___
+            cd "$(pwd)"
+
+            # Add cargo, rustc, and deno to $PATH.
+            source /usr/share/rust/.cargo/env
+            export PATH="$PATH:$(pwd)/target/release"
+
+            # Rust build configuration.
+            export CARGO_PROFILE_BENCH_INCREMENTAL=false
+            export CARGO_PROFILE_BENCH_LTO=false
+            export CARGO_PROFILE_RELEASE_INCREMENTAL=false
+            export CARGO_PROFILE_RELEASE_LTO=false
+            export RUSTFLAGS="
+              -C linker-plugin-lto=true
+              -C linker=clang-12
+              -C link-arg=-fuse-ld=lld-12
+              -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
+              -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+              -D warnings
+            "
+            export RUSTDOCFLAGS="\$RUSTFLAGS"
+            unset RUSTC_FORCE_INCREMENTAL
+
+            # C build configuration.
+            export CC=clang-12         # Compile c source files with clang.
+            export CCFLAGs=-flto=thin  # Tell clang to produce llvm bitcode.
+
+            # Miscellaneous flags.
+            export CARGO_TERM_COLOR=always
+            export CI=true
+            export DENO_CANARY=true
+          ___
 
       - name: Log versions
+        shell: bash
         run: |
           node -v
           python --version
           rustc --version
           cargo --version
-          deno --version
+          # Deno is installed when linting.
+          if [ "${{ matrix.kind }}" == "lint" ]
+          then
+            deno --version
+          fi
 
       - name: Cache Cargo home
         uses: actions/cache@v2
@@ -177,21 +236,24 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: a-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: b-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
         # TODO(kt3k): Change the version to the released version
         # when https://github.com/actions/cache/pull/489 (or 571) is merged.
         uses: actions/cache@03e00da99d75a2204924908e1cca7902cafce66b
-        if: github.ref == 'refs/heads/main'
+        if: matrix.profile == 'release' && github.ref == 'refs/heads/main'
         with:
           path: |
             ./target
+            !./target/*/gn_out
+            !./target/*/*.zip
+            !./target/*/*.tar.gz
           key: |
-            a-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+            b-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
 
-      # Restores cache from the latest main branch's Cache
+      # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
         # TODO(kt3k): Change the version to the released version
         # when https://github.com/actions/cache/pull/489 (or 571) is merged.
@@ -200,21 +262,50 @@ jobs:
         with:
           path: |
             ./target
-          key: |
-            s0mth1ng_rand0m # Cache never be created for this key.
+            !./target/*/gn_out
+            !./target/*/*.zip
+            !./target/*/*.tar.gz
+          key: never_saved
           restore-keys: |
-            a-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ hashFiles('Cargo.lock') }}-
+            b-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
 
-      # Skips saving cache in PR branches
+      # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)
         run: echo "CACHE_SKIP_SAVE=true" >> $GITHUB_ENV
         shell: bash
         if: github.ref != 'refs/heads/main'
 
       - name: Apply and update mtime cache
+        if: matrix.profile == 'release'
         uses: ./.github/mtime_cache
         with:
           cache-path: ./target
+
+      # Shallow the cloning the crates.io index makes CI faster because it
+      # obviates the need for Cargo to clone the index. If we don't do this
+      # Cargo will `git clone` the github repository that contains the entire
+      # history of the crates.io index from github. We don't believe the
+      # identifier '1ecc6299db9ec823' will ever change, but if it does then this
+      # command must be updated.
+      - name: Shallow clone crates.io index
+        shell: bash
+        run: |
+          if [ ! -d ~/.cargo/registry/index/github.com-1ecc6299db9ec823/.git ]
+          then
+            git clone --depth 1 --no-checkout                      \
+                      https://github.com/rust-lang/crates.io-index \
+                      ~/.cargo/registry/index/github.com-1ecc6299db9ec823
+          fi
+
+      - name: Configure canary build
+        if: |
+          matrix.kind == 'test' &&
+          matrix.profile == 'release' &&
+          !matrix.use_sysroot &&
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/main'
+        shell: bash
+        run: echo "DENO_CANARY=true" >> $GITHUB_ENV
 
       - name: test_format.js
         if: matrix.kind == 'lint'
@@ -225,13 +316,26 @@ jobs:
         # TODO(ry) assert matrix.profile == "debug"
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
 
-      - name: Build release
-        if: (matrix.kind == 'test' || matrix.kind == 'bench') && matrix.profile == 'release'
-        run: cargo build --release --locked --all-targets -vv
-
       - name: Build debug
-        if: (matrix.kind == 'test' || matrix.kind == 'bench') && matrix.profile == 'debug'
+        if: |
+          (matrix.kind == 'test' || matrix.kind == 'bench') &&
+          matrix.profile == 'debug' && !matrix.use_sysroot
         run: cargo build --locked --all-targets
+
+      - name: Build release
+        if: |
+          (matrix.kind == 'test' || matrix.kind == 'bench') &&
+          matrix.profile == 'release' && !matrix.use_sysroot
+        run: cargo build --release --locked --all-targets
+
+      - name: Build release (in sysroot)
+        if: |
+          (matrix.kind == 'test' || matrix.kind == 'bench') &&
+          matrix.profile == 'release' && matrix.use_sysroot
+        run: |
+          sudo chroot /sysroot   \
+               su -l "$(whoami)" \
+                  -c "cargo build --release --locked --all-targets"
 
       - name: Pre-release (linux)
         if: |
@@ -287,28 +391,66 @@ jobs:
           echo $(git rev-parse HEAD) > canary-latest.txt
           gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
 
-      - name: Test release
-        if: matrix.kind == 'test' && matrix.profile == 'release'
-        run: cargo test --release --locked --all-targets
-
       - name: Test debug
-        if: matrix.kind == 'test' && matrix.profile == 'debug'
+        if: |
+          matrix.kind == 'test' && matrix.profile == 'debug' &&
+          !matrix.use_sysroot
         run: |
           cargo test --locked --doc
-          cargo test --locked --all-targets
+          cargo test --locked
 
-      # TODO(ry) Because CI is so slow on for OSX and Windows, we currently only run WPT on Linux.
-      - name: Configure hosts file for WPT (linux)
-        if: startsWith(matrix.os, 'ubuntu')
+      - name: Test release
+        if: |
+          matrix.kind == 'test' && matrix.profile == 'release' &&
+          !matrix.use_sysroot
+        run: cargo test --release --locked
+
+      - name: Test release (in sysroot)
+        if: |
+          matrix.kind == 'test' && matrix.profile == 'release' &&
+          matrix.use_sysroot
+        run: |
+          sudo chroot /sysroot   \
+               su -l "$(whoami)" \
+                  -c "cargo test --release --locked"
+
+      # TODO(ry): Because CI is so slow on for OSX and Windows, we currently
+      #           run the Web Platform tests only on Linux.
+      - name: Configure hosts file for WPT
+        if: startsWith(matrix.os, 'ubuntu') && matrix.kind == 'test'
         run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
         working-directory: test_util/wpt/
 
-      - name: Run web platform tests (release)
-        if: startsWith(matrix.os, 'ubuntu') && matrix.kind == 'test' && matrix.profile == 'release'
+      - name: Run web platform tests (debug)
+        if: |
+          startsWith(matrix.os, 'ubuntu') && matrix.kind == 'test' &&
+          matrix.profile == 'debug'
+        env:
+          DENO_BIN: ./target/debug/deno
         run: |
-          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts setup
-          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --quiet --release --json=wpt.json --wptreport=wptreport.json
-          gzip ./wptreport.json
+          "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
+                          --allow-write --unstable                         \
+                          ./tools/wpt.ts setup
+          "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
+                          --allow-write --unstable                         \
+                          ./tools/wpt.ts run --quiet --binary="$DENO_BIN"
+
+      - name: Run web platform tests (release)
+        if: |
+          startsWith(matrix.os, 'ubuntu') && matrix.kind == 'test' &&
+          matrix.profile == 'release'
+        env:
+          DENO_BIN: ./target/release/deno
+        run: |
+          "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
+                          --allow-write --unstable                         \
+                          ./tools/wpt.ts setup
+          "$DENO_BIN" run --allow-env --allow-net --allow-read --allow-run \
+                          --allow-write --unstable                         \
+                          ./tools/wpt.ts run --quiet --release             \
+                                             --binary="$DENO_BIN"          \
+                                             --json=wpt.json               \
+                                             --wptreport=wptreport.json
 
       - name: Upload wpt results to dl.deno.land
         if: |
@@ -318,6 +460,7 @@ jobs:
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main'
         run: |
+          gzip ./wptreport.json
           gsutil cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json
           gsutil cp ./wptreport.json.gz gs://dl.deno.land/wpt/$(git rev-parse HEAD)-wptreport.json.gz
           echo $(git rev-parse HEAD) > wpt-latest.txt
@@ -335,17 +478,19 @@ jobs:
           WPT_FYI_STAGING_PW: ${{ secrets.WPT_FYI_STAGING_PW }}
           GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
         run: |
-          deno run -A ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
+          ./target/release/deno run --allow-all \
+              ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
 
-      - name: Run web platform tests (debug)
-        if: startsWith(matrix.os, 'ubuntu') && matrix.kind == 'test' && matrix.profile == 'debug'
+      - name: Run benchmarks
+        if: matrix.kind == 'bench' && !matrix.use_sysroot
+        run: cargo bench --locked
+
+      - name: Run benchmarks (in sysroot)
+        if: matrix.kind == 'bench' && matrix.use_sysroot
         run: |
-          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts setup
-          deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run ./tools/wpt.ts run --quiet
-
-      - name: Run Benchmarks
-        if: matrix.kind == 'bench'
-        run: cargo bench
+          sudo chroot /sysroot   \
+               su -l "$(whoami)" \
+                  -c "cargo bench --locked"
 
       - name: Post Benchmarks
         if: |
@@ -355,14 +500,23 @@ jobs:
         env:
           DENOBOT_PAT: ${{ secrets.DENOBOT_PAT }}
         run: |
-          git clone --depth 1 -b gh-pages https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git gh-pages
-          deno run --unstable -A ./tools/build_benchmark_jsons.js --release
+          git clone --depth 1 --branch gh-pages                             \
+              https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \
+              gh-pages
+          ./target/release/deno run --allow-all --unstable \
+              ./tools/build_benchmark_jsons.js --release
           cd gh-pages
           git config user.email "propelml@gmail.com"
           git config user.name "denobot"
           git add .
           git commit --message "Update benchmarks"
           git push origin gh-pages
+
+      - name: Build product size info
+        if: matrix.kind != 'lint'
+        run: |
+          du -hd1 "./target/${{ matrix.profile }}"
+          du -ha  "./target/${{ matrix.profile }}/deno"
 
       - name: Worker info
         if: matrix.kind == 'bench'
@@ -414,11 +568,3 @@ jobs:
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
           draft: true
-
-      - name: Clean before cache
-        shell: bash
-        run: |
-          rm -f target/*/deno target/*/test_server
-          rm -rf target/*/examples/
-          rm -rf target/*/gn_out/
-          rm -rf target/*/*.zip

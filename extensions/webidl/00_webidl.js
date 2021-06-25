@@ -564,7 +564,10 @@
     converters.USVString,
   );
   converters["sequence<double>"] = createSequenceConverter(
-    converters["double"],
+    converters.double,
+  );
+  converters["sequence<object>"] = createSequenceConverter(
+    converters.object,
   );
   converters["Promise<undefined>"] = createPromiseConverter(() => undefined);
 
@@ -577,6 +580,17 @@
   converters["record<ByteString, ByteString>"] = createRecordConverter(
     converters.ByteString,
     converters.ByteString,
+  );
+
+  converters["sequence<USVString>"] = createSequenceConverter(
+    converters.USVString,
+  );
+  converters["sequence<sequence<USVString>>"] = createSequenceConverter(
+    converters["sequence<USVString>"],
+  );
+  converters["record<USVString, USVString>"] = createRecordConverter(
+    converters.USVString,
+    converters.USVString,
   );
 
   converters["sequence<DOMString>"] = createSequenceConverter(
@@ -630,6 +644,7 @@
             get() {
               return member.defaultValue;
             },
+            enumerable: true,
           });
         }
       }
