@@ -3,4 +3,4 @@ await import("https://example.com/some/file.ts");
 ^
     at async http://localhost:4545/cli/tests/workers/dynamic_remote.ts:2:1
 [WILDCARD]error: Uncaught (in promise) Error: Unhandled error event reached main worker.
-    at Worker.#poll (deno:runtime/js/11_workers.js:243:23)
+    at Worker.#pollControl ([WILDCARD])

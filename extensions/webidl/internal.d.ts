@@ -321,6 +321,21 @@ declare namespace globalThis {
        * Configure prototype properties enumerability / writability / configurability.
        */
       declare function configurePrototype(prototype: any);
+
+      /**
+       * Get the WebIDL / ES type of a value.
+       */
+      declare function type(
+        v: any,
+      ):
+        | "Null"
+        | "Undefined"
+        | "Boolean"
+        | "Number"
+        | "String"
+        | "Symbol"
+        | "BigInt"
+        | "Object";
     }
   }
 }

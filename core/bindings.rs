@@ -206,7 +206,7 @@ pub extern "C" fn host_import_module_dynamically_callback(
     if arg.is_native_error() {
       let message = v8::Exception::create_message(scope, arg);
       if message.get_stack_trace(scope).unwrap().get_frame_count() == 0 {
-        let arg: v8::Local<v8::Object> = arg.clone().try_into().unwrap();
+        let arg: v8::Local<v8::Object> = arg.try_into().unwrap();
         let message_key = v8::String::new(scope, "message").unwrap();
         let message = arg.get(scope, message_key.into()).unwrap();
         let exception =

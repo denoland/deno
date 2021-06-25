@@ -2022,9 +2022,9 @@ mod integration {
         let mut output = String::new();
         master.read_to_string(&mut output).unwrap();
 
-        assert!(output.contains("Unexpected token ')'"));
-        assert!(output.contains("Unexpected token ']'"));
-        assert!(output.contains("Unexpected token '}'"));
+        assert!(output.contains("Unexpected token `)`"));
+        assert!(output.contains("Unexpected token `]`"));
+        assert!(output.contains("Unexpected token `}`"));
 
         fork.wait().unwrap();
       } else {
@@ -2232,6 +2232,59 @@ mod integration {
     }
 
     #[test]
+    fn typescript() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec![
+          "function add(a: number, b: number) { return a + b }",
+          "const result: number = add(1, 2) as number;",
+          "result",
+        ]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("undefined\nundefined\n3\n"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn typescript_declarations() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec![
+          "namespace Test { export enum Values { A, B, C } }",
+          "Test.Values.A",
+          "Test.Values.C",
+          "interface MyInterface { prop: string; }",
+          "type MyTypeAlias = string;",
+        ]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("undefined\n0\n2\nundefined\nundefined\n"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn typescript_decorators() {
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec![
+          "function dec(target) { target.prototype.test = () => 2; }",
+          "@dec class Test {}",
+          "new Test().test()",
+        ]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.ends_with("undefined\nundefined\n2\n"));
+      assert!(err.is_empty());
+    }
+
+    #[test]
     fn eof() {
       let (out, err) = util::run_and_collect_output(
         true,
@@ -2362,11 +2415,30 @@ mod integration {
       let (out, err) = util::run_and_collect_output(
         true,
         "repl",
-        Some(vec!["syntax error"]),
-        None,
+        Some(vec![
+          "syntax error",
+          "2", // ensure it keeps accepting input after
+        ]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
         false,
       );
-      assert!(out.contains("Unexpected identifier"));
+      assert!(
+        out.ends_with("parse error: Expected ';', '}' or <eof> at 1:7\n2\n")
+      );
+      assert!(err.is_empty());
+    }
+
+    #[test]
+    fn syntax_error_jsx() {
+      // JSX is not supported in the REPL
+      let (out, err) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["const element = <div />;"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.contains("Unexpected token `>`"));
       assert!(err.is_empty());
     }
 
@@ -3158,6 +3230,29 @@ console.log("finish");
     util::test_pty(args, output, input);
   }
 
+  #[test]
+  fn broken_stdout() {
+    let (reader, writer) = os_pipe::pipe().unwrap();
+    // drop the reader to create a broken pipe
+    drop(reader);
+
+    let output = util::deno_cmd()
+      .current_dir(util::root_path())
+      .arg("eval")
+      .arg("console.log(3.14)")
+      .stdout(writer)
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = std::str::from_utf8(output.stderr.as_ref()).unwrap().trim();
+    assert!(stderr.contains("Uncaught BrokenPipe"));
+    assert!(!stderr.contains("panic"));
+  }
+
   itest!(_091_use_define_for_class_fields {
     args: "run 091_use_define_for_class_fields.ts",
     output: "091_use_define_for_class_fields.ts.out",
@@ -3349,7 +3444,19 @@ console.log("finish");
     output: "config.ts.out",
   });
 
-  itest!(emtpy_typescript {
+  itest!(config_types {
+    args:
+      "run --reload --quiet --config config_types.tsconfig.json config_types.ts",
+    output: "config_types.ts.out",
+  });
+
+  itest!(config_types_remote {
+    http_server: true,
+    args: "run --reload --quiet --config config_types_remote.tsconfig.json config_types.ts",
+    output: "config_types.ts.out",
+  });
+
+  itest!(empty_typescript {
     args: "run --reload subdir/empty.ts",
     output_str: Some("Check file:[WILDCARD]tests/subdir/empty.ts\n"),
   });
@@ -3892,12 +3999,6 @@ console.log("finish");
     output: "unstable_enabled_js.out",
   });
 
-  itest!(unstable_disabled_ts2551 {
-    args: "run --reload unstable_ts2551.ts",
-    exit_code: 1,
-    output: "unstable_disabled_ts2551.out",
-  });
-
   itest!(unstable_worker {
     args: "run --reload --unstable --quiet --allow-read unstable_worker.ts",
     output: "unstable_worker.ts.out",
@@ -4049,6 +4150,17 @@ console.log("finish");
     args:
       "cache --reload http://localhost:4548/cli/tests/subdir/redirects/a.ts",
     output: "redirect_cache.out",
+  });
+
+  itest!(reference_types {
+    args: "run --reload --quiet reference_types.ts",
+    output: "reference_types.ts.out",
+  });
+
+  itest!(references_types_remote {
+    http_server: true,
+    args: "run --reload --quiet reference_types_remote.ts",
+    output: "reference_types_remote.ts.out",
   });
 
   itest!(deno_doc_types_header_direct {
@@ -5538,25 +5650,6 @@ console.log("finish");
     assert!(!output.status.success());
     let stderr = std::str::from_utf8(&output.stderr).unwrap().trim();
     assert!(stderr.contains("BadResource"));
-  }
-
-  #[cfg(not(windows))]
-  #[test]
-  fn should_not_panic_on_not_found_cwd() {
-    let output = util::deno_cmd()
-      .current_dir(util::root_path())
-      .arg("run")
-      .arg("--allow-write")
-      .arg("--allow-read")
-      .arg("cli/tests/dont_panic_not_found_cwd.ts")
-      .stderr(std::process::Stdio::piped())
-      .spawn()
-      .unwrap()
-      .wait_with_output()
-      .unwrap();
-    assert!(!output.status.success());
-    let stderr = std::str::from_utf8(&output.stderr).unwrap().trim();
-    assert!(stderr.contains("Failed to get current working directory"));
   }
 
   #[cfg(windows)]

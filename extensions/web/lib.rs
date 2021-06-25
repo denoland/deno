@@ -1,11 +1,18 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+mod message_port;
+
+pub use crate::message_port::create_entangled_message_port;
+pub use crate::message_port::JsMessageData;
+pub use crate::message_port::MessagePort;
+
 use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
 use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
+use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::url::Url;
 use deno_core::Extension;
@@ -30,6 +37,10 @@ use std::sync::Mutex;
 use std::usize;
 use uuid::Uuid;
 
+use crate::message_port::op_message_port_create_entangled;
+use crate::message_port::op_message_port_post_message;
+use crate::message_port::op_message_port_recv_message;
+
 /// Load and execute the javascript code.
 pub fn init(
   blob_url_store: BlobUrlStore,
@@ -52,6 +63,7 @@ pub fn init(
       "10_filereader.js",
       "11_blob_url.js",
       "12_location.js",
+      "13_message_port.js",
     ))
     .ops(vec![
       ("op_base64_decode", op_sync(op_base64_decode)),
@@ -70,6 +82,18 @@ pub fn init(
       (
         "op_file_revoke_object_url",
         op_sync(op_file_revoke_object_url),
+      ),
+      (
+        "op_message_port_create_entangled",
+        op_sync(op_message_port_create_entangled),
+      ),
+      (
+        "op_message_port_post_message",
+        op_sync(op_message_port_post_message),
+      ),
+      (
+        "op_message_port_recv_message",
+        op_async(op_message_port_recv_message),
       ),
     ])
     .state(move |state| {

@@ -90,6 +90,24 @@ declare namespace Deno {
   /** The current process id of the runtime. */
   export const pid: number;
 
+  /**
+   * The pid of the current process's parent.
+   */
+  export const ppid: number;
+
+  export interface MemoryUsage {
+    rss: number;
+    heapTotal: number;
+    heapUsed: number;
+    external: number;
+  }
+
+  /**
+   * Returns an object describing the memory usage of the Deno process measured
+   * in bytes.
+   */
+  export function memoryUsage(): MemoryUsage;
+
   /** Reflects the `NO_COLOR` environment variable at program start.
    *
    * See: https://no-color.org/ */
@@ -843,6 +861,15 @@ declare namespace Deno {
     mode?: number;
   }
 
+  export interface ReadFileOptions {
+    /**
+     * An abort signal to allow cancellation of the file read operation.
+     * If the signal becomes aborted the readFile operation will be stopped
+     * and the promise returned will be rejected with an AbortError.
+     */
+    signal?: AbortSignal;
+  }
+
   /**
    *
    *  Check if a given resource id (`rid`) is a TTY.
@@ -1367,7 +1394,10 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-read` permission. */
-  export function readTextFile(path: string | URL): Promise<string>;
+  export function readTextFile(
+    path: string | URL,
+    options?: ReadFileOptions,
+  ): Promise<string>;
 
   /** Synchronously reads and returns the entire contents of a file as an array
    * of bytes. `TextDecoder` can be used to transform the bytes to string if
@@ -1393,7 +1423,10 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-read` permission. */
-  export function readFile(path: string | URL): Promise<Uint8Array>;
+  export function readFile(
+    path: string | URL,
+    options?: ReadFileOptions,
+  ): Promise<Uint8Array>;
 
   /** A FileInfo describes a file and is returned by `stat`, `lstat`,
    * `statSync`, `lstatSync`. */
