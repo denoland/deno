@@ -104,6 +104,7 @@ pub enum DenoSubcommand {
     include: Option<Vec<String>>,
     filter: Option<String>,
     concurrent_jobs: usize,
+    bail: usize,
   },
   Types,
   Upgrade {
@@ -1017,6 +1018,12 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .help("Run tests with this string or pattern in the test name"),
     )
     .arg(
+      Arg::with_name("bail")
+      .long("bail")
+      .help("Exit the test suite immediately upon n number of failing test suite")
+      .min_values(1)
+    )
+    .arg(
       Arg::with_name("coverage")
         .long("coverage")
         .require_equals(true)
@@ -1688,6 +1695,16 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   flags.watch = matches.is_present("watch");
 
+  let bail = if matches.is_present("bail") {
+    if let Some(value) = matches.value_of("bail") {
+      value.parse().unwrap()
+    }else {
+      0
+    }
+  } else {
+    0
+  };
+
   if matches.is_present("script_arg") {
     let script_arg: Vec<String> = matches
       .values_of("script_arg")
@@ -1732,6 +1749,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     filter,
     allow_none,
     concurrent_jobs,
+    bail,
   };
 }
 
@@ -3354,7 +3372,7 @@ mod tests {
   #[test]
   fn test_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
+    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-run", "--bail" , "2" , "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3367,6 +3385,7 @@ mod tests {
           quiet: false,
           include: Some(svec!["dir1/", "dir2/"]),
           concurrent_jobs: 1,
+          bail: 2,
         },
         unstable: true,
         coverage_dir: Some("cov".to_string()),

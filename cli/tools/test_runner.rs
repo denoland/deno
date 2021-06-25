@@ -344,7 +344,9 @@ pub async fn run_tests(
   allow_none: bool,
   filter: Option<String>,
   concurrent_jobs: usize,
+  bail: usize,
 ) -> Result<bool, AnyError> {
+
   if !doc_modules.is_empty() {
     let mut test_programs = Vec::new();
 
@@ -502,6 +504,7 @@ pub async fn run_tests(
       let mut has_error = false;
       let mut planned = 0;
       let mut reported = 0;
+      let mut failed = 0;
 
       for event in receiver.iter() {
         match event.message.clone() {
@@ -524,13 +527,19 @@ pub async fn run_tests(
             reported += 1;
 
             if let TestResult::Failed(_) = result {
+              failed += 1;
               has_error = true;
             }
+
           }
           _ => {}
         }
 
         reporter.visit_event(event);
+
+        if bail > 0 && failed > bail {
+          break;
+        }
 
         if has_error && fail_fast {
           break;

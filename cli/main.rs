@@ -983,7 +983,9 @@ async fn test_command(
   allow_none: bool,
   filter: Option<String>,
   concurrent_jobs: usize,
+  bail: usize,
 ) -> Result<(), AnyError> {
+
   if let Some(ref coverage_dir) = flags.coverage_dir {
     std::fs::create_dir_all(&coverage_dir)?;
     env::set_var(
@@ -1171,6 +1173,7 @@ async fn test_command(
           true,
           filter.clone(),
           concurrent_jobs,
+          bail,
         )
         .map(|res| res.map(|_| ()))
       },
@@ -1206,6 +1209,7 @@ async fn test_command(
       allow_none,
       filter,
       concurrent_jobs,
+      bail,
     )
     .await?;
 
@@ -1313,6 +1317,7 @@ fn get_subcommand(
       allow_none,
       filter,
       concurrent_jobs,
+      bail
     } => test_command(
       flags,
       include,
@@ -1323,6 +1328,7 @@ fn get_subcommand(
       allow_none,
       filter,
       concurrent_jobs,
+      bail,
     )
     .boxed_local(),
     DenoSubcommand::Completions { buf } => {
