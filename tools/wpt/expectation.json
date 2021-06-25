@@ -1953,7 +1953,6 @@
       "Non-secure context window does not have access to SubtleCrypto"
     ],
     "idlharness.https.any.html": [
-      "CryptoKey interface object length",
       "CryptoKey interface: attribute type",
       "CryptoKey interface: attribute extractable",
       "CryptoKey interface: attribute algorithm",

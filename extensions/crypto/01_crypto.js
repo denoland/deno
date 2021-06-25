@@ -203,13 +203,13 @@
       webidl.assertBranded(this, SubtleCrypto);
       webidl.requiredArguments(arguments.length, 3);
 
-      algorithm = normalizeAlgorithm(algorithm, "sign");
-
       data = webidl.converters.BufferSource(data, {
         prefix,
         context: "Argument 3",
       });
 
+      algorithm = normalizeAlgorithm(algorithm, "sign");
+      
       const index = key[_handle];
       const keyData = keys[index];
 
