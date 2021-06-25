@@ -257,14 +257,16 @@
 
       // 28.
       this[_signal] = abortSignal.newSignal();
+
+      // 29.
       if (signal !== null) {
         abortSignal.follow(this[_signal], signal);
       }
 
-      // 29.
+      // 30.
       this[_headers] = headersFromHeaderList(request.headerList, "request");
 
-      // 31.
+      // 32.
       if (Object.keys(init).length > 0) {
         let headers = headerListFromHeaders(this[_headers]).slice(
           0,
@@ -280,13 +282,13 @@
         fillHeaders(this[_headers], headers);
       }
 
-      // 32.
+      // 33.
       let inputBody = null;
       if (input instanceof Request) {
         inputBody = input[_body];
       }
 
-      // 33.
+      // 34.
       if (
         (request.method === "GET" || request.method === "HEAD") &&
         ((init.body !== undefined && init.body !== null) ||
@@ -295,10 +297,10 @@
         throw new TypeError("Request with GET/HEAD method cannot have body.");
       }
 
-      // 34.
+      // 35.
       let initBody = null;
 
-      // 35.
+      // 36.
       if (init.body !== undefined && init.body !== null) {
         const res = extractBody(init.body);
         initBody = res.body;
@@ -307,20 +309,22 @@
         }
       }
 
-      // 36.
+      // 37.
       const inputOrInitBody = initBody ?? inputBody;
 
-      // 38.
-      const finalBody = inputOrInitBody;
-
       // 39.
-      // TODO(lucacasonato): implement this step. Is it needed?
+      let finalBody = inputOrInitBody;
 
       // 40.
-      request.body = finalBody;
+      if (initBody === null && inputBody !== null) {
+        if (input[_body] && input[_body].unusable()) {
+          throw new TypeError("Input request's body is unusable.");
+        }
+        finalBody = inputBody.createProxy();
+      }
 
       // 41.
-      // TODO(lucacasonato): Extranious? https://github.com/whatwg/fetch/issues/1249
+      request.body = finalBody;
     }
 
     get method() {

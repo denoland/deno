@@ -29,7 +29,7 @@ use std::rc::Rc;
 ///
 /// ...it can be invoked from JS using the provided name, for example:
 /// ```js
-/// let result = Deno.core.opSync("function_name", args);
+/// let result = Deno.core.opSync("hello", args);
 /// ```
 ///
 /// `runtime.sync_ops_cache()` must be called after registering new ops
@@ -51,6 +51,9 @@ where
 
 /// Creates an op that passes data asynchronously using JSON.
 ///
+/// When this op is dispatched, the runtime doesn't exit while processing it.
+/// Use op_async_unref instead if you want to make the runtime exit while processing it.
+///
 /// The provided function `op_fn` has the following parameters:
 /// * `Rc<RefCell<OpState>`: the op state, can be used to read/write resources in the runtime from an op.
 /// * `V`: the deserializable value that is passed to the Rust function.
@@ -68,7 +71,7 @@ where
 ///
 /// ...it can be invoked from JS using the provided name, for example:
 /// ```js
-/// let future = Deno.core.opAsync("function_name", args);
+/// let future = Deno.core.opAsync("hello", args);
 /// ```
 ///
 /// `runtime.sync_ops_cache()` must be called after registering new ops
@@ -96,6 +99,37 @@ where
     let fut = op_fn(state.clone(), a, b)
       .map(move |result| (pid, serialize_op_result(result, state)));
     Op::Async(Box::pin(fut))
+  })
+}
+
+/// Creates an op that passes data asynchronously using JSON.
+///
+/// When this op is dispatched, the runtime still can exit while processing it.
+///
+/// The other usages are the same as `op_async`.
+pub fn op_async_unref<F, A, B, R, RV>(op_fn: F) -> Box<OpFn>
+where
+  F: Fn(Rc<RefCell<OpState>>, A, B) -> R + 'static,
+  A: DeserializeOwned,
+  B: DeserializeOwned,
+  R: Future<Output = Result<RV, AnyError>> + 'static,
+  RV: Serialize + 'static,
+{
+  Box::new(move |state, payload| -> Op {
+    let pid = payload.promise_id;
+    // Deserialize args, sync error on failure
+    let args = match payload.deserialize() {
+      Ok(args) => args,
+      Err(err) => {
+        return Op::Sync(serialize_op_result(Err::<(), AnyError>(err), state))
+      }
+    };
+    let (a, b) = args;
+
+    use crate::futures::FutureExt;
+    let fut = op_fn(state.clone(), a, b)
+      .map(move |result| (pid, serialize_op_result(result, state)));
+    Op::AsyncUnref(Box::pin(fut))
   })
 }
 

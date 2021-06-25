@@ -2370,6 +2370,18 @@ mod integration {
     }
 
     #[test]
+    fn import_declarations() {
+      let (out, _) = util::run_and_collect_output(
+        true,
+        "repl",
+        Some(vec!["import './subdir/auto_print_hello.ts';"]),
+        Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+        false,
+      );
+      assert!(out.contains("hello!\n"));
+    }
+
+    #[test]
     fn eval_unterminated() {
       let (out, err) = util::run_and_collect_output(
         true,
@@ -3230,6 +3242,29 @@ console.log("finish");
     util::test_pty(args, output, input);
   }
 
+  #[test]
+  fn broken_stdout() {
+    let (reader, writer) = os_pipe::pipe().unwrap();
+    // drop the reader to create a broken pipe
+    drop(reader);
+
+    let output = util::deno_cmd()
+      .current_dir(util::root_path())
+      .arg("eval")
+      .arg("console.log(3.14)")
+      .stdout(writer)
+      .stderr(std::process::Stdio::piped())
+      .spawn()
+      .unwrap()
+      .wait_with_output()
+      .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = std::str::from_utf8(output.stderr.as_ref()).unwrap().trim();
+    assert!(stderr.contains("Uncaught BrokenPipe"));
+    assert!(!stderr.contains("panic"));
+  }
+
   itest!(_091_use_define_for_class_fields {
     args: "run 091_use_define_for_class_fields.ts",
     output: "091_use_define_for_class_fields.ts.out",
@@ -3974,12 +4009,6 @@ console.log("finish");
   itest!(unstable_enabled_js {
     args: "run --quiet --reload --unstable unstable.ts",
     output: "unstable_enabled_js.out",
-  });
-
-  itest!(unstable_disabled_ts2551 {
-    args: "run --reload unstable_ts2551.ts",
-    exit_code: 1,
-    output: "unstable_disabled_ts2551.out",
   });
 
   itest!(unstable_worker {

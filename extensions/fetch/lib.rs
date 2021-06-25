@@ -29,6 +29,7 @@ use deno_web::BlobUrlStore;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
+use reqwest::header::HOST;
 use reqwest::header::USER_AGENT;
 use reqwest::redirect::Policy;
 use reqwest::Body;
@@ -56,6 +57,7 @@ pub use reqwest; // Re-export reqwest
 pub fn init<P: FetchPermissions + 'static>(
   user_agent: String,
   ca_data: Option<Vec<u8>>,
+  proxy: Option<Proxy>,
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -78,11 +80,13 @@ pub fn init<P: FetchPermissions + 'static>(
     ])
     .state(move |state| {
       state.put::<reqwest::Client>({
-        create_http_client(user_agent.clone(), ca_data.clone()).unwrap()
+        create_http_client(user_agent.clone(), ca_data.clone(), proxy.clone())
+          .unwrap()
       });
       state.put::<HttpClientDefaults>(HttpClientDefaults {
         ca_data: ca_data.clone(),
         user_agent: user_agent.clone(),
+        proxy: proxy.clone(),
       });
       Ok(())
     })
@@ -92,6 +96,7 @@ pub fn init<P: FetchPermissions + 'static>(
 pub struct HttpClientDefaults {
   pub user_agent: String,
   pub ca_data: Option<Vec<u8>>,
+  pub proxy: Option<Proxy>,
 }
 
 pub trait FetchPermissions {
@@ -193,7 +198,9 @@ where
       for (key, value) in args.headers {
         let name = HeaderName::from_bytes(key.as_bytes()).unwrap();
         let v = HeaderValue::from_str(&value).unwrap();
-        request = request.header(name, v);
+        if name != HOST {
+          request = request.header(name, v);
+        }
       }
 
       let cancel_handle = CancelHandle::new_rc();
@@ -461,6 +468,22 @@ impl HttpClientResource {
 pub struct CreateHttpClientOptions {
   ca_file: Option<String>,
   ca_data: Option<String>,
+  proxy: Option<Proxy>,
+}
+
+#[derive(Deserialize, Default, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct Proxy {
+  pub url: String,
+  pub basic_auth: Option<BasicAuth>,
+}
+
+#[derive(Deserialize, Default, Debug, Clone)]
+#[serde(default)]
+pub struct BasicAuth {
+  pub username: String,
+  pub password: String,
 }
 
 pub fn op_create_http_client<FP>(
@@ -476,6 +499,12 @@ where
     permissions.check_read(&PathBuf::from(ca_file))?;
   }
 
+  if let Some(proxy) = args.proxy.clone() {
+    let permissions = state.borrow_mut::<FP>();
+    let url = Url::parse(&proxy.url)?;
+    permissions.check_net_url(&url)?;
+  }
+
   let defaults = state.borrow::<HttpClientDefaults>();
 
   let cert_data =
@@ -483,6 +512,7 @@ where
   let client = create_http_client(
     defaults.user_agent.clone(),
     cert_data.or_else(|| defaults.ca_data.clone()),
+    args.proxy,
   )
   .unwrap();
 
@@ -510,6 +540,7 @@ fn get_cert_data(
 pub fn create_http_client(
   user_agent: String,
   ca_data: Option<Vec<u8>>,
+  proxy: Option<Proxy>,
 ) -> Result<Client, AnyError> {
   let mut headers = HeaderMap::new();
   headers.insert(USER_AGENT, user_agent.parse().unwrap());
@@ -521,6 +552,15 @@ pub fn create_http_client(
   if let Some(ca_data) = ca_data {
     let cert = reqwest::Certificate::from_pem(&ca_data)?;
     builder = builder.add_root_certificate(cert);
+  }
+
+  if let Some(proxy) = proxy {
+    let mut reqwest_proxy = reqwest::Proxy::all(&proxy.url)?;
+    if let Some(basic_auth) = &proxy.basic_auth {
+      reqwest_proxy =
+        reqwest_proxy.basic_auth(&basic_auth.username, &basic_auth.password);
+    }
+    builder = builder.proxy(reqwest_proxy);
   }
 
   builder

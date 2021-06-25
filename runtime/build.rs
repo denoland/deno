@@ -42,7 +42,11 @@ fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
     deno_console::init(),
     deno_url::init(),
     deno_web::init(Default::default(), Default::default()),
-    deno_fetch::init::<deno_fetch::NoFetchPermissions>("".to_owned(), None),
+    deno_fetch::init::<deno_fetch::NoFetchPermissions>(
+      "".to_owned(),
+      None,
+      None,
+    ),
     deno_websocket::init::<deno_websocket::NoWebSocketPermissions>(
       "".to_owned(),
       None,

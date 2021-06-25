@@ -184,6 +184,23 @@ project (`npm init -y` as necessary), then add the following block to your
 }
 ```
 
+You can also use built-in Deno language server by using
+[`eglot`](https://github.com/joaotavora/eglot).
+
+Example configuration:
+
+```elisp
+(add-to-list 'eglot-server-programs '((js-mode typescript-mode) . (eglot-deno "deno" "lsp")))
+
+  (defclass eglot-deno (eglot-lsp-server) ()
+    :documentation "A custom class for deno lsp.")
+
+  (cl-defmethod eglot-initialization-options ((server eglot-deno))
+    "Passes through required deno initialization options"
+    (list :enable t
+    :lint t))
+```
+
 #### Atom
 
 Install [atom-ide-base](https://atom.io/packages/atom-ide-base) package and

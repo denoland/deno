@@ -2701,7 +2701,11 @@ mod tests {
           &parsed_module,
           &None,
         );
-        documents.set_dependencies(&specifier, Some(deps)).unwrap();
+        let dep_ranges =
+          analysis::analyze_dependency_ranges(&parsed_module).ok();
+        documents
+          .set_dependencies(&specifier, Some(deps), dep_ranges)
+          .unwrap();
       }
     }
     let sources = Sources::new(location);
