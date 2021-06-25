@@ -129,6 +129,24 @@ unitTest(
   },
 );
 
+// This tests that pending op_signal_poll doesn't block the runtime from exiting the process.
+unitTest(
+  { ignore: Deno.build.os === "windows", perms: { run: true, read: true } },
+  async function signalStreamExitTest(): Promise<void> {
+    const p = Deno.run({
+      cmd: [
+        Deno.execPath(),
+        "eval",
+        "--unstable",
+        "(async () => { for await (const _ of Deno.signals.io()) {} })()",
+      ],
+    });
+    const res = await p.status();
+    assertEquals(res.code, 0);
+    p.close();
+  },
+);
+
 unitTest(
   { ignore: Deno.build.os === "windows", perms: { run: true } },
   async function signalPromiseTest(): Promise<void> {

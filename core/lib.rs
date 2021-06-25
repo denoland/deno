@@ -73,6 +73,7 @@ pub use crate::ops_builtin::op_close;
 pub use crate::ops_builtin::op_print;
 pub use crate::ops_builtin::op_resources;
 pub use crate::ops_json::op_async;
+pub use crate::ops_json::op_async_unref;
 pub use crate::ops_json::op_sync;
 pub use crate::resources::Resource;
 pub use crate::resources::ResourceId;
