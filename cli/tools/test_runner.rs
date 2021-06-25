@@ -346,7 +346,6 @@ pub async fn run_tests(
   concurrent_jobs: usize,
   bail: usize,
 ) -> Result<bool, AnyError> {
-
   if !doc_modules.is_empty() {
     let mut test_programs = Vec::new();
 
@@ -530,7 +529,6 @@ pub async fn run_tests(
               failed += 1;
               has_error = true;
             }
-
           }
           _ => {}
         }

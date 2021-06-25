@@ -985,7 +985,6 @@ async fn test_command(
   concurrent_jobs: usize,
   bail: usize,
 ) -> Result<(), AnyError> {
-
   if let Some(ref coverage_dir) = flags.coverage_dir {
     std::fs::create_dir_all(&coverage_dir)?;
     env::set_var(
@@ -1317,7 +1316,7 @@ fn get_subcommand(
       allow_none,
       filter,
       concurrent_jobs,
-      bail
+      bail,
     } => test_command(
       flags,
       include,

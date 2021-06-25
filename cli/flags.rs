@@ -1019,10 +1019,12 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
     )
     .arg(
       Arg::with_name("bail")
-      .long("bail")
-      .short("b")
-      .help("Exit the test suite immediately upon n number of failing test suite")
-      .min_values(1)
+        .long("bail")
+        .short("b")
+        .help(
+          "Exit the test suite immediately upon n number of failing test suite",
+        )
+        .min_values(1),
     )
     .arg(
       Arg::with_name("coverage")
@@ -1699,7 +1701,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let bail = if matches.is_present("bail") {
     if let Some(value) = matches.value_of("bail") {
       value.parse().unwrap()
-    }else {
+    } else {
       0
     }
   } else {
