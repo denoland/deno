@@ -576,7 +576,8 @@ unitTest(
       const statusLine = await tpr.readLine();
       assert(statusLine !== null);
       const m = statusLine.match(/^(.+?) (.+?) (.+?)$/);
-      const [_, _method, status, _ok] = m;
+      assert(m !== null, "must be matched");
+      const [_, _proto, status, _ok] = m;
       assertEquals(status, "200");
       const headers = await tpr.readMIMEHeader();
       assert(headers !== null);
