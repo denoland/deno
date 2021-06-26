@@ -5,6 +5,8 @@
   const core = window.Deno.core;
   const colors = window.__bootstrap.colors;
 
+  let consoleFromVm;
+
   function isInvalidDate(x) {
     return isNaN(x.getTime());
   }
@@ -1499,6 +1501,7 @@
         }) + "\n",
         1,
       );
+      consoleFromVm?.log(...args);
     };
 
     debug = (...args) => {
@@ -1509,6 +1512,7 @@
         }) + "\n",
         0,
       );
+      consoleFromVm?.debug(...args);
     };
 
     info = (...args) => {
@@ -1519,6 +1523,7 @@
         }) + "\n",
         1,
       );
+      consoleFromVm?.info(...args);
     };
 
     dir = (obj = undefined, options = {}) => {
@@ -1527,6 +1532,7 @@
           "\n",
         1,
       );
+      consoleFromVm?.dir(obj, options);
     };
 
     dirxml = this.dir;
@@ -1539,6 +1545,7 @@
         }) + "\n",
         2,
       );
+      consoleFromVm?.warn(...args);
     };
 
     error = (...args) => {
@@ -1549,6 +1556,7 @@
         }) + "\n",
         3,
       );
+      consoleFromVm?.error(...args);
     };
 
     assert = (condition = false, ...args) => {
@@ -1774,6 +1782,10 @@
     });
   }
 
+  function setVmConsole(vmConsole) {
+    consoleFromVm = vmConsole;
+  }
+
   // Expose these fields to internalObject for tests.
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
@@ -1786,6 +1798,7 @@
 
   window.__bootstrap.console = {
     CSI,
+    setVmConsole,
     inspectArgs,
     Console,
     customInspect,
