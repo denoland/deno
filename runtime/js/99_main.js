@@ -474,8 +474,6 @@ delete Object.prototype.__proto__;
           consoleFromV8[key],
           consoleFromDeno[key],
         );
-      } else {
-        consoleFromDeno[key] = consoleFromV8[key];
       }
     }
   }

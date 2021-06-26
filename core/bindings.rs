@@ -475,9 +475,11 @@ fn eval_context(
 ///
 ///   for (const key of Object.keys(consoleFromV8)) {
 ///     if (consoleFromDeno.hasOwnProperty(key)) {
-///       
-///     } else {
-///       consoleFromDeno[key] = consoleFromV8[key];
+///       consoleFromDeno[key] = callConsole.bind(
+///         consoleFromDeno,
+///         consoleFromV8[key],
+///         consoleFromDeno[key],
+///       );
 ///     }
 ///   }
 /// }
