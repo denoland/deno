@@ -154,6 +154,13 @@
     }
   }
 
+  webidl.configurePrototype(CryptoKey);
+
+  webidl.converters["CryptoKey"] = webidl.createInterfaceConverter(
+    "CryptoKey",
+    CryptoKey,
+  );
+
   function constructKey(algorithm, extractable, usages, type, handle) {
     const key = webidl.createBranded(CryptoKey);
     key[_algorithm] = algorithm;
@@ -217,6 +224,16 @@
 
       webidl.assertBranded(this, SubtleCrypto);
       webidl.requiredArguments(arguments.length, 3);
+
+      algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+        prefix,
+        context: "Argument 1",
+      });
+
+      key = webidl.converters.CryptoKey(key, {
+        prefix,
+        context: "Argument 2",
+      });
 
       data = webidl.converters.BufferSource(data, {
         prefix,
@@ -305,12 +322,22 @@
       webidl.assertBranded(this, SubtleCrypto);
       webidl.requiredArguments(arguments.length, 3);
 
-      algorithm = normalizeAlgorithm(algorithm, "generateKey");
+      algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+        prefix,
+        context: "Argument 1",
+      });
 
       extractable = webidl.converters["boolean"](extractable, {
         prefix,
         context: "Argument 2",
       });
+
+      keyUsages = webidl.converters["sequence<KeyUsage>"](keyUsages, {
+        prefix,
+        context: "Argument 3",
+      });
+
+      algorithm = normalizeAlgorithm(algorithm, "generateKey");
 
       // https://github.com/denoland/deno/pull/9614#issuecomment-866049433
       if (!extractable) {

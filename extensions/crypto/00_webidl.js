@@ -29,6 +29,10 @@
     "unwrapKey",
   ]);
 
+  webidl.converters["sequence<KeyUsage>"] = webidl.createSequenceConverter(
+    webidl.converters["KeyUsage"],
+  );
+
   webidl.converters["HashAlgorithmIdentifier"] = (V, opts) => {
     if (typeof V == "object") {
       return webidl.converters["object"](V, opts);
@@ -140,36 +144,6 @@
   webidl.converters["EcdsaParams"] = webidl.createDictionaryConverter(
     "EcdsaParams",
     EcdsaDictionary,
-  );
-
-  const cryptoKeyDictionary = [
-    {
-      key: "type",
-      converter: webidl.converters["KeyType"],
-      required: true,
-    },
-    {
-      key: "extractable",
-      converter: webidl.converters["boolean"],
-      required: true,
-    },
-    {
-      key: "algorithm",
-      converter: webidl.converters["DOMString"],
-      required: true,
-    },
-    {
-      key: "usages",
-      converter: webidl.createSequenceConverter(
-        webidl.converters["KeyUsage"],
-      ),
-      required: true,
-    },
-  ];
-
-  webidl.converters["CryptoKey"] = webidl.createDictionaryConverter(
-    "CryptoKey",
-    cryptoKeyDictionary,
   );
 
   const cryptoKeyPairDictionary = [
