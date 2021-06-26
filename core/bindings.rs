@@ -468,18 +468,14 @@ fn eval_context(
 /// available. Using it will make sure that proper stack frames are displayed
 /// in the inspector console.
 ///
-/// Example setup:
-/// ```
+/// Each method on console object should be bound to this function, eg:
+/// ```no_run
 /// function wrapConsole(consoleFromDeno, consoleFromV8) {
 ///   const callConsole = core.callConsole;
 ///
 ///   for (const key of Object.keys(consoleFromV8)) {
 ///     if (consoleFromDeno.hasOwnProperty(key)) {
-///       consoleFromDeno[key] = callConsole.bind(
-///         consoleFromDeno,
-///         consoleFromV8[key],
-///         consoleFromDeno[key],
-///       );
+///       
 ///     } else {
 ///       consoleFromDeno[key] = consoleFromV8[key];
 ///     }
