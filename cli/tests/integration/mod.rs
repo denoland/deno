@@ -43,6 +43,8 @@ mod inspector;
 mod install;
 #[path = "lint_tests.rs"]
 mod lint;
+#[path = "lsp_tests.rs"]
+mod lsp;
 #[path = "repl_tests.rs"]
 mod repl;
 #[path = "run_tests.rs"]
