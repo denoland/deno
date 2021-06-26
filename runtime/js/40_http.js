@@ -8,6 +8,7 @@
   const errors = window.__bootstrap.errors.errors;
   const core = window.Deno.core;
   const { ReadableStream } = window.__bootstrap.streams;
+  const abortSignal = window.__bootstrap.abortSignal;
 
   function serveHttp(conn) {
     const rid = Deno.core.opSync("op_http_start", conn.rid);
@@ -72,7 +73,8 @@
         headersList,
         body !== null ? new InnerBody(body) : null,
       );
-      const request = fromInnerRequest(innerRequest, null, "immutable");
+      const signal = abortSignal.newSignal();
+      const request = fromInnerRequest(innerRequest, signal, "immutable");
 
       const respondWith = createRespondWith(this, responseSenderRid);
 
