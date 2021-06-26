@@ -23,6 +23,7 @@ pub use serde;
 pub use serde_json;
 pub use serde_v8;
 pub use serde_v8::Buffer as ZeroCopyBuf;
+pub use serde_v8::ByteString;
 pub use url;
 
 pub use crate::async_cancel::CancelFuture;
