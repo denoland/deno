@@ -469,7 +469,7 @@ fn eval_context(
 /// in the inspector console.
 ///
 /// Each method on console object should be bound to this function, eg:
-/// ```no_run
+/// ```ignore
 /// function wrapConsole(consoleFromDeno, consoleFromV8) {
 ///   const callConsole = core.callConsole;
 ///
