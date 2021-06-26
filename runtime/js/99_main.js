@@ -455,35 +455,14 @@ delete Object.prototype.__proto__;
 
   let hasBootstrapped = false;
 
-  // A helper function that will bind our own console implementation
-  // with default implementation of Console from V8. This will cause
-  // console messages to be piped to inspector console.
-  //
-  // We are using `Deno.core.callConsole` binding to preserve proper stack
-  // frames in inspector console.
-  //
-  // Inspired by:
-  // https://github.com/nodejs/node/blob/1317252dfe8824fd9cfee125d2aaa94004db2f3b/lib/internal/util/inspector.js#L39-L61
-  function wrapConsole(consoleFromDeno, consoleFromV8) {
-    const callConsole = core.callConsole;
-
-    for (const key of Object.keys(consoleFromV8)) {
-      if (consoleFromDeno.hasOwnProperty(key)) {
-        consoleFromDeno[key] = callConsole.bind(
-          consoleFromDeno,
-          consoleFromV8[key],
-          consoleFromDeno[key],
-        );
-      }
-    }
-  }
-
   function bootstrapMainRuntime(runtimeOptions) {
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
 
     const consoleFromV8 = window.console;
+    const wrapConsole = window.__bootstrap.console.wrapConsole;
+
     // Remove bootstrapping data from the global scope
     delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
