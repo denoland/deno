@@ -649,6 +649,7 @@ async fn read_line_and_poll(
       result = &mut line => {
         return result.unwrap();
       }
+      // TODO(bartlomieju): this result shouldn't be ignored
       _ = repl_session.run_event_loop(), if poll_worker => {
         poll_worker = false;
       }

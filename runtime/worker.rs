@@ -257,14 +257,18 @@ impl MainWorker {
   /// Useful when using a local inspector session.
   pub async fn with_event_loop<'a, T>(
     &mut self,
-    mut fut: Pin<Box<dyn Future<Output = T> + 'a>>,
-  ) -> T {
+    mut fut: Pin<Box<dyn Future<Output = Result<T, AnyError>> + 'a>>,
+  ) -> Result<T, AnyError> {
     loop {
       tokio::select! {
         result = &mut fut => {
           return result;
         }
-        _ = self.run_event_loop(false) => {}
+        event_loop_result = self.run_event_loop(false) => {
+          if let Err(err) = event_loop_result {
+            return Err(err);
+          }
+        }
       };
     }
   }
