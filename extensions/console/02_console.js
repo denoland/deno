@@ -1493,7 +1493,7 @@
       return console;
     }
 
-    log = (...args) => {
+    #log(...args) {
       this.#printFunc(
         inspectArgs(args, {
           ...getConsoleInspectOptions(),
@@ -1501,10 +1501,15 @@
         }) + "\n",
         1,
       );
+    };
+
+    log = (...args) => {
       consoleFromVm?.log(...args);
+      this.#log(...args);
     };
 
     debug = (...args) => {
+      consoleFromVm?.debug(...args);
       this.#printFunc(
         inspectArgs(args, {
           ...getConsoleInspectOptions(),
@@ -1512,10 +1517,9 @@
         }) + "\n",
         0,
       );
-      consoleFromVm?.debug(...args);
     };
 
-    info = (...args) => {
+    #info(...args) {
       this.#printFunc(
         inspectArgs(args, {
           ...getConsoleInspectOptions(),
@@ -1523,21 +1527,25 @@
         }) + "\n",
         1,
       );
+    }
+
+    info = (...args) => {
       consoleFromVm?.info(...args);
+      this.#info(...args);
     };
 
     dir = (obj = undefined, options = {}) => {
+      consoleFromVm?.dir(obj, options);
       this.#printFunc(
         inspectArgs([obj], { ...getConsoleInspectOptions(), ...options }) +
           "\n",
         1,
       );
-      consoleFromVm?.dir(obj, options);
     };
 
     dirxml = this.dir;
 
-    warn = (...args) => {
+    #warn(...args) {
       this.#printFunc(
         inspectArgs(args, {
           ...getConsoleInspectOptions(),
@@ -1545,10 +1553,14 @@
         }) + "\n",
         2,
       );
+    }
+
+    warn = (...args) => {
       consoleFromVm?.warn(...args);
+      this.#warn(...args);  
     };
 
-    error = (...args) => {
+    #error(...args) {
       this.#printFunc(
         inspectArgs(args, {
           ...getConsoleInspectOptions(),
@@ -1556,30 +1568,38 @@
         }) + "\n",
         3,
       );
+    }
+
+    error = (...args) => {
       consoleFromVm?.error(...args);
+      this.#error(...args);
     };
 
     assert = (condition = false, ...args) => {
+      consoleFromVm?.assert(condition, ...args);
+
       if (condition) {
         return;
       }
 
       if (args.length === 0) {
-        this.error("Assertion failed");
+        this.#error("Assertion failed");
         return;
       }
 
       const [first, ...rest] = args;
 
       if (typeof first === "string") {
-        this.error(`Assertion failed: ${first}`, ...rest);
+        this.#error(`Assertion failed: ${first}`, ...rest);
         return;
       }
 
-      this.error(`Assertion failed:`, ...args);
+      this.#error(`Assertion failed:`, ...args);
     };
 
     count = (label = "default") => {
+      consoleFromVm?.count(label);
+
       label = String(label);
 
       if (countMap.has(label)) {
@@ -1589,20 +1609,24 @@
         countMap.set(label, 1);
       }
 
-      this.info(`${label}: ${countMap.get(label)}`);
+      this.#info(`${label}: ${countMap.get(label)}`);
     };
 
     countReset = (label = "default") => {
+      consoleFromVm?.countReset(label);
+
       label = String(label);
 
       if (countMap.has(label)) {
         countMap.set(label, 0);
       } else {
-        this.warn(`Count for '${label}' does not exist`);
+        this.#warn(`Count for '${label}' does not exist`);
       }
     };
 
     table = (data = undefined, properties = undefined) => {
+      consoleFromVm?.table(data, properties);
+
       if (properties !== undefined && !Array.isArray(properties)) {
         throw new Error(
           "The 'properties' argument must be of type Array. " +
@@ -1611,7 +1635,7 @@
       }
 
       if (data === null || typeof data !== "object") {
-        return this.log(data);
+        return this.#log(data);
       }
 
       const stringifyValue = (value) =>
@@ -1619,7 +1643,7 @@
           ...DEFAULT_INSPECT_OPTIONS,
           depth: 1,
         });
-      const toTable = (header, body) => this.log(cliTable(header, body));
+      const toTable = (header, body) => this.#log(cliTable(header, body));
 
       let resultData;
       const isSet = data instanceof Set;
@@ -1690,10 +1714,12 @@
     };
 
     time = (label = "default") => {
+      consoleFromVm?.time(label);
+
       label = String(label);
 
       if (timerMap.has(label)) {
-        this.warn(`Timer '${label}' already exists`);
+        this.#warn(`Timer '${label}' already exists`);
         return;
       }
 
@@ -1701,24 +1727,28 @@
     };
 
     timeLog = (label = "default", ...args) => {
+      consoleFromVm?.timeLog(label, ...args);
+
       label = String(label);
 
       if (!timerMap.has(label)) {
-        this.warn(`Timer '${label}' does not exists`);
+        this.#warn(`Timer '${label}' does not exists`);
         return;
       }
 
       const startTime = timerMap.get(label);
       const duration = Date.now() - startTime;
 
-      this.info(`${label}: ${duration}ms`, ...args);
+      this.#info(`${label}: ${duration}ms`, ...args);
     };
 
     timeEnd = (label = "default") => {
+      consoleFromVm?.timeEnd(label);
+
       label = String(label);
 
       if (!timerMap.has(label)) {
-        this.warn(`Timer '${label}' does not exists`);
+        this.#warn(`Timer '${label}' does not exists`);
         return;
       }
 
@@ -1726,12 +1756,14 @@
       timerMap.delete(label);
       const duration = Date.now() - startTime;
 
-      this.info(`${label}: ${duration}ms`);
+      this.#info(`${label}: ${duration}ms`);
     };
 
     group = (...label) => {
+      consoleFromVm?.group(...label);
+
       if (label.length > 0) {
-        this.log(...label);
+        this.#log(...label);
       }
       this.indentLevel += 2;
     };
@@ -1739,18 +1771,24 @@
     groupCollapsed = this.group;
 
     groupEnd = () => {
+      consoleFromVm?.groupEnd();
+
       if (this.indentLevel > 0) {
         this.indentLevel -= 2;
       }
     };
 
     clear = () => {
+      consoleFromVm?.clear();
+
       this.indentLevel = 0;
       this.#printFunc(CSI.kClear, 1);
       this.#printFunc(CSI.kClearScreenDown, 1);
     };
 
     trace = (...args) => {
+      consoleFromVm?.trace(...args);
+
       const message = inspectArgs(
         args,
         { ...getConsoleInspectOptions(), indentLevel: 0 },
@@ -1760,7 +1798,7 @@
         message,
       };
       Error.captureStackTrace(err, this.trace);
-      this.error(err.stack);
+      this.#error(err.stack);
     };
 
     static [Symbol.hasInstance](instance) {
