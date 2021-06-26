@@ -549,6 +549,8 @@ delete Object.prototype.__proto__;
     }
 
     const consoleFromV8 = window.console;
+    const wrapConsole = window.__bootstrap.console.wrapConsole;
+
     // Remove bootstrapping data from the global scope
     delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
