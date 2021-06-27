@@ -19,16 +19,14 @@ const dylibRid = Deno.dlopen(filename);
 
 console.log(`Dylib rid: ${dylibRid}`);
 
-Deno.dlcall({
-  rid: dylibRid,
+Deno.dlcall(dylibRid, {
   sym: "print_something",
   args: [],
   returnType: "void",
 });
 
 console.log(`${
-  Deno.dlcall({
-    rid: dylibRid,
+  Deno.dlcall(dylibRid, {
     sym: "add_two",
     args: [{ argType: "u32", value: 123 }],
     returnType: "u32",

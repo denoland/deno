@@ -489,28 +489,6 @@ fn lsp_hover_unstable_enabled() {
     )
     .unwrap();
   assert!(maybe_err.is_none());
-  assert_eq!(
-    maybe_res,
-    Some(json!({
-      "contents":[
-        {
-          "language":"typescript",
-          "value":"function Deno.dlopen(filename: string): number"
-        },
-        "**UNSTABLE**: new API, yet to be vetted.\n\nOpen and initialize a plugin.\n\n```ts\nimport { assert } from \"https://deno.land/std/testing/asserts.ts\";\nconst rid = Deno.openPlugin(\"./path/to/some/plugin.so\");\n\n// The Deno.core namespace is needed to interact with plugins, but this is\n// internal so we use ts-ignore to skip type checking these calls.\n// @ts-ignore\nconst { op_test_sync, op_test_async } = Deno.core.ops();\n\nassert(op_test_sync);\nassert(op_test_async);\n\n// @ts-ignore\nconst result = Deno.core.opSync(\"op_test_sync\");\n\n// @ts-ignore\nconst result = await Deno.core.opAsync(\"op_test_sync\");\n```\n\nRequires `allow-plugin` permission.\n\nThe plugin system is not stable and will change in the future, hence the\nlack of docs. For now take a look at the example\nhttps://github.com/denoland/deno/tree/main/test_plugin"
-      ],
-      "range":{
-        "start":{
-          "line":0,
-          "character":17
-        },
-        "end":{
-          "line":0,
-          "character":27
-        }
-      }
-    }))
-  );
   shutdown(&mut client);
 }
 

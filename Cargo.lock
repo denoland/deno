@@ -3581,6 +3581,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "test_ffi"
+version = "0.1.0"
+dependencies = [
+ "test_util",
+]
+
+[[package]]
 name = "test_util"
 version = "0.1.0"
 dependencies = [

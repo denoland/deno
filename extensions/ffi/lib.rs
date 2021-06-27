@@ -7,6 +7,7 @@ use deno_core::op_sync;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::Extension;
+use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use dlopen::raw::Library;
@@ -14,13 +15,45 @@ use libffi::middle::Cif;
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::ffi::c_void;
+use std::path::Path;
 use std::rc::Rc;
 
-struct LibraryResource(Library);
+pub struct Unstable(pub bool);
 
-impl Resource for LibraryResource {
+fn check_unstable(state: &OpState, api_name: &str) {
+  let unstable = state.borrow::<Unstable>();
+
+  if !unstable.0 {
+    eprintln!(
+      "Unstable API '{}'. The --unstable flag must be provided.",
+      api_name
+    );
+    std::process::exit(70);
+  }
+}
+
+pub trait FfiPermissions {
+  fn check(&mut self) -> Result<(), AnyError>;
+  fn check_read(&mut self, path: &Path) -> Result<(), AnyError>;
+}
+
+pub struct NoFfiPermissions;
+
+impl FfiPermissions for NoFfiPermissions {
+  fn check(&mut self) -> Result<(), AnyError> {
+    Ok(())
+  }
+
+  fn check_read(&mut self, _path: &Path) -> Result<(), AnyError> {
+    Ok(())
+  }
+}
+
+struct DylibResource(Library);
+
+impl Resource for DylibResource {
   fn name(&self) -> Cow<str> {
-    "library".into()
+    "dylib".into()
   }
 
   fn close(self: Rc<Self>) {
@@ -28,41 +61,54 @@ impl Resource for LibraryResource {
   }
 }
 
-pub fn init() -> Extension {
+pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:extensions/ffi",
       "00_ffi.js",
     ))
     .ops(vec![
-      ("op_dlopen", op_sync(op_dlopen)),
-      ("op_dlcall", op_sync(op_dlcall)),
+      ("op_dlopen", op_sync(op_dlopen::<P>)),
+      ("op_dlcall", op_sync(op_dlcall::<P>)),
     ])
+    .state(move |state| {
+      // Stolen from deno_webgpu, is there a better option?
+      state.put(Unstable(unstable));
+      Ok(())
+    })
     .build()
 }
 
-fn op_dlopen(
+fn op_dlopen<FP>(
   state: &mut deno_core::OpState,
   path: String,
   _: (),
-) -> Result<ResourceId, AnyError> {
+) -> Result<ResourceId, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.dlopen");
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check()?;
+  permissions.check_read(Path::new(&path))?;
+
   Ok(
     state
       .resource_table
-      .add(LibraryResource(Library::open(path)?)),
+      .add(DylibResource(Library::open(path)?)),
   )
 }
 
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct FFIArg {
-  ffi_type: FFIType,
+  arg_type: String,
   value: Value,
 }
 
 impl From<FFIArg> for libffi::middle::Arg {
   fn from(arg: FFIArg) -> Self {
-    match arg.ffi_type {
+    match arg.arg_type.clone().into() {
       FFIType::Void => libffi::middle::Arg::new(&()),
       FFIType::U8 => libffi::middle::Arg::new(&(arg.as_u64() as u8)),
       FFIType::I8 => libffi::middle::Arg::new(&(arg.as_i64() as i8)),
@@ -144,23 +190,50 @@ impl From<FFIType> for libffi::middle::Type {
   }
 }
 
+impl From<String> for FFIType {
+  fn from(string: String) -> Self {
+    match string.as_str() {
+      "void" => FFIType::Void,
+      "u8" => FFIType::U8,
+      "i8" => FFIType::I8,
+      "u16" => FFIType::U16,
+      "i16" => FFIType::I16,
+      "u32" => FFIType::U32,
+      "i32" => FFIType::I32,
+      "u64" => FFIType::U64,
+      "i64" => FFIType::I64,
+      "usize" => FFIType::USize,
+      "isize" => FFIType::ISize,
+      "f32" => FFIType::F32,
+      "f64" => FFIType::F64,
+      _ => unimplemented!(),
+    }
+  }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct DlcallArgs {
-  rid: ResourceId,
   sym: String,
   args: Vec<FFIArg>,
-  return_type: FFIType,
+  return_type: String,
 }
 
-fn op_dlcall(
+fn op_dlcall<FP>(
   state: &mut deno_core::OpState,
+  rid: ResourceId,
   dlcall_args: DlcallArgs,
-  _: (),
-) -> Result<Value, AnyError> {
+) -> Result<Value, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.dlcall");
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check()?;
+
   let library = state
     .resource_table
-    .get::<LibraryResource>(dlcall_args.rid)
+    .get::<DylibResource>(rid)
     .ok_or_else(bad_resource_id)?;
   let fn_ptr = unsafe { library.0.symbol::<*const c_void>(&dlcall_args.sym) }?;
   let fn_code_ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
@@ -168,12 +241,13 @@ fn op_dlcall(
     .args
     .clone()
     .into_iter()
-    .map(|arg| arg.ffi_type.into());
-  let cif = Cif::new(types, dlcall_args.return_type.into());
+    .map(|arg| FFIType::from(arg.arg_type).into());
+  let return_type = FFIType::from(dlcall_args.return_type);
+  let cif = Cif::new(types, return_type.into());
   let args: Vec<libffi::middle::Arg> =
     dlcall_args.args.into_iter().map(|arg| arg.into()).collect();
 
-  Ok(match dlcall_args.return_type {
+  Ok(match return_type {
     FFIType::Void => json!(unsafe { cif.call::<()>(fn_code_ptr, &args) }),
     FFIType::U8 => json!(unsafe { cif.call::<u8>(fn_code_ptr, &args) }),
     FFIType::I8 => json!(unsafe { cif.call::<i8>(fn_code_ptr, &args) }),

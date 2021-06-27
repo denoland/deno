@@ -8,8 +8,8 @@
     return core.opSync("op_dlopen", path);
   }
 
-  function dlcall(args) {
-    return core.opSync("op_dlcall", args);
+  function dlcall(rid, args) {
+    return core.opSync("op_dlcall", rid, args);
   }
 
   window.__bootstrap.ffi = {

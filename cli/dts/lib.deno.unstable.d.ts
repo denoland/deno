@@ -134,11 +134,42 @@ declare namespace Deno {
    */
   export function dlopen(filename: string): number;
 
+  /** All possible types for interfacing with a dynamic library */
+  export type FFIType =
+    | "void"
+    | "u8"
+    | "i8"
+    | "u16"
+    | "i16"
+    | "u32"
+    | "i32"
+    | "u64"
+    | "i64"
+    | "usize"
+    | "isize"
+    | "f32"
+    | "f64";
+
+  /** An argument passed to a dynamic library function call */
+  export interface FFIArg {
+    argType: FFIType,
+    value: unknown
+  }
+
+  export interface DlcallArgs {
+    /** The name of the function which you wish to call */
+    sym: string;
+    /** All arguments passed to the function */
+    args: FFIArg[];
+    /** The return type of the function */
+    returnType: FFIType;
+  }
+
   /** **UNSTABLE**: new API
    *
-   * Open a dynamic library for use with ffi
+   * Calls a foreign function from a dynamic library
    */
-   export function dlcall(filename: string): number;
+  export function dlcall(rid: number, args: DlcallArgs): number;
 
   /** The log category for a diagnostic message. */
   export enum DiagnosticCategory {

@@ -988,6 +988,16 @@ impl deno_websocket::WebSocketPermissions for Permissions {
   }
 }
 
+impl deno_ffi::FfiPermissions for Permissions {
+  fn check(&mut self) -> Result<(), AnyError> {
+    self.ffi.check()
+  }
+
+  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
+    self.read.check(path)
+  }
+}
+
 fn unit_permission_from_flag_bool(
   flag: bool,
   name: &'static str,
