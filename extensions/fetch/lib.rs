@@ -13,6 +13,7 @@ use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
+use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
@@ -124,9 +125,9 @@ pub fn get_declaration() -> PathBuf {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchArgs {
-  method: String,
+  method: ByteString,
   url: String,
-  headers: Vec<(String, String)>,
+  headers: Vec<(ByteString, ByteString)>,
   client_rid: Option<u32>,
   has_body: bool,
 }
@@ -158,7 +159,7 @@ where
     client.clone()
   };
 
-  let method = Method::from_bytes(args.method.as_bytes())?;
+  let method = Method::from_bytes(&args.method)?;
   let url = Url::parse(&args.url)?;
 
   // Check scheme before asking for net permission
@@ -196,8 +197,8 @@ where
       };
 
       for (key, value) in args.headers {
-        let name = HeaderName::from_bytes(key.as_bytes()).unwrap();
-        let v = HeaderValue::from_str(&value).unwrap();
+        let name = HeaderName::from_bytes(&key).unwrap();
+        let v = HeaderValue::from_bytes(&value).unwrap();
         if name != HOST {
           request = request.header(name, v);
         }
@@ -281,7 +282,7 @@ where
 pub struct FetchResponse {
   status: u16,
   status_text: String,
-  headers: Vec<(String, String)>,
+  headers: Vec<(ByteString, ByteString)>,
   url: String,
   response_rid: ResourceId,
 }
@@ -312,20 +313,11 @@ pub async fn op_fetch_send(
   let url = res.url().to_string();
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
-    let key_string = key.to_string();
-
-    if val.as_bytes().is_ascii() {
-      res_headers.push((key_string, val.to_str().unwrap().to_owned()))
-    } else {
-      res_headers.push((
-        key_string,
-        val
-          .as_bytes()
-          .iter()
-          .map(|&c| c as char)
-          .collect::<String>(),
-      ));
-    }
+    let key_bytes: &[u8] = key.as_ref();
+    res_headers.push((
+      ByteString(key_bytes.to_owned()),
+      ByteString(val.as_bytes().to_owned()),
+    ));
   }
 
   let stream: BytesStream = Box::pin(res.bytes_stream().map(|r| {
@@ -467,7 +459,7 @@ impl HttpClientResource {
 #[serde(default)]
 pub struct CreateHttpClientOptions {
   ca_file: Option<String>,
-  ca_data: Option<String>,
+  ca_data: Option<ByteString>,
   proxy: Option<Proxy>,
 }
 
@@ -522,10 +514,10 @@ where
 
 fn get_cert_data(
   ca_file: Option<&str>,
-  ca_data: Option<&str>,
+  ca_data: Option<&[u8]>,
 ) -> Result<Option<Vec<u8>>, AnyError> {
   if let Some(ca_data) = ca_data {
-    Ok(Some(ca_data.as_bytes().to_vec()))
+    Ok(Some(ca_data.to_vec()))
   } else if let Some(ca_file) = ca_file {
     let mut buf = Vec::new();
     File::open(ca_file)?.read_to_end(&mut buf)?;

@@ -591,6 +591,7 @@ impl ReplSession {
         transform_jsx: false,
         jsx_factory: "React.createElement".into(),
         jsx_fragment_factory: "React.Fragment".into(),
+        repl_imports: true,
       })?
       .0;
 

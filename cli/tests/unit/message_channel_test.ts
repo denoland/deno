@@ -31,3 +31,29 @@ Deno.test("messagechannel", async () => {
   mc.port2.close();
   mc2.port2.close();
 });
+
+Deno.test("messagechannel clone port", async () => {
+  const mc = new MessageChannel();
+  const mc2 = new MessageChannel();
+  assert(mc.port1);
+  assert(mc.port2);
+
+  const promise = deferred();
+
+  mc.port2.onmessage = (e) => {
+    const { port } = e.data;
+    assertEquals(e.ports.length, 1);
+    assert(e.ports[0] instanceof MessagePort);
+    assertEquals(e.ports[0], port);
+    e.ports[0].close();
+    promise.resolve();
+  };
+
+  mc.port1.postMessage({ port: mc2.port1 }, [mc2.port1]);
+  mc.port1.close();
+
+  await promise;
+
+  mc.port2.close();
+  mc2.port2.close();
+});

@@ -669,11 +669,7 @@
     "url-tojson.any.html": true,
     "urlencoded-parser.any.html": true,
     "urlsearchparams-append.any.html": true,
-    "urlsearchparams-constructor.any.html": [
-      "Construct with 2 unpaired surrogates (no trailing)",
-      "Construct with 3 unpaired surrogates (no leading)",
-      "Construct with object with NULL, non-ASCII, and surrogate keys"
-    ],
+    "urlsearchparams-constructor.any.html": true,
     "urlsearchparams-delete.any.html": true,
     "urlsearchparams-foreach.any.html": true,
     "urlsearchparams-get.any.html": true,
@@ -700,11 +696,7 @@
     "api": {
       "request": {
         "request-init-002.any.html": true,
-        "request-init-stream.any.html": [
-          "Constructing a Request with a Request on which body.getReader() is called",
-          "Constructing a Request with a Request on which body.getReader().read() is called",
-          "Constructing a Request with a Request on which read() and releaseLock() are called"
-        ],
+        "request-init-stream.any.html": true,
         "request-consume-empty.any.html": [
           "Consume empty FormData request body as text"
         ],
@@ -722,7 +714,7 @@
       "basic": {
         "request-head.any.html": true,
         "request-headers-case.any.html": false,
-        "request-headers-nonascii.any.html": false,
+        "request-headers-nonascii.any.html": true,
         "request-headers.any.html": [
           "Fetch with PUT without body",
           "Fetch with PUT with body",

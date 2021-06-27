@@ -81,6 +81,7 @@ declare namespace globalThis {
     declare var streams: {
       ReadableStream: typeof ReadableStream;
       isReadableStreamDisturbed(stream: ReadableStream): boolean;
+      createProxy<T>(stream: ReadableStream<T>): ReadableStream<T>;
     };
 
     declare namespace messagePort {

@@ -21,7 +21,9 @@ pub use futures;
 pub use rusty_v8 as v8;
 pub use serde;
 pub use serde_json;
+pub use serde_v8;
 pub use serde_v8::Buffer as ZeroCopyBuf;
+pub use serde_v8::ByteString;
 pub use url;
 
 pub use crate::async_cancel::CancelFuture;
@@ -73,6 +75,7 @@ pub use crate::ops_builtin::op_close;
 pub use crate::ops_builtin::op_print;
 pub use crate::ops_builtin::op_resources;
 pub use crate::ops_json::op_async;
+pub use crate::ops_json::op_async_unref;
 pub use crate::ops_json::op_sync;
 pub use crate::resources::Resource;
 pub use crate::resources::ResourceId;
