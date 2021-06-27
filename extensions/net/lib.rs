@@ -4,6 +4,7 @@ pub mod io;
 pub mod ops;
 pub mod ops_http;
 pub mod ops_tls;
+#[cfg(unix)]
 pub mod ops_unix;
 pub mod resolve_addr;
 
