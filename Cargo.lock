@@ -703,6 +703,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_net"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "deno_core",
+ "http",
+ "hyper",
+ "lazy_static",
+ "log",
+ "rustls",
+ "serde",
+ "tokio",
+ "tokio-util",
+ "trust-dns-proto",
+ "trust-dns-resolver",
+ "webpki",
+ "webpki-roots",
+]
+
+[[package]]
 name = "deno_runtime"
 version = "0.18.0"
 dependencies = [

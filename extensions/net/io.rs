@@ -2,11 +2,9 @@
 
 use crate::ops_tls as tls;
 use deno_core::error::null_opbuf;
-use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
 use deno_core::error::{bad_resource_id, not_supported};
 use deno_core::op_async;
-use deno_core::op_sync;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
@@ -19,20 +17,25 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::io::Read;
-use std::io::Write;
 use std::rc::Rc;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::net::tcp;
-use tokio::process;
 
 #[cfg(unix)]
-use std::os::unix::io::FromRawFd;
-#[cfg(unix)]
 use tokio::net::unix;
+
+pub fn init() -> Extension {
+  Extension::builder()
+    .ops(vec![
+      ("op_read_async", op_async(op_read_async)),
+      ("op_write_async", op_async(op_write_async)),
+      ("op_shutdown", op_async(op_shutdown)),
+    ])
+    .build()
+}
 
 /// A full duplex resource has a read and write ends that are completely
 /// independent, like TCP/Unix sockets and TLS streams.
