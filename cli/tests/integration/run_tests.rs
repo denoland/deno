@@ -1,0 +1,1751 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+use deno_core::url;
+use std::process::Command;
+use tempfile::TempDir;
+use test_util as util;
+
+itest!(stdout_write_all {
+  args: "run --quiet stdout_write_all.ts",
+  output: "stdout_write_all.out",
+});
+
+itest!(_001_hello {
+  args: "run --reload 001_hello.js",
+  output: "001_hello.js.out",
+});
+
+itest!(_002_hello {
+  args: "run --quiet --reload 002_hello.ts",
+  output: "002_hello.ts.out",
+});
+
+itest!(_003_relative_import {
+  args: "run --quiet --reload 003_relative_import.ts",
+  output: "003_relative_import.ts.out",
+});
+
+itest!(_004_set_timeout {
+  args: "run --quiet --reload 004_set_timeout.ts",
+  output: "004_set_timeout.ts.out",
+});
+
+itest!(_005_more_imports {
+  args: "run --quiet --reload 005_more_imports.ts",
+  output: "005_more_imports.ts.out",
+});
+
+itest!(_006_url_imports {
+  args: "run --quiet --reload 006_url_imports.ts",
+  output: "006_url_imports.ts.out",
+  http_server: true,
+});
+
+itest!(_012_async {
+  args: "run --quiet --reload 012_async.ts",
+  output: "012_async.ts.out",
+});
+
+itest!(_013_dynamic_import {
+  args: "run --quiet --reload --allow-read 013_dynamic_import.ts",
+  output: "013_dynamic_import.ts.out",
+});
+
+itest!(_014_duplicate_import {
+  args: "run --quiet --reload --allow-read 014_duplicate_import.ts ",
+  output: "014_duplicate_import.ts.out",
+});
+
+itest!(_015_duplicate_parallel_import {
+  args: "run --quiet --reload --allow-read 015_duplicate_parallel_import.js",
+  output: "015_duplicate_parallel_import.js.out",
+});
+
+itest!(_016_double_await {
+  args: "run --quiet --allow-read --reload 016_double_await.ts",
+  output: "016_double_await.ts.out",
+});
+
+itest!(_017_import_redirect {
+  args: "run --quiet --reload 017_import_redirect.ts",
+  output: "017_import_redirect.ts.out",
+});
+
+itest!(_017_import_redirect_nocheck {
+  args: "run --quiet --reload --no-check 017_import_redirect.ts",
+  output: "017_import_redirect.ts.out",
+});
+
+itest!(_017_import_redirect_info {
+  args: "info --quiet --reload 017_import_redirect.ts",
+  output: "017_import_redirect_info.out",
+});
+
+itest!(_018_async_catch {
+  args: "run --quiet --reload 018_async_catch.ts",
+  output: "018_async_catch.ts.out",
+});
+
+itest!(_019_media_types {
+  args: "run --reload 019_media_types.ts",
+  output: "019_media_types.ts.out",
+  http_server: true,
+});
+
+itest!(_020_json_modules {
+  args: "run --reload 020_json_modules.ts",
+  output: "020_json_modules.ts.out",
+  exit_code: 1,
+});
+
+itest!(_021_mjs_modules {
+  args: "run --quiet --reload 021_mjs_modules.ts",
+  output: "021_mjs_modules.ts.out",
+});
+
+itest!(_023_no_ext {
+  args: "run --reload 023_no_ext",
+  output: "023_no_ext.out",
+});
+
+// TODO(lucacasonato): remove --unstable when permissions goes stable
+itest!(_025_hrtime {
+  args: "run --quiet --allow-hrtime --unstable --reload 025_hrtime.ts",
+  output: "025_hrtime.ts.out",
+});
+
+itest!(_025_reload_js_type_error {
+  args: "run --quiet --reload 025_reload_js_type_error.js",
+  output: "025_reload_js_type_error.js.out",
+});
+
+itest!(_026_redirect_javascript {
+  args: "run --quiet --reload 026_redirect_javascript.js",
+  output: "026_redirect_javascript.js.out",
+  http_server: true,
+});
+
+itest!(_027_redirect_typescript {
+  args: "run --quiet --reload 027_redirect_typescript.ts",
+  output: "027_redirect_typescript.ts.out",
+  http_server: true,
+});
+
+itest!(_028_args {
+  args: "run --quiet --reload 028_args.ts --arg1 val1 --arg2=val2 -- arg3 arg4",
+  output: "028_args.ts.out",
+});
+
+itest!(_033_import_map {
+  args:
+    "run --quiet --reload --import-map=import_maps/import_map.json import_maps/test.ts",
+  output: "033_import_map.out",
+});
+
+itest!(_033_import_map_remote {
+  args:
+    "run --quiet --reload --import-map=http://127.0.0.1:4545/cli/tests/import_maps/import_map_remote.json --unstable import_maps/test_remote.ts",
+  output: "033_import_map_remote.out",
+  http_server: true,
+});
+
+itest!(_034_onload {
+  args: "run --quiet --reload 034_onload/main.ts",
+  output: "034_onload.out",
+});
+
+itest!(_035_cached_only_flag {
+  args:
+    "run --reload --cached-only http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+  output: "035_cached_only_flag.out",
+  exit_code: 1,
+  http_server: true,
+});
+
+itest!(_038_checkjs {
+  // checking if JS file is run through TS compiler
+  args: "run --reload --config 038_checkjs.tsconfig.json 038_checkjs.js",
+  exit_code: 1,
+  output: "038_checkjs.js.out",
+});
+
+itest!(_042_dyn_import_evalcontext {
+  args: "run --quiet --allow-read --reload 042_dyn_import_evalcontext.ts",
+  output: "042_dyn_import_evalcontext.ts.out",
+});
+
+itest!(_044_bad_resource {
+  args: "run --quiet --reload --allow-read 044_bad_resource.ts",
+  output: "044_bad_resource.ts.out",
+  exit_code: 1,
+});
+
+itest!(_045_proxy {
+  args: "run -L debug --allow-net --allow-env --allow-run --allow-read --reload --quiet 045_proxy_test.ts",
+  output: "045_proxy_test.ts.out",
+  http_server: true,
+});
+
+itest!(_046_tsx {
+  args: "run --quiet --reload 046_jsx_test.tsx",
+  output: "046_jsx_test.tsx.out",
+});
+
+itest!(_047_jsx {
+  args: "run --quiet --reload 047_jsx_test.jsx",
+  output: "047_jsx_test.jsx.out",
+});
+
+itest!(_048_media_types_jsx {
+  args: "run  --reload 048_media_types_jsx.ts",
+  output: "048_media_types_jsx.ts.out",
+  http_server: true,
+});
+
+itest!(_052_no_remote_flag {
+  args:
+    "run --reload --no-remote http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+  output: "052_no_remote_flag.out",
+  exit_code: 1,
+  http_server: true,
+});
+
+itest!(_056_make_temp_file_write_perm {
+  args:
+    "run --quiet --allow-read --allow-write=./subdir/ 056_make_temp_file_write_perm.ts",
+  output: "056_make_temp_file_write_perm.out",
+});
+
+itest!(_058_tasks_microtasks_close {
+  args: "run --quiet 058_tasks_microtasks_close.ts",
+  output: "058_tasks_microtasks_close.ts.out",
+});
+
+itest!(_059_fs_relative_path_perm {
+  args: "run 059_fs_relative_path_perm.ts",
+  output: "059_fs_relative_path_perm.ts.out",
+  exit_code: 1,
+});
+
+itest!(_070_location {
+  args: "run --location https://foo/bar?baz#bat 070_location.ts",
+  output: "070_location.ts.out",
+});
+
+itest!(_071_location_unset {
+  args: "run 071_location_unset.ts",
+  output: "071_location_unset.ts.out",
+  exit_code: 1,
+});
+
+itest!(_072_location_relative_fetch {
+    args: "run --location http://127.0.0.1:4545/cli/tests/ --allow-net 072_location_relative_fetch.ts",
+    output: "072_location_relative_fetch.ts.out",
+    http_server: true,
+  });
+
+itest!(_075_import_local_query_hash {
+  args: "run 075_import_local_query_hash.ts",
+  output: "075_import_local_query_hash.ts.out",
+});
+
+itest!(_077_fetch_empty {
+  args: "run -A 077_fetch_empty.ts",
+  output: "077_fetch_empty.ts.out",
+  exit_code: 1,
+});
+
+itest!(_078_unload_on_exit {
+  args: "run 078_unload_on_exit.ts",
+  output: "078_unload_on_exit.ts.out",
+  exit_code: 1,
+});
+
+itest!(_079_location_authentication {
+  args: "run --location https://foo:bar@baz/qux 079_location_authentication.ts",
+  output: "079_location_authentication.ts.out",
+});
+
+itest!(_080_deno_emit_permissions {
+  args: "run --unstable 080_deno_emit_permissions.ts",
+  output: "080_deno_emit_permissions.ts.out",
+  exit_code: 1,
+});
+
+itest!(_081_location_relative_fetch_redirect {
+    args: "run --location http://127.0.0.1:4546/ --allow-net 081_location_relative_fetch_redirect.ts",
+    output: "081_location_relative_fetch_redirect.ts.out",
+    http_server: true,
+  });
+
+itest!(_082_prepare_stack_trace_throw {
+  args: "run 082_prepare_stack_trace_throw.js",
+  output: "082_prepare_stack_trace_throw.js.out",
+  exit_code: 1,
+});
+
+#[test]
+fn _083_legacy_external_source_map() {
+  let _g = util::http_server();
+  let deno_dir = TempDir::new().expect("tempdir fail");
+  let module_url = url::Url::parse(
+    "http://localhost:4545/cli/tests/083_legacy_external_source_map.ts",
+  )
+  .unwrap();
+  // Write a faulty old external source map.
+  let faulty_map_path = deno_dir.path().join("gen/http/localhost_PORT4545/9576bd5febd0587c5c4d88d57cb3ac8ebf2600c529142abe3baa9a751d20c334.js.map");
+  std::fs::create_dir_all(faulty_map_path.parent().unwrap())
+    .expect("Failed to create faulty source map dir.");
+  std::fs::write(faulty_map_path, "{\"version\":3,\"file\":\"\",\"sourceRoot\":\"\",\"sources\":[\"http://localhost:4545/cli/tests/083_legacy_external_source_map.ts\"],\"names\":[],\"mappings\":\";AAAA,MAAM,IAAI,KAAK,CAAC,KAAK,CAAC,CAAC\"}").expect("Failed to write faulty source map.");
+  let output = Command::new(util::deno_exe_path())
+    .env("DENO_DIR", deno_dir.path())
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg(module_url.to_string())
+    .output()
+    .expect("Failed to spawn script");
+  // Before https://github.com/denoland/deno/issues/6965 was fixed, the faulty
+  // old external source map would cause a panic while formatting the error
+  // and the exit code would be 101. The external source map should be ignored
+  // in favor of the inline one.
+  assert_eq!(output.status.code(), Some(1));
+  let out = std::str::from_utf8(&output.stdout).unwrap();
+  assert_eq!(out, "");
+}
+
+itest!(_085_dynamic_import_async_error {
+  args: "run --allow-read 085_dynamic_import_async_error.ts",
+  output: "085_dynamic_import_async_error.ts.out",
+});
+
+itest!(_086_dynamic_import_already_rejected {
+  args: "run --allow-read 086_dynamic_import_already_rejected.ts",
+  output: "086_dynamic_import_already_rejected.ts.out",
+});
+
+itest!(_087_no_check_imports_not_used_as_values {
+    args: "run --config preserve_imports.tsconfig.json --no-check 087_no_check_imports_not_used_as_values.ts",
+    output: "087_no_check_imports_not_used_as_values.ts.out",
+  });
+
+itest!(_088_dynamic_import_already_evaluating {
+  args: "run --allow-read 088_dynamic_import_already_evaluating.ts",
+  output: "088_dynamic_import_already_evaluating.ts.out",
+});
+
+itest!(_089_run_allow_list {
+  args: "run --allow-run=curl 089_run_allow_list.ts",
+  output: "089_run_allow_list.ts.out",
+});
+
+#[cfg(unix)]
+#[test]
+fn _090_run_permissions_request() {
+  let args = "run 090_run_permissions_request.ts";
+  let output = "090_run_permissions_request.ts.out";
+  let input = b"y\nn\n";
+
+  util::test_pty(args, output, input);
+}
+
+itest!(_091_use_define_for_class_fields {
+  args: "run 091_use_define_for_class_fields.ts",
+  output: "091_use_define_for_class_fields.ts.out",
+  exit_code: 1,
+});
+
+itest!(_092_import_map_unmapped_bare_specifier {
+  args: "run --import-map import_maps/import_map.json 092_import_map_unmapped_bare_specifier.ts",
+  output: "092_import_map_unmapped_bare_specifier.ts.out",
+  exit_code: 1,
+});
+
+itest!(js_import_detect {
+  args: "run --quiet --reload js_import_detect.ts",
+  output: "js_import_detect.ts.out",
+  exit_code: 0,
+});
+
+itest!(lock_write_requires_lock {
+  args: "run --lock-write some_file.ts",
+  output: "lock_write_requires_lock.out",
+  exit_code: 1,
+});
+
+itest!(lock_write_fetch {
+  args:
+    "run --quiet --allow-read --allow-write --allow-env --allow-run lock_write_fetch.ts",
+  output: "lock_write_fetch.ts.out",
+  http_server: true,
+  exit_code: 0,
+});
+
+itest!(lock_check_ok {
+    args: "run --lock=lock_check_ok.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
+    output: "003_relative_import.ts.out",
+    http_server: true,
+  });
+
+itest!(lock_check_ok2 {
+  args: "run --lock=lock_check_ok2.json 019_media_types.ts",
+  output: "019_media_types.ts.out",
+  http_server: true,
+});
+
+itest!(lock_dynamic_imports {
+  args: "run --lock=lock_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/cli/tests/013_dynamic_import.ts",
+  output: "lock_dynamic_imports.out",
+  exit_code: 10,
+  http_server: true,
+});
+
+itest!(lock_check_err {
+  args: "run --lock=lock_check_err.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
+  output: "lock_check_err.out",
+  exit_code: 10,
+  http_server: true,
+});
+
+itest!(lock_check_err2 {
+  args: "run --lock=lock_check_err2.json 019_media_types.ts",
+  output: "lock_check_err2.out",
+  exit_code: 10,
+  http_server: true,
+});
+
+itest!(async_error {
+  exit_code: 1,
+  args: "run --reload async_error.ts",
+  output: "async_error.ts.out",
+});
+
+itest!(config {
+  args: "run --reload --config config.tsconfig.json config.ts",
+  exit_code: 1,
+  output: "config.ts.out",
+});
+
+itest!(config_types {
+  args:
+    "run --reload --quiet --config config_types.tsconfig.json config_types.ts",
+  output: "config_types.ts.out",
+});
+
+itest!(config_types_remote {
+    http_server: true,
+    args: "run --reload --quiet --config config_types_remote.tsconfig.json config_types.ts",
+    output: "config_types.ts.out",
+  });
+
+itest!(empty_typescript {
+  args: "run --reload subdir/empty.ts",
+  output_str: Some("Check file:[WILDCARD]tests/subdir/empty.ts\n"),
+});
+
+itest!(error_001 {
+  args: "run --reload error_001.ts",
+  exit_code: 1,
+  output: "error_001.ts.out",
+});
+
+itest!(error_002 {
+  args: "run --reload error_002.ts",
+  exit_code: 1,
+  output: "error_002.ts.out",
+});
+
+itest!(error_003_typescript {
+  args: "run --reload error_003_typescript.ts",
+  exit_code: 1,
+  output: "error_003_typescript.ts.out",
+});
+
+// Supposing that we've already attempted to run error_003_typescript.ts
+// we want to make sure that JS wasn't emitted. Running again without reload flag
+// should result in the same output.
+// https://github.com/denoland/deno/issues/2436
+itest!(error_003_typescript2 {
+  args: "run error_003_typescript.ts",
+  exit_code: 1,
+  output: "error_003_typescript.ts.out",
+});
+
+itest!(error_004_missing_module {
+  args: "run --reload error_004_missing_module.ts",
+  exit_code: 1,
+  output: "error_004_missing_module.ts.out",
+});
+
+itest!(error_005_missing_dynamic_import {
+  args: "run --reload --allow-read --quiet error_005_missing_dynamic_import.ts",
+  exit_code: 1,
+  output: "error_005_missing_dynamic_import.ts.out",
+});
+
+itest!(error_006_import_ext_failure {
+  args: "run --reload error_006_import_ext_failure.ts",
+  exit_code: 1,
+  output: "error_006_import_ext_failure.ts.out",
+});
+
+itest!(error_007_any {
+  args: "run --reload error_007_any.ts",
+  exit_code: 1,
+  output: "error_007_any.ts.out",
+});
+
+itest!(error_008_checkjs {
+  args: "run --reload error_008_checkjs.js",
+  exit_code: 1,
+  output: "error_008_checkjs.js.out",
+});
+
+itest!(error_009_extensions_error {
+  args: "run error_009_extensions_error.js",
+  output: "error_009_extensions_error.js.out",
+  exit_code: 1,
+});
+
+itest!(error_011_bad_module_specifier {
+  args: "run --reload error_011_bad_module_specifier.ts",
+  exit_code: 1,
+  output: "error_011_bad_module_specifier.ts.out",
+});
+
+itest!(error_012_bad_dynamic_import_specifier {
+  args: "run --reload error_012_bad_dynamic_import_specifier.ts",
+  exit_code: 1,
+  output: "error_012_bad_dynamic_import_specifier.ts.out",
+});
+
+itest!(error_013_missing_script {
+  args: "run --reload missing_file_name",
+  exit_code: 1,
+  output: "error_013_missing_script.out",
+});
+
+itest!(error_014_catch_dynamic_import_error {
+  args: "run  --reload --allow-read error_014_catch_dynamic_import_error.js",
+  output: "error_014_catch_dynamic_import_error.js.out",
+});
+
+itest!(error_015_dynamic_import_permissions {
+  args: "run --reload --quiet error_015_dynamic_import_permissions.js",
+  output: "error_015_dynamic_import_permissions.out",
+  exit_code: 1,
+  http_server: true,
+});
+
+// We have an allow-net flag but not allow-read, it should still result in error.
+itest!(error_016_dynamic_import_permissions2 {
+  args: "run --reload --allow-net error_016_dynamic_import_permissions2.js",
+  output: "error_016_dynamic_import_permissions2.out",
+  exit_code: 1,
+  http_server: true,
+});
+
+itest!(error_017_hide_long_source_ts {
+  args: "run --reload error_017_hide_long_source_ts.ts",
+  output: "error_017_hide_long_source_ts.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_018_hide_long_source_js {
+  args: "run error_018_hide_long_source_js.js",
+  output: "error_018_hide_long_source_js.js.out",
+  exit_code: 1,
+});
+
+itest!(error_019_stack_function {
+  args: "run error_019_stack_function.ts",
+  output: "error_019_stack_function.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_020_stack_constructor {
+  args: "run error_020_stack_constructor.ts",
+  output: "error_020_stack_constructor.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_021_stack_method {
+  args: "run error_021_stack_method.ts",
+  output: "error_021_stack_method.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_022_stack_custom_error {
+  args: "run error_022_stack_custom_error.ts",
+  output: "error_022_stack_custom_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_023_stack_async {
+  args: "run error_023_stack_async.ts",
+  output: "error_023_stack_async.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_024_stack_promise_all {
+  args: "run error_024_stack_promise_all.ts",
+  output: "error_024_stack_promise_all.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_025_tab_indent {
+  args: "run error_025_tab_indent",
+  output: "error_025_tab_indent.out",
+  exit_code: 1,
+});
+
+itest!(error_026_remote_import_error {
+  args: "run error_026_remote_import_error.ts",
+  output: "error_026_remote_import_error.ts.out",
+  exit_code: 1,
+  http_server: true,
+});
+
+itest!(error_missing_module_named_import {
+  args: "run --reload error_missing_module_named_import.ts",
+  output: "error_missing_module_named_import.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_no_check {
+  args: "run --reload --no-check error_no_check.ts",
+  output: "error_no_check.ts.out",
+  exit_code: 1,
+});
+
+itest!(error_syntax {
+  args: "run --reload error_syntax.js",
+  exit_code: 1,
+  output: "error_syntax.js.out",
+});
+
+itest!(error_syntax_empty_trailing_line {
+  args: "run --reload error_syntax_empty_trailing_line.mjs",
+  exit_code: 1,
+  output: "error_syntax_empty_trailing_line.mjs.out",
+});
+
+itest!(error_type_definitions {
+  args: "run --reload error_type_definitions.ts",
+  exit_code: 1,
+  output: "error_type_definitions.ts.out",
+});
+
+itest!(error_local_static_import_from_remote_ts {
+    args: "run --reload http://localhost:4545/cli/tests/error_local_static_import_from_remote.ts",
+    exit_code: 1,
+    http_server: true,
+    output: "error_local_static_import_from_remote.ts.out",
+  });
+
+itest!(error_local_static_import_from_remote_js {
+    args: "run --reload http://localhost:4545/cli/tests/error_local_static_import_from_remote.js",
+    exit_code: 1,
+    http_server: true,
+    output: "error_local_static_import_from_remote.js.out",
+  });
+
+itest!(exit_error42 {
+  exit_code: 42,
+  args: "run --quiet --reload exit_error42.ts",
+  output: "exit_error42.ts.out",
+});
+
+itest!(heapstats {
+  args: "run --quiet --unstable --v8-flags=--expose-gc heapstats.js",
+  output: "heapstats.js.out",
+});
+
+itest!(https_import {
+  args: "run --quiet --reload --cert tls/RootCA.pem https_import.ts",
+  output: "https_import.ts.out",
+  http_server: true,
+});
+
+itest!(if_main {
+  args: "run --quiet --reload if_main.ts",
+  output: "if_main.ts.out",
+});
+
+itest!(import_meta {
+  args: "run --quiet --reload import_meta.ts",
+  output: "import_meta.ts.out",
+});
+
+itest!(main_module {
+  args: "run --quiet --allow-read --reload main_module.ts",
+  output: "main_module.ts.out",
+});
+
+itest!(no_check {
+  args: "run --quiet --reload --no-check 006_url_imports.ts",
+  output: "006_url_imports.ts.out",
+  http_server: true,
+});
+
+itest!(no_check_decorators {
+  args: "run --quiet --reload --no-check no_check_decorators.ts",
+  output: "no_check_decorators.ts.out",
+});
+
+itest!(runtime_decorators {
+  args: "run --quiet --reload --no-check runtime_decorators.ts",
+  output: "runtime_decorators.ts.out",
+});
+
+itest!(lib_dom_asynciterable {
+  args: "run --quiet --unstable --reload lib_dom_asynciterable.ts",
+  output: "lib_dom_asynciterable.ts.out",
+});
+
+itest!(lib_ref {
+  args: "run --quiet --unstable --reload lib_ref.ts",
+  output: "lib_ref.ts.out",
+});
+
+itest!(lib_runtime_api {
+  args: "run --quiet --unstable --reload lib_runtime_api.ts",
+  output: "lib_runtime_api.ts.out",
+});
+
+itest!(seed_random {
+  args: "run --seed=100 seed_random.js",
+
+  output: "seed_random.js.out",
+});
+
+itest!(type_definitions {
+  args: "run --reload type_definitions.ts",
+  output: "type_definitions.ts.out",
+});
+
+itest!(type_definitions_for_export {
+  args: "run --reload type_definitions_for_export.ts",
+  output: "type_definitions_for_export.ts.out",
+  exit_code: 1,
+});
+
+itest!(type_directives_01 {
+  args: "run --reload -L debug type_directives_01.ts",
+  output: "type_directives_01.ts.out",
+  http_server: true,
+});
+
+itest!(type_directives_02 {
+  args: "run --reload -L debug type_directives_02.ts",
+  output: "type_directives_02.ts.out",
+});
+
+itest!(type_directives_js_main {
+  args: "run --reload -L debug type_directives_js_main.js",
+  output: "type_directives_js_main.js.out",
+  exit_code: 0,
+});
+
+itest!(type_directives_redirect {
+  args: "run --reload type_directives_redirect.ts",
+  output: "type_directives_redirect.ts.out",
+  http_server: true,
+});
+
+itest!(type_headers_deno_types {
+  args: "run --reload type_headers_deno_types.ts",
+  output: "type_headers_deno_types.ts.out",
+  http_server: true,
+});
+
+itest!(ts_type_imports {
+  args: "run --reload ts_type_imports.ts",
+  output: "ts_type_imports.ts.out",
+  exit_code: 1,
+});
+
+itest!(ts_decorators {
+  args: "run --reload -c tsconfig.decorators.json ts_decorators.ts",
+  output: "ts_decorators.ts.out",
+});
+
+itest!(ts_type_only_import {
+  args: "run --reload ts_type_only_import.ts",
+  output: "ts_type_only_import.ts.out",
+});
+
+itest!(swc_syntax_error {
+  args: "run --reload swc_syntax_error.ts",
+  output: "swc_syntax_error.ts.out",
+  exit_code: 1,
+});
+
+itest!(unbuffered_stderr {
+  args: "run --reload unbuffered_stderr.ts",
+  output: "unbuffered_stderr.ts.out",
+});
+
+itest!(unbuffered_stdout {
+  args: "run --quiet --reload unbuffered_stdout.ts",
+  output: "unbuffered_stdout.ts.out",
+});
+
+itest!(v8_flags_run {
+  args: "run --v8-flags=--expose-gc v8_flags.js",
+  output: "v8_flags.js.out",
+});
+
+itest!(v8_flags_unrecognized {
+  args: "repl --v8-flags=--foo,bar,--trace-gc,-baz",
+  output: "v8_flags_unrecognized.out",
+  exit_code: 1,
+});
+
+itest!(v8_help {
+  args: "repl --v8-flags=--help",
+  output: "v8_help.out",
+});
+
+itest!(unsupported_dynamic_import_scheme {
+  args: "eval import('xxx:')",
+  output: "unsupported_dynamic_import_scheme.out",
+  exit_code: 1,
+});
+
+itest!(wasm {
+  args: "run --quiet wasm.ts",
+  output: "wasm.ts.out",
+});
+
+itest!(wasm_shared {
+  args: "run --quiet wasm_shared.ts",
+  output: "wasm_shared.out",
+});
+
+itest!(wasm_async {
+  args: "run wasm_async.js",
+  output: "wasm_async.out",
+});
+
+itest!(wasm_unreachable {
+  args: "run wasm_unreachable.js",
+  output: "wasm_unreachable.out",
+  exit_code: 1,
+});
+
+itest!(weakref {
+  args: "run --quiet --reload weakref.ts",
+  output: "weakref.ts.out",
+});
+
+itest!(top_level_await_order {
+  args: "run --allow-read top_level_await_order.js",
+  output: "top_level_await_order.out",
+});
+
+itest!(top_level_await_loop {
+  args: "run --allow-read top_level_await_loop.js",
+  output: "top_level_await_loop.out",
+});
+
+itest!(top_level_await_circular {
+  args: "run --allow-read top_level_await_circular.js",
+  output: "top_level_await_circular.out",
+  exit_code: 1,
+});
+
+itest!(top_level_await_unresolved {
+  args: "run top_level_await_unresolved.js",
+  output: "top_level_await_unresolved.out",
+  exit_code: 1,
+});
+
+itest!(top_level_await {
+  args: "run --allow-read top_level_await.js",
+  output: "top_level_await.out",
+});
+
+itest!(top_level_await_ts {
+  args: "run --quiet --allow-read top_level_await.ts",
+  output: "top_level_await.out",
+});
+
+itest!(top_level_for_await {
+  args: "run --quiet top_level_for_await.js",
+  output: "top_level_for_await.out",
+});
+
+itest!(top_level_for_await_ts {
+  args: "run --quiet top_level_for_await.ts",
+  output: "top_level_for_await.out",
+});
+
+itest!(unstable_disabled {
+  args: "run --reload unstable.ts",
+  exit_code: 1,
+  output: "unstable_disabled.out",
+});
+
+itest!(unstable_enabled {
+  args: "run --quiet --reload --unstable unstable.ts",
+  output: "unstable_enabled.out",
+});
+
+itest!(unstable_disabled_js {
+  args: "run --reload unstable.js",
+  output: "unstable_disabled_js.out",
+});
+
+itest!(unstable_enabled_js {
+  args: "run --quiet --reload --unstable unstable.ts",
+  output: "unstable_enabled_js.out",
+});
+
+itest!(unstable_worker {
+  args: "run --reload --unstable --quiet --allow-read unstable_worker.ts",
+  output: "unstable_worker.ts.out",
+});
+
+itest!(_053_import_compression {
+  args: "run --quiet --reload --allow-net 053_import_compression/main.ts",
+  output: "053_import_compression.out",
+  http_server: true,
+});
+
+itest!(disallow_http_from_https_js {
+  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.js",
+  output: "disallow_http_from_https_js.out",
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(disallow_http_from_https_ts {
+  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.ts",
+  output: "disallow_http_from_https_ts.out",
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(dynamic_import_conditional {
+  args: "run --quiet --reload dynamic_import_conditional.js",
+  output: "dynamic_import_conditional.js.out",
+});
+
+itest!(tsx_imports {
+  args: "run --reload tsx_imports.ts",
+  output: "tsx_imports.ts.out",
+});
+
+itest!(fix_dynamic_import_errors {
+  args: "run --reload fix_dynamic_import_errors.js",
+  output: "fix_dynamic_import_errors.js.out",
+});
+
+itest!(fix_emittable_skipped {
+  args: "run --reload fix_emittable_skipped.js",
+  output: "fix_emittable_skipped.ts.out",
+});
+
+itest!(fix_exotic_specifiers {
+  args: "run --quiet --reload fix_exotic_specifiers.ts",
+  output: "fix_exotic_specifiers.ts.out",
+});
+
+itest!(fix_js_import_js {
+  args: "run --quiet --reload fix_js_import_js.ts",
+  output: "fix_js_import_js.ts.out",
+});
+
+itest!(fix_js_imports {
+  args: "run --quiet --reload fix_js_imports.ts",
+  output: "fix_js_imports.ts.out",
+});
+
+itest!(fix_tsc_file_exists {
+  args: "run --quiet --reload tsc/test.js",
+  output: "fix_tsc_file_exists.out",
+});
+
+itest!(fix_worker_dispatchevent {
+  args: "run --quiet --reload fix_worker_dispatchevent.ts",
+  output: "fix_worker_dispatchevent.ts.out",
+});
+
+itest!(es_private_fields {
+  args: "run --quiet --reload es_private_fields.js",
+  output: "es_private_fields.js.out",
+});
+
+itest!(cjs_imports {
+  args: "run --quiet --reload cjs_imports.ts",
+  output: "cjs_imports.ts.out",
+});
+
+itest!(ts_import_from_js {
+  args: "run --quiet --reload ts_import_from_js.js",
+  output: "ts_import_from_js.js.out",
+  http_server: true,
+});
+
+itest!(jsx_import_from_ts {
+  args: "run --quiet --reload jsx_import_from_ts.ts",
+  output: "jsx_import_from_ts.ts.out",
+});
+
+itest!(single_compile_with_reload {
+  args: "run --reload --allow-read single_compile_with_reload.ts",
+  output: "single_compile_with_reload.ts.out",
+});
+
+itest!(proto_exploit {
+  args: "run proto_exploit.js",
+  output: "proto_exploit.js.out",
+});
+
+itest!(reference_types {
+  args: "run --reload --quiet reference_types.ts",
+  output: "reference_types.ts.out",
+});
+
+itest!(references_types_remote {
+  http_server: true,
+  args: "run --reload --quiet reference_types_remote.ts",
+  output: "reference_types_remote.ts.out",
+});
+
+itest!(import_data_url_error_stack {
+  args: "run --quiet --reload import_data_url_error_stack.ts",
+  output: "import_data_url_error_stack.ts.out",
+  exit_code: 1,
+});
+
+itest!(import_data_url_import_relative {
+  args: "run --quiet --reload import_data_url_import_relative.ts",
+  output: "import_data_url_import_relative.ts.out",
+  exit_code: 1,
+});
+
+itest!(import_data_url_import_map {
+    args: "run --quiet --reload --import-map import_maps/import_map.json import_data_url.ts",
+    output: "import_data_url.ts.out",
+  });
+
+itest!(import_data_url_imports {
+  args: "run --quiet --reload import_data_url_imports.ts",
+  output: "import_data_url_imports.ts.out",
+  http_server: true,
+});
+
+itest!(import_data_url_jsx {
+  args: "run --quiet --reload import_data_url_jsx.ts",
+  output: "import_data_url_jsx.ts.out",
+});
+
+itest!(import_data_url {
+  args: "run --quiet --reload import_data_url.ts",
+  output: "import_data_url.ts.out",
+});
+
+itest!(import_dynamic_data_url {
+  args: "run --quiet --reload import_dynamic_data_url.ts",
+  output: "import_dynamic_data_url.ts.out",
+});
+
+itest!(import_blob_url_error_stack {
+  args: "run --quiet --reload import_blob_url_error_stack.ts",
+  output: "import_blob_url_error_stack.ts.out",
+  exit_code: 1,
+});
+
+itest!(import_blob_url_import_relative {
+  args: "run --quiet --reload import_blob_url_import_relative.ts",
+  output: "import_blob_url_import_relative.ts.out",
+  exit_code: 1,
+});
+
+itest!(import_blob_url_imports {
+  args:
+    "run --quiet --reload --allow-net=localhost:4545 import_blob_url_imports.ts",
+  output: "import_blob_url_imports.ts.out",
+  http_server: true,
+});
+
+itest!(import_blob_url_jsx {
+  args: "run --quiet --reload import_blob_url_jsx.ts",
+  output: "import_blob_url_jsx.ts.out",
+});
+
+itest!(import_blob_url {
+  args: "run --quiet --reload import_blob_url.ts",
+  output: "import_blob_url.ts.out",
+});
+
+itest!(import_file_with_colon {
+  args: "run --quiet --reload import_file_with_colon.ts",
+  output: "import_file_with_colon.ts.out",
+  http_server: true,
+});
+// FIXME(bartlomieju): disabled, because this test is very flaky on CI
+// itest!(local_sources_not_cached_in_memory {
+//   args: "run --allow-read --allow-write no_mem_cache.js",
+//   output: "no_mem_cache.js.out",
+// });
+
+// This test checks that inline source map data is used. It uses a hand crafted
+// source map that maps to a file that exists, but is not loaded into the module
+// graph (inline_js_source_map_2.ts) (because there are no direct dependencies).
+// Source line is not remapped because no inline source contents are included in
+// the sourcemap and the file is not present in the dependency graph.
+itest!(inline_js_source_map_2 {
+  args: "run --quiet inline_js_source_map_2.js",
+  output: "inline_js_source_map_2.js.out",
+  exit_code: 1,
+});
+
+// This test checks that inline source map data is used. It uses a hand crafted
+// source map that maps to a file that exists, but is not loaded into the module
+// graph (inline_js_source_map_2.ts) (because there are no direct dependencies).
+// Source line remapped using th inline source contents that are included in the
+// inline source map.
+itest!(inline_js_source_map_2_with_inline_contents {
+  args: "run --quiet inline_js_source_map_2_with_inline_contents.js",
+  output: "inline_js_source_map_2_with_inline_contents.js.out",
+  exit_code: 1,
+});
+
+// This test checks that inline source map data is used. It uses a hand crafted
+// source map that maps to a file that exists, and is loaded into the module
+// graph because of a direct import statement (inline_js_source_map.ts). The
+// source map was generated from an earlier version of this file, where the throw
+// was not commented out. The source line is remapped using source contents that
+// from the module graph.
+itest!(inline_js_source_map_with_contents_from_graph {
+  args: "run --quiet inline_js_source_map_with_contents_from_graph.js",
+  output: "inline_js_source_map_with_contents_from_graph.js.out",
+  exit_code: 1,
+  http_server: true,
+});
+
+// This test ensures that a descriptive error is shown when we're unable to load
+// the import map. Even though this tests only the `run` subcommand, we can be sure
+// that the error message is similar for other subcommands as they all use
+// `program_state.maybe_import_map` to access the import map underneath.
+itest!(error_import_map_unable_to_load {
+  args: "run --import-map=import_maps/does_not_exist.json import_maps/test.ts",
+  output: "error_import_map_unable_to_load.out",
+  exit_code: 1,
+});
+
+#[test]
+fn no_validate_asm() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/no_validate_asm.js")
+    .stderr(std::process::Stdio::piped())
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(output.stderr.is_empty());
+  assert!(output.stdout.is_empty());
+}
+
+#[test]
+fn exec_path() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("--allow-read")
+    .arg("cli/tests/exec_path.ts")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
+  let actual =
+    std::fs::canonicalize(&std::path::Path::new(stdout_str)).unwrap();
+  let expected = std::fs::canonicalize(util::deno_exe_path()).unwrap();
+  assert_eq!(expected, actual);
+}
+
+#[cfg(windows)]
+// Clippy suggests to remove the `NoStd` prefix from all variants. I disagree.
+#[allow(clippy::enum_variant_names)]
+enum WinProcConstraints {
+  NoStdIn,
+  NoStdOut,
+  NoStdErr,
+}
+
+#[cfg(windows)]
+fn run_deno_script_constrained(
+  script_path: std::path::PathBuf,
+  constraints: WinProcConstraints,
+) -> Result<(), i64> {
+  let file_path = "cli/tests/DenoWinRunner.ps1";
+  let constraints = match constraints {
+    WinProcConstraints::NoStdIn => "1",
+    WinProcConstraints::NoStdOut => "2",
+    WinProcConstraints::NoStdErr => "4",
+  };
+  let deno_exe_path = util::deno_exe_path()
+    .into_os_string()
+    .into_string()
+    .unwrap();
+
+  let deno_script_path = script_path.into_os_string().into_string().unwrap();
+
+  let args = vec![&deno_exe_path[..], &deno_script_path[..], constraints];
+  util::run_powershell_script_file(file_path, args)
+}
+
+#[cfg(windows)]
+#[test]
+fn should_not_panic_on_no_stdin() {
+  let output = run_deno_script_constrained(
+    util::tests_path().join("echo.ts"),
+    WinProcConstraints::NoStdIn,
+  );
+  output.unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn should_not_panic_on_no_stdout() {
+  let output = run_deno_script_constrained(
+    util::tests_path().join("echo.ts"),
+    WinProcConstraints::NoStdOut,
+  );
+  output.unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn should_not_panic_on_no_stderr() {
+  let output = run_deno_script_constrained(
+    util::tests_path().join("echo.ts"),
+    WinProcConstraints::NoStdErr,
+  );
+  output.unwrap();
+}
+
+#[cfg(not(windows))]
+#[test]
+fn should_not_panic_on_undefined_home_environment_variable() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/echo.ts")
+    .env_remove("HOME")
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+}
+
+#[test]
+fn should_not_panic_on_undefined_deno_dir_environment_variable() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/echo.ts")
+    .env_remove("DENO_DIR")
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+}
+
+#[cfg(not(windows))]
+#[test]
+fn should_not_panic_on_undefined_deno_dir_and_home_environment_variables() {
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/echo.ts")
+    .env_remove("DENO_DIR")
+    .env_remove("HOME")
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+}
+
+#[test]
+fn rust_log() {
+  // Without RUST_LOG the stderr is empty.
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/001_hello.js")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(output.stderr.is_empty());
+
+  // With RUST_LOG the stderr is not empty.
+  let output = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("run")
+    .arg("cli/tests/001_hello.js")
+    .env("RUST_LOG", "debug")
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(output.status.success());
+  assert!(!output.stderr.is_empty());
+}
+
+mod permissions {
+  use test_util as util;
+
+  #[test]
+  fn with_allow() {
+    for permission in &util::PERMISSION_VARIANTS {
+      let status = util::deno_cmd()
+        .current_dir(&util::tests_path())
+        .arg("run")
+        .arg(format!("--allow-{0}", permission))
+        .arg("permission_test.ts")
+        .arg(format!("{0}Required", permission))
+        .spawn()
+        .unwrap()
+        .wait()
+        .unwrap();
+      assert!(status.success());
+    }
+  }
+
+  #[test]
+  fn without_allow() {
+    for permission in &util::PERMISSION_VARIANTS {
+      let (_, err) = util::run_and_collect_output(
+        false,
+        &format!("run permission_test.ts {0}Required", permission),
+        None,
+        None,
+        false,
+      );
+      assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+    }
+  }
+
+  #[test]
+  fn rw_inside_project_dir() {
+    const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+    for permission in &PERMISSION_VARIANTS {
+      let status = util::deno_cmd()
+        .current_dir(&util::tests_path())
+        .arg("run")
+        .arg(format!(
+          "--allow-{0}={1}",
+          permission,
+          util::root_path().into_os_string().into_string().unwrap()
+        ))
+        .arg("complex_permissions_test.ts")
+        .arg(permission)
+        .arg("complex_permissions_test.ts")
+        .spawn()
+        .unwrap()
+        .wait()
+        .unwrap();
+      assert!(status.success());
+    }
+  }
+
+  #[test]
+  fn rw_outside_test_dir() {
+    const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+    for permission in &PERMISSION_VARIANTS {
+      let (_, err) = util::run_and_collect_output(
+        false,
+        &format!(
+          "run --allow-{0}={1} complex_permissions_test.ts {0} {2}",
+          permission,
+          util::root_path()
+            .join("cli")
+            .join("tests")
+            .into_os_string()
+            .into_string()
+            .unwrap(),
+          util::root_path()
+            .join("Cargo.toml")
+            .into_os_string()
+            .into_string()
+            .unwrap(),
+        ),
+        None,
+        None,
+        false,
+      );
+      assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+    }
+  }
+
+  #[test]
+  fn rw_inside_test_dir() {
+    const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+    for permission in &PERMISSION_VARIANTS {
+      let status = util::deno_cmd()
+        .current_dir(&util::tests_path())
+        .arg("run")
+        .arg(format!(
+          "--allow-{0}={1}",
+          permission,
+          util::root_path()
+            .join("cli")
+            .join("tests")
+            .into_os_string()
+            .into_string()
+            .unwrap()
+        ))
+        .arg("complex_permissions_test.ts")
+        .arg(permission)
+        .arg("complex_permissions_test.ts")
+        .spawn()
+        .unwrap()
+        .wait()
+        .unwrap();
+      assert!(status.success());
+    }
+  }
+
+  #[test]
+  fn rw_outside_test_and_js_dir() {
+    const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+    let test_dir = util::root_path()
+      .join("cli")
+      .join("tests")
+      .into_os_string()
+      .into_string()
+      .unwrap();
+    let js_dir = util::root_path()
+      .join("js")
+      .into_os_string()
+      .into_string()
+      .unwrap();
+    for permission in &PERMISSION_VARIANTS {
+      let (_, err) = util::run_and_collect_output(
+        false,
+        &format!(
+          "run --allow-{0}={1},{2} complex_permissions_test.ts {0} {3}",
+          permission,
+          test_dir,
+          js_dir,
+          util::root_path()
+            .join("Cargo.toml")
+            .into_os_string()
+            .into_string()
+            .unwrap(),
+        ),
+        None,
+        None,
+        false,
+      );
+      assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+    }
+  }
+
+  #[test]
+  fn rw_inside_test_and_js_dir() {
+    const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+    let test_dir = util::root_path()
+      .join("cli")
+      .join("tests")
+      .into_os_string()
+      .into_string()
+      .unwrap();
+    let js_dir = util::root_path()
+      .join("js")
+      .into_os_string()
+      .into_string()
+      .unwrap();
+    for permission in &PERMISSION_VARIANTS {
+      let status = util::deno_cmd()
+        .current_dir(&util::tests_path())
+        .arg("run")
+        .arg(format!("--allow-{0}={1},{2}", permission, test_dir, js_dir))
+        .arg("complex_permissions_test.ts")
+        .arg(permission)
+        .arg("complex_permissions_test.ts")
+        .spawn()
+        .unwrap()
+        .wait()
+        .unwrap();
+      assert!(status.success());
+    }
+  }
+
+  #[test]
+  fn rw_relative() {
+    const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+    for permission in &PERMISSION_VARIANTS {
+      let status = util::deno_cmd()
+        .current_dir(&util::tests_path())
+        .arg("run")
+        .arg(format!("--allow-{0}=.", permission))
+        .arg("complex_permissions_test.ts")
+        .arg(permission)
+        .arg("complex_permissions_test.ts")
+        .spawn()
+        .unwrap()
+        .wait()
+        .unwrap();
+      assert!(status.success());
+    }
+  }
+
+  #[test]
+  fn rw_no_prefix() {
+    const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
+    for permission in &PERMISSION_VARIANTS {
+      let status = util::deno_cmd()
+        .current_dir(&util::tests_path())
+        .arg("run")
+        .arg(format!("--allow-{0}=tls/../", permission))
+        .arg("complex_permissions_test.ts")
+        .arg(permission)
+        .arg("complex_permissions_test.ts")
+        .spawn()
+        .unwrap()
+        .wait()
+        .unwrap();
+      assert!(status.success());
+    }
+  }
+
+  #[test]
+  fn net_fetch_allow_localhost_4545() {
+    let (_, err) = util::run_and_collect_output(
+      true,
+        "run --allow-net=localhost:4545 complex_permissions_test.ts netFetch http://localhost:4545/",
+        None,
+        None,
+        true,
+      );
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+
+  #[test]
+  fn net_fetch_allow_deno_land() {
+    let (_, err) = util::run_and_collect_output(
+      false,
+        "run --allow-net=deno.land complex_permissions_test.ts netFetch http://localhost:4545/",
+        None,
+        None,
+        true,
+      );
+    assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+
+  #[test]
+  fn net_fetch_localhost_4545_fail() {
+    let (_, err) = util::run_and_collect_output(
+      false,
+        "run --allow-net=localhost:4545 complex_permissions_test.ts netFetch http://localhost:4546/",
+        None,
+        None,
+        true,
+      );
+    assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+
+  #[test]
+  fn net_fetch_localhost() {
+    let (_, err) = util::run_and_collect_output(
+      true,
+        "run --allow-net=localhost complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
+        None,
+        None,
+        true,
+      );
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+
+  #[test]
+  fn net_connect_allow_localhost_ip_4555() {
+    let (_, err) = util::run_and_collect_output(
+      true,
+        "run --allow-net=127.0.0.1:4545 complex_permissions_test.ts netConnect 127.0.0.1:4545",
+        None,
+        None,
+        true,
+      );
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+
+  #[test]
+  fn net_connect_allow_deno_land() {
+    let (_, err) = util::run_and_collect_output(
+      false,
+        "run --allow-net=deno.land complex_permissions_test.ts netConnect 127.0.0.1:4546",
+        None,
+        None,
+        true,
+      );
+    assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+
+  #[test]
+  fn net_connect_allow_localhost_ip_4545_fail() {
+    let (_, err) = util::run_and_collect_output(
+      false,
+        "run --allow-net=127.0.0.1:4545 complex_permissions_test.ts netConnect 127.0.0.1:4546",
+        None,
+        None,
+        true,
+      );
+    assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+
+  #[test]
+  fn net_connect_allow_localhost_ip() {
+    let (_, err) = util::run_and_collect_output(
+      true,
+        "run --allow-net=127.0.0.1 complex_permissions_test.ts netConnect 127.0.0.1:4545 127.0.0.1:4546 127.0.0.1:4547",
+        None,
+        None,
+        true,
+      );
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+
+  #[test]
+  fn net_listen_allow_localhost_4555() {
+    let (_, err) = util::run_and_collect_output(
+      true,
+        "run --allow-net=localhost:4558 complex_permissions_test.ts netListen localhost:4558",
+        None,
+        None,
+        false,
+      );
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+
+  #[test]
+  fn net_listen_allow_deno_land() {
+    let (_, err) = util::run_and_collect_output(
+      false,
+        "run --allow-net=deno.land complex_permissions_test.ts netListen localhost:4545",
+        None,
+        None,
+        false,
+      );
+    assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+
+  #[test]
+  fn net_listen_allow_localhost_4555_fail() {
+    let (_, err) = util::run_and_collect_output(
+      false,
+        "run --allow-net=localhost:4555 complex_permissions_test.ts netListen localhost:4556",
+        None,
+        None,
+        false,
+      );
+    assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+
+  #[test]
+  fn net_listen_allow_localhost() {
+    // Port 4600 is chosen to not colide with those used by
+    // target/debug/test_server
+    let (_, err) = util::run_and_collect_output(
+      true,
+        "run --allow-net=localhost complex_permissions_test.ts netListen localhost:4600",
+        None,
+        None,
+        false,
+      );
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn _061_permissions_request() {
+    let args = "run 061_permissions_request.ts";
+    let output = "061_permissions_request.ts.out";
+    let input = b"y\nn\n";
+
+    util::test_pty(args, output, input);
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn _062_permissions_request_global() {
+    let args = "run 062_permissions_request_global.ts";
+    let output = "062_permissions_request_global.ts.out";
+    let input = b"y\n";
+
+    util::test_pty(args, output, input);
+  }
+
+  itest!(_063_permissions_revoke {
+    args: "run --allow-read=foo,bar 063_permissions_revoke.ts",
+    output: "063_permissions_revoke.ts.out",
+  });
+
+  itest!(_064_permissions_revoke_global {
+    args: "run --allow-read=foo,bar 064_permissions_revoke_global.ts",
+    output: "064_permissions_revoke_global.ts.out",
+  });
+
+  #[cfg(unix)]
+  #[test]
+  fn _066_prompt() {
+    let args = "run --unstable 066_prompt.ts";
+    let output = "066_prompt.ts.out";
+    // These are answers to prompt, confirm, and alert calls.
+    let input = b"John Doe\n\nfoo\nY\nN\nyes\n\nwindows\r\n\n\n";
+
+    util::test_pty(args, output, input);
+  }
+
+  itest!(dynamic_import_permissions_remote_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_remote_remote.ts",
+    output: "dynamic_import/permissions_remote_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(dynamic_import_permissions_data_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_data_remote.ts",
+    output: "dynamic_import/permissions_data_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(dynamic_import_permissions_blob_remote {
+    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_blob_remote.ts",
+    output: "dynamic_import/permissions_blob_remote.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(dynamic_import_permissions_data_local {
+    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_data_local.ts",
+    output: "dynamic_import/permissions_data_local.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+
+  itest!(dynamic_import_permissions_blob_local {
+    args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_blob_local.ts",
+    output: "dynamic_import/permissions_blob_local.ts.out",
+    http_server: true,
+    exit_code: 1,
+  });
+}
