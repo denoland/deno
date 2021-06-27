@@ -14,6 +14,7 @@ use deno_core::futures::StreamExt;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::AsyncRefCell;
+use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Extension;
@@ -140,9 +141,11 @@ struct NextRequestResponse(
   // response_sender_rid:
   ResourceId,
   // method:
+  // This is a String rather than a ByteString because reqwest will only return
+  // the method as a str which is guaranteed to be ASCII-only.
   String,
   // headers:
-  Vec<(String, String)>,
+  Vec<(ByteString, ByteString)>,
   // url:
   String,
 );
@@ -199,9 +202,10 @@ async fn op_http_request_next(
 
       let mut headers = Vec::with_capacity(req.headers().len());
       for (name, value) in req.headers().iter() {
-        let name = name.to_string();
-        let value = value.to_str().unwrap_or("").to_string();
-        headers.push((name, value));
+        let name: &[u8] = name.as_ref();
+        let value = value.as_bytes();
+        headers
+          .push((ByteString(name.to_owned()), ByteString(value.to_owned())));
       }
 
       let url = {
@@ -346,7 +350,7 @@ struct RespondArgs(
   // status:
   u16,
   // headers:
-  Vec<(String, String)>,
+  Vec<(ByteString, ByteString)>,
 );
 
 async fn op_http_response(
@@ -375,7 +379,7 @@ async fn op_http_response(
 
   builder.headers_mut().unwrap().reserve(headers.len());
   for (key, value) in &headers {
-    builder = builder.header(key, value);
+    builder = builder.header(key.as_ref(), value.as_ref());
   }
 
   let res;
