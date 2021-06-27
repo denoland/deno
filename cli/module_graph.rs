@@ -792,7 +792,15 @@ impl Graph {
   pub fn bundle(
     &self,
     options: BundleOptions,
-  ) -> Result<(String, Stats, Option<IgnoredCompilerOptions>), AnyError> {
+  ) -> Result<
+    (
+      String,
+      Option<String>,
+      Stats,
+      Option<IgnoredCompilerOptions>,
+    ),
+    AnyError,
+  > {
     if self.roots.is_empty() || self.roots.len() > 1 {
       return Err(GraphError::NotSupported(format!("Bundling is only supported when there is a single root module in the graph.  Found: {}", self.roots.len())).into());
     }
@@ -803,7 +811,7 @@ impl Graph {
       "checkJs": false,
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
-      "inlineSourceMap": false,
+      "inlineSourceMap": true,
       "sourceMap": false,
       "jsx": "react",
       "jsxFactory": "React.createElement",
@@ -812,7 +820,7 @@ impl Graph {
     let maybe_ignored_options = ts_config
       .merge_tsconfig_from_config_file(options.maybe_config_file.as_ref())?;
 
-    let (src, _) = self.emit_bundle(
+    let (src, src_map) = self.emit_bundle(
       &root_specifier,
       &ts_config.into(),
       &BundleType::Module,
@@ -822,7 +830,7 @@ impl Graph {
       ("Total time".to_string(), start.elapsed().as_millis() as u32),
     ]);
 
-    Ok((src, stats, maybe_ignored_options))
+    Ok((src, src_map, stats, maybe_ignored_options))
   }
 
   /// Type check the module graph, corresponding to the options provided.
@@ -1235,12 +1243,15 @@ impl Graph {
       cm.build_source_map_from(&mut src_map_buf, None)
         .to_writer(&mut buf)?;
 
-      if emit_options.inline_source_map {
+      if emit_options.source_map {
+        let mut src_map = String::from_utf8(buf)?;
+        src_map.push('\n');
+        map = Some(src_map);
+      } else if emit_options.inline_source_map {
         src.push_str("//# sourceMappingURL=data:application/json;base64,");
         let encoded_map = base64::encode(buf);
         src.push_str(&encoded_map);
-      } else if emit_options.source_map {
-        map = Some(String::from_utf8(buf)?);
+        src.push('\n');
       }
     }
 
@@ -2331,7 +2342,7 @@ pub mod tests {
         .await
         .expect("module not inserted");
       let graph = builder.get_graph();
-      let (actual, stats, maybe_ignored_options) = graph
+      let (actual, _, stats, maybe_ignored_options) = graph
         .bundle(BundleOptions::default())
         .expect("could not bundle");
       assert_eq!(stats.0.len(), 2);

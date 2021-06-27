@@ -2,3 +2,4 @@ function getIndex1(c) {
     return "\x00\r\n\x85\u2028\u2029".indexOf(c);
 }
 export { getIndex1 as getIndex };
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbIjxmaWxlOi8vL3Rlc3RzL2ZpeHR1cmUxNS50cz4iXSwic291cmNlc0NvbnRlbnQiOlsiZXhwb3J0IGZ1bmN0aW9uIGdldEluZGV4KGM6IHN0cmluZyk6IG51bWJlciB7XG4gIHJldHVybiBcIlxceDAwXFxyXFxuXFx4ODVcXHUyMDI4XFx1MjAyOVwiLmluZGV4T2YoYyk7XG59XG4iXSwibmFtZXMiOltdLCJtYXBwaW5ncyI6IlNBQWdCLFNBQVEsQ0FBQyxDQUFTO1lBQ3pCLHdCQUEwQixFQUFDLE9BQU8sQ0FBQyxDQUFDOztTQUQ3QixTQUFRLElBQVIsUUFBUSJ9

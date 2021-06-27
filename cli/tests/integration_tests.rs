@@ -1674,6 +1674,32 @@ mod integration {
   }
 
   #[test]
+  fn bundle_emit_source_map() {
+    let mod1 = util::root_path().join("cli/tests/subdir/mod1.ts");
+    let config = util::root_path().join("cli/tests/bundle/tsconfig.json");
+    assert!(mod1.is_file());
+    let t = TempDir::new().expect("tempdir fail");
+    let bundle = t.path().join("mod1.bundle.js");
+    let source_map_file = t.path().join("mod1.bundle.js.map");
+
+    let mut deno = util::deno_cmd()
+      .current_dir(util::root_path())
+      .arg("bundle")
+      .arg("--no-check")
+      .arg("--config")
+      .arg(config)
+      .arg(mod1)
+      .arg(&bundle)
+      .spawn()
+      .expect("failed to spawn script");
+    let status = deno.wait().expect("failed to wait for the child process");
+
+    assert!(status.success());
+    assert!(bundle.is_file());
+    assert!(source_map_file.is_file());
+  }
+
+  #[test]
   fn bundle_circular() {
     // First we have to generate a bundle of some module that has exports.
     let circular1 = util::root_path().join("cli/tests/subdir/circular1.ts");
@@ -2776,13 +2802,20 @@ console.log("finish");
   });
 
   itest!(bundle {
-    args: "bundle subdir/mod1.ts",
+    args:
+      "bundle subdir/mod1.ts --config bundle/disable_sourcemap_tsconfig.json",
     output: "bundle.test.out",
   });
 
   itest!(bundle_jsx {
-    args: "bundle jsx_import_from_ts.ts",
+    args: "bundle jsx_import_from_ts.ts --config bundle/disable_sourcemap_tsconfig.json",
     output: "bundle_jsx.out",
+  });
+
+  itest!(bundle_errors_on_two_source_map_options {
+    args: "bundle jsx_import_from_ts.ts --config bundle/sourcemap_tsconfig.json",
+    exit_code: 1,
+    output_str: Some("[WILDCARD]\nerror: TS5053 [ERROR]: Option 'sourceMap' cannot be specified with option 'inlineSourceMap'.\n"),
   });
 
   itest!(fmt_check_tests_dir {
