@@ -733,6 +733,7 @@ dependencies = [
  "deno_core",
  "deno_crypto",
  "deno_fetch",
+ "deno_net",
  "deno_timers",
  "deno_url",
  "deno_web",

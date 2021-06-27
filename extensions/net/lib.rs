@@ -8,6 +8,7 @@ pub mod ops_unix;
 pub mod resolve_addr;
 
 use deno_core::error::AnyError;
+use deno_core::Extension;
 use deno_core::OpState;
 use std::cell::RefCell;
 use std::path::Path;
@@ -75,4 +76,20 @@ pub fn check_unstable(state: &OpState, api_name: &str) {
 pub fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
   let state = state.borrow();
   state.borrow::<UnstableChecker>().check_unstable(api_name)
+}
+
+pub fn init<P: NetPermissions + 'static>(unstable: bool) -> Extension {
+  let mut ops_to_register = vec![];
+  ops_to_register.extend(io::init());
+  ops_to_register.extend(ops::init::<P>());
+  ops_to_register.extend(ops_tls::init::<P>());
+  ops_to_register.extend(ops_http::init());
+
+  Extension::builder()
+    .ops(ops_to_register)
+    .state(move |state| {
+      state.put(UnstableChecker { unstable });
+      Ok(())
+    })
+    .build()
 }

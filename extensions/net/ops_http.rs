@@ -16,7 +16,7 @@ use deno_core::op_sync;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::Extension;
+use deno_core::OpPair;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -45,17 +45,15 @@ use tokio::net::TcpStream;
 use tokio::sync::oneshot;
 use tokio_util::io::StreamReader;
 
-pub fn init() -> Extension {
-  Extension::builder()
-    .ops(vec![
-      ("op_http_start", op_sync(op_http_start)),
-      ("op_http_request_next", op_async(op_http_request_next)),
-      ("op_http_request_read", op_async(op_http_request_read)),
-      ("op_http_response", op_async(op_http_response)),
-      ("op_http_response_write", op_async(op_http_response_write)),
-      ("op_http_response_close", op_async(op_http_response_close)),
-    ])
-    .build()
+pub fn init() -> Vec<OpPair> {
+  vec![
+    ("op_http_start", op_sync(op_http_start)),
+    ("op_http_request_next", op_async(op_http_request_next)),
+    ("op_http_request_read", op_async(op_http_request_read)),
+    ("op_http_response", op_async(op_http_response)),
+    ("op_http_response_write", op_async(op_http_response_write)),
+    ("op_http_response_close", op_async(op_http_response_close)),
+  ]
 }
 
 struct ServiceInner {

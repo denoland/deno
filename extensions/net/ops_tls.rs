@@ -31,7 +31,7 @@ use deno_core::op_sync;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::Extension;
+use deno_core::OpPair;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -662,15 +662,13 @@ impl Write for ImplementWriteTrait<'_, TcpStream> {
   }
 }
 
-pub fn init<P: NetPermissions + 'static>() -> Extension {
-  Extension::builder()
-    .ops(vec![
-      ("op_start_tls", op_async(op_start_tls::<P>)),
-      ("op_connect_tls", op_async(op_connect_tls::<P>)),
-      ("op_listen_tls", op_sync(op_listen_tls::<P>)),
-      ("op_accept_tls", op_async(op_accept_tls)),
-    ])
-    .build()
+pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
+  vec![
+    ("op_start_tls", op_async(op_start_tls::<P>)),
+    ("op_connect_tls", op_async(op_connect_tls::<P>)),
+    ("op_listen_tls", op_sync(op_listen_tls::<P>)),
+    ("op_accept_tls", op_async(op_accept_tls)),
+  ]
 }
 
 #[derive(Deserialize)]

@@ -15,7 +15,7 @@ use deno_core::op_sync;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::Extension;
+use deno_core::OpPair;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -46,17 +46,15 @@ use crate::io::UnixStreamResource;
 #[cfg(unix)]
 use std::path::Path;
 
-pub fn init<P: NetPermissions + 'static>() -> Extension {
-  Extension::builder()
-    .ops(vec![
-      ("op_accept", op_async(op_accept)),
-      ("op_connect", op_async(op_connect::<P>)),
-      ("op_listen", op_sync(op_listen::<P>)),
-      ("op_datagram_receive", op_async(op_datagram_receive)),
-      ("op_datagram_send", op_async(op_datagram_send::<P>)),
-      ("op_dns_resolve", op_async(op_dns_resolve::<P>)),
-    ])
-    .build()
+pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
+  vec![
+    ("op_accept", op_async(op_accept)),
+    ("op_connect", op_async(op_connect::<P>)),
+    ("op_listen", op_sync(op_listen::<P>)),
+    ("op_datagram_receive", op_async(op_datagram_receive)),
+    ("op_datagram_send", op_async(op_datagram_send::<P>)),
+    ("op_dns_resolve", op_async(op_dns_resolve::<P>)),
+  ]
 }
 
 #[derive(Serialize)]

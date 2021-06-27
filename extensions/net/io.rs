@@ -9,7 +9,7 @@ use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::Extension;
+use deno_core::OpPair;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -27,14 +27,12 @@ use tokio::net::tcp;
 #[cfg(unix)]
 use tokio::net::unix;
 
-pub fn init() -> Extension {
-  Extension::builder()
-    .ops(vec![
-      ("op_read_async", op_async(op_read_async)),
-      ("op_write_async", op_async(op_write_async)),
-      ("op_shutdown", op_async(op_shutdown)),
-    ])
-    .build()
+pub fn init() -> Vec<OpPair> {
+  vec![
+    ("op_net_read_async", op_async(op_read_async)),
+    ("op_net_write_async", op_async(op_write_async)),
+    ("op_net_shutdown", op_async(op_shutdown)),
+  ]
 }
 
 /// A full duplex resource has a read and write ends that are completely
