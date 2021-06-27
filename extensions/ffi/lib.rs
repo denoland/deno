@@ -14,7 +14,6 @@ use libffi::middle::Cif;
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::ffi::c_void;
-use std::path::PathBuf;
 use std::rc::Rc;
 
 struct LibraryResource(Library);

@@ -794,7 +794,7 @@ pub struct Permissions {
   pub net: UnaryPermission<NetDescriptor>,
   pub env: UnaryPermission<EnvDescriptor>,
   pub run: UnaryPermission<RunDescriptor>,
-  pub plugin: UnitPermission,
+  pub ffi: UnitPermission,
   pub hrtime: UnitPermission,
 }
 
@@ -803,7 +803,7 @@ pub struct PermissionsOptions {
   pub allow_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
   pub allow_net: Option<Vec<String>>,
-  pub allow_plugin: bool,
+  pub allow_ffi: bool,
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
@@ -904,8 +904,8 @@ impl Permissions {
     }
   }
 
-  pub fn new_plugin(state: bool, prompt: bool) -> UnitPermission {
-    unit_permission_from_flag_bool(state, "plugin", "open a plugin", prompt)
+  pub fn new_ffi(state: bool, prompt: bool) -> UnitPermission {
+    unit_permission_from_flag_bool(state, "ffi", "open a dynamic library using ffi", prompt)
   }
 
   pub fn new_hrtime(state: bool, prompt: bool) -> UnitPermission {
@@ -924,7 +924,7 @@ impl Permissions {
       net: Permissions::new_net(&opts.allow_net, opts.prompt),
       env: Permissions::new_env(&opts.allow_env, opts.prompt),
       run: Permissions::new_run(&opts.allow_run, opts.prompt),
-      plugin: Permissions::new_plugin(opts.allow_plugin, opts.prompt),
+      ffi: Permissions::new_ffi(opts.allow_ffi, opts.prompt),
       hrtime: Permissions::new_hrtime(opts.allow_hrtime, opts.prompt),
     }
   }
@@ -936,7 +936,7 @@ impl Permissions {
       net: Permissions::new_net(&Some(vec![]), false),
       env: Permissions::new_env(&Some(vec![]), false),
       run: Permissions::new_run(&Some(vec![]), false),
-      plugin: Permissions::new_plugin(true, false),
+      ffi: Permissions::new_ffi(true, false),
       hrtime: Permissions::new_hrtime(true, false),
     }
   }
@@ -1440,7 +1440,7 @@ mod tests {
         global_state: PermissionState::Prompt,
         ..Permissions::new_run(&Some(svec!["deno"]), false)
       },
-      plugin: UnitPermission {
+      ffi: UnitPermission {
         state: PermissionState::Prompt,
         ..Default::default()
       },
@@ -1473,8 +1473,8 @@ mod tests {
       assert_eq!(perms1.run.query(Some(&"deno".to_string())), PermissionState::Granted);
       assert_eq!(perms2.run.query(None), PermissionState::Prompt);
       assert_eq!(perms2.run.query(Some(&"deno".to_string())), PermissionState::Granted);
-      assert_eq!(perms1.plugin.query(), PermissionState::Granted);
-      assert_eq!(perms2.plugin.query(), PermissionState::Prompt);
+      assert_eq!(perms1.ffi.query(), PermissionState::Granted);
+      assert_eq!(perms2.ffi.query(), PermissionState::Prompt);
       assert_eq!(perms1.hrtime.query(), PermissionState::Granted);
       assert_eq!(perms2.hrtime.query(), PermissionState::Prompt);
     };
@@ -1511,9 +1511,9 @@ mod tests {
       set_prompt_result(false);
       assert_eq!(perms.run.request(Some(&"deno".to_string())), PermissionState::Granted);
       set_prompt_result(true);
-      assert_eq!(perms.plugin.request(), PermissionState::Granted);
+      assert_eq!(perms.ffi.request(), PermissionState::Granted);
       set_prompt_result(false);
-      assert_eq!(perms.plugin.request(), PermissionState::Granted);
+      assert_eq!(perms.ffi.request(), PermissionState::Granted);
       set_prompt_result(false);
       assert_eq!(perms.hrtime.request(), PermissionState::Denied);
       set_prompt_result(true);
@@ -1544,7 +1544,7 @@ mod tests {
         global_state: PermissionState::Prompt,
         ..Permissions::new_run(&Some(svec!["deno"]), false)
       },
-      plugin: UnitPermission {
+      ffi: UnitPermission {
         state: PermissionState::Prompt,
         ..Default::default()
       },
@@ -1565,7 +1565,7 @@ mod tests {
       assert_eq!(perms.net.revoke(Some(&("127.0.0.1", None))), PermissionState::Prompt);
       assert_eq!(perms.env.revoke(Some(&"HOME".to_string())), PermissionState::Prompt);
       assert_eq!(perms.run.revoke(Some(&"deno".to_string())), PermissionState::Prompt);
-      assert_eq!(perms.plugin.revoke(), PermissionState::Prompt);
+      assert_eq!(perms.ffi.revoke(), PermissionState::Prompt);
       assert_eq!(perms.hrtime.revoke(), PermissionState::Denied);
     };
   }
@@ -1578,7 +1578,7 @@ mod tests {
       net: Permissions::new_net(&None, true),
       env: Permissions::new_env(&None, true),
       run: Permissions::new_run(&None, true),
-      plugin: Permissions::new_plugin(false, true),
+      ffi: Permissions::new_ffi(false, true),
       hrtime: Permissions::new_hrtime(false, true),
     };
 
@@ -1631,7 +1631,7 @@ mod tests {
       net: Permissions::new_net(&None, true),
       env: Permissions::new_env(&None, true),
       run: Permissions::new_run(&None, true),
-      plugin: Permissions::new_plugin(false, true),
+      ffi: Permissions::new_ffi(false, true),
       hrtime: Permissions::new_hrtime(false, true),
     };
 

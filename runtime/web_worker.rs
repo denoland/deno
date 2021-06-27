@@ -311,6 +311,8 @@ impl WebWorker {
       deno_crypto::init(options.seed),
       deno_webgpu::init(options.unstable),
       deno_timers::init::<Permissions>(),
+      // ffi
+      deno_ffi::init(),
       // Metrics
       metrics::init(),
       // Permissions ext (worker specific state)
