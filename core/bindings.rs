@@ -59,6 +59,9 @@ lazy_static::lazy_static! {
       v8::ExternalReference {
         function: memory_usage.map_fn_to(),
       },
+      v8::ExternalReference {
+        function: call_console.map_fn_to(),
+      },
     ]);
 }
 
@@ -134,6 +137,7 @@ pub fn initialize_context<'s>(
   set_func(scope, core_val, "getPromiseDetails", get_promise_details);
   set_func(scope, core_val, "getProxyDetails", get_proxy_details);
   set_func(scope, core_val, "memoryUsage", memory_usage);
+  set_func(scope, core_val, "callConsole", call_console);
   set_func(scope, core_val, "createHostObject", create_host_object);
 
   // Direct bindings on `window`.
@@ -458,6 +462,54 @@ fn eval_context(
 
   let output = Output(Some(result.unwrap().into()), None);
   rv.set(to_v8(tc_scope, output).unwrap());
+}
+
+/// This binding should be used if there's a custom console implementation
+/// available. Using it will make sure that proper stack frames are displayed
+/// in the inspector console.
+///
+/// Each method on console object should be bound to this function, eg:
+/// ```ignore
+/// function wrapConsole(consoleFromDeno, consoleFromV8) {
+///   const callConsole = core.callConsole;
+///
+///   for (const key of Object.keys(consoleFromV8)) {
+///     if (consoleFromDeno.hasOwnProperty(key)) {
+///       consoleFromDeno[key] = callConsole.bind(
+///         consoleFromDeno,
+///         consoleFromV8[key],
+///         consoleFromDeno[key],
+///       );
+///     }
+///   }
+/// }
+/// ```
+///
+/// Inspired by:
+/// https://github.com/nodejs/node/blob/1317252dfe8824fd9cfee125d2aaa94004db2f3b/src/inspector_js_api.cc#L194-L222
+fn call_console(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  assert!(args.length() >= 2);
+
+  assert!(args.get(0).is_function());
+  assert!(args.get(1).is_function());
+
+  let mut call_args = vec![];
+  for i in 2..args.length() {
+    call_args.push(args.get(i));
+  }
+
+  let receiver = args.this();
+  let inspector_console_method =
+    v8::Local::<v8::Function>::try_from(args.get(0)).unwrap();
+  let deno_console_method =
+    v8::Local::<v8::Function>::try_from(args.get(1)).unwrap();
+
+  inspector_console_method.call(scope, receiver.into(), &call_args);
+  deno_console_method.call(scope, receiver.into(), &call_args);
 }
 
 fn encode(
