@@ -226,7 +226,7 @@ pub fn create_worker_permissions(
     env: merge_env_permission(main_perms.env, worker_perms.env)?,
     hrtime: merge_boolean_permission(main_perms.hrtime, worker_perms.hrtime)?,
     net: merge_net_permission(main_perms.net, worker_perms.net)?,
-    plugin: merge_boolean_permission(main_perms.plugin, worker_perms.plugin)?,
+    ffi: merge_boolean_permission(main_perms.ffi, worker_perms.ffi)?,
     read: merge_read_permission(main_perms.read, worker_perms.read)?,
     run: merge_run_permission(main_perms.run, worker_perms.run)?,
     write: merge_write_permission(main_perms.write, worker_perms.write)?,
@@ -242,7 +242,7 @@ pub struct PermissionsArg {
   #[serde(default, deserialize_with = "as_unary_net_permission")]
   net: Option<UnaryPermission<NetDescriptor>>,
   #[serde(default, deserialize_with = "as_permission_state")]
-  plugin: Option<PermissionState>,
+  ffi: Option<PermissionState>,
   #[serde(default, deserialize_with = "as_unary_read_permission")]
   read: Option<UnaryPermission<ReadDescriptor>>,
   #[serde(default, deserialize_with = "as_unary_run_permission")]

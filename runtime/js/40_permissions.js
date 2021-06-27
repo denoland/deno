@@ -15,14 +15,14 @@
    * @property {PermissionStatus} status
    */
 
-  /** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "run" | "plugin" | "hrtime">} */
+  /** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "run" | "ffi" | "hrtime">} */
   const permissionNames = [
     "read",
     "write",
     "net",
     "env",
     "run",
-    "plugin",
+    "ffi",
     "hrtime",
   ];
 

@@ -195,7 +195,7 @@ fn metadata_to_flags(metadata: &Metadata) -> Flags {
     allow_env: permissions.allow_env,
     allow_hrtime: permissions.allow_hrtime,
     allow_net: permissions.allow_net,
-    allow_plugin: permissions.allow_plugin,
+    allow_ffi: permissions.allow_ffi,
     allow_read: permissions.allow_read,
     allow_run: permissions.allow_run,
     allow_write: permissions.allow_write,

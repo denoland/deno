@@ -6,7 +6,6 @@ members = [
   "cli",
   "core",
   "runtime",
-  "test_plugin",
   "test_util",
   "extensions/broadcast_channel",
   "extensions/console",

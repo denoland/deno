@@ -128,36 +128,17 @@ declare namespace Deno {
     speed: number | undefined;
   }
 
-  /** **UNSTABLE**: new API, yet to be vetted.
+  /** **UNSTABLE**: new API
    *
-   * Open and initialize a plugin.
-   *
-   * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
-   * const rid = Deno.openPlugin("./path/to/some/plugin.so");
-   *
-   * // The Deno.core namespace is needed to interact with plugins, but this is
-   * // internal so we use ts-ignore to skip type checking these calls.
-   * // @ts-ignore
-   * const { op_test_sync, op_test_async } = Deno.core.ops();
-   *
-   * assert(op_test_sync);
-   * assert(op_test_async);
-   *
-   * // @ts-ignore
-   * const result = Deno.core.opSync("op_test_sync");
-   *
-   * // @ts-ignore
-   * const result = await Deno.core.opAsync("op_test_sync");
-   * ```
-   *
-   * Requires `allow-plugin` permission.
-   *
-   * The plugin system is not stable and will change in the future, hence the
-   * lack of docs. For now take a look at the example
-   * https://github.com/denoland/deno/tree/main/test_plugin
+   * Open a dynamic library for use with ffi
    */
-  export function openPlugin(filename: string): number;
+  export function dlopen(filename: string): number;
+
+  /** **UNSTABLE**: new API
+   *
+   * Open a dynamic library for use with ffi
+   */
+   export function dlcall(filename: string): number;
 
   /** The log category for a diagnostic message. */
   export enum DiagnosticCategory {
@@ -1312,14 +1293,14 @@ declare namespace Deno {
       */
       net?: "inherit" | boolean | string[];
 
-      /** Specifies if the `plugin` permission should be requested or revoked.
-      * If set to `"inherit"`, the current `plugin` permission will be inherited.
-      * If set to `true`, the global `plugin` permission will be requested.
-      * If set to `false`, the global `plugin` permission will be revoked.
+      /** Specifies if the `ffi` permission should be requested or revoked.
+      * If set to `"inherit"`, the current `ffi` permission will be inherited.
+      * If set to `true`, the global `ffi` permission will be requested.
+      * If set to `false`, the global `ffi` permission will be revoked.
       *
       * Defaults to "inherit".
       */
-      plugin?: "inherit" | boolean;
+      ffi?: "inherit" | boolean;
 
       /** Specifies if the `read` permission should be requested or revoked.
       * If set to `"inherit"`, the current `read` permission will be inherited.
@@ -1406,7 +1387,7 @@ declare interface WorkerOptions {
        * For example: `["https://deno.land", "localhost:8080"]`.
        */
       net?: "inherit" | boolean | string[];
-      plugin?: "inherit" | boolean;
+      ffi?: "inherit" | boolean;
       read?: "inherit" | boolean | Array<string | URL>;
       run?: "inherit" | boolean;
       write?: "inherit" | boolean | Array<string | URL>;

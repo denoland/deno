@@ -204,7 +204,7 @@ the `deno.permissions` option in the worker API.
         env: false,
         hrtime: false,
         net: "inherit",
-        plugin: false,
+        ffi: false,
         read: false,
         run: false,
         write: false,
