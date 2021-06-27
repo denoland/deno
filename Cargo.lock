@@ -727,7 +727,6 @@ name = "deno_runtime"
 version = "0.18.0"
 dependencies = [
  "atty",
- "bytes",
  "deno_broadcast_channel",
  "deno_console",
  "deno_core",
@@ -756,18 +755,12 @@ dependencies = [
  "percent-encoding",
  "regex",
  "ring",
- "rustls",
  "serde",
  "sys-info",
  "termcolor",
  "test_util",
  "tokio",
- "tokio-util",
- "trust-dns-proto",
- "trust-dns-resolver",
  "uuid",
- "webpki",
- "webpki-roots",
  "winapi 0.3.9",
  "winres",
 ]
