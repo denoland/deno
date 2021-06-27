@@ -27,8 +27,8 @@ The following permissions are available:
 - **--allow-net=\<allow-net\>** Allow network access. You can specify an
   optional, comma-separated list of domains to provide an allow-list of allowed
   domains.
-- **--allow-ffi** Allow loading dynamic libraries. Please note that --allow-ffi is
-  an unstable feature.
+- **--allow-ffi** Allow loading dynamic libraries. Please note that --allow-ffi
+  is an unstable feature.
 - **--allow-read=\<allow-read\>** Allow file system read access. You can specify
   an optional, comma-separated list of directories or files to provide an
   allow-list of allowed file system access.

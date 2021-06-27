@@ -4,6 +4,7 @@ pub use deno_broadcast_channel;
 pub use deno_console;
 pub use deno_crypto;
 pub use deno_fetch;
+pub use deno_ffi;
 pub use deno_timers;
 pub use deno_url;
 pub use deno_web;
@@ -11,7 +12,6 @@ pub use deno_webgpu;
 pub use deno_webidl;
 pub use deno_websocket;
 pub use deno_webstorage;
-pub use deno_ffi;
 
 pub mod colors;
 pub mod errors;

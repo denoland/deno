@@ -905,7 +905,12 @@ impl Permissions {
   }
 
   pub fn new_ffi(state: bool, prompt: bool) -> UnitPermission {
-    unit_permission_from_flag_bool(state, "ffi", "open a dynamic library using ffi", prompt)
+    unit_permission_from_flag_bool(
+      state,
+      "ffi",
+      "open a dynamic library using ffi",
+      prompt,
+    )
   }
 
   pub fn new_hrtime(state: bool, prompt: bool) -> UnitPermission {

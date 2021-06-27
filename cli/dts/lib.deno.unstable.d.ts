@@ -152,8 +152,8 @@ declare namespace Deno {
 
   /** An argument passed to a dynamic library function call */
   export interface FFIArg {
-    argType: FFIType,
-    value: unknown
+    argType: FFIType;
+    value: unknown;
   }
 
   export interface DlcallArgs {
