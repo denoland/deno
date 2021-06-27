@@ -489,6 +489,28 @@ fn lsp_hover_unstable_enabled() {
     )
     .unwrap();
   assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents":[
+        {
+          "language":"typescript",
+          "value":"function Deno.dlopen(filename: string): number"
+        },
+        "**UNSTABLE**: new API\n\nOpen a dynamic library for use with ffi"
+      ],
+      "range":{
+        "start":{
+          "line":0,
+          "character":17
+        },
+        "end":{
+          "line":0,
+          "character":23
+        }
+      }
+    }))
+  );
   shutdown(&mut client);
 }
 

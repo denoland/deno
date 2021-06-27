@@ -127,21 +127,21 @@ impl From<FFIArg> for libffi::middle::Arg {
 }
 
 impl FFIArg {
-  fn as_u64(self) -> u64 {
+  fn as_u64(&self) -> u64 {
     self
       .value
       .as_u64()
       .expect("Expected ffi arg value to be an unsigned integer")
   }
 
-  fn as_i64(self) -> i64 {
+  fn as_i64(&self) -> i64 {
     self
       .value
       .as_i64()
       .expect("Expected ffi arg value to be a signed integer")
   }
 
-  fn as_f64(self) -> f64 {
+  fn as_f64(&self) -> f64 {
     self
       .value
       .as_f64()
