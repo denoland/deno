@@ -80,19 +80,22 @@ where
     self.cancel_handle.cancel()
   }
 
-  async fn read(self: &Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
+  pub async fn read(
+    self: &Rc<Self>,
+    buf: &mut [u8],
+  ) -> Result<usize, AnyError> {
     let mut rd = self.rd_borrow_mut().await;
     let nread = rd.read(buf).try_or_cancel(self.cancel_handle()).await?;
     Ok(nread)
   }
 
-  async fn write(self: &Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
+  pub async fn write(self: &Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
     let mut wr = self.wr_borrow_mut().await;
     let nwritten = wr.write(buf).await?;
     Ok(nwritten)
   }
 
-  async fn shutdown(self: &Rc<Self>) -> Result<(), AnyError> {
+  pub async fn shutdown(self: &Rc<Self>) -> Result<(), AnyError> {
     let mut wr = self.wr_borrow_mut().await;
     wr.shutdown().await?;
     Ok(())

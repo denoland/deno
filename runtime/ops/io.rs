@@ -16,6 +16,9 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+use deno_net::io::TcpStreamResource;
+use deno_net::io::TlsStreamResource;
+use deno_net::io::UnixStreamResource;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::io::Read;
@@ -414,6 +417,12 @@ async fn op_read_async(
     s.read(buf).await?
   } else if let Some(s) = resource.downcast_rc::<ChildStderrResource>() {
     s.read(buf).await?
+  } else if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
+    s.read(buf).await?
+  } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
+    s.read(buf).await?
+  } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
+    s.read(buf).await?
   } else if let Some(s) = resource.downcast_rc::<StdFileResource>() {
     s.read(buf).await?
   } else {
@@ -450,6 +459,12 @@ async fn op_write_async(
     .ok_or_else(bad_resource_id)?;
   let nwritten = if let Some(s) = resource.downcast_rc::<ChildStdinResource>() {
     s.write(buf).await?
+  } else if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
+    s.write(buf).await?
+  } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
+    s.write(buf).await?
+  } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
+    s.write(buf).await?
   } else if let Some(s) = resource.downcast_rc::<StdFileResource>() {
     s.write(buf).await?
   } else {
@@ -469,6 +484,12 @@ async fn op_shutdown(
     .get_any(rid)
     .ok_or_else(bad_resource_id)?;
   if let Some(s) = resource.downcast_rc::<ChildStdinResource>() {
+    s.shutdown().await?;
+  } else if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
+    s.shutdown().await?;
+  } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
+    s.shutdown().await?;
+  } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
     s.shutdown().await?;
   } else {
     return Err(not_supported());
