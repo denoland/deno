@@ -543,3 +543,46 @@ unitTest(
     listener.close();
   },
 );
+
+unitTest({ perms: { net: true } }, async function httpRequestLatin1Headers() {
+  const promise = (async () => {
+    const listener = Deno.listen({ port: 4501 });
+    for await (const conn of listener) {
+      const httpConn = Deno.serveHttp(conn);
+      for await (const { request, respondWith } of httpConn) {
+        assertEquals(request.headers.get("X-Header-Test"), "á");
+        await respondWith(
+          new Response("", { headers: { "X-Header-Test": "Æ" } }),
+        );
+        httpConn.close();
+      }
+      break;
+    }
+  })();
+
+  const clientConn = await Deno.connect({ port: 4501 });
+  const requestText =
+    "GET / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\nX-Header-Test: á\r\n\r\n";
+  const requestBytes = new Uint8Array(requestText.length);
+  for (let i = 0; i < requestText.length; i++) {
+    requestBytes[i] = requestText.charCodeAt(i);
+  }
+  let written = 0;
+  while (written < requestBytes.byteLength) {
+    written += await clientConn.write(requestBytes.slice(written));
+  }
+
+  let responseText = "";
+  const buf = new Uint8Array(1024);
+  let read;
+  while ((read = await clientConn.read(buf)) !== null) {
+    for (let i = 0; i < read; i++) {
+      responseText += String.fromCharCode(buf[i]);
+    }
+  }
+  clientConn.close();
+
+  assert(/\r\n[Xx]-[Hh]eader-[Tt]est: Æ\r\n/.test(responseText));
+
+  await promise;
+});
