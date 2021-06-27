@@ -5,7 +5,6 @@ use crate::ast::transpile_module;
 use crate::ast::BundleHook;
 use crate::ast::Location;
 use crate::ast::ParsedModule;
-use crate::checksum;
 use crate::colors;
 use crate::config_file::CompilerOptions;
 use crate::config_file::ConfigFile;
@@ -666,6 +665,15 @@ pub struct EmitOptions {
   /// An optional map that contains user supplied TypeScript compiler
   /// configuration options that are passed to the TypeScript compiler.
   pub maybe_user_config: Option<HashMap<String, Value>>,
+}
+
+#[derive(Debug, Default)]
+pub struct InfoOptions {
+  /// Determines if checksums should be included in the module graph info.
+  pub checksums: bool,
+  /// Determines if local file paths should be included in the module graph
+  /// info.
+  pub paths: bool,
 }
 
 /// A structure which provides options when transpiling modules.
@@ -1440,7 +1448,10 @@ impl Graph {
   /// Return a structure which provides information about the module graph and
   /// the relationship of the modules in the graph.  This structure is used to
   /// provide information for the `info` subcommand.
-  pub fn info(&self) -> Result<info::ModuleGraphInfo, AnyError> {
+  pub fn info(
+    &self,
+    options: InfoOptions,
+  ) -> Result<info::ModuleGraphInfo, AnyError> {
     if self.roots.is_empty() || self.roots.len() > 1 {
       return Err(GraphError::NotSupported(format!("Info is only supported when there is a single root module in the graph.  Found: {}", self.roots.len())).into());
     }
@@ -1468,19 +1479,32 @@ impl Graph {
             })
             .collect();
           dependencies.sort();
-          let (emit, map) =
+          let (emit, map) = if options.paths {
             if let Some((emit, maybe_map)) = &module.maybe_emit_path {
               (Some(emit.clone()), maybe_map.clone())
             } else {
               (None, None)
-            };
+            }
+          } else {
+            (None, None)
+          };
+          let local = if options.paths {
+            Some(module.source_path.clone())
+          } else {
+            None
+          };
+          let checksum = if options.checksums {
+            Some(crate::checksum::gen(&[module.source.as_bytes()]))
+          } else {
+            None
+          };
           Some(info::ModuleGraphInfoMod {
             specifier: sp.clone(),
             dependencies,
             size: Some(module.size()),
             media_type: Some(module.media_type),
-            local: Some(module.source_path.clone()),
-            checksum: Some(checksum::gen(&[module.source.as_bytes()])),
+            local,
+            checksum,
             emit,
             map,
             ..Default::default()
@@ -2643,7 +2667,12 @@ pub mod tests {
     let specifier = resolve_url_or_path("file:///tests/main.ts")
       .expect("could not resolve module");
     let (graph, _) = setup(specifier.clone()).await;
-    let info = graph.info().expect("could not get info");
+    let info = graph
+      .info(InfoOptions {
+        checksums: true,
+        paths: false,
+      })
+      .expect("could not get info");
     assert_eq!(info.root, specifier);
     assert_eq!(info.modules.len(), 7);
     assert_eq!(info.size, 518);

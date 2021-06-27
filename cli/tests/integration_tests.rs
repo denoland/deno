@@ -2269,6 +2269,24 @@ console.log("finish");
     assert!(status.success());
   }
 
+  #[test]
+  fn info_api() {
+    let _g = util::http_server();
+    let status = util::deno_cmd()
+      .current_dir(util::tests_path())
+      .arg("test")
+      .arg("--unstable")
+      .arg("--reload")
+      .arg("--allow-read")
+      .arg("--allow-net")
+      .arg("info_api_test.ts")
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+    assert!(status.success());
+  }
+
   itest!(_027_redirect_typescript {
     args: "run --quiet --reload 027_redirect_typescript.ts",
     output: "027_redirect_typescript.ts.out",
