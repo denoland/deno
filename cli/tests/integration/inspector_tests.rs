@@ -54,6 +54,7 @@ async fn inspector_connect() {
   child.wait().unwrap();
 }
 
+#[derive(Debug)]
 enum TestStep {
   StdOut(&'static str),
   StdErr(&'static str),
@@ -303,6 +304,9 @@ async fn inspector_does_not_hang() {
     // Expect the number {i} on stdout.
     let s = i.to_string();
     assert_eq!(stdout_lines.next().unwrap(), s);
+    // Expect console.log
+    let s = r#"{"method":"Runtime.consoleAPICalled","#;
+    assert!(socket_rx.next().await.unwrap().starts_with(s));
     // Expect hitting the `debugger` statement.
     let s = r#"{"method":"Debugger.paused","#;
     assert!(socket_rx.next().await.unwrap().starts_with(s));
@@ -414,6 +418,7 @@ async fn inspector_runtime_evaluate_does_not_crash() {
     WsSend(
       r#"{"id":6,"method":"Runtime.evaluate","params":{"expression":"console.error('done');","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
     ),
+    WsRecv(r#"{"method":"Runtime.consoleAPICalled"#),
     WsRecv(r#"{"id":6,"result":{"result":{"type":"undefined"}}}"#),
     StdErr("done"),
   ];

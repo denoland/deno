@@ -54,6 +54,7 @@ use super::urls;
 use crate::config_file::ConfigFile;
 use crate::config_file::TsConfig;
 use crate::deno_dir;
+use crate::fs_util;
 use crate::import_map::ImportMap;
 use crate::logger;
 use crate::media_type::MediaType;
@@ -2410,7 +2411,7 @@ impl Inner {
   }
 
   async fn reload_import_registries(&mut self) -> LspResult<Option<Value>> {
-    fs::remove_dir_all(&self.module_registries_location)
+    fs_util::remove_dir_all_if_exists(&self.module_registries_location)
       .await
       .map_err(|err| {
         error!("Unable to remove registries cache: {}", err);
