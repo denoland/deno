@@ -567,6 +567,7 @@ dependencies = [
  "os_pipe",
  "percent-encoding",
  "pin-project",
+ "rand 0.8.3",
  "regex",
  "ring",
  "rustyline",

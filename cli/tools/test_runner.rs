@@ -8,6 +8,8 @@ use crate::fs_util::collect_files;
 use crate::fs_util::normalize_path;
 use crate::media_type::MediaType;
 use crate::module_graph;
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 use crate::program_state::ProgramState;
 use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
@@ -343,8 +345,18 @@ pub async fn run_tests(
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
+  shuffle: bool,
   concurrent_jobs: usize,
 ) -> Result<bool, AnyError> {
+  let test_modules = if shuffle {
+    let mut rng = thread_rng();
+    let mut test_modules = test_modules.clone();
+    test_modules.shuffle(&mut rng);
+    test_modules
+  } else {
+      test_modules
+  };
+
   if !doc_modules.is_empty() {
     let mut test_programs = Vec::new();
 

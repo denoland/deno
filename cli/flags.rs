@@ -103,6 +103,7 @@ pub enum DenoSubcommand {
     allow_none: bool,
     include: Option<Vec<String>>,
     filter: Option<String>,
+    shuffle: bool,
     concurrent_jobs: usize,
   },
   Types,
@@ -1017,6 +1018,12 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .help("Run tests with this string or pattern in the test name"),
     )
     .arg(
+      Arg::with_name("shuffle")
+        .long("shuffle")
+        .help("Shuffle the order in which the tests are run")
+        .takes_value(false),
+    )
+    .arg(
       Arg::with_name("coverage")
         .long("coverage")
         .require_equals(true)
@@ -1685,6 +1692,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let allow_none = matches.is_present("allow-none");
   let quiet = matches.is_present("quiet");
   let filter = matches.value_of("filter").map(String::from);
+  let shuffle = matches.is_present("shuffle");
 
   flags.watch = matches.is_present("watch");
 
@@ -1730,6 +1738,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     quiet,
     include,
     filter,
+    shuffle,
     allow_none,
     concurrent_jobs,
   };
