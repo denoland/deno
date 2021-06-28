@@ -243,18 +243,18 @@ finishing test case.`;
 
     if (shuffle) {
       // http://en.wikipedia.org/wiki/Linear_congruential_generator
-      const random = (function (state) {
+      const nextInt = (function (state) {
         const m = 0x80000000;
         const a = 1103515245;
         const c = 12345;
 
-        return function () {
-          return state = ((a * state + c) % m) / (m - 1);
+        return function (max) {
+          return state = ((a * state + c) % m)  % max;
         };
       }(shuffle));
 
       for (let i = pending.length - 1; i > 0; i--) {
-        const j = Math.floor(random() * (i + 1));
+        const j = 1 + nextInt(pending.length - 1);
         [pending[i], pending[j]] = [pending[j], pending[i]];
       }
     }
