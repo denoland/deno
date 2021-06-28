@@ -97,6 +97,11 @@ itest!(_067_test_no_run_type_error {
   exit_code: 1,
 });
 
+itest!(shuffle {
+  args: "test --shuffle test/shuffle",
+  exit_code: 0,
+});
+
 itest!(shuffle_with_seed {
   args: "test --shuffle=42 test/shuffle",
   exit_code: 0,
