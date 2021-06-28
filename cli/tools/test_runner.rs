@@ -208,11 +208,10 @@ struct TerseTestReporter {
   measured: usize,
   pending: usize,
   failures: Vec<(String, String)>,
-  concurrent: bool,
 }
 
 impl TerseTestReporter {
-  fn new(concurrent: bool) -> TerseTestReporter {
+  fn new() -> TerseTestReporter {
     TerseTestReporter {
       time: Instant::now(),
       failed: 0,
@@ -222,7 +221,6 @@ impl TerseTestReporter {
       measured: 0,
       pending: 0,
       failures: Vec::new(),
-      concurrent,
     }
   }
 }
@@ -245,11 +243,9 @@ impl TestReporter for TerseTestReporter {
         self.filtered_out += filtered;
       }
 
-      TestMessage::Wait { name } => {}
-
       TestMessage::Result {
         name,
-        duration,
+        duration: _,
         result,
       } => {
         self.pending -= 1;
@@ -282,6 +278,8 @@ impl TestReporter for TerseTestReporter {
           }
         }
       }
+
+      _ => {}
     }
   }
 
@@ -327,7 +325,7 @@ enum TestReporterKind {
 fn create_reporter(kind: TestReporterKind, concurrent: bool) -> Box<dyn TestReporter + Send> {
     match kind {
         TestReporterKind::Pretty => Box::new(PrettyTestReporter::new(concurrent)),
-        TestReporterKind::Terse => Box::new(TerseTestReporter::new(concurrent)),
+        TestReporterKind::Terse => Box::new(TerseTestReporter::new()),
     }
 }
 
