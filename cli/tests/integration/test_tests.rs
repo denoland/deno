@@ -100,6 +100,7 @@ itest!(_067_test_no_run_type_error {
 itest!(shuffle {
   args: "test --shuffle test/shuffle",
   exit_code: 0,
+  output_str: Some("[WILDCARD]"),
 });
 
 itest!(shuffle_with_seed {

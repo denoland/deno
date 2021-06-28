@@ -1022,6 +1022,9 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .long("shuffle")
         .value_name("NUMBER")
         .help("Shuffle the order in which the tests are run")
+        .min_values(0)
+        .max_values(1)
+        .require_equals(true)
         .takes_value(true)
         .validator(|val: String| match val.parse::<u64>() {
           Ok(_) => Ok(()),
