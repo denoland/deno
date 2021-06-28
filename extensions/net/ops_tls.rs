@@ -3,14 +3,14 @@
 pub use rustls;
 pub use webpki;
 
-use crate::ops::io::TcpStreamResource;
-use crate::ops::io::TlsStreamResource;
-use crate::ops::net::IpAddr;
-use crate::ops::net::OpAddr;
-use crate::ops::net::OpConn;
-use crate::permissions::Permissions;
+use crate::io::TcpStreamResource;
+use crate::io::TlsStreamResource;
+use crate::ops::IpAddr;
+use crate::ops::OpAddr;
+use crate::ops::OpConn;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
+use crate::NetPermissions;
 use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
@@ -31,7 +31,7 @@ use deno_core::op_sync;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::Extension;
+use deno_core::OpPair;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -662,15 +662,13 @@ impl Write for ImplementWriteTrait<'_, TcpStream> {
   }
 }
 
-pub fn init() -> Extension {
-  Extension::builder()
-    .ops(vec![
-      ("op_start_tls", op_async(op_start_tls)),
-      ("op_connect_tls", op_async(op_connect_tls)),
-      ("op_listen_tls", op_sync(op_listen_tls)),
-      ("op_accept_tls", op_async(op_accept_tls)),
-    ])
-    .build()
+pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
+  vec![
+    ("op_start_tls", op_async(op_start_tls::<P>)),
+    ("op_connect_tls", op_async(op_connect_tls::<P>)),
+    ("op_listen_tls", op_sync(op_listen_tls::<P>)),
+    ("op_accept_tls", op_async(op_accept_tls)),
+  ]
 }
 
 #[derive(Deserialize)]
@@ -690,11 +688,14 @@ struct StartTlsArgs {
   hostname: String,
 }
 
-async fn op_start_tls(
+async fn op_start_tls<NP>(
   state: Rc<RefCell<OpState>>,
   args: StartTlsArgs,
   _: (),
-) -> Result<OpConn, AnyError> {
+) -> Result<OpConn, AnyError>
+where
+  NP: NetPermissions + 'static,
+{
   let rid = args.rid;
   let hostname = match &*args.hostname {
     "" => "localhost",
@@ -705,10 +706,10 @@ async fn op_start_tls(
   {
     super::check_unstable2(&state, "Deno.startTls");
     let mut s = state.borrow_mut();
-    let permissions = s.borrow_mut::<Permissions>();
-    permissions.net.check(&(hostname, Some(0)))?;
+    let permissions = s.borrow_mut::<NP>();
+    permissions.check_net(&(hostname, Some(0)))?;
     if let Some(path) = cert_file {
-      permissions.read.check(Path::new(path))?;
+      permissions.check_read(Path::new(path))?;
     }
   }
 
@@ -763,11 +764,14 @@ async fn op_start_tls(
   })
 }
 
-async fn op_connect_tls(
+async fn op_connect_tls<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectTlsArgs,
   _: (),
-) -> Result<OpConn, AnyError> {
+) -> Result<OpConn, AnyError>
+where
+  NP: NetPermissions + 'static,
+{
   assert_eq!(args.transport, "tcp");
   let hostname = match &*args.hostname {
     "" => "localhost",
@@ -778,10 +782,10 @@ async fn op_connect_tls(
 
   {
     let mut s = state.borrow_mut();
-    let permissions = s.borrow_mut::<Permissions>();
-    permissions.net.check(&(hostname, Some(port)))?;
+    let permissions = s.borrow_mut::<NP>();
+    permissions.check_net(&(hostname, Some(port)))?;
     if let Some(path) = cert_file {
-      permissions.read.check(Path::new(path))?;
+      permissions.check_read(Path::new(path))?;
     }
   }
 
@@ -912,11 +916,14 @@ pub struct ListenTlsArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
-fn op_listen_tls(
+fn op_listen_tls<NP>(
   state: &mut OpState,
   args: ListenTlsArgs,
   _: (),
-) -> Result<OpConn, AnyError> {
+) -> Result<OpConn, AnyError>
+where
+  NP: NetPermissions + 'static,
+{
   assert_eq!(args.transport, "tcp");
   let hostname = &*args.hostname;
   let port = args.port;
@@ -924,10 +931,10 @@ fn op_listen_tls(
   let key_file = &*args.key_file;
 
   {
-    let permissions = state.borrow_mut::<Permissions>();
-    permissions.net.check(&(hostname, Some(port)))?;
-    permissions.read.check(Path::new(cert_file))?;
-    permissions.read.check(Path::new(key_file))?;
+    let permissions = state.borrow_mut::<NP>();
+    permissions.check_net(&(hostname, Some(port)))?;
+    permissions.check_read(Path::new(cert_file))?;
+    permissions.check_read(Path::new(key_file))?;
   }
 
   let mut tls_config = ServerConfig::new(NoClientAuth::new());
