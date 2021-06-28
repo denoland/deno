@@ -60,7 +60,9 @@
    * @returns {MessagePort}
    */
   function createMessagePort(id) {
-    const port = webidl.createBranded(MessagePort);
+    const port = core.createHostObject();
+    Object.setPrototypeOf(port, MessagePort.prototype);
+    port[webidl.brand] = webidl.brand;
     setEventTargetData(port);
     port[_id] = id;
     return port;
@@ -191,7 +193,9 @@
       }
     }
 
-    const data = core.deserialize(messageData.data);
+    const data = core.deserialize(messageData.data, {
+      hostObjects: transferables,
+    });
 
     return [data, transferables];
   }
@@ -204,7 +208,7 @@
   function serializeJsMessageData(data, tranferables) {
     let serializedData;
     try {
-      serializedData = core.serialize(data);
+      serializedData = core.serialize(data, { hostObjects: tranferables });
     } catch (err) {
       throw new DOMException(err.message, "DataCloneError");
     }

@@ -370,7 +370,7 @@
       }
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       const headers = {};
       for (const header of this) {
         headers[header[0]] = header[1];

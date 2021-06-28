@@ -19,7 +19,7 @@
   const { parseFormData, formDataFromEntries, formDataToBlob } =
     globalThis.__bootstrap.formData;
   const mimesniff = globalThis.__bootstrap.mimesniff;
-  const { isReadableStreamDisturbed, errorReadableStream } =
+  const { isReadableStreamDisturbed, errorReadableStream, createProxy } =
     globalThis.__bootstrap.streams;
 
   class InnerBody {
@@ -132,6 +132,23 @@
       second.source = core.deserialize(core.serialize(this.source));
       second.length = this.length;
       return second;
+    }
+
+    /**
+     * @returns {InnerBody}
+     */
+    createProxy() {
+      let proxyStreamOrStatic;
+      if (this.streamOrStatic instanceof ReadableStream) {
+        proxyStreamOrStatic = createProxy(this.streamOrStatic);
+      } else {
+        proxyStreamOrStatic = { ...this.streamOrStatic };
+        this.streamOrStatic.consumed = true;
+      }
+      const proxy = new InnerBody(proxyStreamOrStatic);
+      proxy.source = this.source;
+      proxy.length = this.length;
+      return proxy;
     }
   }
 

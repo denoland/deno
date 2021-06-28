@@ -2,7 +2,7 @@
 /// FLAGS
 
 import { parse } from "https://deno.land/std@0.84.0/flags/mod.ts";
-import { join, ROOT_PATH } from "../util.js";
+import { join, resolve, ROOT_PATH } from "../util.js";
 
 export const {
   json,
@@ -21,7 +21,7 @@ export const {
 
 export function denoBinary() {
   if (binary) {
-    return binary;
+    return resolve(binary);
   }
   return join(ROOT_PATH, `./target/${release ? "release" : "debug"}/deno`);
 }

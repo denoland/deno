@@ -2193,14 +2193,14 @@ declare namespace Deno {
    * console.log(obj);  // prints same value as objAsString, e.g. { a: 10, b: "hello" }
    * ```
    *
-   * You can also register custom inspect functions, via the `customInspect` Deno
-   * symbol on objects, to control and customize the output.
+   * You can also register custom inspect functions, via the symbol `Symbol.for("Deno.customInspect")`,
+   * on objects, to control and customize the output.
    *
    * ```ts
    * class A {
    *   x = 10;
    *   y = "hello";
-   *   [Deno.customInspect](): string {
+   *   [Symbol.for("Deno.customInspect")](): string {
    *     return "x=" + this.x + ", y=" + this.y;
    *   }
    * }
@@ -2388,9 +2388,13 @@ declare namespace Deno {
    */
   export const args: string[];
 
-  /** A symbol which can be used as a key for a custom method which will be
+  /**
+   * @deprecated A symbol which can be used as a key for a custom method which will be
    * called when `Deno.inspect()` is called, or when the object is logged to
-   * the console. */
+   * the console.
+   *
+   * This symbol is deprecated since 1.9. Use `Symbol.for("Deno.customInspect")` instead.
+   */
   export const customInspect: unique symbol;
 
   /** The URL of the entrypoint module entered from the command-line. */

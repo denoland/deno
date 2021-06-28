@@ -20,10 +20,10 @@ lazy_static = "1.4.0"
 libc = "0.2.93"
 log = "0.4.14"
 pin-project = "1.0.6"
-rusty_v8 = "0.22.3"
+rusty_v8 = "0.23.0"
 serde = { version = "1.0.125", features = ["derive"] }
 serde_json = { version = "1.0.64", features = ["preserve_order"] }
-serde_v8 = { version = "0.4.1" }
+serde_v8 = { version = "0.6.0" }
 url = { version = "2.2.1", features = ["serde"] }
 
 [[example]]
