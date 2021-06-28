@@ -814,7 +814,10 @@ mod tests {
     }
   }
 
+  // This test is disabled because it uses the `deno` binary found in `$PATH`.
+  // It should use the one located in `./target/{debug|release}/`.
   #[test]
+  #[ignore]
   fn install_unicode() {
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");

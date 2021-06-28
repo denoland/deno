@@ -370,7 +370,7 @@
       }
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       const headers = {};
       for (const header of this) {
         headers[header[0]] = header[1];
@@ -387,18 +387,9 @@
 
   webidl.configurePrototype(Headers);
 
-  webidl.converters["sequence<ByteString>"] = webidl
-    .createSequenceConverter(webidl.converters["ByteString"]);
-  webidl.converters["sequence<sequence<ByteString>>"] = webidl
-    .createSequenceConverter(webidl.converters["sequence<ByteString>"]);
-  webidl.converters["record<ByteString, ByteString>"] = webidl
-    .createRecordConverter(
-      webidl.converters["ByteString"],
-      webidl.converters["ByteString"],
-    );
   webidl.converters["HeadersInit"] = (V, opts) => {
     // Union for (sequence<sequence<ByteString>> or record<ByteString, ByteString>)
-    if (typeof V === "object" && V !== null) {
+    if (webidl.type(V) === "Object" && V !== null) {
       if (V[Symbol.iterator] !== undefined) {
         return webidl.converters["sequence<sequence<ByteString>>"](V, opts);
       }

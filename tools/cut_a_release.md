@@ -4,6 +4,14 @@
 release from) should be frozen and no commits should land until the release is
 cut.**
 
+## Updating `deno_std`
+
+1. Open a PR on the `deno_std` repo that bumps the version in `version.ts` and
+   updates `Releases.md`
+2. Create a tag with the version number (_without_ `v` prefix).
+
+## Updating the main repo
+
 1. Create a PR that bumps versions of all crates in `extensions` and `runtime`
    directories.
 
@@ -36,6 +44,8 @@ between the crates, it must be done in specific order:
 - crates in `extensions/` directory
   - `deno_fetch`, `deno_crypto` and `deno_webstorage` depend on `deno_web`, so
     the latter must be bumped and released first
+  - `deno_url` depends on `deno_webidl`, so the latter must be bumped and
+    released first
 - `runtime` - this crate depends on `deno_core` and all crates in `extensions/`
   directory
 
@@ -65,3 +75,9 @@ The CI pipeline will create a release draft on GitHub
 
 13. Update the Deno version on the website by updating
     https://github.com/denoland/deno_website2/blob/main/versions.json.
+
+## Updating `deno_docker`
+
+1. Open a PR on the `deno_docker` repo that bumps the Deno version in all
+   Dockerfiles, the README and the example Dockerfile
+2. Create a tag with the version number (_without_ `v` prefix).

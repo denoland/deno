@@ -298,11 +298,9 @@ async fn get_tls_config(
         })
         .unwrap();
 
-      return Ok(Arc::new(config));
+      Ok(Arc::new(config))
     }
-    None => {
-      return Err(io::Error::new(io::ErrorKind::Other, "Cannot find key"));
-    }
+    None => Err(io::Error::new(io::ErrorKind::Other, "Cannot find key")),
   }
 }
 
@@ -369,7 +367,7 @@ async fn absolute_redirect(
 
   let file = tokio::fs::read(file_path).await.unwrap();
   let file_resp = custom_headers(req.uri().path(), file);
-  return Ok(file_resp);
+  Ok(file_resp)
 }
 
 async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {

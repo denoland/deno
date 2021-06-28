@@ -21,6 +21,12 @@ fn load_fixture(path: &str) -> Value {
   serde_json::from_str(&fixture_str).unwrap()
 }
 
+fn load_fixture_str(path: &str) -> String {
+  let fixtures_path = root_path().join("cli/tests/lsp");
+  let path = fixtures_path.join(path);
+  fs::read_to_string(path).unwrap()
+}
+
 fn init(init_path: &str) -> LspClient {
   let deno_exe = deno_exe_path();
   let mut client = LspClient::new(&deno_exe).unwrap();
@@ -112,6 +118,109 @@ fn lsp_init_tsconfig() {
         "languageId": "typescript",
         "version": 1,
         "text": "location.pathname;\n"
+      }
+    }),
+  );
+
+  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
+  assert_eq!(diagnostics.count(), 0);
+
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_tsconfig_types() {
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let tsconfig =
+    serde_json::to_vec_pretty(&load_fixture("types.tsconfig.json")).unwrap();
+  fs::write(temp_dir.path().join("types.tsconfig.json"), tsconfig).unwrap();
+  let a_dts = load_fixture_str("a.d.ts");
+  fs::write(temp_dir.path().join("a.d.ts"), a_dts).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert("config".to_string(), json!("./types.tsconfig.json"));
+    params.initialization_options = Some(Value::Object(map));
+  }
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": Url::from_file_path(temp_dir.path().join("test.ts")).unwrap(),
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(a);\n"
+      }
+    }),
+  );
+
+  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
+  assert_eq!(diagnostics.count(), 0);
+
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_tsconfig_bad_config_path() {
+  let mut client = init("initialize_params_bad_config_option.json");
+  let (method, maybe_params) = client.read_notification().unwrap();
+  assert_eq!(method, "window/showMessage");
+  assert_eq!(maybe_params, Some(lsp::ShowMessageParams {
+    typ: lsp::MessageType::Warning,
+    message: "The path to the configuration file (\"bad_tsconfig.json\") is not resolvable.".to_string()
+  }));
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(Deno.args);\n"
+      }
+    }),
+  );
+  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
+  assert_eq!(diagnostics.count(), 0);
+}
+
+#[test]
+fn lsp_triple_slash_types() {
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let a_dts = load_fixture_str("a.d.ts");
+  fs::write(temp_dir.path().join("a.d.ts"), a_dts).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": Url::from_file_path(temp_dir.path().join("test.ts")).unwrap(),
+        "languageId": "typescript",
+        "version": 1,
+        "text": "/// <reference types=\"./a.d.ts\" />\n\nconsole.log(a);\n"
       }
     }),
   );
@@ -642,6 +751,210 @@ fn lsp_hover_closed_document() {
 }
 
 #[test]
+fn lsp_hover_dependency() {
+  let _g = http_server();
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file_01.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export const a = \"a\";\n",
+      }
+    }),
+  );
+  did_open(
+    &mut client,
+    load_fixture("did_open_params_import_hover.json"),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": "file:///a/file.ts",
+        },
+        "uris": [],
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "position": {
+          "line": 0,
+          "character": 28
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.js\n"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 20
+        },
+        "end":{
+          "line": 0,
+          "character": 61
+        }
+      }
+    }))
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "position": {
+          "line": 3,
+          "character": 28
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/cli/tests/subdir/type_reference.js\n"
+      },
+      "range": {
+        "start": {
+          "line": 3,
+          "character": 20
+        },
+        "end":{
+          "line": 3,
+          "character": 76
+        }
+      }
+    }))
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "position": {
+          "line": 4,
+          "character": 28
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/cli/tests/subdir/mod1.ts\n"
+      },
+      "range": {
+        "start": {
+          "line": 4,
+          "character": 20
+        },
+        "end":{
+          "line": 4,
+          "character": 66
+        }
+      }
+    }))
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "position": {
+          "line": 5,
+          "character": 28
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: _(a data url)_\n"
+      },
+      "range": {
+        "start": {
+          "line": 5,
+          "character": 20
+        },
+        "end":{
+          "line": 5,
+          "character": 131
+        }
+      }
+    }))
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "position": {
+          "line": 6,
+          "character": 28
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: file&#8203;:///a/file_01.ts\n"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 20
+        },
+        "end":{
+          "line": 6,
+          "character": 32
+        }
+      }
+    }))
+  );
+}
+
+#[test]
 fn lsp_call_hierarchy() {
   let mut client = init("initialize_params.json");
   did_open(
@@ -957,7 +1270,8 @@ fn lsp_rename() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "let variable = 'a';\nconsole.log(variable);"
+        // this should not rename in comments and strings
+        "text": "let variable = 'a'; // variable\nconsole.log(variable);\n\"variable\";\n"
       }
     }),
   );
@@ -2730,6 +3044,34 @@ fn lsp_configuration_did_change() {
   assert_eq!(
     maybe_res,
     Some(load_fixture("completion_resolve_response_registry.json"))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_code_actions_ignore_lint() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "let message = 'Hello, Deno!';\nconsole.log(message);\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeAction",
+      load_fixture("code_action_ignore_lint_params.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_action_ignore_lint_response.json"))
   );
   shutdown(&mut client);
 }

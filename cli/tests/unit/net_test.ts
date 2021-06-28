@@ -6,6 +6,7 @@ import {
   assertThrows,
   assertThrowsAsync,
   deferred,
+  delay,
   unitTest,
 } from "./test_util.ts";
 
@@ -409,9 +410,7 @@ unitTest(
     const listener = Deno.listen(addr);
     iterate(listener);
 
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 100);
-    });
+    await delay(100);
     const conn1 = await Deno.connect(addr);
     conn1.close();
     const conn2 = await Deno.connect(addr);
