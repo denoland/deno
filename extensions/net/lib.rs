@@ -14,6 +14,7 @@ use deno_core::Extension;
 use deno_core::OpState;
 use std::cell::RefCell;
 use std::path::Path;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 pub trait NetPermissions {
@@ -78,6 +79,14 @@ pub fn check_unstable(state: &OpState, api_name: &str) {
 pub fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
   let state = state.borrow();
   state.borrow::<UnstableChecker>().check_unstable(api_name)
+}
+
+pub fn get_declaration() -> PathBuf {
+  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_net.d.ts")
+}
+
+pub fn get_unstable_declaration() -> PathBuf {
+  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_net.unstable.d.ts")
 }
 
 pub fn init<P: NetPermissions + 'static>(unstable: bool) -> Extension {

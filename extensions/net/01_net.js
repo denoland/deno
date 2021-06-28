@@ -12,9 +12,7 @@
     if (buffer.length === 0) {
       return 0;
     }
-
     const nread = await core.opAsync("op_net_read_async", rid, buffer);
-
     return nread === 0 ? null : nread;
   }
 
