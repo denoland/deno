@@ -3,69 +3,70 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** The type of the resource record.
+declare namespace Deno {
+  /** The type of the resource record.
    * Only the listed types are supported currently. */
-export type RecordType =
-  | "A"
-  | "AAAA"
-  | "ANAME"
-  | "CNAME"
-  | "MX"
-  | "PTR"
-  | "SRV"
-  | "TXT";
+  export type RecordType =
+    | "A"
+    | "AAAA"
+    | "ANAME"
+    | "CNAME"
+    | "MX"
+    | "PTR"
+    | "SRV"
+    | "TXT";
 
-export interface ResolveDnsOptions {
-  /** The name server to be used for lookups.
+  export interface ResolveDnsOptions {
+    /** The name server to be used for lookups.
   * If not specified, defaults to the system configuration e.g. `/etc/resolv.conf` on Unix. */
-  nameServer?: {
-    /** The IP address of the name server */
-    ipAddr: string;
-    /** The port number the query will be sent to.
+    nameServer?: {
+      /** The IP address of the name server */
+      ipAddr: string;
+      /** The port number the query will be sent to.
     * If not specified, defaults to 53. */
-    port?: number;
-  };
-}
+      port?: number;
+    };
+  }
 
-/** If `resolveDns` is called with "MX" record type specified, it will return an array of this interface. */
-export interface MXRecord {
-  preference: number;
-  exchange: string;
-}
+  /** If `resolveDns` is called with "MX" record type specified, it will return an array of this interface. */
+  export interface MXRecord {
+    preference: number;
+    exchange: string;
+  }
 
-/** If `resolveDns` is called with "SRV" record type specified, it will return an array of this interface. */
-export interface SRVRecord {
-  priority: number;
-  weight: number;
-  port: number;
-  target: string;
-}
+  /** If `resolveDns` is called with "SRV" record type specified, it will return an array of this interface. */
+  export interface SRVRecord {
+    priority: number;
+    weight: number;
+    port: number;
+    target: string;
+  }
 
-export function resolveDns(
-  query: string,
-  recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "PTR",
-  options?: ResolveDnsOptions,
-): Promise<string[]>;
+  export function resolveDns(
+    query: string,
+    recordType: "A" | "AAAA" | "ANAME" | "CNAME" | "PTR",
+    options?: ResolveDnsOptions,
+  ): Promise<string[]>;
 
-export function resolveDns(
-  query: string,
-  recordType: "MX",
-  options?: ResolveDnsOptions,
-): Promise<MXRecord[]>;
+  export function resolveDns(
+    query: string,
+    recordType: "MX",
+    options?: ResolveDnsOptions,
+  ): Promise<MXRecord[]>;
 
-export function resolveDns(
-  query: string,
-  recordType: "SRV",
-  options?: ResolveDnsOptions,
-): Promise<SRVRecord[]>;
+  export function resolveDns(
+    query: string,
+    recordType: "SRV",
+    options?: ResolveDnsOptions,
+  ): Promise<SRVRecord[]>;
 
-export function resolveDns(
-  query: string,
-  recordType: "TXT",
-  options?: ResolveDnsOptions,
-): Promise<string[][]>;
+  export function resolveDns(
+    query: string,
+    recordType: "TXT",
+    options?: ResolveDnsOptions,
+  ): Promise<string[][]>;
 
-/** ** UNSTABLE**: new API, yet to be vetted.
+  /** ** UNSTABLE**: new API, yet to be vetted.
 *
 * Performs DNS resolution against the given query, returning resolved records.
 * Fails in the cases such as:
@@ -82,41 +83,41 @@ export function resolveDns(
 * ```
 *
 * Requires `allow-net` permission.
-*/
-export function resolveDns(
-  query: string,
-  recordType: RecordType,
-  options?: ResolveDnsOptions,
-): Promise<string[] | MXRecord[] | SRVRecord[] | string[][]>;
+  */
+  export function resolveDns(
+    query: string,
+    recordType: RecordType,
+    options?: ResolveDnsOptions,
+  ): Promise<string[] | MXRecord[] | SRVRecord[] | string[][]>;
 
-/** **UNSTABLE**: new API, yet to be vetted.
+  /** **UNSTABLE**: new API, yet to be vetted.
 *
 * A generic transport listener for message-oriented protocols. */
-export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
-  /** **UNSTABLE**: new API, yet to be vetted.
+  export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
+    /** **UNSTABLE**: new API, yet to be vetted.
   *
   * Waits for and resolves to the next message to the `UDPConn`. */
-  receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
-  /** UNSTABLE: new API, yet to be vetted.
+    receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
+    /** UNSTABLE: new API, yet to be vetted.
   *
   * Sends a message to the target. */
-  send(p: Uint8Array, addr: Addr): Promise<number>;
-  /** UNSTABLE: new API, yet to be vetted.
+    send(p: Uint8Array, addr: Addr): Promise<number>;
+    /** UNSTABLE: new API, yet to be vetted.
   *
   * Close closes the socket. Any pending message promises will be rejected
   * with errors. */
-  close(): void;
-  /** Return the address of the `UDPConn`. */
-  readonly addr: Addr;
-  [Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]>;
-}
+    close(): void;
+    /** Return the address of the `UDPConn`. */
+    readonly addr: Addr;
+    [Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]>;
+  }
 
-export interface UnixListenOptions {
-  /** A Path to the Unix Socket. */
-  path: string;
-}
+  export interface UnixListenOptions {
+    /** A Path to the Unix Socket. */
+    path: string;
+  }
 
-/** **UNSTABLE**: new API, yet to be vetted.
+  /** **UNSTABLE**: new API, yet to be vetted.
 *
 * Listen announces on the local transport address.
 *
@@ -125,11 +126,11 @@ export interface UnixListenOptions {
 * ```
 *
 * Requires `allow-read` and `allow-write` permission. */
-export function listen(
-  options: UnixListenOptions & { transport: "unix" },
-): Listener;
+  export function listen(
+    options: UnixListenOptions & { transport: "unix" },
+  ): Listener;
 
-/** **UNSTABLE**: new API, yet to be vetted
+  /** **UNSTABLE**: new API, yet to be vetted
 *
 * Listen announces on the local transport address.
 *
@@ -146,11 +147,11 @@ export function listen(
 * ```
 *
 * Requires `allow-net` permission. */
-export function listenDatagram(
-  options: ListenOptions & { transport: "udp" },
-): DatagramConn;
+  export function listenDatagram(
+    options: ListenOptions & { transport: "udp" },
+  ): DatagramConn;
 
-/** **UNSTABLE**: new API, yet to be vetted
+  /** **UNSTABLE**: new API, yet to be vetted
 *
 * Listen announces on the local transport address.
 *
@@ -162,16 +163,16 @@ export function listenDatagram(
 * ```
 *
 * Requires `allow-read` and `allow-write` permission. */
-export function listenDatagram(
-  options: UnixListenOptions & { transport: "unixpacket" },
-): DatagramConn;
+  export function listenDatagram(
+    options: UnixListenOptions & { transport: "unixpacket" },
+  ): DatagramConn;
 
-export interface UnixConnectOptions {
-  transport: "unix";
-  path: string;
-}
+  export interface UnixConnectOptions {
+    transport: "unix";
+    path: string;
+  }
 
-/** **UNSTABLE**:  The unix socket transport is unstable as a new API yet to
+  /** **UNSTABLE**:  The unix socket transport is unstable as a new API yet to
 * be vetted.  The TCP transport is considered stable.
 *
 * Connects to the hostname (default is "127.0.0.1") and port on the named
@@ -186,19 +187,19 @@ export interface UnixConnectOptions {
 * ```
 *
 * Requires `allow-net` permission for "tcp" and `allow-read` for "unix". */
-export function connect(
-  options: ConnectOptions | UnixConnectOptions,
-): Promise<Conn>;
+  export function connect(
+    options: ConnectOptions | UnixConnectOptions,
+  ): Promise<Conn>;
 
-export interface StartTlsOptions {
-  /** A literal IP address or host name that can be resolved to an IP address.
+  export interface StartTlsOptions {
+    /** A literal IP address or host name that can be resolved to an IP address.
   * If not specified, defaults to `127.0.0.1`. */
-  hostname?: string;
-  /** Server certificate file. */
-  certFile?: string;
-}
+    hostname?: string;
+    /** Server certificate file. */
+    certFile?: string;
+  }
 
-/** **UNSTABLE**: new API, yet to be vetted.
+  /** **UNSTABLE**: new API, yet to be vetted.
 *
 * Start TLS handshake from an existing connection using
 * an optional cert file, hostname (default is "127.0.0.1").  The
@@ -213,35 +214,35 @@ export interface StartTlsOptions {
 * ```
 *
 * Requires `allow-net` permission.
-*/
-export function startTls(
-  conn: Conn,
-  options?: StartTlsOptions,
-): Promise<Conn>;
+  */
+  export function startTls(
+    conn: Conn,
+    options?: StartTlsOptions,
+  ): Promise<Conn>;
 
-export interface ListenTlsOptions {
-  /** **UNSTABLE**: new API, yet to be vetted.
+  export interface ListenTlsOptions {
+    /** **UNSTABLE**: new API, yet to be vetted.
   *
   * Application-Layer Protocol Negotiation (ALPN) protocols to announce to
   * the client. If not specified, no ALPN extension will be included in the
   * TLS handshake.
   */
-  alpnProtocols?: string[];
-}
+    alpnProtocols?: string[];
+  }
 
-export interface RequestEvent {
-  readonly request: Request;
-  respondWith(r: Response | Promise<Response>): Promise<void>;
-}
+  export interface RequestEvent {
+    readonly request: Request;
+    respondWith(r: Response | Promise<Response>): Promise<void>;
+  }
 
-export interface HttpConn extends AsyncIterable<RequestEvent> {
-  readonly rid: number;
+  export interface HttpConn extends AsyncIterable<RequestEvent> {
+    readonly rid: number;
 
-  nextRequest(): Promise<RequestEvent | null>;
-  close(): void;
-}
+    nextRequest(): Promise<RequestEvent | null>;
+    close(): void;
+  }
 
-/** **UNSTABLE**: new API, yet to be vetted.
+  /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Services HTTP requests given a TCP or TLS socket.
    *
@@ -257,4 +258,5 @@ export interface HttpConn extends AsyncIterable<RequestEvent> {
    * If `httpConn.nextRequest()` encounters an error or returns `null`
    * then the underlying HttpConn resource is closed automatically.
    */
-export function serveHttp(conn: Conn): HttpConn;
+  export function serveHttp(conn: Conn): HttpConn;
+}

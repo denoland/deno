@@ -2,6 +2,7 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
+/// <reference lib="deno.net" />
 
 /** Deno provides extra properties on `import.meta`.  These are included here
  * to ensure that these are still available when using the Deno namespace in

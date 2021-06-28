@@ -3,56 +3,57 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-export interface NetAddr {
-  transport: "tcp" | "udp";
-  hostname: string;
-  port: number;
-}
+declare namespace Deno {
+  export interface NetAddr {
+    transport: "tcp" | "udp";
+    hostname: string;
+    port: number;
+  }
 
-export interface UnixAddr {
-  transport: "unix" | "unixpacket";
-  path: string;
-}
+  export interface UnixAddr {
+    transport: "unix" | "unixpacket";
+    path: string;
+  }
 
-export type Addr = NetAddr | UnixAddr;
+  export type Addr = NetAddr | UnixAddr;
 
-/** A generic network listener for stream-oriented protocols. */
-export interface Listener extends AsyncIterable<Conn> {
-  /** Waits for and resolves to the next connection to the `Listener`. */
-  accept(): Promise<Conn>;
-  /** Close closes the listener. Any pending accept promises will be rejected
+  /** A generic network listener for stream-oriented protocols. */
+  export interface Listener extends AsyncIterable<Conn> {
+    /** Waits for and resolves to the next connection to the `Listener`. */
+    accept(): Promise<Conn>;
+    /** Close closes the listener. Any pending accept promises will be rejected
    * with errors. */
-  close(): void;
-  /** Return the address of the `Listener`. */
-  readonly addr: Addr;
+    close(): void;
+    /** Return the address of the `Listener`. */
+    readonly addr: Addr;
 
-  /** Return the rid of the `Listener`. */
-  readonly rid: number;
+    /** Return the rid of the `Listener`. */
+    readonly rid: number;
 
-  [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
-}
+    [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
+  }
 
-export interface Conn extends Reader, Writer, Closer {
-  /** The local address of the connection. */
-  readonly localAddr: Addr;
-  /** The remote address of the connection. */
-  readonly remoteAddr: Addr;
-  /** The resource ID of the connection. */
-  readonly rid: number;
-  /** Shuts down (`shutdown(2)`) the write side of the connection. Most
+  export interface Conn extends Reader, Writer, Closer {
+    /** The local address of the connection. */
+    readonly localAddr: Addr;
+    /** The remote address of the connection. */
+    readonly remoteAddr: Addr;
+    /** The resource ID of the connection. */
+    readonly rid: number;
+    /** Shuts down (`shutdown(2)`) the write side of the connection. Most
    * callers should just use `close()`. */
-  closeWrite(): Promise<void>;
-}
+    closeWrite(): Promise<void>;
+  }
 
-export interface ListenOptions {
-  /** The port to listen on. */
-  port: number;
-  /** A literal IP address or host name that can be resolved to an IP address.
+  export interface ListenOptions {
+    /** The port to listen on. */
+    port: number;
+    /** A literal IP address or host name that can be resolved to an IP address.
    * If not specified, defaults to `0.0.0.0`. */
-  hostname?: string;
-}
+    hostname?: string;
+  }
 
-/** Listen announces on the local transport address.
+  /** Listen announces on the local transport address.
  *
  * ```ts
  * const listener1 = Deno.listen({ port: 80 })
@@ -62,20 +63,20 @@ export interface ListenOptions {
  * ```
  *
  * Requires `allow-net` permission. */
-export function listen(
-  options: ListenOptions & { transport?: "tcp" },
-): Listener;
+  export function listen(
+    options: ListenOptions & { transport?: "tcp" },
+  ): Listener;
 
-export interface ListenTlsOptions extends ListenOptions {
-  /** Server certificate file. */
-  certFile: string;
-  /** Server public key file. */
-  keyFile: string;
+  export interface ListenTlsOptions extends ListenOptions {
+    /** Server certificate file. */
+    certFile: string;
+    /** Server public key file. */
+    keyFile: string;
 
-  transport?: "tcp";
-}
+    transport?: "tcp";
+  }
 
-/** Listen announces on the local transport address over TLS (transport layer
+  /** Listen announces on the local transport address over TLS (transport layer
  * security).
  *
  * ```ts
@@ -83,18 +84,18 @@ export interface ListenTlsOptions extends ListenOptions {
  * ```
  *
  * Requires `allow-net` permission. */
-export function listenTls(options: ListenTlsOptions): Listener;
+  export function listenTls(options: ListenTlsOptions): Listener;
 
-export interface ConnectOptions {
-  /** The port to connect to. */
-  port: number;
-  /** A literal IP address or host name that can be resolved to an IP address.
+  export interface ConnectOptions {
+    /** The port to connect to. */
+    port: number;
+    /** A literal IP address or host name that can be resolved to an IP address.
    * If not specified, defaults to `127.0.0.1`. */
-  hostname?: string;
-  transport?: "tcp";
-}
+    hostname?: string;
+    transport?: "tcp";
+  }
 
-/**
+  /**
  * Connects to the hostname (default is "127.0.0.1") and port on the named
  * transport (default is "tcp"), and resolves to the connection (`Conn`).
  *
@@ -106,19 +107,19 @@ export interface ConnectOptions {
  * ```
  *
  * Requires `allow-net` permission for "tcp". */
-export function connect(options: ConnectOptions): Promise<Conn>;
+  export function connect(options: ConnectOptions): Promise<Conn>;
 
-export interface ConnectTlsOptions {
-  /** The port to connect to. */
-  port: number;
-  /** A literal IP address or host name that can be resolved to an IP address.
+  export interface ConnectTlsOptions {
+    /** The port to connect to. */
+    port: number;
+    /** A literal IP address or host name that can be resolved to an IP address.
    * If not specified, defaults to `127.0.0.1`. */
-  hostname?: string;
-  /** Server certificate file. */
-  certFile?: string;
-}
+    hostname?: string;
+    /** Server certificate file. */
+    certFile?: string;
+  }
 
-/** Establishes a secure connection over TLS (transport layer security) using
+  /** Establishes a secure connection over TLS (transport layer security) using
  * an optional cert file, hostname (default is "127.0.0.1") and port.  The
  * cert file is optional and if not included Mozilla's root certificates will
  * be used (see also https://github.com/ctz/webpki-roots for specifics)
@@ -132,9 +133,9 @@ export interface ConnectTlsOptions {
  *
  * Requires `allow-net` permission.
  */
-export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
+  export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
 
-/** Shutdown socket send operations.
+  /** Shutdown socket send operations.
  *
  * Matches behavior of POSIX shutdown(3).
  *
@@ -144,4 +145,5 @@ export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
  * Deno.shutdown(conn.rid);
  * ```
  */
-export function shutdown(rid: number): Promise<void>;
+  export function shutdown(rid: number): Promise<void>;
+}
