@@ -352,6 +352,7 @@ pub async fn run_tests(
   let test_modules = if let Some(seed) = shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut test_modules = test_modules.clone();
+    test_modules.sort();
     test_modules.shuffle(&mut rng);
     test_modules
   } else {
