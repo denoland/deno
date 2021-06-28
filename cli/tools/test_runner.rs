@@ -8,9 +8,6 @@ use crate::fs_util::collect_files;
 use crate::fs_util::normalize_path;
 use crate::media_type::MediaType;
 use crate::module_graph;
-use rand::seq::SliceRandom;
-use rand::SeedableRng;
-use rand::rngs::SmallRng;
 use crate::program_state::ProgramState;
 use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
@@ -24,6 +21,9 @@ use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
+use rand::rngs::SmallRng;
+use rand::seq::SliceRandom;
+use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
 use std::path::Path;
@@ -355,7 +355,7 @@ pub async fn run_tests(
     test_modules.shuffle(&mut rng);
     test_modules
   } else {
-      test_modules
+    test_modules
   };
 
   if !doc_modules.is_empty() {

@@ -243,12 +243,12 @@ finishing test case.`;
 
     if (shuffle) {
       // http://en.wikipedia.org/wiki/Linear_congruential_generator
-      const random = (function(state) {
+      const random = (function (state) {
         const m = 0x80000000;
         const a = 1103515245;
         const c = 12345;
 
-        return function() {
+        return function () {
           return state = ((a * state + c) % m) / (m - 1);
         };
       }(shuffle));

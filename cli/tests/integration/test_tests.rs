@@ -102,4 +102,3 @@ itest!(shuffle_with_seed {
   exit_code: 0,
   output: "test/shuffle.out",
 });
-
