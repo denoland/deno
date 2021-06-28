@@ -249,7 +249,7 @@ finishing test case.`;
         const c = 12345;
 
         return function (max) {
-          return state = ((a * state + c) % m)  % max;
+          return state = ((a * state + c) % m) % max;
         };
       }(shuffle));
 
