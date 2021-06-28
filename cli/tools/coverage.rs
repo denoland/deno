@@ -68,7 +68,7 @@ impl CoverageCollector {
 
       let mut out = BufWriter::new(File::create(filepath)?);
       serde_json::to_writer_pretty(&mut out, &script_coverage)?;
-      out.write(b"\n")?;
+      out.write_all(b"\n")?;
       out.flush()?;
     }
 
