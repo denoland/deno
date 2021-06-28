@@ -1,1 +1,1 @@
-const value: string = 1;
+const _value: string = 1;
