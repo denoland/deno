@@ -6,4 +6,4 @@ fail
 Error: fail
     [WILDCARD]
 
-test result: ok. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out [WILDCARD]
+test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out [WILDCARD]
