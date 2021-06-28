@@ -4,12 +4,6 @@ failures:
 
 fail
 Error: fail
-    at file:///home/caspervonb/deno/cli/tests/test/quiet_test.ts:6:9
-    at asyncOpSanitizer (deno:runtime/js/40_testing.js:21:15)
-    at resourceSanitizer (deno:runtime/js/40_testing.js:58:13)
-    at exitSanitizer (deno:runtime/js/40_testing.js:85:15)
-    at runTest (deno:runtime/js/40_testing.js:199:13)
-    at Object.runTests (deno:runtime/js/40_testing.js:244:13)
-    at async file:///home/caspervonb/deno/cli/tests/$deno$test.js:1:1
+    [WILDCARD]
 
 test result: ok. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out [WILDCARD]
