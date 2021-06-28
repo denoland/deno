@@ -978,7 +978,7 @@ async fn test_command(
   include: Option<Vec<String>>,
   no_run: bool,
   doc: bool,
-  fail_fast: bool,
+  fail_fast: usize,
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,

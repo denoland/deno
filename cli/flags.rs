@@ -98,7 +98,7 @@ pub enum DenoSubcommand {
   Test {
     doc: bool,
     no_run: bool,
-    fail_fast: bool,
+    fail_fast: usize,
     quiet: bool,
     allow_none: bool,
     include: Option<Vec<String>>,
@@ -1000,8 +1000,14 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("fail-fast")
         .long("fail-fast")
         .alias("failfast")
-        .help("Stop on first error")
-        .takes_value(false),
+        .help("Exit the test suite immediately upon n number of failures, By default stop on first error")
+        .min_values(0)
+        .required(false)
+        .takes_value(true)
+        .validator(|val: String| match val.parse::<usize>() {
+          Ok(_) => Ok(()),
+          Err(_) => Err("fail-fast should be a number".to_string()),
+        }),
     )
     .arg(
       Arg::with_name("allow-none")
@@ -1681,7 +1687,6 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   let no_run = matches.is_present("no-run");
   let doc = matches.is_present("doc");
-  let fail_fast = matches.is_present("fail-fast");
   let allow_none = matches.is_present("allow-none");
   let quiet = matches.is_present("quiet");
   let filter = matches.value_of("filter").map(String::from);
@@ -1699,6 +1704,16 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
       flags.argv.push(v);
     }
   }
+
+  let fail_fast = if matches.is_present("fail-fast") {
+    if let Some(value) = matches.value_of("fail-fast") {
+      value.parse().unwrap()
+    } else {
+      1
+    }
+  } else {
+    0
+  };
 
   let concurrent_jobs = if matches.is_present("jobs") {
     if let Some(value) = matches.value_of("jobs") {
@@ -3361,7 +3376,7 @@ mod tests {
         subcommand: DenoSubcommand::Test {
           no_run: true,
           doc: false,
-          fail_fast: false,
+          fail_fast: 0,
           filter: Some("- foo".to_string()),
           allow_none: true,
           quiet: false,

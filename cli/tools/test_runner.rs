@@ -339,7 +339,7 @@ pub async fn run_tests(
   doc_modules: Vec<ModuleSpecifier>,
   test_modules: Vec<ModuleSpecifier>,
   no_run: bool,
-  fail_fast: bool,
+  fail_fast: usize,
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
@@ -502,6 +502,7 @@ pub async fn run_tests(
       let mut has_error = false;
       let mut planned = 0;
       let mut reported = 0;
+      let mut failed = 0;
 
       for event in receiver.iter() {
         match event.message.clone() {
@@ -525,6 +526,7 @@ pub async fn run_tests(
 
             if let TestResult::Failed(_) = result {
               has_error = true;
+              failed += 1;
             }
           }
           _ => {}
@@ -532,7 +534,7 @@ pub async fn run_tests(
 
         reporter.visit_event(event);
 
-        if has_error && fail_fast {
+        if has_error && failed >= fail_fast {
           break;
         }
       }
