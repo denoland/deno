@@ -1021,7 +1021,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("shuffle")
         .long("shuffle")
         .value_name("NUMBER")
-        .help("Shuffle the order in which the tests are run")
+        .help("(UNSTABLE): Shuffle the order in which the tests are run")
         .min_values(0)
         .max_values(1)
         .require_equals(true)
