@@ -13,4 +13,3 @@ Deno.test("console.info", function () {
 Deno.test("console.warn", function () {
   console.info("warn");
 });
-
