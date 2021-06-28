@@ -463,6 +463,7 @@ pub async fn run_tests(
   let test_options = json!({
       "disableLog": quiet,
       "filter": filter,
+      "shuffle": shuffle,
   });
 
   let test_module = deno_core::resolve_path("$deno$test.js")?;
