@@ -87,7 +87,7 @@ itest!(exit_sanitizer {
 
 itest!(quiet {
   args: "test --quiet test/quiet_test.ts",
-  exit_code: 0,
+  exit_code: 1,
   output: "test/quiet_test.out",
 });
 
