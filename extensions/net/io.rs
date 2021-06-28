@@ -132,7 +132,7 @@ pub type UnixStreamResource =
   FullDuplexResource<unix::OwnedReadHalf, unix::OwnedWriteHalf>;
 
 #[cfg(not(unix))]
-struct UnixStreamResource;
+pub struct UnixStreamResource;
 
 #[cfg(not(unix))]
 impl UnixStreamResource {
