@@ -9,6 +9,7 @@ pub mod ops_unix;
 pub mod resolve_addr;
 
 use deno_core::error::AnyError;
+use deno_core::include_js_files;
 use deno_core::Extension;
 use deno_core::OpState;
 use std::cell::RefCell;
@@ -87,6 +88,13 @@ pub fn init<P: NetPermissions + 'static>(unstable: bool) -> Extension {
   ops_to_register.extend(ops_http::init());
 
   Extension::builder()
+    .js(include_js_files!(
+      prefix "deno:extensions/net",
+      "01_net.js",
+      "02_tls.js",
+      "03_http.js",
+      "04_net_unstable.js",
+    ))
     .ops(ops_to_register)
     .state(move |state| {
       state.put(UnstableChecker { unstable });
