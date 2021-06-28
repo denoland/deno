@@ -2,7 +2,12 @@
 
 This crate implements networking APIs.
 
-Provides following ops:
+This crate depends on following extensions:
+
+- "deno_web"
+- "deno_fetch"
+
+Following ops are provided:
 
 - "op_net_read_async"
 - "op_net_write_async"
