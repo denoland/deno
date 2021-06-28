@@ -252,26 +252,17 @@ impl TestReporter for TerseTestReporter {
 
         match result {
           TestResult::Ok => {
-            print!(
-              "{}",
-              colors::green("."),
-            );
+            print!("{}", colors::green("."),);
 
             self.passed += 1;
           }
           TestResult::Ignored => {
-            print!(
-              "{}",
-              colors::yellow("i"),
-            );
+            print!("{}", colors::yellow("i"),);
 
             self.ignored += 1;
           }
           TestResult::Failed(error) => {
-            print!(
-              "{}",
-              colors::red("F"),
-            );
+            print!("{}", colors::red("F"),);
 
             self.failed += 1;
             self.failures.push((name.to_string(), error.to_string()));
@@ -318,15 +309,18 @@ impl TestReporter for TerseTestReporter {
 }
 
 enum TestReporterKind {
-    Pretty,
-    Terse,
+  Pretty,
+  Terse,
 }
 
-fn create_reporter(kind: TestReporterKind, concurrent: bool) -> Box<dyn TestReporter + Send> {
-    match kind {
-        TestReporterKind::Pretty => Box::new(PrettyTestReporter::new(concurrent)),
-        TestReporterKind::Terse => Box::new(TerseTestReporter::new()),
-    }
+fn create_reporter(
+  kind: TestReporterKind,
+  concurrent: bool,
+) -> Box<dyn TestReporter + Send> {
+  match kind {
+    TestReporterKind::Pretty => Box::new(PrettyTestReporter::new(concurrent)),
+    TestReporterKind::Terse => Box::new(TerseTestReporter::new()),
+  }
 }
 
 pub(crate) fn is_supported(p: &Path) -> bool {
@@ -621,11 +615,11 @@ pub async fn run_tests(
     .buffer_unordered(concurrent_jobs)
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
-    let reporter_kind = if quiet {
-        TestReporterKind::Terse
-    } else {
-        TestReporterKind::Pretty
-    };
+  let reporter_kind = if quiet {
+    TestReporterKind::Terse
+  } else {
+    TestReporterKind::Pretty
+  };
 
   let mut reporter = create_reporter(reporter_kind, concurrent_jobs > 1);
   let handler = {

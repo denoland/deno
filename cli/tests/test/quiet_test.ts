@@ -8,6 +8,6 @@ Deno.test("fail", function () {
 
 Deno.test({
   name: "ignore",
-  fn () {},
+  fn() {},
   ignore: true,
 });
