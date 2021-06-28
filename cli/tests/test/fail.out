@@ -1,0 +1,130 @@
+Check [WILDCARD]/test/fail.ts
+running 10 tests from [WILDCARD]/test/fail.ts
+test test 1 ... FAILED ([WILDCARD])
+test test 2 ... FAILED ([WILDCARD])
+test test 3 ... FAILED ([WILDCARD])
+test test 4 ... FAILED ([WILDCARD])
+test test 5 ... FAILED ([WILDCARD])
+test test 6 ... FAILED ([WILDCARD])
+test test 7 ... FAILED ([WILDCARD])
+test test 8 ... FAILED ([WILDCARD])
+test test 9 ... FAILED ([WILDCARD])
+test test 0 ... FAILED ([WILDCARD])
+
+failures:
+
+test 1
+Error
+    at [WILDCARD]/test/fail.ts:1:35
+    at asyncOpSanitizer (deno:runtime/js/40_testing.js:21:15)
+    at resourceSanitizer (deno:runtime/js/40_testing.js:58:13)
+    at exitSanitizer (deno:runtime/js/40_testing.js:85:15)
+    at runTest (deno:runtime/js/40_testing.js:199:13)
+    at Object.runTests (deno:runtime/js/40_testing.js:244:13)
+    at [WILDCARD]/$deno$test.js:1:27
+
+test 2
+Error
+    at [WILDCARD]/test/fail.ts:2:35
+    at asyncOpSanitizer (deno:runtime/js/40_testing.js:21:15)
+    at resourceSanitizer (deno:runtime/js/40_testing.js:58:13)
+    at exitSanitizer (deno:runtime/js/40_testing.js:85:15)
+    at runTest (deno:runtime/js/40_testing.js:199:13)
+    at Object.runTests (deno:runtime/js/40_testing.js:244:13)
+    at async [WILDCARD]/$deno$test.js:1:1
+
+test 3
+Error
+    at [WILDCARD]/test/fail.ts:3:35
+    at asyncOpSanitizer (deno:runtime/js/40_testing.js:21:15)
+    at resourceSanitizer (deno:runtime/js/40_testing.js:58:13)
+    at exitSanitizer (deno:runtime/js/40_testing.js:85:15)
+    at runTest (deno:runtime/js/40_testing.js:199:13)
+    at Object.runTests (deno:runtime/js/40_testing.js:244:13)
+    at async [WILDCARD]/$deno$test.js:1:1
+
+test 4
+Error
+    at [WILDCARD]/test/fail.ts:4:35
+    at asyncOpSanitizer (deno:runtime/js/40_testing.js:21:15)
+    at resourceSanitizer (deno:runtime/js/40_testing.js:58:13)
+    at exitSanitizer (deno:runtime/js/40_testing.js:85:15)
+    at runTest (deno:runtime/js/40_testing.js:199:13)
+    at Object.runTests (deno:runtime/js/40_testing.js:244:13)
+    at async [WILDCARD]/$deno$test.js:1:1
+
+test 5
+Error
+    at [WILDCARD]/test/fail.ts:5:35
+    at asyncOpSanitizer (deno:runtime/js/40_testing.js:21:15)
+    at resourceSanitizer (deno:runtime/js/40_testing.js:58:13)
+    at exitSanitizer (deno:runtime/js/40_testing.js:85:15)
+    at runTest (deno:runtime/js/40_testing.js:199:13)
+    at Object.runTests (deno:runtime/js/40_testing.js:244:13)
+    at async [WILDCARD]/$deno$test.js:1:1
+
+test 6
+Error
+    at [WILDCARD]/test/fail.ts:6:35
+    at asyncOpSanitizer (deno:runtime/js/40_testing.js:21:15)
+    at resourceSanitizer (deno:runtime/js/40_testing.js:58:13)
+    at exitSanitizer (deno:runtime/js/40_testing.js:85:15)
+    at runTest (deno:runtime/js/40_testing.js:199:13)
+    at Object.runTests (deno:runtime/js/40_testing.js:244:13)
+    at async [WILDCARD]/$deno$test.js:1:1
+
+test 7
+Error
+    at [WILDCARD]/test/fail.ts:7:35
+    at asyncOpSanitizer (deno:runtime/js/40_testing.js:21:15)
+    at resourceSanitizer (deno:runtime/js/40_testing.js:58:13)
+    at exitSanitizer (deno:runtime/js/40_testing.js:85:15)
+    at runTest (deno:runtime/js/40_testing.js:199:13)
+    at Object.runTests (deno:runtime/js/40_testing.js:244:13)
+    at async [WILDCARD]/$deno$test.js:1:1
+
+test 8
+Error
+    at [WILDCARD]/test/fail.ts:8:35
+    at asyncOpSanitizer (deno:runtime/js/40_testing.js:21:15)
+    at resourceSanitizer (deno:runtime/js/40_testing.js:58:13)
+    at exitSanitizer (deno:runtime/js/40_testing.js:85:15)
+    at runTest (deno:runtime/js/40_testing.js:199:13)
+    at Object.runTests (deno:runtime/js/40_testing.js:244:13)
+    at async [WILDCARD]/$deno$test.js:1:1
+
+test 9
+Error
+    at [WILDCARD]/test/fail.ts:9:35
+    at asyncOpSanitizer (deno:runtime/js/40_testing.js:21:15)
+    at resourceSanitizer (deno:runtime/js/40_testing.js:58:13)
+    at exitSanitizer (deno:runtime/js/40_testing.js:85:15)
+    at runTest (deno:runtime/js/40_testing.js:199:13)
+    at Object.runTests (deno:runtime/js/40_testing.js:244:13)
+    at async [WILDCARD]/$deno$test.js:1:1
+
+test 0
+Error
+    at [WILDCARD]/test/fail.ts:10:35
+    at asyncOpSanitizer (deno:runtime/js/40_testing.js:21:15)
+    at resourceSanitizer (deno:runtime/js/40_testing.js:58:13)
+    at exitSanitizer (deno:runtime/js/40_testing.js:85:15)
+    at runTest (deno:runtime/js/40_testing.js:199:13)
+    at Object.runTests (deno:runtime/js/40_testing.js:244:13)
+    at async [WILDCARD]/$deno$test.js:1:1
+
+failures:
+
+	test 1
+	test 2
+	test 3
+	test 4
+	test 5
+	test 6
+	test 7
+	test 8
+	test 9
+	test 0
+
+test result: FAILED. 0 passed; 10 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
