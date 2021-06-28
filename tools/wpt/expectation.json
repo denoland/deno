@@ -714,7 +714,7 @@
       "basic": {
         "request-head.any.html": true,
         "request-headers-case.any.html": false,
-        "request-headers-nonascii.any.html": false,
+        "request-headers-nonascii.any.html": true,
         "request-headers.any.html": [
           "Fetch with PUT without body",
           "Fetch with PUT with body",
