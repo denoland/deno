@@ -136,16 +136,16 @@ pub struct UnixStreamResource;
 
 #[cfg(not(unix))]
 impl UnixStreamResource {
-  async fn read(self: &Rc<Self>, _buf: &mut [u8]) -> Result<usize, AnyError> {
+  pub async fn read(self: &Rc<Self>, _buf: &mut [u8]) -> Result<usize, AnyError> {
     unreachable!()
   }
-  async fn write(self: &Rc<Self>, _buf: &[u8]) -> Result<usize, AnyError> {
+  pub async fn write(self: &Rc<Self>, _buf: &[u8]) -> Result<usize, AnyError> {
     unreachable!()
   }
-  async fn shutdown(self: &Rc<Self>) -> Result<(), AnyError> {
+  pub async fn shutdown(self: &Rc<Self>) -> Result<(), AnyError> {
     unreachable!()
   }
-  fn cancel_read_ops(&self) {
+  pub fn cancel_read_ops(&self) {
     unreachable!()
   }
 }
