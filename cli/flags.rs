@@ -103,7 +103,7 @@ pub enum DenoSubcommand {
     allow_none: bool,
     include: Option<Vec<String>>,
     filter: Option<String>,
-    shuffle: bool,
+    shuffle: Option<u64>,
     concurrent_jobs: usize,
   },
   Types,
@@ -1020,8 +1020,13 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
     .arg(
       Arg::with_name("shuffle")
         .long("shuffle")
+        .value_name("NUMBER")
         .help("Shuffle the order in which the tests are run")
-        .takes_value(false),
+        .takes_value(true)
+        .validator(|val: String| match val.parse::<u64>() {
+          Ok(_) => Ok(()),
+          Err(_) => Err("Shuffle seed should be a number".to_string()),
+        }),
     )
     .arg(
       Arg::with_name("coverage")
@@ -1692,9 +1697,18 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let allow_none = matches.is_present("allow-none");
   let quiet = matches.is_present("quiet");
   let filter = matches.value_of("filter").map(String::from);
-  let shuffle = matches.is_present("shuffle");
 
-  flags.watch = matches.is_present("watch");
+  let shuffle = if matches.is_present("shuffle") {
+    let value = if let Some(value) = matches.value_of("shuffle") {
+      value.parse::<u64>().unwrap()
+    } else {
+      rand::random::<u64>()
+    };
+
+    Some(value)
+  } else {
+    None
+  };
 
   if matches.is_present("script_arg") {
     let script_arg: Vec<String> = matches
@@ -3375,6 +3389,7 @@ mod tests {
           allow_none: true,
           quiet: false,
           include: Some(svec!["dir1/", "dir2/"]),
+          shuffle: None,
           concurrent_jobs: 1,
         },
         unstable: true,

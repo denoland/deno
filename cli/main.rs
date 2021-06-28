@@ -982,7 +982,7 @@ async fn test_command(
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
-  shuffle: bool,
+  shuffle: Option<u64>,
   concurrent_jobs: usize,
 ) -> Result<(), AnyError> {
   if let Some(ref coverage_dir) = flags.coverage_dir {

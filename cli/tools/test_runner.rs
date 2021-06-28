@@ -9,7 +9,8 @@ use crate::fs_util::normalize_path;
 use crate::media_type::MediaType;
 use crate::module_graph;
 use rand::seq::SliceRandom;
-use rand::thread_rng;
+use rand::SeedableRng;
+use rand::rngs::SmallRng;
 use crate::program_state::ProgramState;
 use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
@@ -345,11 +346,11 @@ pub async fn run_tests(
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
-  shuffle: bool,
+  shuffle: Option<u64>,
   concurrent_jobs: usize,
 ) -> Result<bool, AnyError> {
-  let test_modules = if shuffle {
-    let mut rng = thread_rng();
+  let test_modules = if let Some(seed) = shuffle {
+    let mut rng = SmallRng::seed_from_u64(seed);
     let mut test_modules = test_modules.clone();
     test_modules.shuffle(&mut rng);
     test_modules
