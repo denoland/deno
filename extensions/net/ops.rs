@@ -1,8 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-use crate::ops::io::TcpStreamResource;
-use crate::permissions::Permissions;
+
+use crate::io::TcpStreamResource;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
+use crate::NetPermissions;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
@@ -14,7 +15,7 @@ use deno_core::op_sync;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::Extension;
+use deno_core::OpPair;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -39,23 +40,21 @@ use trust_dns_resolver::system_conf;
 use trust_dns_resolver::AsyncResolver;
 
 #[cfg(unix)]
-use super::net_unix;
+use super::ops_unix as net_unix;
 #[cfg(unix)]
-use crate::ops::io::UnixStreamResource;
+use crate::io::UnixStreamResource;
 #[cfg(unix)]
 use std::path::Path;
 
-pub fn init() -> Extension {
-  Extension::builder()
-    .ops(vec![
-      ("op_accept", op_async(op_accept)),
-      ("op_connect", op_async(op_connect)),
-      ("op_listen", op_sync(op_listen)),
-      ("op_datagram_receive", op_async(op_datagram_receive)),
-      ("op_datagram_send", op_async(op_datagram_send)),
-      ("op_dns_resolve", op_async(op_dns_resolve)),
-    ])
-    .build()
+pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
+  vec![
+    ("op_accept", op_async(op_accept)),
+    ("op_connect", op_async(op_connect::<P>)),
+    ("op_listen", op_sync(op_listen::<P>)),
+    ("op_datagram_receive", op_async(op_datagram_receive)),
+    ("op_datagram_send", op_async(op_datagram_send::<P>)),
+    ("op_dns_resolve", op_async(op_dns_resolve::<P>)),
+  ]
 }
 
 #[derive(Serialize)]
@@ -216,11 +215,14 @@ struct SendArgs {
   transport_args: ArgsEnum,
 }
 
-async fn op_datagram_send(
+async fn op_datagram_send<NP>(
   state: Rc<RefCell<OpState>>,
   args: SendArgs,
   zero_copy: Option<ZeroCopyBuf>,
-) -> Result<usize, AnyError> {
+) -> Result<usize, AnyError>
+where
+  NP: NetPermissions + 'static,
+{
   let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let zero_copy = zero_copy.clone();
 
@@ -232,9 +234,8 @@ async fn op_datagram_send(
     } if transport == "udp" => {
       {
         let mut s = state.borrow_mut();
-        s.borrow_mut::<Permissions>()
-          .net
-          .check(&(&args.hostname, Some(args.port)))?;
+        s.borrow_mut::<NP>()
+          .check_net(&(&args.hostname, Some(args.port)))?;
       }
       let addr = resolve_addr(&args.hostname, args.port)
         .await?
@@ -259,7 +260,7 @@ async fn op_datagram_send(
       let address_path = Path::new(&args.path);
       {
         let mut s = state.borrow_mut();
-        s.borrow_mut::<Permissions>().write.check(&address_path)?;
+        s.borrow_mut::<NP>().check_write(&address_path)?;
       }
       let resource = state
         .borrow()
@@ -285,11 +286,14 @@ struct ConnectArgs {
   transport_args: ArgsEnum,
 }
 
-async fn op_connect(
+async fn op_connect<NP>(
   state: Rc<RefCell<OpState>>,
   args: ConnectArgs,
   _: (),
-) -> Result<OpConn, AnyError> {
+) -> Result<OpConn, AnyError>
+where
+  NP: NetPermissions + 'static,
+{
   match args {
     ConnectArgs {
       transport,
@@ -298,9 +302,8 @@ async fn op_connect(
       {
         let mut state_ = state.borrow_mut();
         state_
-          .borrow_mut::<Permissions>()
-          .net
-          .check(&(&args.hostname, Some(args.port)))?;
+          .borrow_mut::<NP>()
+          .check_net(&(&args.hostname, Some(args.port)))?;
       }
       let addr = resolve_addr(&args.hostname, args.port)
         .await?
@@ -335,14 +338,8 @@ async fn op_connect(
       super::check_unstable2(&state, "Deno.connect");
       {
         let mut state_ = state.borrow_mut();
-        state_
-          .borrow_mut::<Permissions>()
-          .read
-          .check(&address_path)?;
-        state_
-          .borrow_mut::<Permissions>()
-          .write
-          .check(&address_path)?;
+        state_.borrow_mut::<NP>().check_read(&address_path)?;
+        state_.borrow_mut::<NP>().check_write(&address_path)?;
       }
       let path = args.path;
       let unix_stream = net_unix::UnixStream::connect(Path::new(&path)).await?;
@@ -451,11 +448,14 @@ fn listen_udp(
   Ok((rid, local_addr))
 }
 
-fn op_listen(
+fn op_listen<NP>(
   state: &mut OpState,
   args: ListenArgs,
   _: (),
-) -> Result<OpConn, AnyError> {
+) -> Result<OpConn, AnyError>
+where
+  NP: NetPermissions + 'static,
+{
   match args {
     ListenArgs {
       transport,
@@ -466,9 +466,8 @@ fn op_listen(
           super::check_unstable(state, "Deno.listenDatagram");
         }
         state
-          .borrow_mut::<Permissions>()
-          .net
-          .check(&(&args.hostname, Some(args.port)))?;
+          .borrow_mut::<NP>()
+          .check_net(&(&args.hostname, Some(args.port)))?;
       }
       let addr = resolve_addr_sync(&args.hostname, args.port)?
         .next()
@@ -512,9 +511,9 @@ fn op_listen(
         if transport == "unixpacket" {
           super::check_unstable(state, "Deno.listenDatagram");
         }
-        let permissions = state.borrow_mut::<Permissions>();
-        permissions.read.check(&address_path)?;
-        permissions.write.check(&address_path)?;
+        let permissions = state.borrow_mut::<NP>();
+        permissions.check_read(&address_path)?;
+        permissions.check_write(&address_path)?;
       }
       let (rid, local_addr) = if transport == "unix" {
         net_unix::listen_unix(state, &address_path)?
@@ -592,11 +591,14 @@ pub struct NameServer {
   port: u16,
 }
 
-async fn op_dns_resolve(
+async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,
   args: ResolveAddrArgs,
   _: (),
-) -> Result<Vec<DnsReturnRecord>, AnyError> {
+) -> Result<Vec<DnsReturnRecord>, AnyError>
+where
+  NP: NetPermissions + 'static,
+{
   let ResolveAddrArgs {
     query,
     record_type,
@@ -621,14 +623,14 @@ async fn op_dns_resolve(
 
   {
     let mut s = state.borrow_mut();
-    let perm = s.borrow_mut::<Permissions>();
+    let perm = s.borrow_mut::<NP>();
 
     // Checks permission against the name servers which will be actually queried.
     for ns in config.name_servers() {
       let socker_addr = &ns.socket_addr;
       let ip = socker_addr.ip().to_string();
       let port = socker_addr.port();
-      perm.net.check(&(ip, Some(port)))?;
+      perm.check_net(&(ip, Some(port)))?;
     }
   }
 

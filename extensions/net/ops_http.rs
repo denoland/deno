@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::ops::io::TcpStreamResource;
-use crate::ops::io::TlsStreamResource;
-use crate::ops::tls::TlsStream;
+use crate::io::TcpStreamResource;
+use crate::io::TlsStreamResource;
+use crate::ops_tls::TlsStream;
 use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
@@ -17,7 +17,7 @@ use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::Extension;
+use deno_core::OpPair;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -46,17 +46,15 @@ use tokio::net::TcpStream;
 use tokio::sync::oneshot;
 use tokio_util::io::StreamReader;
 
-pub fn init() -> Extension {
-  Extension::builder()
-    .ops(vec![
-      ("op_http_start", op_sync(op_http_start)),
-      ("op_http_request_next", op_async(op_http_request_next)),
-      ("op_http_request_read", op_async(op_http_request_read)),
-      ("op_http_response", op_async(op_http_response)),
-      ("op_http_response_write", op_async(op_http_response_write)),
-      ("op_http_response_close", op_async(op_http_response_close)),
-    ])
-    .build()
+pub fn init() -> Vec<OpPair> {
+  vec![
+    ("op_http_start", op_sync(op_http_start)),
+    ("op_http_request_next", op_async(op_http_request_next)),
+    ("op_http_request_read", op_async(op_http_request_read)),
+    ("op_http_response", op_async(op_http_response)),
+    ("op_http_response_write", op_async(op_http_response_write)),
+    ("op_http_response_close", op_async(op_http_response_close)),
+  ]
 }
 
 struct ServiceInner {
