@@ -18,6 +18,7 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_net::io::TcpStreamResource;
 use deno_net::io::TlsStreamResource;
+#[cfg(unix)]
 use deno_net::io::UnixStreamResource;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -413,6 +414,10 @@ async fn op_read_async(
     .resource_table
     .get_any(rid)
     .ok_or_else(bad_resource_id)?;
+  #[cfg(unix)]
+  if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
+    return Ok(s.read(buf).await? as u32);
+  };
   let nread = if let Some(s) = resource.downcast_rc::<ChildStdoutResource>() {
     s.read(buf).await?
   } else if let Some(s) = resource.downcast_rc::<ChildStderrResource>() {
@@ -420,8 +425,6 @@ async fn op_read_async(
   } else if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
     s.read(buf).await?
   } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
-    s.read(buf).await?
-  } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
     s.read(buf).await?
   } else if let Some(s) = resource.downcast_rc::<StdFileResource>() {
     s.read(buf).await?
@@ -457,13 +460,15 @@ async fn op_write_async(
     .resource_table
     .get_any(rid)
     .ok_or_else(bad_resource_id)?;
+  #[cfg(unix)]
+  if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
+    return Ok(s.write(buf).await? as u32);
+  };
   let nwritten = if let Some(s) = resource.downcast_rc::<ChildStdinResource>() {
     s.write(buf).await?
   } else if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
     s.write(buf).await?
   } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
-    s.write(buf).await?
-  } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
     s.write(buf).await?
   } else if let Some(s) = resource.downcast_rc::<StdFileResource>() {
     s.write(buf).await?
@@ -483,13 +488,16 @@ async fn op_shutdown(
     .resource_table
     .get_any(rid)
     .ok_or_else(bad_resource_id)?;
+  #[cfg(unix)]
+  if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
+    s.shutdown().await?;
+    return Ok(());
+  };
   if let Some(s) = resource.downcast_rc::<ChildStdinResource>() {
     s.shutdown().await?;
   } else if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
     s.shutdown().await?;
   } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
-    s.shutdown().await?;
-  } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
     s.shutdown().await?;
   } else {
     return Err(not_supported());
