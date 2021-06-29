@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.11.2"
+version = "1.11.3"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -44,7 +44,7 @@ winres = "0.1.11"
 deno_core = { version = "0.92.0", path = "../core" }
 deno_doc = "0.7.0"
 deno_lint = "0.8.0"
-deno_runtime = { version = "0.18.0", path = "../runtime" }
+deno_runtime = { version = "0.18.1", path = "../runtime" }
 
 atty = "0.2.14"
 base64 = "0.13.0"

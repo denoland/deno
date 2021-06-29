@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.18.0"
+version = "0.18.1"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -18,38 +18,38 @@ name = "hello_runtime"
 path = "examples/hello_runtime.rs"
 
 [build-dependencies]
-deno_broadcast_channel = { version = "0.4.0", path = "../extensions/broadcast_channel" }
-deno_console = { version = "0.10.0", path = "../extensions/console" }
+deno_broadcast_channel = { version = "0.4.1", path = "../extensions/broadcast_channel" }
+deno_console = { version = "0.10.1", path = "../extensions/console" }
 deno_core = { version = "0.92.0", path = "../core" }
-deno_crypto = { version = "0.24.0", path = "../extensions/crypto" }
-deno_fetch = { version = "0.32.0", path = "../extensions/fetch" }
+deno_crypto = { version = "0.24.1", path = "../extensions/crypto" }
+deno_fetch = { version = "0.32.1", path = "../extensions/fetch" }
 deno_net = { version = "0.1.0", path = "../extensions/net" }
-deno_timers = { version = "0.8.0", path = "../extensions/timers" }
-deno_url = { version = "0.10.0", path = "../extensions/url" }
-deno_web = { version = "0.41.0", path = "../extensions/web" }
-deno_webgpu = { version = "0.11.0", path = "../extensions/webgpu" }
-deno_webidl = { version = "0.10.0", path = "../extensions/webidl" }
-deno_websocket = { version = "0.15.0", path = "../extensions/websocket" }
-deno_webstorage = { version = "0.5.0", path = "../extensions/webstorage" }
+deno_timers = { version = "0.8.1", path = "../extensions/timers" }
+deno_url = { version = "0.10.1", path = "../extensions/url" }
+deno_web = { version = "0.41.1", path = "../extensions/web" }
+deno_webgpu = { version = "0.11.1", path = "../extensions/webgpu" }
+deno_webidl = { version = "0.10.1", path = "../extensions/webidl" }
+deno_websocket = { version = "0.15.1", path = "../extensions/websocket" }
+deno_webstorage = { version = "0.5.1", path = "../extensions/webstorage" }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1.11"
 winapi = "0.3.9"
 
 [dependencies]
-deno_broadcast_channel = { version = "0.4.0", path = "../extensions/broadcast_channel" }
-deno_console = { version = "0.10.0", path = "../extensions/console" }
+deno_broadcast_channel = { version = "0.4.1", path = "../extensions/broadcast_channel" }
+deno_console = { version = "0.10.1", path = "../extensions/console" }
 deno_core = { version = "0.92.0", path = "../core" }
-deno_crypto = { version = "0.24.0", path = "../extensions/crypto" }
-deno_fetch = { version = "0.32.0", path = "../extensions/fetch" }
+deno_crypto = { version = "0.24.1", path = "../extensions/crypto" }
+deno_fetch = { version = "0.32.1", path = "../extensions/fetch" }
 deno_net = { version = "0.1.0", path = "../extensions/net" }
-deno_timers = { version = "0.8.0", path = "../extensions/timers" }
-deno_url = { version = "0.10.0", path = "../extensions/url" }
-deno_web = { version = "0.41.0", path = "../extensions/web" }
-deno_webgpu = { version = "0.11.0", path = "../extensions/webgpu" }
-deno_webidl = { version = "0.10.0", path = "../extensions/webidl" }
-deno_websocket = { version = "0.15.0", path = "../extensions/websocket" }
-deno_webstorage = { version = "0.5.0", path = "../extensions/webstorage" }
+deno_timers = { version = "0.8.1", path = "../extensions/timers" }
+deno_url = { version = "0.10.1", path = "../extensions/url" }
+deno_web = { version = "0.41.1", path = "../extensions/web" }
+deno_webgpu = { version = "0.11.1", path = "../extensions/webgpu" }
+deno_webidl = { version = "0.10.1", path = "../extensions/webidl" }
+deno_websocket = { version = "0.15.1", path = "../extensions/websocket" }
+deno_webstorage = { version = "0.5.1", path = "../extensions/webstorage" }
 
 atty = "0.2.14"
 dlopen = "0.1.8"
