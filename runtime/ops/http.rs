@@ -222,7 +222,7 @@ async fn op_http_request_next(
         } else {
           Cow::Owned(conn_resource.addr.to_string())
         };
-        let path = req.uri().path_and_query().unwrap();
+        let path = req.uri().path_and_query().map_or("/", |p| p.as_str());
         format!("{}://{}{}", scheme, host, path)
       };
 
