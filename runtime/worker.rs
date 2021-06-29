@@ -7,7 +7,6 @@ use crate::ops;
 use crate::permissions::Permissions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
-use deno_core::futures::future::poll_fn;
 use deno_core::futures::stream::StreamExt;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
@@ -247,7 +246,7 @@ impl MainWorker {
     &mut self,
     wait_for_inspector: bool,
   ) -> Result<(), AnyError> {
-    poll_fn(|cx| self.poll_event_loop(cx, wait_for_inspector)).await
+    self.js_runtime.run_event_loop(wait_for_inspector).await
   }
 
   /// A utility function that runs provided future concurrently with the event loop.

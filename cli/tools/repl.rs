@@ -8,7 +8,6 @@ use crate::colors;
 use crate::media_type::MediaType;
 use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
-use deno_core::futures::future::FusedFuture;
 use deno_core::futures::FutureExt;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -26,24 +25,25 @@ use rustyline::Context;
 use rustyline::Editor;
 use rustyline_derive::{Helper, Hinter};
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::path::PathBuf;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::sync_channel;
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::Sender;
-use std::sync::mpsc::SyncSender;
+use tokio::sync::mpsc::channel;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::UnboundedSender;
 use std::sync::Arc;
 use std::sync::Mutex;
 use swc_ecmascript::parser::token::{Token, Word};
-use tokio::pin;
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.
 #[derive(Helper, Hinter)]
 struct EditorHelper {
   context_id: u64,
-  message_tx: SyncSender<(String, Option<Value>)>,
-  response_rx: Receiver<Result<Value, AnyError>>,
+  message_tx: Sender<(String, Option<Value>)>,
+  response_rx: RefCell<UnboundedReceiver<Result<Value, AnyError>>>,
 }
 
 impl EditorHelper {
@@ -52,8 +52,8 @@ impl EditorHelper {
     method: &str,
     params: Option<Value>,
   ) -> Result<Value, AnyError> {
-    self.message_tx.send((method.to_string(), params))?;
-    self.response_rx.recv()?
+    self.message_tx.blocking_send((method.to_string(), params))?;
+    self.response_rx.borrow_mut().blocking_recv().unwrap()
   }
 
   fn get_global_lexical_scope_names(&self) -> Vec<String> {
@@ -445,7 +445,7 @@ impl ReplSession {
   }
 
   pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
-    self.worker.run_event_loop(false).await
+    self.worker.run_event_loop(true).await
   }
 
   pub async fn evaluate_line_and_get_output(
@@ -623,25 +623,31 @@ impl ReplSession {
 
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
-  message_rx: &Receiver<(String, Option<Value>)>,
-  response_tx: &Sender<Result<Value, AnyError>>,
+  message_rx: &mut Receiver<(String, Option<Value>)>,
+  response_tx: &UnboundedSender<Result<Value, AnyError>>,
   editor: ReplEditor,
 ) -> Result<String, ReadlineError> {
   let mut line_fut = tokio::task::spawn_blocking(move || editor.readline());
+  let mut poll_worker = true;
 
   loop {
-    for (method, params) in message_rx.try_iter() {
-      let result = repl_session
-        .post_message_with_event_loop(&method, params)
-        .await;
-      response_tx.send(result).unwrap();
-    }
-
     tokio::select! {
       result = &mut line_fut => {
         return result.unwrap();
       }
-      _ = repl_session.run_event_loop() => {}
+      result = message_rx.recv() => {
+        if let Some((method, params)) = result {
+          let result = repl_session
+            .post_message_with_event_loop(&method, params)
+            .await;
+          response_tx.send(result).unwrap();
+        }
+
+        poll_worker = true;
+      },
+      _ = repl_session.run_event_loop(), if poll_worker => {
+        poll_worker = false;
+      }
     }
   }
 }
@@ -651,13 +657,13 @@ pub async fn run(
   worker: MainWorker,
 ) -> Result<(), AnyError> {
   let mut repl_session = ReplSession::initialize(worker).await?;
-  let (message_tx, message_rx) = sync_channel(1);
-  let (response_tx, response_rx) = channel();
+  let (message_tx, mut message_rx) = channel(1);
+  let (response_tx, response_rx) = unbounded_channel();
 
   let helper = EditorHelper {
     context_id: repl_session.context_id,
     message_tx,
-    response_rx,
+    response_rx: RefCell::new(response_rx),
   };
 
   let history_file_path = program_state.dir.root.join("deno_history.txt");
@@ -669,7 +675,7 @@ pub async fn run(
   loop {
     let line = read_line_and_poll(
       &mut repl_session,
-      &message_rx,
+      &mut message_rx,
       &response_tx,
       editor.clone(),
     )
