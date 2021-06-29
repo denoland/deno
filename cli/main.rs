@@ -1134,6 +1134,8 @@ async fn test_command(
           }
         }
 
+        modules_to_reload.sort();
+
         Ok((paths_to_watch, modules_to_reload))
       }
       .map(move |result| {
