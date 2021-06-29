@@ -1709,7 +1709,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     if let Some(value) = matches.value_of("fail-fast") {
       Some(value.parse().unwrap())
     } else {
-      Some(0)
+      Some(1)
     }
   } else {
     None
@@ -3376,7 +3376,7 @@ mod tests {
         subcommand: DenoSubcommand::Test {
           no_run: true,
           doc: false,
-          fail_fast: Some(0),
+          fail_fast: None,
           filter: Some("- foo".to_string()),
           allow_none: true,
           quiet: false,

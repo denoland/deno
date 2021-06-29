@@ -535,7 +535,7 @@ pub async fn run_tests(
         reporter.visit_event(event);
 
         if let Some(x) = fail_fast {
-          if failed > x {
+          if failed >= x {
             break;
           }
         }

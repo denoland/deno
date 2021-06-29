@@ -44,7 +44,7 @@ itest!(allow_none {
 });
 
 itest!(fail_fast {
-  args: "test --fail-fast test/test_runner_test.ts",
+  args: "test test/test_runner_test.ts --fail-fast",
   exit_code: 1,
   output: "test/deno_test_fail_fast.out",
 });
