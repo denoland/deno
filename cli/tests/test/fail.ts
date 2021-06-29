@@ -1,3 +1,6 @@
+Deno.test("test 0", () => {
+  throw new Error();
+});
 Deno.test("test 1", () => {
   throw new Error();
 });
@@ -23,8 +26,5 @@ Deno.test("test 8", () => {
   throw new Error();
 });
 Deno.test("test 9", () => {
-  throw new Error();
-});
-Deno.test("test 0", () => {
   throw new Error();
 });

@@ -1,3 +1,4 @@
+Deno.test("test 0", () => {});
 Deno.test("test 1", () => {});
 Deno.test("test 2", () => {});
 Deno.test("test 3", () => {});
@@ -7,4 +8,3 @@ Deno.test("test 6", () => {});
 Deno.test("test 7", () => {});
 Deno.test("test 8", () => {});
 Deno.test("test 9", () => {});
-Deno.test("test 0", () => {});
