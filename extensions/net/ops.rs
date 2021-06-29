@@ -2,59 +2,81 @@
 
 use crate::io::TcpStreamResource;
 use crate::resolve_addr::resolve_addr;
+#[cfg(feature = "full")]
 use crate::resolve_addr::resolve_addr_sync;
 use crate::NetPermissions;
+#[cfg(feature = "full")]
 use deno_core::error::bad_resource;
+#[cfg(feature = "full")]
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
+#[cfg(feature = "full")]
 use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op_async;
+#[cfg(feature = "full")]
 use deno_core::op_sync;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
+#[cfg(feature = "full")]
 use deno_core::CancelTryFuture;
 use deno_core::OpPair;
 use deno_core::OpState;
+#[cfg(feature = "full")]
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+#[cfg(feature = "full")]
 use deno_core::ZeroCopyBuf;
+#[cfg(feature = "full")]
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+#[cfg(feature = "full")]
 use std::net::SocketAddr;
 use std::rc::Rc;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
+#[cfg(feature = "full")]
 use tokio::net::UdpSocket;
+#[cfg(feature = "full")]
 use trust_dns_proto::rr::record_data::RData;
+#[cfg(feature = "full")]
 use trust_dns_proto::rr::record_type::RecordType;
+#[cfg(feature = "full")]
 use trust_dns_resolver::config::NameServerConfigGroup;
+#[cfg(feature = "full")]
 use trust_dns_resolver::config::ResolverConfig;
+#[cfg(feature = "full")]
 use trust_dns_resolver::config::ResolverOpts;
+#[cfg(feature = "full")]
 use trust_dns_resolver::system_conf;
+#[cfg(feature = "full")]
 use trust_dns_resolver::AsyncResolver;
 
-#[cfg(unix)]
+#[cfg(all(unix, feature = "full"))]
 use super::ops_unix as net_unix;
-#[cfg(unix)]
+#[cfg(all(unix, feature = "full"))]
 use crate::io::UnixStreamResource;
-#[cfg(unix)]
+#[cfg(all(unix, feature = "full"))]
 use std::path::Path;
 
 pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
-  vec![
-    ("op_accept", op_async(op_accept)),
+  #[cfg(not(feature = "full"))]
+  let ops = vec![("op_connect", op_async(op_connect::<P>))];
+  #[cfg(feature = "full")]
+  let ops = vec![
     ("op_connect", op_async(op_connect::<P>)),
+    ("op_accept", op_async(op_accept)),
     ("op_listen", op_sync(op_listen::<P>)),
     ("op_datagram_receive", op_async(op_datagram_receive)),
     ("op_datagram_send", op_async(op_datagram_send::<P>)),
     ("op_dns_resolve", op_async(op_dns_resolve::<P>)),
-  ]
+  ];
+  ops
 }
 
 #[derive(Serialize)]
@@ -70,12 +92,13 @@ pub struct OpConn {
 pub enum OpAddr {
   Tcp(IpAddr),
   Udp(IpAddr),
-  #[cfg(unix)]
+  #[cfg(all(unix, feature = "full"))]
   Unix(net_unix::UnixAddr),
-  #[cfg(unix)]
+  #[cfg(all(unix, feature = "full"))]
   UnixPacket(net_unix::UnixAddr),
 }
 
+#[cfg(feature = "full")]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 /// A received datagram packet (from udp or unixpacket)
@@ -90,12 +113,14 @@ pub struct IpAddr {
   pub port: u16,
 }
 
+#[cfg(feature = "full")]
 #[derive(Deserialize)]
 pub(crate) struct AcceptArgs {
   pub rid: ResourceId,
   pub transport: String,
 }
 
+#[cfg(feature = "full")]
 async fn accept_tcp(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
@@ -141,6 +166,7 @@ async fn accept_tcp(
   })
 }
 
+#[cfg(feature = "full")]
 async fn op_accept(
   state: Rc<RefCell<OpState>>,
   args: AcceptArgs,
@@ -148,22 +174,25 @@ async fn op_accept(
 ) -> Result<OpConn, AnyError> {
   match args.transport.as_str() {
     "tcp" => accept_tcp(state, args, ()).await,
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "full"))]
     "unix" => net_unix::accept_unix(state, args, ()).await,
     other => Err(bad_transport(other)),
   }
 }
 
+#[cfg(feature = "full")]
 fn bad_transport(transport: &str) -> AnyError {
   generic_error(format!("Unsupported transport protocol {}", transport))
 }
 
+#[cfg(feature = "full")]
 #[derive(Deserialize)]
 pub(crate) struct ReceiveArgs {
   pub rid: ResourceId,
   pub transport: String,
 }
 
+#[cfg(feature = "full")]
 async fn receive_udp(
   state: Rc<RefCell<OpState>>,
   args: ReceiveArgs,
@@ -194,6 +223,7 @@ async fn receive_udp(
   })
 }
 
+#[cfg(feature = "full")]
 async fn op_datagram_receive(
   state: Rc<RefCell<OpState>>,
   args: ReceiveArgs,
@@ -201,12 +231,13 @@ async fn op_datagram_receive(
 ) -> Result<OpPacket, AnyError> {
   match args.transport.as_str() {
     "udp" => receive_udp(state, args, zero_copy).await,
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "full"))]
     "unixpacket" => net_unix::receive_unix_packet(state, args, zero_copy).await,
     other => Err(bad_transport(other)),
   }
 }
 
+#[cfg(feature = "full")]
 #[derive(Deserialize)]
 struct SendArgs {
   rid: ResourceId,
@@ -215,6 +246,7 @@ struct SendArgs {
   transport_args: ArgsEnum,
 }
 
+#[cfg(feature = "full")]
 async fn op_datagram_send<NP>(
   state: Rc<RefCell<OpState>>,
   args: SendArgs,
@@ -329,7 +361,7 @@ where
         })),
       })
     }
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "full"))]
     ConnectArgs {
       transport,
       transport_args: ArgsEnum::Unix(args),
@@ -378,11 +410,13 @@ impl Resource for TcpListenerResource {
   }
 }
 
+#[cfg(feature = "full")]
 struct UdpSocketResource {
   socket: AsyncRefCell<UdpSocket>,
   cancel: CancelHandle,
 }
 
+#[cfg(feature = "full")]
 impl Resource for UdpSocketResource {
   fn name(&self) -> Cow<str> {
     "udpSocket".into()
@@ -403,10 +437,11 @@ struct IpListenArgs {
 #[serde(untagged)]
 enum ArgsEnum {
   Ip(IpListenArgs),
-  #[cfg(unix)]
+  #[cfg(all(unix, feature = "full"))]
   Unix(net_unix::UnixListenArgs),
 }
 
+#[cfg(feature = "full")]
 #[derive(Deserialize)]
 struct ListenArgs {
   transport: String,
@@ -414,6 +449,7 @@ struct ListenArgs {
   transport_args: ArgsEnum,
 }
 
+#[cfg(feature = "full")]
 fn listen_tcp(
   state: &mut OpState,
   addr: SocketAddr,
@@ -431,6 +467,7 @@ fn listen_tcp(
   Ok((rid, local_addr))
 }
 
+#[cfg(feature = "full")]
 fn listen_udp(
   state: &mut OpState,
   addr: SocketAddr,
@@ -448,6 +485,7 @@ fn listen_udp(
   Ok((rid, local_addr))
 }
 
+#[cfg(feature = "full")]
 fn op_listen<NP>(
   state: &mut OpState,
   args: ListenArgs,
@@ -472,10 +510,11 @@ where
       let addr = resolve_addr_sync(&args.hostname, args.port)?
         .next()
         .ok_or_else(|| generic_error("No resolved address found"))?;
-      let (rid, local_addr) = if transport == "tcp" {
-        listen_tcp(state, addr)?
-      } else {
-        listen_udp(state, addr)?
+      let (rid, local_addr) = match transport.as_str() {
+        "tcp" => listen_tcp(state, addr)?,
+        #[cfg(feature = "full")]
+        "udp" => listen_udp(state, addr)?,
+        _ => return Err(bad_transport(&transport)),
       };
       debug!(
         "New listener {} {}:{}",
@@ -492,17 +531,16 @@ where
         local_addr: Some(match transport.as_str() {
           "udp" => OpAddr::Udp(ip_addr),
           "tcp" => OpAddr::Tcp(ip_addr),
-          // NOTE: This could be unreachable!()
-          other => return Err(bad_transport(other)),
+          _ => unreachable!(),
         }),
         remote_addr: None,
       })
     }
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "full"))]
     ListenArgs {
       transport,
       transport_args: ArgsEnum::Unix(args),
-    } if transport == "unix" || transport == "unixpacket" => {
+    } => {
       let address_path = Path::new(&args.path);
       {
         if transport == "unix" {
@@ -515,10 +553,10 @@ where
         permissions.check_read(&address_path)?;
         permissions.check_write(&address_path)?;
       }
-      let (rid, local_addr) = if transport == "unix" {
-        net_unix::listen_unix(state, &address_path)?
-      } else {
-        net_unix::listen_unix_packet(state, &address_path)?
+      let (rid, local_addr) = match transport.as_str() {
+        "unix" => net_unix::listen_unix(state, &address_path)?,
+        "unixpacket" => net_unix::listen_unix_packet(state, &address_path)?,
+        _ => return Err(bad_transport(&transport)),
       };
       debug!(
         "New listener {} {}",
@@ -534,16 +572,15 @@ where
         local_addr: Some(match transport.as_str() {
           "unix" => OpAddr::Unix(unix_addr),
           "unixpacket" => OpAddr::UnixPacket(unix_addr),
-          other => return Err(bad_transport(other)),
+          _ => unreachable!(),
         }),
         remote_addr: None,
       })
     }
-    #[cfg(unix)]
-    _ => Err(type_error("Wrong argument format!")),
   }
 }
 
+#[cfg(feature = "full")]
 #[derive(Serialize, PartialEq, Debug)]
 #[serde(untagged)]
 enum DnsReturnRecord {
@@ -565,6 +602,7 @@ enum DnsReturnRecord {
   Txt(Vec<String>),
 }
 
+#[cfg(feature = "full")]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolveAddrArgs {
@@ -573,16 +611,19 @@ pub struct ResolveAddrArgs {
   options: Option<ResolveDnsOption>,
 }
 
+#[cfg(feature = "full")]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolveDnsOption {
   name_server: Option<NameServer>,
 }
 
+#[cfg(feature = "full")]
 fn default_port() -> u16 {
   53
 }
 
+#[cfg(feature = "full")]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NameServer {
@@ -591,6 +632,7 @@ pub struct NameServer {
   port: u16,
 }
 
+#[cfg(feature = "full")]
 async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,
   args: ResolveAddrArgs,
@@ -647,6 +689,7 @@ where
   Ok(results)
 }
 
+#[cfg(feature = "full")]
 fn rdata_to_return_record(
   ty: RecordType,
 ) -> impl Fn(&RData) -> Option<DnsReturnRecord> {
@@ -696,6 +739,7 @@ fn rdata_to_return_record(
   }
 }
 
+#[cfg(feature = "full")]
 #[cfg(test)]
 mod tests {
   use super::*;

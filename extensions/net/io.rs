@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::ops_tls as tls;
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::error::{bad_resource_id, not_supported};
@@ -24,7 +23,9 @@ use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::net::tcp;
 
-#[cfg(unix)]
+#[cfg(feature = "full")]
+use crate::ops_tls as tls;
+#[cfg(all(unix, feature = "full"))]
 use tokio::net::unix;
 
 pub fn init() -> Vec<OpPair> {
@@ -115,8 +116,10 @@ impl Resource for TcpStreamResource {
   }
 }
 
+#[cfg(feature = "full")]
 pub type TlsStreamResource = FullDuplexResource<tls::ReadHalf, tls::WriteHalf>;
 
+#[cfg(feature = "full")]
 impl Resource for TlsStreamResource {
   fn name(&self) -> Cow<str> {
     "tlsStream".into()
@@ -127,32 +130,11 @@ impl Resource for TlsStreamResource {
   }
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, feature = "full"))]
 pub type UnixStreamResource =
   FullDuplexResource<unix::OwnedReadHalf, unix::OwnedWriteHalf>;
 
-#[cfg(not(unix))]
-pub struct UnixStreamResource;
-
-#[cfg(not(unix))]
-impl UnixStreamResource {
-  pub async fn read(
-    self: &Rc<Self>,
-    _buf: &mut [u8],
-  ) -> Result<usize, AnyError> {
-    unreachable!()
-  }
-  pub async fn write(self: &Rc<Self>, _buf: &[u8]) -> Result<usize, AnyError> {
-    unreachable!()
-  }
-  pub async fn shutdown(self: &Rc<Self>) -> Result<(), AnyError> {
-    unreachable!()
-  }
-  pub fn cancel_read_ops(&self) {
-    unreachable!()
-  }
-}
-
+#[cfg(all(unix, feature = "full"))]
 impl Resource for UnixStreamResource {
   fn name(&self) -> Cow<str> {
     "unixStream".into()
@@ -174,11 +156,15 @@ async fn op_read_async(
     .resource_table
     .get_any(rid)
     .ok_or_else(bad_resource_id)?;
+  #[cfg(all(unix, feature = "full"))]
+  if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
+    return Ok(s.read(buf).await? as u32);
+  };
+  #[cfg(feature = "full")]
+  if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
+    return Ok(s.read(buf).await? as u32);
+  };
   let nread = if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
-    s.read(buf).await?
-  } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
-    s.read(buf).await?
-  } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
     s.read(buf).await?
   } else {
     return Err(not_supported());
@@ -197,11 +183,15 @@ async fn op_write_async(
     .resource_table
     .get_any(rid)
     .ok_or_else(bad_resource_id)?;
+  #[cfg(all(unix, feature = "full"))]
+  if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
+    return Ok(s.write(buf).await? as u32);
+  }
+  #[cfg(feature = "full")]
+  if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
+    return Ok(s.write(buf).await? as u32);
+  }
   let nwritten = if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
-    s.write(buf).await?
-  } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
-    s.write(buf).await?
-  } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
     s.write(buf).await?
   } else {
     return Err(not_supported());
@@ -219,11 +209,17 @@ async fn op_shutdown(
     .resource_table
     .get_any(rid)
     .ok_or_else(bad_resource_id)?;
+  #[cfg(all(unix, feature = "full"))]
+  if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
+    s.shutdown().await?;
+    return Ok(());
+  }
+  #[cfg(feature = "full")]
+  if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
+    s.shutdown().await?;
+    return Ok(());
+  }
   if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
-    s.shutdown().await?;
-  } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
-    s.shutdown().await?;
-  } else if let Some(s) = resource.downcast_rc::<UnixStreamResource>() {
     s.shutdown().await?;
   } else {
     return Err(not_supported());

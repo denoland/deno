@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_net"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2018"
 description = "Networking for Deno"
 authors = ["the Deno authors"]
@@ -12,6 +12,10 @@ repository = "https://github.com/denoland/deno"
 
 [lib]
 path = "lib.rs"
+
+[features]
+default = ["full"]
+full = [] # This feature enables DNS, UDP, Unix sockets and various other unstable APIs.
 
 [dependencies]
 deno_core = { version = "0.92.0", path = "../../core" }

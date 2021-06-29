@@ -3,8 +3,9 @@
 pub mod io;
 pub mod ops;
 pub mod ops_http;
+#[cfg(feature = "full")]
 pub mod ops_tls;
-#[cfg(unix)]
+#[cfg(all(unix, feature = "full"))]
 pub mod ops_unix;
 pub mod resolve_addr;
 
@@ -93,6 +94,7 @@ pub fn init<P: NetPermissions + 'static>(unstable: bool) -> Extension {
   let mut ops_to_register = vec![];
   ops_to_register.extend(io::init());
   ops_to_register.extend(ops::init::<P>());
+  #[cfg(feature = "full")]
   ops_to_register.extend(ops_tls::init::<P>());
   ops_to_register.extend(ops_http::init());
 

@@ -1,7 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::io::TcpStreamResource;
+#[cfg(feature = "full")]
 use crate::io::TlsStreamResource;
+#[cfg(feature = "full")]
 use crate::ops_tls::TlsStream;
 use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
@@ -99,6 +101,7 @@ impl HyperService<Request<Body>> for Service {
 
 enum ConnType {
   Tcp(Rc<RefCell<Connection<TcpStream, Service, LocalExecutor>>>),
+  #[cfg(feature = "full")]
   Tls(Rc<RefCell<Connection<TlsStream, Service, LocalExecutor>>>),
 }
 
@@ -114,6 +117,7 @@ impl ConnResource {
   fn poll(&self, cx: &mut Context<'_>) -> Poll<Result<(), AnyError>> {
     match &self.hyper_connection {
       ConnType::Tcp(c) => c.borrow_mut().poll_unpin(cx),
+      #[cfg(feature = "full")]
       ConnType::Tls(c) => c.borrow_mut().poll_unpin(cx),
     }
     .map_err(AnyError::from)
@@ -210,6 +214,7 @@ async fn op_http_request_next(
         let scheme = {
           match conn_resource.hyper_connection {
             ConnType::Tcp(_) => "http",
+            #[cfg(feature = "full")]
             ConnType::Tls(_) => "https",
           }
         };
@@ -314,6 +319,7 @@ fn op_http_start(
     return Ok(rid);
   }
 
+  #[cfg(feature = "full")]
   if let Some(resource_rc) = state
     .resource_table
     .take::<TlsStreamResource>(tcp_stream_rid)
