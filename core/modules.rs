@@ -17,6 +17,7 @@ use log::debug;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::convert::TryFrom;
 use std::future::Future;
 use std::pin::Pin;
@@ -185,9 +186,6 @@ impl ModuleLoader for FsModuleLoader {
 enum LoadInit {
   /// Main module specifier.
   Main(String),
-  /// Main module specifier with synthetic code for that module which bypasses
-  /// the loader.
-  MainWithCode(String, String),
   /// Dynamic import specifier with referrer.
   DynamicImport(String, String),
 }
@@ -202,83 +200,94 @@ pub enum LoadState {
 
 /// This future is used to implement parallel async module loading.
 pub struct RecursiveModuleLoad {
-  op_state: Rc<RefCell<OpState>>,
   init: LoadInit,
   // TODO(bartlomieju): in future this value should
   // be randomized
   pub id: ModuleLoadId,
   pub root_module_id: Option<ModuleId>,
   pub state: LoadState,
+  pub module_map_rc: Rc<RefCell<ModuleMap>>,
+  // These two fields are copied from `module_map_rc`, but they are cloned ahead
+  // of time to avoid already-borrowed errors.
+  pub op_state: Rc<RefCell<OpState>>,
   pub loader: Rc<dyn ModuleLoader>,
   pub pending: FuturesUnordered<Pin<Box<ModuleSourceFuture>>>,
-  pub is_pending: HashSet<ModuleSpecifier>,
+  pub visited: HashSet<ModuleSpecifier>,
 }
 
 impl RecursiveModuleLoad {
   /// Starts a new parallel load of the given URL of the main module.
-  pub fn main(
-    op_state: Rc<RefCell<OpState>>,
-    specifier: &str,
-    code: Option<String>,
-    loader: Rc<dyn ModuleLoader>,
-  ) -> Self {
-    let init = if let Some(code) = code {
-      LoadInit::MainWithCode(specifier.to_string(), code)
-    } else {
-      LoadInit::Main(specifier.to_string())
-    };
-    Self::new(op_state, init, loader)
+  pub fn main(specifier: &str, module_map_rc: Rc<RefCell<ModuleMap>>) -> Self {
+    Self::new(LoadInit::Main(specifier.to_string()), module_map_rc)
   }
 
   pub fn dynamic_import(
-    op_state: Rc<RefCell<OpState>>,
     specifier: &str,
     referrer: &str,
-    loader: Rc<dyn ModuleLoader>,
+    module_map_rc: Rc<RefCell<ModuleMap>>,
   ) -> Self {
     let init =
       LoadInit::DynamicImport(specifier.to_string(), referrer.to_string());
-    Self::new(op_state, init, loader)
+    Self::new(init, module_map_rc)
   }
 
   pub fn is_dynamic_import(&self) -> bool {
     matches!(self.init, LoadInit::DynamicImport(..))
   }
 
-  fn new(
-    op_state: Rc<RefCell<OpState>>,
-    init: LoadInit,
-    loader: Rc<dyn ModuleLoader>,
-  ) -> Self {
-    Self {
+  fn new(init: LoadInit, module_map_rc: Rc<RefCell<ModuleMap>>) -> Self {
+    let op_state = module_map_rc.borrow().op_state.clone();
+    let loader = module_map_rc.borrow().loader.clone();
+    let mut load = Self {
       id: NEXT_LOAD_ID.fetch_add(1, Ordering::SeqCst),
       root_module_id: None,
-      op_state,
       init,
       state: LoadState::Init,
+      module_map_rc: module_map_rc.clone(),
+      op_state,
       loader,
       pending: FuturesUnordered::new(),
-      is_pending: HashSet::new(),
+      visited: HashSet::new(),
+    };
+    // Ignore the error here, let it be hit in `Stream::poll_next()`.
+    if let Ok(root_specifier) = load.resolve_root() {
+      if let Some(module_id) =
+        module_map_rc.borrow().get_id(root_specifier.as_str())
+      {
+        load.root_module_id = Some(module_id);
+      }
+    }
+    load
+  }
+
+  pub fn resolve_root(&self) -> Result<ModuleSpecifier, AnyError> {
+    match self.init {
+      LoadInit::Main(ref specifier) => {
+        self
+          .loader
+          .resolve(self.op_state.clone(), specifier, ".", true)
+      }
+      LoadInit::DynamicImport(ref specifier, ref referrer) => self
+        .loader
+        .resolve(self.op_state.clone(), specifier, referrer, false),
     }
   }
 
   pub async fn prepare(&self) -> Result<(), AnyError> {
+    let op_state = self.op_state.clone();
     let (module_specifier, maybe_referrer) = match self.init {
-      LoadInit::Main(ref specifier)
-      | LoadInit::MainWithCode(ref specifier, _) => {
+      LoadInit::Main(ref specifier) => {
         let spec =
           self
             .loader
-            .resolve(self.op_state.clone(), specifier, ".", true)?;
+            .resolve(op_state.clone(), specifier, ".", true)?;
         (spec, None)
       }
       LoadInit::DynamicImport(ref specifier, ref referrer) => {
-        let spec = self.loader.resolve(
-          self.op_state.clone(),
-          specifier,
-          referrer,
-          false,
-        )?;
+        let spec =
+          self
+            .loader
+            .resolve(op_state.clone(), specifier, referrer, false)?;
         (spec, Some(referrer.to_string()))
       }
     };
@@ -286,7 +295,7 @@ impl RecursiveModuleLoad {
     self
       .loader
       .prepare_load(
-        self.op_state.clone(),
+        op_state,
         self.id,
         &module_specifier,
         maybe_referrer,
@@ -299,39 +308,89 @@ impl RecursiveModuleLoad {
     !self.is_dynamic_import() && self.state == LoadState::LoadingRoot
   }
 
-  pub fn module_registered(&mut self, module_id: ModuleId) {
-    // If we just finished loading the root module, store the root module id.
+  pub fn register_and_recurse(
+    &mut self,
+    scope: &mut v8::HandleScope,
+    module_source: &ModuleSource,
+  ) -> Result<(), AnyError> {
+    // Register the module in the module map unless it's already there. If the
+    // specified URL and the "true" URL are different, register the alias.
+    if module_source.module_url_specified != module_source.module_url_found {
+      self.module_map_rc.borrow_mut().alias(
+        &module_source.module_url_specified,
+        &module_source.module_url_found,
+      );
+    }
+    let maybe_module_id = self
+      .module_map_rc
+      .borrow()
+      .get_id(&module_source.module_url_found);
+    let module_id = match maybe_module_id {
+      Some(id) => {
+        debug!(
+          "Already-registered module fetched again: {}",
+          module_source.module_url_found
+        );
+        id
+      }
+      None => self.module_map_rc.borrow_mut().new_module(
+        scope,
+        self.is_currently_loading_main_module(),
+        &module_source.module_url_found,
+        &module_source.code,
+      )?,
+    };
+
+    // Recurse the module's imports. There are two cases for each import:
+    // 1. If the module is not in the module map, start a new load for it in
+    //    `self.pending`. The result of that load should eventually be passed to
+    //    this function for recursion.
+    // 2. If the module is already in the module map, queue it up to be
+    //    recursed synchronously here.
+    // This robustly ensures that the whole graph is in the module map before
+    // `LoadState::Done` is set.
+    let specifier =
+      crate::resolve_url(&module_source.module_url_found).unwrap();
+    let mut already_registered = VecDeque::new();
+    already_registered.push_back((module_id, specifier.clone()));
+    self.visited.insert(specifier);
+    while let Some((module_id, referrer)) = already_registered.pop_front() {
+      let imports = self
+        .module_map_rc
+        .borrow()
+        .get_children(module_id)
+        .unwrap()
+        .clone();
+      for specifier in imports {
+        if !self.visited.contains(&specifier) {
+          if let Some(module_id) =
+            self.module_map_rc.borrow().get_id(specifier.as_str())
+          {
+            already_registered.push_back((module_id, specifier.clone()));
+          } else {
+            let fut = self.loader.load(
+              self.op_state.clone(),
+              &specifier,
+              Some(referrer.clone()),
+              self.is_dynamic_import(),
+            );
+            self.pending.push(fut.boxed_local());
+          }
+          self.visited.insert(specifier);
+        }
+      }
+    }
+
+    // Update `self.state` however applicable.
     if self.state == LoadState::LoadingRoot {
       self.root_module_id = Some(module_id);
       self.state = LoadState::LoadingImports;
     }
-
     if self.pending.is_empty() {
       self.state = LoadState::Done;
     }
-  }
 
-  /// Return root `ModuleId`; this function panics
-  /// if load is not finished yet.
-  pub fn expect_finished(&self) -> ModuleId {
-    self.root_module_id.expect("Root module id empty")
-  }
-
-  pub fn add_import(
-    &mut self,
-    specifier: ModuleSpecifier,
-    referrer: ModuleSpecifier,
-  ) {
-    if !self.is_pending.contains(&specifier) {
-      let fut = self.loader.load(
-        self.op_state.clone(),
-        &specifier,
-        Some(referrer),
-        self.is_dynamic_import(),
-      );
-      self.pending.push(fut.boxed_local());
-      self.is_pending.insert(specifier);
-    }
+    Ok(())
   }
 }
 
@@ -343,36 +402,45 @@ impl Stream for RecursiveModuleLoad {
     cx: &mut Context,
   ) -> Poll<Option<Self::Item>> {
     let inner = self.get_mut();
+    // IMPORTANT: Do not borrow `inner.module_map_rc` here. It may not be
+    // available.
     match inner.state {
       LoadState::Init => {
-        let resolve_result = match inner.init {
-          LoadInit::Main(ref specifier)
-          | LoadInit::MainWithCode(ref specifier, _) => {
-            inner
-              .loader
-              .resolve(inner.op_state.clone(), specifier, ".", true)
-          }
-          LoadInit::DynamicImport(ref specifier, ref referrer) => inner
-            .loader
-            .resolve(inner.op_state.clone(), specifier, referrer, false),
-        };
-        let module_specifier = match resolve_result {
+        let module_specifier = match inner.resolve_root() {
           Ok(url) => url,
           Err(error) => return Poll::Ready(Some(Err(error))),
         };
-        let load_fut = match inner.init {
-          LoadInit::MainWithCode(_, ref code) => {
-            futures::future::ok(ModuleSource {
-              code: code.clone(),
-              module_url_specified: module_specifier.to_string(),
-              module_url_found: module_specifier.to_string(),
-            })
-            .boxed()
-          }
-          LoadInit::Main(..) | LoadInit::DynamicImport(..) => inner
+        let load_fut = if let Some(_module_id) = inner.root_module_id {
+          // The root module is already in the module map.
+          // TODO(nayeemrmn): In this case we would ideally skip to
+          // `LoadState::LoadingImports` and synchronously recurse the imports
+          // like the bottom of `RecursiveModuleLoad::register_and_recurse()`.
+          // But the module map cannot be borrowed here. Instead fake a load
+          // event so it gets passed to that function and recursed eventually.
+          futures::future::ok(ModuleSource {
+            module_url_specified: module_specifier.to_string(),
+            module_url_found: module_specifier.to_string(),
+            // The code will be discarded, since this module is already in the
+            // module map.
+            code: Default::default(),
+          })
+          .boxed()
+        } else {
+          let maybe_referrer = match inner.init {
+            LoadInit::DynamicImport(_, ref referrer) => {
+              crate::resolve_url(referrer).ok()
+            }
+            _ => None,
+          };
+          inner
             .loader
-            .load(inner.op_state.clone(), &module_specifier, None, false)
-            .boxed_local(),
+            .load(
+              inner.op_state.clone(),
+              &module_specifier,
+              maybe_referrer,
+              inner.is_dynamic_import(),
+            )
+            .boxed_local()
         };
         inner.pending.push(load_fut);
         inner.state = LoadState::LoadingRoot;
@@ -528,69 +596,6 @@ impl ModuleMap {
     Ok(id)
   }
 
-  pub fn register_during_load(
-    &mut self,
-    scope: &mut v8::HandleScope,
-    module_source: ModuleSource,
-    load: &mut RecursiveModuleLoad,
-  ) -> Result<(), AnyError> {
-    let referrer_specifier =
-      crate::resolve_url(&module_source.module_url_found).unwrap();
-
-    // #A There are 3 cases to handle at this moment:
-    // 1. Source code resolved result have the same module name as requested
-    //    and is not yet registered
-    //     -> register
-    // 2. Source code resolved result have a different name as requested:
-    //   2a. The module with resolved module name has been registered
-    //     -> alias
-    //   2b. The module with resolved module name has not yet been registered
-    //     -> register & alias
-
-    // If necessary, register an alias.
-    if module_source.module_url_specified != module_source.module_url_found {
-      self.alias(
-        &module_source.module_url_specified,
-        &module_source.module_url_found,
-      );
-    }
-
-    let maybe_mod_id = self.get_id(&module_source.module_url_found);
-
-    let module_id = match maybe_mod_id {
-      Some(id) => {
-        // Module has already been registered.
-        debug!(
-          "Already-registered module fetched again: {}",
-          module_source.module_url_found
-        );
-        id
-      }
-      // Module not registered yet, do it now.
-      None => self.new_module(
-        scope,
-        load.is_currently_loading_main_module(),
-        &module_source.module_url_found,
-        &module_source.code,
-      )?,
-    };
-
-    // Now we must iterate over all imports of the module and load them.
-    let imports = self.get_children(module_id).unwrap().clone();
-
-    for module_specifier in imports {
-      let is_registered = self.is_registered(&module_specifier);
-      if !is_registered {
-        load
-          .add_import(module_specifier.to_owned(), referrer_specifier.clone());
-      }
-    }
-
-    load.module_registered(module_id);
-
-    Ok(())
-  }
-
   pub fn get_children(&self, id: ModuleId) -> Option<&Vec<ModuleSpecifier>> {
     self.info.get(&id).map(|i| &i.import_specifiers)
   }
@@ -631,41 +636,39 @@ impl ModuleMap {
   }
 
   pub async fn load_main(
-    &self,
+    module_map_rc: Rc<RefCell<ModuleMap>>,
     specifier: &str,
-    code: Option<String>,
   ) -> Result<RecursiveModuleLoad, AnyError> {
-    let load = RecursiveModuleLoad::main(
-      self.op_state.clone(),
-      specifier,
-      code,
-      self.loader.clone(),
-    );
+    let load = RecursiveModuleLoad::main(specifier, module_map_rc.clone());
     load.prepare().await?;
     Ok(load)
   }
 
   // Initiate loading of a module graph imported using `import()`.
   pub fn load_dynamic_import(
-    &mut self,
+    module_map_rc: Rc<RefCell<ModuleMap>>,
     specifier: &str,
     referrer: &str,
     resolver_handle: v8::Global<v8::PromiseResolver>,
   ) {
     let load = RecursiveModuleLoad::dynamic_import(
-      self.op_state.clone(),
       specifier,
       referrer,
-      self.loader.clone(),
+      module_map_rc.clone(),
     );
-    self.dynamic_import_map.insert(load.id, resolver_handle);
-    let resolve_result =
-      load
-        .loader
-        .resolve(load.op_state.clone(), specifier, referrer, false);
+    module_map_rc
+      .borrow_mut()
+      .dynamic_import_map
+      .insert(load.id, resolver_handle);
+    let resolve_result = module_map_rc.borrow().loader.resolve(
+      module_map_rc.borrow().op_state.clone(),
+      specifier,
+      referrer,
+      false,
+    );
     let fut = match resolve_result {
       Ok(module_specifier) => {
-        if self.is_registered(&module_specifier) {
+        if module_map_rc.borrow().is_registered(&module_specifier) {
           async move { (load.id, Ok(load)) }.boxed_local()
         } else {
           async move { (load.id, load.prepare().await.map(|()| load)) }
@@ -674,7 +677,10 @@ impl ModuleMap {
       }
       Err(error) => async move { (load.id, Err(error)) }.boxed_local(),
     };
-    self.preparing_dynamic_imports.push(fut);
+    module_map_rc
+      .borrow_mut()
+      .preparing_dynamic_imports
+      .push(fut);
   }
 
   pub fn has_pending_dynamic_imports(&self) -> bool {
@@ -717,6 +723,7 @@ mod tests {
   use std::fmt;
   use std::future::Future;
   use std::io;
+  use std::path::PathBuf;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Arc;
   use std::sync::Mutex;
@@ -1131,7 +1138,7 @@ mod tests {
       if let Poll::Ready(Ok(_)) = result {
         unreachable!();
       }
-      assert_eq!(count.load(Ordering::Relaxed), 3);
+      assert_eq!(count.load(Ordering::Relaxed), 4);
     })
   }
 
@@ -1151,7 +1158,7 @@ mod tests {
       _is_main: bool,
     ) -> Result<ModuleSpecifier, AnyError> {
       let c = self.resolve_count.fetch_add(1, Ordering::Relaxed);
-      assert!(c < 5);
+      assert!(c < 7);
       assert_eq!(specifier, "./b.js");
       assert_eq!(referrer, "file:///dyn_import3.js");
       let s = crate::resolve_import(specifier, referrer).unwrap();
@@ -1228,14 +1235,14 @@ mod tests {
         runtime.poll_event_loop(cx, false),
         Poll::Ready(Ok(_))
       ));
-      assert_eq!(resolve_count.load(Ordering::Relaxed), 5);
-      assert_eq!(load_count.load(Ordering::Relaxed), 2);
+      assert_eq!(resolve_count.load(Ordering::Relaxed), 7);
+      assert_eq!(load_count.load(Ordering::Relaxed), 1);
       assert!(matches!(
         runtime.poll_event_loop(cx, false),
         Poll::Ready(Ok(_))
       ));
-      assert_eq!(resolve_count.load(Ordering::Relaxed), 5);
-      assert_eq!(load_count.load(Ordering::Relaxed), 2);
+      assert_eq!(resolve_count.load(Ordering::Relaxed), 7);
+      assert_eq!(load_count.load(Ordering::Relaxed), 1);
     })
   }
 
@@ -1269,6 +1276,80 @@ mod tests {
       // Second poll triggers error
       let _ = runtime.poll_event_loop(cx, false);
     })
+  }
+
+  // Regression test for https://github.com/denoland/deno/issues/3736.
+  #[test]
+  fn dyn_concurrent_circular_import() {
+    #[derive(Clone, Default)]
+    struct DynImportCircularLoader {
+      pub resolve_count: Arc<AtomicUsize>,
+      pub load_count: Arc<AtomicUsize>,
+    }
+
+    impl ModuleLoader for DynImportCircularLoader {
+      fn resolve(
+        &self,
+        _op_state: Rc<RefCell<OpState>>,
+        specifier: &str,
+        referrer: &str,
+        _is_main: bool,
+      ) -> Result<ModuleSpecifier, AnyError> {
+        self.resolve_count.fetch_add(1, Ordering::Relaxed);
+        let s = crate::resolve_import(specifier, referrer).unwrap();
+        Ok(s)
+      }
+
+      fn load(
+        &self,
+        _op_state: Rc<RefCell<OpState>>,
+        specifier: &ModuleSpecifier,
+        maybe_referrer: Option<ModuleSpecifier>,
+        _is_dyn_import: bool,
+      ) -> Pin<Box<ModuleSourceFuture>> {
+        self.load_count.fetch_add(1, Ordering::Relaxed);
+        let filename = PathBuf::from(specifier.to_string())
+          .file_name()
+          .unwrap()
+          .to_string_lossy()
+          .to_string();
+        eprintln!("{} from {:?}", filename.as_str(), maybe_referrer);
+        let code = match filename.as_str() {
+          "a.js" => "import './b.js';",
+          "b.js" => "import './c.js';\nimport './a.js';",
+          "c.js" => "import './d.js';",
+          "d.js" => "// pass",
+          _ => unreachable!(),
+        };
+        let info = ModuleSource {
+          module_url_specified: specifier.to_string(),
+          module_url_found: specifier.to_string(),
+          code: code.to_owned(),
+        };
+        async move { Ok(info) }.boxed()
+      }
+    }
+
+    let loader = Rc::new(DynImportCircularLoader::default());
+    let resolve_count = loader.resolve_count.clone();
+    let load_count = loader.load_count.clone();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+
+    runtime
+      .execute_script(
+        "file:///entry.js",
+        "import('./b.js');\nimport('./a.js');",
+      )
+      .unwrap();
+
+    let result = futures::executor::block_on(runtime.run_event_loop(false));
+    eprintln!("result {:?}", result);
+    assert!(result.is_ok());
+    eprintln!("{}", resolve_count.load(Ordering::Relaxed));
+    eprintln!("{}", load_count.load(Ordering::Relaxed));
   }
 
   #[test]

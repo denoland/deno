@@ -1094,11 +1094,7 @@ impl JsRuntime {
               // fetched. Create and register it, and if successful, poll for the
               // next recursive-load event related to this dynamic import.
               let register_result =
-                module_map_rc.borrow_mut().register_during_load(
-                  &mut self.handle_scope(),
-                  info,
-                  &mut load,
-                );
+                load.register_and_recurse(&mut self.handle_scope(), &info);
 
               match register_result {
                 Ok(()) => {
@@ -1121,7 +1117,8 @@ impl JsRuntime {
         } else {
           // The top-level module from a dynamic import has been instantiated.
           // Load is done.
-          let module_id = load.expect_finished();
+          let module_id =
+            load.root_module_id.expect("Root module should be loaded");
           let result = self.instantiate_module(module_id);
           if let Err(err) = result {
             self.dynamic_import_reject(dyn_import_id, err);
@@ -1257,21 +1254,25 @@ impl JsRuntime {
     code: Option<String>,
   ) -> Result<ModuleId, AnyError> {
     let module_map_rc = Self::module_map(self.v8_isolate());
+    if let Some(code) = code {
+      module_map_rc.borrow_mut().new_module(
+        &mut self.handle_scope(),
+        true,
+        specifier.as_str(),
+        &code,
+      )?;
+    }
 
-    let mut load = module_map_rc
-      .borrow()
-      .load_main(specifier.as_str(), code)
-      .await?;
+    let mut load =
+      ModuleMap::load_main(module_map_rc.clone(), specifier.as_str()).await?;
 
     while let Some(info_result) = load.next().await {
       let info = info_result?;
       let scope = &mut self.handle_scope();
-      module_map_rc
-        .borrow_mut()
-        .register_during_load(scope, info, &mut load)?;
+      load.register_and_recurse(scope, &info)?;
     }
 
-    let root_id = load.expect_finished();
+    let root_id = load.root_module_id.expect("Root module should be loaded");
     self.instantiate_module(root_id)?;
     Ok(root_id)
   }
