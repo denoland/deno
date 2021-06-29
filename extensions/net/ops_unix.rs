@@ -1,12 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use super::utils::into_string;
-use crate::ops::io::UnixStreamResource;
-use crate::ops::net::AcceptArgs;
-use crate::ops::net::OpAddr;
-use crate::ops::net::OpConn;
-use crate::ops::net::OpPacket;
-use crate::ops::net::ReceiveArgs;
+use crate::io::UnixStreamResource;
+use crate::ops::AcceptArgs;
+use crate::ops::OpAddr;
+use crate::ops::OpConn;
+use crate::ops::OpPacket;
+use crate::ops::ReceiveArgs;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::null_opbuf;
@@ -28,6 +27,14 @@ use std::rc::Rc;
 use tokio::net::UnixDatagram;
 use tokio::net::UnixListener;
 pub use tokio::net::UnixStream;
+
+/// A utility function to map OsStrings to Strings
+pub fn into_string(s: std::ffi::OsString) -> Result<String, AnyError> {
+  s.into_string().map_err(|s| {
+    let message = format!("File name or path {:?} is not valid UTF-8", s);
+    custom_error("InvalidData", message)
+  })
+}
 
 struct UnixListenerResource {
   listener: AsyncRefCell<UnixListener>,

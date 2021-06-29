@@ -4,14 +4,9 @@ import {
   assertEquals,
   assertThrows,
   deferred,
+  delay,
   unitTest,
 } from "./test_util.ts";
-
-function defer(n: number): Promise<void> {
-  return new Promise((resolve: () => void, _) => {
-    setTimeout(resolve, n);
-  });
-}
 
 unitTest(
   { ignore: Deno.build.os !== "windows" },
@@ -113,11 +108,11 @@ unitTest(
     let c = 0;
     const sig = Deno.signal(Deno.Signal.SIGUSR1);
     setTimeout(async () => {
-      await defer(20);
+      await delay(20);
       for (const _ of Array(3)) {
         // Sends SIGUSR1 3 times.
         Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
-        await defer(20);
+        await delay(20);
       }
       sig.dispose();
       resolvable.resolve();
@@ -131,6 +126,24 @@ unitTest(
 
     clearInterval(t);
     await resolvable;
+  },
+);
+
+// This tests that pending op_signal_poll doesn't block the runtime from exiting the process.
+unitTest(
+  { ignore: Deno.build.os === "windows", perms: { run: true, read: true } },
+  async function signalStreamExitTest(): Promise<void> {
+    const p = Deno.run({
+      cmd: [
+        Deno.execPath(),
+        "eval",
+        "--unstable",
+        "(async () => { for await (const _ of Deno.signals.io()) {} })()",
+      ],
+    });
+    const res = await p.status();
+    assertEquals(res.code, 0);
+    p.close();
   },
 );
 

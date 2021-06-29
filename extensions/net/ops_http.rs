@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::ops::io::TcpStreamResource;
-use crate::ops::io::TlsStreamResource;
-use crate::ops::tls::TlsStream;
+use crate::io::TcpStreamResource;
+use crate::io::TlsStreamResource;
+use crate::ops_tls::TlsStream;
 use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
@@ -14,9 +14,10 @@ use deno_core::futures::StreamExt;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::AsyncRefCell;
+use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::Extension;
+use deno_core::OpPair;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -45,17 +46,15 @@ use tokio::net::TcpStream;
 use tokio::sync::oneshot;
 use tokio_util::io::StreamReader;
 
-pub fn init() -> Extension {
-  Extension::builder()
-    .ops(vec![
-      ("op_http_start", op_sync(op_http_start)),
-      ("op_http_request_next", op_async(op_http_request_next)),
-      ("op_http_request_read", op_async(op_http_request_read)),
-      ("op_http_response", op_async(op_http_response)),
-      ("op_http_response_write", op_async(op_http_response_write)),
-      ("op_http_response_close", op_async(op_http_response_close)),
-    ])
-    .build()
+pub fn init() -> Vec<OpPair> {
+  vec![
+    ("op_http_start", op_sync(op_http_start)),
+    ("op_http_request_next", op_async(op_http_request_next)),
+    ("op_http_request_read", op_async(op_http_request_read)),
+    ("op_http_response", op_async(op_http_response)),
+    ("op_http_response_write", op_async(op_http_response_write)),
+    ("op_http_response_close", op_async(op_http_response_close)),
+  ]
 }
 
 struct ServiceInner {
@@ -140,9 +139,11 @@ struct NextRequestResponse(
   // response_sender_rid:
   ResourceId,
   // method:
+  // This is a String rather than a ByteString because reqwest will only return
+  // the method as a str which is guaranteed to be ASCII-only.
   String,
   // headers:
-  Vec<(String, String)>,
+  Vec<(ByteString, ByteString)>,
   // url:
   String,
 );
@@ -199,9 +200,10 @@ async fn op_http_request_next(
 
       let mut headers = Vec::with_capacity(req.headers().len());
       for (name, value) in req.headers().iter() {
-        let name = name.to_string();
-        let value = value.to_str().unwrap_or("").to_string();
-        headers.push((name, value));
+        let name: &[u8] = name.as_ref();
+        let value = value.as_bytes();
+        headers
+          .push((ByteString(name.to_owned()), ByteString(value.to_owned())));
       }
 
       let url = {
@@ -218,7 +220,7 @@ async fn op_http_request_next(
         } else {
           Cow::Owned(conn_resource.addr.to_string())
         };
-        let path = req.uri().path_and_query().unwrap();
+        let path = req.uri().path_and_query().map_or("/", |p| p.as_str());
         format!("{}://{}{}", scheme, host, path)
       };
 
@@ -346,7 +348,7 @@ struct RespondArgs(
   // status:
   u16,
   // headers:
-  Vec<(String, String)>,
+  Vec<(ByteString, ByteString)>,
 );
 
 async fn op_http_response(
@@ -375,7 +377,7 @@ async fn op_http_response(
 
   builder.headers_mut().unwrap().reserve(headers.len());
   for (key, value) in &headers {
-    builder = builder.header(key, value);
+    builder = builder.header(key.as_ref(), value.as_ref());
   }
 
   let res;

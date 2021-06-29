@@ -536,6 +536,7 @@ dependencies = [
  "deno_doc",
  "deno_fetch",
  "deno_lint",
+ "deno_net",
  "deno_runtime",
  "deno_timers",
  "deno_url",
@@ -621,7 +622,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.91.0"
+version = "0.92.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -703,16 +704,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_net"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "deno_core",
+ "http",
+ "hyper",
+ "lazy_static",
+ "log",
+ "rustls",
+ "serde",
+ "tokio",
+ "tokio-util",
+ "trust-dns-proto",
+ "trust-dns-resolver",
+ "webpki",
+ "webpki-roots",
+]
+
+[[package]]
 name = "deno_runtime"
 version = "0.18.0"
 dependencies = [
  "atty",
- "bytes",
  "deno_broadcast_channel",
  "deno_console",
  "deno_core",
  "deno_crypto",
  "deno_fetch",
+ "deno_net",
  "deno_timers",
  "deno_url",
  "deno_web",
@@ -735,18 +756,12 @@ dependencies = [
  "percent-encoding",
  "regex",
  "ring",
- "rustls",
  "serde",
  "sys-info",
  "termcolor",
  "test_util",
  "tokio",
- "tokio-util",
- "trust-dns-proto",
- "trust-dns-resolver",
  "uuid",
- "webpki",
- "webpki-roots",
  "winapi 0.3.9",
  "winres",
 ]
@@ -2760,9 +2775,9 @@ dependencies = [
 
 [[package]]
 name = "rusty_v8"
-version = "0.22.3"
+version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa03778bb7866d8320fc3dd5e6be52929dc10f729ae5e61ea2fbce385a4595d2"
+checksum = "5463232950a37ad7337422f362252ac4ea6db897fc0cb63c8acf0cb4e643898a"
 dependencies = [
  "bitflags",
  "fslock",
@@ -2921,9 +2936,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.4.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d1c602ced78c18b33338c832d79595e75ac6fd204d20fd4cc462ce5af29a75e"
+checksum = "6c9f378d38284155eb349b3230914b1151529e4679048430fd4aa3d27160b8f6"
 dependencies = [
  "rusty_v8",
  "serde",

@@ -5,9 +5,10 @@
   const { InnerBody } = window.__bootstrap.fetchBody;
   const { Response, fromInnerRequest, toInnerResponse, newInnerRequest } =
     window.__bootstrap.fetch;
-  const errors = window.__bootstrap.errors.errors;
   const core = window.Deno.core;
+  const { BadResource, Interrupted } = core;
   const { ReadableStream } = window.__bootstrap.streams;
+  const abortSignal = window.__bootstrap.abortSignal;
 
   function serveHttp(conn) {
     const rid = Deno.core.opSync("op_http_start", conn.rid);
@@ -41,9 +42,9 @@
         // a generic `BadResource` error. Instead store this error and replace
         // those with it.
         this[connErrorSymbol] = error;
-        if (error instanceof errors.BadResource) {
+        if (error instanceof BadResource) {
           return null;
-        } else if (error instanceof errors.Interrupted) {
+        } else if (error instanceof Interrupted) {
           return null;
         } else if (error.message.includes("connection closed")) {
           return null;
@@ -72,7 +73,8 @@
         headersList,
         body !== null ? new InnerBody(body) : null,
       );
-      const request = fromInnerRequest(innerRequest, null, "immutable");
+      const signal = abortSignal.newSignal();
+      const request = fromInnerRequest(innerRequest, signal, "immutable");
 
       const respondWith = createRespondWith(this, responseSenderRid);
 
@@ -157,7 +159,7 @@
         ], respBody instanceof Uint8Array ? respBody : null);
       } catch (error) {
         const connError = httpConn[connErrorSymbol];
-        if (error instanceof errors.BadResource && connError != null) {
+        if (error instanceof BadResource && connError != null) {
           // deno-lint-ignore no-ex-assign
           error = new connError.constructor(connError.message);
         }
@@ -190,7 +192,7 @@
               );
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
-              if (error instanceof errors.BadResource && connError != null) {
+              if (error instanceof BadResource && connError != null) {
                 // deno-lint-ignore no-ex-assign
                 error = new connError.constructor(connError.message);
               }

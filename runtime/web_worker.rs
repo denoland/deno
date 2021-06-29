@@ -330,13 +330,11 @@ impl WebWorker {
       vec![
         ops::fs_events::init(),
         ops::fs::init(),
-        ops::net::init(),
+        deno_net::init::<Permissions>(options.unstable),
         ops::os::init(),
-        ops::http::init(),
         ops::permissions::init(),
         ops::process::init(),
         ops::signal::init(),
-        ops::tls::init(),
         ops::tty::init(),
         ops::io::init_stdio(),
       ]

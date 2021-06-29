@@ -247,7 +247,7 @@ delete Object.prototype.__proto__;
       webidl.illegalConstructor();
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect({})}`;
     }
   }
@@ -270,7 +270,7 @@ delete Object.prototype.__proto__;
       webidl.illegalConstructor();
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect({})}`;
     }
   }
@@ -459,6 +459,10 @@ delete Object.prototype.__proto__;
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
+
+    const consoleFromV8 = window.console;
+    const wrapConsole = window.__bootstrap.console.wrapConsole;
+
     // Remove bootstrapping data from the global scope
     delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
@@ -467,6 +471,10 @@ delete Object.prototype.__proto__;
     Object.defineProperties(globalThis, windowOrWorkerGlobalScope);
     Object.defineProperties(globalThis, mainRuntimeGlobalProperties);
     Object.setPrototypeOf(globalThis, Window.prototype);
+
+    const consoleFromDeno = globalThis.console;
+    wrapConsole(consoleFromDeno, consoleFromV8);
+
     eventTarget.setEventTargetData(globalThis);
 
     defineEventHandler(window, "load", null);
@@ -539,6 +547,10 @@ delete Object.prototype.__proto__;
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
+
+    const consoleFromV8 = window.console;
+    const wrapConsole = window.__bootstrap.console.wrapConsole;
+
     // Remove bootstrapping data from the global scope
     delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
@@ -548,6 +560,10 @@ delete Object.prototype.__proto__;
     Object.defineProperties(globalThis, workerRuntimeGlobalProperties);
     Object.defineProperties(globalThis, { name: util.readOnly(name) });
     Object.setPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
+
+    const consoleFromDeno = globalThis.console;
+    wrapConsole(consoleFromDeno, consoleFromV8);
+
     eventTarget.setEventTargetData(globalThis);
 
     runtimeStart(

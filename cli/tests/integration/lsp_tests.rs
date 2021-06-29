@@ -172,6 +172,30 @@ fn lsp_tsconfig_types() {
 }
 
 #[test]
+fn lsp_tsconfig_bad_config_path() {
+  let mut client = init("initialize_params_bad_config_option.json");
+  let (method, maybe_params) = client.read_notification().unwrap();
+  assert_eq!(method, "window/showMessage");
+  assert_eq!(maybe_params, Some(lsp::ShowMessageParams {
+    typ: lsp::MessageType::Warning,
+    message: "The path to the configuration file (\"bad_tsconfig.json\") is not resolvable.".to_string()
+  }));
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "console.log(Deno.args);\n"
+      }
+    }),
+  );
+  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
+  assert_eq!(diagnostics.count(), 0);
+}
+
+#[test]
 fn lsp_triple_slash_types() {
   let mut params: lsp::InitializeParams =
     serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
@@ -724,6 +748,210 @@ fn lsp_hover_closed_document() {
     }))
   );
   shutdown(&mut client);
+}
+
+#[test]
+fn lsp_hover_dependency() {
+  let _g = http_server();
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file_01.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export const a = \"a\";\n",
+      }
+    }),
+  );
+  did_open(
+    &mut client,
+    load_fixture("did_open_params_import_hover.json"),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": "file:///a/file.ts",
+        },
+        "uris": [],
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "position": {
+          "line": 0,
+          "character": 28
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.js\n"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 20
+        },
+        "end":{
+          "line": 0,
+          "character": 61
+        }
+      }
+    }))
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "position": {
+          "line": 3,
+          "character": 28
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/cli/tests/subdir/type_reference.js\n"
+      },
+      "range": {
+        "start": {
+          "line": 3,
+          "character": 20
+        },
+        "end":{
+          "line": 3,
+          "character": 76
+        }
+      }
+    }))
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "position": {
+          "line": 4,
+          "character": 28
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/cli/tests/subdir/mod1.ts\n"
+      },
+      "range": {
+        "start": {
+          "line": 4,
+          "character": 20
+        },
+        "end":{
+          "line": 4,
+          "character": 66
+        }
+      }
+    }))
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "position": {
+          "line": 5,
+          "character": 28
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: _(a data url)_\n"
+      },
+      "range": {
+        "start": {
+          "line": 5,
+          "character": 20
+        },
+        "end":{
+          "line": 5,
+          "character": 131
+        }
+      }
+    }))
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "position": {
+          "line": 6,
+          "character": 28
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: file&#8203;:///a/file_01.ts\n"
+      },
+      "range": {
+        "start": {
+          "line": 6,
+          "character": 20
+        },
+        "end":{
+          "line": 6,
+          "character": 32
+        }
+      }
+    }))
+  );
 }
 
 #[test]

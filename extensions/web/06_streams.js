@@ -3304,7 +3304,7 @@
       return iterator;
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect({ locked: this.locked })}`;
     }
 
@@ -3424,7 +3424,7 @@
       return readableStreamReaderGenericCancel(this, reason);
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect({ closed: this.closed })}`;
     }
 
@@ -3821,7 +3821,7 @@
       return this[_writable];
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({ readable: this.readable, writable: this.writable })
       }`;
@@ -4022,7 +4022,7 @@
       return acquireWritableStreamDefaultWriter(this);
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect({ locked: this.locked })}`;
     }
 
