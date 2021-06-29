@@ -1174,7 +1174,8 @@ async fn test_command(
         let doc_modules_to_reload = doc_modules
           .iter()
           .filter(|specifier| modules_to_reload.contains(specifier))
-          .cloned();
+          .cloned()
+          .collect();
 
         let test_modules = test_runner::collect_test_module_specifiers(
           include.clone(),
@@ -1185,7 +1186,8 @@ async fn test_command(
         let test_modules_to_reload = test_modules
           .iter()
           .filter(|specifier| modules_to_reload.contains(specifier))
-          .cloned();
+          .cloned()
+          .collect();
 
         test_runner::run_tests(
           program_state.clone(),
