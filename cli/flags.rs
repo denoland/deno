@@ -1000,7 +1000,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("fail-fast")
         .long("fail-fast")
         .alias("failfast")
-        .help("Exit the test suite immediately upon n number of failures, By default stop on first error")
+        .help("Stop after N errors")
         .min_values(0)
         .required(false)
         .takes_value(true)
@@ -3388,6 +3388,27 @@ mod tests {
         location: Some(Url::parse("https://foo/").unwrap()),
         allow_net: Some(vec![]),
         argv: svec!["arg1", "arg2"],
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_with_fail_fast() {
+    let r = flags_from_vec(svec!["deno", "test", "--fail-fast", "2"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          no_run: false,
+          doc: false,
+          fail_fast: 2,
+          filter: None,
+          allow_none: false,
+          quiet: false,
+          include: None,
+          concurrent_jobs: 1
+        },
         ..Flags::default()
       }
     );
