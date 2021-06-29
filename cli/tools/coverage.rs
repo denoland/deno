@@ -20,6 +20,9 @@ use serde::Deserialize;
 use serde::Serialize;
 use sourcemap::SourceMap;
 use std::fs;
+use std::fs::File;
+use std::io::BufWriter;
+use std::io::Write;
 use std::path::PathBuf;
 use swc_common::Span;
 use uuid::Uuid;
@@ -61,8 +64,12 @@ impl CoverageCollector {
     let script_coverages = take_coverage_result.result;
     for script_coverage in script_coverages {
       let filename = format!("{}.json", Uuid::new_v4());
-      let json = serde_json::to_string(&script_coverage)?;
-      fs::write(self.dir.join(filename), &json)?;
+      let filepath = self.dir.join(filename);
+
+      let mut out = BufWriter::new(File::create(filepath)?);
+      serde_json::to_writer_pretty(&mut out, &script_coverage)?;
+      out.write_all(b"\n")?;
+      out.flush()?;
     }
 
     self.session.post_message("Profiler.disable", None).await?;

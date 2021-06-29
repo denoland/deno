@@ -536,6 +536,7 @@ dependencies = [
  "deno_doc",
  "deno_fetch",
  "deno_lint",
+ "deno_net",
  "deno_runtime",
  "deno_timers",
  "deno_url",
@@ -703,16 +704,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_net"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "deno_core",
+ "http",
+ "hyper",
+ "lazy_static",
+ "log",
+ "rustls",
+ "serde",
+ "tokio",
+ "tokio-util",
+ "trust-dns-proto",
+ "trust-dns-resolver",
+ "webpki",
+ "webpki-roots",
+]
+
+[[package]]
 name = "deno_runtime"
 version = "0.18.0"
 dependencies = [
  "atty",
- "bytes",
  "deno_broadcast_channel",
  "deno_console",
  "deno_core",
  "deno_crypto",
  "deno_fetch",
+ "deno_net",
  "deno_timers",
  "deno_url",
  "deno_web",
@@ -735,18 +756,12 @@ dependencies = [
  "percent-encoding",
  "regex",
  "ring",
- "rustls",
  "serde",
  "sys-info",
  "termcolor",
  "test_util",
  "tokio",
- "tokio-util",
- "trust-dns-proto",
- "trust-dns-resolver",
  "uuid",
- "webpki",
- "webpki-roots",
  "winapi 0.3.9",
  "winres",
 ]
