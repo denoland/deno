@@ -146,6 +146,15 @@ jobs:
         if: "!matrix.use_sysroot && !startsWith(matrix.os, 'windows')"
         run: echo "RUSTFLAGS=-D warnings" >> $GITHUB_ENV
 
+      - name: Configure canary build
+        if: |
+          matrix.kind == 'test' &&
+          matrix.profile == 'release' &&
+          github.repository == 'denoland/deno' &&
+          github.ref == 'refs/heads/main'
+        shell: bash
+        run: echo "DENO_CANARY=true" >> $GITHUB_ENV
+
       - name: Set up Linux sysroot with Ubuntu 18.04 and LLVM
         if: matrix.use_sysroot
         run: |
@@ -212,7 +221,7 @@ jobs:
             # Miscellaneous flags.
             export CARGO_TERM_COLOR=always
             export CI=true
-            export DENO_CANARY=true
+            export DENO_CANARY=$DENO_CANARY
           ___
 
       - name: Log versions
@@ -296,16 +305,6 @@ jobs:
                       https://github.com/rust-lang/crates.io-index \
                       ~/.cargo/registry/index/github.com-1ecc6299db9ec823
           fi
-
-      - name: Configure canary build
-        if: |
-          matrix.kind == 'test' &&
-          matrix.profile == 'release' &&
-          !matrix.use_sysroot &&
-          github.repository == 'denoland/deno' &&
-          github.ref == 'refs/heads/main'
-        shell: bash
-        run: echo "DENO_CANARY=true" >> $GITHUB_ENV
 
       - name: test_format.js
         if: matrix.kind == 'lint'
