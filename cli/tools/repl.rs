@@ -27,15 +27,15 @@ use rustyline_derive::{Helper, Hinter};
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::Mutex;
+use swc_ecmascript::parser::token::{Token, Word};
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
-use std::sync::Arc;
-use std::sync::Mutex;
-use swc_ecmascript::parser::token::{Token, Word};
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.
@@ -52,7 +52,9 @@ impl EditorHelper {
     method: &str,
     params: Option<Value>,
   ) -> Result<Value, AnyError> {
-    self.message_tx.blocking_send((method.to_string(), params))?;
+    self
+      .message_tx
+      .blocking_send((method.to_string(), params))?;
     self.response_rx.borrow_mut().blocking_recv().unwrap()
   }
 
