@@ -1171,7 +1171,10 @@ async fn test_command(
           Vec::new()
         };
 
-        let doc_modules_to_reload = doc_modules;
+        let doc_modules_to_reload = doc_modules
+          .iter()
+          .filter(|specifier| modules_to_reload.contains(specifier))
+          .cloned();
 
         let test_modules = test_runner::collect_test_module_specifiers(
           include.clone(),
