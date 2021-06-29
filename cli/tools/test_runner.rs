@@ -339,7 +339,7 @@ pub async fn run_tests(
   doc_modules: Vec<ModuleSpecifier>,
   test_modules: Vec<ModuleSpecifier>,
   no_run: bool,
-  fail_fast: usize,
+  fail_fast: Option<usize>,
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
@@ -534,8 +534,10 @@ pub async fn run_tests(
 
         reporter.visit_event(event);
 
-        if has_error && failed >= fail_fast {
-          break;
+        if let Some(x) = fail_fast {
+          if failed > x {
+            break;
+          }
         }
       }
 

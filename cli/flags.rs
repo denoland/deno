@@ -98,7 +98,7 @@ pub enum DenoSubcommand {
   Test {
     doc: bool,
     no_run: bool,
-    fail_fast: usize,
+    fail_fast: Option<usize>,
     quiet: bool,
     allow_none: bool,
     include: Option<Vec<String>>,
@@ -1707,12 +1707,12 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 
   let fail_fast = if matches.is_present("fail-fast") {
     if let Some(value) = matches.value_of("fail-fast") {
-      value.parse().unwrap()
+      Some(value.parse().unwrap())
     } else {
-      1
+      Some(0)
     }
   } else {
-    0
+    None
   };
 
   let concurrent_jobs = if matches.is_present("jobs") {
@@ -3376,7 +3376,7 @@ mod tests {
         subcommand: DenoSubcommand::Test {
           no_run: true,
           doc: false,
-          fail_fast: 0,
+          fail_fast: Some(0),
           filter: Some("- foo".to_string()),
           allow_none: true,
           quiet: false,
@@ -3402,7 +3402,7 @@ mod tests {
         subcommand: DenoSubcommand::Test {
           no_run: false,
           doc: false,
-          fail_fast: 2,
+          fail_fast: Some(2),
           filter: None,
           allow_none: false,
           quiet: false,
