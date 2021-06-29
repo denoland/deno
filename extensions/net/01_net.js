@@ -3,11 +3,25 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { errors } = window.__bootstrap.errors;
-  const { read, write } = window.__bootstrap.io;
+  const { BadResource } = core;
+
+  async function read(
+    rid,
+    buffer,
+  ) {
+    if (buffer.length === 0) {
+      return 0;
+    }
+    const nread = await core.opAsync("op_net_read_async", rid, buffer);
+    return nread === 0 ? null : nread;
+  }
+
+  async function write(rid, data) {
+    return await core.opAsync("op_net_write_async", rid, data);
+  }
 
   function shutdown(rid) {
-    return core.opAsync("op_shutdown", rid);
+    return core.opAsync("op_net_shutdown", rid);
   }
 
   function opAccept(rid, transport) {
@@ -104,7 +118,7 @@
       try {
         conn = await this.accept();
       } catch (error) {
-        if (error instanceof errors.BadResource) {
+        if (error instanceof BadResource) {
           return { value: undefined, done: true };
         }
         throw error;
@@ -171,7 +185,7 @@
         try {
           yield await this.receive();
         } catch (err) {
-          if (err instanceof errors.BadResource) {
+          if (err instanceof BadResource) {
             break;
           }
           throw err;
