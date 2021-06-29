@@ -6,6 +6,30 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.11.3 / 2021.06.29
+
+- fix(#10761): graph errors reported as diagnostics for `Deno.emit()` (#10767)
+- fix(core): don't panic on stdout/stderr write failures in Deno.core.print
+  (#11039)
+- fix(core): top-level-await is now always enabled (#11082)
+- fix(extensions/fetch): Filter out custom HOST headers (#11020)
+- fix(fetch): proxy body for requests created from other requests (#11093)
+- fix(http): remove unwrap() in HTTP bindings (#11130)
+- fix(inspect): eliminate panic inspecting event classes (#10979)
+- fix(lsp): reload import registries should not error when the module registries
+  directory does not exist (#11123)
+- fix(runtime): fix signal promise API (#11069)
+- fix(runtime/signal): use op_async_unref for op_signal_poll (#11097)
+- fix(url): use USVStrings in URLSearchParams constructor (#11101)
+- fix(webstorage): increase localStorage limit to 10MB (#11081)
+- fix: make readonly `Event` properties readonly (#11106)
+- fix: specify AbortSignal for native http requests (#11126)
+- chore: upgrade crates (#11007)
+- chore: use lsp to get parent process id (#11083)
+
+Release notes for std version 0.100.0:
+https://github.com/denoland/deno_std/releases/tag/0.100.0
+
 ### 1.11.2 / 2021.06.21
 
 - feat(unstable, lsp): quick fix actions to ignore lint errors (#10627)
