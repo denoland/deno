@@ -1000,7 +1000,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("fail-fast")
         .long("fail-fast")
         .alias("failfast")
-        .help("Exit the test suite immediately upon n number of failures, By default stop on first error")
+        .help("Stop after N errors")
         .min_values(0)
         .required(false)
         .takes_value(true)
