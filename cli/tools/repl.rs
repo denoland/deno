@@ -8,6 +8,7 @@ use crate::colors;
 use crate::media_type::MediaType;
 use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
+use deno_core::futures::future::FusedFuture;
 use deno_core::futures::FutureExt;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -626,9 +627,7 @@ async fn read_line_and_poll(
   response_tx: &Sender<Result<Value, AnyError>>,
   editor: ReplEditor,
 ) -> Result<String, ReadlineError> {
-  let mut line = tokio::task::spawn_blocking(move || editor.readline());
-
-  let mut poll_worker = true;
+  let mut line_fut = tokio::task::spawn_blocking(move || editor.readline());
 
   loop {
     for (method, params) in message_rx.try_iter() {
@@ -638,23 +637,11 @@ async fn read_line_and_poll(
       response_tx.send(result).unwrap();
     }
 
-    // Because an inspector websocket client may choose to connect at anytime when we have an
-    // inspector server we need to keep polling the worker to pick up new connections.
-    // TODO(piscisaureus): the above comment is a red herring; figure out if/why
-    // the event loop isn't woken by a waker when a websocket client connects.
-    let timeout = tokio::time::sleep(tokio::time::Duration::from_millis(100));
-    pin!(timeout);
-
     tokio::select! {
-      result = &mut line => {
+      result = &mut line_fut => {
         return result.unwrap();
       }
-      _ = repl_session.run_event_loop(), if poll_worker => {
-        poll_worker = false;
-      }
-      _ = timeout => {
-        poll_worker = true
-      }
+      _ = repl_session.run_event_loop() => {}
     }
   }
 }
