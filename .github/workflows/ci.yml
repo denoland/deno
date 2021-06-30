@@ -320,6 +320,11 @@ jobs:
         # TODO(ry) assert matrix.profile == "debug"
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
 
+      - name: cargo package
+        if: matrix.kind == 'lint'
+        run: cargo package --locked
+        working-directory: cli
+
       - name: Build debug
         if: |
           (matrix.kind == 'test' || matrix.kind == 'bench') &&
