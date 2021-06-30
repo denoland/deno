@@ -230,40 +230,39 @@
           );
         }
 
-        core.opAsync("op_http_upgrade_websocket", requestRid).then((rid) => {
-          ws[Symbol.for("[[rid]]")] = rid;
-          // TODO: protocols & extensions
+        const wsRid = await core.opAsync("op_http_upgrade_websocket", requestRid);
+        ws[Symbol.for("[[rid]]")] = wsRid;
+        // TODO: protocols & extensions
 
-          if (ws[_readyState] === WebSocket.CLOSING) {
-            core.opAsync("op_ws_close", {
-              rid,
-            }).then(() => {
-              ws[_readyState] = WebSocket.CLOSED;
+        if (ws[_readyState] === WebSocket.CLOSING) {
+          core.opAsync("op_ws_close", {
+            rid: wsRid,
+          }).then(() => {
+            ws[_readyState] = WebSocket.CLOSED;
 
-              const errEvent = new ErrorEvent("error");
-              errEvent.target = ws;
-              ws.dispatchEvent(errEvent);
+            const errEvent = new ErrorEvent("error");
+            errEvent.target = ws;
+            ws.dispatchEvent(errEvent);
 
-              const event = new CloseEvent("close");
-              event.target = ws;
-              ws.dispatchEvent(event);
-
-              try {
-                core.close(rid);
-              } catch (err) {
-                // Ignore error if the socket has already been closed.
-                if (!(err instanceof Deno.errors.BadResource)) throw err;
-              }
-            });
-          } else {
-            ws[_readyState] = WebSocket.OPEN;
-            const event = new Event("open");
+            const event = new CloseEvent("close");
             event.target = ws;
             ws.dispatchEvent(event);
 
-            ws[Symbol.for("[[eventLoop]]")]();
-          }
-        });
+            try {
+              core.close(rid);
+            } catch (err) {
+              // Ignore error if the socket has already been closed.
+              if (!(err instanceof Deno.errors.BadResource)) throw err;
+            }
+          });
+        } else {
+          ws[_readyState] = WebSocket.OPEN;
+          const event = new Event("open");
+          event.target = ws;
+          ws.dispatchEvent(event);
+
+          ws[Symbol.for("[[eventLoop]]")]();
+        }
       }
     };
   }
