@@ -17,6 +17,8 @@
   const errors = window.__bootstrap.errors.errors;
   const core = window.Deno.core;
   const { ReadableStream } = window.__bootstrap.streams;
+  const { WebSocket, _rid, _readyState, _eventLoop } =
+    window.__bootstrap.webSocket;
 
   function serveHttp(conn) {
     const rid = Deno.core.opSync("op_http_start", conn.rid);
@@ -222,46 +224,45 @@
 
       const ws = resp[_ws];
       if (ws) {
-        const _readyState = Symbol.for("[[readyState]]");
-
         if (typeof requestRid !== "number") {
           throw new TypeError(
             "This request can not be upgraded to a websocket connection.",
           );
         }
 
-        const wsRid = await core.opAsync("op_http_upgrade_websocket", requestRid);
-        ws[Symbol.for("[[rid]]")] = wsRid;
+        const wsRid = await core.opAsync(
+          "op_http_upgrade_websocket",
+          requestRid,
+        );
+        ws[_rid] = wsRid;
         // TODO: protocols & extensions
 
         if (ws[_readyState] === WebSocket.CLOSING) {
-          core.opAsync("op_ws_close", {
-            rid: wsRid,
-          }).then(() => {
-            ws[_readyState] = WebSocket.CLOSED;
+          await core.opAsync("op_ws_close", { rid: wsRid });
 
-            const errEvent = new ErrorEvent("error");
-            errEvent.target = ws;
-            ws.dispatchEvent(errEvent);
+          ws[_readyState] = WebSocket.CLOSED;
 
-            const event = new CloseEvent("close");
-            event.target = ws;
-            ws.dispatchEvent(event);
+          const errEvent = new ErrorEvent("error");
+          errEvent.target = ws;
+          ws.dispatchEvent(errEvent);
 
-            try {
-              core.close(rid);
-            } catch (err) {
-              // Ignore error if the socket has already been closed.
-              if (!(err instanceof Deno.errors.BadResource)) throw err;
-            }
-          });
+          const event = new CloseEvent("close");
+          event.target = ws;
+          ws.dispatchEvent(event);
+
+          try {
+            core.close(rid);
+          } catch (err) {
+            // Ignore error if the socket has already been closed.
+            if (!(err instanceof Deno.errors.BadResource)) throw err;
+          }
         } else {
           ws[_readyState] = WebSocket.OPEN;
           const event = new Event("open");
           event.target = ws;
           ws.dispatchEvent(event);
 
-          ws[Symbol.for("[[eventLoop]]")]();
+          ws[_eventLoop]();
         }
       }
     };
@@ -304,29 +305,28 @@
   const _ws = Symbol("[[associated_ws]]");
 
   async function upgradeWebSocket(request) {
-    if (request.headers["Upgrade"] !== "websocket") {
+    if (request.headers.get("upgrade") !== "websocket") {
       // Throw
     }
 
-    if (request.headers["Connection"] !== "Upgrade") {
+    if (request.headers.get("connection") !== "upgrade") {
       // Throw
     }
 
-    if (!request.headers["Sec-WebSocket-Key"]) {
+    const websocketKey = request.headers.get("sec-websocket-key");
+    if (websocketKey === null) {
       // Throw
     }
 
-    const key = new TextEncoder().encode(
-      request.headers["Sec-WebSocket-Key"] +
-        "258EAFA5-E914-47DA-95CA-C5AB0DC85B11",
-    );
+    const key = new TextEncoder()
+      .encode(websocketKey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
     const accept = await crypto.subtle.digest("SHA-1", key);
 
     const r = newInnerResponse(101);
     r.headerList = [
-      ["Upgrade", "websocket"],
-      ["Connection", "Upgrade"],
-      ["Sec-WebSocket-Accept", forgivingBase64Encode(new Uint8Array(accept))],
+      ["upgrade", "websocket"],
+      ["connection", "Upgrade"],
+      ["sec-websocket-accept", forgivingBase64Encode(new Uint8Array(accept))],
     ];
 
     const response = fromInnerResponse(r, "immutable");

@@ -22,6 +22,10 @@ members = [
 ]
 exclude = ["test_util/std/hash/_wasm"]
 
+# TODO(lucacasonato): remove! see https://github.com/hyperium/hyper/pull/2587
+[patch.crates-io]
+hyper = { git = "https://github.com/lucacasonato/hyper", rev = "c3f3330bddb2b411ef119cff03c0a5d11bb7bdd4" }
+
 [profile.release]
 codegen-units = 1
 incremental = true

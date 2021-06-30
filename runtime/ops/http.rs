@@ -24,7 +24,7 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use hyper::body::HttpBody;
 use hyper::http;
-use hyper::server::conn::Connection;
+use hyper::server::conn::upgrades::UpgradeableConnection;
 use hyper::server::conn::Http;
 use hyper::service::Service as HyperService;
 use hyper::Body;
@@ -103,8 +103,8 @@ impl HyperService<Request<Body>> for Service {
 }
 
 enum ConnType {
-  Tcp(Rc<RefCell<Connection<TcpStream, Service, LocalExecutor>>>),
-  Tls(Rc<RefCell<Connection<TlsStream, Service, LocalExecutor>>>),
+  Tcp(Rc<RefCell<UpgradeableConnection<TcpStream, Service, LocalExecutor>>>),
+  Tls(Rc<RefCell<UpgradeableConnection<TlsStream, Service, LocalExecutor>>>),
 }
 
 struct ConnResource {
@@ -305,7 +305,8 @@ fn op_http_start(
     let addr = tcp_stream.local_addr()?;
     let hyper_connection = Http::new()
       .with_executor(LocalExecutor)
-      .serve_connection(tcp_stream, deno_service.clone());
+      .serve_connection(tcp_stream, deno_service.clone())
+      .with_upgrades();
     let conn_resource = ConnResource {
       hyper_connection: ConnType::Tcp(Rc::new(RefCell::new(hyper_connection))),
       deno_service,
@@ -328,7 +329,8 @@ fn op_http_start(
 
     let hyper_connection = Http::new()
       .with_executor(LocalExecutor)
-      .serve_connection(tls_stream, deno_service.clone());
+      .serve_connection(tls_stream, deno_service.clone())
+      .with_upgrades();
     let conn_resource = ConnResource {
       hyper_connection: ConnType::Tls(Rc::new(RefCell::new(hyper_connection))),
       deno_service,
@@ -369,10 +371,12 @@ async fn op_http_response(
     .ok()
     .expect("multiple op_http_respond ongoing");
 
+  let conn_rid = response_sender.conn_rid;
+
   let conn_resource = state
     .borrow()
     .resource_table
-    .get::<ConnResource>(response_sender.conn_rid)
+    .get::<ConnResource>(conn_rid)
     .ok_or_else(bad_resource_id)?;
 
   let mut builder = Response::builder().status(status);
@@ -395,7 +399,7 @@ async fn op_http_response(
     let response_body_rid =
       state.borrow_mut().resource_table.add(ResponseBodyResource {
         body: AsyncRefCell::new(sender),
-        conn_rid: response_sender.conn_rid,
+        conn_rid,
       });
 
     Some(response_body_rid)
@@ -409,7 +413,10 @@ async fn op_http_response(
   }
 
   poll_fn(|cx| match conn_resource.poll(cx) {
-    Poll::Ready(x) => Poll::Ready(x),
+    Poll::Ready(x) => {
+      state.borrow_mut().resource_table.close(conn_rid);
+      Poll::Ready(x)
+    }
     Poll::Pending => Poll::Ready(Ok(())),
   })
   .await?;

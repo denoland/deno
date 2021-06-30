@@ -476,5 +476,5 @@
 
   webidl.configurePrototype(WebSocket);
 
-  window.__bootstrap.webSocket = { WebSocket };
+  window.__bootstrap.webSocket = { WebSocket, _rid, _readyState, _eventLoop };
 })(this);
