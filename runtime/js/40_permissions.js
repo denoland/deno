@@ -87,7 +87,7 @@
       return dispatched;
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({ state: this.state, onchange: this.onchange })
       }`;

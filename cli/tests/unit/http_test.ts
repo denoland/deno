@@ -8,6 +8,7 @@ import {
   assertEquals,
   assertThrowsAsync,
   deferred,
+  delay,
   unitTest,
 } from "./test_util.ts";
 
@@ -55,9 +56,12 @@ unitTest({ perms: { net: true } }, async function httpServerBasic() {
   const resp = await fetch("http://127.0.0.1:4501/", {
     headers: { "connection": "close" },
   });
+  const clone = resp.clone();
   const text = await resp.text();
   assertEquals(text, "Hello World");
   assertEquals(resp.headers.get("foo"), "bar");
+  const cloneText = await clone.text();
+  assertEquals(cloneText, "Hello World");
   await promise;
 });
 
@@ -375,8 +379,6 @@ unitTest(
 unitTest(
   { perms: { net: true } },
   async function httpServerNextRequestResolvesOnClose() {
-    const delay = (n: number) =>
-      new Promise((resolve) => setTimeout(resolve, n));
     const httpConnList: Deno.HttpConn[] = [];
 
     async function serve(l: Deno.Listener) {
@@ -539,5 +541,93 @@ unitTest(
     await finished;
     clientConn.close();
     listener.close();
+  },
+);
+
+unitTest({ perms: { net: true } }, async function httpRequestLatin1Headers() {
+  const promise = (async () => {
+    const listener = Deno.listen({ port: 4501 });
+    for await (const conn of listener) {
+      const httpConn = Deno.serveHttp(conn);
+      for await (const { request, respondWith } of httpConn) {
+        assertEquals(request.headers.get("X-Header-Test"), "á");
+        await respondWith(
+          new Response("", { headers: { "X-Header-Test": "Æ" } }),
+        );
+        httpConn.close();
+      }
+      break;
+    }
+  })();
+
+  const clientConn = await Deno.connect({ port: 4501 });
+  const requestText =
+    "GET / HTTP/1.1\r\nHost: 127.0.0.1:4501\r\nX-Header-Test: á\r\n\r\n";
+  const requestBytes = new Uint8Array(requestText.length);
+  for (let i = 0; i < requestText.length; i++) {
+    requestBytes[i] = requestText.charCodeAt(i);
+  }
+  let written = 0;
+  while (written < requestBytes.byteLength) {
+    written += await clientConn.write(requestBytes.slice(written));
+  }
+
+  let responseText = "";
+  const buf = new Uint8Array(1024);
+  let read;
+  while ((read = await clientConn.read(buf)) !== null) {
+    for (let i = 0; i < read; i++) {
+      responseText += String.fromCharCode(buf[i]);
+    }
+  }
+  clientConn.close();
+
+  assert(/\r\n[Xx]-[Hh]eader-[Tt]est: Æ\r\n/.test(responseText));
+
+  await promise;
+});
+
+unitTest(
+  { perms: { net: true } },
+  async function httpServerRequestWithoutPath() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      for await (const conn of listener) {
+        const httpConn = Deno.serveHttp(conn);
+        for await (const { request, respondWith } of httpConn) {
+          assertEquals(new URL(request.url).href, "http://127.0.0.1/");
+          assertEquals(await request.text(), "");
+          respondWith(new Response());
+        }
+        break;
+      }
+    })();
+
+    const clientConn = await Deno.connect({ port: 4501 });
+
+    async function writeRequest(conn: Deno.Conn) {
+      const encoder = new TextEncoder();
+
+      const w = new BufWriter(conn);
+      const r = new BufReader(conn);
+      const body =
+        `CONNECT 127.0.0.1:4501 HTTP/1.1\r\nHost: 127.0.0.1:4501\r\n\r\n`;
+      const writeResult = await w.write(encoder.encode(body));
+      assertEquals(body.length, writeResult);
+      await w.flush();
+      const tpr = new TextProtoReader(r);
+      const statusLine = await tpr.readLine();
+      assert(statusLine !== null);
+      const m = statusLine.match(/^(.+?) (.+?) (.+?)$/);
+      assert(m !== null, "must be matched");
+      const [_, _proto, status, _ok] = m;
+      assertEquals(status, "200");
+      const headers = await tpr.readMIMEHeader();
+      assert(headers !== null);
+    }
+
+    await writeRequest(clientConn);
+    clientConn.close();
+    await promise;
   },
 );

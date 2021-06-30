@@ -145,9 +145,9 @@ impl Drop for JsRuntime {
 fn v8_init(v8_platform: Option<v8::UniquePtr<v8::Platform>>) {
   // Include 10MB ICU data file.
   #[repr(C, align(16))]
-  struct IcuData([u8; 10413584]);
+  struct IcuData([u8; 10144432]);
   static ICU_DATA: IcuData = IcuData(*include_bytes!("icudtl.dat"));
-  v8::icu::set_common_data(&ICU_DATA.0).unwrap();
+  v8::icu::set_common_data_69(&ICU_DATA.0).unwrap();
 
   let v8_platform = v8_platform
     .unwrap_or_else(v8::new_default_platform)
@@ -162,7 +162,6 @@ fn v8_init(v8_platform: Option<v8::UniquePtr<v8::Platform>>) {
     // See https://github.com/denoland/deno/issues/2544
     " --experimental-wasm-threads",
     " --no-wasm-async-compilation",
-    " --harmony-top-level-await",
     " --harmony-import-assertions",
     " --no-validate-asm",
   );
@@ -1095,11 +1094,7 @@ impl JsRuntime {
               // fetched. Create and register it, and if successful, poll for the
               // next recursive-load event related to this dynamic import.
               let register_result =
-                module_map_rc.borrow_mut().register_during_load(
-                  &mut self.handle_scope(),
-                  info,
-                  &mut load,
-                );
+                load.register_and_recurse(&mut self.handle_scope(), &info);
 
               match register_result {
                 Ok(()) => {
@@ -1122,7 +1117,8 @@ impl JsRuntime {
         } else {
           // The top-level module from a dynamic import has been instantiated.
           // Load is done.
-          let module_id = load.expect_finished();
+          let module_id =
+            load.root_module_id.expect("Root module should be loaded");
           let result = self.instantiate_module(module_id);
           if let Err(err) = result {
             self.dynamic_import_reject(dyn_import_id, err);
@@ -1139,9 +1135,9 @@ impl JsRuntime {
     }
   }
 
-  /// "deno_core" runs V8 with "--harmony-top-level-await"
-  /// flag on - it means that each module evaluation returns a promise
-  /// from V8.
+  /// "deno_core" runs V8 with Top Level Await enabled. It means that each
+  /// module evaluation returns a promise from V8.
+  /// Feature docs: https://v8.dev/features/top-level-await
   ///
   /// This promise resolves after all dependent modules have also
   /// resolved. Each dependent module may perform calls to "import()" and APIs
@@ -1258,21 +1254,25 @@ impl JsRuntime {
     code: Option<String>,
   ) -> Result<ModuleId, AnyError> {
     let module_map_rc = Self::module_map(self.v8_isolate());
+    if let Some(code) = code {
+      module_map_rc.borrow_mut().new_module(
+        &mut self.handle_scope(),
+        true,
+        specifier.as_str(),
+        &code,
+      )?;
+    }
 
-    let mut load = module_map_rc
-      .borrow()
-      .load_main(specifier.as_str(), code)
-      .await?;
+    let mut load =
+      ModuleMap::load_main(module_map_rc.clone(), specifier.as_str()).await?;
 
     while let Some(info_result) = load.next().await {
       let info = info_result?;
       let scope = &mut self.handle_scope();
-      module_map_rc
-        .borrow_mut()
-        .register_during_load(scope, info, &mut load)?;
+      load.register_and_recurse(scope, &info)?;
     }
 
-    let root_id = load.expect_finished();
+    let root_id = load.root_module_id.expect("Root module should be loaded");
     self.instantiate_module(root_id)?;
     Ok(root_id)
   }

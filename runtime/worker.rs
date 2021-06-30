@@ -7,7 +7,6 @@ use crate::ops;
 use crate::permissions::Permissions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
-use deno_core::futures::future::poll_fn;
 use deno_core::futures::stream::StreamExt;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
@@ -99,6 +98,7 @@ impl MainWorker {
       deno_fetch::init::<Permissions>(
         options.user_agent.clone(),
         options.ca_data.clone(),
+        None,
       ),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
@@ -119,16 +119,14 @@ impl MainWorker {
       ops::worker_host::init(options.create_web_worker_cb.clone()),
       ops::fs_events::init(),
       ops::fs::init(),
-      ops::http::init(),
       ops::io::init(),
       ops::io::init_stdio(),
-      ops::net::init(),
+      deno_net::init::<Permissions>(options.unstable),
       ops::os::init(),
       ops::permissions::init(),
       ops::plugin::init(),
       ops::process::init(),
       ops::signal::init(),
-      ops::tls::init(),
       ops::tty::init(),
       // Permissions ext (worker specific state)
       perm_ext,
@@ -248,7 +246,7 @@ impl MainWorker {
     &mut self,
     wait_for_inspector: bool,
   ) -> Result<(), AnyError> {
-    poll_fn(|cx| self.poll_event_loop(cx, wait_for_inspector)).await
+    self.js_runtime.run_event_loop(wait_for_inspector).await
   }
 
   /// A utility function that runs provided future concurrently with the event loop.

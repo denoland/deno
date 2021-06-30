@@ -23,7 +23,7 @@ type MessagePortMessage = (Vec<u8>, Vec<Transferable>);
 
 pub struct MessagePort {
   rx: RefCell<UnboundedReceiver<MessagePortMessage>>,
-  tx: UnboundedSender<MessagePortMessage>,
+  tx: RefCell<Option<UnboundedSender<MessagePortMessage>>>,
 }
 
 impl MessagePort {
@@ -37,7 +37,9 @@ impl MessagePort {
 
     // Swallow the failed to send error. It means the channel was disentangled,
     // but not cleaned up.
-    self.tx.send((data.data.to_vec(), transferables)).ok();
+    if let Some(tx) = &*self.tx.borrow() {
+      tx.send((data.data.to_vec(), transferables)).ok();
+    }
 
     Ok(())
   }
@@ -60,6 +62,13 @@ impl MessagePort {
     }
     Ok(None)
   }
+
+  /// This forcefully disconnects the message port from its paired port. This
+  /// will wake up the `.recv` on the paired port, which will return `Ok(None)`.
+  pub fn disentangle(&self) {
+    let mut tx = self.tx.borrow_mut();
+    tx.take();
+  }
 }
 
 pub fn create_entangled_message_port() -> (MessagePort, MessagePort) {
@@ -68,12 +77,12 @@ pub fn create_entangled_message_port() -> (MessagePort, MessagePort) {
 
   let port1 = MessagePort {
     rx: RefCell::new(port1_rx),
-    tx: port1_tx,
+    tx: RefCell::new(Some(port1_tx)),
   };
 
   let port2 = MessagePort {
     rx: RefCell::new(port2_rx),
-    tx: port2_tx,
+    tx: RefCell::new(Some(port2_tx)),
   };
 
   (port1, port2)
@@ -204,5 +213,5 @@ pub async fn op_message_port_recv_message(
     }
   };
   let cancel = RcRef::map(resource.clone(), |r| &r.cancel);
-  resource.port.recv(state.clone()).or_cancel(cancel).await?
+  resource.port.recv(state).or_cancel(cancel).await?
 }

@@ -89,7 +89,7 @@ are using the TypeScript compiler to emit the code, it will follow the same
 This means that certain language features are not supportable. Those features
 are:
 
-- Re-exporting of types is ambiguous and requires to know if the source module
+- Re-exporting of types is ambiguous and requires knowing if the source module
   is exporting runtime code or just type information. Therefore, it is
   recommended that you use `import type` and `export type` for type only imports
   and exports. This will help ensure that when the code is emitted, that all the

@@ -125,7 +125,7 @@ fn create_web_worker_callback(
       broadcast_channel: program_state.broadcast_channel.clone(),
     };
 
-    let mut worker = WebWorker::from_options(
+    let (mut worker, external_handle) = WebWorker::from_options(
       args.name,
       args.permissions,
       args.main_module,
@@ -151,7 +151,7 @@ fn create_web_worker_callback(
     }
     worker.bootstrap(&options);
 
-    worker
+    (worker, external_handle)
   })
 }
 
@@ -334,12 +334,14 @@ pub fn get_types(unstable: bool) -> String {
     crate::tsc::DENO_WEBSTORAGE_LIB,
     crate::tsc::DENO_CRYPTO_LIB,
     crate::tsc::DENO_BROADCAST_CHANNEL_LIB,
+    crate::tsc::DENO_NET_LIB,
     crate::tsc::SHARED_GLOBALS_LIB,
     crate::tsc::WINDOW_LIB,
   ];
 
   if unstable {
     types.push(crate::tsc::UNSTABLE_NS_LIB);
+    types.push(crate::tsc::DENO_NET_UNSTABLE_LIB);
   }
 
   types.join("\n")
@@ -467,8 +469,8 @@ async fn install_command(
   tools::installer::install(flags, &module_url, args, name, root, force)
 }
 
-async fn lsp_command(parent_pid: Option<u32>) -> Result<(), AnyError> {
-  lsp::start(parent_pid).await
+async fn lsp_command() -> Result<(), AnyError> {
+  lsp::start().await
 }
 
 async fn lint_command(
@@ -1297,7 +1299,7 @@ fn get_subcommand(
     } => {
       install_command(flags, module_url, args, name, root, force).boxed_local()
     }
-    DenoSubcommand::Lsp { parent_pid } => lsp_command(parent_pid).boxed_local(),
+    DenoSubcommand::Lsp => lsp_command().boxed_local(),
     DenoSubcommand::Lint {
       files,
       rules,
