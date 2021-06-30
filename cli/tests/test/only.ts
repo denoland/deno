@@ -1,15 +1,15 @@
 Deno.test({
-  name: "abc",
+  name: "before",
   fn() {},
 });
 
 Deno.test({
   only: true,
-  name: "def",
+  name: "only",
   fn() {},
 });
 
 Deno.test({
-  name: "ghi",
+  name: "after",
   fn() {},
 });

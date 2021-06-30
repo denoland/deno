@@ -7,7 +7,7 @@ use test_util as util;
 fn no_color() {
   let (out, _) = util::run_and_collect_output(
     false,
-    "test test/deno_test_no_color.ts",
+    "test test/no_color.ts",
     None,
     Some(vec![("NO_COLOR".to_owned(), "true".to_owned())]),
     false,
@@ -19,16 +19,58 @@ fn no_color() {
   assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
 }
 
-itest!(all {
-  args: "test test/test_runner_test.ts",
+itest!(pass {
+  args: "test test/pass.ts",
+  exit_code: 0,
+  output: "test/pass.out",
+});
+
+itest!(ignore {
+  args: "test test/ignore.ts",
+  exit_code: 0,
+  output: "test/ignore.out",
+});
+
+itest!(fail {
+  args: "test test/fail.ts",
   exit_code: 1,
-  output: "test/deno_test.out",
+  output: "test/fail.out",
 });
 
 itest!(doc {
   args: "test --doc --allow-all test/doc.ts",
   exit_code: 1,
   output: "test/doc.out",
+});
+
+itest!(quiet {
+  args: "test --quiet test/quiet.ts",
+  exit_code: 0,
+  output: "test/quiet.out",
+});
+
+itest!(fail_fast {
+  args: "test --fail-fast test/fail_fast.ts",
+  exit_code: 1,
+  output: "test/fail_fast.out",
+});
+
+itest!(only {
+  args: "test test/only.ts",
+  exit_code: 1,
+  output: "test/only.out",
+});
+
+itest!(no_check {
+  args: "test --no-check test/no_check.ts",
+  exit_code: 1,
+  output: "test/no_check.out",
+});
+
+itest!(no_run {
+  args: "test --unstable --no-run test/no_run.ts",
+  output: "test/no_run.out",
+  exit_code: 1,
 });
 
 itest!(allow_all {
@@ -43,56 +85,26 @@ itest!(allow_none {
   output: "test/allow_none.out",
 });
 
-itest!(fail_fast {
-  args: "test --fail-fast test/test_runner_test.ts",
+itest!(exit_sanitizer {
+  args: "test test/exit_sanitizer.ts",
+  output: "test/exit_sanitizer.out",
   exit_code: 1,
-  output: "test/deno_test_fail_fast.out",
 });
 
-itest!(only {
-  args: "test test/deno_test_only.ts",
+itest!(finally_timeout {
+  args: "test test/finally_timeout.ts",
   exit_code: 1,
-  output: "test/deno_test_only.ts.out",
-});
-
-itest!(no_check {
-  args: "test --no-check test/test_runner_test.ts",
-  exit_code: 1,
-  output: "test/deno_test.out",
-});
-
-itest!(finally_cleartimeout {
-  args: "test test/test_finally_cleartimeout.ts",
-  exit_code: 1,
-  output: "test/test_finally_cleartimeout.out",
+  output: "test/finally_timeout.out",
 });
 
 itest!(unresolved_promise {
-  args: "test test/test_unresolved_promise.js",
+  args: "test test/unresolved_promise.ts",
   exit_code: 1,
-  output: "test/deno_test_unresolved_promise.out",
+  output: "test/unresolved_promise.out",
 });
 
 itest!(unhandled_rejection {
   args: "test test/unhandled_rejection.ts",
   exit_code: 1,
   output: "test/unhandled_rejection.out",
-});
-
-itest!(exit_sanitizer {
-  args: "test test/exit_sanitizer_test.ts",
-  output: "test/exit_sanitizer_test.out",
-  exit_code: 1,
-});
-
-itest!(quiet {
-  args: "test --quiet test/quiet_test.ts",
-  exit_code: 0,
-  output: "test/quiet_test.out",
-});
-
-itest!(_067_test_no_run_type_error {
-  args: "test --unstable --no-run test_type_error",
-  output: "067_test_no_run_type_error.out",
-  exit_code: 1,
 });
