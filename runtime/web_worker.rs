@@ -360,7 +360,11 @@ impl WebWorker {
       let inspector = js_runtime.inspector();
       let session_sender = inspector.get_session_sender();
       let deregister_rx = inspector.add_deregister_handler();
-      server.register_inspector(session_sender, deregister_rx);
+      server.register_inspector(
+        session_sender,
+        deregister_rx,
+        main_module.to_string(),
+      );
     }
 
     let (internal_handle, external_handle) = {

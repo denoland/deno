@@ -115,7 +115,7 @@ impl MainWorker {
       // Metrics
       metrics::init(),
       // Runtime ops
-      ops::runtime::init(main_module),
+      ops::runtime::init(main_module.clone()),
       ops::worker_host::init(options.create_web_worker_cb.clone()),
       ops::fs_events::init(),
       ops::fs::init(),
@@ -145,7 +145,11 @@ impl MainWorker {
       let inspector = js_runtime.inspector();
       let session_sender = inspector.get_session_sender();
       let deregister_rx = inspector.add_deregister_handler();
-      server.register_inspector(session_sender, deregister_rx);
+      server.register_inspector(
+        session_sender,
+        deregister_rx,
+        main_module.to_string(),
+      );
     }
 
     Self {
