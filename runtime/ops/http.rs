@@ -557,9 +557,9 @@ async fn op_http_upgrade_websocket(
   _: (),
 ) -> Result<ResourceId, AnyError> {
   let req_resource = state
-    .borrow()
+    .borrow_mut()
     .resource_table
-    .get::<RequestResource>(rid)
+    .take::<RequestResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
   let mut inner = RcRef::map(&req_resource, |r| &r.inner).borrow_mut().await;
