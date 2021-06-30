@@ -497,7 +497,7 @@ fn lsp_hover_unstable_enabled() {
           "language":"typescript",
           "value":"const Deno.ppid: number"
         },
-        "**UNSTABLE**: New API, yet to be vetted.\nThe pid of the current process's parent."
+        "The pid of the current process's parent."
       ],
       "range":{
         "start":{
