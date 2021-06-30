@@ -33,8 +33,6 @@ use std::io::Cursor;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
-use tokio::io::AsyncRead;
-use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
 use tokio_rustls::{rustls::ClientConfig, TlsConnector};
 use tokio_tungstenite::tungstenite::{
@@ -65,17 +63,71 @@ impl WebSocketPermissions for NoWebSocketPermissions {
   }
 }
 
-pub type WsStream = MaybeTlsStream<TcpStream>;
-pub struct WsStreamResource<T: AsyncRead + AsyncWrite> {
-  pub tx: AsyncRefCell<SplitSink<WebSocketStream<T>, Message>>,
-  pub rx: AsyncRefCell<SplitStream<WebSocketStream<T>>>,
+type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+pub enum WebSocketStreamType {
+  Client {
+    tx: AsyncRefCell<SplitSink<WsStream, Message>>,
+    rx: AsyncRefCell<SplitStream<WsStream>>,
+  },
+  Server {
+    tx: AsyncRefCell<SplitSink<WebSocketStream<hyper::upgrade::Upgraded>, Message>>,
+    rx: AsyncRefCell<SplitStream<WebSocketStream<hyper::upgrade::Upgraded>>>,
+  },
+}
+
+pub struct WsStreamResource {
+  pub stream: WebSocketStreamType,
   // When a `WsStreamResource` resource is closed, all pending 'read' ops are
   // canceled, while 'write' ops are allowed to complete. Therefore only
   // 'read' futures are attached to this cancel handle.
   pub cancel: CancelHandle,
 }
 
-impl<T: AsyncRead + AsyncWrite> Resource for WsStreamResource<T> {
+impl WsStreamResource {
+  async fn send(self: &Rc<Self>, message: Message) -> Result<(), AnyError> {
+    match self.stream {
+      WebSocketStreamType::Client { .. } => {
+        let mut tx = RcRef::map(self, |r| match &r.stream {
+          WebSocketStreamType::Client { tx, .. } => tx,
+          WebSocketStreamType::Server { .. } => unreachable!(),
+        }).borrow_mut().await;
+        tx.send(message).await?;
+      },
+      WebSocketStreamType::Server { .. } => {
+        let mut tx = RcRef::map(self, |r| match &r.stream {
+          WebSocketStreamType::Client { .. } => unreachable!(),
+          WebSocketStreamType::Server { tx, .. } => tx,
+        }).borrow_mut().await;
+        tx.send(message).await?;
+      },
+    }
+
+    Ok(())
+  }
+
+  async fn next_message(self: &Rc<Self>, cancel: RcRef<CancelHandle>) -> Result<Option<Result<Message, tokio_tungstenite::tungstenite::Error>>, AnyError> {
+    match &self.stream {
+      WebSocketStreamType::Client { .. } => {
+        let mut rx = RcRef::map(self, |r| match &r.stream {
+          WebSocketStreamType::Client { rx, .. } => rx,
+          WebSocketStreamType::Server { .. } => unreachable!(),
+        }).borrow_mut().await;
+        let message = rx.next().or_cancel(cancel).await?;
+        Ok(message)
+      },
+      WebSocketStreamType::Server { .. } => {
+        let mut rx = RcRef::map(self, |r| match &r.stream {
+          WebSocketStreamType::Client { .. } => unreachable!(),
+          WebSocketStreamType::Server { rx, .. } => rx,
+        }).borrow_mut().await;
+        let message = rx.next().or_cancel(cancel).await?;
+        Ok(message)
+      },
+    }
+  }
+}
+
+impl Resource for WsStreamResource {
   fn name(&self) -> Cow<str> {
     "webSocketStream".into()
   }
@@ -174,7 +226,7 @@ where
     _ => unreachable!(),
   };
 
-  let (stream, response): (WebSocketStream<WsStream>, Response) =
+  let (stream, response): (WsStream, Response) =
     client_async(request, socket).await.map_err(|err| {
       type_error(format!(
         "failed to connect to WebSocket: {}",
@@ -184,8 +236,10 @@ where
 
   let (ws_tx, ws_rx) = stream.split();
   let resource = WsStreamResource {
-    rx: AsyncRefCell::new(ws_rx),
-    tx: AsyncRefCell::new(ws_tx),
+    stream: WebSocketStreamType::Client {
+      rx: AsyncRefCell::new(ws_rx),
+      tx: AsyncRefCell::new(ws_tx),
+    },
     cancel: Default::default(),
   };
   let mut state = state.borrow_mut();
@@ -216,7 +270,7 @@ pub struct SendArgs {
   text: Option<String>,
 }
 
-pub async fn op_ws_send<T: AsyncRead + AsyncWrite>(
+pub async fn op_ws_send(
   state: Rc<RefCell<OpState>>,
   args: SendArgs,
   buf: Option<ZeroCopyBuf>,
@@ -227,15 +281,13 @@ pub async fn op_ws_send<T: AsyncRead + AsyncWrite>(
     "pong" => Message::Pong(vec![]),
     _ => unreachable!(),
   };
-  let rid = args.rid;
 
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<WsStreamResource<T>>(rid)
+    .get::<WsStreamResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
-  let mut tx = RcRef::map(&resource, |r| &r.tx).borrow_mut().await;
-  tx.send(msg).await?;
+  resource.send(msg).await?;
   Ok(())
 }
 
@@ -247,7 +299,7 @@ pub struct CloseArgs {
   reason: Option<String>,
 }
 
-pub async fn op_ws_close<T: AsyncRead + AsyncWrite>(
+pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
   args: CloseArgs,
   _: (),
@@ -264,10 +316,9 @@ pub async fn op_ws_close<T: AsyncRead + AsyncWrite>(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<WsStreamResource<T>>(rid)
+    .get::<WsStreamResource>(rid)
     .ok_or_else(bad_resource_id)?;
-  let mut tx = RcRef::map(&resource, |r| &r.tx).borrow_mut().await;
-  tx.send(msg).await?;
+  resource.send(msg).await?;
   Ok(())
 }
 
@@ -283,7 +334,7 @@ pub enum NextEventResponse {
   Closed,
 }
 
-pub async fn op_ws_next_event<T: AsyncRead + AsyncWrite>(
+pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   _: (),
@@ -291,12 +342,11 @@ pub async fn op_ws_next_event<T: AsyncRead + AsyncWrite>(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<WsStreamResource<T>>(rid)
+    .get::<WsStreamResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
-  let mut rx = RcRef::map(&resource, |r| &r.rx).borrow_mut().await;
-  let cancel = RcRef::map(resource, |r| &r.cancel);
-  let val = rx.next().or_cancel(cancel).await?;
+  let cancel = RcRef::map(&resource, |r| &r.cancel);
+  let val = resource.next_message(cancel).await?;
   let res = match val {
     Some(Ok(Message::Text(text))) => NextEventResponse::String(text),
     Some(Ok(Message::Binary(data))) => NextEventResponse::Binary(data.into()),
@@ -334,9 +384,9 @@ pub fn init<P: WebSocketPermissions + 'static>(
         op_sync(op_ws_check_permission::<P>),
       ),
       ("op_ws_create", op_async(op_ws_create::<P>)),
-      ("op_ws_send", op_async(op_ws_send::<WsStream>)),
-      ("op_ws_close", op_async(op_ws_close::<WsStream>)),
-      ("op_ws_next_event", op_async(op_ws_next_event::<WsStream>)),
+      ("op_ws_send", op_async(op_ws_send)),
+      ("op_ws_close", op_async(op_ws_close)),
+      ("op_ws_next_event", op_async(op_ws_next_event)),
     ])
     .state(move |state| {
       state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));

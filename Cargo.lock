@@ -810,6 +810,7 @@ version = "0.15.0"
 dependencies = [
  "deno_core",
  "http",
+ "hyper",
  "serde",
  "tokio",
  "tokio-rustls",

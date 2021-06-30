@@ -5,7 +5,8 @@
   const webidl = window.__bootstrap.webidl;
   const { forgivingBase64Encode } = window.__bootstrap.infra;
   const { InnerBody } = window.__bootstrap.fetchBody;
-  const { Response, fromInnerRequest, toInnerResponse, newInnerRequest } =
+  const { setEventTargetData } = window.__bootstrap.eventTarget;
+  const { Response, fromInnerRequest, toInnerResponse, newInnerRequest, newInnerResponse, fromInnerResponse } =
     window.__bootstrap.fetch;
   const errors = window.__bootstrap.errors.errors;
   const core = window.Deno.core;
@@ -310,15 +311,17 @@
     );
     const accept = await crypto.subtle.digest("SHA-1", key);
 
-    const response = new Response(undefined, {
-      status: 101,
-      headers: {
-        "Upgrade": "websocket",
-        "Connection": "Upgrade",
-        "Sec-WebSocket-Accept": forgivingBase64Encode(new Uint8Array(accept)),
-      },
-    });
+    const r = newInnerResponse(101);
+    r.headerList = [
+      ["Upgrade", "websocket"],
+      ["Connection", "Upgrade"],
+      ["Sec-WebSocket-Accept", forgivingBase64Encode(new Uint8Array(accept))]
+    ];
+
+    const response = fromInnerResponse(r, "immutable");
+
     const websocket = webidl.createBranded(WebSocket);
+    setEventTargetData(websocket);
     response[_ws] = websocket;
 
     return { response, websocket };

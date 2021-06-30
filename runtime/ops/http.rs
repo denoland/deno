@@ -8,7 +8,6 @@ use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
-use deno_core::futures::stream::SplitStream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
@@ -23,13 +22,11 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
-use deno_websocket::tokio_tungstenite::WebSocketStream;
 use hyper::body::HttpBody;
 use hyper::http;
 use hyper::server::conn::Connection;
 use hyper::server::conn::Http;
 use hyper::service::Service as HyperService;
-use hyper::upgrade::Upgraded;
 use hyper::Body;
 use hyper::Request;
 use hyper::Response;
@@ -60,18 +57,6 @@ pub fn init() -> Extension {
       (
         "op_http_upgrade_websocket",
         op_async(op_http_upgrade_websocket),
-      ),
-      (
-        "op_http_ws_send",
-        op_async(deno_websocket::op_ws_send::<WebSocketStream<Upgraded>>),
-      ),
-      (
-        "op_http_ws_close",
-        op_async(deno_websocket::op_ws_close::<WebSocketStream<Upgraded>>),
-      ),
-      (
-        "op_http_ws_next_event",
-        op_async(deno_websocket::op_ws_next_event::<WebSocketStream<Upgraded>>),
       ),
     ])
     .build()
@@ -568,8 +553,8 @@ async fn op_http_upgrade_websocket(
 
   let mut inner = RcRef::map(&req_resource, |r| &r.inner).borrow_mut().await;
 
-  if let RequestOrStreamReader::Request(req) = inner {
-    let upgraded = req.unwrap().on_upgrade().await?;
+  if let RequestOrStreamReader::Request(req) = inner.as_mut() {
+    let upgraded = hyper::upgrade::on(req.as_mut().unwrap()).await?;
     let stream =
       deno_websocket::tokio_tungstenite::WebSocketStream::from_raw_socket(
         upgraded,
@@ -579,14 +564,17 @@ async fn op_http_upgrade_websocket(
       .await;
 
     let (ws_tx, ws_rx) = stream.split();
-
-    let rid = state.borrow_mut().resource_table.add(
-      deno_websocket::WsStreamResource::WsStreamResource {
-        rx: AsyncRefCell::new(ws_rx),
-        tx: AsyncRefCell::new(ws_tx),
-        cancel: Default::default(),
-      },
-    );
+    let rid =
+      state
+        .borrow_mut()
+        .resource_table
+        .add(deno_websocket::WsStreamResource {
+          stream: deno_websocket::WebSocketStreamType::Server {
+            rx: AsyncRefCell::new(ws_rx),
+            tx: AsyncRefCell::new(ws_tx),
+          },
+          cancel: Default::default(),
+        });
 
     Ok(rid)
   } else {

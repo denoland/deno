@@ -1212,10 +1212,10 @@ declare namespace Deno {
 
   export interface WebSocketUpgrade {
     response: Response;
-    websocket: WebSocketStream;
+    websocket: WebSocket;
   }
 
-  export function upgradeWebsocket(request: Request): WebSocketUpgrade;
+  export function upgradeWebSocket(request: Request): Promise<WebSocketUpgrade>;
 
   /** **UNSTABLE**: New option, yet to be vetted. */
   export interface TestDefinition {
