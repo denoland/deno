@@ -44,6 +44,9 @@ pub static DENO_WEBSTORAGE_LIB: &str =
 pub static DENO_CRYPTO_LIB: &str = include_str!(env!("DENO_CRYPTO_LIB_PATH"));
 pub static DENO_BROADCAST_CHANNEL_LIB: &str =
   include_str!(env!("DENO_BROADCAST_CHANNEL_LIB_PATH"));
+pub static DENO_NET_LIB: &str = include_str!(env!("DENO_NET_LIB_PATH"));
+pub static DENO_NET_UNSTABLE_LIB: &str =
+  include_str!(env!("DENO_NET_UNSTABLE_LIB_PATH"));
 pub static SHARED_GLOBALS_LIB: &str =
   include_str!("dts/lib.deno.shared_globals.d.ts");
 pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");

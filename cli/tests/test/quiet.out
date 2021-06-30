@@ -1,0 +1,8 @@
+running 4 tests from [WILDCARD]/test/quiet.ts
+test console.log ... ok ([WILDCARD])
+test console.error ... ok ([WILDCARD])
+test console.info ... ok ([WILDCARD])
+test console.warn ... ok ([WILDCARD])
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+

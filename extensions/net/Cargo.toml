@@ -1,0 +1,31 @@
+# Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_net"
+version = "0.1.0"
+edition = "2018"
+description = "Networking for Deno"
+authors = ["the Deno authors"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/denoland/deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_core = { version = "0.92.0", path = "../../core" }
+
+bytes = "1"
+log = "0.4.14"
+lazy_static = "1.4.0"
+http = "0.2.3"
+hyper = { version = "0.14.9", features = ["server", "stream", "http1", "http2", "runtime"] }
+rustls = "0.19.0"
+serde = { version = "1.0.125", features = ["derive"] }
+tokio = { version = "1.7.1", features = ["full"] }
+tokio-util = { version = "0.6", features = ["io"] }
+webpki = "0.21.4"
+webpki-roots = "0.21.1"
+trust-dns-proto = "0.20.3"
+trust-dns-resolver = { version = "0.20.3", features = ["tokio-runtime", "serde-config"] }

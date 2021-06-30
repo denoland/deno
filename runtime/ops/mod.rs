@@ -2,18 +2,13 @@
 
 pub mod fs;
 pub mod fs_events;
-pub mod http;
 pub mod io;
-pub mod net;
-#[cfg(unix)]
-mod net_unix;
 pub mod os;
 pub mod permissions;
 pub mod plugin;
 pub mod process;
 pub mod runtime;
 pub mod signal;
-pub mod tls;
 pub mod tty;
 mod utils;
 pub mod web_worker;
