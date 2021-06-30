@@ -3,12 +3,13 @@ import {
   dirname,
   fromFileUrl,
   join,
+  resolve,
   toFileUrl,
-} from "https://deno.land/std@0.84.0/path/mod.ts";
-export { dirname, fromFileUrl, join, toFileUrl };
-export { existsSync } from "https://deno.land/std@0.84.0/fs/mod.ts";
-export { readLines } from "https://deno.land/std@0.97.0/io/mod.ts";
-export { delay } from "https://deno.land/std@0.84.0/async/delay.ts";
+} from "../test_util/std/path/mod.ts";
+export { dirname, fromFileUrl, join, resolve, toFileUrl };
+export { existsSync } from "../test_util/std/fs/mod.ts";
+export { readLines } from "../test_util/std/io/mod.ts";
+export { delay } from "../test_util/std/async/delay.ts";
 
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
 
@@ -17,12 +18,12 @@ async function getFilesFromGit(baseDir, cmd) {
     cmd,
     stdout: "piped",
   });
+  const output = new TextDecoder().decode(await p.output());
   const { success } = await p.status();
   if (!success) {
     throw new Error("gitLsFiles failed");
   }
 
-  const output = new TextDecoder().decode(await p.output());
   p.close();
 
   const files = output.split("\0").filter((line) => line.length > 0).map(

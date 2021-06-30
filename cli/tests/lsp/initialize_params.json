@@ -9,8 +9,10 @@
     "enable": true,
     "codeLens": {
       "implementations": true,
-      "references": true
+      "references": true,
+      "test": true
     },
+    "config": "",
     "importMap": null,
     "lint": true,
     "suggest": {

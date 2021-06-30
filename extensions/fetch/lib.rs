@@ -13,6 +13,7 @@ use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
+use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
@@ -25,10 +26,11 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 
 use data_url::DataUrl;
-use deno_file::BlobUrlStore;
+use deno_web::BlobUrlStore;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
+use reqwest::header::HOST;
 use reqwest::header::USER_AGENT;
 use reqwest::redirect::Policy;
 use reqwest::Body;
@@ -56,12 +58,12 @@ pub use reqwest; // Re-export reqwest
 pub fn init<P: FetchPermissions + 'static>(
   user_agent: String,
   ca_data: Option<Vec<u8>>,
+  proxy: Option<Proxy>,
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:extensions/fetch",
       "01_fetch_util.js",
-      "11_streams.js",
       "20_headers.js",
       "21_formdata.js",
       "22_body.js",
@@ -79,11 +81,13 @@ pub fn init<P: FetchPermissions + 'static>(
     ])
     .state(move |state| {
       state.put::<reqwest::Client>({
-        create_http_client(user_agent.clone(), ca_data.clone()).unwrap()
+        create_http_client(user_agent.clone(), ca_data.clone(), proxy.clone())
+          .unwrap()
       });
       state.put::<HttpClientDefaults>(HttpClientDefaults {
         ca_data: ca_data.clone(),
         user_agent: user_agent.clone(),
+        proxy: proxy.clone(),
       });
       Ok(())
     })
@@ -93,6 +97,7 @@ pub fn init<P: FetchPermissions + 'static>(
 pub struct HttpClientDefaults {
   pub user_agent: String,
   pub ca_data: Option<Vec<u8>>,
+  pub proxy: Option<Proxy>,
 }
 
 pub trait FetchPermissions {
@@ -120,9 +125,9 @@ pub fn get_declaration() -> PathBuf {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchArgs {
-  method: String,
+  method: ByteString,
   url: String,
-  headers: Vec<(String, String)>,
+  headers: Vec<(ByteString, ByteString)>,
   client_rid: Option<u32>,
   has_body: bool,
 }
@@ -154,7 +159,7 @@ where
     client.clone()
   };
 
-  let method = Method::from_bytes(args.method.as_bytes())?;
+  let method = Method::from_bytes(&args.method)?;
   let url = Url::parse(&args.url)?;
 
   // Check scheme before asking for net permission
@@ -192,9 +197,11 @@ where
       };
 
       for (key, value) in args.headers {
-        let name = HeaderName::from_bytes(key.as_bytes()).unwrap();
-        let v = HeaderValue::from_str(&value).unwrap();
-        request = request.header(name, v);
+        let name = HeaderName::from_bytes(&key).unwrap();
+        let v = HeaderValue::from_bytes(&value).unwrap();
+        if name != HOST {
+          request = request.header(name, v);
+        }
       }
 
       let cancel_handle = CancelHandle::new_rc();
@@ -275,7 +282,7 @@ where
 pub struct FetchResponse {
   status: u16,
   status_text: String,
-  headers: Vec<(String, String)>,
+  headers: Vec<(ByteString, ByteString)>,
   url: String,
   response_rid: ResourceId,
 }
@@ -306,20 +313,11 @@ pub async fn op_fetch_send(
   let url = res.url().to_string();
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
-    let key_string = key.to_string();
-
-    if val.as_bytes().is_ascii() {
-      res_headers.push((key_string, val.to_str().unwrap().to_owned()))
-    } else {
-      res_headers.push((
-        key_string,
-        val
-          .as_bytes()
-          .iter()
-          .map(|&c| c as char)
-          .collect::<String>(),
-      ));
-    }
+    let key_bytes: &[u8] = key.as_ref();
+    res_headers.push((
+      ByteString(key_bytes.to_owned()),
+      ByteString(val.as_bytes().to_owned()),
+    ));
   }
 
   let stream: BytesStream = Box::pin(res.bytes_stream().map(|r| {
@@ -358,7 +356,9 @@ pub async fn op_fetch_request_write(
     .ok_or_else(bad_resource_id)?;
   let body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
-  body.send(Ok(buf)).or_cancel(cancel).await??;
+  body.send(Ok(buf)).or_cancel(cancel).await?.map_err(|_| {
+    type_error("request body receiver not connected (request closed)")
+  })?;
 
   Ok(())
 }
@@ -461,7 +461,23 @@ impl HttpClientResource {
 #[serde(default)]
 pub struct CreateHttpClientOptions {
   ca_file: Option<String>,
-  ca_data: Option<String>,
+  ca_data: Option<ByteString>,
+  proxy: Option<Proxy>,
+}
+
+#[derive(Deserialize, Default, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct Proxy {
+  pub url: String,
+  pub basic_auth: Option<BasicAuth>,
+}
+
+#[derive(Deserialize, Default, Debug, Clone)]
+#[serde(default)]
+pub struct BasicAuth {
+  pub username: String,
+  pub password: String,
 }
 
 pub fn op_create_http_client<FP>(
@@ -477,6 +493,12 @@ where
     permissions.check_read(&PathBuf::from(ca_file))?;
   }
 
+  if let Some(proxy) = args.proxy.clone() {
+    let permissions = state.borrow_mut::<FP>();
+    let url = Url::parse(&proxy.url)?;
+    permissions.check_net_url(&url)?;
+  }
+
   let defaults = state.borrow::<HttpClientDefaults>();
 
   let cert_data =
@@ -484,6 +506,7 @@ where
   let client = create_http_client(
     defaults.user_agent.clone(),
     cert_data.or_else(|| defaults.ca_data.clone()),
+    args.proxy,
   )
   .unwrap();
 
@@ -493,10 +516,10 @@ where
 
 fn get_cert_data(
   ca_file: Option<&str>,
-  ca_data: Option<&str>,
+  ca_data: Option<&[u8]>,
 ) -> Result<Option<Vec<u8>>, AnyError> {
   if let Some(ca_data) = ca_data {
-    Ok(Some(ca_data.as_bytes().to_vec()))
+    Ok(Some(ca_data.to_vec()))
   } else if let Some(ca_file) = ca_file {
     let mut buf = Vec::new();
     File::open(ca_file)?.read_to_end(&mut buf)?;
@@ -511,6 +534,7 @@ fn get_cert_data(
 pub fn create_http_client(
   user_agent: String,
   ca_data: Option<Vec<u8>>,
+  proxy: Option<Proxy>,
 ) -> Result<Client, AnyError> {
   let mut headers = HeaderMap::new();
   headers.insert(USER_AGENT, user_agent.parse().unwrap());
@@ -522,6 +546,15 @@ pub fn create_http_client(
   if let Some(ca_data) = ca_data {
     let cert = reqwest::Certificate::from_pem(&ca_data)?;
     builder = builder.add_root_certificate(cert);
+  }
+
+  if let Some(proxy) = proxy {
+    let mut reqwest_proxy = reqwest::Proxy::all(&proxy.url)?;
+    if let Some(basic_auth) = &proxy.basic_auth {
+      reqwest_proxy =
+        reqwest_proxy.basic_auth(&basic_auth.username, &basic_auth.password);
+    }
+    builder = builder.proxy(reqwest_proxy);
   }
 
   builder

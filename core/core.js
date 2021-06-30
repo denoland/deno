@@ -132,6 +132,23 @@
     opSync("op_print", str, isErr);
   }
 
+  // Some "extensions" rely on "BadResource" and "Interrupted" errors in the
+  // JS code (eg. "deno_net") so they are provided in "Deno.core" but later
+  // reexported on "Deno.errors"
+  class BadResource extends Error {
+    constructor(msg) {
+      super(msg);
+      this.name = "BadResource";
+    }
+  }
+
+  class Interrupted extends Error {
+    constructor(msg) {
+      super(msg);
+      this.name = "Interrupted";
+    }
+  }
+
   // Provide bootstrap namespace
   window.__bootstrap = {};
   // Extra Deno.core.* exports
@@ -146,5 +163,7 @@
     registerErrorClass,
     handleAsyncMsgFromRust,
     syncOpsCache,
+    BadResource,
+    Interrupted,
   });
 })(this);

@@ -165,7 +165,7 @@
           },
           enumerable: true,
         },
-        [Symbol.for("Deno.customInspect")]: {
+        [Symbol.for("Deno.privateCustomInspect")]: {
           value: function (inspect) {
             const object = {
               hash: this.hash,
@@ -322,7 +322,7 @@
       value: "WorkerLocation",
       configurable: true,
     },
-    [Symbol.for("Deno.customInspect")]: {
+    [Symbol.for("Deno.privateCustomInspect")]: {
       value: function (inspect) {
         const object = {
           hash: this.hash,

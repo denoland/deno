@@ -3,10 +3,9 @@
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../file/internal.d.ts" />
-/// <reference path="../file/lib.deno_file.d.ts" />
+/// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
-/// <reference path="./11_streams_types.d.ts" />
+/// <reference path="../web/06_streams_types.d.ts" />
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 "use strict";
@@ -96,13 +95,7 @@
 
     // 7.
     const list = headers[_headerList];
-    const lowercaseName = byteLowerCase(name);
-    for (let i = 0; i < list.length; i++) {
-      if (byteLowerCase(list[i][0]) === lowercaseName) {
-        name = list[i][0];
-        break;
-      }
-    }
+    name = byteLowerCase(name);
     list.push([name, value]);
   }
 
@@ -113,9 +106,9 @@
    */
   function getHeader(list, name) {
     const lowercaseName = byteLowerCase(name);
-    const entries = list.filter((entry) =>
-      byteLowerCase(entry[0]) === lowercaseName
-    ).map((entry) => entry[1]);
+    const entries = list
+      .filter((entry) => entry[0] === lowercaseName)
+      .map((entry) => entry[1]);
     if (entries.length === 0) {
       return null;
     } else {
@@ -183,7 +176,7 @@
       const headers = {};
       const cookies = [];
       for (const entry of list) {
-        const name = byteLowerCase(entry[0]);
+        const name = entry[0];
         const value = entry[1];
         if (value === null) throw new TypeError("Unreachable");
         // The following if statement is not spec compliant.
@@ -271,9 +264,9 @@
       }
 
       const list = this[_headerList];
-      const lowercaseName = byteLowerCase(name);
+      name = byteLowerCase(name);
       for (let i = 0; i < list.length; i++) {
-        if (byteLowerCase(list[i][0]) === lowercaseName) {
+        if (list[i][0] === name) {
           list.splice(i, 1);
           i--;
         }
@@ -315,9 +308,9 @@
       }
 
       const list = this[_headerList];
-      const lowercaseName = byteLowerCase(name);
+      name = byteLowerCase(name);
       for (let i = 0; i < list.length; i++) {
-        if (byteLowerCase(list[i][0]) === lowercaseName) {
+        if (list[i][0] === name) {
           return true;
         }
       }
@@ -359,10 +352,10 @@
       }
 
       const list = this[_headerList];
-      const lowercaseName = byteLowerCase(name);
+      name = byteLowerCase(name);
       let added = false;
       for (let i = 0; i < list.length; i++) {
-        if (byteLowerCase(list[i][0]) === lowercaseName) {
+        if (list[i][0] === name) {
           if (!added) {
             list[i][1] = value;
             added = true;
@@ -377,7 +370,7 @@
       }
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       const headers = {};
       for (const header of this) {
         headers[header[0]] = header[1];
@@ -394,18 +387,9 @@
 
   webidl.configurePrototype(Headers);
 
-  webidl.converters["sequence<ByteString>"] = webidl
-    .createSequenceConverter(webidl.converters["ByteString"]);
-  webidl.converters["sequence<sequence<ByteString>>"] = webidl
-    .createSequenceConverter(webidl.converters["sequence<ByteString>"]);
-  webidl.converters["record<ByteString, ByteString>"] = webidl
-    .createRecordConverter(
-      webidl.converters["ByteString"],
-      webidl.converters["ByteString"],
-    );
   webidl.converters["HeadersInit"] = (V, opts) => {
     // Union for (sequence<sequence<ByteString>> or record<ByteString, ByteString>)
-    if (typeof V === "object" && V !== null) {
+    if (webidl.type(V) === "Object" && V !== null) {
       if (V[Symbol.iterator] !== undefined) {
         return webidl.converters["sequence<sequence<ByteString>>"](V, opts);
       }

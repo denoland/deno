@@ -161,7 +161,7 @@ Deno.test({
     const promise = deferred();
 
     const busyWorker = new Worker(
-      new URL("busy_worker.js", import.meta.url).href,
+      new URL("busy_worker.js", import.meta.url),
       { type: "module" },
     );
 
@@ -194,7 +194,7 @@ Deno.test({
     const promise = deferred();
 
     const racyWorker = new Worker(
-      new URL("racy_worker.js", import.meta.url).href,
+      new URL("racy_worker.js", import.meta.url),
       { type: "module" },
     );
 
@@ -219,7 +219,7 @@ Deno.test({
     const promise2 = deferred();
 
     const worker = new Worker(
-      new URL("event_worker.js", import.meta.url).href,
+      new URL("event_worker.js", import.meta.url),
       { type: "module" },
     );
 
@@ -263,7 +263,7 @@ Deno.test({
     const promise1 = deferred();
 
     const worker = new Worker(
-      new URL("event_worker_scope.js", import.meta.url).href,
+      new URL("event_worker_scope.js", import.meta.url),
       { type: "module" },
     );
 
@@ -292,11 +292,11 @@ Deno.test({
     const promise2 = deferred();
 
     const regularWorker = new Worker(
-      new URL("non_deno_worker.js", import.meta.url).href,
+      new URL("non_deno_worker.js", import.meta.url),
       { type: "module" },
     );
     const denoWorker = new Worker(
-      new URL("deno_worker.ts", import.meta.url).href,
+      new URL("deno_worker.ts", import.meta.url),
       {
         type: "module",
         deno: {
@@ -765,6 +765,59 @@ Deno.test({
     };
 
     worker.postMessage("START");
+    await result;
+    worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "worker with relative specifier",
+  fn: async function (): Promise<void> {
+    assertEquals(location.href, "http://127.0.0.1:4545/cli/tests/");
+    const promise = deferred();
+    const w = new Worker(
+      "./workers/test_worker.ts",
+      { type: "module", name: "tsWorker" },
+    );
+    w.onmessage = (e): void => {
+      assertEquals(e.data, "Hello, world!");
+      promise.resolve();
+    };
+    w.postMessage("Hello, world!");
+    await promise;
+    w.terminate();
+  },
+});
+
+Deno.test({
+  name: "Send MessagePorts from / to workers",
+  fn: async function (): Promise<void> {
+    const result = deferred();
+    const worker = new Worker(
+      new URL("message_port.ts", import.meta.url).href,
+      { type: "module" },
+    );
+
+    const channel = new MessageChannel();
+
+    worker.onmessage = (e) => {
+      assertEquals(e.data, "1");
+      assertEquals(e.ports.length, 1);
+      const port1 = e.ports[0];
+      port1.onmessage = (e) => {
+        assertEquals(e.data, true);
+        port1.close();
+        worker.postMessage("3", [channel.port1]);
+      };
+      port1.postMessage("2");
+    };
+
+    channel.port2.onmessage = (e) => {
+      assertEquals(e.data, true);
+      channel.port2.close();
+      result.resolve();
+    };
+
     await result;
     worker.terminate();
   },

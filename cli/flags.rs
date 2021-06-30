@@ -2303,18 +2303,6 @@ mod tests {
   }
 
   #[test]
-  fn lsp() {
-    let r = flags_from_vec(svec!["deno", "lsp"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Lsp,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
   fn lint() {
     let r = flags_from_vec(svec!["deno", "lint", "script_1.ts", "script_2.ts"]);
     assert_eq!(

@@ -1,12 +1,22 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+mod message_port;
+
+pub use crate::message_port::create_entangled_message_port;
+pub use crate::message_port::JsMessageData;
+pub use crate::message_port::MessagePort;
+
 use deno_core::error::bad_resource_id;
+use deno_core::error::null_opbuf;
 use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
+use deno_core::op_async;
 use deno_core::op_sync;
+use deno_core::url::Url;
 use deno_core::Extension;
+use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -17,15 +27,25 @@ use encoding_rs::DecoderResult;
 use encoding_rs::Encoding;
 use serde::Deserialize;
 use serde::Serialize;
-
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::usize;
+use uuid::Uuid;
+
+use crate::message_port::op_message_port_create_entangled;
+use crate::message_port::op_message_port_post_message;
+use crate::message_port::op_message_port_recv_message;
 
 /// Load and execute the javascript code.
-pub fn init() -> Extension {
+pub fn init(
+  blob_url_store: BlobUrlStore,
+  maybe_location: Option<Url>,
+) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:extensions/web",
@@ -33,11 +53,17 @@ pub fn init() -> Extension {
       "01_dom_exception.js",
       "01_mimesniff.js",
       "02_event.js",
+      "02_structured_clone.js",
       "03_abort_signal.js",
       "04_global_interfaces.js",
       "05_base64.js",
+      "06_streams.js",
       "08_text_encoding.js",
+      "09_file.js",
+      "10_filereader.js",
+      "11_blob_url.js",
       "12_location.js",
+      "13_message_port.js",
     ))
     .ops(vec![
       ("op_base64_decode", op_sync(op_base64_decode)),
@@ -49,7 +75,34 @@ pub fn init() -> Extension {
       ("op_encoding_new_decoder", op_sync(op_encoding_new_decoder)),
       ("op_encoding_decode", op_sync(op_encoding_decode)),
       ("op_encoding_encode_into", op_sync(op_encoding_encode_into)),
+      (
+        "op_file_create_object_url",
+        op_sync(op_file_create_object_url),
+      ),
+      (
+        "op_file_revoke_object_url",
+        op_sync(op_file_revoke_object_url),
+      ),
+      (
+        "op_message_port_create_entangled",
+        op_sync(op_message_port_create_entangled),
+      ),
+      (
+        "op_message_port_post_message",
+        op_sync(op_message_port_post_message),
+      ),
+      (
+        "op_message_port_recv_message",
+        op_async(op_message_port_recv_message),
+      ),
     ])
+    .state(move |state| {
+      state.put(blob_url_store.clone());
+      if let Some(location) = maybe_location.clone() {
+        state.put(Location(location));
+      }
+      Ok(())
+    })
     .build()
 }
 
@@ -316,4 +369,74 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
       e.downcast_ref::<DomExceptionInvalidCharacterError>()
         .map(|_| "DOMExceptionInvalidCharacterError")
     })
+}
+
+#[derive(Debug, Clone)]
+pub struct Blob {
+  pub data: Vec<u8>,
+  pub media_type: String,
+}
+
+pub struct Location(pub Url);
+
+#[derive(Debug, Default, Clone)]
+pub struct BlobUrlStore(Arc<Mutex<HashMap<Url, Blob>>>);
+
+impl BlobUrlStore {
+  pub fn get(&self, mut url: Url) -> Result<Option<Blob>, AnyError> {
+    let blob_store = self.0.lock().unwrap();
+    url.set_fragment(None);
+    Ok(blob_store.get(&url).cloned())
+  }
+
+  pub fn insert(&self, blob: Blob, maybe_location: Option<Url>) -> Url {
+    let origin = if let Some(location) = maybe_location {
+      location.origin().ascii_serialization()
+    } else {
+      "null".to_string()
+    };
+    let id = Uuid::new_v4();
+    let url = Url::parse(&format!("blob:{}/{}", origin, id)).unwrap();
+
+    let mut blob_store = self.0.lock().unwrap();
+    blob_store.insert(url.clone(), blob);
+
+    url
+  }
+
+  pub fn remove(&self, url: &ModuleSpecifier) {
+    let mut blob_store = self.0.lock().unwrap();
+    blob_store.remove(&url);
+  }
+}
+
+pub fn op_file_create_object_url(
+  state: &mut deno_core::OpState,
+  media_type: String,
+  zero_copy: Option<ZeroCopyBuf>,
+) -> Result<String, AnyError> {
+  let data = zero_copy.ok_or_else(null_opbuf)?;
+  let blob = Blob {
+    data: data.to_vec(),
+    media_type,
+  };
+
+  let maybe_location = state.try_borrow::<Location>();
+  let blob_store = state.borrow::<BlobUrlStore>();
+
+  let url =
+    blob_store.insert(blob, maybe_location.map(|location| location.0.clone()));
+
+  Ok(url.to_string())
+}
+
+pub fn op_file_revoke_object_url(
+  state: &mut deno_core::OpState,
+  url: String,
+  _: (),
+) -> Result<(), AnyError> {
+  let url = Url::parse(&url)?;
+  let blob_store = state.borrow::<BlobUrlStore>();
+  blob_store.remove(&url);
+  Ok(())
 }
