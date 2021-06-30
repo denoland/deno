@@ -424,7 +424,15 @@
       "terminate.any.html": true
     },
     "writable-streams": {
-      "aborting.any.html": true,
+      "aborting.any.html": [
+        "WritableStreamDefaultController.signal",
+        "the abort signal is signalled synchronously - write",
+        "the abort signal is signalled synchronously - close",
+        "the abort signal is not signalled on error",
+        "the abort signal is not signalled on write failure",
+        "the abort signal is not signalled on close failure",
+        "recursive abort() call"
+      ],
       "bad-strategies.any.html": true,
       "bad-underlying-sinks.any.html": true,
       "byte-length-queuing-strategy.any.html": true,
@@ -683,6 +691,8 @@
       "URL: Setting <http://example.net:8080/path>.hostname = 'example.com:' : delimiter invalidates entire value",
       "URL: Setting <non-spec:/.//p>.hostname = 'h' Drop /. from path",
       "URL: Setting <non-spec:/.//p>.hostname = ''",
+      "URL: Setting <foo://somehost/some/path>.pathname = '' Non-special URLs can have their paths erased",
+      "URL: Setting <foo:///some/path>.pathname = '' Non-special URLs with an empty host can have their paths erased",
       "URL: Setting <file://monkey/>.pathname = '\\\\' File URLs and (back)slashes",
       "URL: Setting <file:///unicorn>.pathname = '//\\/' File URLs and (back)slashes",
       "URL: Setting <file:///unicorn>.pathname = '//monkey/..//' File URLs and (back)slashes",
