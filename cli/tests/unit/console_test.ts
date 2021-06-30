@@ -17,7 +17,7 @@ import {
 } from "./test_util.ts";
 import { stripColor } from "../../../test_util/std/fmt/colors.ts";
 
-const customInspect = Deno.customInspect;
+const customInspect = Symbol.for("Deno.customInspect");
 const {
   Console,
   cssToAnsi: cssToAnsi_,
@@ -315,25 +315,25 @@ unitTest(function consoleTestStringifyCircular(): void {
   assertEquals(
     stringify(console),
     `console {
-  log: [Function: log],
-  debug: [Function: debug],
-  info: [Function: info],
-  dir: [Function: dir],
-  dirxml: [Function: dir],
-  warn: [Function: warn],
-  error: [Function: error],
-  assert: [Function: assert],
-  count: [Function: count],
-  countReset: [Function: countReset],
-  table: [Function: table],
-  time: [Function: time],
-  timeLog: [Function: timeLog],
-  timeEnd: [Function: timeEnd],
-  group: [Function: group],
-  groupCollapsed: [Function: group],
-  groupEnd: [Function: groupEnd],
-  clear: [Function: clear],
-  trace: [Function: trace],
+  log: [Function: bound ],
+  debug: [Function: bound ],
+  info: [Function: bound ],
+  dir: [Function: bound ],
+  dirxml: [Function: bound ],
+  warn: [Function: bound ],
+  error: [Function: bound ],
+  assert: [Function: bound ],
+  count: [Function: bound ],
+  countReset: [Function: bound ],
+  table: [Function: bound ],
+  time: [Function: bound ],
+  timeLog: [Function: bound ],
+  timeEnd: [Function: bound ],
+  group: [Function: bound ],
+  groupCollapsed: [Function: bound ],
+  groupEnd: [Function: bound ],
+  clear: [Function: bound ],
+  trace: [Function: bound ],
   indentLevel: 0,
   [Symbol(isConsoleInstance)]: true
 }`,
@@ -877,6 +877,18 @@ unitTest(function consoleTestWithCustomInspector(): void {
   }
 
   assertEquals(stringify(new A()), "b");
+});
+
+unitTest(function consoleTestWithCustomInspectorUsingInspectFunc(): void {
+  class A {
+    [customInspect](
+      inspect: (v: unknown, opts?: Deno.InspectOptions) => string,
+    ): string {
+      return "b " + inspect({ c: 1 });
+    }
+  }
+
+  assertEquals(stringify(new A()), "b { c: 1 }");
 });
 
 unitTest(function consoleTestWithCustomInspectorError(): void {
@@ -1737,15 +1749,39 @@ unitTest(function inspectIterableLimit(): void {
 unitTest(function inspectProxy(): void {
   assertEquals(
     stripColor(Deno.inspect(
-      new Proxy([1, 2, 3], { get(): void {} }),
+      new Proxy([1, 2, 3], {}),
     )),
     "[ 1, 2, 3 ]",
   );
   assertEquals(
     stripColor(Deno.inspect(
-      new Proxy({ key: "value" }, { get(): void {} }),
+      new Proxy({ key: "value" }, {}),
     )),
     `{ key: "value" }`,
+  );
+  assertEquals(
+    stripColor(Deno.inspect(
+      new Proxy({}, {
+        get(_target, key) {
+          if (key === Symbol.toStringTag) {
+            return "MyProxy";
+          } else {
+            return 5;
+          }
+        },
+        getOwnPropertyDescriptor() {
+          return {
+            enumerable: true,
+            configurable: true,
+            value: 5,
+          };
+        },
+        ownKeys() {
+          return ["prop1", "prop2"];
+        },
+      }),
+    )),
+    `MyProxy { prop1: 5, prop2: 5 }`,
   );
   assertEquals(
     stripColor(Deno.inspect(

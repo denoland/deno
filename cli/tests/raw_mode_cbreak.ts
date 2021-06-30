@@ -5,11 +5,13 @@ const signal = Deno.signals.interrupt();
 
 Deno.stdout.writeSync(new TextEncoder().encode("S"));
 
-await signal;
+signal.then(() => {
+  Deno.stdout.writeSync(new TextEncoder().encode("A"));
 
-Deno.stdout.writeSync(new TextEncoder().encode("A"));
+  signal.dispose();
 
-signal.dispose();
+  Deno.setRaw(0, false); // restores old mode.
+  Deno.setRaw(0, false); // Can be safely called multiple times
+});
 
-Deno.setRaw(0, false); // restores old mode.
-Deno.setRaw(0, false); // Can be safely called multiple times
+setTimeout(() => {}, 10000); // Keep the program running

@@ -5,12 +5,9 @@ import {
   assertNotEquals,
   Deferred,
   deferred,
+  delay,
   unitTest,
 } from "./test_util.ts";
-
-function waitForMs(ms: number): Promise<void> {
-  return new Promise((resolve): number => setTimeout(resolve, ms));
-}
 
 unitTest(async function functionParameterBindingSuccess(): Promise<void> {
   const promise = deferred();
@@ -111,7 +108,7 @@ unitTest(async function timeoutCancelSuccess(): Promise<void> {
   }, 1);
   // Cancelled, count should not increment
   clearTimeout(id);
-  await waitForMs(600);
+  await delay(600);
   assertEquals(count, 0);
 });
 
@@ -137,7 +134,7 @@ unitTest(async function timeoutCancelMultiple(): Promise<void> {
   clearTimeout(t4);
 
   // Sleep until we're certain that the cancelled timers aren't gonna fire.
-  await waitForMs(50);
+  await delay(50);
 });
 
 unitTest(async function timeoutCancelInvalidSilentFail(): Promise<void> {
@@ -172,7 +169,7 @@ unitTest(async function intervalSuccess(): Promise<void> {
   assertEquals(count, 1);
   // Similar false async leaking alarm.
   // Force next round of polling.
-  await waitForMs(0);
+  await delay(0);
 });
 
 unitTest(async function intervalCancelSuccess(): Promise<void> {
@@ -181,7 +178,7 @@ unitTest(async function intervalCancelSuccess(): Promise<void> {
     count++;
   }, 1);
   clearInterval(id);
-  await waitForMs(500);
+  await delay(500);
   assertEquals(count, 0);
 });
 
@@ -197,7 +194,7 @@ unitTest(async function intervalOrdering(): Promise<void> {
   for (let i = 0; i < 10; i++) {
     timers[i] = setTimeout(onTimeout, 1);
   }
-  await waitForMs(500);
+  await delay(500);
   assertEquals(timeouts, 1);
 });
 
@@ -213,7 +210,7 @@ unitTest(async function fireCallbackImmediatelyWhenDelayOverMaxValue(): Promise<
   setTimeout((): void => {
     count++;
   }, 2 ** 31);
-  await waitForMs(1);
+  await delay(1);
   assertEquals(count, 1);
 });
 
@@ -341,7 +338,7 @@ unitTest(async function timerMaxCpuBug(): Promise<void> {
   // We can check this by counting how many ops have triggered in the interim.
   // Certainly less than 10 ops should have been dispatched in next 100 ms.
   const { opsDispatched } = Deno.metrics();
-  await waitForMs(100);
+  await delay(100);
   const opsDispatched_ = Deno.metrics().opsDispatched;
   assert(opsDispatched_ - opsDispatched < 10);
 });
@@ -459,7 +456,7 @@ unitTest(
     const long = 10;
 
     const start = perf.now();
-    const p = sleepAsync(short).then(() => {
+    const p = delay(short).then(() => {
       const after = perf.now();
       // pending promises should resolve after the main thread comes out of sleep
       assert(after - start >= long);
@@ -478,7 +475,7 @@ unitTest(
     const long = 10;
 
     const start = perf.now();
-    const p = sleepAsync(long).then(() => {
+    const p = delay(long).then(() => {
       const after = perf.now();
       // sleeping for less than the duration of a promise should have no impact
       // on the resolution of that promise
@@ -489,9 +486,3 @@ unitTest(
     await p;
   },
 );
-
-function sleepAsync(delay: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(() => resolve(), delay);
-  });
-}

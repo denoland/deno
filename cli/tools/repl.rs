@@ -1,6 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast;
+use crate::ast::Diagnostic;
+use crate::ast::ImportsNotUsedAsValues;
 use crate::ast::TokenOrComment;
 use crate::colors;
 use crate::media_type::MediaType;
@@ -17,28 +19,31 @@ use rustyline::highlight::Highlighter;
 use rustyline::validate::ValidationContext;
 use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
+use rustyline::CompletionType;
+use rustyline::Config;
 use rustyline::Context;
 use rustyline::Editor;
 use rustyline_derive::{Helper, Hinter};
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::path::PathBuf;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::sync_channel;
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::Sender;
-use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::sync::Mutex;
 use swc_ecmascript::parser::token::{Token, Word};
-use tokio::pin;
+use tokio::sync::mpsc::channel;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::UnboundedSender;
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.
 #[derive(Helper, Hinter)]
 struct EditorHelper {
   context_id: u64,
-  message_tx: SyncSender<(String, Option<Value>)>,
-  response_rx: Receiver<Result<Value, AnyError>>,
+  message_tx: Sender<(String, Option<Value>)>,
+  response_rx: RefCell<UnboundedReceiver<Result<Value, AnyError>>>,
 }
 
 impl EditorHelper {
@@ -47,50 +52,39 @@ impl EditorHelper {
     method: &str,
     params: Option<Value>,
   ) -> Result<Value, AnyError> {
-    self.message_tx.send((method.to_string(), params))?;
-    self.response_rx.recv()?
+    self
+      .message_tx
+      .blocking_send((method.to_string(), params))?;
+    self.response_rx.borrow_mut().blocking_recv().unwrap()
   }
-}
 
-fn is_word_boundary(c: char) -> bool {
-  if c == '.' {
-    false
-  } else {
-    char::is_ascii_whitespace(&c) || char::is_ascii_punctuation(&c)
+  fn get_global_lexical_scope_names(&self) -> Vec<String> {
+    let evaluate_response = self
+      .post_message(
+        "Runtime.globalLexicalScopeNames",
+        Some(json!({
+          "executionContextId": self.context_id,
+        })),
+      )
+      .unwrap();
+
+    evaluate_response
+      .get("names")
+      .unwrap()
+      .as_array()
+      .unwrap()
+      .iter()
+      .map(|n| n.as_str().unwrap().to_string())
+      .collect()
   }
-}
 
-impl Completer for EditorHelper {
-  type Candidate = String;
-
-  fn complete(
-    &self,
-    line: &str,
-    pos: usize,
-    _ctx: &Context<'_>,
-  ) -> Result<(usize, Vec<String>), ReadlineError> {
-    let start = line[..pos].rfind(is_word_boundary).map_or_else(|| 0, |i| i);
-    let end = line[pos..]
-      .rfind(is_word_boundary)
-      .map_or_else(|| pos, |i| pos + i);
-
-    let word = &line[start..end];
-    let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
-    let word = word.strip_suffix(is_word_boundary).unwrap_or(word);
-
-    let fallback = format!(".{}", word);
-
-    let (prefix, suffix) = match word.rfind('.') {
-      Some(index) => word.split_at(index),
-      None => ("globalThis", fallback.as_str()),
-    };
-
+  fn get_expression_property_names(&self, expr: &str) -> Vec<String> {
     let evaluate_response = self
       .post_message(
         "Runtime.evaluate",
         Some(json!({
           "contextId": self.context_id,
-          "expression": prefix,
+          "expression": expr,
           "throwOnSideEffect": true,
           "timeout": 200,
         })),
@@ -98,8 +92,7 @@ impl Completer for EditorHelper {
       .unwrap();
 
     if evaluate_response.get("exceptionDetails").is_some() {
-      let candidates = Vec::new();
-      return Ok((pos, candidates));
+      return Vec::new();
     }
 
     if let Some(result) = evaluate_response.get("result") {
@@ -113,32 +106,83 @@ impl Completer for EditorHelper {
 
         if let Ok(get_properties_response) = get_properties_response {
           if let Some(result) = get_properties_response.get("result") {
-            let candidates = result
+            let property_names = result
               .as_array()
               .unwrap()
               .iter()
-              .filter_map(|r| {
-                let name = r.get("name").unwrap().as_str().unwrap().to_string();
-
-                if name.starts_with("Symbol(") {
-                  return None;
-                }
-
-                if name.starts_with(&suffix[1..]) {
-                  return Some(name);
-                }
-
-                None
-              })
+              .map(|r| r.get("name").unwrap().as_str().unwrap().to_string())
               .collect();
 
-            return Ok((pos - (suffix.len() - 1), candidates));
+            return property_names;
           }
         }
       }
     }
 
-    Ok((pos, Vec::new()))
+    Vec::new()
+  }
+}
+
+fn is_word_boundary(c: char) -> bool {
+  if c == '.' {
+    false
+  } else {
+    char::is_ascii_whitespace(&c) || char::is_ascii_punctuation(&c)
+  }
+}
+
+fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
+  let start = line[..cursor_pos]
+    .rfind(is_word_boundary)
+    .map_or_else(|| 0, |i| i);
+  let end = line[cursor_pos..]
+    .rfind(is_word_boundary)
+    .map_or_else(|| cursor_pos, |i| cursor_pos + i);
+
+  let word = &line[start..end];
+  let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
+  let word = word.strip_suffix(is_word_boundary).unwrap_or(word);
+
+  word
+}
+
+impl Completer for EditorHelper {
+  type Candidate = String;
+
+  fn complete(
+    &self,
+    line: &str,
+    pos: usize,
+    _ctx: &Context<'_>,
+  ) -> Result<(usize, Vec<String>), ReadlineError> {
+    let expr = get_expr_from_line_at_pos(line, pos);
+
+    // check if the expression is in the form `obj.prop`
+    if let Some(index) = expr.rfind('.') {
+      let sub_expr = &expr[..index];
+      let prop_name = &expr[index + 1..];
+      let candidates = self
+        .get_expression_property_names(sub_expr)
+        .into_iter()
+        .filter(|n| !n.starts_with("Symbol(") && n.starts_with(prop_name))
+        .collect();
+
+      Ok((pos - prop_name.len(), candidates))
+    } else {
+      // combine results of declarations and globalThis properties
+      let mut candidates = self
+        .get_expression_property_names("globalThis")
+        .into_iter()
+        .chain(self.get_global_lexical_scope_names())
+        .filter(|n| n.starts_with(expr))
+        .collect::<Vec<_>>();
+
+      // sort and remove duplicates
+      candidates.sort();
+      candidates.dedup(); // make sure to sort first
+
+      Ok((pos - expr.len(), candidates))
+    }
   }
 }
 
@@ -150,7 +194,7 @@ impl Validator for EditorHelper {
     let mut stack: Vec<Token> = Vec::new();
     let mut in_template = false;
 
-    for item in ast::lex("", ctx.input(), &MediaType::JavaScript) {
+    for item in ast::lex("", ctx.input(), &MediaType::TypeScript) {
       if let TokenOrComment::Token(token) = item.inner {
         match token {
           Token::BackQuote => in_template = !in_template,
@@ -210,7 +254,7 @@ impl Highlighter for EditorHelper {
   fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
     let mut out_line = String::from(line);
 
-    for item in ast::lex("", line, &MediaType::JavaScript) {
+    for item in ast::lex("", line, &MediaType::TypeScript) {
       // Adding color adds more bytes to the string,
       // so an offset is needed to stop spans falling out of sync.
       let offset = out_line.len() - line.len();
@@ -265,7 +309,11 @@ struct ReplEditor {
 
 impl ReplEditor {
   pub fn new(helper: EditorHelper, history_file_path: PathBuf) -> Self {
-    let mut editor = Editor::new();
+    let editor_config = Config::builder()
+      .completion_type(CompletionType::List)
+      .build();
+
+    let mut editor = Editor::with_config(editor_config);
     editor.set_helper(Some(helper));
     editor.load_history(&history_file_path).unwrap_or(());
 
@@ -399,10 +447,51 @@ impl ReplSession {
   }
 
   pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
-    self.worker.run_event_loop(false).await
+    self.worker.run_event_loop(true).await
   }
 
-  pub async fn evaluate_line(&mut self, line: &str) -> Result<Value, AnyError> {
+  pub async fn evaluate_line_and_get_output(
+    &mut self,
+    line: &str,
+  ) -> Result<String, AnyError> {
+    match self.evaluate_line_with_object_wrapping(line).await {
+      Ok(evaluate_response) => {
+        let evaluate_result = evaluate_response.get("result").unwrap();
+        let evaluate_exception_details =
+          evaluate_response.get("exceptionDetails");
+
+        if evaluate_exception_details.is_some() {
+          self.set_last_thrown_error(evaluate_result).await?;
+        } else {
+          self.set_last_eval_result(evaluate_result).await?;
+        }
+
+        let value = self.get_eval_value(evaluate_result).await?;
+        Ok(match evaluate_exception_details {
+          Some(_) => format!("Uncaught {}", value),
+          None => value,
+        })
+      }
+      Err(err) => {
+        // handle a parsing diagnostic
+        match err.downcast_ref::<Diagnostic>() {
+          Some(diagnostic) => Ok(format!(
+            "{}: {} at {}:{}",
+            colors::red("parse error"),
+            diagnostic.message,
+            diagnostic.location.line,
+            diagnostic.location.col
+          )),
+          None => Err(err),
+        }
+      }
+    }
+  }
+
+  async fn evaluate_line_with_object_wrapping(
+    &mut self,
+    line: &str,
+  ) -> Result<Value, AnyError> {
     // It is a bit unexpected that { "foo": "bar" } is interpreted as a block
     // statement rather than an object literal so we interpret it as an expression statement
     // to match the behavior found in a typical prompt including browser developer tools.
@@ -414,9 +503,7 @@ impl ReplSession {
       line.to_string()
     };
 
-    let evaluate_response = self
-      .evaluate_expression(&format!("'use strict'; void 0;\n{}", &wrapped_line))
-      .await?;
+    let evaluate_response = self.evaluate_ts_expression(&wrapped_line).await?;
 
     // If that fails, we retry it without wrapping in parens letting the error bubble up to the
     // user if it is still an error.
@@ -424,9 +511,7 @@ impl ReplSession {
       if evaluate_response.get("exceptionDetails").is_some()
         && wrapped_line != line
       {
-        self
-          .evaluate_expression(&format!("'use strict'; void 0;\n{}", &line))
-          .await?
+        self.evaluate_ts_expression(&line).await?
       } else {
         evaluate_response
       };
@@ -434,7 +519,7 @@ impl ReplSession {
     Ok(evaluate_response)
   }
 
-  pub async fn set_last_thrown_error(
+  async fn set_last_thrown_error(
     &mut self,
     error: &Value,
   ) -> Result<(), AnyError> {
@@ -451,7 +536,7 @@ impl ReplSession {
     Ok(())
   }
 
-  pub async fn set_last_eval_result(
+  async fn set_last_eval_result(
     &mut self,
     evaluate_result: &Value,
   ) -> Result<(), AnyError> {
@@ -492,6 +577,35 @@ impl ReplSession {
     Ok(value.to_string())
   }
 
+  async fn evaluate_ts_expression(
+    &mut self,
+    expression: &str,
+  ) -> Result<Value, AnyError> {
+    let parsed_module =
+      crate::ast::parse("repl.ts", &expression, &crate::MediaType::TypeScript)?;
+
+    let transpiled_src = parsed_module
+      .transpile(&crate::ast::EmitOptions {
+        emit_metadata: false,
+        source_map: false,
+        inline_source_map: false,
+        imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
+        // JSX is not supported in the REPL
+        transform_jsx: false,
+        jsx_factory: "React.createElement".into(),
+        jsx_fragment_factory: "React.Fragment".into(),
+        repl_imports: true,
+      })?
+      .0;
+
+    self
+      .evaluate_expression(&format!(
+        "'use strict'; void 0;\n{}",
+        transpiled_src
+      ))
+      .await
+  }
+
   async fn evaluate_expression(
     &mut self,
     expression: &str,
@@ -511,38 +625,30 @@ impl ReplSession {
 
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
-  message_rx: &Receiver<(String, Option<Value>)>,
-  response_tx: &Sender<Result<Value, AnyError>>,
+  message_rx: &mut Receiver<(String, Option<Value>)>,
+  response_tx: &UnboundedSender<Result<Value, AnyError>>,
   editor: ReplEditor,
 ) -> Result<String, ReadlineError> {
-  let mut line = tokio::task::spawn_blocking(move || editor.readline());
-
+  let mut line_fut = tokio::task::spawn_blocking(move || editor.readline());
   let mut poll_worker = true;
 
   loop {
-    for (method, params) in message_rx.try_iter() {
-      let result = repl_session
-        .post_message_with_event_loop(&method, params)
-        .await;
-      response_tx.send(result).unwrap();
-    }
-
-    // Because an inspector websocket client may choose to connect at anytime when we have an
-    // inspector server we need to keep polling the worker to pick up new connections.
-    // TODO(piscisaureus): the above comment is a red herring; figure out if/why
-    // the event loop isn't woken by a waker when a websocket client connects.
-    let timeout = tokio::time::sleep(tokio::time::Duration::from_millis(100));
-    pin!(timeout);
-
     tokio::select! {
-      result = &mut line => {
+      result = &mut line_fut => {
         return result.unwrap();
       }
+      result = message_rx.recv() => {
+        if let Some((method, params)) = result {
+          let result = repl_session
+            .post_message_with_event_loop(&method, params)
+            .await;
+          response_tx.send(result).unwrap();
+        }
+
+        poll_worker = true;
+      },
       _ = repl_session.run_event_loop(), if poll_worker => {
         poll_worker = false;
-      }
-      _ = timeout => {
-        poll_worker = true
       }
     }
   }
@@ -553,13 +659,13 @@ pub async fn run(
   worker: MainWorker,
 ) -> Result<(), AnyError> {
   let mut repl_session = ReplSession::initialize(worker).await?;
-  let (message_tx, message_rx) = sync_channel(1);
-  let (response_tx, response_rx) = channel();
+  let (message_tx, mut message_rx) = channel(1);
+  let (response_tx, response_rx) = unbounded_channel();
 
   let helper = EditorHelper {
     context_id: repl_session.context_id,
     message_tx,
-    response_rx,
+    response_rx: RefCell::new(response_rx),
   };
 
   let history_file_path = program_state.dir.root.join("deno_history.txt");
@@ -571,36 +677,20 @@ pub async fn run(
   loop {
     let line = read_line_and_poll(
       &mut repl_session,
-      &message_rx,
+      &mut message_rx,
       &response_tx,
       editor.clone(),
     )
     .await;
     match line {
       Ok(line) => {
-        let evaluate_response = repl_session.evaluate_line(&line).await?;
+        let output = repl_session.evaluate_line_and_get_output(&line).await?;
 
         // We check for close and break here instead of making it a loop condition to get
         // consistent behavior in when the user evaluates a call to close().
         if repl_session.is_closing().await? {
           break;
         }
-
-        let evaluate_result = evaluate_response.get("result").unwrap();
-        let evaluate_exception_details =
-          evaluate_response.get("exceptionDetails");
-
-        if evaluate_exception_details.is_some() {
-          repl_session.set_last_thrown_error(evaluate_result).await?;
-        } else {
-          repl_session.set_last_eval_result(evaluate_result).await?;
-        }
-
-        let value = repl_session.get_eval_value(evaluate_result).await?;
-        let output = match evaluate_exception_details {
-          Some(_) => format!("Uncaught {}", value),
-          None => value,
-        };
 
         println!("{}", output);
 

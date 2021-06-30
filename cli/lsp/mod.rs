@@ -13,6 +13,7 @@ mod diagnostics;
 mod documents;
 pub(crate) mod language_server;
 mod lsp_custom;
+mod parent_process_checker;
 mod path_to_regex;
 mod performance;
 mod registries;
