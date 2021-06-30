@@ -226,13 +226,17 @@ async fn op_http_request_next(
         format!("{}://{}{}", scheme, host, path)
       };
 
+      // TODO(lucacasonato): extract this function from hyper_tungstenite and
+      // drop the dependency.
+      let is_websocket_request = hyper_tungstenite::is_upgrade_request(&req);
+
       let has_body = if let Some(exact_size) = req.size_hint().exact() {
         exact_size > 0
       } else {
         true
       };
 
-      let maybe_request_rid = if has_body {
+      let maybe_request_rid = if is_websocket_request || has_body {
         let mut state = state.borrow_mut();
         let request_rid = state.resource_table.add(RequestResource {
           conn_rid,

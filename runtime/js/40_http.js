@@ -6,8 +6,14 @@
   const { forgivingBase64Encode } = window.__bootstrap.infra;
   const { InnerBody } = window.__bootstrap.fetchBody;
   const { setEventTargetData } = window.__bootstrap.eventTarget;
-  const { Response, fromInnerRequest, toInnerResponse, newInnerRequest, newInnerResponse, fromInnerResponse } =
-    window.__bootstrap.fetch;
+  const {
+    Response,
+    fromInnerRequest,
+    toInnerResponse,
+    newInnerRequest,
+    newInnerResponse,
+    fromInnerResponse,
+  } = window.__bootstrap.fetch;
   const errors = window.__bootstrap.errors.errors;
   const core = window.Deno.core;
   const { ReadableStream } = window.__bootstrap.streams;
@@ -218,6 +224,12 @@
       if (ws) {
         const _readyState = Symbol.for("[[readyState]]");
 
+        if (typeof requestRid !== "number") {
+          throw new TypeError(
+            "This request can not be upgraded to a websocket connection.",
+          );
+        }
+
         core.opAsync("op_http_upgrade_websocket", requestRid).then((rid) => {
           ws[Symbol.for("[[rid]]")] = rid;
           // TODO: protocols & extensions
@@ -315,7 +327,7 @@
     r.headerList = [
       ["Upgrade", "websocket"],
       ["Connection", "Upgrade"],
-      ["Sec-WebSocket-Accept", forgivingBase64Encode(new Uint8Array(accept))]
+      ["Sec-WebSocket-Accept", forgivingBase64Encode(new Uint8Array(accept))],
     ];
 
     const response = fromInnerResponse(r, "immutable");
