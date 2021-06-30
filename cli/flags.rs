@@ -1004,6 +1004,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .min_values(0)
         .required(false)
         .takes_value(true)
+        .require_equals(true)
         .validator(|val: String| match val.parse::<usize>() {
           Ok(_) => Ok(()),
           Err(_) => Err("fail-fast should be a number".to_string()),
