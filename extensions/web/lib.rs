@@ -2,7 +2,9 @@
 
 mod message_port;
 
+pub use crate::message_port::create_entangled_message_port;
 pub use crate::message_port::JsMessageData;
+pub use crate::message_port::MessagePort;
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;

@@ -145,9 +145,9 @@ impl Drop for JsRuntime {
 fn v8_init(v8_platform: Option<v8::UniquePtr<v8::Platform>>) {
   // Include 10MB ICU data file.
   #[repr(C, align(16))]
-  struct IcuData([u8; 10413584]);
+  struct IcuData([u8; 10144432]);
   static ICU_DATA: IcuData = IcuData(*include_bytes!("icudtl.dat"));
-  v8::icu::set_common_data(&ICU_DATA.0).unwrap();
+  v8::icu::set_common_data_69(&ICU_DATA.0).unwrap();
 
   let v8_platform = v8_platform
     .unwrap_or_else(v8::new_default_platform)
@@ -162,7 +162,6 @@ fn v8_init(v8_platform: Option<v8::UniquePtr<v8::Platform>>) {
     // See https://github.com/denoland/deno/issues/2544
     " --experimental-wasm-threads",
     " --no-wasm-async-compilation",
-    " --harmony-top-level-await",
     " --harmony-import-assertions",
     " --no-validate-asm",
   );
@@ -381,7 +380,7 @@ impl JsRuntime {
       for (filename, source) in js_files {
         let source = source()?;
         // TODO(@AaronO): use JsRuntime::execute_static() here to move src off heap
-        self.execute(filename, &source)?;
+        self.execute_script(filename, &source)?;
       }
     }
     // Restore extensions
@@ -441,7 +440,9 @@ impl JsRuntime {
 
   /// Ensures core.js has the latest op-name to op-id mappings
   pub fn sync_ops_cache(&mut self) {
-    self.execute("<anon>", "Deno.core.syncOpsCache()").unwrap()
+    self
+      .execute_script("<anon>", "Deno.core.syncOpsCache()")
+      .unwrap()
   }
 
   /// Returns the runtime's op state, which can be used to maintain ops
@@ -452,23 +453,31 @@ impl JsRuntime {
     state.op_state.clone()
   }
 
-  /// Executes traditional JavaScript code (traditional = not ES modules)
+  /// Executes traditional JavaScript code (traditional = not ES modules).
   ///
   /// The execution takes place on the current global context, so it is possible
   /// to maintain local JS state and invoke this method multiple times.
   ///
+  /// `name` can be a filepath or any other string, eg.
+  ///
+  ///   - "/some/file/path.js"
+  ///   - "<anon>"
+  ///   - "[native code]"
+  ///
+  /// The same `name` value can be used for multiple executions.
+  ///
   /// `AnyError` can be downcast to a type that exposes additional information
   /// about the V8 exception. By default this type is `JsError`, however it may
   /// be a different type if `RuntimeOptions::js_error_create_fn` has been set.
-  pub fn execute(
+  pub fn execute_script(
     &mut self,
-    js_filename: &str,
-    js_source: &str,
+    name: &str,
+    source_code: &str,
   ) -> Result<(), AnyError> {
     let scope = &mut self.handle_scope();
 
-    let source = v8::String::new(scope, js_source).unwrap();
-    let name = v8::String::new(scope, js_filename).unwrap();
+    let source = v8::String::new(scope, source_code).unwrap();
+    let name = v8::String::new(scope, name).unwrap();
     let origin = bindings::script_origin(scope, name);
 
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -1085,11 +1094,7 @@ impl JsRuntime {
               // fetched. Create and register it, and if successful, poll for the
               // next recursive-load event related to this dynamic import.
               let register_result =
-                module_map_rc.borrow_mut().register_during_load(
-                  &mut self.handle_scope(),
-                  info,
-                  &mut load,
-                );
+                load.register_and_recurse(&mut self.handle_scope(), &info);
 
               match register_result {
                 Ok(()) => {
@@ -1112,7 +1117,8 @@ impl JsRuntime {
         } else {
           // The top-level module from a dynamic import has been instantiated.
           // Load is done.
-          let module_id = load.expect_finished();
+          let module_id =
+            load.root_module_id.expect("Root module should be loaded");
           let result = self.instantiate_module(module_id);
           if let Err(err) = result {
             self.dynamic_import_reject(dyn_import_id, err);
@@ -1129,9 +1135,9 @@ impl JsRuntime {
     }
   }
 
-  /// "deno_core" runs V8 with "--harmony-top-level-await"
-  /// flag on - it means that each module evaluation returns a promise
-  /// from V8.
+  /// "deno_core" runs V8 with Top Level Await enabled. It means that each
+  /// module evaluation returns a promise from V8.
+  /// Feature docs: https://v8.dev/features/top-level-await
   ///
   /// This promise resolves after all dependent modules have also
   /// resolved. Each dependent module may perform calls to "import()" and APIs
@@ -1248,21 +1254,25 @@ impl JsRuntime {
     code: Option<String>,
   ) -> Result<ModuleId, AnyError> {
     let module_map_rc = Self::module_map(self.v8_isolate());
+    if let Some(code) = code {
+      module_map_rc.borrow_mut().new_module(
+        &mut self.handle_scope(),
+        true,
+        specifier.as_str(),
+        &code,
+      )?;
+    }
 
-    let mut load = module_map_rc
-      .borrow()
-      .load_main(specifier.as_str(), code)
-      .await?;
+    let mut load =
+      ModuleMap::load_main(module_map_rc.clone(), specifier.as_str()).await?;
 
     while let Some(info_result) = load.next().await {
       let info = info_result?;
       let scope = &mut self.handle_scope();
-      module_map_rc
-        .borrow_mut()
-        .register_during_load(scope, info, &mut load)?;
+      load.register_and_recurse(scope, &info)?;
     }
 
-    let root_id = load.expect_finished();
+    let root_id = load.root_module_id.expect("Root module should be loaded");
     self.instantiate_module(root_id)?;
     Ok(root_id)
   }
@@ -1470,7 +1480,7 @@ pub mod tests {
     runtime.sync_ops_cache();
 
     runtime
-      .execute(
+      .execute_script(
         "setup.js",
         r#"
         function assert(cond) {
@@ -1489,7 +1499,7 @@ pub mod tests {
   fn test_dispatch() {
     let (mut runtime, dispatch_count) = setup(Mode::Async);
     runtime
-      .execute(
+      .execute_script(
         "filename.js",
         r#"
         let control = 42;
@@ -1508,7 +1518,7 @@ pub mod tests {
   fn test_dispatch_no_zero_copy_buf() {
     let (mut runtime, dispatch_count) = setup(Mode::AsyncZeroCopy(false));
     runtime
-      .execute(
+      .execute_script(
         "filename.js",
         r#"
         Deno.core.opAsync("op_test");
@@ -1522,7 +1532,7 @@ pub mod tests {
   fn test_dispatch_stack_zero_copy_bufs() {
     let (mut runtime, dispatch_count) = setup(Mode::AsyncZeroCopy(true));
     runtime
-      .execute(
+      .execute_script(
         "filename.js",
         r#"
         let zero_copy_a = new Uint8Array([0]);
@@ -1550,7 +1560,7 @@ pub mod tests {
     });
 
     // Rn an infinite loop, which should be terminated.
-    match isolate.execute("infinite_loop.js", "for(;;) {}") {
+    match isolate.execute_script("infinite_loop.js", "for(;;) {}") {
       Ok(_) => panic!("execution should be terminated"),
       Err(e) => {
         assert_eq!(e.to_string(), "Uncaught Error: execution terminated")
@@ -1564,7 +1574,7 @@ pub mod tests {
 
     // Verify that the isolate usable again.
     isolate
-      .execute("simple.js", "1 + 1")
+      .execute_script("simple.js", "1 + 1")
       .expect("execution should be possible again");
 
     terminator_thread.join().unwrap();
@@ -1589,7 +1599,7 @@ pub mod tests {
     run_in_task(|mut cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
       runtime
-        .execute(
+        .execute_script(
           "bad_op_id.js",
           r#"
           let thrown;
@@ -1612,7 +1622,7 @@ pub mod tests {
   fn syntax_error() {
     let mut runtime = JsRuntime::new(Default::default());
     let src = "hocuspocus(";
-    let r = runtime.execute("i.js", src);
+    let r = runtime.execute_script("i.js", src);
     let e = r.unwrap_err();
     let js_error = e.downcast::<JsError>().unwrap();
     assert_eq!(js_error.end_column, Some(11));
@@ -1623,7 +1633,7 @@ pub mod tests {
     run_in_task(|mut cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
       runtime
-        .execute(
+        .execute_script(
           "encode_decode_test.js",
           include_str!("encode_decode_test.js"),
         )
@@ -1639,7 +1649,7 @@ pub mod tests {
     run_in_task(|mut cx| {
       let (mut runtime, _dispatch_count) = setup(Mode::Async);
       runtime
-        .execute(
+        .execute_script(
           "serialize_deserialize_test.js",
           include_str!("serialize_deserialize_test.js"),
         )
@@ -1672,7 +1682,7 @@ pub mod tests {
       runtime.register_op("op_err", op_sync(op_err));
       runtime.sync_ops_cache();
       runtime
-        .execute(
+        .execute_script(
           "error_builder_test.js",
           include_str!("error_builder_test.js"),
         )
@@ -1690,7 +1700,7 @@ pub mod tests {
         will_snapshot: true,
         ..Default::default()
       });
-      runtime.execute("a.js", "a = 1 + 2").unwrap();
+      runtime.execute_script("a.js", "a = 1 + 2").unwrap();
       runtime.snapshot()
     };
 
@@ -1700,7 +1710,7 @@ pub mod tests {
       ..Default::default()
     });
     runtime2
-      .execute("check.js", "if (a != 3) throw Error('x')")
+      .execute_script("check.js", "if (a != 3) throw Error('x')")
       .unwrap();
   }
 
@@ -1711,7 +1721,7 @@ pub mod tests {
         will_snapshot: true,
         ..Default::default()
       });
-      runtime.execute("a.js", "a = 1 + 2").unwrap();
+      runtime.execute_script("a.js", "a = 1 + 2").unwrap();
       let snap: &[u8] = &*runtime.snapshot();
       Vec::from(snap).into_boxed_slice()
     };
@@ -1722,7 +1732,7 @@ pub mod tests {
       ..Default::default()
     });
     runtime2
-      .execute("check.js", "if (a != 3) throw Error('x')")
+      .execute_script("check.js", "if (a != 3) throw Error('x')")
       .unwrap();
   }
 
@@ -1746,7 +1756,7 @@ pub mod tests {
       },
     );
     let err = runtime
-      .execute(
+      .execute_script(
         "script name",
         r#"let s = ""; while(true) { s += "Hello"; }"#,
       )
@@ -1798,7 +1808,7 @@ pub mod tests {
     );
 
     let err = runtime
-      .execute(
+      .execute_script(
         "script name",
         r#"let s = ""; while(true) { s += "Hello"; }"#,
       )
@@ -1866,7 +1876,7 @@ pub mod tests {
   fn test_error_without_stack() {
     let mut runtime = JsRuntime::new(RuntimeOptions::default());
     // SyntaxError
-    let result = runtime.execute(
+    let result = runtime.execute_script(
       "error_without_stack.js",
       r#"
 function main() {
@@ -1884,7 +1894,7 @@ main();
   #[test]
   fn test_error_stack() {
     let mut runtime = JsRuntime::new(RuntimeOptions::default());
-    let result = runtime.execute(
+    let result = runtime.execute_script(
       "error_stack.js",
       r#"
 function assert(cond) {
@@ -1912,7 +1922,7 @@ main();
     run_in_task(|cx| {
       let mut runtime = JsRuntime::new(RuntimeOptions::default());
       runtime
-        .execute(
+        .execute_script(
           "error_async_stack.js",
           r#"
 (async () => {
@@ -1950,7 +1960,7 @@ main();
     let mut runtime = JsRuntime::new(RuntimeOptions::default());
     // Call non-existent op so we get error from `core.js`
     let error = runtime
-      .execute(
+      .execute_script(
         "core_js_stack_frame.js",
         "Deno.core.opSync('non_existent');",
       )
@@ -1967,6 +1977,6 @@ main();
       ..Default::default()
     };
     let mut runtime = JsRuntime::new(options);
-    runtime.execute("<none>", "").unwrap();
+    runtime.execute_script("<none>", "").unwrap();
   }
 }

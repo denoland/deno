@@ -7,10 +7,9 @@ use crate::ops;
 use crate::permissions::Permissions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
-use deno_core::error::Context as ErrorContext;
-use deno_core::futures::future::poll_fn;
 use deno_core::futures::stream::StreamExt;
 use deno_core::futures::Future;
+use deno_core::located_script_name;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
@@ -99,6 +98,7 @@ impl MainWorker {
       deno_fetch::init::<Permissions>(
         options.user_agent.clone(),
         options.ca_data.clone(),
+        None,
       ),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
@@ -115,20 +115,18 @@ impl MainWorker {
       // Metrics
       metrics::init(),
       // Runtime ops
-      ops::runtime::init(main_module),
+      ops::runtime::init(main_module.clone()),
       ops::worker_host::init(options.create_web_worker_cb.clone()),
       ops::fs_events::init(),
       ops::fs::init(),
-      ops::http::init(),
       ops::io::init(),
       ops::io::init_stdio(),
-      ops::net::init(),
+      deno_net::init::<Permissions>(options.unstable),
       ops::os::init(),
       ops::permissions::init(),
       ops::plugin::init(),
       ops::process::init(),
       ops::signal::init(),
-      ops::tls::init(),
       ops::tty::init(),
       // Permissions ext (worker specific state)
       perm_ext,
@@ -147,7 +145,11 @@ impl MainWorker {
       let inspector = js_runtime.inspector();
       let session_sender = inspector.get_session_sender();
       let deregister_rx = inspector.add_deregister_handler();
-      server.register_inspector(session_sender, deregister_rx);
+      server.register_inspector(
+        session_sender,
+        deregister_rx,
+        main_module.to_string(),
+      );
     }
 
     Self {
@@ -177,17 +179,17 @@ impl MainWorker {
       serde_json::to_string_pretty(&runtime_options).unwrap()
     );
     self
-      .execute(&script)
+      .execute_script(&located_script_name!(), &script)
       .expect("Failed to execute bootstrap script");
   }
 
-  /// Same as execute2() but the filename defaults to "$CWD/__anonymous__".
-  pub fn execute(&mut self, js_source: &str) -> Result<(), AnyError> {
-    let path = env::current_dir()
-      .context("Failed to get current working directory")?
-      .join("__anonymous__");
-    let url = Url::from_file_path(path).unwrap();
-    self.js_runtime.execute(url.as_str(), js_source)
+  /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
+  pub fn execute_script(
+    &mut self,
+    name: &str,
+    source_code: &str,
+  ) -> Result<(), AnyError> {
+    self.js_runtime.execute_script(name, source_code)
   }
 
   /// Loads and instantiates specified JavaScript module.
@@ -248,7 +250,7 @@ impl MainWorker {
     &mut self,
     wait_for_inspector: bool,
   ) -> Result<(), AnyError> {
-    poll_fn(|cx| self.poll_event_loop(cx, wait_for_inspector)).await
+    self.js_runtime.run_event_loop(wait_for_inspector).await
   }
 
   /// A utility function that runs provided future concurrently with the event loop.

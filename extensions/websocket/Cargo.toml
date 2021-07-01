@@ -14,7 +14,7 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.91.0", path = "../../core" }
+deno_core = { version = "0.92.0", path = "../../core" }
 http = "0.2.3"
 serde = { version = "1.0.125", features = ["derive"] }
 tokio = { version = "1.7.1", features = ["full"] }

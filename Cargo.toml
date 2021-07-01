@@ -12,6 +12,7 @@ members = [
   "extensions/console",
   "extensions/crypto",
   "extensions/fetch",
+  "extensions/net",
   "extensions/timers",
   "extensions/url",
   "extensions/web",
@@ -26,19 +27,46 @@ exclude = ["test_util/std/hash/_wasm"]
 [patch.crates-io]
 hyper = { git = "https://github.com/lucacasonato/hyper", rev = "c3f3330bddb2b411ef119cff03c0a5d11bb7bdd4" }
 
+# NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release]
 codegen-units = 1
 incremental = true
 lto = true
 opt-level = 'z' # Optimize for size
 
+# NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.bench]
 codegen-units = 1
 incremental = true
 lto = true
 opt-level = 'z' # Optimize for size
 
-# Optimize these packages for perf
+# Optimize these packages for performance.
+# NB: the `bench` and `release` profiles must remain EXACTLY the same.
+[profile.bench.package.rand]
+opt-level = 3
+[profile.bench.package.flate2]
+opt-level = 3
+[profile.bench.package.brotli]
+opt-level = 3
+[profile.bench.package.miniz_oxide]
+opt-level = 3
+[profile.bench.package.async-compression]
+opt-level = 3
+[profile.bench.package.brotli-decompressor]
+opt-level = 3
+[profile.bench.package.deno_core]
+opt-level = 3
+[profile.bench.package.deno_runtime]
+opt-level = 3
+[profile.bench.package.rusty_v8]
+opt-level = 3
+[profile.bench.package.serde_v8]
+opt-level = 3
+[profile.bench.package.serde]
+opt-level = 3
+
+# NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release.package.rand]
 opt-level = 3
 [profile.release.package.flate2]
