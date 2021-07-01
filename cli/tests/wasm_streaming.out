@@ -1,0 +1,5 @@
+TypeError: Failed to call 'WebAssembly.compileStreaming': Argument 1 is not of type Response.
+    at makeException (deno:extensions/webidl/00_webidl.js:75:12)
+    at Array.Response (deno:extensions/webidl/00_webidl.js:889:15)
+    at deno:extensions/fetch/26_fetch.js:449:50
+1 + 3 = 4
