@@ -6,6 +6,11 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.11.4 / 2021.07.01
+
+- upgrade: swc 0.44.0 (#11197)
+- ci: don't set DENO_CANARY when releasing (#11181)
+
 ### 1.11.3 / 2021.06.29
 
 - fix(#10761): graph errors reported as diagnostics for `Deno.emit()` (#10767)
