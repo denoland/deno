@@ -88,6 +88,7 @@ pub use crate::runtime::Snapshot;
 // pub use crate::runtime_modules::include_js_files!;
 pub use crate::extensions::Extension;
 pub use crate::extensions::OpMiddlewareFn;
+pub use crate::extensions::OpPair;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()

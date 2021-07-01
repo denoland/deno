@@ -962,6 +962,23 @@ impl Permissions {
   }
 }
 
+impl deno_net::NetPermissions for Permissions {
+  fn check_net<T: AsRef<str>>(
+    &mut self,
+    host: &(T, Option<u16>),
+  ) -> Result<(), AnyError> {
+    self.net.check(host)
+  }
+
+  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
+    self.read.check(path)
+  }
+
+  fn check_write(&mut self, path: &Path) -> Result<(), AnyError> {
+    self.write.check(path)
+  }
+}
+
 impl deno_fetch::FetchPermissions for Permissions {
   fn check_net_url(&mut self, url: &url::Url) -> Result<(), AnyError> {
     self.net.check_url(url)

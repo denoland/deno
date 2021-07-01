@@ -330,14 +330,12 @@ impl WebWorker {
       vec![
         ops::fs_events::init(),
         ops::fs::init(),
-        ops::net::init(),
+        deno_net::init::<Permissions>(options.unstable),
         ops::os::init(),
-        ops::http::init(),
         ops::permissions::init(),
         ops::plugin::init(),
         ops::process::init(),
         ops::signal::init(),
-        ops::tls::init(),
         ops::tty::init(),
         ops::io::init_stdio(),
       ]
@@ -362,7 +360,11 @@ impl WebWorker {
       let inspector = js_runtime.inspector();
       let session_sender = inspector.get_session_sender();
       let deregister_rx = inspector.add_deregister_handler();
-      server.register_inspector(session_sender, deregister_rx);
+      server.register_inspector(
+        session_sender,
+        deregister_rx,
+        main_module.to_string(),
+      );
     }
 
     let (internal_handle, external_handle) = {
