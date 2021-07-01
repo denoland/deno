@@ -100,16 +100,14 @@ impl DiffBuilder {
 
       self.orig_line += self.orig.split('\n').count();
       self.edit_line += self.edit.split('\n').count();
-
-      self.orig.clear();
-      self.edit.clear();
       self.has_changes = false;
     } else {
-      self.orig.clear();
-      self.edit.clear();
       self.orig_line += 1;
       self.edit_line += 1;
     }
+
+    self.orig.clear();
+    self.edit.clear();
   }
 
   fn write_line_diff(&mut self) {
