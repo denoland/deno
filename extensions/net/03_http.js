@@ -305,16 +305,22 @@
 
   async function upgradeWebSocket(request, options = {}) {
     if (request.headers.get("upgrade") !== "websocket") {
-      // TODO(crowlkats): Throw
+      throw new TypeError(
+        "Invalid Header: 'upgrade' header must be 'websocket'",
+      );
     }
 
     if (request.headers.get("connection") !== "upgrade") {
-      // TODO(crowlkats): Throw
+      throw new TypeError(
+        "Invalid Header: 'connection' header must be 'upgrade'",
+      );
     }
 
     const websocketKey = request.headers.get("sec-websocket-key");
     if (websocketKey === null) {
-      // TODO(crowlkats): Throw
+      throw new TypeError(
+        "Invalid Header: 'sec-websocket-key' header must be set",
+      );
     }
 
     const key = new TextEncoder()
@@ -335,7 +341,9 @@
       if (protocols.includes(options.protocol)) {
         r.headerList.push(["sec-websocket-protocol", options.protocol]);
       } else {
-        // TODO(crowlkats): Throw
+        throw new TypeError(
+          `protocol '${options.protocol}' not in the request's protocol list`,
+        );
       }
     }
 
