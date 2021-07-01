@@ -4,8 +4,8 @@
 
 import { gzip } from "https://deno.land/x/compress@v0.3.8/gzip/mod.ts";
 
-const user = Deno.env.get("WPT_FYI_STAGING_USER");
-const password = Deno.env.get("WPT_FYI_STAGING_PW");
+const user = Deno.env.get("WPT_FYI_USER");
+const password = Deno.env.get("WPT_FYI_PW");
 
 const fromRawFile = Deno.args.includes("--from-raw-file");
 
@@ -27,7 +27,7 @@ if (fromRawFile) {
 
 const basicAuthToken = btoa(`${user}:${password}`);
 
-const resp = await fetch("https://staging.wpt.fyi/api/results/upload", {
+const resp = await fetch("https://wpt.fyi/api/results/upload", {
   method: "POST",
   body: form,
   headers: {
@@ -47,7 +47,7 @@ if (!resp.ok) {
 if (!fromRawFile && Deno.args.includes("--ghstatus")) {
   const githubToken = Deno.env.get("GITHUB_TOKEN");
   const taskId = body.split(" ")[1];
-  const url = `https://staging.wpt.fyi/results/?run_id=${taskId}`;
+  const url = `https://wpt.fyi/results/?run_id=${taskId}`;
   const commit = Deno.args[0];
   const resp = await fetch(
     `https://api.github.com/repos/denoland/deno/statuses/${commit}`,
