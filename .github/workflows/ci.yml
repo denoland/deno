@@ -194,6 +194,12 @@ jobs:
           cat >> ~/.bash_profile << ___
             cd "$(pwd)"
 
+            # Configure canary build.
+            if [ "$DENO_CANARY" == "true" ]
+            then
+              export DENO_CANARY=true
+            fi
+
             # Add cargo, rustc, and deno to $PATH.
             source /usr/share/rust/.cargo/env
             export PATH="$PATH:$(pwd)/target/release"
@@ -221,7 +227,6 @@ jobs:
             # Miscellaneous flags.
             export CARGO_TERM_COLOR=always
             export CI=true
-            export DENO_CANARY=$DENO_CANARY
           ___
 
       - name: Log versions
