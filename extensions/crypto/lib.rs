@@ -57,8 +57,8 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:extensions/crypto",
-      "00_webidl.js",
-      "01_crypto.js",
+      "00_crypto.js",
+      "01_webidl.js",
     ))
     .ops(vec![
       (
@@ -107,27 +107,24 @@ pub fn op_crypto_get_random_values(
 pub struct AlgorithmArg {
   name: Algorithm,
   modulus_length: Option<u32>,
-  hash: Option<CryptoHash>,
-  #[allow(dead_code)]
-  length: Option<u32>,
+  public_exponent: Option<ZeroCopyBuf>,
   named_curve: Option<CryptoNamedCurve>,
+  hash: Option<CryptoHash>,
 }
 
 pub async fn op_crypto_generate_key(
   _state: Rc<RefCell<OpState>>,
   args: AlgorithmArg,
-  zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<ZeroCopyBuf, AnyError> {
   let algorithm = args.name;
 
   let key = match algorithm {
     Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss => {
-      let exp = zero_copy.ok_or_else(|| {
-        type_error("Missing argument publicExponent".to_string())
-      })?;
+      let public_exponent = args.public_exponent.ok_or_else(not_supported)?;
       let modulus_length = args.modulus_length.ok_or_else(not_supported)?;
 
-      let exponent = BigUint::from_bytes_be(&exp);
+      let exponent = BigUint::from_bytes_be(&public_exponent);
       if exponent != *PUB_EXPONENT_1 && exponent != *PUB_EXPONENT_2 {
         return Err(custom_error(
           "DOMExceptionOperationError",
