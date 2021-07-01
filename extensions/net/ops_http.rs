@@ -54,7 +54,10 @@ pub fn init() -> Vec<OpPair> {
     ("op_http_response", op_async(op_http_response)),
     ("op_http_response_write", op_async(op_http_response_write)),
     ("op_http_response_close", op_async(op_http_response_close)),
-    ("op_http_upgrade_websocket", op_async(op_http_upgrade_websocket)),
+    (
+      "op_http_upgrade_websocket",
+      op_async(op_http_upgrade_websocket),
+    ),
   ]
 }
 

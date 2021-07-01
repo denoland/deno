@@ -52,7 +52,6 @@ deno_websocket = { version = "0.15.0", path = "../extensions/websocket" }
 deno_webstorage = { version = "0.5.0", path = "../extensions/webstorage" }
 
 atty = "0.2.14"
-base64 = "0.13.0"
 dlopen = "0.1.8"
 encoding_rs = "0.8.28"
 filetime = "0.2.14"
