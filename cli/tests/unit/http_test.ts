@@ -643,9 +643,8 @@ unitTest({ perms: { net: true } }, async function httpServerWebSocket() {
         response,
         websocket,
       } = await Deno.upgradeWebSocket(request);
-      websocket.onmessage = (m) => websocket.send(m.data);
-      websocket.onopen = () => {
-        console.log("opened conn");
+      websocket.onmessage = (m) => {
+        websocket.send(m.data);
         websocket.close();
       };
       await respondWith(response);
