@@ -18,7 +18,7 @@
   const { BadResource, Interrupted } = core;
   const { ReadableStream } = window.__bootstrap.streams;
   const abortSignal = window.__bootstrap.abortSignal;
-  const { WebSocket, _rid, _readyState, _eventLoop } =
+  const { WebSocket, _rid, _readyState, _eventLoop, _protocol } =
     window.__bootstrap.webSocket;
 
   function serveHttp(conn) {
@@ -237,7 +237,7 @@
           requestRid,
         );
         ws[_rid] = wsRid;
-        // TODO(crowlkats): protocols & extensions
+        ws[_protocol] = resp.headers.get("sec-websocket-protocol");
 
         if (ws[_readyState] === WebSocket.CLOSING) {
           await core.opAsync("op_ws_close", { rid: wsRid });
@@ -328,7 +328,9 @@
       ["sec-websocket-accept", forgivingBase64Encode(new Uint8Array(accept))],
     ];
 
-    const protocols = request.headers.get("sec-websocket-protocol")?.split(", ");
+    const protocols = request.headers.get("sec-websocket-protocol")?.split(
+      ", ",
+    );
     if (protocols && options.protocol) {
       if (protocols.includes(options.protocol)) {
         r.headerList.push(["sec-websocket-protocol", options.protocol]);
