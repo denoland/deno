@@ -329,7 +329,7 @@
     ];
 
     const protocols = request.headers.get("sec-websocket-protocol")?.split(", ");
-    if (protocols && protocol) {
+    if (protocols && options.protocol) {
       if (protocols.includes(options.protocol)) {
         r.headerList.push(["sec-websocket-protocol", options.protocol]);
       } else {
