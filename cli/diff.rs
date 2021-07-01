@@ -3,28 +3,23 @@
 use crate::colors;
 use dissimilar::{diff as difference, Chunk};
 
-fn fmt_add() -> String {
-  colors::green_bold("+").to_string()
-}
+/// Print diff of the same file_path, before and after formatting.
+///
+/// Diff format is loosely based on Github diff formatting.
+pub fn diff(orig_text: &str, edit_text: &str) -> String {
+  if orig_text == edit_text {
+    return String::new();
+  }
 
-fn fmt_add_text(x: &str) -> String {
-  colors::green(x).to_string()
-}
+  // normalize newlines as it adds too much noise if they differ
+  let orig_text = orig_text.replace("\r\n", "\n");
+  let edit_text = edit_text.replace("\r\n", "\n");
 
-fn fmt_add_text_highlight(x: &str) -> String {
-  colors::black_on_green(x).to_string()
-}
+  if orig_text == edit_text {
+    return " | Text differed by line endings.".to_string();
+  }
 
-fn fmt_rem() -> String {
-  colors::red_bold("-").to_string()
-}
-
-fn fmt_rem_text(x: &str) -> String {
-  colors::red(x).to_string()
-}
-
-fn fmt_rem_text_highlight(x: &str) -> String {
-  colors::white_on_red(x).to_string()
+  DiffBuilder::build(&orig_text, &edit_text)
 }
 
 struct DiffBuilder {
@@ -146,23 +141,28 @@ impl DiffBuilder {
   }
 }
 
-/// Print diff of the same file_path, before and after formatting.
-///
-/// Diff format is loosely based on Github diff formatting.
-pub fn diff(orig_text: &str, edit_text: &str) -> String {
-  if orig_text == edit_text {
-    return String::new();
-  }
+fn fmt_add() -> String {
+  colors::green_bold("+").to_string()
+}
 
-  // normalize newlines as it adds too much noise if they differ
-  let orig_text = orig_text.replace("\r\n", "\n");
-  let edit_text = edit_text.replace("\r\n", "\n");
+fn fmt_add_text(x: &str) -> String {
+  colors::green(x).to_string()
+}
 
-  if orig_text == edit_text {
-    return " | Text differed by line endings.".to_string();
-  }
+fn fmt_add_text_highlight(x: &str) -> String {
+  colors::black_on_green(x).to_string()
+}
 
-  DiffBuilder::build(&orig_text, &edit_text)
+fn fmt_rem() -> String {
+  colors::red_bold("-").to_string()
+}
+
+fn fmt_rem_text(x: &str) -> String {
+  colors::red(x).to_string()
+}
+
+fn fmt_rem_text_highlight(x: &str) -> String {
+  colors::white_on_red(x).to_string()
 }
 
 #[cfg(test)]
