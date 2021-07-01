@@ -643,6 +643,7 @@ unitTest({ perms: { net: true } }, async function httpServerWebSocket() {
         response,
         websocket,
       } = await Deno.upgradeWebSocket(request);
+      websocket.onerror = () => fail();
       websocket.onmessage = (m) => {
         websocket.send(m.data);
         websocket.close();
