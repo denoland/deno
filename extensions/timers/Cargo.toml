@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_timers"
-version = "0.8.0"
+version = "0.8.1"
 edition = "2018"
 description = "Timers API implementation for Deno"
 authors = ["the Deno authors"]

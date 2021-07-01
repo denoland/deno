@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_webgpu"
-version = "0.11.0"
+version = "0.11.1"
 edition = "2018"
 description = "WebGPU implementation for Deno"
 authors = ["the Deno authors"]
