@@ -226,9 +226,20 @@ async fn op_http_request_next(
         format!("{}://{}{}", scheme, host, path)
       };
 
-      // TODO(lucacasonato): extract this function from hyper_tungstenite and
-      // drop the dependency.
-      let is_websocket_request = hyper_tungstenite::is_upgrade_request(&req);
+      let is_websocket_request = req
+        .headers()
+        .get(hyper::header::CONNECTION)
+        .and_then(|v| {
+          v.to_str().ok().map(|s| "Upgrade".eq_ignore_ascii_case(s))
+        })
+        .unwrap_or(false)
+        && req
+          .headers()
+          .get(hyper::header::UPGRADE)
+          .and_then(|v| {
+            v.to_str().ok().map(|s| "websocket".eq_ignore_ascii_case(s))
+          })
+          .unwrap_or(false);
 
       let has_body = if let Some(exact_size) = req.size_hint().exact() {
         exact_size > 0

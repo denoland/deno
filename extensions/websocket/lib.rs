@@ -70,7 +70,9 @@ pub enum WebSocketStreamType {
     rx: AsyncRefCell<SplitStream<WsStream>>,
   },
   Server {
-    tx: AsyncRefCell<SplitSink<WebSocketStream<hyper::upgrade::Upgraded>, Message>>,
+    tx: AsyncRefCell<
+      SplitSink<WebSocketStream<hyper::upgrade::Upgraded>, Message>,
+    >,
     rx: AsyncRefCell<SplitStream<WebSocketStream<hyper::upgrade::Upgraded>>>,
   },
 }
@@ -90,39 +92,51 @@ impl WsStreamResource {
         let mut tx = RcRef::map(self, |r| match &r.stream {
           WebSocketStreamType::Client { tx, .. } => tx,
           WebSocketStreamType::Server { .. } => unreachable!(),
-        }).borrow_mut().await;
+        })
+        .borrow_mut()
+        .await;
         tx.send(message).await?;
-      },
+      }
       WebSocketStreamType::Server { .. } => {
         let mut tx = RcRef::map(self, |r| match &r.stream {
           WebSocketStreamType::Client { .. } => unreachable!(),
           WebSocketStreamType::Server { tx, .. } => tx,
-        }).borrow_mut().await;
+        })
+        .borrow_mut()
+        .await;
         tx.send(message).await?;
-      },
+      }
     }
 
     Ok(())
   }
 
-  async fn next_message(self: &Rc<Self>, cancel: RcRef<CancelHandle>) -> Result<Option<Result<Message, tokio_tungstenite::tungstenite::Error>>, AnyError> {
+  async fn next_message(
+    self: &Rc<Self>,
+    cancel: RcRef<CancelHandle>,
+  ) -> Result<
+    Option<Result<Message, tokio_tungstenite::tungstenite::Error>>,
+    AnyError,
+  > {
     match &self.stream {
       WebSocketStreamType::Client { .. } => {
         let mut rx = RcRef::map(self, |r| match &r.stream {
           WebSocketStreamType::Client { rx, .. } => rx,
           WebSocketStreamType::Server { .. } => unreachable!(),
-        }).borrow_mut().await;
-        let message = rx.next().or_cancel(cancel).await?;
-        Ok(message)
-      },
+        })
+        .borrow_mut()
+        .await;
+        rx.next().or_cancel(cancel).await.map_err(AnyError::from)
+      }
       WebSocketStreamType::Server { .. } => {
         let mut rx = RcRef::map(self, |r| match &r.stream {
           WebSocketStreamType::Client { .. } => unreachable!(),
           WebSocketStreamType::Server { rx, .. } => rx,
-        }).borrow_mut().await;
-        let message = rx.next().or_cancel(cancel).await?;
-        Ok(message)
-      },
+        })
+        .borrow_mut()
+        .await;
+        rx.next().or_cancel(cancel).await.map_err(AnyError::from)
+      }
     }
   }
 }

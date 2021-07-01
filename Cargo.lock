@@ -727,7 +727,6 @@ dependencies = [
  "fwdansi",
  "http",
  "hyper",
- "hyper-tungstenite",
  "indexmap",
  "lazy_static",
  "libc",
@@ -1675,18 +1674,6 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "webpki",
-]
-
-[[package]]
-name = "hyper-tungstenite"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3bd29c3bffc64a135f9edb3f52604e7f44e767b8ddb2f3a3e4e80a5319649b37"
-dependencies = [
- "hyper",
- "pin-project",
- "tokio",
- "tokio-tungstenite",
 ]
 
 [[package]]
