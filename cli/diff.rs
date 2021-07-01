@@ -47,7 +47,7 @@ impl DiffBuilder {
           edit_text.split('\n').count(),
         );
         line_count.to_string().chars().count()
-      }
+      },
     };
 
     let chunks = difference(orig_text, edit_text);
@@ -200,11 +200,11 @@ mod tests {
   #[test]
   fn test_eof_newline_missing() {
     run_test(
-      "test\ntest",
-      "test\ntest\n",
+      "test\nsome line text test",
+      "test\nsome line text test\n",
       concat!(
-        "2 | -test\n",
-        "2 | +test\n",
+        "2 | -some line text test\n",
+        "2 | +some line text test\n",
         "3 | +\n",
       ),
     );
@@ -212,19 +212,12 @@ mod tests {
 
   #[test]
   fn test_newlines_differing() {
-    run_test(
-      "test\n",
-      "test\r\n",
-      " | Text differed by line endings.",
-    );
+    run_test("test\n", "test\r\n", " | Text differed by line endings.");
   }
 
   fn run_test(diff_text1: &str, diff_text2: &str, expected_output: &str) {
     assert_eq!(
-      colors::strip_ansi_codes(&diff(
-        diff_text1,
-        diff_text2,
-      )),
+      colors::strip_ansi_codes(&diff(diff_text1, diff_text2,)),
       expected_output,
     );
   }
