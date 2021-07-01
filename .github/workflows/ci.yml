@@ -473,8 +473,8 @@ jobs:
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main'
         env:
-          WPT_FYI_STAGING_USER: ${{ secrets.WPT_FYI_STAGING_USER }}
-          WPT_FYI_STAGING_PW: ${{ secrets.WPT_FYI_STAGING_PW }}
+          WPT_FYI_USER: ${{ secrets.WPT_FYI_USER }}
+          WPT_FYI_PW: ${{ secrets.WPT_FYI_PW }}
           GITHUB_TOKEN: ${{ secrets.DENOBOT_PAT }}
         run: |
           ./target/release/deno run --allow-all \
