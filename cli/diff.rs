@@ -16,7 +16,7 @@ pub fn diff(orig_text: &str, edit_text: &str) -> String {
   let edit_text = edit_text.replace("\r\n", "\n");
 
   if orig_text == edit_text {
-    return " | Text differed by line endings.".to_string();
+    return " | Text differed by line endings.\n".to_string();
   }
 
   DiffBuilder::build(&orig_text, &edit_text)
@@ -212,7 +212,7 @@ mod tests {
 
   #[test]
   fn test_newlines_differing() {
-    run_test("test\n", "test\r\n", " | Text differed by line endings.");
+    run_test("test\n", "test\r\n", " | Text differed by line endings.\n");
   }
 
   fn run_test(diff_text1: &str, diff_text2: &str, expected_output: &str) {
