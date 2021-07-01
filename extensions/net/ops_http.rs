@@ -490,16 +490,13 @@ async fn op_http_request_read(
     .borrow_mut()
     .await;
 
-  match &mut *inner {
-    RequestOrStreamReader::Request(req) => {
-      let req = req.take().unwrap();
-      let stream: BytesStream = Box::pin(req.into_body().map(|r| {
-        r.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
-      }));
-      let reader = StreamReader::new(stream);
-      *inner = RequestOrStreamReader::StreamReader(reader);
-    }
-    _ => {}
+  if let RequestOrStreamReader::Request(req) = &mut *inner {
+    let req = req.take().unwrap();
+    let stream: BytesStream = Box::pin(req.into_body().map(|r| {
+      r.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
+    }));
+    let reader = StreamReader::new(stream);
+    *inner = RequestOrStreamReader::StreamReader(reader);
   };
 
   let reader = match &mut *inner {

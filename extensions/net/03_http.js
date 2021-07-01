@@ -237,7 +237,7 @@
           requestRid,
         );
         ws[_rid] = wsRid;
-        // TODO: protocols & extensions
+        // TODO(crowlkats): protocols & extensions
 
         if (ws[_readyState] === WebSocket.CLOSING) {
           await core.opAsync("op_ws_close", { rid: wsRid });
