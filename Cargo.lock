@@ -894,17 +894,6 @@ dependencies = [
 
 [[package]]
 name = "dprint-core"
-version = "0.42.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "690b3f34a0c0825e5ebbc58f0f0ddf979a6f5fff32f7317886d4917507035760"
-dependencies = [
- "bumpalo",
- "fnv",
- "serde",
-]
-
-[[package]]
-name = "dprint-core"
 version = "0.43.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92a4571aa19f70392c2e2868242c5bb1d12dbb489abd29f09411a49483d83d0e"
@@ -916,11 +905,11 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-json"
-version = "0.12.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f81e800eede53035880e45b535f6dfd14db3f2ac376f2ab0b67bb0c66224999"
+checksum = "1d7402249f4d5d1bf03fe07dc366db5cabe7a3a0c9536a287ffca5171e9ac55c"
 dependencies = [
- "dprint-core 0.42.0",
+ "dprint-core",
  "jsonc-parser",
  "serde",
 ]
@@ -931,7 +920,7 @@ version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "53014a2ee8a25470c84d2bdae7d36b7fb4022081a9205aeb8fb9a40c86e080eb"
 dependencies = [
- "dprint-core 0.43.0",
+ "dprint-core",
  "pulldown-cmark",
  "regex",
  "serde",
@@ -943,7 +932,7 @@ version = "0.47.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "790fb4965f3b4ed7f9627197cf87fdd1a42c7f34f797210988e859cbc9f43d29"
 dependencies = [
- "dprint-core 0.43.0",
+ "dprint-core",
  "dprint-swc-ecma-ast-view",
  "fnv",
  "serde",
