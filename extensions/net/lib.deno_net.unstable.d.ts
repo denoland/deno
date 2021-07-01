@@ -265,5 +265,12 @@ declare namespace Deno {
     websocket: WebSocket;
   }
 
-  export function upgradeWebSocket(request: Request): Promise<WebSocketUpgrade>;
+  export interface UpgradeWebSocketOptions {
+    protocol?: string;
+  }
+
+  export function upgradeWebSocket(
+    request: Request,
+    options?: UpgradeWebSocketOptions,
+  ): Promise<WebSocketUpgrade>;
 }

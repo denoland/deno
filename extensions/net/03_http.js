@@ -303,18 +303,18 @@
 
   const _ws = Symbol("[[associated_ws]]");
 
-  async function upgradeWebSocket(request) {
+  async function upgradeWebSocket(request, options = {}) {
     if (request.headers.get("upgrade") !== "websocket") {
-      // Throw
+      // TODO(crowlkats): Throw
     }
 
     if (request.headers.get("connection") !== "upgrade") {
-      // Throw
+      // TODO(crowlkats): Throw
     }
 
     const websocketKey = request.headers.get("sec-websocket-key");
     if (websocketKey === null) {
-      // Throw
+      // TODO(crowlkats): Throw
     }
 
     const key = new TextEncoder()
@@ -327,6 +327,15 @@
       ["connection", "Upgrade"],
       ["sec-websocket-accept", forgivingBase64Encode(new Uint8Array(accept))],
     ];
+
+    const protocols = request.headers.get("sec-websocket-protocol")?.split(", ");
+    if (protocols && protocol) {
+      if (protocols.includes(options.protocol)) {
+        r.headerList.push(["sec-websocket-protocol", options.protocol]);
+      } else {
+        // TODO(crowlkats): Throw
+      }
+    }
 
     const response = fromInnerResponse(r, "immutable");
 

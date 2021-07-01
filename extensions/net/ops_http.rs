@@ -599,7 +599,7 @@ async fn op_http_upgrade_websocket(
 
     Ok(rid)
   } else {
-    Err(AnyError::msg("Stream resource")) // TODO: better error
+    Err(bad_resource_id())
   }
 }
 
