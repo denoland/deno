@@ -245,15 +245,13 @@
           ws[_readyState] = WebSocket.CLOSED;
 
           const errEvent = new ErrorEvent("error");
-          errEvent.target = ws;
           ws.dispatchEvent(errEvent);
 
           const event = new CloseEvent("close");
-          event.target = ws;
           ws.dispatchEvent(event);
 
           try {
-            core.close(rid);
+            core.close(wsRid);
           } catch (err) {
             // Ignore error if the socket has already been closed.
             if (!(err instanceof Deno.errors.BadResource)) throw err;
@@ -261,7 +259,6 @@
         } else {
           ws[_readyState] = WebSocket.OPEN;
           const event = new Event("open");
-          event.target = ws;
           ws.dispatchEvent(event);
 
           ws[_eventLoop]();
