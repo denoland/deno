@@ -773,6 +773,7 @@ dependencies = [
  "deno_bench_util",
  "deno_core",
  "deno_web",
+ "deno_webidl",
  "tokio",
 ]
 
