@@ -68,6 +68,7 @@ declare namespace __bootstrap {
       safe: T,
     ): T;
 
+    export const isNaN: typeof globalThis.isNaN;
     export const decodeURI: typeof globalThis.decodeURI;
     export const decodeURIComponent: typeof globalThis.decodeURIComponent;
     export const encodeURI: typeof globalThis.encodeURI;
