@@ -310,9 +310,9 @@
       );
     }
 
-    if (request.headers.get("connection") !== "upgrade") {
+    if (request.headers.get("connection") !== "Upgrade") {
       throw new TypeError(
-        "Invalid Header: 'connection' header must be 'upgrade'",
+        "Invalid Header: 'connection' header must be 'Upgrade'",
       );
     }
 
