@@ -7,6 +7,8 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const { DOMException } = window.__bootstrap.domException;
+
   const DEFAULT_BUFFER_SIZE = 32 * 1024;
   // Seek whence values.
   // https://golang.org/pkg/io/#pkg-constants

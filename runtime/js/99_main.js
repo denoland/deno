@@ -41,6 +41,7 @@ delete Object.prototype.__proto__;
   const denoNsUnstable = window.__bootstrap.denoNsUnstable;
   const errors = window.__bootstrap.errors.errors;
   const webidl = window.__bootstrap.webidl;
+  const domException = window.__bootstrap.domException;
   const { defineEventHandler } = window.__bootstrap.webUtil;
   const { deserializeJsMessageData, serializeJsMessageData } =
     window.__bootstrap.messagePort;
@@ -219,25 +220,25 @@ delete Object.prototype.__proto__;
     core.registerErrorBuilder(
       "DOMExceptionOperationError",
       function DOMExceptionOperationError(msg) {
-        return new DOMException(msg, "OperationError");
+        return new domException.DOMException(msg, "OperationError");
       },
     );
     core.registerErrorBuilder(
       "DOMExceptionQuotaExceededError",
       function DOMExceptionQuotaExceededError(msg) {
-        return new DOMException(msg, "QuotaExceededError");
+        return new domException.DOMException(msg, "QuotaExceededError");
       },
     );
     core.registerErrorBuilder(
       "DOMExceptionNotSupportedError",
       function DOMExceptionNotSupportedError(msg) {
-        return new DOMException(msg, "NotSupported");
+        return new domException.DOMException(msg, "NotSupported");
       },
     );
     core.registerErrorBuilder(
       "DOMExceptionInvalidCharacterError",
       function DOMExceptionInvalidCharacterError(msg) {
-        return new DOMException(msg, "InvalidCharacterError");
+        return new domException.DOMException(msg, "InvalidCharacterError");
       },
     );
   }
@@ -299,7 +300,7 @@ delete Object.prototype.__proto__;
       streams.CountQueuingStrategy,
     ),
     CustomEvent: util.nonEnumerable(CustomEvent),
-    DOMException: util.nonEnumerable(DOMException),
+    DOMException: util.nonEnumerable(domException.DOMException),
     ErrorEvent: util.nonEnumerable(ErrorEvent),
     Event: util.nonEnumerable(Event),
     EventTarget: util.nonEnumerable(EventTarget),

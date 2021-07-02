@@ -8,6 +8,7 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
+  const { DOMException } = window.__bootstrap.domException;
 
   // accessors for non runtime visible data
 

@@ -12,6 +12,7 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const eventTarget = window.__bootstrap.eventTarget;
+  const { DOMException } = window.__bootstrap.domException;
 
   /**
    * @param {any} self

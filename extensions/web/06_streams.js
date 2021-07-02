@@ -9,6 +9,7 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
+  const { DOMException } = window.__bootstrap.domException;
 
   class AssertionError extends Error {
     constructor(msg) {
