@@ -1,4 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+/// <reference path="../../core/internal.d.ts" />
+
 "use strict";
 
 ((window) => {
@@ -9,7 +11,7 @@
     ArrayPrototypeFind,
     ArrayBufferIsView,
     ObjectKeys,
-    StringPrototypeSlice,
+    ArrayPrototypeSlice,
     StringPrototypeToUpperCase,
     Symbol,
     Int8Array,
@@ -107,7 +109,7 @@
         data = new Uint8Array(data);
       }
 
-      data = StringPrototypeSlice(data);
+      data = ArrayPrototypeSlice(data);
 
       algorithm = normalizeAlgorithm(algorithm, "digest");
 
