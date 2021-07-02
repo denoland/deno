@@ -156,7 +156,8 @@
 
     [customInspect]() {
       return this.detail
-        ? `${this.constructor.name} {\n  detail: ${JSON.stringify(this.detail, null, 2)
+        ? `${this.constructor.name} {\n  detail: ${
+          JSON.stringify(this.detail, null, 2)
         },\n  name: "${this.name}",\n  entryType: "${this.entryType}",\n  startTime: ${this.startTime},\n  duration: ${this.duration}\n}`
         : `${this.constructor.name} { detail: ${this.detail}, name: "${this.name}", entryType: "${this.entryType}", startTime: ${this.startTime}, duration: ${this.duration} }`;
     }

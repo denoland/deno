@@ -3,7 +3,16 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { Map, Date, Error, ArrayPrototypePush, MathMax, TypeError, Number, String } = window.__bootstrap.primordials;
+  const {
+    Map,
+    Date,
+    Error,
+    ArrayPrototypePush,
+    MathMax,
+    TypeError,
+    Number,
+    String,
+  } = window.__bootstrap.primordials;
 
   // Shamelessly cribbed from extensions/fetch/11_streams.js
   class AssertionError extends Error {
