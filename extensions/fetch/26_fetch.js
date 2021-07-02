@@ -270,7 +270,7 @@
     if (nullBodyStatus(response.status)) {
       core.close(resp.responseRid);
     } else {
-      if (req.method === "HEAD" || req.method === "OPTIONS") {
+      if (req.method === "HEAD") {
         response.body = null;
         core.close(resp.responseRid);
       } else {
