@@ -591,6 +591,17 @@ impl JsRuntime {
     }
   }
 
+  fn pump_v8_message_loop(&mut self) {
+    let scope = &mut self.handle_scope();
+    while v8::Platform::pump_message_loop(
+      &v8::V8::get_current_platform(),
+      scope,
+      false, // don't block if there are no tasks
+    ) {
+      // do nothing
+    }
+  }
+
   /// Runs event loop to completion
   ///
   /// This future resolves when:
@@ -646,6 +657,8 @@ impl JsRuntime {
 
     // Top level module
     self.evaluate_pending_module();
+
+    self.pump_v8_message_loop();
 
     let state = state_rc.borrow();
     let module_map = module_map_rc.borrow();
@@ -1951,6 +1964,56 @@ main();
         }
         _ => panic!(),
       };
+    })
+  }
+
+  #[test]
+  fn test_pump_message_loop() {
+    run_in_task(|cx| {
+      let mut runtime = JsRuntime::new(RuntimeOptions::default());
+      runtime
+        .execute_script(
+          "pump_message_loop.js",
+          r#"
+function assertEquals(a, b) {
+  if (a === b) return;
+  throw a + " does not equal " + b;
+}
+const sab = new SharedArrayBuffer(16);
+const i32a = new Int32Array(sab);
+globalThis.resolved = false;
+
+(function() {
+  const result = Atomics.waitAsync(i32a, 0, 0);
+  result.value.then(
+    (value) => { assertEquals("ok", value); globalThis.resolved = true; },
+    () => { assertUnreachable();
+  });
+})();
+
+const notify_return_value = Atomics.notify(i32a, 0, 1);
+assertEquals(1, notify_return_value);
+"#,
+        )
+        .unwrap();
+
+      match runtime.poll_event_loop(cx, false) {
+        Poll::Ready(Ok(())) => {}
+        _ => panic!(),
+      };
+
+      // noop script, will resolve promise from first script
+      runtime
+        .execute_script("pump_message_loop2.js", r#"assertEquals(1, 1);"#)
+        .unwrap();
+
+      // check that promise from `Atomics.waitAsync` has been resolved
+      runtime
+        .execute_script(
+          "pump_message_loop3.js",
+          r#"assertEquals(globalThis.resolved, true);"#,
+        )
+        .unwrap();
     })
   }
 
