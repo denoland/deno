@@ -146,7 +146,7 @@ pub async fn op_crypto_generate_key(
       )
       .await
       .unwrap()
-      .map_err(|e| type_error(e.to_string()))?;
+      .map_err(|e| custom_error("DOMExceptionOperationError", e.to_string()))?;
 
       private_key.to_pkcs8()?
     }
@@ -165,7 +165,10 @@ pub async fn op_crypto_generate_key(
         },
       )
       .await
-      .unwrap()?;
+      .unwrap()
+      .map_err(|_| {
+        custom_error("DOMExceptionOperationError", "Key generation failed")
+      })?;
 
       private_key
     }
@@ -174,11 +177,17 @@ pub async fn op_crypto_generate_key(
 
       let length = if let Some(length) = args.length {
         if (length % 8) != 0 {
-          return Err(type_error("hmac block length must be byte aligned"));
+          return Err(custom_error(
+            "DOMExceptionOperationError",
+            "hmac block length must be byte aligned",
+          ));
         }
         let length = length / 8;
         if length > ring::digest::MAX_BLOCK_LEN {
-          return Err(type_error("hmac block length is too large"));
+          return Err(custom_error(
+            "DOMExceptionOperationError",
+            "hmac block length is too large",
+          ));
         }
         length
       } else {
@@ -188,7 +197,9 @@ pub async fn op_crypto_generate_key(
       let rng = RingRand::SystemRandom::new();
       let mut key_bytes = [0; ring::digest::MAX_BLOCK_LEN];
       let key_bytes = &mut key_bytes[..length];
-      rng.fill(key_bytes)?;
+      rng.fill(key_bytes).map_err(|_| {
+        custom_error("DOMExceptionOperationError", "Key generation failed")
+      })?;
 
       key_bytes.to_vec()
     }

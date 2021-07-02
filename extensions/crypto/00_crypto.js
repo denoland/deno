@@ -11,7 +11,8 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
 
-  const supportedNamedCurves = ["P-256", "P-384", "P-512"];
+  // P-521 is not yet supported.
+  const supportedNamedCurves = ["P-256", "P-384"];
 
   const simpleAlgorithmDictionaries = {
     RsaHashedKeyGenParams: { hash: "HashAlgorithmIdentifier" },
@@ -31,9 +32,7 @@
     "generateKey": {
       "RSASSA-PKCS1-v1_5": "RsaHashedKeyGenParams",
       "RSA-PSS": "RsaHashedKeyGenParams",
-      "RSA-OAEP": "RsaHashedKeyGenParams",
       "ECDSA": "EcKeyGenParams",
-      "ECDH": "EcKeyGenParams",
       "HMAC": "HmacKeyGenParams",
     },
     "sign": {
@@ -420,6 +419,8 @@
         context: "Argument 3",
       });
 
+      const usages = keyUsages;
+
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "generateKey");
 
       // https://github.com/denoland/deno/pull/9614#issuecomment-866049433
@@ -430,158 +431,175 @@
         );
       }
 
-      switch (normalizedAlgorithm.name) {
-        case "RSASSA-PKCS1-v1_5":
-        case "RSA-PSS": {
-          // 1.
-          if (
-            keyUsages.find((u) => !["sign", "verify"].includes(u)) !== undefined
-          ) {
-            throw new DOMException("Invalid key usages", "SyntaxError");
-          }
+      const result = await generateKey(
+        normalizedAlgorithm,
+        extractable,
+        usages,
+      );
 
-          // 2.
-          const keyData = await core.opAsync(
-            "op_crypto_generate_key",
-            {
-              name: normalizedAlgorithm.name,
-              modulusLength: normalizedAlgorithm.modulusLength,
-              publicExponent: normalizedAlgorithm.publicExponent,
-            },
-          );
-          const handle = {};
-          KEY_STORE.set(handle, { type: "pkcs8", data: keyData });
+      if (result instanceof CryptoKey) {
+        const type = result[_type];
+        if ((type === "secret" || type === "private") && usages.length === 0) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+      } else if (result.privateKey instanceof CryptoKey) {
+        if (result.privateKey[_usages].length === 0) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+      }
 
-          // 4-8.
-          const algorithm = {
+      return result;
+    }
+  }
+
+  async function generateKey(normalizedAlgorithm, extractable, usages) {
+    switch (normalizedAlgorithm.name) {
+      case "RSASSA-PKCS1-v1_5":
+      case "RSA-PSS": {
+        // 1.
+        if (usages.find((u) => !["sign", "verify"].includes(u)) !== undefined) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        // 2.
+        const keyData = await core.opAsync(
+          "op_crypto_generate_key",
+          {
             name: normalizedAlgorithm.name,
             modulusLength: normalizedAlgorithm.modulusLength,
             publicExponent: normalizedAlgorithm.publicExponent,
-            hash: normalizedAlgorithm.hash,
-          };
+          },
+        );
+        const handle = {};
+        KEY_STORE.set(handle, { type: "pkcs8", data: keyData });
 
-          // 9-13.
-          let publicKey = constructKey(
-            "public",
-            true,
-            usageIntersection(keyUsages, "verify"),
-            algorithm,
-            handle,
-          );
+        // 4-8.
+        const algorithm = {
+          name: normalizedAlgorithm.name,
+          modulusLength: normalizedAlgorithm.modulusLength,
+          publicExponent: normalizedAlgorithm.publicExponent,
+          hash: normalizedAlgorithm.hash,
+        };
 
-          // 14-18.
-          let privateKey = constructKey(
-            "private",
-            extractable,
-            usageIntersection(keyUsages, "sign"),
-            algorithm,
-            handle,
-          );
+        // 9-13.
+        let publicKey = constructKey(
+          "public",
+          true,
+          usageIntersection(usages, "verify"),
+          algorithm,
+          handle,
+        );
 
-          // 19-22.
-          return { publicKey, privateKey };
+        // 14-18.
+        let privateKey = constructKey(
+          "private",
+          extractable,
+          usageIntersection(usages, "sign"),
+          algorithm,
+          handle,
+        );
+
+        // 19-22.
+        return { publicKey, privateKey };
+      }
+      // TODO(lucacasonato): RSA-OAEP
+      case "ECDSA": {
+        // 1.
+        if (usages.find((u) => !["sign", "verify"].includes(u)) !== undefined) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
         }
-        // TODO(lucacasonato): RSA-OAEP
-        case "ECDSA": {
-          // 1.
-          if (
-            keyUsages.find((u) => !["sign", "verify"].includes(u)) !== undefined
-          ) {
-            throw new DOMException("Invalid key usages", "SyntaxError");
-          }
 
-          // 2-3.
-          const handle = {};
-          if (supportedNamedCurves.includes(normalizedAlgorithm.namedCurve)) {
-            const keyData = await core.opAsync("op_crypto_generate_key", {
-              name: "ECDSA",
-              namedCurve: normalizedAlgorithm.namedCurve,
-            });
-            KEY_STORE.set(handle, { type: "pkcs8", data: keyData });
-          } else {
-            throw new DOMException("Curve not supported", "NotSupportedError");
-          }
-
-          // 4-6.
-          const algorithm = {
+        // 2-3.
+        const handle = {};
+        if (supportedNamedCurves.includes(normalizedAlgorithm.namedCurve)) {
+          const keyData = await core.opAsync("op_crypto_generate_key", {
             name: "ECDSA",
             namedCurve: normalizedAlgorithm.namedCurve,
-          };
-
-          // 7-11.
-          let publicKey = constructKey(
-            "public",
-            true,
-            usageIntersection(keyUsages, "verify"),
-            algorithm,
-            handle,
-          );
-
-          // 12-16.
-          let privateKey = constructKey(
-            "private",
-            extractable,
-            usageIntersection(keyUsages, "sign"),
-            algorithm,
-            handle,
-          );
-
-          // 17-20.
-          return { publicKey, privateKey };
-        }
-        // TODO(lucacasonato): ECDH
-        // TODO(lucacasonato): AES-CTR
-        // TODO(lucacasonato): AES-CBC
-        // TODO(lucacasonato): AES-GCM
-        // TODO(lucacasonato): AES-KW
-        case "HMAC": {
-          // 1.
-          if (
-            keyUsages.find((u) => !["sign", "verify"].includes(u)) !== undefined
-          ) {
-            throw new DOMException("Invalid key usages", "SyntaxError");
-          }
-
-          // 2.
-          let length;
-          if (normalizedAlgorithm.length === undefined) {
-            length = null;
-          } else if (normalizedAlgorithm.length !== 0) {
-            length = normalizedAlgorithm.length;
-          } else {
-            throw new DOMException("Invalid length", "OperationError");
-          }
-
-          // 3-4.
-          const keyData = await core.opAsync("op_crypto_generate_key", {
-            name: "HMAC",
-            hash: normalizedAlgorithm.hash.name,
-            length,
           });
-          const handle = {};
-          KEY_STORE.set(handle, { type: "raw", data: keyData });
-
-          // 6-10.
-          const algorithm = {
-            name: "HMAC",
-            hash: {
-              name: normalizedAlgorithm.hash.name,
-            },
-            length: keyData.byteLength * 8,
-          };
-
-          // 5, 11-13.
-          const key = constructKey(
-            "secret",
-            extractable,
-            keyUsages,
-            algorithm,
-            handle,
-          );
-
-          // 14.
-          return key;
+          KEY_STORE.set(handle, { type: "pkcs8", data: keyData });
+        } else {
+          throw new DOMException("Curve not supported", "NotSupportedError");
         }
+
+        // 4-6.
+        const algorithm = {
+          name: "ECDSA",
+          namedCurve: normalizedAlgorithm.namedCurve,
+        };
+
+        // 7-11.
+        let publicKey = constructKey(
+          "public",
+          true,
+          usageIntersection(usages, "verify"),
+          algorithm,
+          handle,
+        );
+
+        // 12-16.
+        let privateKey = constructKey(
+          "private",
+          extractable,
+          usageIntersection(usages, "sign"),
+          algorithm,
+          handle,
+        );
+
+        // 17-20.
+        return { publicKey, privateKey };
+      }
+      // TODO(lucacasonato): ECDH
+      // TODO(lucacasonato): AES-CTR
+      // TODO(lucacasonato): AES-CBC
+      // TODO(lucacasonato): AES-GCM
+      // TODO(lucacasonato): AES-KW
+      case "HMAC": {
+        // 1.
+        if (
+          usages.find((u) => !["sign", "verify"].includes(u)) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        // 2.
+        let length;
+        if (normalizedAlgorithm.length === undefined) {
+          length = null;
+        } else if (normalizedAlgorithm.length !== 0) {
+          length = normalizedAlgorithm.length;
+        } else {
+          throw new DOMException("Invalid length", "OperationError");
+        }
+
+        // 3-4.
+        const keyData = await core.opAsync("op_crypto_generate_key", {
+          name: "HMAC",
+          hash: normalizedAlgorithm.hash.name,
+          length,
+        });
+        const handle = {};
+        KEY_STORE.set(handle, { type: "raw", data: keyData });
+
+        // 6-10.
+        const algorithm = {
+          name: "HMAC",
+          hash: {
+            name: normalizedAlgorithm.hash.name,
+          },
+          length: keyData.byteLength * 8,
+        };
+
+        // 5, 11-13.
+        const key = constructKey(
+          "secret",
+          extractable,
+          usages,
+          algorithm,
+          handle,
+        );
+
+        // 14.
+        return key;
       }
     }
   }

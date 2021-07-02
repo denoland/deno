@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::not_supported;
 use deno_core::error::AnyError;
 use ring::agreement::Algorithm as RingAlgorithm;
 use ring::hmac::Algorithm as HmacAlgorithm;
@@ -35,8 +34,6 @@ pub enum CryptoNamedCurve {
   P256,
   #[serde(rename = "P-384")]
   P384,
-  #[serde(rename = "P-521")]
-  P521,
 }
 
 impl TryInto<&RingAlgorithm> for CryptoNamedCurve {
@@ -46,7 +43,6 @@ impl TryInto<&RingAlgorithm> for CryptoNamedCurve {
     match self {
       CryptoNamedCurve::P256 => Ok(&ring::agreement::ECDH_P256),
       CryptoNamedCurve::P384 => Ok(&ring::agreement::ECDH_P384),
-      CryptoNamedCurve::P521 => Err(not_supported()),
     }
   }
 }
@@ -62,7 +58,6 @@ impl TryInto<&EcdsaSigningAlgorithm> for CryptoNamedCurve {
       CryptoNamedCurve::P384 => {
         Ok(&ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING)
       }
-      CryptoNamedCurve::P521 => Err(not_supported()),
     }
   }
 }
