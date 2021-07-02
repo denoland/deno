@@ -462,6 +462,10 @@
   // TODO(lucacasonato): once BlobReference is GC'd in JS, the Rust blob part
   // TODO(lucacasonato): get a better stream from Rust in BlobReference#stream
 
+  // const registry = new FinalizationRegistry(uuid => {
+  //   core.opSync("op_blob_gc_part", uuid);
+  // });
+
   // should be deallocated.
   /**
    * An opaque reference to a blob part in Rust. This could be backed by a file,
@@ -476,6 +480,8 @@
     constructor(id, size) {
       this._id = id;
       this.size = size;
+
+      // registry.register(this, id);
     }
 
     /**
