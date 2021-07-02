@@ -1750,7 +1750,8 @@ pub mod tests {
 
   #[test]
   fn test_heap_limits() {
-    let create_params = v8::Isolate::create_params().heap_limits(0, 20 * 1024);
+    let create_params =
+      v8::Isolate::create_params().heap_limits(0, 3 * 1024 * 1024);
     let mut runtime = JsRuntime::new(RuntimeOptions {
       create_params: Some(create_params),
       ..Default::default()
@@ -1787,13 +1788,14 @@ pub mod tests {
     runtime.add_near_heap_limit_callback(|current_limit, _initial_limit| {
       current_limit * 2
     });
-    runtime.remove_near_heap_limit_callback(20 * 1024);
+    runtime.remove_near_heap_limit_callback(3 * 1024 * 1024);
     assert!(runtime.allocations.near_heap_limit_callback_data.is_none());
   }
 
   #[test]
   fn test_heap_limit_cb_multiple() {
-    let create_params = v8::Isolate::create_params().heap_limits(0, 20 * 1024);
+    let create_params =
+      v8::Isolate::create_params().heap_limits(0, 3 * 1024 * 1024);
     let mut runtime = JsRuntime::new(RuntimeOptions {
       create_params: Some(create_params),
       ..Default::default()
@@ -2029,7 +2031,7 @@ assertEquals(1, notify_return_value);
       .unwrap_err();
     let error_string = error.to_string();
     // Test that the script specifier is a URL: `deno:<repo-relative path>`.
-    assert!(error_string.contains("deno:core/core.js"));
+    assert!(error_string.contains("deno:core/01_core.js"));
   }
 
   #[test]
