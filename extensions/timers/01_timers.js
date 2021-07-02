@@ -3,6 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const { Map, Date, Error, ArrayPrototypePush, MathMax, TypeError, Number, String } = window.__bootstrap.primordials;
 
   // Shamelessly cribbed from extensions/fetch/11_streams.js
   class AssertionError extends Error {
@@ -363,7 +364,7 @@
         // With the list dropped, the timer is no longer scheduled.
         timer.scheduled = false;
         // Place the callback to pending timers to fire.
-        pendingFireTimers.push(timer);
+        ArrayPrototypePush(pendingFireTimers, timer);
       }
     }
     setOrClearGlobalTimeout(nextDueNode && nextDueNode.due, now);
@@ -388,7 +389,7 @@
       dueNode = maybeNewDueNode;
     }
     // Append the newly scheduled timer to the list and mark it as scheduled.
-    dueNode.timers.push(timer);
+    ArrayPrototypePush(dueNode.timers, timer);
     timer.scheduled = true;
     // If the new timer is scheduled to fire before any timer that existed before,
     // update the global timeout to reflect this.
@@ -450,7 +451,7 @@
       // Interval timer: compute when timer was supposed to fire next.
       // However make sure to never schedule the next interval in the past.
       const now = OriginalDateNow();
-      timer.due = Math.max(now, timer.due + timer.delay);
+      timer.due = MathMax(now, timer.due + timer.delay);
       schedule(timer, now);
     }
     // Call the user callback. Intermediate assignment is to avoid leaking `this`
@@ -497,7 +498,7 @@
       );
       delay = 1;
     }
-    delay = Math.max(0, delay | 0);
+    delay = MathMax(0, delay | 0);
 
     // Create a new, unscheduled timer object.
     const timer = {

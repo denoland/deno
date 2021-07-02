@@ -2,6 +2,9 @@
 "use strict";
 
 ((window) => {
+  const { ArrayPrototypePush, Symbol, TypeError, JSON, Object } =
+    window.__bootstrap.primordials;
+
   const { webidl, structuredClone } = window.__bootstrap;
   const { opNow } = window.__bootstrap.timers;
   const illegalConstructorKey = Symbol("illegalConstructorKey");
@@ -153,8 +156,7 @@
 
     [customInspect]() {
       return this.detail
-        ? `${this.constructor.name} {\n  detail: ${
-          JSON.stringify(this.detail, null, 2)
+        ? `${this.constructor.name} {\n  detail: ${JSON.stringify(this.detail, null, 2)
         },\n  name: "${this.name}",\n  entryType: "${this.entryType}",\n  startTime: ${this.startTime},\n  duration: ${this.duration}\n}`
         : `${this.constructor.name} { detail: ${this.detail}, name: "${this.name}", entryType: "${this.entryType}", startTime: ${this.startTime}, duration: ${this.duration} }`;
     }
@@ -262,7 +264,7 @@
       // throw a SyntaxError. - not implemented
       const entry = new PerformanceMark(markName, options);
       // 3.1.1.7 Queue entry - not implemented
-      performanceEntries.push(entry);
+      ArrayPrototypePush(performanceEntries, entry);
       return entry;
     }
 
@@ -343,7 +345,7 @@
           : null,
         illegalConstructorKey,
       );
-      performanceEntries.push(entry);
+      ArrayPrototypePush(performanceEntries, entry);
       return entry;
     }
 
