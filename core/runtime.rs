@@ -142,7 +142,7 @@ impl Drop for JsRuntime {
   }
 }
 
-fn v8_init(v8_platform: Option<v8::UniquePtr<v8::Platform>>) {
+fn v8_init(v8_platform: Option<v8::SharedRef<v8::Platform>>) {
   // Include 10MB ICU data file.
   #[repr(C, align(16))]
   struct IcuData([u8; 10144432]);
@@ -150,8 +150,7 @@ fn v8_init(v8_platform: Option<v8::UniquePtr<v8::Platform>>) {
   v8::icu::set_common_data_69(&ICU_DATA.0).unwrap();
 
   let v8_platform = v8_platform
-    .unwrap_or_else(v8::new_default_platform)
-    .unwrap();
+    .unwrap_or_else(|| v8::new_default_platform(0, false).make_shared());
   v8::V8::initialize_platform(v8_platform);
   v8::V8::initialize();
 
@@ -205,7 +204,7 @@ pub struct RuntimeOptions {
 
   /// V8 platform instance to use. Used when Deno initializes V8
   /// (which it only does once), otherwise it's silenty dropped.
-  pub v8_platform: Option<v8::UniquePtr<v8::Platform>>,
+  pub v8_platform: Option<v8::SharedRef<v8::Platform>>,
 }
 
 impl JsRuntime {
@@ -1973,7 +1972,7 @@ main();
   #[test]
   fn test_v8_platform() {
     let options = RuntimeOptions {
-      v8_platform: Some(v8::new_default_platform()),
+      v8_platform: Some(v8::new_default_platform(0, false).make_shared()),
       ..Default::default()
     };
     let mut runtime = JsRuntime::new(options);

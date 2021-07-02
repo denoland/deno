@@ -2775,9 +2775,9 @@ dependencies = [
 
 [[package]]
 name = "rusty_v8"
-version = "0.23.0"
+version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5463232950a37ad7337422f362252ac4ea6db897fc0cb63c8acf0cb4e643898a"
+checksum = "5fa025c24e4eee6a6a17f92ebe10fbf6d33a475fce213dc552401c3710ce833f"
 dependencies = [
  "bitflags",
  "fslock",
@@ -2936,9 +2936,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.6.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c9f378d38284155eb349b3230914b1151529e4679048430fd4aa3d27160b8f6"
+checksum = "3b7d6e1fcfddb6ca56e8dede0e8cc80159edb0d00d68c2d84b3a0b714dfd9d7c"
 dependencies = [
  "rusty_v8",
  "serde",
