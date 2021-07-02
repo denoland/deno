@@ -213,7 +213,7 @@
       "encodeInto() into SharedArrayBuffer with ¥¥ and destination length 4, offset 0, filler 128",
       "encodeInto() into SharedArrayBuffer with ¥¥ and destination length 4, offset 4, filler 128",
       "encodeInto() into SharedArrayBuffer with ¥¥ and destination length 4, offset 0, filler random",
-      "encodeInto() into SharedArrayBuffer with ¥¥ and destination length 4, offset 4, filler random",
+      "encodeInto() into SharedArrayBuffer with ¥¥ and destination length 4, offset 4, filler random"
     ],
     "idlharness.any.html": true,
     "iso-2022-jp-decoder.any.html": true,
