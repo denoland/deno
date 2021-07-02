@@ -482,7 +482,7 @@
         };
 
         // 9-13.
-        let publicKey = constructKey(
+        const publicKey = constructKey(
           "public",
           true,
           usageIntersection(usages, "verify"),
@@ -491,7 +491,7 @@
         );
 
         // 14-18.
-        let privateKey = constructKey(
+        const privateKey = constructKey(
           "private",
           extractable,
           usageIntersection(usages, "sign"),
@@ -528,7 +528,7 @@
         };
 
         // 7-11.
-        let publicKey = constructKey(
+        const publicKey = constructKey(
           "public",
           true,
           usageIntersection(usages, "verify"),
@@ -537,7 +537,7 @@
         );
 
         // 12-16.
-        let privateKey = constructKey(
+        const privateKey = constructKey(
           "private",
           extractable,
           usageIntersection(usages, "sign"),
