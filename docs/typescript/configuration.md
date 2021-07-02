@@ -6,7 +6,7 @@ options frustrates that goal. To make things easier, Deno configures TypeScript
 to "just work" and shouldn't require additional configuration.
 
 That being said, Deno does support using a TypeScript configuration file, though
-like the rest of Deno, the detection and use of use of a configuration file is
+like the rest of Deno, the detection and use of a configuration file is
 not automatic. To use a TypeScript configuration file with Deno, you have to
 provide a path on the command line. For example:
 
