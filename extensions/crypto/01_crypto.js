@@ -11,7 +11,7 @@
     ArrayPrototypeFind,
     ArrayBufferIsView,
     ObjectKeys,
-    Uint8ArrayPrototypeSlice,
+    ArrayPrototypeSlice,
     StringPrototypeToUpperCase,
     Symbol,
     Int8Array,
@@ -109,7 +109,7 @@
         data = new Uint8Array(data);
       }
 
-      data = Uint8ArrayPrototypeSlice(data);
+      data = new Uint8Array(ArrayPrototypeSlice(data));
 
       algorithm = normalizeAlgorithm(algorithm, "digest");
 
