@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.11.2"
+version = "1.11.3"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -42,9 +42,9 @@ winres = "0.1.11"
 
 [dependencies]
 deno_core = { version = "0.92.0", path = "../core" }
-deno_doc = "0.6.0"
-deno_lint = "0.7.0"
-deno_runtime = { version = "0.18.0", path = "../runtime" }
+deno_doc = "0.7.0"
+deno_lint = "0.8.0"
+deno_runtime = { version = "0.18.1", path = "../runtime" }
 
 atty = "0.2.14"
 base64 = "0.13.0"
@@ -52,9 +52,9 @@ byteorder = "1.4.3"
 clap = "2.33.3"
 data-url = "0.1.0"
 dissimilar = "1.0.2"
-dprint-plugin-json = "0.12.0"
-dprint-plugin-markdown = "0.8.0"
-dprint-plugin-typescript = "0.46.1"
+dprint-plugin-json = "0.12.1"
+dprint-plugin-markdown = "0.9.1"
+dprint-plugin-typescript = "0.47.0"
 encoding_rs = "0.8.28"
 env_logger = "0.8.3"
 fancy-regex = "0.5.0"
@@ -78,9 +78,9 @@ semver-parser = "0.10.2"
 serde = { version = "1.0.125", features = ["derive"] }
 shell-escape = "0.1.5"
 sourcemap = "6.0.1"
-swc_bundler = "0.40.0"
-swc_common = { version = "0.10.20", features = ["sourcemap"] }
-swc_ecmascript = { version = "0.39.0", features = ["codegen", "dep_graph", "parser", "proposal", "react", "transforms", "typescript", "visit"] }
+swc_bundler = "0.44.0"
+swc_common = { version = "0.10.21", features = ["sourcemap"] }
+swc_ecmascript = { version = "0.44.0", features = ["codegen", "dep_graph", "parser", "proposal", "react", "transforms", "typescript", "visit"] }
 tempfile = "3.2.0"
 termcolor = "1.1.2"
 text-size = "1.1.0"

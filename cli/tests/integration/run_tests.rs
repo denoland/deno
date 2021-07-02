@@ -660,6 +660,12 @@ itest!(heapstats {
   output: "heapstats.js.out",
 });
 
+itest!(finalization_registry {
+  args:
+    "run --quiet --unstable --v8-flags=--expose-gc finalization_registry.js",
+  output: "finalization_registry.js.out",
+});
+
 itest!(https_import {
   args: "run --quiet --reload --cert tls/RootCA.pem https_import.ts",
   output: "https_import.ts.out",

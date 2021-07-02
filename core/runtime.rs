@@ -142,7 +142,7 @@ impl Drop for JsRuntime {
   }
 }
 
-fn v8_init(v8_platform: Option<v8::UniquePtr<v8::Platform>>) {
+fn v8_init(v8_platform: Option<v8::SharedRef<v8::Platform>>) {
   // Include 10MB ICU data file.
   #[repr(C, align(16))]
   struct IcuData([u8; 10144432]);
@@ -150,8 +150,7 @@ fn v8_init(v8_platform: Option<v8::UniquePtr<v8::Platform>>) {
   v8::icu::set_common_data_69(&ICU_DATA.0).unwrap();
 
   let v8_platform = v8_platform
-    .unwrap_or_else(v8::new_default_platform)
-    .unwrap();
+    .unwrap_or_else(|| v8::new_default_platform(0, false).make_shared());
   v8::V8::initialize_platform(v8_platform);
   v8::V8::initialize();
 
@@ -205,7 +204,7 @@ pub struct RuntimeOptions {
 
   /// V8 platform instance to use. Used when Deno initializes V8
   /// (which it only does once), otherwise it's silenty dropped.
-  pub v8_platform: Option<v8::UniquePtr<v8::Platform>>,
+  pub v8_platform: Option<v8::SharedRef<v8::Platform>>,
 }
 
 impl JsRuntime {
@@ -592,6 +591,17 @@ impl JsRuntime {
     }
   }
 
+  fn pump_v8_message_loop(&mut self) {
+    let scope = &mut self.handle_scope();
+    while v8::Platform::pump_message_loop(
+      &v8::V8::get_current_platform(),
+      scope,
+      false, // don't block if there are no tasks
+    ) {
+      // do nothing
+    }
+  }
+
   /// Runs event loop to completion
   ///
   /// This future resolves when:
@@ -647,6 +657,8 @@ impl JsRuntime {
 
     // Top level module
     self.evaluate_pending_module();
+
+    self.pump_v8_message_loop();
 
     let state = state_rc.borrow();
     let module_map = module_map_rc.borrow();
@@ -1738,7 +1750,8 @@ pub mod tests {
 
   #[test]
   fn test_heap_limits() {
-    let create_params = v8::Isolate::create_params().heap_limits(0, 20 * 1024);
+    let create_params =
+      v8::Isolate::create_params().heap_limits(0, 3 * 1024 * 1024);
     let mut runtime = JsRuntime::new(RuntimeOptions {
       create_params: Some(create_params),
       ..Default::default()
@@ -1775,13 +1788,14 @@ pub mod tests {
     runtime.add_near_heap_limit_callback(|current_limit, _initial_limit| {
       current_limit * 2
     });
-    runtime.remove_near_heap_limit_callback(20 * 1024);
+    runtime.remove_near_heap_limit_callback(3 * 1024 * 1024);
     assert!(runtime.allocations.near_heap_limit_callback_data.is_none());
   }
 
   #[test]
   fn test_heap_limit_cb_multiple() {
-    let create_params = v8::Isolate::create_params().heap_limits(0, 20 * 1024);
+    let create_params =
+      v8::Isolate::create_params().heap_limits(0, 3 * 1024 * 1024);
     let mut runtime = JsRuntime::new(RuntimeOptions {
       create_params: Some(create_params),
       ..Default::default()
@@ -1956,6 +1970,56 @@ main();
   }
 
   #[test]
+  fn test_pump_message_loop() {
+    run_in_task(|cx| {
+      let mut runtime = JsRuntime::new(RuntimeOptions::default());
+      runtime
+        .execute_script(
+          "pump_message_loop.js",
+          r#"
+function assertEquals(a, b) {
+  if (a === b) return;
+  throw a + " does not equal " + b;
+}
+const sab = new SharedArrayBuffer(16);
+const i32a = new Int32Array(sab);
+globalThis.resolved = false;
+
+(function() {
+  const result = Atomics.waitAsync(i32a, 0, 0);
+  result.value.then(
+    (value) => { assertEquals("ok", value); globalThis.resolved = true; },
+    () => { assertUnreachable();
+  });
+})();
+
+const notify_return_value = Atomics.notify(i32a, 0, 1);
+assertEquals(1, notify_return_value);
+"#,
+        )
+        .unwrap();
+
+      match runtime.poll_event_loop(cx, false) {
+        Poll::Ready(Ok(())) => {}
+        _ => panic!(),
+      };
+
+      // noop script, will resolve promise from first script
+      runtime
+        .execute_script("pump_message_loop2.js", r#"assertEquals(1, 1);"#)
+        .unwrap();
+
+      // check that promise from `Atomics.waitAsync` has been resolved
+      runtime
+        .execute_script(
+          "pump_message_loop3.js",
+          r#"assertEquals(globalThis.resolved, true);"#,
+        )
+        .unwrap();
+    })
+  }
+
+  #[test]
   fn test_core_js_stack_frame() {
     let mut runtime = JsRuntime::new(RuntimeOptions::default());
     // Call non-existent op so we get error from `core.js`
@@ -1967,13 +2031,13 @@ main();
       .unwrap_err();
     let error_string = error.to_string();
     // Test that the script specifier is a URL: `deno:<repo-relative path>`.
-    assert!(error_string.contains("deno:core/core.js"));
+    assert!(error_string.contains("deno:core/01_core.js"));
   }
 
   #[test]
   fn test_v8_platform() {
     let options = RuntimeOptions {
-      v8_platform: Some(v8::new_default_platform()),
+      v8_platform: Some(v8::new_default_platform(0, false).make_shared()),
       ..Default::default()
     };
     let mut runtime = JsRuntime::new(options);

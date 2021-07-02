@@ -298,23 +298,34 @@ fn op_encoding_encode_into(
   input: String,
   mut buffer: ZeroCopyBuf,
 ) -> Result<EncodeIntoResult, AnyError> {
-  let dst: &mut [u8] = &mut buffer;
-  let mut read = 0;
-  let mut written = 0;
-  for char in input.chars() {
-    let len = char.len_utf8();
-    if dst.len() < written + len {
-      break;
+  // Since `input` is already UTF-8, we can simply find the last UTF-8 code
+  // point boundary from input that fits in `buffer`, and copy the bytes up to
+  // that point.
+  let boundary = if buffer.len() >= input.len() {
+    input.len()
+  } else {
+    let mut boundary = buffer.len();
+
+    // The maximum length of a UTF-8 code point is 4 bytes.
+    for _ in 0..4 {
+      if input.is_char_boundary(boundary) {
+        break;
+      }
+      debug_assert!(boundary > 0);
+      boundary -= 1;
     }
-    char.encode_utf8(&mut dst[written..]);
-    written += len;
-    if char > '\u{FFFF}' {
-      read += 2
-    } else {
-      read += 1
-    };
-  }
-  Ok(EncodeIntoResult { read, written })
+
+    debug_assert!(input.is_char_boundary(boundary));
+    boundary
+  };
+
+  buffer[..boundary].copy_from_slice(input[..boundary].as_bytes());
+
+  Ok(EncodeIntoResult {
+    // The `read` output parameter is measured in UTF-16 code units.
+    read: input[..boundary].encode_utf16().count(),
+    written: boundary,
+  })
 }
 
 pub fn get_declaration() -> PathBuf {

@@ -129,37 +129,6 @@ declare namespace Deno {
     speed: number | undefined;
   }
 
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Open and initialize a plugin.
-   *
-   * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
-   * const rid = Deno.openPlugin("./path/to/some/plugin.so");
-   *
-   * // The Deno.core namespace is needed to interact with plugins, but this is
-   * // internal so we use ts-ignore to skip type checking these calls.
-   * // @ts-ignore
-   * const { op_test_sync, op_test_async } = Deno.core.ops();
-   *
-   * assert(op_test_sync);
-   * assert(op_test_async);
-   *
-   * // @ts-ignore
-   * const result = Deno.core.opSync("op_test_sync");
-   *
-   * // @ts-ignore
-   * const result = await Deno.core.opAsync("op_test_sync");
-   * ```
-   *
-   * Requires `allow-plugin` permission.
-   *
-   * The plugin system is not stable and will change in the future, hence the
-   * lack of docs. For now take a look at the example
-   * https://github.com/denoland/deno/tree/main/test_plugin
-   */
-  export function openPlugin(filename: string): number;
-
   /** The log category for a diagnostic message. */
   export enum DiagnosticCategory {
     Warning = 0,
