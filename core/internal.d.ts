@@ -833,6 +833,72 @@ declare namespace __bootstrap {
     export const TypeErrorLength: typeof TypeError.length;
     export const TypeErrorName: typeof TypeError.name;
     export const TypeErrorPrototype: typeof TypeError.prototype;
+    export const TypedArrayPrototypeCopyWithin: UncurryThis<
+      typeof Uint8Array.prototype.copyWithin
+    >;
+    export const TypedArrayPrototypeEvery: UncurryThis<
+      typeof Uint8Array.prototype.every
+    >;
+    export const TypedArrayPrototypeFill: UncurryThis<
+      typeof Uint8Array.prototype.fill
+    >;
+    export const TypedArrayPrototypeFilter: UncurryThis<
+      typeof Uint8Array.prototype.filter
+    >;
+    export const TypedArrayPrototypeFind: UncurryThis<
+      typeof Uint8Array.prototype.find
+    >;
+    export const TypedArrayPrototypeFindIndex: UncurryThis<
+      typeof Uint8Array.prototype.findIndex
+    >;
+    export const TypedArrayPrototypeForEach: UncurryThis<
+      typeof Uint8Array.prototype.forEach
+    >;
+    export const TypedArrayPrototypeIndexOf: UncurryThis<
+      typeof Uint8Array.prototype.indexOf
+    >;
+    export const TypedArrayPrototypeJoin: UncurryThis<
+      typeof Uint8Array.prototype.join
+    >;
+    export const TypedArrayPrototypeLastIndexOf: UncurryThis<
+      typeof Uint8Array.prototype.lastIndexOf
+    >;
+    export const TypedArrayPrototypeMap: UncurryThis<
+      typeof Uint8Array.prototype.map
+    >;
+    export const TypedArrayPrototypeReduce: UncurryThis<
+      typeof Uint8Array.prototype.reduce
+    >;
+    export const TypedArrayPrototypeReduceRight: UncurryThis<
+      typeof Uint8Array.prototype.reduceRight
+    >;
+    export const TypedArrayPrototypeReverse: UncurryThis<
+      typeof Uint8Array.prototype.reverse
+    >;
+    export const TypedArrayPrototypeSet: UncurryThis<
+      typeof Uint8Array.prototype.set
+    >;
+    export const TypedArrayPrototypeSlice: UncurryThis<
+      typeof Uint8Array.prototype.slice
+    >;
+    export const TypedArrayPrototypeSome: UncurryThis<
+      typeof Uint8Array.prototype.some
+    >;
+    export const TypedArrayPrototypeSort: UncurryThis<
+      typeof Uint8Array.prototype.sort
+    >;
+    export const TypedArrayPrototypeSubarray: UncurryThis<
+      typeof Uint8Array.prototype.subarray
+    >;
+    export const TypedArrayPrototypeToLocaleString: UncurryThis<
+      typeof Uint8Array.prototype.toLocaleString
+    >;
+    export const TypedArrayPrototypeToString: UncurryThis<
+      typeof Uint8Array.prototype.toString
+    >;
+    export const TypedArrayPrototypeValueOf: UncurryThis<
+      typeof Uint8Array.prototype.valueOf
+    >;
     export const URIError: typeof globalThis.URIError;
     export const URIErrorLength: typeof URIError.length;
     export const URIErrorName: typeof URIError.name;
