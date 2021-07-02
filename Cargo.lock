@@ -3565,16 +3565,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "test_plugin"
-version = "0.0.1"
-dependencies = [
- "deno_core",
- "futures",
- "serde",
- "test_util",
-]
-
-[[package]]
 name = "test_util"
 version = "0.1.0"
 dependencies = [
