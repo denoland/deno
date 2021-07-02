@@ -143,7 +143,10 @@
   webidl.converters["EcdsaParams"] = webidl
     .createDictionaryConverter("EcdsaParams", dictEcdsaParams);
 
-  webidl.converters.CryptoKey = webidl.createInterfaceConverter(CryptoKey);
+  webidl.converters.CryptoKey = webidl.createInterfaceConverter(
+    "CryptoKey",
+    CryptoKey,
+  );
 
   const dictCryptoKeyPair = [
     {
