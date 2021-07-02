@@ -3,9 +3,11 @@ use deno_core::Extension;
 use deno_bench_util::bench_or_profile;
 use deno_bench_util::bencher::{benchmark_group, Bencher};
 use deno_bench_util::{bench_js_async, bench_js_sync};
+use deno_web::BlobUrlStore;
 
 fn setup() -> Vec<Extension> {
   vec![
+    deno_web::init(BlobUrlStore::default(), None),
     deno_timers::init::<deno_timers::NoTimersPermission>(),
     Extension::builder()
     .js(vec![
