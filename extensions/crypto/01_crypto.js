@@ -5,6 +5,23 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
 
+  const {
+    ArrayPrototypeFind,
+    ArrayBufferIsView,
+    ObjectKeys,
+    StringPrototypeSlice,
+    StringPrototypeToUpperCase,
+    Symbol,
+    Int8Array,
+    Uint8Array,
+    Int16Array,
+    Uint16Array,
+    Int32Array,
+    Uint32Array,
+    Uint8ClampedArray,
+    SymbolToStringTag,
+  } = window.__bootstrap.primordials;
+
   const supportedAlgorithms = {
     "digest": {
       "SHA-1": {},
@@ -24,8 +41,13 @@
     });
 
     const registeredAlgorithms = supportedAlgorithms[op];
-    const algorithmName = Object.keys(registeredAlgorithms)
-      .find((key) => key.toLowerCase() == initialAlgorithm.name.toLowerCase());
+
+    const algorithmName = ArrayPrototypeFind(
+      ObjectKeys(registeredAlgorithms),
+      (key) =>
+        StringPrototypeToUpperCase(key) ==
+          StringPrototypeToUpperCase(initialAlgorithm.name),
+    );
 
     if (algorithmName === undefined) {
       throw new DOMException(
@@ -79,13 +101,13 @@
         context: "Argument 2",
       });
 
-      if (ArrayBuffer.isView(data)) {
+      if (ArrayBufferIsView(data)) {
         data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
       } else {
         data = new Uint8Array(data);
       }
 
-      data = data.slice();
+      data = StringPrototypeSlice(data);
 
       algorithm = normalizeAlgorithm(algorithm, "digest");
 
@@ -149,7 +171,7 @@
       return subtle;
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "Crypto";
     }
 
