@@ -110,6 +110,7 @@ pub struct AlgorithmArg {
   public_exponent: Option<ZeroCopyBuf>,
   named_curve: Option<CryptoNamedCurve>,
   hash: Option<CryptoHash>,
+  length: Option<usize>,
 }
 
 pub async fn op_crypto_generate_key(
@@ -171,9 +172,22 @@ pub async fn op_crypto_generate_key(
     Algorithm::Hmac => {
       let hash: HmacAlgorithm = args.hash.ok_or_else(not_supported)?.into();
 
+      let length = if let Some(length) = args.length {
+        if (length % 8) != 0 {
+          return Err(type_error("hmac block length must be byte aligned"));
+        }
+        let length = length / 8;
+        if length > ring::digest::MAX_BLOCK_LEN {
+          return Err(type_error("hmac block length is too large"));
+        }
+        length
+      } else {
+        hash.digest_algorithm().block_len
+      };
+
       let rng = RingRand::SystemRandom::new();
-      let mut key_bytes = [0; ring::digest::MAX_OUTPUT_LEN];
-      let key_bytes = &mut key_bytes[..hash.digest_algorithm().output_len];
+      let mut key_bytes = [0; ring::digest::MAX_BLOCK_LEN];
+      let key_bytes = &mut key_bytes[..length];
       rng.fill(key_bytes)?;
 
       key_bytes.to_vec()

@@ -309,7 +309,7 @@
       }
 
       // 9.
-      if (!normalizeAlgorithm[_usages].includes("sign")) {
+      if (!key[_usages].includes("sign")) {
         throw new DOMException(
           "Key does not support the 'sign' operation.",
           "InvalidAccessError",
@@ -420,6 +420,8 @@
         context: "Argument 3",
       });
 
+      const normalizedAlgorithm = normalizeAlgorithm(algorithm, "generateKey");
+
       // https://github.com/denoland/deno/pull/9614#issuecomment-866049433
       if (!extractable) {
         throw new DOMException(
@@ -428,13 +430,13 @@
         );
       }
 
-      const normalizedAlgorithm = normalizeAlgorithm(algorithm, "generateKey");
-
       switch (normalizedAlgorithm.name) {
         case "RSASSA-PKCS1-v1_5":
         case "RSA-PSS": {
           // 1.
-          if (keyUsages.find((u) => !["sign", "verify"].includes(u)) !== undefined) {
+          if (
+            keyUsages.find((u) => !["sign", "verify"].includes(u)) !== undefined
+          ) {
             throw new DOMException("Invalid key usages", "SyntaxError");
           }
 
@@ -482,7 +484,9 @@
         // TODO(lucacasonato): RSA-OAEP
         case "ECDSA": {
           // 1.
-          if (keyUsages.find((u) => !["sign", "verify"].includes(u)) !== undefined) {
+          if (
+            keyUsages.find((u) => !["sign", "verify"].includes(u)) !== undefined
+          ) {
             throw new DOMException("Invalid key usages", "SyntaxError");
           }
 
@@ -539,13 +543,11 @@
           }
 
           // 2.
+          let length;
           if (normalizedAlgorithm.length === undefined) {
-            // We don't support custom key length
+            length = null;
           } else if (normalizedAlgorithm.length !== 0) {
-            throw new DOMException(
-              "Custom key lengths are not supported",
-              "NotSupportedError",
-            );
+            length = normalizedAlgorithm.length;
           } else {
             throw new DOMException("Invalid length", "OperationError");
           }
@@ -554,6 +556,7 @@
           const keyData = await core.opAsync("op_crypto_generate_key", {
             name: "HMAC",
             hash: normalizedAlgorithm.hash.name,
+            length,
           });
           const handle = {};
           KEY_STORE.set(handle, { type: "raw", data: keyData });
@@ -564,7 +567,7 @@
             hash: {
               name: normalizedAlgorithm.hash.name,
             },
-            length: keyData.byteLength,
+            length: keyData.byteLength * 8,
           };
 
           // 5, 11-13.

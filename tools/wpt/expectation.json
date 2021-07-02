@@ -25,7 +25,8 @@
       "aes_cbc.https.any.html": false,
       "aes_ctr.https.any.html": false,
       "aes_gcm.https.any.html": false,
-      "rsa.https.any.html": false
+      "rsa.https.any.html": false,
+      "rsa_oaep.https.any.html": false
     },
     "generateKey": {
       "failures_AES-CBC.https.any.html": [
@@ -1546,8 +1547,11 @@
         "Bad algorithm property: generateKey({name: ECDH, namedCurve: Curve25519}, false, [deriveKey, deriveBits, deriveKey, deriveBits, deriveKey, deriveBits])",
         "Bad algorithm property: generateKey({name: ECDH, namedCurve: Curve25519}, true, [deriveKey, deriveBits, deriveKey, deriveBits, deriveKey, deriveBits])",
         "Empty usages: generateKey({name: ECDH, namedCurve: P-256}, false, [])",
+        "Empty usages: generateKey({name: ECDH, namedCurve: P-256}, true, [])",
         "Empty usages: generateKey({name: ECDH, namedCurve: P-384}, false, [])",
-        "Empty usages: generateKey({name: ECDH, namedCurve: P-521}, false, [])"
+        "Empty usages: generateKey({name: ECDH, namedCurve: P-384}, true, [])",
+        "Empty usages: generateKey({name: ECDH, namedCurve: P-521}, false, [])",
+        "Empty usages: generateKey({name: ECDH, namedCurve: P-521}, true, [])"
       ],
       "failures_ECDSA.https.any.html": [
         "Bad algorithm property: generateKey({name: ECDSA, namedCurve: P-512}, false, [sign])",
@@ -1559,22 +1563,25 @@
         "Bad algorithm property: generateKey({name: ECDSA, namedCurve: P-512}, false, [sign, verify, sign, sign, verify])",
         "Bad algorithm property: generateKey({name: ECDSA, namedCurve: P-512}, true, [sign, verify, sign, sign, verify])",
         "Bad algorithm property: generateKey({name: ECDSA, namedCurve: Curve25519}, false, [sign])",
-        "Bad algorithm property: generateKey({name: ECDSA, namedCurve: Curve25519}, true, [sign])",
         "Bad algorithm property: generateKey({name: ECDSA, namedCurve: Curve25519}, false, [verify, sign])",
-        "Bad algorithm property: generateKey({name: ECDSA, namedCurve: Curve25519}, true, [verify, sign])",
         "Bad algorithm property: generateKey({name: ECDSA, namedCurve: Curve25519}, false, [])",
-        "Bad algorithm property: generateKey({name: ECDSA, namedCurve: Curve25519}, true, [])",
         "Bad algorithm property: generateKey({name: ECDSA, namedCurve: Curve25519}, false, [sign, verify, sign, sign, verify])",
-        "Bad algorithm property: generateKey({name: ECDSA, namedCurve: Curve25519}, true, [sign, verify, sign, sign, verify])",
         "Empty usages: generateKey({name: ECDSA, namedCurve: P-256}, false, [])",
+        "Empty usages: generateKey({name: ECDSA, namedCurve: P-256}, true, [])",
         "Empty usages: generateKey({name: ECDSA, namedCurve: P-384}, false, [])",
-        "Empty usages: generateKey({name: ECDSA, namedCurve: P-521}, false, [])"
+        "Empty usages: generateKey({name: ECDSA, namedCurve: P-384}, true, [])",
+        "Empty usages: generateKey({name: ECDSA, namedCurve: P-521}, false, [])",
+        "Empty usages: generateKey({name: ECDSA, namedCurve: P-521}, true, [])"
       ],
       "failures_HMAC.https.any.html": [
         "Empty usages: generateKey({hash: SHA-1, length: 160, name: HMAC}, false, [])",
+        "Empty usages: generateKey({hash: SHA-1, length: 160, name: HMAC}, true, [])",
         "Empty usages: generateKey({hash: SHA-256, length: 256, name: HMAC}, false, [])",
+        "Empty usages: generateKey({hash: SHA-256, length: 256, name: HMAC}, true, [])",
         "Empty usages: generateKey({hash: SHA-384, length: 384, name: HMAC}, false, [])",
-        "Empty usages: generateKey({hash: SHA-512, length: 512, name: HMAC}, false, [])"
+        "Empty usages: generateKey({hash: SHA-384, length: 384, name: HMAC}, true, [])",
+        "Empty usages: generateKey({hash: SHA-512, length: 512, name: HMAC}, false, [])",
+        "Empty usages: generateKey({hash: SHA-512, length: 512, name: HMAC}, true, [])"
       ],
       "failures_RSA-OAEP.https.any.html": [
         "Bad usages: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, true, [sign])",
@@ -1746,35 +1753,37 @@
         "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 0}}, false, [encrypt, decrypt, wrapKey, unwrapKey, decrypt, unwrapKey, encrypt, decrypt, wrapKey, unwrapKey])",
         "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 0}}, true, [encrypt, decrypt, wrapKey, unwrapKey, decrypt, unwrapKey, encrypt, decrypt, wrapKey, unwrapKey])",
         "Empty usages: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [])",
-        "Empty usages: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [])"
+        "Empty usages: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, true, [])",
+        "Empty usages: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [])",
+        "Empty usages: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, true, [])"
       ],
       "failures_RSA-PSS.https.any.html": [
         "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSA-PSS, publicExponent: {0: 1}}, false, [sign])",
         "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSA-PSS, publicExponent: {0: 1}}, false, [verify, sign])",
         "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSA-PSS, publicExponent: {0: 1}}, false, [])",
-        "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSA-PSS, publicExponent: {0: 1}}, true, [])",
         "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSA-PSS, publicExponent: {0: 1}}, false, [sign, verify, sign, sign, verify])",
         "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 0}}, false, [sign])",
         "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 0}}, false, [verify, sign])",
         "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 0}}, false, [])",
-        "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 0}}, true, [])",
         "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 0}}, false, [sign, verify, sign, sign, verify])",
         "Empty usages: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [])",
-        "Empty usages: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [])"
+        "Empty usages: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 1}}, true, [])",
+        "Empty usages: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [])",
+        "Empty usages: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 1}}, true, [])"
       ],
       "failures_RSASSA-PKCS1-v1_5.https.any.html": [
         "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1}}, false, [sign])",
         "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1}}, false, [verify, sign])",
         "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1}}, false, [])",
-        "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1}}, true, [])",
         "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1}}, false, [sign, verify, sign, sign, verify])",
         "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1, 1: 0, 2: 0}}, false, [sign])",
         "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1, 1: 0, 2: 0}}, false, [verify, sign])",
         "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1, 1: 0, 2: 0}}, false, [])",
-        "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1, 1: 0, 2: 0}}, true, [])",
         "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1, 1: 0, 2: 0}}, false, [sign, verify, sign, sign, verify])",
         "Empty usages: generateKey({hash: SHA-1, modulusLength: 2048, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [])",
-        "Empty usages: generateKey({hash: SHA-256, modulusLength: 2048, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [])"
+        "Empty usages: generateKey({hash: SHA-1, modulusLength: 2048, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, true, [])",
+        "Empty usages: generateKey({hash: SHA-256, modulusLength: 2048, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [])",
+        "Empty usages: generateKey({hash: SHA-256, modulusLength: 2048, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, true, [])"
       ],
       "successes_AES-CBC.https.any.html": false,
       "successes_AES-CTR.https.any.html": false,
@@ -1939,16 +1948,8 @@
         "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: Rsassa-pkcs1-v1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign, verify, sign, sign, verify])"
       ]
     },
-    "historical.any.html": [
-      "Non-secure context window does not have access to crypto.subtle",
-      "Non-secure context window does not have access to CryptoKey",
-      "Non-secure context window does not have access to SubtleCrypto"
-    ],
+    "historical.any.html": false,
     "idlharness.https.any.html": [
-      "CryptoKey interface: attribute type",
-      "CryptoKey interface: attribute extractable",
-      "CryptoKey interface: attribute algorithm",
-      "CryptoKey interface: attribute usages",
       "SubtleCrypto interface: operation encrypt(AlgorithmIdentifier, CryptoKey, BufferSource)",
       "SubtleCrypto interface: operation decrypt(AlgorithmIdentifier, CryptoKey, BufferSource)",
       "SubtleCrypto interface: operation sign(AlgorithmIdentifier, CryptoKey, BufferSource)",
