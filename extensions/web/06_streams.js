@@ -3017,9 +3017,8 @@
     if (byteSizeFunctionWeakMap.has(globalObject)) {
       return;
     }
-    byteSizeFunctionWeakMap.set(globalObject, function size(chunk) {
-      return chunk.byteLength;
-    });
+    const size = (chunk) => chunk.byteLength;
+    byteSizeFunctionWeakMap.set(globalObject, size);
   }
 
   class CountQueuingStrategy {
@@ -3070,9 +3069,8 @@
     if (countSizeFunctionWeakMap.has(globalObject)) {
       return;
     }
-    countSizeFunctionWeakMap.set(globalObject, function size() {
-      return 1;
-    });
+    const size = () => 1;
+    countSizeFunctionWeakMap.set(globalObject, size);
   }
 
   /** @template R */
