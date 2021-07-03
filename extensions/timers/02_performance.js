@@ -4,6 +4,8 @@
 ((window) => {
   const { webidl, structuredClone } = window.__bootstrap;
   const { opNow } = window.__bootstrap.timers;
+  const { DOMException } = window.__bootstrap.domException;
+
   const illegalConstructorKey = Symbol("illegalConstructorKey");
   const customInspect = Symbol.for("Deno.customInspect");
   let performanceEntries = [];

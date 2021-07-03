@@ -4,6 +4,7 @@ use super::analysis;
 use super::text::LineIndex;
 use super::tsc;
 
+use crate::config_file::ConfigFile;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
@@ -33,6 +34,7 @@ use tsc::NavigationTree;
 pub async fn cache(
   specifier: &ModuleSpecifier,
   maybe_import_map: &Option<ImportMap>,
+  maybe_config_file: &Option<ConfigFile>,
 ) -> Result<(), AnyError> {
   let program_state = Arc::new(ProgramState::build(Default::default()).await?);
   let handler = Arc::new(Mutex::new(FetchHandler::new(
@@ -41,6 +43,7 @@ pub async fn cache(
     Permissions::allow_all(),
   )?));
   let mut builder = GraphBuilder::new(handler, maybe_import_map.clone(), None);
+  builder.analyze_config_file(maybe_config_file).await?;
   builder.add(specifier, false).await
 }
 

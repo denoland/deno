@@ -29,7 +29,7 @@ fn create_snapshot(
     let display_path = file.strip_prefix(display_root).unwrap();
     let display_path_str = display_path.display().to_string();
     js_runtime
-      .execute(
+      .execute_script(
         &("deno:".to_string() + &display_path_str.replace('\\', "/")),
         &std::fs::read_to_string(&file).unwrap(),
       )
@@ -59,7 +59,6 @@ fn create_compiler_snapshot(
   op_crate_libs.insert("deno.console", deno_console::get_declaration());
   op_crate_libs.insert("deno.url", deno_url::get_declaration());
   op_crate_libs.insert("deno.web", deno_web::get_declaration());
-  op_crate_libs.insert("deno.file", deno_file::get_declaration());
   op_crate_libs.insert("deno.fetch", deno_fetch::get_declaration());
   op_crate_libs.insert("deno.webgpu", deno_webgpu::get_declaration());
   op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
@@ -69,6 +68,9 @@ fn create_compiler_snapshot(
     "deno.broadcast_channel",
     deno_broadcast_channel::get_declaration(),
   );
+  op_crate_libs.insert("deno.net", deno_net::get_declaration());
+  op_crate_libs
+    .insert("deno.net_unstable", deno_net::get_unstable_declaration());
 
   // ensure we invalidate the build properly.
   for (_, path) in op_crate_libs.iter() {
@@ -163,6 +165,10 @@ fn create_compiler_snapshot(
         "libs": build_libs,
       }))
     }),
+  );
+  js_runtime.register_op(
+    "op_cwd",
+    op_sync(move |_state, _args: Value, _: ()| Ok(json!("cache:///"))),
   );
   // using the same op that is used in `tsc.rs` for loading modules and reading
   // files, but a slightly different implementation at build time.
@@ -276,10 +282,6 @@ fn main() {
     deno_web::get_declaration().display()
   );
   println!(
-    "cargo:rustc-env=DENO_FILE_LIB_PATH={}",
-    deno_file::get_declaration().display()
-  );
-  println!(
     "cargo:rustc-env=DENO_FETCH_LIB_PATH={}",
     deno_fetch::get_declaration().display()
   );
@@ -302,6 +304,14 @@ fn main() {
   println!(
     "cargo:rustc-env=DENO_BROADCAST_CHANNEL_LIB_PATH={}",
     deno_broadcast_channel::get_declaration().display()
+  );
+  println!(
+    "cargo:rustc-env=DENO_NET_LIB_PATH={}",
+    deno_net::get_declaration().display()
+  );
+  println!(
+    "cargo:rustc-env=DENO_NET_UNSTABLE_LIB_PATH={}",
+    deno_net::get_unstable_declaration().display()
   );
 
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());

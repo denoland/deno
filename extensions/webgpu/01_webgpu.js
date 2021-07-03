@@ -12,6 +12,7 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const eventTarget = window.__bootstrap.eventTarget;
+  const { DOMException } = window.__bootstrap.domException;
 
   /**
    * @param {any} self
@@ -167,7 +168,7 @@
       }
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect({})}`;
     }
   }
@@ -271,7 +272,7 @@
       );
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           name: this.name,
@@ -388,7 +389,7 @@
       return this[_limits].maxVertexBufferArrayStride;
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect(this[_limits])}`;
     }
   }
@@ -451,7 +452,7 @@
       return this[_features][Symbol.iterator]();
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect([...this.values()])}`;
     }
   }
@@ -492,7 +493,7 @@
       return this[_message];
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({ reason: this[_reason], message: this[_message] })
       }`;
@@ -1292,7 +1293,7 @@
       return scope.error ?? null;
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           features: this.features,
@@ -1478,7 +1479,7 @@
       throw new Error("Not yet implemented");
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -1793,7 +1794,7 @@
       this[_cleanup]();
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -1932,7 +1933,7 @@
       this[_cleanup]();
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -1999,7 +2000,7 @@
       webidl.illegalConstructor();
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -2042,7 +2043,7 @@
       webidl.illegalConstructor();
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -2085,7 +2086,7 @@
       webidl.illegalConstructor();
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -2128,7 +2129,7 @@
       webidl.illegalConstructor();
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -2171,7 +2172,7 @@
       webidl.illegalConstructor();
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -2218,7 +2219,7 @@
       throw new Error("Not yet implemented");
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -2312,7 +2313,7 @@
       return bindGroupLayout;
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -2387,7 +2388,7 @@
       return bindGroupLayout;
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -3150,7 +3151,7 @@
       return commandBuffer;
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -3966,7 +3967,7 @@
       });
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -4369,7 +4370,7 @@
       });
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -4417,7 +4418,7 @@
       throw new Error("Not yet implemented");
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -4873,7 +4874,7 @@
       throw new Error("Not yet implemented");
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -4917,7 +4918,7 @@
       webidl.illegalConstructor();
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -4971,7 +4972,7 @@
       this[_cleanup]();
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,

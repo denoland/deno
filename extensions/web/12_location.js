@@ -3,6 +3,8 @@
 
 ((window) => {
   const { URL } = window.__bootstrap.url;
+  const { DOMException } = window.__bootstrap.domException;
+
   const locationConstructorKey = Symbol("locationConstuctorKey");
 
   // The differences between the definitions of `Location` and `WorkerLocation`
@@ -165,7 +167,7 @@
           },
           enumerable: true,
         },
-        [Symbol.for("Deno.customInspect")]: {
+        [Symbol.for("Deno.privateCustomInspect")]: {
           value: function (inspect) {
             const object = {
               hash: this.hash,
@@ -322,7 +324,7 @@
       value: "WorkerLocation",
       configurable: true,
     },
-    [Symbol.for("Deno.customInspect")]: {
+    [Symbol.for("Deno.privateCustomInspect")]: {
       value: function (inspect) {
         const object = {
           hash: this.hash,

@@ -977,7 +977,7 @@ Grant permission to read allow-listed files from disk:
 
 Deno allows specifying the filename '-' to read the file from stdin.
 
-  curl https://deno.land/std/examples/welcome.ts | target/debug/deno run -",
+  curl https://deno.land/std/examples/welcome.ts | deno run -",
     )
 }
 
@@ -2297,18 +2297,6 @@ mod tests {
           ext: "ts".to_string(),
         },
         watch: true,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn lsp() {
-    let r = flags_from_vec(svec!["deno", "lsp"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Lsp,
         ..Flags::default()
       }
     );

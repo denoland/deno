@@ -1,8 +1,18 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+/// <reference path="../../core/internal.d.ts" />
+
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
+  const {
+    Symbol,
+    ObjectDefineProperty,
+    ObjectFromEntries,
+    ObjectEntries,
+    ReflectGet,
+    Proxy,
+  } = window.__bootstrap.primordials;
 
   const _persistent = Symbol("[[persistent]]");
 
@@ -96,7 +106,7 @@
       },
       defineProperty(target, key, descriptor) {
         if (typeof key == "symbol") {
-          Object.defineProperty(target, key, descriptor);
+          ObjectDefineProperty(target, key, descriptor);
         } else {
           target.setItem(key, descriptor.value);
         }
@@ -105,14 +115,14 @@
       get(target, key) {
         if (typeof key == "symbol") return target[key];
         if (key in target) {
-          return Reflect.get(...arguments);
+          return ReflectGet(...arguments);
         } else {
           return target.getItem(key) ?? undefined;
         }
       },
       set(target, key, value) {
         if (typeof key == "symbol") {
-          Object.defineProperty(target, key, {
+          ObjectDefineProperty(target, key, {
             value,
             configurable: true,
           });
@@ -151,7 +161,7 @@
       return `${this.constructor.name} ${
         inspect({
           length: this.length,
-          ...Object.fromEntries(Object.entries(proxy)),
+          ...ObjectFromEntries(ObjectEntries(proxy)),
         })
       }`;
     };

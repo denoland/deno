@@ -203,7 +203,7 @@
   function inspectFunction(value, level, inspectOptions) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
     if (customInspect in value && typeof value[customInspect] === "function") {
-      return String(value[customInspect]());
+      return String(value[customInspect](inspect));
     }
     // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
     let cstrName = Object.getPrototypeOf(value)?.constructor?.name;
@@ -429,15 +429,13 @@
     inspectOptions,
   ) {
     const proxyDetails = core.getProxyDetails(value);
-    if (proxyDetails != null) {
-      return inspectOptions.showProxy
-        ? inspectProxy(proxyDetails, level, inspectOptions)
-        : inspectValue(proxyDetails[0], level, inspectOptions);
+    if (proxyDetails != null && inspectOptions.showProxy) {
+      return inspectProxy(proxyDetails, level, inspectOptions);
     }
 
     const green = maybeColor(colors.green, inspectOptions);
     const yellow = maybeColor(colors.yellow, inspectOptions);
-    const dim = maybeColor(colors.dim, inspectOptions);
+    const gray = maybeColor(colors.gray, inspectOptions);
     const cyan = maybeColor(colors.cyan, inspectOptions);
     const bold = maybeColor(colors.bold, inspectOptions);
     const red = maybeColor(colors.red, inspectOptions);
@@ -450,8 +448,8 @@
         return yellow(Object.is(value, -0) ? "-0" : `${value}`);
       case "boolean": // booleans are yellow
         return yellow(String(value));
-      case "undefined": // undefined is dim
-        return dim(String(value));
+      case "undefined": // undefined is gray
+        return gray(String(value));
       case "symbol": // Symbols are green
         return green(maybeQuoteSymbol(value));
       case "bigint": // Bigints are yellow
@@ -583,7 +581,7 @@
     level,
     inspectOptions,
   ) {
-    const dim = maybeColor(colors.dim, inspectOptions);
+    const gray = maybeColor(colors.gray, inspectOptions);
     const options = {
       typeName: "Array",
       displayName: "",
@@ -599,7 +597,7 @@
           }
           const emptyItems = i - index;
           const ending = emptyItems > 1 ? "s" : "";
-          return dim(`<${emptyItems} empty item${ending}>`);
+          return gray(`<${emptyItems} empty item${ending}>`);
         } else {
           return inspectValueWithQuotes(val, level, inspectOptions);
         }
@@ -903,22 +901,22 @@
     inspectOptions,
   ) {
     if (customInspect in value && typeof value[customInspect] === "function") {
-      return String(value[customInspect]());
+      return String(value[customInspect](inspect));
     }
-    // This non-unique symbol is used to support extensions, ie.
-    // in extensions/web we don't want to depend on unique "Deno.customInspect"
-    // symbol defined in the public API. Internal only, shouldn't be used
-    // by users.
-    const nonUniqueCustomInspect = Symbol.for("Deno.customInspect");
+    // This non-unique symbol is used to support op_crates, ie.
+    // in extensions/web we don't want to depend on public
+    // Symbol.for("Deno.customInspect") symbol defined in the public API.
+    // Internal only, shouldn't be used by users.
+    const privateCustomInspect = Symbol.for("Deno.privateCustomInspect");
     if (
-      nonUniqueCustomInspect in value &&
-      typeof value[nonUniqueCustomInspect] === "function"
+      privateCustomInspect in value &&
+      typeof value[privateCustomInspect] === "function"
     ) {
       // TODO(nayeemrmn): `inspect` is passed as an argument because custom
       // inspect implementations in `extensions` need it, but may not have access
       // to the `Deno` namespace in web workers. Remove when the `Deno`
       // namespace is always enabled.
-      return String(value[nonUniqueCustomInspect](inspect));
+      return String(value[privateCustomInspect](inspect));
     }
     if (value instanceof Error) {
       return String(value.stack);
@@ -1523,7 +1521,7 @@
       );
     };
 
-    dir = (obj, options = {}) => {
+    dir = (obj = undefined, options = {}) => {
       this.#printFunc(
         inspectArgs([obj], { ...getConsoleInspectOptions(), ...options }) +
           "\n",
@@ -1596,7 +1594,7 @@
       }
     };
 
-    table = (data, properties) => {
+    table = (data = undefined, properties = undefined) => {
       if (properties !== undefined && !Array.isArray(properties)) {
         throw new Error(
           "The 'properties' argument must be of type Array. " +
@@ -1762,7 +1760,7 @@
     }
   }
 
-  const customInspect = Symbol("Deno.customInspect");
+  const customInspect = Symbol.for("Deno.customInspect");
 
   function inspect(
     value,
@@ -1774,6 +1772,32 @@
       // TODO(nayeemrmn): Indent level is not supported.
       indentLevel: 0,
     });
+  }
+
+  // A helper function that will bind our own console implementation
+  // with default implementation of Console from V8. This will cause
+  // console messages to be piped to inspector console.
+  //
+  // We are using `Deno.core.callConsole` binding to preserve proper stack
+  // frames in inspector console. This has to be done because V8 considers
+  // the last JS stack frame as gospel for the inspector. In our case we
+  // specifically want the latest user stack frame to be the one that matters
+  // though.
+  //
+  // Inspired by:
+  // https://github.com/nodejs/node/blob/1317252dfe8824fd9cfee125d2aaa94004db2f3b/lib/internal/util/inspector.js#L39-L61
+  function wrapConsole(consoleFromDeno, consoleFromV8) {
+    const callConsole = core.callConsole;
+
+    for (const key of Object.keys(consoleFromV8)) {
+      if (consoleFromDeno.hasOwnProperty(key)) {
+        consoleFromDeno[key] = callConsole.bind(
+          consoleFromDeno,
+          consoleFromV8[key],
+          consoleFromDeno[key],
+        );
+      }
+    }
   }
 
   // Expose these fields to internalObject for tests.
@@ -1792,5 +1816,6 @@
     Console,
     customInspect,
     inspect,
+    wrapConsole,
   };
 })(this);

@@ -36,11 +36,15 @@ delete Object.prototype.__proto__;
   const formData = window.__bootstrap.formData;
   const fetch = window.__bootstrap.fetch;
   const prompt = window.__bootstrap.prompt;
+  const messagePort = window.__bootstrap.messagePort;
   const denoNs = window.__bootstrap.denoNs;
   const denoNsUnstable = window.__bootstrap.denoNsUnstable;
   const errors = window.__bootstrap.errors.errors;
   const webidl = window.__bootstrap.webidl;
+  const domException = window.__bootstrap.domException;
   const { defineEventHandler } = window.__bootstrap.webUtil;
+  const { deserializeJsMessageData, serializeJsMessageData } =
+    window.__bootstrap.messagePort;
 
   let windowIsClosing = false;
 
@@ -76,27 +80,58 @@ delete Object.prototype.__proto__;
   const onmessage = () => {};
   const onerror = () => {};
 
-  function postMessage(data) {
-    const dataIntArray = core.serialize(data);
-    core.opSync("op_worker_post_message", null, dataIntArray);
+  function postMessage(message, transferOrOptions = {}) {
+    const prefix =
+      "Failed to execute 'postMessage' on 'DedicatedWorkerGlobalScope'";
+    webidl.requiredArguments(arguments.length, 1, { prefix });
+    message = webidl.converters.any(message);
+    let options;
+    if (
+      webidl.type(transferOrOptions) === "Object" &&
+      transferOrOptions !== undefined &&
+      transferOrOptions[Symbol.iterator] !== undefined
+    ) {
+      const transfer = webidl.converters["sequence<object>"](
+        transferOrOptions,
+        { prefix, context: "Argument 2" },
+      );
+      options = { transfer };
+    } else {
+      options = webidl.converters.PostMessageOptions(transferOrOptions, {
+        prefix,
+        context: "Argument 2",
+      });
+    }
+    const { transfer } = options;
+    const data = serializeJsMessageData(message, transfer);
+    core.opSync("op_worker_post_message", data);
   }
 
   let isClosing = false;
+  let globalDispatchEvent;
+
   async function pollForMessages() {
+    if (!globalDispatchEvent) {
+      globalDispatchEvent = globalThis.dispatchEvent.bind(globalThis);
+    }
     while (!isClosing) {
-      const bufferMsg = await core.opAsync("op_worker_get_message");
-      const data = core.deserialize(bufferMsg);
+      const data = await core.opAsync("op_worker_recv_message");
+      if (data === null) break;
+      const v = deserializeJsMessageData(data);
+      const message = v[0];
+      const transfer = v[1];
 
       const msgEvent = new MessageEvent("message", {
         cancelable: false,
-        data,
+        data: message,
+        ports: transfer,
       });
 
       try {
         if (globalThis.onmessage) {
           await globalThis.onmessage(msgEvent);
         }
-        globalThis.dispatchEvent(msgEvent);
+        globalDispatchEvent(msgEvent);
       } catch (e) {
         let handled = false;
 
@@ -120,7 +155,7 @@ delete Object.prototype.__proto__;
           handled = ret === true;
         }
 
-        globalThis.dispatchEvent(errorEvent);
+        globalDispatchEvent(errorEvent);
         if (errorEvent.defaultPrevented) {
           handled = true;
         }
@@ -185,25 +220,25 @@ delete Object.prototype.__proto__;
     core.registerErrorBuilder(
       "DOMExceptionOperationError",
       function DOMExceptionOperationError(msg) {
-        return new DOMException(msg, "OperationError");
+        return new domException.DOMException(msg, "OperationError");
       },
     );
     core.registerErrorBuilder(
       "DOMExceptionQuotaExceededError",
       function DOMExceptionQuotaExceededError(msg) {
-        return new DOMException(msg, "QuotaExceededError");
+        return new domException.DOMException(msg, "QuotaExceededError");
       },
     );
     core.registerErrorBuilder(
       "DOMExceptionNotSupportedError",
       function DOMExceptionNotSupportedError(msg) {
-        return new DOMException(msg, "NotSupported");
+        return new domException.DOMException(msg, "NotSupported");
       },
     );
     core.registerErrorBuilder(
       "DOMExceptionInvalidCharacterError",
       function DOMExceptionInvalidCharacterError(msg) {
-        return new DOMException(msg, "InvalidCharacterError");
+        return new domException.DOMException(msg, "InvalidCharacterError");
       },
     );
   }
@@ -213,7 +248,7 @@ delete Object.prototype.__proto__;
       webidl.illegalConstructor();
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect({})}`;
     }
   }
@@ -236,7 +271,7 @@ delete Object.prototype.__proto__;
       webidl.illegalConstructor();
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [Symbol.for("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect({})}`;
     }
   }
@@ -265,7 +300,7 @@ delete Object.prototype.__proto__;
       streams.CountQueuingStrategy,
     ),
     CustomEvent: util.nonEnumerable(CustomEvent),
-    DOMException: util.nonEnumerable(DOMException),
+    DOMException: util.nonEnumerable(domException.DOMException),
     ErrorEvent: util.nonEnumerable(ErrorEvent),
     Event: util.nonEnumerable(Event),
     EventTarget: util.nonEnumerable(EventTarget),
@@ -294,13 +329,21 @@ delete Object.prototype.__proto__;
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
     BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
+    MessageChannel: util.nonEnumerable(messagePort.MessageChannel),
+    MessagePort: util.nonEnumerable(messagePort.MessagePort),
     Worker: util.nonEnumerable(worker.Worker),
     WritableStream: util.nonEnumerable(streams.WritableStream),
     WritableStreamDefaultWriter: util.nonEnumerable(
       streams.WritableStreamDefaultWriter,
     ),
+    WritableStreamDefaultController: util.nonEnumerable(
+      streams.WritableStreamDefaultController,
+    ),
     ReadableByteStreamController: util.nonEnumerable(
       streams.ReadableByteStreamController,
+    ),
+    ReadableStreamDefaultController: util.nonEnumerable(
+      streams.ReadableStreamDefaultController,
     ),
     TransformStreamDefaultController: util.nonEnumerable(
       streams.TransformStreamDefaultController,
@@ -417,6 +460,10 @@ delete Object.prototype.__proto__;
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
+
+    const consoleFromV8 = window.console;
+    const wrapConsole = window.__bootstrap.console.wrapConsole;
+
     // Remove bootstrapping data from the global scope
     delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
@@ -425,6 +472,10 @@ delete Object.prototype.__proto__;
     Object.defineProperties(globalThis, windowOrWorkerGlobalScope);
     Object.defineProperties(globalThis, mainRuntimeGlobalProperties);
     Object.setPrototypeOf(globalThis, Window.prototype);
+
+    const consoleFromDeno = globalThis.console;
+    wrapConsole(consoleFromDeno, consoleFromV8);
+
     eventTarget.setEventTargetData(globalThis);
 
     defineEventHandler(window, "load", null);
@@ -478,10 +529,9 @@ delete Object.prototype.__proto__;
       Object.assign(finalDenoNs, denoNsUnstable);
     }
 
-    // Setup `Deno` global - we're actually overriding already
-    // existing global `Deno` with `Deno` namespace from "./deno.ts".
-    util.immutableDefine(globalThis, "Deno", finalDenoNs);
-    Object.freeze(globalThis.Deno);
+    // Setup `Deno` global - we're actually overriding already existing global
+    // `Deno` with `Deno` namespace from "./deno.ts".
+    Object.defineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
     Object.freeze(globalThis.Deno.core);
     Object.freeze(globalThis.Deno.core.sharedQueue);
     signals.setSignals();
@@ -498,6 +548,10 @@ delete Object.prototype.__proto__;
     if (hasBootstrapped) {
       throw new Error("Worker runtime already bootstrapped");
     }
+
+    const consoleFromV8 = window.console;
+    const wrapConsole = window.__bootstrap.console.wrapConsole;
+
     // Remove bootstrapping data from the global scope
     delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
@@ -507,6 +561,10 @@ delete Object.prototype.__proto__;
     Object.defineProperties(globalThis, workerRuntimeGlobalProperties);
     Object.defineProperties(globalThis, { name: util.readOnly(name) });
     Object.setPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
+
+    const consoleFromDeno = globalThis.console;
+    wrapConsole(consoleFromDeno, consoleFromV8);
+
     eventTarget.setEventTargetData(globalThis);
 
     runtimeStart(

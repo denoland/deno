@@ -64,8 +64,10 @@ impl InspectorServer {
     &self,
     session_sender: UnboundedSender<InspectorSessionProxy>,
     deregister_rx: oneshot::Receiver<()>,
+    module_url: String,
   ) {
-    let info = InspectorInfo::new(self.host, session_sender, deregister_rx);
+    let info =
+      InspectorInfo::new(self.host, session_sender, deregister_rx, module_url);
     self.register_inspector_tx.unbounded_send(info).unwrap();
   }
 }
@@ -333,6 +335,7 @@ pub struct InspectorInfo {
   pub thread_name: Option<String>,
   pub new_session_tx: UnboundedSender<InspectorSessionProxy>,
   pub deregister_rx: oneshot::Receiver<()>,
+  pub url: String,
 }
 
 impl InspectorInfo {
@@ -340,6 +343,7 @@ impl InspectorInfo {
     host: SocketAddr,
     new_session_tx: mpsc::UnboundedSender<InspectorSessionProxy>,
     deregister_rx: oneshot::Receiver<()>,
+    url: String,
   ) -> Self {
     Self {
       host,
@@ -347,6 +351,7 @@ impl InspectorInfo {
       thread_name: thread::current().name().map(|n| n.to_owned()),
       new_session_tx,
       deregister_rx,
+      url,
     }
   }
 
@@ -358,7 +363,7 @@ impl InspectorInfo {
       "id": self.uuid.to_string(),
       "title": self.get_title(),
       "type": "node",
-      // TODO(ry): "url": "file://",
+      "url": self.url.to_string(),
       "webSocketDebuggerUrl": self.get_websocket_debugger_url(),
     })
   }
@@ -376,13 +381,13 @@ impl InspectorInfo {
 
   fn get_title(&self) -> String {
     format!(
-      "[{}] deno{}",
-      process::id(),
+      "deno{} [pid: {}]",
       self
         .thread_name
         .as_ref()
         .map(|n| format!(" - {}", n))
-        .unwrap_or_default()
+        .unwrap_or_default(),
+      process::id(),
     )
   }
 }
