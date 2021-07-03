@@ -632,6 +632,7 @@ declare namespace __bootstrap {
     export const ObjectPrototypeToLocaleString: UncurryThis<
       typeof Object.prototype.toLocaleString
     >;
+    export const queueMicrotask: typeof globalThis.queueMicrotask;
     export const RangeError: typeof globalThis.RangeError;
     export const RangeErrorLength: typeof RangeError.length;
     export const RangeErrorName: typeof RangeError.name;
