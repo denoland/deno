@@ -867,11 +867,8 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       let permissions = Permissions::from_options(&flags.into());
       async move {
         let main_module = main_module.clone();
-        let mut worker = create_main_worker(
-          &program_state,
-          main_module.clone(),
-          permissions,
-        );
+        let mut worker =
+          create_main_worker(&program_state, main_module.clone(), permissions);
         debug!("main_module {}", main_module);
         worker.execute_module(&main_module).await?;
         worker.execute_script(

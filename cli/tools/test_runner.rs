@@ -19,10 +19,15 @@ use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
+use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use regex::Regex;
 use serde::Deserialize;
+use std::borrow::Borrow;
+use std::convert::From;
+use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -139,8 +144,8 @@ async fn test_module<F>(
   program_state: Arc<ProgramState>,
   module_specifier: ModuleSpecifier,
   permissions: Permissions,
-  report_result: F,
-) -> Result<TestSummary, AnyError>
+  process_result: F,
+) -> Result<(), AnyError>
 where
   F: FnOnce(TestDescription, TestResult) -> Result<(), AnyError>
     + Send
@@ -150,14 +155,29 @@ where
   let mut worker =
     create_main_worker(&program_state, module_specifier.clone(), permissions);
 
-  let execute_result = worker.execute_module(&module_specifier.clone()).await;
+  let execute_result = worker.execute_module(&module_specifier).await;
   execute_result?;
 
-  let summary = TestSummary {};
-  let tests =
-    worker.execute_script("deno:test_module", "Deno.internal.tests")?;
+  let global_value = worker
+    .js_runtime
+    .execute_script("deno:test_module", "Deno.internal.tests")?;
 
-  Ok(summary)
+  let scope = &mut worker.js_runtime.handle_scope();
+  let global_array = v8::Array::try_from(global_value.get(scope))?;
+
+  assert!(global_array.is_array());
+
+  // let local_array = v8::Local::<v8::Array>::try_from(local_value)?;
+  // assert!(local_array.is_array());
+
+  // let mut index = 0;
+  // while let Some(element) = local_array.get_index(scope, index) {
+  //   println!("Test {}", index);
+
+  //   index += 1;
+  // }
+
+  Ok(())
 }
 
 /// Runs tests.
@@ -177,15 +197,6 @@ pub async fn run_tests(
   filter: Option<String>,
   concurrent_jobs: usize,
 ) -> Result<bool, AnyError> {
-  if doc_modules.is_empty() && test_modules.is_empty() {
-    println!("No matching test modules found");
-    if !allow_none {
-      std::process::exit(1);
-    }
-
-    return Ok(false);
-  }
-
   program_state
     .prepare_module_graph(
       test_modules.clone(),
@@ -203,7 +214,7 @@ pub async fn run_tests(
   let concurrent = concurrent_jobs > 0;
   let reporter_lock = Arc::new(Mutex::new(create_reporter(concurrent)));
 
-  let report_result = {
+  let process_result = {
     let reporter_lock = reporter_lock.clone();
 
     move |description: TestDescription, result: TestResult| {
@@ -218,25 +229,26 @@ pub async fn run_tests(
     let program_state = program_state.clone();
     let main_module = main_module.clone();
     let permissions = permissions.clone();
-    let report_result = report_result.clone();
+    let process_result = process_result.clone();
 
     tokio::task::spawn_blocking(move || {
-      let join_handle = std::thread::spawn(move || {
-        let future =
-          test_module(program_state, main_module, permissions, report_result);
-
-        tokio_util::run_basic(future)
-      });
-
-      join_handle.join().unwrap()
+      std::thread::spawn(move || {
+        tokio_util::run_basic(test_module(
+          program_state,
+          main_module,
+          permissions,
+          process_result,
+        ))
+      })
+      .join()
+      .unwrap()
     })
   });
 
-  let join_futures = stream::iter(join_handles)
+  let join_results = stream::iter(join_handles)
     .buffer_unordered(concurrent_jobs)
-    .collect::<Vec<Result<Result<TestSummary, AnyError>, tokio::task::JoinError>>>();
-
-  // TODO: JOIN ALL THREADS
+    .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>()
+    .await;
 
   Ok(true)
 }
