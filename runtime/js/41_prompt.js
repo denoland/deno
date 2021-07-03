@@ -2,13 +2,11 @@
 "use strict";
 ((window) => {
   const { stdin } = window.__bootstrap.files;
+  const { ArrayPrototypePush, StringPrototypeCharCodeAt, Uint8Array } = window.__bootstrap.primordials;
   const { isatty } = window.__bootstrap.tty;
-  const LF = "\n".charCodeAt(0);
-  const CR = "\r".charCodeAt(0);
+  const LF = StringPrototypeCharCodeAt("\n", 0);
+  const CR = StringPrototypeCharCodeAt("\r", 0);
   const core = window.Deno.core;
-  const {
-    ArrayPrototypePush,
-  } = window.__bootstrap.primordials;
 
   function alert(message = "Alert") {
     if (!isatty(stdin.rid)) {

@@ -7,11 +7,11 @@ failures:
 test 1
 Error
     at [WILDCARD]/test/fail_fast.ts:2:9
-    at asyncOpSanitizer (deno:runtime/js/40_testing.js:21:15)
-    at resourceSanitizer (deno:runtime/js/40_testing.js:58:13)
-    at exitSanitizer (deno:runtime/js/40_testing.js:85:15)
-    at runTest (deno:runtime/js/40_testing.js:199:13)
-    at Object.runTests (deno:runtime/js/40_testing.js:244:13)
+    at asyncOpSanitizer (deno:runtime/js/40_testing.js:35:15)
+    at resourceSanitizer (deno:runtime/js/40_testing.js:72:13)
+    at exitSanitizer (deno:runtime/js/40_testing.js:99:15)
+    at runTest (deno:runtime/js/40_testing.js:218:13)
+    at Object.runTests (deno:runtime/js/40_testing.js:264:13)
     at [WILDCARD]/$deno$test.js:1:27
 
 failures:

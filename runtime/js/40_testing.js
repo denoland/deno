@@ -10,6 +10,7 @@
   const { assert } = window.__bootstrap.util;
   const {
     ArrayPrototypeFilter,
+    ArrayPrototypePush,
     DateNow,
     JSONStringify,
     Promise,
@@ -152,7 +153,7 @@ finishing test case.`;
       testDef.fn = assertExit(testDef.fn);
     }
 
-    tests.push(testDef);
+    ArrayPrototypePush(tests, testDef);
   }
 
   function postTestMessage(kind, data) {

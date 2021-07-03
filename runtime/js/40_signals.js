@@ -9,6 +9,7 @@
     Error,
     ObjectAssign,
     Promise,
+    PromisePrototypeThen,
     PromiseResolve,
     SymbolAsyncIterator,
   } = window.__bootstrap.primordials;
@@ -243,7 +244,7 @@
       f,
       g,
     ) {
-      return this.#pollingPromise.then((done) => {
+      let p = PromisePrototypeThen(this.#pollingPromise, (done) => {
         if (done) {
           // If pollingPromise returns true, then
           // this signal stream is finished and the promise API
@@ -251,7 +252,8 @@
           return new Promise(() => {});
         }
         return;
-      }).then(f, g);
+      });
+      return PromisePrototypeThen(p, f, g);
     }
 
     async next() {

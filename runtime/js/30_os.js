@@ -4,6 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
   const {
+    Error,
     SymbolFor,
   } = window.__bootstrap.primordials;
 
