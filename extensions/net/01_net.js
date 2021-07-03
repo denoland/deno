@@ -7,6 +7,7 @@
   const {
     PromiseResolve,
     Symbol,
+    SymbolAsyncIterator,
     Uint8Array,
     TypedArrayPrototypeSubarray,
   } = window.__bootstrap.primordials;
@@ -141,7 +142,7 @@
       core.close(this.rid);
     }
 
-    [Symbol.asyncIterator]() {
+    [SymbolAsyncIterator]() {
       return this;
     }
   }
