@@ -19,6 +19,7 @@ delete Object.prototype.__proto__;
     PromiseResolve,
     Symbol,
     SymbolFor,
+    SymbolIterator,
   } = window.__bootstrap.primordials;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
@@ -97,7 +98,7 @@ delete Object.prototype.__proto__;
     if (
       webidl.type(transferOrOptions) === "Object" &&
       transferOrOptions !== undefined &&
-      transferOrOptions[Symbol.iterator] !== undefined
+      transferOrOptions[SymbolIterator] !== undefined
     ) {
       const transfer = webidl.converters["sequence<object>"](
         transferOrOptions,
