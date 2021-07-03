@@ -1,19 +1,42 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+/// <reference path="../../core/internal.d.ts" />
+
 "use strict";
 
 ((window) => {
   const core = window.Deno.core;
   const colors = window.__bootstrap.colors;
+  const {
+    ArrayBufferIsView,
+    isNaN,
+    DataView,
+    DatePrototypeGetTime,
+    ObjectKeys,
+    ObjectGetPrototypeOf,
+    ObjectGetOwnPropertySymbols,
+    ObjectPrototypeHasOwnProperty,
+    ObjectPrototypePropertyIsEnumerable,
+    String,
+    StringPrototypeRepeat,
+    StringPrototypeCodePointAt,
+    StringPrototypeNormalize,
+    ArrayPrototypeJoin,
+    ArrayPrototypeMap,
+    ArrayPrototypeReduce,
+    MathCeil,
+    MathMax,
+  } = window.__bootstrap.primordials;
 
   function isInvalidDate(x) {
-    return isNaN(x.getTime());
+    return isNaN(DatePrototypeGetTime(x));
   }
 
   function hasOwnProperty(obj, v) {
     if (obj == null) {
       return false;
     }
-    return Object.prototype.hasOwnProperty.call(obj, v);
+    return ObjectPrototypeHasOwnProperty(obj, v);
   }
 
   function propertyIsEnumerable(obj, prop) {
@@ -24,14 +47,14 @@
       return false;
     }
 
-    return obj.propertyIsEnumerable(prop);
+    return ObjectPrototypePropertyIsEnumerable(obj, prop);
   }
 
   // Copyright Joyent, Inc. and other Node contributors. MIT license.
   // Forked from Node's lib/internal/cli_table.js
 
   function isTypedArray(x) {
-    return ArrayBuffer.isView(x) && !(x instanceof DataView);
+    return ArrayBufferIsView(x) && !(x instanceof DataView);
   }
 
   const tableChars = {
@@ -90,11 +113,11 @@
   }
 
   function getStringWidth(str) {
-    str = colors.stripColor(str).normalize("NFC");
+    str = StringPrototypeNormalize(colors.stripColor(str), "NFC");
     let width = 0;
 
     for (const ch of str) {
-      width += isFullWidthCodePoint(ch.codePointAt(0)) ? 2 : 1;
+      width += isFullWidthCodePoint(StringPrototypeCodePointAt(ch, 0)) ? 2 : 1;
     }
 
     return width;
@@ -108,7 +131,9 @@
       const needed = (columnWidths[i] - len) / 2;
       // round(needed) + ceil(needed) will always add up to the amount
       // of spaces we need while also left justifying the output.
-      out += `${" ".repeat(needed)}${cell}${" ".repeat(Math.ceil(needed))}`;
+      out += `${StringPrototypeRepeat(" ", needed)}${cell}${
+        StringPrototypeRepeat(" ", MathCeil(needed))
+      }`;
       if (i !== row.length - 1) {
         out += tableChars.middle;
       }
@@ -119,9 +144,10 @@
 
   function cliTable(head, columns) {
     const rows = [];
-    const columnWidths = head.map((h) => getStringWidth(h));
-    const longestColumn = columns.reduce(
-      (n, a) => Math.max(n, a.length),
+    const columnWidths = ArrayPrototypeMap(head, (h) => getStringWidth(h));
+    const longestColumn = ArrayPrototypeReduce(
+      columns,
+      (n, a) => MathMax(n, a.length),
       0,
     );
 
@@ -134,17 +160,23 @@
         const value = (rows[j][i] = hasOwnProperty(column, j) ? column[j] : "");
         const width = columnWidths[i] || 0;
         const counted = getStringWidth(value);
-        columnWidths[i] = Math.max(width, counted);
+        columnWidths[i] = MathMax(width, counted);
       }
     }
 
-    const divider = columnWidths.map((i) =>
-      tableChars.middleMiddle.repeat(i + 2)
+    const divider = ArrayPrototypeMap(
+      columnWidths,
+      (i) => StringPrototypeRepeat(tableChars.middleMiddle, i + 2),
     );
 
-    let result = `${tableChars.topLeft}${divider.join(tableChars.topMiddle)}` +
+    let result =
+      `${tableChars.topLeft}${
+        ArrayPrototypeJoin(divider, tableChars.topMiddle)
+      }` +
       `${tableChars.topRight}\n${renderRow(head, columnWidths)}\n` +
-      `${tableChars.leftMiddle}${divider.join(tableChars.rowMiddle)}` +
+      `${tableChars.leftMiddle}${
+        ArrayPrototypeJoin(divider, tableChars.rowMiddle)
+      }` +
       `${tableChars.rightMiddle}\n`;
 
     for (const row of rows) {
@@ -152,7 +184,9 @@
     }
 
     result +=
-      `${tableChars.bottomLeft}${divider.join(tableChars.bottomMiddle)}` +
+      `${tableChars.bottomLeft}${
+        ArrayPrototypeJoin(divider, tableChars.bottomMiddle)
+      }` +
       tableChars.bottomRight;
 
     return result;
@@ -206,7 +240,7 @@
       return String(value[customInspect](inspect));
     }
     // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
-    let cstrName = Object.getPrototypeOf(value)?.constructor?.name;
+    let cstrName = ObjectGetPrototypeOf(value)?.constructor?.name;
     if (!cstrName) {
       // If prototype is removed or broken,
       // use generic 'Function' instead.
@@ -219,8 +253,8 @@
     // empty suffix.
     let suffix = ``;
     if (
-      Object.keys(value).length > 0 ||
-      Object.getOwnPropertySymbols(value).length > 0
+      ObjectKeys(value).length > 0 ||
+      ObjectGetOwnPropertySymbols(value).length > 0
     ) {
       const propString = inspectRawObject(value, level, inspectOptions);
       // Filter out the empty string for the case we only have
