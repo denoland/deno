@@ -112,6 +112,7 @@
       return `${this.constructor.name} ${inspect(this.toJSON())}`;
     }
   }
+  webidl.configurePrototype(PerformanceEntry);
 
   const _detail = Symbol("[[detail]]");
   class PerformanceMark extends PerformanceEntry {
@@ -173,6 +174,7 @@
       return `${this.constructor.name} ${inspect(this.toJSON())}`;
     }
   }
+  webidl.configurePrototype(PerformanceMark);
 
   class PerformanceMeasure extends PerformanceEntry {
     [Symbol.toStringTag] = "PerformanceMeasure";
@@ -220,6 +222,7 @@
       return `${this.constructor.name} ${inspect(this.toJSON())}`;
     }
   }
+  webidl.configurePrototype(PerformanceMeasure);
 
   class Performance {
     constructor() {
@@ -385,6 +388,7 @@
       return "Performance";
     }
   }
+  webidl.configurePrototype(Performance);
 
   window.__bootstrap.performance = {
     PerformanceEntry,
