@@ -210,7 +210,10 @@ Deno.test("echo uint8array with binaryType blob", async () => {
   const promise = deferred();
   const ws = new WebSocket("ws://localhost:4242");
   const uint = new Uint8Array([102, 111, 111]);
-  ws.onerror = (): void => fail();
+  ws.onerror = (e): void => {
+    console.log(e);
+    fail();
+  };
   ws.onopen = (): void => ws.send(uint);
   ws.onmessage = (e): void => {
     e.data.arrayBuffer().then((actual: ArrayBuffer) => {
