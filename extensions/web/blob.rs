@@ -40,6 +40,14 @@ impl BlobStore {
     part.cloned()
   }
 
+  pub fn remove_part(
+    &self,
+    id: &Uuid,
+  ) -> Option<Arc<Box<dyn BlobPart + Send + Sync>>> {
+    let mut parts = self.parts.lock().unwrap();
+    parts.remove(&id)
+  }
+
   pub fn get_object_url(
     &self,
     mut url: Url,
@@ -208,6 +216,16 @@ pub async fn op_blob_read_part(
   .ok_or_else(|| type_error("Blob part not found"))?;
   let buf = part.read().await?;
   Ok(ZeroCopyBuf::from(buf.to_vec()))
+}
+
+pub fn op_blob_remove_part(
+  state: &mut deno_core::OpState,
+  id: Uuid,
+  _: (),
+) -> Result<(), AnyError> {
+  let blob_store = state.borrow::<BlobStore>();
+  blob_store.remove_part(&id);
+  Ok(())
 }
 
 pub fn op_blob_create_object_url(

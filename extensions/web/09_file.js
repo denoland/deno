@@ -459,14 +459,14 @@
     ],
   );
 
-  // TODO(lucacasonato): once BlobReference is GC'd in JS, the Rust blob part
+  // A finalization registry to deallocate a blob part when its JS reference is
+  // garbage collected.
+  const registry = new FinalizationRegistry((uuid) => {
+    core.opSync("op_blob_remove_part", uuid);
+  });
+
   // TODO(lucacasonato): get a better stream from Rust in BlobReference#stream
 
-  // const registry = new FinalizationRegistry(uuid => {
-  //   core.opSync("op_blob_gc_part", uuid);
-  // });
-
-  // should be deallocated.
   /**
    * An opaque reference to a blob part in Rust. This could be backed by a file,
    * in memory storage, or something else.
@@ -480,8 +480,7 @@
     constructor(id, size) {
       this._id = id;
       this.size = size;
-
-      // registry.register(this, id);
+      registry.register(this, id);
     }
 
     /**

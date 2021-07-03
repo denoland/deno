@@ -31,6 +31,7 @@ use std::usize;
 use crate::blob::op_blob_create_object_url;
 use crate::blob::op_blob_create_part;
 use crate::blob::op_blob_read_part;
+use crate::blob::op_blob_remove_part;
 use crate::blob::op_blob_revoke_object_url;
 use crate::blob::op_blob_slice_part;
 pub use crate::blob::Blob;
@@ -79,6 +80,7 @@ pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
       ("op_blob_create_part", op_sync(op_blob_create_part)),
       ("op_blob_slice_part", op_sync(op_blob_slice_part)),
       ("op_blob_read_part", op_async(op_blob_read_part)),
+      ("op_blob_remove_part", op_sync(op_blob_remove_part)),
       (
         "op_blob_create_object_url",
         op_sync(op_blob_create_object_url),
