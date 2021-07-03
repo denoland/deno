@@ -229,7 +229,7 @@ Deno.test("echo uint8array with binaryType arraybuffer", async () => {
   const ws = new WebSocket("ws://localhost:4242");
   ws.binaryType = "arraybuffer";
   const uint = new Uint8Array([102, 111, 111]);
-  ws.onerror = (e): void => fail();
+  ws.onerror = (): void => fail();
   ws.onopen = (): void => ws.send(uint);
   ws.onmessage = (e): void => {
     assertEquals(e.data, uint.buffer);
