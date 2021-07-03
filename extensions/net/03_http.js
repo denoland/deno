@@ -13,6 +13,7 @@
     Symbol,
     Uint8Array,
     Promise,
+    StringPrototypeIncludes,
     SymbolAsyncIterator,
     TypeError,
     TypedArrayPrototypeSubarray,
@@ -54,7 +55,9 @@
           return null;
         } else if (error instanceof Interrupted) {
           return null;
-        } else if (error.message.includes("connection closed")) {
+        } else if (
+          StringPrototypeIncludes(error.message, "connection closed")
+        ) {
           return null;
         }
         throw error;
