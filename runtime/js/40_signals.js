@@ -5,6 +5,13 @@
   const core = window.Deno.core;
   const { build } = window.__bootstrap.build;
   const { errors } = window.__bootstrap.errors;
+  const {
+    Error,
+    ObjectAssign,
+    Promise,
+    PromiseResolve,
+    SymbolAsyncIterator,
+  } = window.__bootstrap.primordials;
 
   function bindSignal(signo) {
     return core.opSync("op_signal_bind", signo);
@@ -154,9 +161,9 @@
 
   function setSignals() {
     if (build.os === "darwin") {
-      Object.assign(Signal, MacOSSignal);
+      ObjectAssign(Signal, MacOSSignal);
     } else {
-      Object.assign(Signal, LinuxSignal);
+      ObjectAssign(Signal, LinuxSignal);
     }
   }
 
@@ -205,7 +212,7 @@
 
   class SignalStream {
     #disposed = false;
-    #pollingPromise = Promise.resolve(false);
+    #pollingPromise = PromiseResolve(false);
     #rid = 0;
 
     constructor(signo) {
@@ -251,7 +258,7 @@
       return { done: await this.#pollingPromise, value: undefined };
     }
 
-    [Symbol.asyncIterator]() {
+    [SymbolAsyncIterator]() {
       return this;
     }
 
