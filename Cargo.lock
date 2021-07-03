@@ -772,6 +772,9 @@ version = "0.8.1"
 dependencies = [
  "deno_bench_util",
  "deno_core",
+ "deno_url",
+ "deno_web",
+ "deno_webidl",
  "tokio",
 ]
 

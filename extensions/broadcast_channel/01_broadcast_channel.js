@@ -8,6 +8,7 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { setTarget } = window.__bootstrap.event;
+  const { DOMException } = window.__bootstrap.domException;
   const {
     ArrayPrototypeIndexOf,
     ArrayPrototypeSplice,
