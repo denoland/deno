@@ -360,7 +360,11 @@ impl WebWorker {
       let inspector = js_runtime.inspector();
       let session_sender = inspector.get_session_sender();
       let deregister_rx = inspector.add_deregister_handler();
-      server.register_inspector(session_sender, deregister_rx);
+      server.register_inspector(
+        session_sender,
+        deregister_rx,
+        main_module.to_string(),
+      );
     }
 
     let (internal_handle, external_handle) = {
@@ -421,7 +425,8 @@ impl WebWorker {
     name: &str,
     source_code: &str,
   ) -> Result<(), AnyError> {
-    self.js_runtime.execute_script(name, source_code)
+    self.js_runtime.execute_script(name, source_code)?;
+    Ok(())
   }
 
   /// Loads and instantiates specified JavaScript module.
