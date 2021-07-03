@@ -161,7 +161,7 @@ where
 }
 
 /// Parse a info string of a fenced code block in markdown to determine what language is used in
-/// thhe block
+/// the block
 fn parse_info_string(info_string: String) -> MediaType {
   if let Some(lang) = info_string.trim().split_whitespace().next() {
     match lang.to_ascii_lowercase().as_str() {
