@@ -482,14 +482,12 @@ async fn lint_command(
   json: bool,
 ) -> Result<(), AnyError> {
   if list_rules {
-    tools::lint::print_rules_list(json);
+    tools::lint::print_rules_list(json)?;
     return Ok(());
   }
 
   if !rules_to_display_docs.is_empty() {
-    for r in rules_to_display_docs {
-      todo!();
-    }
+    tools::lint::print_rules_doc(rules_to_display_docs, json)?;
     return Ok(());
   }
 
