@@ -8,6 +8,7 @@ use deno_web::BlobUrlStore;
 fn setup() -> Vec<Extension> {
   vec![
     deno_webidl::init(),
+    deno_url::init(),
     deno_web::init(BlobUrlStore::default(), None),
     deno_timers::init::<deno_timers::NoTimersPermission>(),
     Extension::builder()
