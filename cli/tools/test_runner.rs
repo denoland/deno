@@ -18,6 +18,7 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
 use deno_core::serde_json::json;
+use deno_core::serde_v8;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
@@ -31,6 +32,7 @@ use std::convert::TryInto;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::task::Poll;
 use std::time::Instant;
 use swc_common::comments::CommentKind;
 
@@ -51,6 +53,7 @@ enum TestResult {
 struct TestSummary {}
 
 trait TestReporter {
+  fn visit_description(&mut self, description: TestDescription);
   fn visit_result(&mut self, description: TestDescription, result: TestResult);
   fn visit_summary(&mut self, result: TestSummary);
 }
@@ -66,7 +69,12 @@ impl PrettyTestReporter {
 }
 
 impl TestReporter for PrettyTestReporter {
+  fn visit_description(&mut self, description: TestDescription) {
+    println!("describe: {:?}", description);
+  }
+
   fn visit_result(&mut self, description: TestDescription, result: TestResult) {
+    println!("result: {:?} {:?}", description, result);
   }
 
   fn visit_summary(&mut self, summary: TestSummary) {}
@@ -147,7 +155,7 @@ async fn test_module<F>(
   process_result: F,
 ) -> Result<(), AnyError>
 where
-  F: FnOnce(TestDescription, TestResult) -> Result<(), AnyError>
+  F: Fn(TestDescription, TestResult) -> Result<(), AnyError>
     + Send
     + 'static
     + Clone,
@@ -158,19 +166,58 @@ where
   let execute_result = worker.execute_module(&module_specifier).await;
   execute_result?;
 
-  let global_value = worker
+  let internal_tests_global = worker
     .js_runtime
-    .execute_script("deno:test_module", "Deno.internal.tests")?;
+    .execute_script("deno:test_module", "Deno[Deno.internal].tests")?;
 
-  let scope = &mut worker.js_runtime.handle_scope();
-  let local_value = v8::Local::<v8::Value>::new(scope, global_value);
-  let local_array = v8::Local::<v8::Array>::try_from(local_value)?;
+  let mut scope = worker.js_runtime.handle_scope();
+  let internal_tests_array =
+    v8::Local::<v8::Value>::new(&mut scope, internal_tests_global);
+  assert!(internal_tests_array.is_array());
 
-  let mut index = 0;
-  while let Some(element) = local_array.get_index(scope, index) {
-    println!("Test {}", index);
+  let internal_tests_array =
+    v8::Local::<v8::Array>::try_from(internal_tests_array)?;
+  assert!(internal_tests_array.is_array());
 
-    index += 1;
+  let mut test_index = 0;
+  while let Some(test_value) =
+    internal_tests_array.get_index(&mut scope, test_index)
+  {
+    if test_value.is_null_or_undefined() {
+      break;
+    }
+    let test_description = serde_v8::from_v8(&mut scope, test_value).unwrap();
+    println!("run {:?}", test_description);
+
+    let test_object = v8::Local::<v8::Object>::try_from(test_value)?;
+
+    let fn_key = v8::String::new(&mut scope, "fn").unwrap();
+    let fn_value = test_object.get(&mut scope, fn_key.into()).unwrap();
+    let fn_function = v8::Local::<v8::Function>::try_from(fn_value)?;
+
+    let result_value = fn_function.call(&mut scope, test_value, &[]).unwrap();
+    assert!(result_value.is_promise());
+
+    let result_promise = v8::Local::<v8::Promise>::try_from(result_value)?;
+    assert!(result_promise.is_promise());
+
+    let test_result = future::poll_fn(|cx| {
+      // worker.poll_event_loop(cx, false);
+
+      let result_promise_state = result_promise.state();
+      match result_promise_state {
+        v8::PromiseState::Pending => Poll::Pending,
+        v8::PromiseState::Fulfilled => Poll::Ready(TestResult::Ok),
+        v8::PromiseState::Rejected => {
+          Poll::Ready(TestResult::Failed("TODO".to_string()))
+        }
+      }
+    })
+    .await;
+
+    process_result(test_description, test_result);
+
+    test_index += 1;
   }
 
   Ok(())
