@@ -19,7 +19,6 @@
     MapPrototypeGet,
     MapPrototypeSet,
     Set,
-    SharedArrayBuffer,
     Symbol,
     String,
     StringPrototypeToLowerCase,
@@ -49,6 +48,7 @@
       return webidl.converters["Blob"](V, opts);
     }
     if (typeof V === "object") {
+      // TODO(littledivy): use primordial for SharedArrayBuffer
       if (V instanceof ArrayBuffer || V instanceof SharedArrayBuffer) {
         return webidl.converters["ArrayBuffer"](V, opts);
       }
