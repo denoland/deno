@@ -2,7 +2,8 @@
 "use strict";
 ((window) => {
   const { stdin } = window.__bootstrap.files;
-  const { ArrayPrototypePush, StringPrototypeCharCodeAt, Uint8Array } = window.__bootstrap.primordials;
+  const { ArrayPrototypePush, StringPrototypeCharCodeAt, Uint8Array } =
+    window.__bootstrap.primordials;
   const { isatty } = window.__bootstrap.tty;
   const LF = StringPrototypeCharCodeAt("\n", 0);
   const CR = StringPrototypeCharCodeAt("\r", 0);

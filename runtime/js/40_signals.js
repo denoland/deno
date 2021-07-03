@@ -244,7 +244,7 @@
       f,
       g,
     ) {
-      let p = PromisePrototypeThen(this.#pollingPromise, (done) => {
+      const p = PromisePrototypeThen(this.#pollingPromise, (done) => {
         if (done) {
           // If pollingPromise returns true, then
           // this signal stream is finished and the promise API
