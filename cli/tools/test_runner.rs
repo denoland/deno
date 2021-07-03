@@ -163,19 +163,15 @@ where
     .execute_script("deno:test_module", "Deno.internal.tests")?;
 
   let scope = &mut worker.js_runtime.handle_scope();
-  let global_array = v8::Array::try_from(global_value.get(scope))?;
+  let local_value = v8::Local::<v8::Value>::new(scope, global_value);
+  let local_array = v8::Local::<v8::Array>::try_from(local_value)?;
 
-  assert!(global_array.is_array());
+  let mut index = 0;
+  while let Some(element) = local_array.get_index(scope, index) {
+    println!("Test {}", index);
 
-  // let local_array = v8::Local::<v8::Array>::try_from(local_value)?;
-  // assert!(local_array.is_array());
-
-  // let mut index = 0;
-  // while let Some(element) = local_array.get_index(scope, index) {
-  //   println!("Test {}", index);
-
-  //   index += 1;
-  // }
+    index += 1;
+  }
 
   Ok(())
 }
