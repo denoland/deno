@@ -12,6 +12,14 @@
     TypeError,
     Number,
     String,
+    ArrayPrototypeShift,
+    ArrayPrototypeIndexOf,
+    ArrayPrototypeSplice,
+    MapPrototypeHas,
+    MapPrototypeDelete,
+    MapPrototypeSet,
+    MapPrototypeGet,
+    FunctionPrototypeBind,
   } = window.__bootstrap.primordials;
 
   // Shamelessly cribbed from extensions/fetch/11_streams.js
@@ -328,7 +336,7 @@
  * before next macrotask timer callback is invoked. */
   function handleTimerMacrotask() {
     if (pendingFireTimers.length > 0) {
-      fire(pendingFireTimers.shift());
+      fire(ArrayPrototypeShift(pendingFireTimers));
       return pendingFireTimers.length === 0;
     }
     return true;
@@ -412,8 +420,8 @@
     // If either is true, they are not in tree, and their idMap entry
     // will be deleted soon. Remove it from queue.
     let index = -1;
-    if ((index = pendingFireTimers.indexOf(timer)) >= 0) {
-      pendingFireTimers.splice(index);
+    if ((index = ArrayPrototypeIndexOf(pendingFireTimers, timer)) >= 0) {
+      ArrayPrototypeSplice(pendingFireTimers, index);
       return;
     }
     // If timer is not in the 2 pending queues and is unscheduled,
@@ -440,22 +448,22 @@
     } else {
       // Multiple timers that are due at the same point in time.
       // Remove this timer from the list.
-      const index = list.indexOf(timer);
+      const index = ArrayPrototypeIndexOf(list, timer);
       assert(index > -1);
-      list.splice(index, 1);
+      ArrayPrototypeSplice(list, index, 1);
     }
   }
 
   function fire(timer) {
     // If the timer isn't found in the ID map, that means it has been cancelled
     // between the timer firing and the promise callback (this function).
-    if (!idMap.has(timer.id)) {
+    if (!MapPrototypeHas(idMap, timer.id)) {
       return;
     }
     // Reschedule the timer if it is a repeating one, otherwise drop it.
     if (!timer.repeat) {
       // One-shot timer: remove the timer from this id-to-timer map.
-      idMap.delete(timer.id);
+      MapPrototypeDelete(idMap, timer.id);
     } else {
       // Interval timer: compute when timer was supposed to fire next.
       // However make sure to never schedule the next interval in the past.
@@ -490,7 +498,7 @@
     let callback;
 
     if ("function" === typeof cb) {
-      callback = Function.prototype.bind.call(cb, globalThis, ...args);
+      callback = FunctionPrototypeBind(cb, globalThis, ...args);
     } else {
       callback = String(cb);
       args = []; // args are ignored
@@ -520,7 +528,7 @@
       scheduled: false,
     };
     // Register the timer's existence in the id-to-timer map.
-    idMap.set(timer.id, timer);
+    MapPrototypeSet(idMap, timer.id, timer);
     // Schedule the timer in the due table.
     schedule(timer, now);
     return timer.id;
@@ -548,14 +556,14 @@
 
   function clearTimer(id) {
     id >>>= 0;
-    const timer = idMap.get(id);
+    const timer = MapPrototypeGet(idMap, id);
     if (timer === undefined) {
       // Timer doesn't exist any more or never existed. This is not an error.
       return;
     }
     // Unschedule the timer if it is currently scheduled, and forget about it.
     unschedule(timer);
-    idMap.delete(timer.id);
+    MapPrototypeDelete(idMap, timer.id);
   }
 
   function clearTimeout(id = 0) {
