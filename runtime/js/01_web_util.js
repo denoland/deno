@@ -3,10 +3,11 @@
 
 ((window) => {
   const {
-    ObjectDefineProperty,
+    FunctionPrototypeCall,
     Map,
     MapPrototypeGet,
     MapPrototypeSet,
+    ObjectDefineProperty,
     TypeError,
     Symbol,
   } = window.__bootstrap.primordials;
@@ -31,7 +32,7 @@
       if (typeof wrappedHandler.handler !== "function") {
         return;
       }
-      return wrappedHandler.handler.call(this, ...args);
+      return FunctionPrototypeCall(wrappedHandler.handler, this, ...args);
     }
     wrappedHandler.handler = handler;
     return wrappedHandler;

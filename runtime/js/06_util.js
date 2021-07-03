@@ -5,6 +5,7 @@
   const { ObjectDefineProperty, StringPrototypeReplace, TypeError, Promise } =
     window.__bootstrap.primordials;
   const { build } = window.__bootstrap.build;
+  const { URL } = window.__bootstrap.url;
   let logDebug = false;
   let logSource = "JS";
 
