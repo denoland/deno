@@ -3,6 +3,15 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const {
+    ArrayIsArray,
+    ArrayPrototypeMap,
+    Error,
+    Uint8Array,
+    StringPrototypeStartsWith,
+    String,
+    SymbolIterator,
+  } = window.__bootstrap.primordials;
   const webidl = window.__bootstrap.webidl;
   const { Window } = window.__bootstrap.globalInterfaces;
   const { getLocationHref } = window.__bootstrap.location;
@@ -75,13 +84,13 @@
           `Expected 'array' or 'boolean' for ${permission} permission, "${value}" received`,
         );
       }
-    } else if (!Array.isArray(value) && typeof value !== "boolean") {
+    } else if (!ArrayIsArray(value) && typeof value !== "boolean") {
       throw new Error(
         `Expected 'array' or 'boolean' for ${permission} permission, ${typeof value} received`,
       );
       //Casts URLs to absolute routes
-    } else if (Array.isArray(value)) {
-      value = value.map((route) => {
+    } else if (ArrayIsArray(value)) {
+      value = ArrayPrototypeMap(value, (route) => {
         if (route instanceof URL) {
           route = pathFromURL(route);
         }
@@ -174,8 +183,9 @@
       const sourceCode = core.decode(new Uint8Array());
 
       if (
-        specifier.startsWith("./") || specifier.startsWith("../") ||
-        specifier.startsWith("/") || type == "classic"
+        StringPrototypeStartsWith(specifier, "./") ||
+        StringPrototypeStartsWith(specifier, "../") ||
+        StringPrototypeStartsWith(specifier, "/") || type == "classic"
       ) {
         const baseUrl = getLocationHref();
         if (baseUrl != null) {
@@ -289,7 +299,7 @@
       if (
         webidl.type(transferOrOptions) === "Object" &&
         transferOrOptions !== undefined &&
-        transferOrOptions[Symbol.iterator] !== undefined
+        transferOrOptions[SymbolIterator] !== undefined
       ) {
         const transfer = webidl.converters["sequence<object>"](
           transferOrOptions,
