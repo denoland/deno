@@ -4,6 +4,12 @@
 ((window) => {
   const core = window.Deno.core;
   const { BadResource } = core;
+  const {
+    PromiseResolve,
+    Symbol,
+    Uint8Array,
+    TypedArrayPrototypeSubarray,
+  } = window.__bootstrap.primordials;
 
   async function read(
     rid,
@@ -128,7 +134,7 @@
 
     return(value) {
       this.close();
-      return Promise.resolve({ value, done: true });
+      return PromiseResolve({ value, done: true });
     }
 
     close() {
@@ -165,7 +171,7 @@
         this.addr.transport,
         buf,
       );
-      const sub = buf.subarray(0, size);
+      const sub = TypedArrayPrototypeSubarray(buf, 0, size);
       return [sub, remoteAddr];
     }
 
