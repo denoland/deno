@@ -603,23 +603,23 @@
       }
     },
     "webapi": {
-      "abort.any.html": false,
-      "body.any.html": false,
-      "contenttype.any.html": false,
-      "empty-body.any.html": false,
+      "abort.any.html": true,
+      "body.any.html": true,
+      "contenttype.any.html": true,
+      "empty-body.any.html": true,
       "historical.any.html": false,
-      "idlharness.any.html": [
-        "WebAssembly namespace: operation compileStreaming(Promise<Response>)",
-        "WebAssembly namespace: operation instantiateStreaming(Promise<Response>, optional object)"
+      "idlharness.any.html": true,
+      "instantiateStreaming-bad-imports.any.html": true,
+      "instantiateStreaming.any.html": true,
+      "invalid-args.any.html": true,
+      "invalid-code.any.html": true,
+      "modified-contenttype.any.html": true,
+      "origin.sub.any.html": [
+        "Opaque response: compileStreaming",
+        "Opaque response: instantiateStreaming"
       ],
-      "instantiateStreaming-bad-imports.any.html": false,
-      "instantiateStreaming.any.html": false,
-      "invalid-args.any.html": false,
-      "invalid-code.any.html": false,
-      "modified-contenttype.any.html": false,
-      "origin.sub.any.html": false,
-      "rejected-arg.any.html": false,
-      "status.any.html": false
+      "rejected-arg.any.html": true,
+      "status.any.html": true
     }
   },
   "WebIDL": {

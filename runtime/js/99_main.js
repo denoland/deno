@@ -176,6 +176,7 @@ delete Object.prototype.__proto__;
 
   function runtimeStart(runtimeOptions, source) {
     core.setMacrotaskCallback(timers.handleTimerMacrotask);
+    core.setWasmStreamingCallback(fetch.handleWasmStreaming);
     version.setVersions(
       runtimeOptions.denoVersion,
       runtimeOptions.v8Version,
