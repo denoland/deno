@@ -1,4 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+/// <reference path="../../core/internal.d.ts" />
+
 "use strict";
 
 ((window) => {
@@ -15,6 +18,7 @@
     Map,
     MapPrototypeSet,
     MapPrototypeGet,
+    FunctionPrototypeCall,
   } = window.__bootstrap.primordials;
 
   const handlerSymbol = Symbol("eventHandlers");
@@ -23,7 +27,7 @@
       if (typeof wrappedHandler.handler !== "function") {
         return;
       }
-      return wrappedHandler.handler.call(this, ...args);
+      return FunctionPrototypeCall(wrappedHandler.handler, this, ...args);
     }
     wrappedHandler.handler = handler;
     return wrappedHandler;
@@ -36,6 +40,9 @@
         // TODO(bnoordhuis) The "BroadcastChannel should have an onmessage
         // event" WPT test expects that .onmessage !== undefined. Returning
         // null makes it pass but is perhaps not exactly in the spirit.
+        if (!this[handlerSymbol]) {
+          return null;
+        }
         return MapPrototypeGet(this[handlerSymbol], name)?.handler ?? null;
       },
       set(value) {
