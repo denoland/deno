@@ -2,9 +2,9 @@
 
 use crate::itest;
 use deno_core::url;
-use deno_runtime::ops::tls::rustls;
-use deno_runtime::ops::tls::webpki;
-use deno_runtime::ops::tls::TlsStream;
+use deno_runtime::deno_net::ops_tls::rustls;
+use deno_runtime::deno_net::ops_tls::webpki;
+use deno_runtime::deno_net::ops_tls::TlsStream;
 use std::fs;
 use std::io::BufReader;
 use std::io::Cursor;

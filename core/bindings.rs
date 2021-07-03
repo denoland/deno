@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::AnyError;
+use crate::modules::ModuleMap;
 use crate::resolve_url_or_path;
 use crate::JsRuntime;
 use crate::Op;
@@ -196,7 +197,8 @@ pub extern "C" fn host_import_module_dynamically_callback(
       "dyn_import specifier {} referrer {} ",
       specifier_str, referrer_name_str
     );
-    module_map_rc.borrow_mut().load_dynamic_import(
+    ModuleMap::load_dynamic_import(
+      module_map_rc,
       &specifier_str,
       &referrer_name_str,
       resolver_handle,
