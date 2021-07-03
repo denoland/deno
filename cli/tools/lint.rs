@@ -169,8 +169,9 @@ pub fn print_rules_doc(
     println!("{}", json);
   } else {
     for rule in rules {
-      let doc = rule.docs();
-      todo!()
+      let doc_with_header = format!("# {}\n\n{}", rule.code(), rule.docs());
+      let result = crate::pretty_markdown::colorize(doc_with_header);
+      println!("{}", result);
     }
   }
 

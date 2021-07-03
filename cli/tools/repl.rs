@@ -5,6 +5,7 @@ use crate::ast::Diagnostic;
 use crate::ast::ImportsNotUsedAsValues;
 use crate::ast::TokenOrComment;
 use crate::colors;
+use crate::highlight::highlight_line;
 use crate::media_type::MediaType;
 use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
@@ -29,7 +30,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
-use swc_ecmascript::parser::token::{Token, Word};
+use swc_ecmascript::parser::token::Token;
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::Receiver;
@@ -252,52 +253,7 @@ impl Highlighter for EditorHelper {
   }
 
   fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
-    let mut out_line = String::from(line);
-
-    for item in ast::lex("", line, &MediaType::TypeScript) {
-      // Adding color adds more bytes to the string,
-      // so an offset is needed to stop spans falling out of sync.
-      let offset = out_line.len() - line.len();
-      let span = item.span_as_range();
-
-      out_line.replace_range(
-        span.start + offset..span.end + offset,
-        &match item.inner {
-          TokenOrComment::Token(token) => match token {
-            Token::Str { .. } | Token::Template { .. } | Token::BackQuote => {
-              colors::green(&line[span]).to_string()
-            }
-            Token::Regex(_, _) => colors::red(&line[span]).to_string(),
-            Token::Num(_) | Token::BigInt(_) => {
-              colors::yellow(&line[span]).to_string()
-            }
-            Token::Word(word) => match word {
-              Word::True | Word::False | Word::Null => {
-                colors::yellow(&line[span]).to_string()
-              }
-              Word::Keyword(_) => colors::cyan(&line[span]).to_string(),
-              Word::Ident(ident) => {
-                if ident == *"undefined" {
-                  colors::gray(&line[span]).to_string()
-                } else if ident == *"Infinity" || ident == *"NaN" {
-                  colors::yellow(&line[span]).to_string()
-                } else if ident == *"async" || ident == *"of" {
-                  colors::cyan(&line[span]).to_string()
-                } else {
-                  line[span].to_string()
-                }
-              }
-            },
-            _ => line[span].to_string(),
-          },
-          TokenOrComment::Comment { .. } => {
-            colors::gray(&line[span]).to_string()
-          }
-        },
-      );
-    }
-
-    out_line.into()
+    highlight_line(line, &MediaType::TypeScript).into()
   }
 }
 
