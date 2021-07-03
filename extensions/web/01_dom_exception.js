@@ -10,8 +10,12 @@
 "use strict";
 
 ((window) => {
-  const { ObjectDefineProperty, ObjectEntries } =
-    window.__bootstrap.primordials;
+  const {
+    Error,
+    ObjectDefineProperty,
+    ObjectEntries,
+    ObjectSetPrototypeOf,
+  } = window.__bootstrap.primordials;
   const webidl = window.__bootstrap.webidl;
 
   // Defined in WebIDL 4.3.
@@ -72,13 +76,12 @@
 
   // Defined in WebIDL 4.3.
   // https://heycam.github.io/webidl/#idl-DOMException
-  class DOMException extends Error {
+  class DOMException {
     #message = "";
     #name = "";
     #code = 0;
 
     constructor(message = "", name = "Error") {
-      super();
       this.#message = webidl.converters.DOMString(message, {
         prefix: "Failed to construct 'DOMException'",
         context: "Argument 1",
@@ -105,7 +108,13 @@
     get [Symbol.toStringTag]() {
       return "DOMException";
     }
+
+    [Symbol.for("Deno.customInspect")]() {
+      return `DOMException: ${this.#message}`;
+    }
   }
+
+  ObjectSetPrototypeOf(DOMException.prototype, Error.prototype);
 
   webidl.configurePrototype(DOMException);
 

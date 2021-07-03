@@ -629,10 +629,29 @@
         "DOMException-constructor-and-prototype.any.html": true,
         "DOMException-constructor-behavior.any.html": true,
         "DOMException-custom-bindings.any.html": [
-          "does not inherit from Error: class-side"
+          "If the implementation has a stack property on normal errors, it also does on DOMExceptions"
         ]
-      }
-    }
+      },
+      "class-string-interface.any.html": [
+        "@@toStringTag exists on the prototype with the appropriate descriptor"
+      ],
+      "class-string-iterator-prototype-object.any.html": true,
+      "global-immutable-prototype.any.html": [
+        "Setting to a different prototype"
+      ],
+      "global-object-implicit-this-value.any.html": [
+        "Global object's getter throws when called on incompatible object",
+        "Global object's setter throws when called on incompatible object",
+        "Global object's operation throws when called on incompatible object",
+        "Global object's getter works when called on null / undefined",
+        "Global object's setter works when called on null / undefined"
+      ],
+      "legacy-factor-function-subclass.window.html": false,
+      "no-regexp-special-casing.any.html": [
+        "Conversion to a sequence works"
+      ]
+    },
+    "idlharness.any.html": true
   },
   "url": {
     "historical.any.html": [
