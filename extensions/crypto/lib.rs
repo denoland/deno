@@ -36,7 +36,10 @@ use rsa::BigUint;
 use rsa::PrivateKeyEncoding;
 use rsa::RSAPrivateKey;
 use sha1::Sha1;
-use sha2::{Digest, Sha256, Sha384, Sha512};
+use sha2::Digest;
+use sha2::Sha256;
+use sha2::Sha384;
+use sha2::Sha512;
 use std::path::PathBuf;
 
 pub use rand; // Re-export rand
