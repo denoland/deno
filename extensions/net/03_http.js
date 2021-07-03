@@ -9,9 +9,18 @@
   const { BadResource, Interrupted } = core;
   const { ReadableStream } = window.__bootstrap.streams;
   const abortSignal = window.__bootstrap.abortSignal;
+  const {
+    Symbol,
+    Uint8Array,
+    Promise,
+    StringPrototypeIncludes,
+    SymbolAsyncIterator,
+    TypeError,
+    TypedArrayPrototypeSubarray,
+  } = window.__bootstrap.primordials;
 
   function serveHttp(conn) {
-    const rid = Deno.core.opSync("op_http_start", conn.rid);
+    const rid = core.opSync("op_http_start", conn.rid);
     return new HttpConn(rid);
   }
 
@@ -33,7 +42,7 @@
     async nextRequest() {
       let nextRequest;
       try {
-        nextRequest = await Deno.core.opAsync(
+        nextRequest = await core.opAsync(
           "op_http_request_next",
           this.#rid,
         );
@@ -46,7 +55,9 @@
           return null;
         } else if (error instanceof Interrupted) {
           return null;
-        } else if (error.message.includes("connection closed")) {
+        } else if (
+          StringPrototypeIncludes(error.message, "connection closed")
+        ) {
           return null;
         }
         throw error;
@@ -86,7 +97,7 @@
       core.close(this.#rid);
     }
 
-    [Symbol.asyncIterator]() {
+    [SymbolAsyncIterator]() {
       // deno-lint-ignore no-this-alias
       const httpConn = this;
       return {
@@ -100,7 +111,7 @@
   }
 
   function readRequest(requestRid, zeroCopyBuf) {
-    return Deno.core.opAsync(
+    return core.opAsync(
       "op_http_request_read",
       requestRid,
       zeroCopyBuf,
@@ -152,7 +163,7 @@
 
       let responseBodyRid;
       try {
-        responseBodyRid = await Deno.core.opAsync("op_http_response", [
+        responseBodyRid = await core.opAsync("op_http_response", [
           responseSenderRid,
           innerResp.status ?? 200,
           innerResp.headerList,
@@ -185,7 +196,7 @@
               break;
             }
             try {
-              await Deno.core.opAsync(
+              await core.opAsync(
                 "op_http_response_write",
                 responseBodyRid,
                 value,
@@ -204,7 +215,7 @@
           // Once all chunks are sent, and the request body is closed, we can
           // close the response body.
           try {
-            await Deno.core.opAsync("op_http_response_close", responseBodyRid);
+            await core.opAsync("op_http_response_close", responseBodyRid);
           } catch { /* pass */ }
         }
       }
@@ -225,7 +236,7 @@
           );
           if (read > 0) {
             // We read some data. Enqueue it onto the stream.
-            controller.enqueue(chunk.subarray(0, read));
+            controller.enqueue(TypedArrayPrototypeSubarray(chunk, 0, read));
           } else {
             // We have reached the end of the body, so we close the stream.
             controller.close();
