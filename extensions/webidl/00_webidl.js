@@ -4,13 +4,74 @@
 // Copyright Domenic Denicola. Licensed under BSD-2-Clause License.
 // Original license at https://github.com/jsdom/webidl-conversions/blob/master/LICENSE.md.
 
+/// <reference path="../../core/internal.d.ts" />
+
 "use strict";
 
 ((window) => {
+  const {
+    ArrayBuffer,
+    ArrayBufferIsView,
+    ArrayPrototypePush,
+    ArrayPrototypeSort,
+    BigInt,
+    BigIntAsIntN,
+    BigIntAsUintN,
+    DataView,
+    Float32Array,
+    Float64Array,
+    FunctionPrototypeBind,
+    Int16Array,
+    Int32Array,
+    Int8Array,
+    isNaN,
+    MathFloor,
+    MathFround,
+    MathMax,
+    MathMin,
+    MathPow,
+    MathRound,
+    MathTrunc,
+    Number,
+    NumberIsFinite,
+    NumberIsNaN,
+    // deno-lint-ignore camelcase
+    NumberMAX_SAFE_INTEGER,
+    // deno-lint-ignore camelcase
+    NumberMIN_SAFE_INTEGER,
+    ObjectCreate,
+    ObjectDefineProperties,
+    ObjectDefineProperty,
+    ObjectGetOwnPropertyDescriptor,
+    ObjectGetOwnPropertyDescriptors,
+    ObjectGetPrototypeOf,
+    ObjectIs,
+    PromisePrototypeThen,
+    PromiseReject,
+    PromiseResolve,
+    ReflectApply,
+    ReflectDefineProperty,
+    ReflectGetOwnPropertyDescriptor,
+    ReflectOwnKeys,
+    RegExpPrototypeTest,
+    Set,
+    // TODO(lucacasonato): add SharedArrayBuffer to primordials
+    // SharedArrayBuffer,
+    String,
+    StringFromCodePoint,
+    StringPrototypeCharCodeAt,
+    StringPrototypeCodePointAt,
+    Symbol,
+    SymbolIterator,
+    SymbolToStringTag,
+    TypeError,
+    Uint16Array,
+    Uint32Array,
+    Uint8Array,
+    Uint8ClampedArray,
+  } = window.__bootstrap.primordials;
+
   function makeException(ErrorType, message, opts = {}) {
-    if (opts.globals) {
-      ErrorType = opts.globals[ErrorType.name];
-    }
     return new ErrorType(
       `${opts.prefix ? opts.prefix + ": " : ""}${
         opts.context ? opts.context : "Value"
@@ -18,14 +79,11 @@
     );
   }
 
-  function toNumber(value, opts = {}) {
-    if (!opts.globals) {
-      return +value;
-    }
+  function toNumber(value) {
     if (typeof value === "bigint") {
-      throw opts.globals.TypeError("Cannot convert a BigInt value to a number");
+      throw TypeError("Cannot convert a BigInt value to a number");
     }
-    return opts.globals.Number(value);
+    return Number(value);
   }
 
   function type(V) {
@@ -73,14 +131,14 @@
       (x > 0 && x % 1 === +0.5 && (x & 1) === 0) ||
       (x < 0 && x % 1 === -0.5 && (x & 1) === 1)
     ) {
-      return censorNegativeZero(Math.floor(x));
+      return censorNegativeZero(MathFloor(x));
     }
 
-    return censorNegativeZero(Math.round(x));
+    return censorNegativeZero(MathRound(x));
   }
 
   function integerPart(n) {
-    return censorNegativeZero(Math.trunc(n));
+    return censorNegativeZero(MathTrunc(n));
   }
 
   function sign(x) {
@@ -107,25 +165,25 @@
     let lowerBound;
     let upperBound;
     if (bitLength === 64) {
-      upperBound = Number.MAX_SAFE_INTEGER;
-      lowerBound = !isSigned ? 0 : Number.MIN_SAFE_INTEGER;
+      upperBound = NumberMAX_SAFE_INTEGER;
+      lowerBound = !isSigned ? 0 : NumberMIN_SAFE_INTEGER;
     } else if (!isSigned) {
       lowerBound = 0;
-      upperBound = Math.pow(2, bitLength) - 1;
+      upperBound = MathPow(2, bitLength) - 1;
     } else {
-      lowerBound = -Math.pow(2, bitLength - 1);
-      upperBound = Math.pow(2, bitLength - 1) - 1;
+      lowerBound = -MathPow(2, bitLength - 1);
+      upperBound = MathPow(2, bitLength - 1) - 1;
     }
 
-    const twoToTheBitLength = Math.pow(2, bitLength);
-    const twoToOneLessThanTheBitLength = Math.pow(2, bitLength - 1);
+    const twoToTheBitLength = MathPow(2, bitLength);
+    const twoToOneLessThanTheBitLength = MathPow(2, bitLength - 1);
 
     return (V, opts = {}) => {
       let x = toNumber(V, opts);
       x = censorNegativeZero(x);
 
       if (opts.enforceRange) {
-        if (!Number.isFinite(x)) {
+        if (!NumberIsFinite(x)) {
           throw makeException(TypeError, "is not a finite number", opts);
         }
 
@@ -142,13 +200,13 @@
         return x;
       }
 
-      if (!Number.isNaN(x) && opts.clamp) {
-        x = Math.min(Math.max(x, lowerBound), upperBound);
+      if (!NumberIsNaN(x) && opts.clamp) {
+        x = MathMin(MathMax(x, lowerBound), upperBound);
         x = evenRound(x);
         return x;
       }
 
-      if (!Number.isFinite(x) || x === 0) {
+      if (!NumberIsFinite(x) || x === 0) {
         return 0;
       }
       x = integerPart(x);
@@ -169,16 +227,16 @@
   }
 
   function createLongLongConversion(bitLength, { unsigned }) {
-    const upperBound = Number.MAX_SAFE_INTEGER;
-    const lowerBound = unsigned ? 0 : Number.MIN_SAFE_INTEGER;
-    const asBigIntN = unsigned ? BigInt.asUintN : BigInt.asIntN;
+    const upperBound = NumberMAX_SAFE_INTEGER;
+    const lowerBound = unsigned ? 0 : NumberMIN_SAFE_INTEGER;
+    const asBigIntN = unsigned ? BigIntAsUintN : BigIntAsIntN;
 
     return (V, opts = {}) => {
       let x = toNumber(V, opts);
       x = censorNegativeZero(x);
 
       if (opts.enforceRange) {
-        if (!Number.isFinite(x)) {
+        if (!NumberIsFinite(x)) {
           throw makeException(TypeError, "is not a finite number", opts);
         }
 
@@ -195,13 +253,13 @@
         return x;
       }
 
-      if (!Number.isNaN(x) && opts.clamp) {
-        x = Math.min(Math.max(x, lowerBound), upperBound);
+      if (!NumberIsNaN(x) && opts.clamp) {
+        x = MathMin(MathMax(x, lowerBound), upperBound);
         x = evenRound(x);
         return x;
       }
 
-      if (!Number.isFinite(x) || x === 0) {
+      if (!NumberIsFinite(x) || x === 0) {
         return 0;
       }
 
@@ -240,7 +298,7 @@
   converters.float = (V, opts) => {
     const x = toNumber(V, opts);
 
-    if (!Number.isFinite(x)) {
+    if (!NumberIsFinite(x)) {
       throw makeException(
         TypeError,
         "is not a finite floating-point value",
@@ -248,13 +306,13 @@
       );
     }
 
-    if (Object.is(x, -0)) {
+    if (ObjectIs(x, -0)) {
       return x;
     }
 
-    const y = Math.fround(x);
+    const y = MathFround(x);
 
-    if (!Number.isFinite(y)) {
+    if (!NumberIsFinite(y)) {
       throw makeException(
         TypeError,
         "is outside the range of a single-precision floating-point value",
@@ -272,17 +330,17 @@
       return x;
     }
 
-    if (Object.is(x, -0)) {
+    if (ObjectIs(x, -0)) {
       return x;
     }
 
-    return Math.fround(x);
+    return MathFround(x);
   };
 
   converters.double = (V, opts) => {
     const x = toNumber(V, opts);
 
-    if (!Number.isFinite(x)) {
+    if (!NumberIsFinite(x)) {
       throw makeException(
         TypeError,
         "is not a finite floating-point value",
@@ -312,14 +370,13 @@
       );
     }
 
-    const StringCtor = opts.globals ? opts.globals.String : String;
-    return StringCtor(V);
+    return String(V);
   };
 
   converters.ByteString = (V, opts) => {
     const x = converters.DOMString(V, opts);
     let c;
-    for (let i = 0; (c = x.codePointAt(i)) !== undefined; ++i) {
+    for (let i = 0; (c = StringPrototypeCodePointAt(x, i)) !== undefined; ++i) {
       if (c > 255) {
         throw makeException(TypeError, "is not a valid ByteString", opts);
       }
@@ -333,22 +390,22 @@
     const n = S.length;
     let U = "";
     for (let i = 0; i < n; ++i) {
-      const c = S.charCodeAt(i);
+      const c = StringPrototypeCharCodeAt(S, i);
       if (c < 0xd800 || c > 0xdfff) {
-        U += String.fromCodePoint(c);
+        U += StringFromCodePoint(c);
       } else if (0xdc00 <= c && c <= 0xdfff) {
-        U += String.fromCodePoint(0xfffd);
+        U += StringFromCodePoint(0xfffd);
       } else if (i === n - 1) {
-        U += String.fromCodePoint(0xfffd);
+        U += StringFromCodePoint(0xfffd);
       } else {
-        const d = S.charCodeAt(i + 1);
+        const d = StringPrototypeCharCodeAt(S, i + 1);
         if (0xdc00 <= d && d <= 0xdfff) {
           const a = c & 0x3ff;
           const b = d & 0x3ff;
-          U += String.fromCodePoint((2 << 15) + (2 << 9) * a + b);
+          U += StringFromCodePoint((2 << 15) + (2 << 9) * a + b);
           ++i;
         } else {
-          U += String.fromCodePoint(0xfffd);
+          U += StringFromCodePoint(0xfffd);
         }
       }
     }
@@ -436,9 +493,9 @@
   // if the `this` value isn't a valid `TypedArray` object.
   //
   // https://tc39.es/ecma262/#sec-get-%typedarray%.prototype-@@tostringtag
-  const typedArrayNameGetter = Object.getOwnPropertyDescriptor(
-    Object.getPrototypeOf(Uint8Array).prototype,
-    Symbol.toStringTag,
+  const typedArrayNameGetter = ObjectGetOwnPropertyDescriptor(
+    ObjectGetPrototypeOf(Uint8Array).prototype,
+    SymbolToStringTag,
   ).get;
   [
     Int8Array,
@@ -452,9 +509,9 @@
     Float64Array,
   ].forEach((func) => {
     const name = func.name;
-    const article = /^[AEIOU]/.test(name) ? "an" : "a";
+    const article = RegExpPrototypeTest(/^[AEIOU]/, name) ? "an" : "a";
     converters[name] = (V, opts = {}) => {
-      if (!ArrayBuffer.isView(V) || typedArrayNameGetter.call(V) !== name) {
+      if (!ArrayBufferIsView(V) || typedArrayNameGetter.call(V) !== name) {
         throw makeException(
           TypeError,
           `is not ${article} ${name} object`,
@@ -483,7 +540,7 @@
   // Common definitions
 
   converters.ArrayBufferView = (V, opts = {}) => {
-    if (!ArrayBuffer.isView(V)) {
+    if (!ArrayBufferIsView(V)) {
       throw makeException(
         TypeError,
         "is not a view on an ArrayBuffer or SharedArrayBuffer",
@@ -510,7 +567,7 @@
   };
 
   converters.BufferSource = (V, opts = {}) => {
-    if (ArrayBuffer.isView(V)) {
+    if (ArrayBufferIsView(V)) {
       if (!opts.allowShared && isSharedArrayBuffer(V.buffer)) {
         throw makeException(
           TypeError,
@@ -616,10 +673,10 @@
         if (member.required) {
           hasRequiredKey = true;
         }
-        allMembers.push(member);
+        ArrayPrototypePush(allMembers, member);
       }
     }
-    allMembers.sort((a, b) => {
+    ArrayPrototypeSort(allMembers, (a, b) => {
       if (a.key == b.key) {
         return 0;
       }
@@ -640,7 +697,7 @@
         ) {
           defaultValues[member.key] = idlMemberValue;
         } else {
-          Object.defineProperty(defaultValues, member.key, {
+          ObjectDefineProperty(defaultValues, member.key, {
             get() {
               return member.defaultValue;
             },
@@ -745,7 +802,7 @@
           opts,
         );
       }
-      const iter = V?.[Symbol.iterator]?.();
+      const iter = V?.[SymbolIterator]?.();
       if (iter === undefined) {
         throw makeException(
           TypeError,
@@ -768,7 +825,7 @@
           ...opts,
           context: `${opts.context}, index ${array.length}`,
         });
-        array.push(val);
+        ArrayPrototypePush(array, val);
       }
       return array;
     };
@@ -783,10 +840,10 @@
           opts,
         );
       }
-      const keys = Reflect.ownKeys(V);
+      const keys = ReflectOwnKeys(V);
       const result = {};
       for (const key of keys) {
-        const desc = Object.getOwnPropertyDescriptor(V, key);
+        const desc = ObjectGetOwnPropertyDescriptor(V, key);
         if (desc !== undefined && desc.enumerable === true) {
           const typedKey = keyConverter(key, opts);
           const value = V[key];
@@ -799,7 +856,8 @@
   }
 
   function createPromiseConverter(converter) {
-    return (V, opts) => Promise.resolve(V).then((V) => converter(V, opts));
+    return (V, opts) =>
+      PromisePrototypeThen(PromiseResolve(V), (V) => converter(V, opts));
   }
 
   function invokeCallbackFunction(
@@ -810,14 +868,14 @@
     opts,
   ) {
     try {
-      const rv = Reflect.apply(callable, thisArg, args);
+      const rv = ReflectApply(callable, thisArg, args);
       return returnValueConverter(rv, {
         prefix: opts.prefix,
         context: "return value",
       });
     } catch (err) {
       if (opts.returnsPromise === true) {
-        return Promise.reject(err);
+        return PromiseReject(err);
       }
       throw err;
     }
@@ -834,8 +892,9 @@
     };
   }
 
+  // TODO(lucacasonato): have the user pass in the prototype, and not the type.
   function createBranded(Type) {
-    const t = Object.create(Type.prototype);
+    const t = ObjectCreate(Type.prototype);
     t[brand] = brand;
     return t;
   }
@@ -851,9 +910,9 @@
   }
 
   function define(target, source) {
-    for (const key of Reflect.ownKeys(source)) {
-      const descriptor = Reflect.getOwnPropertyDescriptor(source, key);
-      if (descriptor && !Reflect.defineProperty(target, key, descriptor)) {
+    for (const key of ReflectOwnKeys(source)) {
+      const descriptor = ReflectGetOwnPropertyDescriptor(source, key);
+      if (descriptor && !ReflectDefineProperty(target, key, descriptor)) {
         throw new TypeError(`Cannot redefine property: ${String(key)}`);
       }
     }
@@ -861,12 +920,12 @@
 
   const _iteratorInternal = Symbol("iterator internal");
 
-  const globalIteratorPrototype = Object.getPrototypeOf(Object.getPrototypeOf(
-    [][Symbol.iterator](),
+  const globalIteratorPrototype = ObjectGetPrototypeOf(ObjectGetPrototypeOf(
+    [][SymbolIterator](),
   ));
 
   function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
-    const iteratorPrototype = Object.create(globalIteratorPrototype, {
+    const iteratorPrototype = ObjectCreate(globalIteratorPrototype, {
       [Symbol.toStringTag]: { configurable: true, value: `${name} Iterator` },
     });
     define(iteratorPrototype, {
@@ -901,8 +960,8 @@
       },
     });
     function createDefaultIterator(target, kind) {
-      const iterator = Object.create(iteratorPrototype);
-      Object.defineProperty(iterator, _iteratorInternal, {
+      const iterator = ObjectCreate(iteratorPrototype);
+      ObjectDefineProperty(iterator, _iteratorInternal, {
         value: { target, kind, index: 0 },
         configurable: true,
       });
@@ -921,7 +980,7 @@
         enumerable: true,
         configurable: true,
       },
-      [Symbol.iterator]: {
+      [SymbolIterator]: {
         value: entries,
         writable: true,
         enumerable: false,
@@ -954,7 +1013,10 @@
             prefix,
             context: "Argument 1",
           });
-          idlCallback = idlCallback.bind(thisArg ?? globalThis);
+          idlCallback = FunctionPrototypeBind(
+            idlCallback,
+            thisArg ?? globalThis,
+          );
           const pairs = this[dataSymbol];
           for (let i = 0; i < pairs.length; i++) {
             const entry = pairs[i];
@@ -966,22 +1028,22 @@
         configurable: true,
       },
     };
-    return Object.defineProperties(prototype.prototype, properties);
+    return ObjectDefineProperties(prototype.prototype, properties);
   }
 
   function configurePrototype(prototype) {
-    const descriptors = Object.getOwnPropertyDescriptors(prototype.prototype);
+    const descriptors = ObjectGetOwnPropertyDescriptors(prototype.prototype);
     for (const key in descriptors) {
       if (key === "constructor") continue;
       const descriptor = descriptors[key];
       if ("value" in descriptor && typeof descriptor.value === "function") {
-        Object.defineProperty(prototype.prototype, key, {
+        ObjectDefineProperty(prototype.prototype, key, {
           enumerable: true,
           writable: true,
           configurable: true,
         });
       } else if ("get" in descriptor) {
-        Object.defineProperty(prototype.prototype, key, {
+        ObjectDefineProperty(prototype.prototype, key, {
           enumerable: true,
           configurable: true,
         });
