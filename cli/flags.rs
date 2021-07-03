@@ -88,7 +88,8 @@ pub enum DenoSubcommand {
   Lint {
     files: Vec<PathBuf>,
     ignore: Vec<PathBuf>,
-    rules: bool,
+    list_rules: bool,
+    rules_to_display_docs: Vec<String>,
     json: bool,
   },
   Repl,
@@ -900,6 +901,10 @@ List available rules:
 
   deno lint --rules
 
+Display docs of the specified rules:
+
+  deno lint --rule no-debugger no-with
+
 Ignore diagnostics on the next line by preceding it with an ignore comment and
 rule name:
 
@@ -917,6 +922,13 @@ Ignore linting a file by adding an ignore comment at the top of the file:
       Arg::with_name("rules")
         .long("rules")
         .help("List available rules"),
+    )
+    .arg(
+      Arg::with_name("rule")
+        .long("rule")
+        .takes_value(true)
+        .multiple(true)
+        .help("Display docs of the specified rules"),
     )
     .arg(
       Arg::with_name("ignore")
@@ -1634,11 +1646,16 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
   };
-  let rules = matches.is_present("rules");
+  let list_rules = matches.is_present("rules");
+  let rules_to_display_docs = match matches.values_of("rule") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
   let json = matches.is_present("json");
   flags.subcommand = DenoSubcommand::Lint {
     files,
-    rules,
+    list_rules,
+    rules_to_display_docs,
     ignore,
     json,
   };
@@ -2313,7 +2330,8 @@ mod tests {
             PathBuf::from("script_1.ts"),
             PathBuf::from("script_2.ts")
           ],
-          rules: false,
+          list_rules: false,
+          rules_to_display_docs: vec![],
           json: false,
           ignore: vec![],
         },
@@ -2328,7 +2346,8 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Lint {
           files: vec![],
-          rules: false,
+          list_rules: false,
+          rules_to_display_docs: vec![],
           json: false,
           ignore: vec![
             PathBuf::from("script_1.ts"),
@@ -2345,7 +2364,25 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Lint {
           files: vec![],
-          rules: true,
+          list_rules: true,
+          rules_to_display_docs: vec![],
+          json: false,
+          ignore: vec![],
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno", "lint", "--rule", "foo", "bar", "--rule", "baz"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint {
+          files: vec![],
+          list_rules: false,
+          rules_to_display_docs: svec!["foo", "bar", "baz"],
           json: false,
           ignore: vec![],
         },
@@ -2359,7 +2396,8 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Lint {
           files: vec![PathBuf::from("script_1.ts")],
-          rules: false,
+          list_rules: false,
+          rules_to_display_docs: vec![],
           json: true,
           ignore: vec![],
         },

@@ -477,11 +477,19 @@ async fn lint_command(
   _flags: Flags,
   files: Vec<PathBuf>,
   list_rules: bool,
+  rules_to_display_docs: Vec<String>,
   ignore: Vec<PathBuf>,
   json: bool,
 ) -> Result<(), AnyError> {
   if list_rules {
     tools::lint::print_rules_list(json);
+    return Ok(());
+  }
+
+  if !rules_to_display_docs.is_empty() {
+    for r in rules_to_display_docs {
+      todo!();
+    }
     return Ok(());
   }
 
@@ -1300,10 +1308,19 @@ fn get_subcommand(
     DenoSubcommand::Lsp => lsp_command().boxed_local(),
     DenoSubcommand::Lint {
       files,
-      rules,
+      list_rules,
+      rules_to_display_docs,
       ignore,
       json,
-    } => lint_command(flags, files, rules, ignore, json).boxed_local(),
+    } => lint_command(
+      flags,
+      files,
+      list_rules,
+      rules_to_display_docs,
+      ignore,
+      json,
+    )
+    .boxed_local(),
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {
