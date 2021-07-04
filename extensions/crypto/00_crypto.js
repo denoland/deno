@@ -11,7 +11,7 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
-  
+
   // P-521 is not yet supported.
   const supportedNamedCurves = ["P-256", "P-384"];
 
