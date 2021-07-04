@@ -44,6 +44,10 @@ declare namespace globalThis {
       forgivingBase64Decode(data: string): Uint8Array;
     };
 
+    declare var domException: {
+      DOMException: typeof DOMException;
+    };
+
     declare namespace mimesniff {
       declare interface MimeType {
         type: string;

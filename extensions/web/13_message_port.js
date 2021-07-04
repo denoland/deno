@@ -13,6 +13,7 @@
   const webidl = window.__bootstrap.webidl;
   const { setEventTargetData } = window.__bootstrap.eventTarget;
   const { defineEventHandler } = window.__bootstrap.event;
+  const { DOMException } = window.__bootstrap.domException;
 
   class MessageChannel {
     /** @type {MessagePort} */

@@ -8,6 +8,20 @@
   const { Console, inspectArgs } = window.__bootstrap.console;
   const { metrics } = window.__bootstrap.metrics;
   const { assert } = window.__bootstrap.util;
+  const {
+    ArrayPrototypeFilter,
+    ArrayPrototypePush,
+    DateNow,
+    JSONStringify,
+    Promise,
+    TypeError,
+    StringPrototypeStartsWith,
+    StringPrototypeEndsWith,
+    StringPrototypeIncludes,
+    StringPrototypeSlice,
+    RegExp,
+    RegExpPrototypeTest,
+  } = window.__bootstrap.primordials;
 
   // Wrap test function in additional assertion that makes sure
   // the test case does not leak async "ops" - ie. number of async
@@ -58,8 +72,8 @@ finishing test case.`,
       await fn();
       const post = core.resources();
 
-      const preStr = JSON.stringify(pre, null, 2);
-      const postStr = JSON.stringify(post, null, 2);
+      const preStr = JSONStringify(pre, null, 2);
+      const postStr = JSONStringify(post, null, 2);
       const msg = `Test case is leaking resources.
 Before: ${preStr}
 After: ${postStr}
@@ -139,7 +153,7 @@ finishing test case.`;
       testDef.fn = assertExit(testDef.fn);
     }
 
-    tests.push(testDef);
+    ArrayPrototypePush(tests, testDef);
   }
 
   function postTestMessage(kind, data) {
@@ -149,12 +163,17 @@ finishing test case.`;
   function createTestFilter(filter) {
     return (def) => {
       if (filter) {
-        if (filter.startsWith("/") && filter.endsWith("/")) {
-          const regex = new RegExp(filter.slice(1, filter.length - 1));
-          return regex.test(def.name);
+        if (
+          StringPrototypeStartsWith(filter, "/") &&
+          StringPrototypeEndsWith(filter, "/")
+        ) {
+          const regex = new RegExp(
+            StringPrototypeSlice(filter, 1, filter.length - 1),
+          );
+          return RegExpPrototypeTest(regex, def.name);
         }
 
-        return def.name.includes(filter);
+        return StringPrototypeIncludes(def.name, filter);
       }
 
       return true;
@@ -174,7 +193,7 @@ finishing test case.`;
 
   async function runTest({ name, ignore, fn, permissions }) {
     let token = null;
-    const time = Date.now();
+    const time = DateNow();
 
     try {
       postTestMessage("wait", {
@@ -186,7 +205,7 @@ finishing test case.`;
       }
 
       if (ignore) {
-        const duration = Date.now() - time;
+        const duration = DateNow() - time;
         postTestMessage("result", {
           name,
           duration,
@@ -198,14 +217,14 @@ finishing test case.`;
 
       await fn();
 
-      const duration = Date.now() - time;
+      const duration = DateNow() - time;
       postTestMessage("result", {
         name,
         duration,
         result: "ok",
       });
     } catch (error) {
-      const duration = Date.now() - time;
+      const duration = DateNow() - time;
 
       postTestMessage("result", {
         name,
@@ -230,8 +249,9 @@ finishing test case.`;
       globalThis.console = new Console(() => {});
     }
 
-    const only = tests.filter((test) => test.only);
-    const pending = (only.length > 0 ? only : tests).filter(
+    const only = ArrayPrototypeFilter(tests, (test) => test.only);
+    const pending = ArrayPrototypeFilter(
+      (only.length > 0 ? only : tests),
       createTestFilter(filter),
     );
     postTestMessage("plan", {
