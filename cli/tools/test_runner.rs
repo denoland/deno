@@ -70,11 +70,43 @@ impl PrettyTestReporter {
 
 impl TestReporter for PrettyTestReporter {
   fn visit_description(&mut self, description: TestDescription) {
-    println!("describe: {:?}", description);
+    if !self.concurrent {
+      print!("test {} ...", description.name);
+    }
   }
 
   fn visit_result(&mut self, description: TestDescription, result: TestResult) {
-    println!("result: {:?} {:?}", description, result);
+    if self.concurrent {
+      print!("test {} ...", description.name);
+    }
+
+    let duration = 0;
+
+    match result {
+      TestResult::Ok => {
+        println!(
+          " {} {}",
+          colors::green("ok"),
+          colors::gray(format!("({}ms)", duration))
+        );
+      }
+
+      TestResult::Ignored => {
+        println!(
+          " {} {}",
+          colors::green("ok"),
+          colors::gray(format!("({}ms)", duration))
+        );
+      }
+
+      TestResult::Failed(_) => {
+        println!(
+          " {} {}",
+          colors::green("ok"),
+          colors::gray(format!("({}ms)", duration))
+        );
+      }
+    }
   }
 
   fn visit_summary(&mut self, summary: TestSummary) {}
@@ -225,7 +257,7 @@ where
     })
     .await;
 
-    process_result(description, result);
+    process_result(description.clone(), result.clone());
   }
 
   Ok(())
