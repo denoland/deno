@@ -22,6 +22,7 @@
     StringPrototypeSlice,
     SymbolToStringTag,
     TypedArrayPrototypeSubarray,
+    TypedArrayPrototypeSlice,
     Uint8Array,
   } = window.__bootstrap.primordials;
 
@@ -387,7 +388,9 @@
       if (BOMEncoding === "UTF-8") start = 3;
       else start = 2;
     }
-    return new TextDecoder(encoding).decode(bytes.slice(start));
+    return new TextDecoder(encoding).decode(
+      TypedArrayPrototypeSlice(bytes, start),
+    );
   }
 
   /**
