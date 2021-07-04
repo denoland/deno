@@ -1011,7 +1011,7 @@
       });
       const self = this ?? globalThis;
 
-      const listeners = eventTargetData.get(self).listeners;
+      const listeners = WeakMapPrototypeGet(eventTargetData, self).listeners;
       if (!(event.type in listeners)) {
         setTarget(event, this);
         return true;
