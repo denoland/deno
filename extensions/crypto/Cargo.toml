@@ -20,8 +20,8 @@ tokio = { version = "1.7.1", features = ["full"] }
 rand = "0.8.3"
 ring = { version = "0.16.20", features = ["std"] }
 rsa = "0.4.0" # TODO: remove "pem" feature when next release is on crates.io
-sha-1 = "0.9.4"
-sha2 = "0.9.3"
+sha-1 = "0.9.6"
+sha2 = "0.9.5"
 serde = { version = "1.0.123", features = ["derive"] }
 uuid = { version = "0.8.2", features = ["v4"] }
 lazy_static = "1.4.0"
