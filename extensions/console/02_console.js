@@ -350,7 +350,7 @@
     let iter;
 
     // TODO(littledivy): Avoid re-checking iterable type
-    if (ArrayIsArray(value)) {
+    if (ArrayIsArray(value) || isTypedArray(value)) {
       iter = ArrayPrototypeEntries(value);
     } else if (value instanceof Set) {
       iter = SetPrototypeEntries(value);
