@@ -11,21 +11,61 @@
     ArrayBufferIsView,
     isNaN,
     DataView,
+    Date,
     DatePrototypeGetTime,
+    DatePrototypeToISOString,
+    Boolean,
+    BooleanPrototypeToString,
     ObjectKeys,
+    ObjectIs,
     ObjectGetPrototypeOf,
     ObjectGetOwnPropertySymbols,
     ObjectPrototypeHasOwnProperty,
     ObjectPrototypePropertyIsEnumerable,
+    Promise,
     String,
     StringPrototypeRepeat,
+    StringPrototypeReplace,
     StringPrototypeCodePointAt,
+    StringPrototypeCharCodeAt,
     StringPrototypeNormalize,
+    StringPrototypeMatch,
+    StringPrototypePadStart,
+    StringPrototypeLocaleCompare,
+    StringPrototypeToString,
+    RegExp,
+    RegExpPrototypeTest,
+    RegExpPrototypeToString,
+    Set,
+    SymbolPrototypeToString,
+    SymbolToStringTag,
+    SymbolFor,
+    Array,
+    ArrayIsArray,
     ArrayPrototypeJoin,
     ArrayPrototypeMap,
     ArrayPrototypeReduce,
+    ArrayPrototypeEntries,
+    ArrayPrototypePush,
+    ArrayPrototypePop,
+    ArrayPrototypeSort,
+    ArrayPrototypeSlice,
+    ArrayPrototypeIncludes,
+    FunctionPrototypeBind,
+    Map,
+    MapPrototypeHas,
+    MapPrototypeGet,
     MathCeil,
+    MathAbs,
     MathMax,
+    MathMin,
+    MathSqrt,
+    MathRound,
+    MathFloor,
+    Number,
+    NumberPrototypeToString,
+    WeakMap,
+    WeakSet,
   } = window.__bootstrap.primordials;
 
   function isInvalidDate(x) {
@@ -287,19 +327,20 @@
 
     const entries = [];
 
-    const iter = value.entries();
+    const iter = ArrayPrototypeEntries(value);
     let entriesLength = 0;
     const next = () => {
       return iter.next();
     };
     for (const el of iter) {
       if (entriesLength < inspectOptions.iterableLimit) {
-        entries.push(
+        ArrayPrototypePush(
+          entries,
           options.entryHandler(
             el,
             level + 1,
             inspectOptions,
-            next.bind(iter),
+            FunctionPrototypeBind(next, iter),
           ),
         );
       }
@@ -307,27 +348,31 @@
     }
 
     if (options.sort) {
-      entries.sort();
+      ArrayPrototypeSort(entries);
     }
 
     if (entriesLength > inspectOptions.iterableLimit) {
       const nmore = entriesLength - inspectOptions.iterableLimit;
-      entries.push(`... ${nmore} more items`);
+      ArrayPrototypePush(entries, `... ${nmore} more items`);
     }
 
     const iPrefix = `${options.displayName ? options.displayName + " " : ""}`;
 
-    const initIndentation = `\n${DEFAULT_INDENT.repeat(level + 1)}`;
-    const entryIndentation = `,\n${DEFAULT_INDENT.repeat(level + 1)}`;
+    const initIndentation = `\n${
+      StringPrototypeRepeat(DEFAULT_INDENT, level + 1)
+    }`;
+    const entryIndentation = `,\n${
+      StringPrototypeRepeat(DEFAULT_INDENT, level + 1)
+    }`;
     const closingIndentation = `${inspectOptions.trailingComma ? "," : ""}\n${
-      DEFAULT_INDENT.repeat(level)
+      StringPrototypeRepeat(DEFAULT_INDENT, level)
     }`;
 
     let iContent;
     if (options.group && entries.length > MIN_GROUP_LENGTH) {
       const groups = groupEntries(entries, level, value);
       iContent = `${initIndentation}${
-        groups.join(entryIndentation)
+        ArrayPrototypeJoin(groups, entryIndentation)
       }${closingIndentation}`;
     } else {
       iContent = entries.length === 0 ? "" : ` ${entries.join(", ")} `;
@@ -336,7 +381,7 @@
         !inspectOptions.compact
       ) {
         iContent = `${initIndentation}${
-          entries.join(entryIndentation)
+          ArrayPrototypeJoin(entries, entryIndentation)
         }${closingIndentation}`;
       }
     }
@@ -384,20 +429,20 @@
       (totalLength / actualMax > 5 || maxLength <= 6)
     ) {
       const approxCharHeights = 2.5;
-      const averageBias = Math.sqrt(actualMax - totalLength / entries.length);
-      const biasedMax = Math.max(actualMax - 3 - averageBias, 1);
+      const averageBias = MathSqrt(actualMax - totalLength / entries.length);
+      const biasedMax = MathMax(actualMax - 3 - averageBias, 1);
       // Dynamically check how many columns seem possible.
-      const columns = Math.min(
+      const columns = MathMin(
         // Ideally a square should be drawn. We expect a character to be about 2.5
         // times as high as wide. This is the area formula to calculate a square
         // which contains n rectangles of size `actualMax * approxCharHeights`.
         // Divide that by `actualMax` to receive the correct number of columns.
         // The added bias increases the columns for short entries.
-        Math.round(
-          Math.sqrt(approxCharHeights * biasedMax * entriesLength) / biasedMax,
+        MathRound(
+          MathSqrt(approxCharHeights * biasedMax * entriesLength) / biasedMax,
         ),
         // Do not exceed the breakLength.
-        Math.floor((LINE_BREAKING_LENGTH - (level + 1)) / actualMax),
+        MathFloor((LINE_BREAKING_LENGTH - (level + 1)) / actualMax),
         // Limit the columns to a maximum of fifteen.
         15,
       );
@@ -430,7 +475,7 @@
       // Each iteration creates a single line of grouped entries.
       for (let i = 0; i < entriesLength; i += columns) {
         // The last lines may contain less entries than columns.
-        const max = Math.min(i + columns, entriesLength);
+        const max = MathMin(i + columns, entriesLength);
         let str = "";
         let j = i;
         for (; j < max - 1; j++) {
@@ -447,10 +492,10 @@
         } else {
           str += entries[j];
         }
-        tmp.push(str);
+        ArrayPrototypePush(tmp, str);
       }
       if (iterableLimit < entries.length) {
-        tmp.push(entries[entriesLength]);
+        ArrayPrototypePush(tmp, entries[entriesLength]);
       }
       entries = tmp;
     }
@@ -479,7 +524,7 @@
         return green(quoteString(value));
       case "number": // Numbers are yellow
         // Special handling of -0
-        return yellow(Object.is(value, -0) ? "-0" : `${value}`);
+        return yellow(ObjectIs(value, -0) ? "-0" : `${value}`);
       case "boolean": // booleans are yellow
         return yellow(String(value));
       case "undefined": // undefined is gray
@@ -516,12 +561,12 @@
     level,
     inspectOptions,
   ) {
-    CTX_STACK.push(value);
+    ArrayPrototypePush(CTX_STACK, value);
     let x;
     try {
       x = _inspectValue(value, level, inspectOptions);
     } finally {
-      CTX_STACK.pop();
+      ArrayPrototypePop(CTX_STACK);
     }
     return x;
   }
@@ -542,30 +587,50 @@
   function quoteString(string) {
     const quote = QUOTES.find((c) => !string.includes(c)) ?? QUOTES[0];
     const escapePattern = new RegExp(`(?=[${quote}\\\\])`, "g");
-    string = string.replace(escapePattern, "\\");
+    string = StringPrototypeReplace(string, escapePattern, "\\");
     string = replaceEscapeSequences(string);
     return `${quote}${string}${quote}`;
   }
 
   // Replace escape sequences that can modify output.
   function replaceEscapeSequences(string) {
-    return string
-      .replace(/[\b]/g, "\\b")
-      .replace(/\f/g, "\\f")
-      .replace(/\n/g, "\\n")
-      .replace(/\r/g, "\\r")
-      .replace(/\t/g, "\\t")
-      .replace(/\v/g, "\\v")
-      .replace(
-        // deno-lint-ignore no-control-regex
-        /[\x00-\x1f\x7f-\x9f]/g,
-        (c) => "\\x" + c.charCodeAt(0).toString(16).padStart(2, "0"),
-      );
+    return StringPrototypeReplace(
+      StringPrototypeReplace(
+        StringPrototypeReplace(
+          StringPrototypeReplace(
+            StringPrototypeReplace(
+              StringPrototypeReplace(
+                StringPrototypeReplace(string, /[\b]/g, "\\b"),
+                /\f/g,
+                "\\f",
+              ),
+              /\n/g,
+              "\\n",
+            ),
+            /\r/g,
+            "\\r",
+          ),
+          /\t/g,
+          "\\t",
+        ),
+        /\v/g,
+        "\\v",
+      ),
+      // deno-lint-ignore no-control-regex
+      /[\x00-\x1f\x7f-\x9f]/g,
+      (c) =>
+        "\\x" +
+        StringPrototypePadStart(
+          NumberPrototypeToString(StringPrototypeCharCodeAt(c, 0), 16),
+          2,
+          "0",
+        ),
+    );
   }
 
   // Surround a string with quotes when it is required (e.g the string not a valid identifier).
   function maybeQuoteString(string) {
-    if (/^[a-zA-Z_][a-zA-Z_0-9]*$/.test(string)) {
+    if (RegExpPrototypeTest(/^[a-zA-Z_][a-zA-Z_0-9]*$/, string)) {
       return replaceEscapeSequences(string);
     }
 
@@ -575,11 +640,11 @@
   // Surround a symbol's description in quotes when it is required (e.g the description has non printable characters).
   function maybeQuoteSymbol(symbol) {
     if (symbol.description === undefined) {
-      return symbol.toString();
+      return SymbolPrototypeToString(symbol);
     }
 
-    if (/^[a-zA-Z_][a-zA-Z_.0-9]*$/.test(symbol.description)) {
-      return symbol.toString();
+    if (RegExpPrototypeTest(/^[a-zA-Z_][a-zA-Z_.0-9]*$/, symbol.description)) {
+      return SymbolPrototypeToString(symbol);
     }
 
     return `Symbol(${quoteString(symbol.description)})`;
@@ -588,7 +653,10 @@
   const CTX_STACK = [];
   function ctxHas(x) {
     // Only check parent contexts
-    return CTX_STACK.slice(0, CTX_STACK.length - 1).includes(x);
+    return ArrayPrototypeIncludes(
+      ArrayPrototypeSlice(CTX_STACK, 0, CTX_STACK.length - 1),
+      x,
+    );
   }
 
   // Print strings when they are inside of arrays or objects with quotes
@@ -601,7 +669,7 @@
     switch (typeof value) {
       case "string": {
         const trunc = value.length > STR_ABBREVIATE_SIZE
-          ? value.slice(0, STR_ABBREVIATE_SIZE) + "..."
+          ? ArrayPrototypeSlice(value, 0, STR_ABBREVIATE_SIZE) + "..."
           : value;
         return green(quoteString(trunc)); // Quoted strings are green
       }
@@ -623,9 +691,9 @@
       entryHandler: (entry, level, inspectOptions, next) => {
         const [index, val] = entry;
         let i = index;
-        if (!value.hasOwnProperty(i)) {
+        if (!ObjectPrototypeHasOwnProperty(value, i)) {
           i++;
-          while (!value.hasOwnProperty(i) && i < value.length) {
+          while (!ObjectPrototypeHasOwnProperty(value, i) && i < value.length) {
             next();
             i++;
           }
@@ -725,27 +793,29 @@
   function inspectDate(value, inspectOptions) {
     // without quotes, ISO format, in magenta like before
     const magenta = maybeColor(colors.magenta, inspectOptions);
-    return magenta(isInvalidDate(value) ? "Invalid Date" : value.toISOString());
+    return magenta(
+      isInvalidDate(value) ? "Invalid Date" : DatePrototypeToISOString(value),
+    );
   }
 
   function inspectRegExp(value, inspectOptions) {
     const red = maybeColor(colors.red, inspectOptions);
-    return red(value.toString()); // RegExps are red
+    return red(RegExpPrototypeToString(value)); // RegExps are red
   }
 
   function inspectStringObject(value, inspectOptions) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
-    return cyan(`[String: "${value.toString()}"]`); // wrappers are in cyan
+    return cyan(`[String: "${StringPrototypeToString(value)}"]`); // wrappers are in cyan
   }
 
   function inspectBooleanObject(value, inspectOptions) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
-    return cyan(`[Boolean: ${value.toString()}]`); // wrappers are in cyan
+    return cyan(`[Boolean: ${BooleanPrototypeToString(value)}]`); // wrappers are in cyan
   }
 
   function inspectNumberObject(value, inspectOptions) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
-    return cyan(`[Number: ${value.toString()}]`); // wrappers are in cyan
+    return cyan(`[Number: ${NumberPrototypeToString(value)}]`); // wrappers are in cyan
   }
 
   const PromiseState = {
@@ -781,7 +851,9 @@
     }`;
 
     if (str.length + PROMISE_STRING_BASE_LENGTH > LINE_BREAKING_LENGTH) {
-      return `Promise {\n${DEFAULT_INDENT.repeat(level + 1)}${str}\n}`;
+      return `Promise {\n${
+        StringPrototypeRepeat(DEFAULT_INDENT, level + 1)
+      }${str}\n}`;
     }
 
     return `Promise { ${str} }`;
@@ -810,7 +882,7 @@
 
     let shouldShowDisplayName = false;
     let displayName = value[
-      Symbol.toStringTag
+      SymbolToStringTag
     ];
     if (!displayName) {
       displayName = getClassInstanceName(value);
@@ -822,12 +894,17 @@
     }
 
     const entries = [];
-    const stringKeys = Object.keys(value);
-    const symbolKeys = Object.getOwnPropertySymbols(value);
+    const stringKeys = ObjectKeys(value);
+    const symbolKeys = ObjectGetOwnPropertySymbols(value);
     if (inspectOptions.sorted) {
-      stringKeys.sort();
-      symbolKeys.sort((s1, s2) =>
-        (s1.description ?? "").localeCompare(s2.description ?? "")
+      ArrayPrototypeSort(stringKeys);
+      ArrayPrototypeSort(
+        symbolKeys,
+        (s1, s2) =>
+          StringPrototypeLocaleCompare(
+            (s1.description ?? ""),
+            s2.description ?? "",
+          ),
       );
     }
 
@@ -849,15 +926,22 @@
             inspectOptions,
           )
           : red(`[Thrown ${error.name}: ${error.message}]`);
-        entries.push(`${maybeQuoteString(key)}: ${inspectedValue}`);
+        ArrayPrototypePush(
+          entries,
+          `${maybeQuoteString(key)}: ${inspectedValue}`,
+        );
       } else {
-        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        const descriptor = ObjectGetOwnPropertyDescriptor(value, key);
         if (descriptor.get !== undefined && descriptor.set !== undefined) {
-          entries.push(`${maybeQuoteString(key)}: [Getter/Setter]`);
+          ArrayPrototypePush(
+            entries,
+            `${maybeQuoteString(key)}: [Getter/Setter]`,
+          );
         } else if (descriptor.get !== undefined) {
-          entries.push(`${maybeQuoteString(key)}: [Getter]`);
+          ArrayPrototypePush(entries, `${maybeQuoteString(key)}: [Getter]`);
         } else {
-          entries.push(
+          ArrayPrototypePush(
+            entries,
             `${maybeQuoteString(key)}: ${
               inspectValueWithQuotes(value[key], level + 1, inspectOptions)
             }`,
@@ -889,15 +973,22 @@
             inspectOptions,
           )
           : red(`Thrown ${error.name}: ${error.message}`);
-        entries.push(`[${maybeQuoteSymbol(key)}]: ${inspectedValue}`);
+        ArrayPrototypePush(
+          entries,
+          `[${maybeQuoteSymbol(key)}]: ${inspectedValue}`,
+        );
       } else {
-        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        const descriptor = ObjectGetOwnPropertyDescriptor(value, key);
         if (descriptor.get !== undefined && descriptor.set !== undefined) {
-          entries.push(`[${maybeQuoteSymbol(key)}]: [Getter/Setter]`);
+          ArrayPrototypePush(
+            entries,
+            `[${maybeQuoteSymbol(key)}]: [Getter/Setter]`,
+          );
         } else if (descriptor.get !== undefined) {
-          entries.push(`[${maybeQuoteSymbol(key)}]: [Getter]`);
+          ArrayPrototypePush(entries, `[${maybeQuoteSymbol(key)}]: [Getter]`);
         } else {
-          entries.push(
+          ArrayPrototypePush(
+            entries,
             `[${maybeQuoteSymbol(key)}]: ${
               inspectValueWithQuotes(value[key], level + 1, inspectOptions)
             }`,
@@ -908,18 +999,18 @@
 
     // Making sure color codes are ignored when calculating the total length
     const totalLength = entries.length + level +
-      colors.stripColor(entries.join("")).length;
+      colors.stripColor(ArrayPrototypeJoin(entries, "")).length;
 
     if (entries.length === 0) {
       baseString = "{}";
     } else if (totalLength > LINE_BREAKING_LENGTH || !inspectOptions.compact) {
       const entryIndent = DEFAULT_INDENT.repeat(level + 1);
       const closingIndent = DEFAULT_INDENT.repeat(level);
-      baseString = `{\n${entryIndent}${entries.join(`,\n${entryIndent}`)}${
-        inspectOptions.trailingComma ? "," : ""
-      }\n${closingIndent}}`;
+      baseString = `{\n${entryIndent}${
+        ArrayPrototypeJoin(entries, `,\n${entryIndent}`)
+      }${inspectOptions.trailingComma ? "," : ""}\n${closingIndent}}`;
     } else {
-      baseString = `{ ${entries.join(", ")} }`;
+      baseString = `{ ${ArrayPrototypeJoin(entries, ", ")} }`;
     }
 
     if (shouldShowDisplayName) {
@@ -941,7 +1032,7 @@
     // in extensions/web we don't want to depend on public
     // Symbol.for("Deno.customInspect") symbol defined in the public API.
     // Internal only, shouldn't be used by users.
-    const privateCustomInspect = Symbol.for("Deno.privateCustomInspect");
+    const privateCustomInspect = SymbolFor("Deno.privateCustomInspect");
     if (
       privateCustomInspect in value &&
       typeof value[privateCustomInspect] === "function"
@@ -954,7 +1045,7 @@
     }
     if (value instanceof Error) {
       return String(value.stack);
-    } else if (Array.isArray(value)) {
+    } else if (ArrayIsArray(value)) {
       return inspectArray(value, level, inspectOptions);
     } else if (value instanceof Number) {
       return inspectNumberObject(value, inspectOptions);
@@ -978,7 +1069,7 @@
       return inspectWeakMap(inspectOptions);
     } else if (isTypedArray(value)) {
       return inspectTypedArray(
-        Object.getPrototypeOf(value).constructor.name,
+        ObjectGetPrototypeOf(value).constructor.name,
         value,
         level,
         inspectOptions,
@@ -1141,11 +1232,11 @@
   ]);
 
   function parseCssColor(colorString) {
-    if (colorKeywords.has(colorString)) {
-      colorString = colorKeywords.get(colorString);
+    if (MapPrototypeHas(colorKeywords, colorString)) {
+      colorString = MapPrototypeGet(colorKeywords, colorString);
     }
     // deno-fmt-ignore
-    const hashMatch = colorString.match(/^#([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})?$/);
+    const hashMatch = StringPrototypeMatch(colorString, /^#([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})?$/);
     if (hashMatch != null) {
       return [
         Number(`0x${hashMatch[1]}`),
@@ -1154,7 +1245,7 @@
       ];
     }
     // deno-fmt-ignore
-    const smallHashMatch = colorString.match(/^#([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])?$/);
+    const smallHashMatch = StringPrototypeMatch(colorString, /^#([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])?$/);
     if (smallHashMatch != null) {
       return [
         Number(`0x${smallHashMatch[1]}0`),
@@ -1163,26 +1254,26 @@
       ];
     }
     // deno-fmt-ignore
-    const rgbMatch = colorString.match(/^rgba?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/);
+    const rgbMatch = StringPrototypeMatch(colorString, /^rgba?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/);
     if (rgbMatch != null) {
       return [
-        Math.round(Math.max(0, Math.min(255, Number(rgbMatch[1])))),
-        Math.round(Math.max(0, Math.min(255, Number(rgbMatch[2])))),
-        Math.round(Math.max(0, Math.min(255, Number(rgbMatch[3])))),
+        MathRound(MathMax(0, MathMin(255, Number(rgbMatch[1])))),
+        MathRound(MathMax(0, MathMin(255, Number(rgbMatch[2])))),
+        MathRound(MathMax(0, MathMin(255, Number(rgbMatch[3])))),
       ];
     }
     // deno-fmt-ignore
-    const hslMatch = colorString.match(/^hsla?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)%\s*,\s*([+\-]?\d*\.?\d+)%\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/);
+    const hslMatch = StringPrototypeMatch(colorString, /^hsla?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)%\s*,\s*([+\-]?\d*\.?\d+)%\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/);
     if (hslMatch != null) {
       // https://www.rapidtables.com/convert/color/hsl-to-rgb.html
       let h = Number(hslMatch[1]) % 360;
       if (h < 0) {
         h += 360;
       }
-      const s = Math.max(0, Math.min(100, Number(hslMatch[2]))) / 100;
-      const l = Math.max(0, Math.min(100, Number(hslMatch[3]))) / 100;
-      const c = (1 - Math.abs(2 * l - 1)) * s;
-      const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+      const s = MathMax(0, MathMin(100, Number(hslMatch[2]))) / 100;
+      const l = MathMax(0, MathMin(100, Number(hslMatch[3]))) / 100;
+      const c = (1 - MathAbs(2 * l - 1)) * s;
+      const x = c * (1 - MathAbs((h / 60) % 2 - 1));
       const m = l - c / 2;
       let r_;
       let g_;
@@ -1201,9 +1292,9 @@
         [r_, g_, b_] = [c, 0, x];
       }
       return [
-        Math.round((r_ + m) * 255),
-        Math.round((g_ + m) * 255),
-        Math.round((b_ + m) * 255),
+        MathRound((r_ + m) * 255),
+        MathRound((g_ + m) * 255),
+        MathRound((b_ + m) * 255),
       ];
     }
     return null;
