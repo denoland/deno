@@ -297,8 +297,8 @@
               chunk.length - 1,
             );
             if (0xD800 <= lastCodeUnit && lastCodeUnit <= 0xDBFF) {
-              this.#pendingHighSurrogate = chunk.slice(-1);
-              chunk = chunk.slice(0, -1);
+              this.#pendingHighSurrogate = StringPrototypeSlice(chunk, -1);
+              chunk = StringPrototypeSlice(chunk, 0, -1);
             } else {
               this.#pendingHighSurrogate = null;
             }
