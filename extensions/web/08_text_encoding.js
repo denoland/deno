@@ -293,7 +293,7 @@
               chunk = this.#pendingHighSurrogate + chunk;
             }
             const lastCodeUnit = StringPrototypeCharCodeAt(
-              chunk.charCodeAt,
+              chunk,
               chunk.length - 1,
             );
             if (0xD800 <= lastCodeUnit && lastCodeUnit <= 0xDBFF) {
