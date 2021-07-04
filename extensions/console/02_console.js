@@ -12,13 +12,19 @@
     isNaN,
     DataView,
     Date,
+    DateNow,
     DatePrototypeGetTime,
     DatePrototypeToISOString,
     Boolean,
     BooleanPrototypeToString,
     ObjectKeys,
+    ObjectCreate,
+    ObjectAssign,
     ObjectIs,
+    ObjectValues,
+    ObjectFromEntries,
     ObjectGetPrototypeOf,
+    ObjectGetOwnPropertyDescriptor,
     ObjectGetOwnPropertySymbols,
     ObjectPrototypeHasOwnProperty,
     ObjectPrototypePropertyIsEnumerable,
@@ -26,6 +32,9 @@
     String,
     StringPrototypeRepeat,
     StringPrototypeReplace,
+    StringPrototypeReplaceAll,
+    StringPrototypeSplit,
+    StringPrototypeSlice,
     StringPrototypeCodePointAt,
     StringPrototypeCharCodeAt,
     StringPrototypeNormalize,
@@ -33,12 +42,15 @@
     StringPrototypePadStart,
     StringPrototypeLocaleCompare,
     StringPrototypeToString,
+    StringPrototypeTrim,
+    NumberParseInt,
     RegExp,
     RegExpPrototypeTest,
     RegExpPrototypeToString,
     Set,
     SymbolPrototypeToString,
     SymbolToStringTag,
+    SymbolHasInstance,
     SymbolFor,
     Array,
     ArrayIsArray,
@@ -51,10 +63,16 @@
     ArrayPrototypeSort,
     ArrayPrototypeSlice,
     ArrayPrototypeIncludes,
+    ArrayPrototypeFill,
+    ArrayPrototypeFilter,
     FunctionPrototypeBind,
     Map,
     MapPrototypeHas,
     MapPrototypeGet,
+    MapPrototypeSet,
+    MapPrototypeDelete,
+    Error,
+    ErrorCaptureStackTrace,
     MathCeil,
     MathAbs,
     MathMax,
@@ -1329,9 +1347,9 @@
         }
       } else if (inValue) {
         if (c == ";") {
-          const value = currentPart.trim();
+          const value = StringPrototypeTrim(currentPart);
           if (value != "") {
-            rawEntries.push([currentKey, value]);
+            ArrayPrototypePush(rawEntries, [currentKey, value]);
           }
           currentKey = null;
           currentPart = "";
@@ -1339,7 +1357,7 @@
           continue;
         }
       } else if (c == ":") {
-        currentKey = currentPart.trim();
+        currentKey = StringPrototypeTrim(currentPart);
         currentPart = "";
         inValue = true;
         continue;
@@ -1347,9 +1365,9 @@
       currentPart += c;
     }
     if (inValue && parenthesesDepth == 0) {
-      const value = currentPart.trim();
+      const value = StringPrototypeTrim(currentPart);
       if (value != "") {
-        rawEntries.push([currentKey, value]);
+        ArrayPrototypePush(rawEntries, [currentKey, value]);
       }
       currentKey = null;
       currentPart = "";
@@ -1371,14 +1389,21 @@
           css.fontWeight = value;
         }
       } else if (key == "font-style") {
-        if (["italic", "oblique", "oblique 14deg"].includes(value)) {
+        if (
+          ArrayPrototypeIncludes(["italic", "oblique", "oblique 14deg"], value)
+        ) {
           css.fontStyle = "italic";
         }
       } else if (key == "text-decoration-line") {
         css.textDecorationLine = [];
         for (const lineType of value.split(/\s+/g)) {
-          if (["line-through", "overline", "underline"].includes(lineType)) {
-            css.textDecorationLine.push(lineType);
+          if (
+            ArrayPrototypeIncludes(
+              ["line-through", "overline", "underline"],
+              lineType,
+            )
+          ) {
+            ArrayPrototypePush(css.textDecorationLine, lineType);
           }
         }
       } else if (key == "text-decoration-color") {
@@ -1389,12 +1414,17 @@
       } else if (key == "text-decoration") {
         css.textDecorationColor = null;
         css.textDecorationLine = [];
-        for (const arg of value.split(/\s+/g)) {
+        for (const arg of StringPrototypeSplit(value, /\s+/g)) {
           const maybeColor = parseCssColor(arg);
           if (maybeColor != null) {
             css.textDecorationColor = maybeColor;
-          } else if (["line-through", "overline", "underline"].includes(arg)) {
-            css.textDecorationLine.push(arg);
+          } else if (
+            ArrayPrototypeIncludes(
+              ["line-through", "overline", "underline"],
+              arg,
+            )
+          ) {
+            ArrayPrototypePush(css.textDecorationLine, arg);
           }
         }
       }
@@ -1450,30 +1480,30 @@
       }
     }
     if (
-      css.textDecorationLine.includes("line-through") !=
-        prevCss.textDecorationLine.includes("line-through")
+      ArrayPrototypeIncludes(css.textDecorationLine, "line-through") !=
+        ArrayPrototypeIncludes(prevCss.textDecorationLine, "line-through")
     ) {
-      if (css.textDecorationLine.includes("line-through")) {
+      if (ArrayPrototypeIncludes(css.textDecorationLine, "line-through")) {
         ansi += "\x1b[9m";
       } else {
         ansi += "\x1b[29m";
       }
     }
     if (
-      css.textDecorationLine.includes("overline") !=
-        prevCss.textDecorationLine.includes("overline")
+      ArrayPrototypeIncludes(css.textDecorationLine, "overline") !=
+        ArrayPrototypeIncludes(prevCss.textDecorationLine, "overline")
     ) {
-      if (css.textDecorationLine.includes("overline")) {
+      if (ArrayPrototypeIncludes(css.textDecorationLine, "overline")) {
         ansi += "\x1b[53m";
       } else {
         ansi += "\x1b[55m";
       }
     }
     if (
-      css.textDecorationLine.includes("underline") !=
-        prevCss.textDecorationLine.includes("underline")
+      ArrayPrototypeIncludes(css.textDecorationLine, "underline") !=
+        ArrayPrototypeIncludes(prevCss.textDecorationLine, "underline")
     ) {
-      if (css.textDecorationLine.includes("underline")) {
+      if (ArrayPrototypeIncludes(css.textDecorationLine, "underline")) {
         ansi += "\x1b[4m";
       } else {
         ansi += "\x1b[24m";
@@ -1504,13 +1534,13 @@
             if (char == "s") {
               // Format as a string.
               formattedArg = String(args[a++]);
-            } else if (["d", "i"].includes(char)) {
+            } else if (ArrayPrototypeIncludes(["d", "i"], char)) {
               // Format as an integer.
               const value = args[a++];
               if (typeof value == "bigint") {
                 formattedArg = `${value}n`;
               } else if (typeof value == "number") {
-                formattedArg = `${parseInt(String(value))}`;
+                formattedArg = `${NumberParseInt(String(value))}`;
               } else {
                 formattedArg = "NaN";
               }
@@ -1522,7 +1552,7 @@
               } else {
                 formattedArg = "NaN";
               }
-            } else if (["O", "o"].includes(char)) {
+            } else if (ArrayPrototypeIncludes(["O", "o"], char)) {
               // Format as an object.
               formattedArg = inspectValue(
                 args[a++],
@@ -1544,17 +1574,18 @@
             }
 
             if (formattedArg != null) {
-              string += first.slice(appendedChars, i - 1) + formattedArg;
+              string += StringPrototypeSlice(first, appendedChars, i - 1) +
+                formattedArg;
               appendedChars = i + 1;
             }
           }
           if (char == "%") {
-            string += first.slice(appendedChars, i - 1) + "%";
+            string += StringPrototypeSlice(first, appendedChars, i - 1) + "%";
             appendedChars = i + 1;
           }
         }
       }
-      string += first.slice(appendedChars);
+      string += StringPrototypeSlice(first, appendedChars);
       if (usedStyle) {
         string += "\x1b[0m";
       }
@@ -1573,8 +1604,12 @@
     }
 
     if (rInspectOptions.indentLevel > 0) {
-      const groupIndent = DEFAULT_INDENT.repeat(rInspectOptions.indentLevel);
-      string = groupIndent + string.replaceAll("\n", `\n${groupIndent}`);
+      const groupIndent = StringPrototypeRepeat(
+        DEFAULT_INDENT,
+        rInspectOptions.indentLevel,
+      );
+      string = groupIndent +
+        StringPrototypeReplaceAll(string, "\n", `\n${groupIndent}`);
     }
 
     return string;
@@ -1604,15 +1639,15 @@
       // For historical web-compatibility reasons, the namespace object for
       // console must have as its [[Prototype]] an empty object, created as if
       // by ObjectCreate(%ObjectPrototype%), instead of %ObjectPrototype%.
-      const console = Object.create({}, {
-        [Symbol.toStringTag]: {
+      const console = ObjectCreate({}, {
+        [SymbolToStringTag]: {
           enumerable: false,
           writable: false,
           configurable: true,
           value: "console",
         },
       });
-      Object.assign(console, this);
+      ObjectAssign(console, this);
       return console;
     }
 
@@ -1699,28 +1734,28 @@
     count = (label = "default") => {
       label = String(label);
 
-      if (countMap.has(label)) {
-        const current = countMap.get(label) || 0;
-        countMap.set(label, current + 1);
+      if (MapPrototypeHas(countMap, label)) {
+        const current = MapPrototypeGet(countMap, label) || 0;
+        MapPrototypeSet(countMap, label, current + 1);
       } else {
-        countMap.set(label, 1);
+        MapPrototypeSet(countMap, label, 1);
       }
 
-      this.info(`${label}: ${countMap.get(label)}`);
+      this.info(`${label}: ${MapPrototypeGet(countMap, label)}`);
     };
 
     countReset = (label = "default") => {
       label = String(label);
 
-      if (countMap.has(label)) {
-        countMap.set(label, 0);
+      if (MapPrototypeHas(countMap, label)) {
+        MapPrototypeSet(countMap, label, 0);
       } else {
         this.warn(`Count for '${label}' does not exist`);
       }
     };
 
     table = (data = undefined, properties = undefined) => {
-      if (properties !== undefined && !Array.isArray(properties)) {
+      if (properties !== undefined && !ArrayIsArray(properties)) {
         throw new Error(
           "The 'properties' argument must be of type Array. " +
             "Received type string",
@@ -1758,12 +1793,15 @@
         resultData = data;
       }
 
-      const keys = Object.keys(resultData);
+      const keys = ObjectKeys(resultData);
       const numRows = keys.length;
 
       const objectValues = properties
-        ? Object.fromEntries(
-          properties.map((name) => [name, new Array(numRows).fill("")]),
+        ? ObjectFromEntries(
+          ArrayPrototypeMap(
+            properties,
+            (name) => [name, ArrayPrototypeFill(new Array(numRows), "")],
+          ),
         )
         : {};
       const indexKeys = [];
@@ -1776,31 +1814,31 @@
           (typeof value !== "function" && typeof value !== "object");
         if (properties === undefined && primitive) {
           hasPrimitives = true;
-          values.push(stringifyValue(value));
+          ArrayPrototypePush(values, stringifyValue(value));
         } else {
           const valueObj = value || {};
-          const keys = properties || Object.keys(valueObj);
+          const keys = properties || ObjectKeys(valueObj);
           for (const k of keys) {
             if (!primitive && k in valueObj) {
               if (!(k in objectValues)) {
-                objectValues[k] = new Array(numRows).fill("");
+                objectValues[k] = ArrayPrototypeFill(new Array(numRows), "");
               }
               objectValues[k][idx] = stringifyValue(valueObj[k]);
             }
           }
-          values.push("");
+          ArrayPrototypePush(values, "");
         }
 
-        indexKeys.push(k);
+        ArrayPrototypePush(indexKeys, k);
       });
 
-      const headerKeys = Object.keys(objectValues);
-      const bodyValues = Object.values(objectValues);
-      const header = [
+      const headerKeys = ObjectKeys(objectValues);
+      const bodyValues = ObjectValues(objectValues);
+      const header = ArrayPrototypeFilter([
         indexKey,
         ...(properties ||
           [...headerKeys, !isMap && hasPrimitives && valuesKey]),
-      ].filter(Boolean);
+      ], Boolean);
       const body = [indexKeys, ...bodyValues, values];
 
       toTable(header, body);
@@ -1809,24 +1847,24 @@
     time = (label = "default") => {
       label = String(label);
 
-      if (timerMap.has(label)) {
+      if (MapPrototypeHas(timerMap, label)) {
         this.warn(`Timer '${label}' already exists`);
         return;
       }
 
-      timerMap.set(label, Date.now());
+      MapPrototypeSet(timerMap, label, DateNow());
     };
 
     timeLog = (label = "default", ...args) => {
       label = String(label);
 
-      if (!timerMap.has(label)) {
+      if (!MapPrototypeHas(timerMap, label)) {
         this.warn(`Timer '${label}' does not exists`);
         return;
       }
 
-      const startTime = timerMap.get(label);
-      const duration = Date.now() - startTime;
+      const startTime = MapPrototypeGet(timerMap, label);
+      const duration = DateNow() - startTime;
 
       this.info(`${label}: ${duration}ms`, ...args);
     };
@@ -1834,14 +1872,14 @@
     timeEnd = (label = "default") => {
       label = String(label);
 
-      if (!timerMap.has(label)) {
+      if (!MapPrototypeHas(timerMap, label)) {
         this.warn(`Timer '${label}' does not exists`);
         return;
       }
 
-      const startTime = timerMap.get(label);
-      timerMap.delete(label);
-      const duration = Date.now() - startTime;
+      const startTime = MapPrototypeGet(timerMap, label);
+      MapPrototypeDelete(timerMap, label);
+      const duration = DateNow() - startTime;
 
       this.info(`${label}: ${duration}ms`);
     };
@@ -1876,11 +1914,11 @@
         name: "Trace",
         message,
       };
-      Error.captureStackTrace(err, this.trace);
+      ErrorCaptureStackTrace(err, this.trace);
       this.error(err.stack);
     };
 
-    static [Symbol.hasInstance](instance) {
+    static [SymbolHasInstance](instance) {
       return instance[isConsoleInstance];
     }
   }
@@ -1914,9 +1952,10 @@
   function wrapConsole(consoleFromDeno, consoleFromV8) {
     const callConsole = core.callConsole;
 
-    for (const key of Object.keys(consoleFromV8)) {
-      if (consoleFromDeno.hasOwnProperty(key)) {
-        consoleFromDeno[key] = callConsole.bind(
+    for (const key of ObjectKeys(consoleFromV8)) {
+      if (ObjectPrototypeHasOwnProperty(consoleFromDeno, key)) {
+        consoleFromDeno[key] = FunctionPrototypeBind(
+          callConsole,
           consoleFromDeno,
           consoleFromV8[key],
           consoleFromDeno[key],
