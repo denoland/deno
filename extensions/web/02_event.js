@@ -1260,7 +1260,7 @@
       get() {
         const map = this[_eventHandlers];
 
-        if (!map)return undefined;
+        if (!map) return undefined;
         return MapPrototypeGet(map, name)?.handler;
       },
       set(value) {
