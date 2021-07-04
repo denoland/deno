@@ -15,17 +15,19 @@ impl Colorize for markdown::Block {
   fn colorize(self) -> String {
     use markdown::Block::*;
     match self {
-      Header(spans, 1) => colors::italic_bold(spans.colorize())
+      Header(spans, 1) => {
+        colors::magenta_bold_underline_italic(spans.colorize())
+          .to_string()
+          .linebreak()
+      }
+      Header(spans, 2 | 3) => colors::magenta_bold_underline(spans.colorize())
         .to_string()
         .linebreak(),
-      Header(spans, 2 | 3) => {
-        colors::italic(spans.colorize()).to_string().linebreak()
-      }
-      Header(spans, 4) => colors::italic_gray(spans.colorize())
+      Header(spans, 4) => colors::magenta_bold(spans.colorize())
         .to_string()
         .linebreak(),
       Header(spans, _level) => {
-        colors::gray(spans.colorize()).to_string().linebreak()
+        colors::magenta(spans.colorize()).to_string().linebreak()
       }
       Paragraph(spans) => spans.colorize().linebreak(),
       Blockquote(blocks) => {
