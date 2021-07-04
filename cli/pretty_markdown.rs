@@ -4,6 +4,7 @@ use crate::colors;
 use crate::highlight;
 use crate::media_type::MediaType;
 
+/// Generate ANSI-colored string based on the given markdown
 pub fn colorize(md: impl AsRef<str>) -> String {
   let md_tokens = markdown::tokenize(md.as_ref());
   md_tokens.colorize()

@@ -11,6 +11,7 @@ use crate::colors;
 use crate::fmt_errors;
 use crate::fs_util::{collect_files, is_supported_ext};
 use crate::media_type::MediaType;
+use crate::pretty_markdown;
 use crate::tools::fmt::run_parallelized;
 use deno_core::error::{generic_error, AnyError, Context as _, JsStackFrame};
 use deno_core::serde_json;
@@ -170,7 +171,7 @@ pub fn print_rules_doc(
   } else {
     for rule in rules {
       let doc_with_header = format!("# {}\n\n{}", rule.code(), rule.docs());
-      let result = crate::pretty_markdown::colorize(doc_with_header);
+      let result = pretty_markdown::colorize(doc_with_header);
       println!("{}", result);
     }
   }
