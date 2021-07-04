@@ -13,6 +13,32 @@
   const webidl = window.__bootstrap.webidl;
   const eventTarget = window.__bootstrap.eventTarget;
   const { DOMException } = window.__bootstrap.domException;
+  const {
+    ArrayBuffer,
+    ArrayBufferIsView,
+    ArrayIsArray,
+    ArrayPrototypeMap,
+    ArrayPrototypePop,
+    ArrayPrototypePush,
+    Error,
+    MathMax,
+    ObjectDefineProperty,
+    ObjectFreeze,
+    Promise,
+    PromiseResolve,
+    Set,
+    SetPrototypeEntries,
+    SetPrototypeForEach,
+    SetPrototypeHas,
+    SetPrototypeKeys,
+    SetPrototypeValues,
+    Symbol,
+    SymbolFor,
+    SymbolIterator,
+    TypeError,
+    Uint32Array,
+    Uint8Array,
+  } = window.__bootstrap.primordials;
 
   /**
    * @param {any} self
@@ -76,7 +102,7 @@
    * @returns {GPUExtent3DDict}
    */
   function normalizeGPUExtent3D(data) {
-    if (Array.isArray(data)) {
+    if (ArrayIsArray(data)) {
       return {
         width: data[0],
         height: data[1],
@@ -92,7 +118,7 @@
    * @returns {GPUOrigin3DDict}
    */
   function normalizeGPUOrigin3D(data) {
-    if (Array.isArray(data)) {
+    if (ArrayIsArray(data)) {
       return {
         x: data[0],
         y: data[1],
@@ -108,7 +134,7 @@
    * @returns {GPUColor}
    */
   function normalizeGPUColor(data) {
-    if (Array.isArray(data)) {
+    if (ArrayIsArray(data)) {
       return {
         r: data[0],
         g: data[1],
@@ -168,7 +194,7 @@
       }
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect({})}`;
     }
   }
@@ -240,7 +266,7 @@
       });
       const nonGuaranteedFeatures = descriptor.nonGuaranteedFeatures ?? [];
       for (const feature of nonGuaranteedFeatures) {
-        if (!this[_adapter].features.has(feature)) {
+        if (!SetPrototypeHas(this[_adapter].features, feature)) {
           throw new TypeError(
             `${prefix}: nonGuaranteedFeatures must be a subset of the adapter features.`,
           );
@@ -262,8 +288,8 @@
       const inner = new InnerGPUDevice({
         rid,
         adapter: this,
-        features: Object.freeze(features),
-        limits: Object.freeze(limits),
+        features: ObjectFreeze(features),
+        limits: ObjectFreeze(limits),
       });
       return createGPUDevice(
         descriptor.label ?? null,
@@ -272,7 +298,7 @@
       );
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           name: this.name,
@@ -389,7 +415,7 @@
       return this[_limits].maxVertexBufferArrayStride;
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect(this[_limits])}`;
     }
   }
@@ -414,31 +440,31 @@
     /** @return {IterableIterator<[string, string]>} */
     entries() {
       webidl.assertBranded(this, GPUSupportedFeatures);
-      return this[_features].entries();
+      return SetPrototypeEntries(this[_features]);
     }
 
     /** @return {void} */
     forEach(callbackfn, thisArg) {
       webidl.assertBranded(this, GPUSupportedFeatures);
-      this[_features].forEach(callbackfn, thisArg);
+      SetPrototypeForEach(this[_features], callbackfn, thisArg);
     }
 
     /** @return {boolean} */
     has(value) {
       webidl.assertBranded(this, GPUSupportedFeatures);
-      return this[_features].has(value);
+      return SetPrototypeHas(this[_features], value);
     }
 
     /** @return {IterableIterator<string>} */
     keys() {
       webidl.assertBranded(this, GPUSupportedFeatures);
-      return this[_features].keys();
+      return SetPrototypeKeys(this[_features]);
     }
 
     /** @return {IterableIterator<string>} */
     values() {
       webidl.assertBranded(this, GPUSupportedFeatures);
-      return this[_features].values();
+      return SetPrototypeValues(this[_features]);
     }
 
     /** @return {number} */
@@ -447,12 +473,12 @@
       return this[_features].size;
     }
 
-    [Symbol.iterator]() {
+    [SymbolIterator]() {
       webidl.assertBranded(this, GPUSupportedFeatures);
-      return this[_features][Symbol.iterator]();
+      return this[_features][SymbolIterator]();
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect([...this.values()])}`;
     }
   }
@@ -493,7 +519,7 @@
       return this[_message];
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({ reason: this[_reason], message: this[_message] })
       }`;
@@ -508,7 +534,7 @@
    */
   function GPUObjectBaseMixin(name, type) {
     type.prototype[_label] = null;
-    Object.defineProperty(type.prototype, "label", {
+    ObjectDefineProperty(type.prototype, "label", {
       /**
        * @return {string | null}
        */
@@ -586,7 +612,7 @@
 
     /** @param {any} resource */
     trackResource(resource) {
-      this.resources.push(new WeakRef(resource));
+      ArrayPrototypePush(this.resources, new WeakRef(resource));
     }
 
     /** @param {{ type: string, value: string | null } | undefined} err */
@@ -657,7 +683,7 @@
       const device = this[_device];
       const resources = device.resources;
       while (resources.length > 0) {
-        const resource = resources.pop()?.deref();
+        const resource = ArrayPrototypePop(resources)?.deref();
         if (resource) {
           resource[_cleanup]();
         }
@@ -852,7 +878,8 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      const bindGroupLayouts = descriptor.bindGroupLayouts.map(
+      const bindGroupLayouts = ArrayPrototypeMap(
+        descriptor.bindGroupLayouts,
         (layout, i) => {
           const context = `bind group layout ${i + 1}`;
           const rid = assertResource(layout, { prefix, context });
@@ -902,7 +929,7 @@
         resourceContext: "layout",
         selfContext: "this",
       });
-      const entries = descriptor.entries.map((entry, i) => {
+      const entries = ArrayPrototypeMap(descriptor.entries, (entry, i) => {
         const context = `entry ${i + 1}`;
         const resource = entry.resource;
         if (resource instanceof GPUSampler) {
@@ -1143,12 +1170,12 @@
 
     createComputePipelineAsync(descriptor) {
       // TODO(lucacasonato): this should be real async
-      return Promise.resolve(this.createComputePipeline(descriptor));
+      return PromiseResolve(this.createComputePipeline(descriptor));
     }
 
     createRenderPipelineAsync(descriptor) {
       // TODO(lucacasonato): this should be real async
-      return Promise.resolve(this.createRenderPipeline(descriptor));
+      return PromiseResolve(this.createRenderPipeline(descriptor));
     }
 
     /**
@@ -1249,10 +1276,10 @@
       webidl.assertBranded(this, GPUDevice);
       const device = this[_device];
       if (!device) {
-        return Promise.resolve(true);
+        return PromiseResolve(true);
       }
       if (device.rid === undefined) {
-        return Promise.resolve(true);
+        return PromiseResolve(true);
       }
       return device.lost;
     }
@@ -1269,7 +1296,7 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      device.errorScopeStack.push({ filter, error: undefined });
+      ArrayPrototypePush(device.errorScopeStack, { filter, error: undefined });
     }
 
     /**
@@ -1283,7 +1310,7 @@
       if (device.isLost) {
         throw new DOMException("Device has been lost.", "OperationError");
       }
-      const scope = device.errorScopeStack.pop();
+      const scope = ArrayPrototypePop(device.errorScopeStack);
       if (!scope) {
         throw new DOMException(
           "There are no error scopes on that stack.",
@@ -1293,7 +1320,7 @@
       return scope.error ?? null;
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           features: this.features,
@@ -1341,16 +1368,19 @@
         { prefix, context: "Argument 1" },
       );
       const device = assertDevice(this, { prefix, context: "this" });
-      const commandBufferRids = commandBuffers.map((buffer, i) => {
-        const context = `command buffer ${i + 1}`;
-        const rid = assertResource(buffer, { prefix, context });
-        assertDeviceMatch(device, buffer, {
-          prefix,
-          selfContext: "this",
-          resourceContext: context,
-        });
-        return rid;
-      });
+      const commandBufferRids = ArrayPrototypeMap(
+        commandBuffers,
+        (buffer, i) => {
+          const context = `command buffer ${i + 1}`;
+          const rid = assertResource(buffer, { prefix, context });
+          assertDeviceMatch(device, buffer, {
+            prefix,
+            selfContext: "this",
+            resourceContext: context,
+          });
+          return rid;
+        },
+      );
       const { err } = core.opSync("op_webgpu_queue_submit", {
         queueRid: device.rid,
         commandBuffers: commandBufferRids,
@@ -1360,7 +1390,7 @@
 
     onSubmittedWorkDone() {
       webidl.assertBranded(this, GPUQueue);
-      return Promise.resolve();
+      return PromiseResolve();
     }
 
     /**
@@ -1415,7 +1445,7 @@
           dataOffset,
           size,
         },
-        new Uint8Array(ArrayBuffer.isView(data) ? data.buffer : data),
+        new Uint8Array(ArrayBufferIsView(data) ? data.buffer : data),
       );
       device.pushError(err);
     }
@@ -1470,7 +1500,7 @@
           dataLayout,
           size: normalizeGPUExtent3D(size),
         },
-        new Uint8Array(ArrayBuffer.isView(data) ? data.buffer : data),
+        new Uint8Array(ArrayBufferIsView(data) ? data.buffer : data),
       );
       device.pushError(err);
     }
@@ -1479,7 +1509,7 @@
       throw new Error("Not yet implemented");
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -1558,7 +1588,7 @@
       const mappedRanges = this[_mappedRanges];
       if (mappedRanges) {
         while (mappedRanges.length > 0) {
-          const mappedRange = mappedRanges.pop();
+          const mappedRange = ArrayPrototypePop(mappedRanges);
           if (mappedRange !== undefined) {
             core.close(mappedRange[1]);
           }
@@ -1605,7 +1635,7 @@
       /** @type {number} */
       let rangeSize;
       if (size === undefined) {
-        rangeSize = Math.max(0, this[_size] - offset);
+        rangeSize = MathMax(0, this[_size] - offset);
       } else {
         rangeSize = this[_size];
       }
@@ -1695,7 +1725,7 @@
       /** @type {number} */
       let rangeSize;
       if (size === undefined) {
-        rangeSize = Math.max(0, this[_size] - offset);
+        rangeSize = MathMax(0, this[_size] - offset);
       } else {
         rangeSize = size;
       }
@@ -1728,7 +1758,7 @@
         new Uint8Array(buffer),
       );
 
-      mappedRanges.push([buffer, rid, offset]);
+      ArrayPrototypePush(mappedRanges, [buffer, rid, offset]);
 
       return buffer;
     }
@@ -1794,7 +1824,7 @@
       this[_cleanup]();
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -1883,7 +1913,7 @@
     [_cleanup]() {
       const views = this[_views];
       while (views.length > 0) {
-        const view = views.pop()?.deref();
+        const view = ArrayPrototypePop(views)?.deref();
         if (view) {
           view[_cleanup]();
         }
@@ -1924,7 +1954,7 @@
         this,
         rid,
       );
-      this[_views].push(new WeakRef(textureView));
+      ArrayPrototypePush(this[_views], new WeakRef(textureView));
       return textureView;
     }
 
@@ -1933,7 +1963,7 @@
       this[_cleanup]();
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -2000,7 +2030,7 @@
       webidl.illegalConstructor();
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -2043,7 +2073,7 @@
       webidl.illegalConstructor();
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -2086,7 +2116,7 @@
       webidl.illegalConstructor();
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -2129,7 +2159,7 @@
       webidl.illegalConstructor();
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -2172,7 +2202,7 @@
       webidl.illegalConstructor();
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -2219,7 +2249,7 @@
       throw new Error("Not yet implemented");
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -2313,7 +2343,7 @@
       return bindGroupLayout;
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -2388,7 +2418,7 @@
       return bindGroupLayout;
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -2448,7 +2478,7 @@
     [_cleanup]() {
       const encoders = this[_encoders];
       while (encoders.length > 0) {
-        const encoder = encoders.pop()?.deref();
+        const encoder = ArrayPrototypePop(encoders)?.deref();
         if (encoder) {
           encoder[_cleanup]();
         }
@@ -2535,7 +2565,8 @@
             descriptor.depthStencilAttachment.stencilLoadValue;
         }
       }
-      const colorAttachments = descriptor.colorAttachments.map(
+      const colorAttachments = ArrayPrototypeMap(
+        descriptor.colorAttachments,
         (colorAttachment, i) => {
           const context = `color attachment ${i + 1}`;
           const view = assertResource(colorAttachment.view, {
@@ -2613,7 +2644,7 @@
         this,
         rid,
       );
-      this[_encoders].push(new WeakRef(renderPassEncoder));
+      ArrayPrototypePush(this[_encoders], new WeakRef(renderPassEncoder));
       return renderPassEncoder;
     }
 
@@ -2648,7 +2679,7 @@
         this,
         rid,
       );
-      this[_encoders].push(new WeakRef(computePassEncoder));
+      ArrayPrototypePush(this[_encoders], new WeakRef(computePassEncoder));
       return computePassEncoder;
     }
 
@@ -3151,7 +3182,7 @@
       return commandBuffer;
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -3476,7 +3507,7 @@
         context: "encoder referenced by this",
       });
       const renderPassRid = assertResource(this, { prefix, context: "this" });
-      const bundleRids = bundles.map((bundle, i) => {
+      const bundleRids = ArrayPrototypeMap(bundles, (bundle, i) => {
         const context = `bundle ${i + 1}`;
         const rid = assertResource(bundle, { prefix, context });
         assertDeviceMatch(device, bundle, {
@@ -3967,7 +3998,7 @@
       });
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -4370,7 +4401,7 @@
       });
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -4418,7 +4449,7 @@
       throw new Error("Not yet implemented");
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -4874,7 +4905,7 @@
       throw new Error("Not yet implemented");
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -4918,7 +4949,7 @@
       webidl.illegalConstructor();
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
@@ -4972,7 +5003,7 @@
       this[_cleanup]();
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           label: this.label,
