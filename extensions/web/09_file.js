@@ -530,23 +530,6 @@
     }
   }
 
-  /*
-  Pseudo code for getting a file backed up by the filesystem
-  https://github.com/denoland/deno/issues/11018
-
-  async function getFile(path, type = "") {
-    const stat = await Deno.stat(path);
-    const lastModified = stat.mtime.getTime();
-    const fileName = basename(path);
-    const blobReference = BlobReference.fromFilePath(path, [permission?]);
-
-    return new File([blobReference], fileName, {
-      type,
-      lastModified
-    });
-  }
-  */
-
   window.__bootstrap.file = {
     getParts,
     Blob,
