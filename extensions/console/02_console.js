@@ -351,11 +351,11 @@
 
     // TODO(littledivy): Avoid re-checking iterable type
     if (ArrayIsArray(value)) {
-      iter = ArrayPrototypeEntries(iter);
+      iter = ArrayPrototypeEntries(value);
     } else if (value instanceof Set) {
-      iter = SetPrototypeEntries(iter);
+      iter = SetPrototypeEntries(value);
     } else if (value instanceof Map) {
-      iter = MapPrototypeEntries(iter);
+      iter = MapPrototypeEntries(value);
     } else {
       throw new TypeError("Unreachable");
     }
