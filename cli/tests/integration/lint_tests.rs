@@ -79,3 +79,27 @@ itest!(rules_quiet {
   output: "lint/expected_rules.out",
   exit_code: 0,
 });
+
+itest!(rule_doc_signle {
+  args: "lint --rule no-empty",
+  output: "lint/expected_rule_doc_single.out",
+  exit_code: 0,
+});
+
+itest!(rule_doc_unknown_rule_specified {
+  args: "lint --rule __UNKNOWN_RULE_NAME__",
+  output: "lint/expected_rule_doc_unknown_rule_specified.out",
+  exit_code: 1,
+});
+
+itest!(rule_doc_double {
+  args: "lint --rule no-empty no-debugger",
+  output: "lint/expected_rule_doc_double.out",
+  exit_code: 0,
+});
+
+itest!(rule_doc_signle_json {
+  args: "lint --rule no-empty --json",
+  output: "lint/expected_rule_doc_single_json.out",
+  exit_code: 0,
+});
