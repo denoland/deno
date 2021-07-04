@@ -53,7 +53,7 @@ enum TestResult {
 struct TestSummary {}
 
 trait TestReporter {
-  fn visit_description(&mut self, description: TestDescription);
+  fn visit_wait(&mut self, description: TestDescription);
   fn visit_result(&mut self, description: TestDescription, result: TestResult);
   fn visit_summary(&mut self, result: TestSummary);
 }
@@ -69,7 +69,7 @@ impl PrettyTestReporter {
 }
 
 impl TestReporter for PrettyTestReporter {
-  fn visit_description(&mut self, description: TestDescription) {
+  fn visit_wait(&mut self, description: TestDescription) {
     if !self.concurrent {
       print!("test {} ...", description.name);
     }
@@ -117,7 +117,7 @@ fn create_reporter(concurrent: bool) -> Box<dyn TestReporter + Send> {
 }
 
 enum TestEvent {
-  Description(TestDescription),
+  Wait(TestDescription),
   Result(TestDescription, TestResult),
 }
 
@@ -219,6 +219,8 @@ where
     .filter(|(i, description)| true);
 
   for (index, description) in iterator {
+    process_event(TestEvent::Wait(description.clone()));
+
     let promise = {
       let mut scope = worker.js_runtime.handle_scope();
       let tests = v8::Local::<v8::Value>::new(&mut scope, tests.clone());
@@ -306,8 +308,8 @@ pub async fn run_tests(
       let mut reporter = reporter_lock.lock().unwrap();
 
       match event {
-        TestEvent::Description(description) => {
-          reporter.visit_description(description);
+        TestEvent::Wait(description) => {
+          reporter.visit_wait(description);
         }
 
         TestEvent::Result(description, result) => {
