@@ -19,6 +19,7 @@
     ArrayPrototypeSplice,
     ArrayPrototypeUnshift,
     Boolean,
+    DateNow,
     Error,
     FunctionPrototypeCall,
     Map,
@@ -165,7 +166,7 @@
         currentTarget: null,
         eventPhase: Event.NONE,
         target: null,
-        timeStamp: Date.now(),
+        timeStamp: DateNow(),
       };
       ReflectDefineProperty(this, "isTrusted", {
         enumerable: true,
