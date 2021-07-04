@@ -14,6 +14,31 @@
   const core = window.Deno.core;
   const webidl = globalThis.__bootstrap.webidl;
   const { Blob, File } = globalThis.__bootstrap.file;
+  const {
+    ArrayPrototypeMap,
+    ArrayPrototypePush,
+    ArrayPrototypeSlice,
+    ArrayPrototypeSplice,
+    ArrayPrototypeFilter,
+    ArrayPrototypeForEach,
+    Map,
+    MapPrototypeGet,
+    MapPrototypeSet,
+    MathRandom,
+    Symbol,
+    SymbolToStringTag,
+    StringFromCharCode,
+    StringPrototypeTrim,
+    StringPrototypeSlice,
+    StringPrototypeSplit,
+    StringPrototypeReplace,
+    StringPrototypeIndexOf,
+    StringPrototypePadStart,
+    StringPrototypeCodePointAt,
+    StringPrototypeReplaceAll,
+    TypeError,
+    TypedArrayPrototypeSubarray,
+  } = window.__bootstrap.primordials;
 
   const entryList = Symbol("entry list");
 
@@ -47,7 +72,7 @@
    */
 
   class FormData {
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "FormData";
     }
 
@@ -97,7 +122,7 @@
 
       const entry = createEntry(name, valueOrBlobValue, filename);
 
-      this[entryList].push(entry);
+      ArrayPrototypePush(this[entryList], entry);
     }
 
     /**
@@ -117,7 +142,7 @@
       const list = this[entryList];
       for (let i = 0; i < list.length; i++) {
         if (list[i].name === name) {
-          list.splice(i, 1);
+          ArrayPrototypeSplice(list, i, 1);
           i--;
         }
       }
@@ -159,7 +184,7 @@
 
       const returnList = [];
       for (const entry of this[entryList]) {
-        if (entry.name === name) returnList.push(entry.value);
+        if (entry.name === name) ArrayPrototypePush(returnList, entry.value);
       }
       return returnList;
     }
@@ -227,13 +252,13 @@
             list[i] = entry;
             added = true;
           } else {
-            list.splice(i, 1);
+            ArrayPrototypeSplice(list, i, 1);
             i--;
           }
         }
       }
       if (!added) {
-        list.push(entry);
+        ArrayPrototypePush(list, entry);
       }
     }
   }
@@ -243,29 +268,46 @@
   webidl.configurePrototype(FormData);
 
   const escape = (str, isFilename) =>
-    (isFilename ? str : str.replace(/\r?\n|\r/g, "\r\n"))
-      .replace(/\n/g, "%0A")
-      .replace(/\r/g, "%0D")
-      .replace(/"/g, "%22");
+    StringPrototypeReplace(
+      StringPrototypeReplace(
+        StringPrototypeReplace(
+          (isFilename ? str : StringPrototypeReplace(str, /\r?\n|\r/g, "\r\n")),
+          /\n/g,
+          "%0A",
+        ),
+        /\r/g,
+        "%0D",
+      ),
+      /"/g,
+      "%22",
+    );
 
   /**
    * convert FormData to a Blob synchronous without reading all of the files
    * @param {globalThis.FormData} formData
    */
   function formDataToBlob(formData) {
-    const boundary = `${Math.random()}${Math.random()}`
-      .replaceAll(".", "").slice(-28).padStart(32, "-");
+    const boundary = StringPrototypePadStart(
+      StringPrototypeSlice(
+        StringPrototypeReplaceAll(`${MathRandom()}${MathRandom()}`, ".", ""),
+        -28,
+      ),
+      32,
+      "-",
+    );
     const chunks = [];
     const prefix = `--${boundary}\r\nContent-Disposition: form-data; name="`;
 
     for (const [name, value] of formData) {
       if (typeof value === "string") {
-        chunks.push(
+        ArrayPrototypePush(
+          chunks,
           prefix + escape(name) + '"' + CRLF + CRLF +
-            value.replace(/\r(?!\n)|(?<!\r)\n/g, CRLF) + CRLF,
+            StringPrototypeReplace(value, /\r(?!\n)|(?<!\r)\n/g, CRLF) + CRLF,
         );
       } else {
-        chunks.push(
+        ArrayPrototypePush(
+          chunks,
           prefix + escape(name) + `"; filename="${escape(value.name, true)}"` +
             CRLF +
             `Content-Type: ${value.type || "application/octet-stream"}\r\n\r\n`,
@@ -275,7 +317,7 @@
       }
     }
 
-    chunks.push(`--${boundary}--`);
+    ArrayPrototypePush(chunks, `--${boundary}--`);
 
     return new Blob(chunks, {
       type: "multipart/form-data; boundary=" + boundary,
@@ -290,19 +332,26 @@
     /** @type {Map<string, string>} */
     const params = new Map();
     // Forced to do so for some Map constructor param mismatch
-    value
-      .split(";")
-      .slice(1)
-      .map((s) => s.trim().split("="))
-      .filter((arr) => arr.length > 1)
-      .map(([k, v]) => [k, v.replace(/^"([^"]*)"$/, "$1")])
-      .forEach(([k, v]) => params.set(k, v));
+    ArrayPrototypeForEach(
+      ArrayPrototypeMap(
+        ArrayPrototypeFilter(
+          ArrayPrototypeMap(
+            ArrayPrototypeSlice(StringPrototypeSplit(value, ";"), 1),
+            (s) => StringPrototypeSplit(StringPrototypeTrim(s), "="),
+          ),
+          (arr) => arr.length > 1,
+        ),
+        ([k, v]) => [k, StringPrototypeReplace(v, /^"([^"]*)"$/, "$1")],
+      ),
+      ([k, v]) => MapPrototypeSet(params, k, v),
+    );
+
     return params;
   }
 
   const CRLF = "\r\n";
-  const LF = CRLF.codePointAt(1);
-  const CR = CRLF.codePointAt(0);
+  const LF = StringPrototypeCodePointAt(CRLF, 1);
+  const CR = StringPrototypeCodePointAt(CRLF, 0);
 
   class MultipartParser {
     /**
@@ -325,14 +374,14 @@
      */
     #parseHeaders(headersText) {
       const headers = new Headers();
-      const rawHeaders = headersText.split("\r\n");
+      const rawHeaders = StringPrototypeSplit(headersText, "\r\n");
       for (const rawHeader of rawHeaders) {
-        const sepIndex = rawHeader.indexOf(":");
+        const sepIndex = StringPrototypeIndexOf(rawHeader, ":");
         if (sepIndex < 0) {
           continue; // Skip this header
         }
-        const key = rawHeader.slice(0, sepIndex);
-        const value = rawHeader.slice(sepIndex + 1);
+        const key = StringPrototypeSlice(rawHeader, 0, sepIndex);
+        const value = StringPrototypeSlice(rawHeader, sepIndex + 1);
         headers.set(key, value);
       }
 
@@ -364,7 +413,7 @@
         const isNewLine = byte === LF && prevByte === CR;
 
         if (state === 1 || state === 2 || state == 3) {
-          headerText += String.fromCharCode(byte);
+          headerText += StringFromCharCode(byte);
         }
         if (state === 0 && isNewLine) {
           state = 1;
@@ -390,13 +439,14 @@
 
           if (boundaryIndex >= this.boundary.length) {
             const { headers, disposition } = this.#parseHeaders(headerText);
-            const content = this.body.subarray(
+            const content = TypedArrayPrototypeSubarray(
+              this.body,
               fileStart,
               i - boundaryIndex - 1,
             );
             // https://fetch.spec.whatwg.org/#ref-for-dom-body-formdata
-            const filename = disposition.get("filename");
-            const name = disposition.get("name");
+            const filename = MapPrototypeGet(disposition, "filename");
+            const name = MapPrototypeGet(disposition, "name");
 
             state = 5;
             // Reset
