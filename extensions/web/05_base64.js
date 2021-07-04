@@ -13,6 +13,7 @@
     forgivingBase64Encode,
     forgivingBase64Decode,
   } = window.__bootstrap.infra;
+  const { DOMException } = window.__bootstrap.domException;
 
   /**
    * @param {string} data

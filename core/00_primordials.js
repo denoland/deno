@@ -167,6 +167,9 @@
     primordials[name] = globalThis[name];
   });
 
+  // Create copy of isNaN
+  primordials[isNaN.name] = isNaN;
+
   // Create copies of URI handling functions
   [
     decodeURI,

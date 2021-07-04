@@ -50,7 +50,7 @@ use crate::key::Algorithm;
 use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
 
-// Whitelist for RSA public exponents.
+// Allowlist for RSA public exponents.
 lazy_static! {
   static ref PUB_EXPONENT_1: BigUint = BigUint::from_u64(3).unwrap();
   static ref PUB_EXPONENT_2: BigUint = BigUint::from_u64(65537).unwrap();
