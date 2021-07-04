@@ -9,6 +9,7 @@
   const webidl = window.__bootstrap.webidl;
   const { HTTP_TOKEN_CODE_POINT_RE } = window.__bootstrap.infra;
   const { DOMException } = window.__bootstrap.domException;
+  const { Blob } = globalThis.__bootstrap.file;
   const {
     ArrayBuffer,
     ArrayBufferIsView,
@@ -30,7 +31,6 @@
     ArrayPrototypeMap,
     ArrayPrototypeSome,
     PromisePrototypeThen,
-    PromisePrototypeCatch,
   } = window.__bootstrap.primordials;
 
   webidl.converters["sequence<DOMString> or DOMString"] = (V, opts) => {
@@ -263,42 +263,40 @@
         );
       }
 
-      PromisePrototypeCatch(
-        PromisePrototypeThen(
-          core.opAsync("op_ws_create", {
-            url: wsURL.href,
-            protocols: ArrayPrototypeJoin(protocols, ", "),
-          }),
-          (create) => {
-            this[_rid] = create.rid;
-            this[_extensions] = create.extensions;
-            this[_protocol] = create.protocol;
+      PromisePrototypeThen(
+        core.opAsync("op_ws_create", {
+          url: wsURL.href,
+          protocols: ArrayPrototypeJoin(protocols, ", "),
+        }),
+        (create) => {
+          this[_rid] = create.rid;
+          this[_extensions] = create.extensions;
+          this[_protocol] = create.protocol;
 
-            if (this[_readyState] === CLOSING) {
-              PromisePrototypeThen(
-                core.opAsync("op_ws_close", {
-                  rid: this[_rid],
-                }),
-                () => {
-                  this[_readyState] = CLOSED;
+          if (this[_readyState] === CLOSING) {
+            PromisePrototypeThen(
+              core.opAsync("op_ws_close", {
+                rid: this[_rid],
+              }),
+              () => {
+                this[_readyState] = CLOSED;
 
-                  const errEvent = new ErrorEvent("error");
-                  this.dispatchEvent(errEvent);
+                const errEvent = new ErrorEvent("error");
+                this.dispatchEvent(errEvent);
 
-                  const event = new CloseEvent("close");
-                  this.dispatchEvent(event);
-                  tryClose(this[_rid]);
-                },
-              );
-            } else {
-              this[_readyState] = OPEN;
-              const event = new Event("open");
-              this.dispatchEvent(event);
+                const event = new CloseEvent("close");
+                this.dispatchEvent(event);
+                tryClose(this[_rid]);
+              },
+            );
+          } else {
+            this[_readyState] = OPEN;
+            const event = new Event("open");
+            this.dispatchEvent(event);
 
-              this.#eventLoop();
-            }
-          },
-        ),
+            this.#eventLoop();
+          }
+        },
         (err) => {
           this[_readyState] = CLOSED;
 
