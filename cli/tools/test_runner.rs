@@ -40,6 +40,7 @@ use swc_common::comments::CommentKind;
 #[serde(rename_all = "camelCase")]
 struct TestDescription {
   pub name: String,
+  pub ignore: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -241,6 +242,14 @@ where
   }));
 
   for (index, description) in iterator {
+    if (description.ignore) {
+      process_event(TestEvent::Result(
+        description.clone(),
+        TestResult::Ignored,
+      ));
+      continue;
+    }
+
     process_event(TestEvent::Wait(description.clone()));
 
     let promise = {
