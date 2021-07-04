@@ -19,6 +19,7 @@
     PromiseReject,
     PromiseResolve,
     StringPrototypeCharCodeAt,
+    StringPrototypeSlice,
     SymbolToStringTag,
     TypedArrayPrototypeSubarray,
     Uint8Array,

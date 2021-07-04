@@ -52,7 +52,7 @@
       prefix,
       context: "Argument 1",
     });
-    const byteArray = [...data].map((char) => {
+    const byteArray = ArrayPrototypeMap([...data], (char) => {
       const charCode = StringPrototypeCharCodeAt(char, 0);
       if (charCode > 0xff) {
         throw new DOMException(
