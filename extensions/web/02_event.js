@@ -9,6 +9,35 @@
 ((window) => {
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
+  const {
+    ArrayPrototypeFilter,
+    ArrayPrototypeIncludes,
+    ArrayPrototypeIndexOf,
+    ArrayPrototypeMap,
+    ArrayPrototypePush,
+    ArrayPrototypeSlice,
+    ArrayPrototypeSplice,
+    ArrayPrototypeUnshift,
+    Boolean,
+    Error,
+    FunctionPrototypeCall,
+    Map,
+    MapPrototypeGet,
+    MapPrototypeSet,
+    ObjectCreate,
+    ObjectDefineProperty,
+    ObjectGetOwnPropertyDescriptor,
+    Proxy,
+    ReflectDefineProperty,
+    ReflectGet,
+    ReflectGetOwnPropertyDescriptor,
+    Symbol,
+    SymbolFor,
+    SymbolToStringTag,
+    WeakMap,
+    WeakMapPrototypeGet,
+    WeakMapPrototypeSet,
+  } = window.__bootstrap.primordials;
 
   // accessors for non runtime visible data
 
@@ -77,7 +106,7 @@
     return "relatedTarget" in event;
   }
 
-  const isTrusted = Object.getOwnPropertyDescriptor({
+  const isTrusted = ObjectGetOwnPropertyDescriptor({
     get isTrusted() {
       return this[_isTrusted];
     },
@@ -138,13 +167,13 @@
         target: null,
         timeStamp: Date.now(),
       };
-      Reflect.defineProperty(this, "isTrusted", {
+      ReflectDefineProperty(this, "isTrusted", {
         enumerable: true,
         get: isTrusted,
       });
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(buildFilteredPropertyInspectObject(this, EVENT_PROPS));
     }
 
@@ -220,7 +249,7 @@
         }
 
         if (currentHiddenLevel <= maxHiddenLevel) {
-          composedPath.unshift({
+          ArrayPrototypeUnshift(composedPath, {
             item,
             itemInShadowTree: false,
             relatedTarget: null,
@@ -251,7 +280,7 @@
         }
 
         if (currentHiddenLevel <= maxHiddenLevel) {
-          composedPath.push({
+          ArrayPrototypePush(composedPath, {
             item,
             itemInShadowTree: false,
             relatedTarget: null,
@@ -270,7 +299,7 @@
           }
         }
       }
-      return composedPath.map((p) => p.item);
+      return ArrayPrototypeMap(composedPath, (p) => p.item);
     }
 
     get NONE() {
@@ -373,22 +402,22 @@
     // in the inspect code
     return new Proxy({}, {
       get(_target, key) {
-        if (key === Symbol.toStringTag) {
+        if (key === SymbolToStringTag) {
           return object.constructor?.name;
-        } else if (keys.includes(key)) {
-          return Reflect.get(object, key);
+        } else if (ArrayPrototypeIncludes(keys, key)) {
+          return ReflectGet(object, key);
         } else {
           return undefined;
         }
       },
       getOwnPropertyDescriptor(_target, key) {
-        if (!keys.includes(key)) {
+        if (!ArrayPrototypeIncludes(keys, key)) {
           return undefined;
         }
 
-        return Reflect.getOwnPropertyDescriptor(object, key) ??
+        return ReflectGetOwnPropertyDescriptor(object, key) ??
           (object.prototype &&
-            Reflect.getOwnPropertyDescriptor(object.prototype, key)) ??
+            ReflectGetOwnPropertyDescriptor(object.prototype, key)) ??
           {
             configurable: true,
             enumerable: true,
@@ -396,7 +425,7 @@
           };
       },
       has(_target, key) {
-        return keys.includes(key);
+        return ArrayPrototypeIncludes(keys, key);
       },
       ownKeys() {
         return keys;
@@ -409,7 +438,7 @@
     props,
   ) {
     for (const prop of props) {
-      Reflect.defineProperty(Ctor.prototype, prop, { enumerable: true });
+      ReflectDefineProperty(Ctor.prototype, prop, { enumerable: true });
     }
   }
 
@@ -508,7 +537,7 @@
     const rootOfClosedTree = isShadowRoot(target) &&
       getMode(target) === "closed";
 
-    getPath(eventImpl).push({
+    ArrayPrototypePush(getPath(eventImpl), {
       item: target,
       itemInShadowTree,
       target: targetOverride,
@@ -705,7 +734,7 @@
     }
 
     // Copy event listeners before iterating since the list can be modified during the iteration.
-    const handlers = targetListeners[type].slice();
+    const handlers = ArrayPrototypeSlice(targetListeners[type]);
 
     for (let i = 0; i < handlers.length; i++) {
       const listener = handlers[i];
@@ -722,7 +751,7 @@
       }
 
       // Check if the event listener has been removed since the listeners has been cloned.
-      if (!targetListeners[type].includes(listener)) {
+      if (!ArrayPrototypeIncludes(targetListeners[type], listener)) {
         continue;
       }
 
@@ -736,8 +765,9 @@
       }
 
       if (once) {
-        targetListeners[type].splice(
-          targetListeners[type].indexOf(listener),
+        ArrayPrototypeSplice(
+          targetListeners[type],
+          ArrayPrototypeIndexOf(targetListeners[type], listener),
           1,
         );
       }
@@ -751,7 +781,11 @@
           listener.callback.handleEvent(eventImpl);
         }
       } else {
-        listener.callback.call(eventImpl.currentTarget, eventImpl);
+        FunctionPrototypeCall(
+          listener.callback,
+          eventImpl.currentTarget,
+          eventImpl,
+        );
       }
 
       setInPassiveListener(eventImpl, false);
@@ -769,7 +803,7 @@
    * Ref: https://dom.spec.whatwg.org/#concept-event-listener-invoke */
   function invokeEventListeners(tuple, eventImpl) {
     const path = getPath(eventImpl);
-    const tupleIndex = path.indexOf(tuple);
+    const tupleIndex = ArrayPrototypeIndexOf(path, tuple);
     for (let i = tupleIndex; i >= 0; i--) {
       const t = path[i];
       if (t.target) {
@@ -844,29 +878,29 @@
   const eventTargetData = new WeakMap();
 
   function setEventTargetData(value) {
-    eventTargetData.set(value, getDefaultTargetData());
+    WeakMapPrototypeSet(eventTargetData, value, getDefaultTargetData());
   }
 
   function getAssignedSlot(target) {
-    return Boolean(eventTargetData.get(target)?.assignedSlot);
+    return Boolean(WeakMapPrototypeGet(eventTargetData, target)?.assignedSlot);
   }
 
   function getHasActivationBehavior(target) {
     return Boolean(
-      eventTargetData.get(target)?.hasActivationBehavior,
+      WeakMapPrototypeGet(eventTargetData, target)?.hasActivationBehavior,
     );
   }
 
   function getHost(target) {
-    return eventTargetData.get(target)?.host ?? null;
+    return WeakMapPrototypeGet(eventTargetData, target)?.host ?? null;
   }
 
   function getListeners(target) {
-    return eventTargetData.get(target)?.listeners ?? {};
+    return WeakMapPrototypeGet(eventTargetData, target)?.listeners ?? {};
   }
 
   function getMode(target) {
-    return eventTargetData.get(target)?.mode ?? null;
+    return WeakMapPrototypeGet(eventTargetData, target)?.mode ?? null;
   }
 
   function getDefaultTargetData() {
@@ -874,14 +908,14 @@
       assignedSlot: false,
       hasActivationBehavior: false,
       host: null,
-      listeners: Object.create(null),
+      listeners: ObjectCreate(null),
       mode: "",
     };
   }
 
   class EventTarget {
     constructor() {
-      eventTargetData.set(this, getDefaultTargetData());
+      WeakMapPrototypeSet(eventTargetData, this, getDefaultTargetData());
     }
 
     addEventListener(
@@ -897,7 +931,10 @@
       }
 
       options = normalizeAddEventHandlerOptions(options);
-      const { listeners } = eventTargetData.get(this ?? globalThis);
+      const { listeners } = WeakMapPrototypeGet(
+        eventTargetData,
+        this ?? globalThis,
+      );
 
       if (!(type in listeners)) {
         listeners[type] = [];
@@ -927,7 +964,7 @@
           });
         }
       }
-      listeners[type].push({ callback, options });
+      ArrayPrototypePush(listeners[type], { callback, options });
     }
 
     removeEventListener(
@@ -939,9 +976,11 @@
         prefix: "Failed to execute 'removeEventListener' on 'EventTarget'",
       });
 
-      const listeners = eventTargetData.get(this ?? globalThis).listeners;
+      const listeners =
+        WeakMapPrototypeGet(eventTargetData, this ?? globalThis).listeners;
       if (callback !== null && type in listeners) {
-        listeners[type] = listeners[type].filter(
+        listeners[type] = ArrayPrototypeFilter(
+          listeners[type],
           (listener) => listener.callback !== callback,
         );
       } else if (callback === null || !listeners[type]) {
@@ -959,7 +998,7 @@
               listener.options.capture === options.capture)) &&
           listener.callback === callback
         ) {
-          listeners[type].splice(i, 1);
+          ArrayPrototypeSplice(listeners[type], i, 1);
           break;
         }
       }
@@ -988,7 +1027,7 @@
       return dispatch(self, event);
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "EventTarget";
     }
 
@@ -1052,11 +1091,11 @@
       this.#error = error;
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "ErrorEvent";
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(buildFilteredPropertyInspectObject(this, [
         ...EVENT_PROPS,
         "message",
@@ -1110,7 +1149,7 @@
       this.#reason = reason;
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(buildFilteredPropertyInspectObject(this, [
         ...EVENT_PROPS,
         "wasClean",
@@ -1138,7 +1177,7 @@
       this.lastEventId = eventInitDict?.lastEventId ?? "";
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(buildFilteredPropertyInspectObject(this, [
         ...EVENT_PROPS,
         "data",
@@ -1164,11 +1203,11 @@
       return this.#detail;
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "CustomEvent";
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(buildFilteredPropertyInspectObject(this, [
         ...EVENT_PROPS,
         "detail",
@@ -1176,7 +1215,7 @@
     }
   }
 
-  Reflect.defineProperty(CustomEvent.prototype, "detail", {
+  ReflectDefineProperty(CustomEvent.prototype, "detail", {
     enumerable: true,
   });
 
@@ -1191,7 +1230,7 @@
       this.total = eventInitDict?.total ?? 0;
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return inspect(buildFilteredPropertyInspectObject(this, [
         ...EVENT_PROPS,
         "lengthComputable",
@@ -1208,7 +1247,7 @@
       if (typeof wrappedHandler.handler !== "function") {
         return;
       }
-      return wrappedHandler.handler.call(this, ...args);
+      return FunctionPrototypeCall(wrappedHandler.handler, this, ...args);
     }
     wrappedHandler.handler = handler;
     return wrappedHandler;
@@ -1217,24 +1256,26 @@
   // TODO(benjamingr) reuse this here and websocket where possible
   function defineEventHandler(emitter, name, init) {
     // HTML specification section 8.1.5.1
-    Object.defineProperty(emitter, `on${name}`, {
+    ObjectDefineProperty(emitter, `on${name}`, {
       get() {
-        return this[_eventHandlers]?.get(name)?.handler;
+        const map = this[_eventHandlers];
+
+        if (!map)return undefined;
+        return MapPrototypeGet(map, name)?.handler;
       },
       set(value) {
         if (!this[_eventHandlers]) {
           this[_eventHandlers] = new Map();
         }
-        let handlerWrapper = this[_eventHandlers]?.get(name);
+        let handlerWrapper = MapPrototypeGet(this[_eventHandlers], name);
         if (handlerWrapper) {
-          console.log("foo");
           handlerWrapper.handler = value;
         } else {
           handlerWrapper = makeWrappedHandler(value);
           this.addEventListener(name, handlerWrapper);
           init?.(this);
         }
-        this[_eventHandlers].set(name, handlerWrapper);
+        MapPrototypeSet(this[_eventHandlers], name, handlerWrapper);
       },
       configurable: true,
       enumerable: true,
