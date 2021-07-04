@@ -1,4 +1,4 @@
-// This test crates 1024 blobs of 128 MB each. This will only work if the blobs
+// This test creates 1024 blobs of 128 MB each. This will only work if the blobs
 // and their backing data is GCed as expected.
 for (let i = 0; i < 1024; i++) {
   // Create a 128MB byte array, and then a blob from it.
