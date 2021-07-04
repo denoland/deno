@@ -10,6 +10,58 @@
   const customInspect = Symbol.for("Deno.customInspect");
   let performanceEntries = [];
 
+  webidl.converters["PerformanceMarkOptions"] = webidl
+    .createDictionaryConverter(
+      "PerformanceMarkOptions",
+      [
+        {
+          key: "detail",
+          converter: webidl.converters.any,
+        },
+        {
+          key: "startTime",
+          converter: webidl.converters.DOMHighResTimeStamp,
+        },
+      ],
+    );
+
+  webidl.converters["DOMString or DOMHighResTimeStamp"] = (V, opts) => {
+    if (webidl.type(V) === "Number" && V !== null) {
+      return webidl.converters.DOMHighResTimeStamp(V, opts);
+    }
+    return webidl.converters.DOMString(V, opts);
+  };
+
+  webidl.converters["PerformanceMeasureOptions"] = webidl
+    .createDictionaryConverter(
+      "PerformanceMeasureOptions",
+      [
+        {
+          key: "detail",
+          converter: webidl.converters.any,
+        },
+        {
+          key: "start",
+          converter: webidl.converters["DOMString or DOMHighResTimeStamp"],
+        },
+        {
+          key: "duration",
+          converter: webidl.converters.DOMHighResTimeStamp,
+        },
+        {
+          key: "end",
+          converter: webidl.converters["DOMString or DOMHighResTimeStamp"],
+        },
+      ],
+    );
+
+  webidl.converters["DOMString or PerformanceMeasureOptions"] = (V, opts) => {
+    if (webidl.type(V) === "Object" && V !== null) {
+      return webidl.converters["PerformanceMeasureOptions"](V, opts);
+    }
+    return webidl.converters.DOMString(V, opts);
+  };
+
   function findMostRecent(
     name,
     type,
@@ -137,19 +189,17 @@
       const prefix = "Failed to construct 'PerformanceMark'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
-      // ensure options is object-ish, or null-ish
-      switch (typeof options) {
-        case "object": // includes null
-        case "function":
-        case "undefined": {
-          break;
-        }
-        default: {
-          throw new TypeError("Invalid options");
-        }
-      }
+      name = webidl.converters.DOMString(name, {
+        prefix,
+        context: "Argument 1",
+      });
 
-      const { detail = null, startTime = now() } = options ?? {};
+      options = webidl.converters.PerformanceMarkOptions(options, {
+        prefix,
+        context: "Argument 2",
+      });
+
+      const { detail = null, startTime = now() } = options;
 
       super(name, "mark", startTime, 0, illegalConstructorKey);
       this[webidl.brand] = webidl.brand;
@@ -229,29 +279,39 @@
       webidl.illegalConstructor();
     }
 
-    clearMarks(markName) {
+    clearMarks(markName = undefined) {
       webidl.assertBranded(this, Performance);
-      if (markName == null) {
+      if (markName !== undefined) {
+        markName = webidl.converters.DOMString(markName, {
+          prefix: "Failed to execute 'clearMarks' on 'Performance'",
+          context: "Argument 1",
+        });
+
         performanceEntries = performanceEntries.filter(
-          (entry) => entry.entryType !== "mark",
+          (entry) => !(entry.name === markName && entry.entryType === "mark"),
         );
       } else {
         performanceEntries = performanceEntries.filter(
-          (entry) => !(entry.name === markName && entry.entryType === "mark"),
+          (entry) => entry.entryType !== "mark",
         );
       }
     }
 
-    clearMeasures(measureName) {
+    clearMeasures(measureName = undefined) {
       webidl.assertBranded(this, Performance);
-      if (measureName == null) {
-        performanceEntries = performanceEntries.filter(
-          (entry) => entry.entryType !== "measure",
-        );
-      } else {
+      if (measureName !== undefined) {
+        measureName = webidl.converters.DOMString(measureName, {
+          prefix: "Failed to execute 'clearMeasures' on 'Performance'",
+          context: "Argument 1",
+        });
+
         performanceEntries = performanceEntries.filter(
           (entry) =>
             !(entry.name === measureName && entry.entryType === "measure"),
+        );
+      } else {
+        performanceEntries = performanceEntries.filter(
+          (entry) => entry.entryType !== "measure",
         );
       }
     }
@@ -263,26 +323,62 @@
 
     getEntriesByName(
       name,
-      type,
+      type = undefined,
     ) {
       webidl.assertBranded(this, Performance);
+      const prefix = "Failed to execute 'getEntriesByName' on 'Performance'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+
+      name = webidl.converters.DOMString(name, {
+        prefix,
+        context: "Argument 1",
+      });
+
+      if (type !== undefined) {
+        type = webidl.converters.DOMString(type, {
+          prefix,
+          context: "Argument 2",
+        });
+      }
+
       return filterByNameType(name, type);
     }
 
     getEntriesByType(type) {
       webidl.assertBranded(this, Performance);
+      const prefix = "Failed to execute 'getEntriesByName' on 'Performance'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+
+      type = webidl.converters.DOMString(type, {
+        prefix,
+        context: "Argument 1",
+      });
+
       return filterByNameType(undefined, type);
     }
 
     mark(
       markName,
-      options = {},
+      markOptions = {},
     ) {
       webidl.assertBranded(this, Performance);
+      const prefix = "Failed to execute 'mark' on 'Performance'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+
+      markName = webidl.converters.DOMString(markName, {
+        prefix,
+        context: "Argument 1",
+      });
+
+      markOptions = webidl.converters.PerformanceMarkOptions(markOptions, {
+        prefix,
+        context: "Argument 2",
+      });
+
       // 3.1.1.1 If the global object is a Window object and markName uses the
       // same name as a read only attribute in the PerformanceTiming interface,
       // throw a SyntaxError. - not implemented
-      const entry = new PerformanceMark(markName, options);
+      const entry = new PerformanceMark(markName, markOptions);
       // 3.1.1.7 Queue entry - not implemented
       performanceEntries.push(entry);
       return entry;
@@ -291,9 +387,31 @@
     measure(
       measureName,
       startOrMeasureOptions = {},
-      endMark,
+      endMark = undefined,
     ) {
       webidl.assertBranded(this, Performance);
+      const prefix = "Failed to execute 'measure' on 'Performance'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+
+      measureName = webidl.converters.DOMString(measureName, {
+        prefix,
+        context: "Argument 1",
+      });
+
+      startOrMeasureOptions = webidl.converters
+        ["DOMString or PerformanceMeasureOptions"](startOrMeasureOptions, {
+          prefix,
+          context: "Argument 2",
+        });
+      console.log("foooobarrrrrr", startOrMeasureOptions);
+
+      if (endMark !== undefined) {
+        endMark = webidl.converters.DOMString(endMark, {
+          prefix,
+          context: "Argument 3",
+        });
+      }
+
       if (
         startOrMeasureOptions && typeof startOrMeasureOptions === "object" &&
         Object.keys(startOrMeasureOptions).length > 0
