@@ -44,6 +44,13 @@ struct TestDescription {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct TestPlan {
+  pub origin: ModuleSpecifier,
+  pub pending: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 enum TestResult {
   Ok,
   Ignored,
@@ -53,6 +60,7 @@ enum TestResult {
 struct TestSummary {}
 
 trait TestReporter {
+  fn visit_plan(&mut self, plan: TestPlan);
   fn visit_wait(&mut self, description: TestDescription);
   fn visit_result(&mut self, description: TestDescription, result: TestResult);
   fn visit_summary(&mut self, result: TestSummary);
@@ -69,6 +77,14 @@ impl PrettyTestReporter {
 }
 
 impl TestReporter for PrettyTestReporter {
+  fn visit_plan(&mut self, plan: TestPlan) {
+    println!(
+      "running {} tests from {}",
+      plan.pending,
+      plan.origin.to_string()
+    );
+  }
+
   fn visit_wait(&mut self, description: TestDescription) {
     if !self.concurrent {
       print!("test {} ...", description.name);
@@ -117,6 +133,7 @@ fn create_reporter(concurrent: bool) -> Box<dyn TestReporter + Send> {
 }
 
 enum TestEvent {
+  Plan(TestPlan),
   Wait(TestDescription),
   Result(TestDescription, TestResult),
 }
@@ -218,6 +235,11 @@ where
     .enumerate()
     .filter(|(i, description)| true);
 
+  process_event(TestEvent::Plan(TestPlan {
+    origin: module_specifier,
+    pending: iterator.clone().count(),
+  }));
+
   for (index, description) in iterator {
     process_event(TestEvent::Wait(description.clone()));
 
@@ -308,6 +330,10 @@ pub async fn run_tests(
       let mut reporter = reporter_lock.lock().unwrap();
 
       match event {
+        TestEvent::Plan(plan) => {
+          reporter.visit_plan(plan);
+        }
+
         TestEvent::Wait(description) => {
           reporter.visit_wait(description);
         }
