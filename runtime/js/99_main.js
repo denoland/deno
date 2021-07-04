@@ -68,11 +68,13 @@ delete Object.prototype.__proto__;
       windowIsClosing = true;
       // Push a macrotask to exit after a promise resolve.
       // This is not perfect, but should be fine for first pass.
-      PromisePrototypeThen(PromiseResolve(), () =>
-        FunctionPrototypeCall(timers.setTimeout, null, () => {
-          // This should be fine, since only Window/MainWorker has .close()
-          os.exit(0);
-        }, 0)
+      PromisePrototypeThen(
+        PromiseResolve(),
+        () =>
+          FunctionPrototypeCall(timers.setTimeout, null, () => {
+            // This should be fine, since only Window/MainWorker has .close()
+            os.exit(0);
+          }, 0),
       );
     }
   }
