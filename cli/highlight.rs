@@ -1,3 +1,5 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
 use crate::ast;
 use crate::ast::TokenOrComment;
 use crate::colors;

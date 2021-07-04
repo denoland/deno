@@ -1,3 +1,5 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
 use crate::colors;
 use crate::highlight;
 use crate::media_type::MediaType;
