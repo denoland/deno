@@ -163,49 +163,59 @@ where
   let mut worker =
     create_main_worker(&program_state, module_specifier.clone(), permissions);
 
-  let execute_result = worker.execute_module(&module_specifier).await;
-  execute_result?;
+  let (tests, descriptions) = {
+    let execute_result = worker.execute_module(&module_specifier).await;
+    execute_result?;
 
-  let internal_tests_global = worker
-    .js_runtime
-    .execute_script("deno:test_module", "Deno[Deno.internal].tests")?;
+    let tests = worker
+      .js_runtime
+      .execute_script("deno:test_module", "Deno[Deno.internal].tests")?;
 
-  let mut scope = worker.js_runtime.handle_scope();
-  let internal_tests_array =
-    v8::Local::<v8::Value>::new(&mut scope, internal_tests_global);
-  assert!(internal_tests_array.is_array());
+    let mut scope = worker.js_runtime.handle_scope();
+    let value = v8::Local::<v8::Value>::new(&mut scope, tests.clone());
+    let descriptions: Vec<TestDescription> =
+      serde_v8::from_v8(&mut scope, value).unwrap();
 
-  let internal_tests_array =
-    v8::Local::<v8::Array>::try_from(internal_tests_array)?;
-  assert!(internal_tests_array.is_array());
+    (tests, descriptions)
+  };
 
-  let mut test_index = 0;
-  while let Some(test_value) =
-    internal_tests_array.get_index(&mut scope, test_index)
-  {
-    if test_value.is_null_or_undefined() {
-      break;
-    }
-    let test_description = serde_v8::from_v8(&mut scope, test_value).unwrap();
-    println!("run {:?}", test_description);
+  let iterator = descriptions
+    .iter()
+    .enumerate()
+    .filter(|(i, description)| true);
 
-    let test_object = v8::Local::<v8::Object>::try_from(test_value)?;
+  for (index, description) in iterator {
+    let promise = {
+      let mut scope = worker.js_runtime.handle_scope();
+      let tests = v8::Local::<v8::Value>::new(&mut scope, tests.clone());
+      let tests = v8::Local::<v8::Array>::try_from(tests).unwrap();
 
-    let fn_key = v8::String::new(&mut scope, "fn").unwrap();
-    let fn_value = test_object.get(&mut scope, fn_key.into()).unwrap();
-    let fn_function = v8::Local::<v8::Function>::try_from(fn_value)?;
+      let value = tests
+        .get_index(&mut scope, index.try_into().unwrap())
+        .unwrap();
+      let object = v8::Local::<v8::Object>::try_from(value)?;
 
-    let result_value = fn_function.call(&mut scope, test_value, &[]).unwrap();
-    assert!(result_value.is_promise());
+      let fn_key = v8::String::new(&mut scope, "fn").unwrap();
+      let fn_value = object.get(&mut scope, fn_key.into()).unwrap();
+      let fn_function = v8::Local::<v8::Function>::try_from(fn_value).unwrap();
 
-    let result_promise = v8::Local::<v8::Promise>::try_from(result_value)?;
-    assert!(result_promise.is_promise());
+      let result = fn_function.call(&mut scope, value, &[]).unwrap();
+      let result = v8::Local::<v8::Promise>::try_from(result).unwrap();
 
-    let test_result = future::poll_fn(|cx| {
-      // worker.poll_event_loop(cx, false);
+      v8::Global::<v8::Promise>::new(&mut scope, result.clone())
+    };
 
-      let result_promise_state = result_promise.state();
-      match result_promise_state {
+    let result = future::poll_fn(|cx| {
+      worker.poll_event_loop(cx, false);
+
+      let state = {
+        let mut scope = worker.js_runtime.handle_scope();
+        let promise = promise.get(&mut scope);
+
+        promise.state()
+      };
+
+      match state {
         v8::PromiseState::Pending => Poll::Pending,
         v8::PromiseState::Fulfilled => Poll::Ready(TestResult::Ok),
         v8::PromiseState::Rejected => {
@@ -215,9 +225,7 @@ where
     })
     .await;
 
-    process_result(test_description, test_result);
-
-    test_index += 1;
+    process_result(description, result);
   }
 
   Ok(())
