@@ -43,11 +43,13 @@
     StringPrototypeLocaleCompare,
     StringPrototypeToString,
     StringPrototypeTrim,
+    TypeError,
     NumberParseInt,
     RegExp,
     RegExpPrototypeTest,
     RegExpPrototypeToString,
     Set,
+    SetPrototypeEntries,
     SymbolPrototypeToString,
     SymbolToStringTag,
     SymbolHasInstance,
@@ -71,6 +73,7 @@
     MapPrototypeGet,
     MapPrototypeSet,
     MapPrototypeDelete,
+    MapPrototypeEntries,
     Error,
     ErrorCaptureStackTrace,
     MathCeil,
@@ -344,8 +347,19 @@
     }
 
     const entries = [];
+    let iter;
 
-    const iter = ArrayPrototypeEntries(value);
+    // TODO(littledivy): Avoid re-checking iterable type
+    if (ArrayIsArray(value)) {
+      iter = ArrayPrototypeEntries(iter);
+    } else if (value instanceof Set) {
+      iter = SetPrototypeEntries(iter);
+    } else if (value instanceof Map) {
+      iter = MapPrototypeEntries(iter);
+    } else {
+      throw new TypeError("Unreachable");
+    }
+
     let entriesLength = 0;
     const next = () => {
       return iter.next();
