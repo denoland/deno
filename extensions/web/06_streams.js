@@ -36,6 +36,7 @@
     WeakMapPrototypeHas,
     WeakMapPrototypeSet,
   } = globalThis.__bootstrap.primordials;
+  const { DOMException } = window.__bootstrap.domException;
 
   class AssertionError extends Error {
     constructor(msg) {
@@ -3036,13 +3037,8 @@
     if (WeakMapPrototypeHas(byteSizeFunctionWeakMap, globalObject)) {
       return;
     }
-    WeakMapPrototypeSet(
-      byteSizeFunctionWeakMap,
-      globalObject,
-      function size(chunk) {
-        return chunk.byteLength;
-      },
-    );
+    const size = (chunk) => chunk.byteLength;
+    WeakMapPrototypeSet(byteSizeFunctionWeakMap, globalObject, size);
   }
 
   class CountQueuingStrategy {
@@ -3093,13 +3089,8 @@
     if (WeakMapPrototypeHas(countSizeFunctionWeakMap, globalObject)) {
       return;
     }
-    WeakMapPrototypeSet(
-      countSizeFunctionWeakMap,
-      globalObject,
-      function size() {
-        return 1;
-      },
-    );
+    const size = () => 1;
+    WeakMapPrototypeSet(countSizeFunctionWeakMap, globalObject, size);
   }
 
   /** @template R */

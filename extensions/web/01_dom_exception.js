@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
+/// <reference path="../../core/internal.d.ts" />
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
@@ -9,9 +10,10 @@
 "use strict";
 
 ((window) => {
+  const { ObjectDefineProperty, ObjectEntries } =
+    window.__bootstrap.primordials;
   const webidl = window.__bootstrap.webidl;
 
-  const { defineProperty } = Object;
   // Defined in WebIDL 4.3.
   // https://heycam.github.io/webidl/#idl-DOMException
   const INDEX_SIZE_ERR = 1;
@@ -108,7 +110,7 @@
   webidl.configurePrototype(DOMException);
 
   for (
-    const [key, value] of Object.entries({
+    const [key, value] of ObjectEntries({
       INDEX_SIZE_ERR,
       DOMSTRING_SIZE_ERR,
       HIERARCHY_REQUEST_ERR,
@@ -137,10 +139,9 @@
     })
   ) {
     const desc = { value, enumerable: true };
-    defineProperty(DOMException, key, desc);
-    defineProperty(DOMException.prototype, key, desc);
+    ObjectDefineProperty(DOMException, key, desc);
+    ObjectDefineProperty(DOMException.prototype, key, desc);
   }
 
-  window.DOMException = DOMException;
-  defineProperty(window, "DOMException", { enumerable: false });
+  window.__bootstrap.domException = { DOMException };
 })(this);

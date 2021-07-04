@@ -8,41 +8,41 @@ failures:
 
 exit(0)
 AssertionError: Test case attempted to exit with exit code: 0
-    at assert (deno:runtime/js/06_util.js:33:13)
-    at deno:runtime/js/40_testing.js:78:9
-    at Object.exit (deno:runtime/js/30_os.js:48:7)
+    at assert (deno:runtime/js/06_util.js:36:13)
+    at deno:runtime/js/40_testing.js:92:9
+    at Object.exit (deno:runtime/js/30_os.js:52:7)
     at [WILDCARD]/test/exit_sanitizer.ts:2:8
-    at asyncOpSanitizer (deno:runtime/js/40_testing.js:21:15)
-    at resourceSanitizer (deno:runtime/js/40_testing.js:58:13)
-    at exitSanitizer (deno:runtime/js/40_testing.js:85:15)
-    at runTest (deno:runtime/js/40_testing.js:199:13)
-    at Object.runTests (deno:runtime/js/40_testing.js:244:13)
+    at asyncOpSanitizer (deno:runtime/js/40_testing.js:35:15)
+    at resourceSanitizer (deno:runtime/js/40_testing.js:72:13)
+    at exitSanitizer (deno:runtime/js/40_testing.js:99:15)
+    at runTest (deno:runtime/js/40_testing.js:218:13)
+    at Object.runTests (deno:runtime/js/40_testing.js:264:13)
     at [WILDCARD]/$deno$test.js:1:27
 
 exit(1)
 AssertionError: Test case attempted to exit with exit code: 1
-    at assert (deno:runtime/js/06_util.js:33:13)
-    at deno:runtime/js/40_testing.js:78:9
-    at Object.exit (deno:runtime/js/30_os.js:48:7)
+    at assert (deno:runtime/js/06_util.js:36:13)
+    at deno:runtime/js/40_testing.js:92:9
+    at Object.exit (deno:runtime/js/30_os.js:52:7)
     at [WILDCARD]/test/exit_sanitizer.ts:6:8
-    at asyncOpSanitizer (deno:runtime/js/40_testing.js:21:15)
-    at resourceSanitizer (deno:runtime/js/40_testing.js:58:13)
-    at exitSanitizer (deno:runtime/js/40_testing.js:85:15)
-    at runTest (deno:runtime/js/40_testing.js:199:13)
-    at Object.runTests (deno:runtime/js/40_testing.js:244:13)
+    at asyncOpSanitizer (deno:runtime/js/40_testing.js:35:15)
+    at resourceSanitizer (deno:runtime/js/40_testing.js:72:13)
+    at exitSanitizer (deno:runtime/js/40_testing.js:99:15)
+    at runTest (deno:runtime/js/40_testing.js:218:13)
+    at Object.runTests (deno:runtime/js/40_testing.js:264:13)
     at async [WILDCARD]/$deno$test.js:1:1
 
 exit(2)
 AssertionError: Test case attempted to exit with exit code: 2
-    at assert (deno:runtime/js/06_util.js:33:13)
-    at deno:runtime/js/40_testing.js:78:9
-    at Object.exit (deno:runtime/js/30_os.js:48:7)
+    at assert (deno:runtime/js/06_util.js:36:13)
+    at deno:runtime/js/40_testing.js:92:9
+    at Object.exit (deno:runtime/js/30_os.js:52:7)
     at [WILDCARD]/test/exit_sanitizer.ts:10:8
-    at asyncOpSanitizer (deno:runtime/js/40_testing.js:21:15)
-    at resourceSanitizer (deno:runtime/js/40_testing.js:58:13)
-    at exitSanitizer (deno:runtime/js/40_testing.js:85:15)
-    at runTest (deno:runtime/js/40_testing.js:199:13)
-    at Object.runTests (deno:runtime/js/40_testing.js:244:13)
+    at asyncOpSanitizer (deno:runtime/js/40_testing.js:35:15)
+    at resourceSanitizer (deno:runtime/js/40_testing.js:72:13)
+    at exitSanitizer (deno:runtime/js/40_testing.js:99:15)
+    at runTest (deno:runtime/js/40_testing.js:218:13)
+    at Object.runTests (deno:runtime/js/40_testing.js:264:13)
     at async [WILDCARD]/$deno$test.js:1:1
 
 failures:

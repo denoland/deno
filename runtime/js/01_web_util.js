@@ -2,6 +2,15 @@
 "use strict";
 
 ((window) => {
+  const {
+    FunctionPrototypeCall,
+    Map,
+    MapPrototypeGet,
+    MapPrototypeSet,
+    ObjectDefineProperty,
+    TypeError,
+    Symbol,
+  } = window.__bootstrap.primordials;
   const illegalConstructorKey = Symbol("illegalConstructorKey");
 
   function requiredArguments(
@@ -23,29 +32,34 @@
       if (typeof wrappedHandler.handler !== "function") {
         return;
       }
-      return wrappedHandler.handler.call(this, ...args);
+      return FunctionPrototypeCall(wrappedHandler.handler, this, ...args);
     }
     wrappedHandler.handler = handler;
     return wrappedHandler;
   }
   function defineEventHandler(emitter, name, defaultValue = undefined) {
     // HTML specification section 8.1.5.1
-    Object.defineProperty(emitter, `on${name}`, {
+    ObjectDefineProperty(emitter, `on${name}`, {
       get() {
-        return this[handlerSymbol]?.get(name)?.handler ?? defaultValue;
+        if (!this[handlerSymbol]) {
+          return defaultValue;
+        }
+
+        return MapPrototypeGet(this[handlerSymbol], name)?.handler ??
+          defaultValue;
       },
       set(value) {
         if (!this[handlerSymbol]) {
           this[handlerSymbol] = new Map();
         }
-        let handlerWrapper = this[handlerSymbol]?.get(name);
+        let handlerWrapper = MapPrototypeGet(this[handlerSymbol], name);
         if (handlerWrapper) {
           handlerWrapper.handler = value;
         } else {
           handlerWrapper = makeWrappedHandler(value);
           this.addEventListener(name, handlerWrapper);
         }
-        this[handlerSymbol].set(name, handlerWrapper);
+        MapPrototypeSet(this[handlerSymbol], name, handlerWrapper);
       },
       configurable: true,
       enumerable: true,

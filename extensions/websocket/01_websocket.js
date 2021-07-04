@@ -6,6 +6,7 @@
   const { URL } = window.__bootstrap.url;
   const webidl = window.__bootstrap.webidl;
   const { HTTP_TOKEN_CODE_POINT_RE } = window.__bootstrap.infra;
+  const { DOMException } = window.__bootstrap.domException;
 
   webidl.converters["sequence<DOMString> or DOMString"] = (V, opts) => {
     // Union for (sequence<DOMString> or DOMString)
