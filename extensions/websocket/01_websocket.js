@@ -8,6 +8,7 @@
   const { URL } = window.__bootstrap.url;
   const webidl = window.__bootstrap.webidl;
   const { HTTP_TOKEN_CODE_POINT_RE } = window.__bootstrap.infra;
+  const { DOMException } = window.__bootstrap.domException;
   const {
     ArrayBuffer,
     ArrayBufferIsView,
