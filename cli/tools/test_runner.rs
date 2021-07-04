@@ -116,6 +116,11 @@ fn create_reporter(concurrent: bool) -> Box<dyn TestReporter + Send> {
   Box::new(PrettyTestReporter::new(concurrent))
 }
 
+enum TestEvent {
+  Description(TestDescription),
+  Result(TestDescription, TestResult),
+}
+
 pub(crate) fn is_supported(p: &Path) -> bool {
   use std::path::Component;
   if let Some(Component::Normal(basename_os_str)) = p.components().next_back() {
@@ -184,13 +189,10 @@ async fn test_module<F>(
   program_state: Arc<ProgramState>,
   module_specifier: ModuleSpecifier,
   permissions: Permissions,
-  process_result: F,
+  process_event: F,
 ) -> Result<(), AnyError>
 where
-  F: Fn(TestDescription, TestResult) -> Result<(), AnyError>
-    + Send
-    + 'static
-    + Clone,
+  F: Fn(TestEvent) -> Result<(), AnyError> + Send + 'static + Clone,
 {
   let mut worker =
     create_main_worker(&program_state, module_specifier.clone(), permissions);
@@ -257,7 +259,7 @@ where
     })
     .await;
 
-    process_result(description.clone(), result.clone());
+    process_event(TestEvent::Result(description.clone(), result.clone()));
   }
 
   Ok(())
@@ -297,12 +299,21 @@ pub async fn run_tests(
   let concurrent = concurrent_jobs > 0;
   let reporter_lock = Arc::new(Mutex::new(create_reporter(concurrent)));
 
-  let process_result = {
+  let process_event = {
     let reporter_lock = reporter_lock.clone();
 
-    move |description: TestDescription, result: TestResult| {
+    move |event: TestEvent| {
       let mut reporter = reporter_lock.lock().unwrap();
-      reporter.visit_result(description, result);
+
+      match event {
+        TestEvent::Description(description) => {
+          reporter.visit_description(description);
+        }
+
+        TestEvent::Result(description, result) => {
+          reporter.visit_result(description, result)
+        }
+      }
 
       Ok(())
     }
@@ -312,7 +323,7 @@ pub async fn run_tests(
     let program_state = program_state.clone();
     let main_module = main_module.clone();
     let permissions = permissions.clone();
-    let process_result = process_result.clone();
+    let process_event = process_event.clone();
 
     tokio::task::spawn_blocking(move || {
       std::thread::spawn(move || {
@@ -320,7 +331,7 @@ pub async fn run_tests(
           program_state,
           main_module,
           permissions,
-          process_result,
+          process_event,
         ))
       })
       .join()
