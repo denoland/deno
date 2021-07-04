@@ -1225,5 +1225,5 @@ unitTest(
       method: "HEAD",
     });
     assertEquals(res.body, null);
-  }
-)
+  },
+);
