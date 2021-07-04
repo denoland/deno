@@ -6,7 +6,6 @@
   const { BadResource } = core;
   const {
     PromiseResolve,
-    Symbol,
     SymbolAsyncIterator,
     Uint8Array,
     TypedArrayPrototypeSubarray,
@@ -187,7 +186,7 @@
       core.close(this.rid);
     }
 
-    async *[Symbol.asyncIterator]() {
+    async *[SymbolAsyncIterator]() {
       while (true) {
         try {
           yield await this.receive();
