@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
+/// <reference path="../../core/internal.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
 /// <reference lib="esnext" />
@@ -14,6 +15,13 @@
     forgivingBase64Decode,
   } = window.__bootstrap.infra;
   const { DOMException } = window.__bootstrap.domException;
+  const {
+    ArrayPrototypeMap,
+    StringPrototypeCharCodeAt,
+    ArrayPrototypeJoin,
+    StringFromCharCode,
+    Uint8Array,
+  } = window.__bootstrap.primordials;
 
   /**
    * @param {string} data
@@ -26,10 +34,11 @@
     });
 
     const uint8Array = forgivingBase64Decode(data);
-    const result = [...uint8Array]
-      .map((byte) => String.fromCharCode(byte))
-      .join("");
-    return result;
+    const result = ArrayPrototypeMap(
+      [...uint8Array],
+      (byte) => StringFromCharCode(byte),
+    );
+    return ArrayPrototypeJoin(result, "");
   }
 
   /**
@@ -44,7 +53,7 @@
       context: "Argument 1",
     });
     const byteArray = [...data].map((char) => {
-      const charCode = char.charCodeAt(0);
+      const charCode = StringPrototypeCharCodeAt(char, 0);
       if (charCode > 0xff) {
         throw new DOMException(
           "The string to be encoded contains characters outside of the Latin1 range.",

@@ -1,9 +1,22 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
+// @ts-check
+/// <reference path="../../core/internal.d.ts" />
+
 ((window) => {
   const webidl = window.__bootstrap.webidl;
   const { setIsTrusted, defineEventHandler } = window.__bootstrap.event;
+  const {
+    Boolean,
+    Set,
+    SetPrototypeAdd,
+    SetPrototypeClear,
+    SetPrototypeDelete,
+    Symbol,
+    SymbolToStringTag,
+    TypeError,
+  } = window.__bootstrap.primordials;
 
   const add = Symbol("add");
   const signalAbort = Symbol("signalAbort");
@@ -22,7 +35,7 @@
     }
 
     [add](algorithm) {
-      this.#abortAlgorithms.add(algorithm);
+      SetPrototypeAdd(this.#abortAlgorithms, algorithm);
     }
 
     [signalAbort]() {
@@ -33,14 +46,14 @@
       for (const algorithm of this.#abortAlgorithms) {
         algorithm();
       }
-      this.#abortAlgorithms.clear();
+      SetPrototypeClear(this.#abortAlgorithms);
       const event = new Event("abort");
       setIsTrusted(event, true);
       this.dispatchEvent(event);
     }
 
     [remove](algorithm) {
-      this.#abortAlgorithms.delete(algorithm);
+      SetPrototypeDelete(this.#abortAlgorithms, algorithm);
     }
 
     constructor(key = null) {
@@ -55,7 +68,7 @@
       return Boolean(this.#aborted);
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "AbortSignal";
     }
   }
@@ -74,7 +87,7 @@
       this.#signal[signalAbort]();
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "AbortController";
     }
   }
