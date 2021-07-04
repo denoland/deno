@@ -612,7 +612,7 @@
 
     /** @param {any} resource */
     trackResource(resource) {
-      this.resources.push(new WeakRef(resource));
+      ArrayPrototypePush(this.resources, new WeakRef(resource));
     }
 
     /** @param {{ type: string, value: string | null } | undefined} err */
@@ -1310,7 +1310,7 @@
       if (device.isLost) {
         throw new DOMException("Device has been lost.", "OperationError");
       }
-      const scope = device.errorScopeStack.pop();
+      const scope = ArrayPrototypePop(device.errorScopeStack);
       if (!scope) {
         throw new DOMException(
           "There are no error scopes on that stack.",
@@ -1758,7 +1758,7 @@
         new Uint8Array(buffer),
       );
 
-      mappedRanges.push([buffer, rid, offset]);
+      ArrayPrototypePush(mappedRanges, [buffer, rid, offset]);
 
       return buffer;
     }
