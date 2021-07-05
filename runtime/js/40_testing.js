@@ -192,17 +192,16 @@ finishing test case.`;
   }
 
   async function runTest({ ignore, fn, permissions }) {
+    if (ignore) {
+      return "ignored";
+    }
+
     let token = null;
 
     try {
       if (permissions) {
         token = pledgeTestPermissions(permissions);
       }
-
-      if (ignore) {
-        return "ignored";
-      }
-
       await fn();
 
       return "ok";
