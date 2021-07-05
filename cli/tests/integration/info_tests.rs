@@ -111,3 +111,10 @@ itest!(_054_info_local_imports {
   output: "054_info_local_imports.out",
   exit_code: 0,
 });
+
+// Tests for AssertionError where "data" is unexpectedly null when
+// a file contains only triple slash references (#11196)
+itest!(data_null_error {
+  args: "info info/data_null_error/mod.ts",
+  output: "info/data_null_error/data_null_error.out",
+});
