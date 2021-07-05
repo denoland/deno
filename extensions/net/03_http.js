@@ -140,7 +140,10 @@
       if (innerResp.body !== null) {
         if (innerResp.body.unusable()) throw new TypeError("Body is unusable.");
         if (innerResp.body.streamOrStatic instanceof ReadableStream) {
-          if (innerResp.body.length === null) {
+          if (
+            innerResp.body.length === null ||
+            innerResp.body.source instanceof Blob
+          ) {
             respBody = innerResp.body.stream;
           } else {
             const reader = innerResp.body.stream.getReader();

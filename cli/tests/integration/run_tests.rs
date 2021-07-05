@@ -366,6 +366,12 @@ itest!(js_import_detect {
   exit_code: 0,
 });
 
+itest!(blob_gc_finalization {
+  args: "run blob_gc_finalization.js",
+  output: "blob_gc_finalization.js.out",
+  exit_code: 0,
+});
+
 itest!(lock_write_requires_lock {
   args: "run --lock-write some_file.ts",
   output: "lock_write_requires_lock.out",

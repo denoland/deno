@@ -121,7 +121,7 @@ fn create_web_worker_callback(
       ts_version: version::TYPESCRIPT.to_string(),
       no_color: !colors::use_color(),
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
-      blob_url_store: program_state.blob_url_store.clone(),
+      blob_store: program_state.blob_store.clone(),
       broadcast_channel: program_state.broadcast_channel.clone(),
     };
 
@@ -207,7 +207,7 @@ pub fn create_main_worker(
         .join("location_data")
         .join(checksum::gen(&[loc.to_string().as_bytes()]))
     }),
-    blob_url_store: program_state.blob_url_store.clone(),
+    blob_store: program_state.blob_store.clone(),
     broadcast_channel: program_state.broadcast_channel.clone(),
   };
 

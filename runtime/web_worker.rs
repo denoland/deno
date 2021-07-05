@@ -29,7 +29,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_web::create_entangled_message_port;
-use deno_web::BlobUrlStore;
+use deno_web::BlobStore;
 use deno_web::MessagePort;
 use log::debug;
 use std::cell::RefCell;
@@ -267,7 +267,7 @@ pub struct WebWorkerOptions {
   /// Sets `Deno.noColor` in JS runtime.
   pub no_color: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
-  pub blob_url_store: BlobUrlStore,
+  pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
 }
 
@@ -294,7 +294,7 @@ impl WebWorker {
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
-      deno_web::init(options.blob_url_store.clone(), Some(main_module.clone())),
+      deno_web::init(options.blob_store.clone(), Some(main_module.clone())),
       deno_fetch::init::<Permissions>(
         options.user_agent.clone(),
         options.ca_data.clone(),

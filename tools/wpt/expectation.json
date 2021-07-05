@@ -986,16 +986,7 @@
       "filereader_readAsDataURL.any.html": true,
       "filereader_readAsText.any.html": true,
       "filereader_readystate.any.html": true,
-      "filereader_result.any.html": [
-        "result is null during \"loadstart\" event for readAsText",
-        "result is null during \"loadstart\" event for readAsDataURL",
-        "result is null during \"loadstart\" event for readAsArrayBuffer",
-        "result is null during \"loadstart\" event for readAsBinaryString",
-        "result is null during \"progress\" event for readAsText",
-        "result is null during \"progress\" event for readAsDataURL",
-        "result is null during \"progress\" event for readAsArrayBuffer",
-        "result is null during \"progress\" event for readAsBinaryString"
-      ]
+      "filereader_result.any.html": true
     }
   },
   "html": {

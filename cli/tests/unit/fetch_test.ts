@@ -821,7 +821,9 @@ unitTest(function responseRedirect(): void {
 unitTest(async function responseWithoutBody(): Promise<void> {
   const response = new Response();
   assertEquals(await response.arrayBuffer(), new ArrayBuffer(0));
-  assertEquals(await response.blob(), new Blob([]));
+  const blob = await response.blob();
+  assertEquals(blob.size, 0);
+  assertEquals(await blob.arrayBuffer(), new ArrayBuffer(0));
   assertEquals(await response.text(), "");
   await assertThrowsAsync(async () => {
     await response.json();

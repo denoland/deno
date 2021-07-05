@@ -794,6 +794,7 @@ dependencies = [
 name = "deno_web"
 version = "0.41.1"
 dependencies = [
+ "async-trait",
  "base64 0.13.0",
  "deno_core",
  "encoding_rs",
