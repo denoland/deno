@@ -283,12 +283,8 @@
     "idlharness.any.html": [
       "Performance interface: existence and properties of interface object",
       "Performance interface: existence and properties of interface prototype object",
-      "Performance interface: operation now()",
       "Performance interface: attribute timeOrigin",
-      "Performance interface: operation toJSON()",
-      "Stringification of performance",
       "Performance interface: performance must inherit property \"timeOrigin\" with the proper type",
-      "Performance interface: performance must inherit property \"toJSON()\" with the proper type",
       "Performance interface: default toJSON operation on performance",
       "Window interface: attribute performance"
     ],
@@ -507,17 +503,7 @@
     "clear_one_mark.any.html": true,
     "clear_one_measure.any.html": true,
     "entry_type.any.html": true,
-    "idlharness.any.html": [
-      "PerformanceMark interface: attribute detail",
-      "PerformanceMeasure interface object length",
-      "PerformanceMeasure interface: attribute detail",
-      "Performance interface: operation mark(DOMString, optional PerformanceMarkOptions)",
-      "Performance interface: operation clearMarks(optional DOMString)",
-      "Performance interface: operation measure(DOMString, optional (DOMString or PerformanceMeasureOptions), optional DOMString)",
-      "Performance interface: operation clearMeasures(optional DOMString)",
-      "Performance interface: calling mark(DOMString, optional PerformanceMarkOptions) on performance with too few arguments must throw TypeError",
-      "Performance interface: calling measure(DOMString, optional (DOMString or PerformanceMeasureOptions), optional DOMString) on performance with too few arguments must throw TypeError"
-    ],
+    "idlharness.any.html": true,
     "mark-entry-constructor.any.html": true,
     "mark-errors.any.html": true,
     "mark-l3.any.html": false,
