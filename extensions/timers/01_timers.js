@@ -4,22 +4,22 @@
 ((window) => {
   const core = window.Deno.core;
   const {
-    Map,
-    Error,
+    ArrayPrototypeIndexOf,
     ArrayPrototypePush,
+    ArrayPrototypeShift,
+    ArrayPrototypeSplice,
+    DateNow,
+    Error,
+    FunctionPrototypeBind,
+    Map,
+    MapPrototypeDelete,
+    MapPrototypeGet,
+    MapPrototypeHas,
+    MapPrototypeSet,
     MathMax,
-    TypeError,
     Number,
     String,
-    ArrayPrototypeShift,
-    ArrayPrototypeIndexOf,
-    ArrayPrototypeSplice,
-    MapPrototypeHas,
-    MapPrototypeDelete,
-    MapPrototypeSet,
-    MapPrototypeGet,
-    FunctionPrototypeBind,
-    DateNow,
+    TypeError,
   } = window.__bootstrap.primordials;
 
   // Shamelessly cribbed from extensions/fetch/11_streams.js
