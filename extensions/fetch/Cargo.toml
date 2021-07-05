@@ -19,7 +19,6 @@ data-url = "0.1.0"
 deno_core = { version = "0.92.0", path = "../../core" }
 deno_web = { version = "0.41.1", path = "../web" }
 http = "0.2.4"
-hyper = "0.14.9"
 reqwest = { version = "0.11.3", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
 serde = { version = "1.0.125", features = ["derive"] }
 tokio = { version = "1.7.1", features = ["full"] }

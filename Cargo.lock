@@ -676,7 +676,6 @@ dependencies = [
  "deno_core",
  "deno_web",
  "http",
- "hyper",
  "reqwest",
  "serde",
  "tokio",
