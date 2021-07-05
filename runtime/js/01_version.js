@@ -2,6 +2,8 @@
 "use strict";
 
 ((window) => {
+  const { ObjectFreeze } = window.__bootstrap.primordials;
+
   const version = {
     deno: "",
     v8: "",
@@ -17,7 +19,7 @@
     version.v8 = v8Version;
     version.typescript = tsVersion;
 
-    Object.freeze(version);
+    ObjectFreeze(version);
   }
 
   window.__bootstrap.version = {

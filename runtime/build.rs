@@ -59,6 +59,7 @@ fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
       false, // No --unstable.
     ),
+    deno_net::init::<deno_net::NoNetPermissions>(false), // No --unstable.
   ];
 
   let js_runtime = JsRuntime::new(RuntimeOptions {

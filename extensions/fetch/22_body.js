@@ -41,14 +41,16 @@
     get stream() {
       if (!(this.streamOrStatic instanceof ReadableStream)) {
         const { body, consumed } = this.streamOrStatic;
-        this.streamOrStatic = new ReadableStream({
-          start(controller) {
-            controller.enqueue(body);
-            controller.close();
-          },
-        });
         if (consumed) {
-          this.streamOrStatic.cancel();
+          this.streamOrStatic = new ReadableStream();
+          this.streamOrStatic.getReader();
+        } else {
+          this.streamOrStatic = new ReadableStream({
+            start(controller) {
+              controller.enqueue(body);
+              controller.close();
+            },
+          });
         }
       }
       return this.streamOrStatic;

@@ -3,6 +3,12 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const {
+    Date,
+    MathTrunc,
+    SymbolAsyncIterator,
+    SymbolIterator,
+  } = window.__bootstrap.primordials;
   const { pathFromURL } = window.__bootstrap.util;
   const build = window.__bootstrap.build.build;
 
@@ -103,7 +109,7 @@
 
   function readDirSync(path) {
     return core.opSync("op_read_dir_sync", pathFromURL(path))[
-      Symbol.iterator
+      SymbolIterator
     ]();
   }
 
@@ -113,7 +119,7 @@
       pathFromURL(path),
     );
     return {
-      async *[Symbol.asyncIterator]() {
+      async *[SymbolAsyncIterator]() {
         yield* await array;
       },
     };
@@ -273,8 +279,8 @@
   function toUnixTimeFromEpoch(value) {
     if (value instanceof Date) {
       const time = value.valueOf();
-      const seconds = Math.trunc(time / 1e3);
-      const nanoseconds = Math.trunc(time - (seconds * 1e3)) * 1e6;
+      const seconds = MathTrunc(time / 1e3);
+      const nanoseconds = MathTrunc(time - (seconds * 1e3)) * 1e6;
 
       return [
         seconds,

@@ -26,6 +26,7 @@
     abortedNetworkError,
   } = window.__bootstrap.fetch;
   const abortSignal = window.__bootstrap.abortSignal;
+  const { DOMException } = window.__bootstrap.domException;
 
   const REQUEST_BODY_HEADER_NAMES = [
     "content-encoding",
@@ -431,6 +432,63 @@
     return error;
   }
 
+  /**
+   * Handle the Promise<Response> argument to the WebAssembly streaming
+   * APIs. This function should be registered through
+   * `Deno.core.setWasmStreamingCallback`.
+   *
+   * @param {any} source The source parameter that the WebAssembly
+   * streaming API was called with.
+   * @param {number} rid An rid that can be used with
+   * `Deno.core.wasmStreamingFeed`.
+   */
+  function handleWasmStreaming(source, rid) {
+    // This implements part of
+    // https://webassembly.github.io/spec/web-api/#compile-a-potential-webassembly-response
+    (async () => {
+      try {
+        const res = webidl.converters["Response"](await source, {
+          prefix: "Failed to call 'WebAssembly.compileStreaming'",
+          context: "Argument 1",
+        });
+
+        // 2.3.
+        // The spec is ambiguous here, see
+        // https://github.com/WebAssembly/spec/issues/1138. The WPT tests
+        // expect the raw value of the Content-Type attribute lowercased.
+        if (
+          res.headers.get("Content-Type")?.toLowerCase() !== "application/wasm"
+        ) {
+          throw new TypeError("Invalid WebAssembly content type.");
+        }
+
+        // 2.5.
+        if (!res.ok) {
+          throw new TypeError(`HTTP status code ${res.status}`);
+        }
+
+        // 2.6.
+        // Rather than consuming the body as an ArrayBuffer, this passes each
+        // chunk to the feed as soon as it's available.
+        if (res.body !== null) {
+          const reader = res.body.getReader();
+          while (true) {
+            const { value: chunk, done } = await reader.read();
+            if (done) break;
+            Deno.core.wasmStreamingFeed(rid, "bytes", chunk);
+          }
+        }
+
+        // 2.7.
+        Deno.core.wasmStreamingFeed(rid, "finish");
+      } catch (err) {
+        // 2.8 and 3
+        Deno.core.wasmStreamingFeed(rid, "abort", err);
+      }
+    })();
+  }
+
   window.__bootstrap.fetch ??= {};
   window.__bootstrap.fetch.fetch = fetch;
+  window.__bootstrap.fetch.handleWasmStreaming = handleWasmStreaming;
 })(this);

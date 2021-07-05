@@ -6,6 +6,11 @@
   const { read, readSync, write, writeSync } = window.__bootstrap.io;
   const { ftruncate, ftruncateSync, fstat, fstatSync } = window.__bootstrap.fs;
   const { pathFromURL } = window.__bootstrap.util;
+  const {
+    Error,
+    ObjectValues,
+    ArrayPrototypeFilter,
+  } = window.__bootstrap.primordials;
 
   function seekSync(
     rid,
@@ -193,7 +198,12 @@
   const stderr = new Stderr();
 
   function checkOpenOptions(options) {
-    if (Object.values(options).filter((val) => val === true).length === 0) {
+    if (
+      ArrayPrototypeFilter(
+        ObjectValues(options),
+        (val) => val === true,
+      ).length === 0
+    ) {
       throw new Error("OpenOptions requires at least one option to be true");
     }
 
