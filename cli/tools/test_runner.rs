@@ -111,7 +111,7 @@ impl TestReporter for PrettyTestReporter {
       TestResult::Ignored => {
         println!(
           " {} {}",
-          colors::green("ok"),
+          colors::yellow("ignored"),
           colors::gray(format!("({}ms)", duration))
         );
       }
@@ -119,7 +119,7 @@ impl TestReporter for PrettyTestReporter {
       TestResult::Failed(_) => {
         println!(
           " {} {}",
-          colors::green("ok"),
+          colors::red("FAILED"),
           colors::gray(format!("({}ms)", duration))
         );
       }
