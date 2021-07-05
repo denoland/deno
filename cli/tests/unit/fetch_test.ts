@@ -3,6 +3,7 @@ import {
   assert,
   assertEquals,
   assertThrowsAsync,
+  deferred,
   fail,
   unimplemented,
   unitTest,
@@ -1193,5 +1194,26 @@ unitTest(
     listener.close();
 
     assertEquals(response.headers.get("Host"), addr);
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchNoServerReadableStreamBody() {
+    const done = deferred();
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1]));
+        setTimeout(() => {
+          controller.enqueue(new Uint8Array([2]));
+          done.resolve();
+        }, 1000);
+      },
+    });
+    const nonExistantHostname = "http://localhost:47582";
+    await assertThrowsAsync(async () => {
+      await fetch(nonExistantHostname, { body, method: "POST" });
+    }, TypeError);
+    await done;
   },
 );

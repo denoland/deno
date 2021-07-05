@@ -60,6 +60,7 @@ fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
       false, // No --unstable.
     ),
     deno_ffi::init::<deno_ffi::NoFfiPermissions>(false),
+    deno_net::init::<deno_net::NoNetPermissions>(false), // No --unstable.
   ];
 
   let js_runtime = JsRuntime::new(RuntimeOptions {
