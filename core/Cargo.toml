@@ -32,4 +32,4 @@ path = "examples/http_bench_json_ops.rs"
 
 # These dependencies are only used for the 'http_bench_*_ops' examples.
 [dev-dependencies]
-tokio = { version = "1.7.1", features = ["full"] }
+tokio = { version = "1.8.0", features = ["full"] }
