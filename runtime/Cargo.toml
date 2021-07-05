@@ -68,7 +68,7 @@ ring = "0.16.20"
 serde = { version = "1.0.125", features = ["derive"] }
 sys-info = "0.9.0"
 termcolor = "1.1.2"
-tokio = { version = "1.7.1", features = ["full"] }
+tokio = { version = "1.8.0", features = ["full"] }
 uuid = { version = "0.8.2", features = ["v4"] }
 
 [target.'cfg(windows)'.dependencies]
