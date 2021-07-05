@@ -20,7 +20,6 @@
     StringPrototypeCharCodeAt,
     ArrayPrototypeJoin,
     StringFromCharCode,
-    Uint8Array,
     Uint8ArrayFrom,
   } = window.__bootstrap.primordials;
 
