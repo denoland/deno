@@ -403,7 +403,6 @@
           prefix,
           context: "Argument 2",
         });
-      console.log("foooobarrrrrr", startOrMeasureOptions);
 
       if (endMark !== undefined) {
         endMark = webidl.converters.DOMString(endMark, {
