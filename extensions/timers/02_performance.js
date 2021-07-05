@@ -2,12 +2,25 @@
 "use strict";
 
 ((window) => {
+  const {
+    ArrayPrototypeFilter,
+    ArrayPrototypeFind,
+    ArrayPrototypePush,
+    ArrayPrototypeReverse,
+    ArrayPrototypeSlice,
+    ObjectKeys,
+    Symbol,
+    SymbolFor,
+    SymbolToStringTag,
+    TypeError,
+  } = window.__bootstrap.primordials;
+
   const { webidl, structuredClone } = window.__bootstrap;
   const { opNow } = window.__bootstrap.timers;
   const { DOMException } = window.__bootstrap.domException;
 
   const illegalConstructorKey = Symbol("illegalConstructorKey");
-  const customInspect = Symbol.for("Deno.customInspect");
+  const customInspect = SymbolFor("Deno.customInspect");
   let performanceEntries = [];
 
   webidl.converters["PerformanceMarkOptions"] = webidl
@@ -66,10 +79,10 @@
     name,
     type,
   ) {
-    return performanceEntries
-      .slice()
-      .reverse()
-      .find((entry) => entry.name === name && entry.entryType === type);
+    return ArrayPrototypeFind(
+      ArrayPrototypeReverse(ArrayPrototypeSlice(performanceEntries)),
+      (entry) => entry.name === name && entry.entryType === type,
+    );
   }
 
   function convertMarkToTimestamp(mark) {
@@ -93,7 +106,8 @@
     name,
     type,
   ) {
-    return performanceEntries.filter(
+    return ArrayPrototypeFilter(
+      performanceEntries,
       (entry) =>
         (name ? entry.name === name : true) &&
         (type ? entry.entryType === type : true),
@@ -168,7 +182,7 @@
 
   const _detail = Symbol("[[detail]]");
   class PerformanceMark extends PerformanceEntry {
-    [Symbol.toStringTag] = "PerformanceMark";
+    [SymbolToStringTag] = "PerformanceMark";
 
     [_detail] = null;
 
@@ -227,7 +241,7 @@
   webidl.configurePrototype(PerformanceMark);
 
   class PerformanceMeasure extends PerformanceEntry {
-    [Symbol.toStringTag] = "PerformanceMeasure";
+    [SymbolToStringTag] = "PerformanceMeasure";
 
     [_detail] = null;
 
@@ -287,11 +301,13 @@
           context: "Argument 1",
         });
 
-        performanceEntries = performanceEntries.filter(
+        performanceEntries = ArrayPrototypeFilter(
+          performanceEntries,
           (entry) => !(entry.name === markName && entry.entryType === "mark"),
         );
       } else {
-        performanceEntries = performanceEntries.filter(
+        performanceEntries = ArrayPrototypeFilter(
+          performanceEntries,
           (entry) => entry.entryType !== "mark",
         );
       }
@@ -305,12 +321,14 @@
           context: "Argument 1",
         });
 
-        performanceEntries = performanceEntries.filter(
+        performanceEntries = ArrayPrototypeFilter(
+          performanceEntries,
           (entry) =>
             !(entry.name === measureName && entry.entryType === "measure"),
         );
       } else {
-        performanceEntries = performanceEntries.filter(
+        performanceEntries = ArrayPrototypeFilter(
+          performanceEntries,
           (entry) => entry.entryType !== "measure",
         );
       }
@@ -380,7 +398,7 @@
       // throw a SyntaxError. - not implemented
       const entry = new PerformanceMark(markName, markOptions);
       // 3.1.1.7 Queue entry - not implemented
-      performanceEntries.push(entry);
+      ArrayPrototypePush(performanceEntries, entry);
       return entry;
     }
 
@@ -413,7 +431,7 @@
 
       if (
         startOrMeasureOptions && typeof startOrMeasureOptions === "object" &&
-        Object.keys(startOrMeasureOptions).length > 0
+        ObjectKeys(startOrMeasureOptions).length > 0
       ) {
         if (endMark) {
           throw new TypeError("Options cannot be passed with endMark.");
@@ -483,7 +501,7 @@
           : null,
         illegalConstructorKey,
       );
-      performanceEntries.push(entry);
+      ArrayPrototypePush(performanceEntries, entry);
       return entry;
     }
 
@@ -501,7 +519,7 @@
       return `${this.constructor.name} ${inspect(this.toJSON())}`;
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "Performance";
     }
   }
