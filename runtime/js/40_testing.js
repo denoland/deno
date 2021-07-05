@@ -191,48 +191,23 @@ finishing test case.`;
     core.opSync("op_restore_test_permissions", token);
   }
 
-  async function runTest({ name, ignore, fn, permissions }) {
+  async function runTest({ ignore, fn, permissions }) {
     let token = null;
-    const time = DateNow();
 
     try {
-      postTestMessage("wait", {
-        name,
-      });
-
       if (permissions) {
         token = pledgeTestPermissions(permissions);
       }
 
       if (ignore) {
-        const duration = DateNow() - time;
-        postTestMessage("result", {
-          name,
-          duration,
-          result: "ignored",
-        });
-
-        return;
+        return "ignored";
       }
 
       await fn();
 
-      const duration = DateNow() - time;
-      postTestMessage("result", {
-        name,
-        duration,
-        result: "ok",
-      });
+      return "ok";
     } catch (error) {
-      const duration = DateNow() - time;
-
-      postTestMessage("result", {
-        name,
-        duration,
-        result: {
-          "failed": inspectArgs([error]),
-        },
-      });
+      return { "failed": inspectArgs([error]) };
     } finally {
       if (token) {
         restoreTestPermissions(token);
@@ -261,7 +236,24 @@ finishing test case.`;
     });
 
     for (const test of pending) {
-      await runTest(test);
+      const {
+        name,
+      } = test;
+
+      const earlier = DateNow();
+
+      postTestMessage("wait", {
+        name,
+      });
+
+      const result = await runTest(test);
+      const duration = DateNow() - earlier;
+
+      postTestMessage("result", {
+        name,
+        result,
+        duration,
+      });
     }
 
     if (disableLog) {
