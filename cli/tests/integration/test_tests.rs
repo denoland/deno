@@ -31,6 +31,12 @@ itest!(ignore {
   output: "test/ignore.out",
 });
 
+itest!(ignore_permissions {
+  args: "test --unstable test/ignore_permissions.ts",
+  exit_code: 0,
+  output: "test/ignore_permissions.out",
+});
+
 itest!(fail {
   args: "test test/fail.ts",
   exit_code: 1,
