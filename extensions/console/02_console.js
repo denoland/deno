@@ -701,7 +701,7 @@
     switch (typeof value) {
       case "string": {
         const trunc = value.length > STR_ABBREVIATE_SIZE
-          ? ArrayPrototypeSlice(value, 0, STR_ABBREVIATE_SIZE) + "..."
+          ? StringPrototypeSlice(value, 0, STR_ABBREVIATE_SIZE) + "..."
           : value;
         return green(quoteString(trunc)); // Quoted strings are green
       }
