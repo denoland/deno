@@ -254,7 +254,7 @@ finishing test case.`;
       }(shuffle));
 
       for (let i = pending.length - 1; i > 0; i--) {
-        const j = 1 + nextInt(pending.length - 1);
+        const j = nextInt(i);
         [pending[i], pending[j]] = [pending[j], pending[i]];
       }
     }
