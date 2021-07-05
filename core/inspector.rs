@@ -23,6 +23,7 @@ use crate::serde_json;
 use crate::serde_json::json;
 use crate::serde_json::Value;
 use crate::v8;
+use parking_lot::Mutex;
 use std::cell::BorrowMutError;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -35,7 +36,6 @@ use std::ptr;
 use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::thread;
 
 /// If first argument is `None` then it's a notification, otherwise
@@ -452,7 +452,7 @@ impl InspectorWaker {
   where
     F: FnOnce(&mut InspectorWakerInner) -> R,
   {
-    let mut g = self.0.lock().unwrap();
+    let mut g = self.0.lock();
     update_fn(&mut g)
   }
 }

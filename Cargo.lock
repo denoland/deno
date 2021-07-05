@@ -630,6 +630,7 @@ dependencies = [
  "lazy_static",
  "libc",
  "log",
+ "parking_lot",
  "pin-project",
  "rusty_v8",
  "serde",

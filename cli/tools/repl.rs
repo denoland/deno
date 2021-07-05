@@ -9,6 +9,7 @@ use crate::media_type::MediaType;
 use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
@@ -28,7 +29,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
 use swc_ecmascript::parser::token::{Token, Word};
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::unbounded_channel;
@@ -324,21 +324,17 @@ impl ReplEditor {
   }
 
   pub fn readline(&self) -> Result<String, ReadlineError> {
-    self.inner.lock().unwrap().readline("> ")
+    self.inner.lock().readline("> ")
   }
 
   pub fn add_history_entry(&self, entry: String) {
-    self.inner.lock().unwrap().add_history_entry(entry);
+    self.inner.lock().add_history_entry(entry);
   }
 
   pub fn save_history(&self) -> Result<(), AnyError> {
     std::fs::create_dir_all(self.history_file_path.parent().unwrap())?;
 
-    self
-      .inner
-      .lock()
-      .unwrap()
-      .save_history(&self.history_file_path)?;
+    self.inner.lock().save_history(&self.history_file_path)?;
     Ok(())
   }
 }
