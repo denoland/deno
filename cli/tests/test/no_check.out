@@ -4,5 +4,5 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WIL
 error: Uncaught TypeError: Cannot read property 'fn' of undefined
 Deno.test();
      ^
-    at Object.test (deno:runtime/js/40_testing.js:135:14)
+    at [WILDCARD]
     at [WILDCARD]/test/no_check.ts:1:6
