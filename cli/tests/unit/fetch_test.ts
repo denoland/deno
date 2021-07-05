@@ -1217,3 +1217,13 @@ unitTest(
     await done;
   },
 );
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchHeadRespBody() {
+    const res = await fetch("http://localhost:4545/echo_server", {
+      method: "HEAD",
+    });
+    assertEquals(res.body, null);
+  },
+);
