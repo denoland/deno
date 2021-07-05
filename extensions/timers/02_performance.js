@@ -242,9 +242,9 @@
     }
 
     constructor(
-      name,
-      startTime,
-      duration,
+      name = null,
+      startTime = null,
+      duration = null,
       detail = null,
       key = undefined,
     ) {

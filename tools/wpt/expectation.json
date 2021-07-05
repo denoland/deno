@@ -494,9 +494,7 @@
     "clear_one_mark.any.html": true,
     "clear_one_measure.any.html": true,
     "entry_type.any.html": true,
-    "idlharness.any.html": [
-      "PerformanceMeasure interface object length"
-    ],
+    "idlharness.any.html": true,
     "mark-entry-constructor.any.html": true,
     "mark-errors.any.html": true,
     "mark-l3.any.html": false,
