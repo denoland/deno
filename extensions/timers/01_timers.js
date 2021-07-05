@@ -5,7 +5,6 @@
   const core = window.Deno.core;
   const {
     Map,
-    Date,
     Error,
     ArrayPrototypePush,
     MathMax,
@@ -20,6 +19,7 @@
     MapPrototypeSet,
     MapPrototypeGet,
     FunctionPrototypeBind,
+    DateNow
   } = window.__bootstrap.primordials;
 
   // Shamelessly cribbed from extensions/fetch/11_streams.js
@@ -308,7 +308,6 @@
   }
 
   const { console } = globalThis;
-  const OriginalDateNow = Date.now;
 
   // Timeout values > TIMEOUT_MAX are set to 1.
   const TIMEOUT_MAX = 2 ** 31 - 1;
@@ -366,7 +365,7 @@
   }
 
   function prepareReadyTimers() {
-    const now = OriginalDateNow();
+    const now = DateNow();
     // Bail out if we're not expecting the global timer to fire.
     if (globalTimeoutDue === null || pendingEvents > 0) {
       return;
@@ -442,7 +441,7 @@
         const nextDueNode = dueTree.min();
         setOrClearGlobalTimeout(
           nextDueNode && nextDueNode.due,
-          OriginalDateNow(),
+          DateNow(),
         );
       }
     } else {
@@ -467,7 +466,7 @@
     } else {
       // Interval timer: compute when timer was supposed to fire next.
       // However make sure to never schedule the next interval in the past.
-      const now = OriginalDateNow();
+      const now = DateNow();
       timer.due = MathMax(now, timer.due + timer.delay);
       schedule(timer, now);
     }
@@ -506,7 +505,7 @@
     // In the browser, the delay value must be coercible to an integer between 0
     // and INT32_MAX. Any other value will cause the timer to fire immediately.
     // We emulate this behavior.
-    const now = OriginalDateNow();
+    const now = DateNow();
     if (delay > TIMEOUT_MAX) {
       console.warn(
         `${delay} does not fit into` +
