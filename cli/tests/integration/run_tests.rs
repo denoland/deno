@@ -866,6 +866,12 @@ itest!(top_level_await_circular {
   exit_code: 1,
 });
 
+// Regression test for https://github.com/denoland/deno/issues/11238.
+itest!(top_level_await_nested {
+  args: "run --allow-read top_level_await_nested/main.js",
+  output: "top_level_await_nested.out",
+});
+
 itest!(top_level_await_unresolved {
   args: "run top_level_await_unresolved.js",
   output: "top_level_await_unresolved.out",
