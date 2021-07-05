@@ -241,7 +241,7 @@ finishing test case.`;
       only: only.length > 0,
     });
 
-    if (shuffle) {
+    if (shuffle !== null) {
       // http://en.wikipedia.org/wiki/Linear_congruential_generator
       const nextInt = (function (state) {
         const m = 0x80000000;
