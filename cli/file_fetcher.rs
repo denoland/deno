@@ -381,8 +381,8 @@ impl FileFetcher {
       ));
     }
 
-    let blob_store = self.blob_store.borrow();
-    let blob =
+    let blob = {
+      let blob_store = self.blob_store.borrow();
       blob_store
         .get_object_url(specifier.clone())?
         .ok_or_else(|| {
@@ -390,7 +390,8 @@ impl FileFetcher {
             "NotFound",
             format!("Blob URL not found: \"{}\".", specifier),
           )
-        })?;
+        })?
+    };
 
     let content_type = blob.media_type.clone();
     let bytes = blob.read_all().await?;
