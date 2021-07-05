@@ -6,6 +6,13 @@
   const { File } = window.__bootstrap.files;
   const { readAll } = window.__bootstrap.io;
   const { assert, pathFromURL } = window.__bootstrap.util;
+  const {
+    ArrayPrototypeMap,
+    TypeError,
+    isNaN,
+    ObjectEntries,
+    String,
+  } = window.__bootstrap.primordials;
 
   function opKill(pid, signo) {
     core.opSync("op_kill", { pid, signo });
@@ -102,9 +109,9 @@
       cmd[0] = pathFromURL(cmd[0]);
     }
     const res = opRun({
-      cmd: cmd.map(String),
+      cmd: ArrayPrototypeMap(cmd, String),
       cwd,
-      env: Object.entries(env),
+      env: ObjectEntries(env),
       stdin: isRid(stdin) ? "" : stdin,
       stdout: isRid(stdout) ? "" : stdout,
       stderr: isRid(stderr) ? "" : stderr,

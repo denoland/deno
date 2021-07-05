@@ -948,6 +948,8 @@ fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
     Some("application/javascript")
   } else if p.ends_with(".json") {
     Some("application/json")
+  } else if p.ends_with(".wasm") {
+    Some("application/wasm")
   } else {
     None
   };

@@ -104,6 +104,7 @@ pub(crate) struct JsRuntimeState {
   pub global_context: Option<v8::Global<v8::Context>>,
   pub(crate) js_recv_cb: Option<v8::Global<v8::Function>>,
   pub(crate) js_macrotask_cb: Option<v8::Global<v8::Function>>,
+  pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
   pending_dyn_mod_evaluate: VecDeque<DynImportModEvaluate>,
@@ -155,12 +156,8 @@ fn v8_init(v8_platform: Option<v8::SharedRef<v8::Platform>>) {
   v8::V8::initialize();
 
   let flags = concat!(
-    // TODO(ry) This makes WASM compile synchronously. Eventually we should
-    // remove this to make it work asynchronously too. But that requires getting
-    // PumpMessageLoop and RunMicrotasks setup correctly.
-    // See https://github.com/denoland/deno/issues/2544
     " --experimental-wasm-threads",
-    " --no-wasm-async-compilation",
+    " --wasm-test-streaming",
     " --harmony-import-assertions",
     " --no-validate-asm",
   );
@@ -290,6 +287,7 @@ impl JsRuntime {
       pending_mod_evaluate: None,
       js_recv_cb: None,
       js_macrotask_cb: None,
+      js_wasm_streaming_cb: None,
       js_error_create_fn,
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
@@ -600,6 +598,8 @@ impl JsRuntime {
     ) {
       // do nothing
     }
+
+    scope.perform_microtask_checkpoint();
   }
 
   /// Runs event loop to completion
@@ -634,6 +634,8 @@ impl JsRuntime {
       state.waker.register(cx.waker());
     }
 
+    self.pump_v8_message_loop();
+
     // Ops
     {
       let async_responses = self.poll_pending_ops(cx);
@@ -658,8 +660,6 @@ impl JsRuntime {
     // Top level module
     self.evaluate_pending_module();
 
-    self.pump_v8_message_loop();
-
     let state = state_rc.borrow();
     let module_map = module_map_rc.borrow();
 
@@ -669,6 +669,8 @@ impl JsRuntime {
     let has_pending_dyn_module_evaluation =
       !state.pending_dyn_mod_evaluate.is_empty();
     let has_pending_module_evaluation = state.pending_mod_evaluate.is_some();
+    let has_pending_background_tasks =
+      self.v8_isolate().has_pending_background_tasks();
     let inspector_has_active_sessions = self
       .inspector
       .as_ref()
@@ -679,6 +681,7 @@ impl JsRuntime {
       && !has_pending_dyn_imports
       && !has_pending_dyn_module_evaluation
       && !has_pending_module_evaluation
+      && !has_pending_background_tasks
     {
       if wait_for_inspector && inspector_has_active_sessions {
         return Poll::Pending;
@@ -689,7 +692,12 @@ impl JsRuntime {
 
     // Check if more async ops have been dispatched
     // during this turn of event loop.
-    if state.have_unpolled_ops {
+    // If there are any pending background tasks, we also wake the runtime to
+    // make sure we don't miss them.
+    // TODO(andreubotella) The event loop will spin as long as there are pending
+    // background tasks. We should look into having V8 notify us when a
+    // background task is done.
+    if state.have_unpolled_ops || has_pending_background_tasks {
       state.waker.wake();
     }
 
@@ -697,6 +705,7 @@ impl JsRuntime {
       if has_pending_ops
         || has_pending_dyn_imports
         || has_pending_dyn_module_evaluation
+        || has_pending_background_tasks
       {
         // pass, will be polled again
       } else {
@@ -706,7 +715,10 @@ impl JsRuntime {
     }
 
     if has_pending_dyn_module_evaluation {
-      if has_pending_ops || has_pending_dyn_imports {
+      if has_pending_ops
+        || has_pending_dyn_imports
+        || has_pending_background_tasks
+      {
         // pass, will be polled again
       } else {
         let mut msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promise.
