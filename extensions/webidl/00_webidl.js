@@ -926,7 +926,7 @@
 
   function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
     const iteratorPrototype = ObjectCreate(globalIteratorPrototype, {
-      [Symbol.toStringTag]: { configurable: true, value: `${name} Iterator` },
+      [SymbolToStringTag]: { configurable: true, value: `${name} Iterator` },
     });
     define(iteratorPrototype, {
       next() {

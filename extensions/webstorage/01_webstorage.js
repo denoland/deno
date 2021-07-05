@@ -7,6 +7,7 @@
   const webidl = window.__bootstrap.webidl;
   const {
     Symbol,
+    SymbolFor,
     ObjectDefineProperty,
     ObjectFromEntries,
     ObjectEntries,
@@ -157,7 +158,7 @@
       },
     });
 
-    proxy[Symbol.for("Deno.customInspect")] = function (inspect) {
+    proxy[SymbolFor("Deno.customInspect")] = function (inspect) {
       return `${this.constructor.name} ${
         inspect({
           length: this.length,

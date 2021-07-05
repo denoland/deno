@@ -3,6 +3,8 @@
 
 ((window) => {
   const { URL } = window.__bootstrap.url;
+  const { DOMException } = window.__bootstrap.domException;
+
   const locationConstructorKey = Symbol("locationConstuctorKey");
 
   // The differences between the definitions of `Location` and `WorkerLocation`
