@@ -19,7 +19,7 @@
     MapPrototypeSet,
     MapPrototypeGet,
     FunctionPrototypeBind,
-    DateNow
+    DateNow,
   } = window.__bootstrap.primordials;
 
   // Shamelessly cribbed from extensions/fetch/11_streams.js
