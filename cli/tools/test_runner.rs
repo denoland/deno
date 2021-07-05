@@ -461,6 +461,7 @@ pub async fn run_tests(
   no_run: bool,
   fail_fast: bool,
   quiet: bool,
+  terse: bool,
   allow_none: bool,
   filter: Option<String>,
   concurrent_jobs: usize,
@@ -615,7 +616,7 @@ pub async fn run_tests(
     .buffer_unordered(concurrent_jobs)
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
-  let reporter_kind = if quiet {
+  let reporter_kind = if terse {
     TestReporterKind::Terse
   } else {
     TestReporterKind::Pretty

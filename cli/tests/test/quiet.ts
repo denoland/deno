@@ -1,13 +1,15 @@
-Deno.test("ok", function () {
-  console.log("ok");
+Deno.test("console.log", function () {
+  console.log("log");
 });
 
-Deno.test("fail", function () {
-  throw new Error("fail");
+Deno.test("console.error", function () {
+  console.error("error");
 });
 
-Deno.test({
-  name: "ignore",
-  fn() {},
-  ignore: true,
+Deno.test("console.info", function () {
+  console.info("info");
+});
+
+Deno.test("console.warn", function () {
+  console.info("warn");
 });
