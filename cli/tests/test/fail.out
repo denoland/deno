@@ -15,43 +15,53 @@ failures:
 
 test 0
 Error
-[WILDCARD]
+    at [WILDCARD]/test/fail.ts:2:9
+    at [WILDCARD]
 
 test 1
 Error
-[WILDCARD]
+    at [WILDCARD]/test/fail.ts:5:9
+    at [WILDCARD]
 
 test 2
 Error
-[WILDCARD]
+    at [WILDCARD]/test/fail.ts:8:9
+    at [WILDCARD]
 
 test 3
 Error
-[WILDCARD]
+    at [WILDCARD]/test/fail.ts:11:9
+    at [WILDCARD]
 
 test 4
 Error
-[WILDCARD]
+    at [WILDCARD]/test/fail.ts:14:9
+    at [WILDCARD]
 
 test 5
 Error
-[WILDCARD]
+    at [WILDCARD]/test/fail.ts:17:9
+    at [WILDCARD]
 
 test 6
 Error
-[WILDCARD]
+    at [WILDCARD]/test/fail.ts:20:9
+    at [WILDCARD]
 
 test 7
 Error
-[WILDCARD]
+    at [WILDCARD]/test/fail.ts:23:9
+    at [WILDCARD]
 
 test 8
 Error
-[WILDCARD]
+    at [WILDCARD]/test/fail.ts:26:9
+    at [WILDCARD]
 
 test 9
 Error
-[WILDCARD]
+    at [WILDCARD]/test/fail.ts:29:9
+    at [WILDCARD]
 
 failures:
 

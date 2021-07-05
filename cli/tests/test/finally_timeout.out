@@ -7,7 +7,8 @@ failures:
 
 error
 Error: fail
-[WILDCARD]
+    at [WILDCARD]/test/finally_timeout.ts:4:11
+    at [WILDCARD]
 
 failures:
 
