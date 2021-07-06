@@ -8,12 +8,7 @@ failures:
 error
 Error: fail
     at [WILDCARD]/test/finally_timeout.ts:4:11
-    at asyncOpSanitizer (deno:runtime/js/40_testing.js:35:15)
-    at resourceSanitizer (deno:runtime/js/40_testing.js:72:13)
-    at exitSanitizer (deno:runtime/js/40_testing.js:99:15)
-    at runTest (deno:runtime/js/40_testing.js:218:13)
-    at Object.runTests (deno:runtime/js/40_testing.js:264:13)
-    at [WILDCARD]/$deno$test.js:1:27
+    at [WILDCARD]
 
 failures:
 

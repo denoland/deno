@@ -32,7 +32,6 @@ use futures::Future;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::collections::VecDeque;
 use std::convert::TryFrom;
 use std::ffi::c_void;
 use std::mem::forget;
@@ -107,8 +106,11 @@ pub(crate) struct JsRuntimeState {
   pub(crate) js_wasm_streaming_cb: Option<v8::Global<v8::Function>>,
   pub(crate) pending_promise_exceptions:
     HashMap<v8::Global<v8::Promise>, v8::Global<v8::Value>>,
-  pending_dyn_mod_evaluate: VecDeque<DynImportModEvaluate>,
+  pending_dyn_mod_evaluate: Vec<DynImportModEvaluate>,
   pending_mod_evaluate: Option<ModEvaluate>,
+  /// A counter used to delay our dynamic import deadlock detection by one spin
+  /// of the event loop.
+  dyn_module_evaluate_idle_counter: u32,
   pub(crate) js_error_create_fn: Rc<JsErrorCreateFn>,
   pub(crate) pending_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
@@ -283,8 +285,9 @@ impl JsRuntime {
     isolate.set_slot(Rc::new(RefCell::new(JsRuntimeState {
       global_context: Some(global_context),
       pending_promise_exceptions: HashMap::new(),
-      pending_dyn_mod_evaluate: VecDeque::new(),
+      pending_dyn_mod_evaluate: vec![],
       pending_mod_evaluate: None,
+      dyn_module_evaluate_idle_counter: 0,
       js_recv_cb: None,
       js_macrotask_cb: None,
       js_wasm_streaming_cb: None,
@@ -660,7 +663,7 @@ impl JsRuntime {
     // Top level module
     self.evaluate_pending_module();
 
-    let state = state_rc.borrow();
+    let mut state = state_rc.borrow_mut();
     let module_map = module_map_rc.borrow();
 
     let has_pending_ops = !state.pending_ops.is_empty();
@@ -720,7 +723,7 @@ impl JsRuntime {
         || has_pending_background_tasks
       {
         // pass, will be polled again
-      } else {
+      } else if state.dyn_module_evaluate_idle_counter >= 1 {
         let mut msg = "Dynamically imported module evaluation is still pending but there are no pending ops. This situation is often caused by unresolved promise.
 Pending dynamic modules:\n".to_string();
         for pending_evaluate in &state.pending_dyn_mod_evaluate {
@@ -730,6 +733,12 @@ Pending dynamic modules:\n".to_string();
           msg.push_str(&format!("- {}", module_info.name.as_str()));
         }
         return Poll::Ready(Err(generic_error(msg)));
+      } else {
+        // Delay the above error by one spin of the event loop. A dynamic import
+        // evaluation may complete during this, in which case the counter will
+        // reset.
+        state.dyn_module_evaluate_idle_counter += 1;
+        state.waker.wake();
       }
     }
 
@@ -903,9 +912,7 @@ impl JsRuntime {
         module: module_global,
       };
 
-      state
-        .pending_dyn_mod_evaluate
-        .push_back(dyn_import_mod_evaluate);
+      state.pending_dyn_mod_evaluate.push(dyn_import_mod_evaluate);
     } else {
       assert!(status == v8::ModuleStatus::Errored);
     }
@@ -1021,6 +1028,7 @@ impl JsRuntime {
   }
 
   fn dynamic_import_resolve(&mut self, id: ModuleLoadId, mod_id: ModuleId) {
+    let state_rc = Self::state(self.v8_isolate());
     let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
 
@@ -1047,6 +1055,7 @@ impl JsRuntime {
     // will reach into `ModuleMap` from within the isolate.
     let module_namespace = module.get_module_namespace();
     resolver.resolve(scope, module_namespace).unwrap();
+    state_rc.borrow_mut().dyn_module_evaluate_idle_counter = 0;
     scope.perform_microtask_checkpoint();
   }
 
@@ -1214,18 +1223,12 @@ impl JsRuntime {
 
   fn evaluate_dyn_imports(&mut self) {
     let state_rc = Self::state(self.v8_isolate());
-
-    loop {
-      let maybe_pending_dyn_evaluate =
-        state_rc.borrow_mut().pending_dyn_mod_evaluate.pop_front();
-
-      if maybe_pending_dyn_evaluate.is_none() {
-        break;
-      }
-
+    let mut still_pending = vec![];
+    let pending =
+      std::mem::take(&mut state_rc.borrow_mut().pending_dyn_mod_evaluate);
+    for pending_dyn_evaluate in pending {
       let maybe_result = {
         let scope = &mut self.handle_scope();
-        let pending_dyn_evaluate = maybe_pending_dyn_evaluate.unwrap();
 
         let module_id = pending_dyn_evaluate.module_id;
         let promise = pending_dyn_evaluate.promise.get(scope);
@@ -1234,10 +1237,7 @@ impl JsRuntime {
 
         match promise_state {
           v8::PromiseState::Pending => {
-            state_rc
-              .borrow_mut()
-              .pending_dyn_mod_evaluate
-              .push_back(pending_dyn_evaluate);
+            still_pending.push(pending_dyn_evaluate);
             None
           }
           v8::PromiseState::Fulfilled => {
@@ -1262,10 +1262,9 @@ impl JsRuntime {
             self.dynamic_import_reject(dyn_import_id, err1);
           }
         }
-      } else {
-        break;
       }
     }
+    state_rc.borrow_mut().pending_dyn_mod_evaluate = still_pending;
   }
 
   /// Asynchronously load specified module and all of its dependencies

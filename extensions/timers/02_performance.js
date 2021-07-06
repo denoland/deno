@@ -2,22 +2,87 @@
 "use strict";
 
 ((window) => {
+  const {
+    ArrayPrototypeFilter,
+    ArrayPrototypeFind,
+    ArrayPrototypePush,
+    ArrayPrototypeReverse,
+    ArrayPrototypeSlice,
+    ObjectKeys,
+    Symbol,
+    SymbolFor,
+    SymbolToStringTag,
+    TypeError,
+  } = window.__bootstrap.primordials;
+
   const { webidl, structuredClone } = window.__bootstrap;
   const { opNow } = window.__bootstrap.timers;
   const { DOMException } = window.__bootstrap.domException;
 
   const illegalConstructorKey = Symbol("illegalConstructorKey");
-  const customInspect = Symbol.for("Deno.customInspect");
+  const customInspect = SymbolFor("Deno.customInspect");
   let performanceEntries = [];
+
+  webidl.converters["PerformanceMarkOptions"] = webidl
+    .createDictionaryConverter(
+      "PerformanceMarkOptions",
+      [
+        {
+          key: "detail",
+          converter: webidl.converters.any,
+        },
+        {
+          key: "startTime",
+          converter: webidl.converters.DOMHighResTimeStamp,
+        },
+      ],
+    );
+
+  webidl.converters["DOMString or DOMHighResTimeStamp"] = (V, opts) => {
+    if (webidl.type(V) === "Number" && V !== null) {
+      return webidl.converters.DOMHighResTimeStamp(V, opts);
+    }
+    return webidl.converters.DOMString(V, opts);
+  };
+
+  webidl.converters["PerformanceMeasureOptions"] = webidl
+    .createDictionaryConverter(
+      "PerformanceMeasureOptions",
+      [
+        {
+          key: "detail",
+          converter: webidl.converters.any,
+        },
+        {
+          key: "start",
+          converter: webidl.converters["DOMString or DOMHighResTimeStamp"],
+        },
+        {
+          key: "duration",
+          converter: webidl.converters.DOMHighResTimeStamp,
+        },
+        {
+          key: "end",
+          converter: webidl.converters["DOMString or DOMHighResTimeStamp"],
+        },
+      ],
+    );
+
+  webidl.converters["DOMString or PerformanceMeasureOptions"] = (V, opts) => {
+    if (webidl.type(V) === "Object" && V !== null) {
+      return webidl.converters["PerformanceMeasureOptions"](V, opts);
+    }
+    return webidl.converters.DOMString(V, opts);
+  };
 
   function findMostRecent(
     name,
     type,
   ) {
-    return performanceEntries
-      .slice()
-      .reverse()
-      .find((entry) => entry.name === name && entry.entryType === type);
+    return ArrayPrototypeFind(
+      ArrayPrototypeReverse(ArrayPrototypeSlice(performanceEntries)),
+      (entry) => entry.name === name && entry.entryType === type,
+    );
   }
 
   function convertMarkToTimestamp(mark) {
@@ -41,7 +106,8 @@
     name,
     type,
   ) {
-    return performanceEntries.filter(
+    return ArrayPrototypeFilter(
+      performanceEntries,
       (entry) =>
         (name ? entry.name === name : true) &&
         (type ? entry.entryType === type : true),
@@ -50,26 +116,34 @@
 
   const now = opNow;
 
+  const _name = Symbol("[[name]]");
+  const _entryType = Symbol("[[entryType]]");
+  const _startTime = Symbol("[[startTime]]");
+  const _duration = Symbol("[[duration]]");
   class PerformanceEntry {
-    #name = "";
-    #entryType = "";
-    #startTime = 0;
-    #duration = 0;
+    [_name] = "";
+    [_entryType] = "";
+    [_startTime] = 0;
+    [_duration] = 0;
 
     get name() {
-      return this.#name;
+      webidl.assertBranded(this, PerformanceEntry);
+      return this[_name];
     }
 
     get entryType() {
-      return this.#entryType;
+      webidl.assertBranded(this, PerformanceEntry);
+      return this[_entryType];
     }
 
     get startTime() {
-      return this.#startTime;
+      webidl.assertBranded(this, PerformanceEntry);
+      return this[_startTime];
     }
 
     get duration() {
-      return this.#duration;
+      webidl.assertBranded(this, PerformanceEntry);
+      return this[_duration];
     }
 
     constructor(
@@ -77,41 +151,48 @@
       entryType = null,
       startTime = null,
       duration = null,
-      key = null,
+      key = undefined,
     ) {
-      if (key != illegalConstructorKey) {
-        throw new TypeError("Illegal constructor.");
+      if (key !== illegalConstructorKey) {
+        webidl.illegalConstructor();
       }
-      this.#name = name;
-      this.#entryType = entryType;
-      this.#startTime = startTime;
-      this.#duration = duration;
+      this[webidl.brand] = webidl.brand;
+
+      this[_name] = name;
+      this[_entryType] = entryType;
+      this[_startTime] = startTime;
+      this[_duration] = duration;
     }
 
     toJSON() {
+      webidl.assertBranded(this, PerformanceEntry);
       return {
-        name: this.#name,
-        entryType: this.#entryType,
-        startTime: this.#startTime,
-        duration: this.#duration,
+        name: this[_name],
+        entryType: this[_entryType],
+        startTime: this[_startTime],
+        duration: this[_duration],
       };
     }
 
-    [customInspect]() {
-      return `${this.constructor.name} { name: "${this.name}", entryType: "${this.entryType}", startTime: ${this.startTime}, duration: ${this.duration} }`;
+    [customInspect](inspect) {
+      return `${this.constructor.name} ${inspect(this.toJSON())}`;
     }
   }
+  webidl.configurePrototype(PerformanceEntry);
 
+  const _detail = Symbol("[[detail]]");
   class PerformanceMark extends PerformanceEntry {
-    [Symbol.toStringTag] = "PerformanceMark";
+    [SymbolToStringTag] = "PerformanceMark";
 
-    #detail = null;
+    [_detail] = null;
 
     get detail() {
-      return this.#detail;
+      webidl.assertBranded(this, PerformanceMark);
+      return this[_detail];
     }
 
     get entryType() {
+      webidl.assertBranded(this, PerformanceMark);
       return "mark";
     }
 
@@ -122,28 +203,28 @@
       const prefix = "Failed to construct 'PerformanceMark'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
 
-      // ensure options is object-ish, or null-ish
-      switch (typeof options) {
-        case "object": // includes null
-        case "function":
-        case "undefined": {
-          break;
-        }
-        default: {
-          throw new TypeError("Invalid options");
-        }
-      }
+      name = webidl.converters.DOMString(name, {
+        prefix,
+        context: "Argument 1",
+      });
 
-      const { detail = null, startTime = now() } = options ?? {};
+      options = webidl.converters.PerformanceMarkOptions(options, {
+        prefix,
+        context: "Argument 2",
+      });
+
+      const { detail = null, startTime = now() } = options;
 
       super(name, "mark", startTime, 0, illegalConstructorKey);
+      this[webidl.brand] = webidl.brand;
       if (startTime < 0) {
         throw new TypeError("startTime cannot be negative");
       }
-      this.#detail = structuredClone(detail);
+      this[_detail] = structuredClone(detail);
     }
 
     toJSON() {
+      webidl.assertBranded(this, PerformanceMark);
       return {
         name: this.name,
         entryType: this.entryType,
@@ -153,43 +234,45 @@
       };
     }
 
-    [customInspect]() {
-      return this.detail
-        ? `${this.constructor.name} {\n  detail: ${
-          JSON.stringify(this.detail, null, 2)
-        },\n  name: "${this.name}",\n  entryType: "${this.entryType}",\n  startTime: ${this.startTime},\n  duration: ${this.duration}\n}`
-        : `${this.constructor.name} { detail: ${this.detail}, name: "${this.name}", entryType: "${this.entryType}", startTime: ${this.startTime}, duration: ${this.duration} }`;
+    [customInspect](inspect) {
+      return `${this.constructor.name} ${inspect(this.toJSON())}`;
     }
   }
+  webidl.configurePrototype(PerformanceMark);
 
   class PerformanceMeasure extends PerformanceEntry {
-    [Symbol.toStringTag] = "PerformanceMeasure";
+    [SymbolToStringTag] = "PerformanceMeasure";
 
-    #detail = null;
+    [_detail] = null;
 
     get detail() {
-      return this.#detail;
+      webidl.assertBranded(this, PerformanceMeasure);
+      return this[_detail];
     }
 
     get entryType() {
+      webidl.assertBranded(this, PerformanceMeasure);
       return "measure";
     }
 
     constructor(
-      name,
-      startTime,
-      duration,
+      name = null,
+      startTime = null,
+      duration = null,
       detail = null,
-      key,
+      key = undefined,
     ) {
-      if (key != illegalConstructorKey) {
-        throw new TypeError("Illegal constructor.");
+      if (key !== illegalConstructorKey) {
+        webidl.illegalConstructor();
       }
-      super(name, "measure", startTime, duration, illegalConstructorKey);
-      this.#detail = structuredClone(detail);
+
+      super(name, "measure", startTime, duration, key);
+      this[webidl.brand] = webidl.brand;
+      this[_detail] = structuredClone(detail);
     }
 
     toJSON() {
+      webidl.assertBranded(this, PerformanceMeasure);
       return {
         name: this.name,
         entryType: this.entryType,
@@ -199,83 +282,156 @@
       };
     }
 
-    [customInspect]() {
-      return this.detail
-        ? `${this.constructor.name} {\n  detail: ${
-          JSON.stringify(this.detail, null, 2)
-        },\n  name: "${this.name}",\n  entryType: "${this.entryType}",\n  startTime: ${this.startTime},\n  duration: ${this.duration}\n}`
-        : `${this.constructor.name} { detail: ${this.detail}, name: "${this.name}", entryType: "${this.entryType}", startTime: ${this.startTime}, duration: ${this.duration} }`;
+    [customInspect](inspect) {
+      return `${this.constructor.name} ${inspect(this.toJSON())}`;
     }
   }
+  webidl.configurePrototype(PerformanceMeasure);
 
   class Performance {
-    constructor(key = null) {
-      if (key != illegalConstructorKey) {
-        throw new TypeError("Illegal constructor.");
-      }
+    constructor() {
+      webidl.illegalConstructor();
     }
 
-    clearMarks(markName) {
-      if (markName == null) {
-        performanceEntries = performanceEntries.filter(
-          (entry) => entry.entryType !== "mark",
-        );
-      } else {
-        performanceEntries = performanceEntries.filter(
+    clearMarks(markName = undefined) {
+      webidl.assertBranded(this, Performance);
+      if (markName !== undefined) {
+        markName = webidl.converters.DOMString(markName, {
+          prefix: "Failed to execute 'clearMarks' on 'Performance'",
+          context: "Argument 1",
+        });
+
+        performanceEntries = ArrayPrototypeFilter(
+          performanceEntries,
           (entry) => !(entry.name === markName && entry.entryType === "mark"),
         );
+      } else {
+        performanceEntries = ArrayPrototypeFilter(
+          performanceEntries,
+          (entry) => entry.entryType !== "mark",
+        );
       }
     }
 
-    clearMeasures(measureName) {
-      if (measureName == null) {
-        performanceEntries = performanceEntries.filter(
-          (entry) => entry.entryType !== "measure",
-        );
-      } else {
-        performanceEntries = performanceEntries.filter(
+    clearMeasures(measureName = undefined) {
+      webidl.assertBranded(this, Performance);
+      if (measureName !== undefined) {
+        measureName = webidl.converters.DOMString(measureName, {
+          prefix: "Failed to execute 'clearMeasures' on 'Performance'",
+          context: "Argument 1",
+        });
+
+        performanceEntries = ArrayPrototypeFilter(
+          performanceEntries,
           (entry) =>
             !(entry.name === measureName && entry.entryType === "measure"),
+        );
+      } else {
+        performanceEntries = ArrayPrototypeFilter(
+          performanceEntries,
+          (entry) => entry.entryType !== "measure",
         );
       }
     }
 
     getEntries() {
+      webidl.assertBranded(this, Performance);
       return filterByNameType();
     }
 
     getEntriesByName(
       name,
-      type,
+      type = undefined,
     ) {
+      webidl.assertBranded(this, Performance);
+      const prefix = "Failed to execute 'getEntriesByName' on 'Performance'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+
+      name = webidl.converters.DOMString(name, {
+        prefix,
+        context: "Argument 1",
+      });
+
+      if (type !== undefined) {
+        type = webidl.converters.DOMString(type, {
+          prefix,
+          context: "Argument 2",
+        });
+      }
+
       return filterByNameType(name, type);
     }
 
     getEntriesByType(type) {
+      webidl.assertBranded(this, Performance);
+      const prefix = "Failed to execute 'getEntriesByName' on 'Performance'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+
+      type = webidl.converters.DOMString(type, {
+        prefix,
+        context: "Argument 1",
+      });
+
       return filterByNameType(undefined, type);
     }
 
     mark(
       markName,
-      options = {},
+      markOptions = {},
     ) {
+      webidl.assertBranded(this, Performance);
+      const prefix = "Failed to execute 'mark' on 'Performance'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+
+      markName = webidl.converters.DOMString(markName, {
+        prefix,
+        context: "Argument 1",
+      });
+
+      markOptions = webidl.converters.PerformanceMarkOptions(markOptions, {
+        prefix,
+        context: "Argument 2",
+      });
+
       // 3.1.1.1 If the global object is a Window object and markName uses the
       // same name as a read only attribute in the PerformanceTiming interface,
       // throw a SyntaxError. - not implemented
-      const entry = new PerformanceMark(markName, options);
+      const entry = new PerformanceMark(markName, markOptions);
       // 3.1.1.7 Queue entry - not implemented
-      performanceEntries.push(entry);
+      ArrayPrototypePush(performanceEntries, entry);
       return entry;
     }
 
     measure(
       measureName,
       startOrMeasureOptions = {},
-      endMark,
+      endMark = undefined,
     ) {
+      webidl.assertBranded(this, Performance);
+      const prefix = "Failed to execute 'measure' on 'Performance'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+
+      measureName = webidl.converters.DOMString(measureName, {
+        prefix,
+        context: "Argument 1",
+      });
+
+      startOrMeasureOptions = webidl.converters
+        ["DOMString or PerformanceMeasureOptions"](startOrMeasureOptions, {
+          prefix,
+          context: "Argument 2",
+        });
+
+      if (endMark !== undefined) {
+        endMark = webidl.converters.DOMString(endMark, {
+          prefix,
+          context: "Argument 3",
+        });
+      }
+
       if (
         startOrMeasureOptions && typeof startOrMeasureOptions === "object" &&
-        Object.keys(startOrMeasureOptions).length > 0
+        ObjectKeys(startOrMeasureOptions).length > 0
       ) {
         if (endMark) {
           throw new TypeError("Options cannot be passed with endMark.");
@@ -345,22 +501,35 @@
           : null,
         illegalConstructorKey,
       );
-      performanceEntries.push(entry);
+      ArrayPrototypePush(performanceEntries, entry);
       return entry;
     }
 
     now() {
+      webidl.assertBranded(this, Performance);
       return now();
     }
-  }
 
-  const performance = new Performance(illegalConstructorKey);
+    toJSON() {
+      webidl.assertBranded(this, Performance);
+      return {};
+    }
+
+    [customInspect](inspect) {
+      return `${this.constructor.name} ${inspect(this.toJSON())}`;
+    }
+
+    get [SymbolToStringTag]() {
+      return "Performance";
+    }
+  }
+  webidl.configurePrototype(Performance);
 
   window.__bootstrap.performance = {
     PerformanceEntry,
     PerformanceMark,
     PerformanceMeasure,
     Performance,
-    performance,
+    performance: webidl.createBranded(Performance),
   };
 })(this);

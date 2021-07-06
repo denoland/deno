@@ -191,48 +191,22 @@ finishing test case.`;
     core.opSync("op_restore_test_permissions", token);
   }
 
-  async function runTest({ name, ignore, fn, permissions }) {
+  async function runTest({ ignore, fn, permissions }) {
+    if (ignore) {
+      return "ignored";
+    }
+
     let token = null;
-    const time = DateNow();
 
     try {
-      postTestMessage("wait", {
-        name,
-      });
-
       if (permissions) {
         token = pledgeTestPermissions(permissions);
       }
-
-      if (ignore) {
-        const duration = DateNow() - time;
-        postTestMessage("result", {
-          name,
-          duration,
-          result: "ignored",
-        });
-
-        return;
-      }
-
       await fn();
 
-      const duration = DateNow() - time;
-      postTestMessage("result", {
-        name,
-        duration,
-        result: "ok",
-      });
+      return "ok";
     } catch (error) {
-      const duration = DateNow() - time;
-
-      postTestMessage("result", {
-        name,
-        duration,
-        result: {
-          "failed": inspectArgs([error]),
-        },
-      });
+      return { "failed": inspectArgs([error]) };
     } finally {
       if (token) {
         restoreTestPermissions(token);
@@ -243,6 +217,7 @@ finishing test case.`;
   async function runTests({
     disableLog = false,
     filter = null,
+    shuffle = null,
   } = {}) {
     const originalConsole = globalThis.console;
     if (disableLog) {
@@ -260,8 +235,43 @@ finishing test case.`;
       only: only.length > 0,
     });
 
+    if (shuffle !== null) {
+      // http://en.wikipedia.org/wiki/Linear_congruential_generator
+      const nextInt = (function (state) {
+        const m = 0x80000000;
+        const a = 1103515245;
+        const c = 12345;
+
+        return function (max) {
+          return state = ((a * state + c) % m) % max;
+        };
+      }(shuffle));
+
+      for (let i = pending.length - 1; i > 0; i--) {
+        const j = nextInt(i);
+        [pending[i], pending[j]] = [pending[j], pending[i]];
+      }
+    }
+
     for (const test of pending) {
-      await runTest(test);
+      const {
+        name,
+      } = test;
+
+      const earlier = DateNow();
+
+      postTestMessage("wait", {
+        name,
+      });
+
+      const result = await runTest(test);
+      const duration = DateNow() - earlier;
+
+      postTestMessage("result", {
+        name,
+        result,
+        duration,
+      });
     }
 
     if (disableLog) {

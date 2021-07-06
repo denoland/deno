@@ -73,13 +73,9 @@ declare namespace globalThis {
     };
 
     declare var file: {
-      Blob: typeof Blob & {
-        [globalThis.__bootstrap.file._byteSequence]: Uint8Array;
-      };
-      readonly _byteSequence: unique symbol;
-      File: typeof File & {
-        [globalThis.__bootstrap.file._byteSequence]: Uint8Array;
-      };
+      getParts(blob: Blob): string[];
+      Blob: typeof Blob;
+      File: typeof File;
     };
 
     declare var streams: {

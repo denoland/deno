@@ -54,6 +54,8 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.deno_runtime]
 opt-level = 3
+[profile.bench.package.deno_net]
+opt-level = 3
 [profile.bench.package.rusty_v8]
 opt-level = 3
 [profile.bench.package.serde_v8]
@@ -77,6 +79,8 @@ opt-level = 3
 [profile.release.package.deno_core]
 opt-level = 3
 [profile.release.package.deno_runtime]
+opt-level = 3
+[profile.release.package.deno_net]
 opt-level = 3
 [profile.release.package.rusty_v8]
 opt-level = 3

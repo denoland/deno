@@ -22,7 +22,7 @@ use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
-use deno_web::BlobUrlStore;
+use deno_web::BlobStore;
 use log::debug;
 use std::env;
 use std::pin::Pin;
@@ -68,7 +68,7 @@ pub struct WorkerOptions {
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub location: Option<Url>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
-  pub blob_url_store: BlobUrlStore,
+  pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
 }
 
@@ -94,7 +94,7 @@ impl MainWorker {
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
-      deno_web::init(options.blob_url_store.clone(), options.location.clone()),
+      deno_web::init(options.blob_store.clone(), options.location.clone()),
       deno_fetch::init::<Permissions>(
         options.user_agent.clone(),
         options.ca_data.clone(),
@@ -298,7 +298,7 @@ mod tests {
       get_error_class_fn: None,
       location: None,
       origin_storage_dir: None,
-      blob_url_store: BlobUrlStore::default(),
+      blob_store: BlobStore::default(),
       broadcast_channel: InMemoryBroadcastChannel::default(),
     };
 
