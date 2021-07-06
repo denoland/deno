@@ -272,7 +272,8 @@
     "textencoder-constructor-non-utf.any.html": true,
     "textencoder-utf16-surrogates.any.html": true,
     "unsupported-encodings.any.html": false,
-    "single-byte-decoder.window.html?TextDecoder": true
+    "single-byte-decoder.window.html?TextDecoder": true,
+    "textdecoder-eof.any.html": true
   },
   "hr-time": {
     "monotonic-clock.any.html": true,
@@ -282,12 +283,8 @@
     "idlharness.any.html": [
       "Performance interface: existence and properties of interface object",
       "Performance interface: existence and properties of interface prototype object",
-      "Performance interface: operation now()",
       "Performance interface: attribute timeOrigin",
-      "Performance interface: operation toJSON()",
-      "Stringification of performance",
       "Performance interface: performance must inherit property \"timeOrigin\" with the proper type",
-      "Performance interface: performance must inherit property \"toJSON()\" with the proper type",
       "Performance interface: default toJSON operation on performance",
       "Window interface: attribute performance"
     ],
@@ -466,7 +463,15 @@
       "terminate.any.html": true
     },
     "writable-streams": {
-      "aborting.any.html": true,
+      "aborting.any.html": [
+        "WritableStreamDefaultController.signal",
+        "the abort signal is signalled synchronously - write",
+        "the abort signal is signalled synchronously - close",
+        "the abort signal is not signalled on error",
+        "the abort signal is not signalled on write failure",
+        "the abort signal is not signalled on close failure",
+        "recursive abort() call"
+      ],
       "bad-strategies.any.html": true,
       "bad-underlying-sinks.any.html": true,
       "byte-length-queuing-strategy.any.html": true,
@@ -498,17 +503,7 @@
     "clear_one_mark.any.html": true,
     "clear_one_measure.any.html": true,
     "entry_type.any.html": true,
-    "idlharness.any.html": [
-      "PerformanceMark interface: attribute detail",
-      "PerformanceMeasure interface object length",
-      "PerformanceMeasure interface: attribute detail",
-      "Performance interface: operation mark(DOMString, optional PerformanceMarkOptions)",
-      "Performance interface: operation clearMarks(optional DOMString)",
-      "Performance interface: operation measure(DOMString, optional (DOMString or PerformanceMeasureOptions), optional DOMString)",
-      "Performance interface: operation clearMeasures(optional DOMString)",
-      "Performance interface: calling mark(DOMString, optional PerformanceMarkOptions) on performance with too few arguments must throw TypeError",
-      "Performance interface: calling measure(DOMString, optional (DOMString or PerformanceMeasureOptions), optional DOMString) on performance with too few arguments must throw TypeError"
-    ],
+    "idlharness.any.html": true,
     "mark-entry-constructor.any.html": true,
     "mark-errors.any.html": true,
     "mark-l3.any.html": false,
@@ -594,23 +589,23 @@
       }
     },
     "webapi": {
-      "abort.any.html": false,
-      "body.any.html": false,
-      "contenttype.any.html": false,
-      "empty-body.any.html": false,
+      "abort.any.html": true,
+      "body.any.html": true,
+      "contenttype.any.html": true,
+      "empty-body.any.html": true,
       "historical.any.html": false,
-      "idlharness.any.html": [
-        "WebAssembly namespace: operation compileStreaming(Promise<Response>)",
-        "WebAssembly namespace: operation instantiateStreaming(Promise<Response>, optional object)"
+      "idlharness.any.html": true,
+      "instantiateStreaming-bad-imports.any.html": true,
+      "instantiateStreaming.any.html": true,
+      "invalid-args.any.html": true,
+      "invalid-code.any.html": true,
+      "modified-contenttype.any.html": true,
+      "origin.sub.any.html": [
+        "Opaque response: compileStreaming",
+        "Opaque response: instantiateStreaming"
       ],
-      "instantiateStreaming-bad-imports.any.html": false,
-      "instantiateStreaming.any.html": false,
-      "invalid-args.any.html": false,
-      "invalid-code.any.html": false,
-      "modified-contenttype.any.html": false,
-      "origin.sub.any.html": false,
-      "rejected-arg.any.html": false,
-      "status.any.html": false
+      "rejected-arg.any.html": true,
+      "status.any.html": true
     }
   },
   "WebIDL": {
@@ -620,10 +615,29 @@
         "DOMException-constructor-and-prototype.any.html": true,
         "DOMException-constructor-behavior.any.html": true,
         "DOMException-custom-bindings.any.html": [
-          "does not inherit from Error: class-side"
+          "If the implementation has a stack property on normal errors, it also does on DOMExceptions"
         ]
-      }
-    }
+      },
+      "class-string-interface.any.html": [
+        "@@toStringTag exists on the prototype with the appropriate descriptor"
+      ],
+      "class-string-iterator-prototype-object.any.html": true,
+      "global-immutable-prototype.any.html": [
+        "Setting to a different prototype"
+      ],
+      "global-object-implicit-this-value.any.html": [
+        "Global object's getter throws when called on incompatible object",
+        "Global object's setter throws when called on incompatible object",
+        "Global object's operation throws when called on incompatible object",
+        "Global object's getter works when called on null / undefined",
+        "Global object's setter works when called on null / undefined"
+      ],
+      "legacy-factor-function-subclass.window.html": false,
+      "no-regexp-special-casing.any.html": [
+        "Conversion to a sequence works"
+      ]
+    },
+    "idlharness.any.html": true
   },
   "url": {
     "historical.any.html": [
@@ -725,6 +739,8 @@
       "URL: Setting <http://example.net:8080/path>.hostname = 'example.com:' : delimiter invalidates entire value",
       "URL: Setting <non-spec:/.//p>.hostname = 'h' Drop /. from path",
       "URL: Setting <non-spec:/.//p>.hostname = ''",
+      "URL: Setting <foo://somehost/some/path>.pathname = '' Non-special URLs can have their paths erased",
+      "URL: Setting <foo:///some/path>.pathname = '' Non-special URLs with an empty host can have their paths erased",
       "URL: Setting <file://monkey/>.pathname = '\\\\' File URLs and (back)slashes",
       "URL: Setting <file:///unicorn>.pathname = '//\\/' File URLs and (back)slashes",
       "URL: Setting <file:///unicorn>.pathname = '//monkey/..//' File URLs and (back)slashes",
@@ -848,6 +864,8 @@
           "Check response clone use structureClone for teed ReadableStreams (Uint8ClampedArraychunk)",
           "Check response clone use structureClone for teed ReadableStreams (Uint16Arraychunk)",
           "Check response clone use structureClone for teed ReadableStreams (Uint32Arraychunk)",
+          "Check response clone use structureClone for teed ReadableStreams (BigInt64Arraychunk)",
+          "Check response clone use structureClone for teed ReadableStreams (BigUint64Arraychunk)",
           "Check response clone use structureClone for teed ReadableStreams (Float32Arraychunk)",
           "Check response clone use structureClone for teed ReadableStreams (Float64Arraychunk)",
           "Check response clone use structureClone for teed ReadableStreams (DataViewchunk)"
@@ -968,16 +986,7 @@
       "filereader_readAsDataURL.any.html": true,
       "filereader_readAsText.any.html": true,
       "filereader_readystate.any.html": true,
-      "filereader_result.any.html": [
-        "result is null during \"loadstart\" event for readAsText",
-        "result is null during \"loadstart\" event for readAsDataURL",
-        "result is null during \"loadstart\" event for readAsArrayBuffer",
-        "result is null during \"loadstart\" event for readAsBinaryString",
-        "result is null during \"progress\" event for readAsText",
-        "result is null during \"progress\" event for readAsDataURL",
-        "result is null during \"progress\" event for readAsArrayBuffer",
-        "result is null during \"progress\" event for readAsBinaryString"
-      ]
+      "filereader_result.any.html": true
     }
   },
   "html": {

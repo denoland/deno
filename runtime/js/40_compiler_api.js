@@ -8,6 +8,11 @@
 ((window) => {
   const core = window.Deno.core;
   const util = window.__bootstrap.util;
+  const {
+    StringPrototypeMatch,
+    PromiseReject,
+    TypeError,
+  } = window.__bootstrap.primordials;
 
   /**
    * @typedef {object} ImportMap
@@ -47,7 +52,10 @@
    * @returns {string}
    */
   function checkRelative(specifier) {
-    return specifier.match(/^([\.\/\\]|https?:\/{2}|file:\/{2})/)
+    return StringPrototypeMatch(
+        specifier,
+        /^([\.\/\\]|https?:\/{2}|file:\/{2})/,
+      )
       ? specifier
       : `./${specifier}`;
   }
@@ -70,7 +78,7 @@
   function emit(rootSpecifier, options = {}) {
     util.log(`Deno.emit`, { rootSpecifier });
     if (!rootSpecifier) {
-      return Promise.reject(
+      return PromiseReject(
         new TypeError("A root specifier must be supplied."),
       );
     }

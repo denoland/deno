@@ -344,7 +344,7 @@ unitTest(function consoleTestStringifyCircular(): void {
   );
   assertEquals(
     stringify({
-      [Deno.customInspect]: function () {
+      [Symbol.for("Deno.customInspect")]: function () {
         return Deno.inspect(this);
       },
     }),

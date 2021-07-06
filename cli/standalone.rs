@@ -24,7 +24,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
-use deno_runtime::deno_web::BlobUrlStore;
+use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsOptions;
 use deno_runtime::worker::MainWorker;
@@ -213,7 +213,7 @@ pub async fn run(
   let main_module = resolve_url(SPECIFIER)?;
   let program_state = ProgramState::build(flags).await?;
   let permissions = Permissions::from_options(&metadata.permissions);
-  let blob_url_store = BlobUrlStore::default();
+  let blob_store = BlobStore::default();
   let broadcast_channel = InMemoryBroadcastChannel::default();
   let module_loader = Rc::new(EmbeddedModuleLoader(source_code));
   let create_web_worker_cb = Arc::new(|_| {
@@ -246,7 +246,7 @@ pub async fn run(
     get_error_class_fn: Some(&get_error_class_name),
     location: metadata.location,
     origin_storage_dir: None,
-    blob_url_store,
+    blob_store,
     broadcast_channel,
   };
   let mut worker =

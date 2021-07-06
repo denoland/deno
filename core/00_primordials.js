@@ -167,6 +167,12 @@
     primordials[name] = globalThis[name];
   });
 
+  // Create copy of isNaN
+  primordials[isNaN.name] = isNaN;
+
+  // Create copy of queueMicrotask
+  primordials["queueMicrotask"] = queueMicrotask;
+
   // Create copies of URI handling functions
   [
     decodeURI,

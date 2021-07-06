@@ -16,7 +16,7 @@ use crate::source_maps::SourceMapGetter;
 use crate::specifier_handler::FetchHandler;
 use crate::version;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
-use deno_runtime::deno_web::BlobUrlStore;
+use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::Permissions;
 
@@ -53,7 +53,7 @@ pub struct ProgramState {
   pub maybe_import_map: Option<ImportMap>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub ca_data: Option<Vec<u8>>,
-  pub blob_url_store: BlobUrlStore,
+  pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
 }
 
@@ -79,7 +79,7 @@ impl ProgramState {
       CacheSetting::Use
     };
 
-    let blob_url_store = BlobUrlStore::default();
+    let blob_store = BlobStore::default();
     let broadcast_channel = InMemoryBroadcastChannel::default();
 
     let file_fetcher = FileFetcher::new(
@@ -87,7 +87,7 @@ impl ProgramState {
       cache_usage,
       !flags.no_remote,
       ca_data.clone(),
-      blob_url_store.clone(),
+      blob_store.clone(),
     )?;
 
     let lockfile = if let Some(filename) = &flags.lock {
@@ -146,7 +146,7 @@ impl ProgramState {
       maybe_import_map,
       maybe_inspector_server,
       ca_data,
-      blob_url_store,
+      blob_store,
       broadcast_channel,
     };
     Ok(Arc::new(program_state))
