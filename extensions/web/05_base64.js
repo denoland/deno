@@ -20,7 +20,7 @@
     StringPrototypeCharCodeAt,
     ArrayPrototypeJoin,
     StringFromCharCode,
-    Uint8ArrayFrom,
+    TypedArrayFrom,
   } = window.__bootstrap.primordials;
 
   /**
@@ -62,7 +62,7 @@
       }
       return charCode;
     });
-    return forgivingBase64Encode(Uint8ArrayFrom(byteArray));
+    return forgivingBase64Encode(TypedArrayFrom(byteArray));
   }
 
   window.__bootstrap.base64 = {

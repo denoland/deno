@@ -918,7 +918,6 @@ declare namespace __bootstrap {
     export const Uint8Array: typeof globalThis.Uint8Array;
     export const Uint8ArrayLength: typeof Uint8Array.length;
     export const Uint8ArrayName: typeof Uint8Array.name;
-    export const Uint8ArrayFrom: typeof Uint8Array.from;
     export const Uint8ArrayPrototype: typeof Uint8Array.prototype;
     export const Uint8ArrayBYTES_PER_ELEMENT:
       typeof Uint8Array.BYTES_PER_ELEMENT;
