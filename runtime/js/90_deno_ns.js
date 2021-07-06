@@ -136,6 +136,5 @@
     createHttpClient: __bootstrap.fetch.createHttpClient,
     http: __bootstrap.http,
     dlopen: __bootstrap.ffi.dlopen,
-    dlcall: __bootstrap.ffi.dlcall,
   };
 })(this);

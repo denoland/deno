@@ -150,14 +150,14 @@ jobs:
         uses: actions-rs/toolchain@v1
         if: startsWith(matrix.os, 'ubuntu')
         with:
-          toolchain: stable
+          toolchain: 1.53.0
           target: x86_64-unknown-linux-gnu
 
       - name: Setup GNU Tools (Windows)
         uses: actions-rs/toolchain@v1
         if: startsWith(matrix.os, 'windows')
         with:
-          toolchain: stable
+          toolchain: 1.53.0
           target: x86_64-pc-windows-gnu
 
       - name: Setup GNU Tools (MacOS)

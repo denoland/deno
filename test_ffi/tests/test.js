@@ -15,25 +15,15 @@ const filename = `../target/${
 }/${filenamePrefix}${filenameBase}${filenameSuffix}`;
 
 const resourcesPre = Deno.resources();
-const dylibRid = Deno.dlopen(filename);
-
-console.log(`Dylib rid: ${dylibRid}`);
-
-Deno.dlcall(dylibRid, {
-  sym: "print_something",
-  args: [],
-  returnType: "void",
+const dylib = Deno.dlopen(filename, {
+  "print_something": { parameters: [], result: "void" },
+  "add_two": { parameters: ["u32"], result: "u32" },
 });
 
-console.log(`${
-  Deno.dlcall(dylibRid, {
-    sym: "add_two",
-    args: [{ argType: "u32", value: 123 }],
-    returnType: "u32",
-  })
-}`);
+dylib.symbols.print_something();
+console.log(`${dylib.symbols.add_two(123)}`);
 
-Deno.close(dylibRid);
+dylib.close();
 const resourcesPost = Deno.resources();
 
 const preStr = JSON.stringify(resourcesPre, null, 2);

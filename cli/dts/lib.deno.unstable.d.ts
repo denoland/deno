@@ -129,14 +129,8 @@ declare namespace Deno {
     speed: number | undefined;
   }
 
-  /** **UNSTABLE**: new API
-   *
-   * Open a dynamic library for use with ffi
-   */
-  export function dlopen(filename: string): number;
-
-  /** All possible types for interfacing with a dynamic library */
-  export type FFIType =
+  /** All possible types for interfacing with foreign functions */
+  export type NativeType =
     | "void"
     | "u8"
     | "i8"
@@ -151,26 +145,53 @@ declare namespace Deno {
     | "f32"
     | "f64";
 
-  /** An argument passed to a dynamic library function call */
-  export interface FFIArg {
-    argType: FFIType;
-    value: unknown;
+  type NativeTypeToJsType<T> = T extends "void" ? void
+    : T extends
+      | "u64"
+      | "i64"
+      | "usize"
+      | "isize" ? bigint
+    : T extends
+      | "u8"
+      | "i8"
+      | "u16"
+      | "i16"
+      | "u32"
+      | "i32"
+      | "f32"
+      | "f64" ? number
+    : never;
+
+  type MapParametersToJsType<P extends NativeType[]> = {
+    [I in keyof P]: NativeTypeToJsType<P[I]>;
+  };
+
+  /** A foreign function as defined by its parameter and result types */
+  export interface ForeignFunction {
+    parameters: NativeType[];
+    result: NativeType;
   }
 
-  export interface DlcallArgs {
-    /** The name of the function which you wish to call */
-    sym: string;
-    /** All arguments passed to the function */
-    args: FFIArg[];
-    /** The return type of the function */
-    returnType: FFIType;
+  /** A dynamic library resource */
+  export interface DynamicLibrary<S extends Record<string, ForeignFunction>> {
+    /** All of the registered symbols along with functions for calling them */
+    symbols: {
+      [K in keyof S]: (
+        args: MapParametersToJsType<S[K]["parameters"]>,
+      ) => NativeTypeToJsType<S[K]["result"]>;
+    };
+
+    close(): void;
   }
 
   /** **UNSTABLE**: new API
    *
-   * Calls a foreign function from a dynamic library
+   * Opens a dynamic library and registers symbols
    */
-  export function dlcall(rid: number, args: DlcallArgs): number;
+  export function dlopen<S extends Record<string, ForeignFunction>>(
+    filename: string,
+    symbols: S,
+  ): DynamicLibrary<S>;
 
   /** The log category for a diagnostic message. */
   export enum DiagnosticCategory {
