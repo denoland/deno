@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.11.2"
+version = "1.11.3"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -25,6 +25,7 @@ deno_console = { version = "0.10.0", path = "../extensions/console" }
 deno_core = { version = "0.92.0", path = "../core" }
 deno_crypto = { version = "0.24.0", path = "../extensions/crypto" }
 deno_fetch = { version = "0.32.0", path = "../extensions/fetch" }
+deno_net = { version = "0.1.0", path = "../extensions/net" }
 deno_timers = { version = "0.8.0", path = "../extensions/timers" }
 deno_url = { version = "0.10.0", path = "../extensions/url" }
 deno_web = { version = "0.41.0", path = "../extensions/web" }
@@ -41,9 +42,9 @@ winres = "0.1.11"
 
 [dependencies]
 deno_core = { version = "0.92.0", path = "../core" }
-deno_doc = "0.6.0"
-deno_lint = "0.7.0"
-deno_runtime = { version = "0.18.0", path = "../runtime" }
+deno_doc = "0.8.0"
+deno_lint = "0.9.0"
+deno_runtime = { version = "0.18.1", path = "../runtime" }
 
 atty = "0.2.14"
 base64 = "0.13.0"
@@ -51,9 +52,9 @@ byteorder = "1.4.3"
 clap = "2.33.3"
 data-url = "0.1.0"
 dissimilar = "1.0.2"
-dprint-plugin-json = "0.12.0"
-dprint-plugin-markdown = "0.8.0"
-dprint-plugin-typescript = "0.46.1"
+dprint-plugin-json = "0.12.1"
+dprint-plugin-markdown = "0.9.2"
+dprint-plugin-typescript = "0.48.0"
 encoding_rs = "0.8.28"
 env_logger = "0.8.3"
 fancy-regex = "0.5.0"
@@ -70,6 +71,7 @@ num_cpus = "1.13.0"
 percent-encoding = "2.1.0"
 pin-project = "1.0.6"
 regex = "1.4.3"
+rand = { version = "0.8.3", features = [ "small_rng" ] }
 ring = "0.16.20"
 rustyline = { version = "8.0.0", default-features = false }
 rustyline-derive = "0.4.0"
@@ -77,13 +79,13 @@ semver-parser = "0.10.2"
 serde = { version = "1.0.125", features = ["derive"] }
 shell-escape = "0.1.5"
 sourcemap = "6.0.1"
-swc_bundler = "0.40.0"
-swc_common = { version = "0.10.20", features = ["sourcemap"] }
-swc_ecmascript = { version = "0.39.0", features = ["codegen", "dep_graph", "parser", "proposal", "react", "transforms", "typescript", "visit"] }
+swc_bundler = "0.45.0"
+swc_common = { version = "0.10.21", features = ["sourcemap"] }
+swc_ecmascript = { version = "0.45.0", features = ["codegen", "dep_graph", "parser", "proposal", "react", "transforms", "typescript", "visit"] }
 tempfile = "3.2.0"
 termcolor = "1.1.2"
 text-size = "1.1.0"
-tokio = { version = "1.7.1", features = ["full"] }
+tokio = { version = "1.8.0", features = ["full"] }
 tokio-rustls = "0.22.0"
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
 walkdir = "2.3.2"

@@ -67,58 +67,51 @@
     return result;
   }
 
-  /**
-   * @param  {...Uint8Array} bytesArrays
-   * @returns {Uint8Array}
-   */
-  function concatUint8Arrays(...bytesArrays) {
-    let byteLength = 0;
-    for (const bytes of bytesArrays) {
-      byteLength += bytes.byteLength;
+  /** @param {(BlobReference | Blob)[]} parts */
+  async function* toIterator(parts) {
+    for (const part of parts) {
+      yield* part.stream();
     }
-    const finalBytes = new Uint8Array(byteLength);
-    let current = 0;
-    for (const bytes of bytesArrays) {
-      finalBytes.set(bytes, current);
-      current += bytes.byteLength;
-    }
-    return finalBytes;
   }
 
   /** @typedef {BufferSource | Blob | string} BlobPart */
 
   /**
-     * @param {BlobPart[]} parts
-     * @param {string} endings
-     * @returns {Uint8Array}
-     */
+   * @param {BlobPart[]} parts
+   * @param {string} endings
+   * @returns {{ parts: (BlobReference|Blob)[], size: number }}
+   */
   function processBlobParts(parts, endings) {
-    /** @type {Uint8Array[]} */
-    const bytesArrays = [];
+    /** @type {(BlobReference|Blob)[]} */
+    const processedParts = [];
+    let size = 0;
     for (const element of parts) {
       if (element instanceof ArrayBuffer) {
-        bytesArrays.push(new Uint8Array(element.slice(0)));
+        const chunk = new Uint8Array(element.slice(0));
+        processedParts.push(BlobReference.fromUint8Array(chunk));
+        size += element.byteLength;
       } else if (ArrayBuffer.isView(element)) {
-        const buffer = element.buffer.slice(
+        const chunk = new Uint8Array(
+          element.buffer,
           element.byteOffset,
-          element.byteOffset + element.byteLength,
+          element.byteLength,
         );
-        bytesArrays.push(new Uint8Array(buffer));
+        size += element.byteLength;
+        processedParts.push(BlobReference.fromUint8Array(chunk));
       } else if (element instanceof Blob) {
-        bytesArrays.push(
-          new Uint8Array(element[_byteSequence].buffer.slice(0)),
-        );
+        processedParts.push(element);
+        size += element.size;
       } else if (typeof element === "string") {
-        let s = element;
-        if (endings == "native") {
-          s = convertLineEndingsToNative(s);
-        }
-        bytesArrays.push(core.encode(s));
+        const chunk = core.encode(
+          endings == "native" ? convertLineEndingsToNative(element) : element,
+        );
+        size += chunk.byteLength;
+        processedParts.push(BlobReference.fromUint8Array(chunk));
       } else {
-        throw new TypeError("Unreachable code (invalild element type)");
+        throw new TypeError("Unreachable code (invalid element type)");
       }
     }
-    return concatUint8Arrays(...bytesArrays);
+    return { parts: processedParts, size };
   }
 
   /**
@@ -133,18 +126,30 @@
     return normalizedType.toLowerCase();
   }
 
-  const _byteSequence = Symbol("[[ByteSequence]]");
+  /**
+   * Get all Parts as a flat array containing all references
+   * @param {Blob} blob
+   * @param {string[]} bag
+   * @returns {string[]}
+   */
+  function getParts(blob, bag = []) {
+    for (const part of blob[_parts]) {
+      if (part instanceof Blob) {
+        getParts(part, bag);
+      } else {
+        bag.push(part._id);
+      }
+    }
+    return bag;
+  }
+
+  const _size = Symbol("Size");
+  const _parts = Symbol("Parts");
 
   class Blob {
-    get [Symbol.toStringTag]() {
-      return "Blob";
-    }
-
-    /** @type {string} */
-    #type;
-
-    /** @type {Uint8Array} */
-    [_byteSequence];
+    #type = "";
+    [_size] = 0;
+    [_parts];
 
     /**
      * @param {BlobPart[]} blobParts
@@ -163,18 +168,20 @@
 
       this[webidl.brand] = webidl.brand;
 
-      /** @type {Uint8Array} */
-      this[_byteSequence] = processBlobParts(
+      const { parts, size } = processBlobParts(
         blobParts,
         options.endings,
       );
+
+      this[_parts] = parts;
+      this[_size] = size;
       this.#type = normalizeType(options.type);
     }
 
     /** @returns {number} */
     get size() {
       webidl.assertBranded(this, Blob);
-      return this[_byteSequence].byteLength;
+      return this[_size];
     }
 
     /** @returns {string} */
@@ -237,6 +244,36 @@
           relativeEnd = Math.min(end, O.size);
         }
       }
+
+      const span = Math.max(relativeEnd - relativeStart, 0);
+      const blobParts = [];
+      let added = 0;
+
+      for (const part of this[_parts]) {
+        // don't add the overflow to new blobParts
+        if (added >= span) {
+          // Could maybe be possible to remove variable `added`
+          // and only use relativeEnd?
+          break;
+        }
+        const size = part.size;
+        if (relativeStart && size <= relativeStart) {
+          // Skip the beginning and change the relative
+          // start & end position as we skip the unwanted parts
+          relativeStart -= size;
+          relativeEnd -= size;
+        } else {
+          const chunk = part.slice(
+            relativeStart,
+            Math.min(part.size, relativeEnd),
+          );
+          added += chunk.size;
+          relativeEnd -= part.size;
+          blobParts.push(chunk);
+          relativeStart = 0; // All next sequential parts should start at 0
+        }
+      }
+
       /** @type {string} */
       let relativeContentType;
       if (contentType === undefined) {
@@ -244,9 +281,11 @@
       } else {
         relativeContentType = normalizeType(contentType);
       }
-      return new Blob([
-        O[_byteSequence].buffer.slice(relativeStart, relativeEnd),
-      ], { type: relativeContentType });
+
+      const blob = new Blob([], { type: relativeContentType });
+      blob[_parts] = blobParts;
+      blob[_size] = span;
+      return blob;
     }
 
     /**
@@ -254,14 +293,18 @@
      */
     stream() {
       webidl.assertBranded(this, Blob);
-      const bytes = this[_byteSequence];
+      const partIterator = toIterator(this[_parts]);
       const stream = new ReadableStream({
         type: "bytes",
         /** @param {ReadableByteStreamController} controller */
-        start(controller) {
-          const chunk = new Uint8Array(bytes.buffer.slice(0));
-          if (chunk.byteLength > 0) controller.enqueue(chunk);
-          controller.close();
+        async pull(controller) {
+          while (true) {
+            const { value, done } = await partIterator.next();
+            if (done) return controller.close();
+            if (value.byteLength > 0) {
+              return controller.enqueue(value);
+            }
+          }
         },
       });
       return stream;
@@ -282,11 +325,21 @@
     async arrayBuffer() {
       webidl.assertBranded(this, Blob);
       const stream = this.stream();
-      let bytes = new Uint8Array();
+      const bytes = new Uint8Array(this.size);
+      let offset = 0;
       for await (const chunk of stream) {
-        bytes = concatUint8Arrays(bytes, chunk);
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
       }
       return bytes.buffer;
+    }
+
+    get [Symbol.toStringTag]() {
+      return "Blob";
+    }
+
+    [Symbol.for("Deno.customInspect")](inspect) {
+      return `Blob ${inspect({ size: this.size, type: this.#type })}`;
     }
   }
 
@@ -333,17 +386,13 @@
   );
 
   const _Name = Symbol("[[Name]]");
-  const _LastModfied = Symbol("[[LastModified]]");
+  const _LastModified = Symbol("[[LastModified]]");
 
   class File extends Blob {
-    get [Symbol.toStringTag]() {
-      return "File";
-    }
-
     /** @type {string} */
     [_Name];
     /** @type {number} */
-    [_LastModfied];
+    [_LastModified];
 
     /**
      * @param {BlobPart[]} fileBits
@@ -373,10 +422,10 @@
       this[_Name] = fileName;
       if (options.lastModified === undefined) {
         /** @type {number} */
-        this[_LastModfied] = new Date().getTime();
+        this[_LastModified] = new Date().getTime();
       } else {
         /** @type {number} */
-        this[_LastModfied] = options.lastModified;
+        this[_LastModified] = options.lastModified;
       }
     }
 
@@ -389,7 +438,11 @@
     /** @returns {number} */
     get lastModified() {
       webidl.assertBranded(this, File);
-      return this[_LastModfied];
+      return this[_LastModified];
+    }
+
+    get [Symbol.toStringTag]() {
+      return "File";
     }
   }
 
@@ -406,9 +459,80 @@
     ],
   );
 
+  // A finalization registry to deallocate a blob part when its JS reference is
+  // garbage collected.
+  const registry = new FinalizationRegistry((uuid) => {
+    core.opSync("op_blob_remove_part", uuid);
+  });
+
+  // TODO(lucacasonato): get a better stream from Rust in BlobReference#stream
+
+  /**
+   * An opaque reference to a blob part in Rust. This could be backed by a file,
+   * in memory storage, or something else.
+   */
+  class BlobReference {
+    /**
+     * Don't use directly. Use `BlobReference.fromUint8Array`.
+     * @param {string} id
+     * @param {number} size
+     */
+    constructor(id, size) {
+      this._id = id;
+      this.size = size;
+      registry.register(this, id);
+    }
+
+    /**
+     * Create a new blob part from a Uint8Array.
+     *
+     * @param {Uint8Array} data
+     * @returns {BlobReference}
+     */
+    static fromUint8Array(data) {
+      const id = core.opSync("op_blob_create_part", data);
+      return new BlobReference(id, data.byteLength);
+    }
+
+    /**
+     * Create a new BlobReference by slicing this BlobReference. This is a copy
+     * free operation - the sliced reference will still reference the original
+     * underlying bytes.
+     *
+     * @param {number} start
+     * @param {number} end
+     * @returns {BlobReference}
+     */
+    slice(start, end) {
+      const size = end - start;
+      const id = core.opSync("op_blob_slice_part", this._id, {
+        start,
+        len: size,
+      });
+      return new BlobReference(id, size);
+    }
+
+    /**
+     * Read the entire contents of the reference blob.
+     * @returns {AsyncGenerator<Uint8Array>}
+     */
+    async *stream() {
+      yield core.opAsync("op_blob_read_part", this._id);
+
+      // let position = 0;
+      // const end = this.size;
+      // while (position !== end) {
+      //   const size = Math.min(end - position, 65536);
+      //   const chunk = this.slice(position, position + size);
+      //   position += chunk.size;
+      //   yield core.opAsync("op_blob_read_part", chunk._id);
+      // }
+    }
+  }
+
   window.__bootstrap.file = {
+    getParts,
     Blob,
-    _byteSequence,
     File,
   };
 })(this);

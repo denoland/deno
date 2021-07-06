@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_console"
-version = "0.10.0"
+version = "0.10.1"
 edition = "2018"
 description = "Implementation of Console API for Deno"
 authors = ["the Deno authors"]

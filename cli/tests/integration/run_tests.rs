@@ -366,6 +366,12 @@ itest!(js_import_detect {
   exit_code: 0,
 });
 
+itest!(blob_gc_finalization {
+  args: "run blob_gc_finalization.js",
+  output: "blob_gc_finalization.js.out",
+  exit_code: 0,
+});
+
 itest!(lock_write_requires_lock {
   args: "run --lock-write some_file.ts",
   output: "lock_write_requires_lock.out",
@@ -660,6 +666,12 @@ itest!(heapstats {
   output: "heapstats.js.out",
 });
 
+itest!(finalization_registry {
+  args:
+    "run --quiet --unstable --v8-flags=--expose-gc finalization_registry.js",
+  output: "finalization_registry.js.out",
+});
+
 itest!(https_import {
   args: "run --quiet --reload --cert tls/RootCA.pem https_import.ts",
   output: "https_import.ts.out",
@@ -852,6 +864,12 @@ itest!(top_level_await_circular {
   args: "run --allow-read top_level_await_circular.js",
   output: "top_level_await_circular.out",
   exit_code: 1,
+});
+
+// Regression test for https://github.com/denoland/deno/issues/11238.
+itest!(top_level_await_nested {
+  args: "run --allow-read top_level_await_nested/main.js",
+  output: "top_level_await_nested.out",
 });
 
 itest!(top_level_await_unresolved {

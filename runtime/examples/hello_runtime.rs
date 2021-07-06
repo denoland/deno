@@ -3,7 +3,7 @@
 use deno_core::error::AnyError;
 use deno_core::FsModuleLoader;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
-use deno_runtime::deno_web::BlobUrlStore;
+use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
@@ -41,7 +41,7 @@ async fn main() -> Result<(), AnyError> {
     get_error_class_fn: Some(&get_error_class_name),
     location: None,
     origin_storage_dir: None,
-    blob_url_store: BlobUrlStore::default(),
+    blob_store: BlobStore::default(),
     broadcast_channel: InMemoryBroadcastChannel::default(),
   };
 
