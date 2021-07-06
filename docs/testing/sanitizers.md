@@ -1,7 +1,7 @@
 # Test Sanitizers
 
-The test runner offers several sanitizers to ensure that the test behaves in
-a reasonable and expected way.
+The test runner offers several sanitizers to ensure that the test behaves in a
+reasonable and expected way.
 
 ### Resource sanitizer
 
@@ -36,7 +36,7 @@ disabled by setting the `sanitizeOps` boolean to false in the test definition.
 Deno.test({
   name: "leaky operation test",
   fn() {
-    setTimeout(function() {}, 1000);
+    setTimeout(function () {}, 1000);
   },
   sanitizeOps: false,
 });
