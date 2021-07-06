@@ -1963,7 +1963,8 @@
   }
 
   /** Creates a proxy that represents a subset of the properties
-   * of the original object without evaluating the properties. */
+   * of the original object optionally without evaluating the properties
+   * in order to get the values. */
   function createFilteredInspectProxy({ object, keys, evaluate }) {
     return new Proxy({}, {
       get(_target, key) {
@@ -1981,7 +1982,6 @@
         }
 
         if (evaluate) {
-          // evaluate the instance's property
           return getEvaluatedDescriptor(object, key);
         } else {
           return getDescendantPropertyDescriptor(object, key) ??
