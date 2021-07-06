@@ -62,7 +62,7 @@
       }
       return charCode;
     });
-    return forgivingBase64Encode(TypedArrayFrom(byteArray));
+    return forgivingBase64Encode(TypedArrayFrom(Uint8Array, byteArray));
   }
 
   window.__bootstrap.base64 = {
