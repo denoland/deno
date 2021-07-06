@@ -158,6 +158,9 @@ jobs:
       - name: Set up Linux sysroot with Ubuntu 18.04 and LLVM
         if: matrix.use_sysroot
         run: |
+          # Avoid running man-db triggers, which sometimes takes several minutes
+          # to complete.
+          sudo apt-get remove -y --purge man-db
           sudo apt-get update
           sudo apt-get install debootstrap
 
