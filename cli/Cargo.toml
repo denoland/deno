@@ -71,6 +71,7 @@ num_cpus = "1.13.0"
 percent-encoding = "2.1.0"
 pin-project = "1.0.6"
 regex = "1.4.3"
+rand = { version = "0.8.3", features = [ "small_rng" ] }
 ring = "0.16.20"
 rustyline = { version = "8.0.0", default-features = false }
 rustyline-derive = "0.4.0"

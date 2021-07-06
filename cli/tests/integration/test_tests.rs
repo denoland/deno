@@ -114,3 +114,15 @@ itest!(unhandled_rejection {
   exit_code: 1,
   output: "test/unhandled_rejection.out",
 });
+
+itest!(shuffle {
+  args: "test --shuffle test/shuffle",
+  exit_code: 0,
+  output_str: Some("[WILDCARD]"),
+});
+
+itest!(shuffle_with_seed {
+  args: "test --shuffle=42 test/shuffle",
+  exit_code: 0,
+  output: "test/shuffle.out",
+});

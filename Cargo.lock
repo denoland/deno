@@ -568,6 +568,7 @@ dependencies = [
  "os_pipe",
  "percent-encoding",
  "pin-project",
+ "rand 0.8.4",
  "regex",
  "ring",
  "rustyline",
@@ -645,7 +646,7 @@ version = "0.24.1"
 dependencies = [
  "deno_core",
  "deno_web",
- "rand 0.8.3",
+ "rand 0.8.4",
  "ring",
  "tokio",
  "uuid",
@@ -2529,9 +2530,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.8.3"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ef9e7e66b4468674bfcb0c81af8b7fa0bb154fa9f28eb840da5c447baeb8d7e"
+checksum = "2e7573632e6454cf6b99d7aac4ccca54be06da05aca2ef7423d22d27d4d4bcd8"
 dependencies = [
  "libc",
  "rand_chacha 0.3.0",
@@ -3553,7 +3554,7 @@ checksum = "dac1c663cfc93810f88aed9b8941d48cabf856a1b111c29a40439018d870eb22"
 dependencies = [
  "cfg-if 1.0.0",
  "libc",
- "rand 0.8.3",
+ "rand 0.8.4",
  "redox_syscall",
  "remove_dir_all",
  "winapi 0.3.9",
@@ -3831,7 +3832,7 @@ dependencies = [
  "lazy_static",
  "log",
  "radix_trie",
- "rand 0.8.3",
+ "rand 0.8.4",
  "thiserror",
  "tokio",
  "trust-dns-proto",
@@ -3854,7 +3855,7 @@ dependencies = [
  "ipnet",
  "lazy_static",
  "log",
- "rand 0.8.3",
+ "rand 0.8.4",
  "serde",
  "smallvec",
  "thiserror",
@@ -3926,7 +3927,7 @@ dependencies = [
  "httparse",
  "input_buffer",
  "log",
- "rand 0.8.3",
+ "rand 0.8.4",
  "rustls",
  "sha-1",
  "thiserror",
