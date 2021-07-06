@@ -659,7 +659,7 @@ fn test_watch_doc() {
   )
   .expect("error writing file");
 
-  assert_contains!(skip_restarting_line(&stderr_lines), "foo.ts$3-6");
+  assert_contains!(skip_restarting_line(stderr_lines), "foo.ts$3-6");
 
   assert!(child.try_wait().unwrap().is_none());
   child.kill().unwrap();
