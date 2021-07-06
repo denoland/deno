@@ -659,6 +659,8 @@ fn test_watch_doc() {
   )
   .expect("error writing file");
 
+  // We only need to scan for a Check file://.../foo.ts$3-6 line that
+  // corresponds to the documentation block being type-checked.
   assert_contains!(skip_restarting_line(stderr_lines), "foo.ts$3-6");
 
   assert!(child.try_wait().unwrap().is_none());
