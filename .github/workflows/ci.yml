@@ -221,8 +221,8 @@ jobs:
             unset RUSTC_FORCE_INCREMENTAL
 
             # C build configuration.
-            export CC=clang-12         # Compile c source files with clang.
-            export CCFLAGs=-flto=thin  # Tell clang to produce llvm bitcode.
+            export CC=clang-12        # Compile c source files with clang.
+            export CFLAGS=-flto=thin  # Tell clang to produce llvm bitcode.
 
             # Miscellaneous flags.
             export CARGO_TERM_COLOR=always
