@@ -2,7 +2,7 @@
 
 //! This module provides feature to upgrade deno executable
 
-use deno_core::error::{AnyError, bail};
+use deno_core::error::{bail, AnyError};
 use deno_core::futures::StreamExt;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::Client;
