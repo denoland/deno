@@ -13,6 +13,7 @@
   const webidl = window.__bootstrap.webidl;
   const { setEventTargetData } = window.__bootstrap.eventTarget;
   const { defineEventHandler } = window.__bootstrap.event;
+  const { DOMException } = window.__bootstrap.domException;
 
   class MessageChannel {
     /** @type {MessagePort} */
@@ -60,7 +61,9 @@
    * @returns {MessagePort}
    */
   function createMessagePort(id) {
-    const port = webidl.createBranded(MessagePort);
+    const port = core.createHostObject();
+    Object.setPrototypeOf(port, MessagePort.prototype);
+    port[webidl.brand] = webidl.brand;
     setEventTargetData(port);
     port[_id] = id;
     return port;
@@ -151,6 +154,10 @@
         this[_id] = null;
       }
     }
+
+    get [Symbol.toStringTag]() {
+      return "MessagePort";
+    }
   }
 
   defineEventHandler(MessagePort.prototype, "message", function (self) {
@@ -187,7 +194,9 @@
       }
     }
 
-    const data = core.deserialize(messageData.data);
+    const data = core.deserialize(messageData.data, {
+      hostObjects: transferables,
+    });
 
     return [data, transferables];
   }
@@ -200,7 +209,7 @@
   function serializeJsMessageData(data, tranferables) {
     let serializedData;
     try {
-      serializedData = core.serialize(data);
+      serializedData = core.serialize(data, { hostObjects: tranferables });
     } catch (err) {
       throw new DOMException(err.message, "DataCloneError");
     }

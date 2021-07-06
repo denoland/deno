@@ -9,6 +9,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const { DOMException } = window.__bootstrap.domException;
 
   const objectCloneMemo = new WeakMap();
 

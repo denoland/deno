@@ -11,7 +11,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::ModuleSpecifier;
-use lspower::lsp::TextDocumentContentChangeEvent;
+use lspower::lsp;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Range;
@@ -47,6 +47,20 @@ impl FromStr for LanguageId {
   }
 }
 
+impl<'a> From<&'a LanguageId> for MediaType {
+  fn from(id: &'a LanguageId) -> MediaType {
+    match id {
+      LanguageId::JavaScript => MediaType::JavaScript,
+      LanguageId::Json => MediaType::Json,
+      LanguageId::JsonC => MediaType::Json,
+      LanguageId::Jsx => MediaType::Jsx,
+      LanguageId::Markdown => MediaType::Unknown,
+      LanguageId::Tsx => MediaType::Tsx,
+      LanguageId::TypeScript => MediaType::TypeScript,
+    }
+  }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 enum IndexValid {
   All,
@@ -65,11 +79,12 @@ impl IndexValid {
 #[derive(Debug, Clone)]
 pub struct DocumentData {
   bytes: Option<Vec<u8>>,
+  dependencies: Option<HashMap<String, analysis::Dependency>>,
+  dependency_ranges: Option<analysis::DependencyRanges>,
   language_id: LanguageId,
   line_index: Option<LineIndex>,
   maybe_navigation_tree: Option<tsc::NavigationTree>,
   specifier: ModuleSpecifier,
-  dependencies: Option<HashMap<String, analysis::Dependency>>,
   version: Option<i32>,
 }
 
@@ -82,18 +97,19 @@ impl DocumentData {
   ) -> Self {
     Self {
       bytes: Some(source.as_bytes().to_owned()),
+      dependencies: None,
+      dependency_ranges: None,
       language_id,
       line_index: Some(LineIndex::new(source)),
       maybe_navigation_tree: None,
       specifier,
-      dependencies: None,
       version: Some(version),
     }
   }
 
   pub fn apply_content_changes(
     &mut self,
-    content_changes: Vec<TextDocumentContentChangeEvent>,
+    content_changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<(), AnyError> {
     if self.bytes.is_none() {
       return Ok(());
@@ -149,6 +165,16 @@ impl DocumentData {
       Ok(None)
     }
   }
+
+  /// Determines if a position within the document is within a dependency range
+  /// and if so, returns the range with the text of the specifier.
+  fn is_specifier_position(
+    &self,
+    position: &lsp::Position,
+  ) -> Option<analysis::DependencyRange> {
+    let import_ranges = self.dependency_ranges.as_ref()?;
+    import_ranges.contains(position)
+  }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -193,7 +219,7 @@ impl DocumentCache {
     &mut self,
     specifier: &ModuleSpecifier,
     version: i32,
-    content_changes: Vec<TextDocumentContentChangeEvent>,
+    content_changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<Option<String>, AnyError> {
     if !self.contains_key(specifier) {
       return Err(custom_error(
@@ -291,6 +317,17 @@ impl DocumentCache {
     self.docs.contains_key(specifier)
   }
 
+  /// Determines if the position in the document is within a range of a module
+  /// specifier, returning the text range if true.
+  pub fn is_specifier_position(
+    &self,
+    specifier: &ModuleSpecifier,
+    position: &lsp::Position,
+  ) -> Option<analysis::DependencyRange> {
+    let document = self.docs.get(specifier)?;
+    document.is_specifier_position(position)
+  }
+
   pub fn len(&self) -> usize {
     self.docs.len()
   }
@@ -346,9 +383,11 @@ impl DocumentCache {
     &mut self,
     specifier: &ModuleSpecifier,
     maybe_dependencies: Option<HashMap<String, analysis::Dependency>>,
+    maybe_dependency_ranges: Option<analysis::DependencyRanges>,
   ) -> Result<(), AnyError> {
     if let Some(doc) = self.docs.get_mut(specifier) {
       doc.dependencies = maybe_dependencies;
+      doc.dependency_ranges = maybe_dependency_ranges;
       self.calculate_dependents();
       Ok(())
     } else {

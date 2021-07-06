@@ -34,7 +34,8 @@ unitTest(async function responseBlob() {
   assert(blobPromise instanceof Promise);
   const blob = await blobPromise;
   assert(blob instanceof Blob);
-  assertEquals(blob, new Blob([new Uint8Array([1, 2, 3])]));
+  assertEquals(blob.size, 3);
+  assertEquals(await blob.arrayBuffer(), new Uint8Array([1, 2, 3]).buffer);
 });
 
 // TODO(lucacasonato): re-enable test once #10002 is fixed.

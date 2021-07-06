@@ -41,7 +41,7 @@ fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
     deno_webidl::init(),
     deno_console::init(),
     deno_url::init(),
-    deno_web::init(Default::default(), Default::default()),
+    deno_web::init(deno_web::BlobStore::default(), Default::default()),
     deno_fetch::init::<deno_fetch::NoFetchPermissions>(
       "".to_owned(),
       None,
@@ -59,6 +59,7 @@ fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
       false, // No --unstable.
     ),
+    deno_net::init::<deno_net::NoNetPermissions>(false), // No --unstable.
   ];
 
   let js_runtime = JsRuntime::new(RuntimeOptions {

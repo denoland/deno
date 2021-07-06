@@ -161,6 +161,16 @@ where
   Ok(target_files)
 }
 
+// Asynchronously removes a directory and all its descendants, but does not error
+// when the directory does not exist.
+pub async fn remove_dir_all_if_exists(path: &Path) -> std::io::Result<()> {
+  let result = tokio::fs::remove_dir_all(path).await;
+  match result {
+    Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+    _ => result,
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

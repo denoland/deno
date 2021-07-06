@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
+/// <reference path="../../core/internal.d.ts" />
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
@@ -9,6 +10,22 @@
 
 ((window) => {
   const core = Deno.core;
+  const {
+    RegExp,
+    ArrayPrototypeMap,
+    StringPrototypeCharCodeAt,
+    NumberPrototypeToString,
+    StringPrototypePadStart,
+    TypeError,
+    ArrayPrototypeJoin,
+    StringPrototypeCharAt,
+    StringPrototypeSlice,
+    String,
+    StringPrototypeReplace,
+    StringPrototypeToUpperCase,
+    StringPrototypeToLowerCase,
+    StringPrototypeSubstring,
+  } = window.__bootstrap.primordials;
 
   const ASCII_DIGIT = ["\u0030-\u0039"];
   const ASCII_UPPER_ALPHA = ["\u0041-\u005A"];
@@ -73,18 +90,31 @@
    * @returns {string}
    */
   function regexMatcher(chars) {
-    const matchers = chars.map((char) => {
+    const matchers = ArrayPrototypeMap(chars, (char) => {
       if (char.length === 1) {
-        return `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`;
+        const a = StringPrototypePadStart(
+          NumberPrototypeToString(StringPrototypeCharCodeAt(char, 0), 16),
+          4,
+          "0",
+        );
+        return `\\u${a}`;
       } else if (char.length === 3 && char[1] === "-") {
-        return `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}-\\u${
-          char.charCodeAt(2).toString(16).padStart(4, "0")
-        }`;
+        const a = StringPrototypePadStart(
+          NumberPrototypeToString(StringPrototypeCharCodeAt(char, 0), 16),
+          4,
+          "0",
+        );
+        const b = StringPrototypePadStart(
+          NumberPrototypeToString(StringPrototypeCharCodeAt(char, 2), 16),
+          4,
+          "0",
+        );
+        return `\\u${a}-\\u${b}`;
       } else {
         throw TypeError("unreachable");
       }
     });
-    return matchers.join("");
+    return ArrayPrototypeJoin(matchers, "");
   }
 
   /**
@@ -97,11 +127,11 @@
   function collectSequenceOfCodepoints(input, position, condition) {
     const start = position;
     for (
-      let c = input.charAt(position);
+      let c = StringPrototypeCharAt(input, position);
       position < input.length && condition(c);
-      c = input.charAt(++position)
+      c = StringPrototypeCharAt(input, ++position)
     );
-    return { result: input.slice(start, position), position };
+    return { result: StringPrototypeSlice(input, start, position), position };
   }
 
   /**
@@ -109,9 +139,13 @@
    * @returns {string}
    */
   function byteUpperCase(s) {
-    return String(s).replace(/[a-z]/g, function byteUpperCaseReplace(c) {
-      return c.toUpperCase();
-    });
+    return StringPrototypeReplace(
+      String(s),
+      /[a-z]/g,
+      function byteUpperCaseReplace(c) {
+        return StringPrototypeToUpperCase(c);
+      },
+    );
   }
 
   /**
@@ -119,9 +153,13 @@
    * @returns {string}
    */
   function byteLowerCase(s) {
-    return String(s).replace(/[A-Z]/g, function byteUpperCaseReplace(c) {
-      return c.toLowerCase();
-    });
+    return StringPrototypeReplace(
+      String(s),
+      /[A-Z]/g,
+      function byteUpperCaseReplace(c) {
+        return StringPrototypeToLowerCase(c);
+      },
+    );
   }
 
   /**
@@ -137,7 +175,7 @@
     // 2.
     let value = "";
     // 3.
-    if (input[position] !== "\u0022") throw new Error('must be "');
+    if (input[position] !== "\u0022") throw new TypeError('must be "');
     // 4.
     position++;
     // 5.
@@ -169,7 +207,7 @@
         position++;
       } else { // 5.6.
         // 5.6.1
-        if (quoteOrBackslash !== "\u0022") throw new Error('must be "');
+        if (quoteOrBackslash !== "\u0022") throw new TypeError('must be "');
         // 5.6.2
         break;
       }
@@ -177,7 +215,10 @@
     // 6.
     if (extractValue) return { result: value, position };
     // 7.
-    return { result: input.substring(positionStart, position + 1), position };
+    return {
+      result: StringPrototypeSubstring(input, positionStart, position + 1),
+      position,
+    };
   }
 
   /**

@@ -53,6 +53,8 @@
     ftruncateSync: __bootstrap.fs.ftruncateSync,
     ftruncate: __bootstrap.fs.ftruncate,
     errors: __bootstrap.errors.errors,
+    // TODO(kt3k): Remove this export at v2
+    // See https://github.com/denoland/deno/issues/9294
     customInspect: __bootstrap.console.customInspect,
     inspect: __bootstrap.console.inspect,
     env: __bootstrap.os.env,
@@ -107,7 +109,6 @@
     Signal: __bootstrap.signals.Signal,
     SignalStream: __bootstrap.signals.SignalStream,
     emit: __bootstrap.compilerApi.emit,
-    openPlugin: __bootstrap.plugins.openPlugin,
     kill: __bootstrap.process.kill,
     setRaw: __bootstrap.tty.setRaw,
     consoleSize: __bootstrap.tty.consoleSize,

@@ -16,6 +16,7 @@
   const { forgivingBase64Encode } = window.__bootstrap.infra;
   const { decode, TextDecoder } = window.__bootstrap.encoding;
   const { parseMimeType } = window.__bootstrap.mimesniff;
+  const { DOMException } = window.__bootstrap.domException;
 
   const state = Symbol("[[state]]");
   const result = Symbol("[[result]]");

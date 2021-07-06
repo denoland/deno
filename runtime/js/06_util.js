@@ -2,7 +2,10 @@
 "use strict";
 
 ((window) => {
+  const { ObjectDefineProperty, StringPrototypeReplace, TypeError, Promise } =
+    window.__bootstrap.primordials;
   const { build } = window.__bootstrap.build;
+  const { URL } = window.__bootstrap.url;
   let logDebug = false;
   let logSource = "JS";
 
@@ -51,7 +54,7 @@
     p,
     value,
   ) {
-    Object.defineProperty(o, p, {
+    ObjectDefineProperty(o, p, {
       value,
       configurable: false,
       writable: false,
@@ -60,12 +63,22 @@
 
   // Keep in sync with `fromFileUrl()` in `std/path/win32.ts`.
   function pathFromURLWin32(url) {
-    let path = decodeURIComponent(
-      url.pathname
-        .replace(/^\/*([A-Za-z]:)(\/|$)/, "$1/")
-        .replace(/\//g, "\\")
-        .replace(/%(?![0-9A-Fa-f]{2})/g, "%25"),
+    let p = StringPrototypeReplace(
+      url.pathname,
+      /^\/*([A-Za-z]:)(\/|$)/,
+      "$1/",
     );
+    p = StringPrototypeReplace(
+      p,
+      /\//g,
+      "\\",
+    );
+    p = StringPrototypeReplace(
+      p,
+      /%(?![0-9A-Fa-f]{2})/g,
+      "%25",
+    );
+    let path = decodeURIComponent(p);
     if (url.hostname != "") {
       // Note: The `URL` implementation guarantees that the drive letter and
       // hostname are mutually exclusive. Otherwise it would not have been valid
@@ -82,7 +95,7 @@
     }
 
     return decodeURIComponent(
-      url.pathname.replace(/%(?![0-9A-Fa-f]{2})/g, "%25"),
+      StringPrototypeReplace(url.pathname, /%(?![0-9A-Fa-f]{2})/g, "%25"),
     );
   }
 
