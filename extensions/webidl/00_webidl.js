@@ -612,6 +612,7 @@
   };
 
   converters.DOMTimeStamp = converters["unsigned long long"];
+  converters.DOMHighResTimeStamp = converters["double"];
 
   converters.Function = convertCallbackFunction;
 

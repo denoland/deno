@@ -14,11 +14,12 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
+async-trait = "0.1.50"
 base64 = "0.13.0"
 deno_core = { version = "0.92.0", path = "../../core" }
 encoding_rs = "0.8.28"
 serde = "1.0"
-tokio = "1.7"
+tokio = "1.8.0"
 uuid = { version = "0.8.2", features = ["v4"] }
 
 [dev-dependencies]

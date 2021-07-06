@@ -1,0 +1,6 @@
+Check [WILDCARD]/test/ignore_permissions.ts
+running 1 test from [WILDCARD]/test/ignore_permissions.ts
+test ignore ... ignored ([WILDCARD])
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out ([WILDCARD])
+

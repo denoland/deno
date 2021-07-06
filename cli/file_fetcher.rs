@@ -19,7 +19,7 @@ use deno_core::futures;
 use deno_core::futures::future::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_fetch::reqwest;
-use deno_runtime::deno_web::BlobUrlStore;
+use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use log::debug;
 use log::info;
@@ -212,7 +212,7 @@ pub struct FileFetcher {
   cache_setting: CacheSetting,
   http_cache: HttpCache,
   http_client: reqwest::Client,
-  blob_url_store: BlobUrlStore,
+  blob_store: BlobStore,
 }
 
 impl FileFetcher {
@@ -221,7 +221,7 @@ impl FileFetcher {
     cache_setting: CacheSetting,
     allow_remote: bool,
     ca_data: Option<Vec<u8>>,
-    blob_url_store: BlobUrlStore,
+    blob_store: BlobStore,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       auth_tokens: AuthTokens::new(env::var(DENO_AUTH_TOKENS).ok()),
@@ -230,7 +230,7 @@ impl FileFetcher {
       cache_setting,
       http_cache,
       http_client: create_http_client(get_user_agent(), ca_data)?,
-      blob_url_store,
+      blob_store,
     })
   }
 
@@ -360,7 +360,7 @@ impl FileFetcher {
   }
 
   /// Get a blob URL.
-  fn fetch_blob_url(
+  async fn fetch_blob_url(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<File, AnyError> {
@@ -381,20 +381,24 @@ impl FileFetcher {
       ));
     }
 
-    let blob_url_storage = self.blob_url_store.borrow();
-    let blob = blob_url_storage.get(specifier.clone())?.ok_or_else(|| {
-      custom_error(
-        "NotFound",
-        format!("Blob URL not found: \"{}\".", specifier),
-      )
-    })?;
+    let blob = {
+      let blob_store = self.blob_store.borrow();
+      blob_store
+        .get_object_url(specifier.clone())?
+        .ok_or_else(|| {
+          custom_error(
+            "NotFound",
+            format!("Blob URL not found: \"{}\".", specifier),
+          )
+        })?
+    };
 
-    let content_type = blob.media_type;
+    let content_type = blob.media_type.clone();
+    let bytes = blob.read_all().await?;
 
     let (media_type, maybe_charset) =
       map_content_type(specifier, Some(content_type.clone()));
-    let source =
-      strip_shebang(get_source_from_bytes(blob.data, maybe_charset)?);
+    let source = strip_shebang(get_source_from_bytes(bytes, maybe_charset)?);
 
     let local =
       self
@@ -525,7 +529,7 @@ impl FileFetcher {
       }
       result
     } else if scheme == "blob" {
-      let result = self.fetch_blob_url(specifier);
+      let result = self.fetch_blob_url(specifier).await;
       if let Ok(file) = &result {
         self.cache.insert(specifier.clone(), file.clone());
       }
@@ -580,6 +584,7 @@ mod tests {
   use deno_core::resolve_url;
   use deno_core::resolve_url_or_path;
   use deno_runtime::deno_web::Blob;
+  use deno_runtime::deno_web::InMemoryBlobPart;
   use std::rc::Rc;
   use tempfile::TempDir;
 
@@ -588,28 +593,28 @@ mod tests {
     maybe_temp_dir: Option<Rc<TempDir>>,
   ) -> (FileFetcher, Rc<TempDir>) {
     let (file_fetcher, temp_dir, _) =
-      setup_with_blob_url_store(cache_setting, maybe_temp_dir);
+      setup_with_blob_store(cache_setting, maybe_temp_dir);
     (file_fetcher, temp_dir)
   }
 
-  fn setup_with_blob_url_store(
+  fn setup_with_blob_store(
     cache_setting: CacheSetting,
     maybe_temp_dir: Option<Rc<TempDir>>,
-  ) -> (FileFetcher, Rc<TempDir>, BlobUrlStore) {
+  ) -> (FileFetcher, Rc<TempDir>, BlobStore) {
     let temp_dir = maybe_temp_dir.unwrap_or_else(|| {
       Rc::new(TempDir::new().expect("failed to create temp directory"))
     });
     let location = temp_dir.path().join("deps");
-    let blob_url_store = BlobUrlStore::default();
+    let blob_store = BlobStore::default();
     let file_fetcher = FileFetcher::new(
       HttpCache::new(&location),
       cache_setting,
       true,
       None,
-      blob_url_store.clone(),
+      blob_store.clone(),
     )
     .expect("setup failed");
-    (file_fetcher, temp_dir, blob_url_store)
+    (file_fetcher, temp_dir, blob_store)
   }
 
   macro_rules! file_url {
@@ -948,16 +953,18 @@ mod tests {
 
   #[tokio::test]
   async fn test_fetch_blob_url() {
-    let (file_fetcher, _, blob_url_store) =
-      setup_with_blob_url_store(CacheSetting::Use, None);
+    let (file_fetcher, _, blob_store) =
+      setup_with_blob_store(CacheSetting::Use, None);
 
-    let specifier = blob_url_store.insert(
+    let bytes =
+      "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"
+        .as_bytes()
+        .to_vec();
+
+    let specifier = blob_store.insert_object_url(
       Blob {
-        data:
-          "export const a = \"a\";\n\nexport enum A {\n  A,\n  B,\n  C,\n}\n"
-            .as_bytes()
-            .to_vec(),
         media_type: "application/typescript".to_string(),
+        parts: vec![Arc::new(Box::new(InMemoryBlobPart::from(bytes)))],
       },
       None,
     );
@@ -1049,7 +1056,7 @@ mod tests {
       CacheSetting::ReloadAll,
       true,
       None,
-      BlobUrlStore::default(),
+      BlobStore::default(),
     )
     .expect("setup failed");
     let result = file_fetcher
@@ -1076,7 +1083,7 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
-      BlobUrlStore::default(),
+      BlobStore::default(),
     )
     .expect("could not create file fetcher");
     let specifier =
@@ -1104,7 +1111,7 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
-      BlobUrlStore::default(),
+      BlobStore::default(),
     )
     .expect("could not create file fetcher");
     let result = file_fetcher_02
@@ -1265,7 +1272,7 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
-      BlobUrlStore::default(),
+      BlobStore::default(),
     )
     .expect("could not create file fetcher");
     let specifier =
@@ -1296,7 +1303,7 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
-      BlobUrlStore::default(),
+      BlobStore::default(),
     )
     .expect("could not create file fetcher");
     let result = file_fetcher_02
@@ -1406,7 +1413,7 @@ mod tests {
       CacheSetting::Use,
       false,
       None,
-      BlobUrlStore::default(),
+      BlobStore::default(),
     )
     .expect("could not create file fetcher");
     let specifier =
@@ -1433,7 +1440,7 @@ mod tests {
       CacheSetting::Only,
       true,
       None,
-      BlobUrlStore::default(),
+      BlobStore::default(),
     )
     .expect("could not create file fetcher");
     let file_fetcher_02 = FileFetcher::new(
@@ -1441,7 +1448,7 @@ mod tests {
       CacheSetting::Use,
       true,
       None,
-      BlobUrlStore::default(),
+      BlobStore::default(),
     )
     .expect("could not create file fetcher");
     let specifier =

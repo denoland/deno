@@ -1,7 +1,16 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 "use strict";
+
+// @ts-check
+/// <reference path="../../core/internal.d.ts" />
+
 ((window) => {
   const { EventTarget } = window;
+  const {
+    Symbol,
+    SymbolToStringTag,
+    TypeError,
+  } = window.__bootstrap.primordials;
 
   const illegalConstructorKey = Symbol("illegalConstructorKey");
 
@@ -13,7 +22,7 @@
       super();
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "Window";
     }
   }
@@ -26,7 +35,7 @@
       super();
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "WorkerGlobalScope";
     }
   }
@@ -39,7 +48,7 @@
       super();
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "DedicatedWorkerGlobalScope";
     }
   }

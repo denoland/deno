@@ -2,6 +2,7 @@
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
+/// <reference path="../../core/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
 
@@ -10,6 +11,15 @@
 ((window) => {
   const core = window.Deno.core;
   const { DOMException } = window.__bootstrap.domException;
+  const {
+    ArrayBuffer,
+    ArrayBufferIsView,
+    DataView,
+    TypedArrayPrototypeSlice,
+    TypeError,
+    WeakMap,
+    WeakMapPrototypeSet,
+  } = window.__bootstrap.primordials;
 
   const objectCloneMemo = new WeakMap();
 
@@ -20,7 +30,8 @@
     _cloneConstructor,
   ) {
     // this function fudges the return type but SharedArrayBuffer is disabled for a while anyway
-    return srcBuffer.slice(
+    return TypedArrayPrototypeSlice(
+      srcBuffer,
       srcByteOffset,
       srcByteOffset + srcLength,
     );
@@ -38,10 +49,10 @@
         value.byteLength,
         ArrayBuffer,
       );
-      objectCloneMemo.set(value, cloned);
+      WeakMapPrototypeSet(objectCloneMemo, value, cloned);
       return cloned;
     }
-    if (ArrayBuffer.isView(value)) {
+    if (ArrayBufferIsView(value)) {
       const clonedBuffer = structuredClone(value.buffer);
       // Use DataViewConstructor type purely for type-checking, can be a
       // DataView or TypedArray.  They use the same constructor signature,
