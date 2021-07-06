@@ -564,7 +564,13 @@ impl ReplSession {
       "Runtime.callFunctionOn",
       Some(json!({
         "executionContextId": self.context_id,
-        "functionDeclaration": "function (object) { return Deno[Deno.internal].inspectArgs(['%o', object], { colors: !Deno.noColor }); }",
+        "functionDeclaration": r#"function (object) {
+          try {
+            return Deno[Deno.internal].inspectArgs(["%o", object], { colors: !Deno.noColor });
+          } catch (err) {
+            return Deno[Deno.internal].inspectArgs(["%o", err]);
+          }
+        }"#,
         "arguments": [
           evaluate_result,
         ],
