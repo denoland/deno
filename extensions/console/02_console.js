@@ -69,7 +69,6 @@
     ArrayPrototypeFill,
     ArrayPrototypeFilter,
     ArrayPrototypeFind,
-    ArrayPrototypeForEach,
     FunctionPrototypeBind,
     Map,
     MapPrototypeHas,
@@ -77,6 +76,7 @@
     MapPrototypeSet,
     MapPrototypeDelete,
     MapPrototypeEntries,
+    MapPrototypeForEach,
     Error,
     ErrorCaptureStackTrace,
     MathCeil,
@@ -1806,7 +1806,7 @@
         let idx = 0;
         resultData = {};
 
-        ArrayPrototypeForEach(data, (v, k) => {
+        MapPrototypeForEach(data, (v, k) => {
           resultData[idx] = { Key: k, Values: v };
           idx++;
         });
