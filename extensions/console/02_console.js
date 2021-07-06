@@ -1043,8 +1043,8 @@
     if (entries.length === 0) {
       baseString = "{}";
     } else if (totalLength > LINE_BREAKING_LENGTH || !inspectOptions.compact) {
-      const entryIndent = DEFAULT_INDENT.repeat(level + 1);
-      const closingIndent = DEFAULT_INDENT.repeat(level);
+      const entryIndent = StringPrototypeRepeat(DEFAULT_INDENT, level + 1);
+      const closingIndent = StringPrototypeRepeat(DEFAULT_INDENT, level);
       baseString = `{\n${entryIndent}${
         ArrayPrototypeJoin(entries, `,\n${entryIndent}`)
       }${inspectOptions.trailingComma ? "," : ""}\n${closingIndent}}`;
