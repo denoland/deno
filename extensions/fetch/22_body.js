@@ -21,6 +21,18 @@
   const mimesniff = globalThis.__bootstrap.mimesniff;
   const { isReadableStreamDisturbed, errorReadableStream, createProxy } =
     globalThis.__bootstrap.streams;
+  const {
+    ArrayBufferIsView,
+    ArrayPrototypePush,
+    ArrayPrototypeMap,
+    JSONParse,
+    ObjectDefineProperties,
+    PromiseResolve,
+    TypedArrayPrototypeSet,
+    TypedArrayPrototypeSlice,
+    TypeError,
+    Uint8Array,
+  } = window.__bootstrap.primordials;
 
   class InnerBody {
     /** @type {ReadableStream<Uint8Array> | { body: Uint8Array, consumed: boolean }} */
@@ -92,13 +104,13 @@
         while (true) {
           const { value: chunk, done } = await reader.read();
           if (done) break;
-          chunks.push(chunk);
+          ArrayPrototypePush(chunks, chunk);
           totalLength += chunk.byteLength;
         }
         const finalBuffer = new Uint8Array(totalLength);
         let i = 0;
         for (const chunk of chunks) {
-          finalBuffer.set(chunk, i);
+          TypedArrayPrototypeSet(finalBuffer, chunk, i);
           i += chunk.byteLength;
         }
         return finalBuffer;
@@ -165,7 +177,7 @@
       if (object[bodySymbol] !== null) {
         return object[bodySymbol].consume();
       }
-      return Promise.resolve(new Uint8Array());
+      return PromiseResolve(new Uint8Array());
     }
 
     /** @type {PropertyDescriptorMap} */
@@ -255,7 +267,7 @@
         enumerable: true,
       },
     };
-    return Object.defineProperties(prototype.prototype, mixin);
+    return ObjectDefineProperties(prototype.prototype, mixin);
   }
 
   /**
@@ -287,7 +299,10 @@
             } else if (essence === "application/x-www-form-urlencoded") {
               const entries = parseUrlEncoded(bytes);
               return formDataFromEntries(
-                entries.map((x) => ({ name: x[0], value: x[1] })),
+                ArrayPrototypeMap(
+                  entries,
+                  (x) => ({ name: x[0], value: x[1] }),
+                ),
               );
             }
           }
@@ -296,7 +311,7 @@
         throw new TypeError("Missing content type");
       }
       case "JSON":
-        return JSON.parse(core.decode(bytes));
+        return JSONParse(core.decode(bytes));
       case "text":
         return core.decode(bytes);
     }
@@ -319,15 +334,15 @@
       if (object.type.length !== 0) {
         contentType = object.type;
       }
-    } else if (ArrayBuffer.isView(object) || object instanceof ArrayBuffer) {
-      const u8 = ArrayBuffer.isView(object)
+    } else if (ArrayBufferIsView(object) || object instanceof ArrayBuffer) {
+      const u8 = ArrayBufferIsView(object)
         ? new Uint8Array(
           object.buffer,
           object.byteOffset,
           object.byteLength,
         )
         : new Uint8Array(object);
-      const copy = u8.slice(0, u8.byteLength);
+      const copy = TypedArrayPrototypeSlice(u8, 0, u8.byteLength);
       source = copy;
     } else if (object instanceof FormData) {
       const res = formDataToBlob(object);
@@ -336,6 +351,7 @@
       length = res.size;
       contentType = res.type;
     } else if (object instanceof URLSearchParams) {
+      // TODO(@satyarohith): not sure what primordial here.
       source = core.encode(object.toString());
       contentType = "application/x-www-form-urlencoded;charset=UTF-8";
     } else if (typeof object === "string") {
@@ -374,7 +390,7 @@
       if (V instanceof ArrayBuffer || V instanceof SharedArrayBuffer) {
         return webidl.converters["ArrayBuffer"](V, opts);
       }
-      if (ArrayBuffer.isView(V)) {
+      if (ArrayBufferIsView(V)) {
         return webidl.converters["ArrayBufferView"](V, opts);
       }
     }
