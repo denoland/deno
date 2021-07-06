@@ -316,6 +316,7 @@ delete Object.prototype.__proto__;
     CountQueuingStrategy: util.nonEnumerable(
       streams.CountQueuingStrategy,
     ),
+    CryptoKey: util.nonEnumerable(crypto.CryptoKey),
     CustomEvent: util.nonEnumerable(CustomEvent),
     DOMException: util.nonEnumerable(domException.DOMException),
     ErrorEvent: util.nonEnumerable(ErrorEvent),

@@ -27,6 +27,19 @@
   } = window.__bootstrap.fetch;
   const abortSignal = window.__bootstrap.abortSignal;
   const { DOMException } = window.__bootstrap.domException;
+  const {
+    ArrayPrototypePush,
+    ArrayPrototypeSplice,
+    ArrayPrototypeFilter,
+    ArrayPrototypeIncludes,
+    Promise,
+    PromisePrototypeThen,
+    PromisePrototypeCatch,
+    StringPrototypeToLowerCase,
+    TypedArrayPrototypeSubarray,
+    TypeError,
+    Uint8Array,
+  } = window.__bootstrap.primordials;
 
   const REQUEST_BODY_HEADER_NAMES = [
     "content-encoding",
@@ -104,7 +117,7 @@
           );
           if (read > 0) {
             // We read some data. Enqueue it onto the stream.
-            controller.enqueue(chunk.subarray(0, read));
+            controller.enqueue(TypedArrayPrototypeSubarray(chunk, 0, read));
           } else {
             // We have reached the end of the body, so we close the stream.
             controller.close();
@@ -201,20 +214,26 @@
       const reader = reqBody.getReader();
       (async () => {
         while (true) {
-          const { value, done } = await reader.read().catch((err) => {
-            if (terminator.aborted) return { done: true, value: undefined };
-            throw err;
-          });
+          const { value, done } = await PromisePrototypeCatch(
+            reader.read(),
+            (err) => {
+              if (terminator.aborted) return { done: true, value: undefined };
+              throw err;
+            },
+          );
           if (done) break;
           if (!(value instanceof Uint8Array)) {
             await reader.cancel("value not a Uint8Array");
             break;
           }
           try {
-            await opFetchRequestWrite(requestBodyRid, value).catch((err) => {
-              if (terminator.aborted) return;
-              throw err;
-            });
+            await PromisePrototypeCatch(
+              opFetchRequestWrite(requestBodyRid, value),
+              (err) => {
+                if (terminator.aborted) return;
+                throw err;
+              },
+            );
             if (terminator.aborted) break;
           } catch (err) {
             await reader.cancel(err);
@@ -231,7 +250,7 @@
 
     let resp;
     try {
-      resp = await opFetchSend(requestRid).catch((err) => {
+      resp = await PromisePrototypeCatch(opFetchSend(requestRid), (err) => {
         if (terminator.aborted) return;
         throw err;
       });
@@ -300,7 +319,8 @@
    * @returns {Promise<InnerResponse>}
    */
   function httpRedirectFetch(request, response, terminator) {
-    const locationHeaders = response.headerList.filter(
+    const locationHeaders = ArrayPrototypeFilter(
+      response.headerList,
       (entry) => entry[0] === "location",
     );
     if (locationHeaders.length === 0) {
@@ -339,8 +359,13 @@
       request.method = "GET";
       request.body = null;
       for (let i = 0; i < request.headerList.length; i++) {
-        if (REQUEST_BODY_HEADER_NAMES.includes(request.headerList[i][0])) {
-          request.headerList.splice(i, 1);
+        if (
+          ArrayPrototypeIncludes(
+            REQUEST_BODY_HEADER_NAMES,
+            request.headerList[i][0],
+          )
+        ) {
+          ArrayPrototypeSplice(request.headerList, i, 1);
           i--;
         }
       }
@@ -349,7 +374,7 @@
       const res = extractBody(request.body.source);
       request.body = res.body;
     }
-    request.urlList.push(locationURL.href);
+    ArrayPrototypePush(request.urlList, locationURL.href);
     return mainFetch(request, true, terminator);
   }
 
@@ -393,35 +418,41 @@
       requestObject.signal[abortSignal.add](onabort);
 
       if (!requestObject.headers.has("accept")) {
-        request.headerList.push(["accept", "*/*"]);
+        ArrayPrototypePush(request.headerList, ["accept", "*/*"]);
       }
 
       // 12.
-      mainFetch(request, false, requestObject.signal).then((response) => {
-        // 12.1.
-        if (locallyAborted) return;
-        // 12.2.
-        if (response.aborted) {
-          reject(request, responseObject);
-          requestObject.signal[abortSignal.remove](onabort);
-          return;
-        }
-        // 12.3.
-        if (response.type === "error") {
-          const err = new TypeError(
-            "Fetch failed: " + (response.error ?? "unknown error"),
-          );
+      PromisePrototypeCatch(
+        PromisePrototypeThen(
+          mainFetch(request, false, requestObject.signal),
+          (response) => {
+            // 12.1.
+            if (locallyAborted) return;
+            // 12.2.
+            if (response.aborted) {
+              reject(request, responseObject);
+              requestObject.signal[abortSignal.remove](onabort);
+              return;
+            }
+            // 12.3.
+            if (response.type === "error") {
+              const err = new TypeError(
+                "Fetch failed: " + (response.error ?? "unknown error"),
+              );
+              reject(err);
+              requestObject.signal[abortSignal.remove](onabort);
+              return;
+            }
+            responseObject = fromInnerResponse(response, "immutable");
+            resolve(responseObject);
+            requestObject.signal[abortSignal.remove](onabort);
+          },
+        ),
+        (err) => {
           reject(err);
           requestObject.signal[abortSignal.remove](onabort);
-          return;
-        }
-        responseObject = fromInnerResponse(response, "immutable");
-        resolve(responseObject);
-        requestObject.signal[abortSignal.remove](onabort);
-      }).catch((err) => {
-        reject(err);
-        requestObject.signal[abortSignal.remove](onabort);
-      });
+        },
+      );
     });
     return p;
   }
@@ -461,7 +492,8 @@
         // https://github.com/WebAssembly/spec/issues/1138. The WPT tests
         // expect the raw value of the Content-Type attribute lowercased.
         if (
-          res.headers.get("Content-Type")?.toLowerCase() !== "application/wasm"
+          StringPrototypeToLowerCase(res.headers.get("Content-Type")) !==
+            "application/wasm"
         ) {
           throw new TypeError("Invalid WebAssembly content type.");
         }
