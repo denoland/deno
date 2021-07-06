@@ -3,6 +3,7 @@
 // @ts-check
 /// <reference no-default-lib="true" />
 /// <reference path="../../core/lib.deno_core.d.ts" />
+/// <reference path="../../core/internal.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
@@ -17,6 +18,23 @@
   const { decode, TextDecoder } = window.__bootstrap.encoding;
   const { parseMimeType } = window.__bootstrap.mimesniff;
   const { DOMException } = window.__bootstrap.domException;
+  const {
+    ArrayPrototypeJoin,
+    ArrayPrototypeMap,
+    ArrayPrototypePush,
+    ArrayPrototypeReduce,
+    FunctionPrototypeCall,
+    Map,
+    MapPrototypeGet,
+    MapPrototypeSet,
+    ObjectDefineProperty,
+    StringFromCodePoint,
+    Symbol,
+    SymbolToStringTag,
+    TypedArrayPrototypeSet,
+    TypeError,
+    Uint8Array,
+  } = window.__bootstrap.primordials;
 
   const state = Symbol("[[state]]");
   const result = Symbol("[[result]]");
@@ -24,7 +42,7 @@
   const aborted = Symbol("[[aborted]]");
 
   class FileReader extends EventTarget {
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "FileReader";
     }
 
@@ -96,11 +114,15 @@
             // 4. If chunkPromise is fulfilled with an object whose done property is false
             // and whose value property is a Uint8Array object, run these steps:
             if (!chunk.done && chunk.value instanceof Uint8Array) {
-              chunks.push(chunk.value);
+              ArrayPrototypePush(chunks, chunk.value);
 
               // TODO(bartlomieju): (only) If roughly 50ms have passed since last progress
               {
-                const size = chunks.reduce((p, i) => p + i.byteLength, 0);
+                const size = ArrayPrototypeReduce(
+                  chunks,
+                  (p, i) => p + i.byteLength,
+                  0,
+                );
                 const ev = new ProgressEvent("progress", {
                   loaded: size,
                 });
@@ -120,11 +142,15 @@
                 // 1. Set fr’s state to "done".
                 this[state] = "done";
                 // 2. Let result be the result of package data given bytes, type, blob’s type, and encodingName.
-                const size = chunks.reduce((p, i) => p + i.byteLength, 0);
+                const size = ArrayPrototypeReduce(
+                  chunks,
+                  (p, i) => p + i.byteLength,
+                  0,
+                );
                 const bytes = new Uint8Array(size);
                 let offs = 0;
                 for (const chunk of chunks) {
-                  bytes.set(chunk, offs);
+                  TypedArrayPrototypeSet(bytes, chunk, offs);
                   offs += chunk.byteLength;
                 }
                 switch (readtype.kind) {
@@ -133,9 +159,13 @@
                     break;
                   }
                   case "BinaryString":
-                    this[result] = [...new Uint8Array(bytes.buffer)].map((v) =>
-                      String.fromCodePoint(v)
-                    ).join("");
+                    this[result] = ArrayPrototypeJoin(
+                      ArrayPrototypeMap(
+                        [...new Uint8Array(bytes.buffer)],
+                        (v) => StringFromCodePoint(v),
+                      ),
+                      "",
+                    );
                     break;
                   case "Text": {
                     let decoder = undefined;
@@ -149,7 +179,10 @@
                     if (decoder === undefined) {
                       const mimeType = parseMimeType(blob.type);
                       if (mimeType) {
-                        const charset = mimeType.parameters.get("charset");
+                        const charset = MapPrototypeGet(
+                          mimeType.parameters,
+                          "charset",
+                        );
                         if (charset) {
                           try {
                             decoder = new TextDecoder(charset);
@@ -330,37 +363,37 @@
 
   webidl.configurePrototype(FileReader);
 
-  Object.defineProperty(FileReader, "EMPTY", {
+  ObjectDefineProperty(FileReader, "EMPTY", {
     writable: false,
     enumerable: true,
     configurable: false,
     value: 0,
   });
-  Object.defineProperty(FileReader, "LOADING", {
+  ObjectDefineProperty(FileReader, "LOADING", {
     writable: false,
     enumerable: true,
     configurable: false,
     value: 1,
   });
-  Object.defineProperty(FileReader, "DONE", {
+  ObjectDefineProperty(FileReader, "DONE", {
     writable: false,
     enumerable: true,
     configurable: false,
     value: 2,
   });
-  Object.defineProperty(FileReader.prototype, "EMPTY", {
+  ObjectDefineProperty(FileReader.prototype, "EMPTY", {
     writable: false,
     enumerable: true,
     configurable: false,
     value: 0,
   });
-  Object.defineProperty(FileReader.prototype, "LOADING", {
+  ObjectDefineProperty(FileReader.prototype, "LOADING", {
     writable: false,
     enumerable: true,
     configurable: false,
     value: 1,
   });
-  Object.defineProperty(FileReader.prototype, "DONE", {
+  ObjectDefineProperty(FileReader.prototype, "DONE", {
     writable: false,
     enumerable: true,
     configurable: false,
@@ -374,7 +407,7 @@
       if (typeof wrappedHandler.handler !== "function") {
         return;
       }
-      return wrappedHandler.handler.call(this, ...args);
+      return FunctionPrototypeCall(wrappedHandler.handler, this, ...args);
     }
     wrappedHandler.handler = handler;
     return wrappedHandler;
@@ -382,22 +415,25 @@
   // TODO(benjamingr) reuse when we can reuse code between web crates
   function defineEventHandler(emitter, name) {
     // HTML specification section 8.1.5.1
-    Object.defineProperty(emitter, `on${name}`, {
+    ObjectDefineProperty(emitter, `on${name}`, {
       get() {
-        return this[handlerSymbol]?.get(name)?.handler ?? null;
+        const maybeMap = this[handlerSymbol];
+        if (!maybeMap) return null;
+
+        return MapPrototypeGet(maybeMap, name)?.handler ?? null;
       },
       set(value) {
         if (!this[handlerSymbol]) {
           this[handlerSymbol] = new Map();
         }
-        let handlerWrapper = this[handlerSymbol]?.get(name);
+        let handlerWrapper = MapPrototypeGet(this[handlerSymbol], name);
         if (handlerWrapper) {
           handlerWrapper.handler = value;
         } else {
           handlerWrapper = makeWrappedHandler(value);
           this.addEventListener(name, handlerWrapper);
         }
-        this[handlerSymbol].set(name, handlerWrapper);
+        MapPrototypeSet(this[handlerSymbol], name, handlerWrapper);
       },
       configurable: true,
       enumerable: true,

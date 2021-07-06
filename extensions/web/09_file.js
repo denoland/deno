@@ -3,6 +3,7 @@
 // @ts-check
 /// <reference no-default-lib="true" />
 /// <reference path="../../core/lib.deno_core.d.ts" />
+/// <reference path="../../core/internal.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
@@ -13,6 +14,26 @@
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
+  const {
+    ArrayBuffer,
+    ArrayBufferPrototypeSlice,
+    ArrayBufferIsView,
+    ArrayPrototypePush,
+    Date,
+    DatePrototypeGetTime,
+    MathMax,
+    MathMin,
+    RegExpPrototypeTest,
+    StringPrototypeCharAt,
+    StringPrototypeToLowerCase,
+    StringPrototypeSlice,
+    Symbol,
+    SymbolFor,
+    TypedArrayPrototypeSet,
+    SymbolToStringTag,
+    TypeError,
+    Uint8Array,
+  } = window.__bootstrap.primordials;
 
   // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
   // host os.
@@ -28,11 +49,11 @@
     // https://infra.spec.whatwg.org/#collect-a-sequence-of-code-points
     const start = position;
     for (
-      let c = input.charAt(position);
+      let c = StringPrototypeCharAt(input, position);
       position < input.length && !(c === "\r" || c === "\n");
-      c = input.charAt(++position)
+      c = StringPrototypeCharAt(input, ++position)
     );
-    return { result: input.slice(start, position), position };
+    return { result: StringPrototypeSlice(input, start, position), position };
   }
 
   /**
@@ -45,11 +66,13 @@
     let { result, position } = collectCodepointsNotCRLF(s, 0);
 
     while (position < s.length) {
-      const codePoint = s.charAt(position);
+      const codePoint = StringPrototypeCharAt(s, position);
       if (codePoint === "\r") {
         result += nativeLineEnding;
         position++;
-        if (position < s.length && s.charAt(position) === "\n") {
+        if (
+          position < s.length && StringPrototypeCharAt(s, position) === "\n"
+        ) {
           position++;
         }
       } else if (codePoint === "\n") {
@@ -87,26 +110,26 @@
     let size = 0;
     for (const element of parts) {
       if (element instanceof ArrayBuffer) {
-        const chunk = new Uint8Array(element.slice(0));
-        processedParts.push(BlobReference.fromUint8Array(chunk));
+        const chunk = new Uint8Array(ArrayBufferPrototypeSlice(element, 0));
+        ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
         size += element.byteLength;
-      } else if (ArrayBuffer.isView(element)) {
+      } else if (ArrayBufferIsView(element)) {
         const chunk = new Uint8Array(
           element.buffer,
           element.byteOffset,
           element.byteLength,
         );
         size += element.byteLength;
-        processedParts.push(BlobReference.fromUint8Array(chunk));
+        ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
       } else if (element instanceof Blob) {
-        processedParts.push(element);
+        ArrayPrototypePush(processedParts, element);
         size += element.size;
       } else if (typeof element === "string") {
         const chunk = core.encode(
           endings == "native" ? convertLineEndingsToNative(element) : element,
         );
         size += chunk.byteLength;
-        processedParts.push(BlobReference.fromUint8Array(chunk));
+        ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
       } else {
         throw new TypeError("Unreachable code (invalid element type)");
       }
@@ -120,10 +143,10 @@
    */
   function normalizeType(str) {
     let normalizedType = str;
-    if (!/^[\x20-\x7E]*$/.test(str)) {
+    if (!RegExpPrototypeTest(/^[\x20-\x7E]*$/, str)) {
       normalizedType = "";
     }
-    return normalizedType.toLowerCase();
+    return StringPrototypeToLowerCase(normalizedType);
   }
 
   /**
@@ -137,7 +160,7 @@
       if (part instanceof Blob) {
         getParts(part, bag);
       } else {
-        bag.push(part._id);
+        ArrayPrototypePush(bag, part._id);
       }
     }
     return bag;
@@ -228,9 +251,9 @@
         relativeStart = 0;
       } else {
         if (start < 0) {
-          relativeStart = Math.max(O.size + start, 0);
+          relativeStart = MathMax(O.size + start, 0);
         } else {
-          relativeStart = Math.min(start, O.size);
+          relativeStart = MathMin(start, O.size);
         }
       }
       /** @type {number} */
@@ -239,13 +262,13 @@
         relativeEnd = O.size;
       } else {
         if (end < 0) {
-          relativeEnd = Math.max(O.size + end, 0);
+          relativeEnd = MathMax(O.size + end, 0);
         } else {
-          relativeEnd = Math.min(end, O.size);
+          relativeEnd = MathMin(end, O.size);
         }
       }
 
-      const span = Math.max(relativeEnd - relativeStart, 0);
+      const span = MathMax(relativeEnd - relativeStart, 0);
       const blobParts = [];
       let added = 0;
 
@@ -265,11 +288,11 @@
         } else {
           const chunk = part.slice(
             relativeStart,
-            Math.min(part.size, relativeEnd),
+            MathMin(part.size, relativeEnd),
           );
           added += chunk.size;
           relativeEnd -= part.size;
-          blobParts.push(chunk);
+          ArrayPrototypePush(blobParts, chunk);
           relativeStart = 0; // All next sequential parts should start at 0
         }
       }
@@ -328,17 +351,17 @@
       const bytes = new Uint8Array(this.size);
       let offset = 0;
       for await (const chunk of stream) {
-        bytes.set(chunk, offset);
+        TypedArrayPrototypeSet(bytes, chunk, offset);
         offset += chunk.byteLength;
       }
       return bytes.buffer;
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "Blob";
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [SymbolFor("Deno.customInspect")](inspect) {
       return `Blob ${inspect({ size: this.size, type: this.#type })}`;
     }
   }
@@ -355,7 +378,7 @@
       if (V instanceof ArrayBuffer || V instanceof SharedArrayBuffer) {
         return webidl.converters["ArrayBuffer"](V, opts);
       }
-      if (ArrayBuffer.isView(V)) {
+      if (ArrayBufferIsView(V)) {
         return webidl.converters["ArrayBufferView"](V, opts);
       }
     }
@@ -422,7 +445,7 @@
       this[_Name] = fileName;
       if (options.lastModified === undefined) {
         /** @type {number} */
-        this[_LastModified] = new Date().getTime();
+        this[_LastModified] = DatePrototypeGetTime(new Date());
       } else {
         /** @type {number} */
         this[_LastModified] = options.lastModified;
@@ -441,7 +464,7 @@
       return this[_LastModified];
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "File";
     }
   }
@@ -522,7 +545,7 @@
       // let position = 0;
       // const end = this.size;
       // while (position !== end) {
-      //   const size = Math.min(end - position, 65536);
+      //   const size = MathMin(end - position, 65536);
       //   const chunk = this.slice(position, position + size);
       //   position += chunk.size;
       //   yield core.opAsync("op_blob_read_part", chunk._id);
