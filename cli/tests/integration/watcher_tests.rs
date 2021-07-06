@@ -595,3 +595,87 @@ fn test_watch() {
   child.kill().unwrap();
   drop(t);
 }
+
+// TODO(bartlomieju): flaky (https://github.com/denoland/deno/issues/10552)
+#[test]
+fn test_watch_doc() {
+  macro_rules! assert_contains {
+        ($string:expr, $($test:expr),+) => {
+          let string = $string; // This might be a function call or something
+          if !($(string.contains($test))||+) {
+            panic!("{:?} does not contain any of {:?}", string, [$($test),+]);
+          }
+        }
+      }
+
+  let t = TempDir::new().expect("tempdir fail");
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::root_path())
+    .arg("test")
+    .arg("--watch")
+    .arg("--doc")
+    .arg("--unstable")
+    .arg(&t.path())
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn script");
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines =
+    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  assert_contains!(
+    stdout_lines.next().unwrap(),
+    "No matching test modules found"
+  );
+
+  wait_for_process_finished("Test", &mut stderr_lines);
+
+  let foo_file = t.path().join("foo.ts");
+  std::fs::write(
+    &foo_file,
+    r#"
+    export default function foo() {}
+  "#,
+  )
+  .expect("error writing file");
+
+  assert_eq!(stdout_lines.next().unwrap(), "");
+  assert_contains!(stdout_lines.next().unwrap(), "test result");
+  assert_eq!(stdout_lines.next().unwrap(), "");
+
+  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+
+  std::fs::write(
+    &foo_file,
+    r#"
+    /**
+     * ```ts
+     * import foo from "./foo.ts";
+     * ```
+     */
+    export default function foo() {}
+  "#,
+  )
+  .expect("error writing file");
+
+  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+  assert_contains!(stderr_lines.next().unwrap(), "foo.ts$3-6");
+  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
+
+  assert_eq!(stdout_lines.next().unwrap(), "");
+  assert_contains!(stdout_lines.next().unwrap(), "test result");
+  assert_eq!(stdout_lines.next().unwrap(), "");
+
+  assert!(child.try_wait().unwrap().is_none());
+  child.kill().unwrap();
+
+  drop(t);
+}
