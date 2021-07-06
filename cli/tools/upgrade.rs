@@ -2,7 +2,7 @@
 
 //! This module provides feature to upgrade deno executable
 
-use deno_core::error::AnyError;
+use deno_core::error::{AnyError, bail};
 use deno_core::futures::StreamExt;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::Client;
@@ -44,11 +44,9 @@ pub async fn upgrade_command(
       if canary
         && !regex::Regex::new("^[0-9a-f]{40}$")?.is_match(&passed_version)
       {
-        eprintln!("Invalid commit hash passed");
-        std::process::exit(1)
+        bail!("Invalid commit hash passed");
       } else if !canary && semver_parse(&passed_version).is_err() {
-        eprintln!("Invalid semver passed");
-        std::process::exit(1)
+        bail!("Invalid semver passed");
       }
 
       let current_is_passed = if canary {
