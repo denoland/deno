@@ -31,6 +31,7 @@ import {
 } from "./wpt/utils.ts";
 import { blue, bold, green, red, yellow } from "../test_util/std/fmt/colors.ts";
 import { writeAll, writeAllSync } from "../test_util/std/io/util.ts";
+import { pooledMap } from "../test_util/std/async/pool.ts";
 import { saveExpectation } from "./wpt/utils.ts";
 
 const command = Deno.args[0];
@@ -152,17 +153,29 @@ async function run() {
   console.log(`Going to run ${tests.length} test files.`);
 
   const results = await runWithTestUtil(false, async () => {
-    const results = [];
+    const results: { test: TestToRun; result: TestResult }[] = [];
 
-    for (const test of tests) {
-      console.log(`${blue("-".repeat(40))}\n${bold(test.path)}\n`);
+    const cores = Deno.systemCpuInfo().cores ?? 4;
+    const inParallel = !(cores === 1 || tests.length === 1);
+
+    const iter = pooledMap(cores, tests, async (test) => {
+      if (!inParallel) {
+        console.log(`${blue("-".repeat(40))}\n${bold(test.path)}\n`);
+      }
       const result = await runSingleTest(
         test.url,
         test.options,
-        createReportTestCase(test.expectation),
+        inParallel ? () => {} : createReportTestCase(test.expectation),
       );
       results.push({ test, result });
+      if (inParallel) {
+        console.log(`${blue("-".repeat(40))}\n${bold(test.path)}\n`);
+      }
       reportVariation(result, test.expectation);
+    });
+
+    for await (const _ of iter) {
+      // do nothing
     }
 
     return results;
