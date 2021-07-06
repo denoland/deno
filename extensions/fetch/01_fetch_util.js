@@ -2,6 +2,7 @@
 "use strict";
 
 ((window) => {
+  const { TypeError } = window.__bootstrap.primordials;
   function requiredArguments(
     name,
     length,
