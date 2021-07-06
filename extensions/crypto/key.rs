@@ -1,12 +1,10 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::AnyError;
 use ring::agreement::Algorithm as RingAlgorithm;
 use ring::hmac::Algorithm as HmacAlgorithm;
 use ring::signature::EcdsaSigningAlgorithm;
 use serde::Deserialize;
 use serde::Serialize;
-use std::convert::TryInto;
 
 #[derive(Serialize, Deserialize, Copy, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -36,27 +34,23 @@ pub enum CryptoNamedCurve {
   P384,
 }
 
-impl TryInto<&RingAlgorithm> for CryptoNamedCurve {
-  type Error = AnyError;
-
-  fn try_into(self) -> Result<&'static RingAlgorithm, Self::Error> {
-    match self {
-      CryptoNamedCurve::P256 => Ok(&ring::agreement::ECDH_P256),
-      CryptoNamedCurve::P384 => Ok(&ring::agreement::ECDH_P384),
+impl From<CryptoNamedCurve> for &RingAlgorithm {
+  fn from(curve: CryptoNamedCurve) -> &'static RingAlgorithm {
+    match curve {
+      CryptoNamedCurve::P256 => &ring::agreement::ECDH_P256,
+      CryptoNamedCurve::P384 => &ring::agreement::ECDH_P384,
     }
   }
 }
 
-impl TryInto<&EcdsaSigningAlgorithm> for CryptoNamedCurve {
-  type Error = AnyError;
-
-  fn try_into(self) -> Result<&'static EcdsaSigningAlgorithm, Self::Error> {
-    match self {
+impl From<CryptoNamedCurve> for &EcdsaSigningAlgorithm {
+  fn from(curve: CryptoNamedCurve) -> &'static EcdsaSigningAlgorithm {
+    match curve {
       CryptoNamedCurve::P256 => {
-        Ok(&ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING)
+        &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING
       }
       CryptoNamedCurve::P384 => {
-        Ok(&ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING)
+        &ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING
       }
     }
   }

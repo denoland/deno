@@ -154,15 +154,11 @@ pub async fn op_crypto_generate_key(
       private_key.to_pkcs8()?
     }
     Algorithm::Ecdsa => {
-      let curve: Result<&EcdsaSigningAlgorithm, AnyError> =
-        args.named_curve.ok_or_else(not_supported)?.try_into();
-      if curve.is_err() {
-        return Err(not_supported());
-      }
+      let curve: &EcdsaSigningAlgorithm =
+        args.named_curve.ok_or_else(not_supported)?.into();
       let rng = RingRand::SystemRandom::new();
       let private_key: Vec<u8> = tokio::task::spawn_blocking(
         move || -> Result<Vec<u8>, ring::error::Unspecified> {
-          let curve = curve.unwrap();
           let pkcs8 = EcdsaKeyPair::generate_pkcs8(curve, &rng)?;
           Ok(pkcs8.as_ref().to_vec())
         },
