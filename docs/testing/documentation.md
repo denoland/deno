@@ -1,7 +1,9 @@
 # Documentation tests
 
-Deno supports checking your documentation examples as tests. This makes sure
-that examples within your documentation are up to date and working.
+Deno supports type-checking your documentation examples.
+
+This makes sure that examples within your documentation are up to date and
+working.
 
 The basic idea is this:
 
