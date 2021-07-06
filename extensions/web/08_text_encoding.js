@@ -141,7 +141,9 @@
     encode(input = "") {
       webidl.assertBranded(this, TextEncoder);
       const prefix = "Failed to execute 'encode' on 'TextEncoder'";
-      input = webidl.converters.USVString(input, {
+      // The WebIDL type of `input` is `USVString`, but `core.encode` already
+      // converts lone surrogates to the replacement character.
+      input = webidl.converters.DOMString(input, {
         prefix,
         context: "Argument 1",
       });
@@ -156,7 +158,9 @@
     encodeInto(source, destination) {
       webidl.assertBranded(this, TextEncoder);
       const prefix = "Failed to execute 'encodeInto' on 'TextEncoder'";
-      source = webidl.converters.USVString(source, {
+      // The WebIDL type of `source` is `USVString`, but the ops bindings
+      // already convert lone surrogates to the replacement character.
+      source = webidl.converters.DOMString(source, {
         prefix,
         context: "Argument 1",
       });
