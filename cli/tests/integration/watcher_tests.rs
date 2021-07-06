@@ -646,13 +646,6 @@ fn test_watch_doc() {
   )
   .expect("error writing file");
 
-  assert_eq!(stdout_lines.next().unwrap(), "");
-  assert_contains!(stdout_lines.next().unwrap(), "test result");
-  assert_eq!(stdout_lines.next().unwrap(), "");
-
-  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
-  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
-
   std::fs::write(
     &foo_file,
     r#"
@@ -666,13 +659,7 @@ fn test_watch_doc() {
   )
   .expect("error writing file");
 
-  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
-  assert_contains!(stderr_lines.next().unwrap(), "foo.ts$3-6");
-  assert_contains!(stderr_lines.next().unwrap(), "Restarting");
-
-  assert_eq!(stdout_lines.next().unwrap(), "");
-  assert_contains!(stdout_lines.next().unwrap(), "test result");
-  assert_eq!(stdout_lines.next().unwrap(), "");
+  assert_contains!(skip_restarting_line(&stderr_lines), "foo.ts$3-6");
 
   assert!(child.try_wait().unwrap().is_none());
   child.kill().unwrap();
