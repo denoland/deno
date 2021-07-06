@@ -495,6 +495,17 @@
     }
 
     /**
+     * Create a new blob part from a file path.
+     *
+     * @param {string} path
+     * @returns {BlobReference}
+     */
+    static fromPath(path) {
+      const id = core.opSync("op_blob_create_file_part", path);
+      return new BlobReference(id, data.byteLength);
+    }
+
+    /**
      * Create a new BlobReference by slicing this BlobReference. This is a copy
      * free operation - the sliced reference will still reference the original
      * underlying bytes.
@@ -531,6 +542,7 @@
   }
 
   window.__bootstrap.file = {
+    BlobReference,
     getParts,
     Blob,
     File,
