@@ -22,6 +22,7 @@ use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
+use deno_core::SharedArrayBufferStore;
 use deno_web::BlobStore;
 use log::debug;
 use std::env;
@@ -70,6 +71,7 @@ pub struct WorkerOptions {
   pub origin_storage_dir: Option<std::path::PathBuf>,
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
+  pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
 }
 
 impl MainWorker {
@@ -136,6 +138,7 @@ impl MainWorker {
       startup_snapshot: Some(js::deno_isolate_init()),
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
+      shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       extensions,
       ..Default::default()
     });
@@ -300,6 +303,7 @@ mod tests {
       origin_storage_dir: None,
       blob_store: BlobStore::default(),
       broadcast_channel: InMemoryBroadcastChannel::default(),
+      shared_array_buffer_store: None,
     };
 
     MainWorker::from_options(main_module, permissions, &options)

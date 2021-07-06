@@ -28,6 +28,7 @@ use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
+use deno_core::SharedArrayBufferStore;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
 use deno_web::MessagePort;
@@ -269,6 +270,7 @@ pub struct WebWorkerOptions {
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
+  pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
 }
 
 impl WebWorker {
@@ -351,6 +353,7 @@ impl WebWorker {
       startup_snapshot: Some(js::deno_isolate_init()),
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
+      shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       extensions,
       ..Default::default()
     });

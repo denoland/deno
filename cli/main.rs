@@ -123,6 +123,9 @@ fn create_web_worker_callback(
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
       blob_store: program_state.blob_store.clone(),
       broadcast_channel: program_state.broadcast_channel.clone(),
+      shared_array_buffer_store: Some(
+        program_state.shared_array_buffer_store.clone(),
+      ),
     };
 
     let (mut worker, external_handle) = WebWorker::from_options(
@@ -209,6 +212,9 @@ pub fn create_main_worker(
     }),
     blob_store: program_state.blob_store.clone(),
     broadcast_channel: program_state.broadcast_channel.clone(),
+    shared_array_buffer_store: Some(
+      program_state.shared_array_buffer_store.clone(),
+    ),
   };
 
   let mut worker = MainWorker::from_options(main_module, permissions, &options);
