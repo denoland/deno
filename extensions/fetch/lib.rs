@@ -13,6 +13,7 @@ use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
+use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
@@ -25,10 +26,12 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 
 use data_url::DataUrl;
-use deno_web::BlobUrlStore;
+use deno_web::BlobStore;
+use http::header::CONTENT_LENGTH;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
+use reqwest::header::HOST;
 use reqwest::header::USER_AGENT;
 use reqwest::redirect::Policy;
 use reqwest::Body;
@@ -56,6 +59,7 @@ pub use reqwest; // Re-export reqwest
 pub fn init<P: FetchPermissions + 'static>(
   user_agent: String,
   ca_data: Option<Vec<u8>>,
+  proxy: Option<Proxy>,
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -78,11 +82,13 @@ pub fn init<P: FetchPermissions + 'static>(
     ])
     .state(move |state| {
       state.put::<reqwest::Client>({
-        create_http_client(user_agent.clone(), ca_data.clone()).unwrap()
+        create_http_client(user_agent.clone(), ca_data.clone(), proxy.clone())
+          .unwrap()
       });
       state.put::<HttpClientDefaults>(HttpClientDefaults {
         ca_data: ca_data.clone(),
         user_agent: user_agent.clone(),
+        proxy: proxy.clone(),
       });
       Ok(())
     })
@@ -92,6 +98,7 @@ pub fn init<P: FetchPermissions + 'static>(
 pub struct HttpClientDefaults {
   pub user_agent: String,
   pub ca_data: Option<Vec<u8>>,
+  pub proxy: Option<Proxy>,
 }
 
 pub trait FetchPermissions {
@@ -119,11 +126,12 @@ pub fn get_declaration() -> PathBuf {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchArgs {
-  method: String,
+  method: ByteString,
   url: String,
-  headers: Vec<(String, String)>,
+  headers: Vec<(ByteString, ByteString)>,
   client_rid: Option<u32>,
   has_body: bool,
+  body_length: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -153,7 +161,7 @@ where
     client.clone()
   };
 
-  let method = Method::from_bytes(args.method.as_bytes())?;
+  let method = Method::from_bytes(&args.method)?;
   let url = Url::parse(&args.url)?;
 
   // Check scheme before asking for net permission
@@ -170,6 +178,14 @@ where
           None => {
             // If no body is passed, we return a writer for streaming the body.
             let (tx, rx) = mpsc::channel::<std::io::Result<Vec<u8>>>(1);
+
+            // If the size of the body is known, we include a content-length
+            // header explicitly.
+            if let Some(body_size) = args.body_length {
+              request =
+                request.header(CONTENT_LENGTH, HeaderValue::from(body_size))
+            }
+
             request = request.body(Body::wrap_stream(ReceiverStream::new(rx)));
 
             let request_body_rid =
@@ -191,15 +207,23 @@ where
       };
 
       for (key, value) in args.headers {
-        let name = HeaderName::from_bytes(key.as_bytes()).unwrap();
-        let v = HeaderValue::from_str(&value).unwrap();
-        request = request.header(name, v);
+        let name = HeaderName::from_bytes(&key).unwrap();
+        let v = HeaderValue::from_bytes(&value).unwrap();
+        if name != HOST {
+          request = request.header(name, v);
+        }
       }
 
       let cancel_handle = CancelHandle::new_rc();
       let cancel_handle_ = cancel_handle.clone();
 
-      let fut = async move { request.send().or_cancel(cancel_handle_).await };
+      let fut = async move {
+        request
+          .send()
+          .or_cancel(cancel_handle_)
+          .await
+          .map(|res| res.map_err(|err| type_error(err.to_string())))
+      };
 
       let request_rid = state
         .resource_table
@@ -232,32 +256,49 @@ where
       (request_rid, None, None)
     }
     "blob" => {
-      let blob_url_storage =
-        state.try_borrow::<BlobUrlStore>().ok_or_else(|| {
-          type_error("Blob URLs are not supported in this context.")
-        })?;
+      let blob_store = state.try_borrow::<BlobStore>().ok_or_else(|| {
+        type_error("Blob URLs are not supported in this context.")
+      })?;
 
-      let blob = blob_url_storage
-        .get(url)?
+      let blob = blob_store
+        .get_object_url(url)?
         .ok_or_else(|| type_error("Blob for the given URL not found."))?;
 
       if method != "GET" {
         return Err(type_error("Blob URL fetch only supports GET method."));
       }
 
-      let response = http::Response::builder()
-        .status(http::StatusCode::OK)
-        .header(http::header::CONTENT_LENGTH, blob.data.len())
-        .header(http::header::CONTENT_TYPE, blob.media_type)
-        .body(reqwest::Body::from(blob.data))?;
+      let cancel_handle = CancelHandle::new_rc();
+      let cancel_handle_ = cancel_handle.clone();
 
-      let fut = async move { Ok(Ok(Response::from(response))) };
+      let fut = async move {
+        // TODO(lucacsonato): this should be a stream!
+        let chunk = match blob.read_all().or_cancel(cancel_handle_).await? {
+          Ok(chunk) => chunk,
+          Err(err) => return Ok(Err(err)),
+        };
+
+        let res = http::Response::builder()
+          .status(http::StatusCode::OK)
+          .header(http::header::CONTENT_LENGTH, chunk.len())
+          .header(http::header::CONTENT_TYPE, blob.media_type.clone())
+          .body(reqwest::Body::from(chunk))
+          .map_err(|err| type_error(err.to_string()));
+
+        match res {
+          Ok(response) => Ok(Ok(Response::from(response))),
+          Err(err) => Ok(Err(err)),
+        }
+      };
 
       let request_rid = state
         .resource_table
         .add(FetchRequestResource(Box::pin(fut)));
 
-      (request_rid, None, None)
+      let cancel_handle_rid =
+        state.resource_table.add(FetchCancelHandle(cancel_handle));
+
+      (request_rid, None, Some(cancel_handle_rid))
     }
     _ => return Err(type_error(format!("scheme '{}' not supported", scheme))),
   };
@@ -274,7 +315,7 @@ where
 pub struct FetchResponse {
   status: u16,
   status_text: String,
-  headers: Vec<(String, String)>,
+  headers: Vec<(ByteString, ByteString)>,
   url: String,
   response_rid: ResourceId,
 }
@@ -305,20 +346,11 @@ pub async fn op_fetch_send(
   let url = res.url().to_string();
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
-    let key_string = key.to_string();
-
-    if val.as_bytes().is_ascii() {
-      res_headers.push((key_string, val.to_str().unwrap().to_owned()))
-    } else {
-      res_headers.push((
-        key_string,
-        val
-          .as_bytes()
-          .iter()
-          .map(|&c| c as char)
-          .collect::<String>(),
-      ));
-    }
+    let key_bytes: &[u8] = key.as_ref();
+    res_headers.push((
+      ByteString(key_bytes.to_owned()),
+      ByteString(val.as_bytes().to_owned()),
+    ));
   }
 
   let stream: BytesStream = Box::pin(res.bytes_stream().map(|r| {
@@ -357,7 +389,9 @@ pub async fn op_fetch_request_write(
     .ok_or_else(bad_resource_id)?;
   let body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
-  body.send(Ok(buf)).or_cancel(cancel).await??;
+  body.send(Ok(buf)).or_cancel(cancel).await?.map_err(|_| {
+    type_error("request body receiver not connected (request closed)")
+  })?;
 
   Ok(())
 }
@@ -381,8 +415,7 @@ pub async fn op_fetch_response_read(
   Ok(read)
 }
 
-type CancelableResponseResult =
-  Result<Result<Response, reqwest::Error>, Canceled>;
+type CancelableResponseResult = Result<Result<Response, AnyError>, Canceled>;
 
 struct FetchRequestResource(
   Pin<Box<dyn Future<Output = CancelableResponseResult>>>,
@@ -460,7 +493,23 @@ impl HttpClientResource {
 #[serde(default)]
 pub struct CreateHttpClientOptions {
   ca_file: Option<String>,
-  ca_data: Option<String>,
+  ca_data: Option<ByteString>,
+  proxy: Option<Proxy>,
+}
+
+#[derive(Deserialize, Default, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct Proxy {
+  pub url: String,
+  pub basic_auth: Option<BasicAuth>,
+}
+
+#[derive(Deserialize, Default, Debug, Clone)]
+#[serde(default)]
+pub struct BasicAuth {
+  pub username: String,
+  pub password: String,
 }
 
 pub fn op_create_http_client<FP>(
@@ -476,6 +525,12 @@ where
     permissions.check_read(&PathBuf::from(ca_file))?;
   }
 
+  if let Some(proxy) = args.proxy.clone() {
+    let permissions = state.borrow_mut::<FP>();
+    let url = Url::parse(&proxy.url)?;
+    permissions.check_net_url(&url)?;
+  }
+
   let defaults = state.borrow::<HttpClientDefaults>();
 
   let cert_data =
@@ -483,6 +538,7 @@ where
   let client = create_http_client(
     defaults.user_agent.clone(),
     cert_data.or_else(|| defaults.ca_data.clone()),
+    args.proxy,
   )
   .unwrap();
 
@@ -492,10 +548,10 @@ where
 
 fn get_cert_data(
   ca_file: Option<&str>,
-  ca_data: Option<&str>,
+  ca_data: Option<&[u8]>,
 ) -> Result<Option<Vec<u8>>, AnyError> {
   if let Some(ca_data) = ca_data {
-    Ok(Some(ca_data.as_bytes().to_vec()))
+    Ok(Some(ca_data.to_vec()))
   } else if let Some(ca_file) = ca_file {
     let mut buf = Vec::new();
     File::open(ca_file)?.read_to_end(&mut buf)?;
@@ -510,6 +566,7 @@ fn get_cert_data(
 pub fn create_http_client(
   user_agent: String,
   ca_data: Option<Vec<u8>>,
+  proxy: Option<Proxy>,
 ) -> Result<Client, AnyError> {
   let mut headers = HeaderMap::new();
   headers.insert(USER_AGENT, user_agent.parse().unwrap());
@@ -521,6 +578,15 @@ pub fn create_http_client(
   if let Some(ca_data) = ca_data {
     let cert = reqwest::Certificate::from_pem(&ca_data)?;
     builder = builder.add_root_certificate(cert);
+  }
+
+  if let Some(proxy) = proxy {
+    let mut reqwest_proxy = reqwest::Proxy::all(&proxy.url)?;
+    if let Some(basic_auth) = &proxy.basic_auth {
+      reqwest_proxy =
+        reqwest_proxy.basic_auth(&basic_auth.username, &basic_auth.password);
+    }
+    builder = builder.proxy(reqwest_proxy);
   }
 
   builder

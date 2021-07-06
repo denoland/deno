@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::AnyError;
+use crate::modules::ModuleMap;
 use crate::resolve_url_or_path;
 use crate::JsRuntime;
 use crate::Op;
@@ -8,14 +9,18 @@ use crate::OpId;
 use crate::OpPayload;
 use crate::OpTable;
 use crate::PromiseId;
+use crate::ResourceId;
 use crate::ZeroCopyBuf;
 use log::debug;
 use rusty_v8 as v8;
+use serde::Deserialize;
 use serde::Serialize;
 use serde_v8::to_v8;
+use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::option::Option;
+use std::rc::Rc;
 use url::Url;
 use v8::HandleScope;
 use v8::Local;
@@ -38,6 +43,9 @@ lazy_static::lazy_static! {
         function: queue_microtask.map_fn_to()
       },
       v8::ExternalReference {
+        function: create_host_object.map_fn_to()
+      },
+      v8::ExternalReference {
         function: encode.map_fn_to()
       },
       v8::ExternalReference {
@@ -58,6 +66,15 @@ lazy_static::lazy_static! {
       v8::ExternalReference {
         function: memory_usage.map_fn_to(),
       },
+      v8::ExternalReference {
+        function: call_console.map_fn_to(),
+      },
+      v8::ExternalReference {
+        function: set_wasm_streaming_callback.map_fn_to()
+      },
+      v8::ExternalReference {
+        function: wasm_streaming_feed.map_fn_to()
+      }
     ]);
 }
 
@@ -133,6 +150,15 @@ pub fn initialize_context<'s>(
   set_func(scope, core_val, "getPromiseDetails", get_promise_details);
   set_func(scope, core_val, "getProxyDetails", get_proxy_details);
   set_func(scope, core_val, "memoryUsage", memory_usage);
+  set_func(scope, core_val, "callConsole", call_console);
+  set_func(scope, core_val, "createHostObject", create_host_object);
+  set_func(
+    scope,
+    core_val,
+    "setWasmStreamingCallback",
+    set_wasm_streaming_callback,
+  );
+  set_func(scope, core_val, "wasmStreamingFeed", wasm_streaming_feed);
 
   // Direct bindings on `window`.
   set_func(scope, global, "queueMicrotask", queue_microtask);
@@ -190,7 +216,8 @@ pub extern "C" fn host_import_module_dynamically_callback(
       "dyn_import specifier {} referrer {} ",
       specifier_str, referrer_name_str
     );
-    module_map_rc.borrow_mut().load_dynamic_import(
+    ModuleMap::load_dynamic_import(
+      module_map_rc,
       &specifier_str,
       &referrer_name_str,
       resolver_handle,
@@ -458,6 +485,163 @@ fn eval_context(
   rv.set(to_v8(tc_scope, output).unwrap());
 }
 
+/// This binding should be used if there's a custom console implementation
+/// available. Using it will make sure that proper stack frames are displayed
+/// in the inspector console.
+///
+/// Each method on console object should be bound to this function, eg:
+/// ```ignore
+/// function wrapConsole(consoleFromDeno, consoleFromV8) {
+///   const callConsole = core.callConsole;
+///
+///   for (const key of Object.keys(consoleFromV8)) {
+///     if (consoleFromDeno.hasOwnProperty(key)) {
+///       consoleFromDeno[key] = callConsole.bind(
+///         consoleFromDeno,
+///         consoleFromV8[key],
+///         consoleFromDeno[key],
+///       );
+///     }
+///   }
+/// }
+/// ```
+///
+/// Inspired by:
+/// https://github.com/nodejs/node/blob/1317252dfe8824fd9cfee125d2aaa94004db2f3b/src/inspector_js_api.cc#L194-L222
+fn call_console(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  assert!(args.length() >= 2);
+
+  assert!(args.get(0).is_function());
+  assert!(args.get(1).is_function());
+
+  let mut call_args = vec![];
+  for i in 2..args.length() {
+    call_args.push(args.get(i));
+  }
+
+  let receiver = args.this();
+  let inspector_console_method =
+    v8::Local::<v8::Function>::try_from(args.get(0)).unwrap();
+  let deno_console_method =
+    v8::Local::<v8::Function>::try_from(args.get(1)).unwrap();
+
+  inspector_console_method.call(scope, receiver.into(), &call_args);
+  deno_console_method.call(scope, receiver.into(), &call_args);
+}
+
+struct WasmStreamingResource(RefCell<v8::WasmStreaming>);
+impl crate::Resource for WasmStreamingResource {}
+
+fn set_wasm_streaming_callback(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  let state_rc = JsRuntime::state(scope);
+  let mut state = state_rc.borrow_mut();
+
+  let cb = match v8::Local::<v8::Function>::try_from(args.get(0)) {
+    Ok(cb) => cb,
+    Err(err) => return throw_type_error(scope, err.to_string()),
+  };
+
+  // The callback to pass to the v8 API has to be a unit type, so it can't
+  // borrow or move any local variables. Therefore, we're storing the JS
+  // callback in a JsRuntimeState slot.
+  if let slot @ None = &mut state.js_wasm_streaming_cb {
+    slot.replace(v8::Global::new(scope, cb));
+  } else {
+    return throw_type_error(
+      scope,
+      "Deno.core.setWasmStreamingCallback() already called",
+    );
+  }
+
+  scope.set_wasm_streaming_callback(|scope, arg, wasm_streaming| {
+    let (cb_handle, streaming_rid) = {
+      let state_rc = JsRuntime::state(scope);
+      let state = state_rc.borrow();
+      let cb_handle = state.js_wasm_streaming_cb.as_ref().unwrap().clone();
+      let streaming_rid = state
+        .op_state
+        .borrow_mut()
+        .resource_table
+        .add(WasmStreamingResource(RefCell::new(wasm_streaming)));
+      (cb_handle, streaming_rid)
+    };
+
+    let undefined = v8::undefined(scope);
+    let rid = serde_v8::to_v8(scope, streaming_rid).unwrap();
+    cb_handle
+      .get(scope)
+      .call(scope, undefined.into(), &[arg, rid]);
+  });
+}
+
+fn wasm_streaming_feed(
+  scope: &mut v8::HandleScope,
+  args: v8::FunctionCallbackArguments,
+  _rv: v8::ReturnValue,
+) {
+  #[derive(Deserialize)]
+  #[serde(rename_all = "snake_case")]
+  enum MessageType {
+    Bytes,
+    Abort,
+    Finish,
+  }
+
+  let rid: ResourceId = match serde_v8::from_v8(scope, args.get(0)) {
+    Ok(rid) => rid,
+    Err(_) => return throw_type_error(scope, "Invalid argument"),
+  };
+  let message_type = match serde_v8::from_v8(scope, args.get(1)) {
+    Ok(message_type) => message_type,
+    Err(_) => return throw_type_error(scope, "Invalid argument"),
+  };
+
+  let wasm_streaming = {
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow();
+    // If message_type is not Bytes, we'll be consuming the WasmStreaming
+    // instance, so let's also remove it from the resource table.
+    let wasm_streaming: Option<Rc<WasmStreamingResource>> = match message_type {
+      MessageType::Bytes => state.op_state.borrow().resource_table.get(rid),
+      _ => state.op_state.borrow_mut().resource_table.take(rid),
+    };
+    match wasm_streaming {
+      Some(wasm_streaming) => wasm_streaming,
+      None => return throw_type_error(scope, "Invalid resource ID."),
+    }
+  };
+
+  match message_type {
+    MessageType::Bytes => {
+      let bytes: ZeroCopyBuf = match serde_v8::from_v8(scope, args.get(2)) {
+        Ok(bytes) => bytes,
+        Err(_) => return throw_type_error(scope, "Invalid resource ID."),
+      };
+      wasm_streaming.0.borrow_mut().on_bytes_received(&bytes);
+    }
+    _ => {
+      // These types need to consume the WasmStreaming instance.
+      let wasm_streaming = match Rc::try_unwrap(wasm_streaming) {
+        Ok(streaming) => streaming.0.into_inner(),
+        Err(_) => panic!("Couldn't consume WasmStreamingResource."),
+      };
+      match message_type {
+        MessageType::Bytes => unreachable!(),
+        MessageType::Finish => wasm_streaming.finish(),
+        MessageType::Abort => wasm_streaming.abort(Some(args.get(2))),
+      }
+    }
+  }
+}
+
 fn encode(
   scope: &mut v8::HandleScope,
   args: v8::FunctionCallbackArguments,
@@ -517,9 +701,11 @@ fn decode(
   };
 }
 
-struct SerializeDeserialize;
+struct SerializeDeserialize<'a> {
+  host_objects: Option<v8::Local<'a, v8::Array>>,
+}
 
-impl v8::ValueSerializerImpl for SerializeDeserialize {
+impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
   #[allow(unused_variables)]
   fn throw_data_clone_error<'s>(
     &mut self,
@@ -545,9 +731,29 @@ impl v8::ValueSerializerImpl for SerializeDeserialize {
       None
     }
   }
+
+  fn write_host_object<'s>(
+    &mut self,
+    scope: &mut v8::HandleScope<'s>,
+    object: v8::Local<'s, v8::Object>,
+    value_serializer: &mut dyn v8::ValueSerializerHelper,
+  ) -> Option<bool> {
+    if let Some(host_objects) = self.host_objects {
+      for i in 0..host_objects.length() {
+        let value = host_objects.get_index(scope, i).unwrap();
+        if value == object {
+          value_serializer.write_uint32(i);
+          return Some(true);
+        }
+      }
+    }
+    let message = v8::String::new(scope, "Unsupported object type").unwrap();
+    self.throw_data_clone_error(scope, message);
+    None
+  }
 }
 
-impl v8::ValueDeserializerImpl for SerializeDeserialize {
+impl<'a> v8::ValueDeserializerImpl for SerializeDeserialize<'a> {
   fn get_shared_array_buffer_from_id<'s>(
     &mut self,
     scope: &mut HandleScope<'s>,
@@ -564,6 +770,29 @@ impl v8::ValueDeserializerImpl for SerializeDeserialize {
       None
     }
   }
+
+  fn read_host_object<'s>(
+    &mut self,
+    scope: &mut v8::HandleScope<'s>,
+    value_deserializer: &mut dyn v8::ValueDeserializerHelper,
+  ) -> Option<v8::Local<'s, v8::Object>> {
+    if let Some(host_objects) = self.host_objects {
+      let mut i = 0;
+      if !value_deserializer.read_uint32(&mut i) {
+        return None;
+      }
+      let maybe_value = host_objects.get_index(scope, i);
+      if let Some(value) = maybe_value {
+        return value.to_object(scope);
+      }
+    }
+
+    let message =
+      v8::String::new(scope, "Failed to deserialize host object").unwrap();
+    let error = v8::Exception::error(scope, message);
+    scope.throw_exception(error);
+    None
+  }
 }
 
 fn serialize(
@@ -571,19 +800,50 @@ fn serialize(
   args: v8::FunctionCallbackArguments,
   mut rv: v8::ReturnValue,
 ) {
-  let serialize_deserialize = Box::new(SerializeDeserialize);
+  let value = args.get(0);
+
+  let options: Option<SerializeDeserializeOptions> =
+    match serde_v8::from_v8(scope, args.get(1)) {
+      Ok(opts) => opts,
+      Err(_) => {
+        throw_type_error(scope, "Invalid argument 2");
+        return;
+      }
+    };
+
+  let options =
+    options.unwrap_or(SerializeDeserializeOptions { host_objects: None });
+
+  let host_objects = match options.host_objects {
+    Some(value) => match v8::Local::<v8::Array>::try_from(value.v8_value) {
+      Ok(host_objects) => Some(host_objects),
+      Err(_) => {
+        throw_type_error(scope, "host_objects not an array");
+        return;
+      }
+    },
+    None => None,
+  };
+
+  let serialize_deserialize = Box::new(SerializeDeserialize { host_objects });
   let mut value_serializer =
     v8::ValueSerializer::new(scope, serialize_deserialize);
-  match value_serializer.write_value(scope.get_current_context(), args.get(0)) {
+  match value_serializer.write_value(scope.get_current_context(), value) {
     Some(true) => {
       let vector = value_serializer.release();
       let zbuf: ZeroCopyBuf = vector.into();
       rv.set(to_v8(scope, zbuf).unwrap());
     }
     _ => {
-      throw_type_error(scope, "Invalid argument");
+      throw_type_error(scope, "Failed to serialize response");
     }
   }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializeDeserializeOptions<'a> {
+  host_objects: Option<serde_v8::Value<'a>>,
 }
 
 fn deserialize(
@@ -594,15 +854,37 @@ fn deserialize(
   let zero_copy: ZeroCopyBuf = match serde_v8::from_v8(scope, args.get(0)) {
     Ok(zbuf) => zbuf,
     Err(_) => {
-      throw_type_error(scope, "Invalid argument");
+      throw_type_error(scope, "Invalid argument 1");
       return;
     }
   };
-  let buf = &zero_copy;
 
-  let serialize_deserialize = Box::new(SerializeDeserialize);
+  let options: Option<SerializeDeserializeOptions> =
+    match serde_v8::from_v8(scope, args.get(1)) {
+      Ok(opts) => opts,
+      Err(_) => {
+        throw_type_error(scope, "Invalid argument 2");
+        return;
+      }
+    };
+
+  let options =
+    options.unwrap_or(SerializeDeserializeOptions { host_objects: None });
+
+  let host_objects = match options.host_objects {
+    Some(value) => match v8::Local::<v8::Array>::try_from(value.v8_value) {
+      Ok(host_objects) => Some(host_objects),
+      Err(_) => {
+        throw_type_error(scope, "host_objects not an array");
+        return;
+      }
+    },
+    None => None,
+  };
+
+  let serialize_deserialize = Box::new(SerializeDeserialize { host_objects });
   let mut value_deserializer =
-    v8::ValueDeserializer::new(scope, serialize_deserialize, buf);
+    v8::ValueDeserializer::new(scope, serialize_deserialize, &zero_copy);
   let value = value_deserializer.read_value(scope.get_current_context());
 
   match value {
@@ -625,6 +907,18 @@ fn queue_microtask(
     Err(_) => {
       throw_type_error(scope, "Invalid argument");
     }
+  };
+}
+
+fn create_host_object(
+  scope: &mut v8::HandleScope,
+  _args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  let template = v8::ObjectTemplate::new(scope);
+  template.set_internal_field_count(1);
+  if let Some(obj) = template.new_instance(scope) {
+    rv.set(obj.into());
   };
 }
 

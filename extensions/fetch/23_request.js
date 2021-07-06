@@ -26,6 +26,20 @@
   } = window.__bootstrap.headers;
   const { HttpClient } = window.__bootstrap.fetch;
   const abortSignal = window.__bootstrap.abortSignal;
+  const {
+    ArrayPrototypeMap,
+    ArrayPrototypeSlice,
+    ArrayPrototypeSplice,
+    MapPrototypeHas,
+    MapPrototypeGet,
+    MapPrototypeSet,
+    ObjectKeys,
+    RegExpPrototypeTest,
+    Symbol,
+    SymbolFor,
+    SymbolToStringTag,
+    TypeError,
+  } = window.__bootstrap.primordials;
 
   const _request = Symbol("request");
   const _headers = Symbol("headers");
@@ -81,7 +95,9 @@
    * @returns {InnerRequest}
    */
   function cloneInnerRequest(request) {
-    const headerList = [...request.headerList.map((x) => [x[0], x[1]])];
+    const headerList = [
+      ...ArrayPrototypeMap(request.headerList, (x) => [x[0], x[1]]),
+    ];
     let body = null;
     if (request.body !== null) {
       body = request.body.clone();
@@ -129,7 +145,7 @@
     }
 
     // Regular path
-    if (!HTTP_TOKEN_CODE_POINT_RE.test(m)) {
+    if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, m)) {
       throw new TypeError("Method is not valid.");
     }
     const upperCase = byteUpperCase(m);
@@ -166,14 +182,17 @@
         mimeType = temporaryMimeType;
         if (mimesniff.essence(mimeType) !== essence) {
           charset = null;
-          const newCharset = mimeType.parameters.get("charset");
+          const newCharset = MapPrototypeGet(mimeType.parameters, "charset");
           if (newCharset !== undefined) {
             charset = newCharset;
           }
           essence = mimesniff.essence(mimeType);
         } else {
-          if (mimeType.parameters.has("charset") === null && charset !== null) {
-            mimeType.parameters.set("charset", charset);
+          if (
+            MapPrototypeHas(mimeType.parameters, "charset") === null &&
+            charset !== null
+          ) {
+            MapPrototypeSet(mimeType.parameters, "charset", charset);
           }
         }
       }
@@ -257,36 +276,40 @@
 
       // 28.
       this[_signal] = abortSignal.newSignal();
+
+      // 29.
       if (signal !== null) {
         abortSignal.follow(this[_signal], signal);
       }
 
-      // 29.
+      // 30.
       this[_headers] = headersFromHeaderList(request.headerList, "request");
 
-      // 31.
-      if (Object.keys(init).length > 0) {
-        let headers = headerListFromHeaders(this[_headers]).slice(
+      // 32.
+      if (ObjectKeys(init).length > 0) {
+        let headers = ArrayPrototypeSlice(
+          headerListFromHeaders(this[_headers]),
           0,
           headerListFromHeaders(this[_headers]).length,
         );
         if (init.headers !== undefined) {
           headers = init.headers;
         }
-        headerListFromHeaders(this[_headers]).splice(
+        ArrayPrototypeSplice(
+          headerListFromHeaders(this[_headers]),
           0,
           headerListFromHeaders(this[_headers]).length,
         );
         fillHeaders(this[_headers], headers);
       }
 
-      // 32.
+      // 33.
       let inputBody = null;
       if (input instanceof Request) {
         inputBody = input[_body];
       }
 
-      // 33.
+      // 34.
       if (
         (request.method === "GET" || request.method === "HEAD") &&
         ((init.body !== undefined && init.body !== null) ||
@@ -295,10 +318,10 @@
         throw new TypeError("Request with GET/HEAD method cannot have body.");
       }
 
-      // 34.
+      // 35.
       let initBody = null;
 
-      // 35.
+      // 36.
       if (init.body !== undefined && init.body !== null) {
         const res = extractBody(init.body);
         initBody = res.body;
@@ -307,20 +330,22 @@
         }
       }
 
-      // 36.
+      // 37.
       const inputOrInitBody = initBody ?? inputBody;
 
-      // 38.
-      const finalBody = inputOrInitBody;
-
       // 39.
-      // TODO(lucacasonato): implement this step. Is it needed?
+      let finalBody = inputOrInitBody;
 
       // 40.
-      request.body = finalBody;
+      if (initBody === null && inputBody !== null) {
+        if (input[_body] && input[_body].unusable()) {
+          throw new TypeError("Input request's body is unusable.");
+        }
+        finalBody = inputBody.createProxy();
+      }
 
       // 41.
-      // TODO(lucacasonato): Extranious? https://github.com/whatwg/fetch/issues/1249
+      request.body = finalBody;
     }
 
     get method() {
@@ -363,11 +388,11 @@
       );
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "Request";
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [SymbolFor("Deno.customInspect")](inspect) {
       const inner = {
         bodyUsed: this.bodyUsed,
         headers: this.headers,

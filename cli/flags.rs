@@ -84,9 +84,7 @@ pub enum DenoSubcommand {
     root: Option<PathBuf>,
     force: bool,
   },
-  Lsp {
-    parent_pid: Option<u32>,
-  },
+  Lsp,
   Lint {
     files: Vec<PathBuf>,
     ignore: Vec<PathBuf>,
@@ -105,6 +103,7 @@ pub enum DenoSubcommand {
     allow_none: bool,
     include: Option<Vec<String>>,
     filter: Option<String>,
+    shuffle: Option<u64>,
     concurrent_jobs: usize,
   },
   Types,
@@ -878,16 +877,6 @@ go-to-definition support and automatic code formatting.
 
 How to connect various editors and IDEs to 'deno lsp':
 https://deno.land/manual/getting_started/setup_your_environment#editors-and-ides")
-    .arg(
-      Arg::with_name("parent-pid")
-        .long("parent-pid")
-        .help("The parent process id to periodically check for the existence of or exit")
-        .takes_value(true)
-        .validator(|val: String| match val.parse::<usize>() {
-          Ok(_) => Ok(()),
-          Err(_) => Err("parent-pid should be a number".to_string()),
-        }),
-    )
 }
 
 fn lint_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -989,7 +978,7 @@ Grant permission to read allow-listed files from disk:
 
 Deno allows specifying the filename '-' to read the file from stdin.
 
-  curl https://deno.land/std/examples/welcome.ts | target/debug/deno run -",
+  curl https://deno.land/std/examples/welcome.ts | deno run -",
     )
 }
 
@@ -1027,6 +1016,20 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .long("filter")
         .takes_value(true)
         .help("Run tests with this string or pattern in the test name"),
+    )
+    .arg(
+      Arg::with_name("shuffle")
+        .long("shuffle")
+        .value_name("NUMBER")
+        .help("(UNSTABLE): Shuffle the order in which the tests are run")
+        .min_values(0)
+        .max_values(1)
+        .require_equals(true)
+        .takes_value(true)
+        .validator(|val: String| match val.parse::<u64>() {
+          Ok(_) => Ok(()),
+          Err(_) => Err("Shuffle seed should be a number".to_string()),
+        }),
     )
     .arg(
       Arg::with_name("coverage")
@@ -1633,11 +1636,8 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 }
 
-fn lsp_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  let parent_pid = matches
-    .value_of("parent-pid")
-    .map(|val| val.parse().unwrap());
-  flags.subcommand = DenoSubcommand::Lsp { parent_pid };
+fn lsp_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
+  flags.subcommand = DenoSubcommand::Lsp;
 }
 
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -1701,7 +1701,17 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let quiet = matches.is_present("quiet");
   let filter = matches.value_of("filter").map(String::from);
 
-  flags.watch = matches.is_present("watch");
+  let shuffle = if matches.is_present("shuffle") {
+    let value = if let Some(value) = matches.value_of("shuffle") {
+      value.parse::<u64>().unwrap()
+    } else {
+      rand::random::<u64>()
+    };
+
+    Some(value)
+  } else {
+    None
+  };
 
   if matches.is_present("script_arg") {
     let script_arg: Vec<String> = matches
@@ -1745,6 +1755,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     quiet,
     include,
     filter,
+    shuffle,
     allow_none,
     concurrent_jobs,
   };
@@ -2315,32 +2326,6 @@ mod tests {
         ..Flags::default()
       }
     );
-  }
-
-  #[test]
-  fn lsp() {
-    let r = flags_from_vec(svec!["deno", "lsp"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Lsp { parent_pid: None },
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec(svec!["deno", "lsp", "--parent-pid", "5"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Lsp {
-          parent_pid: Some(5),
-        },
-        ..Flags::default()
-      }
-    );
-
-    let r = flags_from_vec(svec!["deno", "lsp", "--parent-pid", "invalid-arg"]);
-    assert!(r.is_err());
   }
 
   #[test]
@@ -3407,6 +3392,7 @@ mod tests {
           allow_none: true,
           quiet: false,
           include: Some(svec!["dir1/", "dir2/"]),
+          shuffle: None,
           concurrent_jobs: 1,
         },
         unstable: true,

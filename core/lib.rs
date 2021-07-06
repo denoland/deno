@@ -21,7 +21,9 @@ pub use futures;
 pub use rusty_v8 as v8;
 pub use serde;
 pub use serde_json;
+pub use serde_v8;
 pub use serde_v8::Buffer as ZeroCopyBuf;
+pub use serde_v8::ByteString;
 pub use url;
 
 pub use crate::async_cancel::CancelFuture;
@@ -74,6 +76,7 @@ pub use crate::ops_builtin::op_close;
 pub use crate::ops_builtin::op_print;
 pub use crate::ops_builtin::op_resources;
 pub use crate::ops_json::op_async;
+pub use crate::ops_json::op_async_unref;
 pub use crate::ops_json::op_sync;
 pub use crate::resources::Resource;
 pub use crate::resources::ResourceId;
@@ -86,9 +89,26 @@ pub use crate::runtime::Snapshot;
 // pub use crate::runtime_modules::include_js_files!;
 pub use crate::extensions::Extension;
 pub use crate::extensions::OpMiddlewareFn;
+pub use crate::extensions::OpPair;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()
+}
+
+/// A helper macro that will return a call site in Rust code. Should be
+/// used when executing internal one-line scripts for JsRuntime lifecycle.
+///
+/// Returns a string in form of: "[deno:<filename>:<line>:<column>]"
+#[macro_export]
+macro_rules! located_script_name {
+  () => {
+    format!(
+      "[deno:{}:{}:{}]",
+      std::file!(),
+      std::line!(),
+      std::column!()
+    );
+  };
 }
 
 #[cfg(test)]

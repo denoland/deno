@@ -39,6 +39,11 @@
     GPUOutOfMemoryError,
     GPUValidationError,
   } = window.__bootstrap.webgpu;
+  const {
+    SymbolIterator,
+    TypeError,
+    Uint32Array,
+  } = window.__bootstrap.primordials;
 
   // This needs to be initalized after all of the base classes are implmented,
   // otherwise their converters might not be available yet.
@@ -254,7 +259,7 @@
       return webidl.converters["GPUExtent3DDict"](V, opts);
     }
     if (typeof V === "object") {
-      const method = V[Symbol.iterator];
+      const method = V[SymbolIterator];
       if (method !== undefined) {
         return webidl.converters["sequence<GPUIntegerCoordinate>"](V, opts);
       }
@@ -1516,7 +1521,7 @@
       return webidl.converters["GPUOrigin3DDict"](V, opts);
     }
     if (typeof V === "object") {
-      const method = V[Symbol.iterator];
+      const method = V[SymbolIterator];
       if (method !== undefined) {
         return webidl.converters["sequence<GPUIntegerCoordinate>"](V, opts);
       }
@@ -1584,7 +1589,7 @@
       return webidl.converters["GPUOrigin2DDict"](V, opts);
     }
     if (typeof V === "object") {
-      const method = V[Symbol.iterator];
+      const method = V[SymbolIterator];
       if (method !== undefined) {
         return webidl.converters["sequence<GPUIntegerCoordinate>"](V, opts);
       }
@@ -1642,7 +1647,7 @@
       return webidl.converters["GPUColorDict"](V, opts);
     }
     if (typeof V === "object") {
-      const method = V[Symbol.iterator];
+      const method = V[SymbolIterator];
       if (method !== undefined) {
         return webidl.converters["sequence<double>"](V, opts);
       }
