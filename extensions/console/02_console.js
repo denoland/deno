@@ -43,6 +43,7 @@
     StringPrototypeLocaleCompare,
     StringPrototypeToString,
     StringPrototypeTrim,
+    StringPrototypeIncludes,
     TypeError,
     NumberParseInt,
     RegExp,
@@ -67,6 +68,8 @@
     ArrayPrototypeIncludes,
     ArrayPrototypeFill,
     ArrayPrototypeFilter,
+    ArrayPrototypeFind,
+    ArrayPrototypeForEach,
     FunctionPrototypeBind,
     Map,
     MapPrototypeHas,
@@ -407,7 +410,9 @@
         ArrayPrototypeJoin(groups, entryIndentation)
       }${closingIndentation}`;
     } else {
-      iContent = entries.length === 0 ? "" : ` ${entries.join(", ")} `;
+      iContent = entries.length === 0
+        ? ""
+        : ` ${ArrayPrototypeJoin(entries, ", ")} `;
       if (
         colors.stripColor(iContent).length > LINE_BREAKING_LENGTH ||
         !inspectOptions.compact
@@ -520,7 +525,7 @@
           const padding = maxLineLength[j - i] +
             lengthOfColorCodes -
             separatorSpace;
-          str += entries[j].padStart(padding, " ");
+          str += StringPrototypePadStart(entries[j], padding, " ");
         } else {
           str += entries[j];
         }
@@ -617,7 +622,9 @@
    * before any backslash.
    */
   function quoteString(string) {
-    const quote = QUOTES.find((c) => !string.includes(c)) ?? QUOTES[0];
+    const quote =
+      ArrayPrototypeFind(QUOTES, (c) => !StringPrototypeIncludes(string, c)) ??
+        QUOTES[0];
     const escapePattern = new RegExp(`(?=[${quote}\\\\])`, "g");
     string = StringPrototypeReplace(string, escapePattern, "\\");
     string = replaceEscapeSequences(string);
@@ -1410,7 +1417,7 @@
         }
       } else if (key == "text-decoration-line") {
         css.textDecorationLine = [];
-        for (const lineType of value.split(/\s+/g)) {
+        for (const lineType of StringPrototypeSplit(value, /\s+/g)) {
           if (
             ArrayPrototypeIncludes(
               ["line-through", "overline", "underline"],
@@ -1799,7 +1806,7 @@
         let idx = 0;
         resultData = {};
 
-        data.forEach((v, k) => {
+        ArrayPrototypeForEach(data, (v, k) => {
           resultData[idx] = { Key: k, Values: v };
           idx++;
         });
@@ -1937,7 +1944,7 @@
     }
   }
 
-  const customInspect = Symbol.for("Deno.customInspect");
+  const customInspect = SymbolFor("Deno.customInspect");
 
   function inspect(
     value,
