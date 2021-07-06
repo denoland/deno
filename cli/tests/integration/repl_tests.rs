@@ -618,12 +618,11 @@ fn custom_inspect() {
     true,
     "repl",
     Some(vec![
-      r"
-    const o = {
-      [Deno.customInspect]() {
-        throw new Error('Oops custom inspect error');
-      },
-    };",
+      r"const o = {
+        [Deno.customInspect]() {
+          throw new Error('Oops custom inspect error');
+        },
+      };",
       "o",
     ]),
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
