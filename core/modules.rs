@@ -719,6 +719,7 @@ mod tests {
   use crate::OpPayload;
   use crate::RuntimeOptions;
   use futures::future::FutureExt;
+  use parking_lot::Mutex;
   use std::error::Error;
   use std::fmt;
   use std::future::Future;
@@ -726,7 +727,6 @@ mod tests {
   use std::path::PathBuf;
   use std::sync::atomic::{AtomicUsize, Ordering};
   use std::sync::Arc;
-  use std::sync::Mutex;
 
   // TODO(ry) Sadly FuturesUnordered requires the current task to be set. So
   // even though we are only using poll() in these tests and not Tokio, we must
@@ -856,7 +856,7 @@ mod tests {
       _maybe_referrer: Option<ModuleSpecifier>,
       _is_dyn_import: bool,
     ) -> Pin<Box<ModuleSourceFuture>> {
-      let mut loads = self.loads.lock().unwrap();
+      let mut loads = self.loads.lock();
       loads.push(module_specifier.to_string());
       let url = module_specifier.to_string();
       DelayedSourceCodeFuture { url, counter: 0 }.boxed()
@@ -908,7 +908,7 @@ mod tests {
 
     runtime.mod_evaluate(a_id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
-    let l = loads.lock().unwrap();
+    let l = loads.lock();
     assert_eq!(
       l.to_vec(),
       vec![
@@ -1369,7 +1369,7 @@ mod tests {
       runtime.mod_evaluate(circular1_id);
       runtime.run_event_loop(false).await.unwrap();
 
-      let l = loads.lock().unwrap();
+      let l = loads.lock();
       assert_eq!(
         l.to_vec(),
         vec![
@@ -1441,7 +1441,7 @@ mod tests {
       let redirect1_id = result.unwrap();
       runtime.mod_evaluate(redirect1_id);
       runtime.run_event_loop(false).await.unwrap();
-      let l = loads.lock().unwrap();
+      let l = loads.lock();
       assert_eq!(
         l.to_vec(),
         vec![
@@ -1517,7 +1517,7 @@ mod tests {
       for _ in 0..10 {
         let result = recursive_load.poll_unpin(&mut cx);
         assert!(result.is_pending());
-        let l = loads.lock().unwrap();
+        let l = loads.lock();
         assert_eq!(
           l.to_vec(),
           vec![
@@ -1591,7 +1591,7 @@ mod tests {
     runtime.mod_evaluate(main_id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
 
-    let l = loads.lock().unwrap();
+    let l = loads.lock();
     assert_eq!(
       l.to_vec(),
       vec!["file:///b.js", "file:///c.js", "file:///d.js"]

@@ -574,7 +574,7 @@ pub mod tests {
   use crate::file_fetcher::CacheSetting;
   use crate::http_cache::HttpCache;
   use deno_core::resolve_url_or_path;
-  use deno_runtime::deno_web::BlobUrlStore;
+  use deno_runtime::deno_web::BlobStore;
   use tempfile::TempDir;
 
   macro_rules! map (
@@ -599,7 +599,7 @@ pub mod tests {
       CacheSetting::Use,
       true,
       None,
-      BlobUrlStore::default(),
+      BlobStore::default(),
     )
     .expect("could not setup");
     let disk_cache = deno_dir.gen_cache;

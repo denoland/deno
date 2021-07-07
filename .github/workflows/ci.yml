@@ -158,6 +158,9 @@ jobs:
       - name: Set up Linux sysroot with Ubuntu 18.04 and LLVM
         if: matrix.use_sysroot
         run: |
+          # Avoid running man-db triggers, which sometimes takes several minutes
+          # to complete.
+          sudo apt-get remove -y --purge man-db
           sudo apt-get update
           sudo apt-get install debootstrap
 
@@ -221,8 +224,8 @@ jobs:
             unset RUSTC_FORCE_INCREMENTAL
 
             # C build configuration.
-            export CC=clang-12         # Compile c source files with clang.
-            export CCFLAGs=-flto=thin  # Tell clang to produce llvm bitcode.
+            export CC=clang-12        # Compile c source files with clang.
+            export CFLAGS=-flto=thin  # Tell clang to produce llvm bitcode.
 
             # Miscellaneous flags.
             export CARGO_TERM_COLOR=always
@@ -250,7 +253,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: c-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: d-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -265,7 +268,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: |
-            c-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+            d-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
@@ -281,7 +284,7 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: |
-            c-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+            d-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
 
       # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)
