@@ -12,6 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::located_script_name;
 use deno_core::op_sync;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::de;
 use deno_core::serde::Deserialize;
@@ -27,7 +28,6 @@ use deno_core::Snapshot;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 // Declaration files
 
@@ -336,7 +336,7 @@ fn op_exists(state: &mut State, args: ExistsArgs) -> Result<bool, AnyError> {
     if specifier.scheme() == "asset" || specifier.scheme() == "data" {
       Ok(true)
     } else {
-      let graph = state.graph.lock().unwrap();
+      let graph = state.graph.lock();
       Ok(graph.contains(&specifier))
     }
   } else {
@@ -372,7 +372,7 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
     media_type = MediaType::from(&v.specifier);
     maybe_source
   } else {
-    let graph = state.graph.lock().unwrap();
+    let graph = state.graph.lock();
     let specifier = if let Some(data_specifier) =
       state.data_url_map.get(&v.specifier)
     {
@@ -427,7 +427,7 @@ fn op_resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
         MediaType::from(specifier).as_ts_extension().to_string(),
       ));
     } else {
-      let graph = state.graph.lock().unwrap();
+      let graph = state.graph.lock();
       match graph.resolve(specifier, &referrer, true) {
         Ok(resolved_specifier) => {
           let media_type = if let Some(media_type) =
@@ -593,9 +593,9 @@ mod tests {
   use crate::diagnostics::DiagnosticCategory;
   use crate::module_graph::tests::MockSpecifierHandler;
   use crate::module_graph::GraphBuilder;
+  use deno_core::parking_lot::Mutex;
   use std::env;
   use std::path::PathBuf;
-  use std::sync::Mutex;
 
   async fn setup(
     maybe_specifier: Option<ModuleSpecifier>,

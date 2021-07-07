@@ -25,6 +25,7 @@ use deno_core::error::anyhow;
 use deno_core::error::get_custom_error_class;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::url::Url;
 use deno_core::ModuleSource;
@@ -36,7 +37,6 @@ use std::collections::HashSet;
 use std::env;
 use std::fs::read;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 /// This structure represents state of single "deno" program.
 ///
@@ -184,7 +184,7 @@ impl ProgramState {
     let debug = self.flags.log_level == Some(log::Level::Debug);
     let maybe_config_file = self.maybe_config_file.clone();
     let reload_exclusions = {
-      let modules = self.modules.lock().unwrap();
+      let modules = self.modules.lock();
       modules.keys().cloned().collect::<HashSet<_>>()
     };
 
@@ -220,11 +220,11 @@ impl ProgramState {
       result_info.loadable_modules
     };
 
-    let mut loadable_modules = self.modules.lock().unwrap();
+    let mut loadable_modules = self.modules.lock();
     loadable_modules.extend(result_modules);
 
     if let Some(ref lockfile) = self.lockfile {
-      let g = lockfile.lock().unwrap();
+      let g = lockfile.lock();
       g.write()?;
     }
 
@@ -258,7 +258,7 @@ impl ProgramState {
     let debug = self.flags.log_level == Some(log::Level::Debug);
     let maybe_config_file = self.maybe_config_file.clone();
     let reload_exclusions = {
-      let modules = self.modules.lock().unwrap();
+      let modules = self.modules.lock();
       modules.keys().cloned().collect::<HashSet<_>>()
     };
 
@@ -294,11 +294,11 @@ impl ProgramState {
       result_info.loadable_modules
     };
 
-    let mut loadable_modules = self.modules.lock().unwrap();
+    let mut loadable_modules = self.modules.lock();
     loadable_modules.extend(result_modules);
 
     if let Some(ref lockfile) = self.lockfile {
-      let g = lockfile.lock().unwrap();
+      let g = lockfile.lock();
       g.write()?;
     }
 
@@ -310,7 +310,7 @@ impl ProgramState {
     specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<ModuleSource, AnyError> {
-    let modules = self.modules.lock().unwrap();
+    let modules = self.modules.lock();
     modules
       .get(&specifier)
       .map(|r| match r {
