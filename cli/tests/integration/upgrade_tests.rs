@@ -3,7 +3,6 @@
 use std::process::{Command, Stdio};
 use tempfile::TempDir;
 use test_util as util;
-use test_util::strip_ansi_codes;
 
 // Warning: this test requires internet access.
 // TODO(#7412): reenable. test is flaky
@@ -166,7 +165,7 @@ fn upgrade_invalid_stable_version() {
   assert!(!output.status.success());
   assert_eq!(
     "error: Invalid semver passed\n",
-    strip_ansi_codes(&String::from_utf8(output.stderr).unwrap())
+    util::strip_ansi_codes(&String::from_utf8(output.stderr).unwrap())
   );
 }
 
@@ -192,6 +191,6 @@ fn upgrade_invalid_canary_version() {
   assert!(!output.status.success());
   assert_eq!(
     "error: Invalid commit hash passed\n",
-    strip_ansi_codes(&String::from_utf8(output.stderr).unwrap())
+    util::strip_ansi_codes(&String::from_utf8(output.stderr).unwrap())
   );
 }
