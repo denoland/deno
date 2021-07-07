@@ -355,7 +355,10 @@
     const protocols = StringPrototypeSplit(protocolsStr, ", ");
     if (protocols && options.protocol) {
       if (ArrayPrototypeIncludes(protocols, options.protocol)) {
-        ArrayPrototypePush(r.headerList, ["sec-websocket-protocol", options.protocol]);
+        ArrayPrototypePush(r.headerList, [
+          "sec-websocket-protocol",
+          options.protocol,
+        ]);
       } else {
         throw new TypeError(
           `Protocol '${options.protocol}' not in the request's protocol list (non negotiable)`,

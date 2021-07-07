@@ -98,9 +98,11 @@ impl HyperService<Request<Body>> for Service {
   }
 }
 
+type ConnFuture = Pin<Box<dyn Future<Output = hyper::Result<()>>>>;
+
 struct Conn {
   scheme: &'static str,
-  conn: Rc<RefCell<Pin<Box<dyn Future<Output = hyper::Result<()>>>>>>,
+  conn: Rc<RefCell<ConnFuture>>,
 }
 
 struct ConnResource {
