@@ -14,6 +14,7 @@ import {
   autoConfig,
   cargoBuild,
   checkPy3Available,
+  escapeLoneSurrogates,
   Expectation,
   generateRunInfo,
   getExpectation,
@@ -235,16 +236,17 @@ async function generateWptReport(
         }
 
         return {
-          name: case_.name,
+          name: escapeLoneSurrogates(case_.name),
           status: case_.passed ? "PASS" : "FAIL",
-          message: case_.message,
+          message: escapeLoneSurrogates(case_.message),
           expected,
           known_intermittent: [],
         };
       }),
       status,
-      message: result.harnessStatus?.message ??
-        (result.stderr.trim() || null),
+      message: escapeLoneSurrogates(
+        result.harnessStatus?.message ?? (result.stderr.trim() || null),
+      ),
       duration: result.duration,
       expected: status === "OK" ? undefined : "OK",
       "known_intermittent": [],
