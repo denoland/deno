@@ -399,20 +399,15 @@ pub fn op_crypto_random_uuid(
 
 pub async fn op_crypto_subtle_digest(
   _state: Rc<RefCell<OpState>>,
-  algorithm_id: i8,
+  algorithm: CryptoHash,
   data: Option<ZeroCopyBuf>,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let algorithm = match algorithm_id {
-    0 => &digest::SHA1_FOR_LEGACY_USE_ONLY,
-    1 => &digest::SHA256,
-    2 => &digest::SHA384,
-    3 => &digest::SHA512,
-    _ => panic!("Invalid algorithm id"),
-  };
-
   let input = data.ok_or_else(null_opbuf)?;
   let output = tokio::task::spawn_blocking(move || {
-    digest::digest(algorithm, &input).as_ref().to_vec().into()
+    digest::digest(algorithm.into(), &input)
+      .as_ref()
+      .to_vec()
+      .into()
   })
   .await?;
 
