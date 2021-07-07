@@ -655,9 +655,8 @@ fn encode(
     }
   };
   let text_str = text.to_rust_string_lossy(scope);
-  let text_bytes = text_str.as_bytes().to_vec().into_boxed_slice();
+  let zbuf: ZeroCopyBuf = text_str.into_bytes().into();
 
-  let zbuf: ZeroCopyBuf = text_bytes.into();
   rv.set(to_v8(scope, zbuf).unwrap())
 }
 
