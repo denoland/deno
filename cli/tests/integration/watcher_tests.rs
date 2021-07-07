@@ -597,6 +597,7 @@ fn test_watch() {
 }
 
 // TODO(bartlomieju): flaky (https://github.com/denoland/deno/issues/10552)
+#[ignore]
 #[test]
 fn test_watch_doc() {
   macro_rules! assert_contains {
