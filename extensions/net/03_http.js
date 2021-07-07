@@ -20,9 +20,21 @@
   const abortSignal = window.__bootstrap.abortSignal;
   const { WebSocket, _rid, _readyState, _eventLoop, _protocol } =
     window.__bootstrap.webSocket;
+  const {
+    ArrayPrototypeIncludes,
+    ArrayPrototypePush,
+    Promise,
+    StringPrototypeIncludes,
+    StringPrototypeSplit,
+    Symbol,
+    SymbolAsyncIterator,
+    TypedArrayPrototypeSubarray,
+    TypeError,
+    Uint8Array,
+  } = window.__bootstrap.primordials;
 
   function serveHttp(conn) {
-    const rid = Deno.core.opSync("op_http_start", conn.rid);
+    const rid = core.opSync("op_http_start", conn.rid);
     return new HttpConn(rid);
   }
 
@@ -44,7 +56,7 @@
     async nextRequest() {
       let nextRequest;
       try {
-        nextRequest = await Deno.core.opAsync(
+        nextRequest = await core.opAsync(
           "op_http_request_next",
           this.#rid,
         );
@@ -57,7 +69,9 @@
           return null;
         } else if (error instanceof Interrupted) {
           return null;
-        } else if (error.message.includes("connection closed")) {
+        } else if (
+          StringPrototypeIncludes(error.message, "connection closed")
+        ) {
           return null;
         }
         throw error;
@@ -101,7 +115,7 @@
       core.close(this.#rid);
     }
 
-    [Symbol.asyncIterator]() {
+    [SymbolAsyncIterator]() {
       // deno-lint-ignore no-this-alias
       const httpConn = this;
       return {
@@ -115,7 +129,7 @@
   }
 
   function readRequest(requestRid, zeroCopyBuf) {
-    return Deno.core.opAsync(
+    return core.opAsync(
       "op_http_request_read",
       requestRid,
       zeroCopyBuf,
@@ -144,7 +158,10 @@
       if (innerResp.body !== null) {
         if (innerResp.body.unusable()) throw new TypeError("Body is unusable.");
         if (innerResp.body.streamOrStatic instanceof ReadableStream) {
-          if (innerResp.body.length === null) {
+          if (
+            innerResp.body.length === null ||
+            innerResp.body.source instanceof Blob
+          ) {
             respBody = innerResp.body.stream;
           } else {
             const reader = innerResp.body.stream.getReader();
@@ -167,7 +184,7 @@
 
       let responseBodyRid;
       try {
-        responseBodyRid = await Deno.core.opAsync("op_http_response", [
+        responseBodyRid = await core.opAsync("op_http_response", [
           responseSenderRid,
           innerResp.status ?? 200,
           innerResp.headerList,
@@ -200,7 +217,7 @@
               break;
             }
             try {
-              await Deno.core.opAsync(
+              await core.opAsync(
                 "op_http_response_write",
                 responseBodyRid,
                 value,
@@ -219,7 +236,7 @@
           // Once all chunks are sent, and the request body is closed, we can
           // close the response body.
           try {
-            await Deno.core.opAsync("op_http_response_close", responseBodyRid);
+            await core.opAsync("op_http_response_close", responseBodyRid);
           } catch { /* pass */ }
         }
       }
@@ -281,7 +298,7 @@
           );
           if (read > 0) {
             // We read some data. Enqueue it onto the stream.
-            controller.enqueue(chunk.subarray(0, read));
+            controller.enqueue(TypedArrayPrototypeSubarray(chunk, 0, read));
           } else {
             // We have reached the end of the body, so we close the stream.
             controller.close();
@@ -334,15 +351,14 @@
       ["sec-websocket-accept", forgivingBase64Encode(new Uint8Array(accept))],
     ];
 
-    const protocols = request.headers.get("sec-websocket-protocol")?.split(
-      ", ",
-    );
+    const protocolsStr = request.headers.get("sec-websocket-protocol") || "";
+    const protocols = StringPrototypeSplit(protocolsStr, ", ");
     if (protocols && options.protocol) {
-      if (protocols.includes(options.protocol)) {
-        r.headerList.push(["sec-websocket-protocol", options.protocol]);
+      if (ArrayPrototypeIncludes(protocols, options.protocol)) {
+        ArrayPrototypePush(r.headerList, ["sec-websocket-protocol", options.protocol]);
       } else {
         throw new TypeError(
-          `protocol '${options.protocol}' not in the request's protocol list`,
+          `Protocol '${options.protocol}' not in the request's protocol list (non negotiable)`,
         );
       }
     }

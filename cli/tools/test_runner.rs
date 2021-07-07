@@ -21,6 +21,9 @@ use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
+use rand::rngs::SmallRng;
+use rand::seq::SliceRandom;
+use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
 use std::path::Path;
@@ -343,8 +346,19 @@ pub async fn run_tests(
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
+  shuffle: Option<u64>,
   concurrent_jobs: usize,
 ) -> Result<bool, AnyError> {
+  let test_modules = if let Some(seed) = shuffle {
+    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut test_modules = test_modules.clone();
+    test_modules.sort();
+    test_modules.shuffle(&mut rng);
+    test_modules
+  } else {
+    test_modules
+  };
+
   if !doc_modules.is_empty() {
     let mut test_programs = Vec::new();
 
@@ -450,6 +464,7 @@ pub async fn run_tests(
   let test_options = json!({
       "disableLog": quiet,
       "filter": filter,
+      "shuffle": shuffle,
   });
 
   let test_module = deno_core::resolve_path("$deno$test.js")?;

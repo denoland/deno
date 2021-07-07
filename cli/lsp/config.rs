@@ -4,6 +4,7 @@ use crate::tokio_util::create_basic_runtime;
 
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::RwLock;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
@@ -15,7 +16,6 @@ use lspower::lsp;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::RwLock;
 use std::thread;
 use tokio::sync::mpsc;
 
@@ -241,7 +241,7 @@ impl Config {
                 Vec<(ModuleSpecifier, ModuleSpecifier)>,
                 Vec<lsp::ConfigurationItem>,
               ) = {
-                let settings = settings_ref.read().unwrap();
+                let settings = settings_ref.read();
                 (
                   settings
                     .specifiers
@@ -259,7 +259,7 @@ impl Config {
                 )
               };
               if let Ok(configs) = client.configuration(items).await {
-                let mut settings = settings_ref.write().unwrap();
+                let mut settings = settings_ref.write();
                 for (i, value) in configs.into_iter().enumerate() {
                   match serde_json::from_value::<SpecifierSettings>(value) {
                     Ok(specifier_settings) => {
@@ -276,12 +276,7 @@ impl Config {
               }
             }
             Some(ConfigRequest::Specifier(specifier, uri)) => {
-              if settings_ref
-                .read()
-                .unwrap()
-                .specifiers
-                .contains_key(&specifier)
-              {
+              if settings_ref.read().specifiers.contains_key(&specifier) {
                 continue;
               }
               if let Ok(value) = client
@@ -297,7 +292,6 @@ impl Config {
                   Ok(specifier_settings) => {
                     settings_ref
                       .write()
-                      .unwrap()
                       .specifiers
                       .insert(specifier, (uri, specifier_settings));
                   }
@@ -327,14 +321,14 @@ impl Config {
   }
 
   pub fn get_workspace_settings(&self) -> WorkspaceSettings {
-    self.settings.read().unwrap().workspace.clone()
+    self.settings.read().workspace.clone()
   }
 
   /// Set the workspace settings directly, which occurs during initialization
   /// and when the client does not support workspace configuration requests
   pub fn set_workspace_settings(&self, value: Value) -> Result<(), AnyError> {
     let workspace_settings = serde_json::from_value(value)?;
-    self.settings.write().unwrap().workspace = workspace_settings;
+    self.settings.write().workspace = workspace_settings;
     Ok(())
   }
 
@@ -345,14 +339,14 @@ impl Config {
       settings: self
         .settings
         .try_read()
-        .map_err(|_| anyhow!("Error reading settings."))?
+        .ok_or_else(|| anyhow!("Error reading settings."))?
         .clone(),
       workspace_folders: self.workspace_folders.clone(),
     })
   }
 
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
-    let settings = self.settings.read().unwrap();
+    let settings = self.settings.read();
     settings
       .specifiers
       .get(specifier)
@@ -361,7 +355,7 @@ impl Config {
   }
 
   pub fn specifier_code_lens_test(&self, specifier: &ModuleSpecifier) -> bool {
-    let settings = self.settings.read().unwrap();
+    let settings = self.settings.read();
     let value = settings
       .specifiers
       .get(specifier)

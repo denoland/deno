@@ -22,6 +22,25 @@
     collectSequenceOfCodepoints,
     collectHttpQuotedString,
   } = window.__bootstrap.infra;
+  const {
+    ArrayIsArray,
+    ArrayPrototypeMap,
+    ArrayPrototypePush,
+    ArrayPrototypeSort,
+    ArrayPrototypeJoin,
+    ArrayPrototypeSplice,
+    ArrayPrototypeFilter,
+    ObjectKeys,
+    ObjectEntries,
+    RegExpPrototypeTest,
+    Symbol,
+    SymbolFor,
+    SymbolIterator,
+    SymbolToStringTag,
+    StringPrototypeReplaceAll,
+    StringPrototypeIncludes,
+    TypeError,
+  } = window.__bootstrap.primordials;
 
   const _headerList = Symbol("header list");
   const _iterableHeaders = Symbol("iterable headers");
@@ -42,8 +61,16 @@
    * @returns {string}
    */
   function normalizeHeaderValue(potentialValue) {
-    potentialValue = potentialValue.replaceAll(HTTP_WHITESPACE_PREFIX_RE, "");
-    potentialValue = potentialValue.replaceAll(HTTP_WHITESPACE_SUFFIX_RE, "");
+    potentialValue = StringPrototypeReplaceAll(
+      potentialValue,
+      HTTP_WHITESPACE_PREFIX_RE,
+      "",
+    );
+    potentialValue = StringPrototypeReplaceAll(
+      potentialValue,
+      HTTP_WHITESPACE_SUFFIX_RE,
+      "",
+    );
     return potentialValue;
   }
 
@@ -52,7 +79,7 @@
    * @param {HeadersInit} object
    */
   function fillHeaders(headers, object) {
-    if (Array.isArray(object)) {
+    if (ArrayIsArray(object)) {
       for (const header of object) {
         if (header.length !== 2) {
           throw new TypeError(
@@ -62,7 +89,7 @@
         appendHeader(headers, header[0], header[1]);
       }
     } else {
-      for (const key of Object.keys(object)) {
+      for (const key of ObjectKeys(object)) {
         appendHeader(headers, key, object[key]);
       }
     }
@@ -79,11 +106,13 @@
     value = normalizeHeaderValue(value);
 
     // 2.
-    if (!HTTP_TOKEN_CODE_POINT_RE.test(name)) {
+    if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
       throw new TypeError("Header name is not valid.");
     }
     if (
-      value.includes("\x00") || value.includes("\x0A") || value.includes("\x0D")
+      StringPrototypeIncludes(value, "\x00") ||
+      StringPrototypeIncludes(value, "\x0A") ||
+      StringPrototypeIncludes(value, "\x0D")
     ) {
       throw new TypeError("Header value is not valid.");
     }
@@ -96,7 +125,7 @@
     // 7.
     const list = headers[_headerList];
     name = byteLowerCase(name);
-    list.push([name, value]);
+    ArrayPrototypePush(list, [name, value]);
   }
 
   /**
@@ -106,13 +135,14 @@
    */
   function getHeader(list, name) {
     const lowercaseName = byteLowerCase(name);
-    const entries = list
-      .filter((entry) => entry[0] === lowercaseName)
-      .map((entry) => entry[1]);
+    const entries = ArrayPrototypeMap(
+      ArrayPrototypeFilter(list, (entry) => entry[0] === lowercaseName),
+      (entry) => entry[1],
+    );
     if (entries.length === 0) {
       return null;
     } else {
-      return entries.join("\x2C\x20");
+      return ArrayPrototypeJoin(entries, "\x2C\x20");
     }
   }
 
@@ -153,10 +183,10 @@
         }
       }
 
-      value = value.replaceAll(HTTP_TAB_OR_SPACE_PREFIX_RE, "");
-      value = value.replaceAll(HTTP_TAB_OR_SPACE_SUFFIX_RE, "");
+      value = StringPrototypeReplaceAll(value, HTTP_TAB_OR_SPACE_PREFIX_RE, "");
+      value = StringPrototypeReplaceAll(value, HTTP_TAB_OR_SPACE_SUFFIX_RE, "");
 
-      values.push(value);
+      ArrayPrototypePush(values, value);
       value = "";
     }
     return values;
@@ -184,7 +214,7 @@
         // so must be given to the user as multiple headers.
         // The else block of the if statement is spec compliant again.
         if (name === "set-cookie") {
-          cookies.push([name, value]);
+          ArrayPrototypePush(cookies, [name, value]);
         } else {
           // The following code has the same behaviour as getHeader()
           // at the end of loop. But it avoids looping through the entire
@@ -200,13 +230,16 @@
         }
       }
 
-      return [...Object.entries(headers), ...cookies].sort((a, b) => {
-        const akey = a[0];
-        const bkey = b[0];
-        if (akey > bkey) return 1;
-        if (akey < bkey) return -1;
-        return 0;
-      });
+      return ArrayPrototypeSort(
+        [...ObjectEntries(headers), ...cookies],
+        (a, b) => {
+          const akey = a[0];
+          const bkey = b[0];
+          if (akey > bkey) return 1;
+          if (akey < bkey) return -1;
+          return 0;
+        },
+      );
     }
 
     /** @param {HeadersInit} [init] */
@@ -256,7 +289,7 @@
         context: "Argument 1",
       });
 
-      if (!HTTP_TOKEN_CODE_POINT_RE.test(name)) {
+      if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
         throw new TypeError("Header name is not valid.");
       }
       if (this[_guard] == "immutable") {
@@ -267,7 +300,7 @@
       name = byteLowerCase(name);
       for (let i = 0; i < list.length; i++) {
         if (list[i][0] === name) {
-          list.splice(i, 1);
+          ArrayPrototypeSplice(list, i, 1);
           i--;
         }
       }
@@ -284,7 +317,7 @@
         context: "Argument 1",
       });
 
-      if (!HTTP_TOKEN_CODE_POINT_RE.test(name)) {
+      if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
         throw new TypeError("Header name is not valid.");
       }
 
@@ -303,7 +336,7 @@
         context: "Argument 1",
       });
 
-      if (!HTTP_TOKEN_CODE_POINT_RE.test(name)) {
+      if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
         throw new TypeError("Header name is not valid.");
       }
 
@@ -337,12 +370,13 @@
       value = normalizeHeaderValue(value);
 
       // 2.
-      if (!HTTP_TOKEN_CODE_POINT_RE.test(name)) {
+      if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
         throw new TypeError("Header name is not valid.");
       }
       if (
-        value.includes("\x00") || value.includes("\x0A") ||
-        value.includes("\x0D")
+        StringPrototypeIncludes(value, "\x00") ||
+        StringPrototypeIncludes(value, "\x0A") ||
+        StringPrototypeIncludes(value, "\x0D")
       ) {
         throw new TypeError("Header value is not valid.");
       }
@@ -360,17 +394,17 @@
             list[i][1] = value;
             added = true;
           } else {
-            list.splice(i, 1);
+            ArrayPrototypeSplice(list, i, 1);
             i--;
           }
         }
       }
       if (!added) {
-        list.push([name, value]);
+        ArrayPrototypePush(list, [name, value]);
       }
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       const headers = {};
       for (const header of this) {
         headers[header[0]] = header[1];
@@ -378,7 +412,7 @@
       return `Headers ${inspect(headers)}`;
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "Headers";
     }
   }
@@ -390,7 +424,7 @@
   webidl.converters["HeadersInit"] = (V, opts) => {
     // Union for (sequence<sequence<ByteString>> or record<ByteString, ByteString>)
     if (webidl.type(V) === "Object" && V !== null) {
-      if (V[Symbol.iterator] !== undefined) {
+      if (V[SymbolIterator] !== undefined) {
         return webidl.converters["sequence<sequence<ByteString>>"](V, opts);
       }
       return webidl.converters["record<ByteString, ByteString>"](V, opts);

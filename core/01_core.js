@@ -2,6 +2,26 @@
 "use strict";
 
 ((window) => {
+  const {
+    Error,
+    RangeError,
+    ReferenceError,
+    SyntaxError,
+    TypeError,
+    URIError,
+    Map,
+    Array,
+    ArrayPrototypeFill,
+    Promise,
+    ObjectFreeze,
+    ObjectFromEntries,
+    MapPrototypeGet,
+    MapPrototypeDelete,
+    MapPrototypeSet,
+    PromisePrototypeThen,
+    ObjectAssign,
+  } = window.__bootstrap.primordials;
+
   // Available on start due to bindings.
   const { opcall } = window.Deno.core;
 
@@ -19,7 +39,7 @@
   const promiseMap = new Map();
   const RING_SIZE = 4 * 1024;
   const NO_PROMISE = null; // Alias to null is faster than plain nulls
-  const promiseRing = new Array(RING_SIZE).fill(NO_PROMISE);
+  const promiseRing = ArrayPrototypeFill(new Array(RING_SIZE), NO_PROMISE);
 
   function setPromise(promiseId) {
     const idx = promiseId % RING_SIZE;
@@ -27,7 +47,7 @@
     const oldPromise = promiseRing[idx];
     if (oldPromise !== NO_PROMISE) {
       const oldPromiseId = promiseId - RING_SIZE;
-      promiseMap.set(oldPromiseId, oldPromise);
+      MapPrototypeSet(promiseMap, oldPromiseId, oldPromise);
     }
     // Set new promise
     return promiseRing[idx] = newPromise();
@@ -37,8 +57,8 @@
     // Check if out of ring bounds, fallback to map
     const outOfBounds = promiseId < nextPromiseId - RING_SIZE;
     if (outOfBounds) {
-      const promise = promiseMap.get(promiseId);
-      promiseMap.delete(promiseId);
+      const promise = MapPrototypeGet(promiseMap, promiseId);
+      MapPrototypeDelete(promiseMap, promiseId);
       return promise;
     }
     // Otherwise take from ring
@@ -65,7 +85,7 @@
 
   function syncOpsCache() {
     // op id 0 is a special value to retrieve the map of registered ops.
-    opsCache = Object.freeze(Object.fromEntries(opcall(0)));
+    opsCache = ObjectFreeze(ObjectFromEntries(opcall(0)));
   }
 
   function handleAsyncMsgFromRust() {
@@ -113,7 +133,7 @@
     const maybeError = dispatch(opName, promiseId, arg1, arg2);
     // Handle sync error (e.g: error parsing args)
     if (maybeError) return unwrapOpResult(maybeError);
-    return setPromise(promiseId).then(unwrapOpResult);
+    return PromisePrototypeThen(setPromise(promiseId), unwrapOpResult);
   }
 
   function opSync(opName, arg1 = null, arg2 = null) {
@@ -121,7 +141,7 @@
   }
 
   function resources() {
-    return Object.fromEntries(opSync("op_resources"));
+    return ObjectFromEntries(opSync("op_resources"));
   }
 
   function close(rid) {
@@ -149,10 +169,8 @@
     }
   }
 
-  // Provide bootstrap namespace
-  window.__bootstrap = {};
   // Extra Deno.core.* exports
-  Object.assign(window.Deno.core, {
+  const core = ObjectAssign(globalThis.Deno.core, {
     opAsync,
     opSync,
     ops,
@@ -166,4 +184,7 @@
     BadResource,
     Interrupted,
   });
-})(this);
+
+  ObjectAssign(globalThis.__bootstrap, { core });
+  ObjectAssign(globalThis.Deno, { core });
+})(globalThis);
