@@ -6,9 +6,7 @@ use test_util as util;
 use test_util::strip_ansi_codes;
 
 // Warning: this test requires internet access.
-// TODO(#7412): reenable. test is flaky
 #[test]
-#[ignore]
 fn upgrade_in_tmpdir() {
   let temp_dir = TempDir::new().unwrap();
   let exe_path = temp_dir.path().join("deno");
@@ -28,9 +26,7 @@ fn upgrade_in_tmpdir() {
 }
 
 // Warning: this test requires internet access.
-// TODO(#7412): reenable. test is flaky
 #[test]
-#[ignore]
 fn upgrade_with_space_in_path() {
   let temp_dir = tempfile::Builder::new()
     .prefix("directory with spaces")
@@ -51,9 +47,7 @@ fn upgrade_with_space_in_path() {
 }
 
 // Warning: this test requires internet access.
-// TODO(#7412): reenable. test is flaky
 #[test]
-#[ignore]
 fn upgrade_with_version_in_tmpdir() {
   let temp_dir = TempDir::new().unwrap();
   let exe_path = temp_dir.path().join("deno");
@@ -80,9 +74,7 @@ fn upgrade_with_version_in_tmpdir() {
 }
 
 // Warning: this test requires internet access.
-// TODO(#7412): reenable. test is flaky
 #[test]
-#[ignore]
 fn upgrade_with_canary_in_tmpdir() {
   let temp_dir = TempDir::new().unwrap();
   let exe_path = temp_dir.path().join("deno");
@@ -109,9 +101,7 @@ fn upgrade_with_canary_in_tmpdir() {
 }
 
 // Warning: this test requires internet access.
-// TODO(#7412): reenable. test is flaky
 #[test]
-#[ignore]
 fn upgrade_with_out_in_tmpdir() {
   let temp_dir = TempDir::new().unwrap();
   let exe_path = temp_dir.path().join("deno");
@@ -146,9 +136,7 @@ fn upgrade_with_out_in_tmpdir() {
 }
 
 // Warning: this test requires internet access.
-// TODO(#7412): reenable. test is flaky
 #[test]
-#[ignore]
 fn upgrade_invalid_stable_version() {
   let temp_dir = TempDir::new().unwrap();
   let exe_path = temp_dir.path().join("deno");
@@ -171,9 +159,7 @@ fn upgrade_invalid_stable_version() {
 }
 
 // Warning: this test requires internet access.
-// TODO(#7412): reenable. test is flaky
 #[test]
-#[ignore]
 fn upgrade_invalid_canary_version() {
   let temp_dir = TempDir::new().unwrap();
   let exe_path = temp_dir.path().join("deno");
