@@ -451,7 +451,9 @@ pub async fn op_crypto_verify_key(
         }
       };
 
-      public_key.verify(padding, &hashed, &*args.signature).is_ok()
+      public_key
+        .verify(padding, &hashed, &*args.signature)
+        .is_ok()
     }
     _ => return Err(type_error("Unsupported algorithm".to_string())),
   };
