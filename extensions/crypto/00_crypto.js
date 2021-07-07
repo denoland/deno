@@ -486,8 +486,10 @@
       case "RSA-PSS": {
         // 1.
         if (
-          ArrayPrototypeFind(usages, (u) =>
-            !ArrayPrototypeIncludes(["sign", "verify"], u)) !== undefined
+          ArrayPrototypeFind(
+            usages,
+            (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
+          ) !== undefined
         ) {
           throw new DOMException("Invalid key usages", "SyntaxError");
         }
@@ -540,8 +542,10 @@
       case "ECDSA": {
         // 1.
         if (
-          ArrayPrototypeFind(usages, (u) =>
-            !ArrayPrototypeIncludes(["sign", "verify"], u)) !== undefined
+          ArrayPrototypeFind(
+            usages,
+            (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
+          ) !== undefined
         ) {
           throw new DOMException("Invalid key usages", "SyntaxError");
         }
