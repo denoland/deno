@@ -17,6 +17,7 @@
     ArrayBuffer,
     ArrayBufferIsView,
     ArrayIsArray,
+    ArrayPrototypeFilter,
     ArrayPrototypeMap,
     ArrayPrototypePop,
     ArrayPrototypePush,
@@ -25,6 +26,10 @@
     ObjectDefineProperty,
     ObjectFreeze,
     Promise,
+    PromiseAll,
+    PromisePrototypeCatch,
+    PromisePrototypeThen,
+    PromiseReject,
     PromiseResolve,
     Set,
     SetPrototypeEntries,
@@ -147,12 +152,14 @@
   }
 
   class GPUOutOfMemoryError extends Error {
+    name = "GPUOutOfMemoryError";
     constructor() {
-      super();
+      super("device out of memory");
     }
   }
 
   class GPUValidationError extends Error {
+    name = "GPUValidationError";
     /** @param {string} message */
     constructor(message) {
       const prefix = "Failed to construct 'GPUValidationError'";
@@ -271,7 +278,7 @@
       });
       const requiredFeatures = descriptor.requiredFeatures ?? [];
       for (const feature of requiredFeatures) {
-        if (!SetPrototypeHas(this[_adapter].features, feature)) {
+        if (!SetPrototypeHas(this[_adapter].features[_features], feature)) {
           throw new TypeError(
             `${prefix}: nonGuaranteedFeatures must be a subset of the adapter features.`,
           );
@@ -597,7 +604,7 @@
   /**
    * @typedef ErrorScope
    * @property {string} filter
-   * @property {GPUError | undefined} error
+   * @property {Promise<void>[]} operations
    */
 
   /**
@@ -652,42 +659,73 @@
 
     /** @param {{ type: string, value: string | null } | undefined} err */
     pushError(err) {
-      if (err) {
-        switch (err.type) {
-          case "lost":
-            this.isLost = true;
-            this.resolveLost(
-              createGPUDeviceLostInfo(undefined, "device was lost"),
-            );
-            break;
-          case "validation":
-          case "out-of-memory":
-            for (
-              let i = this.errorScopeStack.length - 1;
-              i >= 0;
-              i--
-            ) {
-              const scope = this.errorScopeStack[i];
-              if (scope.filter == err.type) {
-                if (!scope.error) {
-                  switch (err.type) {
-                    case "validation":
-                      scope.error = new GPUValidationError(
-                        err.value ?? "validation error",
-                      );
-                      break;
-                    case "out-of-memory":
-                      scope.error = new GPUOutOfMemoryError();
-                      break;
-                  }
-                }
-                return;
-              }
-            }
-            // TODO(lucacasonato): emit a UncapturedErrorEvent
-            break;
+      this.pushErrorPromise(PromiseResolve(err));
+    }
+
+    /** @param {Promise<{ type: string, value: string | null } | undefined>} promise */
+    pushErrorPromise(promise) {
+      const operation = PromisePrototypeThen(promise, (err) => {
+        if (err) {
+          switch (err.type) {
+            case "lost":
+              this.isLost = true;
+              this.resolveLost(
+                createGPUDeviceLostInfo(undefined, "device was lost"),
+              );
+              break;
+            case "validation":
+              return PromiseReject(
+                new GPUValidationError(err.value ?? "validation error"),
+              );
+            case "out-of-memory":
+              return PromiseReject(new GPUOutOfMemoryError());
+          }
         }
+      });
+
+      const validationStack = ArrayPrototypeFilter(
+        this.errorScopeStack,
+        ({ filter }) => filter == "validation",
+      );
+      const validationScope = validationStack[validationStack.length - 1];
+      const validationFilteredPromise = PromisePrototypeCatch(
+        operation,
+        (err) => {
+          if (err instanceof GPUValidationError) return PromiseReject(err);
+          return PromiseResolve();
+        },
+      );
+      if (validationScope) {
+        ArrayPrototypePush(
+          validationScope.operations,
+          validationFilteredPromise,
+        );
+      } else {
+        PromisePrototypeCatch(validationFilteredPromise, () => {
+          // TODO(lucacasonato): emit an UncapturedErrorEvent
+        });
       }
+      // prevent uncaptured promise rejections
+      PromisePrototypeCatch(validationFilteredPromise, (_err) => {});
+
+      const oomStack = ArrayPrototypeFilter(
+        this.errorScopeStack,
+        ({ filter }) => filter == "out-of-memory",
+      );
+      const oomScope = oomStack[oomStack.length - 1];
+      const oomFilteredPromise = PromisePrototypeCatch(operation, (err) => {
+        if (err instanceof GPUOutOfMemoryError) return PromiseReject(err);
+        return PromiseResolve();
+      });
+      if (oomScope) {
+        ArrayPrototypePush(oomScope.operations, oomFilteredPromise);
+      } else {
+        PromisePrototypeCatch(oomFilteredPromise, () => {
+          // TODO(lucacasonato): emit an UncapturedErrorEvent
+        });
+      }
+      // prevent uncaptured promise rejections
+      PromisePrototypeCatch(oomFilteredPromise, (_err) => {});
     }
   }
 
@@ -1332,7 +1370,7 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      ArrayPrototypePush(device.errorScopeStack, { filter, error: undefined });
+      ArrayPrototypePush(device.errorScopeStack, { filter, operations: [] });
     }
 
     /**
@@ -1341,7 +1379,7 @@
     // deno-lint-ignore require-await
     async popErrorScope() {
       webidl.assertBranded(this, GPUDevice);
-      const prefix = "Failed to execute 'pushErrorScope' on 'GPUDevice'";
+      const prefix = "Failed to execute 'popErrorScope' on 'GPUDevice'";
       const device = assertDevice(this, { prefix, context: "this" });
       if (device.isLost) {
         throw new DOMException("Device has been lost.", "OperationError");
@@ -1349,11 +1387,16 @@
       const scope = ArrayPrototypePop(device.errorScopeStack);
       if (!scope) {
         throw new DOMException(
-          "There are no error scopes on that stack.",
+          "There are no error scopes on the error scope stack.",
           "OperationError",
         );
       }
-      return scope.error ?? null;
+      const operations = PromiseAll(scope.operations);
+      return PromisePrototypeThen(
+        operations,
+        () => PromiseResolve(null),
+        (err) => PromiseResolve(err),
+      );
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
@@ -1722,17 +1765,24 @@
 
       this[_mapMode] = mode;
       this[_state] = "mapping pending";
-      const { err } = await core.opAsync(
-        "op_webgpu_buffer_get_map_async",
-        {
-          bufferRid,
-          deviceRid: device.rid,
-          mode,
-          offset,
-          size: rangeSize,
-        },
+      const promise = PromisePrototypeThen(
+        core.opAsync(
+          "op_webgpu_buffer_get_map_async",
+          {
+            bufferRid,
+            deviceRid: device.rid,
+            mode,
+            offset,
+            size: rangeSize,
+          },
+        ),
+        ({ err }) => err,
       );
-      device.pushError(err);
+      device.pushErrorPromise(promise);
+      const err = await promise;
+      if (err) {
+        throw new DOMException("validation error occured", "OperationError");
+      }
       this[_state] = "mapped";
       this[_mappingRange] = [offset, offset + rangeSize];
       /** @type {[ArrayBuffer, number, number][] | null} */
@@ -1765,6 +1815,7 @@
       } else {
         rangeSize = size;
       }
+
       const mappedRanges = this[_mappedRanges];
       if (!mappedRanges) {
         throw new DOMException(`${prefix}: invalid state.`, "OperationError");
