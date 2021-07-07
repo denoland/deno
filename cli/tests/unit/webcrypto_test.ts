@@ -56,3 +56,36 @@ unitTest(async function testSignECDSA() {
 
   assert(signature);
 });
+
+// https://github.com/denoland/deno/issues/11313
+unitTest(async function testSignRSASSAKey() {
+  const subtle = window.crypto.subtle;
+  assert(subtle);
+
+  const keyPair = await subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["sign", "verify"],
+  );
+
+  assert(keyPair.privateKey);
+  assert(keyPair.publicKey);
+  assertEquals(keyPair.privateKey.extractable, true);
+  assert(keyPair.privateKey.usages.includes("sign"));
+
+  const encoder = new TextEncoder();
+  const encoded = encoder.encode("Hello, World!");
+
+  const signature = await window.crypto.subtle.sign(
+    { name: "RSASSA-PKCS1-v1_5" },
+    keyPair.privateKey,
+    encoded,
+  );
+
+  assert(signature);
+});
