@@ -10,7 +10,7 @@ use crate::ops::OpAddr;
 use crate::ops::OpConn;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
-use crate::NetPermissions;
+use crate::{NetPermissions, NoCertificateValidation};
 use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
@@ -37,6 +37,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::NoCertificateVerification;
 use io::Error;
 use io::Read;
 use io::Write;
@@ -53,6 +54,7 @@ use rustls::ServerSession;
 use rustls::Session;
 use rustls::StoresClientSessions;
 use serde::Deserialize;
+use serde_with::{serde_as, OneOrMany};
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -670,6 +672,7 @@ pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
   ]
 }
 
+#[serde_as]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectTlsArgs {
@@ -677,6 +680,9 @@ pub struct ConnectTlsArgs {
   hostname: String,
   port: u16,
   cert_file: Option<String>,
+  #[serde_as(as = "Option<OneOrMany<_>>")]
+  #[serde(default)]
+  no_check_certificate: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -778,6 +784,8 @@ where
   };
   let port = args.port;
   let cert_file = args.cert_file.as_deref();
+  let no_check_certificate = args.no_check_certificate;
+  let global_no_check_certificate: Option<Vec<String>>;
 
   {
     let mut s = state.borrow_mut();
@@ -786,6 +794,12 @@ where
     if let Some(path) = cert_file {
       permissions.check_read(Path::new(path))?;
     }
+  }
+
+  {
+    let mut s = state.borrow_mut();
+    let no_certificate_validation = s.borrow_mut::<NoCertificateValidation>();
+    global_no_check_certificate = no_certificate_validation.no_check_certificate.clone();
   }
 
   let hostname_dns = DNSNameRef::try_from_ascii_str(hostname)
@@ -808,6 +822,16 @@ where
     let key_file = File::open(path)?;
     let reader = &mut BufReader::new(key_file);
     tls_config.root_store.add_pem_file(reader).unwrap();
+  }
+  if let Some(ncc_l) = no_check_certificate {
+    let mut no_check_certificate_list = ncc_l.clone();
+    if let Some(global_ncc_l) = global_no_check_certificate {
+      no_check_certificate_list.extend(global_ncc_l);
+    }
+
+    tls_config.dangerous().set_certificate_verifier(Arc::new(
+      NoCertificateVerification::new(no_check_certificate_list),
+    ));
   }
   let tls_config = Arc::new(tls_config);
 

@@ -24,3 +24,8 @@ serde = { version = "1.0.125", features = ["derive"] }
 tokio = { version = "1.8.0", features = ["full"] }
 tokio-stream = "0.1.5"
 tokio-util = "0.6.7"
+
+# until gets released https://github.com/seanmonstar/reqwest/issues/1210
+rustls = { version = "0.19.0", features = ["dangerous_configuration"] }
+webpki = "0.21.4"
+webpki-roots = "0.21.1"

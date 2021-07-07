@@ -151,6 +151,7 @@ pub struct Flags {
   pub lock_write: bool,
   pub log_level: Option<Level>,
   pub no_check: bool,
+  pub no_check_certificate: Option<Vec<String>>,
   pub prompt: bool,
   pub no_remote: bool,
   pub reload: bool,
@@ -1145,6 +1146,7 @@ fn compile_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
     .arg(no_remote_arg())
     .arg(config_arg())
     .arg(no_check_arg())
+    .arg(no_check_certificate_arg())
     .arg(reload_arg())
     .arg(lock_arg())
     .arg(lock_write_arg())
@@ -1387,6 +1389,18 @@ fn no_check_arg<'a, 'b>() -> Arg<'a, 'b> {
   Arg::with_name("no-check")
     .long("no-check")
     .help("Skip type checking modules")
+}
+
+fn no_check_certificate_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("no-check-certificate")
+    .long("no-check-certificate")
+    .min_values(0)
+    .takes_value(true)
+    .use_delimiter(true)
+    .require_equals(true)
+    .help("Allow network access")
+    .validator(crate::flags_allow_net::validator)
+    .help("Skip certificate check for TLS connections")
 }
 
 fn script_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -1794,6 +1808,7 @@ fn compile_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   no_remote_arg_parse(flags, matches);
   config_arg_parse(flags, matches);
   no_check_arg_parse(flags, matches);
+  no_check_certificate_arg_parse(flags, matches);
   reload_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
@@ -1953,6 +1968,21 @@ fn seed_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
 fn no_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   if matches.is_present("no-check") {
     flags.no_check = true;
+  }
+}
+
+fn no_check_certificate_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  if matches.is_present("no-check-certificate") {
+    if let Some(ncc_l) = matches.values_of("no-check-certificate") {
+      let no_check_certificate_list: Vec<String> =
+        crate::flags_allow_net::parse(ncc_l.map(ToString::to_string).collect())
+          .unwrap();
+      flags.no_check_certificate = Some(no_check_certificate_list);
+      debug!("no_check_certificate: {:#?}", &flags.no_check_certificate);
+    }
+    else {
+      flags.no_check_certificate = Some(vec![]);
+    }
   }
 }
 
@@ -2573,7 +2603,7 @@ mod tests {
   #[test]
   fn eval_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "eval", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "42"]);
+    let r = flags_from_vec(svec!["deno", "eval", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--no-check-certificate", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "42"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2586,6 +2616,7 @@ mod tests {
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
         no_check: true,
+        no_check_certificate: Some(vec![]),
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
@@ -2660,7 +2691,7 @@ mod tests {
   #[test]
   fn repl_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "repl", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229"]);
+    let r = flags_from_vec(svec!["deno", "repl", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--no-check-certificate", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -2670,6 +2701,7 @@ mod tests {
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
         no_check: true,
+        no_check_certificate: Some(vec![]),
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
@@ -3098,7 +3130,7 @@ mod tests {
   #[test]
   fn install_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "install", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "https://deno.land/std/http/file_server.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "install", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--no-check-certificate", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "https://deno.land/std/http/file_server.ts", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3113,6 +3145,7 @@ mod tests {
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
         no_check: true,
+        no_check_certificate: Some(vec![]),
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,
@@ -3261,6 +3294,80 @@ mod tests {
           script: "script.ts".to_string(),
         },
         no_check: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn no_check_certificate() {
+    let r = flags_from_vec(svec!["deno", "run", "--no-check-certificate", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        no_check_certificate: Some(vec![]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn no_check_certificate_with_ports() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--no-check-certificate=deno.land,:8000,:4545",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        no_check_certificate: Some(svec![
+          "deno.land",
+          "0.0.0.0:8000",
+          "127.0.0.1:8000",
+          "localhost:8000",
+          "0.0.0.0:4545",
+          "127.0.0.1:4545",
+          "localhost:4545"
+        ]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn no_check_certificate_with_ipv6_address() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--no-check-certificate=deno.land,deno.land:80,::,127.0.0.1,[::1],1.2.3.4:5678,:5678,[::1]:8080",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        no_check_certificate: Some(svec![
+          "deno.land",
+          "deno.land:80",
+          "::",
+          "127.0.0.1",
+          "[::1]",
+          "1.2.3.4:5678",
+          "0.0.0.0:5678",
+          "127.0.0.1:5678",
+          "localhost:5678",
+          "[::1]:8080"
+        ]),
         ..Flags::default()
       }
     );
@@ -3630,7 +3737,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--no-check-certificate", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3644,6 +3751,7 @@ mod tests {
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
         no_check: true,
+        no_check_certificate: Some(vec![]),
         reload: true,
         lock: Some(PathBuf::from("lock.json")),
         lock_write: true,

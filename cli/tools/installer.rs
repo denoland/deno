@@ -220,6 +220,17 @@ pub fn install(
     executable_args.push("--no-check".to_string());
   }
 
+  match &flags.no_check_certificate {
+    Some(ncc_l) if ncc_l.is_empty() => {
+      executable_args.push("--no-check-certificate".to_string());
+    }
+    Some(ncc_l) => {
+      let s = format!("--no-check-certificate={}", ncc_l.join(","));
+      executable_args.push(s);
+    }
+    _ => {}
+  }
+
   if flags.unstable {
     executable_args.push("--unstable".to_string());
   }

@@ -15,6 +15,7 @@ mod ops_builtin;
 mod ops_json;
 mod resources;
 mod runtime;
+mod no_certificate_validation;
 
 // Re-exports
 pub use futures;
@@ -91,6 +92,7 @@ pub use crate::runtime::Snapshot;
 pub use crate::extensions::Extension;
 pub use crate::extensions::OpMiddlewareFn;
 pub use crate::extensions::OpPair;
+pub use crate::no_certificate_validation::NoCertificateVerification;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()

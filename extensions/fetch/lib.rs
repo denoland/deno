@@ -24,6 +24,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+use deno_core::NoCertificateVerification;
 
 use data_url::DataUrl;
 use deno_web::BlobStore;
@@ -38,6 +39,7 @@ use reqwest::Body;
 use reqwest::Client;
 use reqwest::Method;
 use reqwest::Response;
+use rustls::ClientConfig;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -49,6 +51,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -60,6 +63,7 @@ pub fn init<P: FetchPermissions + 'static>(
   user_agent: String,
   ca_data: Option<Vec<u8>>,
   proxy: Option<Proxy>,
+  no_check_certificate: Option<Vec<String>>,
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -82,13 +86,14 @@ pub fn init<P: FetchPermissions + 'static>(
     ])
     .state(move |state| {
       state.put::<reqwest::Client>({
-        create_http_client(user_agent.clone(), ca_data.clone(), proxy.clone())
+        create_http_client(user_agent.clone(), ca_data.clone(), proxy.clone(), no_check_certificate.clone())
           .unwrap()
       });
       state.put::<HttpClientDefaults>(HttpClientDefaults {
         ca_data: ca_data.clone(),
         user_agent: user_agent.clone(),
         proxy: proxy.clone(),
+        no_check_certificate: no_check_certificate.clone(),
       });
       Ok(())
     })
@@ -99,6 +104,7 @@ pub struct HttpClientDefaults {
   pub user_agent: String,
   pub ca_data: Option<Vec<u8>>,
   pub proxy: Option<Proxy>,
+  pub no_check_certificate: Option<Vec<String>>,
 }
 
 pub trait FetchPermissions {
@@ -495,6 +501,7 @@ pub struct CreateHttpClientOptions {
   ca_file: Option<String>,
   ca_data: Option<ByteString>,
   proxy: Option<Proxy>,
+  no_check_certificate: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Default, Debug, Clone)]
@@ -539,6 +546,7 @@ where
     defaults.user_agent.clone(),
     cert_data.or_else(|| defaults.ca_data.clone()),
     args.proxy,
+    args.no_check_certificate.or_else(|| defaults.no_check_certificate.clone()),
   )
   .unwrap();
 
@@ -567,6 +575,7 @@ pub fn create_http_client(
   user_agent: String,
   ca_data: Option<Vec<u8>>,
   proxy: Option<Proxy>,
+  no_check_certificate: Option<Vec<String>>,
 ) -> Result<Client, AnyError> {
   let mut headers = HeaderMap::new();
   headers.insert(USER_AGENT, user_agent.parse().unwrap());
@@ -587,6 +596,18 @@ pub fn create_http_client(
         reqwest_proxy.basic_auth(&basic_auth.username, &basic_auth.password);
     }
     builder = builder.proxy(reqwest_proxy);
+  }
+
+  if let Some(ncc_l) = no_check_certificate {
+    // Until gets released https://github.com/seanmonstar/reqwest/issues/1210
+    let mut tls = ClientConfig::new();
+    tls.dangerous()
+        .set_certificate_verifier(Arc::new(NoCertificateVerification::new(ncc_l.clone())));
+
+    builder = builder.use_preconfigured_tls(tls)
+
+    // then we might use this one, but will not provide any option to filter which domains are allowed
+    // builder = builder.danger_accept_invalid_certs(true)
   }
 
   builder
