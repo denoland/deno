@@ -79,7 +79,6 @@
     MapPrototypeForEach,
     Error,
     ErrorCaptureStackTrace,
-    MathCeil,
     MathAbs,
     MathMax,
     MathMin,
