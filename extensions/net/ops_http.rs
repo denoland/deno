@@ -2,7 +2,6 @@
 
 use crate::io::TcpStreamResource;
 use crate::io::TlsStreamResource;
-use crate::ops_tls::TlsStream;
 use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
@@ -25,7 +24,6 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use hyper::body::HttpBody;
 use hyper::http;
-use hyper::server::conn::upgrades::UpgradeableConnection;
 use hyper::server::conn::Http;
 use hyper::service::Service as HyperService;
 use hyper::Body;
@@ -42,7 +40,6 @@ use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 use tokio::io::AsyncReadExt;
-use tokio::net::TcpStream;
 use tokio::sync::oneshot;
 use tokio_util::io::StreamReader;
 
@@ -101,13 +98,13 @@ impl HyperService<Request<Body>> for Service {
   }
 }
 
-enum ConnType {
-  Tcp(Rc<RefCell<UpgradeableConnection<TcpStream, Service, LocalExecutor>>>),
-  Tls(Rc<RefCell<UpgradeableConnection<TlsStream, Service, LocalExecutor>>>),
+struct Conn {
+  scheme: &'static str,
+  conn: Rc<RefCell<Pin<Box<dyn Future<Output = hyper::Result<()>>>>>>,
 }
 
 struct ConnResource {
-  hyper_connection: ConnType,
+  hyper_connection: Conn,
   deno_service: Service,
   addr: SocketAddr,
   cancel: CancelHandle,
@@ -116,11 +113,12 @@ struct ConnResource {
 impl ConnResource {
   // TODO(ry) impl Future for ConnResource?
   fn poll(&self, cx: &mut Context<'_>) -> Poll<Result<(), AnyError>> {
-    match &self.hyper_connection {
-      ConnType::Tcp(c) => c.borrow_mut().poll_unpin(cx),
-      ConnType::Tls(c) => c.borrow_mut().poll_unpin(cx),
-    }
-    .map_err(AnyError::from)
+    self
+      .hyper_connection
+      .conn
+      .borrow_mut()
+      .poll_unpin(cx)
+      .map_err(AnyError::from)
   }
 }
 
@@ -211,12 +209,7 @@ async fn op_http_request_next(
       }
 
       let url = {
-        let scheme = {
-          match conn_resource.hyper_connection {
-            ConnType::Tcp(_) => "http",
-            ConnType::Tls(_) => "https",
-          }
-        };
+        let scheme = &conn_resource.hyper_connection.scheme;
         let host: Cow<str> = if let Some(host) = req.uri().host() {
           Cow::Borrowed(host)
         } else if let Some(host) = req.headers().get("HOST") {
@@ -320,8 +313,12 @@ fn op_http_start(
       .with_executor(LocalExecutor)
       .serve_connection(tcp_stream, deno_service.clone())
       .with_upgrades();
+    let conn = Pin::new(Box::new(hyper_connection));
     let conn_resource = ConnResource {
-      hyper_connection: ConnType::Tcp(Rc::new(RefCell::new(hyper_connection))),
+      hyper_connection: Conn {
+        conn: Rc::new(RefCell::new(conn)),
+        scheme: "http",
+      },
       deno_service,
       addr,
       cancel: CancelHandle::default(),
@@ -344,8 +341,12 @@ fn op_http_start(
       .with_executor(LocalExecutor)
       .serve_connection(tls_stream, deno_service.clone())
       .with_upgrades();
+    let conn = Pin::new(Box::new(hyper_connection));
     let conn_resource = ConnResource {
-      hyper_connection: ConnType::Tls(Rc::new(RefCell::new(hyper_connection))),
+      hyper_connection: Conn {
+        conn: Rc::new(RefCell::new(conn)),
+        scheme: "https",
+      },
       deno_service,
       addr,
       cancel: CancelHandle::default(),
