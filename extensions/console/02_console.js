@@ -193,9 +193,7 @@
       const cell = row[i];
       const len = getStringWidth(cell);
       const needed = columnWidths[i] - len;
-      out += `${cell}${StringPrototypeRepeat(" ", MathCeil(needed))}${
-        StringPrototypeRepeat(" ", needed)
-      }`;
+      out += `${cell}${StringPrototypeRepeat(" ", needed)}`;
       if (i !== row.length - 1) {
         out += tableChars.middle;
       }
