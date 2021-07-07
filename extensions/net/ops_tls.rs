@@ -32,12 +32,12 @@ use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::NoCertificateVerification;
 use deno_core::OpPair;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::NoCertificateVerification;
 use io::Error;
 use io::Read;
 use io::Write;
@@ -799,7 +799,8 @@ where
   {
     let mut s = state.borrow_mut();
     let no_certificate_validation = s.borrow_mut::<NoCertificateValidation>();
-    global_no_check_certificate = no_certificate_validation.no_check_certificate.clone();
+    global_no_check_certificate =
+      no_certificate_validation.no_check_certificate.clone();
   }
 
   let hostname_dns = DNSNameRef::try_from_ascii_str(hostname)
@@ -824,7 +825,7 @@ where
     tls_config.root_store.add_pem_file(reader).unwrap();
   }
   if let Some(ncc_l) = no_check_certificate {
-    let mut no_check_certificate_list = ncc_l.clone();
+    let mut no_check_certificate_list = ncc_l;
     if let Some(global_ncc_l) = global_no_check_certificate {
       no_check_certificate_list.extend(global_ncc_l);
     }

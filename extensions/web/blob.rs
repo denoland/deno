@@ -36,7 +36,7 @@ impl BlobStore {
     id: &Uuid,
   ) -> Option<Arc<Box<dyn BlobPart + Send + Sync>>> {
     let parts = self.parts.lock();
-    let part = parts.get(&id);
+    let part = parts.get(id);
     part.cloned()
   }
 
@@ -45,7 +45,7 @@ impl BlobStore {
     id: &Uuid,
   ) -> Option<Arc<Box<dyn BlobPart + Send + Sync>>> {
     let mut parts = self.parts.lock();
-    parts.remove(&id)
+    parts.remove(id)
   }
 
   pub fn get_object_url(
@@ -78,7 +78,7 @@ impl BlobStore {
 
   pub fn remove_object_url(&self, url: &Url) {
     let mut blob_store = self.object_urls.lock();
-    blob_store.remove(&url);
+    blob_store.remove(url);
   }
 }
 

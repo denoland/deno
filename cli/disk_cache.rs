@@ -139,7 +139,7 @@ impl DiskCache {
   pub fn set(&self, filename: &Path, data: &[u8]) -> std::io::Result<()> {
     let path = self.location.join(filename);
     match path.parent() {
-      Some(ref parent) => self.ensure_dir_exists(parent),
+      Some(parent) => self.ensure_dir_exists(parent),
       None => Ok(()),
     }?;
     fs_util::atomic_write_file(&path, data, crate::http_cache::CACHE_PERM)

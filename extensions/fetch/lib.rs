@@ -19,12 +19,12 @@ use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Canceled;
 use deno_core::Extension;
+use deno_core::NoCertificateVerification;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
-use deno_core::NoCertificateVerification;
 
 use data_url::DataUrl;
 use deno_web::BlobStore;
@@ -86,8 +86,13 @@ pub fn init<P: FetchPermissions + 'static>(
     ])
     .state(move |state| {
       state.put::<reqwest::Client>({
-        create_http_client(user_agent.clone(), ca_data.clone(), proxy.clone(), no_check_certificate.clone())
-          .unwrap()
+        create_http_client(
+          user_agent.clone(),
+          ca_data.clone(),
+          proxy.clone(),
+          no_check_certificate.clone(),
+        )
+        .unwrap()
       });
       state.put::<HttpClientDefaults>(HttpClientDefaults {
         ca_data: ca_data.clone(),
@@ -546,7 +551,9 @@ where
     defaults.user_agent.clone(),
     cert_data.or_else(|| defaults.ca_data.clone()),
     args.proxy,
-    args.no_check_certificate.or_else(|| defaults.no_check_certificate.clone()),
+    args
+      .no_check_certificate
+      .or_else(|| defaults.no_check_certificate.clone()),
   )
   .unwrap();
 
@@ -601,8 +608,9 @@ pub fn create_http_client(
   if let Some(ncc_l) = no_check_certificate {
     // Until gets released https://github.com/seanmonstar/reqwest/issues/1210
     let mut tls = ClientConfig::new();
-    tls.dangerous()
-        .set_certificate_verifier(Arc::new(NoCertificateVerification::new(ncc_l.clone())));
+    tls.dangerous().set_certificate_verifier(Arc::new(
+      NoCertificateVerification::new(ncc_l),
+    ));
 
     builder = builder.use_preconfigured_tls(tls)
 

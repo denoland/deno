@@ -288,15 +288,15 @@ declare namespace Deno {
     /** Specify the module format for the emitted code. Defaults to
      * `"esnext"`. */
     module?:
-    | "none"
-    | "commonjs"
-    | "amd"
-    | "system"
-    | "umd"
-    | "es6"
-    | "es2015"
-    | "es2020"
-    | "esnext";
+      | "none"
+      | "commonjs"
+      | "amd"
+      | "system"
+      | "umd"
+      | "es6"
+      | "es2015"
+      | "es2020"
+      | "esnext";
     /** Do not generate custom helper functions like `__extends` in compiled
      * output. Defaults to `false`. */
     noEmitHelpers?: boolean;
@@ -382,16 +382,16 @@ declare namespace Deno {
     suppressImplicitAnyIndexErrors?: boolean;
     /** Specify ECMAScript target version. Defaults to `esnext`. */
     target?:
-    | "es3"
-    | "es5"
-    | "es6"
-    | "es2015"
-    | "es2016"
-    | "es2017"
-    | "es2018"
-    | "es2019"
-    | "es2020"
-    | "esnext";
+      | "es3"
+      | "es5"
+      | "es6"
+      | "es2015"
+      | "es2016"
+      | "es2017"
+      | "es2018"
+      | "es2019"
+      | "es2020"
+      | "esnext";
     /** List of names of type definitions to include when type checking.
      * Defaults to `undefined`.
      *
@@ -835,7 +835,7 @@ declare namespace Deno {
     caData?: string;
     proxy?: Proxy;
     /** Disable certificate validation for specific domain names. */
-    noCheckCertificate?: string | string[]
+    noCheckCertificate?: string | string[];
   }
 
   export interface Proxy {

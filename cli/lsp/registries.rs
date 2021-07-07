@@ -104,7 +104,7 @@ fn get_completor_type(
         if let StringOrNumber::String(name) = &k.name {
           let value = match_result
             .get(name)
-            .map(|s| s.to_string(Some(&k)))
+            .map(|s| s.to_string(Some(k)))
             .unwrap_or_default();
           len += value.chars().count();
           if offset <= len {

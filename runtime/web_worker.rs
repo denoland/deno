@@ -334,7 +334,10 @@ impl WebWorker {
       vec![
         ops::fs_events::init(),
         ops::fs::init(),
-        deno_net::init::<Permissions>(options.unstable, options.no_check_certificate.clone()),
+        deno_net::init::<Permissions>(
+          options.unstable,
+          options.no_check_certificate.clone(),
+        ),
         ops::os::init(),
         ops::permissions::init(),
         ops::process::init(),

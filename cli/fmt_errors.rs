@@ -67,7 +67,7 @@ fn format_frame(frame: &JsStackFrame) -> String {
           formatted_method += &format!("{}.", type_name);
         }
       }
-      formatted_method += &function_name;
+      formatted_method += function_name;
       if let Some(method_name) = &frame.method_name {
         if !function_name.ends_with(method_name) {
           formatted_method += &format!(" [as {}]", method_name);
@@ -78,7 +78,7 @@ fn format_frame(frame: &JsStackFrame) -> String {
         formatted_method += &format!("{}.", type_name);
       }
       if let Some(method_name) = &frame.method_name {
-        formatted_method += &method_name
+        formatted_method += method_name
       } else {
         formatted_method += "<anonymous>";
       }

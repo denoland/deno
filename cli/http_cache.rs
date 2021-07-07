@@ -93,7 +93,7 @@ impl Metadata {
 
   #[cfg(test)]
   pub fn read(cache_filename: &Path) -> Result<Metadata, AnyError> {
-    let metadata_filename = Metadata::filename(&cache_filename);
+    let metadata_filename = Metadata::filename(cache_filename);
     let metadata = fs::read_to_string(metadata_filename)?;
     let metadata: Metadata = serde_json::from_str(&metadata)?;
     Ok(metadata)

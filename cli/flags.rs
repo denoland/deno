@@ -1971,7 +1971,10 @@ fn no_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   }
 }
 
-fn no_check_certificate_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn no_check_certificate_arg_parse(
+  flags: &mut Flags,
+  matches: &clap::ArgMatches,
+) {
   if matches.is_present("no-check-certificate") {
     if let Some(ncc_l) = matches.values_of("no-check-certificate") {
       let no_check_certificate_list: Vec<String> =
@@ -1979,8 +1982,7 @@ fn no_check_certificate_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches)
           .unwrap();
       flags.no_check_certificate = Some(no_check_certificate_list);
       debug!("no_check_certificate: {:#?}", &flags.no_check_certificate);
-    }
-    else {
+    } else {
       flags.no_check_certificate = Some(vec![]);
     }
   }
@@ -3301,7 +3303,12 @@ mod tests {
 
   #[test]
   fn no_check_certificate() {
-    let r = flags_from_vec(svec!["deno", "run", "--no-check-certificate", "script.ts"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--no-check-certificate",
+      "script.ts"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {

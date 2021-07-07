@@ -9,13 +9,13 @@ mod gotham_state;
 mod inspector;
 mod module_specifier;
 mod modules;
+mod no_certificate_validation;
 mod normalize_path;
 mod ops;
 mod ops_builtin;
 mod ops_json;
 mod resources;
 mod runtime;
-mod no_certificate_validation;
 
 // Re-exports
 pub use futures;

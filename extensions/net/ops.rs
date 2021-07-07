@@ -260,7 +260,7 @@ where
       let address_path = Path::new(&args.path);
       {
         let mut s = state.borrow_mut();
-        s.borrow_mut::<NP>().check_write(&address_path)?;
+        s.borrow_mut::<NP>().check_write(address_path)?;
       }
       let resource = state
         .borrow()
@@ -338,8 +338,8 @@ where
       super::check_unstable2(&state, "Deno.connect");
       {
         let mut state_ = state.borrow_mut();
-        state_.borrow_mut::<NP>().check_read(&address_path)?;
-        state_.borrow_mut::<NP>().check_write(&address_path)?;
+        state_.borrow_mut::<NP>().check_read(address_path)?;
+        state_.borrow_mut::<NP>().check_write(address_path)?;
       }
       let path = args.path;
       let unix_stream = net_unix::UnixStream::connect(Path::new(&path)).await?;
@@ -512,13 +512,13 @@ where
           super::check_unstable(state, "Deno.listenDatagram");
         }
         let permissions = state.borrow_mut::<NP>();
-        permissions.check_read(&address_path)?;
-        permissions.check_write(&address_path)?;
+        permissions.check_read(address_path)?;
+        permissions.check_write(address_path)?;
       }
       let (rid, local_addr) = if transport == "unix" {
-        net_unix::listen_unix(state, &address_path)?
+        net_unix::listen_unix(state, address_path)?
       } else {
-        net_unix::listen_unix_packet(state, &address_path)?
+        net_unix::listen_unix_packet(state, address_path)?
       };
       debug!(
         "New listener {} {}",

@@ -97,7 +97,10 @@ pub struct NoCertificateValidation {
   pub no_check_certificate: Option<Vec<String>>,
 }
 
-pub fn init<P: NetPermissions + 'static>(unstable: bool, no_check_certificate: Option<Vec<String>>) -> Extension {
+pub fn init<P: NetPermissions + 'static>(
+  unstable: bool,
+  no_check_certificate: Option<Vec<String>>,
+) -> Extension {
   let mut ops_to_register = vec![];
   ops_to_register.extend(io::init());
   ops_to_register.extend(ops::init::<P>());
@@ -115,7 +118,9 @@ pub fn init<P: NetPermissions + 'static>(unstable: bool, no_check_certificate: O
     .ops(ops_to_register)
     .state(move |state| {
       state.put(UnstableChecker { unstable });
-      state.put(NoCertificateValidation { no_check_certificate: no_check_certificate.clone() });
+      state.put(NoCertificateValidation {
+        no_check_certificate: no_check_certificate.clone(),
+      });
       Ok(())
     })
     .build()

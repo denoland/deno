@@ -1366,7 +1366,7 @@ fn make_temp(
   let prefix_ = prefix.unwrap_or("");
   let suffix_ = suffix.unwrap_or("");
   let mut buf: PathBuf = match dir {
-    Some(ref p) => p.to_path_buf(),
+    Some(p) => p.to_path_buf(),
     None => temp_dir(),
   }
   .join("_");
