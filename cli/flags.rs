@@ -3397,7 +3397,7 @@ mod tests {
 
   #[test]
   fn test_with_fail_fast() {
-    let r = flags_from_vec(svec!["deno", "test", "--fail-fast", "2"]);
+    let r = flags_from_vec(svec!["deno", "test", "--fail-fast=2"]);
     assert_eq!(
       r.unwrap(),
       Flags {
