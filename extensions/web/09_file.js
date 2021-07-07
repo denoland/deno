@@ -34,7 +34,7 @@
     TypeError,
     Uint8Array,
   } = window.__bootstrap.primordials;
-  const { createFilteredInspectProxy } = window.__bootstrap.console;
+  const consoleInternal = window.__bootstrap.console;
 
   // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
   // host os.
@@ -363,7 +363,7 @@
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
-      return inspect(createFilteredInspectProxy({
+      return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof Blob,
         keys: [

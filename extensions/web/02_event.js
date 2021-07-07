@@ -9,7 +9,7 @@
 ((window) => {
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
-  const { createFilteredInspectProxy } = window.__bootstrap.console;
+  const consoleInternal = window.__bootstrap.console;
   const {
     ArrayPrototypeFilter,
     ArrayPrototypeIncludes,
@@ -173,7 +173,7 @@
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
-      return inspect(createFilteredInspectProxy({
+      return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof Event,
         keys: EVENT_PROPS,
@@ -1062,7 +1062,7 @@
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
-      return inspect(createFilteredInspectProxy({
+      return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof ErrorEvent,
         keys: [
@@ -1120,7 +1120,7 @@
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
-      return inspect(createFilteredInspectProxy({
+      return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof CloseEvent,
         keys: [
@@ -1152,7 +1152,7 @@
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
-      return inspect(createFilteredInspectProxy({
+      return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof MessageEvent,
         keys: [
@@ -1186,7 +1186,7 @@
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
-      return inspect(createFilteredInspectProxy({
+      return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof CustomEvent,
         keys: [
@@ -1213,7 +1213,7 @@
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
-      return inspect(createFilteredInspectProxy({
+      return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof ProgressEvent,
         keys: [

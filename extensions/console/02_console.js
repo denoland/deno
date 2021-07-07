@@ -1979,9 +1979,7 @@
       getOwnPropertyDescriptor(_target, key) {
         if (!ArrayPrototypeIncludes(keys, key)) {
           return undefined;
-        }
-
-        if (evaluate) {
+        } else if (evaluate) {
           return getEvaluatedDescriptor(object, key);
         } else {
           return getDescendantPropertyDescriptor(object, key) ??

@@ -36,7 +36,7 @@
     WeakMapPrototypeHas,
     WeakMapPrototypeSet,
   } = globalThis.__bootstrap.primordials;
-  const { createFilteredInspectProxy } = window.__bootstrap.console;
+  const consoleInternal = window.__bootstrap.console;
   const { DOMException } = window.__bootstrap.domException;
 
   class AssertionError extends Error {
@@ -3019,7 +3019,7 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return inspect(createFilteredInspectProxy({
+      return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof ByteLengthQueuingStrategy,
         keys: [
@@ -3075,7 +3075,7 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return inspect(createFilteredInspectProxy({
+      return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof CountQueuingStrategy,
         keys: [
@@ -3572,7 +3572,7 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return inspect(createFilteredInspectProxy({
+      return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof ReadableByteStreamController,
         keys: ["desiredSize"],
@@ -3697,7 +3697,7 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return inspect(createFilteredInspectProxy({
+      return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof ReadableStreamDefaultController,
         keys: ["desiredSize"],
@@ -3920,7 +3920,7 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return inspect(createFilteredInspectProxy({
+      return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof TransformStreamDefaultController,
         keys: ["desiredSize"],
@@ -4199,7 +4199,7 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return inspect(createFilteredInspectProxy({
+      return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof WritableStreamDefaultWriter,
         keys: [
@@ -4259,7 +4259,7 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return inspect(createFilteredInspectProxy({
+      return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof WritableStreamDefaultController,
         keys: [],

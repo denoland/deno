@@ -16,7 +16,7 @@
   } = window.__bootstrap.primordials;
 
   const { webidl, structuredClone } = window.__bootstrap;
-  const { createFilteredInspectProxy } = window.__bootstrap.console;
+  const consoleInternal = window.__bootstrap.console;
   const { opNow } = window.__bootstrap.timers;
   const { DOMException } = window.__bootstrap.domException;
 
@@ -176,7 +176,7 @@
     }
 
     [customInspect](inspect) {
-      return inspect(createFilteredInspectProxy({
+      return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof PerformanceEntry,
         keys: [
@@ -245,7 +245,7 @@
     }
 
     [customInspect](inspect) {
-      return inspect(createFilteredInspectProxy({
+      return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof PerformanceMark,
         keys: [
@@ -303,7 +303,7 @@
     }
 
     [customInspect](inspect) {
-      return inspect(createFilteredInspectProxy({
+      return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof PerformanceMeasure,
         keys: [
@@ -546,7 +546,7 @@
     }
 
     [customInspect](inspect) {
-      return inspect(createFilteredInspectProxy({
+      return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof Performance,
         keys: [],

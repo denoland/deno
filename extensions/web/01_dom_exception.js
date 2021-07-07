@@ -17,7 +17,7 @@
     ObjectSetPrototypeOf,
   } = window.__bootstrap.primordials;
   const webidl = window.__bootstrap.webidl;
-  const { createFilteredInspectProxy } = window.__bootstrap.console;
+  const consoleInternal = window.__bootstrap.console;
 
   // Defined in WebIDL 4.3.
   // https://heycam.github.io/webidl/#idl-DOMException
@@ -114,7 +114,7 @@
       if (this instanceof DOMException) {
         return `DOMException: ${this.#message}`;
       } else {
-        return inspect(createFilteredInspectProxy({
+        return inspect(consoleInternal.createFilteredInspectProxy({
           object: this,
           evaluate: false,
           keys: [

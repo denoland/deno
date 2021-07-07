@@ -13,7 +13,7 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
-  const { createFilteredInspectProxy } = window.__bootstrap.console;
+  const consoleInternal = window.__bootstrap.console;
   const { HTTP_TAB_OR_SPACE, regexMatcher } = window.__bootstrap.infra;
   const { extractBody, mixinBody } = window.__bootstrap.fetchBody;
   const { getLocationHref } = window.__bootstrap.location;
@@ -378,7 +378,7 @@
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
-      return inspect(createFilteredInspectProxy({
+      return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof Response,
         keys: [
