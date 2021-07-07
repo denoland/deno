@@ -13,6 +13,7 @@ use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -24,7 +25,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 pub fn init(rt: &mut deno_core::JsRuntime) {
   super::reg_async(rt, "op_emit", op_emit);

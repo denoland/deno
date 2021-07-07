@@ -14,6 +14,7 @@ use crate::write_to_stdout_ignore_sigpipe;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
 use deno_doc as doc;
 use deno_doc::parser::DocFileLoader;
@@ -21,7 +22,6 @@ use deno_runtime::permissions::Permissions;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::Mutex;
 use swc_ecmascript::parser::Syntax;
 
 type DocResult = Result<(Syntax, String), doc::DocError>;
