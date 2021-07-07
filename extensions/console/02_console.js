@@ -192,9 +192,7 @@
     for (let i = 0; i < row.length; i++) {
       const cell = row[i];
       const len = getStringWidth(cell);
-      const needed = (columnWidths[i] - len) / 2;
-      // round(needed) + ceil(needed) will always add up to the amount
-      // of spaces we need while also left justifying the output.
+      const needed = columnWidths[i] - len;
       out += `${cell}${StringPrototypeRepeat(" ", MathCeil(needed))}${
         StringPrototypeRepeat(" ", needed)
       }`;
