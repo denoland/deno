@@ -11,7 +11,6 @@ use crate::program_state::ProgramState;
 use crate::source_maps::SourceMapGetter;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use deno_runtime::permissions::Permissions;
@@ -26,58 +25,6 @@ use std::io::Write;
 use std::path::PathBuf;
 use swc_common::Span;
 use uuid::Uuid;
-
-pub struct CoverageCollector {
-  pub dir: PathBuf,
-  session: LocalInspectorSession,
-}
-
-impl CoverageCollector {
-  pub fn new(dir: PathBuf, session: LocalInspectorSession) -> Self {
-    Self { dir, session }
-  }
-
-  pub async fn start_collecting(&mut self) -> Result<(), AnyError> {
-    self.session.post_message("Debugger.enable", None).await?;
-    self.session.post_message("Profiler.enable", None).await?;
-    self
-      .session
-      .post_message(
-        "Profiler.startPreciseCoverage",
-        Some(json!({"callCount": true, "detailed": true})),
-      )
-      .await?;
-    Ok(())
-  }
-
-  pub async fn stop_collecting(&mut self) -> Result<(), AnyError> {
-    let result = self
-      .session
-      .post_message("Profiler.takePreciseCoverage", None)
-      .await?;
-
-    let take_coverage_result: TakePreciseCoverageResult =
-      serde_json::from_value(result)?;
-
-    fs::create_dir_all(&self.dir)?;
-
-    let script_coverages = take_coverage_result.result;
-    for script_coverage in script_coverages {
-      let filename = format!("{}.json", Uuid::new_v4());
-      let filepath = self.dir.join(filename);
-
-      let mut out = BufWriter::new(File::create(filepath)?);
-      serde_json::to_writer_pretty(&mut out, &script_coverage)?;
-      out.write_all(b"\n")?;
-      out.flush()?;
-    }
-
-    self.session.post_message("Profiler.disable", None).await?;
-    self.session.post_message("Debugger.disable", None).await?;
-
-    Ok(())
-  }
-}
 
 // TODO(caspervonb) all of these structs can and should be made private, possibly moved to
 // inspector::protocol.
@@ -107,15 +54,120 @@ pub struct ScriptCoverage {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct TakePreciseCoverageResult {
-  result: Vec<ScriptCoverage>,
+pub struct StartPreciseCoverageParameters {
+  pub call_count: bool,
+  pub detailed: bool,
+  pub allow_triggered_updates: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GetScriptSourceResult {
-  pub script_source: String,
-  pub bytecode: Option<String>,
+pub struct StartPreciseCoverageReturnObject {
+  pub timestamp: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TakePreciseCoverageReturnObject {
+  pub result: Vec<ScriptCoverage>,
+  pub timestamp: f64,
+}
+
+pub struct CoverageCollector {
+  pub dir: PathBuf,
+  session: LocalInspectorSession,
+}
+
+impl CoverageCollector {
+  pub fn new(dir: PathBuf, session: LocalInspectorSession) -> Self {
+    Self { dir, session }
+  }
+
+  async fn enable_debugger(&mut self) -> Result<(), AnyError> {
+    self.session.post_message("Debugger.enable", None).await?;
+
+    Ok(())
+  }
+
+  async fn enable_profiler(&mut self) -> Result<(), AnyError> {
+    self.session.post_message("Profiler.enable", None).await?;
+
+    Ok(())
+  }
+
+  async fn disable_debugger(&mut self) -> Result<(), AnyError> {
+    self.session.post_message("Debugger.disable", None).await?;
+
+    Ok(())
+  }
+
+  async fn disable_profiler(&mut self) -> Result<(), AnyError> {
+    self.session.post_message("Profiler.disable", None).await?;
+
+    Ok(())
+  }
+
+  async fn start_precise_coverage(
+    &mut self,
+    parameters: StartPreciseCoverageParameters,
+  ) -> Result<StartPreciseCoverageReturnObject, AnyError> {
+    let parameters_value = serde_json::to_value(parameters)?;
+    let return_value = self
+      .session
+      .post_message("Profiler.startPreciseCoverage", Some(parameters_value))
+      .await?;
+
+    let return_object = serde_json::from_value(return_value)?;
+
+    Ok(return_object)
+  }
+
+  async fn take_precise_coverage(
+    &mut self,
+  ) -> Result<TakePreciseCoverageReturnObject, AnyError> {
+    let return_value = self
+      .session
+      .post_message("Profiler.takePreciseCoverage", None)
+      .await?;
+
+    let return_object = serde_json::from_value(return_value)?;
+
+    Ok(return_object)
+  }
+
+  pub async fn start_collecting(&mut self) -> Result<(), AnyError> {
+    self.enable_debugger().await?;
+    self.enable_profiler().await?;
+    self
+      .start_precise_coverage(StartPreciseCoverageParameters {
+        call_count: true,
+        detailed: true,
+        allow_triggered_updates: false,
+      })
+      .await?;
+
+    Ok(())
+  }
+
+  pub async fn stop_collecting(&mut self) -> Result<(), AnyError> {
+    fs::create_dir_all(&self.dir)?;
+
+    let script_coverages = self.take_precise_coverage().await?.result;
+    for script_coverage in script_coverages {
+      let filename = format!("{}.json", Uuid::new_v4());
+      let filepath = self.dir.join(filename);
+
+      let mut out = BufWriter::new(File::create(filepath)?);
+      serde_json::to_writer_pretty(&mut out, &script_coverage)?;
+      out.write_all(b"\n")?;
+      out.flush()?;
+    }
+
+    self.disable_debugger().await?;
+    self.disable_profiler().await?;
+
+    Ok(())
+  }
 }
 
 pub enum CoverageReporterKind {
