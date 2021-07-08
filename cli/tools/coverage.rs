@@ -11,7 +11,6 @@ use crate::program_state::ProgramState;
 use crate::source_maps::SourceMapGetter;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use deno_runtime::permissions::Permissions;
