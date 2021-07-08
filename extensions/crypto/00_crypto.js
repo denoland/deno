@@ -42,7 +42,14 @@
       "ECDSA": "EcdsaParams",
       "HMAC": null,
     },
+    "verify": {
+      "RSASSA-PKCS1-v1_5": null,
+      "RSA-PSS": "RsaPssParams",
+      "ECDSA": "EcdsaParams",
+      "HMAC": null,
+    },
   };
+
 
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
   function normalizeAlgorithm(algorithm, op) {
