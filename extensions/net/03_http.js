@@ -2,21 +2,34 @@
 "use strict";
 
 ((window) => {
+  const webidl = window.__bootstrap.webidl;
   const { InnerBody } = window.__bootstrap.fetchBody;
-  const { Response, fromInnerRequest, toInnerResponse, newInnerRequest } =
-    window.__bootstrap.fetch;
+  const { setEventTargetData } = window.__bootstrap.eventTarget;
+  const {
+    Response,
+    fromInnerRequest,
+    toInnerResponse,
+    newInnerRequest,
+    newInnerResponse,
+    fromInnerResponse,
+  } = window.__bootstrap.fetch;
   const core = window.Deno.core;
   const { BadResource, Interrupted } = core;
   const { ReadableStream } = window.__bootstrap.streams;
   const abortSignal = window.__bootstrap.abortSignal;
+  const { WebSocket, _rid, _readyState, _eventLoop, _protocol } =
+    window.__bootstrap.webSocket;
   const {
-    Symbol,
-    Uint8Array,
+    ArrayPrototypeIncludes,
+    ArrayPrototypePush,
     Promise,
     StringPrototypeIncludes,
+    StringPrototypeSplit,
+    Symbol,
     SymbolAsyncIterator,
-    TypeError,
     TypedArrayPrototypeSubarray,
+    TypeError,
+    Uint8Array,
   } = window.__bootstrap.primordials;
 
   function serveHttp(conn) {
@@ -65,7 +78,7 @@
       if (nextRequest === null) return null;
 
       const [
-        requestBodyRid,
+        requestRid,
         responseSenderRid,
         method,
         headersList,
@@ -74,8 +87,8 @@
 
       /** @type {ReadableStream<Uint8Array> | undefined} */
       let body = null;
-      if (typeof requestBodyRid === "number") {
-        body = createRequestBodyStream(requestBodyRid);
+      if (typeof requestRid === "number") {
+        body = createRequestBodyStream(requestRid);
       }
 
       const innerRequest = newInnerRequest(
@@ -87,7 +100,11 @@
       const signal = abortSignal.newSignal();
       const request = fromInnerRequest(innerRequest, signal, "immutable");
 
-      const respondWith = createRespondWith(this, responseSenderRid);
+      const respondWith = createRespondWith(
+        this,
+        responseSenderRid,
+        requestRid,
+      );
 
       return { request, respondWith };
     }
@@ -118,7 +135,7 @@
     );
   }
 
-  function createRespondWith(httpConn, responseSenderRid) {
+  function createRespondWith(httpConn, responseSenderRid, requestRid) {
     return async function respondWith(resp) {
       if (resp instanceof Promise) {
         resp = await resp;
@@ -222,10 +239,51 @@
           } catch { /* pass */ }
         }
       }
+
+      const ws = resp[_ws];
+      if (ws) {
+        if (typeof requestRid !== "number") {
+          throw new TypeError(
+            "This request can not be upgraded to a websocket connection.",
+          );
+        }
+
+        const wsRid = await core.opAsync(
+          "op_http_upgrade_websocket",
+          requestRid,
+        );
+        ws[_rid] = wsRid;
+        ws[_protocol] = resp.headers.get("sec-websocket-protocol");
+
+        if (ws[_readyState] === WebSocket.CLOSING) {
+          await core.opAsync("op_ws_close", { rid: wsRid });
+
+          ws[_readyState] = WebSocket.CLOSED;
+
+          const errEvent = new ErrorEvent("error");
+          ws.dispatchEvent(errEvent);
+
+          const event = new CloseEvent("close");
+          ws.dispatchEvent(event);
+
+          try {
+            core.close(wsRid);
+          } catch (err) {
+            // Ignore error if the socket has already been closed.
+            if (!(err instanceof Deno.errors.BadResource)) throw err;
+          }
+        } else {
+          ws[_readyState] = WebSocket.OPEN;
+          const event = new Event("open");
+          ws.dispatchEvent(event);
+
+          ws[_eventLoop]();
+        }
+      }
     };
   }
 
-  function createRequestBodyStream(requestBodyRid) {
+  function createRequestBodyStream(requestRid) {
     return new ReadableStream({
       type: "bytes",
       async pull(controller) {
@@ -234,7 +292,7 @@
           // stream.
           const chunk = new Uint8Array(16 * 1024 + 256);
           const read = await readRequest(
-            requestBodyRid,
+            requestRid,
             chunk,
           );
           if (read > 0) {
@@ -243,23 +301,79 @@
           } else {
             // We have reached the end of the body, so we close the stream.
             controller.close();
-            core.close(requestBodyRid);
+            core.close(requestRid);
           }
         } catch (err) {
           // There was an error while reading a chunk of the body, so we
           // error.
           controller.error(err);
           controller.close();
-          core.close(requestBodyRid);
+          core.close(requestRid);
         }
       },
       cancel() {
-        core.close(requestBodyRid);
+        core.close(requestRid);
       },
     });
   }
 
+  const _ws = Symbol("[[associated_ws]]");
+
+  function upgradeWebSocket(request, options = {}) {
+    if (request.headers.get("upgrade") !== "websocket") {
+      throw new TypeError(
+        "Invalid Header: 'upgrade' header must be 'websocket'",
+      );
+    }
+
+    if (request.headers.get("connection") !== "Upgrade") {
+      throw new TypeError(
+        "Invalid Header: 'connection' header must be 'Upgrade'",
+      );
+    }
+
+    const websocketKey = request.headers.get("sec-websocket-key");
+    if (websocketKey === null) {
+      throw new TypeError(
+        "Invalid Header: 'sec-websocket-key' header must be set",
+      );
+    }
+
+    const accept = core.opSync("op_http_websocket_accept_header", websocketKey);
+
+    const r = newInnerResponse(101);
+    r.headerList = [
+      ["upgrade", "websocket"],
+      ["connection", "Upgrade"],
+      ["sec-websocket-accept", accept],
+    ];
+
+    const protocolsStr = request.headers.get("sec-websocket-protocol") || "";
+    const protocols = StringPrototypeSplit(protocolsStr, ", ");
+    if (protocols && options.protocol) {
+      if (ArrayPrototypeIncludes(protocols, options.protocol)) {
+        ArrayPrototypePush(r.headerList, [
+          "sec-websocket-protocol",
+          options.protocol,
+        ]);
+      } else {
+        throw new TypeError(
+          `Protocol '${options.protocol}' not in the request's protocol list (non negotiable)`,
+        );
+      }
+    }
+
+    const response = fromInnerResponse(r, "immutable");
+
+    const websocket = webidl.createBranded(WebSocket);
+    setEventTargetData(websocket);
+    response[_ws] = websocket;
+
+    return { response, websocket };
+  }
+
   window.__bootstrap.http = {
     serveHttp,
+    upgradeWebSocket,
   };
 })(this);

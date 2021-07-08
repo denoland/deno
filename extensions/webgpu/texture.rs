@@ -215,23 +215,25 @@ pub fn op_webgpu_create_texture_view(
       .map(|s| serialize_texture_format(&s))
       .transpose()?,
     dimension: args.dimension.map(|s| serialize_dimension(&s)),
-    aspect: match args.aspect {
-      Some(aspect) => match aspect.as_str() {
-        "all" => wgpu_types::TextureAspect::All,
-        "stencil-only" => wgpu_types::TextureAspect::StencilOnly,
-        "depth-only" => wgpu_types::TextureAspect::DepthOnly,
-        _ => unreachable!(),
+    range: wgpu_types::ImageSubresourceRange {
+      aspect: match args.aspect {
+        Some(aspect) => match aspect.as_str() {
+          "all" => wgpu_types::TextureAspect::All,
+          "stencil-only" => wgpu_types::TextureAspect::StencilOnly,
+          "depth-only" => wgpu_types::TextureAspect::DepthOnly,
+          _ => unreachable!(),
+        },
+        None => wgpu_types::TextureAspect::All,
       },
-      None => wgpu_types::TextureAspect::All,
+      base_mip_level: args.base_mip_level.unwrap_or(0),
+      mip_level_count: std::num::NonZeroU32::new(
+        args.mip_level_count.unwrap_or(0),
+      ),
+      base_array_layer: args.base_array_layer.unwrap_or(0),
+      array_layer_count: std::num::NonZeroU32::new(
+        args.array_layer_count.unwrap_or(0),
+      ),
     },
-    base_mip_level: args.base_mip_level.unwrap_or(0),
-    mip_level_count: std::num::NonZeroU32::new(
-      args.mip_level_count.unwrap_or(0),
-    ),
-    base_array_layer: args.base_array_layer.unwrap_or(0),
-    array_layer_count: std::num::NonZeroU32::new(
-      args.array_layer_count.unwrap_or(0),
-    ),
   };
 
   gfx_put!(texture => instance.texture_create_view(

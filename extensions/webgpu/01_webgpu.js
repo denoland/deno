@@ -214,7 +214,8 @@
    * @typedef InnerGPUAdapter
    * @property {number} rid
    * @property {GPUSupportedFeatures} features
-   * @property {GPUAdapterLimits} limits
+   * @property {GPUSupportedLimits} limits
+   * @property {boolean} isSoftware
    */
 
   /**
@@ -229,7 +230,7 @@
     adapter[_adapter] = {
       ...inner,
       features: createGPUSupportedFeatures(inner.features),
-      limits: createGPUAdapterLimits(inner.limits),
+      limits: createGPUSupportedLimits(inner.limits),
     };
     return adapter;
   }
@@ -250,10 +251,14 @@
       webidl.assertBranded(this, GPUAdapter);
       return this[_adapter].features;
     }
-    /** @returns {GPUAdapterLimits} */
+    /** @returns {GPUSupportedLimits} */
     get limits() {
       webidl.assertBranded(this, GPUAdapter);
       return this[_adapter].limits;
+    }
+    /** @returns {boolean} */
+    get isSoftware() {
+      return this[_adapter].isSoftware;
     }
 
     constructor() {
@@ -271,24 +276,24 @@
         prefix,
         context: "Argument 1",
       });
-      const nonGuaranteedFeatures = descriptor.nonGuaranteedFeatures ?? [];
-      for (const feature of nonGuaranteedFeatures) {
+      const requiredFeatures = descriptor.requiredFeatures ?? [];
+      for (const feature of requiredFeatures) {
         if (!SetPrototypeHas(this[_adapter].features[_features], feature)) {
           throw new TypeError(
             `${prefix}: nonGuaranteedFeatures must be a subset of the adapter features.`,
           );
         }
       }
-      const nonGuaranteedLimits = descriptor.nonGuaranteedLimits;
-      // TODO(lucacasonato): validate nonGuaranteedLimits
+      const requiredLimits = descriptor.requiredLimits;
+      // TODO(lucacasonato): validate requiredLimits
 
       const { rid, features, limits } = await core.opAsync(
         "op_webgpu_request_device",
         {
           adapterRid: this[_adapter].rid,
           labe: descriptor.label,
-          nonGuaranteedFeatures,
-          nonGuaranteedLimits,
+          requiredFeatures,
+          requiredLimits,
         },
       );
 
@@ -318,9 +323,9 @@
 
   const _limits = Symbol("[[limits]]");
 
-  function createGPUAdapterLimits(features) {
-    /** @type {GPUAdapterLimits} */
-    const adapterFeatures = webidl.createBranded(GPUAdapterLimits);
+  function createGPUSupportedLimits(features) {
+    /** @type {GPUSupportedLimits} */
+    const adapterFeatures = webidl.createBranded(GPUSupportedLimits);
     adapterFeatures[_limits] = features;
     return adapterFeatures;
   }
@@ -341,12 +346,18 @@
    * @property {number} maxUniformBuffersPerShaderStage
    * @property {number} maxUniformBufferBindingSize
    * @property {number} maxStorageBufferBindingSize
+   * @property {number} minUniformBufferOffsetAlignment
+   * @property {number} minStorageBufferOffsetAlignment
    * @property {number} maxVertexBuffers
    * @property {number} maxVertexAttributes
    * @property {number} maxVertexBufferArrayStride
+   * @property {number} maxInterStageShaderComponents
+   * @property {number} maxComputeWorkgroupStorageSize
+   * @property {number} maxComputeWorkgroupInvocations
+   * @property {number} maxComputePerDimensionDispatchSize
    */
 
-  class GPUAdapterLimits {
+  class GPUSupportedLimits {
     /** @type {InnerAdapterLimits} */
     [_limits];
     constructor() {
@@ -354,72 +365,96 @@
     }
 
     get maxTextureDimension1D() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxTextureDimension1D;
     }
     get maxTextureDimension2D() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxTextureDimension2D;
     }
     get maxTextureDimension3D() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxTextureDimension3D;
     }
     get maxTextureArrayLayers() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxTextureArrayLayers;
     }
     get maxBindGroups() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxBindGroups;
     }
     get maxDynamicUniformBuffersPerPipelineLayout() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxDynamicUniformBuffersPerPipelineLayout;
     }
     get maxDynamicStorageBuffersPerPipelineLayout() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxDynamicStorageBuffersPerPipelineLayout;
     }
     get maxSampledTexturesPerShaderStage() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxSampledTexturesPerShaderStage;
     }
     get maxSamplersPerShaderStage() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxSamplersPerShaderStage;
     }
     get maxStorageBuffersPerShaderStage() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxStorageBuffersPerShaderStage;
     }
     get maxStorageTexturesPerShaderStage() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxStorageTexturesPerShaderStage;
     }
     get maxUniformBuffersPerShaderStage() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxUniformBuffersPerShaderStage;
     }
     get maxUniformBufferBindingSize() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxUniformBufferBindingSize;
     }
     get maxStorageBufferBindingSize() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxStorageBufferBindingSize;
     }
+    get minUniformBufferOffsetAlignment() {
+      webidl.assertBranded(this, GPUSupportedLimits);
+      return this[_limits].minUniformBufferOffsetAlignment;
+    }
+    get minStorageBufferOffsetAlignment() {
+      webidl.assertBranded(this, GPUSupportedLimits);
+      return this[_limits].minStorageBufferOffsetAlignment;
+    }
     get maxVertexBuffers() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxVertexBuffers;
     }
     get maxVertexAttributes() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxVertexAttributes;
     }
     get maxVertexBufferArrayStride() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxVertexBufferArrayStride;
+    }
+    get maxInterStageShaderComponents() {
+      webidl.assertBranded(this, GPUSupportedLimits);
+      return this[_limits].maxInterStageShaderComponents;
+    }
+    get maxComputeWorkgroupStorageSize() {
+      webidl.assertBranded(this, GPUSupportedLimits);
+      return this[_limits].maxComputeWorkgroupStorageSize;
+    }
+    get maxComputeWorkgroupInvocations() {
+      webidl.assertBranded(this, GPUSupportedLimits);
+      return this[_limits].maxComputeWorkgroupInvocations;
+    }
+    get maxComputePerDimensionDispatchSize() {
+      webidl.assertBranded(this, GPUSupportedLimits);
+      return this[_limits].maxComputePerDimensionDispatchSize;
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
@@ -1117,6 +1152,7 @@
           compute: {
             module,
             entryPoint: descriptor.compute.entryPoint,
+            constants: descriptor.compute.constants,
           },
         },
       );
@@ -1764,12 +1800,12 @@
         prefix,
         context: "Argument 1",
       });
-      size = size === undefined
-        ? undefined
-        : webidl.converters.GPUSize64(size, {
+      if (size !== undefined) {
+        size = webidl.converters.GPUSize64(size, {
           prefix,
           context: "Argument 2",
         });
+      }
       assertDevice(this, { prefix, context: "this" });
       const bufferRid = assertResource(this, { prefix, context: "this" });
       /** @type {number} */
@@ -3762,7 +3798,7 @@
      * @param {number} offset
      * @param {number} size
      */
-    setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {
+    setIndexBuffer(buffer, indexFormat, offset = 0, size) {
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
         "Failed to execute 'setIndexBuffer' on 'GPURenderPassEncoder'";
@@ -3779,10 +3815,12 @@
         prefix,
         context: "Argument 3",
       });
-      size = webidl.converters.GPUSize64(size, {
-        prefix,
-        context: "Argument 4",
-      });
+      if (size !== undefined) {
+        size = webidl.converters.GPUSize64(size, {
+          prefix,
+          context: "Argument 4",
+        });
+      }
       const device = assertDevice(this[_encoder], {
         prefix,
         context: "encoder referenced by this",
@@ -3816,7 +3854,7 @@
      * @param {number} offset
      * @param {number} size
      */
-    setVertexBuffer(slot, buffer, offset = 0, size = 0) {
+    setVertexBuffer(slot, buffer, offset = 0, size) {
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
         "Failed to execute 'setVertexBuffer' on 'GPURenderPassEncoder'";
@@ -3833,10 +3871,12 @@
         prefix,
         context: "Argument 3",
       });
-      size = webidl.converters.GPUSize64(size, {
-        prefix,
-        context: "Argument 4",
-      });
+      if (size !== undefined) {
+        size = webidl.converters.GPUSize64(size, {
+          prefix,
+          context: "Argument 4",
+        });
+      }
       const device = assertDevice(this[_encoder], {
         prefix,
         context: "encoder referenced by this",
@@ -5068,7 +5108,7 @@
     gpu: webidl.createBranded(GPU),
     GPU,
     GPUAdapter,
-    GPUAdapterLimits,
+    GPUSupportedLimits,
     GPUSupportedFeatures,
     GPUDevice,
     GPUQueue,

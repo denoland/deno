@@ -10,7 +10,7 @@
   const {
     GPU,
     GPUAdapter,
-    GPUAdapterLimits,
+    GPUSupportedLimits,
     GPUSupportedFeatures,
     GPUDevice,
     GPUQueue,
@@ -57,16 +57,22 @@
       dictMembersGPUObjectDescriptorBase,
     );
 
-  // INTERFACE: GPUAdapterLimits
-  webidl.converters.GPUAdapterLimits = webidl.createInterfaceConverter(
-    "GPUAdapterLimits",
-    GPUAdapterLimits,
+  // INTERFACE: GPUSupportedLimits
+  webidl.converters.GPUSupportedLimits = webidl.createInterfaceConverter(
+    "GPUSupportedLimits",
+    GPUSupportedLimits,
   );
 
   // INTERFACE: GPUSupportedFeatures
   webidl.converters.GPUSupportedFeatures = webidl.createInterfaceConverter(
     "GPUSupportedFeatures",
     GPUSupportedFeatures,
+  );
+
+  // ENUM: GPUPredefinedColorSpace
+  webidl.converters.GPUPredefinedColorSpace = webidl.createEnumConverter(
+    "GPUPredefinedColorSpace",
+    ["srgb"],
   );
 
   // INTERFACE: GPU
@@ -86,6 +92,11 @@
     {
       key: "powerPreference",
       converter: webidl.converters["GPUPowerPreference"],
+    },
+    {
+      key: "forceSoftware",
+      converter: webidl.converters.boolean,
+      defaultValue: false,
     },
   ];
   webidl.converters["GPURequestAdapterOptions"] = webidl
@@ -907,6 +918,15 @@
       dictMembersGPUPipelineDescriptorBase,
     );
 
+  // TYPEDEF: GPUPipelineConstantValue
+  webidl.converters.GPUPipelineConstantValue = webidl.converters.double;
+
+  webidl.converters["record<USVString, GPUPipelineConstantValue>"] = webidl
+    .createRecordConverter(
+      webidl.converters.USVString,
+      webidl.converters.GPUPipelineConstantValue,
+    );
+
   // DICTIONARY: GPUProgrammableStage
   const dictMembersGPUProgrammableStage = [
     {
@@ -918,6 +938,11 @@
       key: "entryPoint",
       converter: webidl.converters["USVString"],
       required: true,
+    },
+    {
+      key: "constants",
+      converter:
+        webidl.converters["record<USVString, GPUPipelineConstantValue>"],
     },
   ];
   webidl.converters["GPUProgrammableStage"] = webidl.createDictionaryConverter(
@@ -1663,7 +1688,7 @@
   // ENUM: GPUStoreOp
   webidl.converters["GPUStoreOp"] = webidl.createEnumConverter("GPUStoreOp", [
     "store",
-    "clear",
+    "discard",
   ]);
 
   // DICTIONARY: GPURenderPassColorAttachment

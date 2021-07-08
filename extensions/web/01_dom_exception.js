@@ -17,6 +17,7 @@
     ObjectSetPrototypeOf,
   } = window.__bootstrap.primordials;
   const webidl = window.__bootstrap.webidl;
+  const consoleInternal = window.__bootstrap.console;
 
   // Defined in WebIDL 4.3.
   // https://heycam.github.io/webidl/#idl-DOMException
@@ -109,8 +110,20 @@
       return "DOMException";
     }
 
-    [Symbol.for("Deno.customInspect")]() {
-      return `DOMException: ${this.#message}`;
+    [Symbol.for("Deno.customInspect")](inspect) {
+      if (this instanceof DOMException) {
+        return `DOMException: ${this.#message}`;
+      } else {
+        return inspect(consoleInternal.createFilteredInspectProxy({
+          object: this,
+          evaluate: false,
+          keys: [
+            "message",
+            "name",
+            "code",
+          ],
+        }));
+      }
     }
   }
 

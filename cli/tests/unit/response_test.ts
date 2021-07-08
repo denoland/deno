@@ -1,5 +1,10 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+  unitTest,
+} from "./test_util.ts";
 
 unitTest(async function responseText() {
   const response = new Response("hello world");
@@ -67,4 +72,5 @@ unitTest(function customInspectFunction(): void {
   url: ""
 }`,
   );
+  assertStringIncludes(Deno.inspect(Response.prototype), "Response");
 });

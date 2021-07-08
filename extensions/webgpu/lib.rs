@@ -223,6 +223,7 @@ pub struct GpuAdapterDevice {
   name: Option<String>,
   limits: wgpu_types::Limits,
   features: Vec<&'static str>,
+  is_software: bool,
 }
 
 pub async fn op_webgpu_request_adapter(
@@ -252,6 +253,7 @@ pub async fn op_webgpu_request_adapter(
       },
       None => Default::default(),
     },
+    // TODO(lucacasonato): respect forceSoftware
     compatible_surface: None, // windowless
   };
   let res = instance.request_adapter(
@@ -284,6 +286,7 @@ pub async fn op_webgpu_request_adapter(
     name: Some(name),
     features,
     limits: adapter_limits,
+    is_software: false,
   }))
 }
 
@@ -304,9 +307,15 @@ struct GpuLimits {
   max_uniform_buffers_per_shader_stage: Option<u32>,
   max_uniform_buffer_binding_size: Option<u32>,
   max_storage_buffer_binding_size: Option<u32>,
+  // min_uniform_buffer_offset_alignment: Option<u32>,
+  // min_storage_buffer_offset_alignment: Option<u32>,
   max_vertex_buffers: Option<u32>,
   max_vertex_attributes: Option<u32>,
   max_vertex_buffer_array_stride: Option<u32>,
+  // max_inter_stage_shader_components: Option<u32>,
+  // max_compute_workgroup_storage_size: Option<u32>,
+  // max_compute_workgroup_invocations: Option<u32>,
+  // max_compute_per_dimension_dispatch_size: Option<u32>,
 }
 
 impl From<GpuLimits> for wgpu_types::Limits {
@@ -344,11 +353,29 @@ impl From<GpuLimits> for wgpu_types::Limits {
       max_storage_buffer_binding_size: limits
         .max_storage_buffer_binding_size
         .unwrap_or(134217728),
+      // min_uniform_buffer_offset_alignment: limits
+      //   .min_uniform_buffer_offset_alignment
+      //   .unwrap_or(default),
+      // min_storage_buffer_offset_alignment: limits
+      //   .min_storage_buffer_offset_alignment
+      //   .unwrap_or(default),
       max_vertex_buffers: limits.max_vertex_buffers.unwrap_or(8),
       max_vertex_attributes: limits.max_vertex_attributes.unwrap_or(16),
       max_vertex_buffer_array_stride: limits
         .max_vertex_buffer_array_stride
         .unwrap_or(2048),
+      // max_inter_stage_shader_components: limits
+      //   .max_inter_stage_shader_components
+      //   .unwrap_or(default),
+      // max_compute_workgroup_storage_size: limits
+      //   .max_compute_workgroup_storage_size
+      //   .unwrap_or(default),
+      // max_compute_workgroup_invocations: limits
+      //   .max_compute_workgroup_invocations
+      //   .unwrap_or(default),
+      // max_compute_per_dimension_dispatch_size: limits
+      //   .max_compute_per_dimension_dispatch_size
+      //   .unwrap_or(default),
       max_push_constant_size: 0,
     }
   }
@@ -359,8 +386,8 @@ impl From<GpuLimits> for wgpu_types::Limits {
 pub struct RequestDeviceArgs {
   adapter_rid: ResourceId,
   label: Option<String>,
-  non_guaranteed_features: Option<Vec<String>>,
-  non_guaranteed_limits: Option<GpuLimits>,
+  required_features: Option<Vec<String>>,
+  required_limits: Option<GpuLimits>,
 }
 
 pub async fn op_webgpu_request_device(
@@ -378,7 +405,7 @@ pub async fn op_webgpu_request_device(
 
   let mut features: wgpu_types::Features = wgpu_types::Features::empty();
 
-  if let Some(passed_features) = args.non_guaranteed_features {
+  if let Some(passed_features) = args.required_features {
     if passed_features.contains(&"depth-clamping".to_string()) {
       features.set(wgpu_types::Features::DEPTH_CLAMPING, true);
     }
@@ -459,7 +486,7 @@ pub async fn op_webgpu_request_device(
     label: args.label.map(Cow::from),
     features,
     limits: args
-      .non_guaranteed_limits
+      .required_limits
       .map_or(wgpu_types::Limits::default(), Into::into),
   };
 
@@ -485,6 +512,8 @@ pub async fn op_webgpu_request_device(
     name: None,
     features,
     limits,
+    // TODO(lucacasonato): report correctly from wgpu
+    is_software: false,
   })
 }
 

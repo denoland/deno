@@ -190,7 +190,7 @@ pub fn op_webgpu_buffer_get_mapped_range(
     gfx_select!(buffer => instance.buffer_get_mapped_range(
       buffer,
       args.offset,
-      std::num::NonZeroU64::new(args.size.unwrap_or(0))
+      args.size
     ))
     .map_err(|e| DomExceptionOperationError::new(&e.to_string()))?;
 

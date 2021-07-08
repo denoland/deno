@@ -34,6 +34,7 @@
     TypeError,
     Uint8Array,
   } = window.__bootstrap.primordials;
+  const consoleInternal = window.__bootstrap.console;
 
   // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
   // host os.
@@ -362,7 +363,14 @@
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
-      return `Blob ${inspect({ size: this.size, type: this.#type })}`;
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof Blob,
+        keys: [
+          "size",
+          "type",
+        ],
+      }));
     }
   }
 
