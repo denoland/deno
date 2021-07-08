@@ -506,6 +506,7 @@ pub struct CreateHttpClientOptions {
   ca_file: Option<String>,
   ca_data: Option<ByteString>,
   proxy: Option<Proxy>,
+  #[serde(deserialize_with = "deno_core::deserialize_no_check_certificate")]
   no_check_certificate: Option<Vec<String>>,
 }
 

@@ -54,7 +54,6 @@ use rustls::ServerSession;
 use rustls::Session;
 use rustls::StoresClientSessions;
 use serde::Deserialize;
-use serde_with::{serde_as, OneOrMany};
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -672,7 +671,6 @@ pub fn init<P: NetPermissions + 'static>() -> Vec<OpPair> {
   ]
 }
 
-#[serde_as]
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectTlsArgs {
@@ -680,8 +678,7 @@ pub struct ConnectTlsArgs {
   hostname: String,
   port: u16,
   cert_file: Option<String>,
-  #[serde_as(as = "Option<OneOrMany<_>>")]
-  #[serde(default)]
+  #[serde(deserialize_with = "deno_core::deserialize_no_check_certificate")]
   no_check_certificate: Option<Vec<String>>,
 }
 
@@ -784,7 +781,7 @@ where
   };
   let port = args.port;
   let cert_file = args.cert_file.as_deref();
-  let no_check_certificate = args.no_check_certificate;
+  let arg_no_check_certificate = args.no_check_certificate;
   let global_no_check_certificate: Option<Vec<String>>;
 
   {
@@ -823,16 +820,29 @@ where
     let reader = &mut BufReader::new(key_file);
     tls_config.root_store.add_pem_file(reader).unwrap();
   }
-  if let Some(ncc_l) = no_check_certificate {
-    let mut no_check_certificate_list = ncc_l;
-    if let Some(global_ncc_l) = global_no_check_certificate {
-      no_check_certificate_list.extend(global_ncc_l);
-    }
 
+  if global_no_check_certificate.is_some() || arg_no_check_certificate.is_some()
+  {
+    let mut no_check_certificate_list = {
+      let size = global_no_check_certificate.as_ref().map_or(0, |v| v.len())
+        + arg_no_check_certificate.as_ref().map_or(0, |v| v.len());
+      Vec::<String>::with_capacity(size)
+    };
+    if let Some(gncc_l) = global_no_check_certificate {
+      if !gncc_l.is_empty() {
+        no_check_certificate_list.extend(gncc_l)
+      }
+    }
+    if let Some(ancc_l) = arg_no_check_certificate {
+      if !ancc_l.is_empty() {
+        no_check_certificate_list.extend(ancc_l)
+      }
+    }
     tls_config.dangerous().set_certificate_verifier(Arc::new(
       NoCertificateVerification::new(no_check_certificate_list),
     ));
   }
+
   let tls_config = Arc::new(tls_config);
 
   let tls_stream =

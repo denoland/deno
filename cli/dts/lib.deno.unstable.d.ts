@@ -834,8 +834,8 @@ declare namespace Deno {
      */
     caData?: string;
     proxy?: Proxy;
-    /** Disable certificate validation for specific domain names. */
-    noCheckCertificate?: string | string[];
+    /** Disable certificate validation. */
+    noCheckCertificate?: string | string[] | boolean;
   }
 
   export interface Proxy {

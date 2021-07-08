@@ -117,8 +117,8 @@ declare namespace Deno {
     hostname?: string;
     /** Server certificate file. */
     certFile?: string;
-    /** Disable certificate validation for specific domain names. */
-    noCheckCertificate?: string | string[];
+    /** Disable certificate validation. */
+    noCheckCertificate?: string | string[] | boolean;
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using
