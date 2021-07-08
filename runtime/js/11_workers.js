@@ -184,7 +184,7 @@
       if (
         StringPrototypeStartsWith(specifier, "./") ||
         StringPrototypeStartsWith(specifier, "../") ||
-        StringPrototypeStartsWith(specifier, "/") || type === "classic"
+        StringPrototypeStartsWith(specifier, "/") || workerType === "classic"
       ) {
         const baseUrl = getLocationHref();
         if (baseUrl != null) {
@@ -211,7 +211,7 @@
           ? null
           : parsePermissions(workerDenoAttributes.permissions),
         options?.name,
-        type,
+        workerType,
       );
       this.#id = id;
       this.#pollControl();
