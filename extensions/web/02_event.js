@@ -9,6 +9,7 @@
 ((window) => {
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
+  const consoleInternal = window.__bootstrap.console;
   const {
     ArrayPrototypeFilter,
     ArrayPrototypeIncludes,
@@ -28,10 +29,7 @@
     ObjectCreate,
     ObjectDefineProperty,
     ObjectGetOwnPropertyDescriptor,
-    Proxy,
     ReflectDefineProperty,
-    ReflectGet,
-    ReflectGetOwnPropertyDescriptor,
     Symbol,
     SymbolFor,
     SymbolToStringTag,
@@ -175,7 +173,11 @@
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
-      return inspect(buildFilteredPropertyInspectObject(this, EVENT_PROPS));
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof Event,
+        keys: EVENT_PROPS,
+      }));
     }
 
     get type() {
@@ -395,43 +397,6 @@
     get timeStamp() {
       return this[_attributes].timeStamp;
     }
-  }
-
-  function buildFilteredPropertyInspectObject(object, keys) {
-    // forward the subset of properties from `object` without evaluating
-    // as evaluation could lead to an error, which is better handled
-    // in the inspect code
-    return new Proxy({}, {
-      get(_target, key) {
-        if (key === SymbolToStringTag) {
-          return object.constructor?.name;
-        } else if (ArrayPrototypeIncludes(keys, key)) {
-          return ReflectGet(object, key);
-        } else {
-          return undefined;
-        }
-      },
-      getOwnPropertyDescriptor(_target, key) {
-        if (!ArrayPrototypeIncludes(keys, key)) {
-          return undefined;
-        }
-
-        return ReflectGetOwnPropertyDescriptor(object, key) ??
-          (object.prototype &&
-            ReflectGetOwnPropertyDescriptor(object.prototype, key)) ??
-          {
-            configurable: true,
-            enumerable: true,
-            value: object[key],
-          };
-      },
-      has(_target, key) {
-        return ArrayPrototypeIncludes(keys, key);
-      },
-      ownKeys() {
-        return keys;
-      },
-    });
   }
 
   function defineEnumerableProps(
@@ -1097,14 +1062,18 @@
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
-      return inspect(buildFilteredPropertyInspectObject(this, [
-        ...EVENT_PROPS,
-        "message",
-        "filename",
-        "lineno",
-        "colno",
-        "error",
-      ]));
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof ErrorEvent,
+        keys: [
+          ...EVENT_PROPS,
+          "message",
+          "filename",
+          "lineno",
+          "colno",
+          "error",
+        ],
+      }));
     }
   }
 
@@ -1151,12 +1120,16 @@
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
-      return inspect(buildFilteredPropertyInspectObject(this, [
-        ...EVENT_PROPS,
-        "wasClean",
-        "code",
-        "reason",
-      ]));
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof CloseEvent,
+        keys: [
+          ...EVENT_PROPS,
+          "wasClean",
+          "code",
+          "reason",
+        ],
+      }));
     }
   }
 
@@ -1179,12 +1152,16 @@
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
-      return inspect(buildFilteredPropertyInspectObject(this, [
-        ...EVENT_PROPS,
-        "data",
-        "origin",
-        "lastEventId",
-      ]));
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof MessageEvent,
+        keys: [
+          ...EVENT_PROPS,
+          "data",
+          "origin",
+          "lastEventId",
+        ],
+      }));
     }
   }
 
@@ -1209,10 +1186,14 @@
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
-      return inspect(buildFilteredPropertyInspectObject(this, [
-        ...EVENT_PROPS,
-        "detail",
-      ]));
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof CustomEvent,
+        keys: [
+          ...EVENT_PROPS,
+          "detail",
+        ],
+      }));
     }
   }
 
@@ -1232,12 +1213,16 @@
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
-      return inspect(buildFilteredPropertyInspectObject(this, [
-        ...EVENT_PROPS,
-        "lengthComputable",
-        "loaded",
-        "total",
-      ]));
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof ProgressEvent,
+        keys: [
+          ...EVENT_PROPS,
+          "lengthComputable",
+          "loaded",
+          "total",
+        ],
+      }));
     }
   }
 
