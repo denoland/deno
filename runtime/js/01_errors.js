@@ -3,6 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const { Error } = window.__bootstrap.primordials;
   const { BadResource, Interrupted } = core;
 
   class NotFound extends Error {

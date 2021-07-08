@@ -2,6 +2,18 @@
 "use strict";
 
 ((window) => {
+  const {
+    Error,
+    ObjectFreeze,
+    ObjectAssign,
+    StringPrototypeStartsWith,
+    StringPrototypeEndsWith,
+    ObjectDefineProperties,
+    ArrayPrototypePush,
+    ArrayPrototypeMap,
+    ArrayPrototypeJoin,
+  } = window.__bootstrap.primordials;
+
   // Some of the code here is adapted directly from V8 and licensed under a BSD
   // style license available here: https://github.com/v8/v8/blob/24886f2d1c565287d33d71e4109a53bf0b54b75c/LICENSE.v8
   function patchCallSite(callSite, location) {
@@ -117,13 +129,13 @@
 
       if (functionName) {
         if (typeName) {
-          if (!functionName.startsWith(typeName)) {
+          if (!StringPrototypeStartsWith(functionName, typeName)) {
             result += `${typeName}.`;
           }
         }
         result += functionName;
         if (methodName) {
-          if (!functionName.endsWith(methodName)) {
+          if (!StringPrototypeEndsWith(functionName, methodName)) {
             result += ` [as ${methodName}]`;
           }
         }
@@ -198,34 +210,32 @@
       error,
       callSites,
     ) {
-      const mappedCallSites = callSites.map(
-        (callSite) => {
-          const fileName = callSite.getFileName();
-          const lineNumber = callSite.getLineNumber();
-          const columnNumber = callSite.getColumnNumber();
-          if (
-            sourceMappingFn && fileName && lineNumber != null &&
-            columnNumber != null
-          ) {
-            return patchCallSite(
-              callSite,
-              sourceMappingFn({
-                fileName,
-                lineNumber,
-                columnNumber,
-              }),
-            );
-          }
-          return callSite;
-        },
-      );
-      Object.defineProperties(error, {
+      const mappedCallSites = ArrayPrototypeMap(callSites, (callSite) => {
+        const fileName = callSite.getFileName();
+        const lineNumber = callSite.getLineNumber();
+        const columnNumber = callSite.getColumnNumber();
+        if (
+          sourceMappingFn && fileName && lineNumber != null &&
+          columnNumber != null
+        ) {
+          return patchCallSite(
+            callSite,
+            sourceMappingFn({
+              fileName,
+              lineNumber,
+              columnNumber,
+            }),
+          );
+        }
+        return callSite;
+      });
+      ObjectDefineProperties(error, {
         __callSiteEvals: { value: [], configurable: true },
       });
       const formattedCallSites = [];
       for (const callSite of mappedCallSites) {
-        error.__callSiteEvals.push(evaluateCallSite(callSite));
-        formattedCallSites.push(formatCallSite(callSite));
+        ArrayPrototypePush(error.__callSiteEvals, evaluateCallSite(callSite));
+        ArrayPrototypePush(formattedCallSites, formatCallSite(callSite));
       }
       const message = error.message !== undefined ? error.message : "";
       const name = error.name !== undefined ? error.name : "Error";
@@ -238,11 +248,13 @@
         messageLine = "";
       }
       return messageLine +
-        formattedCallSites.map((s) => `\n    at ${s}`).join("");
+        ArrayPrototypeJoin(
+          ArrayPrototypeMap(formattedCallSites, (s) => `\n    at ${s}`),
+          "",
+        );
     };
   }
 
-  Object.assign(window.Deno.core, {
-    createPrepareStackTrace,
-  });
+  ObjectAssign(globalThis.__bootstrap.core, { createPrepareStackTrace });
+  ObjectFreeze(globalThis.__bootstrap.core);
 })(this);

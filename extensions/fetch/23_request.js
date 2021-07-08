@@ -12,6 +12,7 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
+  const consoleInternal = window.__bootstrap.console;
   const { HTTP_TOKEN_CODE_POINT_RE, byteUpperCase } = window.__bootstrap.infra;
   const { URL } = window.__bootstrap.url;
   const { guardFromHeaders } = window.__bootstrap.headers;
@@ -26,6 +27,20 @@
   } = window.__bootstrap.headers;
   const { HttpClient } = window.__bootstrap.fetch;
   const abortSignal = window.__bootstrap.abortSignal;
+  const {
+    ArrayPrototypeMap,
+    ArrayPrototypeSlice,
+    ArrayPrototypeSplice,
+    MapPrototypeHas,
+    MapPrototypeGet,
+    MapPrototypeSet,
+    ObjectKeys,
+    RegExpPrototypeTest,
+    Symbol,
+    SymbolFor,
+    SymbolToStringTag,
+    TypeError,
+  } = window.__bootstrap.primordials;
 
   const _request = Symbol("request");
   const _headers = Symbol("headers");
@@ -81,7 +96,9 @@
    * @returns {InnerRequest}
    */
   function cloneInnerRequest(request) {
-    const headerList = [...request.headerList.map((x) => [x[0], x[1]])];
+    const headerList = [
+      ...ArrayPrototypeMap(request.headerList, (x) => [x[0], x[1]]),
+    ];
     let body = null;
     if (request.body !== null) {
       body = request.body.clone();
@@ -129,7 +146,7 @@
     }
 
     // Regular path
-    if (!HTTP_TOKEN_CODE_POINT_RE.test(m)) {
+    if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, m)) {
       throw new TypeError("Method is not valid.");
     }
     const upperCase = byteUpperCase(m);
@@ -166,14 +183,17 @@
         mimeType = temporaryMimeType;
         if (mimesniff.essence(mimeType) !== essence) {
           charset = null;
-          const newCharset = mimeType.parameters.get("charset");
+          const newCharset = MapPrototypeGet(mimeType.parameters, "charset");
           if (newCharset !== undefined) {
             charset = newCharset;
           }
           essence = mimesniff.essence(mimeType);
         } else {
-          if (mimeType.parameters.has("charset") === null && charset !== null) {
-            mimeType.parameters.set("charset", charset);
+          if (
+            MapPrototypeHas(mimeType.parameters, "charset") === null &&
+            charset !== null
+          ) {
+            MapPrototypeSet(mimeType.parameters, "charset", charset);
           }
         }
       }
@@ -267,15 +287,17 @@
       this[_headers] = headersFromHeaderList(request.headerList, "request");
 
       // 32.
-      if (Object.keys(init).length > 0) {
-        let headers = headerListFromHeaders(this[_headers]).slice(
+      if (ObjectKeys(init).length > 0) {
+        let headers = ArrayPrototypeSlice(
+          headerListFromHeaders(this[_headers]),
           0,
           headerListFromHeaders(this[_headers]).length,
         );
         if (init.headers !== undefined) {
           headers = init.headers;
         }
-        headerListFromHeaders(this[_headers]).splice(
+        ArrayPrototypeSplice(
+          headerListFromHeaders(this[_headers]),
           0,
           headerListFromHeaders(this[_headers]).length,
         );
@@ -367,19 +389,22 @@
       );
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "Request";
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
-      const inner = {
-        bodyUsed: this.bodyUsed,
-        headers: this.headers,
-        method: this.method,
-        redirect: this.redirect,
-        url: this.url,
-      };
-      return `Request ${inspect(inner)}`;
+    [SymbolFor("Deno.customInspect")](inspect) {
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof Request,
+        keys: [
+          "bodyUsed",
+          "headers",
+          "method",
+          "redirect",
+          "url",
+        ],
+      }));
     }
   }
 

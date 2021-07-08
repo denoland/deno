@@ -7,6 +7,16 @@
 
 ((window) => {
   const { assert } = window.__bootstrap.util;
+  const {
+    TypedArrayPrototypeSubarray,
+    TypedArrayPrototypeSlice,
+    TypedArrayPrototypeSet,
+    MathFloor,
+    MathMin,
+    PromiseResolve,
+    Uint8Array,
+    Error,
+  } = window.__bootstrap.primordials;
 
   // MIN_READ is the minimum ArrayBuffer size passed to a read call by
   // buffer.ReadFrom. As long as the Buffer has at least MIN_READ bytes beyond
@@ -21,9 +31,9 @@
   function copyBytes(src, dst, off = 0) {
     const r = dst.byteLength - off;
     if (src.byteLength > r) {
-      src = src.subarray(0, r);
+      src = TypedArrayPrototypeSubarray(src, 0, r);
     }
-    dst.set(src, off);
+    TypedArrayPrototypeSet(dst, src, off);
     return src.byteLength;
   }
 
@@ -41,8 +51,10 @@
     }
 
     bytes(options = { copy: true }) {
-      if (options.copy === false) return this.#buf.subarray(this.#off);
-      return this.#buf.slice(this.#off);
+      if (options.copy === false) {
+        return TypedArrayPrototypeSubarray(this.#buf, this.#off);
+      }
+      return TypedArrayPrototypeSlice(this.#buf, this.#off);
     }
 
     empty() {
@@ -97,14 +109,17 @@
         }
         return null;
       }
-      const nread = copyBytes(this.#buf.subarray(this.#off), p);
+      const nread = copyBytes(
+        TypedArrayPrototypeSubarray(this.#buf, this.#off),
+        p,
+      );
       this.#off += nread;
       return nread;
     }
 
     read(p) {
       const rr = this.readSync(p);
-      return Promise.resolve(rr);
+      return PromiseResolve(rr);
     }
 
     writeSync(p) {
@@ -114,7 +129,7 @@
 
     write(p) {
       const n = this.writeSync(p);
-      return Promise.resolve(n);
+      return PromiseResolve(n);
     }
 
     #grow(n) {
@@ -129,23 +144,23 @@
         return i;
       }
       const c = this.capacity;
-      if (n <= Math.floor(c / 2) - m) {
+      if (n <= MathFloor(c / 2) - m) {
         // We can slide things down instead of allocating a new
         // ArrayBuffer. We only need m+n <= c to slide, but
         // we instead let capacity get twice as large so we
         // don't spend all our time copying.
-        copyBytes(this.#buf.subarray(this.#off), this.#buf);
+        copyBytes(TypedArrayPrototypeSubarray(this.#buf, this.#off), this.#buf);
       } else if (c + n > MAX_SIZE) {
         throw new Error("The buffer cannot be grown beyond the maximum size.");
       } else {
         // Not enough space anywhere, we need to allocate.
-        const buf = new Uint8Array(Math.min(2 * c + n, MAX_SIZE));
-        copyBytes(this.#buf.subarray(this.#off), buf);
+        const buf = new Uint8Array(MathMin(2 * c + n, MAX_SIZE));
+        copyBytes(TypedArrayPrototypeSubarray(this.#buf, this.#off), buf);
         this.#buf = buf;
       }
       // Restore this.#off and len(this.#buf).
       this.#off = 0;
-      this.#reslice(Math.min(m + n, MAX_SIZE));
+      this.#reslice(MathMin(m + n, MAX_SIZE));
       return m;
     }
 
@@ -174,8 +189,9 @@
         }
 
         // write will grow if needed
-        if (shouldGrow) this.writeSync(buf.subarray(0, nread));
-        else this.#reslice(this.length + nread);
+        if (shouldGrow) {
+          this.writeSync(TypedArrayPrototypeSubarray(buf, 0, nread));
+        } else this.#reslice(this.length + nread);
 
         n += nread;
       }
@@ -198,8 +214,9 @@
         }
 
         // write will grow if needed
-        if (shouldGrow) this.writeSync(buf.subarray(0, nread));
-        else this.#reslice(this.length + nread);
+        if (shouldGrow) {
+          this.writeSync(TypedArrayPrototypeSubarray(buf, 0, nread));
+        } else this.#reslice(this.length + nread);
 
         n += nread;
       }
@@ -221,14 +238,14 @@
   async function writeAll(w, arr) {
     let nwritten = 0;
     while (nwritten < arr.length) {
-      nwritten += await w.write(arr.subarray(nwritten));
+      nwritten += await w.write(TypedArrayPrototypeSubarray(arr, nwritten));
     }
   }
 
   function writeAllSync(w, arr) {
     let nwritten = 0;
     while (nwritten < arr.length) {
-      nwritten += w.writeSync(arr.subarray(nwritten));
+      nwritten += w.writeSync(TypedArrayPrototypeSubarray(arr, nwritten));
     }
   }
 

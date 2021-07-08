@@ -790,6 +790,34 @@ Deno.test({
 });
 
 Deno.test({
+  name: "worker SharedArrayBuffer",
+  fn: async function (): Promise<void> {
+    const promise = deferred();
+    const workerOptions: WorkerOptions = { type: "module" };
+    const w = new Worker(
+      new URL("shared_array_buffer.ts", import.meta.url).href,
+      workerOptions,
+    );
+    const sab1 = new SharedArrayBuffer(1);
+    const sab2 = new SharedArrayBuffer(1);
+    const bytes1 = new Uint8Array(sab1);
+    const bytes2 = new Uint8Array(sab2);
+    assertEquals(bytes1[0], 0);
+    assertEquals(bytes2[0], 0);
+    w.onmessage = (): void => {
+      w.postMessage([sab1, sab2]);
+      w.onmessage = (): void => {
+        assertEquals(bytes1[0], 1);
+        assertEquals(bytes2[0], 2);
+        promise.resolve();
+      };
+    };
+    await promise;
+    w.terminate();
+  },
+});
+
+Deno.test({
   name: "Send MessagePorts from / to workers",
   fn: async function (): Promise<void> {
     const result = deferred();
