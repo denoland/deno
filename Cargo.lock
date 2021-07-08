@@ -747,19 +747,12 @@ dependencies = [
 name = "deno_net"
 version = "0.1.0"
 dependencies = [
- "base64 0.13.0",
- "bytes",
  "deno_core",
- "deno_websocket",
- "http",
- "hyper",
  "lazy_static",
  "log",
- "ring",
  "rustls",
  "serde",
  "tokio",
- "tokio-util",
  "trust-dns-proto",
  "trust-dns-resolver",
  "webpki",
