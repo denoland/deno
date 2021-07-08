@@ -481,6 +481,7 @@ pub async fn run_tests(
   program_state.file_fetcher.insert_cached(test_file);
 
   let (sender, receiver) = channel::<TestEvent>();
+  let handle = tokio::runtime::Handle::current();
 
   let join_handles = test_modules.iter().map(move |main_module| {
     let program_state = program_state.clone();
@@ -488,21 +489,16 @@ pub async fn run_tests(
     let test_module = test_module.clone();
     let permissions = permissions.clone();
     let sender = sender.clone();
+    let handle = handle.clone();
 
     tokio::task::spawn_blocking(move || {
-      let join_handle = std::thread::spawn(move || {
-        let future = run_test_file(
-          program_state,
-          main_module,
-          test_module,
-          permissions,
-          sender,
-        );
-
-        tokio_util::run_basic(future)
-      });
-
-      join_handle.join().unwrap()
+      handle.block_on(run_test_file(
+        program_state,
+        main_module,
+        test_module,
+        permissions,
+        sender,
+      ))
     })
   });
 
