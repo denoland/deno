@@ -186,6 +186,29 @@ delete Object.prototype.__proto__;
     }
   }
 
+  function importScripts(...urls) {
+    if (core.opSync("op_worker_get_type") === "module") {
+      throw new TypeError("Can't import scripts in a module worker.");
+    }
+
+    const baseUrl = location.getLocationHref();
+    const parsedUrls = urls.map((url) => {
+      try {
+        return new URL(url, baseUrl ?? undefined).href;
+      } catch {
+        throw new DOMException("SyntaxError", "Failed to parse URL.");
+      }
+    });
+
+    const scripts = core.opSync("op_worker_sync_fetch", parsedUrls);
+    for (const { url, script } of scripts) {
+      const err = core.evalContext(script, url)[1];
+      if (err !== null) {
+        throw err.thrown;
+      }
+    }
+  }
+
   function opMainModule() {
     return core.opSync("op_main_module");
   }
@@ -591,6 +614,14 @@ delete Object.prototype.__proto__;
     );
     const { unstableFlag, pid, noColor, args, location: locationHref } =
       runtimeOptions;
+
+    if (unstableFlag) {
+      ObjectDefineProperty(
+        globalThis,
+        "importScripts",
+        util.writable(importScripts),
+      );
+    }
 
     location.setLocationHref(locationHref);
     registerErrors();

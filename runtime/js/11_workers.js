@@ -7,7 +7,6 @@
     ArrayIsArray,
     ArrayPrototypeMap,
     Error,
-    Uint8Array,
     StringPrototypeStartsWith,
     String,
     SymbolIterator,
@@ -28,6 +27,7 @@
     useDenoNamespace,
     permissions,
     name,
+    workerType,
   ) {
     return core.opSync("op_create_worker", {
       hasSourceCode,
@@ -36,6 +36,7 @@
       sourceCode,
       specifier,
       useDenoNamespace,
+      workerType,
     });
   }
 
@@ -173,25 +174,32 @@
         }
       }
 
-      if (type !== "module") {
-        throw new Error(
-          'Not yet implemented: only "module" type workers are supported',
+      const workerType = String(type);
+      if (workerType !== "classic" && workerType !== "module") {
+        throw new TypeError(
+          `The provided value '${workerType}' is not a valid enum value of type WorkerType.`,
         );
       }
-
-      this.#name = name;
-      const hasSourceCode = false;
-      const sourceCode = core.decode(new Uint8Array());
 
       if (
         StringPrototypeStartsWith(specifier, "./") ||
         StringPrototypeStartsWith(specifier, "../") ||
-        StringPrototypeStartsWith(specifier, "/") || type == "classic"
+        StringPrototypeStartsWith(specifier, "/") || type === "classic"
       ) {
         const baseUrl = getLocationHref();
         if (baseUrl != null) {
           specifier = new URL(specifier, baseUrl).href;
         }
+      }
+
+      this.#name = name;
+      let hasSourceCode, sourceCode;
+      if (workerType === "classic") {
+        hasSourceCode = true;
+        sourceCode = `importScripts("#");`;
+      } else {
+        hasSourceCode = false;
+        sourceCode = "";
       }
 
       const id = createWorker(
@@ -203,6 +211,7 @@
           ? null
           : parsePermissions(workerDenoAttributes.permissions),
         options?.name,
+        type,
       );
       this.#id = id;
       this.#pollControl();

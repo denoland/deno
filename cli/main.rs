@@ -116,6 +116,7 @@ fn create_web_worker_callback(
       create_web_worker_cb,
       js_error_create_fn: Some(js_error_create_fn),
       use_deno_namespace: args.use_deno_namespace,
+      worker_type: args.worker_type,
       maybe_inspector_server,
       runtime_version: version::deno(),
       ts_version: version::TYPESCRIPT.to_string(),

@@ -43,6 +43,13 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WebWorkerType {
+  Classic,
+  Module,
+}
+
 #[derive(
   Debug, Default, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize,
 )]
@@ -109,6 +116,7 @@ pub struct WebWorkerInternalHandle {
   pub cancel: Rc<CancelHandle>,
   terminated: Arc<AtomicBool>,
   isolate_handle: v8::IsolateHandle,
+  pub worker_type: WebWorkerType,
 }
 
 impl WebWorkerInternalHandle {
@@ -214,6 +222,7 @@ impl WebWorkerHandle {
 
 fn create_handles(
   isolate_handle: v8::IsolateHandle,
+  worker_type: WebWorkerType,
 ) -> (WebWorkerInternalHandle, SendableWebWorkerHandle) {
   let (parent_port, worker_port) = create_entangled_message_port();
   let (ctrl_tx, ctrl_rx) = mpsc::channel::<WorkerControlEvent>(1);
@@ -224,6 +233,7 @@ fn create_handles(
     terminated: terminated.clone(),
     isolate_handle: isolate_handle.clone(),
     cancel: CancelHandle::new_rc(),
+    worker_type,
   };
   let external_handle = SendableWebWorkerHandle {
     receiver: ctrl_rx,
@@ -244,6 +254,7 @@ pub struct WebWorker {
   pub name: String,
   internal_handle: WebWorkerInternalHandle,
   pub use_deno_namespace: bool,
+  pub worker_type: WebWorkerType,
   pub main_module: ModuleSpecifier,
 }
 
@@ -259,6 +270,7 @@ pub struct WebWorkerOptions {
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub use_deno_namespace: bool,
+  pub worker_type: WebWorkerType,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub apply_source_maps: bool,
   /// Sets `Deno.version.deno` in JS runtime.
@@ -371,7 +383,8 @@ impl WebWorker {
 
     let (internal_handle, external_handle) = {
       let handle = js_runtime.v8_isolate().thread_safe_handle();
-      let (internal_handle, external_handle) = create_handles(handle);
+      let (internal_handle, external_handle) =
+        create_handles(handle, options.worker_type);
       let op_state = js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
       op_state.put(internal_handle.clone());
@@ -385,6 +398,7 @@ impl WebWorker {
         name,
         internal_handle,
         use_deno_namespace: options.use_deno_namespace,
+        worker_type: options.worker_type,
         main_module,
       },
       external_handle,

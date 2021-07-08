@@ -3106,5 +3106,161 @@
     "eventhandlers.any.html?wpt_flags=h2": false,
     "eventhandlers.any.html?wss": false,
     "referrer.any.html": true
+  },
+  "workers": {
+    "Worker-base64.any.worker.html": true,
+    "Worker-call.worker.html": true,
+    "Worker-constructor-proto.any.worker.html": true,
+    "Worker-custom-event.any.worker.html": true,
+    "Worker-formdata.any.worker.html": false,
+    "Worker-location.sub.any.worker.html": false,
+    "Worker-replace-event-handler.any.worker.html": true,
+    "Worker-replace-global-constructor.any.worker.html": true,
+    "Worker-replace-self.any.worker.html": true,
+    "WorkerGlobalScope_requestAnimationFrame.tentative.worker.html": false,
+    "WorkerLocation-origin.sub.window.html": false,
+    "WorkerNavigator-hardware-concurrency.any.worker.html": false,
+    "WorkerNavigator.any.worker.html": false,
+    "constructors": {
+      "Worker": {
+        "DedicatedWorkerGlobalScope-members.worker.html": [
+          "existence of onoffline",
+          "existence of ononline"
+        ],
+        "expected-self-properties.worker.html": [
+          "existence of XMLHttpRequest",
+          "existence of EventSource",
+          "existence of SharedWorker"
+        ],
+        "unexpected-self-properties.worker.html": true
+      }
+    },
+    "dedicated-worker-from-blob-url.window.html": false,
+    "dedicated-worker-in-data-url-context.window.html": false,
+    "examples": {
+      "general.any.worker.html": true,
+      "general.worker.html": true
+    },
+    "importscripts_mime.any.worker.html": [
+      "importScripts() requires scripty MIME types: text/ecmascript is allowed.",
+      "importScripts() requires scripty MIME types: image/png is blocked.",
+      "importScripts() requires scripty MIME types: text/csv is blocked.",
+      "importScripts() requires scripty MIME types: video/mpeg is blocked.",
+      "importScripts() requires scripty MIME types: text/html is blocked.",
+      "importScripts() requires scripty MIME types: text/plain is blocked.",
+      "importScripts() requires scripty MIME types: application/xml is blocked.",
+      "importScripts() requires scripty MIME types: application/octet-stream is blocked.",
+      "importScripts() requires scripty MIME types: text/potato is blocked.",
+      "importScripts() requires scripty MIME types: potato/text is blocked.",
+      "importScripts() requires scripty MIME types: aaa/aaa is blocked.",
+      "importScripts() requires scripty MIME types: zzz/zzz is blocked.",
+      "importScripts() requires scripty MIME types: text/csv; charset=utf-8 is blocked.",
+      "importScripts() requires scripty MIME types: text/csv;charset=utf-8 is blocked.",
+      "importScripts() requires scripty MIME types: text/csv;bla;bla is blocked.",
+      "importScripts() requires scripty MIME types: Text/html is blocked.",
+      "importScripts() requires scripty MIME types: text/Html is blocked.",
+      "importScripts() requires scripty MIME types: TeXt/HtMl is blocked.",
+      "importScripts() requires scripty MIME types: TEXT/HTML is blocked."
+    ],
+    "interfaces": {
+      "DedicatedWorkerGlobalScope": {
+        "EventTarget.worker.html": true,
+        "onmessage.worker.html": [
+          "Setting onmessage to 1",
+          "Setting onmessage to a function",
+          "Setting onmessage to 1 (again)"
+        ],
+        "postMessage": {
+          "return-value.worker.html": true
+        }
+      },
+      "WorkerGlobalScope": {
+        "location": {
+          "returns-same-object.any.worker.html": true
+        },
+        "self.any.worker.html": true
+      },
+      "WorkerUtils": {
+        "importScripts": {
+          "001.worker.html": true,
+          "002.worker.html": false,
+          "catch.sub.any.worker.html": [
+            "Cross-origin syntax error",
+            "Cross-origin throw",
+            "Redirect-to-cross-origin syntax error",
+            "Redirect-to-Cross-origin throw"
+          ],
+          "report-error-cross-origin.sub.any.worker.html": false,
+          "report-error-redirect-to-cross-origin.sub.any.worker.html": false,
+          "report-error-same-origin.sub.any.worker.html": false,
+          "report-error-setTimeout-cross-origin.sub.any.worker.html": false,
+          "report-error-setTimeout-redirect-to-cross-origin.sub.any.worker.html": false,
+          "report-error-setTimeout-same-origin.sub.any.worker.html": false
+        }
+      }
+    },
+    "modules": {
+      "dedicated-worker-import-blob-url.any.html": false,
+      "dedicated-worker-import-blob-url.any.worker.html": false,
+      "dedicated-worker-import-data-url.any.html": false,
+      "dedicated-worker-import.any.html": false,
+      "dedicated-worker-import.any.worker.html": false,
+      "shared-worker-import-blob-url.window.html": false,
+      "shared-worker-import-data-url.window.html": false,
+      "shared-worker-import.window.html": false
+    },
+    "nested_worker.worker.html": true,
+    "nested_worker_close_self.worker.html": true,
+    "nested_worker_importScripts.worker.html": true,
+    "nested_worker_sync_xhr.worker.html": false,
+    "semantics": {
+      "encodings": {
+        "004.worker.html": true
+      },
+      "interface-objects": {
+        "001.worker.html": [
+          "The SharedWorker interface object should be exposed.",
+          "The ImageData interface object should be exposed.",
+          "The ImageBitmap interface object should be exposed.",
+          "The CanvasGradient interface object should be exposed.",
+          "The CanvasPattern interface object should be exposed.",
+          "The CanvasPath interface object should be exposed.",
+          "The TextMetrics interface object should be exposed.",
+          "The Path2D interface object should be exposed.",
+          "The PromiseRejectionEvent interface object should be exposed.",
+          "The EventSource interface object should be exposed.",
+          "The XMLHttpRequestEventTarget interface object should be exposed.",
+          "The XMLHttpRequestUpload interface object should be exposed.",
+          "The XMLHttpRequest interface object should be exposed.",
+          "The FileList interface object should be exposed.",
+          "The FileReaderSync interface object should be exposed.",
+          "The IDBRequest interface object should be exposed.",
+          "The IDBOpenDBRequest interface object should be exposed.",
+          "The IDBVersionChangeEvent interface object should be exposed.",
+          "The IDBFactory interface object should be exposed.",
+          "The IDBDatabase interface object should be exposed.",
+          "The IDBObjectStore interface object should be exposed.",
+          "The IDBIndex interface object should be exposed.",
+          "The IDBKeyRange interface object should be exposed.",
+          "The IDBCursor interface object should be exposed.",
+          "The IDBCursorWithValue interface object should be exposed.",
+          "The IDBTransaction interface object should be exposed."
+        ],
+        "002.worker.html": true
+      },
+      "multiple-workers": {
+        "exposure.any.html": [
+          "SharedWorker exposure"
+        ],
+        "exposure.any.worker.html": true
+      }
+    },
+    "shared-worker-from-blob-url.window.html": false,
+    "shared-worker-in-data-url-context.window.html": false,
+    "worker-performance.worker.html": [
+      "Resource timing seems to work in workers",
+      "performance.clearResourceTimings in workers",
+      "performance.setResourceTimingBufferSize in workers"
+    ]
   }
 }
