@@ -22,7 +22,10 @@ use std::convert::TryInto;
 use std::option::Option;
 use std::rc::Rc;
 use url::Url;
+use v8::HandleScope;
+use v8::Local;
 use v8::MapFnTo;
+use v8::SharedArrayBuffer;
 
 lazy_static::lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
@@ -652,9 +655,8 @@ fn encode(
     }
   };
   let text_str = text.to_rust_string_lossy(scope);
-  let text_bytes = text_str.as_bytes().to_vec().into_boxed_slice();
+  let zbuf: ZeroCopyBuf = text_str.into_bytes().into();
 
-  let zbuf: ZeroCopyBuf = text_bytes.into();
   rv.set(to_v8(scope, zbuf).unwrap())
 }
 
@@ -713,6 +715,22 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
     scope.throw_exception(error);
   }
 
+  fn get_shared_array_buffer_id<'s>(
+    &mut self,
+    scope: &mut HandleScope<'s>,
+    shared_array_buffer: Local<'s, SharedArrayBuffer>,
+  ) -> Option<u32> {
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow_mut();
+    if let Some(shared_array_buffer_store) = &state.shared_array_buffer_store {
+      let backing_store = shared_array_buffer.get_backing_store();
+      let id = shared_array_buffer_store.insert(backing_store);
+      Some(id)
+    } else {
+      None
+    }
+  }
+
   fn write_host_object<'s>(
     &mut self,
     scope: &mut v8::HandleScope<'s>,
@@ -735,6 +753,23 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
 }
 
 impl<'a> v8::ValueDeserializerImpl for SerializeDeserialize<'a> {
+  fn get_shared_array_buffer_from_id<'s>(
+    &mut self,
+    scope: &mut HandleScope<'s>,
+    transfer_id: u32,
+  ) -> Option<Local<'s, SharedArrayBuffer>> {
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow_mut();
+    if let Some(shared_array_buffer_store) = &state.shared_array_buffer_store {
+      let backing_store = shared_array_buffer_store.take(transfer_id)?;
+      let shared_array_buffer =
+        v8::SharedArrayBuffer::with_backing_store(scope, &backing_store);
+      Some(shared_array_buffer)
+    } else {
+      None
+    }
+  }
+
   fn read_host_object<'s>(
     &mut self,
     scope: &mut v8::HandleScope<'s>,

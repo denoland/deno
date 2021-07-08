@@ -2,6 +2,7 @@
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
@@ -480,7 +481,7 @@ pub struct RenderPassSetIndexBufferArgs {
   buffer: u32,
   index_format: String,
   offset: u64,
-  size: u64,
+  size: Option<u64>,
 }
 
 pub fn op_webgpu_render_pass_set_index_buffer(
@@ -497,11 +498,20 @@ pub fn op_webgpu_render_pass_set_index_buffer(
     .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
+  let size = if let Some(size) = args.size {
+    Some(
+      std::num::NonZeroU64::new(size)
+        .ok_or_else(|| type_error("size must be larger than 0"))?,
+    )
+  } else {
+    None
+  };
+
   render_pass_resource.0.borrow_mut().set_index_buffer(
     buffer_resource.0,
     super::pipeline::serialize_index_format(args.index_format),
     args.offset,
-    std::num::NonZeroU64::new(args.size),
+    size,
   );
 
   Ok(WebGpuResult::empty())
@@ -514,7 +524,7 @@ pub struct RenderPassSetVertexBufferArgs {
   slot: u32,
   buffer: u32,
   offset: u64,
-  size: u64,
+  size: Option<u64>,
 }
 
 pub fn op_webgpu_render_pass_set_vertex_buffer(
@@ -531,12 +541,21 @@ pub fn op_webgpu_render_pass_set_vertex_buffer(
     .get::<WebGpuRenderPass>(args.render_pass_rid)
     .ok_or_else(bad_resource_id)?;
 
+  let size = if let Some(size) = args.size {
+    Some(
+      std::num::NonZeroU64::new(size)
+        .ok_or_else(|| type_error("size must be larger than 0"))?,
+    )
+  } else {
+    None
+  };
+
   wgpu_core::command::render_ffi::wgpu_render_pass_set_vertex_buffer(
     &mut render_pass_resource.0.borrow_mut(),
     args.slot,
     buffer_resource.0,
     args.offset,
-    std::num::NonZeroU64::new(args.size),
+    size,
   );
 
   Ok(WebGpuResult::empty())

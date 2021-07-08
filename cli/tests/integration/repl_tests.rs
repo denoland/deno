@@ -611,3 +611,24 @@ fn assign_underscore_error() {
   ));
   assert!(err.is_empty());
 }
+
+#[test]
+fn custom_inspect() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec![
+      r#"const o = {
+        [Symbol.for("Deno.customInspect")]() {
+          throw new Error('Oops custom inspect error');
+        },
+      };"#,
+      "o",
+    ]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+
+  assert!(out.contains("Oops custom inspect error"));
+  assert!(err.is_empty());
+}

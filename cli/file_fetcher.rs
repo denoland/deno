@@ -17,6 +17,7 @@ use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::FutureExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_web::BlobStore;
@@ -32,7 +33,6 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 static DENO_AUTH_TOKENS: &str = "DENO_AUTH_TOKENS";
 pub const SUPPORTED_SCHEMES: [&str; 5] =
@@ -64,12 +64,12 @@ struct FileCache(Arc<Mutex<HashMap<ModuleSpecifier, File>>>);
 
 impl FileCache {
   pub fn get(&self, specifier: &ModuleSpecifier) -> Option<File> {
-    let cache = self.0.lock().unwrap();
+    let cache = self.0.lock();
     cache.get(specifier).cloned()
   }
 
   pub fn insert(&self, specifier: ModuleSpecifier, file: File) -> Option<File> {
-    let mut cache = self.0.lock().unwrap();
+    let mut cache = self.0.lock();
     cache.insert(specifier, file)
   }
 }

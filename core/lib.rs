@@ -18,6 +18,7 @@ mod runtime;
 
 // Re-exports
 pub use futures;
+pub use parking_lot;
 pub use rusty_v8 as v8;
 pub use serde;
 pub use serde_json;
@@ -57,6 +58,7 @@ pub use crate::modules::ModuleLoader;
 pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::NoopModuleLoader;
+pub use crate::runtime::SharedArrayBufferStore;
 // TODO(bartlomieju): this struct should be implementation
 // detail nad not be public
 pub use crate::modules::RecursiveModuleLoad;

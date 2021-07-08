@@ -17,6 +17,7 @@
     ArrayBuffer,
     ArrayBufferIsView,
     ArrayIsArray,
+    ArrayPrototypeFilter,
     ArrayPrototypeMap,
     ArrayPrototypePop,
     ArrayPrototypePush,
@@ -25,6 +26,10 @@
     ObjectDefineProperty,
     ObjectFreeze,
     Promise,
+    PromiseAll,
+    PromisePrototypeCatch,
+    PromisePrototypeThen,
+    PromiseReject,
     PromiseResolve,
     Set,
     SetPrototypeEntries,
@@ -147,12 +152,14 @@
   }
 
   class GPUOutOfMemoryError extends Error {
+    name = "GPUOutOfMemoryError";
     constructor() {
-      super();
+      super("device out of memory");
     }
   }
 
   class GPUValidationError extends Error {
+    name = "GPUValidationError";
     /** @param {string} message */
     constructor(message) {
       const prefix = "Failed to construct 'GPUValidationError'";
@@ -207,7 +214,8 @@
    * @typedef InnerGPUAdapter
    * @property {number} rid
    * @property {GPUSupportedFeatures} features
-   * @property {GPUAdapterLimits} limits
+   * @property {GPUSupportedLimits} limits
+   * @property {boolean} isSoftware
    */
 
   /**
@@ -222,7 +230,7 @@
     adapter[_adapter] = {
       ...inner,
       features: createGPUSupportedFeatures(inner.features),
-      limits: createGPUAdapterLimits(inner.limits),
+      limits: createGPUSupportedLimits(inner.limits),
     };
     return adapter;
   }
@@ -243,10 +251,14 @@
       webidl.assertBranded(this, GPUAdapter);
       return this[_adapter].features;
     }
-    /** @returns {GPUAdapterLimits} */
+    /** @returns {GPUSupportedLimits} */
     get limits() {
       webidl.assertBranded(this, GPUAdapter);
       return this[_adapter].limits;
+    }
+    /** @returns {boolean} */
+    get isSoftware() {
+      return this[_adapter].isSoftware;
     }
 
     constructor() {
@@ -264,24 +276,24 @@
         prefix,
         context: "Argument 1",
       });
-      const nonGuaranteedFeatures = descriptor.nonGuaranteedFeatures ?? [];
-      for (const feature of nonGuaranteedFeatures) {
-        if (!SetPrototypeHas(this[_adapter].features, feature)) {
+      const requiredFeatures = descriptor.requiredFeatures ?? [];
+      for (const feature of requiredFeatures) {
+        if (!SetPrototypeHas(this[_adapter].features[_features], feature)) {
           throw new TypeError(
             `${prefix}: nonGuaranteedFeatures must be a subset of the adapter features.`,
           );
         }
       }
-      const nonGuaranteedLimits = descriptor.nonGuaranteedLimits;
-      // TODO(lucacasonato): validate nonGuaranteedLimits
+      const requiredLimits = descriptor.requiredLimits;
+      // TODO(lucacasonato): validate requiredLimits
 
       const { rid, features, limits } = await core.opAsync(
         "op_webgpu_request_device",
         {
           adapterRid: this[_adapter].rid,
           labe: descriptor.label,
-          nonGuaranteedFeatures,
-          nonGuaranteedLimits,
+          requiredFeatures,
+          requiredLimits,
         },
       );
 
@@ -311,9 +323,9 @@
 
   const _limits = Symbol("[[limits]]");
 
-  function createGPUAdapterLimits(features) {
-    /** @type {GPUAdapterLimits} */
-    const adapterFeatures = webidl.createBranded(GPUAdapterLimits);
+  function createGPUSupportedLimits(features) {
+    /** @type {GPUSupportedLimits} */
+    const adapterFeatures = webidl.createBranded(GPUSupportedLimits);
     adapterFeatures[_limits] = features;
     return adapterFeatures;
   }
@@ -334,12 +346,18 @@
    * @property {number} maxUniformBuffersPerShaderStage
    * @property {number} maxUniformBufferBindingSize
    * @property {number} maxStorageBufferBindingSize
+   * @property {number} minUniformBufferOffsetAlignment
+   * @property {number} minStorageBufferOffsetAlignment
    * @property {number} maxVertexBuffers
    * @property {number} maxVertexAttributes
    * @property {number} maxVertexBufferArrayStride
+   * @property {number} maxInterStageShaderComponents
+   * @property {number} maxComputeWorkgroupStorageSize
+   * @property {number} maxComputeWorkgroupInvocations
+   * @property {number} maxComputePerDimensionDispatchSize
    */
 
-  class GPUAdapterLimits {
+  class GPUSupportedLimits {
     /** @type {InnerAdapterLimits} */
     [_limits];
     constructor() {
@@ -347,72 +365,96 @@
     }
 
     get maxTextureDimension1D() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxTextureDimension1D;
     }
     get maxTextureDimension2D() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxTextureDimension2D;
     }
     get maxTextureDimension3D() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxTextureDimension3D;
     }
     get maxTextureArrayLayers() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxTextureArrayLayers;
     }
     get maxBindGroups() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxBindGroups;
     }
     get maxDynamicUniformBuffersPerPipelineLayout() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxDynamicUniformBuffersPerPipelineLayout;
     }
     get maxDynamicStorageBuffersPerPipelineLayout() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxDynamicStorageBuffersPerPipelineLayout;
     }
     get maxSampledTexturesPerShaderStage() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxSampledTexturesPerShaderStage;
     }
     get maxSamplersPerShaderStage() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxSamplersPerShaderStage;
     }
     get maxStorageBuffersPerShaderStage() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxStorageBuffersPerShaderStage;
     }
     get maxStorageTexturesPerShaderStage() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxStorageTexturesPerShaderStage;
     }
     get maxUniformBuffersPerShaderStage() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxUniformBuffersPerShaderStage;
     }
     get maxUniformBufferBindingSize() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxUniformBufferBindingSize;
     }
     get maxStorageBufferBindingSize() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxStorageBufferBindingSize;
     }
+    get minUniformBufferOffsetAlignment() {
+      webidl.assertBranded(this, GPUSupportedLimits);
+      return this[_limits].minUniformBufferOffsetAlignment;
+    }
+    get minStorageBufferOffsetAlignment() {
+      webidl.assertBranded(this, GPUSupportedLimits);
+      return this[_limits].minStorageBufferOffsetAlignment;
+    }
     get maxVertexBuffers() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxVertexBuffers;
     }
     get maxVertexAttributes() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxVertexAttributes;
     }
     get maxVertexBufferArrayStride() {
-      webidl.assertBranded(this, GPUAdapterLimits);
+      webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxVertexBufferArrayStride;
+    }
+    get maxInterStageShaderComponents() {
+      webidl.assertBranded(this, GPUSupportedLimits);
+      return this[_limits].maxInterStageShaderComponents;
+    }
+    get maxComputeWorkgroupStorageSize() {
+      webidl.assertBranded(this, GPUSupportedLimits);
+      return this[_limits].maxComputeWorkgroupStorageSize;
+    }
+    get maxComputeWorkgroupInvocations() {
+      webidl.assertBranded(this, GPUSupportedLimits);
+      return this[_limits].maxComputeWorkgroupInvocations;
+    }
+    get maxComputePerDimensionDispatchSize() {
+      webidl.assertBranded(this, GPUSupportedLimits);
+      return this[_limits].maxComputePerDimensionDispatchSize;
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
@@ -562,7 +604,7 @@
   /**
    * @typedef ErrorScope
    * @property {string} filter
-   * @property {GPUError | undefined} error
+   * @property {Promise<void>[]} operations
    */
 
   /**
@@ -617,42 +659,73 @@
 
     /** @param {{ type: string, value: string | null } | undefined} err */
     pushError(err) {
-      if (err) {
-        switch (err.type) {
-          case "lost":
-            this.isLost = true;
-            this.resolveLost(
-              createGPUDeviceLostInfo(undefined, "device was lost"),
-            );
-            break;
-          case "validation":
-          case "out-of-memory":
-            for (
-              let i = this.errorScopeStack.length - 1;
-              i >= 0;
-              i--
-            ) {
-              const scope = this.errorScopeStack[i];
-              if (scope.filter == err.type) {
-                if (!scope.error) {
-                  switch (err.type) {
-                    case "validation":
-                      scope.error = new GPUValidationError(
-                        err.value ?? "validation error",
-                      );
-                      break;
-                    case "out-of-memory":
-                      scope.error = new GPUOutOfMemoryError();
-                      break;
-                  }
-                }
-                return;
-              }
-            }
-            // TODO(lucacasonato): emit a UncapturedErrorEvent
-            break;
+      this.pushErrorPromise(PromiseResolve(err));
+    }
+
+    /** @param {Promise<{ type: string, value: string | null } | undefined>} promise */
+    pushErrorPromise(promise) {
+      const operation = PromisePrototypeThen(promise, (err) => {
+        if (err) {
+          switch (err.type) {
+            case "lost":
+              this.isLost = true;
+              this.resolveLost(
+                createGPUDeviceLostInfo(undefined, "device was lost"),
+              );
+              break;
+            case "validation":
+              return PromiseReject(
+                new GPUValidationError(err.value ?? "validation error"),
+              );
+            case "out-of-memory":
+              return PromiseReject(new GPUOutOfMemoryError());
+          }
         }
+      });
+
+      const validationStack = ArrayPrototypeFilter(
+        this.errorScopeStack,
+        ({ filter }) => filter == "validation",
+      );
+      const validationScope = validationStack[validationStack.length - 1];
+      const validationFilteredPromise = PromisePrototypeCatch(
+        operation,
+        (err) => {
+          if (err instanceof GPUValidationError) return PromiseReject(err);
+          return PromiseResolve();
+        },
+      );
+      if (validationScope) {
+        ArrayPrototypePush(
+          validationScope.operations,
+          validationFilteredPromise,
+        );
+      } else {
+        PromisePrototypeCatch(validationFilteredPromise, () => {
+          // TODO(lucacasonato): emit an UncapturedErrorEvent
+        });
       }
+      // prevent uncaptured promise rejections
+      PromisePrototypeCatch(validationFilteredPromise, (_err) => {});
+
+      const oomStack = ArrayPrototypeFilter(
+        this.errorScopeStack,
+        ({ filter }) => filter == "out-of-memory",
+      );
+      const oomScope = oomStack[oomStack.length - 1];
+      const oomFilteredPromise = PromisePrototypeCatch(operation, (err) => {
+        if (err instanceof GPUOutOfMemoryError) return PromiseReject(err);
+        return PromiseResolve();
+      });
+      if (oomScope) {
+        ArrayPrototypePush(oomScope.operations, oomFilteredPromise);
+      } else {
+        PromisePrototypeCatch(oomFilteredPromise, () => {
+          // TODO(lucacasonato): emit an UncapturedErrorEvent
+        });
+      }
+      // prevent uncaptured promise rejections
+      PromisePrototypeCatch(oomFilteredPromise, (_err) => {});
     }
   }
 
@@ -1079,6 +1152,7 @@
           compute: {
             module,
             entryPoint: descriptor.compute.entryPoint,
+            constants: descriptor.compute.constants,
           },
         },
       );
@@ -1296,7 +1370,7 @@
         context: "Argument 1",
       });
       const device = assertDevice(this, { prefix, context: "this" });
-      ArrayPrototypePush(device.errorScopeStack, { filter, error: undefined });
+      ArrayPrototypePush(device.errorScopeStack, { filter, operations: [] });
     }
 
     /**
@@ -1305,7 +1379,7 @@
     // deno-lint-ignore require-await
     async popErrorScope() {
       webidl.assertBranded(this, GPUDevice);
-      const prefix = "Failed to execute 'pushErrorScope' on 'GPUDevice'";
+      const prefix = "Failed to execute 'popErrorScope' on 'GPUDevice'";
       const device = assertDevice(this, { prefix, context: "this" });
       if (device.isLost) {
         throw new DOMException("Device has been lost.", "OperationError");
@@ -1313,11 +1387,16 @@
       const scope = ArrayPrototypePop(device.errorScopeStack);
       if (!scope) {
         throw new DOMException(
-          "There are no error scopes on that stack.",
+          "There are no error scopes on the error scope stack.",
           "OperationError",
         );
       }
-      return scope.error ?? null;
+      const operations = PromiseAll(scope.operations);
+      return PromisePrototypeThen(
+        operations,
+        () => PromiseResolve(null),
+        (err) => PromiseResolve(err),
+      );
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
@@ -1686,17 +1765,24 @@
 
       this[_mapMode] = mode;
       this[_state] = "mapping pending";
-      const { err } = await core.opAsync(
-        "op_webgpu_buffer_get_map_async",
-        {
-          bufferRid,
-          deviceRid: device.rid,
-          mode,
-          offset,
-          size: rangeSize,
-        },
+      const promise = PromisePrototypeThen(
+        core.opAsync(
+          "op_webgpu_buffer_get_map_async",
+          {
+            bufferRid,
+            deviceRid: device.rid,
+            mode,
+            offset,
+            size: rangeSize,
+          },
+        ),
+        ({ err }) => err,
       );
-      device.pushError(err);
+      device.pushErrorPromise(promise);
+      const err = await promise;
+      if (err) {
+        throw new DOMException("validation error occured", "OperationError");
+      }
       this[_state] = "mapped";
       this[_mappingRange] = [offset, offset + rangeSize];
       /** @type {[ArrayBuffer, number, number][] | null} */
@@ -1714,12 +1800,12 @@
         prefix,
         context: "Argument 1",
       });
-      size = size === undefined
-        ? undefined
-        : webidl.converters.GPUSize64(size, {
+      if (size !== undefined) {
+        size = webidl.converters.GPUSize64(size, {
           prefix,
           context: "Argument 2",
         });
+      }
       assertDevice(this, { prefix, context: "this" });
       const bufferRid = assertResource(this, { prefix, context: "this" });
       /** @type {number} */
@@ -1729,6 +1815,7 @@
       } else {
         rangeSize = size;
       }
+
       const mappedRanges = this[_mappedRanges];
       if (!mappedRanges) {
         throw new DOMException(`${prefix}: invalid state.`, "OperationError");
@@ -3711,7 +3798,7 @@
      * @param {number} offset
      * @param {number} size
      */
-    setIndexBuffer(buffer, indexFormat, offset = 0, size = 0) {
+    setIndexBuffer(buffer, indexFormat, offset = 0, size) {
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
         "Failed to execute 'setIndexBuffer' on 'GPURenderPassEncoder'";
@@ -3728,10 +3815,12 @@
         prefix,
         context: "Argument 3",
       });
-      size = webidl.converters.GPUSize64(size, {
-        prefix,
-        context: "Argument 4",
-      });
+      if (size !== undefined) {
+        size = webidl.converters.GPUSize64(size, {
+          prefix,
+          context: "Argument 4",
+        });
+      }
       const device = assertDevice(this[_encoder], {
         prefix,
         context: "encoder referenced by this",
@@ -3765,7 +3854,7 @@
      * @param {number} offset
      * @param {number} size
      */
-    setVertexBuffer(slot, buffer, offset = 0, size = 0) {
+    setVertexBuffer(slot, buffer, offset = 0, size) {
       webidl.assertBranded(this, GPURenderPassEncoder);
       const prefix =
         "Failed to execute 'setVertexBuffer' on 'GPURenderPassEncoder'";
@@ -3782,10 +3871,12 @@
         prefix,
         context: "Argument 3",
       });
-      size = webidl.converters.GPUSize64(size, {
-        prefix,
-        context: "Argument 4",
-      });
+      if (size !== undefined) {
+        size = webidl.converters.GPUSize64(size, {
+          prefix,
+          context: "Argument 4",
+        });
+      }
       const device = assertDevice(this[_encoder], {
         prefix,
         context: "encoder referenced by this",
@@ -5017,7 +5108,7 @@
     gpu: webidl.createBranded(GPU),
     GPU,
     GPUAdapter,
-    GPUAdapterLimits,
+    GPUSupportedLimits,
     GPUSupportedFeatures,
     GPUDevice,
     GPUQueue,

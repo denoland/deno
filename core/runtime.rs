@@ -38,6 +38,8 @@ use std::mem::forget;
 use std::option::Option;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
@@ -97,6 +99,36 @@ struct ModEvaluate {
   sender: mpsc::Sender<Result<(), AnyError>>,
 }
 
+#[derive(Default, Clone)]
+pub struct SharedArrayBufferStore(Arc<Mutex<SharedArrayBufferStoreInner>>);
+
+#[derive(Default)]
+pub struct SharedArrayBufferStoreInner {
+  buffers: HashMap<u32, v8::SharedRef<v8::BackingStore>>,
+  last_id: u32,
+}
+
+impl SharedArrayBufferStore {
+  pub(crate) fn insert(
+    &self,
+    backing_store: v8::SharedRef<v8::BackingStore>,
+  ) -> u32 {
+    let mut buffers = self.0.lock().unwrap();
+    let last_id = buffers.last_id;
+    buffers.buffers.insert(last_id, backing_store);
+    buffers.last_id += 1;
+    last_id
+  }
+
+  pub(crate) fn take(
+    &self,
+    id: u32,
+  ) -> Option<v8::SharedRef<v8::BackingStore>> {
+    let mut buffers = self.0.lock().unwrap();
+    buffers.buffers.remove(&id)
+  }
+}
+
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
 pub(crate) struct JsRuntimeState {
@@ -116,6 +148,7 @@ pub(crate) struct JsRuntimeState {
   pub(crate) pending_unref_ops: FuturesUnordered<PendingOpFuture>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
+  pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   waker: AtomicWaker,
 }
 
@@ -204,6 +237,12 @@ pub struct RuntimeOptions {
   /// V8 platform instance to use. Used when Deno initializes V8
   /// (which it only does once), otherwise it's silenty dropped.
   pub v8_platform: Option<v8::SharedRef<v8::Platform>>,
+
+  /// The buffer to use for transferring SharedArrayBuffers between isolates.
+  /// If multiple isolates should have the possibility of sharing
+  /// SharedArrayBuffers, they should use the same SharedArrayBufferStore. If no
+  /// SharedArrayBufferStore is specified, SharedArrayBuffer can not be serialized.
+  pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
 }
 
 impl JsRuntime {
@@ -294,6 +333,7 @@ impl JsRuntime {
       js_error_create_fn,
       pending_ops: FuturesUnordered::new(),
       pending_unref_ops: FuturesUnordered::new(),
+      shared_array_buffer_store: options.shared_array_buffer_store,
       op_state: op_state.clone(),
       have_unpolled_ops: false,
       waker: AtomicWaker::new(),

@@ -13,6 +13,7 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
+  const consoleInternal = window.__bootstrap.console;
   const { HTTP_TAB_OR_SPACE, regexMatcher } = window.__bootstrap.infra;
   const { extractBody, mixinBody } = window.__bootstrap.fetchBody;
   const { getLocationHref } = window.__bootstrap.location;
@@ -377,17 +378,20 @@
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
-      const inner = {
-        body: this.body,
-        bodyUsed: this.bodyUsed,
-        headers: this.headers,
-        ok: this.ok,
-        redirected: this.redirected,
-        status: this.status,
-        statusText: this.statusText,
-        url: this.url,
-      };
-      return `Response ${inspect(inner)}`;
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof Response,
+        keys: [
+          "body",
+          "bodyUsed",
+          "headers",
+          "ok",
+          "redirected",
+          "status",
+          "statusText",
+          "url",
+        ],
+      }));
     }
   }
 
@@ -437,6 +441,7 @@
 
   window.__bootstrap.fetch ??= {};
   window.__bootstrap.fetch.Response = Response;
+  window.__bootstrap.fetch.newInnerResponse = newInnerResponse;
   window.__bootstrap.fetch.toInnerResponse = toInnerResponse;
   window.__bootstrap.fetch.fromInnerResponse = fromInnerResponse;
   window.__bootstrap.fetch.redirectStatus = redirectStatus;

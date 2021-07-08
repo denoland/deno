@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use deno_core::error::type_error;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
@@ -8,7 +9,6 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 use deno_core::error::AnyError;
 use uuid::Uuid;
@@ -26,7 +26,7 @@ pub struct BlobStore {
 impl BlobStore {
   pub fn insert_part(&self, part: Box<dyn BlobPart + Send + Sync>) -> Uuid {
     let id = Uuid::new_v4();
-    let mut parts = self.parts.lock().unwrap();
+    let mut parts = self.parts.lock();
     parts.insert(id, Arc::new(part));
     id
   }
@@ -35,7 +35,7 @@ impl BlobStore {
     &self,
     id: &Uuid,
   ) -> Option<Arc<Box<dyn BlobPart + Send + Sync>>> {
-    let parts = self.parts.lock().unwrap();
+    let parts = self.parts.lock();
     let part = parts.get(&id);
     part.cloned()
   }
@@ -44,7 +44,7 @@ impl BlobStore {
     &self,
     id: &Uuid,
   ) -> Option<Arc<Box<dyn BlobPart + Send + Sync>>> {
-    let mut parts = self.parts.lock().unwrap();
+    let mut parts = self.parts.lock();
     parts.remove(&id)
   }
 
@@ -52,7 +52,7 @@ impl BlobStore {
     &self,
     mut url: Url,
   ) -> Result<Option<Arc<Blob>>, AnyError> {
-    let blob_store = self.object_urls.lock().unwrap();
+    let blob_store = self.object_urls.lock();
     url.set_fragment(None);
     Ok(blob_store.get(&url).cloned())
   }
@@ -70,14 +70,14 @@ impl BlobStore {
     let id = Uuid::new_v4();
     let url = Url::parse(&format!("blob:{}/{}", origin, id)).unwrap();
 
-    let mut blob_store = self.object_urls.lock().unwrap();
+    let mut blob_store = self.object_urls.lock();
     blob_store.insert(url.clone(), Arc::new(blob));
 
     url
   }
 
   pub fn remove_object_url(&self, url: &Url) {
-    let mut blob_store = self.object_urls.lock().unwrap();
+    let mut blob_store = self.object_urls.lock();
     blob_store.remove(&url);
   }
 }

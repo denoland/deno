@@ -15,6 +15,7 @@ use crate::module_graph::TypeLib;
 use crate::source_maps::SourceMapGetter;
 use crate::specifier_handler::FetchHandler;
 use crate::version;
+use deno_core::SharedArrayBufferStore;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
@@ -24,6 +25,7 @@ use deno_core::error::anyhow;
 use deno_core::error::get_custom_error_class;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::url::Url;
 use deno_core::ModuleSource;
@@ -35,7 +37,6 @@ use std::collections::HashSet;
 use std::env;
 use std::fs::read;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 /// This structure represents state of single "deno" program.
 ///
@@ -55,6 +56,7 @@ pub struct ProgramState {
   pub ca_data: Option<Vec<u8>>,
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
+  pub shared_array_buffer_store: SharedArrayBufferStore,
 }
 
 impl ProgramState {
@@ -81,6 +83,7 @@ impl ProgramState {
 
     let blob_store = BlobStore::default();
     let broadcast_channel = InMemoryBroadcastChannel::default();
+    let shared_array_buffer_store = SharedArrayBufferStore::default();
 
     let file_fetcher = FileFetcher::new(
       http_cache,
@@ -148,6 +151,7 @@ impl ProgramState {
       ca_data,
       blob_store,
       broadcast_channel,
+      shared_array_buffer_store,
     };
     Ok(Arc::new(program_state))
   }
@@ -180,7 +184,7 @@ impl ProgramState {
     let debug = self.flags.log_level == Some(log::Level::Debug);
     let maybe_config_file = self.maybe_config_file.clone();
     let reload_exclusions = {
-      let modules = self.modules.lock().unwrap();
+      let modules = self.modules.lock();
       modules.keys().cloned().collect::<HashSet<_>>()
     };
 
@@ -216,11 +220,11 @@ impl ProgramState {
       result_info.loadable_modules
     };
 
-    let mut loadable_modules = self.modules.lock().unwrap();
+    let mut loadable_modules = self.modules.lock();
     loadable_modules.extend(result_modules);
 
     if let Some(ref lockfile) = self.lockfile {
-      let g = lockfile.lock().unwrap();
+      let g = lockfile.lock();
       g.write()?;
     }
 
@@ -254,7 +258,7 @@ impl ProgramState {
     let debug = self.flags.log_level == Some(log::Level::Debug);
     let maybe_config_file = self.maybe_config_file.clone();
     let reload_exclusions = {
-      let modules = self.modules.lock().unwrap();
+      let modules = self.modules.lock();
       modules.keys().cloned().collect::<HashSet<_>>()
     };
 
@@ -290,11 +294,11 @@ impl ProgramState {
       result_info.loadable_modules
     };
 
-    let mut loadable_modules = self.modules.lock().unwrap();
+    let mut loadable_modules = self.modules.lock();
     loadable_modules.extend(result_modules);
 
     if let Some(ref lockfile) = self.lockfile {
-      let g = lockfile.lock().unwrap();
+      let g = lockfile.lock();
       g.write()?;
     }
 
@@ -306,7 +310,7 @@ impl ProgramState {
     specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<ModuleSource, AnyError> {
-    let modules = self.modules.lock().unwrap();
+    let modules = self.modules.lock();
     modules
       .get(&specifier)
       .map(|r| match r {

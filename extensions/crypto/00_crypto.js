@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
+/// <reference path="../../core/internal.d.ts" />
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
@@ -11,6 +12,28 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
+
+  const {
+    ArrayPrototypeFind,
+    ArrayBufferIsView,
+    ArrayPrototypeIncludes,
+    StringPrototypeToUpperCase,
+    Symbol,
+    SymbolFor,
+    SymbolToStringTag,
+    WeakMap,
+    WeakMapPrototypeGet,
+    WeakMapPrototypeSet,
+    Int8Array,
+    Uint8Array,
+    TypedArrayPrototypeSlice,
+    Int16Array,
+    Uint16Array,
+    Int32Array,
+    Uint32Array,
+    Uint8ClampedArray,
+    TypeError,
+  } = window.__bootstrap.primordials;
 
   // P-521 is not yet supported.
   const supportedNamedCurves = ["P-256", "P-384"];
@@ -63,7 +86,9 @@
     // 5.
     let desiredType = undefined;
     for (const key in registeredAlgorithms) {
-      if (key.toLowerCase() === algName.toLowerCase()) {
+      if (
+        StringPrototypeToUpperCase(key) === StringPrototypeToUpperCase(algName)
+      ) {
         algName = key;
         desiredType = registeredAlgorithms[key];
       }
@@ -93,7 +118,8 @@
 
       if (idlType === "BufferSource") {
         normalizedAlgorithm[member] = new Uint8Array(
-          (ArrayBuffer.isView(idlValue) ? idlValue.buffer : idlValue).slice(
+          TypedArrayPrototypeSlice(
+            (ArrayBufferIsView(idlValue) ? idlValue.buffer : idlValue),
             idlValue.byteOffset ?? 0,
             idlValue.byteLength,
           ),
@@ -107,20 +133,6 @@
     }
 
     return normalizedAlgorithm;
-  }
-
-  // Should match op_crypto_subtle_digest() in extensions/crypto/lib.rs
-  function digestToId(name) {
-    switch (name) {
-      case "SHA-1":
-        return 0;
-      case "SHA-256":
-        return 1;
-      case "SHA-384":
-        return 2;
-      case "SHA-512":
-        return 3;
-    }
   }
 
   const _handle = Symbol("[[handle]]");
@@ -175,7 +187,7 @@
       return "CryptoKey";
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [SymbolFor("Deno.customInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
           type: this.type,
@@ -215,7 +227,7 @@
    * @returns
    */
   function usageIntersection(a, b) {
-    return a.includes(b) ? [b] : [];
+    return ArrayPrototypeIncludes(a, b) ? [b] : [];
   }
 
   // TODO(lucacasonato): this should be moved to rust
@@ -245,18 +257,19 @@
         context: "Argument 2",
       });
 
-      if (ArrayBuffer.isView(data)) {
+      if (ArrayBufferIsView(data)) {
         data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
       } else {
         data = new Uint8Array(data);
       }
-      data = data.slice();
+
+      data = TypedArrayPrototypeSlice(data);
 
       algorithm = normalizeAlgorithm(algorithm, "digest");
 
       const result = await core.opAsync(
         "op_crypto_subtle_digest",
-        digestToId(algorithm.name),
+        algorithm.name,
         data,
       );
 
@@ -287,18 +300,18 @@
       });
 
       // 1.
-      if (ArrayBuffer.isView(data)) {
+      if (ArrayBufferIsView(data)) {
         data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
       } else {
         data = new Uint8Array(data);
       }
-      data = data.slice();
+      data = TypedArrayPrototypeSlice(data);
 
       // 2.
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "sign");
 
       const handle = key[_handle];
-      const keyData = KEY_STORE.get(handle);
+      const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
 
       // 8.
       if (normalizedAlgorithm.name !== key[_algorithm].name) {
@@ -309,7 +322,7 @@
       }
 
       // 9.
-      if (!key[_usages].includes("sign")) {
+      if (!ArrayPrototypeIncludes(key[_usages], "sign")) {
         throw new DOMException(
           "Key does not support the 'sign' operation.",
           "InvalidAccessError",
@@ -368,7 +381,7 @@
           // 2.
           const hashAlgorithm = normalizedAlgorithm.hash.name;
           const namedCurve = key[_algorithm].namedCurve;
-          if (!supportedNamedCurves.includes(namedCurve)) {
+          if (!ArrayPrototypeIncludes(supportedNamedCurves, namedCurve)) {
             throw new DOMException("Curve not supported", "NotSupportedError");
           }
 
@@ -458,7 +471,12 @@
       case "RSASSA-PKCS1-v1_5":
       case "RSA-PSS": {
         // 1.
-        if (usages.find((u) => !["sign", "verify"].includes(u)) !== undefined) {
+        if (
+          ArrayPrototypeFind(
+            usages,
+            (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
+          ) !== undefined
+        ) {
           throw new DOMException("Invalid key usages", "SyntaxError");
         }
 
@@ -472,7 +490,10 @@
           },
         );
         const handle = {};
-        KEY_STORE.set(handle, { type: "pkcs8", data: keyData });
+        WeakMapPrototypeSet(KEY_STORE, handle, {
+          type: "pkcs8",
+          data: keyData,
+        });
 
         // 4-8.
         const algorithm = {
@@ -506,18 +527,31 @@
       // TODO(lucacasonato): RSA-OAEP
       case "ECDSA": {
         // 1.
-        if (usages.find((u) => !["sign", "verify"].includes(u)) !== undefined) {
+        if (
+          ArrayPrototypeFind(
+            usages,
+            (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
+          ) !== undefined
+        ) {
           throw new DOMException("Invalid key usages", "SyntaxError");
         }
 
         // 2-3.
         const handle = {};
-        if (supportedNamedCurves.includes(normalizedAlgorithm.namedCurve)) {
+        if (
+          ArrayPrototypeIncludes(
+            supportedNamedCurves,
+            normalizedAlgorithm.namedCurve,
+          )
+        ) {
           const keyData = await core.opAsync("op_crypto_generate_key", {
             name: "ECDSA",
             namedCurve: normalizedAlgorithm.namedCurve,
           });
-          KEY_STORE.set(handle, { type: "pkcs8", data: keyData });
+          WeakMapPrototypeSet(KEY_STORE, handle, {
+            type: "pkcs8",
+            data: keyData,
+          });
         } else {
           throw new DOMException("Curve not supported", "NotSupportedError");
         }
@@ -557,7 +591,10 @@
       case "HMAC": {
         // 1.
         if (
-          usages.find((u) => !["sign", "verify"].includes(u)) !== undefined
+          ArrayPrototypeFind(
+            usages,
+            (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
+          ) !== undefined
         ) {
           throw new DOMException("Invalid key usages", "SyntaxError");
         }
@@ -579,7 +616,7 @@
           length,
         });
         const handle = {};
-        KEY_STORE.set(handle, { type: "raw", data: keyData });
+        WeakMapPrototypeSet(KEY_STORE, handle, { type: "raw", data: keyData });
 
         // 6-10.
         const algorithm = {
@@ -655,11 +692,11 @@
       return subtle;
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "Crypto";
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [SymbolFor("Deno.customInspect")](inspect) {
       return `${this.constructor.name} ${inspect({})}`;
     }
   }

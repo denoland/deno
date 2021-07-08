@@ -15,12 +15,15 @@ path = "lib.rs"
 
 [dependencies]
 deno_core = { version = "0.92.0", path = "../../core" }
+deno_websocket = { version = "0.15.0", path = "../websocket" }
 
+base64 = "0.13.0"
 bytes = "1"
 log = "0.4.14"
 lazy_static = "1.4.0"
 http = "0.2.3"
 hyper = { version = "0.14.9", features = ["server", "stream", "http1", "http2", "runtime"] }
+ring = "0.16.20"
 rustls = "0.19.0"
 serde = { version = "1.0.125", features = ["derive"] }
 tokio = { version = "1.8.0", features = ["full"] }

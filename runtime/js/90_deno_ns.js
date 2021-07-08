@@ -128,6 +128,7 @@
     serveHttp: __bootstrap.http.serveHttp,
     startTls: __bootstrap.tls.startTls,
     umask: __bootstrap.fs.umask,
+    upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
     futime: __bootstrap.fs.futime,
     futimeSync: __bootstrap.fs.futimeSync,
     utime: __bootstrap.fs.utime,

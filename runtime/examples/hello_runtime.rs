@@ -43,6 +43,7 @@ async fn main() -> Result<(), AnyError> {
     origin_storage_dir: None,
     blob_store: BlobStore::default(),
     broadcast_channel: InMemoryBroadcastChannel::default(),
+    shared_array_buffer_store: None,
   };
 
   let js_path =
