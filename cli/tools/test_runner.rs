@@ -9,7 +9,6 @@ use crate::fs_util::normalize_path;
 use crate::media_type::MediaType;
 use crate::module_graph;
 use crate::program_state::ProgramState;
-use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
