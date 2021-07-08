@@ -369,11 +369,11 @@ pub async fn run_tests(
       let mut fetch_permissions = Permissions::allow_all();
       let file = program_state
         .file_fetcher
-        .fetch(specifier, &mut fetch_permissions)
+        .fetch(&specifier, &mut fetch_permissions)
         .await?;
 
       let parsed_module =
-        ast::parse(file.specifier.as_str(), &file.source, &file.media_type)?;
+        ast::parse(&file.specifier.as_str(), &file.source, &file.media_type)?;
 
       let mut comments = parsed_module.get_comments();
       comments.sort_by_key(|comment| {
@@ -393,7 +393,7 @@ pub async fn run_tests(
 
           // TODO(caspervonb) generate an inline source map
           let mut source = String::new();
-          for line in lines_regex.captures_iter(text) {
+          for line in lines_regex.captures_iter(&text) {
             let text = line.get(1).unwrap();
             source.push_str(&format!("{}\n", text.as_str()));
           }
