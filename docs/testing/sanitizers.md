@@ -59,6 +59,7 @@ Deno.test({
   sanitizeExit: false,
 });
 
+// This test never runs, because the process exits during "false success" test
 Deno.test({
   name: "failing test",
   fn() {
