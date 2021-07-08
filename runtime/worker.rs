@@ -129,6 +129,8 @@ impl MainWorker {
       ops::process::init(),
       ops::signal::init(),
       ops::tty::init(),
+      deno_http::init(),
+      ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,
     ];
