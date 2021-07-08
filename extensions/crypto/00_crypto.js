@@ -50,7 +50,6 @@
     },
   };
 
-
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
   function normalizeAlgorithm(algorithm, op) {
     if (typeof algorithm == "string") {

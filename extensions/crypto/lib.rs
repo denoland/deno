@@ -386,9 +386,7 @@ pub async fn op_crypto_sign_key(
 pub struct VerifyArg {
   key: KeyData,
   algorithm: Algorithm,
-  salt_length: Option<u32>,
   hash: Option<CryptoHash>,
-  named_curve: Option<CryptoNamedCurve>,
   signature: ZeroCopyBuf,
 }
 
