@@ -444,7 +444,7 @@
 
       if (normalizedAlgorithm.name !== key[_algorithm].name) {
         throw new DOMException(
-          "Signing algorithm doesn't match key algorithm.",
+          "Verifying algorithm doesn't match key algorithm.",
           "InvalidAccessError",
         );
       }
@@ -458,7 +458,7 @@
 
       switch (normalizedAlgorithm.name) {
         case "RSASSA-PKCS1-v1_5": {
-          if (key[_type] !== "private") {
+          if (key[_type] !== "public") {
             throw new DOMException(
               "Key type not supported",
               "InvalidAccessError",
