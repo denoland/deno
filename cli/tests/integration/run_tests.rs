@@ -366,6 +366,12 @@ itest!(js_import_detect {
   exit_code: 0,
 });
 
+itest!(blob_gc_finalization {
+  args: "run blob_gc_finalization.js",
+  output: "blob_gc_finalization.js.out",
+  exit_code: 0,
+});
+
 itest!(lock_write_requires_lock {
   args: "run --lock-write some_file.ts",
   output: "lock_write_requires_lock.out",
@@ -860,6 +866,12 @@ itest!(top_level_await_circular {
   exit_code: 1,
 });
 
+// Regression test for https://github.com/denoland/deno/issues/11238.
+itest!(top_level_await_nested {
+  args: "run --allow-read top_level_await_nested/main.js",
+  output: "top_level_await_nested.out",
+});
+
 itest!(top_level_await_unresolved {
   args: "run top_level_await_unresolved.js",
   output: "top_level_await_unresolved.out",
@@ -998,10 +1010,11 @@ itest!(jsx_import_from_ts {
   output: "jsx_import_from_ts.ts.out",
 });
 
-itest!(single_compile_with_reload {
-  args: "run --reload --allow-read single_compile_with_reload.ts",
-  output: "single_compile_with_reload.ts.out",
-});
+// TODO(#11128): Flaky. Re-enable later.
+// itest!(single_compile_with_reload {
+//   args: "run --reload --allow-read single_compile_with_reload.ts",
+//   output: "single_compile_with_reload.ts.out",
+// });
 
 itest!(proto_exploit {
   args: "run proto_exploit.js",

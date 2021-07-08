@@ -2,6 +2,7 @@
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::oneshot;
 use deno_core::OpState;
@@ -56,7 +57,8 @@ pub fn op_webgpu_create_buffer(
   let descriptor = wgpu_core::resource::BufferDescriptor {
     label: args.label.map(Cow::from),
     size: args.size,
-    usage: wgpu_types::BufferUsage::from_bits(args.usage).unwrap(),
+    usage: wgpu_types::BufferUsage::from_bits(args.usage)
+      .ok_or_else(|| type_error("usage is not valid"))?,
     mapped_at_creation: args.mapped_at_creation.unwrap_or(false),
   };
 
@@ -117,7 +119,7 @@ pub async fn op_webgpu_buffer_get_map_async(
     }
 
     // TODO(lucacasonato): error handling
-    gfx_select!(buffer => instance.buffer_map_async(
+    let maybe_err = gfx_select!(buffer => instance.buffer_map_async(
       buffer,
       args.offset..(args.offset + args.size),
       wgpu_core::resource::BufferMapOperation {
@@ -129,7 +131,12 @@ pub async fn op_webgpu_buffer_get_map_async(
         callback: buffer_map_future_wrapper,
         user_data: sender_ptr,
       }
-    ))?;
+    ))
+    .err();
+
+    if maybe_err.is_some() {
+      return Ok(WebGpuResult::maybe_err(maybe_err));
+    }
   }
 
   let done = Rc::new(RefCell::new(false));
@@ -183,7 +190,7 @@ pub fn op_webgpu_buffer_get_mapped_range(
     gfx_select!(buffer => instance.buffer_get_mapped_range(
       buffer,
       args.offset,
-      std::num::NonZeroU64::new(args.size.unwrap_or(0))
+      args.size
     ))
     .map_err(|e| DomExceptionOperationError::new(&e.to_string()))?;
 

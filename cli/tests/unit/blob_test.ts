@@ -1,5 +1,10 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+  unitTest,
+} from "./test_util.ts";
 import { concat } from "../../../test_util/std/bytes/mod.ts";
 
 unitTest(function blobString(): void {
@@ -103,4 +108,13 @@ unitTest(async function blobArrayBuffer(): Promise<void> {
 unitTest(function blobConstructorNameIsBlob(): void {
   const blob = new Blob();
   assertEquals(blob.constructor.name, "Blob");
+});
+
+unitTest(function blobCustomInspectFunction(): void {
+  const blob = new Blob();
+  assertEquals(
+    Deno.inspect(blob),
+    `Blob { size: 0, type: "" }`,
+  );
+  assertStringIncludes(Deno.inspect(Blob.prototype), "Blob");
 });

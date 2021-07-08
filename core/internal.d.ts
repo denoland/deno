@@ -632,6 +632,7 @@ declare namespace __bootstrap {
     export const ObjectPrototypeToLocaleString: UncurryThis<
       typeof Object.prototype.toLocaleString
     >;
+    export const queueMicrotask: typeof globalThis.queueMicrotask;
     export const RangeError: typeof globalThis.RangeError;
     export const RangeErrorLength: typeof RangeError.length;
     export const RangeErrorName: typeof RangeError.name;
@@ -833,6 +834,10 @@ declare namespace __bootstrap {
     export const TypeErrorLength: typeof TypeError.length;
     export const TypeErrorName: typeof TypeError.name;
     export const TypeErrorPrototype: typeof TypeError.prototype;
+    export const TypedArrayFrom: (
+      constructor: Uint8ArrayConstructor,
+      arrayLike: ArrayLike<number>,
+    ) => Uint8Array;
     export const TypedArrayPrototypeCopyWithin: UncurryThis<
       typeof Uint8Array.prototype.copyWithin
     >;

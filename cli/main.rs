@@ -58,6 +58,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -80,7 +81,6 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::Mutex;
 use tools::test_runner;
 
 fn create_web_worker_callback(
@@ -123,8 +123,11 @@ fn create_web_worker_callback(
       ts_version: version::TYPESCRIPT.to_string(),
       no_color: !colors::use_color(),
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
-      blob_url_store: program_state.blob_url_store.clone(),
+      blob_store: program_state.blob_store.clone(),
       broadcast_channel: program_state.broadcast_channel.clone(),
+      shared_array_buffer_store: Some(
+        program_state.shared_array_buffer_store.clone(),
+      ),
     };
 
     let (mut worker, external_handle) = WebWorker::from_options(
@@ -209,8 +212,11 @@ pub fn create_main_worker(
         .join("location_data")
         .join(checksum::gen(&[loc.to_string().as_bytes()]))
     }),
-    blob_url_store: program_state.blob_url_store.clone(),
+    blob_store: program_state.blob_store.clone(),
     broadcast_channel: program_state.broadcast_channel.clone(),
+    shared_array_buffer_store: Some(
+      program_state.shared_array_buffer_store.clone(),
+    ),
   };
 
   let mut worker = MainWorker::from_options(main_module, permissions, &options);
@@ -992,6 +998,7 @@ async fn test_command(
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
+  shuffle: Option<u64>,
   concurrent_jobs: usize,
 ) -> Result<(), AnyError> {
   if let Some(ref coverage_dir) = flags.coverage_dir {
@@ -1180,6 +1187,7 @@ async fn test_command(
           quiet,
           true,
           filter.clone(),
+          shuffle,
           concurrent_jobs,
         )
         .map(|res| res.map(|_| ()))
@@ -1215,6 +1223,7 @@ async fn test_command(
       quiet,
       allow_none,
       filter,
+      shuffle,
       concurrent_jobs,
     )
     .await?;
@@ -1331,6 +1340,7 @@ fn get_subcommand(
       include,
       allow_none,
       filter,
+      shuffle,
       concurrent_jobs,
     } => test_command(
       flags,
@@ -1341,6 +1351,7 @@ fn get_subcommand(
       quiet,
       allow_none,
       filter,
+      shuffle,
       concurrent_jobs,
     )
     .boxed_local(),

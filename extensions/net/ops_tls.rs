@@ -28,6 +28,7 @@ use deno_core::futures::task::RawWakerVTable;
 use deno_core::futures::task::Waker;
 use deno_core::op_async;
 use deno_core::op_sync;
+use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
@@ -66,7 +67,6 @@ use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::sync::Weak;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
@@ -86,11 +86,11 @@ struct ClientSessionMemoryCache(Mutex<HashMap<Vec<u8>, Vec<u8>>>);
 
 impl StoresClientSessions for ClientSessionMemoryCache {
   fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
-    self.0.lock().unwrap().get(key).cloned()
+    self.0.lock().get(key).cloned()
   }
 
   fn put(&self, key: Vec<u8>, value: Vec<u8>) -> bool {
-    let mut sessions = self.0.lock().unwrap();
+    let mut sessions = self.0.lock();
     // TODO(bnoordhuis) Evict sessions LRU-style instead of arbitrarily.
     while sessions.len() >= 1024 {
       let key = sessions.keys().next().unwrap().clone();
@@ -511,7 +511,6 @@ impl ReadHalf {
       .unwrap_or_else(|_| panic!("Arc::<Shared>::try_unwrap() failed"))
       .tls_stream
       .into_inner()
-      .unwrap()
   }
 }
 
@@ -597,7 +596,7 @@ impl Shared {
     let shared_waker = self.new_shared_waker();
     let mut cx = Context::from_waker(&shared_waker);
 
-    let mut tls_stream = self.tls_stream.lock().unwrap();
+    let mut tls_stream = self.tls_stream.lock();
     f(Pin::new(&mut tls_stream), &mut cx)
   }
 
