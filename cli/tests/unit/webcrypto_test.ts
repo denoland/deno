@@ -21,7 +21,7 @@ unitTest(async function testGenerateRSAKey() {
   assert(keyPair.privateKey.usages.includes("sign"));
 });
 
-// TODO(@littledivy): Remove this when we have enable WPT for sign_verify
+// TODO(@littledivy): Remove this when we enable WPT for sign_verify
 unitTest(async function testSignVerify() {
   const subtle = window.crypto.subtle;
   assert(subtle);
