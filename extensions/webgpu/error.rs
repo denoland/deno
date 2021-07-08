@@ -28,6 +28,7 @@ use wgpu_core::resource::CreateQuerySetError;
 use wgpu_core::resource::CreateSamplerError;
 use wgpu_core::resource::CreateTextureError;
 use wgpu_core::resource::CreateTextureViewError;
+use wgpu_core::swap_chain::CreateSwapChainError;
 
 #[derive(Serialize)]
 pub struct WebGpuResult {
@@ -262,6 +263,15 @@ impl From<QueueWriteError> for WebGpuError {
   fn from(err: QueueWriteError) -> Self {
     match err {
       QueueWriteError::Queue(err) => err.into(),
+      err => WebGpuError::Validation(err.to_string()),
+    }
+  }
+}
+
+impl From<CreateSwapChainError> for WebGpuError {
+  fn from(err: CreateSwapChainError) -> Self {
+    match err {
+      CreateSwapChainError::Device(err) => err.into(),
       err => WebGpuError::Validation(err.to_string()),
     }
   }

@@ -69,6 +69,7 @@ pub mod queue;
 pub mod render_pass;
 pub mod sampler;
 pub mod shader;
+pub mod swapchain;
 pub mod texture;
 
 pub struct Unstable(pub bool);
@@ -207,6 +208,7 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
 #[serde(rename_all = "camelCase")]
 pub struct RequestAdapterArgs {
   power_preference: Option<String>,
+  // surface: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -243,6 +245,16 @@ pub async fn op_webgpu_request_adapter(
     state.borrow::<Instance>()
   };
 
+  // let surface = if let Some(surface_id) = args.surface {
+  //   let surface = state
+  //     .resource_table
+  //     .get::<impl raw_window_handle::HasRawWindowHandle>(surface_id)
+  //     .ok_or_else(bad_resource_id)?;
+  //   Some(instance.instance_create_surface(&surface, std::marker::PhantomData))
+  // } else {
+  //   None
+  // };
+
   let descriptor = wgpu_core::instance::RequestAdapterOptions {
     power_preference: match args.power_preference {
       Some(power_preference) => match power_preference.as_str() {
@@ -252,7 +264,7 @@ pub async fn op_webgpu_request_adapter(
       },
       None => Default::default(),
     },
-    compatible_surface: None, // windowless
+    compatible_surface: None,
   };
   let res = instance.request_adapter(
     &descriptor,
@@ -894,6 +906,19 @@ fn declare_webgpu_ops() -> Vec<(&'static str, Box<OpFn>)> {
     (
       "op_webgpu_create_shader_module",
       op_sync(shader::op_webgpu_create_shader_module),
+    ),
+    // swapchain
+    (
+      "op_webgpu_create_surface",
+      op_sync(swapchain::op_webgpu_create_surface),
+    ),
+    (
+      "op_webgpu_configure_swapchain",
+      op_sync(swapchain::op_webgpu_configure_swapchain),
+    ),
+    (
+      "op_webgpu_get_swapchain_preferred_format",
+      op_sync(swapchain::op_webgpu_get_swapchain_preferred_format),
     ),
   ]
 }
