@@ -148,7 +148,7 @@ jobs:
 
       - name: Setup GNU Tools (Linux)
         if: startsWith(matrix.os, 'ubuntu')
-        run: sudo apt-get install autoconf automake libtool libffi
+        run: sudo apt-get install autoconf automake libtool
 
       - name: Setup GNU Tools (Windows)
         uses: actions-rs/toolchain@v1
