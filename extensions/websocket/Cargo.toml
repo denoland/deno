@@ -20,5 +20,6 @@ serde = { version = "1.0.125", features = ["derive"] }
 tokio = { version = "1.8.0", features = ["full"] }
 tokio-rustls = "0.22.0"
 tokio-tungstenite = { version = "0.14.0", features = ["rustls-tls"] }
+hyper = { version = "0.14.9" }
 webpki = "0.21.4"
 webpki-roots = "0.21.1"
