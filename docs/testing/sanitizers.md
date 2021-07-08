@@ -45,7 +45,7 @@ Deno.test({
 ### Exit sanitizer
 
 There's also the exit sanitizer which ensures that tested code doesn't call
-Deno.exit() signaling a false test success.
+`Deno.exit()` signaling a false test success.
 
 This is enabled by default for all tests, but can be disabled by setting the
 `sanitizeExit` boolean to false in the test definition.
