@@ -11,15 +11,19 @@ use crate::module_graph;
 use crate::program_state::ProgramState;
 use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
-use crate::tools::installer::is_remote_url;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
+use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::located_script_name;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
+use rand::rngs::SmallRng;
+use rand::seq::SliceRandom;
+use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
 use std::path::Path;
@@ -226,6 +230,11 @@ pub(crate) fn is_supported(p: &Path) -> bool {
   }
 }
 
+pub fn is_remote_url(module_url: &str) -> bool {
+  let lower = module_url.to_lowercase();
+  lower.starts_with("http://") || lower.starts_with("https://")
+}
+
 pub fn collect_test_module_specifiers<P>(
   include: Vec<String>,
   root_path: &Path,
@@ -282,10 +291,12 @@ pub async fn run_test_file(
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
     program_state.coverage_dir
   {
-    let session = worker.create_inspector_session();
+    let session = worker.create_inspector_session().await;
     let coverage_dir = PathBuf::from(coverage_dir);
     let mut coverage_collector = CoverageCollector::new(coverage_dir, session);
-    coverage_collector.start_collecting().await?;
+    worker
+      .with_event_loop(coverage_collector.start_collecting().boxed_local())
+      .await?;
 
     Some(coverage_collector)
   } else {
@@ -295,16 +306,26 @@ pub async fn run_test_file(
   let execute_result = worker.execute_module(&main_module).await;
   execute_result?;
 
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('load'))",
+  )?;
 
   let execute_result = worker.execute_module(&test_module).await;
   execute_result?;
 
-  worker.run_event_loop().await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  worker
+    .run_event_loop(maybe_coverage_collector.is_none())
+    .await?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('unload'))",
+  )?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-    coverage_collector.stop_collecting().await?;
+    worker
+      .with_event_loop(coverage_collector.stop_collecting().boxed_local())
+      .await?;
   }
 
   Ok(())
@@ -325,15 +346,18 @@ pub async fn run_tests(
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
+  shuffle: Option<u64>,
   concurrent_jobs: usize,
 ) -> Result<bool, AnyError> {
-  if test_modules.is_empty() {
-    println!("No matching test modules found");
-    if !allow_none {
-      std::process::exit(1);
-    }
-    return Ok(false);
-  }
+  let test_modules = if let Some(seed) = shuffle {
+    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut test_modules = test_modules.clone();
+    test_modules.sort();
+    test_modules.shuffle(&mut rng);
+    test_modules
+  } else {
+    test_modules
+  };
 
   if !doc_modules.is_empty() {
     let mut test_programs = Vec::new();
@@ -342,7 +366,11 @@ pub async fn run_tests(
     let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
 
     for specifier in &doc_modules {
-      let file = program_state.file_fetcher.get_source(&specifier).unwrap();
+      let mut fetch_permissions = Permissions::allow_all();
+      let file = program_state
+        .file_fetcher
+        .fetch(&specifier, &mut fetch_permissions)
+        .await?;
 
       let parsed_module =
         ast::parse(&file.specifier.as_str(), &file.source, &file.media_type)?;
@@ -379,7 +407,7 @@ pub async fn run_tests(
           let location = parsed_module.get_location(&span);
 
           let specifier = deno_core::resolve_url_or_path(&format!(
-            "{}:{}-{}",
+            "{}${}-{}",
             location.filename,
             location.line,
             location.line + element.as_str().split('\n').count(),
@@ -408,6 +436,13 @@ pub async fn run_tests(
         program_state.maybe_import_map.clone(),
       )
       .await?;
+  } else if test_modules.is_empty() {
+    println!("No matching test modules found");
+    if !allow_none {
+      std::process::exit(1);
+    }
+
+    return Ok(false);
   }
 
   program_state
@@ -429,6 +464,7 @@ pub async fn run_tests(
   let test_options = json!({
       "disableLog": quiet,
       "filter": filter,
+      "shuffle": shuffle,
   });
 
   let test_module = deno_core::resolve_path("$deno$test.js")?;
@@ -641,5 +677,15 @@ mod tests {
     .map(|f| Url::parse(&f).unwrap())
     .collect();
     assert_eq!(matched_urls, expected);
+  }
+
+  #[test]
+  fn test_is_remote_url() {
+    assert!(is_remote_url("https://deno.land/std/http/file_server.ts"));
+    assert!(is_remote_url("http://deno.land/std/http/file_server.ts"));
+    assert!(is_remote_url("HTTP://deno.land/std/http/file_server.ts"));
+    assert!(is_remote_url("HTTp://deno.land/std/http/file_server.ts"));
+    assert!(!is_remote_url("file:///dev/deno_std/http/file_server.ts"));
+    assert!(!is_remote_url("./dev/deno_std/http/file_server.ts"));
   }
 }

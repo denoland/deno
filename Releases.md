@@ -6,6 +6,119 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.11.3 / 2021.06.29
+
+- fix(#10761): graph errors reported as diagnostics for `Deno.emit()` (#10767)
+- fix(core): don't panic on stdout/stderr write failures in Deno.core.print
+  (#11039)
+- fix(core): top-level-await is now always enabled (#11082)
+- fix(extensions/fetch): Filter out custom HOST headers (#11020)
+- fix(fetch): proxy body for requests created from other requests (#11093)
+- fix(http): remove unwrap() in HTTP bindings (#11130)
+- fix(inspect): eliminate panic inspecting event classes (#10979)
+- fix(lsp): reload import registries should not error when the module registries
+  directory does not exist (#11123)
+- fix(runtime): fix signal promise API (#11069)
+- fix(runtime/signal): use op_async_unref for op_signal_poll (#11097)
+- fix(url): use USVStrings in URLSearchParams constructor (#11101)
+- fix(webstorage): increase localStorage limit to 10MB (#11081)
+- fix: make readonly `Event` properties readonly (#11106)
+- fix: specify AbortSignal for native http requests (#11126)
+- chore: upgrade crates (#11007)
+- chore: use lsp to get parent process id (#11083)
+
+Release notes for std version 0.100.0:
+https://github.com/denoland/deno_std/releases/tag/0.100.0
+
+### 1.11.2 / 2021.06.21
+
+- feat(unstable, lsp): quick fix actions to ignore lint errors (#10627)
+- fix: add support for module es2020 to Deno.emit (#11065)
+- fix: align Console to spec (#10983)
+- fix: align URL / URLSearchParams to spec (#11005)
+- fix: align Websocket to spec (#11010)
+- fix: closing / aborting WritableStream is racy (#10982)
+- fix: fetch with method HEAD should not have body (#11003)
+- fix: Worker accepts specifier as URL (#11038)
+- fix(lsp): do not rename in strings and comments (#11041)
+
+### 1.11.1 / 2021.06.15
+
+- feat(unstable): add additional logging information in LSP (#10890)
+- fix: Deno.inspect should inspect the object the proxy represents rather than
+  the target of the proxy (#10977)
+- fix: early binding to dispatchEvent in workers (#10904)
+- fix: hang in Deno.serveHttp() (#10923)
+- fix: improve worker types (#10965)
+- fix: make WHATWG streams more compliant (#10967, #10970)
+- fix: poll connection after writing response chunk in Deno.serveHttp() (#10961)
+- fix: set minimum timeout to be 4 milliseconds (#10972)
+- fix(repl): Complete declarations (#10963)
+- fix(repl): Fix `undefined` result colour in cmd (#10964)
+
+Release notes for std version 0.99.0:
+https://github.com/denoland/deno_std/releases/tag/0.99.0
+
+### 1.11.0 / 2021.06.08
+
+- feat: Add FsWatcher interface (#10798)
+- feat: Add origin data dir to deno info (#10589)
+- feat: Initialize runtime_compiler ops in `deno compile` (#10052)
+- feat: Make 'deno lint' stable (#10851)
+- feat: Support data uri dynamic imports in `deno compile` (#9936)
+- feat: upgrade to TypeScript 4.3 (#9960)
+- feat(extensions): add BroadcastChannel
+- feat(extensions/crypto): implement randomUUID (#10848)
+- feat(extensions/crypto): implement subtle.digest (#10796)
+- feat(extensions/fetch): implement abort (#10863)
+- feat(extensions/web): Implement TextDecoderStream and TextEncoderStream
+  (#10842)
+- feat(lsp): add test code lens (#10874)
+- feat(lsp): registry auto discovery (#10813)
+- fix: change Crypto to interface (#10853)
+- fix: Support the stream option to TextDecoder#decode (#10805)
+- fix(extensions/fetch): implement newline normalization and escapes in the
+  multipart/form-data serializer (#10832)
+- fix(runtime/http): Hang in `Deno.serveHttp` (#10836)
+- fix(streams): expose ReadableByteStreamController &
+  TransformStreamDefaultController (#10855)
+
+Release notes for std version 0.98.0:
+https://github.com/denoland/deno_std/releases/tag/0.98.0
+
+### 1.10.3 / 2021.05.31
+
+- feat(lsp): diagnostics for deno types and triple-slash refs (#10699)
+- feat(lsp): provide X-Deno-Warning as a diagnostic (#10680)
+- feat(lsp): show hints from `deno_lint` in addition to messages (#10739)
+- feat(lsp): support formatting json and markdown files (#10180)
+- fix(cli): always allow documentation modules to be checked (#10581)
+- fix(cli): canonicalize coverage dir (#10364)
+- fix(cli): don't statically error on dynamic unmapped bare specifiers (#10618)
+- fix(cli): empty tsconfig.json file does not cause error (#10734)
+- fix(cli): support source maps with Deno.emit() and bundle (#10510)
+- fix(cli/dts): fix missing error class (NotSupported) in types (#10713)
+- fix(cli/install): support `file:` scheme URLs (#10562)
+- fix(cli/test): don't use reserved symbol `:` in specifier (#10751)
+- fix(cli/test): ensure coverage dir exists (#10717)
+- fix(cli/upgrade): modify download size paddings (#10639)
+- fix(runtime/http): expose nextRequest() errors in respondWith() (#10384)
+- fix(runtime/http): fix empty blob response (#10689)
+- fix(serde_v8): remove intentional deserialization error on non-utf8 strings
+  (#10156)
+- fix(ext/fetch): fix error message of Request constructor (#10772)
+- fix(ext/fetch): make prototype properties writable (#10769)
+- fix(ext/fetch): remove unimplemented Request attributes (#10784)
+- fix(ext/file): update File constructor following the spec (#10760)
+- fix(ext/webstorage): use opstate for sqlite connection (#10692)
+- fix(lsp): deps diagnostics include data property (#10696)
+- fix(lsp): ignore type definition not found diagnostic (#10610)
+- fix(lsp): local module import added by code action now includes the file
+  extension (#10778)
+- fix(lsp): make failed to load config error descriptive (#10685)
+- fix(lsp): memoize script versions per tsc request (#10601)
+- fix(lsp): re-enable the per resource configuration without a deadlock (#10625)
+
 ### 1.10.2 / 2021.05.17
 
 - fix: static import permissions in dynamic imports

@@ -1,11 +1,24 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+/// <reference path="../../core/internal.d.ts" />
+
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
+  const {
+    Symbol,
+    SymbolFor,
+    ObjectDefineProperty,
+    ObjectFromEntries,
+    ObjectEntries,
+    ReflectGet,
+    Proxy,
+  } = window.__bootstrap.primordials;
 
-  const _rid = Symbol("[[rid]]");
+  const _persistent = Symbol("[[persistent]]");
 
   class Storage {
-    [_rid];
+    [_persistent];
 
     constructor() {
       webidl.illegalConstructor();
@@ -13,7 +26,7 @@
 
     get length() {
       webidl.assertBranded(this, Storage);
-      return core.opSync("op_webstorage_length", this[_rid]);
+      return core.opSync("op_webstorage_length", this[_persistent]);
     }
 
     key(index) {
@@ -25,10 +38,7 @@
         context: "Argument 1",
       });
 
-      return core.opSync("op_webstorage_key", {
-        rid: this[_rid],
-        index,
-      });
+      return core.opSync("op_webstorage_key", index, this[_persistent]);
     }
 
     setItem(key, value) {
@@ -45,10 +55,9 @@
       });
 
       core.opSync("op_webstorage_set", {
-        rid: this[_rid],
         keyName: key,
         keyValue: value,
-      });
+      }, this[_persistent]);
     }
 
     getItem(key) {
@@ -60,10 +69,7 @@
         context: "Argument 1",
       });
 
-      return core.opSync("op_webstorage_get", {
-        rid: this[_rid],
-        keyName: key,
-      });
+      return core.opSync("op_webstorage_get", key, this[_persistent]);
     }
 
     removeItem(key) {
@@ -75,25 +81,20 @@
         context: "Argument 1",
       });
 
-      core.opSync("op_webstorage_remove", {
-        rid: this[_rid],
-        keyName: key,
-      });
+      core.opSync("op_webstorage_remove", key, this[_persistent]);
     }
 
     clear() {
       webidl.assertBranded(this, Storage);
-      core.opSync("op_webstorage_clear", this[_rid]);
+      core.opSync("op_webstorage_clear", this[_persistent]);
     }
   }
 
   function createStorage(persistent) {
     if (persistent) window.location;
 
-    const rid = core.opSync("op_webstorage_open", persistent);
-
     const storage = webidl.createBranded(Storage);
-    storage[_rid] = rid;
+    storage[_persistent] = persistent;
 
     const proxy = new Proxy(storage, {
       deleteProperty(target, key) {
@@ -106,7 +107,7 @@
       },
       defineProperty(target, key, descriptor) {
         if (typeof key == "symbol") {
-          Object.defineProperty(target, key, descriptor);
+          ObjectDefineProperty(target, key, descriptor);
         } else {
           target.setItem(key, descriptor.value);
         }
@@ -115,14 +116,14 @@
       get(target, key) {
         if (typeof key == "symbol") return target[key];
         if (key in target) {
-          return Reflect.get(...arguments);
+          return ReflectGet(...arguments);
         } else {
           return target.getItem(key) ?? undefined;
         }
       },
       set(target, key, value) {
         if (typeof key == "symbol") {
-          Object.defineProperty(target, key, {
+          ObjectDefineProperty(target, key, {
             value,
             configurable: true,
           });
@@ -135,7 +136,7 @@
         return (typeof target.getItem(p)) === "string";
       },
       ownKeys() {
-        return core.opSync("op_webstorage_iterate_keys", rid);
+        return core.opSync("op_webstorage_iterate_keys", persistent);
       },
       getOwnPropertyDescriptor(target, key) {
         if (arguments.length === 1) {
@@ -157,11 +158,11 @@
       },
     });
 
-    proxy[Symbol.for("Deno.customInspect")] = function (inspect) {
+    proxy[SymbolFor("Deno.customInspect")] = function (inspect) {
       return `${this.constructor.name} ${
         inspect({
           length: this.length,
-          ...Object.fromEntries(Object.entries(proxy)),
+          ...ObjectFromEntries(ObjectEntries(proxy)),
         })
       }`;
     };

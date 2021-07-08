@@ -2,10 +2,11 @@
 "use strict";
 ((window) => {
   const { stdin } = window.__bootstrap.files;
+  const { ArrayPrototypePush, StringPrototypeCharCodeAt, Uint8Array } =
+    window.__bootstrap.primordials;
   const { isatty } = window.__bootstrap.tty;
-  const LF = "\n".charCodeAt(0);
-  const CR = "\r".charCodeAt(0);
-  const decoder = new TextDecoder();
+  const LF = StringPrototypeCharCodeAt("\n", 0);
+  const CR = StringPrototypeCharCodeAt("\r", 0);
   const core = window.Deno.core;
 
   function alert(message = "Alert") {
@@ -60,7 +61,7 @@
         if (c[0] === LF) {
           break;
         }
-        buf.push(CR);
+        ArrayPrototypePush(buf, CR);
         if (n === null || n === 0) {
           break;
         }
@@ -68,9 +69,9 @@
       if (c[0] === LF) {
         break;
       }
-      buf.push(c[0]);
+      ArrayPrototypePush(buf, c[0]);
     }
-    return decoder.decode(new Uint8Array(buf));
+    return core.decode(new Uint8Array(buf));
   }
 
   window.__bootstrap.prompt = {

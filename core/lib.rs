@@ -6,6 +6,7 @@ pub mod error;
 mod extensions;
 mod flags;
 mod gotham_state;
+mod inspector;
 mod module_specifier;
 mod modules;
 mod normalize_path;
@@ -17,10 +18,13 @@ mod runtime;
 
 // Re-exports
 pub use futures;
+pub use parking_lot;
 pub use rusty_v8 as v8;
 pub use serde;
 pub use serde_json;
+pub use serde_v8;
 pub use serde_v8::Buffer as ZeroCopyBuf;
+pub use serde_v8::ByteString;
 pub use url;
 
 pub use crate::async_cancel::CancelFuture;
@@ -37,6 +41,9 @@ pub use crate::async_cell::AsyncRefFuture;
 pub use crate::async_cell::RcLike;
 pub use crate::async_cell::RcRef;
 pub use crate::flags::v8_set_flags;
+pub use crate::inspector::InspectorSessionProxy;
+pub use crate::inspector::JsRuntimeInspector;
+pub use crate::inspector::LocalInspectorSession;
 pub use crate::module_specifier::resolve_import;
 pub use crate::module_specifier::resolve_path;
 pub use crate::module_specifier::resolve_url;
@@ -51,6 +58,9 @@ pub use crate::modules::ModuleLoader;
 pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::NoopModuleLoader;
+pub use crate::runtime::SharedArrayBufferStore;
+// TODO(bartlomieju): this struct should be implementation
+// detail nad not be public
 pub use crate::modules::RecursiveModuleLoad;
 pub use crate::normalize_path::normalize_path;
 pub use crate::ops::serialize_op_result;
@@ -67,6 +77,7 @@ pub use crate::ops_builtin::op_close;
 pub use crate::ops_builtin::op_print;
 pub use crate::ops_builtin::op_resources;
 pub use crate::ops_json::op_async;
+pub use crate::ops_json::op_async_unref;
 pub use crate::ops_json::op_sync;
 pub use crate::resources::Resource;
 pub use crate::resources::ResourceId;
@@ -79,9 +90,26 @@ pub use crate::runtime::Snapshot;
 // pub use crate::runtime_modules::include_js_files!;
 pub use crate::extensions::Extension;
 pub use crate::extensions::OpMiddlewareFn;
+pub use crate::extensions::OpPair;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()
+}
+
+/// A helper macro that will return a call site in Rust code. Should be
+/// used when executing internal one-line scripts for JsRuntime lifecycle.
+///
+/// Returns a string in form of: "[deno:<filename>:<line>:<column>]"
+#[macro_export]
+macro_rules! located_script_name {
+  () => {
+    format!(
+      "[deno:{}:{}:{}]",
+      std::file!(),
+      std::line!(),
+      std::column!()
+    );
+  };
 }
 
 #[cfg(test)]

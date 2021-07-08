@@ -2,6 +2,7 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
+/// <reference lib="deno.net" />
 
 /** Deno provides extra properties on `import.meta`.  These are included here
  * to ensure that these are still available when using the Deno namespace in
@@ -124,6 +125,24 @@ declare namespace Deno {
 
   /** The current process id of the runtime. */
   export const pid: number;
+
+  /**
+   * The pid of the current process's parent.
+   */
+  export const ppid: number;
+
+  export interface MemoryUsage {
+    rss: number;
+    heapTotal: number;
+    heapUsed: number;
+    external: number;
+  }
+
+  /**
+   * Returns an object describing the memory usage of the Deno process measured
+   * in bytes.
+   */
+  export function memoryUsage(): MemoryUsage;
 
   /** Reflects the `NO_COLOR` environment variable at program start.
    *
@@ -283,7 +302,7 @@ declare namespace Deno {
    *
    * Requires --allow-read.
    */
-  export function chdir(directory: string): void;
+  export function chdir(directory: string | URL): void;
 
   /**
    * Return a string representing the current working directory.
@@ -357,9 +376,9 @@ declare namespace Deno {
   export interface ReaderSync {
     /** Reads up to `p.byteLength` bytes into `p`. It resolves to the number
      * of bytes read (`0` < `n` <= `p.byteLength`) and rejects if any error
-     * encountered. Even if `read()` returns `n` < `p.byteLength`, it may use
+     * encountered. Even if `readSync()` returns `n` < `p.byteLength`, it may use
      * all of `p` as scratch space during the call. If some data is available
-     * but not `p.byteLength` bytes, `read()` conventionally returns what is
+     * but not `p.byteLength` bytes, `readSync()` conventionally returns what is
      * available instead of waiting for more.
      *
      * When `readSync()` encounters end-of-file condition, it returns EOF
@@ -878,6 +897,15 @@ declare namespace Deno {
     mode?: number;
   }
 
+  export interface ReadFileOptions {
+    /**
+     * An abort signal to allow cancellation of the file read operation.
+     * If the signal becomes aborted the readFile operation will be stopped
+     * and the promise returned will be rejected with an AbortError.
+     */
+    signal?: AbortSignal;
+  }
+
   /**
    *
    *  Check if a given resource id (`rid`) is a TTY.
@@ -1357,7 +1385,10 @@ declare namespace Deno {
    * they are. It's always an error to rename anything to a non-empty directory.
    *
    * Requires `allow-read` and `allow-write` permissions. */
-  export function renameSync(oldpath: string, newpath: string): void;
+  export function renameSync(
+    oldpath: string | URL,
+    newpath: string | URL,
+  ): void;
 
   /** Renames (moves) `oldpath` to `newpath`.  Paths may be files or directories.
    * If `newpath` already exists and is not a directory, `rename()` replaces it.
@@ -1374,7 +1405,10 @@ declare namespace Deno {
    * they are. It's always an error to rename anything to a non-empty directory.
    *
    * Requires `allow-read` and `allow-write` permission. */
-  export function rename(oldpath: string, newpath: string): Promise<void>;
+  export function rename(
+    oldpath: string | URL,
+    newpath: string | URL,
+  ): Promise<void>;
 
   /** Synchronously reads and returns the entire contents of a file as utf8
    *  encoded string. Reading a directory throws an error.
@@ -1396,7 +1430,10 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-read` permission. */
-  export function readTextFile(path: string | URL): Promise<string>;
+  export function readTextFile(
+    path: string | URL,
+    options?: ReadFileOptions,
+  ): Promise<string>;
 
   /** Synchronously reads and returns the entire contents of a file as an array
    * of bytes. `TextDecoder` can be used to transform the bytes to string if
@@ -1422,7 +1459,10 @@ declare namespace Deno {
    * ```
    *
    * Requires `allow-read` permission. */
-  export function readFile(path: string | URL): Promise<Uint8Array>;
+  export function readFile(
+    path: string | URL,
+    options?: ReadFileOptions,
+  ): Promise<Uint8Array>;
 
   /** A FileInfo describes a file and is returned by `stat`, `lstat`,
    * `statSync`, `lstatSync`. */
@@ -1780,149 +1820,6 @@ declare namespace Deno {
    * Requires `allow-write` permission. */
   export function truncate(name: string, len?: number): Promise<void>;
 
-  export interface NetAddr {
-    transport: "tcp" | "udp";
-    hostname: string;
-    port: number;
-  }
-
-  export interface UnixAddr {
-    transport: "unix" | "unixpacket";
-    path: string;
-  }
-
-  export type Addr = NetAddr | UnixAddr;
-
-  /** A generic network listener for stream-oriented protocols. */
-  export interface Listener extends AsyncIterable<Conn> {
-    /** Waits for and resolves to the next connection to the `Listener`. */
-    accept(): Promise<Conn>;
-    /** Close closes the listener. Any pending accept promises will be rejected
-     * with errors. */
-    close(): void;
-    /** Return the address of the `Listener`. */
-    readonly addr: Addr;
-
-    /** Return the rid of the `Listener`. */
-    readonly rid: number;
-
-    [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
-  }
-
-  export interface Conn extends Reader, Writer, Closer {
-    /** The local address of the connection. */
-    readonly localAddr: Addr;
-    /** The remote address of the connection. */
-    readonly remoteAddr: Addr;
-    /** The resource ID of the connection. */
-    readonly rid: number;
-    /** Shuts down (`shutdown(2)`) the write side of the connection. Most
-     * callers should just use `close()`. */
-    closeWrite(): Promise<void>;
-  }
-
-  export interface ListenOptions {
-    /** The port to listen on. */
-    port: number;
-    /** A literal IP address or host name that can be resolved to an IP address.
-     * If not specified, defaults to `0.0.0.0`. */
-    hostname?: string;
-  }
-
-  /** Listen announces on the local transport address.
-   *
-   * ```ts
-   * const listener1 = Deno.listen({ port: 80 })
-   * const listener2 = Deno.listen({ hostname: "192.0.2.1", port: 80 })
-   * const listener3 = Deno.listen({ hostname: "[2001:db8::1]", port: 80 });
-   * const listener4 = Deno.listen({ hostname: "golang.org", port: 80, transport: "tcp" });
-   * ```
-   *
-   * Requires `allow-net` permission. */
-  export function listen(
-    options: ListenOptions & { transport?: "tcp" },
-  ): Listener;
-
-  export interface ListenTlsOptions extends ListenOptions {
-    /** Server certificate file. */
-    certFile: string;
-    /** Server public key file. */
-    keyFile: string;
-
-    transport?: "tcp";
-  }
-
-  /** Listen announces on the local transport address over TLS (transport layer
-   * security).
-   *
-   * ```ts
-   * const lstnr = Deno.listenTls({ port: 443, certFile: "./server.crt", keyFile: "./server.key" });
-   * ```
-   *
-   * Requires `allow-net` permission. */
-  export function listenTls(options: ListenTlsOptions): Listener;
-
-  export interface ConnectOptions {
-    /** The port to connect to. */
-    port: number;
-    /** A literal IP address or host name that can be resolved to an IP address.
-     * If not specified, defaults to `127.0.0.1`. */
-    hostname?: string;
-    transport?: "tcp";
-  }
-
-  /**
-   * Connects to the hostname (default is "127.0.0.1") and port on the named
-   * transport (default is "tcp"), and resolves to the connection (`Conn`).
-   *
-   * ```ts
-   * const conn1 = await Deno.connect({ port: 80 });
-   * const conn2 = await Deno.connect({ hostname: "192.0.2.1", port: 80 });
-   * const conn3 = await Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
-   * const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" });
-   * ```
-   *
-   * Requires `allow-net` permission for "tcp". */
-  export function connect(options: ConnectOptions): Promise<Conn>;
-
-  export interface ConnectTlsOptions {
-    /** The port to connect to. */
-    port: number;
-    /** A literal IP address or host name that can be resolved to an IP address.
-     * If not specified, defaults to `127.0.0.1`. */
-    hostname?: string;
-    /** Server certificate file. */
-    certFile?: string;
-  }
-
-  /** Establishes a secure connection over TLS (transport layer security) using
-   * an optional cert file, hostname (default is "127.0.0.1") and port.  The
-   * cert file is optional and if not included Mozilla's root certificates will
-   * be used (see also https://github.com/ctz/webpki-roots for specifics)
-   *
-   * ```ts
-   * const conn1 = await Deno.connectTls({ port: 80 });
-   * const conn2 = await Deno.connectTls({ certFile: "./certs/my_custom_root_CA.pem", hostname: "192.0.2.1", port: 80 });
-   * const conn3 = await Deno.connectTls({ hostname: "[2001:db8::1]", port: 80 });
-   * const conn4 = await Deno.connectTls({ certFile: "./certs/my_custom_root_CA.pem", hostname: "golang.org", port: 80});
-   * ```
-   *
-   * Requires `allow-net` permission.
-   */
-  export function connectTls(options: ConnectTlsOptions): Promise<Conn>;
-
-  /** Shutdown socket send operations.
-   *
-   * Matches behavior of POSIX shutdown(3).
-   *
-   * ```ts
-   * const listener = Deno.listen({ port: 80 });
-   * const conn = await listener.accept();
-   * Deno.shutdown(conn.rid);
-   * ```
-   */
-  export function shutdown(rid: number): Promise<void>;
-
   export interface Metrics {
     opsDispatched: number;
     opsDispatchedSync: number;
@@ -1984,6 +1881,25 @@ declare namespace Deno {
     paths: string[];
   }
 
+  /**
+   * FsWatcher is returned by `Deno.watchFs` function when you start watching
+   * the file system. You can iterate over this interface to get the file
+   * system events, and also you can stop watching the file system by calling
+   * `.close()` method.
+   */
+  export interface FsWatcher extends AsyncIterable<FsEvent> {
+    /** The resource id of the `FsWatcher`. */
+    readonly rid: number;
+    /** Stops watching the file system and closes the watcher resource. */
+    close(): void;
+    /** @deprecated
+     * Stops watching the file system and closes the watcher resource.
+     * Will be removed at 2.0.
+     */
+    return?(value?: any): Promise<IteratorResult<FsEvent>>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<FsEvent>;
+  }
+
   /** Watch for file system events against one or more `paths`, which can be files
    * or directories.  These paths must exist already.  One user action (e.g.
    * `touch test.file`) can  generate multiple file system events.  Likewise,
@@ -2002,15 +1918,13 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission.
    *
-   * Call `watcher.return()` to stop watching.
+   * Call `watcher.close()` to stop watching.
    *
    * ```ts
    * const watcher = Deno.watchFs("/");
    *
    * setTimeout(() => {
-   *   if (watcher.return) {
-   *     watcher.return();
-   *   }
+   *   watcher.close();
    * }, 5000);
    *
    * for await (const event of watcher) {
@@ -2021,7 +1935,7 @@ declare namespace Deno {
   export function watchFs(
     paths: string | string[],
     options?: { recursive: boolean },
-  ): AsyncIterableIterator<FsEvent>;
+  ): FsWatcher;
 
   export class Process<T extends RunOptions = RunOptions> {
     readonly rid: number;
@@ -2172,14 +2086,14 @@ declare namespace Deno {
    * console.log(obj);  // prints same value as objAsString, e.g. { a: 10, b: "hello" }
    * ```
    *
-   * You can also register custom inspect functions, via the `customInspect` Deno
-   * symbol on objects, to control and customize the output.
+   * You can also register custom inspect functions, via the symbol `Symbol.for("Deno.customInspect")`,
+   * on objects, to control and customize the output.
    *
    * ```ts
    * class A {
    *   x = 10;
    *   y = "hello";
-   *   [Deno.customInspect](): string {
+   *   [Symbol.for("Deno.customInspect")](): string {
    *     return "x=" + this.x + ", y=" + this.y;
    *   }
    * }
@@ -2367,9 +2281,13 @@ declare namespace Deno {
    */
   export const args: string[];
 
-  /** A symbol which can be used as a key for a custom method which will be
+  /**
+   * @deprecated A symbol which can be used as a key for a custom method which will be
    * called when `Deno.inspect()` is called, or when the object is logged to
-   * the console. */
+   * the console.
+   *
+   * This symbol is deprecated since 1.9. Use `Symbol.for("Deno.customInspect")` instead.
+   */
   export const customInspect: unique symbol;
 
   /** The URL of the entrypoint module entered from the command-line. */
@@ -2391,8 +2309,8 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission. */
   export function symlinkSync(
-    oldpath: string,
-    newpath: string,
+    oldpath: string | URL,
+    newpath: string | URL,
     options?: SymlinkOptions,
   ): void;
 
@@ -2408,8 +2326,8 @@ declare namespace Deno {
    *
    * Requires `allow-write` permission. */
   export function symlink(
-    oldpath: string,
-    newpath: string,
+    oldpath: string | URL,
+    newpath: string | URL,
     options?: SymlinkOptions,
   ): Promise<void>;
 

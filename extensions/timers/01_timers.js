@@ -3,6 +3,24 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const {
+    ArrayPrototypeIndexOf,
+    ArrayPrototypePush,
+    ArrayPrototypeShift,
+    ArrayPrototypeSplice,
+    DateNow,
+    Error,
+    FunctionPrototypeBind,
+    Map,
+    MapPrototypeDelete,
+    MapPrototypeGet,
+    MapPrototypeHas,
+    MapPrototypeSet,
+    MathMax,
+    Number,
+    String,
+    TypeError,
+  } = window.__bootstrap.primordials;
 
   // Shamelessly cribbed from extensions/fetch/11_streams.js
   class AssertionError extends Error {
@@ -290,7 +308,6 @@
   }
 
   const { console } = globalThis;
-  const OriginalDateNow = Date.now;
 
   // Timeout values > TIMEOUT_MAX are set to 1.
   const TIMEOUT_MAX = 2 ** 31 - 1;
@@ -318,7 +335,7 @@
  * before next macrotask timer callback is invoked. */
   function handleTimerMacrotask() {
     if (pendingFireTimers.length > 0) {
-      fire(pendingFireTimers.shift());
+      fire(ArrayPrototypeShift(pendingFireTimers));
       return pendingFireTimers.length === 0;
     }
     return true;
@@ -348,7 +365,7 @@
   }
 
   function prepareReadyTimers() {
-    const now = OriginalDateNow();
+    const now = DateNow();
     // Bail out if we're not expecting the global timer to fire.
     if (globalTimeoutDue === null || pendingEvents > 0) {
       return;
@@ -363,7 +380,7 @@
         // With the list dropped, the timer is no longer scheduled.
         timer.scheduled = false;
         // Place the callback to pending timers to fire.
-        pendingFireTimers.push(timer);
+        ArrayPrototypePush(pendingFireTimers, timer);
       }
     }
     setOrClearGlobalTimeout(nextDueNode && nextDueNode.due, now);
@@ -388,7 +405,7 @@
       dueNode = maybeNewDueNode;
     }
     // Append the newly scheduled timer to the list and mark it as scheduled.
-    dueNode.timers.push(timer);
+    ArrayPrototypePush(dueNode.timers, timer);
     timer.scheduled = true;
     // If the new timer is scheduled to fire before any timer that existed before,
     // update the global timeout to reflect this.
@@ -402,8 +419,8 @@
     // If either is true, they are not in tree, and their idMap entry
     // will be deleted soon. Remove it from queue.
     let index = -1;
-    if ((index = pendingFireTimers.indexOf(timer)) >= 0) {
-      pendingFireTimers.splice(index);
+    if ((index = ArrayPrototypeIndexOf(pendingFireTimers, timer)) >= 0) {
+      ArrayPrototypeSplice(pendingFireTimers, index);
       return;
     }
     // If timer is not in the 2 pending queues and is unscheduled,
@@ -424,33 +441,33 @@
         const nextDueNode = dueTree.min();
         setOrClearGlobalTimeout(
           nextDueNode && nextDueNode.due,
-          OriginalDateNow(),
+          DateNow(),
         );
       }
     } else {
       // Multiple timers that are due at the same point in time.
       // Remove this timer from the list.
-      const index = list.indexOf(timer);
+      const index = ArrayPrototypeIndexOf(list, timer);
       assert(index > -1);
-      list.splice(index, 1);
+      ArrayPrototypeSplice(list, index, 1);
     }
   }
 
   function fire(timer) {
     // If the timer isn't found in the ID map, that means it has been cancelled
     // between the timer firing and the promise callback (this function).
-    if (!idMap.has(timer.id)) {
+    if (!MapPrototypeHas(idMap, timer.id)) {
       return;
     }
     // Reschedule the timer if it is a repeating one, otherwise drop it.
     if (!timer.repeat) {
       // One-shot timer: remove the timer from this id-to-timer map.
-      idMap.delete(timer.id);
+      MapPrototypeDelete(idMap, timer.id);
     } else {
       // Interval timer: compute when timer was supposed to fire next.
       // However make sure to never schedule the next interval in the past.
-      const now = OriginalDateNow();
-      timer.due = Math.max(now, timer.due + timer.delay);
+      const now = DateNow();
+      timer.due = MathMax(now, timer.due + timer.delay);
       schedule(timer, now);
     }
     // Call the user callback. Intermediate assignment is to avoid leaking `this`
@@ -480,7 +497,7 @@
     let callback;
 
     if ("function" === typeof cb) {
-      callback = Function.prototype.bind.call(cb, globalThis, ...args);
+      callback = FunctionPrototypeBind(cb, globalThis, ...args);
     } else {
       callback = String(cb);
       args = []; // args are ignored
@@ -488,7 +505,7 @@
     // In the browser, the delay value must be coercible to an integer between 0
     // and INT32_MAX. Any other value will cause the timer to fire immediately.
     // We emulate this behavior.
-    const now = OriginalDateNow();
+    const now = DateNow();
     if (delay > TIMEOUT_MAX) {
       console.warn(
         `${delay} does not fit into` +
@@ -497,7 +514,7 @@
       );
       delay = 1;
     }
-    delay = Math.max(0, delay | 0);
+    delay = MathMax(0, delay | 0);
 
     // Create a new, unscheduled timer object.
     const timer = {
@@ -510,7 +527,7 @@
       scheduled: false,
     };
     // Register the timer's existence in the id-to-timer map.
-    idMap.set(timer.id, timer);
+    MapPrototypeSet(idMap, timer.id, timer);
     // Schedule the timer in the due table.
     schedule(timer, now);
     return timer.id;
@@ -538,14 +555,14 @@
 
   function clearTimer(id) {
     id >>>= 0;
-    const timer = idMap.get(id);
+    const timer = MapPrototypeGet(idMap, id);
     if (timer === undefined) {
       // Timer doesn't exist any more or never existed. This is not an error.
       return;
     }
     // Unschedule the timer if it is currently scheduled, and forget about it.
     unschedule(timer);
-    idMap.delete(timer.id);
+    MapPrototypeDelete(idMap, timer.id);
   }
 
   function clearTimeout(id = 0) {

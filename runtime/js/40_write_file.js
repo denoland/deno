@@ -4,6 +4,9 @@
   const { stat, statSync, chmod, chmodSync } = window.__bootstrap.fs;
   const { open, openSync } = window.__bootstrap.files;
   const { build } = window.__bootstrap.build;
+  const {
+    TypedArrayPrototypeSubarray,
+  } = window.__bootstrap.primordials;
 
   function writeFileSync(
     path,
@@ -33,7 +36,7 @@
 
     let nwritten = 0;
     while (nwritten < data.length) {
-      nwritten += file.writeSync(data.subarray(nwritten));
+      nwritten += file.writeSync(TypedArrayPrototypeSubarray(data, nwritten));
     }
 
     file.close();
@@ -67,7 +70,7 @@
 
     let nwritten = 0;
     while (nwritten < data.length) {
-      nwritten += await file.write(data.subarray(nwritten));
+      nwritten += await file.write(TypedArrayPrototypeSubarray(data, nwritten));
     }
 
     file.close();

@@ -1,9 +1,22 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
+// @ts-check
+/// <reference path="../../core/internal.d.ts" />
+
 ((window) => {
   const webidl = window.__bootstrap.webidl;
-  const { setIsTrusted } = window.__bootstrap.event;
+  const { setIsTrusted, defineEventHandler } = window.__bootstrap.event;
+  const {
+    Boolean,
+    Set,
+    SetPrototypeAdd,
+    SetPrototypeClear,
+    SetPrototypeDelete,
+    Symbol,
+    SymbolToStringTag,
+    TypeError,
+  } = window.__bootstrap.primordials;
 
   const add = Symbol("add");
   const signalAbort = Symbol("signalAbort");
@@ -22,7 +35,7 @@
     }
 
     [add](algorithm) {
-      this.#abortAlgorithms.add(algorithm);
+      SetPrototypeAdd(this.#abortAlgorithms, algorithm);
     }
 
     [signalAbort]() {
@@ -33,14 +46,14 @@
       for (const algorithm of this.#abortAlgorithms) {
         algorithm();
       }
-      this.#abortAlgorithms.clear();
+      SetPrototypeClear(this.#abortAlgorithms);
       const event = new Event("abort");
       setIsTrusted(event, true);
       this.dispatchEvent(event);
     }
 
     [remove](algorithm) {
-      this.#abortAlgorithms.delete(algorithm);
+      SetPrototypeDelete(this.#abortAlgorithms, algorithm);
     }
 
     constructor(key = null) {
@@ -55,11 +68,14 @@
       return Boolean(this.#aborted);
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "AbortSignal";
     }
   }
   defineEventHandler(AbortSignal.prototype, "abort");
+
+  webidl.configurePrototype(AbortSignal);
+
   class AbortController {
     #signal = new AbortSignal(illegalConstructorKey);
 
@@ -71,52 +87,29 @@
       this.#signal[signalAbort]();
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "AbortController";
     }
   }
 
-  const handlerSymbol = Symbol("eventHandlers");
-
-  function makeWrappedHandler(handler) {
-    function wrappedHandler(...args) {
-      if (typeof wrappedHandler.handler !== "function") {
-        return;
-      }
-      return wrappedHandler.handler.call(this, ...args);
-    }
-    wrappedHandler.handler = handler;
-    return wrappedHandler;
-  }
-  // TODO(benjamingr) reuse this here and websocket where possible
-  function defineEventHandler(emitter, name) {
-    // HTML specification section 8.1.5.1
-    Object.defineProperty(emitter, `on${name}`, {
-      get() {
-        return this[handlerSymbol]?.get(name)?.handler;
-      },
-      set(value) {
-        if (!this[handlerSymbol]) {
-          this[handlerSymbol] = new Map();
-        }
-        let handlerWrapper = this[handlerSymbol]?.get(name);
-        if (handlerWrapper) {
-          handlerWrapper.handler = value;
-        } else {
-          handlerWrapper = makeWrappedHandler(value);
-          this.addEventListener(name, handlerWrapper);
-        }
-        this[handlerSymbol].set(name, handlerWrapper);
-      },
-      configurable: true,
-      enumerable: true,
-    });
-  }
+  webidl.configurePrototype(AbortController);
 
   webidl.converters["AbortSignal"] = webidl.createInterfaceConverter(
     "AbortSignal",
     AbortSignal,
   );
+
+  function newSignal() {
+    return new AbortSignal(illegalConstructorKey);
+  }
+
+  function follow(followingSignal, parentSignal) {
+    if (parentSignal.aborted) {
+      followingSignal[signalAbort]();
+    } else {
+      parentSignal[add](() => followingSignal[signalAbort]());
+    }
+  }
 
   window.AbortSignal = AbortSignal;
   window.AbortController = AbortController;
@@ -124,5 +117,7 @@
     add,
     signalAbort,
     remove,
+    follow,
+    newSignal,
   };
 })(this);

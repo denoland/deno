@@ -5,6 +5,8 @@ use crate::fs_util::resolve_from_cwd;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
+#[cfg(test)]
+use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::url;
@@ -21,8 +23,6 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 #[cfg(test)]
 use std::sync::atomic::Ordering;
-#[cfg(test)]
-use std::sync::Mutex;
 
 const PERMISSION_EMOJI: &str = "⚠️";
 
@@ -605,17 +605,20 @@ impl UnaryPermission<EnvDescriptor> {
 
   pub fn request(&mut self, env: Option<&str>) -> PermissionState {
     if let Some(env) = env {
-      #[cfg(windows)]
-      let env = env.to_uppercase();
+      let env = if cfg!(windows) {
+        env.to_uppercase()
+      } else {
+        env.to_string()
+      };
       let state = self.query(Some(&env));
       if state == PermissionState::Prompt {
         if permission_prompt(&format!("env access to \"{}\"", env)) {
           self.granted_list.retain(|env_| env_.0 != env);
-          self.granted_list.insert(EnvDescriptor(env.to_string()));
+          self.granted_list.insert(EnvDescriptor(env));
           PermissionState::Granted
         } else {
           self.denied_list.retain(|env_| env_.0 != env);
-          self.denied_list.insert(EnvDescriptor(env.to_string()));
+          self.denied_list.insert(EnvDescriptor(env));
           self.global_state = PermissionState::Denied;
           PermissionState::Denied
         }
@@ -956,6 +959,23 @@ impl Permissions {
       "blob" => Ok(()),
       _ => self.net.check_url(specifier),
     }
+  }
+}
+
+impl deno_net::NetPermissions for Permissions {
+  fn check_net<T: AsRef<str>>(
+    &mut self,
+    host: &(T, Option<u16>),
+  ) -> Result<(), AnyError> {
+    self.net.check(host)
+  }
+
+  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
+    self.read.check(path)
+  }
+
+  fn check_write(&mut self, path: &Path) -> Result<(), AnyError> {
+    self.write.check(path)
   }
 }
 
@@ -1482,7 +1502,7 @@ mod tests {
     let mut perms: Permissions = Default::default();
     #[rustfmt::skip]
     {
-      let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+      let _guard = PERMISSION_PROMPT_GUARD.lock();
       set_prompt_result(true);
       assert_eq!(perms.read.request(Some(&Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms.read.query(None), PermissionState::Prompt);
@@ -1579,7 +1599,7 @@ mod tests {
       hrtime: Permissions::new_hrtime(false, true),
     };
 
-    let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+    let _guard = PERMISSION_PROMPT_GUARD.lock();
 
     set_prompt_result(true);
     assert!(perms.read.check(&Path::new("/foo")).is_ok());
@@ -1632,7 +1652,7 @@ mod tests {
       hrtime: Permissions::new_hrtime(false, true),
     };
 
-    let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+    let _guard = PERMISSION_PROMPT_GUARD.lock();
 
     set_prompt_result(false);
     assert!(perms.read.check(&Path::new("/foo")).is_err());

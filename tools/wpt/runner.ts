@@ -1,13 +1,18 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { delay, join, readLines, ROOT_PATH } from "../util.js";
-import { assert, ManifestTestOptions, release, runPy } from "./utils.ts";
+import { delay, join, readLines, ROOT_PATH, toFileUrl } from "../util.js";
+import { assert, denoBinary, ManifestTestOptions, runPy } from "./utils.ts";
 import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.3-alpha2/deno-dom-wasm.ts";
 
 export async function runWithTestUtil<T>(
   verbose: boolean,
   f: () => Promise<T>,
 ): Promise<T> {
-  const proc = runPy(["wpt", "serve"], {
+  const proc = runPy([
+    "wpt",
+    "serve",
+    "--config",
+    "../../tools/wpt/config.json",
+  ], {
     stdout: verbose ? "inherit" : "piped",
     stderr: verbose ? "inherit" : "piped",
   });
@@ -47,8 +52,16 @@ export async function runWithTestUtil<T>(
 
 export interface TestResult {
   cases: TestCaseResult[];
+  harnessStatus: TestHarnessStatus | null;
+  duration: number;
   status: number;
   stderr: string;
+}
+
+export interface TestHarnessStatus {
+  status: number;
+  message: string | null;
+  stack: string | null;
 }
 
 export interface TestCaseResult {
@@ -69,49 +82,65 @@ export async function runSingleTest(
     prefix: "wpt-bundle-",
     suffix: ".js",
   });
-  await Deno.writeTextFile(tempFile, bundle);
 
-  const proc = Deno.run({
-    cmd: [
-      join(ROOT_PATH, `./target/${release ? "release" : "debug"}/deno`),
-      "run",
-      "-A",
-      "--location",
-      url.toString(),
-      "--cert",
-      join(ROOT_PATH, `./test_util/wpt/tools/certs/cacert.pem`),
-      tempFile,
-      "[]",
-    ],
-    env: {
-      NO_COLOR: "1",
-    },
-    stdout: "null",
-    stderr: "piped",
-  });
+  try {
+    await Deno.writeTextFile(tempFile, bundle);
 
-  const cases = [];
-  let stderr = "";
+    const startTime = new Date().getTime();
 
-  const lines = readLines(proc.stderr);
-  for await (const line of lines) {
-    if (line.startsWith("{")) {
-      const data = JSON.parse(line);
-      const result = { ...data, passed: data.status == 0 };
-      cases.push(result);
-      reporter(result);
-    } else {
-      stderr += line + "\n";
-      console.error(stderr);
+    const proc = Deno.run({
+      cmd: [
+        denoBinary(),
+        "run",
+        "-A",
+        "--unstable",
+        "--location",
+        url.toString(),
+        "--cert",
+        join(ROOT_PATH, `./tools/wpt/certs/cacert.pem`),
+        tempFile,
+        "[]",
+      ],
+      env: {
+        NO_COLOR: "1",
+      },
+      stdout: "null",
+      stderr: "piped",
+    });
+
+    const cases = [];
+    let stderr = "";
+
+    let harnessStatus = null;
+
+    const lines = readLines(proc.stderr);
+    for await (const line of lines) {
+      if (line.startsWith("{")) {
+        const data = JSON.parse(line);
+        const result = { ...data, passed: data.status == 0 };
+        cases.push(result);
+        reporter(result);
+      } else if (line.startsWith("#$#$#{")) {
+        harnessStatus = JSON.parse(line.slice(5));
+      } else {
+        stderr += line + "\n";
+        console.error(line);
+      }
     }
-  }
 
-  const { code } = await proc.status();
-  return {
-    status: code,
-    cases,
-    stderr,
-  };
+    const duration = new Date().getTime() - startTime;
+
+    const { code } = await proc.status();
+    return {
+      status: code,
+      harnessStatus,
+      duration,
+      cases,
+      stderr,
+    };
+  } finally {
+    await Deno.remove(tempFile);
+  }
 }
 
 async function generateBundle(location: URL): Promise<string> {
@@ -121,20 +150,36 @@ async function generateBundle(location: URL): Promise<string> {
   assert(doc, "document should have been parsed");
   const scripts = doc.getElementsByTagName("script");
   const scriptContents = [];
+  let inlineScriptCount = 0;
   for (const script of scripts) {
     const src = script.getAttribute("src");
     if (src === "/resources/testharnessreport.js") {
-      scriptContents.push(
-        await Deno.readTextFile(
-          join(ROOT_PATH, "./tools/wpt/testharnessreport.js"),
-        ),
+      const url = toFileUrl(
+        join(ROOT_PATH, "./tools/wpt/testharnessreport.js"),
       );
+      const contents = await Deno.readTextFile(url);
+      scriptContents.push([url.href, contents]);
     } else if (src) {
-      const res = await fetch(new URL(src, location));
-      scriptContents.push(await res.text());
+      const url = new URL(src, location);
+      const res = await fetch(url);
+      if (res.ok) {
+        const contents = await res.text();
+        scriptContents.push([url.href, contents]);
+      }
     } else {
-      scriptContents.push(script.textContent);
+      const url = new URL(`#${inlineScriptCount}`, location);
+      inlineScriptCount++;
+      scriptContents.push([url.href, script.textContent]);
     }
   }
-  return scriptContents.join("\n");
+
+  return scriptContents.map(([url, contents]) => `
+(function() {
+  const [_,err] = Deno.core.evalContext(${JSON.stringify(contents)}, ${
+    JSON.stringify(url)
+  });
+  if (err !== null) {
+    throw err?.thrown;
+  }
+})();`).join("\n");
 }

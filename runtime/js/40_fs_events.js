@@ -4,7 +4,11 @@
 ((window) => {
   const core = window.Deno.core;
   const { errors } = window.__bootstrap.errors;
-
+  const {
+    ArrayIsArray,
+    PromiseResolve,
+    SymbolAsyncIterator,
+  } = window.__bootstrap.primordials;
   class FsWatcher {
     #rid = 0;
 
@@ -33,12 +37,18 @@
       }
     }
 
+    // TODO(kt3k): This is deprecated. Will be removed in v2.0.
+    // See https://github.com/denoland/deno/issues/10577 for details
     return(value) {
       core.close(this.rid);
-      return Promise.resolve({ value, done: true });
+      return PromiseResolve({ value, done: true });
     }
 
-    [Symbol.asyncIterator]() {
+    close() {
+      core.close(this.rid);
+    }
+
+    [SymbolAsyncIterator]() {
       return this;
     }
   }
@@ -47,7 +57,7 @@
     paths,
     options = { recursive: true },
   ) {
-    return new FsWatcher(Array.isArray(paths) ? paths : [paths], options);
+    return new FsWatcher(ArrayIsArray(paths) ? paths : [paths], options);
   }
 
   window.__bootstrap.fsEvents = {

@@ -22,7 +22,7 @@ fn create_snapshot(
     let display_path = file.strip_prefix(display_root).unwrap();
     let display_path_str = display_path.display().to_string();
     js_runtime
-      .execute(
+      .execute_script(
         &("deno:".to_string() + &display_path_str.replace('\\', "/")),
         &std::fs::read_to_string(&file).unwrap(),
       )
@@ -41,9 +41,12 @@ fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
     deno_webidl::init(),
     deno_console::init(),
     deno_url::init(),
-    deno_web::init(),
-    deno_file::init(Default::default(), Default::default()),
-    deno_fetch::init::<deno_fetch::NoFetchPermissions>("".to_owned(), None),
+    deno_web::init(deno_web::BlobStore::default(), Default::default()),
+    deno_fetch::init::<deno_fetch::NoFetchPermissions>(
+      "".to_owned(),
+      None,
+      None,
+    ),
     deno_websocket::init::<deno_websocket::NoWebSocketPermissions>(
       "".to_owned(),
       None,
@@ -52,6 +55,11 @@ fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
     deno_crypto::init(None),
     deno_webgpu::init(false),
     deno_timers::init::<deno_timers::NoTimersPermission>(),
+    deno_broadcast_channel::init(
+      deno_broadcast_channel::InMemoryBroadcastChannel::default(),
+      false, // No --unstable.
+    ),
+    deno_net::init::<deno_net::NoNetPermissions>(false), // No --unstable.
   ];
 
   let js_runtime = JsRuntime::new(RuntimeOptions {

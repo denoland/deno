@@ -26,7 +26,7 @@ unitTest({ perms: { read: true } }, function watchFsInvalidPath() {
 });
 
 async function getTwoEvents(
-  iter: AsyncIterableIterator<Deno.FsEvent>,
+  iter: Deno.FsWatcher,
 ): Promise<Deno.FsEvent[]> {
   const events = [];
   for await (const event of iter) {
@@ -61,6 +61,8 @@ unitTest(
   },
 );
 
+// TODO(kt3k): This test is for the backward compatibility of `.return` method.
+// This should be removed at 2.0
 unitTest(
   { perms: { read: true, write: true } },
   async function watchFsReturn(): Promise<void> {
@@ -72,6 +74,24 @@ unitTest(
 
     // Close the watcher.
     await iter.return!();
+
+    // Expect zero events.
+    const events = await eventsPromise;
+    assertEquals(events, []);
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function watchFsClose(): Promise<void> {
+    const testDir = await Deno.makeTempDir();
+    const iter = Deno.watchFs(testDir);
+
+    // Asynchronously loop events.
+    const eventsPromise = getTwoEvents(iter);
+
+    // Close the watcher.
+    await iter.close();
 
     // Expect zero events.
     const events = await eventsPromise;

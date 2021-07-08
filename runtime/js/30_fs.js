@@ -3,6 +3,12 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const {
+    Date,
+    MathTrunc,
+    SymbolAsyncIterator,
+    SymbolIterator,
+  } = window.__bootstrap.primordials;
   const { pathFromURL } = window.__bootstrap.util;
   const build = window.__bootstrap.build.build;
 
@@ -58,7 +64,7 @@
   }
 
   function chdir(directory) {
-    core.opSync("op_chdir", directory);
+    core.opSync("op_chdir", pathFromURL(directory));
   }
 
   function makeTempDirSync(options = {}) {
@@ -103,7 +109,7 @@
 
   function readDirSync(path) {
     return core.opSync("op_read_dir_sync", pathFromURL(path))[
-      Symbol.iterator
+      SymbolIterator
     ]();
   }
 
@@ -113,7 +119,7 @@
       pathFromURL(path),
     );
     return {
-      async *[Symbol.asyncIterator]() {
+      async *[SymbolAsyncIterator]() {
         yield* await array;
       },
     };
@@ -156,11 +162,17 @@
   }
 
   function renameSync(oldpath, newpath) {
-    core.opSync("op_rename_sync", { oldpath, newpath });
+    core.opSync("op_rename_sync", {
+      oldpath: pathFromURL(oldpath),
+      newpath: pathFromURL(newpath),
+    });
   }
 
   async function rename(oldpath, newpath) {
-    await core.opAsync("op_rename_async", { oldpath, newpath });
+    await core.opAsync("op_rename_async", {
+      oldpath: pathFromURL(oldpath),
+      newpath: pathFromURL(newpath),
+    });
   }
 
   function parseFileInfo(response) {
@@ -267,8 +279,8 @@
   function toUnixTimeFromEpoch(value) {
     if (value instanceof Date) {
       const time = value.valueOf();
-      const seconds = Math.trunc(time / 1e3);
-      const nanoseconds = Math.trunc(time - (seconds * 1e3)) * 1e6;
+      const seconds = MathTrunc(time / 1e3);
+      const nanoseconds = MathTrunc(time - (seconds * 1e3)) * 1e6;
 
       return [
         seconds,
@@ -315,7 +327,7 @@
     mtime,
   ) {
     core.opSync("op_utime_sync", {
-      path,
+      path: pathFromURL(path),
       atime: toUnixTimeFromEpoch(atime),
       mtime: toUnixTimeFromEpoch(mtime),
     });
@@ -327,7 +339,7 @@
     mtime,
   ) {
     await core.opAsync("op_utime_async", {
-      path,
+      path: pathFromURL(path),
       atime: toUnixTimeFromEpoch(atime),
       mtime: toUnixTimeFromEpoch(mtime),
     });
@@ -338,7 +350,11 @@
     newpath,
     options,
   ) {
-    core.opSync("op_symlink_sync", { oldpath, newpath, options });
+    core.opSync("op_symlink_sync", {
+      oldpath: pathFromURL(oldpath),
+      newpath: pathFromURL(newpath),
+      options,
+    });
   }
 
   async function symlink(
@@ -346,7 +362,11 @@
     newpath,
     options,
   ) {
-    await core.opAsync("op_symlink_async", { oldpath, newpath, options });
+    await core.opAsync("op_symlink_async", {
+      oldpath: pathFromURL(oldpath),
+      newpath: pathFromURL(newpath),
+      options,
+    });
   }
 
   function fdatasyncSync(rid) {

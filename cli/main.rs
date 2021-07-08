@@ -55,6 +55,8 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
+use deno_core::located_script_name;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -77,7 +79,6 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::Mutex;
 use tools::test_runner;
 
 fn create_web_worker_callback(
@@ -91,8 +92,6 @@ fn create_web_worker_callback(
       PrettyJsError::create(source_mapped_error)
     });
 
-    let attach_inspector = program_state.maybe_inspector_server.is_some()
-      || program_state.coverage_dir.is_some();
     let maybe_inspector_server = program_state.maybe_inspector_server.clone();
 
     let module_loader = CliModuleLoader::new_for_worker(
@@ -117,16 +116,19 @@ fn create_web_worker_callback(
       create_web_worker_cb,
       js_error_create_fn: Some(js_error_create_fn),
       use_deno_namespace: args.use_deno_namespace,
-      attach_inspector,
       maybe_inspector_server,
       runtime_version: version::deno(),
       ts_version: version::TYPESCRIPT.to_string(),
       no_color: !colors::use_color(),
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
-      blob_url_store: program_state.blob_url_store.clone(),
+      blob_store: program_state.blob_store.clone(),
+      broadcast_channel: program_state.broadcast_channel.clone(),
+      shared_array_buffer_store: Some(
+        program_state.shared_array_buffer_store.clone(),
+      ),
     };
 
-    let mut worker = WebWorker::from_options(
+    let (mut worker, external_handle) = WebWorker::from_options(
       args.name,
       args.permissions,
       args.main_module,
@@ -152,7 +154,7 @@ fn create_web_worker_callback(
     }
     worker.bootstrap(&options);
 
-    worker
+    (worker, external_handle)
   })
 }
 
@@ -172,9 +174,6 @@ pub fn create_main_worker(
     PrettyJsError::create(source_mapped_error)
   });
 
-  let attach_inspector = program_state.maybe_inspector_server.is_some()
-    || program_state.flags.repl
-    || program_state.coverage_dir.is_some();
   let maybe_inspector_server = program_state.maybe_inspector_server.clone();
   let should_break_on_first_statement =
     program_state.flags.inspect_brk.is_some();
@@ -194,7 +193,6 @@ pub fn create_main_worker(
     seed: program_state.flags.seed,
     js_error_create_fn: Some(js_error_create_fn),
     create_web_worker_cb,
-    attach_inspector,
     maybe_inspector_server,
     should_break_on_first_statement,
     module_loader,
@@ -203,15 +201,20 @@ pub fn create_main_worker(
     no_color: !colors::use_color(),
     get_error_class_fn: Some(&crate::errors::get_error_class_name),
     location: program_state.flags.location.clone(),
-    location_data_dir: program_state.flags.location.clone().map(|loc| {
+    origin_storage_dir: program_state.flags.location.clone().map(|loc| {
       program_state
         .dir
         .root
         .clone()
+        // TODO(@crowlKats): change to origin_data for 2.0
         .join("location_data")
         .join(checksum::gen(&[loc.to_string().as_bytes()]))
     }),
-    blob_url_store: program_state.blob_url_store.clone(),
+    blob_store: program_state.blob_store.clone(),
+    broadcast_channel: program_state.broadcast_channel.clone(),
+    shared_array_buffer_store: Some(
+      program_state.shared_array_buffer_store.clone(),
+    ),
   };
 
   let mut worker = MainWorker::from_options(main_module, permissions, &options);
@@ -258,26 +261,43 @@ pub fn write_json_to_stdout<T>(value: &T) -> Result<(), AnyError>
 where
   T: ?Sized + serde::ser::Serialize,
 {
-  let writer = std::io::BufWriter::new(std::io::stdout());
-  serde_json::to_writer_pretty(writer, value).map_err(AnyError::from)
+  let mut writer = std::io::BufWriter::new(std::io::stdout());
+  serde_json::to_writer_pretty(&mut writer, value)?;
+  writeln!(&mut writer)?;
+  Ok(())
 }
 
 fn print_cache_info(
   state: &Arc<ProgramState>,
   json: bool,
+  location: Option<deno_core::url::Url>,
 ) -> Result<(), AnyError> {
   let deno_dir = &state.dir.root;
   let modules_cache = &state.file_fetcher.get_http_cache_location();
   let typescript_cache = &state.dir.gen_cache.location;
   let registry_cache =
     &state.dir.root.join(lsp::language_server::REGISTRIES_PATH);
+  let mut origin_dir = state.dir.root.join("location_data");
+
+  if let Some(location) = &location {
+    origin_dir =
+      origin_dir.join(&checksum::gen(&[location.to_string().as_bytes()]));
+  }
+
   if json {
-    let output = json!({
-        "denoDir": deno_dir,
-        "modulesCache": modules_cache,
-        "typescriptCache": typescript_cache,
-        "registryCache": registry_cache,
+    let mut output = json!({
+      "denoDir": deno_dir,
+      "modulesCache": modules_cache,
+      "typescriptCache": typescript_cache,
+      "registryCache": registry_cache,
+      "originStorage": origin_dir,
     });
+
+    if location.is_some() {
+      output["localStorage"] =
+        serde_json::to_value(origin_dir.join("local_storage"))?;
+    }
+
     write_json_to_stdout(&output)
   } else {
     println!("{} {:?}", colors::bold("DENO_DIR location:"), deno_dir);
@@ -296,32 +316,41 @@ fn print_cache_info(
       colors::bold("Language server registries cache:"),
       registry_cache,
     );
+    println!("{} {:?}", colors::bold("Origin storage:"), origin_dir);
+    if location.is_some() {
+      println!(
+        "{} {:?}",
+        colors::bold("Local Storage:"),
+        origin_dir.join("local_storage"),
+      );
+    }
     Ok(())
   }
 }
 
 pub fn get_types(unstable: bool) -> String {
-  let mut types = format!(
-    "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+  let mut types = vec![
     crate::tsc::DENO_NS_LIB,
     crate::tsc::DENO_CONSOLE_LIB,
     crate::tsc::DENO_URL_LIB,
     crate::tsc::DENO_WEB_LIB,
-    crate::tsc::DENO_FILE_LIB,
     crate::tsc::DENO_FETCH_LIB,
     crate::tsc::DENO_WEBGPU_LIB,
     crate::tsc::DENO_WEBSOCKET_LIB,
     crate::tsc::DENO_WEBSTORAGE_LIB,
     crate::tsc::DENO_CRYPTO_LIB,
+    crate::tsc::DENO_BROADCAST_CHANNEL_LIB,
+    crate::tsc::DENO_NET_LIB,
     crate::tsc::SHARED_GLOBALS_LIB,
     crate::tsc::WINDOW_LIB,
-  );
+  ];
 
   if unstable {
-    types.push_str(&format!("\n{}", crate::tsc::UNSTABLE_NS_LIB,));
+    types.push(crate::tsc::UNSTABLE_NS_LIB);
+    types.push(crate::tsc::DENO_NET_UNSTABLE_LIB);
   }
 
-  types
+  types.join("\n")
 }
 
 async fn compile_command(
@@ -390,6 +419,7 @@ async fn info_command(
   maybe_specifier: Option<String>,
   json: bool,
 ) -> Result<(), AnyError> {
+  let location = flags.location.clone();
   let program_state = ProgramState::build(flags).await?;
   if let Some(specifier) = maybe_specifier {
     let specifier = resolve_url_or_path(&specifier)?;
@@ -406,6 +436,9 @@ async fn info_command(
       program_state.lockfile.clone(),
     );
     builder.add(&specifier, false).await?;
+    builder
+      .analyze_config_file(&program_state.maybe_config_file)
+      .await?;
     let graph = builder.get_graph();
     let info = graph.info()?;
 
@@ -417,7 +450,7 @@ async fn info_command(
     }
   } else {
     // If it was just "deno info" print location of caches and exit
-    print_cache_info(&program_state, json)
+    print_cache_info(&program_state, json, location)
   }
 }
 
@@ -530,9 +563,15 @@ async fn eval_command(
   program_state.file_fetcher.insert_cached(file);
   debug!("main_module {}", &main_module);
   worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
-  worker.run_event_loop().await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('load'))",
+  )?;
+  worker.run_event_loop(false).await?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('unload'))",
+  )?;
   Ok(())
 }
 
@@ -554,6 +593,9 @@ async fn create_module_graph_and_maybe_check(
     program_state.lockfile.clone(),
   );
   builder.add(&module_specifier, false).await?;
+  builder
+    .analyze_config_file(&program_state.maybe_config_file)
+    .await?;
   let module_graph = builder.get_graph();
 
   if !program_state.flags.no_check {
@@ -570,6 +612,7 @@ async fn create_module_graph_and_maybe_check(
         lib,
         maybe_config_file: program_state.maybe_config_file.clone(),
         reload: program_state.flags.reload,
+        ..Default::default()
       })?;
 
     debug!("{}", result_info.stats);
@@ -734,7 +777,7 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
   let program_state = ProgramState::build(flags).await?;
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions, false);
-  worker.run_event_loop().await?;
+  worker.run_event_loop(false).await?;
 
   tools::repl::run(&program_state, worker).await
 }
@@ -766,9 +809,15 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
 
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
-  worker.run_event_loop().await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('load'))",
+  )?;
+  worker.run_event_loop(false).await?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('unload'))",
+  )?;
   Ok(())
 }
 
@@ -791,6 +840,9 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         program_state.lockfile.clone(),
       );
       builder.add(&main_module, false).await?;
+      builder
+        .analyze_config_file(&program_state.maybe_config_file)
+        .await?;
       let module_graph = builder.get_graph();
 
       // Find all local files in graph
@@ -835,9 +887,15 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         );
         debug!("main_module {}", main_module);
         worker.execute_module(&main_module).await?;
-        worker.execute("window.dispatchEvent(new Event('load'))")?;
-        worker.run_event_loop().await?;
-        worker.execute("window.dispatchEvent(new Event('unload'))")?;
+        worker.execute_script(
+          &located_script_name!(),
+          "window.dispatchEvent(new Event('load'))",
+        )?;
+        worker.run_event_loop(false).await?;
+        worker.execute_script(
+          &located_script_name!(),
+          "window.dispatchEvent(new Event('unload'))",
+        )?;
         Ok(())
       }
     };
@@ -863,13 +921,14 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
 
   let mut maybe_coverage_collector =
     if let Some(ref coverage_dir) = program_state.coverage_dir {
-      let session = worker.create_inspector_session();
+      let session = worker.create_inspector_session().await;
 
       let coverage_dir = PathBuf::from(coverage_dir);
       let mut coverage_collector =
         tools::coverage::CoverageCollector::new(coverage_dir, session);
-      coverage_collector.start_collecting().await?;
-
+      worker
+        .with_event_loop(coverage_collector.start_collecting().boxed_local())
+        .await?;
       Some(coverage_collector)
     } else {
       None
@@ -877,14 +936,23 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
 
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
-  worker.run_event_loop().await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('load'))",
+  )?;
+  worker
+    .run_event_loop(maybe_coverage_collector.is_none())
+    .await?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('unload'))",
+  )?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-    coverage_collector.stop_collecting().await?;
+    worker
+      .with_event_loop(coverage_collector.stop_collecting().boxed_local())
+      .await?;
   }
-
   Ok(())
 }
 
@@ -922,10 +990,15 @@ async fn test_command(
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
+  shuffle: Option<u64>,
   concurrent_jobs: usize,
 ) -> Result<(), AnyError> {
   if let Some(ref coverage_dir) = flags.coverage_dir {
-    env::set_var("DENO_UNSTABLE_COVERAGE_DIR", coverage_dir);
+    std::fs::create_dir_all(&coverage_dir)?;
+    env::set_var(
+      "DENO_UNSTABLE_COVERAGE_DIR",
+      PathBuf::from(coverage_dir).canonicalize()?,
+    );
   }
 
   // TODO(caspervonb) move this chunk into tools::test_runner.
@@ -994,6 +1067,9 @@ async fn test_command(
         for specifier in test_modules.iter() {
           builder.add(specifier, false).await?;
         }
+        builder
+          .analyze_config_file(&program_state.maybe_config_file)
+          .await?;
         let graph = builder.get_graph();
 
         for specifier in doc_modules {
@@ -1103,6 +1179,7 @@ async fn test_command(
           quiet,
           true,
           filter.clone(),
+          shuffle,
           concurrent_jobs,
         )
         .map(|res| res.map(|_| ()))
@@ -1138,6 +1215,7 @@ async fn test_command(
       quiet,
       allow_none,
       filter,
+      shuffle,
       concurrent_jobs,
     )
     .await?;
@@ -1245,6 +1323,7 @@ fn get_subcommand(
       include,
       allow_none,
       filter,
+      shuffle,
       concurrent_jobs,
     } => test_command(
       flags,
@@ -1255,6 +1334,7 @@ fn get_subcommand(
       quiet,
       allow_none,
       filter,
+      shuffle,
       concurrent_jobs,
     )
     .boxed_local(),

@@ -1,5 +1,10 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+  unitTest,
+} from "./test_util.ts";
 
 unitTest(function eventInitializedWithType(): void {
   const type = "click";
@@ -126,4 +131,31 @@ unitTest(function eventInspectOutput(): void {
   for (const [event, outputProvider] of cases) {
     assertEquals(Deno.inspect(event), outputProvider(event));
   }
+});
+
+unitTest(function inspectEvent(): void {
+  // has a customInspect implementation that previously would throw on a getter
+  assertEquals(
+    Deno.inspect(Event.prototype),
+    `Event {
+  bubbles: [Getter],
+  cancelable: [Getter],
+  composed: [Getter],
+  currentTarget: [Getter],
+  defaultPrevented: [Getter],
+  eventPhase: [Getter],
+  srcElement: [Getter/Setter],
+  target: [Getter],
+  returnValue: [Getter/Setter],
+  timeStamp: [Getter],
+  type: [Getter]
+}`,
+  );
+
+  // ensure this still works
+  assertStringIncludes(
+    Deno.inspect(new Event("test")),
+    // check a substring because one property is a timestamp
+    `Event {\n  bubbles: false,\n  cancelable: false,`,
+  );
 });

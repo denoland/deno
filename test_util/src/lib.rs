@@ -76,7 +76,10 @@ lazy_static! {
 }
 
 pub fn root_path() -> PathBuf {
-  PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/.."))
+  PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")))
+    .parent()
+    .unwrap()
+    .to_path_buf()
 }
 
 pub fn prebuilt_path() -> PathBuf {
@@ -130,6 +133,15 @@ pub fn test_server_path() -> PathBuf {
     p.set_extension("exe");
   }
   p
+}
+
+fn ensure_test_server_built() {
+  // if the test server doesn't exist then remind the developer to build first
+  if !test_server_path().exists() {
+    panic!(
+      "Test server not found. Please cargo build before running the tests."
+    );
+  }
 }
 
 /// Benchmark server that just serves "hello world" responses.
@@ -286,11 +298,9 @@ async fn get_tls_config(
         })
         .unwrap();
 
-      return Ok(Arc::new(config));
+      Ok(Arc::new(config))
     }
-    None => {
-      return Err(io::Error::new(io::ErrorKind::Other, "Cannot find key"));
-    }
+    None => Err(io::Error::new(io::ErrorKind::Other, "Cannot find key")),
   }
 }
 
@@ -357,7 +367,7 @@ async fn absolute_redirect(
 
   let file = tokio::fs::read(file_path).await.unwrap();
   let file_resp = custom_headers(req.uri().path(), file);
-  return Ok(file_resp);
+  Ok(file_resp)
 }
 
 async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
@@ -938,6 +948,8 @@ fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
     Some("application/javascript")
   } else if p.ends_with(".json") {
     Some("application/json")
+  } else if p.ends_with(".wasm") {
+    Some("application/wasm")
   } else {
     None
   };
@@ -1043,6 +1055,7 @@ impl Drop for HttpServerGuard {
 /// last instance of the HttpServerGuard is dropped, the subprocess will be
 /// killed.
 pub fn http_server() -> HttpServerGuard {
+  ensure_test_server_built();
   let mut g = lock_http_server();
   g.inc();
   HttpServerGuard {}

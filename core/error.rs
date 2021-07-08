@@ -36,6 +36,10 @@ pub fn type_error(message: impl Into<Cow<'static, str>>) -> AnyError {
   custom_error("TypeError", message)
 }
 
+pub fn range_error(message: impl Into<Cow<'static, str>>) -> AnyError {
+  custom_error("RangeError", message)
+}
+
 pub fn invalid_hostname(hostname: &str) -> AnyError {
   type_error(format!("Invalid hostname: '{}'", hostname))
 }
@@ -187,8 +191,7 @@ impl JsError {
 
     let (message, frames, stack) = if exception.is_native_error() {
       // The exception is a JS Error object.
-      let exception: v8::Local<v8::Object> =
-        exception.clone().try_into().unwrap();
+      let exception: v8::Local<v8::Object> = exception.try_into().unwrap();
 
       let e: NativeJsError =
         serde_v8::from_v8(scope, exception.into()).unwrap();

@@ -340,10 +340,10 @@ fn run_strace_benchmarks(
   let mut thread_count = HashMap::<String, u64>::new();
   let mut syscall_count = HashMap::<String, u64>::new();
 
-  for (name, args, _) in EXEC_TIME_BENCHMARKS {
+  for (name, args, expected_exit_code) in EXEC_TIME_BENCHMARKS {
     let mut file = tempfile::NamedTempFile::new()?;
 
-    Command::new("strace")
+    let exit_status = Command::new("strace")
       .args(&[
         "-c",
         "-f",
@@ -352,9 +352,11 @@ fn run_strace_benchmarks(
         deno_exe.to_str().unwrap(),
       ])
       .args(args.iter())
-      .stdout(Stdio::inherit())
+      .stdout(Stdio::null())
       .spawn()?
       .wait()?;
+    let expected_exit_code = expected_exit_code.unwrap_or(0);
+    assert_eq!(exit_status.code(), Some(expected_exit_code));
 
     let mut output = String::new();
     file.as_file_mut().read_to_string(&mut output)?;
@@ -439,7 +441,7 @@ struct BenchResult {
  we replace the harness with our own runner here.
 */
 fn main() -> Result<()> {
-  if env::args().find(|s| s == "--bench").is_none() {
+  if !env::args().any(|s| s == "--bench") {
     return Ok(());
   }
 

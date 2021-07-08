@@ -1,8 +1,24 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
+/// <reference path="../../core/internal.d.ts" />
+
 ((window) => {
   const { URL } = window.__bootstrap.url;
+  const { DOMException } = window.__bootstrap.domException;
+  const {
+    Error,
+    ObjectDefineProperties,
+    ReferenceError,
+    Symbol,
+    SymbolFor,
+    SymbolToStringTag,
+    TypeError,
+    WeakMap,
+    WeakMapPrototypeGet,
+    WeakMapPrototypeSet,
+  } = window.__bootstrap.primordials;
+
   const locationConstructorKey = Symbol("locationConstuctorKey");
 
   // The differences between the definitions of `Location` and `WorkerLocation`
@@ -18,7 +34,7 @@
       const url = new URL(href);
       url.username = "";
       url.password = "";
-      Object.defineProperties(this, {
+      ObjectDefineProperties(this, {
         hash: {
           get() {
             return url.hash;
@@ -165,7 +181,7 @@
           },
           enumerable: true,
         },
-        [Symbol.for("Deno.customInspect")]: {
+        [SymbolFor("Deno.privateCustomInspect")]: {
           value: function (inspect) {
             const object = {
               hash: this.hash,
@@ -185,8 +201,8 @@
     }
   }
 
-  Object.defineProperties(Location.prototype, {
-    [Symbol.toStringTag]: {
+  ObjectDefineProperties(Location.prototype, {
+    [SymbolToStringTag]: {
       value: "Location",
       configurable: true,
     },
@@ -202,14 +218,14 @@
       const url = new URL(href);
       url.username = "";
       url.password = "";
-      workerLocationUrls.set(this, url);
+      WeakMapPrototypeSet(workerLocationUrls, this, url);
     }
   }
 
-  Object.defineProperties(WorkerLocation.prototype, {
+  ObjectDefineProperties(WorkerLocation.prototype, {
     hash: {
       get() {
-        const url = workerLocationUrls.get(this);
+        const url = WeakMapPrototypeGet(workerLocationUrls, this);
         if (url == null) {
           throw new TypeError("Illegal invocation.");
         }
@@ -220,7 +236,7 @@
     },
     host: {
       get() {
-        const url = workerLocationUrls.get(this);
+        const url = WeakMapPrototypeGet(workerLocationUrls, this);
         if (url == null) {
           throw new TypeError("Illegal invocation.");
         }
@@ -231,7 +247,7 @@
     },
     hostname: {
       get() {
-        const url = workerLocationUrls.get(this);
+        const url = WeakMapPrototypeGet(workerLocationUrls, this);
         if (url == null) {
           throw new TypeError("Illegal invocation.");
         }
@@ -242,7 +258,7 @@
     },
     href: {
       get() {
-        const url = workerLocationUrls.get(this);
+        const url = WeakMapPrototypeGet(workerLocationUrls, this);
         if (url == null) {
           throw new TypeError("Illegal invocation.");
         }
@@ -253,7 +269,7 @@
     },
     origin: {
       get() {
-        const url = workerLocationUrls.get(this);
+        const url = WeakMapPrototypeGet(workerLocationUrls, this);
         if (url == null) {
           throw new TypeError("Illegal invocation.");
         }
@@ -264,7 +280,7 @@
     },
     pathname: {
       get() {
-        const url = workerLocationUrls.get(this);
+        const url = WeakMapPrototypeGet(workerLocationUrls, this);
         if (url == null) {
           throw new TypeError("Illegal invocation.");
         }
@@ -275,7 +291,7 @@
     },
     port: {
       get() {
-        const url = workerLocationUrls.get(this);
+        const url = WeakMapPrototypeGet(workerLocationUrls, this);
         if (url == null) {
           throw new TypeError("Illegal invocation.");
         }
@@ -286,7 +302,7 @@
     },
     protocol: {
       get() {
-        const url = workerLocationUrls.get(this);
+        const url = WeakMapPrototypeGet(workerLocationUrls, this);
         if (url == null) {
           throw new TypeError("Illegal invocation.");
         }
@@ -297,7 +313,7 @@
     },
     search: {
       get() {
-        const url = workerLocationUrls.get(this);
+        const url = WeakMapPrototypeGet(workerLocationUrls, this);
         if (url == null) {
           throw new TypeError("Illegal invocation.");
         }
@@ -308,7 +324,7 @@
     },
     toString: {
       value: function toString() {
-        const url = workerLocationUrls.get(this);
+        const url = WeakMapPrototypeGet(workerLocationUrls, this);
         if (url == null) {
           throw new TypeError("Illegal invocation.");
         }
@@ -318,11 +334,11 @@
       enumerable: true,
       writable: true,
     },
-    [Symbol.toStringTag]: {
+    [SymbolToStringTag]: {
       value: "WorkerLocation",
       configurable: true,
     },
-    [Symbol.for("Deno.customInspect")]: {
+    [SymbolFor("Deno.privateCustomInspect")]: {
       value: function (inspect) {
         const object = {
           hash: this.hash,

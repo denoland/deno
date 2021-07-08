@@ -10,8 +10,11 @@ use deno_core::error::anyhow;
 use deno_core::error::bail;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
+use deno_core::located_script_name;
 use deno_core::op_sync;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
+use deno_core::serde::de;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
@@ -25,7 +28,6 @@ use deno_core::Snapshot;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 // Declaration files
 
@@ -33,7 +35,6 @@ pub static DENO_NS_LIB: &str = include_str!("dts/lib.deno.ns.d.ts");
 pub static DENO_CONSOLE_LIB: &str = include_str!(env!("DENO_CONSOLE_LIB_PATH"));
 pub static DENO_URL_LIB: &str = include_str!(env!("DENO_URL_LIB_PATH"));
 pub static DENO_WEB_LIB: &str = include_str!(env!("DENO_WEB_LIB_PATH"));
-pub static DENO_FILE_LIB: &str = include_str!(env!("DENO_FILE_LIB_PATH"));
 pub static DENO_FETCH_LIB: &str = include_str!(env!("DENO_FETCH_LIB_PATH"));
 pub static DENO_WEBGPU_LIB: &str = include_str!(env!("DENO_WEBGPU_LIB_PATH"));
 pub static DENO_WEBSOCKET_LIB: &str =
@@ -41,6 +42,11 @@ pub static DENO_WEBSOCKET_LIB: &str =
 pub static DENO_WEBSTORAGE_LIB: &str =
   include_str!(env!("DENO_WEBSTORAGE_LIB_PATH"));
 pub static DENO_CRYPTO_LIB: &str = include_str!(env!("DENO_CRYPTO_LIB_PATH"));
+pub static DENO_BROADCAST_CHANNEL_LIB: &str =
+  include_str!(env!("DENO_BROADCAST_CHANNEL_LIB_PATH"));
+pub static DENO_NET_LIB: &str = include_str!(env!("DENO_NET_LIB_PATH"));
+pub static DENO_NET_UNSTABLE_LIB: &str =
+  include_str!(env!("DENO_NET_UNSTABLE_LIB_PATH"));
 pub static SHARED_GLOBALS_LIB: &str =
   include_str!("dts/lib.deno.shared_globals.d.ts");
 pub static WINDOW_LIB: &str = include_str!("dts/lib.deno.window.d.ts");
@@ -71,6 +77,7 @@ lazy_static::lazy_static! {
     ("lib.es2018.full.d.ts", inc!("lib.es2018.full.d.ts")),
     ("lib.es2019.full.d.ts", inc!("lib.es2019.full.d.ts")),
     ("lib.es2020.full.d.ts", inc!("lib.es2020.full.d.ts")),
+    ("lib.es2021.full.d.ts", inc!("lib.es2021.full.d.ts")),
     ("lib.esnext.full.d.ts", inc!("lib.esnext.full.d.ts")),
     ("lib.scripthost.d.ts", inc!("lib.scripthost.d.ts")),
     ("lib.webworker.d.ts", inc!("lib.webworker.d.ts")),
@@ -177,6 +184,7 @@ pub struct Request {
   pub debug: bool,
   pub graph: Arc<Mutex<Graph>>,
   pub hash_data: Vec<Vec<u8>>,
+  pub maybe_config_specifier: Option<ModuleSpecifier>,
   pub maybe_tsbuildinfo: Option<String>,
   /// A vector of strings that represent the root/entry point modules for the
   /// program.
@@ -201,6 +209,7 @@ struct State {
   hash_data: Vec<Vec<u8>>,
   emitted_files: Vec<EmittedFile>,
   graph: Arc<Mutex<Graph>>,
+  maybe_config_specifier: Option<ModuleSpecifier>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
   root_map: HashMap<String, ModuleSpecifier>,
@@ -210,6 +219,7 @@ impl State {
   pub fn new(
     graph: Arc<Mutex<Graph>>,
     hash_data: Vec<Vec<u8>>,
+    maybe_config_specifier: Option<ModuleSpecifier>,
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
     data_url_map: HashMap<String, ModuleSpecifier>,
@@ -219,6 +229,7 @@ impl State {
       hash_data,
       emitted_files: Default::default(),
       graph,
+      maybe_config_specifier,
       maybe_tsbuildinfo,
       maybe_response: None,
       root_map,
@@ -226,9 +237,16 @@ impl State {
   }
 }
 
-fn op<F>(op_fn: F) -> Box<OpFn>
+fn normalize_specifier(specifier: &str) -> Result<ModuleSpecifier, AnyError> {
+  resolve_url_or_path(&specifier.replace(".d.ts.d.ts", ".d.ts"))
+    .map_err(|err| err.into())
+}
+
+fn op<F, V, R>(op_fn: F) -> Box<OpFn>
 where
-  F: Fn(&mut State, Value) -> Result<Value, AnyError> + 'static,
+  F: Fn(&mut State, V) -> Result<R, AnyError> + 'static,
+  V: de::DeserializeOwned,
+  R: Serialize + 'static,
 {
   op_sync(move |s, args, _: ()| {
     let state = s.borrow_mut::<State>();
@@ -251,6 +269,15 @@ fn op_create_hash(state: &mut State, args: Value) -> Result<Value, AnyError> {
   data.extend_from_slice(&state.hash_data);
   let hash = crate::checksum::gen(&data);
   Ok(json!({ "hash": hash }))
+}
+
+fn op_cwd(state: &mut State, _args: Value) -> Result<String, AnyError> {
+  if let Some(config_specifier) = &state.maybe_config_specifier {
+    let cwd = config_specifier.join("./")?;
+    Ok(cwd.to_string())
+  } else {
+    Ok("cache:///".to_string())
+  }
 }
 
 #[derive(Debug, Deserialize)]
@@ -283,7 +310,7 @@ fn op_emit(state: &mut State, args: Value) -> Result<Value, AnyError> {
             } else if let Some(remapped_specifier) = state.root_map.get(s) {
               remapped_specifier.clone()
             } else {
-              resolve_url_or_path(s).unwrap()
+              normalize_specifier(s).unwrap()
             }
           })
           .collect();
@@ -299,6 +326,25 @@ fn op_emit(state: &mut State, args: Value) -> Result<Value, AnyError> {
 }
 
 #[derive(Debug, Deserialize)]
+struct ExistsArgs {
+  /// The fully qualified specifier that should be loaded.
+  specifier: String,
+}
+
+fn op_exists(state: &mut State, args: ExistsArgs) -> Result<bool, AnyError> {
+  if let Ok(specifier) = normalize_specifier(&args.specifier) {
+    if specifier.scheme() == "asset" || specifier.scheme() == "data" {
+      Ok(true)
+    } else {
+      let graph = state.graph.lock();
+      Ok(graph.contains(&specifier))
+    }
+  } else {
+    Ok(false)
+  }
+}
+
+#[derive(Debug, Deserialize)]
 struct LoadArgs {
   /// The fully qualified specifier that should be loaded.
   specifier: String,
@@ -307,7 +353,7 @@ struct LoadArgs {
 fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
   let v: LoadArgs = serde_json::from_value(args)
     .context("Invalid request from JavaScript for \"op_load\".")?;
-  let specifier = resolve_url_or_path(&v.specifier)
+  let specifier = normalize_specifier(&v.specifier)
     .context("Error converting a string module specifier for \"op_load\".")?;
   let mut hash: Option<String> = None;
   let mut media_type = MediaType::Unknown;
@@ -326,7 +372,7 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
     media_type = MediaType::from(&v.specifier);
     maybe_source
   } else {
-    let graph = state.graph.lock().unwrap();
+    let graph = state.graph.lock();
     let specifier = if let Some(data_specifier) =
       state.data_url_map.get(&v.specifier)
     {
@@ -370,7 +416,7 @@ fn op_resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
   } else if let Some(remapped_base) = state.root_map.get(&v.base) {
     remapped_base.clone()
   } else {
-    resolve_url_or_path(&v.base).context(
+    normalize_specifier(&v.base).context(
       "Error converting a string module specifier for \"op_resolve\".",
     )?
   };
@@ -381,7 +427,7 @@ fn op_resolve(state: &mut State, args: Value) -> Result<Value, AnyError> {
         MediaType::from(specifier).as_ts_extension().to_string(),
       ));
     } else {
-      let graph = state.graph.lock().unwrap();
+      let graph = state.graph.lock();
       match graph.resolve(specifier, &referrer, true) {
         Ok(resolved_specifier) => {
           let media_type = if let Some(media_type) =
@@ -488,14 +534,17 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     op_state.put(State::new(
       request.graph.clone(),
       request.hash_data.clone(),
+      request.maybe_config_specifier.clone(),
       request.maybe_tsbuildinfo.clone(),
       root_map,
       data_url_map,
     ));
   }
 
+  runtime.register_op("op_cwd", op(op_cwd));
   runtime.register_op("op_create_hash", op(op_create_hash));
   runtime.register_op("op_emit", op(op_emit));
+  runtime.register_op("op_exists", op(op_exists));
   runtime.register_op("op_load", op(op_load));
   runtime.register_op("op_resolve", op(op_resolve));
   runtime.register_op("op_respond", op(op_respond));
@@ -511,9 +560,9 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
   let exec_source = format!("globalThis.exec({})", request_str);
 
   runtime
-    .execute("[native code]", startup_source)
+    .execute_script(&located_script_name!(), startup_source)
     .context("Could not properly start the compiler runtime.")?;
-  runtime.execute("[native_code]", &exec_source)?;
+  runtime.execute_script(&located_script_name!(), &exec_source)?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();
@@ -544,9 +593,9 @@ mod tests {
   use crate::diagnostics::DiagnosticCategory;
   use crate::module_graph::tests::MockSpecifierHandler;
   use crate::module_graph::GraphBuilder;
+  use deno_core::parking_lot::Mutex;
   use std::env;
   use std::path::PathBuf;
-  use std::sync::Mutex;
 
   async fn setup(
     maybe_specifier: Option<ModuleSpecifier>,
@@ -571,6 +620,7 @@ mod tests {
     State::new(
       graph,
       hash_data,
+      None,
       maybe_tsbuildinfo,
       HashMap::new(),
       HashMap::new(),
@@ -612,6 +662,7 @@ mod tests {
       debug: false,
       graph,
       hash_data,
+      maybe_config_specifier: None,
       maybe_tsbuildinfo: None,
       root_names: vec![(specifier.clone(), MediaType::TypeScript)],
     };
@@ -625,7 +676,7 @@ mod tests {
       ..Default::default()
     });
     js_runtime
-      .execute(
+      .execute_script(
         "<anon>",
         r#"
       if (!(startup)) {

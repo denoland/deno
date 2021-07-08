@@ -41,21 +41,15 @@ declare namespace globalThis {
 
     declare namespace formData {
       declare type FormData = typeof FormData;
-      declare function encodeFormData(formdata: FormData): {
-        body: Uint8Array;
-        contentType: string;
-      };
+      declare function formDataToBlob(
+        formData: globalThis.FormData,
+      ): Blob;
       declare function parseFormData(
         body: Uint8Array,
         boundary: string | undefined,
       ): FormData;
       declare function formDataFromEntries(entries: FormDataEntry[]): FormData;
     }
-
-    declare var streams: {
-      ReadableStream: typeof ReadableStream;
-      isReadableStreamDisturbed(stream: ReadableStream): boolean;
-    };
 
     declare namespace fetchBody {
       function mixinBody(
@@ -82,6 +76,7 @@ declare namespace globalThis {
       function toInnerRequest(request: Request): InnerRequest;
       function fromInnerRequest(
         inner: InnerRequest,
+        signal: AbortSignal | null,
         guard:
           | "request"
           | "immutable"

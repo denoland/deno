@@ -10,7 +10,7 @@
   const {
     GPU,
     GPUAdapter,
-    GPUAdapterLimits,
+    GPUSupportedLimits,
     GPUSupportedFeatures,
     GPUDevice,
     GPUQueue,
@@ -39,6 +39,11 @@
     GPUOutOfMemoryError,
     GPUValidationError,
   } = window.__bootstrap.webgpu;
+  const {
+    SymbolIterator,
+    TypeError,
+    Uint32Array,
+  } = window.__bootstrap.primordials;
 
   // This needs to be initalized after all of the base classes are implmented,
   // otherwise their converters might not be available yet.
@@ -52,16 +57,22 @@
       dictMembersGPUObjectDescriptorBase,
     );
 
-  // INTERFACE: GPUAdapterLimits
-  webidl.converters.GPUAdapterLimits = webidl.createInterfaceConverter(
-    "GPUAdapterLimits",
-    GPUAdapterLimits,
+  // INTERFACE: GPUSupportedLimits
+  webidl.converters.GPUSupportedLimits = webidl.createInterfaceConverter(
+    "GPUSupportedLimits",
+    GPUSupportedLimits,
   );
 
   // INTERFACE: GPUSupportedFeatures
   webidl.converters.GPUSupportedFeatures = webidl.createInterfaceConverter(
     "GPUSupportedFeatures",
     GPUSupportedFeatures,
+  );
+
+  // ENUM: GPUPredefinedColorSpace
+  webidl.converters.GPUPredefinedColorSpace = webidl.createEnumConverter(
+    "GPUPredefinedColorSpace",
+    ["srgb"],
   );
 
   // INTERFACE: GPU
@@ -81,6 +92,11 @@
     {
       key: "powerPreference",
       converter: webidl.converters["GPUPowerPreference"],
+    },
+    {
+      key: "forceSoftware",
+      converter: webidl.converters.boolean,
+      defaultValue: false,
     },
   ];
   webidl.converters["GPURequestAdapterOptions"] = webidl
@@ -254,7 +270,7 @@
       return webidl.converters["GPUExtent3DDict"](V, opts);
     }
     if (typeof V === "object") {
-      const method = V[Symbol.iterator];
+      const method = V[SymbolIterator];
       if (method !== undefined) {
         return webidl.converters["sequence<GPUIntegerCoordinate>"](V, opts);
       }
@@ -902,6 +918,15 @@
       dictMembersGPUPipelineDescriptorBase,
     );
 
+  // TYPEDEF: GPUPipelineConstantValue
+  webidl.converters.GPUPipelineConstantValue = webidl.converters.double;
+
+  webidl.converters["record<USVString, GPUPipelineConstantValue>"] = webidl
+    .createRecordConverter(
+      webidl.converters.USVString,
+      webidl.converters.GPUPipelineConstantValue,
+    );
+
   // DICTIONARY: GPUProgrammableStage
   const dictMembersGPUProgrammableStage = [
     {
@@ -913,6 +938,11 @@
       key: "entryPoint",
       converter: webidl.converters["USVString"],
       required: true,
+    },
+    {
+      key: "constants",
+      converter:
+        webidl.converters["record<USVString, GPUPipelineConstantValue>"],
     },
   ];
   webidl.converters["GPUProgrammableStage"] = webidl.createDictionaryConverter(
@@ -1516,7 +1546,7 @@
       return webidl.converters["GPUOrigin3DDict"](V, opts);
     }
     if (typeof V === "object") {
-      const method = V[Symbol.iterator];
+      const method = V[SymbolIterator];
       if (method !== undefined) {
         return webidl.converters["sequence<GPUIntegerCoordinate>"](V, opts);
       }
@@ -1584,7 +1614,7 @@
       return webidl.converters["GPUOrigin2DDict"](V, opts);
     }
     if (typeof V === "object") {
-      const method = V[Symbol.iterator];
+      const method = V[SymbolIterator];
       if (method !== undefined) {
         return webidl.converters["sequence<GPUIntegerCoordinate>"](V, opts);
       }
@@ -1642,7 +1672,7 @@
       return webidl.converters["GPUColorDict"](V, opts);
     }
     if (typeof V === "object") {
-      const method = V[Symbol.iterator];
+      const method = V[SymbolIterator];
       if (method !== undefined) {
         return webidl.converters["sequence<double>"](V, opts);
       }
@@ -1658,7 +1688,7 @@
   // ENUM: GPUStoreOp
   webidl.converters["GPUStoreOp"] = webidl.createEnumConverter("GPUStoreOp", [
     "store",
-    "clear",
+    "discard",
   ]);
 
   // DICTIONARY: GPURenderPassColorAttachment
