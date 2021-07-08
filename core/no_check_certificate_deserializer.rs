@@ -38,7 +38,7 @@ where
     where
       E: de::Error,
     {
-      Ok(v.then(|| vec![]))
+      Ok(v.then(Vec::new))
     }
 
     fn visit_none<E>(self) -> Result<Self::Value, E>
