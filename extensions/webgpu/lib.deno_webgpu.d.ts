@@ -15,7 +15,7 @@ declare interface GPUObjectDescriptorBase {
   label?: string;
 }
 
-declare class GPUAdapterLimits {
+declare class GPUSupportedLimits {
   maxTextureDimension1D?: number;
   maxTextureDimension2D?: number;
   maxTextureDimension3D?: number;
@@ -30,9 +30,15 @@ declare class GPUAdapterLimits {
   maxUniformBuffersPerShaderStage?: number;
   maxUniformBufferBindingSize?: number;
   maxStorageBufferBindingSize?: number;
+  minUniformBufferOffsetAlignment?: number;
+  minStorageBufferOffsetAlignment?: number;
   maxVertexBuffers?: number;
   maxVertexAttributes?: number;
   maxVertexBufferArrayStride?: number;
+  maxInterStageShaderComponents?: number;
+  maxComputeWorkgroupStorageSize?: number;
+  maxComputeWorkgroupInvocations?: number;
+  maxComputePerDimensionDispatchSize?: number;
 }
 
 declare class GPUSupportedFeatures {
@@ -63,6 +69,7 @@ declare class GPU {
 
 declare interface GPURequestAdapterOptions {
   powerPreference?: GPUPowerPreference;
+  forceSoftware?: boolean;
 }
 
 declare type GPUPowerPreference = "low-power" | "high-performance";
@@ -70,14 +77,15 @@ declare type GPUPowerPreference = "low-power" | "high-performance";
 declare class GPUAdapter {
   readonly name: string;
   readonly features: GPUSupportedFeatures;
-  readonly limits: GPUAdapterLimits;
+  readonly limits: GPUSupportedLimits;
+  readonly isSoftware: boolean;
 
   requestDevice(descriptor?: GPUDeviceDescriptor): Promise<GPUDevice>;
 }
 
 declare interface GPUDeviceDescriptor extends GPUObjectDescriptorBase {
-  nonGuaranteedFeatures?: GPUFeatureName[];
-  nonGuaranteedLimits?: Record<string, number>;
+  requiredFeatures?: GPUFeatureName[];
+  requiredLimits?: Record<string, number>;
 }
 
 declare type GPUFeatureName =
@@ -953,7 +961,7 @@ declare interface GPURenderPassDepthStencilAttachment {
 
 declare type GPULoadOp = "load";
 
-declare type GPUStoreOp = "store" | "clear";
+declare type GPUStoreOp = "store" | "discard";
 
 declare class GPURenderBundle implements GPUObjectBase {
   label: string | null;
