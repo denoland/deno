@@ -14,6 +14,7 @@ import {
   autoConfig,
   cargoBuild,
   checkPy3Available,
+  escapeLoneSurrogates,
   Expectation,
   generateRunInfo,
   getExpectation,
@@ -29,17 +30,8 @@ import {
   updateManifest,
   wptreport,
 } from "./wpt/utils.ts";
-import {
-  blue,
-  bold,
-  green,
-  red,
-  yellow,
-} from "https://deno.land/std@0.84.0/fmt/colors.ts";
-import {
-  writeAll,
-  writeAllSync,
-} from "https://deno.land/std@0.95.0/io/util.ts";
+import { blue, bold, green, red, yellow } from "../test_util/std/fmt/colors.ts";
+import { writeAll, writeAllSync } from "../test_util/std/io/util.ts";
 import { saveExpectation } from "./wpt/utils.ts";
 
 const command = Deno.args[0];
@@ -197,7 +189,7 @@ async function run() {
   }
 
   if (wptreport) {
-    const report = await generateWptreport(results, startTime, endTime);
+    const report = await generateWptReport(results, startTime, endTime);
     await Deno.writeTextFile(wptreport, JSON.stringify(report));
   }
 
@@ -205,7 +197,7 @@ async function run() {
   Deno.exit(code);
 }
 
-async function generateWptreport(
+async function generateWptReport(
   results: { test: TestToRun; result: TestResult }[],
   startTime: number,
   endTime: number,
@@ -231,16 +223,17 @@ async function generateWptreport(
         }
 
         return {
-          name: case_.name,
+          name: escapeLoneSurrogates(case_.name),
           status: case_.passed ? "PASS" : "FAIL",
-          message: case_.message,
+          message: escapeLoneSurrogates(case_.message),
           expected,
           known_intermittent: [],
         };
       }),
       status,
-      message: result.harnessStatus?.message ??
-        (result.stderr.trim() || null),
+      message: escapeLoneSurrogates(
+        result.harnessStatus?.message ?? (result.stderr.trim() || null),
+      ),
       duration: result.duration,
       expected: status === "OK" ? undefined : "OK",
       "known_intermittent": [],

@@ -52,9 +52,9 @@ V8_FROM_SOURCE=1 cargo build -vv
 
 When building V8 from source, there are more dependencies:
 
-[Python 2](https://www.python.org/downloads). Ensure that a suffix-less
-`python`/`python.exe` exists in your `PATH` and it refers to Python 2,
-[not 3](https://github.com/denoland/deno/issues/464#issuecomment-411795578).
+[Python 3](https://www.python.org/downloads) for running WPT tests. Ensure that
+a suffix-less `python`/`python.exe` exists in your `PATH` and it refers to
+Python 3.
 
 For Linux users glib-2.0 development files must also be installed. (On Ubuntu,
 run `apt install libglib2.0-dev`.)

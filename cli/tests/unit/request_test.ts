@@ -1,5 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, unitTest } from "./test_util.ts";
+import { assertEquals, assertStringIncludes, unitTest } from "./test_util.ts";
 
 unitTest(async function fromInit(): Promise<void> {
   const req = new Request("http://foo/", {
@@ -66,4 +66,5 @@ unitTest(function customInspectFunction(): void {
   url: "https://example.com/"
 }`,
   );
+  assertStringIncludes(Deno.inspect(Request.prototype), "Request");
 });

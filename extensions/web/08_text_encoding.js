@@ -2,6 +2,7 @@
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
+/// <reference path="../../core/internal.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../fetch/lib.deno_fetch.d.ts" />
 /// <reference path="../web/internal.d.ts" />
@@ -13,6 +14,17 @@
 ((window) => {
   const core = Deno.core;
   const webidl = window.__bootstrap.webidl;
+  const {
+    ArrayBufferIsView,
+    PromiseReject,
+    PromiseResolve,
+    StringPrototypeCharCodeAt,
+    StringPrototypeSlice,
+    SymbolToStringTag,
+    TypedArrayPrototypeSubarray,
+    TypedArrayPrototypeSlice,
+    Uint8Array,
+  } = window.__bootstrap.primordials;
 
   class TextDecoder {
     /** @type {string} */
@@ -95,7 +107,7 @@
       }
 
       try {
-        if (ArrayBuffer.isView(input)) {
+        if (ArrayBufferIsView(input)) {
           input = new Uint8Array(
             input.buffer,
             input.byteOffset,
@@ -116,7 +128,7 @@
       }
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "TextDecoder";
     }
   }
@@ -141,7 +153,9 @@
     encode(input = "") {
       webidl.assertBranded(this, TextEncoder);
       const prefix = "Failed to execute 'encode' on 'TextEncoder'";
-      input = webidl.converters.USVString(input, {
+      // The WebIDL type of `input` is `USVString`, but `core.encode` already
+      // converts lone surrogates to the replacement character.
+      input = webidl.converters.DOMString(input, {
         prefix,
         context: "Argument 1",
       });
@@ -156,7 +170,9 @@
     encodeInto(source, destination) {
       webidl.assertBranded(this, TextEncoder);
       const prefix = "Failed to execute 'encodeInto' on 'TextEncoder'";
-      source = webidl.converters.USVString(source, {
+      // The WebIDL type of `source` is `USVString`, but the ops bindings
+      // already convert lone surrogates to the replacement character.
+      source = webidl.converters.DOMString(source, {
         prefix,
         context: "Argument 1",
       });
@@ -168,7 +184,7 @@
       return core.opSync("op_encoding_encode_into", source, destination);
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "TextEncoder";
     }
   }
@@ -209,9 +225,9 @@
             if (decoded) {
               controller.enqueue(decoded);
             }
-            return Promise.resolve();
+            return PromiseResolve();
           } catch (err) {
-            return Promise.reject(err);
+            return PromiseReject(err);
           }
         },
         flush: (controller) => {
@@ -220,9 +236,9 @@
             if (final) {
               controller.enqueue(final);
             }
-            return Promise.resolve();
+            return PromiseResolve();
           } catch (err) {
-            return Promise.reject(err);
+            return PromiseReject(err);
           }
         },
       });
@@ -259,7 +275,7 @@
       return this.#transform.writable;
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "TextDecoderStream";
     }
   }
@@ -282,19 +298,22 @@
             if (this.#pendingHighSurrogate !== null) {
               chunk = this.#pendingHighSurrogate + chunk;
             }
-            const lastCodeUnit = chunk.charCodeAt(chunk.length - 1);
+            const lastCodeUnit = StringPrototypeCharCodeAt(
+              chunk,
+              chunk.length - 1,
+            );
             if (0xD800 <= lastCodeUnit && lastCodeUnit <= 0xDBFF) {
-              this.#pendingHighSurrogate = chunk.slice(-1);
-              chunk = chunk.slice(0, -1);
+              this.#pendingHighSurrogate = StringPrototypeSlice(chunk, -1);
+              chunk = StringPrototypeSlice(chunk, 0, -1);
             } else {
               this.#pendingHighSurrogate = null;
             }
             if (chunk) {
               controller.enqueue(core.encode(chunk));
             }
-            return Promise.resolve();
+            return PromiseResolve();
           } catch (err) {
-            return Promise.reject(err);
+            return PromiseReject(err);
           }
         },
         flush: (controller) => {
@@ -302,9 +321,9 @@
             if (this.#pendingHighSurrogate !== null) {
               controller.enqueue(new Uint8Array([0xEF, 0xBF, 0xBD]));
             }
-            return Promise.resolve();
+            return PromiseResolve();
           } catch (err) {
-            return Promise.reject(err);
+            return PromiseReject(err);
           }
         },
       });
@@ -329,7 +348,7 @@
       return this.#transform.writable;
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "TextEncoderStream";
     }
   }
@@ -373,14 +392,16 @@
       if (BOMEncoding === "UTF-8") start = 3;
       else start = 2;
     }
-    return new TextDecoder(encoding).decode(bytes.slice(start));
+    return new TextDecoder(encoding).decode(
+      TypedArrayPrototypeSlice(bytes, start),
+    );
   }
 
   /**
    * @param {Uint8Array} bytes
    */
   function BOMSniff(bytes) {
-    const BOM = bytes.subarray(0, 3);
+    const BOM = TypedArrayPrototypeSubarray(bytes, 0, 3);
     if (BOM[0] === 0xEF && BOM[1] === 0xBB && BOM[2] === 0xBF) {
       return "UTF-8";
     }

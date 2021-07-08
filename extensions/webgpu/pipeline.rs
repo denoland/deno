@@ -153,6 +153,7 @@ fn serialize_blend_component(
 struct GpuProgrammableStage {
   module: u32,
   entry_point: String,
+  // constants: HashMap<String, GPUPipelineConstantValue>
 }
 
 #[derive(Deserialize)]
@@ -197,6 +198,7 @@ pub fn op_webgpu_create_compute_pipeline(
     stage: wgpu_core::pipeline::ProgrammableStageDescriptor {
       module: compute_shader_module_resource.0,
       entry_point: Cow::from(args.compute.entry_point),
+      // TODO(lucacasonato): support args.compute.constants
     },
   };
   let implicit_pipelines = match args.layout {

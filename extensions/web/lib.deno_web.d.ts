@@ -648,3 +648,92 @@ interface TransformStreamDefaultControllerTransformCallback<I, O> {
     controller: TransformStreamDefaultController<O>,
   ): void | PromiseLike<void>;
 }
+
+interface MessageEventInit<T = any> extends EventInit {
+  data?: T;
+  origin?: string;
+  lastEventId?: string;
+}
+
+declare class MessageEvent<T = any> extends Event {
+  /**
+   * Returns the data of the message.
+   */
+  readonly data: T;
+  /**
+   * Returns the last event ID string, for server-sent events.
+   */
+  readonly lastEventId: string;
+  /**
+   * Returns transfered ports.
+   */
+  readonly ports: ReadonlyArray<MessagePort>;
+  constructor(type: string, eventInitDict?: MessageEventInit);
+}
+
+type Transferable = ArrayBuffer | MessagePort;
+
+interface PostMessageOptions {
+  transfer?: Transferable[];
+}
+
+/** The MessageChannel interface of the Channel Messaging API allows us to
+ * create a new message channel and send data through it via its two MessagePort
+ * properties. */
+declare class MessageChannel {
+  constructor();
+  readonly port1: MessagePort;
+  readonly port2: MessagePort;
+}
+
+interface MessagePortEventMap {
+  "message": MessageEvent;
+  "messageerror": MessageEvent;
+}
+
+/** The MessagePort interface of the Channel Messaging API represents one of the
+ * two ports of a MessageChannel, allowing messages to be sent from one port and
+ * listening out for them arriving at the other. */
+declare class MessagePort extends EventTarget {
+  onmessage: ((this: MessagePort, ev: MessageEvent) => any) | null;
+  onmessageerror: ((this: MessagePort, ev: MessageEvent) => any) | null;
+  /**
+   * Disconnects the port, so that it is no longer active.
+   */
+  close(): void;
+  /**
+   * Posts a message through the channel. Objects listed in transfer are
+   * transferred, not just cloned, meaning that they are no longer usable on the
+   * sending side.
+   *
+   * Throws a "DataCloneError" DOMException if transfer contains duplicate
+   * objects or port, or if message could not be cloned.
+   */
+  postMessage(message: any, transfer: Transferable[]): void;
+  postMessage(message: any, options?: PostMessageOptions): void;
+  /**
+   * Begins dispatching messages received on the port. This is implictly called
+   * when assiging a value to `this.onmessage`.
+   */
+  start(): void;
+  addEventListener<K extends keyof MessagePortEventMap>(
+    type: K,
+    listener: (this: MessagePort, ev: MessagePortEventMap[K]) => any,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  removeEventListener<K extends keyof MessagePortEventMap>(
+    type: K,
+    listener: (this: MessagePort, ev: MessagePortEventMap[K]) => any,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ): void;
+}

@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
+/// <reference path="../../core/internal.d.ts" />
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
@@ -8,6 +9,15 @@
 "use strict";
 
 ((window) => {
+  const {
+    ArrayPrototypeIncludes,
+    Map,
+    MapPrototypeHas,
+    MapPrototypeSet,
+    RegExpPrototypeTest,
+    StringPrototypeReplaceAll,
+    StringPrototypeToLowerCase,
+  } = window.__bootstrap.primordials;
   const {
     collectSequenceOfCodepoints,
     HTTP_WHITESPACE,
@@ -31,8 +41,8 @@
    */
   function parseMimeType(input) {
     // 1.
-    input = input.replaceAll(HTTP_WHITESPACE_PREFIX_RE, "");
-    input = input.replaceAll(HTTP_WHITESPACE_SUFFIX_RE, "");
+    input = StringPrototypeReplaceAll(input, HTTP_WHITESPACE_PREFIX_RE, "");
+    input = StringPrototypeReplaceAll(input, HTTP_WHITESPACE_SUFFIX_RE, "");
 
     // 2.
     let position = 0;
@@ -48,7 +58,9 @@
     position = res1.position;
 
     // 4.
-    if (type === "" || !HTTP_TOKEN_CODE_POINT_RE.test(type)) return null;
+    if (type === "" || !RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, type)) {
+      return null;
+    }
 
     // 5.
     if (position >= endOfInput) return null;
@@ -66,15 +78,19 @@
     position = res2.position;
 
     // 8.
-    subtype = subtype.replaceAll(HTTP_WHITESPACE_SUFFIX_RE, "");
+    subtype = StringPrototypeReplaceAll(subtype, HTTP_WHITESPACE_SUFFIX_RE, "");
 
     // 9.
-    if (subtype === "" || !HTTP_TOKEN_CODE_POINT_RE.test(subtype)) return null;
+    if (
+      subtype === "" || !RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, subtype)
+    ) {
+      return null;
+    }
 
     // 10.
     const mimeType = {
-      type: type.toLowerCase(),
-      subtype: subtype.toLowerCase(),
+      type: StringPrototypeToLowerCase(type),
+      subtype: StringPrototypeToLowerCase(subtype),
       /** @type {Map<string, string>} */
       parameters: new Map(),
     };
@@ -88,7 +104,7 @@
       const res1 = collectSequenceOfCodepoints(
         input,
         position,
-        (c) => HTTP_WHITESPACE.includes(c),
+        (c) => ArrayPrototypeIncludes(HTTP_WHITESPACE, c),
       );
       position = res1.position;
 
@@ -102,7 +118,7 @@
       position = res2.position;
 
       // 11.4.
-      parameterName = parameterName.toLowerCase();
+      parameterName = StringPrototypeToLowerCase(parameterName);
 
       // 11.5.
       if (position < endOfInput) {
@@ -136,7 +152,8 @@
         position = res.position;
 
         // 11.9.2.
-        parameterValue = parameterValue.replaceAll(
+        parameterValue = StringPrototypeReplaceAll(
+          parameterValue,
           HTTP_WHITESPACE_SUFFIX_RE,
           "",
         );
@@ -147,11 +164,15 @@
 
       // 11.10.
       if (
-        parameterName !== "" && HTTP_TOKEN_CODE_POINT_RE.test(parameterName) &&
-        HTTP_QUOTED_STRING_TOKEN_POINT_RE.test(parameterValue) &&
-        !mimeType.parameters.has(parameterName)
+        parameterName !== "" &&
+        RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, parameterName) &&
+        RegExpPrototypeTest(
+          HTTP_QUOTED_STRING_TOKEN_POINT_RE,
+          parameterValue,
+        ) &&
+        !MapPrototypeHas(mimeType.parameters, parameterName)
       ) {
-        mimeType.parameters.set(parameterName, parameterValue);
+        MapPrototypeSet(mimeType.parameters, parameterName, parameterValue);
       }
     }
 
@@ -176,9 +197,9 @@
     for (const param of mimeType.parameters) {
       serialization += `;${param[0]}=`;
       let value = param[1];
-      if (!HTTP_TOKEN_CODE_POINT_RE.test(value)) {
-        value = value.replaceAll("\\", "\\\\");
-        value = value.replaceAll('"', '\\"');
+      if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, value)) {
+        value = StringPrototypeReplaceAll(value, "\\", "\\\\");
+        value = StringPrototypeReplaceAll(value, '"', '\\"');
         value = `"${value}"`;
       }
       serialization += value;

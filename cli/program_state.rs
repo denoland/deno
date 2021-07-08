@@ -15,8 +15,9 @@ use crate::module_graph::TypeLib;
 use crate::source_maps::SourceMapGetter;
 use crate::specifier_handler::FetchHandler;
 use crate::version;
+use deno_core::SharedArrayBufferStore;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
-use deno_runtime::deno_web::BlobUrlStore;
+use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::Permissions;
 
@@ -24,6 +25,7 @@ use deno_core::error::anyhow;
 use deno_core::error::get_custom_error_class;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::url::Url;
 use deno_core::ModuleSource;
@@ -31,10 +33,10 @@ use deno_core::ModuleSpecifier;
 use log::debug;
 use log::warn;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::env;
 use std::fs::read;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 /// This structure represents state of single "deno" program.
 ///
@@ -52,8 +54,9 @@ pub struct ProgramState {
   pub maybe_import_map: Option<ImportMap>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub ca_data: Option<Vec<u8>>,
-  pub blob_url_store: BlobUrlStore,
+  pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
+  pub shared_array_buffer_store: SharedArrayBufferStore,
 }
 
 impl ProgramState {
@@ -78,15 +81,16 @@ impl ProgramState {
       CacheSetting::Use
     };
 
-    let blob_url_store = BlobUrlStore::default();
+    let blob_store = BlobStore::default();
     let broadcast_channel = InMemoryBroadcastChannel::default();
+    let shared_array_buffer_store = SharedArrayBufferStore::default();
 
     let file_fetcher = FileFetcher::new(
       http_cache,
       cache_usage,
       !flags.no_remote,
       ca_data.clone(),
-      blob_url_store.clone(),
+      blob_store.clone(),
     )?;
 
     let lockfile = if let Some(filename) = &flags.lock {
@@ -145,8 +149,9 @@ impl ProgramState {
       maybe_import_map,
       maybe_inspector_server,
       ca_data,
-      blob_url_store,
+      blob_store,
       broadcast_channel,
+      shared_array_buffer_store,
     };
     Ok(Arc::new(program_state))
   }
@@ -173,16 +178,22 @@ impl ProgramState {
     for specifier in specifiers {
       builder.add(&specifier, false).await?;
     }
+    builder.analyze_config_file(&self.maybe_config_file).await?;
 
     let mut graph = builder.get_graph();
     let debug = self.flags.log_level == Some(log::Level::Debug);
     let maybe_config_file = self.maybe_config_file.clone();
+    let reload_exclusions = {
+      let modules = self.modules.lock();
+      modules.keys().cloned().collect::<HashSet<_>>()
+    };
 
     let result_modules = if self.flags.no_check {
       let result_info = graph.transpile(TranspileOptions {
         debug,
         maybe_config_file,
         reload: self.flags.reload,
+        reload_exclusions,
       })?;
       debug!("{}", result_info.stats);
       if let Some(ignored_options) = result_info.maybe_ignored_options {
@@ -196,6 +207,7 @@ impl ProgramState {
         lib,
         maybe_config_file,
         reload: self.flags.reload,
+        reload_exclusions,
       })?;
 
       debug!("{}", result_info.stats);
@@ -208,11 +220,11 @@ impl ProgramState {
       result_info.loadable_modules
     };
 
-    let mut loadable_modules = self.modules.lock().unwrap();
+    let mut loadable_modules = self.modules.lock();
     loadable_modules.extend(result_modules);
 
     if let Some(ref lockfile) = self.lockfile {
-      let g = lockfile.lock().unwrap();
+      let g = lockfile.lock();
       g.write()?;
     }
 
@@ -241,15 +253,21 @@ impl ProgramState {
     let mut builder =
       GraphBuilder::new(handler, maybe_import_map, self.lockfile.clone());
     builder.add(&specifier, is_dynamic).await?;
+    builder.analyze_config_file(&self.maybe_config_file).await?;
     let mut graph = builder.get_graph();
     let debug = self.flags.log_level == Some(log::Level::Debug);
     let maybe_config_file = self.maybe_config_file.clone();
+    let reload_exclusions = {
+      let modules = self.modules.lock();
+      modules.keys().cloned().collect::<HashSet<_>>()
+    };
 
     let result_modules = if self.flags.no_check {
       let result_info = graph.transpile(TranspileOptions {
         debug,
         maybe_config_file,
         reload: self.flags.reload,
+        reload_exclusions,
       })?;
       debug!("{}", result_info.stats);
       if let Some(ignored_options) = result_info.maybe_ignored_options {
@@ -263,6 +281,7 @@ impl ProgramState {
         lib,
         maybe_config_file,
         reload: self.flags.reload,
+        reload_exclusions,
       })?;
 
       debug!("{}", result_info.stats);
@@ -275,11 +294,11 @@ impl ProgramState {
       result_info.loadable_modules
     };
 
-    let mut loadable_modules = self.modules.lock().unwrap();
+    let mut loadable_modules = self.modules.lock();
     loadable_modules.extend(result_modules);
 
     if let Some(ref lockfile) = self.lockfile {
-      let g = lockfile.lock().unwrap();
+      let g = lockfile.lock();
       g.write()?;
     }
 
@@ -291,7 +310,7 @@ impl ProgramState {
     specifier: ModuleSpecifier,
     maybe_referrer: Option<ModuleSpecifier>,
   ) -> Result<ModuleSource, AnyError> {
-    let modules = self.modules.lock().unwrap();
+    let modules = self.modules.lock();
     modules
       .get(&specifier)
       .map(|r| match r {

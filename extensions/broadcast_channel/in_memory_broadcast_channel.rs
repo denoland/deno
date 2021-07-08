@@ -3,8 +3,8 @@
 use crate::BroadcastChannel;
 use async_trait::async_trait;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use std::sync::Arc;
-use std::sync::Mutex;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -41,7 +41,7 @@ impl BroadcastChannel for InMemoryBroadcastChannel {
 
   fn subscribe(&self) -> Result<Self::Resource, AnyError> {
     let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
-    let broadcast_rx = self.0.lock().unwrap().subscribe();
+    let broadcast_rx = self.0.lock().subscribe();
     let rx = tokio::sync::Mutex::new((broadcast_rx, cancel_rx));
     let uuid = Uuid::new_v4();
     Ok(Self::Resource {
@@ -64,7 +64,7 @@ impl BroadcastChannel for InMemoryBroadcastChannel {
     let name = Arc::new(name);
     let data = Arc::new(data);
     let uuid = resource.uuid;
-    self.0.lock().unwrap().send(Message { name, data, uuid })?;
+    self.0.lock().send(Message { name, data, uuid })?;
     Ok(())
   }
 

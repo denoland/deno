@@ -12,8 +12,9 @@ pub(crate) fn init_builtins() -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:core",
-      "core.js",
-      "error.js",
+      "00_primordials.js",
+      "01_core.js",
+      "02_error.js",
     ))
     .ops(vec![
       ("op_close", op_sync(op_close)),
@@ -61,10 +62,10 @@ pub fn op_print(
   is_err: bool,
 ) -> Result<(), AnyError> {
   if is_err {
-    eprint!("{}", msg);
+    stderr().write_all(msg.as_bytes())?;
     stderr().flush().unwrap();
   } else {
-    print!("{}", msg);
+    stdout().write_all(msg.as_bytes())?;
     stdout().flush().unwrap();
   }
   Ok(())

@@ -4,6 +4,7 @@ use super::analysis;
 use super::text::LineIndex;
 use super::tsc;
 
+use crate::config_file::ConfigFile;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
@@ -18,6 +19,7 @@ use crate::text_encoding;
 
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
@@ -26,13 +28,13 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::SystemTime;
 use tsc::NavigationTree;
 
 pub async fn cache(
   specifier: &ModuleSpecifier,
   maybe_import_map: &Option<ImportMap>,
+  maybe_config_file: &Option<ConfigFile>,
 ) -> Result<(), AnyError> {
   let program_state = Arc::new(ProgramState::build(Default::default()).await?);
   let handler = Arc::new(Mutex::new(FetchHandler::new(
@@ -41,6 +43,7 @@ pub async fn cache(
     Permissions::allow_all(),
   )?));
   let mut builder = GraphBuilder::new(handler, maybe_import_map.clone(), None);
+  builder.analyze_config_file(maybe_config_file).await?;
   builder.add(specifier, false).await
 }
 
@@ -171,57 +174,57 @@ impl Sources {
   }
 
   pub fn contains_key(&self, specifier: &ModuleSpecifier) -> bool {
-    self.0.lock().unwrap().contains_key(specifier)
+    self.0.lock().contains_key(specifier)
   }
 
   pub fn get_line_index(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<LineIndex> {
-    self.0.lock().unwrap().get_line_index(specifier)
+    self.0.lock().get_line_index(specifier)
   }
 
   pub fn get_maybe_types(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<analysis::ResolvedDependency> {
-    self.0.lock().unwrap().get_maybe_types(specifier)
+    self.0.lock().get_maybe_types(specifier)
   }
 
   pub fn get_maybe_warning(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
-    self.0.lock().unwrap().get_maybe_warning(specifier)
+    self.0.lock().get_maybe_warning(specifier)
   }
 
   pub fn get_media_type(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<MediaType> {
-    self.0.lock().unwrap().get_media_type(specifier)
+    self.0.lock().get_media_type(specifier)
   }
 
   pub fn get_navigation_tree(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<tsc::NavigationTree> {
-    self.0.lock().unwrap().get_navigation_tree(specifier)
+    self.0.lock().get_navigation_tree(specifier)
   }
 
   pub fn get_script_version(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
-    self.0.lock().unwrap().get_script_version(specifier)
+    self.0.lock().get_script_version(specifier)
   }
 
   pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    self.0.lock().unwrap().get_source(specifier)
+    self.0.lock().get_source(specifier)
   }
 
   pub fn len(&self) -> usize {
-    self.0.lock().unwrap().metadata.len()
+    self.0.lock().metadata.len()
   }
 
   pub fn resolve_import(
@@ -229,11 +232,11 @@ impl Sources {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Option<(ModuleSpecifier, MediaType)> {
-    self.0.lock().unwrap().resolve_import(specifier, referrer)
+    self.0.lock().resolve_import(specifier, referrer)
   }
 
   pub fn specifiers(&self) -> Vec<ModuleSpecifier> {
-    self.0.lock().unwrap().metadata.keys().cloned().collect()
+    self.0.lock().metadata.keys().cloned().collect()
   }
 
   pub fn set_navigation_tree(
@@ -244,7 +247,6 @@ impl Sources {
     self
       .0
       .lock()
-      .unwrap()
       .set_navigation_tree(specifier, navigation_tree)
   }
 }
@@ -657,7 +659,7 @@ mod tests {
     let (sources, _) = setup();
     let specifier =
       resolve_url("foo://a/b/c.ts").expect("could not create specifier");
-    let sources = sources.0.lock().unwrap();
+    let sources = sources.0.lock();
     let mut redirects = sources.redirects.clone();
     let http_cache = sources.http_cache.clone();
     let actual = resolve_specifier(&specifier, &mut redirects, &http_cache);

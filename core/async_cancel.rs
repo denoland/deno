@@ -644,10 +644,10 @@ mod tests {
       }
     }
 
-    assert_eq!(futures.into_iter().any(|fut| !fut.is_terminated()), false);
+    assert!(!futures.into_iter().any(|fut| !fut.is_terminated()));
 
     let cancel_handles = [cancel_now, cancel_at_0, cancel_at_1, cancel_at_4];
-    assert_eq!(cancel_handles.iter().any(|c| !c.is_canceled()), false);
+    assert!(!cancel_handles.iter().any(|c| !c.is_canceled()));
   }
 
   #[tokio::test]
