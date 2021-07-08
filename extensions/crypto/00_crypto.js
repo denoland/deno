@@ -109,20 +109,6 @@
     return normalizedAlgorithm;
   }
 
-  // Should match op_crypto_subtle_digest() in extensions/crypto/lib.rs
-  function digestToId(name) {
-    switch (name) {
-      case "SHA-1":
-        return 0;
-      case "SHA-256":
-        return 1;
-      case "SHA-384":
-        return 2;
-      case "SHA-512":
-        return 3;
-    }
-  }
-
   const _handle = Symbol("[[handle]]");
   const _algorithm = Symbol("[[algorithm]]");
   const _extractable = Symbol("[[extractable]]");
@@ -256,7 +242,7 @@
 
       const result = await core.opAsync(
         "op_crypto_subtle_digest",
-        digestToId(algorithm.name),
+        algorithm.name,
         data,
       );
 
