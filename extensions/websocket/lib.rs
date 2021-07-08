@@ -27,6 +27,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::fmt;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::path::PathBuf;
@@ -42,8 +43,7 @@ use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::{client_async, WebSocketStream};
 use webpki::DNSNameRef;
 
-pub use tokio_tungstenite;
-use std::fmt; // Re-export tokio_tungstenite
+pub use tokio_tungstenite; // Re-export tokio_tungstenite
 
 #[derive(Clone)]
 pub struct WsCaData(pub Vec<u8>);
@@ -438,9 +438,7 @@ impl fmt::Display for DomExceptionNetworkError {
 
 impl std::error::Error for DomExceptionNetworkError {}
 
-pub fn get_network_error_class_name(
-  e: &AnyError,
-) -> Option<&'static str> {
+pub fn get_network_error_class_name(e: &AnyError) -> Option<&'static str> {
   e.downcast_ref::<DomExceptionNetworkError>()
     .map(|_| "DOMExceptionNetworkError")
 }
