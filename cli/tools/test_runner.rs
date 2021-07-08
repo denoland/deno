@@ -491,13 +491,14 @@ pub async fn run_tests(
     let handle = handle.clone();
 
     tokio::task::spawn_blocking(move || {
-      handle.block_on(run_test_file(
+      let local = tokio::task::LocalSet::new();
+      handle.block_on(local.run_until(run_test_file(
         program_state,
         main_module,
         test_module,
         permissions,
         sender,
-      ))
+      )))
     })
   });
 
