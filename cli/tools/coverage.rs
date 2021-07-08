@@ -65,9 +65,10 @@ impl CoverageCollector {
     &mut self,
     parameters: StartPreciseCoverageParameters,
   ) -> Result<StartPreciseCoverageReturnObject, AnyError> {
+    let parameters_value = serde_json::to_value(parameters)?;
     let return_value = self
       .session
-      .post_message("Profiler.startPreciseCoverage", Some(json!(parameters)))
+      .post_message("Profiler.startPreciseCoverage", Some(parameters_value))
       .await?;
 
     let return_object = serde_json::from_value(return_value)?;
