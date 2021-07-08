@@ -68,10 +68,16 @@ impl EditorHelper {
   }
 
   pub fn get_expression_property_names(&self, expr: &str) -> Vec<String> {
+    // try to get the properties from the expression
+    if let Some(properties) = self.get_object_expr_properties(expr) {
+      return properties;
+    }
+
+    // otherwise, fall back to the prototype
     let expr_type = self.get_expression_type(expr);
-    // possibilities: https://chromedevtools.github.io/devtools-protocol/v8/Runtime/#type-RemoteObject
     let object_expr = match expr_type.as_deref() {
-      Some("object") => expr,
+      // possibilities: https://chromedevtools.github.io/devtools-protocol/v8/Runtime/#type-RemoteObject
+      Some("object") => "Object.prototype",
       Some("function") => "Function.prototype",
       Some("string") => "String.prototype",
       Some("boolean") => "Boolean.prototype",
