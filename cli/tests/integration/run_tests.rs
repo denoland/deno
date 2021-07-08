@@ -1010,10 +1010,11 @@ itest!(jsx_import_from_ts {
   output: "jsx_import_from_ts.ts.out",
 });
 
-itest!(single_compile_with_reload {
-  args: "run --reload --allow-read single_compile_with_reload.ts",
-  output: "single_compile_with_reload.ts.out",
-});
+// TODO(#11128): Flaky. Re-enable later.
+// itest!(single_compile_with_reload {
+//   args: "run --reload --allow-read single_compile_with_reload.ts",
+//   output: "single_compile_with_reload.ts.out",
+// });
 
 itest!(proto_exploit {
   args: "run proto_exploit.js",

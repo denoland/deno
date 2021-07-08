@@ -350,7 +350,7 @@ impl LintReporter for JsonLintReporter {
   fn close(&mut self, _check_count: usize) {
     sort_diagnostics(&mut self.diagnostics);
     let json = serde_json::to_string_pretty(&self);
-    eprintln!("{}", json.unwrap());
+    println!("{}", json.unwrap());
   }
 }
 

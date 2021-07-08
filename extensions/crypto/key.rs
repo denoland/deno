@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use ring::agreement::Algorithm as RingAlgorithm;
+use ring::digest;
 use ring::hmac::Algorithm as HmacAlgorithm;
 use ring::signature::EcdsaSigningAlgorithm;
 use serde::Deserialize;
@@ -63,6 +64,17 @@ impl From<CryptoHash> for HmacAlgorithm {
       CryptoHash::Sha256 => ring::hmac::HMAC_SHA256,
       CryptoHash::Sha384 => ring::hmac::HMAC_SHA384,
       CryptoHash::Sha512 => ring::hmac::HMAC_SHA512,
+    }
+  }
+}
+
+impl From<CryptoHash> for &'static digest::Algorithm {
+  fn from(hash: CryptoHash) -> &'static digest::Algorithm {
+    match hash {
+      CryptoHash::Sha1 => &digest::SHA1_FOR_LEGACY_USE_ONLY,
+      CryptoHash::Sha256 => &digest::SHA256,
+      CryptoHash::Sha384 => &digest::SHA384,
+      CryptoHash::Sha512 => &digest::SHA512,
     }
   }
 }
