@@ -73,7 +73,7 @@ impl EditorHelper {
       return properties;
     }
 
-    // otherwise, fall back to the prototype
+    // otherwise fall back to the prototype
     let expr_type = self.get_expression_type(expr);
     let object_expr = match expr_type.as_deref() {
       // possibilities: https://chromedevtools.github.io/devtools-protocol/v8/Runtime/#type-RemoteObject
