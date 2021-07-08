@@ -10,18 +10,18 @@ const filenameSuffix = Deno.build.os === "darwin"
   : ".so";
 const filenamePrefix = Deno.build.os === "windows" ? "" : "lib";
 
-const filename = `../target/${
+const filename = `./target/${
   Deno.args[0]
 }/${filenamePrefix}${filenameBase}${filenameSuffix}`;
 
 const resourcesPre = Deno.resources();
 const dylib = Deno.dlopen(filename, {
   "print_something": { parameters: [], result: "void" },
-  "add_two": { parameters: ["u32"], result: "u32" },
+  "add": { parameters: ["u32", "u32"], result: "u32" },
 });
 
 dylib.symbols.print_something();
-console.log(`${dylib.symbols.add_two(123)}`);
+console.log(`${dylib.symbols.add(123, 456)}`);
 
 dylib.close();
 const resourcesPost = Deno.resources();

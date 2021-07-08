@@ -39,7 +39,7 @@ fn basic() {
   let expected = "\
     Dylib rid: 3\n\
     something\n\
-    125\n\
+    912\n\
     Correct number of resources\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");

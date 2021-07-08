@@ -133,7 +133,7 @@ pub struct Flags {
   pub allow_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
   pub allow_net: Option<Vec<String>>,
-  pub allow_ffi: bool,
+  pub allow_ffi: Option<Vec<String>>,
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
@@ -231,8 +231,15 @@ impl Flags {
       _ => {}
     }
 
-    if self.allow_ffi {
-      args.push("--allow-ffi".to_string());
+    match &self.allow_ffi {
+      Some(ffi_allowlist) if ffi_allowlist.is_empty() => {
+        args.push("--allow-ffi".to_string());
+      }
+      Some(ffi_allowlist) => {
+        let s = format!("--allow-ffi={}", ffi_allowlist.join(","));
+        args.push(s);
+      }
+      _ => {}
     }
 
     if self.allow_hrtime {
@@ -1210,7 +1217,11 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
     .arg(
       Arg::with_name("allow-ffi")
         .long("allow-ffi")
-        .help("Allow loading ffis"),
+        .min_values(0)
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Allow loading dynamic libraries"),
     )
     .arg(
       Arg::with_name("allow-hrtime")
@@ -1549,7 +1560,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_run = Some(vec![]);
   flags.allow_read = Some(vec![]);
   flags.allow_write = Some(vec![]);
-  flags.allow_ffi = true;
+  flags.allow_ffi = Some(vec![]);
   flags.allow_hrtime = true;
   // TODO(@satyarohith): remove this flag in 2.0.
   let as_typescript = matches.is_present("ts");
@@ -1668,7 +1679,7 @@ fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_run = Some(vec![]);
   flags.allow_read = Some(vec![]);
   flags.allow_write = Some(vec![]);
-  flags.allow_ffi = true;
+  flags.allow_ffi = Some(vec![]);
   flags.allow_hrtime = true;
 }
 
@@ -1838,9 +1849,12 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     debug!("run allowlist: {:#?}", &flags.allow_run);
   }
 
-  if matches.is_present("allow-ffi") {
-    flags.allow_ffi = true;
+  if let Some(ffi_wl) = matches.values_of("allow-ffi") {
+    let ffi_allowlist: Vec<String> = ffi_wl.map(ToString::to_string).collect();
+    flags.allow_ffi = Some(ffi_allowlist);
+    debug!("ffi allowlist: {:#?}", &flags.allow_ffi);
   }
+
   if matches.is_present("allow-hrtime") {
     flags.allow_hrtime = true;
   }
@@ -1850,7 +1864,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_net = Some(vec![]);
     flags.allow_run = Some(vec![]);
     flags.allow_write = Some(vec![]);
-    flags.allow_ffi = true;
+    flags.allow_ffi = Some(vec![]);
     flags.allow_hrtime = true;
   }
   if matches.is_present("prompt") {
@@ -2179,7 +2193,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_ffi: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2516,7 +2530,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_ffi: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2539,7 +2553,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_ffi: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2563,7 +2577,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_ffi: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2600,7 +2614,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_ffi: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2630,7 +2644,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_ffi: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2650,7 +2664,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_ffi: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2684,7 +2698,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_ffi: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }

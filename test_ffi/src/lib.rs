@@ -4,6 +4,6 @@ pub extern "C" fn print_something() {
 }
 
 #[no_mangle]
-pub extern "C" fn add_two(arg: u32) -> u32 {
-  arg + 2
+pub extern "C" fn add(a: u32, b: u32) -> u32 {
+  a + b
 }
