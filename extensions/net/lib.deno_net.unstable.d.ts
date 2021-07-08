@@ -272,5 +272,5 @@ declare namespace Deno {
   export function upgradeWebSocket(
     request: Request,
     options?: UpgradeWebSocketOptions,
-  ): Promise<WebSocketUpgrade>;
+  ): WebSocketUpgrade;
 }

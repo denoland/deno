@@ -52,6 +52,10 @@ pub fn init() -> Vec<OpPair> {
     ("op_http_response_write", op_async(op_http_response_write)),
     ("op_http_response_close", op_async(op_http_response_close)),
     (
+      "op_http_websocket_accept_header",
+      op_sync(op_http_websocket_accept_header),
+    ),
+    (
       "op_http_upgrade_websocket",
       op_async(op_http_upgrade_websocket),
     ),
@@ -562,6 +566,18 @@ async fn op_http_response_write(
   .await?;
 
   Ok(())
+}
+
+fn op_http_websocket_accept_header(
+  _: &mut OpState,
+  key: String,
+  _: (),
+) -> Result<String, AnyError> {
+  let digest = ring::digest::digest(
+    &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
+    format!("{}258EAFA5-E914-47DA-95CA-C5AB0DC85B11", key).as_bytes(),
+  );
+  Ok(base64::encode(digest))
 }
 
 async fn op_http_upgrade_websocket(

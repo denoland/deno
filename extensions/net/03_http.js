@@ -3,7 +3,6 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
-  const { forgivingBase64Encode } = window.__bootstrap.infra;
   const { InnerBody } = window.__bootstrap.fetchBody;
   const { setEventTargetData } = window.__bootstrap.eventTarget;
   const {
@@ -320,7 +319,7 @@
 
   const _ws = Symbol("[[associated_ws]]");
 
-  async function upgradeWebSocket(request, options = {}) {
+  function upgradeWebSocket(request, options = {}) {
     if (request.headers.get("upgrade") !== "websocket") {
       throw new TypeError(
         "Invalid Header: 'upgrade' header must be 'websocket'",
@@ -340,15 +339,13 @@
       );
     }
 
-    const key = new TextEncoder()
-      .encode(websocketKey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
-    const accept = await crypto.subtle.digest("SHA-1", key);
+    const accept = core.opSync("op_http_websocket_accept_header", websocketKey);
 
     const r = newInnerResponse(101);
     r.headerList = [
       ["upgrade", "websocket"],
       ["connection", "Upgrade"],
-      ["sec-websocket-accept", forgivingBase64Encode(new Uint8Array(accept))],
+      ["sec-websocket-accept", accept],
     ];
 
     const protocolsStr = request.headers.get("sec-websocket-protocol") || "";
