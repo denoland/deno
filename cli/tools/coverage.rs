@@ -27,6 +27,53 @@ use std::path::PathBuf;
 use swc_common::Span;
 use uuid::Uuid;
 
+// TODO(caspervonb) all of these structs can and should be made private, possibly moved to
+// inspector::protocol.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CoverageRange {
+  pub start_offset: usize,
+  pub end_offset: usize,
+  pub count: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FunctionCoverage {
+  pub function_name: String,
+  pub ranges: Vec<CoverageRange>,
+  pub is_block_coverage: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptCoverage {
+  pub script_id: String,
+  pub url: String,
+  pub functions: Vec<FunctionCoverage>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartPreciseCoverageParameters {
+  pub call_count: bool,
+  pub detailed: bool,
+  pub allow_triggered_updates: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartPreciseCoverageReturnObject {
+  pub timestamp: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TakePreciseCoverageReturnObject {
+  pub result: Vec<ScriptCoverage>,
+  pub timestamp: f64,
+}
+
 pub struct CoverageCollector {
   pub dir: PathBuf,
   session: LocalInspectorSession,
@@ -122,53 +169,6 @@ impl CoverageCollector {
 
     Ok(())
   }
-}
-
-// TODO(caspervonb) all of these structs can and should be made private, possibly moved to
-// inspector::protocol.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct CoverageRange {
-  pub start_offset: usize,
-  pub end_offset: usize,
-  pub count: usize,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct FunctionCoverage {
-  pub function_name: String,
-  pub ranges: Vec<CoverageRange>,
-  pub is_block_coverage: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ScriptCoverage {
-  pub script_id: String,
-  pub url: String,
-  pub functions: Vec<FunctionCoverage>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StartPreciseCoverageParameters {
-  pub call_count: bool,
-  pub detailed: bool,
-  pub allow_triggered_updates: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StartPreciseCoverageReturnObject {
-  pub timestamp: f64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TakePreciseCoverageReturnObject {
-  pub result: Vec<ScriptCoverage>,
-  pub timestamp: f64,
 }
 
 pub enum CoverageReporterKind {
