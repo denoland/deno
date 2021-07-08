@@ -1,8 +1,7 @@
 # Runtime
 
 Documentation for all runtime functions (Web APIs + `Deno` global) can be found
-on
-[`doc.deno.land`](https://doc.deno.land/builtin/stable).
+on [`doc.deno.land`](https://doc.deno.land/builtin/stable).
 
 ## Web Platform APIs
 
