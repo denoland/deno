@@ -169,6 +169,8 @@ fn pty_complete_primitives() {
     master.write_all(b"str.leng\t\n").unwrap();
     master.write_all(b"false.valueO\t\n").unwrap();
     master.write_all(b"5n.valueO\t\n").unwrap();
+    master.write_all(b"let num = 5\n").unwrap();
+    master.write_all(b"num.toStrin\t\n").unwrap();
     master.write_all(b"close();\n").unwrap();
 
     let mut output = String::new();
@@ -178,6 +180,7 @@ fn pty_complete_primitives() {
     assert!(output.contains("> str.length"));
     assert!(output.contains("> 5n.valueOf"));
     assert!(output.contains("> false.valueOf"));
+    assert!(output.contains("> num.toString"));
 
     fork.wait().unwrap();
   } else {

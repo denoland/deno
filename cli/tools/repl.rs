@@ -76,7 +76,8 @@ impl EditorHelper {
       Some("string") => "String.prototype",
       Some("boolean") => "Boolean.prototype",
       Some("bigint") => "BigInt.prototype",
-      _ => return Vec::new(), // undefined, number, symbol, and unhandled
+      Some("number") => "Number.prototype",
+      _ => return Vec::new(), // undefined, symbol, and unhandled
     };
 
     self
