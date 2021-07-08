@@ -8,6 +8,7 @@ delete Object.prototype.__proto__;
 ((window) => {
   const core = Deno.core;
   const {
+    ArrayPrototypeMap,
     Error,
     FunctionPrototypeCall,
     FunctionPrototypeBind,
@@ -192,11 +193,14 @@ delete Object.prototype.__proto__;
     }
 
     const baseUrl = location.getLocationHref();
-    const parsedUrls = urls.map((url) => {
+    const parsedUrls = ArrayPrototypeMap(urls, (url) => {
       try {
-        return new URL(url, baseUrl ?? undefined).href;
+        return new url.URL(url, baseUrl ?? undefined).href;
       } catch {
-        throw new DOMException("SyntaxError", "Failed to parse URL.");
+        throw new domException.DOMException(
+          "SyntaxError",
+          "Failed to parse URL.",
+        );
       }
     });
 
