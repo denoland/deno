@@ -607,16 +607,12 @@ pub fn create_http_client(
   }
 
   if let Some(ncc_l) = no_check_certificate {
-    // Until gets released https://github.com/seanmonstar/reqwest/issues/1210
     let mut tls = ClientConfig::new();
     tls.dangerous().set_certificate_verifier(Arc::new(
       NoCertificateVerification::new(ncc_l),
     ));
 
     builder = builder.use_preconfigured_tls(tls)
-
-    // then we might use this one, but will not provide any option to filter which domains are allowed
-    // builder = builder.danger_accept_invalid_certs(true)
   }
 
   builder
