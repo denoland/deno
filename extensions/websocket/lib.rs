@@ -3,7 +3,6 @@
 use deno_core::error::bad_resource_id;
 use deno_core::error::invalid_hostname;
 use deno_core::error::null_opbuf;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::SplitSink;
 use deno_core::futures::stream::SplitStream;
@@ -43,7 +42,8 @@ use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::{client_async, WebSocketStream};
 use webpki::DNSNameRef;
 
-pub use tokio_tungstenite; // Re-export tokio_tungstenite
+pub use tokio_tungstenite;
+use std::fmt; // Re-export tokio_tungstenite
 
 #[derive(Clone)]
 pub struct WsCaData(pub Vec<u8>);
@@ -242,7 +242,7 @@ where
 
   let (stream, response): (WsStream, Response) =
     client_async(request, socket).await.map_err(|err| {
-      type_error(format!(
+      DomExceptionNetworkError::new(&format!(
         "failed to connect to WebSocket: {}",
         err.to_string()
       ))
@@ -415,4 +415,32 @@ pub fn init<P: WebSocketPermissions + 'static>(
 
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_websocket.d.ts")
+}
+
+#[derive(Debug)]
+pub struct DomExceptionNetworkError {
+  pub msg: String,
+}
+
+impl DomExceptionNetworkError {
+  pub fn new(msg: &str) -> Self {
+    DomExceptionNetworkError {
+      msg: msg.to_string(),
+    }
+  }
+}
+
+impl fmt::Display for DomExceptionNetworkError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.pad(&self.msg)
+  }
+}
+
+impl std::error::Error for DomExceptionNetworkError {}
+
+pub fn get_network_error_class_name(
+  e: &AnyError,
+) -> Option<&'static str> {
+  e.downcast_ref::<DomExceptionNetworkError>()
+    .map(|_| "DOMExceptionNetworkError")
 }

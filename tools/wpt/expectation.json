@@ -3108,18 +3108,11 @@
     "referrer.any.html": true,
     "stream": {
       "tentative": {
-        "abort.any.html?wpt_flags=h2": false,
         "abort.any.html?wss": true,
-        "backpressure-receive.any.html?wpt_flags=h2": false,
         "backpressure-receive.any.html?wss": true,
-        "backpressure-send.any.html?wpt_flags=h2": false,
         "backpressure-send.any.html?wss": true,
-        "close.any.html?wpt_flags=h2": false,
         "close.any.html?wss": false,
-        "constructor.any.html?wpt_flags=h2": false,
-        "constructor.any.html?wss": [
-          "connection failure should reject the promises"
-        ]
+        "constructor.any.html?wss": true
       }
     }
   }
