@@ -157,6 +157,39 @@ fn pty_complete_declarations() {
 
 #[cfg(unix)]
 #[test]
+fn pty_complete_primitives() {
+  use std::io::{Read, Write};
+  use util::pty::fork::*;
+  let deno_exe = util::deno_exe_path();
+  let fork = Fork::from_ptmx().unwrap();
+  if let Ok(mut master) = fork.is_parent() {
+    master.write_all(b"let func = function test(){}\n").unwrap();
+    master.write_all(b"func.appl\t\n").unwrap();
+    master.write_all(b"let str = ''\n").unwrap();
+    master.write_all(b"str.leng\t\n").unwrap();
+    master.write_all(b"false.valueO\t\n").unwrap();
+    master.write_all(b"5n.valueO\t\n").unwrap();
+    master.write_all(b"close();\n").unwrap();
+
+    let mut output = String::new();
+    master.read_to_string(&mut output).unwrap();
+
+    assert!(output.contains("> func.apply"));
+    assert!(output.contains("> str.length"));
+    assert!(output.contains("> 5n.valueOf"));
+    assert!(output.contains("> false.valueOf"));
+
+    fork.wait().unwrap();
+  } else {
+    std::env::set_var("NO_COLOR", "1");
+    let err = exec::Command::new(deno_exe).arg("repl").exec();
+    println!("err {}", err);
+    unreachable!()
+  }
+}
+
+#[cfg(unix)]
+#[test]
 fn pty_ignore_symbols() {
   use std::io::{Read, Write};
   use util::pty::fork::*;
