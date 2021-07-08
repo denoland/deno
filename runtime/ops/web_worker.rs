@@ -140,7 +140,7 @@ fn op_worker_sync_fetch(
               .trim()
               .to_ascii_lowercase()
           });
-        match mime_type.as_ref().map(|v| v.as_str()) {
+        match mime_type.as_deref() {
           Some("application/javascript") => {}
           Some("text/javascript") => {}
           _ => {
