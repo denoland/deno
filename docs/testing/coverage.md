@@ -32,5 +32,5 @@ matching the regular expression `^file:` - ie. remote files will be excluded
 from coverage report.
 
 These filters can be overridden using the `--exclude` and `--include` flags. A
-module specifier must match both regular expressions for it to be a part of the
-report.
+module specifier must _match_ the include_regular expression and _not match_ the
+exclude_ expression for it to be a part of the report.
