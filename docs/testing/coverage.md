@@ -9,7 +9,7 @@ which is very accurate.
 This can then be further processed from the internal format into well known
 formats by the `deno coverage` tool.
 
-```
+```bash
 # Go into your project's working directory
 git clone https://github.com/oakserver/oak && cd oak
 
