@@ -28,7 +28,7 @@ genhtml -o cov_profile/html cov_profile.lcov
 
 By default, `deno coverage` will exclude any files matching the regular
 expression `test\.(js|mjs|ts|jsx|tsx)` and only consider including files
-matching the regular expression `^file:`.
+matching the regular expression `^file:` - ie. remote files will be excluded from coverage report.
 
 These filters can be overridden using the `--exclude` and `--include` flags. A
 source file's url must match both regular expressions for it to be a part of the
