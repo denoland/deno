@@ -709,8 +709,6 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-util",
- "webpki",
- "webpki-roots",
 ]
 
 [[package]]
