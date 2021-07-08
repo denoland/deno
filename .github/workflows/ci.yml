@@ -147,8 +147,11 @@ jobs:
         run: echo "RUSTFLAGS=-D warnings" >> $GITHUB_ENV
 
       - name: Setup GNU Tools (Linux)
+        uses: actions-rs/toolchain@v1
         if: startsWith(matrix.os, 'ubuntu')
-        run: sudo apt-get install autoconf automake libtool
+        with:
+          toolchain: stable
+          target: x86_64-unknown-linux-gnu
 
       - name: Setup GNU Tools (Windows)
         uses: actions-rs/toolchain@v1
