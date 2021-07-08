@@ -386,6 +386,7 @@ pub async fn op_crypto_sign_key(
 pub struct VerifyArg {
   key: KeyData,
   algorithm: Algorithm,
+  salt_length: Option<u32>,
   hash: Option<CryptoHash>,
   signature: ZeroCopyBuf,
 }
@@ -444,6 +445,57 @@ pub async fn op_crypto_verify_key(
             PaddingScheme::PKCS1v15Sign {
               hash: Some(rsa::hash::Hash::SHA2_512),
             },
+            hasher.finalize()[..].to_vec(),
+          )
+        }
+      };
+
+      public_key
+        .verify(padding, &hashed, &*args.signature)
+        .is_ok()
+    }
+    Algorithm::RsaPss => {
+      let salt_len = args
+        .salt_length
+        .ok_or_else(|| type_error("Missing argument saltLength".to_string()))?
+        as usize;
+      let public_key: RSAPublicKey =
+        RSAPrivateKey::from_pkcs8(&*args.key.data)?.to_public_key();
+
+      let rng = OsRng;
+      let (padding, hashed) = match args
+        .hash
+        .ok_or_else(|| type_error("Missing argument hash".to_string()))?
+      {
+        CryptoHash::Sha1 => {
+          let mut hasher = Sha1::new();
+          hasher.update(&data);
+          (
+            PaddingScheme::new_pss_with_salt::<Sha1, _>(rng, salt_len),
+            hasher.finalize()[..].to_vec(),
+          )
+        }
+        CryptoHash::Sha256 => {
+          let mut hasher = Sha256::new();
+          hasher.update(&data);
+          (
+            PaddingScheme::new_pss_with_salt::<Sha256, _>(rng, salt_len),
+            hasher.finalize()[..].to_vec(),
+          )
+        }
+        CryptoHash::Sha384 => {
+          let mut hasher = Sha384::new();
+          hasher.update(&data);
+          (
+            PaddingScheme::new_pss_with_salt::<Sha384, _>(rng, salt_len),
+            hasher.finalize()[..].to_vec(),
+          )
+        }
+        CryptoHash::Sha512 => {
+          let mut hasher = Sha512::new();
+          hasher.update(&data);
+          (
+            PaddingScheme::new_pss_with_salt::<Sha512, _>(rng, salt_len),
             hasher.finalize()[..].to_vec(),
           )
         }

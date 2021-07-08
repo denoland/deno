@@ -1,31 +1,10 @@
 import { assert, assertEquals, unitTest } from "./test_util.ts";
 
-unitTest(async function testGenerateRSAKey() {
-  const subtle = window.crypto.subtle;
-  assert(subtle);
-
-  const keyPair = await subtle.generateKey(
-    {
-      name: "RSA-PSS",
-      modulusLength: 2048,
-      publicExponent: new Uint8Array([1, 0, 1]),
-      hash: "SHA-256",
-    },
-    true,
-    ["sign", "verify"],
-  );
-
-  assert(keyPair.privateKey);
-  assert(keyPair.publicKey);
-  assertEquals(keyPair.privateKey.extractable, true);
-  assert(keyPair.privateKey.usages.includes("sign"));
-});
-
 // TODO(@littledivy): Remove this when we enable WPT for sign_verify
 unitTest(async function testSignVerify() {
   const subtle = window.crypto.subtle;
   assert(subtle);
-  for (const algorithm of ["RSASSA-PKCS1-v1_5"]) {
+  for (const algorithm of ["RSA-PSS", "RSASSA-PKCS1-v1_5"]) {
     for (
       const hash of [
         "SHA-1",
@@ -46,14 +25,21 @@ unitTest(async function testSignVerify() {
       );
 
       const data = new Uint8Array([1, 2, 3]);
-      const signature = await subtle.sign(algorithm, keyPair.privateKey, data);
+      const signAlgorithm = { name: algorithm, saltLength: 32 };
+
+      const signature = await subtle.sign(
+        signAlgorithm,
+        keyPair.privateKey,
+        data,
+      );
+
       assert(signature);
       assert(signature.byteLength > 0);
       assert(signature.byteLength % 8 == 0);
       assert(signature instanceof ArrayBuffer);
 
       const verified = await subtle.verify(
-        algorithm,
+        signAlgorithm,
         keyPair.publicKey,
         signature,
         data,
@@ -61,6 +47,27 @@ unitTest(async function testSignVerify() {
       assert(verified);
     }
   }
+});
+
+unitTest(async function testGenerateRSAKey() {
+  const subtle = window.crypto.subtle;
+  assert(subtle);
+
+  const keyPair = await subtle.generateKey(
+    {
+      name: "RSA-PSS",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["sign", "verify"],
+  );
+
+  assert(keyPair.privateKey);
+  assert(keyPair.publicKey);
+  assertEquals(keyPair.privateKey.extractable, true);
+  assert(keyPair.privateKey.usages.includes("sign"));
 });
 
 unitTest(async function testGenerateHMACKey() {

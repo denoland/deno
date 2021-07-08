@@ -45,8 +45,6 @@
     "verify": {
       "RSASSA-PKCS1-v1_5": null,
       "RSA-PSS": "RsaPssParams",
-      "ECDSA": "EcdsaParams",
-      "HMAC": null,
     },
   };
 
@@ -470,6 +468,24 @@
             key: keyData,
             algorithm: "RSASSA-PKCS1-v1_5",
             hash: hashAlgorithm,
+            signature,
+          }, data);
+        }
+        case "RSA-PSS": {
+          if (key[_type] !== "public") {
+            throw new DOMException(
+              "Key type not supported",
+              "InvalidAccessError",
+            );
+          }
+
+          const hashAlgorithm = key[_algorithm].hash.name;
+          const saltLength = normalizedAlgorithm.saltLength;
+          return await core.opAsync("op_crypto_verify_key", {
+            key: keyData,
+            algorithm: "RSA-PSS",
+            hash: hashAlgorithm,
+            saltLength,
             signature,
           }, data);
         }
