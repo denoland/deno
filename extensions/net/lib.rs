@@ -89,13 +89,11 @@ pub fn get_unstable_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_net.unstable.d.ts")
 }
 
-/// `NoCertificateValidation` is a struct so it can be placed inside `GothamState`;
+/// `NoCertificateValidation` is a wrapper struct so it can be placed inside `GothamState`;
 /// using type alias for a `Option<Vec<String>>` could work, but there's a high chance
 /// that there might be another type alias pointing to a `Option<Vec<String>>`, which
 /// would override previously used alias.
-pub struct NoCertificateValidation {
-  pub no_check_certificate: Option<Vec<String>>,
-}
+pub struct NoCertificateValidation(Option<Vec<String>>);
 
 pub fn init<P: NetPermissions + 'static>(
   unstable: bool,
@@ -118,9 +116,7 @@ pub fn init<P: NetPermissions + 'static>(
     .ops(ops_to_register)
     .state(move |state| {
       state.put(UnstableChecker { unstable });
-      state.put(NoCertificateValidation {
-        no_check_certificate: no_check_certificate.clone(),
-      });
+      state.put(NoCertificateValidation(no_check_certificate.clone()));
       Ok(())
     })
     .build()

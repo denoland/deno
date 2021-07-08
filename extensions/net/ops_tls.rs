@@ -799,8 +799,7 @@ where
   {
     let mut s = state.borrow_mut();
     let no_certificate_validation = s.borrow_mut::<NoCertificateValidation>();
-    global_no_check_certificate =
-      no_certificate_validation.no_check_certificate.clone();
+    global_no_check_certificate = no_certificate_validation.0.clone();
   }
 
   let hostname_dns = DNSNameRef::try_from_ascii_str(hostname)
