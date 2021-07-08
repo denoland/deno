@@ -2,6 +2,7 @@
 
 [![Build Status - Cirrus][]][Build status] [![Twitter handle][]][Twitter badge]
 [![Discord Chat](https://img.shields.io/discord/684898665143206084?logo=discord&style=social)](https://discord.gg/deno)
+[![Open in Visual Studio Code](https://open.vscode.dev/badges/open-in-vscode.svg)](https://open.vscode.dev/denoland/deno)
 
 <img align="right" src=docs/images/deno3.png height="150px">
 
