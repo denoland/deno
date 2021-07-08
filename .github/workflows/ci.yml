@@ -152,6 +152,9 @@ jobs:
         with:
           toolchain: stable
           target: x86_64-unknown-linux-gnu
+          override: true
+          profile: minimal
+          default: true
 
       - name: Setup GNU Tools (Windows)
         uses: actions-rs/toolchain@v1
@@ -159,6 +162,9 @@ jobs:
         with:
           toolchain: stable
           target: x86_64-pc-windows-gnu
+          override: true
+          profile: minimal
+          default: true
 
       - name: Setup GNU Tools (MacOS)
         if: startsWith(matrix.os, 'macOS')
