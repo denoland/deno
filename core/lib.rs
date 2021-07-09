@@ -93,7 +93,9 @@ pub use crate::runtime::Snapshot;
 pub use crate::extensions::Extension;
 pub use crate::extensions::OpMiddlewareFn;
 pub use crate::extensions::OpPair;
-pub use crate::no_certificate_validation::NoCertificateVerification;
+pub use crate::no_certificate_validation::{
+  combine_no_check_certificate, NoCertificateVerification,
+};
 pub use crate::no_check_certificate_deserializer::deserialize_no_check_certificate;
 
 pub fn v8_version() -> &'static str {

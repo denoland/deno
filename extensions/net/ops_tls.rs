@@ -26,7 +26,6 @@ use deno_core::futures::task::Poll;
 use deno_core::futures::task::RawWaker;
 use deno_core::futures::task::RawWakerVTable;
 use deno_core::futures::task::Waker;
-use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
@@ -38,6 +37,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::{combine_no_check_certificate, op_async};
 use io::Error;
 use io::Read;
 use io::Write;
@@ -821,25 +821,14 @@ where
     tls_config.root_store.add_pem_file(reader).unwrap();
   }
 
-  if global_no_check_certificate.is_some() || arg_no_check_certificate.is_some()
-  {
-    let mut no_check_certificate_list = {
-      let size = global_no_check_certificate.as_ref().map_or(0, |v| v.len())
-        + arg_no_check_certificate.as_ref().map_or(0, |v| v.len());
-      Vec::<String>::with_capacity(size)
-    };
-    if let Some(gncc_l) = global_no_check_certificate {
-      if !gncc_l.is_empty() {
-        no_check_certificate_list.extend(gncc_l)
-      }
-    }
-    if let Some(ancc_l) = arg_no_check_certificate {
-      if !ancc_l.is_empty() {
-        no_check_certificate_list.extend(ancc_l)
-      }
-    }
+  let no_check_certificate_list = combine_no_check_certificate(
+    global_no_check_certificate.clone(),
+    arg_no_check_certificate.clone(),
+  );
+
+  if let Some(ncc_l) = no_check_certificate_list {
     tls_config.dangerous().set_certificate_verifier(Arc::new(
-      NoCertificateVerification::new(no_check_certificate_list),
+      NoCertificateVerification::new(ncc_l),
     ));
   }
 

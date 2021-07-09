@@ -8,7 +8,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::Future;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
-use deno_core::include_js_files;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::url::Url;
@@ -25,6 +24,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+use deno_core::{combine_no_check_certificate, include_js_files};
 
 use data_url::DataUrl;
 use deno_web::BlobStore;
@@ -548,13 +548,17 @@ where
 
   let cert_data =
     get_cert_data(args.ca_file.as_deref(), args.ca_data.as_deref())?;
+
+  let no_check_certificate_list = combine_no_check_certificate(
+    defaults.no_check_certificate.clone(),
+    args.no_check_certificate.clone(),
+  );
+
   let client = create_http_client(
     defaults.user_agent.clone(),
     cert_data.or_else(|| defaults.ca_data.clone()),
     args.proxy,
-    args
-      .no_check_certificate
-      .or_else(|| defaults.no_check_certificate.clone()),
+    no_check_certificate_list,
   )
   .unwrap();
 

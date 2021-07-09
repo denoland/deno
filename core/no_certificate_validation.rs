@@ -56,3 +56,25 @@ impl ServerCertVerifier for NoCertificateVerification {
     Ok(HandshakeSignatureValid::assertion())
   }
 }
+
+pub fn combine_no_check_certificate(
+  lhs: Option<Vec<String>>,
+  rhs: Option<Vec<String>>,
+) -> Option<Vec<String>> {
+  if lhs.is_some() || rhs.is_some() {
+    let mut r = {
+      let size = lhs.as_ref().map_or(0, |v| v.len())
+        + rhs.as_ref().map_or(0, |v| v.len());
+      Vec::<String>::with_capacity(size)
+    };
+    if let Some(gncc_l) = lhs {
+      r.extend(gncc_l)
+    }
+    if let Some(ancc_l) = rhs {
+      r.extend(ancc_l)
+    }
+    Some(r)
+  } else {
+    None
+  }
+}
