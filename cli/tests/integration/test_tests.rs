@@ -19,21 +19,6 @@ fn no_color() {
   assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
 }
 
-#[test]
-fn fail_fast_with_value() {
-  let (out, _) = util::run_and_collect_output(
-    false,
-    "test --fail-fast=2 test/fail_fast.ts",
-    None,
-    Some(vec![("NO_COLOR".to_owned(), "true".to_owned())]),
-    false,
-  );
-  // ANSI escape codes should be stripped.
-  assert!(out.contains("test test 1 ... FAILED"));
-  assert!(out.contains("test test 2 ... FAILED"));
-  assert!(out.contains("test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out"));
-}
-
 itest!(pass {
   args: "test test/pass.ts",
   exit_code: 0,
@@ -74,12 +59,6 @@ itest!(fail_fast {
   args: "test --fail-fast test/fail_fast.ts",
   exit_code: 1,
   output: "test/fail_fast.out",
-});
-
-itest!(fail_fast_with_val {
-  args: "test --fail-fast=2 test/fail_fast.ts",
-  exit_code: 1,
-  output: "test/fail_fast_with_val.out",
 });
 
 itest!(only {

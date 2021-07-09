@@ -1001,7 +1001,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("fail-fast")
         .long("fail-fast")
         .alias("failfast")
-        .help("Stop after N errors")
+        .help("Stop after N errors. Defaults to stopping after first failure.")
         .min_values(0)
         .required(false)
         .takes_value(true)
