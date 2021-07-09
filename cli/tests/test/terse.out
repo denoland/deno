@@ -1,0 +1,11 @@
+Check [WILDCARD]/test/terse.ts
+running 3 tests from [WILDCARD]
+.Fi
+failures:
+
+fail
+Error: fail
+    [WILDCARD]
+
+test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out [WILDCARD]
+

@@ -202,8 +202,128 @@ impl TestReporter for PrettyTestReporter {
   }
 }
 
-fn create_reporter(concurrent: bool) -> Box<dyn TestReporter + Send> {
-  Box::new(PrettyTestReporter::new(concurrent))
+struct TerseTestReporter {
+  time: Instant,
+  failed: usize,
+  filtered_out: usize,
+  ignored: usize,
+  passed: usize,
+  measured: usize,
+  pending: usize,
+  failures: Vec<(String, String)>,
+}
+
+impl TerseTestReporter {
+  fn new() -> TerseTestReporter {
+    TerseTestReporter {
+      time: Instant::now(),
+      failed: 0,
+      filtered_out: 0,
+      ignored: 0,
+      passed: 0,
+      measured: 0,
+      pending: 0,
+      failures: Vec::new(),
+    }
+  }
+}
+
+impl TestReporter for TerseTestReporter {
+  fn visit_event(&mut self, event: TestEvent) {
+    match &event.message {
+      TestMessage::Plan {
+        pending,
+        filtered,
+        only: _,
+      } => {
+        if *pending == 1 {
+          println!("running {} test from {}", pending, event.origin);
+        } else {
+          println!("running {} tests from {}", pending, event.origin);
+        }
+
+        self.pending += pending;
+        self.filtered_out += filtered;
+      }
+
+      TestMessage::Result {
+        name,
+        duration: _,
+        result,
+      } => {
+        self.pending -= 1;
+
+        match result {
+          TestResult::Ok => {
+            print!("{}", colors::green("."),);
+
+            self.passed += 1;
+          }
+          TestResult::Ignored => {
+            print!("{}", colors::yellow("i"),);
+
+            self.ignored += 1;
+          }
+          TestResult::Failed(error) => {
+            print!("{}", colors::red("F"),);
+
+            self.failed += 1;
+            self.failures.push((name.to_string(), error.to_string()));
+          }
+        }
+      }
+
+      _ => {}
+    }
+  }
+
+  fn done(&mut self) {
+    if !self.failures.is_empty() {
+      println!("\nfailures:\n");
+      for (name, error) in &self.failures {
+        println!("{}", name);
+        println!("{}", error);
+        println!();
+      }
+
+      println!("failures:\n");
+      for (name, _) in &self.failures {
+        println!("\t{}", name);
+      }
+    }
+
+    let status = if self.pending > 0 || !self.failures.is_empty() {
+      colors::red("FAILED").to_string()
+    } else {
+      colors::green("ok").to_string()
+    };
+
+    println!(
+        "\ntest result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
+        status,
+        self.passed,
+        self.failed,
+        self.ignored,
+        self.measured,
+        self.filtered_out,
+        colors::gray(format!("({}ms)", self.time.elapsed().as_millis())),
+      );
+  }
+}
+
+enum TestReporterKind {
+  Pretty,
+  Terse,
+}
+
+fn create_reporter(
+  kind: TestReporterKind,
+  concurrent: bool,
+) -> Box<dyn TestReporter + Send> {
+  match kind {
+    TestReporterKind::Pretty => Box::new(PrettyTestReporter::new(concurrent)),
+    TestReporterKind::Terse => Box::new(TerseTestReporter::new()),
+  }
 }
 
 pub(crate) fn is_supported(p: &Path) -> bool {
@@ -344,6 +464,7 @@ pub async fn run_tests(
   no_run: bool,
   fail_fast: bool,
   quiet: bool,
+  terse: bool,
   allow_none: bool,
   filter: Option<String>,
   shuffle: Option<u64>,
@@ -510,7 +631,13 @@ pub async fn run_tests(
     .buffer_unordered(concurrent_jobs)
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
-  let mut reporter = create_reporter(concurrent_jobs > 1);
+  let reporter_kind = if terse {
+    TestReporterKind::Terse
+  } else {
+    TestReporterKind::Pretty
+  };
+
+  let mut reporter = create_reporter(reporter_kind, concurrent_jobs > 1);
   let handler = {
     tokio::task::spawn_blocking(move || {
       let mut used_only = false;
