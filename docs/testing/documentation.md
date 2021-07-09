@@ -19,9 +19,9 @@ The basic idea is this:
 
 The triple backticks mark the start and end of code blocks.
 
-If this example was in a file named foo.ts, running `deno test --doc foo.ts` will
-extract this example, and then type-check it as a standalone module living in
-the same directory as the module being documented.
+If this example was in a file named foo.ts, running `deno test --doc foo.ts`
+will extract this example, and then type-check it as a standalone module living
+in the same directory as the module being documented.
 
 To document your exports, import the module using a relative path specifier:
 
