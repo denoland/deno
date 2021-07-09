@@ -1008,7 +1008,14 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .require_equals(true)
         .value_name("N")
         .validator(|val: String| match val.parse::<usize>() {
-          Ok(_) => Ok(()),
+          Ok(val) => {
+            if val == 0 {
+              return Err(
+                "fail-fast should be an number superior to 0".to_string(),
+              );
+            }
+            Ok(())
+          }
           Err(_) => Err("fail-fast should be a number".to_string()),
         }),
     )
