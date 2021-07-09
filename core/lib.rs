@@ -9,6 +9,8 @@ mod gotham_state;
 mod inspector;
 mod module_specifier;
 mod modules;
+mod no_certificate_validation;
+mod no_check_certificate_deserializer;
 mod normalize_path;
 mod ops;
 mod ops_builtin;
@@ -91,6 +93,10 @@ pub use crate::runtime::Snapshot;
 pub use crate::extensions::Extension;
 pub use crate::extensions::OpMiddlewareFn;
 pub use crate::extensions::OpPair;
+pub use crate::no_certificate_validation::{
+  combine_no_check_certificate, NoCertificateVerification,
+};
+pub use crate::no_check_certificate_deserializer::deserialize_no_check_certificate;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()

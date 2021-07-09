@@ -10,7 +10,7 @@ use crate::ops::OpAddr;
 use crate::ops::OpConn;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
-use crate::NetPermissions;
+use crate::{NetPermissions, NoCertificateValidation};
 use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
@@ -26,17 +26,18 @@ use deno_core::futures::task::Poll;
 use deno_core::futures::task::RawWaker;
 use deno_core::futures::task::RawWakerVTable;
 use deno_core::futures::task::Waker;
-use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::NoCertificateVerification;
 use deno_core::OpPair;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::{combine_no_check_certificate, op_async};
 use io::Error;
 use io::Read;
 use io::Write;
@@ -677,6 +678,8 @@ pub struct ConnectTlsArgs {
   hostname: String,
   port: u16,
   cert_file: Option<String>,
+  #[serde(deserialize_with = "deno_core::deserialize_no_check_certificate")]
+  no_check_certificate: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -778,6 +781,9 @@ where
   };
   let port = args.port;
   let cert_file = args.cert_file.as_deref();
+  let arg_no_check_certificate = args.no_check_certificate;
+  let global_no_check_certificate =
+    state.borrow().borrow::<NoCertificateValidation>().0.clone();
 
   {
     let mut s = state.borrow_mut();
@@ -809,6 +815,18 @@ where
     let reader = &mut BufReader::new(key_file);
     tls_config.root_store.add_pem_file(reader).unwrap();
   }
+
+  let no_check_certificate_list = combine_no_check_certificate(
+    global_no_check_certificate.clone(),
+    arg_no_check_certificate.clone(),
+  );
+
+  if let Some(ncc_l) = no_check_certificate_list {
+    tls_config.dangerous().set_certificate_verifier(Arc::new(
+      NoCertificateVerification::new(ncc_l),
+    ));
+  }
+
   let tls_config = Arc::new(tls_config);
 
   let tls_stream =

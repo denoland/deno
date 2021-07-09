@@ -52,6 +52,7 @@ pub struct Metadata {
   pub v8_flags: Vec<String>,
   pub log_level: Option<Level>,
   pub ca_data: Option<Vec<u8>>,
+  pub no_check_certificate: Option<Vec<String>>,
 }
 
 pub const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
@@ -142,7 +143,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _referrer: &str,
     _is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if let Ok(module_specifier) = resolve_url(&specifier) {
+    if let Ok(module_specifier) = resolve_url(specifier) {
       if get_source_from_data_url(&module_specifier).is_ok()
         || specifier == SPECIFIER
       {
@@ -234,6 +235,7 @@ pub async fn run(
     user_agent: version::get_user_agent(),
     unstable: metadata.unstable,
     ca_data: metadata.ca_data,
+    no_check_certificate: metadata.no_check_certificate,
     seed: metadata.seed,
     js_error_create_fn: None,
     create_web_worker_cb,
