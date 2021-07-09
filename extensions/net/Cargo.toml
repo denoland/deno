@@ -24,7 +24,7 @@ lazy_static = "1.4.0"
 http = "0.2.3"
 hyper = { version = "0.14.9", features = ["server", "stream", "http1", "http2", "runtime"] }
 ring = "0.16.20"
-rustls = "0.19.0"
+rustls = "0.19.1"
 serde = { version = "1.0.125", features = ["derive"] }
 tokio = { version = "1.8.0", features = ["full"] }
 tokio-util = { version = "0.6", features = ["io"] }

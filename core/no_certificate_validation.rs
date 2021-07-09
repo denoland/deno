@@ -27,10 +27,8 @@ impl ServerCertVerifier for NoCertificateVerification {
     dns_name: DNSNameRef<'_>,
     _ocsp: &[u8],
   ) -> Result<ServerCertVerified, TLSError> {
-    fn convert_to_string<T: AsRef<str>>(s: T) -> String {
-      s.as_ref().to_owned()
-    }
-    let dns_name: String = convert_to_string(dns_name.to_owned());
+    let dns_name: &str = dns_name.into();
+    let dns_name: String = dns_name.to_owned();
     if self.excluded.is_empty() || self.excluded.contains(&dns_name) {
       Ok(ServerCertVerified::assertion())
     } else {
