@@ -3,6 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const { parsePermissions } = window.__bootstrap.worker;
   const { setExitHandler } = window.__bootstrap.os;
   const { metrics } = window.__bootstrap.metrics;
   const { assert } = window.__bootstrap.util;
@@ -12,6 +13,7 @@
     Promise,
     TypeError,
   } = window.__bootstrap.primordials;
+
 
   // Wrap test function in additional assertion that makes sure
   // the test case does not leak async "ops" - ie. number of async
@@ -95,6 +97,29 @@ finishing test case.`;
     };
   }
 
+
+  function pledgeTestPermissions(permissions) {
+    return core.opSync(
+      "op_pledge_test_permissions",
+      parsePermissions(permissions),
+    );
+  }
+
+  function restoreTestPermissions(token) {
+    core.opSync("op_restore_test_permissions", token);
+  }
+
+  function withPermissions(fn, permissions) {
+    return async function usePermissions() {
+      const token = await pledgeTestPermissions(permissions);
+      try {
+        await fn();
+      } finally {
+        restoreTestPermissions(token);
+      }
+    };
+  }
+
   const tests = [];
 
   // Main test function provided by Deno, as you can see it merely
@@ -141,6 +166,10 @@ finishing test case.`;
 
     if (testDef.sanitizeExit) {
       testDef.fn = assertExit(testDef.fn);
+    }
+
+    if (testDef.permissions) {
+      testDef.fn = withPermissions(fn, parsePermissions(permissions));
     }
 
     ArrayPrototypePush(tests, testDef);

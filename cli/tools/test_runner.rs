@@ -215,8 +215,12 @@ async fn test_module<F>(
 where
   F: Fn(TestEvent) -> Result<(), AnyError> + Send + 'static + Clone,
 {
-  let mut worker =
-    create_main_worker(&program_state, module_specifier.clone(), permissions);
+  let mut worker = create_main_worker(
+    &program_state,
+    module_specifier.clone(),
+    permissions,
+    true,
+  );
 
   let (tests, descriptions) = {
     let execute_result = worker.execute_module(&module_specifier).await;
