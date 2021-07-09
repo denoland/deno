@@ -782,7 +782,8 @@ where
   let port = args.port;
   let cert_file = args.cert_file.as_deref();
   let arg_no_check_certificate = args.no_check_certificate;
-  let global_no_check_certificate: Option<Vec<String>>;
+  let global_no_check_certificate =
+    state.borrow().borrow::<NoCertificateValidation>().0.clone();
 
   {
     let mut s = state.borrow_mut();
@@ -791,12 +792,6 @@ where
     if let Some(path) = cert_file {
       permissions.check_read(Path::new(path))?;
     }
-  }
-
-  {
-    let mut s = state.borrow_mut();
-    let no_certificate_validation = s.borrow_mut::<NoCertificateValidation>();
-    global_no_check_certificate = no_certificate_validation.0.clone();
   }
 
   let hostname_dns = DNSNameRef::try_from_ascii_str(hostname)

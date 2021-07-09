@@ -307,6 +307,7 @@ impl WebWorker {
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
         options.ca_data.clone(),
+        options.no_check_certificate.clone(),
       ),
       deno_broadcast_channel::init(
         options.broadcast_channel.clone(),

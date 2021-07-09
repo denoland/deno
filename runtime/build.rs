@@ -51,6 +51,7 @@ fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
     deno_websocket::init::<deno_websocket::NoWebSocketPermissions>(
       "".to_owned(),
       None,
+      None,
     ),
     deno_webstorage::init(None),
     deno_crypto::init(None),

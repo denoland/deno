@@ -107,6 +107,7 @@ impl MainWorker {
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
         options.ca_data.clone(),
+        options.no_check_certificate.clone(),
       ),
       deno_webstorage::init(options.origin_storage_dir.clone()),
       deno_crypto::init(options.seed),
