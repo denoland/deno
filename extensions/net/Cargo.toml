@@ -21,12 +21,12 @@ base64 = "0.13.0"
 bytes = "1"
 log = "0.4.14"
 lazy_static = "1.4.0"
-http = "0.2.3"
-hyper = { version = "0.14.9", features = ["server", "stream", "http1", "http2", "runtime"] }
+http = "0.2.4"
+hyper = { version = "0.14.10", features = ["server", "stream", "http1", "http2", "runtime"] }
 ring = "0.16.20"
-rustls = "0.19.0"
-serde = { version = "1.0.125", features = ["derive"] }
-tokio = { version = "1.8.0", features = ["full"] }
+rustls = "0.19.1"
+serde = { version = "1.0.126", features = ["derive"] }
+tokio = { version = "1.8.1", features = ["full"] }
 tokio-util = { version = "0.6", features = ["io"] }
 webpki = "0.21.4"
 webpki-roots = "0.21.1"
