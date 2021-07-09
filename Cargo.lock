@@ -619,6 +619,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno-libffi"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26e7eece8d8901dc5abc641402cb6fb92a53135e0705e119d77f58b969ef5e35"
+dependencies = [
+ "abort_on_panic",
+ "deno-libffi-sys",
+ "libc",
+]
+
+[[package]]
+name = "deno-libffi-sys"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d276ad08904077eb743488644e9b9a3238f563ffc691bd03cce2543f24a809b3"
+dependencies = [
+ "cc",
+ "make-cmd",
+]
+
+[[package]]
 name = "deno_bench_util"
 version = "0.4.0"
 dependencies = [
@@ -718,9 +739,9 @@ dependencies = [
 name = "deno_ffi"
 version = "0.1.0"
 dependencies = [
+ "deno-libffi",
  "deno_core",
  "dlopen",
- "libffi",
  "serde",
 ]
 
@@ -1975,27 +1996,6 @@ name = "libc"
 version = "0.2.98"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320cfe77175da3a483efed4bc0adc1968ca050b098ce4f2f1c13a56626128790"
-
-[[package]]
-name = "libffi"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4fcb8a029c57c99c3465a2ae1a41b9cbbf7cdb7b52e482e1e3c7301686372ae"
-dependencies = [
- "abort_on_panic",
- "libc",
- "libffi-sys",
-]
-
-[[package]]
-name = "libffi-sys"
-version = "1.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e91e835dcfc5532b8b680fc903d6a3ae1db5dc6a40175d75e25c19c2353994d"
-dependencies = [
- "cc",
- "make-cmd",
-]
 
 [[package]]
 name = "libloading"

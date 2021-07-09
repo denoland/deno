@@ -160,10 +160,6 @@ jobs:
           toolchain: stable
           target: x86_64-pc-windows-gnu
 
-      - name: Setup GNU Tools (MacOS)
-        if: startsWith(matrix.os, 'macOS')
-        run: brew install autoconf automake libtool libffi
-
       - name: Configure canary build
         if: |
           matrix.kind == 'test' &&
