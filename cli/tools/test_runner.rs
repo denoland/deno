@@ -89,7 +89,7 @@ trait TestReporter {
   fn visit_plan(&mut self, plan: TestPlan);
   fn visit_wait(&mut self, description: TestDescription);
   fn visit_result(&mut self, description: TestDescription, result: TestResult);
-  fn visit_summary(&mut self, _summary: TestSummary);
+  fn visit_summary(&mut self, _summary: &TestSummary);
 }
 
 struct PrettyTestReporter {
@@ -151,7 +151,7 @@ impl TestReporter for PrettyTestReporter {
     }
   }
 
-  fn visit_summary(&mut self, summary: TestSummary) {
+  fn visit_summary(&mut self, summary: &TestSummary) {
     if !summary.failures.is_empty() {
       println!("\nfailures:\n");
       for (description, error) in &summary.failures {
@@ -512,9 +512,18 @@ pub async fn run_tests(
         }
 
         TestEvent::Result(description, result) => {
-          match result {
+          match &result {
             TestResult::Ok => {
               summary.passed += 1;
+            }
+
+            TestResult::Ignored => {
+              summary.ignored += 1;
+            }
+
+            TestResult::Failed(reason) => {
+              summary.failed += 1;
+              summary.failures.push((description.clone(), reason.clone()));
             }
           }
 
@@ -549,7 +558,10 @@ pub async fn run_tests(
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>()
     .await;
 
-  Ok(true)
+  let summary = summary_lock.lock().unwrap();
+  reporter_lock.lock().unwrap().visit_summary(&summary);
+
+  Ok(summary.failed > 0)
 }
 
 #[cfg(test)]
