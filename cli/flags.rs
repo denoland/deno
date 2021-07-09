@@ -1011,7 +1011,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
           Ok(val) => {
             if val == 0 {
               return Err(
-                "fail-fast should be an number superior to 0".to_string(),
+                "fail-fast should be an number greater than 0".to_string(),
               );
             }
             Ok(())
