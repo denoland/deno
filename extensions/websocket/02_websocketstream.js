@@ -181,6 +181,7 @@
         core.opAsync("op_ws_create", {
           url: this[_url],
           protocols: options.protocols?.join(", ") ?? "",
+          cancelHandle: cancelRid,
         }).then((create) => {
           this[_rid] = create.rid;
 

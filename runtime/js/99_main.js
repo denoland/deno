@@ -259,6 +259,12 @@ delete Object.prototype.__proto__;
       },
     );
     core.registerErrorBuilder(
+      "DOMExceptionAbortError",
+      function DOMExceptionAbortError(msg) {
+        return new domException.DOMException(msg, "AbortError");
+      },
+    );
+    core.registerErrorBuilder(
       "DOMExceptionInvalidCharacterError",
       function DOMExceptionInvalidCharacterError(msg) {
         return new domException.DOMException(msg, "InvalidCharacterError");
