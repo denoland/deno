@@ -193,9 +193,9 @@ delete Object.prototype.__proto__;
     }
 
     const baseUrl = location.getLocationHref();
-    const parsedUrls = ArrayPrototypeMap(urls, (url) => {
+    const parsedUrls = ArrayPrototypeMap(urls, (scriptUrl) => {
       try {
-        return new url.URL(url, baseUrl ?? undefined).href;
+        return new url.URL(scriptUrl, baseUrl ?? undefined).href;
       } catch {
         throw new domException.DOMException(
           "SyntaxError",
