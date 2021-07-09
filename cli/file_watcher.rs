@@ -4,6 +4,7 @@ use crate::colors;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::{Stream, StreamExt};
 use deno_core::futures::Future;
+use deno_core::parking_lot::Mutex;
 use log::info;
 use notify::event::Event as NotifyEvent;
 use notify::event::EventKind;
@@ -17,7 +18,6 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
@@ -54,7 +54,7 @@ impl Stream for Debounce {
     self: Pin<&mut Self>,
     cx: &mut Context,
   ) -> Poll<Option<Self::Item>> {
-    let mut changed_paths = self.changed_paths.lock().unwrap();
+    let mut changed_paths = self.changed_paths.lock();
     if changed_paths.len() > 0 {
       Poll::Ready(Some(changed_paths.drain().collect()))
     } else {
@@ -232,7 +232,7 @@ fn new_watcher(
             .paths
             .iter()
             .filter_map(|path| path.canonicalize().ok());
-          let mut changed_paths = changed_paths.lock().unwrap();
+          let mut changed_paths = changed_paths.lock();
           changed_paths.extend(paths);
         }
       }

@@ -769,3 +769,84 @@ Deno.test({
     worker.terminate();
   },
 });
+
+Deno.test({
+  name: "worker with relative specifier",
+  fn: async function (): Promise<void> {
+    assertEquals(location.href, "http://127.0.0.1:4545/cli/tests/");
+    const promise = deferred();
+    const w = new Worker(
+      "./workers/test_worker.ts",
+      { type: "module", name: "tsWorker" },
+    );
+    w.onmessage = (e): void => {
+      assertEquals(e.data, "Hello, world!");
+      promise.resolve();
+    };
+    w.postMessage("Hello, world!");
+    await promise;
+    w.terminate();
+  },
+});
+
+Deno.test({
+  name: "worker SharedArrayBuffer",
+  fn: async function (): Promise<void> {
+    const promise = deferred();
+    const workerOptions: WorkerOptions = { type: "module" };
+    const w = new Worker(
+      new URL("shared_array_buffer.ts", import.meta.url).href,
+      workerOptions,
+    );
+    const sab1 = new SharedArrayBuffer(1);
+    const sab2 = new SharedArrayBuffer(1);
+    const bytes1 = new Uint8Array(sab1);
+    const bytes2 = new Uint8Array(sab2);
+    assertEquals(bytes1[0], 0);
+    assertEquals(bytes2[0], 0);
+    w.onmessage = (): void => {
+      w.postMessage([sab1, sab2]);
+      w.onmessage = (): void => {
+        assertEquals(bytes1[0], 1);
+        assertEquals(bytes2[0], 2);
+        promise.resolve();
+      };
+    };
+    await promise;
+    w.terminate();
+  },
+});
+
+Deno.test({
+  name: "Send MessagePorts from / to workers",
+  fn: async function (): Promise<void> {
+    const result = deferred();
+    const worker = new Worker(
+      new URL("message_port.ts", import.meta.url).href,
+      { type: "module" },
+    );
+
+    const channel = new MessageChannel();
+
+    worker.onmessage = (e) => {
+      assertEquals(e.data, "1");
+      assertEquals(e.ports.length, 1);
+      const port1 = e.ports[0];
+      port1.onmessage = (e) => {
+        assertEquals(e.data, true);
+        port1.close();
+        worker.postMessage("3", [channel.port1]);
+      };
+      port1.postMessage("2");
+    };
+
+    channel.port2.onmessage = (e) => {
+      assertEquals(e.data, true);
+      channel.port2.close();
+      result.resolve();
+    };
+
+    await result;
+    worker.terminate();
+  },
+});

@@ -1,15 +1,17 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+mod blob;
+mod message_port;
+
 use deno_core::error::bad_resource_id;
-use deno_core::error::null_opbuf;
 use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
+use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::url::Url;
 use deno_core::Extension;
-use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -22,19 +24,30 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::Mutex;
 use std::usize;
-use uuid::Uuid;
+
+use crate::blob::op_blob_create_object_url;
+use crate::blob::op_blob_create_part;
+use crate::blob::op_blob_read_part;
+use crate::blob::op_blob_remove_part;
+use crate::blob::op_blob_revoke_object_url;
+use crate::blob::op_blob_slice_part;
+pub use crate::blob::Blob;
+pub use crate::blob::BlobPart;
+pub use crate::blob::BlobStore;
+pub use crate::blob::InMemoryBlobPart;
+
+pub use crate::message_port::create_entangled_message_port;
+use crate::message_port::op_message_port_create_entangled;
+use crate::message_port::op_message_port_post_message;
+use crate::message_port::op_message_port_recv_message;
+pub use crate::message_port::JsMessageData;
+pub use crate::message_port::MessagePort;
 
 /// Load and execute the javascript code.
-pub fn init(
-  blob_url_store: BlobUrlStore,
-  maybe_location: Option<Url>,
-) -> Extension {
+pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:extensions/web",
@@ -52,6 +65,7 @@ pub fn init(
       "10_filereader.js",
       "11_blob_url.js",
       "12_location.js",
+      "13_message_port.js",
     ))
     .ops(vec![
       ("op_base64_decode", op_sync(op_base64_decode)),
@@ -63,17 +77,33 @@ pub fn init(
       ("op_encoding_new_decoder", op_sync(op_encoding_new_decoder)),
       ("op_encoding_decode", op_sync(op_encoding_decode)),
       ("op_encoding_encode_into", op_sync(op_encoding_encode_into)),
+      ("op_blob_create_part", op_sync(op_blob_create_part)),
+      ("op_blob_slice_part", op_sync(op_blob_slice_part)),
+      ("op_blob_read_part", op_async(op_blob_read_part)),
+      ("op_blob_remove_part", op_sync(op_blob_remove_part)),
       (
-        "op_file_create_object_url",
-        op_sync(op_file_create_object_url),
+        "op_blob_create_object_url",
+        op_sync(op_blob_create_object_url),
       ),
       (
-        "op_file_revoke_object_url",
-        op_sync(op_file_revoke_object_url),
+        "op_blob_revoke_object_url",
+        op_sync(op_blob_revoke_object_url),
+      ),
+      (
+        "op_message_port_create_entangled",
+        op_sync(op_message_port_create_entangled),
+      ),
+      (
+        "op_message_port_post_message",
+        op_sync(op_message_port_post_message),
+      ),
+      (
+        "op_message_port_recv_message",
+        op_async(op_message_port_recv_message),
       ),
     ])
     .state(move |state| {
-      state.put(blob_url_store.clone());
+      state.put(blob_store.clone());
       if let Some(location) = maybe_location.clone() {
         state.put(Location(location));
       }
@@ -274,23 +304,34 @@ fn op_encoding_encode_into(
   input: String,
   mut buffer: ZeroCopyBuf,
 ) -> Result<EncodeIntoResult, AnyError> {
-  let dst: &mut [u8] = &mut buffer;
-  let mut read = 0;
-  let mut written = 0;
-  for char in input.chars() {
-    let len = char.len_utf8();
-    if dst.len() < written + len {
-      break;
+  // Since `input` is already UTF-8, we can simply find the last UTF-8 code
+  // point boundary from input that fits in `buffer`, and copy the bytes up to
+  // that point.
+  let boundary = if buffer.len() >= input.len() {
+    input.len()
+  } else {
+    let mut boundary = buffer.len();
+
+    // The maximum length of a UTF-8 code point is 4 bytes.
+    for _ in 0..4 {
+      if input.is_char_boundary(boundary) {
+        break;
+      }
+      debug_assert!(boundary > 0);
+      boundary -= 1;
     }
-    char.encode_utf8(&mut dst[written..]);
-    written += len;
-    if char > '\u{FFFF}' {
-      read += 2
-    } else {
-      read += 1
-    };
-  }
-  Ok(EncodeIntoResult { read, written })
+
+    debug_assert!(input.is_char_boundary(boundary));
+    boundary
+  };
+
+  buffer[..boundary].copy_from_slice(input[..boundary].as_bytes());
+
+  Ok(EncodeIntoResult {
+    // The `read` output parameter is measured in UTF-16 code units.
+    read: input[..boundary].encode_utf16().count(),
+    written: boundary,
+  })
 }
 
 pub fn get_declaration() -> PathBuf {
@@ -346,73 +387,4 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
         .map(|_| "DOMExceptionInvalidCharacterError")
     })
 }
-
-#[derive(Debug, Clone)]
-pub struct Blob {
-  pub data: Vec<u8>,
-  pub media_type: String,
-}
-
 pub struct Location(pub Url);
-
-#[derive(Debug, Default, Clone)]
-pub struct BlobUrlStore(Arc<Mutex<HashMap<Url, Blob>>>);
-
-impl BlobUrlStore {
-  pub fn get(&self, mut url: Url) -> Result<Option<Blob>, AnyError> {
-    let blob_store = self.0.lock().unwrap();
-    url.set_fragment(None);
-    Ok(blob_store.get(&url).cloned())
-  }
-
-  pub fn insert(&self, blob: Blob, maybe_location: Option<Url>) -> Url {
-    let origin = if let Some(location) = maybe_location {
-      location.origin().ascii_serialization()
-    } else {
-      "null".to_string()
-    };
-    let id = Uuid::new_v4();
-    let url = Url::parse(&format!("blob:{}/{}", origin, id)).unwrap();
-
-    let mut blob_store = self.0.lock().unwrap();
-    blob_store.insert(url.clone(), blob);
-
-    url
-  }
-
-  pub fn remove(&self, url: &ModuleSpecifier) {
-    let mut blob_store = self.0.lock().unwrap();
-    blob_store.remove(&url);
-  }
-}
-
-pub fn op_file_create_object_url(
-  state: &mut deno_core::OpState,
-  media_type: String,
-  zero_copy: Option<ZeroCopyBuf>,
-) -> Result<String, AnyError> {
-  let data = zero_copy.ok_or_else(null_opbuf)?;
-  let blob = Blob {
-    data: data.to_vec(),
-    media_type,
-  };
-
-  let maybe_location = state.try_borrow::<Location>();
-  let blob_store = state.borrow::<BlobUrlStore>();
-
-  let url =
-    blob_store.insert(blob, maybe_location.map(|location| location.0.clone()));
-
-  Ok(url.to_string())
-}
-
-pub fn op_file_revoke_object_url(
-  state: &mut deno_core::OpState,
-  url: String,
-  _: (),
-) -> Result<(), AnyError> {
-  let url = Url::parse(&url)?;
-  let blob_store = state.borrow::<BlobUrlStore>();
-  blob_store.remove(&url);
-  Ok(())
-}

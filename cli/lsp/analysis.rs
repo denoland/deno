@@ -5,6 +5,7 @@ use super::tsc;
 
 use crate::ast;
 use crate::import_map::ImportMap;
+use crate::lsp::documents::DocumentData;
 use crate::media_type::MediaType;
 use crate::module_graph::parse_deno_types;
 use crate::module_graph::parse_ts_reference;
@@ -17,6 +18,7 @@ use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
+use deno_core::url;
 use deno_core::ModuleResolutionError;
 use deno_core::ModuleSpecifier;
 use deno_lint::rules;
@@ -28,6 +30,13 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
+use swc_common::Loc;
+use swc_common::SourceMap;
+use swc_common::DUMMY_SP;
+use swc_ecmascript::ast as swc_ast;
+use swc_ecmascript::visit::Node;
+use swc_ecmascript::visit::Visit;
+use swc_ecmascript::visit::VisitWith;
 
 lazy_static::lazy_static! {
   /// Diagnostic error codes which actually are the same, and so when grouping
@@ -178,9 +187,20 @@ impl ResolvedDependencyErr {
       Self::InvalidLocalImport => {
         lsp::NumberOrString::String("invalid-local-import".to_string())
       }
-      Self::InvalidSpecifier(_) => {
-        lsp::NumberOrString::String("invalid-specifier".to_string())
-      }
+      Self::InvalidSpecifier(error) => match error {
+        ModuleResolutionError::ImportPrefixMissing(_, _) => {
+          lsp::NumberOrString::String("import-prefix-missing".to_string())
+        }
+        ModuleResolutionError::InvalidBaseUrl(_) => {
+          lsp::NumberOrString::String("invalid-base-url".to_string())
+        }
+        ModuleResolutionError::InvalidPath(_) => {
+          lsp::NumberOrString::String("invalid-path".to_string())
+        }
+        ModuleResolutionError::InvalidUrl(_) => {
+          lsp::NumberOrString::String("invalid-url".to_string())
+        }
+      },
       Self::Missing => lsp::NumberOrString::String("missing".to_string()),
     }
   }
@@ -205,6 +225,23 @@ impl fmt::Display for ResolvedDependencyErr {
 pub enum ResolvedDependency {
   Resolved(ModuleSpecifier),
   Err(ResolvedDependencyErr),
+}
+
+impl ResolvedDependency {
+  pub fn as_hover_text(&self) -> String {
+    match self {
+      Self::Resolved(specifier) => match specifier.scheme() {
+        "data" => "_(a data url)_".to_string(),
+        "blob" => "_(a blob url)_".to_string(),
+        _ => format!(
+          "{}&#8203;{}",
+          specifier[..url::Position::AfterScheme].to_string(),
+          specifier[url::Position::AfterScheme..].to_string()
+        ),
+      },
+      Self::Err(_) => "_[errored]_".to_string(),
+    }
+  }
 }
 
 pub fn resolve_import(
@@ -619,6 +656,7 @@ pub struct DenoFixData {
 #[derive(Debug, Clone)]
 enum CodeActionKind {
   Deno(lsp::CodeAction),
+  DenoLint(lsp::CodeAction),
   Tsc(lsp::CodeAction, tsc::CodeFixAction),
 }
 
@@ -662,6 +700,106 @@ impl CodeActionCollection {
       };
       self.actions.push(CodeActionKind::Deno(code_action));
     }
+    Ok(())
+  }
+
+  pub(crate) fn add_deno_lint_ignore_action(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    document: Option<&DocumentData>,
+    diagnostic: &lsp::Diagnostic,
+  ) -> Result<(), AnyError> {
+    let code = diagnostic
+      .code
+      .as_ref()
+      .map(|v| match v {
+        lsp::NumberOrString::String(v) => v.to_owned(),
+        _ => "".to_string(),
+      })
+      .unwrap();
+
+    let line_content = if let Some(doc) = document {
+      doc
+        .content_line(diagnostic.range.start.line as usize)
+        .ok()
+        .flatten()
+    } else {
+      None
+    };
+
+    let mut changes = HashMap::new();
+    changes.insert(
+      specifier.clone(),
+      vec![lsp::TextEdit {
+        new_text: prepend_whitespace(
+          format!("// deno-lint-ignore {}\n", code),
+          line_content,
+        ),
+        range: lsp::Range {
+          start: lsp::Position {
+            line: diagnostic.range.start.line,
+            character: 0,
+          },
+          end: lsp::Position {
+            line: diagnostic.range.start.line,
+            character: 0,
+          },
+        },
+      }],
+    );
+    let ignore_error_action = lsp::CodeAction {
+      title: format!("Disable {} for this line", code),
+      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      diagnostics: Some(vec![diagnostic.clone()]),
+      command: None,
+      is_preferred: None,
+      disabled: None,
+      data: None,
+      edit: Some(lsp::WorkspaceEdit {
+        changes: Some(changes),
+        change_annotations: None,
+        document_changes: None,
+      }),
+    };
+    self
+      .actions
+      .push(CodeActionKind::DenoLint(ignore_error_action));
+
+    let mut changes = HashMap::new();
+    changes.insert(
+      specifier.clone(),
+      vec![lsp::TextEdit {
+        new_text: "// deno-lint-ignore-file\n".to_string(),
+        range: lsp::Range {
+          start: lsp::Position {
+            line: 0,
+            character: 0,
+          },
+          end: lsp::Position {
+            line: 0,
+            character: 0,
+          },
+        },
+      }],
+    );
+    let ignore_file_action = lsp::CodeAction {
+      title: "Ignore lint errors for the entire file".to_string(),
+      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      diagnostics: Some(vec![diagnostic.clone()]),
+      command: None,
+      is_preferred: None,
+      disabled: None,
+      data: None,
+      edit: Some(lsp::WorkspaceEdit {
+        changes: Some(changes),
+        change_annotations: None,
+        document_changes: None,
+      }),
+    };
+    self
+      .actions
+      .push(CodeActionKind::DenoLint(ignore_file_action));
+
     Ok(())
   }
 
@@ -779,6 +917,7 @@ impl CodeActionCollection {
       .map(|i| match i {
         CodeActionKind::Tsc(c, _) => lsp::CodeActionOrCommand::CodeAction(c),
         CodeActionKind::Deno(c) => lsp::CodeActionOrCommand::CodeAction(c),
+        CodeActionKind::DenoLint(c) => lsp::CodeActionOrCommand::CodeAction(c),
       })
       .collect()
   }
@@ -831,6 +970,163 @@ impl CodeActionCollection {
       }
     }
   }
+}
+
+/// Prepend the whitespace characters found at the start of line_content to content.
+fn prepend_whitespace(content: String, line_content: Option<String>) -> String {
+  if let Some(line) = line_content {
+    let whitespaces =
+      line.chars().position(|c| !c.is_whitespace()).unwrap_or(0);
+    let whitespace = &line[0..whitespaces];
+    format!("{}{}", &whitespace, content)
+  } else {
+    content
+  }
+}
+
+/// Get LSP range from the provided SWC start and end locations.
+fn get_range_from_loc(start: &Loc, end: &Loc) -> lsp::Range {
+  lsp::Range {
+    start: lsp::Position {
+      line: (start.line - 1) as u32,
+      character: start.col_display as u32,
+    },
+    end: lsp::Position {
+      line: (end.line - 1) as u32,
+      character: end.col_display as u32,
+    },
+  }
+}
+
+/// Narrow the range to only include the text of the specifier, excluding the
+/// quotes.
+fn narrow_range(range: lsp::Range) -> lsp::Range {
+  lsp::Range {
+    start: lsp::Position {
+      line: range.start.line,
+      character: range.start.character + 1,
+    },
+    end: lsp::Position {
+      line: range.end.line,
+      character: range.end.character - 1,
+    },
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DependencyRange {
+  /// The LSP Range is inclusive of the quotes around the specifier.
+  pub range: lsp::Range,
+  /// The text of the specifier within the document.
+  pub specifier: String,
+}
+
+impl DependencyRange {
+  /// Determine if the position is within the range
+  fn within(&self, position: &lsp::Position) -> bool {
+    (position.line > self.range.start.line
+      || position.line == self.range.start.line
+        && position.character >= self.range.start.character)
+      && (position.line < self.range.end.line
+        || position.line == self.range.end.line
+          && position.character <= self.range.end.character)
+  }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct DependencyRanges(Vec<DependencyRange>);
+
+impl DependencyRanges {
+  pub fn contains(&self, position: &lsp::Position) -> Option<DependencyRange> {
+    self.0.iter().find(|r| r.within(position)).cloned()
+  }
+}
+
+struct DependencyRangeCollector {
+  import_ranges: DependencyRanges,
+  source_map: Rc<SourceMap>,
+}
+
+impl DependencyRangeCollector {
+  pub fn new(source_map: Rc<SourceMap>) -> Self {
+    Self {
+      import_ranges: DependencyRanges::default(),
+      source_map,
+    }
+  }
+
+  pub fn take(self) -> DependencyRanges {
+    self.import_ranges
+  }
+}
+
+impl Visit for DependencyRangeCollector {
+  fn visit_import_decl(
+    &mut self,
+    node: &swc_ast::ImportDecl,
+    _parent: &dyn Node,
+  ) {
+    let start = self.source_map.lookup_char_pos(node.src.span.lo);
+    let end = self.source_map.lookup_char_pos(node.src.span.hi);
+    self.import_ranges.0.push(DependencyRange {
+      range: narrow_range(get_range_from_loc(&start, &end)),
+      specifier: node.src.value.to_string(),
+    });
+  }
+
+  fn visit_named_export(
+    &mut self,
+    node: &swc_ast::NamedExport,
+    _parent: &dyn Node,
+  ) {
+    if let Some(src) = &node.src {
+      let start = self.source_map.lookup_char_pos(src.span.lo);
+      let end = self.source_map.lookup_char_pos(src.span.hi);
+      self.import_ranges.0.push(DependencyRange {
+        range: narrow_range(get_range_from_loc(&start, &end)),
+        specifier: src.value.to_string(),
+      });
+    }
+  }
+
+  fn visit_export_all(
+    &mut self,
+    node: &swc_ast::ExportAll,
+    _parent: &dyn Node,
+  ) {
+    let start = self.source_map.lookup_char_pos(node.src.span.lo);
+    let end = self.source_map.lookup_char_pos(node.src.span.hi);
+    self.import_ranges.0.push(DependencyRange {
+      range: narrow_range(get_range_from_loc(&start, &end)),
+      specifier: node.src.value.to_string(),
+    });
+  }
+
+  fn visit_ts_import_type(
+    &mut self,
+    node: &swc_ast::TsImportType,
+    _parent: &dyn Node,
+  ) {
+    let start = self.source_map.lookup_char_pos(node.arg.span.lo);
+    let end = self.source_map.lookup_char_pos(node.arg.span.hi);
+    self.import_ranges.0.push(DependencyRange {
+      range: narrow_range(get_range_from_loc(&start, &end)),
+      specifier: node.arg.value.to_string(),
+    });
+  }
+}
+
+/// Analyze a document for import ranges, which then can be used to identify if
+/// a particular position within the document as inside an import range.
+pub fn analyze_dependency_ranges(
+  parsed_module: &ast::ParsedModule,
+) -> Result<DependencyRanges, AnyError> {
+  let mut collector =
+    DependencyRangeCollector::new(parsed_module.source_map.clone());
+  parsed_module
+    .module
+    .visit_with(&swc_ast::Invalid { span: DUMMY_SP }, &mut collector);
+  Ok(collector.take())
 }
 
 #[cfg(test)]
@@ -1032,6 +1328,63 @@ mod tests {
           }
         }),
         maybe_type_specifier_range: None,
+      })
+    );
+  }
+
+  #[test]
+  fn test_analyze_dependency_ranges() {
+    let specifier = resolve_url("file:///a.ts").unwrap();
+    let source =
+      "import * as a from \"./b.ts\";\nexport * as a from \"./c.ts\";\n";
+    let media_type = MediaType::TypeScript;
+    let parsed_module = parse_module(&specifier, source, &media_type).unwrap();
+    let result = analyze_dependency_ranges(&parsed_module);
+    assert!(result.is_ok());
+    let actual = result.unwrap();
+    assert_eq!(
+      actual.contains(&lsp::Position {
+        line: 0,
+        character: 0,
+      }),
+      None
+    );
+    assert_eq!(
+      actual.contains(&lsp::Position {
+        line: 0,
+        character: 22,
+      }),
+      Some(DependencyRange {
+        range: lsp::Range {
+          start: lsp::Position {
+            line: 0,
+            character: 20,
+          },
+          end: lsp::Position {
+            line: 0,
+            character: 26,
+          },
+        },
+        specifier: "./b.ts".to_string(),
+      })
+    );
+    assert_eq!(
+      actual.contains(&lsp::Position {
+        line: 1,
+        character: 22,
+      }),
+      Some(DependencyRange {
+        range: lsp::Range {
+          start: lsp::Position {
+            line: 1,
+            character: 20,
+          },
+          end: lsp::Position {
+            line: 1,
+            character: 26,
+          },
+        },
+        specifier: "./c.ts".to_string(),
       })
     );
   }

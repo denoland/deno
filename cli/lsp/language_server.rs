@@ -39,6 +39,7 @@ use super::diagnostics::DiagnosticSource;
 use super::documents::DocumentCache;
 use super::documents::LanguageId;
 use super::lsp_custom;
+use super::parent_process_checker;
 use super::performance::Performance;
 use super::registries;
 use super::sources;
@@ -53,6 +54,7 @@ use super::urls;
 use crate::config_file::ConfigFile;
 use crate::config_file::TsConfig;
 use crate::deno_dir;
+use crate::fs_util;
 use crate::import_map::ImportMap;
 use crate::logger;
 use crate::media_type::MediaType;
@@ -70,6 +72,7 @@ pub struct StateSnapshot {
   pub assets: Assets,
   pub config: ConfigSnapshot,
   pub documents: DocumentCache,
+  pub maybe_config_uri: Option<ModuleSpecifier>,
   pub module_registries: registries::ModuleRegistry,
   pub performance: Performance,
   pub sources: Sources,
@@ -92,6 +95,9 @@ pub(crate) struct Inner {
   module_registries: registries::ModuleRegistry,
   /// The path to the module registries cache
   module_registries_location: PathBuf,
+  /// An optional configuration file which has been specified in the client
+  /// options.
+  maybe_config_file: Option<ConfigFile>,
   /// An optional URL which provides the location of a TypeScript configuration
   /// file which will be used by the Deno LSP.
   maybe_config_uri: Option<Url>,
@@ -138,6 +144,7 @@ impl Inner {
       config,
       diagnostics_server,
       documents: Default::default(),
+      maybe_config_file: Default::default(),
       maybe_config_uri: Default::default(),
       maybe_import_map: Default::default(),
       maybe_import_map_uri: Default::default(),
@@ -176,7 +183,12 @@ impl Inner {
           }
         }
       }
-      if let Err(err) = self.documents.set_dependencies(specifier, Some(deps)) {
+      let dep_ranges = analysis::analyze_dependency_ranges(&parsed_module).ok();
+      if let Err(err) =
+        self
+          .documents
+          .set_dependencies(specifier, Some(deps), dep_ranges)
+      {
         error!("{}", err);
       }
     }
@@ -318,6 +330,59 @@ impl Inner {
     Ok(navigation_tree)
   }
 
+  fn merge_user_tsconfig(
+    &mut self,
+    maybe_config: &Option<String>,
+    maybe_root_uri: &Option<Url>,
+    tsconfig: &mut TsConfig,
+  ) -> Result<(), AnyError> {
+    self.maybe_config_file = None;
+    self.maybe_config_uri = None;
+    if let Some(config_str) = maybe_config {
+      if !config_str.is_empty() {
+        info!("Updating TypeScript configuration from: \"{}\"", config_str);
+        let config_url = if let Ok(url) = Url::from_file_path(config_str) {
+          Ok(url)
+        } else if let Some(root_uri) = maybe_root_uri {
+          let root_path = root_uri
+            .to_file_path()
+            .map_err(|_| anyhow!("Bad root_uri: {}", root_uri))?;
+          let config_path = root_path.join(config_str);
+          Url::from_file_path(config_path).map_err(|_| {
+            anyhow!("Bad file path for configuration file: \"{}\"", config_str)
+          })
+        } else {
+          Err(anyhow!(
+            "The path to the configuration file (\"{}\") is not resolvable.",
+            config_str
+          ))
+        }?;
+        info!("  Resolved configuration file: \"{}\"", config_url);
+
+        let config_file = {
+          let buffer = config_url
+            .to_file_path()
+            .map_err(|_| anyhow!("Bad uri: \"{}\"", config_url))?;
+          let path = buffer
+            .to_str()
+            .ok_or_else(|| anyhow!("Bad uri: \"{}\"", config_url))?;
+          ConfigFile::read(path)?
+        };
+        let (value, maybe_ignored_options) =
+          config_file.as_compiler_options()?;
+        tsconfig.merge(&value);
+        self.maybe_config_file = Some(config_file);
+        self.maybe_config_uri = Some(config_url);
+        if let Some(ignored_options) = maybe_ignored_options {
+          // TODO(@kitsonk) turn these into diagnostics that can be sent to the
+          // client
+          warn!("{}", ignored_options);
+        }
+      }
+    }
+    Ok(())
+  }
+
   pub(crate) fn snapshot(&self) -> LspResult<StateSnapshot> {
     Ok(StateSnapshot {
       assets: self.assets.clone(),
@@ -326,6 +391,7 @@ impl Inner {
         LspError::internal_error()
       })?,
       documents: self.documents.clone(),
+      maybe_config_uri: self.maybe_config_uri.clone(),
       module_registries: self.module_registries.clone(),
       performance: self.performance.clone(),
       sources: self.sources.clone(),
@@ -446,43 +512,10 @@ impl Inner {
       }
       (workspace_settings.config, config.root_uri.clone())
     };
-    if let Some(config_str) = &maybe_config {
-      info!("Updating TypeScript configuration from: \"{}\"", config_str);
-      let config_url = if let Ok(url) = Url::from_file_path(config_str) {
-        Ok(url)
-      } else if let Some(root_uri) = &maybe_root_uri {
-        let root_path = root_uri
-          .to_file_path()
-          .map_err(|_| anyhow!("Bad root_uri: {}", root_uri))?;
-        let config_path = root_path.join(config_str);
-        Url::from_file_path(config_path).map_err(|_| {
-          anyhow!("Bad file path for configuration file: \"{}\"", config_str)
-        })
-      } else {
-        Err(anyhow!(
-          "The path to the configuration file (\"{}\") is not resolvable.",
-          config_str
-        ))
-      }?;
-      info!("  Resolved configuration file: \"{}\"", config_url);
-
-      let config_file = {
-        let buffer = config_url
-          .to_file_path()
-          .map_err(|_| anyhow!("Bad uri: \"{}\"", config_url))?;
-        let path = buffer
-          .to_str()
-          .ok_or_else(|| anyhow!("Bad uri: \"{}\"", config_url))?;
-        ConfigFile::read(path)?
-      };
-      let (value, maybe_ignored_options) = config_file.as_compiler_options()?;
-      tsconfig.merge(&value);
-      self.maybe_config_uri = Some(config_url);
-      if let Some(ignored_options) = maybe_ignored_options {
-        // TODO(@kitsonk) turn these into diagnostics that can be sent to the
-        // client
-        warn!("{}", ignored_options);
-      }
+    if let Err(err) =
+      self.merge_user_tsconfig(&maybe_config, &maybe_root_uri, &mut tsconfig)
+    {
+      self.client.show_message(MessageType::Warning, err).await;
     }
     let _ok: bool = self
       .ts_server
@@ -522,6 +555,11 @@ impl Inner {
   ) -> LspResult<InitializeResult> {
     info!("Starting Deno language server...");
     let mark = self.performance.mark("initialize", Some(&params));
+
+    // exit this process when the parent is lost
+    if let Some(parent_pid) = params.process_id {
+      parent_process_checker::start(parent_pid)
+    }
 
     let capabilities = capabilities::server_capabilities(&params.capabilities);
 
@@ -916,37 +954,83 @@ impl Inner {
     {
       return Ok(None);
     }
-    let mark = self.performance.mark("hover", Some(&params));
 
-    let line_index =
-      if let Some(line_index) = self.get_line_index_sync(&specifier) {
-        line_index
+    let mark = self.performance.mark("hover", Some(&params));
+    let hover = if let Some(dependency_range) =
+      self.documents.is_specifier_position(
+        &specifier,
+        &params.text_document_position_params.position,
+      ) {
+      if let Some(dependencies) = &self.documents.dependencies(&specifier) {
+        if let Some(dep) = dependencies.get(&dependency_range.specifier) {
+          let value = match (&dep.maybe_code, &dep.maybe_type) {
+            (Some(code_dep), Some(type_dep)) => {
+              format!(
+                "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
+                code_dep.as_hover_text(),
+                type_dep.as_hover_text()
+              )
+            }
+            (Some(code_dep), None) => {
+              format!(
+                "**Resolved Dependency**\n\n**Code**: {}\n",
+                code_dep.as_hover_text()
+              )
+            }
+            (None, Some(type_dep)) => {
+              format!(
+                "**Resolved Dependency**\n\n**Types**: {}\n",
+                type_dep.as_hover_text()
+              )
+            }
+            (None, None) => {
+              error!(
+                "Unexpected state hovering on dependency. Dependency \"{}\" in \"{}\" not found.",
+                dependency_range.specifier,
+                specifier
+              );
+              "".to_string()
+            }
+          };
+          Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+              kind: MarkupKind::Markdown,
+              value,
+            }),
+            range: Some(dependency_range.range),
+          })
+        } else {
+          None
+        }
       } else {
-        return Err(LspError::invalid_params(format!(
-          "An unexpected specifier ({}) was provided.",
-          specifier
-        )));
-      };
-    let req = tsc::RequestMethod::GetQuickInfo((
-      specifier,
-      line_index.offset_tsc(params.text_document_position_params.position)?,
-    ));
-    let maybe_quick_info: Option<tsc::QuickInfo> = self
-      .ts_server
-      .request(self.snapshot()?, req)
-      .await
-      .map_err(|err| {
-        error!("Unable to get quick info: {}", err);
-        LspError::internal_error()
-      })?;
-    if let Some(quick_info) = maybe_quick_info {
-      let hover = quick_info.to_hover(&line_index);
-      self.performance.measure(mark);
-      Ok(Some(hover))
+        None
+      }
     } else {
-      self.performance.measure(mark);
-      Ok(None)
-    }
+      let line_index =
+        if let Some(line_index) = self.get_line_index_sync(&specifier) {
+          line_index
+        } else {
+          return Err(LspError::invalid_params(format!(
+            "An unexpected specifier ({}) was provided.",
+            specifier
+          )));
+        };
+      let req = tsc::RequestMethod::GetQuickInfo((
+        specifier,
+        line_index.offset_tsc(params.text_document_position_params.position)?,
+      ));
+      let maybe_quick_info: Option<tsc::QuickInfo> = self
+        .ts_server
+        .request(self.snapshot()?, req)
+        .await
+        .map_err(|err| {
+          error!("Unable to get quick info: {}", err);
+          LspError::internal_error()
+        })?;
+      maybe_quick_info.map(|qi| qi.to_hover(&line_index))
+    };
+    self.performance.measure(mark);
+    Ok(hover)
   }
 
   async fn code_action(
@@ -976,6 +1060,7 @@ impl Inner {
             }
             _ => false,
           },
+          "deno-lint" => matches!(&d.code, Some(_)),
           "deno" => match &d.code {
             Some(NumberOrString::String(code)) => {
               code == "no-cache" || code == "no-cache-data"
@@ -1049,6 +1134,16 @@ impl Inner {
               LspError::internal_error()
             })?
         }
+        Some("deno-lint") => code_actions
+          .add_deno_lint_ignore_action(
+            &specifier,
+            self.documents.docs.get(&specifier),
+            diagnostic,
+          )
+          .map_err(|err| {
+            error!("Unable to fix lint error: {}", err);
+            LspError::internal_error()
+          })?,
         _ => (),
       }
     }
@@ -2270,20 +2365,28 @@ impl Inner {
     if !params.uris.is_empty() {
       for identifier in &params.uris {
         let specifier = self.url_map.normalize_url(&identifier.uri);
-        sources::cache(&specifier, &self.maybe_import_map)
-          .await
-          .map_err(|err| {
-            error!("{}", err);
-            LspError::internal_error()
-          })?;
-      }
-    } else {
-      sources::cache(&referrer, &self.maybe_import_map)
+        sources::cache(
+          &specifier,
+          &self.maybe_import_map,
+          &self.maybe_config_file,
+        )
         .await
         .map_err(|err| {
           error!("{}", err);
           LspError::internal_error()
         })?;
+      }
+    } else {
+      sources::cache(
+        &referrer,
+        &self.maybe_import_map,
+        &self.maybe_config_file,
+      )
+      .await
+      .map_err(|err| {
+        error!("{}", err);
+        LspError::internal_error()
+      })?;
     }
     // now that we have dependencies loaded, we need to re-analyze them and
     // invalidate some diagnostics
@@ -2308,7 +2411,7 @@ impl Inner {
   }
 
   async fn reload_import_registries(&mut self) -> LspResult<Option<Value>> {
-    fs::remove_dir_all(&self.module_registries_location)
+    fs_util::remove_dir_all_if_exists(&self.module_registries_location)
       .await
       .map_err(|err| {
         error!("Unable to remove registries cache: {}", err);

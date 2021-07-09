@@ -8,6 +8,35 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
+  const { DOMException } = window.__bootstrap.domException;
+  const consoleInternal = window.__bootstrap.console;
+  const {
+    ArrayPrototypeFilter,
+    ArrayPrototypeIncludes,
+    ArrayPrototypeIndexOf,
+    ArrayPrototypeMap,
+    ArrayPrototypePush,
+    ArrayPrototypeSlice,
+    ArrayPrototypeSplice,
+    ArrayPrototypeUnshift,
+    Boolean,
+    DateNow,
+    Error,
+    FunctionPrototypeCall,
+    Map,
+    MapPrototypeGet,
+    MapPrototypeSet,
+    ObjectCreate,
+    ObjectDefineProperty,
+    ObjectGetOwnPropertyDescriptor,
+    ReflectDefineProperty,
+    Symbol,
+    SymbolFor,
+    SymbolToStringTag,
+    WeakMap,
+    WeakMapPrototypeGet,
+    WeakMapPrototypeSet,
+  } = window.__bootstrap.primordials;
 
   // accessors for non runtime visible data
 
@@ -76,7 +105,7 @@
     return "relatedTarget" in event;
   }
 
-  const isTrusted = Object.getOwnPropertyDescriptor({
+  const isTrusted = ObjectGetOwnPropertyDescriptor({
     get isTrusted() {
       return this[_isTrusted];
     },
@@ -135,42 +164,42 @@
         currentTarget: null,
         eventPhase: Event.NONE,
         target: null,
-        timeStamp: Date.now(),
+        timeStamp: DateNow(),
       };
-      Reflect.defineProperty(this, "isTrusted", {
+      ReflectDefineProperty(this, "isTrusted", {
         enumerable: true,
         get: isTrusted,
       });
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
-      return buildCustomInspectOutput(this, EVENT_PROPS, inspect);
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof Event,
+        keys: EVENT_PROPS,
+      }));
     }
 
     get type() {
       return this[_attributes].type;
     }
-    set type(_) {
-      // this is a no-op because this member is readonly
-    }
+
     get target() {
       return this[_attributes].target;
     }
-    set target(_) {
-      // this is a no-op because this member is readonly
-    }
+
     get srcElement() {
       return null;
     }
+
     set srcElement(_) {
-      // this is a no-op because this member is readonly
+      // this member is deprecated
     }
+
     get currentTarget() {
       return this[_attributes].currentTarget;
     }
-    set currentTarget(_) {
-      // this is a no-op because this member is readonly
-    }
+
     composedPath() {
       const path = this[_path];
       if (path.length === 0) {
@@ -223,7 +252,7 @@
         }
 
         if (currentHiddenLevel <= maxHiddenLevel) {
-          composedPath.unshift({
+          ArrayPrototypeUnshift(composedPath, {
             item,
             itemInShadowTree: false,
             relatedTarget: null,
@@ -254,7 +283,7 @@
         }
 
         if (currentHiddenLevel <= maxHiddenLevel) {
-          composedPath.push({
+          ArrayPrototypePush(composedPath, {
             item,
             itemInShadowTree: false,
             relatedTarget: null,
@@ -273,73 +302,57 @@
           }
         }
       }
-      return composedPath.map((p) => p.item);
+      return ArrayPrototypeMap(composedPath, (p) => p.item);
     }
 
     get NONE() {
       return Event.NONE;
     }
-    set NONE(_) {
-      // this is a no-op because this member is readonly
-    }
+
     get CAPTURING_PHASE() {
       return Event.CAPTURING_PHASE;
     }
-    set CAPTURING_PHASE(_) {
-      // this is a no-op because this member is readonly
-    }
+
     get AT_TARGET() {
       return Event.AT_TARGET;
     }
-    set AT_TARGET(_) {
-      // this is a no-op because this member is readonly
-    }
+
     get BUBBLING_PHASE() {
       return Event.BUBBLING_PHASE;
     }
-    set BUBBLING_PHASE(_) {
-      // this is a no-op because this member is readonly
-    }
+
     static get NONE() {
       return 0;
     }
-    static set NONE(_) {
-      // this is a no-op because this member is readonly
-    }
+
     static get CAPTURING_PHASE() {
       return 1;
     }
-    static set CAPTURING_PHASE(_) {
-      // this is a no-op because this member is readonly
-    }
+
     static get AT_TARGET() {
       return 2;
     }
-    static set AT_TARGET(_) {
-      // this is a no-op because this member is readonly
-    }
+
     static get BUBBLING_PHASE() {
       return 3;
     }
-    static set BUBBLING_PHASE(_) {
-      // this is a no-op because this member is readonly
-    }
+
     get eventPhase() {
       return this[_attributes].eventPhase;
-    }
-    set eventPhase(_) {
-      // this is a no-op because this member is readonly
     }
 
     stopPropagation() {
       this[_stopPropagationFlag] = true;
     }
+
     get cancelBubble() {
       return this[_stopPropagationFlag];
     }
+
     set cancelBubble(value) {
       this[_stopPropagationFlag] = webidl.converters.boolean(value);
     }
+
     stopImmediatePropagation() {
       this[_stopPropagationFlag] = true;
       this[_stopImmediatePropagationFlag] = true;
@@ -348,39 +361,33 @@
     get bubbles() {
       return this[_attributes].bubbles;
     }
-    set bubbles(_) {
-      // this is a no-op because this member is readonly
-    }
+
     get cancelable() {
       return this[_attributes].cancelable;
     }
-    set cancelable(value) {
-      // this is a no-op because this member is readonly
-    }
+
     get returnValue() {
       return !this[_canceledFlag];
     }
+
     set returnValue(value) {
       if (!webidl.converters.boolean(value)) {
         this[_canceledFlag] = true;
       }
     }
+
     preventDefault() {
       if (this[_attributes].cancelable && !this[_inPassiveListener]) {
         this[_canceledFlag] = true;
       }
     }
+
     get defaultPrevented() {
       return this[_canceledFlag];
     }
-    set defaultPrevented(_) {
-      // this is a no-op because this member is readonly
-    }
+
     get composed() {
       return this[_attributes].composed;
-    }
-    set composed(_) {
-      // this is a no-op because this member is readonly
     }
 
     get initialized() {
@@ -390,14 +397,6 @@
     get timeStamp() {
       return this[_attributes].timeStamp;
     }
-    set timeStamp(_) {
-      // this is a no-op because this member is readonly
-    }
-  }
-
-  function buildCustomInspectOutput(object, keys, inspect) {
-    const inspectObject = Object.fromEntries(keys.map((k) => [k, object[k]]));
-    return `${object.constructor.name} ${inspect(inspectObject)}`;
   }
 
   function defineEnumerableProps(
@@ -405,7 +404,7 @@
     props,
   ) {
     for (const prop of props) {
-      Reflect.defineProperty(Ctor.prototype, prop, { enumerable: true });
+      ReflectDefineProperty(Ctor.prototype, prop, { enumerable: true });
     }
   }
 
@@ -504,7 +503,7 @@
     const rootOfClosedTree = isShadowRoot(target) &&
       getMode(target) === "closed";
 
-    getPath(eventImpl).push({
+    ArrayPrototypePush(getPath(eventImpl), {
       item: target,
       itemInShadowTree,
       target: targetOverride,
@@ -701,7 +700,7 @@
     }
 
     // Copy event listeners before iterating since the list can be modified during the iteration.
-    const handlers = targetListeners[type].slice();
+    const handlers = ArrayPrototypeSlice(targetListeners[type]);
 
     for (let i = 0; i < handlers.length; i++) {
       const listener = handlers[i];
@@ -718,7 +717,7 @@
       }
 
       // Check if the event listener has been removed since the listeners has been cloned.
-      if (!targetListeners[type].includes(listener)) {
+      if (!ArrayPrototypeIncludes(targetListeners[type], listener)) {
         continue;
       }
 
@@ -732,8 +731,9 @@
       }
 
       if (once) {
-        targetListeners[type].splice(
-          targetListeners[type].indexOf(listener),
+        ArrayPrototypeSplice(
+          targetListeners[type],
+          ArrayPrototypeIndexOf(targetListeners[type], listener),
           1,
         );
       }
@@ -747,7 +747,11 @@
           listener.callback.handleEvent(eventImpl);
         }
       } else {
-        listener.callback.call(eventImpl.currentTarget, eventImpl);
+        FunctionPrototypeCall(
+          listener.callback,
+          eventImpl.currentTarget,
+          eventImpl,
+        );
       }
 
       setInPassiveListener(eventImpl, false);
@@ -765,7 +769,7 @@
    * Ref: https://dom.spec.whatwg.org/#concept-event-listener-invoke */
   function invokeEventListeners(tuple, eventImpl) {
     const path = getPath(eventImpl);
-    const tupleIndex = path.indexOf(tuple);
+    const tupleIndex = ArrayPrototypeIndexOf(path, tuple);
     for (let i = tupleIndex; i >= 0; i--) {
       const t = path[i];
       if (t.target) {
@@ -840,29 +844,29 @@
   const eventTargetData = new WeakMap();
 
   function setEventTargetData(value) {
-    eventTargetData.set(value, getDefaultTargetData());
+    WeakMapPrototypeSet(eventTargetData, value, getDefaultTargetData());
   }
 
   function getAssignedSlot(target) {
-    return Boolean(eventTargetData.get(target)?.assignedSlot);
+    return Boolean(WeakMapPrototypeGet(eventTargetData, target)?.assignedSlot);
   }
 
   function getHasActivationBehavior(target) {
     return Boolean(
-      eventTargetData.get(target)?.hasActivationBehavior,
+      WeakMapPrototypeGet(eventTargetData, target)?.hasActivationBehavior,
     );
   }
 
   function getHost(target) {
-    return eventTargetData.get(target)?.host ?? null;
+    return WeakMapPrototypeGet(eventTargetData, target)?.host ?? null;
   }
 
   function getListeners(target) {
-    return eventTargetData.get(target)?.listeners ?? {};
+    return WeakMapPrototypeGet(eventTargetData, target)?.listeners ?? {};
   }
 
   function getMode(target) {
-    return eventTargetData.get(target)?.mode ?? null;
+    return WeakMapPrototypeGet(eventTargetData, target)?.mode ?? null;
   }
 
   function getDefaultTargetData() {
@@ -870,14 +874,14 @@
       assignedSlot: false,
       hasActivationBehavior: false,
       host: null,
-      listeners: Object.create(null),
+      listeners: ObjectCreate(null),
       mode: "",
     };
   }
 
   class EventTarget {
     constructor() {
-      eventTargetData.set(this, getDefaultTargetData());
+      WeakMapPrototypeSet(eventTargetData, this, getDefaultTargetData());
     }
 
     addEventListener(
@@ -893,7 +897,10 @@
       }
 
       options = normalizeAddEventHandlerOptions(options);
-      const { listeners } = eventTargetData.get(this ?? globalThis);
+      const { listeners } = WeakMapPrototypeGet(
+        eventTargetData,
+        this ?? globalThis,
+      );
 
       if (!(type in listeners)) {
         listeners[type] = [];
@@ -923,7 +930,7 @@
           });
         }
       }
-      listeners[type].push({ callback, options });
+      ArrayPrototypePush(listeners[type], { callback, options });
     }
 
     removeEventListener(
@@ -935,9 +942,11 @@
         prefix: "Failed to execute 'removeEventListener' on 'EventTarget'",
       });
 
-      const listeners = eventTargetData.get(this ?? globalThis).listeners;
+      const listeners =
+        WeakMapPrototypeGet(eventTargetData, this ?? globalThis).listeners;
       if (callback !== null && type in listeners) {
-        listeners[type] = listeners[type].filter(
+        listeners[type] = ArrayPrototypeFilter(
+          listeners[type],
           (listener) => listener.callback !== callback,
         );
       } else if (callback === null || !listeners[type]) {
@@ -955,7 +964,7 @@
               listener.options.capture === options.capture)) &&
           listener.callback === callback
         ) {
-          listeners[type].splice(i, 1);
+          ArrayPrototypeSplice(listeners[type], i, 1);
           break;
         }
       }
@@ -967,7 +976,7 @@
       });
       const self = this ?? globalThis;
 
-      const listeners = eventTargetData.get(self).listeners;
+      const listeners = WeakMapPrototypeGet(eventTargetData, self).listeners;
       if (!(event.type in listeners)) {
         setTarget(event, this);
         return true;
@@ -984,7 +993,7 @@
       return dispatch(self, event);
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "EventTarget";
     }
 
@@ -1048,19 +1057,23 @@
       this.#error = error;
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "ErrorEvent";
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
-      return buildCustomInspectOutput(this, [
-        ...EVENT_PROPS,
-        "message",
-        "filename",
-        "lineno",
-        "colno",
-        "error",
-      ], inspect);
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof ErrorEvent,
+        keys: [
+          ...EVENT_PROPS,
+          "message",
+          "filename",
+          "lineno",
+          "colno",
+          "error",
+        ],
+      }));
     }
   }
 
@@ -1106,13 +1119,17 @@
       this.#reason = reason;
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
-      return buildCustomInspectOutput(this, [
-        ...EVENT_PROPS,
-        "wasClean",
-        "code",
-        "reason",
-      ], inspect);
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof CloseEvent,
+        keys: [
+          ...EVENT_PROPS,
+          "wasClean",
+          "code",
+          "reason",
+        ],
+      }));
     }
   }
 
@@ -1129,17 +1146,22 @@
       });
 
       this.data = eventInitDict?.data ?? null;
+      this.ports = eventInitDict?.ports ?? [];
       this.origin = eventInitDict?.origin ?? "";
       this.lastEventId = eventInitDict?.lastEventId ?? "";
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
-      return buildCustomInspectOutput(this, [
-        ...EVENT_PROPS,
-        "data",
-        "origin",
-        "lastEventId",
-      ], inspect);
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof MessageEvent,
+        keys: [
+          ...EVENT_PROPS,
+          "data",
+          "origin",
+          "lastEventId",
+        ],
+      }));
     }
   }
 
@@ -1159,19 +1181,23 @@
       return this.#detail;
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "CustomEvent";
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
-      return buildCustomInspectOutput(this, [
-        ...EVENT_PROPS,
-        "detail",
-      ], inspect);
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof CustomEvent,
+        keys: [
+          ...EVENT_PROPS,
+          "detail",
+        ],
+      }));
     }
   }
 
-  Reflect.defineProperty(CustomEvent.prototype, "detail", {
+  ReflectDefineProperty(CustomEvent.prototype, "detail", {
     enumerable: true,
   });
 
@@ -1186,14 +1212,60 @@
       this.total = eventInitDict?.total ?? 0;
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
-      return buildCustomInspectOutput(this, [
-        ...EVENT_PROPS,
-        "lengthComputable",
-        "loaded",
-        "total",
-      ], inspect);
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof ProgressEvent,
+        keys: [
+          ...EVENT_PROPS,
+          "lengthComputable",
+          "loaded",
+          "total",
+        ],
+      }));
     }
+  }
+
+  const _eventHandlers = Symbol("eventHandlers");
+
+  function makeWrappedHandler(handler) {
+    function wrappedHandler(...args) {
+      if (typeof wrappedHandler.handler !== "function") {
+        return;
+      }
+      return FunctionPrototypeCall(wrappedHandler.handler, this, ...args);
+    }
+    wrappedHandler.handler = handler;
+    return wrappedHandler;
+  }
+
+  // TODO(benjamingr) reuse this here and websocket where possible
+  function defineEventHandler(emitter, name, init) {
+    // HTML specification section 8.1.5.1
+    ObjectDefineProperty(emitter, `on${name}`, {
+      get() {
+        const map = this[_eventHandlers];
+
+        if (!map) return undefined;
+        return MapPrototypeGet(map, name)?.handler;
+      },
+      set(value) {
+        if (!this[_eventHandlers]) {
+          this[_eventHandlers] = new Map();
+        }
+        let handlerWrapper = MapPrototypeGet(this[_eventHandlers], name);
+        if (handlerWrapper) {
+          handlerWrapper.handler = value;
+        } else {
+          handlerWrapper = makeWrappedHandler(value);
+          this.addEventListener(name, handlerWrapper);
+          init?.(this);
+        }
+        MapPrototypeSet(this[_eventHandlers], name, handlerWrapper);
+      },
+      configurable: true,
+      enumerable: true,
+    });
   }
 
   window.Event = Event;
@@ -1213,5 +1285,6 @@
   window.__bootstrap.event = {
     setIsTrusted,
     setTarget,
+    defineEventHandler,
   };
 })(this);

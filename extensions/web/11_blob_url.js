@@ -15,7 +15,7 @@
 ((window) => {
   const core = Deno.core;
   const webidl = window.__bootstrap.webidl;
-  const { _byteSequence } = window.__bootstrap.file;
+  const { getParts } = window.__bootstrap.file;
   const { URL } = window.__bootstrap.url;
 
   /**
@@ -31,9 +31,9 @@
     });
 
     const url = core.opSync(
-      "op_file_create_object_url",
+      "op_blob_create_object_url",
       blob.type,
-      blob[_byteSequence],
+      getParts(blob),
     );
 
     return url;
@@ -51,10 +51,7 @@
       prefix,
     });
 
-    core.opSync(
-      "op_file_revoke_object_url",
-      url,
-    );
+    core.opSync("op_blob_revoke_object_url", url);
   }
 
   URL.createObjectURL = createObjectURL;
