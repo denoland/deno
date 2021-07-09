@@ -40,7 +40,7 @@ use std::time::Instant;
 use swc_common::comments::CommentKind;
 
 // Expression used to get the array containing the actual test definitions in the runtime.
-static TEST_REGISTRY : &str = "(Deno[Deno.internal].tests)";
+static TEST_REGISTRY: &str = "(Deno[Deno.internal].tests)";
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -234,8 +234,10 @@ where
       .execute_script("deno:test_module", TEST_REGISTRY)?;
 
     let mut scope = worker.js_runtime.handle_scope();
-    let registry_local = v8::Local::<v8::Value>::new(&mut scope, registry.clone());
-    let descriptions: Vec<TestDescription> = serde_v8::from_v8(&mut scope, registry_local).unwrap();
+    let registry_local =
+      v8::Local::<v8::Value>::new(&mut scope, registry.clone());
+    let descriptions: Vec<TestDescription> =
+      serde_v8::from_v8(&mut scope, registry_local).unwrap();
 
     (registry, descriptions)
   };
@@ -263,8 +265,10 @@ where
 
     let result_promise = {
       let mut scope = worker.js_runtime.handle_scope();
-      let registry_local = v8::Local::<v8::Value>::new(&mut scope, registry.clone());
-      let registry_local = v8::Local::<v8::Array>::try_from(registry_local).unwrap();
+      let registry_local =
+        v8::Local::<v8::Value>::new(&mut scope, registry.clone());
+      let registry_local =
+        v8::Local::<v8::Array>::try_from(registry_local).unwrap();
 
       let value = registry_local
         .get_index(&mut scope, index.try_into().unwrap())

@@ -14,7 +14,6 @@
     TypeError,
   } = window.__bootstrap.primordials;
 
-
   // Wrap test function in additional assertion that makes sure
   // the test case does not leak async "ops" - ie. number of async
   // completed ops after the test is the same as number of dispatched
@@ -96,7 +95,6 @@ finishing test case.`;
       }
     };
   }
-
 
   function pledgeTestPermissions(permissions) {
     return core.opSync(
