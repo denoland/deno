@@ -147,14 +147,26 @@ impl Resource for WsStreamResource {
   }
 }
 
+pub struct WsCancelResource(Rc<CancelHandle>);
+
+impl Resource for WsCancelResource {
+  fn name(&self) -> Cow<str> {
+    "webSocketCancel".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.0.cancel()
+  }
+}
+
 // This op is needed because creating a WS instance in JavaScript is a sync
 // operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
-pub fn op_ws_check_permission<WP>(
+pub fn op_ws_check_permission_and_cancel_handle<WP>(
   state: &mut OpState,
   url: String,
-  _: (),
-) -> Result<(), AnyError>
+  cancel_handle: bool,
+) -> Result<Option<ResourceId>, AnyError>
 where
   WP: WebSocketPermissions + 'static,
 {
@@ -162,7 +174,14 @@ where
     .borrow_mut::<WP>()
     .check_net_url(&url::Url::parse(&url)?)?;
 
-  Ok(())
+  if cancel_handle {
+    let rid = state
+      .resource_table
+      .add(WsCancelResource(CancelHandle::new_rc()));
+    Ok(Some(rid))
+  } else {
+    Ok(None)
+  }
 }
 
 #[derive(Deserialize)]
@@ -170,6 +189,7 @@ where
 pub struct CreateArgs {
   url: String,
   protocols: String,
+  cancel_handle: Option<ResourceId>,
 }
 
 #[derive(Serialize)]
@@ -240,13 +260,24 @@ where
     _ => unreachable!(),
   };
 
-  let (stream, response): (WsStream, Response) =
-    client_async(request, socket).await.map_err(|err| {
+  let (stream, response): (WsStream, Response) = client_async(request, socket)
+    .or_cancel(if let Some(cancel_rid) = args.cancel_handle {
+      let r = state
+        .borrow_mut()
+        .resource_table
+        .take::<WsCancelResource>(cancel_rid)
+        .ok_or_else(bad_resource_id)?;
+      r.0.to_owned()
+    } else {
+      CancelHandle::new_rc()
+    })
+    .await
+    .map_err(|err| {
       DomExceptionNetworkError::new(&format!(
         "failed to connect to WebSocket: {}",
         err.to_string()
       ))
-    })?;
+    })??;
 
   let (ws_tx, ws_rx) = stream.split();
   let resource = WsStreamResource {
@@ -395,8 +426,8 @@ pub fn init<P: WebSocketPermissions + 'static>(
     ))
     .ops(vec![
       (
-        "op_ws_check_permission",
-        op_sync(op_ws_check_permission::<P>),
+        "op_ws_check_permission_and_cancel_handle",
+        op_sync(op_ws_check_permission_and_cancel_handle::<P>),
       ),
       ("op_ws_create", op_async(op_ws_create::<P>)),
       ("op_ws_send", op_async(op_ws_send)),

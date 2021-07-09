@@ -5,6 +5,10 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { writableStreamClose } = window.__bootstrap.streams;
+  const {
+    StringPrototypeToLowerCase,
+    ArrayPrototypeMap,
+  } = window.__bootstrap.primordials;
 
   webidl.converters["sequence<USVString>"] = webidl.createSequenceConverter(
     webidl.converters["USVString"],
@@ -103,7 +107,7 @@
   const _rid = Symbol("[[rid]]");
   const _url = Symbol("[[url]]");
   const _connection = Symbol("[[connection]]");
-  const _closed = Symbol("[[_closed]]");
+  const _closed = Symbol("[[closed]]");
   class WebSocketStream {
     [_rid];
 
@@ -142,12 +146,20 @@
 
       this[_url] = wsURL.href;
 
-      core.opSync("op_ws_check_permission", this[_url]);
+      const cancelRid = core.opSync(
+        "op_ws_check_permission_and_cancel_handle",
+        this[_url],
+        true,
+      );
 
       if (
-        options.protocols?.some((x) =>
-          options.protocols.indexOf(x) !== options.protocols.lastIndexOf(x)
-        )
+        options.protocols.length !==
+          new Set(
+            ArrayPrototypeMap(
+              options.protocols,
+              (p) => StringPrototypeToLowerCase(p),
+            ),
+          ).size
       ) {
         throw new DOMException(
           "Can't supply multiple times the same protocol.",
@@ -163,104 +175,89 @@
         this[_connection].reject(err);
         this[_closed].reject(err);
       } else {
+        options.signal?.addEventListener("abort", () => {
+          core.close(cancelRid);
+        });
         core.opAsync("op_ws_create", {
           url: this[_url],
           protocols: options.protocols?.join(", ") ?? "",
         }).then((create) => {
-          if (options.signal?.aborted) {
-            const err = new DOMException(
-              "This operation was aborted",
-              "AbortError",
-            );
-            core.opAsync("op_ws_close", {
-              rid: create.rid,
-            }).then(() => {
-              tryClose(create.rid);
-              this[_connection].reject(err);
-              this[_closed].reject(err);
-            }).catch((err) => {
-              tryClose(create.rid);
-              this[_connection].reject(err);
-              this[_closed].reject(err);
-            });
-          } else {
-            this[_rid] = create.rid;
+          this[_rid] = create.rid;
 
-            const writable = new WritableStream({
-              write: async (chunk) => {
-                if (typeof chunk === "string") {
-                  await core.opAsync("op_ws_send", {
-                    rid: this[_rid],
-                    kind: "text",
-                    text: chunk,
-                  });
-                } else if (chunk instanceof Uint8Array) {
-                  await core.opAsync("op_ws_send", {
-                    rid: this[_rid],
-                    kind: "binary",
-                  }, chunk);
-                } else {
-                  throw new TypeError(
-                    "A chunk may only be either a string or an Uint8Array",
-                  );
-                }
-              },
-              cancel: (reason) => this.close(reason),
-              abort: (reason) => this.close(reason),
-            });
-            const readable = new ReadableStream({
-              start: (controller) => {
-                this.closed.then(() => {
-                  controller.close();
-                  writableStreamClose(writable);
+          const writable = new WritableStream({
+            write: async (chunk) => {
+              if (typeof chunk === "string") {
+                await core.opAsync("op_ws_send", {
+                  rid: this[_rid],
+                  kind: "text",
+                  text: chunk,
                 });
-              },
-              pull: async (controller) => {
-                const { kind, value } = await core.opAsync(
-                  "op_ws_next_event",
-                  this[_rid],
+              } else if (chunk instanceof Uint8Array) {
+                await core.opAsync("op_ws_send", {
+                  rid: this[_rid],
+                  kind: "binary",
+                }, chunk);
+              } else {
+                throw new TypeError(
+                  "A chunk may only be either a string or an Uint8Array",
                 );
+              }
+            },
+            cancel: (reason) => this.close(reason),
+            abort: (reason) => this.close(reason),
+          });
+          const readable = new ReadableStream({
+            start: (controller) => {
+              this.closed.then(() => {
+                controller.close();
+                writableStreamClose(writable);
+              });
+            },
+            pull: async (controller) => {
+              const { kind, value } = await core.opAsync(
+                "op_ws_next_event",
+                this[_rid],
+              );
 
-                switch (kind) {
-                  case "string": {
-                    controller.enqueue(value);
-                    break;
-                  }
-                  case "binary": {
-                    controller.enqueue(value);
-                    break;
-                  }
-                  case "ping": {
-                    await core.opAsync("op_ws_send", {
-                      rid: this[_rid],
-                      kind: "pong",
-                    });
-                    break;
-                  }
-                  case "close": {
-                    this[_closed].resolve(value);
-                    tryClose(this[_rid]);
-                    break;
-                  }
-                  case "error": {
-                    const err = new Error(value);
-                    this[_closed].reject(err);
-                    controller.error(err);
-                    tryClose(this[_rid]);
-                    break;
-                  }
+              switch (kind) {
+                case "string": {
+                  controller.enqueue(value);
+                  break;
                 }
-              },
-              cancel: (reason) => this.close(reason),
-            });
+                case "binary": {
+                  controller.enqueue(value);
+                  break;
+                }
+                case "ping": {
+                  await core.opAsync("op_ws_send", {
+                    rid: this[_rid],
+                    kind: "pong",
+                  });
+                  break;
+                }
+                case "close": {
+                  this[_closed].resolve(value);
+                  tryClose(this[_rid]);
+                  break;
+                }
+                case "error": {
+                  const err = new Error(value);
+                  this[_closed].reject(err);
+                  controller.error(err);
+                  tryClose(this[_rid]);
+                  break;
+                }
+              }
+            },
+            cancel: (reason) => this.close(reason),
+          });
 
-            this[_connection].resolve({
-              readable,
-              writable,
-              extensions: create.extensions ?? "",
-              protocol: create.protocol ?? "",
-            });
-          }
+          this[_connection].resolve({
+            readable,
+            writable,
+            extensions: create.extensions ?? "",
+            protocol: create.protocol ?? "",
+          });
         }).catch((err) => {
           this[_connection].reject(err);
           this[_closed].reject(err);
