@@ -1,7 +1,6 @@
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::JsRuntime;
-use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::ops::worker_host::create_worker_permissions;
 use deno_runtime::ops::worker_host::PermissionsArg;

@@ -14,10 +14,7 @@ use crate::tools::coverage::CoverageCollector;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
-use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
-use deno_core::located_script_name;
-use deno_core::serde_json::json;
 use deno_core::serde_v8;
 use deno_core::url::Url;
 use deno_core::v8;
@@ -28,15 +25,11 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
-use std::borrow::Borrow;
-use std::convert::From;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::task::Poll;
-use std::time::Instant;
 use swc_common::comments::CommentKind;
 
 // Expression used to get the array containing the actual test definitions in the runtime.
@@ -70,7 +63,7 @@ trait TestReporter {
   fn visit_plan(&mut self, plan: TestPlan);
   fn visit_wait(&mut self, description: TestDescription);
   fn visit_result(&mut self, description: TestDescription, result: TestResult);
-  fn visit_summary(&mut self, result: TestSummary);
+  fn visit_summary(&mut self, _summary: TestSummary);
 }
 
 struct PrettyTestReporter {
@@ -216,7 +209,7 @@ async fn test_module<F>(
   process_event: F,
 ) -> Result<(), AnyError>
 where
-  F: Fn(TestEvent) -> Result<(), AnyError> + Send + 'static + Clone,
+  F: Fn(TestEvent) + Send + 'static + Clone,
 {
   let mut worker = create_main_worker(
     &program_state,
@@ -245,7 +238,7 @@ where
   let iterator = descriptions
     .iter()
     .enumerate()
-    .filter(|(i, description)| true);
+    .filter(|(_, _description)| true);
 
   process_event(TestEvent::Plan(TestPlan {
     origin: module_specifier,
@@ -253,7 +246,7 @@ where
   }));
 
   for (index, description) in iterator {
-    if (description.ignore) {
+    if description.ignore {
       process_event(TestEvent::Result(
         description.clone(),
         TestResult::Ignored,
@@ -282,7 +275,7 @@ where
       let result = fn_function.call(&mut scope, value, &[]).unwrap();
       let result = v8::Local::<v8::Promise>::try_from(result).unwrap();
 
-      v8::Global::<v8::Promise>::new(&mut scope, result.clone())
+      v8::Global::<v8::Promise>::new(&mut scope, result)
     };
 
     let result = future::poll_fn(|cx| {
@@ -458,11 +451,9 @@ pub async fn run_tests(
         }
 
         TestEvent::Result(description, result) => {
-          reporter.visit_result(description, result)
+          reporter.visit_result(description, result);
         }
       }
-
-      Ok(())
     }
   };
 
@@ -486,7 +477,7 @@ pub async fn run_tests(
     })
   });
 
-  let join_results = stream::iter(join_handles)
+  let _join_results = stream::iter(join_handles)
     .buffer_unordered(concurrent_jobs)
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>()
     .await;
