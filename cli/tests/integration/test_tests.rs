@@ -76,6 +76,12 @@ itest!(fail_fast {
   output: "test/fail_fast.out",
 });
 
+itest!(fail_fast_with_val {
+  args: "test --fail-fast=2 test/fail_fast.ts",
+  exit_code: 1,
+  output: "test/fail_fast_with_val.out",
+});
+
 itest!(only {
   args: "test test/only.ts",
   exit_code: 1,
