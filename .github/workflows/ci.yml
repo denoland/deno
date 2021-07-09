@@ -176,7 +176,7 @@ jobs:
           # to complete.
           sudo apt-get remove -y --purge man-db
           sudo apt-get update
-          sudo apt-get install debootstrap
+          sudo apt-get install debootstrap file
 
           # Note: git, nc, strace, and time, are needed to run the benchmarks.
           sudo debootstrap                                                     \
