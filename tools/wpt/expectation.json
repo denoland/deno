@@ -3203,7 +3203,6 @@
       "dedicated-worker-import-blob-url.any.html": false,
       "dedicated-worker-import-blob-url.any.worker.html": false,
       "dedicated-worker-import-data-url.any.html": false,
-      "dedicated-worker-import-data-url.any.worker.html": false,
       "dedicated-worker-import.any.html": false,
       "dedicated-worker-import.any.worker.html": false,
       "shared-worker-import-blob-url.window.html": false,
