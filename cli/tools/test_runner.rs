@@ -57,7 +57,33 @@ enum TestResult {
   Failed(String),
 }
 
-struct TestSummary {}
+struct TestSummary {
+  total: usize,
+  passed: usize,
+  failed: usize,
+  ignored: usize,
+  allowed_fail: usize,
+  filtered_out: usize,
+  measured: usize,
+  failures: Vec<(TestDescription, String)>,
+  not_failures: Vec<(TestDescription, String)>,
+}
+
+impl TestSummary {
+  fn new() -> Self {
+    Self {
+      total: 0,
+      passed: 0,
+      failed: 0,
+      ignored: 0,
+      allowed_fail: 0,
+      filtered_out: 0,
+      measured: 0,
+      failures: Vec::new(),
+      not_failures: Vec::new(),
+    }
+  }
+}
 
 trait TestReporter {
   fn visit_plan(&mut self, plan: TestPlan);
@@ -125,7 +151,38 @@ impl TestReporter for PrettyTestReporter {
     }
   }
 
-  fn visit_summary(&mut self, summary: TestSummary) {}
+  fn visit_summary(&mut self, summary: TestSummary) {
+    if !summary.failures.is_empty() {
+      println!("\nfailures:\n");
+      for (description, error) in &summary.failures {
+        println!("{}", description.name);
+        println!("{}", error);
+        println!();
+      }
+
+      println!("failures:\n");
+      for (description, _) in &summary.failures {
+        println!("\t{}", description.name);
+      }
+    }
+
+    let status = if summary.failed > 0 {
+      colors::red("FAILED").to_string()
+    } else {
+      colors::green("ok").to_string()
+    };
+
+    println!(
+      "\ntest result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
+      status,
+      summary.passed,
+      summary.failed,
+      summary.ignored,
+      summary.measured,
+      summary.filtered_out,
+      colors::gray(format!("({}ms)", 0)),
+    );
+  }
 }
 
 fn create_reporter(concurrent: bool) -> Box<dyn TestReporter + Send> {
@@ -434,12 +491,15 @@ pub async fn run_tests(
 
   let concurrent = concurrent_jobs > 0;
   let reporter_lock = Arc::new(Mutex::new(create_reporter(concurrent)));
+  let summary_lock = Arc::new(Mutex::new(TestSummary::new()));
 
   let process_event = {
     let reporter_lock = reporter_lock.clone();
+    let summary_lock = summary_lock.clone();
 
     move |event: TestEvent| {
       let mut reporter = reporter_lock.lock().unwrap();
+      let mut summary = summary_lock.lock().unwrap();
 
       match event {
         TestEvent::Plan(plan) => {
@@ -447,10 +507,17 @@ pub async fn run_tests(
         }
 
         TestEvent::Wait(description) => {
+          summary.total += 1;
           reporter.visit_wait(description);
         }
 
         TestEvent::Result(description, result) => {
+          match result {
+            TestResult::Ok => {
+              summary.passed += 1;
+            }
+          }
+
           reporter.visit_result(description, result);
         }
       }
