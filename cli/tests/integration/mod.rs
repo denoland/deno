@@ -150,7 +150,7 @@ fn cache_test() {
   let str_output = std::str::from_utf8(&output.stdout).unwrap();
 
   let module_output_path =
-    util::root_path().join("cli/tests/006_url_imports.ts.out");
+    util::root_path().join("cli/tests/006_url_imports.std.out");
   let mut module_output = String::new();
   let mut module_output_file = fs::File::open(module_output_path).unwrap();
   module_output_file
