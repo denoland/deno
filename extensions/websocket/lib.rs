@@ -265,19 +265,19 @@ where
       let r = state
         .borrow_mut()
         .resource_table
-        .take::<WsCancelResource>(cancel_rid)
+        .get::<WsCancelResource>(cancel_rid)
         .ok_or_else(bad_resource_id)?;
       r.0.to_owned()
     } else {
       CancelHandle::new_rc()
     })
-    .await
+    .await?
     .map_err(|err| {
       DomExceptionNetworkError::new(&format!(
         "failed to connect to WebSocket: {}",
         err.to_string()
       ))
-    })??;
+    })?;
 
   let (ws_tx, ws_rx) = stream.split();
   let resource = WsStreamResource {
