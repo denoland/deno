@@ -222,20 +222,19 @@ where
     true,
   );
 
-  let (tests, descriptions) = {
+  let (registry, descriptions) = {
     let execute_result = worker.execute_module(&module_specifier).await;
     execute_result?;
 
-    let tests = worker
+    let registry = worker
       .js_runtime
       .execute_script("deno:test_module", "Deno[Deno.internal].tests")?;
 
     let mut scope = worker.js_runtime.handle_scope();
-    let value = v8::Local::<v8::Value>::new(&mut scope, tests.clone());
-    let descriptions: Vec<TestDescription> =
-      serde_v8::from_v8(&mut scope, value).unwrap();
+    let registry_local = v8::Local::<v8::Value>::new(&mut scope, registry.clone());
+    let descriptions: Vec<TestDescription> = serde_v8::from_v8(&mut scope, registry_local).unwrap();
 
-    (tests, descriptions)
+    (registry, descriptions)
   };
 
   let iterator = descriptions
@@ -259,12 +258,12 @@ where
 
     process_event(TestEvent::Wait(description.clone()));
 
-    let promise = {
+    let result_promise = {
       let mut scope = worker.js_runtime.handle_scope();
-      let tests = v8::Local::<v8::Value>::new(&mut scope, tests.clone());
-      let tests = v8::Local::<v8::Array>::try_from(tests).unwrap();
+      let registry_local = v8::Local::<v8::Value>::new(&mut scope, registry.clone());
+      let registry_local = v8::Local::<v8::Array>::try_from(registry_local).unwrap();
 
-      let value = tests
+      let value = registry_local
         .get_index(&mut scope, index.try_into().unwrap())
         .unwrap();
       let object = v8::Local::<v8::Object>::try_from(value)?;
@@ -284,9 +283,9 @@ where
 
       let state = {
         let mut scope = worker.js_runtime.handle_scope();
-        let promise = promise.get(&mut scope);
+        let result_promise = result_promise.get(&mut scope);
 
-        promise.state()
+        result_promise.state()
       };
 
       match state {
