@@ -39,6 +39,9 @@ use std::task::Poll;
 use std::time::Instant;
 use swc_common::comments::CommentKind;
 
+// Expression used to get the array containing the actual test definitions in the runtime.
+static TEST_REGISTRY : &str = "(Deno[Deno.internal].tests)";
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TestDescription {
@@ -228,7 +231,7 @@ where
 
     let registry = worker
       .js_runtime
-      .execute_script("deno:test_module", "Deno[Deno.internal].tests")?;
+      .execute_script("deno:test_module", TEST_REGISTRY)?;
 
     let mut scope = worker.js_runtime.handle_scope();
     let registry_local = v8::Local::<v8::Value>::new(&mut scope, registry.clone());
