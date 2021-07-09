@@ -46,11 +46,8 @@ pub async fn get_base_binary(
   }
 
   let archive_data = tokio::fs::read(binary_path).await?;
-  let base_binary_path = crate::tools::upgrade::unpack(
-    archive_data,
-    "deno",
-    target.contains("windows"),
-  )?;
+  let base_binary_path =
+    crate::tools::upgrade::unpack(archive_data, target.contains("windows"))?;
   let base_binary = tokio::fs::read(base_binary_path).await?;
   Ok(base_binary)
 }

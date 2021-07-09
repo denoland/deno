@@ -317,8 +317,8 @@ fn is_in_path(dir: &Path) -> bool {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_core::parking_lot::Mutex;
   use std::process::Command;
-  use std::sync::Mutex;
   use tempfile::TempDir;
   use test_util::tests_path;
 
@@ -401,7 +401,7 @@ mod tests {
 
   #[test]
   fn install_basic() {
-    let _guard = ENV_LOCK.lock().ok();
+    let _guard = ENV_LOCK.lock();
     let temp_dir = TempDir::new().expect("tempdir fail");
     let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
     // NOTE: this test overrides environmental variables
@@ -591,7 +591,7 @@ mod tests {
 
   #[test]
   fn install_custom_dir_env_var() {
-    let _guard = ENV_LOCK.lock().ok();
+    let _guard = ENV_LOCK.lock();
     let temp_dir = TempDir::new().expect("tempdir fail");
     let bin_dir = temp_dir.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();

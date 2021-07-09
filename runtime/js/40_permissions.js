@@ -8,6 +8,18 @@
     Deno: { core },
     __bootstrap: { webUtil: { illegalConstructorKey } },
   } = window;
+  const {
+    ArrayPrototypeIncludes,
+    Map,
+    MapPrototypeGet,
+    MapPrototypeHas,
+    MapPrototypeSet,
+    FunctionPrototypeCall,
+    PromiseResolve,
+    PromiseReject,
+    SymbolFor,
+    TypeError,
+  } = window.__bootstrap.primordials;
 
   /**
    * @typedef StatusCacheValue
@@ -81,13 +93,13 @@
     dispatchEvent(event) {
       let dispatched = super.dispatchEvent(event);
       if (dispatched && this.onchange) {
-        this.onchange.call(this, event);
+        FunctionPrototypeCall(this.onchange, this, event);
         dispatched = !event.defaultPrevented;
       }
       return dispatched;
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({ state: this.state, onchange: this.onchange })
       }`;
@@ -110,8 +122,8 @@
     } else if (desc.name === "net" && desc.host) {
       key += `-${desc.host}`;
     }
-    if (statusCache.has(key)) {
-      const status = statusCache.get(key);
+    if (MapPrototypeHas(statusCache, key)) {
+      const status = MapPrototypeGet(statusCache, key);
       if (status.state !== state) {
         status.state = state;
         status.status.dispatchEvent(new Event("change", { cancelable: false }));
@@ -121,7 +133,7 @@
     /** @type {{ state: Deno.PermissionState; status?: PermissionStatus }} */
     const status = { state };
     status.status = new PermissionStatus(status, illegalConstructorKey);
-    statusCache.set(key, status);
+    MapPrototypeSet(statusCache, key, status);
     return status.status;
   }
 
@@ -130,7 +142,8 @@
    * @returns {desc is Deno.PermissionDescriptor}
    */
   function isValidDescriptor(desc) {
-    return desc && desc !== null && permissionNames.includes(desc.name);
+    return desc && desc !== null &&
+      ArrayPrototypeIncludes(permissionNames, desc.name);
   }
 
   class Permissions {
@@ -142,38 +155,38 @@
 
     query(desc) {
       if (!isValidDescriptor(desc)) {
-        return Promise.reject(
+        return PromiseReject(
           new TypeError(
             `The provided value "${desc.name}" is not a valid permission name.`,
           ),
         );
       }
       const state = opQuery(desc);
-      return Promise.resolve(cache(desc, state));
+      return PromiseResolve(cache(desc, state));
     }
 
     revoke(desc) {
       if (!isValidDescriptor(desc)) {
-        return Promise.reject(
+        return PromiseReject(
           new TypeError(
             `The provided value "${desc.name}" is not a valid permission name.`,
           ),
         );
       }
       const state = opRevoke(desc);
-      return Promise.resolve(cache(desc, state));
+      return PromiseResolve(cache(desc, state));
     }
 
     request(desc) {
       if (!isValidDescriptor(desc)) {
-        return Promise.reject(
+        return PromiseReject(
           new TypeError(
             `The provided value "${desc.name}" is not a valid permission name.`,
           ),
         );
       }
       const state = opRequest(desc);
-      return Promise.resolve(cache(desc, state));
+      return PromiseResolve(cache(desc, state));
     }
   }
 

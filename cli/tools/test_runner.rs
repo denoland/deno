@@ -23,6 +23,9 @@ use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
+use rand::rngs::SmallRng;
+use rand::seq::SliceRandom;
+use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
 use std::borrow::Borrow;
@@ -313,6 +316,7 @@ pub async fn run_tests(
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
+  shuffle: Option<u64>,
   concurrent_jobs: usize,
 ) -> Result<bool, AnyError> {
   program_state

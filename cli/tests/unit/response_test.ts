@@ -1,5 +1,10 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, unitTest } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+  unitTest,
+} from "./test_util.ts";
 
 unitTest(async function responseText() {
   const response = new Response("hello world");
@@ -34,7 +39,8 @@ unitTest(async function responseBlob() {
   assert(blobPromise instanceof Promise);
   const blob = await blobPromise;
   assert(blob instanceof Blob);
-  assertEquals(blob, new Blob([new Uint8Array([1, 2, 3])]));
+  assertEquals(blob.size, 3);
+  assertEquals(await blob.arrayBuffer(), new Uint8Array([1, 2, 3]).buffer);
 });
 
 // TODO(lucacasonato): re-enable test once #10002 is fixed.
@@ -66,4 +72,5 @@ unitTest(function customInspectFunction(): void {
   url: ""
 }`,
   );
+  assertStringIncludes(Deno.inspect(Response.prototype), "Response");
 });

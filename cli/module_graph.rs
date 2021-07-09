@@ -32,6 +32,7 @@ use deno_core::error::AnyError;
 use deno_core::error::Context;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::stream::StreamExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_import;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
@@ -55,7 +56,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::result;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::Instant;
 use swc_common::comments::Comment;
 use swc_common::BytePos;
@@ -459,7 +459,7 @@ impl Module {
   ) -> Result<ModuleSpecifier, AnyError> {
     let maybe_resolve = if let Some(import_map) = self.maybe_import_map.clone()
     {
-      let import_map = import_map.lock().unwrap();
+      let import_map = import_map.lock();
       Some(import_map.resolve(specifier, self.specifier.as_str())?)
     } else {
       None
@@ -911,7 +911,7 @@ impl Graph {
       root_names,
     })?;
 
-    let mut graph = graph.lock().unwrap();
+    let mut graph = graph.lock();
     graph.maybe_tsbuildinfo = response.maybe_tsbuildinfo;
     // Only process changes to the graph if there are no diagnostics and there
     // were files emitted.
@@ -1047,7 +1047,7 @@ impl Graph {
         root_names,
       })?;
 
-      let graph = graph.lock().unwrap();
+      let graph = graph.lock();
       match options.bundle_type {
         BundleType::Module | BundleType::Classic => {
           assert!(
@@ -1250,7 +1250,7 @@ impl Graph {
   /// Update the handler with any modules that are marked as _dirty_ and update
   /// any build info if present.
   fn flush(&mut self) -> Result<(), AnyError> {
-    let mut handler = self.handler.lock().unwrap();
+    let mut handler = self.handler.lock();
     for (_, module_slot) in self.modules.iter_mut() {
       if let ModuleSlot::Module(module) = module_slot {
         if module.is_dirty {
@@ -1541,7 +1541,7 @@ impl Graph {
   /// error if any of the resources do not match their lock status.
   pub fn lock(&self) {
     if let Some(lf) = self.maybe_lockfile.as_ref() {
-      let mut lockfile = lf.lock().unwrap();
+      let mut lockfile = lf.lock();
       for (ms, module_slot) in self.modules.iter() {
         if let ModuleSlot::Module(module) = module_slot {
           let specifier = module.specifier.to_string();
@@ -1865,7 +1865,7 @@ impl GraphBuilder {
       self.graph.roots.push(specifier.clone());
       self.graph.roots_dynamic = self.graph.roots_dynamic && is_dynamic;
       if self.graph.maybe_tsbuildinfo.is_none() {
-        let handler = self.graph.handler.lock().unwrap();
+        let handler = self.graph.handler.lock();
         self.graph.maybe_tsbuildinfo = handler.get_tsbuildinfo(specifier)?;
       }
     }
@@ -1933,7 +1933,7 @@ impl GraphBuilder {
         .graph
         .modules
         .insert(specifier.clone(), ModuleSlot::Pending);
-      let mut handler = self.graph.handler.lock().unwrap();
+      let mut handler = self.graph.handler.lock();
       let future =
         handler.fetch(specifier.clone(), maybe_referrer.clone(), is_dynamic);
       self.pending.push(future);
@@ -2003,7 +2003,7 @@ impl GraphBuilder {
       let has_types = module.maybe_types.is_some();
       module.parse()?;
       if self.maybe_import_map.is_none() {
-        let mut handler = self.graph.handler.lock().unwrap();
+        let mut handler = self.graph.handler.lock();
         handler.set_deps(&specifier, module.dependencies.clone())?;
         if !has_types {
           if let Some((types, _)) = module.maybe_types.clone() {
@@ -2070,10 +2070,10 @@ pub mod tests {
 
   use crate::specifier_handler::MemoryHandler;
   use deno_core::futures::future;
+  use deno_core::parking_lot::Mutex;
   use std::env;
   use std::fs;
   use std::path::PathBuf;
-  use std::sync::Mutex;
 
   macro_rules! map (
     { $($key:expr => $value:expr),+ } => {
@@ -2360,7 +2360,7 @@ pub mod tests {
     assert!(result_info.maybe_ignored_options.is_none());
     assert_eq!(result_info.stats.0.len(), 12);
     assert!(result_info.diagnostics.is_empty());
-    let h = handler.lock().unwrap();
+    let h = handler.lock();
     assert_eq!(h.cache_calls.len(), 2);
     assert_eq!(h.tsbuildinfo_calls.len(), 1);
   }
@@ -2401,7 +2401,7 @@ pub mod tests {
     assert!(result_info.maybe_ignored_options.is_none());
     assert_eq!(result_info.stats.0.len(), 12);
     assert!(!result_info.diagnostics.is_empty());
-    let h = handler.lock().unwrap();
+    let h = handler.lock();
     // we shouldn't cache any files or write out tsbuildinfo if there are
     // diagnostic errors
     assert_eq!(h.cache_calls.len(), 0);
@@ -2426,7 +2426,7 @@ pub mod tests {
     assert!(result_info.maybe_ignored_options.is_none());
     assert_eq!(result_info.stats.0.len(), 12);
     assert!(result_info.diagnostics.is_empty());
-    let h = handler.lock().unwrap();
+    let h = handler.lock();
     assert_eq!(h.cache_calls.len(), 0);
     assert_eq!(h.tsbuildinfo_calls.len(), 1);
   }
@@ -2448,7 +2448,7 @@ pub mod tests {
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
     assert!(result_info.diagnostics.is_empty());
-    let h = handler.lock().unwrap();
+    let h = handler.lock();
     assert_eq!(h.cache_calls.len(), 1);
     assert_eq!(h.tsbuildinfo_calls.len(), 1);
   }
@@ -2491,7 +2491,7 @@ pub mod tests {
     assert!(result_info.maybe_ignored_options.is_none());
     assert!(result_info.diagnostics.is_empty());
     let (ver0, ver1) = {
-      let h = handler.lock().unwrap();
+      let h = handler.lock();
       assert_eq!(h.version_calls.len(), 2);
       (h.version_calls[0].1.clone(), h.version_calls[1].1.clone())
     };
@@ -2512,7 +2512,7 @@ pub mod tests {
       .expect("should have checked");
     assert!(result_info.maybe_ignored_options.is_none());
     assert!(result_info.diagnostics.is_empty());
-    let h = handler.lock().unwrap();
+    let h = handler.lock();
     assert_eq!(h.version_calls.len(), 2);
     assert!(h.version_calls[0].1 == ver0 || h.version_calls[0].1 == ver1);
     assert!(h.version_calls[1].1 == ver0 || h.version_calls[1].1 == ver1);
@@ -2681,7 +2681,7 @@ pub mod tests {
     let result_info = graph.transpile(TranspileOptions::default()).unwrap();
     assert_eq!(result_info.stats.0.len(), 3);
     assert_eq!(result_info.maybe_ignored_options, None);
-    let h = handler.lock().unwrap();
+    let h = handler.lock();
     assert_eq!(h.cache_calls.len(), 2);
     match &h.cache_calls[0].1 {
       Emit::Cli((code, maybe_map)) => {
@@ -2743,7 +2743,7 @@ pub mod tests {
       vec!["target".to_string()],
       "the 'target' options should have been ignored"
     );
-    let h = handler.lock().unwrap();
+    let h = handler.lock();
     assert_eq!(h.cache_calls.len(), 1, "only one file should be emitted");
     // FIXME(bartlomieju): had to add space in `<div>`, probably a quirk in swc_ecma_codegen
     match &h.cache_calls[0].1 {

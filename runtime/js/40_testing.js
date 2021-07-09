@@ -3,11 +3,15 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { parsePermissions } = window.__bootstrap.worker;
   const { setExitHandler } = window.__bootstrap.os;
-  const { Console, inspectArgs } = window.__bootstrap.console;
   const { metrics } = window.__bootstrap.metrics;
   const { assert } = window.__bootstrap.util;
+  const {
+    ArrayPrototypePush,
+    JSONStringify,
+    Promise,
+    TypeError,
+  } = window.__bootstrap.primordials;
 
   // Wrap test function in additional assertion that makes sure
   // the test case does not leak async "ops" - ie. number of async
@@ -58,8 +62,8 @@ finishing test case.`,
       await fn();
       const post = core.resources();
 
-      const preStr = JSON.stringify(pre, null, 2);
-      const postStr = JSON.stringify(post, null, 2);
+      const preStr = JSONStringify(pre, null, 2);
+      const postStr = JSONStringify(post, null, 2);
       const msg = `Test case is leaking resources.
 Before: ${preStr}
 After: ${postStr}
@@ -139,7 +143,7 @@ finishing test case.`;
       testDef.fn = assertExit(testDef.fn);
     }
 
-    tests.push(testDef);
+    ArrayPrototypePush(tests, testDef);
   }
 
   window.__bootstrap.internals = {
