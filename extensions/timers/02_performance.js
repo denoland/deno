@@ -16,6 +16,7 @@
   } = window.__bootstrap.primordials;
 
   const { webidl, structuredClone } = window.__bootstrap;
+  const consoleInternal = window.__bootstrap.console;
   const { opNow } = window.__bootstrap.timers;
   const { DOMException } = window.__bootstrap.domException;
 
@@ -175,7 +176,16 @@
     }
 
     [customInspect](inspect) {
-      return `${this.constructor.name} ${inspect(this.toJSON())}`;
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof PerformanceEntry,
+        keys: [
+          "name",
+          "entryType",
+          "startTime",
+          "duration",
+        ],
+      }));
     }
   }
   webidl.configurePrototype(PerformanceEntry);
@@ -235,7 +245,17 @@
     }
 
     [customInspect](inspect) {
-      return `${this.constructor.name} ${inspect(this.toJSON())}`;
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof PerformanceMark,
+        keys: [
+          "name",
+          "entryType",
+          "startTime",
+          "duration",
+          "detail",
+        ],
+      }));
     }
   }
   webidl.configurePrototype(PerformanceMark);
@@ -283,7 +303,17 @@
     }
 
     [customInspect](inspect) {
-      return `${this.constructor.name} ${inspect(this.toJSON())}`;
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof PerformanceMeasure,
+        keys: [
+          "name",
+          "entryType",
+          "startTime",
+          "duration",
+          "detail",
+        ],
+      }));
     }
   }
   webidl.configurePrototype(PerformanceMeasure);
@@ -516,7 +546,11 @@
     }
 
     [customInspect](inspect) {
-      return `${this.constructor.name} ${inspect(this.toJSON())}`;
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof Performance,
+        keys: [],
+      }));
     }
 
     get [SymbolToStringTag]() {

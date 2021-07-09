@@ -427,7 +427,8 @@ impl WebWorker {
     name: &str,
     source_code: &str,
   ) -> Result<(), AnyError> {
-    self.js_runtime.execute_script(name, source_code)
+    self.js_runtime.execute_script(name, source_code)?;
+    Ok(())
   }
 
   /// Loads and instantiates specified JavaScript module.

@@ -259,4 +259,18 @@ declare namespace Deno {
    * then the underlying HttpConn resource is closed automatically.
    */
   export function serveHttp(conn: Conn): HttpConn;
+
+  export interface WebSocketUpgrade {
+    response: Response;
+    websocket: WebSocket;
+  }
+
+  export interface UpgradeWebSocketOptions {
+    protocol?: string;
+  }
+
+  export function upgradeWebSocket(
+    request: Request,
+    options?: UpgradeWebSocketOptions,
+  ): WebSocketUpgrade;
 }

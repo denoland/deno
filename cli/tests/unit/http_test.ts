@@ -9,6 +9,7 @@ import {
   assertThrowsAsync,
   deferred,
   delay,
+  fail,
   unitTest,
 } from "./test_util.ts";
 
@@ -631,3 +632,33 @@ unitTest(
     await promise;
   },
 );
+
+unitTest({ perms: { net: true } }, async function httpServerWebSocket() {
+  const promise = (async () => {
+    const listener = Deno.listen({ port: 4501 });
+    for await (const conn of listener) {
+      const httpConn = Deno.serveHttp(conn);
+      const { request, respondWith } = (await httpConn.nextRequest())!;
+      const {
+        response,
+        websocket,
+      } = await Deno.upgradeWebSocket(request);
+      websocket.onerror = () => fail();
+      websocket.onmessage = (m) => {
+        websocket.send(m.data);
+        websocket.close();
+      };
+      await respondWith(response);
+      break;
+    }
+  })();
+
+  const def = deferred();
+  const ws = new WebSocket("ws://localhost:4501");
+  ws.onmessage = (m) => assertEquals(m.data, "foo");
+  ws.onerror = () => fail();
+  ws.onclose = () => def.resolve();
+  ws.onopen = () => ws.send("foo");
+  await def;
+  await promise;
+});
