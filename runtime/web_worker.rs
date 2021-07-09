@@ -28,8 +28,9 @@ use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
+use deno_core::SharedArrayBufferStore;
 use deno_web::create_entangled_message_port;
-use deno_web::BlobUrlStore;
+use deno_web::BlobStore;
 use deno_web::MessagePort;
 use log::debug;
 use std::cell::RefCell;
@@ -267,8 +268,9 @@ pub struct WebWorkerOptions {
   /// Sets `Deno.noColor` in JS runtime.
   pub no_color: bool,
   pub get_error_class_fn: Option<GetErrorClassFn>,
-  pub blob_url_store: BlobUrlStore,
+  pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
+  pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
 }
 
 impl WebWorker {
@@ -294,7 +296,7 @@ impl WebWorker {
       deno_webidl::init(),
       deno_console::init(),
       deno_url::init(),
-      deno_web::init(options.blob_url_store.clone(), Some(main_module.clone())),
+      deno_web::init(options.blob_store.clone(), Some(main_module.clone())),
       deno_fetch::init::<Permissions>(
         options.user_agent.clone(),
         options.ca_data.clone(),
@@ -333,7 +335,6 @@ impl WebWorker {
         deno_net::init::<Permissions>(options.unstable),
         ops::os::init(),
         ops::permissions::init(),
-        ops::plugin::init(),
         ops::process::init(),
         ops::signal::init(),
         ops::tty::init(),
@@ -352,6 +353,7 @@ impl WebWorker {
       startup_snapshot: Some(js::deno_isolate_init()),
       js_error_create_fn: options.js_error_create_fn.clone(),
       get_error_class_fn: options.get_error_class_fn,
+      shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       extensions,
       ..Default::default()
     });
@@ -360,7 +362,11 @@ impl WebWorker {
       let inspector = js_runtime.inspector();
       let session_sender = inspector.get_session_sender();
       let deregister_rx = inspector.add_deregister_handler();
-      server.register_inspector(session_sender, deregister_rx);
+      server.register_inspector(
+        session_sender,
+        deregister_rx,
+        main_module.to_string(),
+      );
     }
 
     let (internal_handle, external_handle) = {

@@ -31,6 +31,12 @@ itest!(ignore {
   output: "test/ignore.out",
 });
 
+itest!(ignore_permissions {
+  args: "test --unstable test/ignore_permissions.ts",
+  exit_code: 0,
+  output: "test/ignore_permissions.out",
+});
+
 itest!(fail {
   args: "test test/fail.ts",
   exit_code: 1,
@@ -113,4 +119,16 @@ itest!(unhandled_rejection {
   args: "test test/unhandled_rejection.ts",
   exit_code: 1,
   output: "test/unhandled_rejection.out",
+});
+
+itest!(shuffle {
+  args: "test --shuffle test/shuffle",
+  exit_code: 0,
+  output_str: Some("[WILDCARD]"),
+});
+
+itest!(shuffle_with_seed {
+  args: "test --shuffle=42 test/shuffle",
+  exit_code: 0,
+  output: "test/shuffle.out",
 });

@@ -13,6 +13,7 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
+  const consoleInternal = window.__bootstrap.console;
   const { HTTP_TAB_OR_SPACE, regexMatcher } = window.__bootstrap.infra;
   const { extractBody, mixinBody } = window.__bootstrap.fetchBody;
   const { getLocationHref } = window.__bootstrap.location;
@@ -25,6 +26,20 @@
     guardFromHeaders,
     fillHeaders,
   } = window.__bootstrap.headers;
+  const {
+    ArrayPrototypeMap,
+    ArrayPrototypePush,
+    MapPrototypeHas,
+    MapPrototypeGet,
+    MapPrototypeSet,
+    RangeError,
+    RegExp,
+    RegExpPrototypeTest,
+    Symbol,
+    SymbolFor,
+    SymbolToStringTag,
+    TypeError,
+  } = window.__bootstrap.primordials;
 
   const VCHAR = ["\x21-\x7E"];
   const OBS_TEXT = ["\x80-\xFF"];
@@ -75,7 +90,9 @@
    */
   function cloneInnerResponse(response) {
     const urlList = [...response.urlList];
-    const headerList = [...response.headerList.map((x) => [x[0], x[1]])];
+    const headerList = [
+      ...ArrayPrototypeMap(response.headerList, (x) => [x[0], x[1]]),
+    ];
     let body = null;
     if (response.body !== null) {
       body = response.body.clone();
@@ -162,14 +179,17 @@
         mimeType = temporaryMimeType;
         if (mimesniff.essence(mimeType) !== essence) {
           charset = null;
-          const newCharset = mimeType.parameters.get("charset");
+          const newCharset = MapPrototypeGet(mimeType.parameters, "charset");
           if (newCharset !== undefined) {
             charset = newCharset;
           }
           essence = mimesniff.essence(mimeType);
         } else {
-          if (mimeType.parameters.has("charset") === null && charset !== null) {
-            mimeType.parameters.set("charset", charset);
+          if (
+            MapPrototypeHas(mimeType.parameters, "charset") === null &&
+            charset !== null
+          ) {
+            MapPrototypeSet(mimeType.parameters, "charset", charset);
           }
         }
       }
@@ -218,7 +238,7 @@
       }
       const inner = newInnerResponse(status);
       inner.type = "default";
-      inner.headerList.push(["location", parsedURL.href]);
+      ArrayPrototypePush(inner.headerList, ["location", parsedURL.href]);
       const response = webidl.createBranded(Response);
       response[_response] = inner;
       response[_headers] = headersFromHeaderList(
@@ -249,7 +269,7 @@
         );
       }
 
-      if (!REASON_PHRASE_RE.test(init.statusText)) {
+      if (!RegExpPrototypeTest(REASON_PHRASE_RE, init.statusText)) {
         throw new TypeError("Status text is not valid.");
       }
 
@@ -353,22 +373,25 @@
       return second;
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "Response";
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
-      const inner = {
-        body: this.body,
-        bodyUsed: this.bodyUsed,
-        headers: this.headers,
-        ok: this.ok,
-        redirected: this.redirected,
-        status: this.status,
-        statusText: this.statusText,
-        url: this.url,
-      };
-      return `Response ${inspect(inner)}`;
+    [SymbolFor("Deno.customInspect")](inspect) {
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof Response,
+        keys: [
+          "body",
+          "bodyUsed",
+          "headers",
+          "ok",
+          "redirected",
+          "status",
+          "statusText",
+          "url",
+        ],
+      }));
     }
   }
 
@@ -418,6 +441,7 @@
 
   window.__bootstrap.fetch ??= {};
   window.__bootstrap.fetch.Response = Response;
+  window.__bootstrap.fetch.newInnerResponse = newInnerResponse;
   window.__bootstrap.fetch.toInnerResponse = toInnerResponse;
   window.__bootstrap.fetch.fromInnerResponse = fromInnerResponse;
   window.__bootstrap.fetch.redirectStatus = redirectStatus;

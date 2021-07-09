@@ -32,7 +32,7 @@ impl Resource for WebGpuCommandBuffer {
 fn serialize_store_op(store_op: String) -> wgpu_core::command::StoreOp {
   match store_op.as_str() {
     "store" => wgpu_core::command::StoreOp::Store,
-    "clear" => wgpu_core::command::StoreOp::Clear,
+    "discard" => wgpu_core::command::StoreOp::Clear,
     _ => unreachable!(),
   }
 }

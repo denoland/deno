@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
@@ -9,7 +10,6 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fmt;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -93,7 +93,7 @@ impl Performance {
   #[cfg(test)]
   pub fn average(&self, name: &str) -> Option<(usize, Duration)> {
     let mut items = Vec::new();
-    for measure in self.measures.lock().unwrap().iter() {
+    for measure in self.measures.lock().iter() {
       if measure.name == name {
         items.push(measure.duration);
       }
@@ -112,7 +112,7 @@ impl Performance {
   /// of each measurement.
   pub fn averages(&self) -> Vec<PerformanceAverage> {
     let mut averages: HashMap<String, Vec<Duration>> = HashMap::new();
-    for measure in self.measures.lock().unwrap().iter() {
+    for measure in self.measures.lock().iter() {
       averages
         .entry(measure.name.clone())
         .or_default()
@@ -140,7 +140,7 @@ impl Performance {
     maybe_args: Option<V>,
   ) -> PerformanceMark {
     let name = name.as_ref();
-    let mut counts = self.counts.lock().unwrap();
+    let mut counts = self.counts.lock();
     let count = counts.entry(name.to_string()).or_insert(0);
     *count += 1;
     let msg = if let Some(args) = maybe_args {
@@ -179,7 +179,7 @@ impl Performance {
       })
     );
     let duration = measure.duration;
-    let mut measures = self.measures.lock().unwrap();
+    let mut measures = self.measures.lock();
     measures.push_front(measure);
     while measures.len() > self.max_size {
       measures.pop_back();
@@ -188,7 +188,7 @@ impl Performance {
   }
 
   pub fn to_vec(&self) -> Vec<PerformanceMeasure> {
-    let measures = self.measures.lock().unwrap();
+    let measures = self.measures.lock();
     measures.iter().cloned().collect()
   }
 }

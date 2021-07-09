@@ -154,6 +154,16 @@ export async function cargoBuild() {
   assert(status.success, "cargo build failed");
 }
 
+export function escapeLoneSurrogates(input: string): string;
+export function escapeLoneSurrogates(input: string | null): string | null;
+export function escapeLoneSurrogates(input: string | null): string | null {
+  if (input === null) return null;
+  return input.replace(
+    /[\uD800-\uDFFF]/gu,
+    (match) => `U+${match.charCodeAt(0).toString(16)}`,
+  );
+}
+
 /// WPTREPORT
 
 export async function generateRunInfo(): Promise<unknown> {

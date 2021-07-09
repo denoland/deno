@@ -1,8 +1,16 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+/// <reference path="../../core/internal.d.ts" />
+
 "use strict";
 
 ((window) => {
+  const {
+    RegExp,
+    StringPrototypeReplace,
+    ArrayPrototypeJoin,
+  } = window.__bootstrap.primordials;
+
   function code(open, close) {
     return {
       open: `\x1b[${open}m`,
@@ -12,7 +20,9 @@
   }
 
   function run(str, code) {
-    return `${code.open}${str.replace(code.regexp, code.open)}${code.close}`;
+    return `${code.open}${
+      StringPrototypeReplace(str, code.regexp, code.open)
+    }${code.close}`;
   }
 
   function bold(str) {
@@ -57,15 +67,15 @@
 
   // https://github.com/chalk/ansi-regex/blob/2b56fb0c7a07108e5b54241e8faec160d393aedb/index.js
   const ANSI_PATTERN = new RegExp(
-    [
+    ArrayPrototypeJoin([
       "[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)",
       "(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))",
-    ].join("|"),
+    ], "|"),
     "g",
   );
 
   function stripColor(string) {
-    return string.replace(ANSI_PATTERN, "");
+    return StringPrototypeReplace(string, ANSI_PATTERN, "");
   }
 
   function maybeColor(fn) {

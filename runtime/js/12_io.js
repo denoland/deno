@@ -7,6 +7,14 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const { DOMException } = window.__bootstrap.domException;
+  const {
+    Uint8Array,
+    ArrayPrototypePush,
+    TypedArrayPrototypeSubarray,
+    TypedArrayPrototypeSet,
+  } = window.__bootstrap.primordials;
+
   const DEFAULT_BUFFER_SIZE = 32 * 1024;
   // Seek whence values.
   // https://golang.org/pkg/io/#pkg-constants
@@ -36,7 +44,9 @@
       } else {
         let nwritten = 0;
         while (nwritten < result) {
-          nwritten += await dst.write(b.subarray(nwritten, result));
+          nwritten += await dst.write(
+            TypedArrayPrototypeSubarray(b, nwritten, result),
+          );
         }
         n += nwritten;
       }
@@ -56,7 +66,7 @@
         break;
       }
 
-      yield b.subarray(0, result);
+      yield TypedArrayPrototypeSubarray(b, 0, result);
     }
   }
 
@@ -72,7 +82,7 @@
         break;
       }
 
-      yield b.subarray(0, result);
+      yield TypedArrayPrototypeSubarray(b, 0, result);
     }
   }
 
@@ -119,7 +129,7 @@
       const buf = new Uint8Array(READ_PER_ITER);
       const read = await r.read(buf);
       if (typeof read == "number") {
-        buffers.push(new Uint8Array(buf.buffer, 0, read));
+        ArrayPrototypePush(buffers, new Uint8Array(buf.buffer, 0, read));
       } else {
         break;
       }
@@ -137,7 +147,7 @@
 
     let n = 0;
     for (const buf of buffers) {
-      contents.set(buf, n);
+      TypedArrayPrototypeSet(contents, buf, n);
       n += buf.byteLength;
     }
 
@@ -151,7 +161,7 @@
       const buf = new Uint8Array(READ_PER_ITER);
       const read = r.readSync(buf);
       if (typeof read == "number") {
-        buffers.push(new Uint8Array(buf.buffer, 0, read));
+        ArrayPrototypePush(buffers, new Uint8Array(buf.buffer, 0, read));
       } else {
         break;
       }
@@ -166,7 +176,7 @@
 
     let n = 0;
     for (const buf of buffers) {
-      contents.set(buf, n);
+      TypedArrayPrototypeSet(contents, buf, n);
       n += buf.byteLength;
     }
 

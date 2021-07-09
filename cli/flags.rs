@@ -104,6 +104,7 @@ pub enum DenoSubcommand {
     allow_none: bool,
     include: Option<Vec<String>>,
     filter: Option<String>,
+    shuffle: Option<u64>,
     concurrent_jobs: usize,
   },
   Types,
@@ -978,7 +979,7 @@ Grant permission to read allow-listed files from disk:
 
 Deno allows specifying the filename '-' to read the file from stdin.
 
-  curl https://deno.land/std/examples/welcome.ts | target/debug/deno run -",
+  curl https://deno.land/std/examples/welcome.ts | deno run -",
     )
 }
 
@@ -1021,6 +1022,20 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .long("filter")
         .takes_value(true)
         .help("Run tests with this string or pattern in the test name"),
+    )
+    .arg(
+      Arg::with_name("shuffle")
+        .long("shuffle")
+        .value_name("NUMBER")
+        .help("(UNSTABLE): Shuffle the order in which the tests are run")
+        .min_values(0)
+        .max_values(1)
+        .require_equals(true)
+        .takes_value(true)
+        .validator(|val: String| match val.parse::<u64>() {
+          Ok(_) => Ok(()),
+          Err(_) => Err("Shuffle seed should be a number".to_string()),
+        }),
     )
     .arg(
       Arg::with_name("coverage")
@@ -1693,7 +1708,17 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let terse = matches.is_present("terse");
   let filter = matches.value_of("filter").map(String::from);
 
-  flags.watch = matches.is_present("watch");
+  let shuffle = if matches.is_present("shuffle") {
+    let value = if let Some(value) = matches.value_of("shuffle") {
+      value.parse::<u64>().unwrap()
+    } else {
+      rand::random::<u64>()
+    };
+
+    Some(value)
+  } else {
+    None
+  };
 
   if matches.is_present("script_arg") {
     let script_arg: Vec<String> = matches
@@ -1738,6 +1763,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     terse,
     include,
     filter,
+    shuffle,
     allow_none,
     concurrent_jobs,
   };
@@ -3375,6 +3401,7 @@ mod tests {
           quiet: false,
           terse: false,
           include: Some(svec!["dir1/", "dir2/"]),
+          shuffle: None,
           concurrent_jobs: 1,
         },
         unstable: true,
