@@ -172,14 +172,36 @@
                   );
                 }
               },
-              cancel: (reason) => this.close(reason),
-              abort: (reason) => this.close(reason),
+              close: async (reason) => {
+                try {
+                  this.close(reason?.code !== undefined ? reason : {});
+                } catch (_) {
+                  this.close();
+                }
+                await this.closed;
+              },
+              abort: async (reason) => {
+                try {
+                  this.close(reason?.code !== undefined ? reason : {});
+                } catch (_) {
+                  this.close();
+                }
+                await this.closed;
+              },
             });
             const readable = new ReadableStream({
               start: (controller) => {
                 this.closed.then(() => {
-                  controller.close();
-                  writableStreamClose(writable);
+                  try {
+                    controller.close();
+                  } catch (_) {
+                    // needed to ignore warnings & assertions
+                  }
+                  try {
+                    writableStreamClose(writable).catch(() => {});
+                  } catch (_) {
+                    // needed to ignore warnings & assertions
+                  }
                 });
               },
               pull: async (controller) => {
@@ -218,7 +240,14 @@
                   }
                 }
               },
-              cancel: (reason) => this.close(reason),
+              cancel: async (reason) => {
+                try {
+                  this.close(reason?.code !== undefined ? reason : {});
+                } catch (_) {
+                  this.close();
+                }
+                await this.closed;
+              },
             });
 
             this[_connection].resolve({
