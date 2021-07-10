@@ -124,7 +124,7 @@
         this[_connection].reject(err);
         this[_closed].reject(err);
       } else {
-        function abort() {
+        const abort = () => {
           core.close(cancelRid);
         }
         options.signal?.addEventListener("abort", abort);
