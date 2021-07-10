@@ -397,7 +397,7 @@
     async verify(algorithm, key, signature, data) {
       webidl.assertBranded(this, SubtleCrypto);
       const prefix = "Failed to execute 'verify' on 'SubtleCrypto'";
-      webidl.requiredArguments(arguments.length, 3, { prefix });
+      webidl.requiredArguments(arguments.length, 4, { prefix });
       algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
         prefix,
         context: "Argument 1",
