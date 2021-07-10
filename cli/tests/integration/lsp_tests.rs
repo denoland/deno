@@ -452,7 +452,7 @@ fn lsp_hover_unstable_disabled() {
         },
         "end": {
           "line": 0,
-          "character": 27
+          "character": 23
         }
       }
     }))
