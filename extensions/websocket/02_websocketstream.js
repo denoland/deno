@@ -56,6 +56,7 @@
   const _url = Symbol("[[url]]");
   const _connection = Symbol("[[connection]]");
   const _closed = Symbol("[[closed]]");
+  const _earlyClose = Symbol("[[earlyClose]]");
   class WebSocketStream {
     [_rid];
 
@@ -131,82 +132,102 @@
           protocols: options.protocols?.join(", ") ?? "",
           cancelHandle: cancelRid,
         }).then((create) => {
-          this[_rid] = create.rid;
-
-          const writable = new WritableStream({
-            write: async (chunk) => {
-              if (typeof chunk === "string") {
-                await core.opAsync("op_ws_send", {
-                  rid: this[_rid],
-                  kind: "text",
-                  text: chunk,
-                });
-              } else if (chunk instanceof Uint8Array) {
-                await core.opAsync("op_ws_send", {
-                  rid: this[_rid],
-                  kind: "binary",
-                }, chunk);
-              } else {
-                throw new TypeError(
-                  "A chunk may only be either a string or an Uint8Array",
-                );
-              }
-            },
-            cancel: (reason) => this.close(reason),
-            abort: (reason) => this.close(reason),
-          });
-          const readable = new ReadableStream({
-            start: (controller) => {
-              this.closed.then(() => {
-                controller.close();
-                writableStreamClose(writable);
-              });
-            },
-            pull: async (controller) => {
-              const { kind, value } = await core.opAsync(
-                "op_ws_next_event",
-                this[_rid],
+          if (this[_earlyClose]) {
+            core.opAsync("op_ws_close", {
+              rid: create.rid,
+            }).then(() => {
+              const err = new DOMException(
+                "Closed while connecting",
+                "NetworkError",
               );
+              this[_connection].reject(err);
+              this[_closed].reject(err);
+            }).catch(() => {
+              const err = new DOMException(
+                "Closed while connecting",
+                "NetworkError",
+              );
+              this[_connection].reject(err);
+              this[_closed].reject(err);
+            });
+          } else {
+            this[_rid] = create.rid;
 
-              switch (kind) {
-                case "string": {
-                  controller.enqueue(value);
-                  break;
-                }
-                case "binary": {
-                  controller.enqueue(value);
-                  break;
-                }
-                case "ping": {
+            const writable = new WritableStream({
+              write: async (chunk) => {
+                if (typeof chunk === "string") {
                   await core.opAsync("op_ws_send", {
                     rid: this[_rid],
-                    kind: "pong",
+                    kind: "text",
+                    text: chunk,
                   });
-                  break;
+                } else if (chunk instanceof Uint8Array) {
+                  await core.opAsync("op_ws_send", {
+                    rid: this[_rid],
+                    kind: "binary",
+                  }, chunk);
+                } else {
+                  throw new TypeError(
+                    "A chunk may only be either a string or an Uint8Array",
+                  );
                 }
-                case "close": {
-                  this[_closed].resolve(value);
-                  tryClose(this[_rid]);
-                  break;
-                }
-                case "error": {
-                  const err = new Error(value);
-                  this[_closed].reject(err);
-                  controller.error(err);
-                  tryClose(this[_rid]);
-                  break;
-                }
-              }
-            },
-            cancel: (reason) => this.close(reason),
-          });
+              },
+              cancel: (reason) => this.close(reason),
+              abort: (reason) => this.close(reason),
+            });
+            const readable = new ReadableStream({
+              start: (controller) => {
+                this.closed.then(() => {
+                  controller.close();
+                  writableStreamClose(writable);
+                });
+              },
+              pull: async (controller) => {
+                const { kind, value } = await core.opAsync(
+                  "op_ws_next_event",
+                  this[_rid],
+                );
 
-          this[_connection].resolve({
-            readable,
-            writable,
-            extensions: create.extensions ?? "",
-            protocol: create.protocol ?? "",
-          });
+                switch (kind) {
+                  case "string": {
+                    controller.enqueue(value);
+                    break;
+                  }
+                  case "binary": {
+                    controller.enqueue(value);
+                    break;
+                  }
+                  case "ping": {
+                    await core.opAsync("op_ws_send", {
+                      rid: this[_rid],
+                      kind: "pong",
+                    });
+                    break;
+                  }
+                  case "close": {
+                    this[_closed].resolve(value);
+                    tryClose(this[_rid]);
+                    break;
+                  }
+                  case "error": {
+                    const err = new Error(value);
+                    this[_closed].reject(err);
+                    controller.error(err);
+                    tryClose(this[_rid]);
+                    break;
+                  }
+                }
+              },
+              cancel: (reason) => this.close(reason),
+            });
+
+            this[_connection].resolve({
+              readable,
+              writable,
+              extensions: create.extensions ?? "",
+              protocol: create.protocol ?? "",
+            });
+          }
         }).catch((err) => {
           this[_connection].reject(err);
           this[_closed].reject(err);
@@ -219,6 +240,7 @@
       return this[_connection].promise;
     }
 
+    [_earlyClose] = false;
     [_closed] = new Deferred();
     get closed() {
       return this[_closed].promise;
@@ -257,7 +279,7 @@
       }
 
       if (this[_connection].state === "pending") {
-        // TODO(crowlKats): handle early close
+        this[_earlyClose] = true;
       } else if (this[_closed].state === "pending") {
         core.opAsync("op_ws_close", {
           rid: this[_rid],
