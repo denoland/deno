@@ -3474,7 +3474,8 @@ mod tests {
           quiet: false,
           shuffle: None,
           include: None,
-          concurrent_jobs: 1
+          concurrent_jobs: 1,
+          terse: false
         },
         ..Flags::default()
       }
