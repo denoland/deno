@@ -257,7 +257,7 @@
       }
 
       if (this[_connection].state === "pending") {
-        // TODO: handle early close
+        // TODO(crowlKats): handle early close
       } else if (this[_closed].state === "pending") {
         core.opAsync("op_ws_close", {
           rid: this[_rid],
