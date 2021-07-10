@@ -124,14 +124,16 @@
         this[_connection].reject(err);
         this[_closed].reject(err);
       } else {
-        options.signal?.addEventListener("abort", () => {
+        function abort() {
           core.close(cancelRid);
-        });
+        }
+        options.signal?.addEventListener("abort", abort);
         core.opAsync("op_ws_create", {
           url: this[_url],
           protocols: options.protocols?.join(", ") ?? "",
           cancelHandle: cancelRid,
         }).then((create) => {
+          options.signal?.removeEventListener("abort", abort);
           if (this[_earlyClose]) {
             core.opAsync("op_ws_close", {
               rid: create.rid,
