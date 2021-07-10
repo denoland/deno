@@ -126,7 +126,7 @@
       } else {
         const abort = () => {
           core.close(cancelRid);
-        }
+        };
         options.signal?.addEventListener("abort", abort);
         core.opAsync("op_ws_create", {
           url: this[_url],
