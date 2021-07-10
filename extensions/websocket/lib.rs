@@ -282,7 +282,7 @@ where
       ))
     })?;
 
-  if let Some (cancel_rid) = args.cancel_handle {
+  if let Some(cancel_rid) = args.cancel_handle {
     state.borrow_mut().resource_table.close(cancel_rid);
   }
 
