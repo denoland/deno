@@ -16,7 +16,7 @@ const dylib = Deno.dlopen(libPath, {
 });
 
 dylib.symbols.print_something();
-console.log(`${dylib.symbols.add(123, 456)}`);
+console.log(dylib.symbols.add(123, 456));
 
 dylib.close();
 const resourcesPost = Deno.resources();
