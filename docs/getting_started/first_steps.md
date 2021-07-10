@@ -77,7 +77,7 @@ deno run --allow-net=example.com https://deno.land/std@$STD_VERSION/examples/cur
 
 Deno also provides APIs which do not come from the web. These are all contained
 in the `Deno` global. You can find documentation for these APIs on
-[doc.deno.land](https://doc.deno.land/https/github.com/denoland/deno/releases/latest/download/lib.deno.d.ts).
+[doc.deno.land](https://doc.deno.land/builtin/stable#Deno).
 
 Filesystem APIs for example do not have a web standard form, so Deno provides
 its own API.

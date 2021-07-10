@@ -464,6 +464,10 @@
 
       return result;
     }
+
+    get [SymbolToStringTag]() {
+      return "SubtleCrypto";
+    }
   }
 
   async function generateKey(normalizedAlgorithm, extractable, usages) {
