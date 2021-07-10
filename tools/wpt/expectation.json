@@ -3109,15 +3109,27 @@
     "Worker-call.worker.html": true,
     "Worker-constructor-proto.any.worker.html": true,
     "Worker-custom-event.any.worker.html": true,
-    "Worker-formdata.any.worker.html": false,
-    "Worker-location.sub.any.worker.html": false,
+    "Worker-formdata.any.worker.html": [
+      "Test FormData interface object"
+    ],
+    "Worker-location.sub.any.worker.html": [
+      "Test WorkerLocation properties."
+    ],
     "Worker-replace-event-handler.any.worker.html": true,
     "Worker-replace-global-constructor.any.worker.html": true,
     "Worker-replace-self.any.worker.html": true,
-    "WorkerGlobalScope_requestAnimationFrame.tentative.worker.html": false,
-    "WorkerLocation-origin.sub.window.html": false,
-    "WorkerNavigator-hardware-concurrency.any.worker.html": false,
-    "WorkerNavigator.any.worker.html": false,
+    "WorkerGlobalScope_requestAnimationFrame.tentative.worker.html": [
+      "WorkerGlobalScope_requestAnimationFrame"
+    ],
+    "WorkerLocation-origin.sub.window.html": [
+      "workerLocation.origin must use ASCII code points"
+    ],
+    "WorkerNavigator-hardware-concurrency.any.worker.html": [
+      "Test worker navigator hardware concurrency."
+    ],
+    "WorkerNavigator.any.worker.html": [
+      "Testing Navigator properties on workers."
+    ],
     "constructors": {
       "Worker": {
         "DedicatedWorkerGlobalScope-members.worker.html": [
@@ -3164,7 +3176,6 @@
         "EventTarget.worker.html": true,
         "onmessage.worker.html": [
           "Setting onmessage to 1",
-          "Setting onmessage to a function",
           "Setting onmessage to 1 (again)"
         ],
         "postMessage": {
@@ -3180,16 +3191,18 @@
       "WorkerUtils": {
         "importScripts": {
           "001.worker.html": true,
-          "002.worker.html": false,
+          "002.worker.html": [
+            "002"
+          ],
           "catch.sub.any.worker.html": [
             "Cross-origin syntax error",
             "Cross-origin throw",
             "Redirect-to-cross-origin syntax error",
             "Redirect-to-Cross-origin throw"
           ],
-          "report-error-cross-origin.sub.any.worker.html": false,
-          "report-error-redirect-to-cross-origin.sub.any.worker.html": false,
-          "report-error-same-origin.sub.any.worker.html": false,
+          "report-error-cross-origin.sub.any.worker.html": true,
+          "report-error-redirect-to-cross-origin.sub.any.worker.html": true,
+          "report-error-same-origin.sub.any.worker.html": true,
           "report-error-setTimeout-cross-origin.sub.any.worker.html": false,
           "report-error-setTimeout-redirect-to-cross-origin.sub.any.worker.html": false,
           "report-error-setTimeout-same-origin.sub.any.worker.html": false
@@ -3197,19 +3210,52 @@
       }
     },
     "modules": {
-      "dedicated-worker-import-blob-url.any.html": false,
-      "dedicated-worker-import-blob-url.any.worker.html": false,
-      "dedicated-worker-import-data-url.any.html": false,
-      "dedicated-worker-import.any.html": false,
-      "dedicated-worker-import.any.worker.html": false,
-      "shared-worker-import-blob-url.window.html": false,
-      "shared-worker-import-data-url.window.html": false,
-      "shared-worker-import.window.html": false
+      "dedicated-worker-import-blob-url.any.html": true,
+      "dedicated-worker-import-blob-url.any.worker.html": true,
+      "dedicated-worker-import-data-url.any.html": true,
+      "dedicated-worker-import-data-url.any.worker.html": true,
+      "dedicated-worker-import.any.html": true,
+      "dedicated-worker-import.any.worker.html": true,
+      "shared-worker-import-blob-url.window.html": [
+        "Static import.",
+        "Static import (cross-origin).",
+        "Static import (redirect).",
+        "Nested static import.",
+        "Static import and then dynamic import.",
+        "Dynamic import.",
+        "Nested dynamic import.",
+        "Dynamic import and then static import.",
+        "eval(import())."
+      ],
+      "shared-worker-import-data-url.window.html": [
+        "Static import.",
+        "Static import (cross-origin).",
+        "Static import (redirect).",
+        "Nested static import.",
+        "Static import and then dynamic import.",
+        "Dynamic import.",
+        "Nested dynamic import.",
+        "Dynamic import and then static import.",
+        "eval(import())."
+      ],
+      "shared-worker-import.window.html": [
+        "Static import.",
+        "Static import (cross-origin).",
+        "Static import (redirect).",
+        "Nested static import.",
+        "Static import and then dynamic import.",
+        "Dynamic import.",
+        "Nested dynamic import.",
+        "Dynamic import and then static import.",
+        "eval(import())."
+      ]
     },
     "nested_worker.worker.html": true,
     "nested_worker_close_self.worker.html": true,
     "nested_worker_importScripts.worker.html": true,
-    "nested_worker_sync_xhr.worker.html": false,
+    "nested_worker_sync_xhr.worker.html": [
+      "Nested worker that issues a sync XHR"
+    ],
     "semantics": {
       "encodings": {
         "004.worker.html": true
@@ -3252,8 +3298,15 @@
         "exposure.any.worker.html": true
       }
     },
-    "shared-worker-from-blob-url.window.html": false,
-    "shared-worker-in-data-url-context.window.html": false,
+    "shared-worker-from-blob-url.window.html": [
+      "Creating a shared worker from a blob URL works.",
+      "Creating a shared worker from a blob URL works immediately before revoking.",
+      "Connecting to a shared worker on a revoked blob URL works."
+    ],
+    "shared-worker-in-data-url-context.window.html": [
+      "Create a shared worker in a data url frame",
+      "Create a data url shared worker in a data url frame"
+    ],
     "worker-performance.worker.html": [
       "Resource timing seems to work in workers",
       "performance.clearResourceTimings in workers",
