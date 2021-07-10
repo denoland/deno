@@ -49,12 +49,6 @@ itest!(doc {
   output: "test/doc.out",
 });
 
-itest!(terse {
-  args: "test --terse test/terse.ts",
-  exit_code: 1,
-  output: "test/terse.out",
-});
-
 itest!(quiet {
   args: "test --quiet test/quiet.ts",
   exit_code: 0,
