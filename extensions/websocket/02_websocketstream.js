@@ -56,10 +56,8 @@
   const _url = Symbol("[[url]]");
   const _connection = Symbol("[[connection]]");
   const _closed = Symbol("[[closed]]");
-  const _internalController = Symbol("[[internalController]]");
   class WebSocketStream {
     [_rid];
-    [_internalController] = new AbortController();
 
     [_url];
     get url() {
@@ -126,9 +124,6 @@
         this[_closed].reject(err);
       } else {
         options.signal?.addEventListener("abort", () => {
-          this[_internalController].abort();
-        });
-        this[_internalController].signal.addEventListener("abort", () => {
           core.close(cancelRid);
         });
         core.opAsync("op_ws_create", {
@@ -262,7 +257,7 @@
       }
 
       if (this[_connection].state === "pending") {
-        this[_internalController].abort();
+        // TODO: handle early close
       } else if (this[_closed].state === "pending") {
         core.opAsync("op_ws_close", {
           rid: this[_rid],
