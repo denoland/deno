@@ -1,21 +1,16 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
-const filenameBase = "test_ffi";
-
-const filenameSuffix = Deno.build.os === "darwin"
-  ? ".dylib"
-  : Deno.build.os === "windows"
-  ? ".dll"
-  : ".so";
-const filenamePrefix = Deno.build.os === "windows" ? "" : "lib";
-
-const filename = `./target/${
-  Deno.args[0]
-}/${filenamePrefix}${filenameBase}${filenameSuffix}`;
+const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
+const [libPrefix, libSuffix] = {
+  darwin: ["lib", "dylib"],
+  linux: ["lib", "so"],
+  windows: ["", "dll"],
+}[Deno.build.os];
+const libPath = `${targetDir}/${libPrefix}test_ffi.${libSuffix}`;
 
 const resourcesPre = Deno.resources();
-const dylib = Deno.dlopen(filename, {
+const dylib = Deno.dlopen(libPath, {
   "print_something": { parameters: [], result: "void" },
   "add": { parameters: ["u32", "u32"], result: "u32" },
 });

@@ -25,7 +25,6 @@ fn basic() {
     .arg("--allow-read")
     .arg("--unstable")
     .arg("tests/test.js")
-    .arg(BUILD_VARIANT)
     .output()
     .unwrap();
   let stdout = std::str::from_utf8(&output.stdout).unwrap();
@@ -37,7 +36,6 @@ fn basic() {
   println!("{:?}", output.status);
   assert!(output.status.success());
   let expected = "\
-    Dylib rid: 3\n\
     something\n\
     912\n\
     Correct number of resources\n";
