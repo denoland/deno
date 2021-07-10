@@ -6,11 +6,6 @@ Arguments from self.onerror: [
   0,
   0,
   Error: Some error message
-    at [WILDCARD]/cli/tests/workers/worker_event_handlers.js:9:9
-    at innerInvokeEventListeners (deno:extensions/web/02_event.js:750:9)
-    at invokeEventListeners (deno:extensions/web/02_event.js:789:5)
-    at dispatch (deno:extensions/web/02_event.js:659:11)
-    at dispatchEvent (deno:extensions/web/02_event.js:993:14)
-    at pollForMessages (deno:runtime/js/99_main.js:142:9)
+    at [WILDCARD]
 ]
 Is event canceled?: true
