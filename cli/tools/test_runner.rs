@@ -275,7 +275,7 @@ where
     true,
   );
 
-  let (registry, descriptions) = {
+  let registry = {
     let execute_result = worker.execute_module(&module_specifier).await;
     execute_result?;
 
@@ -283,13 +283,18 @@ where
       .js_runtime
       .execute_script("deno:test_module", TEST_REGISTRY)?;
 
+    registry
+  };
+
+  let descriptions = {
     let mut scope = worker.js_runtime.handle_scope();
     let registry_local =
       v8::Local::<v8::Value>::new(&mut scope, registry.clone());
+
     let descriptions: Vec<TestDescription> =
       serde_v8::from_v8(&mut scope, registry_local).unwrap();
 
-    (registry, descriptions)
+    descriptions
   };
 
   let iterator = descriptions
