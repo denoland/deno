@@ -76,9 +76,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.42"
+version = "1.0.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "595d3cfa7a60d4555cb5067b99f07142a08ea778de5cf993f7b75c7d8fabc486"
+checksum = "15af2628f6890fe2609a3b91bef4c83450512802e59489f9c1cb1fa5df064a61"
 
 [[package]]
 name = "arrayvec"
@@ -3625,9 +3625,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_transforms_proposal"
-version = "0.25.1"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "858a19bb8d323bc46bb01363aadf1d60c3ce92e5cf61b4ebaea88ed9d85a8ea6"
+checksum = "6df72984fd9487e1338021412239770586ef915ecd6a36f561251cab1134f617"
 dependencies = [
  "either",
  "fxhash",
