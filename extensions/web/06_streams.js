@@ -4453,6 +4453,7 @@
     errorReadableStream,
     createProxy,
     writableStreamClose,
+    Deferred,
     // Exposed in global runtime scope
     ByteLengthQueuingStrategy,
     CountQueuingStrategy,

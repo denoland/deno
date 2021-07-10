@@ -4,15 +4,12 @@
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
-  const { writableStreamClose } = window.__bootstrap.streams;
+  const { writableStreamClose, Deferred } = window.__bootstrap.streams;
   const {
     StringPrototypeToLowerCase,
     ArrayPrototypeMap,
   } = window.__bootstrap.primordials;
 
-  webidl.converters["sequence<USVString>"] = webidl.createSequenceConverter(
-    webidl.converters["USVString"],
-  );
   webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
     "WebSocketStreamOptions",
     [
@@ -42,55 +39,6 @@
     ],
   );
 
-  /** @template T */
-  class Deferred {
-    /** @type {Promise<T>} */
-    #promise;
-    /** @type {(reject?: any) => void} */
-    #reject;
-    /** @type {(value: T | PromiseLike<T>) => void} */
-    #resolve;
-    /** @type {"pending" | "fulfilled"} */
-    #state = "pending";
-
-    constructor() {
-      this.#promise = new Promise((resolve, reject) => {
-        this.#resolve = resolve;
-        this.#reject = reject;
-      });
-    }
-
-    /** @returns {Promise<T>} */
-    get promise() {
-      return this.#promise;
-    }
-
-    /** @returns {"pending" | "fulfilled"} */
-    get state() {
-      return this.#state;
-    }
-
-    /** @param {any=} reason */
-    reject(reason) {
-      // already settled promises are a no-op
-      if (this.#state !== "pending") {
-        return;
-      }
-      this.#state = "fulfilled";
-      this.#reject(reason);
-    }
-
-    /** @param {T | PromiseLike<T>} value */
-    resolve(value) {
-      // already settled promises are a no-op
-      if (this.#state !== "pending") {
-        return;
-      }
-      this.#state = "fulfilled";
-      this.#resolve(value);
-    }
-  }
-
   /**
    * Tries to close the resource (and ignores BadResource errors).
    * @param {number} rid
@@ -108,8 +56,10 @@
   const _url = Symbol("[[url]]");
   const _connection = Symbol("[[connection]]");
   const _closed = Symbol("[[closed]]");
+  const _internalController = Symbol("[[internalController]]");
   class WebSocketStream {
     [_rid];
+    [_internalController] = new AbortController();
 
     [_url];
     get url() {
@@ -176,6 +126,9 @@
         this[_closed].reject(err);
       } else {
         options.signal?.addEventListener("abort", () => {
+          this[_internalController].abort();
+        });
+        this[_internalController].signal.addEventListener("abort", () => {
           core.close(cancelRid);
         });
         core.opAsync("op_ws_create", {
@@ -308,7 +261,9 @@
         code = 1000;
       }
 
-      if (this[_closed].state === "pending") {
+      if (this[_connection].state === "pending") {
+        this[_internalController].abort();
+      } else if (this[_closed].state === "pending") {
         core.opAsync("op_ws_close", {
           rid: this[_rid],
           code,

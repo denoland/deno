@@ -282,6 +282,10 @@ where
       ))
     })?;
 
+  if let Some (cancel_rid) = args.cancel_handle {
+    state.borrow_mut().resource_table.close(cancel_rid);
+  }
+
   let (ws_tx, ws_rx) = stream.split();
   let resource = WsStreamResource {
     stream: WebSocketStreamType::Client {

@@ -3112,7 +3112,8 @@
         "backpressure-receive.any.html?wss": true,
         "backpressure-send.any.html?wss": true,
         "close.any.html?wss": false,
-        "constructor.any.html?wss": true
+        "constructor.any.html?wss": true,
+        "close.any.html?wpt_flags=h2": false
       }
     }
   }
