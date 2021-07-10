@@ -7,6 +7,7 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { writableStreamClose, Deferred } = window.__bootstrap.streams;
+  const { DOMException } = window.__bootstrap.domException;
   const {
     StringPrototypeEndsWith,
     StringPrototypeToLowerCase,
