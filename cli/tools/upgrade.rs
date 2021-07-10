@@ -2,7 +2,7 @@
 
 //! This module provides feature to upgrade deno executable
 
-use deno_core::error::AnyError;
+use deno_core::error::{bail, AnyError};
 use deno_core::futures::StreamExt;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::Client;
@@ -41,6 +41,14 @@ pub async fn upgrade_command(
 
   let install_version = match version {
     Some(passed_version) => {
+      if canary
+        && !regex::Regex::new("^[0-9a-f]{40}$")?.is_match(&passed_version)
+      {
+        bail!("Invalid commit hash passed");
+      } else if !canary && semver_parse(&passed_version).is_err() {
+        bail!("Invalid semver passed");
+      }
+
       let current_is_passed = if canary {
         crate::version::GIT_COMMIT_HASH == passed_version
       } else if !crate::version::is_canary() {
@@ -68,14 +76,8 @@ pub async fn upgrade_command(
         latest_hash.truncate(7);
         crate::version::GIT_COMMIT_HASH == latest_hash
       } else if !crate::version::is_canary() {
-        let current = semver_parse(&*crate::version::deno()).unwrap();
-        let latest = match semver_parse(&latest_version) {
-          Ok(v) => v,
-          Err(_) => {
-            eprintln!("Invalid semver passed");
-            std::process::exit(1)
-          }
-        };
+        let current = semver_parse(&crate::version::deno()).unwrap();
+        let latest = semver_parse(&latest_version).unwrap();
         current >= latest
       } else {
         false
@@ -88,7 +90,7 @@ pub async fn upgrade_command(
         );
         return Ok(());
       } else {
-        println!("Found latest version {}", &latest_version);
+        println!("Found latest version {}", latest_version);
         latest_version
       }
     }
@@ -106,12 +108,12 @@ pub async fn upgrade_command(
     )
   };
 
-  let archive_data = download_package(client, &*download_url).await?;
+  let archive_data = download_package(client, &download_url).await?;
 
   println!("Deno is upgrading to version {}", &install_version);
 
   let old_exe_path = std::env::current_exe()?;
-  let new_exe_path = unpack(archive_data, "deno", cfg!(windows))?;
+  let new_exe_path = unpack(archive_data, cfg!(windows))?;
   let permissions = fs::metadata(&old_exe_path)?.permissions();
   fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
@@ -213,16 +215,16 @@ async fn download_package(
 
 pub fn unpack(
   archive_data: Vec<u8>,
-  exe_name: &str,
   is_windows: bool,
 ) -> Result<PathBuf, std::io::Error> {
+  const EXE_NAME: &str = "deno";
   // We use into_path so that the tempdir is not automatically deleted. This is
   // useful for debugging upgrade, but also so this function can return a path
   // to the newly uncompressed file without fear of the tempdir being deleted.
   let temp_dir = TempDir::new()?.into_path();
   let exe_ext = if is_windows { "exe" } else { "" };
-  let archive_path = temp_dir.join(exe_name).with_extension("zip");
-  let exe_path = temp_dir.join(exe_name).with_extension(exe_ext);
+  let archive_path = temp_dir.join(EXE_NAME).with_extension("zip");
+  let exe_path = temp_dir.join(EXE_NAME).with_extension(exe_ext);
   assert!(!exe_path.exists());
 
   let archive_ext = Path::new(&*ARCHIVE_NAME)

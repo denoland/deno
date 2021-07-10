@@ -36,6 +36,7 @@
     WeakMapPrototypeHas,
     WeakMapPrototypeSet,
   } = globalThis.__bootstrap.primordials;
+  const consoleInternal = window.__bootstrap.console;
   const { DOMException } = window.__bootstrap.domException;
 
   class AssertionError extends Error {
@@ -3018,9 +3019,14 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${
-        inspect({ highWaterMark: this.highWaterMark, size: this.size })
-      }`;
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof ByteLengthQueuingStrategy,
+        keys: [
+          "highWaterMark",
+          "size",
+        ],
+      }));
     }
 
     get [Symbol.toStringTag]() {
@@ -3069,9 +3075,14 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${
-        inspect({ highWaterMark: this.highWaterMark, size: this.size })
-      }`;
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof CountQueuingStrategy,
+        keys: [
+          "highWaterMark",
+          "size",
+        ],
+      }));
     }
 
     get [Symbol.toStringTag]() {
@@ -3561,9 +3572,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${
-        inspect({ desiredSize: this.desiredSize })
-      }`;
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof ReadableByteStreamController,
+        keys: ["desiredSize"],
+      }));
     }
 
     get [Symbol.toStringTag]() {
@@ -3684,9 +3697,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${
-        inspect({ desiredSize: this.desiredSize })
-      }`;
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof ReadableStreamDefaultController,
+        keys: ["desiredSize"],
+      }));
     }
 
     get [Symbol.toStringTag]() {
@@ -3905,9 +3920,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${
-        inspect({ desiredSize: this.desiredSize })
-      }`;
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof TransformStreamDefaultController,
+        keys: ["desiredSize"],
+      }));
     }
 
     get [Symbol.toStringTag]() {
@@ -4182,13 +4199,15 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${
-        inspect({
-          closed: this.closed,
-          desiredSize: this.desiredSize,
-          ready: this.ready,
-        })
-      }`;
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof WritableStreamDefaultWriter,
+        keys: [
+          "closed",
+          "desiredSize",
+          "ready",
+        ],
+      }));
     }
 
     get [Symbol.toStringTag]() {
@@ -4240,7 +4259,11 @@
     }
 
     [Symbol.for("Deno.customInspect")](inspect) {
-      return `${this.constructor.name} ${inspect({})}`;
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof WritableStreamDefaultController,
+        keys: [],
+      }));
     }
 
     get [Symbol.toStringTag]() {

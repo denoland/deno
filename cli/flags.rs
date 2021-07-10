@@ -100,6 +100,7 @@ pub enum DenoSubcommand {
     no_run: bool,
     fail_fast: Option<usize>,
     quiet: bool,
+    terse: bool,
     allow_none: bool,
     include: Option<Vec<String>>,
     filter: Option<String>,
@@ -1026,6 +1027,11 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(false),
     )
     .arg(
+      Arg::with_name("terse")
+        .long("terse")
+        .help("UNSTABLE: Display one character per test instead of one line"),
+    )
+    .arg(
       Arg::with_name("filter")
         .set(ArgSettings::AllowLeadingHyphen)
         .long("filter")
@@ -1713,6 +1719,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let doc = matches.is_present("doc");
   let allow_none = matches.is_present("allow-none");
   let quiet = matches.is_present("quiet");
+  let terse = matches.is_present("terse");
   let filter = matches.value_of("filter").map(String::from);
 
   let fail_fast = if matches.is_present("fail-fast") {
@@ -1777,6 +1784,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     doc,
     fail_fast,
     quiet,
+    terse,
     include,
     filter,
     shuffle,
@@ -3415,6 +3423,7 @@ mod tests {
           filter: Some("- foo".to_string()),
           allow_none: true,
           quiet: false,
+          terse: false,
           include: Some(svec!["dir1/", "dir2/"]),
           shuffle: None,
           concurrent_jobs: 1,

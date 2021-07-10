@@ -6,10 +6,7 @@ use test_util as util;
 #[test]
 fn pty_multiline() {
   use std::io::{Read, Write};
-  use util::pty::fork::*;
-  let deno_exe = util::deno_exe_path();
-  let fork = Fork::from_ptmx().unwrap();
-  if let Ok(mut master) = fork.is_parent() {
+  run_pty_test(|master| {
     master.write_all(b"(\n1 + 2\n)\n").unwrap();
     master.write_all(b"{\nfoo: \"foo\"\n}\n").unwrap();
     master.write_all(b"`\nfoo\n`\n").unwrap();
@@ -37,24 +34,14 @@ fn pty_multiline() {
     assert!(output.contains("/(/"));
     assert!(output.contains("/{/"));
     assert!(output.contains("[ \"{test1}\", \"test1\" ]"));
-
-    fork.wait().unwrap();
-  } else {
-    std::env::set_var("NO_COLOR", "1");
-    let err = exec::Command::new(deno_exe).arg("repl").exec();
-    println!("err {}", err);
-    unreachable!()
-  }
+  });
 }
 
 #[cfg(unix)]
 #[test]
 fn pty_unpaired_braces() {
   use std::io::{Read, Write};
-  use util::pty::fork::*;
-  let deno_exe = util::deno_exe_path();
-  let fork = Fork::from_ptmx().unwrap();
-  if let Ok(mut master) = fork.is_parent() {
+  run_pty_test(|master| {
     master.write_all(b")\n").unwrap();
     master.write_all(b"]\n").unwrap();
     master.write_all(b"}\n").unwrap();
@@ -66,24 +53,14 @@ fn pty_unpaired_braces() {
     assert!(output.contains("Unexpected token `)`"));
     assert!(output.contains("Unexpected token `]`"));
     assert!(output.contains("Unexpected token `}`"));
-
-    fork.wait().unwrap();
-  } else {
-    std::env::set_var("NO_COLOR", "1");
-    let err = exec::Command::new(deno_exe).arg("repl").exec();
-    println!("err {}", err);
-    unreachable!()
-  }
+  });
 }
 
 #[cfg(unix)]
 #[test]
 fn pty_bad_input() {
   use std::io::{Read, Write};
-  use util::pty::fork::*;
-  let deno_exe = util::deno_exe_path();
-  let fork = Fork::from_ptmx().unwrap();
-  if let Ok(mut master) = fork.is_parent() {
+  run_pty_test(|master| {
     master.write_all(b"'\\u{1f3b5}'[0]\n").unwrap();
     master.write_all(b"close();\n").unwrap();
 
@@ -91,24 +68,14 @@ fn pty_bad_input() {
     master.read_to_string(&mut output).unwrap();
 
     assert!(output.contains("Unterminated string literal"));
-
-    fork.wait().unwrap();
-  } else {
-    std::env::set_var("NO_COLOR", "1");
-    let err = exec::Command::new(deno_exe).arg("repl").exec();
-    println!("err {}", err);
-    unreachable!()
-  }
+  });
 }
 
 #[cfg(unix)]
 #[test]
 fn pty_complete_symbol() {
   use std::io::{Read, Write};
-  use util::pty::fork::*;
-  let deno_exe = util::deno_exe_path();
-  let fork = Fork::from_ptmx().unwrap();
-  if let Ok(mut master) = fork.is_parent() {
+  run_pty_test(|master| {
     master.write_all(b"Symbol.it\t\n").unwrap();
     master.write_all(b"close();\n").unwrap();
 
@@ -116,24 +83,14 @@ fn pty_complete_symbol() {
     master.read_to_string(&mut output).unwrap();
 
     assert!(output.contains("Symbol(Symbol.iterator)"));
-
-    fork.wait().unwrap();
-  } else {
-    std::env::set_var("NO_COLOR", "1");
-    let err = exec::Command::new(deno_exe).arg("repl").exec();
-    println!("err {}", err);
-    unreachable!()
-  }
+  });
 }
 
 #[cfg(unix)]
 #[test]
 fn pty_complete_declarations() {
   use std::io::{Read, Write};
-  use util::pty::fork::*;
-  let deno_exe = util::deno_exe_path();
-  let fork = Fork::from_ptmx().unwrap();
-  if let Ok(mut master) = fork.is_parent() {
+  run_pty_test(|master| {
     master.write_all(b"class MyClass {}\n").unwrap();
     master.write_all(b"My\t\n").unwrap();
     master.write_all(b"let myVar;\n").unwrap();
@@ -145,24 +102,40 @@ fn pty_complete_declarations() {
 
     assert!(output.contains("> MyClass"));
     assert!(output.contains("> myVar"));
+  });
+}
 
-    fork.wait().unwrap();
-  } else {
-    std::env::set_var("NO_COLOR", "1");
-    let err = exec::Command::new(deno_exe).arg("repl").exec();
-    println!("err {}", err);
-    unreachable!()
-  }
+#[cfg(unix)]
+#[test]
+fn pty_complete_primitives() {
+  use std::io::{Read, Write};
+  run_pty_test(|master| {
+    master.write_all(b"let func = function test(){}\n").unwrap();
+    master.write_all(b"func.appl\t\n").unwrap();
+    master.write_all(b"let str = ''\n").unwrap();
+    master.write_all(b"str.leng\t\n").unwrap();
+    master.write_all(b"false.valueO\t\n").unwrap();
+    master.write_all(b"5n.valueO\t\n").unwrap();
+    master.write_all(b"let num = 5\n").unwrap();
+    master.write_all(b"num.toStrin\t\n").unwrap();
+    master.write_all(b"close();\n").unwrap();
+
+    let mut output = String::new();
+    master.read_to_string(&mut output).unwrap();
+
+    assert!(output.contains("> func.apply"));
+    assert!(output.contains("> str.length"));
+    assert!(output.contains("> 5n.valueOf"));
+    assert!(output.contains("> false.valueOf"));
+    assert!(output.contains("> num.toString"));
+  });
 }
 
 #[cfg(unix)]
 #[test]
 fn pty_ignore_symbols() {
   use std::io::{Read, Write};
-  use util::pty::fork::*;
-  let deno_exe = util::deno_exe_path();
-  let fork = Fork::from_ptmx().unwrap();
-  if let Ok(mut master) = fork.is_parent() {
+  run_pty_test(|master| {
     master.write_all(b"Array.Symbol\t\n").unwrap();
     master.write_all(b"close();\n").unwrap();
 
@@ -173,7 +146,16 @@ fn pty_ignore_symbols() {
     assert!(
       !output.contains("Uncaught TypeError: Array.Symbol is not a function")
     );
+  });
+}
 
+#[cfg(unix)]
+fn run_pty_test(mut run: impl FnMut(&mut util::pty::fork::Master)) {
+  use util::pty::fork::*;
+  let deno_exe = util::deno_exe_path();
+  let fork = Fork::from_ptmx().unwrap();
+  if let Ok(mut master) = fork.is_parent() {
+    run(&mut master);
     fork.wait().unwrap();
   } else {
     std::env::set_var("NO_COLOR", "1");

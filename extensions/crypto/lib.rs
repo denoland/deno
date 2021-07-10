@@ -246,25 +246,53 @@ pub async fn op_crypto_sign_key(
   let signature = match algorithm {
     Algorithm::RsassaPkcs1v15 => {
       let private_key = RSAPrivateKey::from_pkcs8(&*args.key.data)?;
-      let padding = match args
+      let (padding, hashed) = match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
       {
-        CryptoHash::Sha1 => PaddingScheme::PKCS1v15Sign {
-          hash: Some(rsa::hash::Hash::SHA1),
-        },
-        CryptoHash::Sha256 => PaddingScheme::PKCS1v15Sign {
-          hash: Some(rsa::hash::Hash::SHA2_256),
-        },
-        CryptoHash::Sha384 => PaddingScheme::PKCS1v15Sign {
-          hash: Some(rsa::hash::Hash::SHA2_384),
-        },
-        CryptoHash::Sha512 => PaddingScheme::PKCS1v15Sign {
-          hash: Some(rsa::hash::Hash::SHA2_512),
-        },
+        CryptoHash::Sha1 => {
+          let mut hasher = Sha1::new();
+          hasher.update(&data);
+          (
+            PaddingScheme::PKCS1v15Sign {
+              hash: Some(rsa::hash::Hash::SHA1),
+            },
+            hasher.finalize()[..].to_vec(),
+          )
+        }
+        CryptoHash::Sha256 => {
+          let mut hasher = Sha256::new();
+          hasher.update(&data);
+          (
+            PaddingScheme::PKCS1v15Sign {
+              hash: Some(rsa::hash::Hash::SHA2_256),
+            },
+            hasher.finalize()[..].to_vec(),
+          )
+        }
+        CryptoHash::Sha384 => {
+          let mut hasher = Sha384::new();
+          hasher.update(&data);
+          (
+            PaddingScheme::PKCS1v15Sign {
+              hash: Some(rsa::hash::Hash::SHA2_384),
+            },
+            hasher.finalize()[..].to_vec(),
+          )
+        }
+        CryptoHash::Sha512 => {
+          let mut hasher = Sha512::new();
+          hasher.update(&data);
+          (
+            PaddingScheme::PKCS1v15Sign {
+              hash: Some(rsa::hash::Hash::SHA2_512),
+            },
+            hasher.finalize()[..].to_vec(),
+          )
+        }
       };
 
-      private_key.sign(padding, &data)?
+      private_key.sign(padding, &hashed)?
     }
     Algorithm::RsaPss => {
       let private_key = RSAPrivateKey::from_pkcs8(&*args.key.data)?;
@@ -371,20 +399,15 @@ pub fn op_crypto_random_uuid(
 
 pub async fn op_crypto_subtle_digest(
   _state: Rc<RefCell<OpState>>,
-  algorithm_id: i8,
+  algorithm: CryptoHash,
   data: Option<ZeroCopyBuf>,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let algorithm = match algorithm_id {
-    0 => &digest::SHA1_FOR_LEGACY_USE_ONLY,
-    1 => &digest::SHA256,
-    2 => &digest::SHA384,
-    3 => &digest::SHA512,
-    _ => panic!("Invalid algorithm id"),
-  };
-
   let input = data.ok_or_else(null_opbuf)?;
   let output = tokio::task::spawn_blocking(move || {
-    digest::digest(algorithm, &input).as_ref().to_vec().into()
+    digest::digest(algorithm.into(), &input)
+      .as_ref()
+      .to_vec()
+      .into()
   })
   .await?;
 

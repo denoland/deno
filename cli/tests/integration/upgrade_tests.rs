@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use std::process::Command;
+use std::process::{Command, Stdio};
 use tempfile::TempDir;
 use test_util as util;
 
@@ -63,7 +63,7 @@ fn upgrade_with_version_in_tmpdir() {
     .arg("upgrade")
     .arg("--force")
     .arg("--version")
-    .arg("0.42.0")
+    .arg("1.11.5")
     .spawn()
     .unwrap()
     .wait()
@@ -73,7 +73,7 @@ fn upgrade_with_version_in_tmpdir() {
     Command::new(&exe_path).arg("-V").output().unwrap().stdout,
   )
   .unwrap();
-  assert!(upgraded_deno_version.contains("0.42.0"));
+  assert!(upgraded_deno_version.contains("1.11.5"));
   let _mtime2 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
   // TODO(ry) assert!(mtime1 < mtime2);
 }
@@ -121,7 +121,7 @@ fn upgrade_with_out_in_tmpdir() {
   let status = Command::new(&exe_path)
     .arg("upgrade")
     .arg("--version")
-    .arg("1.0.2")
+    .arg("1.11.5")
     .arg("--output")
     .arg(&new_exe_path.to_str().unwrap())
     .spawn()
@@ -141,5 +141,56 @@ fn upgrade_with_out_in_tmpdir() {
       .stdout,
   )
   .unwrap();
-  assert!(v.contains("1.0.2"));
+  assert!(v.contains("1.11.5"));
+}
+
+// Warning: this test requires internet access.
+// TODO(#7412): reenable. test is flaky
+#[test]
+#[ignore]
+fn upgrade_invalid_stable_version() {
+  let temp_dir = TempDir::new().unwrap();
+  let exe_path = temp_dir.path().join("deno");
+  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  assert!(exe_path.exists());
+  let output = Command::new(&exe_path)
+    .arg("upgrade")
+    .arg("--version")
+    .arg("foobar")
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  assert_eq!(
+    "error: Invalid semver passed\n",
+    util::strip_ansi_codes(&String::from_utf8(output.stderr).unwrap())
+  );
+}
+
+// Warning: this test requires internet access.
+// TODO(#7412): reenable. test is flaky
+#[test]
+#[ignore]
+fn upgrade_invalid_canary_version() {
+  let temp_dir = TempDir::new().unwrap();
+  let exe_path = temp_dir.path().join("deno");
+  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  assert!(exe_path.exists());
+  let output = Command::new(&exe_path)
+    .arg("upgrade")
+    .arg("--canary")
+    .arg("--version")
+    .arg("foobar")
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  assert_eq!(
+    "error: Invalid commit hash passed\n",
+    util::strip_ansi_codes(&String::from_utf8(output.stderr).unwrap())
+  );
 }
