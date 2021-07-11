@@ -272,6 +272,12 @@ delete Object.prototype.__proto__;
         return new domException.DOMException(msg, "InvalidCharacterError");
       },
     );
+    core.registerErrorBuilder(
+      "DOMExceptionNetworkError",
+      function DOMExceptionNetworkError(msg) {
+        return new domException.DOMException(msg, "NetworkError");
+      },
+    );
   }
 
   class Navigator {

@@ -18,6 +18,8 @@ use std::rc::Rc;
 
 use self::sync_fetch::op_worker_sync_fetch;
 
+pub use sync_fetch::get_dom_exception_network_error_class_name;
+
 pub fn init() -> Extension {
   Extension::builder()
     .ops(vec![
