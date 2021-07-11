@@ -191,7 +191,7 @@ delete Object.prototype.__proto__;
       !loadedMainWorkerScript,
     );
     loadedMainWorkerScript = true;
-    
+
     for (const { url, script } of scripts) {
       const err = core.evalContext(script, url)[1];
       if (err !== null) {
