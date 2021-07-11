@@ -3144,8 +3144,14 @@
         "unexpected-self-properties.worker.html": true
       }
     },
-    "dedicated-worker-from-blob-url.window.html": false,
-    "dedicated-worker-in-data-url-context.window.html": false,
+    "dedicated-worker-from-blob-url.window.html": [
+      "Creating a dedicated worker from a blob URL works immediately before revoking."
+    ],
+    "dedicated-worker-in-data-url-context.window.html": [
+      "Create a dedicated worker in a data url frame",
+      "Create a dedicated worker in a data url dedicated worker",
+      "Create a data url dedicated worker in a data url frame"
+    ],
     "examples": {
       "general.any.worker.html": true,
       "general.worker.html": true

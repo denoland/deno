@@ -3,11 +3,25 @@
 use crate::web_worker::WebWorkerInternalHandle;
 use crate::web_worker::WebWorkerType;
 use deno_core::error::generic_error;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_core::OpState;
+use deno_fetch::data_url::DataUrl;
 use deno_fetch::reqwest;
+use deno_web::BlobStore;
+use hyper::body::Bytes;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
+
+// TODO(andreubotella) Properly parse the MIME type
+fn mime_type_essence(mime_type: &str) -> String {
+  let essence = match mime_type.split_once(";") {
+    Some((essence, _)) => essence,
+    None => mime_type,
+  };
+  essence.trim().to_ascii_lowercase()
+}
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,7 +33,7 @@ pub struct SyncFetchScript {
 pub fn op_worker_sync_fetch(
   state: &mut OpState,
   scripts: Vec<String>,
-  _: (),
+  mut loose_mime_checks: bool,
 ) -> Result<Vec<SyncFetchScript>, AnyError> {
   let handle = state.borrow::<WebWorkerInternalHandle>().clone();
   assert_eq!(handle.worker_type, WebWorkerType::Classic);
@@ -33,45 +47,92 @@ pub fn op_worker_sync_fetch(
     .build()
     .unwrap();
 
+  // TODO(andreubotella) It's not good to throw an exception related to blob
+  // URLs when none of the script URLs use the blob scheme.
+  // Also, in which contexts are blob URLs not supported?
+  let blob_store = state.try_borrow::<BlobStore>().ok_or_else(|| {
+    type_error("Blob URLs are not supported in this context.")
+  })?;
+
   let handles: Vec<_> = scripts
     .into_iter()
     .map(|script| -> JoinHandle<Result<SyncFetchScript, AnyError>> {
+      let blob_store = blob_store.clone();
       runtime.spawn(async move {
-        let resp = reqwest::get(script).await?.error_for_status()?;
+        let script_url =
+          Url::parse(&script).map_err(|_| type_error("Invalid script URL"))?;
 
-        let url = resp.url().to_string();
+        let (body, mime_type, res_url) = match script_url.scheme() {
+          "http" | "https" => {
+            let resp = reqwest::get(script_url).await?.error_for_status()?;
 
-        // TODO(andreubotella) Do a proper check that the MIME type is a
-        // Javascript MIME type.
-        let mime_type = resp
-          .headers()
-          .get("Content-Type")
-          .and_then(|v| v.to_str().ok())
-          .map(|v| {
-            v.split_once(";")
-              .unwrap_or((v, ""))
-              .0
-              .trim()
-              .to_ascii_lowercase()
-          });
-        match mime_type.as_deref() {
-          Some("application/javascript") => {}
-          Some("text/javascript") => {}
+            let res_url = resp.url().to_string();
+
+            // TODO(andreubotella) Properly run fetch's "extract a MIME type".
+            let mime_type = resp
+              .headers()
+              .get("Content-Type")
+              .and_then(|v| v.to_str().ok())
+              .map(mime_type_essence);
+
+            // Always check the MIME type with HTTP(S).
+            loose_mime_checks = false;
+
+            let body = resp.bytes().await?;
+
+            (body, mime_type, res_url)
+          }
+          "data" => {
+            let data_url = DataUrl::process(&script)
+              .map_err(|e| type_error(format!("{:?}", e)))?;
+
+            let mime_type = {
+              let mime = data_url.mime_type();
+              format!("{}/{}", mime.type_, mime.subtype)
+            };
+
+            let (body, _) = data_url
+              .decode_to_vec()
+              .map_err(|e| type_error(format!("{:?}", e)))?;
+
+            (Bytes::from(body), Some(mime_type), script)
+          }
+          "blob" => {
+            let blob = blob_store
+              .get_object_url(script_url)?
+              .ok_or_else(|| type_error("Blob for the given URL not found."))?;
+
+            let mime_type = mime_type_essence(&blob.media_type);
+
+            let body = blob.read_all().await?;
+
+            (Bytes::from(body), Some(mime_type), script)
+          }
           _ => {
-            return Err(generic_error(format!(
-              "Invalid MIME type {:?}.",
-              mime_type
+            return Err(type_error(format!(
+              "Classic scripts with scheme {}: are not supported in workers.",
+              script_url.scheme()
             )))
+          }
+        };
+
+        if !loose_mime_checks {
+          // TODO(andreubotella) Check properly for a Javascript MIME type.
+          match mime_type.as_deref() {
+            Some("application/javascript" | "text/javascript") => {}
+            _ => {
+              return Err(generic_error(format!(
+                "Invalid MIME type {:?}.",
+                mime_type
+              )))
+            }
           }
         }
 
-        // We don't use `resp.text()` or `resp.text_with_charset()` because
-        // they will use the BOM or the MIME type's encoding.
-        let body = resp.bytes().await?;
         let (text, _) = encoding_rs::UTF_8.decode_with_bom_removal(&body);
 
         Ok(SyncFetchScript {
-          url,
+          url: res_url,
           script: text.into_owned(),
         })
       })
