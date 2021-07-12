@@ -1928,7 +1928,6 @@
       "SubtleCrypto interface: operation exportKey(KeyFormat, CryptoKey)",
       "SubtleCrypto interface: operation wrapKey(KeyFormat, CryptoKey, CryptoKey, AlgorithmIdentifier)",
       "SubtleCrypto interface: operation unwrapKey(KeyFormat, BufferSource, CryptoKey, AlgorithmIdentifier, AlgorithmIdentifier, boolean, sequence<KeyUsage>)",
-      "Stringification of crypto.subtle",
       "SubtleCrypto interface: crypto.subtle must inherit property \"encrypt(AlgorithmIdentifier, CryptoKey, BufferSource)\" with the proper type",
       "SubtleCrypto interface: calling encrypt(AlgorithmIdentifier, CryptoKey, BufferSource) on crypto.subtle with too few arguments must throw TypeError",
       "SubtleCrypto interface: crypto.subtle must inherit property \"decrypt(AlgorithmIdentifier, CryptoKey, BufferSource)\" with the proper type",
@@ -1978,9 +1977,7 @@
       "event.any.html": true
     },
     "events": {
-      "AddEventListenerOptions-signal.any.html": [
-        "Passing null as the signal should throw"
-      ],
+      "AddEventListenerOptions-signal.any.html": true,
       "Event-isTrusted.any.html": true,
       "EventTarget-constructible.any.html": true,
       "Event-constructors.any.html": [

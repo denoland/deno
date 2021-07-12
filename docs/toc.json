@@ -72,7 +72,10 @@
   "testing": {
     "name": "Testing",
     "children": {
-      "assertions": "Assertions"
+      "assertions": "Assertions",
+      "coverage": "Coverage",
+      "documentation": "Documentation",
+      "sanitizers": "Sanitizers"
     }
   },
   "tools": {

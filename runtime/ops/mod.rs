@@ -6,6 +6,7 @@ pub mod http;
 pub mod io;
 pub mod os;
 pub mod permissions;
+pub mod plugin;
 pub mod process;
 pub mod runtime;
 pub mod signal;

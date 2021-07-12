@@ -1155,6 +1155,11 @@ itest!(error_import_map_unable_to_load {
   exit_code: 1,
 });
 
+itest!(worker_event_handler_test {
+  args: "run --quiet --reload --allow-read worker_event_handler_test.js",
+  output: "worker_event_handler_test.js.out",
+});
+
 #[test]
 fn no_validate_asm() {
   let output = util::deno_cmd()

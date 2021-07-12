@@ -2265,7 +2265,8 @@ fn start(
   let init_config = json!({ "debug": debug, "rootUri": root_uri });
   let init_src = format!("globalThis.serverInit({});", init_config);
 
-  runtime.execute_script(&located_script_name!(), &init_src)
+  runtime.execute_script(&located_script_name!(), &init_src)?;
+  Ok(())
 }
 
 #[derive(Debug, Serialize)]

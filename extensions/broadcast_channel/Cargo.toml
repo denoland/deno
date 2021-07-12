@@ -16,5 +16,5 @@ path = "lib.rs"
 [dependencies]
 async-trait = "0.1"
 deno_core = { version = "0.92.0", path = "../../core" }
-tokio = { version = "1.8.0", features = ["full"] }
+tokio = { version = "1.8.1", features = ["full"] }
 uuid = { version = "0.8.2", features = ["v4"] }

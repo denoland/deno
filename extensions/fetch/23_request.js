@@ -12,6 +12,7 @@
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
+  const consoleInternal = window.__bootstrap.console;
   const { HTTP_TOKEN_CODE_POINT_RE, byteUpperCase } = window.__bootstrap.infra;
   const { URL } = window.__bootstrap.url;
   const { guardFromHeaders } = window.__bootstrap.headers;
@@ -393,14 +394,17 @@
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {
-      const inner = {
-        bodyUsed: this.bodyUsed,
-        headers: this.headers,
-        method: this.method,
-        redirect: this.redirect,
-        url: this.url,
-      };
-      return `Request ${inspect(inner)}`;
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof Request,
+        keys: [
+          "bodyUsed",
+          "headers",
+          "method",
+          "redirect",
+          "url",
+        ],
+      }));
     }
   }
 
