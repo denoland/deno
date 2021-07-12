@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, unitTest } from "./test_util.ts";
 import { Buffer } from "../../../test_util/std/io/buffer.ts";
+import { copy } from "../../../test_util/std/bytes/mod.ts";
 
 const DEFAULT_BUF_SIZE = 32 * 1024;
 
@@ -35,7 +36,7 @@ unitTest(async function copyWithDefaultBufferSize() {
 
   const readSpy = spyRead(reader);
 
-  const n = await Deno.copy(reader, write);
+  const n = await copy(reader, write);
 
   assertEquals(n, xBytes.length);
   assertEquals(write.length, xBytes.length);
@@ -50,7 +51,7 @@ unitTest(async function copyWithCustomBufferSize() {
 
   const readSpy = spyRead(reader);
 
-  const n = await Deno.copy(reader, write, { bufSize });
+  const n = await copy(reader, write, { bufSize });
 
   assertEquals(n, xBytes.length);
   assertEquals(write.length, xBytes.length);
@@ -65,7 +66,7 @@ unitTest({ perms: { write: true } }, async function copyBufferToFile() {
   const reader = new Buffer(xBytes.buffer as ArrayBuffer);
   const write = await Deno.open(filePath, { write: true, create: true });
 
-  const n = await Deno.copy(reader, write, { bufSize });
+  const n = await copy(reader, write, { bufSize });
 
   assertEquals(n, xBytes.length);
 

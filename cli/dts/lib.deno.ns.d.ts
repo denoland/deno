@@ -421,15 +421,19 @@ declare namespace Deno {
     seekSync(offset: number, whence: SeekMode): number;
   }
 
-  /** Copies from `src` to `dst` until either EOF (`null`) is read from `src` or
+  /**
+   * @deprecated Use `copy` from https://deno.land/std/io/util.ts instead.
+   * `Deno.copy` will be removed in Deno 2.0.
+   *
+   * Copies from `src` to `dst` until either EOF (`null`) is read from `src` or
    * an error occurs. It resolves to the number of bytes copied or rejects with
    * the first error encountered while copying.
    *
    * ```ts
    * const source = await Deno.open("my_file.txt");
-   * const bytesCopied1 = await Deno.copy(source, Deno.stdout);
+   * const bytesCopied1 = await copy(source, Deno.stdout);
    * const destination = await Deno.create("my_file_2.txt");
-   * const bytesCopied2 = await Deno.copy(source, destination);
+   * const bytesCopied2 = await copy(source, destination);
    * ```
    *
    * @param src The source to copy from
