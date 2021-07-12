@@ -126,6 +126,7 @@ impl MainWorker {
       deno_net::init::<Permissions>(options.unstable),
       ops::os::init(),
       ops::permissions::init(),
+      ops::plugin::init(),
       ops::process::init(),
       ops::signal::init(),
       ops::tty::init(),
