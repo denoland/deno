@@ -431,9 +431,9 @@ declare namespace Deno {
    *
    * ```ts
    * const source = await Deno.open("my_file.txt");
-   * const bytesCopied1 = await copy(source, Deno.stdout);
+   * const bytesCopied1 = await Deno.copy(source, Deno.stdout);
    * const destination = await Deno.create("my_file_2.txt");
-   * const bytesCopied2 = await copy(source, destination);
+   * const bytesCopied2 = await Deno.copy(source, destination);
    * ```
    *
    * @param src The source to copy from
