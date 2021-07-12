@@ -422,6 +422,15 @@
       throw new TypeError("unreachable");
     }
 
+    /**
+     * @param {string} format
+     * @param {BufferSource} keyData
+     * @param {string} algorithm
+     * @param {boolean} extractable
+     * @param {KeyUsages[]} keyUsages
+     * @returns {Promise<any>}
+     */
+    // deno-lint-ignore require-await
     async importKey(format, keyData, algorithm, extractable, keyUsages) {
       webidl.assertBranded(this, SubtleCrypto);
       const prefix = "Failed to execute 'importKey' on 'SubtleCrypto'";
@@ -521,6 +530,12 @@
       }
     }
 
+    /**
+    * @param {string} format
+    * @param {CryptoKey} key
+    * @returns {Promise<any>}
+    */
+    // deno-lint-ignore require-await
     async exportKey(format, key) {
       webidl.assertBranded(this, SubtleCrypto);
       const prefix = "Failed to execute 'exportKey' on 'SubtleCrypto'";
