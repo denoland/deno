@@ -516,6 +516,15 @@
             signature,
           }, data);
         }
+        case "HMAC": {
+          const hash = key[_algorithm].hash.name;
+          return await core.opAsync("op_crypto_verify_key", {
+            key: keyData,
+            algorithm: "HMAC",
+            hash,
+            signature,
+          }, data);
+        }
       }
 
       throw new TypeError("unreachable");
