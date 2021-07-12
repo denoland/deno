@@ -108,12 +108,6 @@
 
       this[_url] = wsURL.href;
 
-      const cancelRid = core.opSync(
-        "op_ws_check_permission_and_cancel_handle",
-        this[_url],
-        true,
-      );
-
       if (
         options.protocols.length !==
           new Set(
@@ -129,7 +123,14 @@
         );
       }
 
+      const cancelRid = core.opSync(
+        "op_ws_check_permission_and_cancel_handle",
+        this[_url],
+        true,
+      );
+
       if (options.signal?.aborted) {
+        core.close(cancelRid);
         const err = new DOMException(
           "This operation was aborted",
           "AbortError",
