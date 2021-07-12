@@ -135,8 +135,8 @@
           "This operation was aborted",
           "AbortError",
         );
-        PromiseReject(this[_connection], err);
-        PromiseReject(this[_closed], err);
+        this[_connection].reject(err);
+        this[_closed].reject(err);
       } else {
         const abort = () => {
           core.close(cancelRid);
@@ -145,7 +145,7 @@
         PromisePrototypeThen(
           core.opAsync("op_ws_create", {
             url: this[_url],
-            protocols: options.protocol
+            protocols: options.protocols
               ? ArrayPrototypeJoin(options.protocols, ", ")
               : "",
             cancelHandle: cancelRid,
@@ -162,16 +162,16 @@
                     "Closed while connecting",
                     "NetworkError",
                   );
-                  PromiseReject(this[_connection], err);
-                  PromiseReject(this[_closed], err);
+                  this[_connection].reject(err);
+                  this[_closed].reject(err);
                 },
                 () => {
                   const err = new DOMException(
                     "Closed while connecting",
                     "NetworkError",
                   );
-                  PromiseReject(this[_connection], err);
-                  PromiseReject(this[_closed], err);
+                  this[_connection].reject(err);
+                  this[_closed].reject(err);
                 },
               );
             } else {
@@ -254,13 +254,13 @@
                       break;
                     }
                     case "close": {
-                      PromiseResolve(this[_closed], value);
+                      this[_closed].resolve(value);
                       tryClose(this[_rid]);
                       break;
                     }
                     case "error": {
                       const err = new Error(value);
-                      PromiseReject(this[_closed], err);
+                      this[_closed].reject(err);
                       controller.error(err);
                       tryClose(this[_rid]);
                       break;
@@ -277,17 +277,18 @@
                 },
               });
 
-              PromiseResolve(this[_connection], {
+              this[_connection].resolve({
                 readable,
                 writable,
                 extensions: create.extensions ?? "",
                 protocol: create.protocol ?? "",
-              });
+              })
             }
           },
           (err) => {
-            PromiseReject(this[_connection], err);
-            PromiseReject(this[_closed], err);
+            tryClose(cancelRid);
+            this[_connection].reject(err);
+            this[_closed].reject(err);
           },
         );
       }
@@ -347,14 +348,14 @@
           }),
           () => {
             tryClose(this[_rid]);
-            PromiseResolve(this[_closed], {
+            this[_closed].resolve({
               code: code ?? 1005,
               reason: closeInfo.reason,
             });
           },
           (err) => {
             this[_rid] && tryClose(this[_rid]);
-            PromiseReject(this[_closed], err);
+            this[_closed].reject(err);
           },
         );
       }
