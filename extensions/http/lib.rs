@@ -1,7 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::io::TcpStreamResource;
-use crate::io::TlsStreamResource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
@@ -10,13 +8,14 @@ use deno_core::futures::future::poll_fn;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
+use deno_core::include_js_files;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::OpPair;
+use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -35,31 +34,43 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::future::Future;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
+use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWrite;
 use tokio::sync::oneshot;
 use tokio_util::io::StreamReader;
 
-pub fn init() -> Vec<OpPair> {
-  vec![
-    ("op_http_start", op_sync(op_http_start)),
-    ("op_http_request_next", op_async(op_http_request_next)),
-    ("op_http_request_read", op_async(op_http_request_read)),
-    ("op_http_response", op_async(op_http_response)),
-    ("op_http_response_write", op_async(op_http_response_write)),
-    ("op_http_response_close", op_async(op_http_response_close)),
-    (
-      "op_http_websocket_accept_header",
-      op_sync(op_http_websocket_accept_header),
-    ),
-    (
-      "op_http_upgrade_websocket",
-      op_async(op_http_upgrade_websocket),
-    ),
-  ]
+pub fn get_unstable_declaration() -> PathBuf {
+  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_http.unstable.d.ts")
+}
+
+pub fn init() -> Extension {
+  Extension::builder()
+    .js(include_js_files!(
+      prefix "deno:extensions/http",
+      "01_http.js",
+    ))
+    .ops(vec![
+      ("op_http_request_next", op_async(op_http_request_next)),
+      ("op_http_request_read", op_async(op_http_request_read)),
+      ("op_http_response", op_async(op_http_response)),
+      ("op_http_response_write", op_async(op_http_response_write)),
+      ("op_http_response_close", op_async(op_http_response_close)),
+      (
+        "op_http_websocket_accept_header",
+        op_sync(op_http_websocket_accept_header),
+      ),
+      (
+        "op_http_upgrade_websocket",
+        op_async(op_http_upgrade_websocket),
+      ),
+    ])
+    .build()
 }
 
 struct ServiceInner {
@@ -106,13 +117,13 @@ type ConnFuture = Pin<Box<dyn Future<Output = hyper::Result<()>>>>;
 
 struct Conn {
   scheme: &'static str,
+  addr: SocketAddr,
   conn: Rc<RefCell<ConnFuture>>,
 }
 
 struct ConnResource {
   hyper_connection: Conn,
   deno_service: Service,
-  addr: SocketAddr,
   cancel: CancelHandle,
 }
 
@@ -221,7 +232,7 @@ async fn op_http_request_next(
         } else if let Some(host) = req.headers().get("HOST") {
           Cow::Borrowed(host.to_str()?)
         } else {
-          Cow::Owned(conn_resource.addr.to_string())
+          Cow::Owned(conn_resource.hyper_connection.addr.to_string())
         };
         let path = req.uri().path_and_query().map_or("/", |p| p.as_str());
         format!("{}://{}{}", scheme, host, path)
@@ -299,69 +310,30 @@ fn should_ignore_error(e: &AnyError) -> bool {
   false
 }
 
-fn op_http_start(
+pub fn start_http<IO: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
   state: &mut OpState,
-  tcp_stream_rid: ResourceId,
-  _: (),
+  io: IO,
+  addr: SocketAddr,
+  scheme: &'static str,
 ) -> Result<ResourceId, AnyError> {
   let deno_service = Service::default();
 
-  if let Some(resource_rc) = state
-    .resource_table
-    .take::<TcpStreamResource>(tcp_stream_rid)
-  {
-    let resource = Rc::try_unwrap(resource_rc)
-      .expect("Only a single use of this resource should happen");
-    let (read_half, write_half) = resource.into_inner();
-    let tcp_stream = read_half.reunite(write_half)?;
-    let addr = tcp_stream.local_addr()?;
-    let hyper_connection = Http::new()
-      .with_executor(LocalExecutor)
-      .serve_connection(tcp_stream, deno_service.clone())
-      .with_upgrades();
-    let conn = Pin::new(Box::new(hyper_connection));
-    let conn_resource = ConnResource {
-      hyper_connection: Conn {
-        conn: Rc::new(RefCell::new(conn)),
-        scheme: "http",
-      },
-      deno_service,
+  let hyper_connection = Http::new()
+    .with_executor(LocalExecutor)
+    .serve_connection(io, deno_service.clone())
+    .with_upgrades();
+  let conn = Pin::new(Box::new(hyper_connection));
+  let conn_resource = ConnResource {
+    hyper_connection: Conn {
+      scheme,
       addr,
-      cancel: CancelHandle::default(),
-    };
-    let rid = state.resource_table.add(conn_resource);
-    return Ok(rid);
-  }
-
-  if let Some(resource_rc) = state
-    .resource_table
-    .take::<TlsStreamResource>(tcp_stream_rid)
-  {
-    let resource = Rc::try_unwrap(resource_rc)
-      .expect("Only a single use of this resource should happen");
-    let (read_half, write_half) = resource.into_inner();
-    let tls_stream = read_half.reunite(write_half);
-    let addr = tls_stream.get_ref().0.local_addr()?;
-
-    let hyper_connection = Http::new()
-      .with_executor(LocalExecutor)
-      .serve_connection(tls_stream, deno_service.clone())
-      .with_upgrades();
-    let conn = Pin::new(Box::new(hyper_connection));
-    let conn_resource = ConnResource {
-      hyper_connection: Conn {
-        conn: Rc::new(RefCell::new(conn)),
-        scheme: "https",
-      },
-      deno_service,
-      addr,
-      cancel: CancelHandle::default(),
-    };
-    let rid = state.resource_table.add(conn_resource);
-    return Ok(rid);
-  }
-
-  Err(bad_resource_id())
+      conn: Rc::new(RefCell::new(conn)),
+    },
+    deno_service,
+    cancel: CancelHandle::default(),
+  };
+  let rid = state.resource_table.add(conn_resource);
+  Ok(rid)
 }
 
 // We use a tuple instead of struct to avoid serialization overhead of the keys.
