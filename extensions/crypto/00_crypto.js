@@ -521,6 +521,51 @@
       }
     }
 
+    async exportKey(format, key) {
+      webidl.assertBranded(this, SubtleCrypto);
+      const prefix = "Failed to execute 'exportKey' on 'SubtleCrypto'";
+      webidl.requiredArguments(arguments.length, 2, { prefix });
+      format = webidl.converters.KeyFormat(format, {
+        prefix,
+        context: "Argument 1",
+      });
+      key = webidl.converters.CryptoKey(key, {
+        prefix,
+        context: "Argument 2",
+      });
+
+      const handle = key[_handle];
+      const bits = WeakMapPrototypeGet(KEY_STORE, handle);
+
+      switch (key[_algorithm].name) {
+        case "HMAC": {
+          if (bits == null) {
+            throw new DOMException("Key is not available", "OperationError");
+          }
+          switch (format) {
+            case "raw": {
+              if (bits.length % 8 !== 0) {
+                const desiredLength = Math.round(bits.length / 8) * 8;
+                for (let _i = 0; _i < (desiredLength - bits.length); _i++) {
+                  bits.push(0);
+                }
+              }
+
+              return bits.buffer;
+            }
+            // TODO(@littledivy): jwk
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
+        // TODO(@littledivy): RSASSA-PKCS1-v1_5
+        // TODO(@littledivy): RSA-PSS
+        // TODO(@littledivy): ECDSA
+        default:
+          throw new DOMException("Not implemented", "NotSupportedError");
+      }
+    }
+
     /**
      * @param {string} algorithm
      * @param {boolean} extractable
