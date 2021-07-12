@@ -16,8 +16,6 @@
     Set,
     ArrayPrototypeMap,
     ArrayPrototypeJoin,
-    PromiseResolve,
-    PromiseReject,
     PromisePrototypeThen,
     Uint8Array,
     TypeError,
