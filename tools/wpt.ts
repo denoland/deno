@@ -214,7 +214,7 @@ async function generateWptReport(
     if (result.harnessStatus === null && result.status === 0) {
       // If the only error is the event loop running out of tasks, using stderr
       // as the message won't help.
-      message = "Event loop run out of tasks."
+      message = "Event loop run out of tasks.";
     } else {
       message = result.harnessStatus?.message ?? (result.stderr.trim() || null);
     }
@@ -531,14 +531,13 @@ function reportVariation(result: TestResult, expectation: boolean | string[]) {
     writeAllSync(Deno.stdout, new TextEncoder().encode(result.stderr));
 
     const expectFail = expectation === false;
-    const failReason =
-      result.status !== 0
-        ? "runner failed during test"
-        : "the event loop run out of tasks during the test";
+    const failReason = result.status !== 0
+      ? "runner failed during test"
+      : "the event loop run out of tasks during the test";
     console.log(
       `\nfile result: ${
         expectFail ? yellow("failed (expected)") : red("failed")
-      }. ${failReason}\n`
+      }. ${failReason}\n`,
     );
     return;
   }
