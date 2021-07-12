@@ -1,0 +1,19 @@
+# Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "test_plugin"
+version = "0.0.1"
+authors = ["the deno authors"]
+edition = "2018"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+deno_core = { path = "../core" }
+futures = "0.3.15"
+serde = "1"
+
+[dev-dependencies]
+test_util = { path = "../test_util" }
