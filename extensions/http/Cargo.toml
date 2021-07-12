@@ -1,0 +1,25 @@
+# Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_http"
+version = "0.1.0"
+edition = "2018"
+description = "HTTP server implementation for Deno"
+authors = ["the Deno authors"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/denoland/deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+base64 = "0.13.0"
+bytes = "1"
+deno_core = { version = "0.92.0", path = "../../core" }
+deno_websocket = { version = "0.15.1", path = "../websocket" }
+hyper = { version = "0.14.9", features = ["server", "stream", "http1", "http2", "runtime"] }
+ring = "0.16.20"
+serde = { version = "1.0.125", features = ["derive"] }
+tokio = { version = "1.8.0", features = ["full"] }
+tokio-util = "0.6.7"

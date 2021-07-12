@@ -229,48 +229,4 @@ declare namespace Deno {
   */
     alpnProtocols?: string[];
   }
-
-  export interface RequestEvent {
-    readonly request: Request;
-    respondWith(r: Response | Promise<Response>): Promise<void>;
-  }
-
-  export interface HttpConn extends AsyncIterable<RequestEvent> {
-    readonly rid: number;
-
-    nextRequest(): Promise<RequestEvent | null>;
-    close(): void;
-  }
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Services HTTP requests given a TCP or TLS socket.
-   *
-   * ```ts
-   * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
-   * const httpConn = Deno.serveHttp(conn);
-   * const e = await httpConn.nextRequest();
-   * if (e) {
-   *   e.respondWith(new Response("Hello World"));
-   * }
-   * ```
-   *
-   * If `httpConn.nextRequest()` encounters an error or returns `null`
-   * then the underlying HttpConn resource is closed automatically.
-   */
-  export function serveHttp(conn: Conn): HttpConn;
-
-  export interface WebSocketUpgrade {
-    response: Response;
-    websocket: WebSocket;
-  }
-
-  export interface UpgradeWebSocketOptions {
-    protocol?: string;
-  }
-
-  export function upgradeWebSocket(
-    request: Request,
-    options?: UpgradeWebSocketOptions,
-  ): WebSocketUpgrade;
 }

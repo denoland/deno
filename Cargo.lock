@@ -551,6 +551,7 @@ dependencies = [
  "deno_crypto",
  "deno_doc",
  "deno_fetch",
+ "deno_http",
  "deno_lint",
  "deno_net",
  "deno_runtime",
@@ -708,6 +709,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_http"
+version = "0.1.0"
+dependencies = [
+ "base64 0.13.0",
+ "bytes",
+ "deno_core",
+ "deno_websocket",
+ "hyper",
+ "ring",
+ "serde",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "deno_lint"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -731,19 +747,12 @@ dependencies = [
 name = "deno_net"
 version = "0.1.0"
 dependencies = [
- "base64 0.13.0",
- "bytes",
  "deno_core",
- "deno_websocket",
- "http",
- "hyper",
  "lazy_static",
  "log",
- "ring",
  "rustls",
  "serde",
  "tokio",
- "tokio-util",
  "trust-dns-proto",
  "trust-dns-resolver",
  "webpki",
@@ -760,6 +769,7 @@ dependencies = [
  "deno_core",
  "deno_crypto",
  "deno_fetch",
+ "deno_http",
  "deno_net",
  "deno_timers",
  "deno_url",
@@ -3794,6 +3804,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2dfed899f0eb03f32ee8c6a0aabdb8a7949659e3466561fc0adf54e26d88c5f4"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "test_plugin"
+version = "0.0.1"
+dependencies = [
+ "deno_core",
+ "futures",
+ "serde",
+ "test_util",
 ]
 
 [[package]]
