@@ -438,11 +438,11 @@
         prefix,
         context: "Argument 3",
       });
-      extractable = webidl.converters.Boolean(extractable, {
+      extractable = webidl.converters.boolean(extractable, {
         prefix,
         context: "Argument 4",
       });
-      keyUsages = webidl.converters.KeyUsage(keyUsages, {
+      keyUsages = webidl.converters["sequence<KeyUsage>"](keyUsages, {
         prefix,
         context: "Argument 5",
       });

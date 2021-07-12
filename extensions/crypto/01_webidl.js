@@ -24,7 +24,7 @@
     "secret",
   ]);
 
-  webidl.converters.KeyType = webidl.createEnumConverter("KeyFormat", [
+  webidl.converters.KeyFormat = webidl.createEnumConverter("KeyFormat", [
     "raw",
     "pkcs8",
     "spki",
