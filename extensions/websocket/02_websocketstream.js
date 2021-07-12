@@ -282,7 +282,7 @@
                 writable,
                 extensions: create.extensions ?? "",
                 protocol: create.protocol ?? "",
-              })
+              });
             }
           },
           (err) => {
