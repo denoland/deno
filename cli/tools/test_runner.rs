@@ -303,16 +303,14 @@ pub async fn run_test_file(
     None
   };
 
-  let execute_result = worker.execute_module(&main_module).await;
-  execute_result?;
+  worker.execute_module(&main_module).await?;
 
   worker.execute_script(
     &located_script_name!(),
     "window.dispatchEvent(new Event('load'))",
   )?;
 
-  let execute_result = worker.execute_module(&test_module).await;
-  execute_result?;
+  worker.execute_module(&test_module).await?;
 
   worker
     .run_event_loop(maybe_coverage_collector.is_none())

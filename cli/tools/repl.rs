@@ -47,18 +47,7 @@ struct EditorHelper {
 }
 
 impl EditorHelper {
-  fn post_message(
-    &self,
-    method: &str,
-    params: Option<Value>,
-  ) -> Result<Value, AnyError> {
-    self
-      .message_tx
-      .blocking_send((method.to_string(), params))?;
-    self.response_rx.borrow_mut().blocking_recv().unwrap()
-  }
-
-  fn get_global_lexical_scope_names(&self) -> Vec<String> {
+  pub fn get_global_lexical_scope_names(&self) -> Vec<String> {
     let evaluate_response = self
       .post_message(
         "Runtime.globalLexicalScopeNames",
@@ -78,7 +67,67 @@ impl EditorHelper {
       .collect()
   }
 
-  fn get_expression_property_names(&self, expr: &str) -> Vec<String> {
+  pub fn get_expression_property_names(&self, expr: &str) -> Vec<String> {
+    // try to get the properties from the expression
+    if let Some(properties) = self.get_object_expr_properties(expr) {
+      return properties;
+    }
+
+    // otherwise fall back to the prototype
+    let expr_type = self.get_expression_type(expr);
+    let object_expr = match expr_type.as_deref() {
+      // possibilities: https://chromedevtools.github.io/devtools-protocol/v8/Runtime/#type-RemoteObject
+      Some("object") => "Object.prototype",
+      Some("function") => "Function.prototype",
+      Some("string") => "String.prototype",
+      Some("boolean") => "Boolean.prototype",
+      Some("bigint") => "BigInt.prototype",
+      Some("number") => "Number.prototype",
+      _ => return Vec::new(), // undefined, symbol, and unhandled
+    };
+
+    self
+      .get_object_expr_properties(object_expr)
+      .unwrap_or_else(Vec::new)
+  }
+
+  fn get_expression_type(&self, expr: &str) -> Option<String> {
+    self
+      .evaluate_expression(expr)?
+      .get("result")?
+      .get("type")?
+      .as_str()
+      .map(|s| s.to_string())
+  }
+
+  fn get_object_expr_properties(
+    &self,
+    object_expr: &str,
+  ) -> Option<Vec<String>> {
+    let evaluate_result = self.evaluate_expression(object_expr)?;
+    let object_id = evaluate_result.get("result")?.get("objectId")?;
+
+    let get_properties_response = self
+      .post_message(
+        "Runtime.getProperties",
+        Some(json!({
+          "objectId": object_id,
+        })),
+      )
+      .ok()?;
+
+    Some(
+      get_properties_response
+        .get("result")?
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r.get("name").unwrap().as_str().unwrap().to_string())
+        .collect(),
+    )
+  }
+
+  fn evaluate_expression(&self, expr: &str) -> Option<Value> {
     let evaluate_response = self
       .post_message(
         "Runtime.evaluate",
@@ -89,37 +138,24 @@ impl EditorHelper {
           "timeout": 200,
         })),
       )
-      .unwrap();
+      .ok()?;
 
     if evaluate_response.get("exceptionDetails").is_some() {
-      return Vec::new();
+      None
+    } else {
+      Some(evaluate_response)
     }
+  }
 
-    if let Some(result) = evaluate_response.get("result") {
-      if let Some(object_id) = result.get("objectId") {
-        let get_properties_response = self.post_message(
-          "Runtime.getProperties",
-          Some(json!({
-            "objectId": object_id,
-          })),
-        );
-
-        if let Ok(get_properties_response) = get_properties_response {
-          if let Some(result) = get_properties_response.get("result") {
-            let property_names = result
-              .as_array()
-              .unwrap()
-              .iter()
-              .map(|r| r.get("name").unwrap().as_str().unwrap().to_string())
-              .collect();
-
-            return property_names;
-          }
-        }
-      }
-    }
-
-    Vec::new()
+  fn post_message(
+    &self,
+    method: &str,
+    params: Option<Value>,
+  ) -> Result<Value, AnyError> {
+    self
+      .message_tx
+      .blocking_send((method.to_string(), params))?;
+    self.response_rx.borrow_mut().blocking_recv().unwrap()
   }
 }
 

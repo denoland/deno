@@ -482,7 +482,7 @@ impl JsRuntime {
   pub fn sync_ops_cache(&mut self) {
     self
       .execute_script("<anon>", "Deno.core.syncOpsCache()")
-      .unwrap()
+      .unwrap();
   }
 
   /// Returns the runtime's op state, which can be used to maintain ops
@@ -513,7 +513,7 @@ impl JsRuntime {
     &mut self,
     name: &str,
     source_code: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<v8::Global<v8::Value>, AnyError> {
     let scope = &mut self.handle_scope();
 
     let source = v8::String::new(scope, source_code).unwrap();
@@ -531,7 +531,10 @@ impl JsRuntime {
     };
 
     match script.run(tc_scope) {
-      Some(_) => Ok(()),
+      Some(value) => {
+        let value_handle = v8::Global::new(tc_scope, value);
+        Ok(value_handle)
+      }
       None => {
         assert!(tc_scope.has_caught());
         let exception = tc_scope.exception().unwrap();
@@ -1604,6 +1607,27 @@ pub mod tests {
       )
       .unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
+  }
+
+  #[test]
+  fn test_execute_script_return_value() {
+    let mut runtime = JsRuntime::new(Default::default());
+    let value_global = runtime.execute_script("a.js", "a = 1 + 2").unwrap();
+    {
+      let scope = &mut runtime.handle_scope();
+      let value = value_global.get(scope);
+      assert_eq!(value.integer_value(scope).unwrap(), 3);
+    }
+    let value_global = runtime.execute_script("b.js", "b = 'foobar'").unwrap();
+    {
+      let scope = &mut runtime.handle_scope();
+      let value = value_global.get(scope);
+      assert!(value.is_string());
+      assert_eq!(
+        value.to_string(scope).unwrap().to_rust_string_lossy(scope),
+        "foobar"
+      );
+    }
   }
 
   #[test]
