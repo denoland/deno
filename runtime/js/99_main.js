@@ -175,8 +175,8 @@ delete Object.prototype.__proto__;
         return new url.URL(scriptUrl, baseUrl ?? undefined).href;
       } catch {
         throw new domException.DOMException(
-          "SyntaxError",
           "Failed to parse URL.",
+          "SyntaxError",
         );
       }
     });

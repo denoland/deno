@@ -3179,9 +3179,7 @@
       "WorkerUtils": {
         "importScripts": {
           "001.worker.html": true,
-          "002.worker.html": [
-            "002"
-          ],
+          "002.worker.html": true,
           "catch.sub.any.worker.html": [
             "Cross-origin syntax error",
             "Cross-origin throw",
