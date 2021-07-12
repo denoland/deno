@@ -15,19 +15,12 @@ path = "lib.rs"
 
 [dependencies]
 deno_core = { version = "0.92.0", path = "../../core" }
-deno_websocket = { version = "0.15.0", path = "../websocket" }
 
-base64 = "0.13.0"
-bytes = "1"
 log = "0.4.14"
 lazy_static = "1.4.0"
-http = "0.2.4"
-hyper = { version = "0.14.10", features = ["server", "stream", "http1", "http2", "runtime"] }
-ring = "0.16.20"
-rustls = "0.19.1"
+rustls = "0.19.0"
 serde = { version = "1.0.126", features = ["derive"] }
 tokio = { version = "1.8.1", features = ["full"] }
-tokio-util = { version = "0.6", features = ["io"] }
 webpki = "0.21.4"
 webpki-roots = "0.21.1"
 trust-dns-proto = "0.20.3"

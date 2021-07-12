@@ -23,6 +23,7 @@ deno_console = { version = "0.10.1", path = "../extensions/console" }
 deno_core = { version = "0.92.0", path = "../core" }
 deno_crypto = { version = "0.24.1", path = "../extensions/crypto" }
 deno_fetch = { version = "0.32.1", path = "../extensions/fetch" }
+deno_http = { version = "0.1.0", path = "../extensions/http" }
 deno_net = { version = "0.1.0", path = "../extensions/net" }
 deno_timers = { version = "0.8.1", path = "../extensions/timers" }
 deno_url = { version = "0.10.1", path = "../extensions/url" }
@@ -42,6 +43,7 @@ deno_console = { version = "0.10.1", path = "../extensions/console" }
 deno_core = { version = "0.92.0", path = "../core" }
 deno_crypto = { version = "0.24.1", path = "../extensions/crypto" }
 deno_fetch = { version = "0.32.1", path = "../extensions/fetch" }
+deno_http = { version = "0.1.0", path = "../extensions/http" }
 deno_net = { version = "0.1.0", path = "../extensions/net" }
 deno_timers = { version = "0.8.1", path = "../extensions/timers" }
 deno_url = { version = "0.10.1", path = "../extensions/url" }

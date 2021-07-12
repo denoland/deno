@@ -4,6 +4,7 @@ pub use deno_broadcast_channel;
 pub use deno_console;
 pub use deno_crypto;
 pub use deno_fetch;
+pub use deno_http;
 pub use deno_net;
 pub use deno_timers;
 pub use deno_url;

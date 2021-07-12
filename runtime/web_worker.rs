@@ -339,6 +339,8 @@ impl WebWorker {
         ops::process::init(),
         ops::signal::init(),
         ops::tty::init(),
+        deno_http::init(),
+        ops::http::init(),
         ops::io::init_stdio(),
       ]
     } else {
