@@ -76,7 +76,6 @@ pub struct TestSummary {
   pub filtered_out: usize,
   pub measured: usize,
   pub failures: Vec<(TestDescription, String)>,
-  pub elapsed: Duration,
 }
 
 impl TestSummary {
@@ -89,7 +88,6 @@ impl TestSummary {
       filtered_out: 0,
       measured: 0,
       failures: Vec::new(),
-      elapsed: Duration::new(0, 0),
     }
   }
 
@@ -111,7 +109,7 @@ trait TestReporter {
     result: &TestResult,
     elapsed: u64,
   );
-  fn report_summary(&mut self, summary: &TestSummary);
+  fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration);
 }
 
 struct PrettyTestReporter {
@@ -159,7 +157,7 @@ impl TestReporter for PrettyTestReporter {
     );
   }
 
-  fn report_summary(&mut self, summary: &TestSummary) {
+  fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
     if !summary.failures.is_empty() {
       println!("\nfailures:\n");
       for (description, error) in &summary.failures {
@@ -188,7 +186,7 @@ impl TestReporter for PrettyTestReporter {
         summary.ignored,
         summary.measured,
         summary.filtered_out,
-        colors::gray(format!("({}ms)", summary.elapsed.as_millis())),
+        colors::gray(format!("({}ms)", elapsed.as_millis())),
       );
   }
 }
@@ -550,8 +548,8 @@ pub async fn run_tests(
         }
       }
 
-      summary.elapsed = Instant::now().duration_since(earlier);
-      reporter.report_summary(&summary);
+      let elapsed = Instant::now().duration_since(earlier);
+      reporter.report_summary(&summary, &elapsed);
 
       if used_only {
         println!(
