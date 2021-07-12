@@ -509,30 +509,24 @@ pub async fn run_tests(
   let handler = {
     tokio::task::spawn_blocking(move || {
       let mut used_only = false;
-      let mut planned = 0;
-      let mut reported = 0;
       let mut failed = 0;
 
       for event in receiver.iter() {
         match event.message.clone() {
           TestMessage::Plan {
-            pending,
+            pending: _,
             filtered: _,
             only,
           } => {
             if only {
               used_only = true;
             }
-
-            planned += pending;
           }
           TestMessage::Result {
             name: _,
             duration: _,
             result,
           } => {
-            reported += 1;
-
             if let TestResult::Failed(_) = result {
               failed += 1;
             }
