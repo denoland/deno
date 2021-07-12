@@ -71,7 +71,7 @@ fn create_compiler_snapshot(
   op_crate_libs.insert("deno.net", deno_net::get_declaration());
   op_crate_libs
     .insert("deno.net_unstable", deno_net::get_unstable_declaration());
-    op_crate_libs
+  op_crate_libs
     .insert("deno.http_unstable", deno_http::get_unstable_declaration());
 
   // ensure we invalidate the build properly.

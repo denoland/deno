@@ -333,7 +333,7 @@ pub fn start_http<IO: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     cancel: CancelHandle::default(),
   };
   let rid = state.resource_table.add(conn_resource);
-  return Ok(rid);
+  Ok(rid)
 }
 
 // We use a tuple instead of struct to avoid serialization overhead of the keys.
