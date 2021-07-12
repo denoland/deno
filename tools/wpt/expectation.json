@@ -1932,8 +1932,6 @@
       "SubtleCrypto interface: calling encrypt(AlgorithmIdentifier, CryptoKey, BufferSource) on crypto.subtle with too few arguments must throw TypeError",
       "SubtleCrypto interface: crypto.subtle must inherit property \"decrypt(AlgorithmIdentifier, CryptoKey, BufferSource)\" with the proper type",
       "SubtleCrypto interface: calling decrypt(AlgorithmIdentifier, CryptoKey, BufferSource) on crypto.subtle with too few arguments must throw TypeError",
-      "SubtleCrypto interface: crypto.subtle must inherit property \"verify(AlgorithmIdentifier, CryptoKey, BufferSource, BufferSource)\" with the proper type",
-      "SubtleCrypto interface: calling verify(AlgorithmIdentifier, CryptoKey, BufferSource, BufferSource) on crypto.subtle with too few arguments must throw TypeError",
       "SubtleCrypto interface: crypto.subtle must inherit property \"deriveKey(AlgorithmIdentifier, CryptoKey, AlgorithmIdentifier, boolean, sequence<KeyUsage>)\" with the proper type",
       "SubtleCrypto interface: calling deriveKey(AlgorithmIdentifier, CryptoKey, AlgorithmIdentifier, boolean, sequence<KeyUsage>) on crypto.subtle with too few arguments must throw TypeError",
       "SubtleCrypto interface: crypto.subtle must inherit property \"deriveBits(AlgorithmIdentifier, CryptoKey, unsigned long)\" with the proper type",

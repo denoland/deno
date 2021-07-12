@@ -3466,7 +3466,6 @@ mod tests {
           shuffle: None,
           include: None,
           concurrent_jobs: 1,
-          terse: false
         },
         ..Flags::default()
       }
