@@ -243,7 +243,7 @@
    * @returns
    */
   function usageIntersection(a, b) {
-    return a.map((i) => b.find((j) => i == j));
+    return a.filter((i) => b.includes(i));
   }
 
   // TODO(lucacasonato): this should be moved to rust
