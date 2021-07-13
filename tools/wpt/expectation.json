@@ -1954,7 +1954,16 @@
     "randomUUID.https.any.html": true,
     "sign_verify": {
       "ecdsa.https.any.html": false,
-      "hmac.https.any.html": false,
+      "hmac.https.any.html": [
+        "generate wrong key step: HMAC with SHA-1 signing with wrong algorithm name",
+        "generate wrong key step: HMAC with SHA-256 signing with wrong algorithm name",
+        "generate wrong key step: HMAC with SHA-384 signing with wrong algorithm name",
+        "generate wrong key step: HMAC with SHA-512 signing with wrong algorithm name",
+        "generate wrong key step: HMAC with SHA-1 verifying with wrong algorithm name",
+        "generate wrong key step: HMAC with SHA-256 verifying with wrong algorithm name",
+        "generate wrong key step: HMAC with SHA-384 verifying with wrong algorithm name",
+        "generate wrong key step: HMAC with SHA-512 verifying with wrong algorithm name"
+      ],
       "rsa_pkcs.https.any.html": false,
       "rsa_pss.https.any.html": false
     },

@@ -68,6 +68,7 @@
     "verify": {
       "RSASSA-PKCS1-v1_5": null,
       "RSA-PSS": "RsaPssParams",
+      "HMAC": null,
     },
   };
 
