@@ -61,6 +61,12 @@ itest!(fail_fast {
   output: "test/fail_fast.out",
 });
 
+itest!(timeout {
+  args: "test --timeout=2 test/timeout.ts",
+  exit_code: 1,
+  output: "test/timeout.out",
+});
+
 itest!(only {
   args: "test test/only.ts",
   exit_code: 1,

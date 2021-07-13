@@ -1,0 +1,5 @@
+running 1 test from [WILDCARD]/test/timeout.ts
+test test 1 ...
+Exceeded timeout of [WILDCARD]. Use --timeout to increase the timeout value
+
+test result: FAILED. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
