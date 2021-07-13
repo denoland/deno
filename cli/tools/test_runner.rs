@@ -31,6 +31,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
+use std::time::Duration;
 use std::time::Instant;
 use swc_common::comments::CommentKind;
 
@@ -66,36 +67,51 @@ pub struct TestEvent {
   pub message: TestMessage,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct TestSummary {
+  pub total: usize,
+  pub passed: usize,
+  pub failed: usize,
+  pub ignored: usize,
+  pub filtered_out: usize,
+  pub measured: usize,
+  pub failures: Vec<(String, String)>,
+}
+
+impl TestSummary {
+  fn new() -> TestSummary {
+    TestSummary {
+      total: 0,
+      passed: 0,
+      failed: 0,
+      ignored: 0,
+      filtered_out: 0,
+      measured: 0,
+      failures: Vec::new(),
+    }
+  }
+
+  fn has_failed(&self) -> bool {
+    self.failed > 0 || !self.failures.is_empty()
+  }
+
+  fn has_pending(&self) -> bool {
+    self.total - self.passed - self.failed - self.ignored > 0
+  }
+}
+
 trait TestReporter {
   fn visit_event(&mut self, event: TestEvent);
-  fn done(&mut self);
+  fn done(&mut self, summary: &TestSummary, elapsed: &Duration);
 }
 
 struct PrettyTestReporter {
-  time: Instant,
-  failed: usize,
-  filtered_out: usize,
-  ignored: usize,
-  passed: usize,
-  measured: usize,
-  pending: usize,
-  failures: Vec<(String, String)>,
   concurrent: bool,
 }
 
 impl PrettyTestReporter {
   fn new(concurrent: bool) -> PrettyTestReporter {
-    PrettyTestReporter {
-      time: Instant::now(),
-      failed: 0,
-      filtered_out: 0,
-      ignored: 0,
-      passed: 0,
-      measured: 0,
-      pending: 0,
-      failures: Vec::new(),
-      concurrent,
-    }
+    PrettyTestReporter { concurrent }
   }
 }
 
@@ -104,7 +120,7 @@ impl TestReporter for PrettyTestReporter {
     match &event.message {
       TestMessage::Plan {
         pending,
-        filtered,
+        filtered: _,
         only: _,
       } => {
         if *pending == 1 {
@@ -112,9 +128,6 @@ impl TestReporter for PrettyTestReporter {
         } else {
           println!("running {} tests from {}", pending, event.origin);
         }
-
-        self.pending += pending;
-        self.filtered_out += filtered;
       }
 
       TestMessage::Wait { name } => {
@@ -128,8 +141,6 @@ impl TestReporter for PrettyTestReporter {
         duration,
         result,
       } => {
-        self.pending -= 1;
-
         if self.concurrent {
           print!("test {} ...", name);
         }
@@ -141,49 +152,44 @@ impl TestReporter for PrettyTestReporter {
               colors::green("ok"),
               colors::gray(format!("({}ms)", duration))
             );
-
-            self.passed += 1;
           }
+
           TestResult::Ignored => {
             println!(
               " {} {}",
               colors::yellow("ignored"),
               colors::gray(format!("({}ms)", duration))
             );
-
-            self.ignored += 1;
           }
-          TestResult::Failed(error) => {
+
+          TestResult::Failed(_) => {
             println!(
               " {} {}",
               colors::red("FAILED"),
               colors::gray(format!("({}ms)", duration))
             );
-
-            self.failed += 1;
-            self.failures.push((name.to_string(), error.to_string()));
           }
         }
       }
     }
   }
 
-  fn done(&mut self) {
-    if !self.failures.is_empty() {
+  fn done(&mut self, summary: &TestSummary, elapsed: &Duration) {
+    if !summary.failures.is_empty() {
       println!("\nfailures:\n");
-      for (name, error) in &self.failures {
+      for (name, error) in &summary.failures {
         println!("{}", name);
         println!("{}", error);
         println!();
       }
 
       println!("failures:\n");
-      for (name, _) in &self.failures {
+      for (name, _) in &summary.failures {
         println!("\t{}", name);
       }
     }
 
-    let status = if self.pending > 0 || !self.failures.is_empty() {
+    let status = if summary.has_failed() || summary.has_pending() {
       colors::red("FAILED").to_string()
     } else {
       colors::green("ok").to_string()
@@ -192,12 +198,12 @@ impl TestReporter for PrettyTestReporter {
     println!(
         "\ntest result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
         status,
-        self.passed,
-        self.failed,
-        self.ignored,
-        self.measured,
-        self.filtered_out,
-        colors::gray(format!("({}ms)", self.time.elapsed().as_millis())),
+        summary.passed,
+        summary.failed,
+        summary.ignored,
+        summary.measured,
+        summary.filtered_out,
+        colors::gray(format!("({}ms)", elapsed.as_millis())),
       );
   }
 }
@@ -511,69 +517,66 @@ pub async fn run_tests(
   let mut reporter = create_reporter(concurrent_jobs > 1);
   let handler = {
     tokio::task::spawn_blocking(move || {
+      let earlier = Instant::now();
+      let mut summary = TestSummary::new();
       let mut used_only = false;
-      let mut has_error = false;
-      let mut planned = 0;
-      let mut reported = 0;
-      let mut failed = 0;
 
       for event in receiver.iter() {
         match event.message.clone() {
           TestMessage::Plan {
             pending,
-            filtered: _,
+            filtered,
             only,
           } => {
+            summary.total += pending;
+            summary.filtered_out += filtered;
+
             if only {
               used_only = true;
             }
-
-            planned += pending;
           }
+
           TestMessage::Result {
-            name: _,
+            name,
             duration: _,
             result,
-          } => {
-            reported += 1;
-
-            if let TestResult::Failed(_) = result {
-              has_error = true;
-              failed += 1;
+          } => match result {
+            TestResult::Ok => {
+              summary.passed += 1;
             }
-          }
+
+            TestResult::Ignored => {
+              summary.ignored += 1;
+            }
+
+            TestResult::Failed(error) => {
+              summary.failed += 1;
+              summary.failures.push((name.clone(), error.clone()));
+            }
+          },
           _ => {}
         }
 
         reporter.visit_event(event);
 
         if let Some(x) = fail_fast {
-          if failed >= x {
+          if summary.failed >= x {
             break;
           }
         }
       }
 
-      if planned > reported {
-        has_error = true;
-      }
-
-      reporter.done();
-
-      if planned > reported {
-        has_error = true;
-      }
+      let elapsed = Instant::now().duration_since(earlier);
+      reporter.done(&summary, &elapsed);
 
       if used_only {
         println!(
           "{} because the \"only\" option was used\n",
           colors::red("FAILED")
         );
-
-        has_error = true;
       }
 
-      has_error
+      used_only || summary.failed > 0
     })
   };
 
