@@ -48,6 +48,8 @@ between the crates, it must be done in specific order:
     released first
   - `deno_timers` depends on `deno_url`, so the latter must be bumped and
     released first
+  - `deno_http` depends on `deno_websocket`, so the latter must be bumped and
+    released first
 - `runtime` - this crate depends on `deno_core` and all crates in `extensions/`
   directory
 

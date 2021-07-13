@@ -421,7 +421,11 @@ declare namespace Deno {
     seekSync(offset: number, whence: SeekMode): number;
   }
 
-  /** Copies from `src` to `dst` until either EOF (`null`) is read from `src` or
+  /**
+   * @deprecated Use `copy` from https://deno.land/std/io/util.ts instead.
+   * `Deno.copy` will be removed in Deno 2.0.
+   *
+   * Copies from `src` to `dst` until either EOF (`null`) is read from `src` or
    * an error occurs. It resolves to the number of bytes copied or rejects with
    * the first error encountered while copying.
    *

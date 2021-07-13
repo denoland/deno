@@ -2,7 +2,6 @@
 
 pub mod io;
 pub mod ops;
-pub mod ops_http;
 pub mod ops_tls;
 #[cfg(unix)]
 pub mod ops_unix;
@@ -94,14 +93,12 @@ pub fn init<P: NetPermissions + 'static>(unstable: bool) -> Extension {
   ops_to_register.extend(io::init());
   ops_to_register.extend(ops::init::<P>());
   ops_to_register.extend(ops_tls::init::<P>());
-  ops_to_register.extend(ops_http::init());
 
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:extensions/net",
       "01_net.js",
       "02_tls.js",
-      "03_http.js",
       "04_net_unstable.js",
     ))
     .ops(ops_to_register)

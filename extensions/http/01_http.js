@@ -32,11 +32,6 @@
     Uint8Array,
   } = window.__bootstrap.primordials;
 
-  function serveHttp(conn) {
-    const rid = core.opSync("op_http_start", conn.rid);
-    return new HttpConn(rid);
-  }
-
   const connErrorSymbol = Symbol("connError");
 
   class HttpConn {
@@ -373,7 +368,7 @@
   }
 
   window.__bootstrap.http = {
-    serveHttp,
+    HttpConn,
     upgradeWebSocket,
   };
 })(this);
