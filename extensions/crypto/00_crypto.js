@@ -54,6 +54,7 @@
     HmacKeyGenParams: { hash: "HashAlgorithmIdentifier" },
     RsaPssParams: {},
     EcdsaParams: { hash: "HashAlgorithmIdentifier" },
+    HmacImportParams: { hash: "HashAlgorithmIdentifier" },
   };
 
   const supportedAlgorithms = {
