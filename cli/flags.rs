@@ -99,6 +99,7 @@ pub enum DenoSubcommand {
     doc: bool,
     no_run: bool,
     fail_fast: Option<usize>,
+    timeout: Option<usize>,
     quiet: bool,
     allow_none: bool,
     include: Option<Vec<String>>,
@@ -1047,6 +1048,20 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         }),
     )
     .arg(
+      Arg::with_name("timeout")
+        .long("timeout")
+        .alias("timeout")
+        .help("Default timeout of a test in milliseconds")
+        .min_values(0)
+        .required(false)
+        .takes_value(true)
+        .require_equals(true)
+        .validator(|val: String| match val.parse::<usize>() {
+          Ok(_) => Ok(()),
+          Err(_) => Err("fail-fast should be a number".to_string()),
+        }),
+    )
+    .arg(
       Arg::with_name("coverage")
         .long("coverage")
         .require_equals(true)
@@ -1749,6 +1764,16 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     }
   }
 
+  let timeout = if matches.is_present("timeout") {
+    if let Some(value) = matches.value_of("timeout") {
+      Some(value.parse().unwrap())
+    } else {
+      Some(500)
+    }
+  } else {
+    None
+  };
+
   let concurrent_jobs = if matches.is_present("jobs") {
     if let Some(value) = matches.value_of("jobs") {
       value.parse().unwrap()
@@ -1780,6 +1805,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     include,
     filter,
     shuffle,
+    timeout,
     allow_none,
     concurrent_jobs,
   };
@@ -3417,6 +3443,7 @@ mod tests {
           quiet: false,
           include: Some(svec!["dir1/", "dir2/"]),
           shuffle: None,
+          timeout: None,
           concurrent_jobs: 1,
         },
         unstable: true,
@@ -3465,6 +3492,30 @@ mod tests {
           quiet: false,
           shuffle: None,
           include: None,
+          timeout: None,
+          concurrent_jobs: 1,
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_with_timeout() {
+    let r = flags_from_vec(svec!["deno", "test", "--timeout=800"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: None,
+          allow_none: false,
+          quiet: false,
+          shuffle: None,
+          include: None,
+          timeout: Some(800),
           concurrent_jobs: 1,
         },
         ..Flags::default()

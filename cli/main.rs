@@ -992,6 +992,7 @@ async fn test_command(
   allow_none: bool,
   filter: Option<String>,
   shuffle: Option<u64>,
+  timeout: Option<usize>,
   concurrent_jobs: usize,
 ) -> Result<(), AnyError> {
   if let Some(ref coverage_dir) = flags.coverage_dir {
@@ -1208,6 +1209,7 @@ async fn test_command(
           quiet,
           true,
           filter.clone(),
+          timeout,
           shuffle,
           concurrent_jobs,
         )
@@ -1246,6 +1248,7 @@ async fn test_command(
       quiet,
       allow_none,
       filter,
+      timeout,
       shuffle,
       concurrent_jobs,
     )
@@ -1355,6 +1358,7 @@ fn get_subcommand(
       allow_none,
       filter,
       shuffle,
+      timeout,
       concurrent_jobs,
     } => test_command(
       flags,
@@ -1366,6 +1370,7 @@ fn get_subcommand(
       allow_none,
       filter,
       shuffle,
+      timeout,
       concurrent_jobs,
     )
     .boxed_local(),

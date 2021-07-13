@@ -344,6 +344,7 @@ pub async fn run_tests(
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
+  timeout: Option<usize>,
   shuffle: Option<u64>,
   concurrent_jobs: usize,
 ) -> Result<bool, AnyError> {
@@ -513,6 +514,7 @@ pub async fn run_tests(
     tokio::task::spawn_blocking(move || {
       let mut used_only = false;
       let mut has_error = false;
+      let mut test_duration = 0;
       let mut planned = 0;
       let mut reported = 0;
       let mut failed = 0;
@@ -532,10 +534,20 @@ pub async fn run_tests(
           }
           TestMessage::Result {
             name: _,
-            duration: _,
+            duration,
             result,
           } => {
             reported += 1;
+            test_duration += duration;
+
+            if let Some(timeout_val) = timeout {
+              if test_duration > timeout_val {
+                println!(
+                  "\nExceeded timeout of {}. Use --timeout to increase the timeout value",
+                  colors::red(test_duration.to_string()));
+                break;
+              }
+            }
 
             if let TestResult::Failed(_) = result {
               has_error = true;
