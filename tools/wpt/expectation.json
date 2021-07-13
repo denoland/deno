@@ -2252,12 +2252,7 @@
       "enqueue-with-detached-buffer.window.html": false
     },
     "readable-streams": {
-      "async-iterator.any.html": [
-        "Async-iterating a pull source manually",
-        "next() rejects if the stream errors",
-        "return() does not rejects if the stream has not errored yet",
-        "next() that succeeds; next() that reports an error; next()"
-      ],
+      "async-iterator.any.html": false,
       "bad-strategies.any.html": true,
       "bad-underlying-sources.any.html": true,
       "cancel.any.html": true,
@@ -2799,7 +2794,7 @@
     "reading-data-section": {
       "Determining-Encoding.any.html": true,
       "FileReader-event-handler-attributes.any.html": true,
-      "FileReader-multiple-reads.any.html": true,
+      "FileReader-multiple-reads.any.html": false,
       "filereader_abort.any.html": true,
       "filereader_error.any.html": true,
       "filereader_events.any.html": false,
@@ -2825,7 +2820,7 @@
         "type-long-settimeout.any.html": true
       },
       "microtask-queuing": {
-        "queue-microtask-exceptions.any.html": true,
+        "queue-microtask-exceptions.any.html": false,
         "queue-microtask.any.html": true
       }
     }

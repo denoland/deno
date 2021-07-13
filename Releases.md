@@ -6,6 +6,64 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.12.0 / 2021.07.13
+
+- feat: Add `MessageChannel` and `MessagePort` APIs (#11051)
+- feat: Deno namespace configurable and unfrozen (#11062)
+- feat: Enable WebAssembly.instantiateStreaming and WebAssembly.compileStreaming
+  (#11200)
+- feat: Support "types" option when type checking (#10999)
+- feat: Support SharedArrayBuffer sharing between workers (#11040)
+- feat: Transfer MessagePort between workers (#11076)
+- feat(extensions/crypto): Implement generateKey() and sign() (#9614)
+- feat(extensions/crypto): Implement verify() for RSA (#11312)
+- feat(extensions/fetch): Add programmatic proxy (#10907)
+- feat(extensions/http): Server side websocket support (#10359)
+- feat(inspector): Improve inspector prompt in Chrome Devtools (#11187)
+- feat(inspector): Pipe console messages between terminal and inspector (#11134)
+- feat(lsp): Dependency hover information (#11090)
+- feat(repl): Show list completion (#11001)
+- feat(repl): Support autocomplete on declarations containing a primitive
+  (#11325)
+- feat(repl): Support import declarations in the REPL (#11086)
+- feat(repl): Type stripping in the REPL (#10934)
+- feat(test): Add "--shuffle" flag to randomize test ordering (#11163)
+- feat(test): Add support for "--fail-fast=N" (#11316)
+- fix: Align DedicatedWorkerGlobalScope event handlers to spec (#11353)
+- fix: Move stable/unstable types/APIs to their correct places (#10880)
+- fix(core): Fix concurrent loading of dynamic imports (#11089)
+- fix(extensions/console): Eliminate panic inspecting event classes (#10979)
+- fix(extensions/console): Inspecting prototypes of built-ins with custom
+  inspect implementations should not throw (#11308)
+- fix(extensions/console): Left align table entries (#11295)
+- fix(extensions/crypto): Hash input for RSASSA-PKCS1-v1_5 before signing
+  (#11314)
+- fix(extensions/fetch): Consumed body with a non-stream source should result in
+  a disturbed stream (#11217)
+- fix(extensions/fetch): Encode and decode headers as byte strings (#11070)
+- fix(extensions/fetch): Filter out custom HOST headers (#11020)
+- fix(extensions/fetch): OPTIONS should be allowed a non-null body (#11242)
+- fix(extensions/fetch): Proxy body for requests created from other requests
+  (#11093)
+- fix(extensions/http): Encode and decode headers as byte strings in the HTTP
+  server (#11144)
+- fix(extensions/http): Panic in request body streaming (#11191)
+- fix(extensions/http): Specify AbortSignal for native http requests (#11126)
+- fix(extensions/timers): Spec conformance for performance API (#10887)
+- fix(extensions/url): Use USVStrings in URLSearchParams constructor (#11101)
+- fix(extensions/web): AddEventListenerOptions.signal shouldn't be nullable
+  (#11348)
+- fix(extensions/webgpu): Align error scopes to spec (#9797)
+- fix(lsp): Handle invalid config setting better (#11104)
+- fix(lsp): Reload import registries should not error when the module registries
+  directory does not exist (#11123)
+- fix(repl): Panic when Deno.inspect throws (#11292)
+- fix(runtime): Fix signal promise API (#11069)
+- fix(runtime): Ignored tests should not cause permission changes (#11278)
+
+Release notes for std version 0.101.0:
+https://github.com/denoland/deno_std/releases/tag/0.101.0
+
 ### 1.11.3 / 2021.06.29
 
 - fix(#10761): graph errors reported as diagnostics for `Deno.emit()` (#10767)
