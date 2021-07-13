@@ -349,6 +349,7 @@ pub fn get_types(unstable: bool) -> String {
   if unstable {
     types.push(crate::tsc::UNSTABLE_NS_LIB);
     types.push(crate::tsc::DENO_NET_UNSTABLE_LIB);
+    types.push(crate::tsc::DENO_HTTP_UNSTABLE_LIB);
   }
 
   types.join("\n")
@@ -987,7 +988,7 @@ async fn test_command(
   include: Option<Vec<String>>,
   no_run: bool,
   doc: bool,
-  fail_fast: bool,
+  fail_fast: Option<usize>,
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,

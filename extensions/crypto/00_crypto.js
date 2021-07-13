@@ -65,6 +65,10 @@
       "ECDSA": "EcdsaParams",
       "HMAC": null,
     },
+    "verify": {
+      "RSASSA-PKCS1-v1_5": null,
+      "RSA-PSS": "RsaPssParams",
+    },
   };
 
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
@@ -404,6 +408,113 @@
           }, data);
 
           return signature.buffer;
+        }
+      }
+
+      throw new TypeError("unreachable");
+    }
+
+    /**
+     * @param {string} algorithm
+     * @param {CryptoKey} key
+     * @param {BufferSource} signature
+     * @param {BufferSource} data
+     * @returns {Promise<boolean>}
+     */
+    async verify(algorithm, key, signature, data) {
+      webidl.assertBranded(this, SubtleCrypto);
+      const prefix = "Failed to execute 'verify' on 'SubtleCrypto'";
+      webidl.requiredArguments(arguments.length, 4, { prefix });
+      algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+        prefix,
+        context: "Argument 1",
+      });
+      key = webidl.converters.CryptoKey(key, {
+        prefix,
+        context: "Argument 2",
+      });
+      signature = webidl.converters.BufferSource(signature, {
+        prefix,
+        context: "Argument 3",
+      });
+      data = webidl.converters.BufferSource(data, {
+        prefix,
+        context: "Argument 4",
+      });
+
+      // 2.
+      if (ArrayBuffer.isView(signature)) {
+        signature = new Uint8Array(
+          signature.buffer,
+          signature.byteOffset,
+          signature.byteLength,
+        );
+      } else {
+        signature = new Uint8Array(signature);
+      }
+      signature = signature.slice();
+
+      // 3.
+      if (ArrayBuffer.isView(data)) {
+        data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+      } else {
+        data = new Uint8Array(data);
+      }
+      data = data.slice();
+
+      const normalizedAlgorithm = normalizeAlgorithm(algorithm, "verify");
+
+      const handle = key[_handle];
+      const keyData = KEY_STORE.get(handle);
+
+      if (normalizedAlgorithm.name !== key[_algorithm].name) {
+        throw new DOMException(
+          "Verifying algorithm doesn't match key algorithm.",
+          "InvalidAccessError",
+        );
+      }
+
+      if (!key[_usages].includes("verify")) {
+        throw new DOMException(
+          "Key does not support the 'verify' operation.",
+          "InvalidAccessError",
+        );
+      }
+
+      switch (normalizedAlgorithm.name) {
+        case "RSASSA-PKCS1-v1_5": {
+          if (key[_type] !== "public") {
+            throw new DOMException(
+              "Key type not supported",
+              "InvalidAccessError",
+            );
+          }
+
+          const hashAlgorithm = key[_algorithm].hash.name;
+          return await core.opAsync("op_crypto_verify_key", {
+            key: keyData,
+            algorithm: "RSASSA-PKCS1-v1_5",
+            hash: hashAlgorithm,
+            signature,
+          }, data);
+        }
+        case "RSA-PSS": {
+          if (key[_type] !== "public") {
+            throw new DOMException(
+              "Key type not supported",
+              "InvalidAccessError",
+            );
+          }
+
+          const hashAlgorithm = key[_algorithm].hash.name;
+          const saltLength = normalizedAlgorithm.saltLength;
+          return await core.opAsync("op_crypto_verify_key", {
+            key: keyData,
+            algorithm: "RSA-PSS",
+            hash: hashAlgorithm,
+            saltLength,
+            signature,
+          }, data);
         }
       }
 

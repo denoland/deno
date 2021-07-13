@@ -126,9 +126,12 @@ impl MainWorker {
       deno_net::init::<Permissions>(options.unstable),
       ops::os::init(),
       ops::permissions::init(),
+      ops::plugin::init(),
       ops::process::init(),
       ops::signal::init(),
       ops::tty::init(),
+      deno_http::init(),
+      ops::http::init(),
       // Permissions ext (worker specific state)
       perm_ext,
     ];
