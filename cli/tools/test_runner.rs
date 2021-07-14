@@ -179,15 +179,15 @@ impl TestReporter for PrettyTestReporter {
     };
 
     println!(
-        "\ntest result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
-        status,
-        summary.passed,
-        summary.failed,
-        summary.ignored,
-        summary.measured,
-        summary.filtered_out,
-        colors::gray(format!("({}ms)", elapsed.as_millis())),
-      );
+"\ntest result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
+status,
+summary.passed,
+summary.failed,
+summary.ignored,
+summary.measured,
+summary.filtered_out,
+colors::gray(format!("({}ms)", elapsed.as_millis())),
+);
   }
 }
 
@@ -292,16 +292,14 @@ pub async fn run_test_file(
     None
   };
 
-  let execute_result = worker.execute_module(&main_module).await;
-  execute_result?;
+  worker.execute_module(&main_module).await?;
 
   worker.execute_script(
     &located_script_name!(),
     "window.dispatchEvent(new Event('load'))",
   )?;
 
-  let execute_result = worker.execute_module(&test_module).await;
-  execute_result?;
+  worker.execute_module(&test_module).await?;
 
   worker
     .run_event_loop(maybe_coverage_collector.is_none())
@@ -331,7 +329,7 @@ pub async fn run_tests(
   doc_modules: Vec<ModuleSpecifier>,
   test_modules: Vec<ModuleSpecifier>,
   no_run: bool,
-  fail_fast: bool,
+  fail_fast: Option<usize>,
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
@@ -543,8 +541,10 @@ pub async fn run_tests(
           }
         }
 
-        if summary.failed > 0 && fail_fast {
-          break;
+        if let Some(x) = fail_fast {
+          if summary.failed >= x {
+            break;
+          }
         }
       }
 
