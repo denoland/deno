@@ -235,7 +235,7 @@ finishing test case.`;
     const origin = getTestOrigin();
     const originalConsole = globalThis.console;
     if (disableLog) {
-      globalThis.console = new Console(() => { });
+      globalThis.console = new Console(() => {});
     }
 
     const only = ArrayPrototypeFilter(tests, (test) => test.only);

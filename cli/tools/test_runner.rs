@@ -179,15 +179,15 @@ impl TestReporter for PrettyTestReporter {
     };
 
     println!(
-"\ntest result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
-status,
-summary.passed,
-summary.failed,
-summary.ignored,
-summary.measured,
-summary.filtered_out,
-colors::gray(format!("({}ms)", elapsed.as_millis())),
-);
+      "\ntest result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
+      status,
+      summary.passed,
+      summary.failed,
+      summary.ignored,
+      summary.measured,
+      summary.filtered_out,
+      colors::gray(format!("({}ms)", elapsed.as_millis())),
+    );
   }
 }
 
