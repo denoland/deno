@@ -96,24 +96,25 @@ finishing test case.`;
     };
   }
 
-  function pledgeTestPermissions(permissions) {
-    return core.opSync(
-      "op_pledge_test_permissions",
-      parsePermissions(permissions),
-    );
-  }
-
-  function restoreTestPermissions(token) {
-    core.opSync("op_restore_test_permissions", token);
-  }
-
   function withPermissions(fn, permissions) {
-    return async function usePermissions() {
-      const token = await pledgeTestPermissions(permissions);
+    function pledgePermissions(permissions) {
+      return core.opSync(
+        "op_pledge_test_permissions",
+        parsePermissions(permissions),
+      );
+    }
+
+    function restorePermissions(token) {
+      core.opSync("op_restore_test_permissions", token);
+    }
+
+    return async function applyPermissions() {
+      const token = pledgePermissions(permissions);
+
       try {
         await fn();
       } finally {
-        restoreTestPermissions(token);
+        restorePermissions(token);
       }
     };
   }
@@ -167,7 +168,10 @@ finishing test case.`;
     }
 
     if (testDef.permissions) {
-      testDef.fn = withPermissions(fn, parsePermissions(permissions));
+      testDef.fn = withPermissions(
+        testDef.fn,
+        parsePermissions(testDef.permissions),
+      );
     }
 
     ArrayPrototypePush(tests, testDef);

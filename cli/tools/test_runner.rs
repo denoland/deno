@@ -28,8 +28,13 @@ use serde::Deserialize;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::path::Path;
+use std::path::PathBuf;
+use std::sync::mpsc::channel;
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::task::Poll;
+use std::time::Duration;
+use std::time::Instant;
 use swc_common::comments::CommentKind;
 
 // Expression used to get the array containing the actual test definitions in the runtime.
@@ -37,59 +42,64 @@ static TEST_REGISTRY: &str = "(Deno[Deno.internal].tests)";
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct TestDescription {
+pub struct TestDescription {
   pub name: String,
   pub ignore: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct TestPlan {
+pub struct TestPlan {
   pub origin: ModuleSpecifier,
   pub pending: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
-enum TestResult {
+pub enum TestResult {
   Ok,
   Ignored,
   Failed(String),
 }
 
-struct TestSummary {
-  total: usize,
-  passed: usize,
-  failed: usize,
-  ignored: usize,
-  allowed_fail: usize,
-  filtered_out: usize,
-  measured: usize,
-  failures: Vec<(TestDescription, String)>,
-  not_failures: Vec<(TestDescription, String)>,
+#[derive(Debug, Clone, Deserialize)]
+pub struct TestSummary {
+  pub total: usize,
+  pub passed: usize,
+  pub failed: usize,
+  pub ignored: usize,
+  pub filtered_out: usize,
+  pub measured: usize,
+  pub failures: Vec<(TestDescription, String)>,
 }
 
 impl TestSummary {
-  fn new() -> Self {
-    Self {
+  fn new() -> TestSummary {
+    TestSummary {
       total: 0,
       passed: 0,
       failed: 0,
       ignored: 0,
-      allowed_fail: 0,
       filtered_out: 0,
       measured: 0,
       failures: Vec::new(),
-      not_failures: Vec::new(),
     }
+  }
+
+  fn has_failed(&self) -> bool {
+    self.failed > 0 || !self.failures.is_empty()
+  }
+
+  fn has_pending(&self) -> bool {
+    self.total - self.passed - self.failed - self.ignored > 0
   }
 }
 
 trait TestReporter {
-  fn visit_plan(&mut self, plan: TestPlan);
-  fn visit_wait(&mut self, description: TestDescription);
-  fn visit_result(&mut self, description: TestDescription, result: TestResult);
-  fn visit_summary(&mut self, _summary: &TestSummary);
+  fn report_plan(&mut self, plan: TestPlan);
+  fn report_wait(&mut self, description: TestDescription);
+  fn report_result(&mut self, description: TestDescription, result: TestResult);
+  fn report_summary(&mut self, _summary: &TestSummary);
 }
 
 struct PrettyTestReporter {
@@ -103,7 +113,7 @@ impl PrettyTestReporter {
 }
 
 impl TestReporter for PrettyTestReporter {
-  fn visit_plan(&mut self, plan: TestPlan) {
+  fn report_plan(&mut self, plan: TestPlan) {
     println!(
       "running {} tests from {}",
       plan.pending,
@@ -111,13 +121,17 @@ impl TestReporter for PrettyTestReporter {
     );
   }
 
-  fn visit_wait(&mut self, description: TestDescription) {
+  fn report_wait(&mut self, description: TestDescription) {
     if !self.concurrent {
       print!("test {} ...", description.name);
     }
   }
 
-  fn visit_result(&mut self, description: TestDescription, result: TestResult) {
+  fn report_result(
+    &mut self,
+    description: TestDescription,
+    result: TestResult,
+  ) {
     if self.concurrent {
       print!("test {} ...", description.name);
     }
@@ -151,7 +165,7 @@ impl TestReporter for PrettyTestReporter {
     }
   }
 
-  fn visit_summary(&mut self, summary: &TestSummary) {
+  fn report_summary(&mut self, summary: &TestSummary) {
     if !summary.failures.is_empty() {
       println!("\nfailures:\n");
       for (description, error) in &summary.failures {
@@ -166,7 +180,7 @@ impl TestReporter for PrettyTestReporter {
       }
     }
 
-    let status = if summary.failed > 0 {
+    let status = if summary.has_failed() || summary.has_pending() {
       colors::red("FAILED").to_string()
     } else {
       colors::green("ok").to_string()
@@ -276,9 +290,7 @@ where
   );
 
   let registry = {
-    let execute_result = worker.execute_module(&module_specifier).await;
-    execute_result?;
-
+    worker.execute_module(&module_specifier).await?;
     let registry = worker
       .js_runtime
       .execute_script("deno:test_module", TEST_REGISTRY)?;
@@ -377,7 +389,7 @@ pub async fn run_tests(
   doc_modules: Vec<ModuleSpecifier>,
   test_modules: Vec<ModuleSpecifier>,
   no_run: bool,
-  fail_fast: bool,
+  fail_fast: Option<usize>,
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
@@ -508,12 +520,12 @@ pub async fn run_tests(
 
       match event {
         TestEvent::Plan(plan) => {
-          reporter.visit_plan(plan);
+          reporter.report_plan(plan);
         }
 
         TestEvent::Wait(description) => {
           summary.total += 1;
-          reporter.visit_wait(description);
+          reporter.report_wait(description);
         }
 
         TestEvent::Result(description, result) => {
@@ -532,7 +544,7 @@ pub async fn run_tests(
             }
           }
 
-          reporter.visit_result(description, result);
+          reporter.report_result(description, result);
         }
       }
     }
@@ -564,7 +576,7 @@ pub async fn run_tests(
     .await;
 
   let summary = summary_lock.lock().unwrap();
-  reporter_lock.lock().unwrap().visit_summary(&summary);
+  reporter_lock.lock().unwrap().report_summary(&summary);
 
   Ok(summary.failed > 0)
 }
