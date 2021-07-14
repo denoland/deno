@@ -37,34 +37,34 @@ use swc_common::comments::CommentKind;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TestDescription {
+  pub origin: String,
+  pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum TestResult {
   Ok,
   Ignored,
   Failed(String),
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "kind", content = "data", rename_all = "camelCase")]
-pub enum TestMessage {
-  Plan {
-    pending: usize,
-    filtered: usize,
-    only: bool,
-  },
-  Wait {
-    name: String,
-  },
-  Result {
-    name: String,
-    duration: usize,
-    result: TestResult,
-  },
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestPlan {
+  pub origin: String,
+  pub total: usize,
+  pub filtered_out: usize,
+  pub used_only: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct TestEvent {
-  pub origin: String,
-  pub message: TestMessage,
+#[serde(rename_all = "camelCase")]
+pub enum TestEvent {
+  Plan(TestPlan),
+  Wait(TestDescription),
+  Result(TestDescription, TestResult, u64),
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -75,7 +75,7 @@ pub struct TestSummary {
   pub ignored: usize,
   pub filtered_out: usize,
   pub measured: usize,
-  pub failures: Vec<(String, String)>,
+  pub failures: Vec<(TestDescription, String)>,
 }
 
 impl TestSummary {
@@ -101,8 +101,15 @@ impl TestSummary {
 }
 
 trait TestReporter {
-  fn visit_event(&mut self, event: TestEvent);
-  fn done(&mut self, summary: &TestSummary, elapsed: &Duration);
+  fn report_plan(&mut self, plan: &TestPlan);
+  fn report_wait(&mut self, description: &TestDescription);
+  fn report_result(
+    &mut self,
+    description: &TestDescription,
+    result: &TestResult,
+    elapsed: u64,
+  );
+  fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration);
 }
 
 struct PrettyTestReporter {
@@ -116,76 +123,52 @@ impl PrettyTestReporter {
 }
 
 impl TestReporter for PrettyTestReporter {
-  fn visit_event(&mut self, event: TestEvent) {
-    match &event.message {
-      TestMessage::Plan {
-        pending,
-        filtered: _,
-        only: _,
-      } => {
-        if *pending == 1 {
-          println!("running {} test from {}", pending, event.origin);
-        } else {
-          println!("running {} tests from {}", pending, event.origin);
-        }
-      }
+  fn report_plan(&mut self, plan: &TestPlan) {
+    let inflection = if plan.total == 1 { "test" } else { "tests" };
+    println!("running {} {} from {}", plan.total, inflection, plan.origin);
+  }
 
-      TestMessage::Wait { name } => {
-        if !self.concurrent {
-          print!("test {} ...", name);
-        }
-      }
-
-      TestMessage::Result {
-        name,
-        duration,
-        result,
-      } => {
-        if self.concurrent {
-          print!("test {} ...", name);
-        }
-
-        match result {
-          TestResult::Ok => {
-            println!(
-              " {} {}",
-              colors::green("ok"),
-              colors::gray(format!("({}ms)", duration))
-            );
-          }
-
-          TestResult::Ignored => {
-            println!(
-              " {} {}",
-              colors::yellow("ignored"),
-              colors::gray(format!("({}ms)", duration))
-            );
-          }
-
-          TestResult::Failed(_) => {
-            println!(
-              " {} {}",
-              colors::red("FAILED"),
-              colors::gray(format!("({}ms)", duration))
-            );
-          }
-        }
-      }
+  fn report_wait(&mut self, description: &TestDescription) {
+    if !self.concurrent {
+      print!("test {} ...", description.name);
     }
   }
 
-  fn done(&mut self, summary: &TestSummary, elapsed: &Duration) {
+  fn report_result(
+    &mut self,
+    description: &TestDescription,
+    result: &TestResult,
+    elapsed: u64,
+  ) {
+    if self.concurrent {
+      print!("test {} ...", description.name);
+    }
+
+    let status = match result {
+      TestResult::Ok => colors::green("ok").to_string(),
+      TestResult::Ignored => colors::yellow("ignored").to_string(),
+      TestResult::Failed(_) => colors::red("FAILED").to_string(),
+    };
+
+    println!(
+      " {} {}",
+      status,
+      colors::gray(format!("({}ms)", elapsed)).to_string()
+    );
+  }
+
+  fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
     if !summary.failures.is_empty() {
       println!("\nfailures:\n");
-      for (name, error) in &summary.failures {
-        println!("{}", name);
+      for (description, error) in &summary.failures {
+        println!("{}", description.name);
         println!("{}", error);
         println!();
       }
 
       println!("failures:\n");
-      for (name, _) in &summary.failures {
-        println!("\t{}", name);
+      for (description, _) in &summary.failures {
+        println!("\t{}", description.name);
       }
     }
 
@@ -196,15 +179,15 @@ impl TestReporter for PrettyTestReporter {
     };
 
     println!(
-        "\ntest result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
-        status,
-        summary.passed,
-        summary.failed,
-        summary.ignored,
-        summary.measured,
-        summary.filtered_out,
-        colors::gray(format!("({}ms)", elapsed.as_millis())),
-      );
+      "\ntest result: {}. {} passed; {} failed; {} ignored; {} measured; {} filtered out {}\n",
+      status,
+      summary.passed,
+      summary.failed,
+      summary.ignored,
+      summary.measured,
+      summary.filtered_out,
+      colors::gray(format!("({}ms)", elapsed.as_millis())),
+    );
   }
 }
 
@@ -522,42 +505,41 @@ pub async fn run_tests(
       let mut used_only = false;
 
       for event in receiver.iter() {
-        match event.message.clone() {
-          TestMessage::Plan {
-            pending,
-            filtered,
-            only,
-          } => {
-            summary.total += pending;
-            summary.filtered_out += filtered;
+        match event {
+          TestEvent::Plan(plan) => {
+            summary.total += plan.total;
+            summary.filtered_out += plan.filtered_out;
 
-            if only {
+            if plan.used_only {
               used_only = true;
             }
+
+            reporter.report_plan(&plan);
           }
 
-          TestMessage::Result {
-            name,
-            duration: _,
-            result,
-          } => match result {
-            TestResult::Ok => {
-              summary.passed += 1;
+          TestEvent::Wait(description) => {
+            reporter.report_wait(&description);
+          }
+
+          TestEvent::Result(description, result, elapsed) => {
+            match &result {
+              TestResult::Ok => {
+                summary.passed += 1;
+              }
+
+              TestResult::Ignored => {
+                summary.ignored += 1;
+              }
+
+              TestResult::Failed(error) => {
+                summary.failed += 1;
+                summary.failures.push((description.clone(), error.clone()));
+              }
             }
 
-            TestResult::Ignored => {
-              summary.ignored += 1;
-            }
-
-            TestResult::Failed(error) => {
-              summary.failed += 1;
-              summary.failures.push((name.clone(), error.clone()));
-            }
-          },
-          _ => {}
+            reporter.report_result(&description, &result, elapsed);
+          }
         }
-
-        reporter.visit_event(event);
 
         if let Some(x) = fail_fast {
           if summary.failed >= x {
@@ -567,7 +549,7 @@ pub async fn run_tests(
       }
 
       let elapsed = Instant::now().duration_since(earlier);
-      reporter.done(&summary, &elapsed);
+      reporter.report_summary(&summary, &elapsed);
 
       if used_only {
         println!(

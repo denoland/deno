@@ -186,10 +186,6 @@ finishing test case.`;
     ArrayPrototypePush(tests, testDef);
   }
 
-  function postTestMessage(kind, data) {
-    return core.opSync("op_post_test_message", { message: { kind, data } });
-  }
-
   function createTestFilter(filter) {
     return (def) => {
       if (filter) {
@@ -223,25 +219,38 @@ finishing test case.`;
     }
   }
 
+  function getTestOrigin() {
+    return core.opSync("op_get_test_origin");
+  }
+
+  function dispatchTestEvent(event) {
+    return core.opSync("op_dispatch_test_event", event);
+  }
+
   async function runTests({
     disableLog = false,
     filter = null,
     shuffle = null,
   } = {}) {
+    const origin = getTestOrigin();
     const originalConsole = globalThis.console;
     if (disableLog) {
       globalThis.console = new Console(() => {});
     }
 
     const only = ArrayPrototypeFilter(tests, (test) => test.only);
-    const pending = ArrayPrototypeFilter(
+    const filtered = ArrayPrototypeFilter(
       (only.length > 0 ? only : tests),
       createTestFilter(filter),
     );
-    postTestMessage("plan", {
-      filtered: tests.length - pending.length,
-      pending: pending.length,
-      only: only.length > 0,
+
+    dispatchTestEvent({
+      plan: {
+        origin,
+        total: filtered.length,
+        filteredOut: tests.length - filtered.length,
+        usedOnly: only.length > 0,
+      },
     });
 
     if (shuffle !== null) {
@@ -256,31 +265,25 @@ finishing test case.`;
         };
       }(shuffle));
 
-      for (let i = pending.length - 1; i > 0; i--) {
+      for (let i = filtered.length - 1; i > 0; i--) {
         const j = nextInt(i);
-        [pending[i], pending[j]] = [pending[j], pending[i]];
+        [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
       }
     }
 
-    for (const test of pending) {
-      const {
-        name,
-      } = test;
-
+    for (const test of filtered) {
+      const description = {
+        origin,
+        name: test.name,
+      };
       const earlier = DateNow();
 
-      postTestMessage("wait", {
-        name,
-      });
+      dispatchTestEvent({ wait: description });
 
       const result = await runTest(test);
-      const duration = DateNow() - earlier;
+      const elapsed = DateNow() - earlier;
 
-      postTestMessage("result", {
-        name,
-        result,
-        duration,
-      });
+      dispatchTestEvent({ result: [description, result, elapsed] });
     }
 
     if (disableLog) {
