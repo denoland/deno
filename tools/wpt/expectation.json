@@ -2794,7 +2794,7 @@
     "reading-data-section": {
       "Determining-Encoding.any.html": true,
       "FileReader-event-handler-attributes.any.html": true,
-      "FileReader-multiple-reads.any.html": false,
+      "FileReader-multiple-reads.any.html": true,
       "filereader_abort.any.html": true,
       "filereader_error.any.html": true,
       "filereader_events.any.html": false,
