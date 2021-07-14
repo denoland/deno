@@ -4,8 +4,9 @@
 
 - Listening for TCP port connections with
   [Deno.listen](https://doc.deno.land/builtin/stable#Deno.listen).
-- Use [Deno.copy](https://doc.deno.land/builtin/stable#Deno.copy) to take
-  inbound data and redirect it to be outbound data.
+- Use
+  [copy](https://doc.deno.land/https/deno.land/std@$STD_VERSION/io/util.ts#copy)
+  to take inbound data and redirect it to be outbound data.
 
 ## Example
 
@@ -16,10 +17,11 @@ returns to the client anything it sends.
 /**
  * echo_server.ts
  */
+import { copy } from "https://deno.land/std@$STD_VERSION/io/util.ts";
 const listener = Deno.listen({ port: 8080 });
 console.log("listening on 0.0.0.0:8080");
 for await (const conn of listener) {
-  Deno.copy(conn, conn).finally(() => conn.close());
+  copy(conn, conn).finally(() => conn.close());
 }
 ```
 

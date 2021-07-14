@@ -443,7 +443,7 @@
       });
 
       // 2.
-      if (ArrayBuffer.isView(signature)) {
+      if (ArrayBufferIsView(signature)) {
         signature = new Uint8Array(
           signature.buffer,
           signature.byteOffset,
@@ -452,20 +452,20 @@
       } else {
         signature = new Uint8Array(signature);
       }
-      signature = signature.slice();
+      signature = TypedArrayPrototypeSlice(signature);
 
       // 3.
-      if (ArrayBuffer.isView(data)) {
+      if (ArrayBufferIsView(data)) {
         data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
       } else {
         data = new Uint8Array(data);
       }
-      data = data.slice();
+      data = TypedArrayPrototypeSlice(data);
 
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "verify");
 
       const handle = key[_handle];
-      const keyData = KEY_STORE.get(handle);
+      const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
 
       if (normalizedAlgorithm.name !== key[_algorithm].name) {
         throw new DOMException(
@@ -474,7 +474,7 @@
         );
       }
 
-      if (!key[_usages].includes("verify")) {
+      if (!ArrayPrototypeIncludes(key[_usages], "verify")) {
         throw new DOMException(
           "Key does not support the 'verify' operation.",
           "InvalidAccessError",

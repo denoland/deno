@@ -8,6 +8,7 @@ import {
   assertThrowsAsync,
   unitTest,
 } from "./test_util.ts";
+import { copy } from "../../../test_util/std/io/util.ts";
 
 unitTest(function filesStdioFileDescriptors(): void {
   assertEquals(Deno.stdin.rid, 0);
@@ -21,7 +22,7 @@ unitTest({ perms: { read: true } }, async function filesCopyToStdout(): Promise<
   const filename = "cli/tests/fixture.json";
   const file = await Deno.open(filename);
   assert(file.rid > 2);
-  const bytesWritten = await Deno.copy(file, Deno.stdout);
+  const bytesWritten = await copy(file, Deno.stdout);
   const fileSize = Deno.statSync(filename).size;
   assertEquals(bytesWritten, fileSize);
   file.close();

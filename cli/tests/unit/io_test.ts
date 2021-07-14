@@ -35,6 +35,7 @@ unitTest(async function copyWithDefaultBufferSize() {
 
   const readSpy = spyRead(reader);
 
+  // deno-lint-ignore no-deprecated-deno-api
   const n = await Deno.copy(reader, write);
 
   assertEquals(n, xBytes.length);
@@ -50,6 +51,7 @@ unitTest(async function copyWithCustomBufferSize() {
 
   const readSpy = spyRead(reader);
 
+  // deno-lint-ignore no-deprecated-deno-api
   const n = await Deno.copy(reader, write, { bufSize });
 
   assertEquals(n, xBytes.length);
@@ -65,6 +67,7 @@ unitTest({ perms: { write: true } }, async function copyBufferToFile() {
   const reader = new Buffer(xBytes.buffer as ArrayBuffer);
   const write = await Deno.open(filePath, { write: true, create: true });
 
+  // deno-lint-ignore no-deprecated-deno-api
   const n = await Deno.copy(reader, write, { bufSize });
 
   assertEquals(n, xBytes.length);
