@@ -146,27 +146,6 @@ declare namespace Deno {
     | "f32"
     | "f64";
 
-  type NativeTypeToJsType<T> = T extends "void" ? void
-    : T extends
-      | "u64"
-      | "i64"
-      | "usize"
-      | "isize" ? bigint
-    : T extends
-      | "u8"
-      | "i8"
-      | "u16"
-      | "i16"
-      | "u32"
-      | "i32"
-      | "f32"
-      | "f64" ? number
-    : never;
-
-  type MapParametersToJsType<P extends NativeType[]> = {
-    [I in keyof P]: NativeTypeToJsType<P[I]>;
-  };
-
   /** A foreign function as defined by its parameter and result types */
   export interface ForeignFunction {
     parameters: NativeType[];
@@ -176,11 +155,7 @@ declare namespace Deno {
   /** A dynamic library resource */
   export interface DynamicLibrary<S extends Record<string, ForeignFunction>> {
     /** All of the registered symbols along with functions for calling them */
-    symbols: {
-      [K in keyof S]: (
-        args: MapParametersToJsType<S[K]["parameters"]>,
-      ) => NativeTypeToJsType<S[K]["result"]>;
-    };
+    symbols: { [K in keyof S]: (...args: unknown[]) => unknown };
 
     close(): void;
   }
