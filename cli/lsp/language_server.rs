@@ -3,6 +3,7 @@
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
+use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -55,6 +56,7 @@ use super::urls;
 use crate::config_file::ConfigFile;
 use crate::config_file::TsConfig;
 use crate::deno_dir;
+use crate::file_fetcher::get_source_from_data_url;
 use crate::fs_util;
 use crate::import_map::ImportMap;
 use crate::logger;
@@ -471,7 +473,7 @@ impl Inner {
     };
     if let Some(import_map_str) = &maybe_import_map {
       info!("Setting import map from: \"{}\"", import_map_str);
-      let import_map_url = if let Ok(url) = Url::from_file_path(import_map_str)
+      let import_map_url = if let Ok(url) = resolve_url_or_path(import_map_str)
       {
         Ok(url)
       } else if let Some(root_uri) = &maybe_root_uri {
@@ -488,21 +490,29 @@ impl Inner {
           import_map_str
         ))
       }?;
-      let import_map_path = import_map_url.to_file_path().map_err(|_| {
-        anyhow!("Cannot convert \"{}\" into a file path.", import_map_url)
-      })?;
-      info!(
-        "  Resolved import map: \"{}\"",
-        import_map_path.to_string_lossy()
-      );
-      let import_map_json =
+
+      let import_map_json = if import_map_url.scheme() == "data" {
+        get_source_from_data_url(&import_map_url)?.0
+      } else {
+        let import_map_path = import_map_url.to_file_path().map_err(|_| {
+          anyhow!("Cannot convert \"{}\" into a file path.", import_map_url)
+        })?;
+        info!(
+          "  Resolved import map: \"{}\"",
+          import_map_path.to_string_lossy()
+        );
         fs::read_to_string(import_map_path).await.map_err(|err| {
           anyhow!(
             "Failed to load the import map at: {}. [{}]",
             import_map_url,
             err
           )
-        })?;
+        })?
+      };
+      // TODO(@satyarohith): if import_map_url is a data url and import_map_json contains relative
+      // paths, we will get an Invalid address error in the logs because of the base_url not
+      // being a valid path. We should somehow support relative paths in import
+      // maps that are data urls.
       let import_map =
         ImportMap::from_json(&import_map_url.to_string(), &import_map_json)?;
       self.maybe_import_map_uri = Some(import_map_url);
