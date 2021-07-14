@@ -615,7 +615,11 @@ mod tests {
           leading_comments: Vec::new(),
           span: Span::new(BytePos(0), BytePos(33), Default::default()),
           specifier: "./test.ts".into(),
-          specifier_span: Span::new(BytePos(21), BytePos(32), Default::default()),
+          specifier_span: Span::new(
+            BytePos(21),
+            BytePos(32),
+            Default::default()
+          ),
           import_assertions: HashMap::default(),
         },
         DependencyDescriptor {
@@ -624,7 +628,11 @@ mod tests {
           leading_comments: Vec::new(),
           span: Span::new(BytePos(52), BytePos(70), Default::default()),
           specifier: "./foo.ts".into(),
-          specifier_span: Span::new(BytePos(59), BytePos(69), Default::default()),
+          specifier_span: Span::new(
+            BytePos(59),
+            BytePos(69),
+            Default::default()
+          ),
           import_assertions: HashMap::default(),
         }
       ]

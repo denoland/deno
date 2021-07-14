@@ -377,8 +377,12 @@ pub fn analyze_dependencies(
 
     let dep = dependencies.entry(desc.specifier.to_string()).or_default();
     dep.is_dynamic = desc.is_dynamic;
-    let start = parsed_module.source_map.lookup_char_pos(desc.specifier_span.lo);
-    let end = parsed_module.source_map.lookup_char_pos(desc.specifier_span.hi);
+    let start = parsed_module
+      .source_map
+      .lookup_char_pos(desc.specifier_span.lo);
+    let end = parsed_module
+      .source_map
+      .lookup_char_pos(desc.specifier_span.hi);
     let range = Range {
       start: Position {
         line: (start.line - 1) as u32,

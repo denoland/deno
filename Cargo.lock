@@ -678,8 +678,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.8.0"
-source = "git+https://github.com/denoland/deno_doc#1e431e52d689bc424e1208909892366351cc8d7c"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44feacb59368823497c094956cb283bf9431d7d87936421ef7737a7adeb4c574"
 dependencies = [
  "futures",
  "lazy_static",
@@ -724,8 +725,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.10.0"
-source = "git+https://github.com/denoland/deno_lint#054f1261a02ea8147f882774bc62d4faf9d041df"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dbbc65249044e20cbd7c548bd0424e779e1f32b7082fa5cee49da47fe46c0cc4"
 dependencies = [
  "anyhow",
  "derive_more",
