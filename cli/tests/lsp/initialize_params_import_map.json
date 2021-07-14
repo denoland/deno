@@ -1,0 +1,62 @@
+{
+  "processId": 0,
+  "clientInfo": {
+    "name": "test-harness",
+    "version": "1.0.0"
+  },
+  "rootUri": null,
+  "initializationOptions": {
+    "enable": true,
+    "codeLens": {
+      "implementations": true,
+      "references": true
+    },
+    "importMap": "data:application/json;utf8,{\"imports\": { \"example\": \"https://deno.land/x/example/mod.ts\" }}",
+    "lint": true,
+    "suggest": {
+      "autoImports": true,
+      "completeFunctionCalls": false,
+      "names": true,
+      "paths": true,
+      "imports": {
+        "hosts": {
+          "http://localhost:4545/": false
+        }
+      }
+    },
+    "unstable": false
+  },
+  "capabilities": {
+    "textDocument": {
+      "codeAction": {
+        "codeActionLiteralSupport": {
+          "codeActionKind": {
+            "valueSet": [
+              "quickfix"
+            ]
+          }
+        },
+        "isPreferredSupport": true,
+        "dataSupport": true,
+        "resolveSupport": {
+          "properties": [
+            "edit"
+          ]
+        }
+      },
+      "foldingRange": {
+        "lineFoldingOnly": true
+      },
+      "synchronization": {
+        "dynamicRegistration": true,
+        "willSave": true,
+        "willSaveWaitUntil": true,
+        "didSave": true
+      }
+    },
+    "workspace": {
+      "configuration": true,
+      "workspaceFolders": true
+    }
+  }
+}
