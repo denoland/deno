@@ -74,6 +74,7 @@ percent-encoding = "2.1.0"
 pin-project = "1.0.7"
 regex = "1.4.3"
 rand = { version = "0.8.4", features = [ "small_rng" ] }
+rlimit = "0.6.1"
 ring = "0.16.20"
 rustyline = { version = "8.2.0", default-features = false }
 rustyline-derive = "0.4.0"

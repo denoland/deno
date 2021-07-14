@@ -588,6 +588,7 @@ dependencies = [
  "rand 0.8.4",
  "regex",
  "ring",
+ "rlimit",
  "rustyline",
  "rustyline-derive",
  "semver-parser 0.10.2",
@@ -2868,6 +2869,15 @@ dependencies = [
  "untrusted",
  "web-sys",
  "winapi 0.3.9",
+]
+
+[[package]]
+name = "rlimit"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee7d411d8191b944415ac6abba8556b562be0667f20905d3de427553d74106e2"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
