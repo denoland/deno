@@ -509,10 +509,6 @@ impl Inner {
           )
         })?
       };
-      // TODO(@satyarohith): if import_map_url is a data url and import_map_json contains relative
-      // paths, we will get an Invalid address error in the logs because of the base_url not
-      // being a valid path. We should somehow support relative paths in import
-      // maps that are data urls.
       let import_map =
         ImportMap::from_json(&import_map_url.to_string(), &import_map_json)?;
       self.maybe_import_map_uri = Some(import_map_url);

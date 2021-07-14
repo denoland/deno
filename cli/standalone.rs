@@ -6,6 +6,7 @@ use crate::flags::Flags;
 use crate::ops;
 use crate::program_state::ProgramState;
 use crate::version;
+use deno_core::error::anyhow;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
