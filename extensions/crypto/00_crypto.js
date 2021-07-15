@@ -68,6 +68,7 @@
     "verify": {
       "RSASSA-PKCS1-v1_5": null,
       "RSA-PSS": "RsaPssParams",
+      "HMAC": null,
     },
   };
 
@@ -513,6 +514,15 @@
             algorithm: "RSA-PSS",
             hash: hashAlgorithm,
             saltLength,
+            signature,
+          }, data);
+        }
+        case "HMAC": {
+          const hash = key[_algorithm].hash.name;
+          return await core.opAsync("op_crypto_verify_key", {
+            key: keyData,
+            algorithm: "HMAC",
+            hash,
             signature,
           }, data);
         }
