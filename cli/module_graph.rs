@@ -386,10 +386,11 @@ impl Module {
     for desc in dependencies.iter().filter(|desc| {
       desc.kind != swc_ecmascript::dep_graph::DependencyKind::Require
     }) {
+      let loc = parsed_module.source_map.lookup_char_pos(desc.span.lo);
       let location = Location {
         filename: self.specifier.to_string(),
-        col: desc.col,
-        line: desc.line,
+        col: loc.col_display,
+        line: loc.line,
       };
 
       // In situations where there is a potential issue with resolving the
