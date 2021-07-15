@@ -966,7 +966,7 @@ async fn coverage_command(
   lcov: bool,
 ) -> Result<(), AnyError> {
   if files.is_empty() {
-    return Err(generic_error("no matching coverage profiles found"));
+    return Err(generic_error("No matching coverage profiles found"));
   }
 
   tools::coverage::cover_files(
