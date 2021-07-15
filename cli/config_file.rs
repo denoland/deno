@@ -270,6 +270,7 @@ impl Serialize for TsConfig {
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
+  pub import_map: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -352,6 +353,7 @@ mod tests {
     let config_file = ConfigFile::read("tests/module_graph/tsconfig.json")
       .expect("Failed to load config file");
     assert!(config_file.json.compiler_options.is_some());
+    assert!(config_file.json.import_map.is_none());
   }
 
   #[test]
@@ -362,6 +364,16 @@ mod tests {
     let config_file = ConfigFile::read(path.to_str().unwrap())
       .expect("Failed to load config file");
     assert!(config_file.json.compiler_options.is_some());
+    assert!(config_file.json.import_map.is_none());
+  }
+
+  #[test]
+  fn read_config_file_with_import_map() {
+    let config_file =
+      ConfigFile::read("tests/config/config_with_import_map.jsonc")
+        .expect("Failed to load config file");
+    assert!(config_file.json.compiler_options.is_some());
+    assert!(config_file.json.import_map.is_some());
   }
 
   #[test]
