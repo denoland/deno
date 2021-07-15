@@ -14,11 +14,10 @@ use crate::tools::coverage::CoverageCollector;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
-use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
-use deno_core::located_script_name;
-use deno_core::serde_json::json;
+use deno_core::serde_v8;
 use deno_core::url::Url;
+use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use rand::rngs::SmallRng;
@@ -26,20 +25,26 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
+use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::task::Poll;
 use std::time::Duration;
 use std::time::Instant;
 use swc_common::comments::CommentKind;
 
+// Expression used to get the array containing the actual test definitions in the runtime.
+static TEST_REGISTRY: &str = "(Deno[Deno.internal].tests)";
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestDescription {
-  pub origin: String,
   pub name: String,
+  pub ignore: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -53,18 +58,9 @@ pub enum TestResult {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestPlan {
-  pub origin: String,
+  pub origin: ModuleSpecifier,
   pub total: usize,
   pub filtered_out: usize,
-  pub used_only: bool,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum TestEvent {
-  Plan(TestPlan),
-  Wait(TestDescription),
-  Result(TestDescription, TestResult, u64),
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -100,6 +96,14 @@ impl TestSummary {
   }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TestEvent {
+  Plan(TestPlan),
+  Wait(TestDescription),
+  Result(TestDescription, TestResult, Duration),
+}
+
 trait TestReporter {
   fn report_plan(&mut self, plan: &TestPlan);
   fn report_wait(&mut self, description: &TestDescription);
@@ -107,7 +111,7 @@ trait TestReporter {
     &mut self,
     description: &TestDescription,
     result: &TestResult,
-    elapsed: u64,
+    elapsed: &Duration,
   );
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration);
 }
@@ -124,8 +128,11 @@ impl PrettyTestReporter {
 
 impl TestReporter for PrettyTestReporter {
   fn report_plan(&mut self, plan: &TestPlan) {
-    let inflection = if plan.total == 1 { "test" } else { "tests" };
-    println!("running {} {} from {}", plan.total, inflection, plan.origin);
+    println!(
+      "running {} tests from {}",
+      plan.total,
+      plan.origin.to_string()
+    );
   }
 
   fn report_wait(&mut self, description: &TestDescription) {
@@ -138,7 +145,7 @@ impl TestReporter for PrettyTestReporter {
     &mut self,
     description: &TestDescription,
     result: &TestResult,
-    elapsed: u64,
+    elapsed: &Duration,
   ) {
     if self.concurrent {
       print!("test {} ...", description.name);
@@ -153,7 +160,7 @@ impl TestReporter for PrettyTestReporter {
     println!(
       " {} {}",
       status,
-      colors::gray(format!("({}ms)", elapsed)).to_string()
+      colors::gray(format!("({}ms)", elapsed.as_millis()))
     );
   }
 
@@ -259,60 +266,108 @@ where
   Ok(prepared)
 }
 
-pub async fn run_test_file(
+async fn test_module<F>(
   program_state: Arc<ProgramState>,
-  main_module: ModuleSpecifier,
-  test_module: ModuleSpecifier,
+  module_specifier: ModuleSpecifier,
   permissions: Permissions,
-  channel: Sender<TestEvent>,
-) -> Result<(), AnyError> {
-  let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, true);
+  process_event: F,
+) -> Result<(), AnyError>
+where
+  F: Fn(TestEvent) + Send + 'static + Clone,
+{
+  let mut worker = create_main_worker(
+    &program_state,
+    module_specifier.clone(),
+    permissions,
+    true,
+  );
 
-  {
-    let js_runtime = &mut worker.js_runtime;
-    js_runtime
-      .op_state()
-      .borrow_mut()
-      .put::<Sender<TestEvent>>(channel.clone());
-  }
+  let registry = {
+    worker.execute_module(&module_specifier).await?;
+    let registry = worker
+      .js_runtime
+      .execute_script("deno:test_module", TEST_REGISTRY)?;
 
-  let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
-    program_state.coverage_dir
-  {
-    let session = worker.create_inspector_session().await;
-    let coverage_dir = PathBuf::from(coverage_dir);
-    let mut coverage_collector = CoverageCollector::new(coverage_dir, session);
-    worker
-      .with_event_loop(coverage_collector.start_collecting().boxed_local())
-      .await?;
-
-    Some(coverage_collector)
-  } else {
-    None
+    registry
   };
 
-  worker.execute_module(&main_module).await?;
+  let descriptions = {
+    let mut scope = worker.js_runtime.handle_scope();
+    let registry_local =
+      v8::Local::<v8::Value>::new(&mut scope, registry.clone());
 
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('load'))",
-  )?;
+    let descriptions: Vec<TestDescription> =
+      serde_v8::from_v8(&mut scope, registry_local).unwrap();
 
-  worker.execute_module(&test_module).await?;
+    descriptions
+  };
 
-  worker
-    .run_event_loop(maybe_coverage_collector.is_none())
-    .await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('unload'))",
-  )?;
+  let filtered = descriptions
+    .iter()
+    .enumerate()
+    .filter(|(_, _description)| true);
 
-  if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-    worker
-      .with_event_loop(coverage_collector.stop_collecting().boxed_local())
-      .await?;
+  process_event(TestEvent::Plan(TestPlan {
+    origin: module_specifier,
+    total: filtered.clone().count(),
+    filtered_out: 0,
+  }));
+
+  for (index, description) in filtered {
+    let earlier = Instant::now();
+    process_event(TestEvent::Wait(description.clone()));
+
+    let result = if description.ignore {
+      TestResult::Ignored
+    } else {
+      let result_promise = {
+        let mut scope = worker.js_runtime.handle_scope();
+        let registry_local =
+          v8::Local::<v8::Value>::new(&mut scope, registry.clone());
+        let registry_local =
+          v8::Local::<v8::Array>::try_from(registry_local).unwrap();
+
+        let value = registry_local
+          .get_index(&mut scope, index.try_into().unwrap())
+          .unwrap();
+        let object = v8::Local::<v8::Object>::try_from(value)?;
+
+        let fn_key = v8::String::new(&mut scope, "fn").unwrap();
+        let fn_value = object.get(&mut scope, fn_key.into()).unwrap();
+        let fn_function =
+          v8::Local::<v8::Function>::try_from(fn_value).unwrap();
+
+        let result = fn_function.call(&mut scope, value, &[]).unwrap();
+        let result = v8::Local::<v8::Promise>::try_from(result).unwrap();
+
+        v8::Global::<v8::Promise>::new(&mut scope, result)
+      };
+
+      let result = future::poll_fn(|cx| {
+        worker.poll_event_loop(cx, false);
+
+        let state = {
+          let mut scope = worker.js_runtime.handle_scope();
+          let result_promise = result_promise.get(&mut scope);
+
+          result_promise.state()
+        };
+
+        match state {
+          v8::PromiseState::Pending => Poll::Pending,
+          v8::PromiseState::Fulfilled => Poll::Ready(TestResult::Ok),
+          v8::PromiseState::Rejected => {
+            Poll::Ready(TestResult::Failed("TODO".to_string()))
+          }
+        }
+      })
+      .await;
+
+      result
+    };
+
+    let elapsed = Instant::now().duration_since(earlier);
+    process_event(TestEvent::Result(description.clone(), result, elapsed));
   }
 
   Ok(())
@@ -446,136 +501,84 @@ pub async fn run_tests(
     return Ok(false);
   }
 
-  // Because scripts, and therefore worker.execute cannot detect unresolved promises at the moment
-  // we generate a module for the actual test execution.
-  let test_options = json!({
-      "disableLog": quiet,
-      "filter": filter,
-      "shuffle": shuffle,
-  });
+  let earlier = Instant::now();
+  let concurrent = concurrent_jobs > 0;
+  let reporter_lock = Arc::new(Mutex::new(create_reporter(concurrent)));
+  let summary_lock = Arc::new(Mutex::new(TestSummary::new()));
 
-  let test_module = deno_core::resolve_path("$deno$test.js")?;
-  let test_source =
-    format!("await Deno[Deno.internal].runTests({});", test_options);
-  let test_file = File {
-    local: test_module.to_file_path().unwrap(),
-    maybe_types: None,
-    media_type: MediaType::JavaScript,
-    source: test_source.clone(),
-    specifier: test_module.clone(),
+  let process_event = {
+    let reporter_lock = reporter_lock.clone();
+    let summary_lock = summary_lock.clone();
+
+    move |event: TestEvent| {
+      let mut reporter = reporter_lock.lock().unwrap();
+      let mut summary = summary_lock.lock().unwrap();
+
+      match event {
+        TestEvent::Plan(plan) => {
+          summary.total += plan.total;
+          summary.filtered_out += plan.filtered_out;
+          reporter.report_plan(&plan);
+        }
+
+        TestEvent::Wait(description) => {
+          reporter.report_wait(&description);
+        }
+
+        TestEvent::Result(description, result, elapsed) => {
+          match &result {
+            TestResult::Ok => {
+              summary.passed += 1;
+            }
+
+            TestResult::Ignored => {
+              summary.ignored += 1;
+            }
+
+            TestResult::Failed(reason) => {
+              summary.failed += 1;
+              summary.failures.push((description.clone(), reason.clone()));
+            }
+          }
+
+          reporter.report_result(&description, &result, &elapsed);
+        }
+      }
+    }
   };
-
-  program_state.file_fetcher.insert_cached(test_file);
-
-  let (sender, receiver) = channel::<TestEvent>();
 
   let join_handles = test_modules.iter().map(move |main_module| {
     let program_state = program_state.clone();
     let main_module = main_module.clone();
-    let test_module = test_module.clone();
     let permissions = permissions.clone();
-    let sender = sender.clone();
-
+    let process_event = process_event.clone();
     tokio::task::spawn_blocking(move || {
-      let join_handle = std::thread::spawn(move || {
-        let future = run_test_file(
+      std::thread::spawn(move || {
+        tokio_util::run_basic(test_module(
           program_state,
           main_module,
-          test_module,
           permissions,
-          sender,
-        );
-
-        tokio_util::run_basic(future)
-      });
-
-      join_handle.join().unwrap()
+          process_event,
+        ))
+      })
+      .join()
+      .unwrap()
     })
   });
 
-  let join_futures = stream::iter(join_handles)
+  let _join_results = stream::iter(join_handles)
     .buffer_unordered(concurrent_jobs)
-    .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
+    .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>()
+    .await;
 
-  let mut reporter = create_reporter(concurrent_jobs > 1);
-  let handler = {
-    tokio::task::spawn_blocking(move || {
-      let earlier = Instant::now();
-      let mut summary = TestSummary::new();
-      let mut used_only = false;
+  let summary = summary_lock.lock().unwrap();
+  let elapsed = Instant::now().duration_since(earlier);
+  reporter_lock
+    .lock()
+    .unwrap()
+    .report_summary(&summary, &elapsed);
 
-      for event in receiver.iter() {
-        match event {
-          TestEvent::Plan(plan) => {
-            summary.total += plan.total;
-            summary.filtered_out += plan.filtered_out;
-
-            if plan.used_only {
-              used_only = true;
-            }
-
-            reporter.report_plan(&plan);
-          }
-
-          TestEvent::Wait(description) => {
-            reporter.report_wait(&description);
-          }
-
-          TestEvent::Result(description, result, elapsed) => {
-            match &result {
-              TestResult::Ok => {
-                summary.passed += 1;
-              }
-
-              TestResult::Ignored => {
-                summary.ignored += 1;
-              }
-
-              TestResult::Failed(error) => {
-                summary.failed += 1;
-                summary.failures.push((description.clone(), error.clone()));
-              }
-            }
-
-            reporter.report_result(&description, &result, elapsed);
-          }
-        }
-
-        if let Some(x) = fail_fast {
-          if summary.failed >= x {
-            break;
-          }
-        }
-      }
-
-      let elapsed = Instant::now().duration_since(earlier);
-      reporter.report_summary(&summary, &elapsed);
-
-      if used_only {
-        println!(
-          "{} because the \"only\" option was used\n",
-          colors::red("FAILED")
-        );
-      }
-
-      used_only || summary.failed > 0
-    })
-  };
-
-  let (result, join_results) = future::join(handler, join_futures).await;
-
-  let mut join_errors = join_results.into_iter().filter_map(|join_result| {
-    join_result
-      .ok()
-      .map(|handle_result| handle_result.err())
-      .flatten()
-  });
-
-  if let Some(e) = join_errors.next() {
-    Err(e)
-  } else {
-    Ok(result.unwrap_or(false))
-  }
+  Ok(summary.failed > 0)
 }
 
 #[cfg(test)]

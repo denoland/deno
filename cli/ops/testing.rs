@@ -2,7 +2,6 @@ use crate::tools::test_runner::TestEvent;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::JsRuntime;
-use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::ops::worker_host::create_worker_permissions;
 use deno_runtime::ops::worker_host::PermissionsArg;
@@ -17,8 +16,6 @@ pub fn init(rt: &mut JsRuntime) {
     "op_restore_test_permissions",
     op_restore_test_permissions,
   );
-  super::reg_sync(rt, "op_get_test_origin", op_get_test_origin);
-  super::reg_sync(rt, "op_dispatch_test_event", op_dispatch_test_event);
 }
 
 #[derive(Clone)]
@@ -62,23 +59,4 @@ pub fn op_restore_test_permissions(
   } else {
     Err(generic_error("no permissions to restore"))
   }
-}
-
-fn op_get_test_origin(
-  state: &mut OpState,
-  _: (),
-  _: (),
-) -> Result<String, AnyError> {
-  Ok(state.borrow::<ModuleSpecifier>().to_string())
-}
-
-fn op_dispatch_test_event(
-  state: &mut OpState,
-  event: TestEvent,
-  _: (),
-) -> Result<(), AnyError> {
-  let sender = state.borrow::<Sender<TestEvent>>().clone();
-  sender.send(event).ok();
-
-  Ok(())
 }

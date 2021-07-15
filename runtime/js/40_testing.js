@@ -5,22 +5,13 @@
   const core = window.Deno.core;
   const { parsePermissions } = window.__bootstrap.worker;
   const { setExitHandler } = window.__bootstrap.os;
-  const { Console, inspectArgs } = window.__bootstrap.console;
   const { metrics } = window.__bootstrap.metrics;
   const { assert } = window.__bootstrap.util;
   const {
-    ArrayPrototypeFilter,
     ArrayPrototypePush,
-    DateNow,
     JSONStringify,
     Promise,
     TypeError,
-    StringPrototypeStartsWith,
-    StringPrototypeEndsWith,
-    StringPrototypeIncludes,
-    StringPrototypeSlice,
-    RegExp,
-    RegExpPrototypeTest,
   } = window.__bootstrap.primordials;
 
   // Wrap test function in additional assertion that makes sure
@@ -186,114 +177,9 @@ finishing test case.`;
     ArrayPrototypePush(tests, testDef);
   }
 
-  function createTestFilter(filter) {
-    return (def) => {
-      if (filter) {
-        if (
-          StringPrototypeStartsWith(filter, "/") &&
-          StringPrototypeEndsWith(filter, "/")
-        ) {
-          const regex = new RegExp(
-            StringPrototypeSlice(filter, 1, filter.length - 1),
-          );
-          return RegExpPrototypeTest(regex, def.name);
-        }
-
-        return StringPrototypeIncludes(def.name, filter);
-      }
-
-      return true;
-    };
-  }
-
-  async function runTest({ ignore, fn }) {
-    if (ignore) {
-      return "ignored";
-    }
-
-    try {
-      await fn();
-      return "ok";
-    } catch (error) {
-      return { "failed": inspectArgs([error]) };
-    }
-  }
-
-  function getTestOrigin() {
-    return core.opSync("op_get_test_origin");
-  }
-
-  function dispatchTestEvent(event) {
-    return core.opSync("op_dispatch_test_event", event);
-  }
-
-  async function runTests({
-    disableLog = false,
-    filter = null,
-    shuffle = null,
-  } = {}) {
-    const origin = getTestOrigin();
-    const originalConsole = globalThis.console;
-    if (disableLog) {
-      globalThis.console = new Console(() => {});
-    }
-
-    const only = ArrayPrototypeFilter(tests, (test) => test.only);
-    const filtered = ArrayPrototypeFilter(
-      (only.length > 0 ? only : tests),
-      createTestFilter(filter),
-    );
-
-    dispatchTestEvent({
-      plan: {
-        origin,
-        total: filtered.length,
-        filteredOut: tests.length - filtered.length,
-        usedOnly: only.length > 0,
-      },
-    });
-
-    if (shuffle !== null) {
-      // http://en.wikipedia.org/wiki/Linear_congruential_generator
-      const nextInt = (function (state) {
-        const m = 0x80000000;
-        const a = 1103515245;
-        const c = 12345;
-
-        return function (max) {
-          return state = ((a * state + c) % m) % max;
-        };
-      }(shuffle));
-
-      for (let i = filtered.length - 1; i > 0; i--) {
-        const j = nextInt(i);
-        [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
-      }
-    }
-
-    for (const test of filtered) {
-      const description = {
-        origin,
-        name: test.name,
-      };
-      const earlier = DateNow();
-
-      dispatchTestEvent({ wait: description });
-
-      const result = await runTest(test);
-      const elapsed = DateNow() - earlier;
-
-      dispatchTestEvent({ result: [description, result, elapsed] });
-    }
-
-    if (disableLog) {
-      globalThis.console = originalConsole;
-    }
-  }
-
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
-    runTests,
+    tests,
   };
 
   window.__bootstrap.testing = {
