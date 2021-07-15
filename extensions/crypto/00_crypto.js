@@ -564,11 +564,8 @@
           }
           switch (format) {
             case "raw": {
-              if (bits.length % 8 !== 0) {
-                const desiredLength = Math.round(bits.length / 8) * 8;
-                for (let _i = 0; _i < (desiredLength - bits.length); _i++) {
-                  bits.push(0);
-                }
+              for (let _i = 7 & (8 - bits.length % 8); _i > 0; _i--) {
+                bits.push(0);
               }
 
               return bits.buffer;
