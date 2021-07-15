@@ -337,7 +337,7 @@ pub async fn run_tests(
   concurrent_jobs: usize,
 ) -> Result<(), AnyError> {
   if !allow_none && doc_modules.is_empty() && test_modules.is_empty() {
-    return Err(generic_error("no test modules found"));
+    return Err(generic_error("No test modules found"));
   }
 
   let test_modules = if let Some(seed) = shuffle {
@@ -550,12 +550,12 @@ pub async fn run_tests(
 
       if used_only {
         return Err(generic_error(
-          "test failed because the \"only\" option was used",
+          "Test failed because the \"only\" option was used",
         ));
       }
 
       if summary.failed > 0 {
-        return Err(generic_error("test failed"));
+        return Err(generic_error("Test failed"));
       }
 
       Ok(())
