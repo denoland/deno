@@ -14,9 +14,9 @@ fn pty_multiline() {
     master.write_all(b"'{'\n").unwrap();
     master.write_all(b"'('\n").unwrap();
     master.write_all(b"'['\n").unwrap();
-    master.write_all(b"/{/'\n").unwrap();
-    master.write_all(b"/(/'\n").unwrap();
-    master.write_all(b"/[/'\n").unwrap();
+    master.write_all(b"/{/\n").unwrap();
+    master.write_all(b"/\\(/\n").unwrap();
+    master.write_all(b"/\\[/\n").unwrap();
     master.write_all(b"console.log(\"{test1} abc {test2} def {{test3}}\".match(/{([^{].+?)}/));\n").unwrap();
     master.write_all(b"close();\n").unwrap();
 
@@ -31,8 +31,8 @@ fn pty_multiline() {
     assert!(output.contains("\"(\""));
     assert!(output.contains("\"[\""));
     assert!(output.contains("/{/"));
-    assert!(output.contains("/(/"));
-    assert!(output.contains("/{/"));
+    assert!(output.contains("/\\(/"));
+    assert!(output.contains("/\\[/"));
     assert!(output.contains("[ \"{test1}\", \"test1\" ]"));
   });
 }

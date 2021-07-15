@@ -49,17 +49,18 @@ pub struct TestDescription {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TestPlan {
-  pub origin: ModuleSpecifier,
-  pub pending: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub enum TestResult {
   Ok,
   Ignored,
   Failed(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestPlan {
+  pub origin: ModuleSpecifier,
+  pub total: usize,
+  pub filtered_out: usize,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -95,11 +96,24 @@ impl TestSummary {
   }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TestEvent {
+  Plan(TestPlan),
+  Wait(TestDescription),
+  Result(TestDescription, TestResult, Duration),
+}
+
 trait TestReporter {
-  fn report_plan(&mut self, plan: TestPlan);
-  fn report_wait(&mut self, description: TestDescription);
-  fn report_result(&mut self, description: TestDescription, result: TestResult);
-  fn report_summary(&mut self, _summary: &TestSummary);
+  fn report_plan(&mut self, plan: &TestPlan);
+  fn report_wait(&mut self, description: &TestDescription);
+  fn report_result(
+    &mut self,
+    description: &TestDescription,
+    result: &TestResult,
+    elapsed: &Duration,
+  );
+  fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration);
 }
 
 struct PrettyTestReporter {
@@ -113,15 +127,15 @@ impl PrettyTestReporter {
 }
 
 impl TestReporter for PrettyTestReporter {
-  fn report_plan(&mut self, plan: TestPlan) {
+  fn report_plan(&mut self, plan: &TestPlan) {
     println!(
       "running {} tests from {}",
-      plan.pending,
+      plan.total,
       plan.origin.to_string()
     );
   }
 
-  fn report_wait(&mut self, description: TestDescription) {
+  fn report_wait(&mut self, description: &TestDescription) {
     if !self.concurrent {
       print!("test {} ...", description.name);
     }
@@ -129,43 +143,28 @@ impl TestReporter for PrettyTestReporter {
 
   fn report_result(
     &mut self,
-    description: TestDescription,
-    result: TestResult,
+    description: &TestDescription,
+    result: &TestResult,
+    elapsed: &Duration,
   ) {
     if self.concurrent {
       print!("test {} ...", description.name);
     }
 
-    let duration = 0;
+    let status = match result {
+      TestResult::Ok => colors::green("ok").to_string(),
+      TestResult::Ignored => colors::yellow("ignored").to_string(),
+      TestResult::Failed(_) => colors::red("FAILED").to_string(),
+    };
 
-    match result {
-      TestResult::Ok => {
-        println!(
-          " {} {}",
-          colors::green("ok"),
-          colors::gray(format!("({}ms)", duration))
-        );
-      }
-
-      TestResult::Ignored => {
-        println!(
-          " {} {}",
-          colors::yellow("ignored"),
-          colors::gray(format!("({}ms)", duration))
-        );
-      }
-
-      TestResult::Failed(_) => {
-        println!(
-          " {} {}",
-          colors::red("FAILED"),
-          colors::gray(format!("({}ms)", duration))
-        );
-      }
-    }
+    println!(
+      " {} {}",
+      status,
+      colors::gray(format!("({}ms)", elapsed.as_millis()))
+    );
   }
 
-  fn report_summary(&mut self, summary: &TestSummary) {
+  fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
     if !summary.failures.is_empty() {
       println!("\nfailures:\n");
       for (description, error) in &summary.failures {
@@ -194,19 +193,13 @@ impl TestReporter for PrettyTestReporter {
       summary.ignored,
       summary.measured,
       summary.filtered_out,
-      colors::gray(format!("({}ms)", 0)),
+      colors::gray(format!("({}ms)", elapsed.as_millis())),
     );
   }
 }
 
 fn create_reporter(concurrent: bool) -> Box<dyn TestReporter + Send> {
   Box::new(PrettyTestReporter::new(concurrent))
-}
-
-enum TestEvent {
-  Plan(TestPlan),
-  Wait(TestDescription),
-  Result(TestDescription, TestResult),
 }
 
 pub(crate) fn is_supported(p: &Path) -> bool {
@@ -309,70 +302,72 @@ where
     descriptions
   };
 
-  let iterator = descriptions
+  let filtered = descriptions
     .iter()
     .enumerate()
     .filter(|(_, _description)| true);
 
   process_event(TestEvent::Plan(TestPlan {
     origin: module_specifier,
-    pending: iterator.clone().count(),
+    total: filtered.clone().count(),
+    filtered_out: 0,
   }));
 
-  for (index, description) in iterator {
-    if description.ignore {
-      process_event(TestEvent::Result(
-        description.clone(),
-        TestResult::Ignored,
-      ));
-      continue;
-    }
-
+  for (index, description) in filtered {
+    let earlier = Instant::now();
     process_event(TestEvent::Wait(description.clone()));
 
-    let result_promise = {
-      let mut scope = worker.js_runtime.handle_scope();
-      let registry_local =
-        v8::Local::<v8::Value>::new(&mut scope, registry.clone());
-      let registry_local =
-        v8::Local::<v8::Array>::try_from(registry_local).unwrap();
-
-      let value = registry_local
-        .get_index(&mut scope, index.try_into().unwrap())
-        .unwrap();
-      let object = v8::Local::<v8::Object>::try_from(value)?;
-
-      let fn_key = v8::String::new(&mut scope, "fn").unwrap();
-      let fn_value = object.get(&mut scope, fn_key.into()).unwrap();
-      let fn_function = v8::Local::<v8::Function>::try_from(fn_value).unwrap();
-
-      let result = fn_function.call(&mut scope, value, &[]).unwrap();
-      let result = v8::Local::<v8::Promise>::try_from(result).unwrap();
-
-      v8::Global::<v8::Promise>::new(&mut scope, result)
-    };
-
-    let result = future::poll_fn(|cx| {
-      worker.poll_event_loop(cx, false);
-
-      let state = {
+    let result = if description.ignore {
+      TestResult::Ignored
+    } else {
+      let result_promise = {
         let mut scope = worker.js_runtime.handle_scope();
-        let result_promise = result_promise.get(&mut scope);
+        let registry_local =
+          v8::Local::<v8::Value>::new(&mut scope, registry.clone());
+        let registry_local =
+          v8::Local::<v8::Array>::try_from(registry_local).unwrap();
 
-        result_promise.state()
+        let value = registry_local
+          .get_index(&mut scope, index.try_into().unwrap())
+          .unwrap();
+        let object = v8::Local::<v8::Object>::try_from(value)?;
+
+        let fn_key = v8::String::new(&mut scope, "fn").unwrap();
+        let fn_value = object.get(&mut scope, fn_key.into()).unwrap();
+        let fn_function =
+          v8::Local::<v8::Function>::try_from(fn_value).unwrap();
+
+        let result = fn_function.call(&mut scope, value, &[]).unwrap();
+        let result = v8::Local::<v8::Promise>::try_from(result).unwrap();
+
+        v8::Global::<v8::Promise>::new(&mut scope, result)
       };
 
-      match state {
-        v8::PromiseState::Pending => Poll::Pending,
-        v8::PromiseState::Fulfilled => Poll::Ready(TestResult::Ok),
-        v8::PromiseState::Rejected => {
-          Poll::Ready(TestResult::Failed("TODO".to_string()))
-        }
-      }
-    })
-    .await;
+      let result = future::poll_fn(|cx| {
+        worker.poll_event_loop(cx, false);
 
-    process_event(TestEvent::Result(description.clone(), result.clone()));
+        let state = {
+          let mut scope = worker.js_runtime.handle_scope();
+          let result_promise = result_promise.get(&mut scope);
+
+          result_promise.state()
+        };
+
+        match state {
+          v8::PromiseState::Pending => Poll::Pending,
+          v8::PromiseState::Fulfilled => Poll::Ready(TestResult::Ok),
+          v8::PromiseState::Rejected => {
+            Poll::Ready(TestResult::Failed("TODO".to_string()))
+          }
+        }
+      })
+      .await;
+
+      result
+    };
+
+    let elapsed = Instant::now().duration_since(earlier);
+    process_event(TestEvent::Result(description.clone(), result, elapsed));
   }
 
   Ok(())
@@ -506,6 +501,7 @@ pub async fn run_tests(
     return Ok(false);
   }
 
+  let earlier = Instant::now();
   let concurrent = concurrent_jobs > 0;
   let reporter_lock = Arc::new(Mutex::new(create_reporter(concurrent)));
   let summary_lock = Arc::new(Mutex::new(TestSummary::new()));
@@ -520,15 +516,16 @@ pub async fn run_tests(
 
       match event {
         TestEvent::Plan(plan) => {
-          reporter.report_plan(plan);
+          summary.total += plan.total;
+          summary.filtered_out += plan.filtered_out;
+          reporter.report_plan(&plan);
         }
 
         TestEvent::Wait(description) => {
-          summary.total += 1;
-          reporter.report_wait(description);
+          reporter.report_wait(&description);
         }
 
-        TestEvent::Result(description, result) => {
+        TestEvent::Result(description, result, elapsed) => {
           match &result {
             TestResult::Ok => {
               summary.passed += 1;
@@ -544,7 +541,7 @@ pub async fn run_tests(
             }
           }
 
-          reporter.report_result(description, result);
+          reporter.report_result(&description, &result, &elapsed);
         }
       }
     }
@@ -555,7 +552,6 @@ pub async fn run_tests(
     let main_module = main_module.clone();
     let permissions = permissions.clone();
     let process_event = process_event.clone();
-
     tokio::task::spawn_blocking(move || {
       std::thread::spawn(move || {
         tokio_util::run_basic(test_module(
@@ -576,7 +572,11 @@ pub async fn run_tests(
     .await;
 
   let summary = summary_lock.lock().unwrap();
-  reporter_lock.lock().unwrap().report_summary(&summary);
+  let elapsed = Instant::now().duration_since(earlier);
+  reporter_lock
+    .lock()
+    .unwrap()
+    .report_summary(&summary, &elapsed);
 
   Ok(summary.failed > 0)
 }
