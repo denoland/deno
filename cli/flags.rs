@@ -1059,6 +1059,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("jobs")
         .short("j")
         .long("jobs")
+        .help("Number of parallel jobs, defaults to # of CPUs when no value is provided")
         .min_values(0)
         .max_values(1)
         .takes_value(true)
