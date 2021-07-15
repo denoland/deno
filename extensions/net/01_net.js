@@ -206,7 +206,9 @@
       hostname: typeof hostname === "undefined" ? "0.0.0.0" : hostname,
       ...options,
     });
-
+    if (options.port === 0) {
+      console.log("Listining on " + res.localAddr.port);
+    }
     return new Listener(res.rid, res.localAddr);
   }
 
