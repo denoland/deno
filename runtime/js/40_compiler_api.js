@@ -9,7 +9,6 @@
   const core = window.Deno.core;
   const util = window.__bootstrap.util;
   const {
-    StringPrototypeMatch,
     PromiseReject,
     TypeError,
   } = window.__bootstrap.primordials;
@@ -47,19 +46,6 @@
   }
 
   /**
-   * @param {string} specifier
-   * @returns {string}
-   */
-  function checkRelative(specifier) {
-    return StringPrototypeMatch(
-        specifier,
-        /^([\.\/\\]|https?:\/{2}|file:\/{2})/,
-      )
-      ? specifier
-      : `./${specifier}`;
-  }
-
-  /**
    * @typedef {object} EmitOptions
    * @property {"module" | "classic"=} bundle
    * @property {boolean=} check
@@ -84,9 +70,6 @@
     if (!(typeof rootSpecifier === "string")) {
       rootSpecifier = rootSpecifier.toString();
     }
-    if (!options.sources) {
-      rootSpecifier = checkRelative(rootSpecifier);
-    }
     return opEmit({ rootSpecifier, ...options });
   }
 
@@ -99,9 +82,6 @@
     }
     if (!(typeof rootSpecifier === "string")) {
       rootSpecifier = rootSpecifier.toString();
-    }
-    if (!options.sources) {
-      rootSpecifier = checkRelative(rootSpecifier);
     }
     return core.opAsync("op_emit_bundle", { rootSpecifier, ...options });
   }

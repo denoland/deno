@@ -490,3 +490,30 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name: `Deno.emit() - data URLs`,
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const specifier2 = `data:application/typescript;base64,${
+      btoa(`console.log("hello");`)
+    }`;
+    const specifier1 = `data:application/typescript;base64,${
+      btoa(`import "${specifier2}";`)
+    }`;
+    const { modules } = await Deno.emit(specifier1);
+    for (const module of modules) {
+      if (module.specifier == specifier1) {
+        assert(!("error" in module));
+        assertStringIncludes(module.code, "import");
+        assertStringIncludes(module.code, specifier2);
+      } else if (module.specifier == specifier2) {
+        assert(!("error" in module));
+        assertStringIncludes(module.code, "console.log");
+        assertStringIncludes(module.code, "hello");
+      } else {
+        throw new Error("Unreachable: There should be no other specifier.");
+      }
+    }
+  },
+});
