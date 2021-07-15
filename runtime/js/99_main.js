@@ -8,6 +8,7 @@ delete Object.prototype.__proto__;
 ((window) => {
   const core = Deno.core;
   const {
+    ArrayPrototypeMap,
     Error,
     FunctionPrototypeCall,
     FunctionPrototypeBind,
@@ -161,6 +162,44 @@ delete Object.prototype.__proto__;
     }
   }
 
+  let loadedMainWorkerScript = false;
+
+  function importScripts(...urls) {
+    if (core.opSync("op_worker_get_type") === "module") {
+      throw new TypeError("Can't import scripts in a module worker.");
+    }
+
+    const baseUrl = location.getLocationHref();
+    const parsedUrls = ArrayPrototypeMap(urls, (scriptUrl) => {
+      try {
+        return new url.URL(scriptUrl, baseUrl ?? undefined).href;
+      } catch {
+        throw new domException.DOMException(
+          "Failed to parse URL.",
+          "SyntaxError",
+        );
+      }
+    });
+
+    // A classic worker's main script has looser MIME type checks than any
+    // imported scripts, so we use `loadedMainWorkerScript` to distinguish them.
+    // TODO(andreubotella) Refactor worker creation so the main script isn't
+    // loaded with `importScripts()`.
+    const scripts = core.opSync(
+      "op_worker_sync_fetch",
+      parsedUrls,
+      !loadedMainWorkerScript,
+    );
+    loadedMainWorkerScript = true;
+
+    for (const { url, script } of scripts) {
+      const err = core.evalContext(script, url)[1];
+      if (err !== null) {
+        throw err.thrown;
+      }
+    }
+  }
+
   function opMainModule() {
     return core.opSync("op_main_module");
   }
@@ -231,6 +270,12 @@ delete Object.prototype.__proto__;
       "DOMExceptionInvalidCharacterError",
       function DOMExceptionInvalidCharacterError(msg) {
         return new domException.DOMException(msg, "InvalidCharacterError");
+      },
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionNetworkError",
+      function DOMExceptionNetworkError(msg) {
+        return new domException.DOMException(msg, "NetworkError");
       },
     );
   }
@@ -569,6 +614,14 @@ delete Object.prototype.__proto__;
     );
     const { unstableFlag, pid, noColor, args, location: locationHref } =
       runtimeOptions;
+
+    if (unstableFlag) {
+      ObjectDefineProperty(
+        globalThis,
+        "importScripts",
+        util.writable(importScripts),
+      );
+    }
 
     location.setLocationHref(locationHref);
     registerErrors();
