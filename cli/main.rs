@@ -79,7 +79,6 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
-use tools::test_runner;
 
 fn create_web_worker_callback(
   program_state: Arc<ProgramState>,
@@ -1002,7 +1001,7 @@ async fn test_command(
     );
   }
 
-  // TODO(caspervonb) move this chunk into tools::test_runner.
+  // TODO(caspervonb) move this chunk into tools::test.
 
   let program_state = ProgramState::build(flags.clone()).await?;
 
@@ -1028,16 +1027,16 @@ async fn test_command(
     // TODO(caspervonb) clean this up.
     let resolver = |changed: Option<Vec<PathBuf>>| {
       let test_modules_result = if doc {
-        test_runner::collect_test_module_specifiers(
+        tools::test::collect_test_module_specifiers(
           include.clone(),
           &cwd,
           fs_util::is_supported_ext,
         )
       } else {
-        test_runner::collect_test_module_specifiers(
+        tools::test::collect_test_module_specifiers(
           include.clone(),
           &cwd,
-          tools::test_runner::is_supported,
+          tools::test::is_supported,
         )
       };
 
@@ -1170,7 +1169,7 @@ async fn test_command(
 
       async move {
         let doc_modules = if doc {
-          test_runner::collect_test_module_specifiers(
+          tools::test::collect_test_module_specifiers(
             include.clone(),
             &cwd,
             fs_util::is_supported_ext,
@@ -1185,7 +1184,7 @@ async fn test_command(
           .cloned()
           .collect();
 
-        let test_modules = test_runner::collect_test_module_specifiers(
+        let test_modules = tools::test::collect_test_module_specifiers(
           include.clone(),
           &cwd,
           tools::test_runner::is_supported,
@@ -1197,7 +1196,7 @@ async fn test_command(
           .cloned()
           .collect();
 
-        test_runner::run_tests(
+        tools::test::run_tests(
           program_state.clone(),
           permissions.clone(),
           lib.clone(),
@@ -1220,7 +1219,7 @@ async fn test_command(
     file_watcher::watch_func(resolver, operation, "Test").await?;
   } else {
     let doc_modules = if doc {
-      test_runner::collect_test_module_specifiers(
+      tools::test::collect_test_module_specifiers(
         include.clone(),
         &cwd,
         fs_util::is_supported_ext,
@@ -1229,13 +1228,13 @@ async fn test_command(
       Vec::new()
     };
 
-    let test_modules = test_runner::collect_test_module_specifiers(
+    let test_modules = tools::test::collect_test_module_specifiers(
       include.clone(),
       &cwd,
       tools::test_runner::is_supported,
     )?;
 
-    let failed = test_runner::run_tests(
+    let failed = tools::test::run_tests(
       program_state.clone(),
       permissions,
       lib,
