@@ -11,8 +11,9 @@ use crate::colors;
 use crate::fmt_errors;
 use crate::fs_util::{collect_files, is_supported_ext};
 use crate::media_type::MediaType;
+use crate::pretty_markdown;
 use crate::tools::fmt::run_parallelized;
-use deno_core::error::{generic_error, AnyError, JsStackFrame};
+use deno_core::error::{generic_error, AnyError, Context as _, JsStackFrame};
 use deno_core::serde_json;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::Linter;
@@ -22,6 +23,7 @@ use deno_lint::rules::LintRule;
 use log::debug;
 use log::info;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::fs;
 use std::io::{stdin, Read};
 use std::path::PathBuf;
@@ -105,22 +107,32 @@ pub async fn lint_files(
   Ok(())
 }
 
-fn rule_to_json(rule: Box<dyn LintRule>) -> serde_json::Value {
-  serde_json::json!({
-    "code": rule.code(),
-    "tags": rule.tags(),
-    "docs": rule.docs(),
-  })
+fn json_str<I, T>(rules: I) -> Result<String, AnyError>
+where
+  I: IntoIterator<Item = T>,
+  T: AsRef<dyn LintRule>,
+{
+  let json_rules: Vec<serde_json::Value> = rules
+    .into_iter()
+    .map(|rule| {
+      let rule = rule.as_ref();
+      serde_json::json!({
+        "code": rule.code(),
+        "tags": rule.tags(),
+        "docs": rule.docs(),
+      })
+    })
+    .collect();
+  let json_str = serde_json::to_string_pretty(&json_rules)?;
+  Ok(json_str)
 }
 
-pub fn print_rules_list(json: bool) {
+pub fn print_rules_list(json: bool) -> Result<(), AnyError> {
   let lint_rules = rules::get_recommended_rules();
 
   if json {
-    let json_rules: Vec<serde_json::Value> =
-      lint_rules.into_iter().map(rule_to_json).collect();
-    let json_str = serde_json::to_string_pretty(&json_rules).unwrap();
-    println!("{}", json_str);
+    let json = json_str(lint_rules)?;
+    println!("{}", json);
   } else {
     // The rules should still be printed even if `--quiet` option is enabled,
     // so use `println!` here instead of `info!`.
@@ -129,6 +141,42 @@ pub fn print_rules_list(json: bool) {
       println!(" - {}", rule.code());
     }
   }
+
+  Ok(())
+}
+
+pub fn print_rules_doc(
+  rule_codes: Vec<String>,
+  json: bool,
+) -> Result<(), AnyError> {
+  let lint_rules: HashMap<_, _> = rules::get_recommended_rules()
+    .into_iter()
+    .map(|rule| (rule.code(), rule))
+    .collect();
+
+  let rules = {
+    let mut r = Vec::with_capacity(rule_codes.len());
+    for code in rule_codes {
+      let rule = lint_rules
+        .get(code.as_str())
+        .with_context(|| format!("`{}` is not found", &code))?;
+      r.push(rule);
+    }
+    r
+  };
+
+  if json {
+    let json = json_str(rules)?;
+    println!("{}", json);
+  } else {
+    for rule in rules {
+      let doc_with_header = format!("# {}\n\n{}", rule.code(), rule.docs());
+      let result = pretty_markdown::colorize(doc_with_header);
+      println!("{}", result);
+    }
+  }
+
+  Ok(())
 }
 
 pub fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {

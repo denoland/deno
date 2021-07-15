@@ -16,6 +16,7 @@ mod flags;
 mod flags_allow_net;
 mod fmt_errors;
 mod fs_util;
+mod highlight;
 mod http_cache;
 mod http_util;
 mod import_map;
@@ -27,6 +28,7 @@ mod media_type;
 mod module_graph;
 mod module_loader;
 mod ops;
+mod pretty_markdown;
 mod program_state;
 mod source_maps;
 mod specifier_handler;
@@ -484,11 +486,17 @@ async fn lint_command(
   _flags: Flags,
   files: Vec<PathBuf>,
   list_rules: bool,
+  rules_to_display_docs: Vec<String>,
   ignore: Vec<PathBuf>,
   json: bool,
 ) -> Result<(), AnyError> {
   if list_rules {
-    tools::lint::print_rules_list(json);
+    tools::lint::print_rules_list(json)?;
+    return Ok(());
+  }
+
+  if !rules_to_display_docs.is_empty() {
+    tools::lint::print_rules_doc(rules_to_display_docs, json)?;
     return Ok(());
   }
 
@@ -1339,10 +1347,19 @@ fn get_subcommand(
     DenoSubcommand::Lsp => lsp_command().boxed_local(),
     DenoSubcommand::Lint {
       files,
-      rules,
+      list_rules,
+      rules_to_display_docs,
       ignore,
       json,
-    } => lint_command(flags, files, rules, ignore, json).boxed_local(),
+    } => lint_command(
+      flags,
+      files,
+      list_rules,
+      rules_to_display_docs,
+      ignore,
+      json,
+    )
+    .boxed_local(),
     DenoSubcommand::Repl => run_repl(flags).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {

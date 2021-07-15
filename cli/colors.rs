@@ -3,7 +3,9 @@
 use regex::Regex;
 use std::fmt;
 use std::io::Write;
-use termcolor::Color::{Ansi256, Black, Blue, Cyan, Green, Red, White, Yellow};
+use termcolor::Color::{
+  Ansi256, Black, Blue, Cyan, Green, Magenta, Red, White, Yellow,
+};
 use termcolor::{Ansi, ColorSpec, WriteColor};
 
 #[cfg(windows)]
@@ -110,6 +112,40 @@ pub fn red<S: AsRef<str>>(s: S) -> impl fmt::Display {
 pub fn green<S: AsRef<str>>(s: S) -> impl fmt::Display {
   let mut style_spec = ColorSpec::new();
   style_spec.set_fg(Some(Green));
+  style(s, style_spec)
+}
+
+pub fn magenta<S: AsRef<str>>(s: S) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_fg(Some(Magenta));
+  style(s, style_spec)
+}
+
+/// Intended to be used as <h4>
+pub fn magenta_bold<S: AsRef<str>>(s: S) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_fg(Some(Magenta)).set_bold(true);
+  style(s, style_spec)
+}
+
+/// Intended to be used as <h2> and <h3>
+pub fn magenta_bold_underline<S: AsRef<str>>(s: S) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec
+    .set_fg(Some(Magenta))
+    .set_bold(true)
+    .set_underline(true);
+  style(s, style_spec)
+}
+
+/// Intended to be used as <h1>
+pub fn magenta_bold_underline_italic<S: AsRef<str>>(s: S) -> impl fmt::Display {
+  let mut style_spec = ColorSpec::new();
+  style_spec
+    .set_fg(Some(Magenta))
+    .set_bold(true)
+    .set_underline(true)
+    .set_italic(true);
   style(s, style_spec)
 }
 
