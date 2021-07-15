@@ -68,7 +68,7 @@ fn get_webstorage(
       let initial_pragmas = "
         -- enable write-ahead-logging mode
         PRAGMA journal_mode=WAL;
-        pragma temp_store=memory;
+        PRAGMA temp_store=memory;
         PRAGMA page_size=4096;
         PRAGMA mmap_size=6000000;
         PRAGMA optimize;
