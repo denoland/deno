@@ -966,8 +966,7 @@ async fn coverage_command(
   lcov: bool,
 ) -> Result<(), AnyError> {
   if files.is_empty() {
-    println!("No matching coverage profiles found");
-    std::process::exit(1);
+    return Err(generic_error("No matching coverage profiles found"));
   }
 
   tools::coverage::cover_files(
