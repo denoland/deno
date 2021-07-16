@@ -678,13 +678,14 @@ async fn read_line_and_poll(
       result = message_rx.recv() => {
         if let Some((method, params)) = result {
           let result = repl_session
-            .post_message_with_event_loop(&method, params)
-            .await;
+          .post_message_with_event_loop(&method, params)
+          .await;
           response_tx.send(result).unwrap();
         }
-
+        
         poll_worker = true;
       },
+      // TODO(bartlomieju): this result shouldn't be ignored
       _ = repl_session.run_event_loop(), if poll_worker => {
         poll_worker = false;
       }
