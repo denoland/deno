@@ -1234,7 +1234,7 @@ async fn test_command(
       tools::test_runner::is_supported,
     )?;
 
-    let failed = test_runner::run_tests(
+    test_runner::run_tests(
       program_state.clone(),
       permissions,
       lib,
@@ -1249,10 +1249,6 @@ async fn test_command(
       concurrent_jobs,
     )
     .await?;
-
-    if failed {
-      std::process::exit(1);
-    }
   }
 
   Ok(())
