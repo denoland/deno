@@ -3095,6 +3095,17 @@
     "eventhandlers.any.html": false,
     "eventhandlers.any.html?wpt_flags=h2": false,
     "eventhandlers.any.html?wss": false,
-    "referrer.any.html": true
+    "referrer.any.html": true,
+    "stream": {
+      "tentative": {
+        "abort.any.html?wss": true,
+        "backpressure-receive.any.html?wss": true,
+        "backpressure-send.any.html?wss": true,
+        "close.any.html?wss": [
+          "writer close() promise should not resolve until handshake completes"
+        ],
+        "constructor.any.html?wss": true
+      }
+    }
   }
 }

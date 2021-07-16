@@ -228,6 +228,18 @@ delete Object.prototype.__proto__;
       },
     );
     core.registerErrorBuilder(
+      "DOMExceptionNetworkError",
+      function DOMExceptionNetworkError(msg) {
+        return new domException.DOMException(msg, "NetworkError");
+      },
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionAbortError",
+      function DOMExceptionAbortError(msg) {
+        return new domException.DOMException(msg, "AbortError");
+      },
+    );
+    core.registerErrorBuilder(
       "DOMExceptionInvalidCharacterError",
       function DOMExceptionInvalidCharacterError(msg) {
         return new domException.DOMException(msg, "InvalidCharacterError");
@@ -321,6 +333,7 @@ delete Object.prototype.__proto__;
     URL: util.nonEnumerable(url.URL),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
+    WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
     BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
     MessageChannel: util.nonEnumerable(messagePort.MessageChannel),
     MessagePort: util.nonEnumerable(messagePort.MessagePort),
