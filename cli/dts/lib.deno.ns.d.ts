@@ -66,27 +66,62 @@ declare interface PerformanceMeasureOptions {
 
 declare namespace Deno {
   /** A set of error constructors that are raised by Deno APIs. */
-  export const errors: {
-    NotFound: ErrorConstructor;
-    PermissionDenied: ErrorConstructor;
-    ConnectionRefused: ErrorConstructor;
-    ConnectionReset: ErrorConstructor;
-    ConnectionAborted: ErrorConstructor;
-    NotConnected: ErrorConstructor;
-    AddrInUse: ErrorConstructor;
-    AddrNotAvailable: ErrorConstructor;
-    BrokenPipe: ErrorConstructor;
-    AlreadyExists: ErrorConstructor;
-    InvalidData: ErrorConstructor;
-    TimedOut: ErrorConstructor;
-    Interrupted: ErrorConstructor;
-    WriteZero: ErrorConstructor;
-    UnexpectedEof: ErrorConstructor;
-    BadResource: ErrorConstructor;
-    Http: ErrorConstructor;
-    Busy: ErrorConstructor;
-    NotSupported: ErrorConstructor;
-  };
+  export namespace errors {
+    export class NotFound extends Error {
+      name: "NotFound";
+    }
+    export class PermissionDenied extends Error {
+      name: "PermissionDenied";
+    }
+    export class ConnectionRefused extends Error {
+      name: "ConnectionRefused";
+    }
+    export class ConnectionReset extends Error {
+      name: "ConnectionReset";
+    }
+    export class ConnectionAborted extends Error {
+      name: "ConnectionAborted";
+    }
+    export class NotConnected extends Error {
+      name: "NotConnected";
+    }
+    export class AddrInUse extends Error {
+      name: "AddrInUse";
+    }
+    export class AddrNotAvailable extends Error {
+      name: "AddrNotAvailable";
+    }
+    export class BrokenPipe extends Error {
+      name: "BrokenPipe";
+    }
+    export class AlreadyExists extends Error {
+      name: "AlreadyExists";
+    }
+    export class InvalidData extends Error {
+      name: "InvalidData";
+    }
+    export class TimedOut extends Error {
+      name: "TimedOut";
+    }
+    export class Interrupted extends Error {
+      name: "Interrupted";
+    }
+    export class WriteZero extends Error {
+      name: "WriteZero";
+    }
+    export class UnexpectedEof extends Error {
+      name: "UnexpectedEof";
+    }
+    export class BadResource extends Error {
+      name: "BadResource";
+    }
+    export class Http extends Error {
+      name: "Http";
+    }
+    export class Busy extends Error {
+      name: "Busy";
+    }
+  }
 
   /** The current process id of the runtime. */
   export const pid: number;
