@@ -22,22 +22,26 @@ The standard library provides modules for the the following built-ins:
 - [`buffer`](https://doc.deno.land/https/deno.land/std/node/buffer.ts)
 - [`child_process`](https://doc.deno.land/https/deno.land/std/node/child_process.ts)
   (_partly_)
-- `console` (_partly_)
-- `constants` (_partly_)
-- `crypto` (_partly_)
-- `events`
-- `fs` (_partly_)
-- `module`
-- `os` (_partly_)
-- `path`
-- `process` (_partly_)
-- `querystring`
-- `stream`
-- `string_decoder`
-- `timers`
-- `tty` (_partly_)
-- `url`
-- `util` (_partly_)
+- [`console`](https://doc.deno.land/https/deno.land/std/node/console.ts)
+  (_partly_)
+- [`constants`](https://doc.deno.land/https/deno.land/std/node/constants.ts)
+  (_partly_)
+- [`crypto`](https://doc.deno.land/https/deno.land/std/node/crypto.ts)
+  (_partly_)
+- [`events`](https://doc.deno.land/https/deno.land/std/node/events.ts)
+- [`fs`](https://doc.deno.land/https/deno.land/std/node/fs.ts) (_partly_)
+- [`module`](https://doc.deno.land/https/deno.land/std/node/module.ts)
+- [`os`](https://doc.deno.land/https/deno.land/std/node/os.ts) (_partly_)
+- [`path`](https://doc.deno.land/https/deno.land/std/node/path.ts)
+- [`process`](https://doc.deno.land/https/deno.land/std/node/process.ts)
+  (_partly_)
+- [`querystring`](https://doc.deno.land/https/deno.land/std/node/querystring.ts)
+- [`stream`](https://doc.deno.land/https/deno.land/std/node/stream.ts)
+- [`string_decoder`](https://doc.deno.land/https/deno.land/std/node/string_decoder.ts)
+- [`timers`](https://doc.deno.land/https/deno.land/std/node/timers.ts)
+- [`tty`](https://doc.deno.land/https/deno.land/std/node/tty.ts) (_partly_)
+- [`url`](https://doc.deno.land/https/deno.land/std/node/url.ts)
+- [`util`](https://doc.deno.land/https/deno.land/std/node/util.ts) (_partly_)
 
 In addition, there is the
 [`std/node/global.ts`](https://doc.deno.land/https/deno.land/std/node/global.ts)
