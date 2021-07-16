@@ -29,6 +29,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
+use swc_ecmascript::parser::error::SyntaxError;
 use swc_ecmascript::parser::token::{Token, Word};
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::unbounded_channel;
@@ -252,6 +253,17 @@ impl Validator for EditorHelper {
               }
               (None, _) => {
                 // While technically invalid when unpaired, it should be V8's task to output error instead.
+                // Thus marked as valid with no info.
+                return Ok(ValidationResult::Valid(None));
+              }
+            }
+          }
+          Token::Error(error) => {
+            match error.kind() {
+              // If there is unterminated template, it continues to read input.
+              SyntaxError::UnterminatedTpl => {}
+              _ => {
+                // If it failed parsing, it should be V8's task to output error instead.
                 // Thus marked as valid with no info.
                 return Ok(ValidationResult::Valid(None));
               }
