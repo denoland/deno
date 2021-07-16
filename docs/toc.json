@@ -37,6 +37,15 @@
       "import_maps": "Import maps"
     }
   },
+  "npm_nodejs": {
+    "name": "Using npm/Node.js code",
+    "children": {
+      "std_node": "The std/node library",
+      "cdns": "Packages from CDNs",
+      "import_maps": "Using import maps",
+      "faqs": "Frequently asked questions"
+    }
+  },
   "typescript": {
     "name": "Using TypeScript",
     "children": {
