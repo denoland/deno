@@ -377,34 +377,30 @@ pub fn analyze_dependencies(
 
     let dep = dependencies.entry(desc.specifier.to_string()).or_default();
     dep.is_dynamic = desc.is_dynamic;
+    let start = parsed_module
+      .source_map
+      .lookup_char_pos(desc.specifier_span.lo);
+    let end = parsed_module
+      .source_map
+      .lookup_char_pos(desc.specifier_span.hi);
+    let range = Range {
+      start: Position {
+        line: (start.line - 1) as u32,
+        character: start.col_display as u32,
+      },
+      end: Position {
+        line: (end.line - 1) as u32,
+        character: end.col_display as u32,
+      },
+    };
     match desc.kind {
       swc_ecmascript::dep_graph::DependencyKind::ExportType
       | swc_ecmascript::dep_graph::DependencyKind::ImportType => {
-        dep.maybe_type_specifier_range = Some(Range {
-          start: Position {
-            line: (desc.specifier_line - 1) as u32,
-            character: desc.specifier_col as u32,
-          },
-          end: Position {
-            line: (desc.specifier_line - 1) as u32,
-            character: (desc.specifier_col + desc.specifier.chars().count() + 2)
-              as u32,
-          },
-        });
+        dep.maybe_type_specifier_range = Some(range);
         dep.maybe_type = Some(resolved_import)
       }
       _ => {
-        dep.maybe_code_specifier_range = Some(Range {
-          start: Position {
-            line: (desc.specifier_line - 1) as u32,
-            character: desc.specifier_col as u32,
-          },
-          end: Position {
-            line: (desc.specifier_line - 1) as u32,
-            character: (desc.specifier_col + desc.specifier.chars().count() + 2)
-              as u32,
-          },
-        });
+        dep.maybe_code_specifier_range = Some(range);
         dep.maybe_code = Some(resolved_import);
       }
     }
