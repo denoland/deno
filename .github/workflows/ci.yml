@@ -164,11 +164,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install debootstrap
 
-          # Note: git, nc, strace, and time, are needed to run the benchmarks.
-          sudo debootstrap                                                     \
-                 --include=ca-certificates,curl,git,netcat-openbsd,strace,time \
-                 --no-merged-usr --variant=minbase bionic /sysroot             \
-                 http://azure.archive.ubuntu.com/ubuntu
+          # `file` and `make` are needed to build libffi-sys.
+          # `curl` is needed to build rusty_v8.
+          # `git`, `nc`, `strace`, and `time`, are needed to run the benchmarks.
+          sudo debootstrap                                                          \
+            --include=ca-certificates,curl,file,git,make,netcat-openbsd,strace,time \
+            --no-merged-usr --variant=minbase bionic /sysroot                       \
+            http://azure.archive.ubuntu.com/ubuntu
           sudo mount --rbind /dev /sysroot/dev
           sudo mount --rbind /sys /sysroot/sys
           sudo mount --rbind /home /sysroot/home

@@ -3,6 +3,7 @@
 use crate::permissions::resolve_read_allowlist;
 use crate::permissions::resolve_write_allowlist;
 use crate::permissions::EnvDescriptor;
+use crate::permissions::FfiDescriptor;
 use crate::permissions::NetDescriptor;
 use crate::permissions::PermissionState;
 use crate::permissions::Permissions;
@@ -218,6 +219,26 @@ fn merge_run_permission(
   Ok(main)
 }
 
+fn merge_ffi_permission(
+  mut main: UnaryPermission<FfiDescriptor>,
+  worker: Option<UnaryPermission<FfiDescriptor>>,
+) -> Result<UnaryPermission<FfiDescriptor>, AnyError> {
+  if let Some(worker) = worker {
+    if (worker.global_state < main.global_state)
+      || !worker.granted_list.iter().all(|x| main.check(&x.0).is_ok())
+    {
+      return Err(custom_error(
+        "PermissionDenied",
+        "Can't escalate parent thread permissions",
+      ));
+    } else {
+      main.global_state = worker.global_state;
+      main.granted_list = worker.granted_list;
+    }
+  }
+  Ok(main)
+}
+
 pub fn create_worker_permissions(
   main_perms: Permissions,
   worker_perms: PermissionsArg,
@@ -226,7 +247,7 @@ pub fn create_worker_permissions(
     env: merge_env_permission(main_perms.env, worker_perms.env)?,
     hrtime: merge_boolean_permission(main_perms.hrtime, worker_perms.hrtime)?,
     net: merge_net_permission(main_perms.net, worker_perms.net)?,
-    plugin: merge_boolean_permission(main_perms.plugin, worker_perms.plugin)?,
+    ffi: merge_ffi_permission(main_perms.ffi, worker_perms.ffi)?,
     read: merge_read_permission(main_perms.read, worker_perms.read)?,
     run: merge_run_permission(main_perms.run, worker_perms.run)?,
     write: merge_write_permission(main_perms.write, worker_perms.write)?,
@@ -241,8 +262,8 @@ pub struct PermissionsArg {
   hrtime: Option<PermissionState>,
   #[serde(default, deserialize_with = "as_unary_net_permission")]
   net: Option<UnaryPermission<NetDescriptor>>,
-  #[serde(default, deserialize_with = "as_permission_state")]
-  plugin: Option<PermissionState>,
+  #[serde(default, deserialize_with = "as_unary_ffi_permission")]
+  ffi: Option<UnaryPermission<FfiDescriptor>>,
   #[serde(default, deserialize_with = "as_unary_read_permission")]
   read: Option<UnaryPermission<ReadDescriptor>>,
   #[serde(default, deserialize_with = "as_unary_run_permission")]
@@ -410,6 +431,22 @@ where
   Ok(Some(UnaryPermission::<RunDescriptor> {
     global_state: value.global_state,
     granted_list: value.paths.into_iter().map(RunDescriptor).collect(),
+    ..Default::default()
+  }))
+}
+
+fn as_unary_ffi_permission<'de, D>(
+  deserializer: D,
+) -> Result<Option<UnaryPermission<FfiDescriptor>>, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  let value: UnaryPermissionBase =
+    deserializer.deserialize_any(ParseBooleanOrStringVec)?;
+
+  Ok(Some(UnaryPermission::<FfiDescriptor> {
+    global_state: value.global_state,
+    granted_list: value.paths.into_iter().map(FfiDescriptor).collect(),
     ..Default::default()
   }))
 }

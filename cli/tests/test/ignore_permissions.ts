@@ -6,7 +6,7 @@ Deno.test({
     net: true,
     env: true,
     run: true,
-    plugin: true,
+    ffi: true,
     hrtime: true,
   },
   ignore: true,
