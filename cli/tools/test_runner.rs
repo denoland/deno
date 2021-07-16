@@ -430,7 +430,7 @@ fn programs_from_fenced_blocks(
       "{}${}-{}",
       file.specifier.as_str(),
       line,
-      0,
+      line + block.get(0).unwrap().as_str().split('\n').count(),
     ))?;
 
     let file = File {
