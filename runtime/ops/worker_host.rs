@@ -516,16 +516,16 @@ fn op_host_terminate_worker(
   id: WorkerId,
   _: (),
 ) -> Result<(), AnyError> {
-  let worker_thread = state
-    .borrow_mut::<WorkersTable>()
-    .remove(&id)
-    .expect("No worker handle found");
-  worker_thread.worker_handle.terminate();
-  worker_thread
-    .join_handle
-    .join()
-    .expect("Panic in worker thread")
-    .expect("Panic in worker event loop");
+  if let Some(worker_thread) = state.borrow_mut::<WorkersTable>().remove(&id) {
+    worker_thread.worker_handle.terminate();
+    worker_thread
+      .join_handle
+      .join()
+      .expect("Panic in worker thread")
+      .expect("Panic in worker event loop");
+  } else {
+    debug!("tried to terminate non-existent worker {}", id);
+  }
   Ok(())
 }
 
@@ -602,14 +602,12 @@ fn op_host_post_message(
   id: WorkerId,
   data: JsMessageData,
 ) -> Result<(), AnyError> {
-  debug!("post message to worker {}", id);
-  let worker_handle = {
-    let worker_thread = state
-      .borrow::<WorkersTable>()
-      .get(&id)
-      .expect("No worker handle found");
-    worker_thread.worker_handle.clone()
-  };
-  worker_handle.port.send(state, data)?;
+  if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
+    debug!("post message to worker {}", id);
+    let worker_handle = worker_thread.worker_handle.clone();
+    worker_handle.port.send(state, data)?;
+  } else {
+    debug!("tried to post message to non-existent worker {}", id);
+  }
   Ok(())
 }
