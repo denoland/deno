@@ -338,6 +338,7 @@ pub fn get_types(unstable: bool) -> String {
     crate::tsc::DENO_WEBGPU_LIB,
     crate::tsc::DENO_WEBSOCKET_LIB,
     crate::tsc::DENO_WEBSTORAGE_LIB,
+    crate::tsc::DENO_WEBUSB_LIB,
     crate::tsc::DENO_CRYPTO_LIB,
     crate::tsc::DENO_BROADCAST_CHANNEL_LIB,
     crate::tsc::DENO_NET_LIB,

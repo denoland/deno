@@ -40,6 +40,7 @@ delete Object.prototype.__proto__;
   const performance = window.__bootstrap.performance;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
+  const webusb = window.__bootstrap.usb;
   const headers = window.__bootstrap.headers;
   const streams = window.__bootstrap.streams;
   const fileReader = window.__bootstrap.fileReader;
@@ -256,6 +257,14 @@ delete Object.prototype.__proto__;
         return webgpu.gpu;
       },
     },
+    usb: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, Navigator);
+        return webusb.usb;
+      },
+    },
   });
 
   class WorkerNavigator {
@@ -277,6 +286,14 @@ delete Object.prototype.__proto__;
       get() {
         webidl.assertBranded(this, WorkerNavigator);
         return webgpu.gpu;
+      },
+    },
+    usb: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, Navigator);
+        return webusb.usb;
       },
     },
   });
@@ -386,6 +403,9 @@ delete Object.prototype.__proto__;
     GPUQuerySet: util.nonEnumerable(webgpu.GPUQuerySet),
     GPUOutOfMemoryError: util.nonEnumerable(webgpu.GPUOutOfMemoryError),
     GPUValidationError: util.nonEnumerable(webgpu.GPUValidationError),
+
+    USBDevice: util.nonEnumerable(webusb.UsbDevice),
+    USBConfiguration: util.nonEnumerable(webusb.USBConfiguration),
   };
 
   // The console seems to be the only one that should be writable and non-enumerable

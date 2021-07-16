@@ -137,6 +137,7 @@ pub struct Flags {
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
+  pub allow_usb: Option<Vec<u16>>,
   pub location: Option<Url>,
   pub cache_blocklist: Vec<String>,
   pub ca_file: Option<String>,
@@ -209,6 +210,24 @@ impl Flags {
       _ => {}
     }
 
+    match &self.allow_usb {
+      Some(usb_allowlist) if usb_allowlist.is_empty() => {
+        args.push("--allow-usb".to_string());
+      }
+      Some(usb_allowlist) => {
+        let s = format!(
+          "--allow-usb={}",
+          usb_allowlist
+            .iter()
+            .map(|i| i.to_string())
+            .collect::<Vec<String>>()
+            .join(",")
+        );
+        args.push(s);
+      }
+      _ => {}
+    }
+
     match &self.allow_env {
       Some(env_allowlist) if env_allowlist.is_empty() => {
         args.push("--allow-env".to_string());
@@ -253,6 +272,7 @@ impl From<Flags> for PermissionsOptions {
       allow_read: flags.allow_read,
       allow_run: flags.allow_run,
       allow_write: flags.allow_write,
+      allow_usb: flags.allow_usb,
       prompt: flags.prompt,
     }
   }
@@ -1233,6 +1253,15 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .help("Allow high resolution time measurement"),
     )
     .arg(
+      Arg::with_name("allow-usb")
+        .long("allow-usb")
+        .min_values(0)
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Allow access to USB devices"),
+    )
+    .arg(
       Arg::with_name("allow-all")
         .short("A")
         .long("allow-all")
@@ -2205,6 +2234,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_plugin: true,
         allow_hrtime: true,
+        allow_usb: Some(vec![]),
         ..Flags::default()
       }
     );
@@ -2542,6 +2572,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_plugin: true,
         allow_hrtime: true,
+        allow_usb: Some(vec![]),
         ..Flags::default()
       }
     );
@@ -2565,6 +2596,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_plugin: true,
         allow_hrtime: true,
+        allow_usb: Some(vec![]),
         ..Flags::default()
       }
     );
@@ -2589,6 +2621,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_plugin: true,
         allow_hrtime: true,
+        allow_usb: Some(vec![]),
         ..Flags::default()
       }
     );
@@ -2626,6 +2659,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_plugin: true,
         allow_hrtime: true,
+        allow_usb: Some(vec![]),
         ..Flags::default()
       }
     );
@@ -2654,6 +2688,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
+        allow_usb: Some(vec![]),
         allow_plugin: true,
         allow_hrtime: true,
         ..Flags::default()
@@ -2676,6 +2711,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_plugin: true,
         allow_hrtime: true,
+        allow_usb: Some(vec![]),
         ..Flags::default()
       }
     );
@@ -2710,6 +2746,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_plugin: true,
         allow_hrtime: true,
+        allow_usb: Some(vec![]),
         ..Flags::default()
       }
     );
