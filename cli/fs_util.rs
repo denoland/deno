@@ -111,6 +111,16 @@ pub fn is_supported_ext_fmt(path: &Path) -> bool {
     false
   }
 }
+/// Checks if the path has extension Deno supports.
+/// This function is similar to is_supported_ext but adds additional extensions
+/// supported by `deno test`.
+pub fn is_supported_ext_test(path: &Path) -> bool {
+  if let Some(ext) = get_extension(path) {
+    matches!(ext.as_str(), "ts" | "tsx" | "js" | "jsx" | "mjs" | "md")
+  } else {
+    false
+  }
+}
 
 /// Get the extension of a file in lowercase.
 pub fn get_extension(file_path: &Path) -> Option<String> {
