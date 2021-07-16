@@ -8,6 +8,20 @@
   const { Console, inspectArgs } = window.__bootstrap.console;
   const { metrics } = window.__bootstrap.metrics;
   const { assert } = window.__bootstrap.util;
+  const {
+    ArrayPrototypeFilter,
+    ArrayPrototypePush,
+    DateNow,
+    JSONStringify,
+    Promise,
+    TypeError,
+    StringPrototypeStartsWith,
+    StringPrototypeEndsWith,
+    StringPrototypeIncludes,
+    StringPrototypeSlice,
+    RegExp,
+    RegExpPrototypeTest,
+  } = window.__bootstrap.primordials;
 
   // Wrap test function in additional assertion that makes sure
   // the test case does not leak async "ops" - ie. number of async
@@ -58,8 +72,8 @@ finishing test case.`,
       await fn();
       const post = core.resources();
 
-      const preStr = JSON.stringify(pre, null, 2);
-      const postStr = JSON.stringify(post, null, 2);
+      const preStr = JSONStringify(pre, null, 2);
+      const postStr = JSONStringify(post, null, 2);
       const msg = `Test case is leaking resources.
 Before: ${preStr}
 After: ${postStr}
@@ -87,6 +101,29 @@ finishing test case.`;
         throw err;
       } finally {
         setExitHandler(null);
+      }
+    };
+  }
+
+  function withPermissions(fn, permissions) {
+    function pledgePermissions(permissions) {
+      return core.opSync(
+        "op_pledge_test_permissions",
+        parsePermissions(permissions),
+      );
+    }
+
+    function restorePermissions(token) {
+      core.opSync("op_restore_test_permissions", token);
+    }
+
+    return async function applyPermissions() {
+      const token = pledgePermissions(permissions);
+
+      try {
+        await fn();
+      } finally {
+        restorePermissions(token);
       }
     };
   }
@@ -139,109 +176,114 @@ finishing test case.`;
       testDef.fn = assertExit(testDef.fn);
     }
 
-    tests.push(testDef);
-  }
+    if (testDef.permissions) {
+      testDef.fn = withPermissions(
+        testDef.fn,
+        parsePermissions(testDef.permissions),
+      );
+    }
 
-  function postTestMessage(kind, data) {
-    return core.opSync("op_post_test_message", { message: { kind, data } });
+    ArrayPrototypePush(tests, testDef);
   }
 
   function createTestFilter(filter) {
     return (def) => {
       if (filter) {
-        if (filter.startsWith("/") && filter.endsWith("/")) {
-          const regex = new RegExp(filter.slice(1, filter.length - 1));
-          return regex.test(def.name);
+        if (
+          StringPrototypeStartsWith(filter, "/") &&
+          StringPrototypeEndsWith(filter, "/")
+        ) {
+          const regex = new RegExp(
+            StringPrototypeSlice(filter, 1, filter.length - 1),
+          );
+          return RegExpPrototypeTest(regex, def.name);
         }
 
-        return def.name.includes(filter);
+        return StringPrototypeIncludes(def.name, filter);
       }
 
       return true;
     };
   }
 
-  function pledgeTestPermissions(permissions) {
-    return core.opSync(
-      "op_pledge_test_permissions",
-      parsePermissions(permissions),
-    );
-  }
-
-  function restoreTestPermissions(token) {
-    core.opSync("op_restore_test_permissions", token);
-  }
-
-  async function runTest({ name, ignore, fn, permissions }) {
-    let token = null;
-    const time = Date.now();
+  async function runTest({ ignore, fn }) {
+    if (ignore) {
+      return "ignored";
+    }
 
     try {
-      postTestMessage("wait", {
-        name,
-      });
-
-      if (permissions) {
-        token = pledgeTestPermissions(permissions);
-      }
-
-      if (ignore) {
-        const duration = Date.now() - time;
-        postTestMessage("result", {
-          name,
-          duration,
-          result: "ignored",
-        });
-
-        return;
-      }
-
       await fn();
-
-      const duration = Date.now() - time;
-      postTestMessage("result", {
-        name,
-        duration,
-        result: "ok",
-      });
+      return "ok";
     } catch (error) {
-      const duration = Date.now() - time;
-
-      postTestMessage("result", {
-        name,
-        duration,
-        result: {
-          "failed": inspectArgs([error]),
-        },
-      });
-    } finally {
-      if (token) {
-        restoreTestPermissions(token);
-      }
+      return { "failed": inspectArgs([error]) };
     }
+  }
+
+  function getTestOrigin() {
+    return core.opSync("op_get_test_origin");
+  }
+
+  function dispatchTestEvent(event) {
+    return core.opSync("op_dispatch_test_event", event);
   }
 
   async function runTests({
     disableLog = false,
     filter = null,
+    shuffle = null,
   } = {}) {
+    const origin = getTestOrigin();
     const originalConsole = globalThis.console;
     if (disableLog) {
       globalThis.console = new Console(() => {});
     }
 
-    const only = tests.filter((test) => test.only);
-    const pending = (only.length > 0 ? only : tests).filter(
+    const only = ArrayPrototypeFilter(tests, (test) => test.only);
+    const filtered = ArrayPrototypeFilter(
+      (only.length > 0 ? only : tests),
       createTestFilter(filter),
     );
-    postTestMessage("plan", {
-      filtered: tests.length - pending.length,
-      pending: pending.length,
-      only: only.length > 0,
+
+    dispatchTestEvent({
+      plan: {
+        origin,
+        total: filtered.length,
+        filteredOut: tests.length - filtered.length,
+        usedOnly: only.length > 0,
+      },
     });
 
-    for (const test of pending) {
-      await runTest(test);
+    if (shuffle !== null) {
+      // http://en.wikipedia.org/wiki/Linear_congruential_generator
+      const nextInt = (function (state) {
+        const m = 0x80000000;
+        const a = 1103515245;
+        const c = 12345;
+
+        return function (max) {
+          return state = ((a * state + c) % m) % max;
+        };
+      }(shuffle));
+
+      for (let i = filtered.length - 1; i > 0; i--) {
+        const j = nextInt(i);
+        [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
+      }
+    }
+
+    for (const test of filtered) {
+      const description = {
+        origin,
+        name: test.name,
+      };
+      const earlier = DateNow();
+
+      dispatchTestEvent({ wait: description });
+
+      const result = await runTest(test);
+      const elapsed = DateNow() - earlier;
+
+      dispatchTestEvent({ result: [description, result, elapsed] });
     }
 
     if (disableLog) {

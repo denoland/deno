@@ -55,6 +55,8 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
+use deno_core::located_script_name;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -77,7 +79,6 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::Mutex;
 use tools::test_runner;
 
 fn create_web_worker_callback(
@@ -91,8 +92,6 @@ fn create_web_worker_callback(
       PrettyJsError::create(source_mapped_error)
     });
 
-    let attach_inspector = program_state.maybe_inspector_server.is_some()
-      || program_state.coverage_dir.is_some();
     let maybe_inspector_server = program_state.maybe_inspector_server.clone();
 
     let module_loader = CliModuleLoader::new_for_worker(
@@ -117,17 +116,19 @@ fn create_web_worker_callback(
       create_web_worker_cb,
       js_error_create_fn: Some(js_error_create_fn),
       use_deno_namespace: args.use_deno_namespace,
-      attach_inspector,
       maybe_inspector_server,
       runtime_version: version::deno(),
       ts_version: version::TYPESCRIPT.to_string(),
       no_color: !colors::use_color(),
       get_error_class_fn: Some(&crate::errors::get_error_class_name),
-      blob_url_store: program_state.blob_url_store.clone(),
+      blob_store: program_state.blob_store.clone(),
       broadcast_channel: program_state.broadcast_channel.clone(),
+      shared_array_buffer_store: Some(
+        program_state.shared_array_buffer_store.clone(),
+      ),
     };
 
-    let mut worker = WebWorker::from_options(
+    let (mut worker, external_handle) = WebWorker::from_options(
       args.name,
       args.permissions,
       args.main_module,
@@ -153,7 +154,7 @@ fn create_web_worker_callback(
     }
     worker.bootstrap(&options);
 
-    worker
+    (worker, external_handle)
   })
 }
 
@@ -173,9 +174,6 @@ pub fn create_main_worker(
     PrettyJsError::create(source_mapped_error)
   });
 
-  let attach_inspector = program_state.maybe_inspector_server.is_some()
-    || program_state.flags.repl
-    || program_state.coverage_dir.is_some();
   let maybe_inspector_server = program_state.maybe_inspector_server.clone();
   let should_break_on_first_statement =
     program_state.flags.inspect_brk.is_some();
@@ -195,7 +193,6 @@ pub fn create_main_worker(
     seed: program_state.flags.seed,
     js_error_create_fn: Some(js_error_create_fn),
     create_web_worker_cb,
-    attach_inspector,
     maybe_inspector_server,
     should_break_on_first_statement,
     module_loader,
@@ -213,8 +210,11 @@ pub fn create_main_worker(
         .join("location_data")
         .join(checksum::gen(&[loc.to_string().as_bytes()]))
     }),
-    blob_url_store: program_state.blob_url_store.clone(),
+    blob_store: program_state.blob_store.clone(),
     broadcast_channel: program_state.broadcast_channel.clone(),
+    shared_array_buffer_store: Some(
+      program_state.shared_array_buffer_store.clone(),
+    ),
   };
 
   let mut worker = MainWorker::from_options(main_module, permissions, &options);
@@ -341,12 +341,15 @@ pub fn get_types(unstable: bool) -> String {
     crate::tsc::DENO_WEBUSB_LIB,
     crate::tsc::DENO_CRYPTO_LIB,
     crate::tsc::DENO_BROADCAST_CHANNEL_LIB,
+    crate::tsc::DENO_NET_LIB,
     crate::tsc::SHARED_GLOBALS_LIB,
     crate::tsc::WINDOW_LIB,
   ];
 
   if unstable {
     types.push(crate::tsc::UNSTABLE_NS_LIB);
+    types.push(crate::tsc::DENO_NET_UNSTABLE_LIB);
+    types.push(crate::tsc::DENO_HTTP_UNSTABLE_LIB);
   }
 
   types.join("\n")
@@ -435,6 +438,9 @@ async fn info_command(
       program_state.lockfile.clone(),
     );
     builder.add(&specifier, false).await?;
+    builder
+      .analyze_config_file(&program_state.maybe_config_file)
+      .await?;
     let graph = builder.get_graph();
     let info = graph.info()?;
 
@@ -559,9 +565,15 @@ async fn eval_command(
   program_state.file_fetcher.insert_cached(file);
   debug!("main_module {}", &main_module);
   worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('load'))",
+  )?;
   worker.run_event_loop(false).await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('unload'))",
+  )?;
   Ok(())
 }
 
@@ -583,6 +595,9 @@ async fn create_module_graph_and_maybe_check(
     program_state.lockfile.clone(),
   );
   builder.add(&module_specifier, false).await?;
+  builder
+    .analyze_config_file(&program_state.maybe_config_file)
+    .await?;
   let module_graph = builder.get_graph();
 
   if !program_state.flags.no_check {
@@ -599,6 +614,7 @@ async fn create_module_graph_and_maybe_check(
         lib,
         maybe_config_file: program_state.maybe_config_file.clone(),
         reload: program_state.flags.reload,
+        ..Default::default()
       })?;
 
     debug!("{}", result_info.stats);
@@ -795,9 +811,15 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
 
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('load'))",
+  )?;
   worker.run_event_loop(false).await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('unload'))",
+  )?;
   Ok(())
 }
 
@@ -820,6 +842,9 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         program_state.lockfile.clone(),
       );
       builder.add(&main_module, false).await?;
+      builder
+        .analyze_config_file(&program_state.maybe_config_file)
+        .await?;
       let module_graph = builder.get_graph();
 
       // Find all local files in graph
@@ -864,9 +889,15 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
         );
         debug!("main_module {}", main_module);
         worker.execute_module(&main_module).await?;
-        worker.execute("window.dispatchEvent(new Event('load'))")?;
+        worker.execute_script(
+          &located_script_name!(),
+          "window.dispatchEvent(new Event('load'))",
+        )?;
         worker.run_event_loop(false).await?;
-        worker.execute("window.dispatchEvent(new Event('unload'))")?;
+        worker.execute_script(
+          &located_script_name!(),
+          "window.dispatchEvent(new Event('unload'))",
+        )?;
         Ok(())
       }
     };
@@ -907,11 +938,17 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
 
   debug!("main_module {}", main_module);
   worker.execute_module(&main_module).await?;
-  worker.execute("window.dispatchEvent(new Event('load'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('load'))",
+  )?;
   worker
     .run_event_loop(maybe_coverage_collector.is_none())
     .await?;
-  worker.execute("window.dispatchEvent(new Event('unload'))")?;
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('unload'))",
+  )?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     worker
@@ -930,8 +967,7 @@ async fn coverage_command(
   lcov: bool,
 ) -> Result<(), AnyError> {
   if files.is_empty() {
-    println!("No matching coverage profiles found");
-    std::process::exit(1);
+    return Err(generic_error("No matching coverage profiles found"));
   }
 
   tools::coverage::cover_files(
@@ -951,10 +987,11 @@ async fn test_command(
   include: Option<Vec<String>>,
   no_run: bool,
   doc: bool,
-  fail_fast: bool,
+  fail_fast: Option<usize>,
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
+  shuffle: Option<u64>,
   concurrent_jobs: usize,
 ) -> Result<(), AnyError> {
   if let Some(ref coverage_dir) = flags.coverage_dir {
@@ -990,17 +1027,19 @@ async fn test_command(
 
     // TODO(caspervonb) clean this up.
     let resolver = |changed: Option<Vec<PathBuf>>| {
-      let doc_modules_result = test_runner::collect_test_module_specifiers(
-        include.clone(),
-        &cwd,
-        fs_util::is_supported_ext,
-      );
-
-      let test_modules_result = test_runner::collect_test_module_specifiers(
-        include.clone(),
-        &cwd,
-        tools::test_runner::is_supported,
-      );
+      let test_modules_result = if doc {
+        test_runner::collect_test_module_specifiers(
+          include.clone(),
+          &cwd,
+          fs_util::is_supported_ext,
+        )
+      } else {
+        test_runner::collect_test_module_specifiers(
+          include.clone(),
+          &cwd,
+          tools::test_runner::is_supported,
+        )
+      };
 
       let paths_to_watch = paths_to_watch.clone();
       let paths_to_watch_clone = paths_to_watch.clone();
@@ -1009,8 +1048,6 @@ async fn test_command(
       let program_state = program_state.clone();
       let files_changed = changed.is_some();
       async move {
-        let doc_modules = if doc { doc_modules_result? } else { Vec::new() };
-
         let test_modules = test_modules_result?;
 
         let mut paths_to_watch = paths_to_watch_clone;
@@ -1031,13 +1068,10 @@ async fn test_command(
         for specifier in test_modules.iter() {
           builder.add(specifier, false).await?;
         }
+        builder
+          .analyze_config_file(&program_state.maybe_config_file)
+          .await?;
         let graph = builder.get_graph();
-
-        for specifier in doc_modules {
-          if let Ok(path) = specifier.to_file_path() {
-            paths_to_watch.push(path);
-          }
-        }
 
         for specifier in test_modules {
           fn get_dependencies<'a>(
@@ -1126,27 +1160,64 @@ async fn test_command(
       })
     };
 
-    file_watcher::watch_func(
-      resolver,
-      |modules_to_reload| {
+    let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
+      let cwd = cwd.clone();
+      let filter = filter.clone();
+      let include = include.clone();
+      let lib = lib.clone();
+      let permissions = permissions.clone();
+      let program_state = program_state.clone();
+
+      async move {
+        let doc_modules = if doc {
+          test_runner::collect_test_module_specifiers(
+            include.clone(),
+            &cwd,
+            fs_util::is_supported_ext,
+          )?
+        } else {
+          Vec::new()
+        };
+
+        let doc_modules_to_reload = doc_modules
+          .iter()
+          .filter(|specifier| modules_to_reload.contains(specifier))
+          .cloned()
+          .collect();
+
+        let test_modules = test_runner::collect_test_module_specifiers(
+          include.clone(),
+          &cwd,
+          tools::test_runner::is_supported,
+        )?;
+
+        let test_modules_to_reload = test_modules
+          .iter()
+          .filter(|specifier| modules_to_reload.contains(specifier))
+          .cloned()
+          .collect();
+
         test_runner::run_tests(
           program_state.clone(),
           permissions.clone(),
           lib.clone(),
-          modules_to_reload.clone(),
-          modules_to_reload,
+          doc_modules_to_reload,
+          test_modules_to_reload,
           no_run,
           fail_fast,
           quiet,
           true,
           filter.clone(),
+          shuffle,
           concurrent_jobs,
         )
-        .map(|res| res.map(|_| ()))
-      },
-      "Test",
-    )
-    .await?;
+        .await?;
+
+        Ok(())
+      }
+    };
+
+    file_watcher::watch_func(resolver, operation, "Test").await?;
   } else {
     let doc_modules = if doc {
       test_runner::collect_test_module_specifiers(
@@ -1175,6 +1246,7 @@ async fn test_command(
       quiet,
       allow_none,
       filter,
+      shuffle,
       concurrent_jobs,
     )
     .await?;
@@ -1282,6 +1354,7 @@ fn get_subcommand(
       include,
       allow_none,
       filter,
+      shuffle,
       concurrent_jobs,
     } => test_command(
       flags,
@@ -1292,6 +1365,7 @@ fn get_subcommand(
       quiet,
       allow_none,
       filter,
+      shuffle,
       concurrent_jobs,
     )
     .boxed_local(),

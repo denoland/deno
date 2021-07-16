@@ -5,7 +5,7 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../url/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
-/// <reference path="./11_streams_types.d.ts" />
+/// <reference path="../web/06_streams_types.d.ts" />
 /// <reference path="./internal.d.ts" />
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
@@ -14,7 +14,6 @@
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
-  const { byteLowerCase } = window.__bootstrap.infra;
   const { errorReadableStream } = window.__bootstrap.streams;
   const { InnerBody, extractBody } = window.__bootstrap.fetchBody;
   const {
@@ -27,6 +26,20 @@
     abortedNetworkError,
   } = window.__bootstrap.fetch;
   const abortSignal = window.__bootstrap.abortSignal;
+  const { DOMException } = window.__bootstrap.domException;
+  const {
+    ArrayPrototypePush,
+    ArrayPrototypeSplice,
+    ArrayPrototypeFilter,
+    ArrayPrototypeIncludes,
+    Promise,
+    PromisePrototypeThen,
+    PromisePrototypeCatch,
+    StringPrototypeToLowerCase,
+    TypedArrayPrototypeSubarray,
+    TypeError,
+    Uint8Array,
+  } = window.__bootstrap.primordials;
 
   const REQUEST_BODY_HEADER_NAMES = [
     "content-encoding",
@@ -104,7 +117,7 @@
           );
           if (read > 0) {
             // We read some data. Enqueue it onto the stream.
-            controller.enqueue(chunk.subarray(0, read));
+            controller.enqueue(TypedArrayPrototypeSubarray(chunk, 0, read));
           } else {
             // We have reached the end of the body, so we close the stream.
             controller.close();
@@ -149,17 +162,21 @@
   async function mainFetch(req, recursive, terminator) {
     /** @type {ReadableStream<Uint8Array> | Uint8Array | null} */
     let reqBody = null;
+
     if (req.body !== null) {
       if (req.body.streamOrStatic instanceof ReadableStream) {
-        if (req.body.length === null) {
+        if (req.body.length === null || req.body.source instanceof Blob) {
           reqBody = req.body.stream;
         } else {
           const reader = req.body.stream.getReader();
           const r1 = await reader.read();
-          if (r1.done) throw new TypeError("Unreachable");
-          reqBody = r1.value;
-          const r2 = await reader.read();
-          if (!r2.done) throw new TypeError("Unreachable");
+          if (r1.done) {
+            reqBody = new Uint8Array(0);
+          } else {
+            reqBody = r1.value;
+            const r2 = await reader.read();
+            if (!r2.done) throw new TypeError("Unreachable");
+          }
         }
       } else {
         req.body.streamOrStatic.consumed = true;
@@ -173,6 +190,7 @@
       headers: req.headerList,
       clientRid: req.clientRid,
       hasBody: reqBody !== null,
+      bodyLength: req.body?.length,
     }, reqBody instanceof Uint8Array ? reqBody : null);
 
     function onAbort() {
@@ -196,20 +214,26 @@
       const reader = reqBody.getReader();
       (async () => {
         while (true) {
-          const { value, done } = await reader.read().catch((err) => {
-            if (terminator.aborted) return { done: true, value: undefined };
-            throw err;
-          });
+          const { value, done } = await PromisePrototypeCatch(
+            reader.read(),
+            (err) => {
+              if (terminator.aborted) return { done: true, value: undefined };
+              throw err;
+            },
+          );
           if (done) break;
           if (!(value instanceof Uint8Array)) {
             await reader.cancel("value not a Uint8Array");
             break;
           }
           try {
-            await opFetchRequestWrite(requestBodyRid, value).catch((err) => {
-              if (terminator.aborted) return;
-              throw err;
-            });
+            await PromisePrototypeCatch(
+              opFetchRequestWrite(requestBodyRid, value),
+              (err) => {
+                if (terminator.aborted) return;
+                throw err;
+              },
+            );
             if (terminator.aborted) break;
           } catch (err) {
             await reader.cancel(err);
@@ -226,7 +250,7 @@
 
     let resp;
     try {
-      resp = await opFetchSend(requestRid).catch((err) => {
+      resp = await PromisePrototypeCatch(opFetchSend(requestRid), (err) => {
         if (terminator.aborted) return;
         throw err;
       });
@@ -270,9 +294,14 @@
     if (nullBodyStatus(response.status)) {
       core.close(resp.responseRid);
     } else {
-      response.body = new InnerBody(
-        createResponseBodyStream(resp.responseRid, terminator),
-      );
+      if (req.method === "HEAD" || req.method === "CONNECT") {
+        response.body = null;
+        core.close(resp.responseRid);
+      } else {
+        response.body = new InnerBody(
+          createResponseBodyStream(resp.responseRid, terminator),
+        );
+      }
     }
 
     if (recursive) return response;
@@ -290,8 +319,9 @@
    * @returns {Promise<InnerResponse>}
    */
   function httpRedirectFetch(request, response, terminator) {
-    const locationHeaders = response.headerList.filter((entry) =>
-      byteLowerCase(entry[0]) === "location"
+    const locationHeaders = ArrayPrototypeFilter(
+      response.headerList,
+      (entry) => entry[0] === "location",
     );
     if (locationHeaders.length === 0) {
       return response;
@@ -311,7 +341,8 @@
     }
     request.redirectCount++;
     if (
-      response.status !== 303 && request.body !== null &&
+      response.status !== 303 &&
+      request.body !== null &&
       request.body.source === null
     ) {
       return networkError(
@@ -322,17 +353,19 @@
       ((response.status === 301 || response.status === 302) &&
         request.method === "POST") ||
       (response.status === 303 &&
-        (request.method !== "GET" && request.method !== "HEAD"))
+        request.method !== "GET" &&
+        request.method !== "HEAD")
     ) {
       request.method = "GET";
       request.body = null;
       for (let i = 0; i < request.headerList.length; i++) {
         if (
-          REQUEST_BODY_HEADER_NAMES.includes(
-            byteLowerCase(request.headerList[i][0]),
+          ArrayPrototypeIncludes(
+            REQUEST_BODY_HEADER_NAMES,
+            request.headerList[i][0],
           )
         ) {
-          request.headerList.splice(i, 1);
+          ArrayPrototypeSplice(request.headerList, i, 1);
           i--;
         }
       }
@@ -341,7 +374,7 @@
       const res = extractBody(request.body.source);
       request.body = res.body;
     }
-    request.urlList.push(locationURL.href);
+    ArrayPrototypePush(request.urlList, locationURL.href);
     return mainFetch(request, true, terminator);
   }
 
@@ -384,36 +417,42 @@
       }
       requestObject.signal[abortSignal.add](onabort);
 
-      if (!requestObject.headers.has("Accept")) {
-        request.headerList.push(["Accept", "*/*"]);
+      if (!requestObject.headers.has("accept")) {
+        ArrayPrototypePush(request.headerList, ["accept", "*/*"]);
       }
 
       // 12.
-      mainFetch(request, false, requestObject.signal).then((response) => {
-        // 12.1.
-        if (locallyAborted) return;
-        // 12.2.
-        if (response.aborted) {
-          reject(request, responseObject);
-          requestObject.signal[abortSignal.remove](onabort);
-          return;
-        }
-        // 12.3.
-        if (response.type === "error") {
-          const err = new TypeError(
-            "Fetch failed: " + (response.error ?? "unknown error"),
-          );
+      PromisePrototypeCatch(
+        PromisePrototypeThen(
+          mainFetch(request, false, requestObject.signal),
+          (response) => {
+            // 12.1.
+            if (locallyAborted) return;
+            // 12.2.
+            if (response.aborted) {
+              reject(request, responseObject);
+              requestObject.signal[abortSignal.remove](onabort);
+              return;
+            }
+            // 12.3.
+            if (response.type === "error") {
+              const err = new TypeError(
+                "Fetch failed: " + (response.error ?? "unknown error"),
+              );
+              reject(err);
+              requestObject.signal[abortSignal.remove](onabort);
+              return;
+            }
+            responseObject = fromInnerResponse(response, "immutable");
+            resolve(responseObject);
+            requestObject.signal[abortSignal.remove](onabort);
+          },
+        ),
+        (err) => {
           reject(err);
           requestObject.signal[abortSignal.remove](onabort);
-          return;
-        }
-        responseObject = fromInnerResponse(response, "immutable");
-        resolve(responseObject);
-        requestObject.signal[abortSignal.remove](onabort);
-      }).catch((err) => {
-        reject(err);
-        requestObject.signal[abortSignal.remove](onabort);
-      });
+        },
+      );
     });
     return p;
   }
@@ -428,6 +467,64 @@
     return error;
   }
 
+  /**
+   * Handle the Promise<Response> argument to the WebAssembly streaming
+   * APIs. This function should be registered through
+   * `Deno.core.setWasmStreamingCallback`.
+   *
+   * @param {any} source The source parameter that the WebAssembly
+   * streaming API was called with.
+   * @param {number} rid An rid that can be used with
+   * `Deno.core.wasmStreamingFeed`.
+   */
+  function handleWasmStreaming(source, rid) {
+    // This implements part of
+    // https://webassembly.github.io/spec/web-api/#compile-a-potential-webassembly-response
+    (async () => {
+      try {
+        const res = webidl.converters["Response"](await source, {
+          prefix: "Failed to call 'WebAssembly.compileStreaming'",
+          context: "Argument 1",
+        });
+
+        // 2.3.
+        // The spec is ambiguous here, see
+        // https://github.com/WebAssembly/spec/issues/1138. The WPT tests
+        // expect the raw value of the Content-Type attribute lowercased.
+        if (
+          StringPrototypeToLowerCase(res.headers.get("Content-Type")) !==
+            "application/wasm"
+        ) {
+          throw new TypeError("Invalid WebAssembly content type.");
+        }
+
+        // 2.5.
+        if (!res.ok) {
+          throw new TypeError(`HTTP status code ${res.status}`);
+        }
+
+        // 2.6.
+        // Rather than consuming the body as an ArrayBuffer, this passes each
+        // chunk to the feed as soon as it's available.
+        if (res.body !== null) {
+          const reader = res.body.getReader();
+          while (true) {
+            const { value: chunk, done } = await reader.read();
+            if (done) break;
+            Deno.core.wasmStreamingFeed(rid, "bytes", chunk);
+          }
+        }
+
+        // 2.7.
+        Deno.core.wasmStreamingFeed(rid, "finish");
+      } catch (err) {
+        // 2.8 and 3
+        Deno.core.wasmStreamingFeed(rid, "abort", err);
+      }
+    })();
+  }
+
   window.__bootstrap.fetch ??= {};
   window.__bootstrap.fetch.fetch = fetch;
+  window.__bootstrap.fetch.handleWasmStreaming = handleWasmStreaming;
 })(this);

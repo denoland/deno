@@ -5,6 +5,8 @@ use crate::fs_util::resolve_from_cwd;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
+#[cfg(test)]
+use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::url;
@@ -21,8 +23,6 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 #[cfg(test)]
 use std::sync::atomic::Ordering;
-#[cfg(test)]
-use std::sync::Mutex;
 
 const PERMISSION_EMOJI: &str = "⚠️";
 
@@ -1071,6 +1071,23 @@ impl Permissions {
   }
 }
 
+impl deno_net::NetPermissions for Permissions {
+  fn check_net<T: AsRef<str>>(
+    &mut self,
+    host: &(T, Option<u16>),
+  ) -> Result<(), AnyError> {
+    self.net.check(host)
+  }
+
+  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
+    self.read.check(path)
+  }
+
+  fn check_write(&mut self, path: &Path) -> Result<(), AnyError> {
+    self.write.check(path)
+  }
+}
+
 impl deno_fetch::FetchPermissions for Permissions {
   fn check_net_url(&mut self, url: &url::Url) -> Result<(), AnyError> {
     self.net.check_url(url)
@@ -1613,7 +1630,7 @@ mod tests {
     let mut perms: Permissions = Default::default();
     #[rustfmt::skip]
     {
-      let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+      let _guard = PERMISSION_PROMPT_GUARD.lock();
       set_prompt_result(true);
       assert_eq!(perms.read.request(Some(&Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms.read.query(None), PermissionState::Prompt);
@@ -1720,7 +1737,7 @@ mod tests {
       usb: Permissions::new_usb(&None, true),
     };
 
-    let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+    let _guard = PERMISSION_PROMPT_GUARD.lock();
 
     set_prompt_result(true);
     assert!(perms.read.check(&Path::new("/foo")).is_ok());
@@ -1774,7 +1791,7 @@ mod tests {
       usb: Permissions::new_usb(&None, true),
     };
 
-    let _guard = PERMISSION_PROMPT_GUARD.lock().unwrap();
+    let _guard = PERMISSION_PROMPT_GUARD.lock();
 
     set_prompt_result(false);
     assert!(perms.read.check(&Path::new("/foo")).is_err());

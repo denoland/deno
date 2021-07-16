@@ -1,19 +1,109 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+/// <reference path="../../core/internal.d.ts" />
+
 "use strict";
 
 ((window) => {
   const core = window.Deno.core;
   const colors = window.__bootstrap.colors;
+  const {
+    ArrayBufferIsView,
+    isNaN,
+    DataView,
+    Date,
+    DateNow,
+    DatePrototypeGetTime,
+    DatePrototypeToISOString,
+    Boolean,
+    BooleanPrototypeToString,
+    ObjectKeys,
+    ObjectCreate,
+    ObjectAssign,
+    ObjectIs,
+    ObjectValues,
+    ObjectFromEntries,
+    ObjectGetPrototypeOf,
+    ObjectGetOwnPropertyDescriptor,
+    ObjectGetOwnPropertySymbols,
+    ObjectPrototypeHasOwnProperty,
+    ObjectPrototypePropertyIsEnumerable,
+    Promise,
+    String,
+    StringPrototypeRepeat,
+    StringPrototypeReplace,
+    StringPrototypeReplaceAll,
+    StringPrototypeSplit,
+    StringPrototypeSlice,
+    StringPrototypeCodePointAt,
+    StringPrototypeCharCodeAt,
+    StringPrototypeNormalize,
+    StringPrototypeMatch,
+    StringPrototypePadStart,
+    StringPrototypeLocaleCompare,
+    StringPrototypeToString,
+    StringPrototypeTrim,
+    StringPrototypeIncludes,
+    TypeError,
+    NumberParseInt,
+    RegExp,
+    RegExpPrototypeTest,
+    RegExpPrototypeToString,
+    Set,
+    SetPrototypeEntries,
+    SymbolPrototypeToString,
+    SymbolToStringTag,
+    SymbolHasInstance,
+    SymbolFor,
+    Array,
+    ArrayIsArray,
+    ArrayPrototypeJoin,
+    ArrayPrototypeMap,
+    ArrayPrototypeReduce,
+    ArrayPrototypeEntries,
+    ArrayPrototypePush,
+    ArrayPrototypePop,
+    ArrayPrototypeSort,
+    ArrayPrototypeSlice,
+    ArrayPrototypeIncludes,
+    ArrayPrototypeFill,
+    ArrayPrototypeFilter,
+    ArrayPrototypeFind,
+    FunctionPrototypeBind,
+    Map,
+    MapPrototypeHas,
+    MapPrototypeGet,
+    MapPrototypeSet,
+    MapPrototypeDelete,
+    MapPrototypeEntries,
+    MapPrototypeForEach,
+    Error,
+    ErrorCaptureStackTrace,
+    MathAbs,
+    MathMax,
+    MathMin,
+    MathSqrt,
+    MathRound,
+    MathFloor,
+    Number,
+    NumberPrototypeToString,
+    Proxy,
+    ReflectGet,
+    ReflectGetOwnPropertyDescriptor,
+    ReflectGetPrototypeOf,
+    WeakMap,
+    WeakSet,
+  } = window.__bootstrap.primordials;
 
   function isInvalidDate(x) {
-    return isNaN(x.getTime());
+    return isNaN(DatePrototypeGetTime(x));
   }
 
   function hasOwnProperty(obj, v) {
     if (obj == null) {
       return false;
     }
-    return Object.prototype.hasOwnProperty.call(obj, v);
+    return ObjectPrototypeHasOwnProperty(obj, v);
   }
 
   function propertyIsEnumerable(obj, prop) {
@@ -24,14 +114,14 @@
       return false;
     }
 
-    return obj.propertyIsEnumerable(prop);
+    return ObjectPrototypePropertyIsEnumerable(obj, prop);
   }
 
   // Copyright Joyent, Inc. and other Node contributors. MIT license.
   // Forked from Node's lib/internal/cli_table.js
 
   function isTypedArray(x) {
-    return ArrayBuffer.isView(x) && !(x instanceof DataView);
+    return ArrayBufferIsView(x) && !(x instanceof DataView);
   }
 
   const tableChars = {
@@ -90,11 +180,11 @@
   }
 
   function getStringWidth(str) {
-    str = colors.stripColor(str).normalize("NFC");
+    str = StringPrototypeNormalize(colors.stripColor(str), "NFC");
     let width = 0;
 
     for (const ch of str) {
-      width += isFullWidthCodePoint(ch.codePointAt(0)) ? 2 : 1;
+      width += isFullWidthCodePoint(StringPrototypeCodePointAt(ch, 0)) ? 2 : 1;
     }
 
     return width;
@@ -105,10 +195,8 @@
     for (let i = 0; i < row.length; i++) {
       const cell = row[i];
       const len = getStringWidth(cell);
-      const needed = (columnWidths[i] - len) / 2;
-      // round(needed) + ceil(needed) will always add up to the amount
-      // of spaces we need while also left justifying the output.
-      out += `${" ".repeat(needed)}${cell}${" ".repeat(Math.ceil(needed))}`;
+      const needed = columnWidths[i] - len;
+      out += `${cell}${StringPrototypeRepeat(" ", needed)}`;
       if (i !== row.length - 1) {
         out += tableChars.middle;
       }
@@ -119,9 +207,10 @@
 
   function cliTable(head, columns) {
     const rows = [];
-    const columnWidths = head.map((h) => getStringWidth(h));
-    const longestColumn = columns.reduce(
-      (n, a) => Math.max(n, a.length),
+    const columnWidths = ArrayPrototypeMap(head, (h) => getStringWidth(h));
+    const longestColumn = ArrayPrototypeReduce(
+      columns,
+      (n, a) => MathMax(n, a.length),
       0,
     );
 
@@ -134,17 +223,23 @@
         const value = (rows[j][i] = hasOwnProperty(column, j) ? column[j] : "");
         const width = columnWidths[i] || 0;
         const counted = getStringWidth(value);
-        columnWidths[i] = Math.max(width, counted);
+        columnWidths[i] = MathMax(width, counted);
       }
     }
 
-    const divider = columnWidths.map((i) =>
-      tableChars.middleMiddle.repeat(i + 2)
+    const divider = ArrayPrototypeMap(
+      columnWidths,
+      (i) => StringPrototypeRepeat(tableChars.middleMiddle, i + 2),
     );
 
-    let result = `${tableChars.topLeft}${divider.join(tableChars.topMiddle)}` +
+    let result =
+      `${tableChars.topLeft}${
+        ArrayPrototypeJoin(divider, tableChars.topMiddle)
+      }` +
       `${tableChars.topRight}\n${renderRow(head, columnWidths)}\n` +
-      `${tableChars.leftMiddle}${divider.join(tableChars.rowMiddle)}` +
+      `${tableChars.leftMiddle}${
+        ArrayPrototypeJoin(divider, tableChars.rowMiddle)
+      }` +
       `${tableChars.rightMiddle}\n`;
 
     for (const row of rows) {
@@ -152,7 +247,9 @@
     }
 
     result +=
-      `${tableChars.bottomLeft}${divider.join(tableChars.bottomMiddle)}` +
+      `${tableChars.bottomLeft}${
+        ArrayPrototypeJoin(divider, tableChars.bottomMiddle)
+      }` +
       tableChars.bottomRight;
 
     return result;
@@ -203,10 +300,10 @@
   function inspectFunction(value, level, inspectOptions) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
     if (customInspect in value && typeof value[customInspect] === "function") {
-      return String(value[customInspect]());
+      return String(value[customInspect](inspect));
     }
     // Might be Function/AsyncFunction/GeneratorFunction/AsyncGeneratorFunction
-    let cstrName = Object.getPrototypeOf(value)?.constructor?.name;
+    let cstrName = ObjectGetPrototypeOf(value)?.constructor?.name;
     if (!cstrName) {
       // If prototype is removed or broken,
       // use generic 'Function' instead.
@@ -219,8 +316,8 @@
     // empty suffix.
     let suffix = ``;
     if (
-      Object.keys(value).length > 0 ||
-      Object.getOwnPropertySymbols(value).length > 0
+      ObjectKeys(value).length > 0 ||
+      ObjectGetOwnPropertySymbols(value).length > 0
     ) {
       const propString = inspectRawObject(value, level, inspectOptions);
       // Filter out the empty string for the case we only have
@@ -252,20 +349,32 @@
     }
 
     const entries = [];
+    let iter;
 
-    const iter = value.entries();
+    // TODO(littledivy): Avoid re-checking iterable type
+    if (ArrayIsArray(value) || isTypedArray(value)) {
+      iter = ArrayPrototypeEntries(value);
+    } else if (value instanceof Set) {
+      iter = SetPrototypeEntries(value);
+    } else if (value instanceof Map) {
+      iter = MapPrototypeEntries(value);
+    } else {
+      throw new TypeError("Unreachable");
+    }
+
     let entriesLength = 0;
     const next = () => {
       return iter.next();
     };
     for (const el of iter) {
       if (entriesLength < inspectOptions.iterableLimit) {
-        entries.push(
+        ArrayPrototypePush(
+          entries,
           options.entryHandler(
             el,
             level + 1,
             inspectOptions,
-            next.bind(iter),
+            FunctionPrototypeBind(next, iter),
           ),
         );
       }
@@ -273,36 +382,42 @@
     }
 
     if (options.sort) {
-      entries.sort();
+      ArrayPrototypeSort(entries);
     }
 
     if (entriesLength > inspectOptions.iterableLimit) {
       const nmore = entriesLength - inspectOptions.iterableLimit;
-      entries.push(`... ${nmore} more items`);
+      ArrayPrototypePush(entries, `... ${nmore} more items`);
     }
 
     const iPrefix = `${options.displayName ? options.displayName + " " : ""}`;
 
-    const initIndentation = `\n${DEFAULT_INDENT.repeat(level + 1)}`;
-    const entryIndentation = `,\n${DEFAULT_INDENT.repeat(level + 1)}`;
+    const initIndentation = `\n${
+      StringPrototypeRepeat(DEFAULT_INDENT, level + 1)
+    }`;
+    const entryIndentation = `,\n${
+      StringPrototypeRepeat(DEFAULT_INDENT, level + 1)
+    }`;
     const closingIndentation = `${inspectOptions.trailingComma ? "," : ""}\n${
-      DEFAULT_INDENT.repeat(level)
+      StringPrototypeRepeat(DEFAULT_INDENT, level)
     }`;
 
     let iContent;
     if (options.group && entries.length > MIN_GROUP_LENGTH) {
       const groups = groupEntries(entries, level, value);
       iContent = `${initIndentation}${
-        groups.join(entryIndentation)
+        ArrayPrototypeJoin(groups, entryIndentation)
       }${closingIndentation}`;
     } else {
-      iContent = entries.length === 0 ? "" : ` ${entries.join(", ")} `;
+      iContent = entries.length === 0
+        ? ""
+        : ` ${ArrayPrototypeJoin(entries, ", ")} `;
       if (
         colors.stripColor(iContent).length > LINE_BREAKING_LENGTH ||
         !inspectOptions.compact
       ) {
         iContent = `${initIndentation}${
-          entries.join(entryIndentation)
+          ArrayPrototypeJoin(entries, entryIndentation)
         }${closingIndentation}`;
       }
     }
@@ -350,20 +465,20 @@
       (totalLength / actualMax > 5 || maxLength <= 6)
     ) {
       const approxCharHeights = 2.5;
-      const averageBias = Math.sqrt(actualMax - totalLength / entries.length);
-      const biasedMax = Math.max(actualMax - 3 - averageBias, 1);
+      const averageBias = MathSqrt(actualMax - totalLength / entries.length);
+      const biasedMax = MathMax(actualMax - 3 - averageBias, 1);
       // Dynamically check how many columns seem possible.
-      const columns = Math.min(
+      const columns = MathMin(
         // Ideally a square should be drawn. We expect a character to be about 2.5
         // times as high as wide. This is the area formula to calculate a square
         // which contains n rectangles of size `actualMax * approxCharHeights`.
         // Divide that by `actualMax` to receive the correct number of columns.
         // The added bias increases the columns for short entries.
-        Math.round(
-          Math.sqrt(approxCharHeights * biasedMax * entriesLength) / biasedMax,
+        MathRound(
+          MathSqrt(approxCharHeights * biasedMax * entriesLength) / biasedMax,
         ),
         // Do not exceed the breakLength.
-        Math.floor((LINE_BREAKING_LENGTH - (level + 1)) / actualMax),
+        MathFloor((LINE_BREAKING_LENGTH - (level + 1)) / actualMax),
         // Limit the columns to a maximum of fifteen.
         15,
       );
@@ -396,7 +511,7 @@
       // Each iteration creates a single line of grouped entries.
       for (let i = 0; i < entriesLength; i += columns) {
         // The last lines may contain less entries than columns.
-        const max = Math.min(i + columns, entriesLength);
+        const max = MathMin(i + columns, entriesLength);
         let str = "";
         let j = i;
         for (; j < max - 1; j++) {
@@ -409,14 +524,14 @@
           const padding = maxLineLength[j - i] +
             lengthOfColorCodes -
             separatorSpace;
-          str += entries[j].padStart(padding, " ");
+          str += StringPrototypePadStart(entries[j], padding, " ");
         } else {
           str += entries[j];
         }
-        tmp.push(str);
+        ArrayPrototypePush(tmp, str);
       }
       if (iterableLimit < entries.length) {
-        tmp.push(entries[entriesLength]);
+        ArrayPrototypePush(tmp, entries[entriesLength]);
       }
       entries = tmp;
     }
@@ -429,15 +544,13 @@
     inspectOptions,
   ) {
     const proxyDetails = core.getProxyDetails(value);
-    if (proxyDetails != null) {
-      return inspectOptions.showProxy
-        ? inspectProxy(proxyDetails, level, inspectOptions)
-        : inspectValue(proxyDetails[0], level, inspectOptions);
+    if (proxyDetails != null && inspectOptions.showProxy) {
+      return inspectProxy(proxyDetails, level, inspectOptions);
     }
 
     const green = maybeColor(colors.green, inspectOptions);
     const yellow = maybeColor(colors.yellow, inspectOptions);
-    const dim = maybeColor(colors.dim, inspectOptions);
+    const gray = maybeColor(colors.gray, inspectOptions);
     const cyan = maybeColor(colors.cyan, inspectOptions);
     const bold = maybeColor(colors.bold, inspectOptions);
     const red = maybeColor(colors.red, inspectOptions);
@@ -447,11 +560,11 @@
         return green(quoteString(value));
       case "number": // Numbers are yellow
         // Special handling of -0
-        return yellow(Object.is(value, -0) ? "-0" : `${value}`);
+        return yellow(ObjectIs(value, -0) ? "-0" : `${value}`);
       case "boolean": // booleans are yellow
         return yellow(String(value));
-      case "undefined": // undefined is dim
-        return dim(String(value));
+      case "undefined": // undefined is gray
+        return gray(String(value));
       case "symbol": // Symbols are green
         return green(maybeQuoteSymbol(value));
       case "bigint": // Bigints are yellow
@@ -484,12 +597,12 @@
     level,
     inspectOptions,
   ) {
-    CTX_STACK.push(value);
+    ArrayPrototypePush(CTX_STACK, value);
     let x;
     try {
       x = _inspectValue(value, level, inspectOptions);
     } finally {
-      CTX_STACK.pop();
+      ArrayPrototypePop(CTX_STACK);
     }
     return x;
   }
@@ -508,32 +621,54 @@
    * before any backslash.
    */
   function quoteString(string) {
-    const quote = QUOTES.find((c) => !string.includes(c)) ?? QUOTES[0];
+    const quote =
+      ArrayPrototypeFind(QUOTES, (c) => !StringPrototypeIncludes(string, c)) ??
+        QUOTES[0];
     const escapePattern = new RegExp(`(?=[${quote}\\\\])`, "g");
-    string = string.replace(escapePattern, "\\");
+    string = StringPrototypeReplace(string, escapePattern, "\\");
     string = replaceEscapeSequences(string);
     return `${quote}${string}${quote}`;
   }
 
   // Replace escape sequences that can modify output.
   function replaceEscapeSequences(string) {
-    return string
-      .replace(/[\b]/g, "\\b")
-      .replace(/\f/g, "\\f")
-      .replace(/\n/g, "\\n")
-      .replace(/\r/g, "\\r")
-      .replace(/\t/g, "\\t")
-      .replace(/\v/g, "\\v")
-      .replace(
-        // deno-lint-ignore no-control-regex
-        /[\x00-\x1f\x7f-\x9f]/g,
-        (c) => "\\x" + c.charCodeAt(0).toString(16).padStart(2, "0"),
-      );
+    return StringPrototypeReplace(
+      StringPrototypeReplace(
+        StringPrototypeReplace(
+          StringPrototypeReplace(
+            StringPrototypeReplace(
+              StringPrototypeReplace(
+                StringPrototypeReplace(string, /[\b]/g, "\\b"),
+                /\f/g,
+                "\\f",
+              ),
+              /\n/g,
+              "\\n",
+            ),
+            /\r/g,
+            "\\r",
+          ),
+          /\t/g,
+          "\\t",
+        ),
+        /\v/g,
+        "\\v",
+      ),
+      // deno-lint-ignore no-control-regex
+      /[\x00-\x1f\x7f-\x9f]/g,
+      (c) =>
+        "\\x" +
+        StringPrototypePadStart(
+          NumberPrototypeToString(StringPrototypeCharCodeAt(c, 0), 16),
+          2,
+          "0",
+        ),
+    );
   }
 
   // Surround a string with quotes when it is required (e.g the string not a valid identifier).
   function maybeQuoteString(string) {
-    if (/^[a-zA-Z_][a-zA-Z_0-9]*$/.test(string)) {
+    if (RegExpPrototypeTest(/^[a-zA-Z_][a-zA-Z_0-9]*$/, string)) {
       return replaceEscapeSequences(string);
     }
 
@@ -543,11 +678,11 @@
   // Surround a symbol's description in quotes when it is required (e.g the description has non printable characters).
   function maybeQuoteSymbol(symbol) {
     if (symbol.description === undefined) {
-      return symbol.toString();
+      return SymbolPrototypeToString(symbol);
     }
 
-    if (/^[a-zA-Z_][a-zA-Z_.0-9]*$/.test(symbol.description)) {
-      return symbol.toString();
+    if (RegExpPrototypeTest(/^[a-zA-Z_][a-zA-Z_.0-9]*$/, symbol.description)) {
+      return SymbolPrototypeToString(symbol);
     }
 
     return `Symbol(${quoteString(symbol.description)})`;
@@ -556,7 +691,10 @@
   const CTX_STACK = [];
   function ctxHas(x) {
     // Only check parent contexts
-    return CTX_STACK.slice(0, CTX_STACK.length - 1).includes(x);
+    return ArrayPrototypeIncludes(
+      ArrayPrototypeSlice(CTX_STACK, 0, CTX_STACK.length - 1),
+      x,
+    );
   }
 
   // Print strings when they are inside of arrays or objects with quotes
@@ -569,7 +707,7 @@
     switch (typeof value) {
       case "string": {
         const trunc = value.length > STR_ABBREVIATE_SIZE
-          ? value.slice(0, STR_ABBREVIATE_SIZE) + "..."
+          ? StringPrototypeSlice(value, 0, STR_ABBREVIATE_SIZE) + "..."
           : value;
         return green(quoteString(trunc)); // Quoted strings are green
       }
@@ -583,7 +721,7 @@
     level,
     inspectOptions,
   ) {
-    const dim = maybeColor(colors.dim, inspectOptions);
+    const gray = maybeColor(colors.gray, inspectOptions);
     const options = {
       typeName: "Array",
       displayName: "",
@@ -591,15 +729,15 @@
       entryHandler: (entry, level, inspectOptions, next) => {
         const [index, val] = entry;
         let i = index;
-        if (!value.hasOwnProperty(i)) {
+        if (!ObjectPrototypeHasOwnProperty(value, i)) {
           i++;
-          while (!value.hasOwnProperty(i) && i < value.length) {
+          while (!ObjectPrototypeHasOwnProperty(value, i) && i < value.length) {
             next();
             i++;
           }
           const emptyItems = i - index;
           const ending = emptyItems > 1 ? "s" : "";
-          return dim(`<${emptyItems} empty item${ending}>`);
+          return gray(`<${emptyItems} empty item${ending}>`);
         } else {
           return inspectValueWithQuotes(val, level, inspectOptions);
         }
@@ -693,27 +831,29 @@
   function inspectDate(value, inspectOptions) {
     // without quotes, ISO format, in magenta like before
     const magenta = maybeColor(colors.magenta, inspectOptions);
-    return magenta(isInvalidDate(value) ? "Invalid Date" : value.toISOString());
+    return magenta(
+      isInvalidDate(value) ? "Invalid Date" : DatePrototypeToISOString(value),
+    );
   }
 
   function inspectRegExp(value, inspectOptions) {
     const red = maybeColor(colors.red, inspectOptions);
-    return red(value.toString()); // RegExps are red
+    return red(RegExpPrototypeToString(value)); // RegExps are red
   }
 
   function inspectStringObject(value, inspectOptions) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
-    return cyan(`[String: "${value.toString()}"]`); // wrappers are in cyan
+    return cyan(`[String: "${StringPrototypeToString(value)}"]`); // wrappers are in cyan
   }
 
   function inspectBooleanObject(value, inspectOptions) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
-    return cyan(`[Boolean: ${value.toString()}]`); // wrappers are in cyan
+    return cyan(`[Boolean: ${BooleanPrototypeToString(value)}]`); // wrappers are in cyan
   }
 
   function inspectNumberObject(value, inspectOptions) {
     const cyan = maybeColor(colors.cyan, inspectOptions);
-    return cyan(`[Number: ${value.toString()}]`); // wrappers are in cyan
+    return cyan(`[Number: ${NumberPrototypeToString(value)}]`); // wrappers are in cyan
   }
 
   const PromiseState = {
@@ -749,7 +889,9 @@
     }`;
 
     if (str.length + PROMISE_STRING_BASE_LENGTH > LINE_BREAKING_LENGTH) {
-      return `Promise {\n${DEFAULT_INDENT.repeat(level + 1)}${str}\n}`;
+      return `Promise {\n${
+        StringPrototypeRepeat(DEFAULT_INDENT, level + 1)
+      }${str}\n}`;
     }
 
     return `Promise { ${str} }`;
@@ -778,7 +920,7 @@
 
     let shouldShowDisplayName = false;
     let displayName = value[
-      Symbol.toStringTag
+      SymbolToStringTag
     ];
     if (!displayName) {
       displayName = getClassInstanceName(value);
@@ -790,12 +932,17 @@
     }
 
     const entries = [];
-    const stringKeys = Object.keys(value);
-    const symbolKeys = Object.getOwnPropertySymbols(value);
+    const stringKeys = ObjectKeys(value);
+    const symbolKeys = ObjectGetOwnPropertySymbols(value);
     if (inspectOptions.sorted) {
-      stringKeys.sort();
-      symbolKeys.sort((s1, s2) =>
-        (s1.description ?? "").localeCompare(s2.description ?? "")
+      ArrayPrototypeSort(stringKeys);
+      ArrayPrototypeSort(
+        symbolKeys,
+        (s1, s2) =>
+          StringPrototypeLocaleCompare(
+            (s1.description ?? ""),
+            s2.description ?? "",
+          ),
       );
     }
 
@@ -817,15 +964,22 @@
             inspectOptions,
           )
           : red(`[Thrown ${error.name}: ${error.message}]`);
-        entries.push(`${maybeQuoteString(key)}: ${inspectedValue}`);
+        ArrayPrototypePush(
+          entries,
+          `${maybeQuoteString(key)}: ${inspectedValue}`,
+        );
       } else {
-        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        const descriptor = ObjectGetOwnPropertyDescriptor(value, key);
         if (descriptor.get !== undefined && descriptor.set !== undefined) {
-          entries.push(`${maybeQuoteString(key)}: [Getter/Setter]`);
+          ArrayPrototypePush(
+            entries,
+            `${maybeQuoteString(key)}: [Getter/Setter]`,
+          );
         } else if (descriptor.get !== undefined) {
-          entries.push(`${maybeQuoteString(key)}: [Getter]`);
+          ArrayPrototypePush(entries, `${maybeQuoteString(key)}: [Getter]`);
         } else {
-          entries.push(
+          ArrayPrototypePush(
+            entries,
             `${maybeQuoteString(key)}: ${
               inspectValueWithQuotes(value[key], level + 1, inspectOptions)
             }`,
@@ -857,15 +1011,22 @@
             inspectOptions,
           )
           : red(`Thrown ${error.name}: ${error.message}`);
-        entries.push(`[${maybeQuoteSymbol(key)}]: ${inspectedValue}`);
+        ArrayPrototypePush(
+          entries,
+          `[${maybeQuoteSymbol(key)}]: ${inspectedValue}`,
+        );
       } else {
-        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        const descriptor = ObjectGetOwnPropertyDescriptor(value, key);
         if (descriptor.get !== undefined && descriptor.set !== undefined) {
-          entries.push(`[${maybeQuoteSymbol(key)}]: [Getter/Setter]`);
+          ArrayPrototypePush(
+            entries,
+            `[${maybeQuoteSymbol(key)}]: [Getter/Setter]`,
+          );
         } else if (descriptor.get !== undefined) {
-          entries.push(`[${maybeQuoteSymbol(key)}]: [Getter]`);
+          ArrayPrototypePush(entries, `[${maybeQuoteSymbol(key)}]: [Getter]`);
         } else {
-          entries.push(
+          ArrayPrototypePush(
+            entries,
             `[${maybeQuoteSymbol(key)}]: ${
               inspectValueWithQuotes(value[key], level + 1, inspectOptions)
             }`,
@@ -876,18 +1037,18 @@
 
     // Making sure color codes are ignored when calculating the total length
     const totalLength = entries.length + level +
-      colors.stripColor(entries.join("")).length;
+      colors.stripColor(ArrayPrototypeJoin(entries, "")).length;
 
     if (entries.length === 0) {
       baseString = "{}";
     } else if (totalLength > LINE_BREAKING_LENGTH || !inspectOptions.compact) {
-      const entryIndent = DEFAULT_INDENT.repeat(level + 1);
-      const closingIndent = DEFAULT_INDENT.repeat(level);
-      baseString = `{\n${entryIndent}${entries.join(`,\n${entryIndent}`)}${
-        inspectOptions.trailingComma ? "," : ""
-      }\n${closingIndent}}`;
+      const entryIndent = StringPrototypeRepeat(DEFAULT_INDENT, level + 1);
+      const closingIndent = StringPrototypeRepeat(DEFAULT_INDENT, level);
+      baseString = `{\n${entryIndent}${
+        ArrayPrototypeJoin(entries, `,\n${entryIndent}`)
+      }${inspectOptions.trailingComma ? "," : ""}\n${closingIndent}}`;
     } else {
-      baseString = `{ ${entries.join(", ")} }`;
+      baseString = `{ ${ArrayPrototypeJoin(entries, ", ")} }`;
     }
 
     if (shouldShowDisplayName) {
@@ -903,26 +1064,26 @@
     inspectOptions,
   ) {
     if (customInspect in value && typeof value[customInspect] === "function") {
-      return String(value[customInspect]());
+      return String(value[customInspect](inspect));
     }
-    // This non-unique symbol is used to support extensions, ie.
-    // in extensions/web we don't want to depend on unique "Deno.customInspect"
-    // symbol defined in the public API. Internal only, shouldn't be used
-    // by users.
-    const nonUniqueCustomInspect = Symbol.for("Deno.customInspect");
+    // This non-unique symbol is used to support op_crates, ie.
+    // in extensions/web we don't want to depend on public
+    // Symbol.for("Deno.customInspect") symbol defined in the public API.
+    // Internal only, shouldn't be used by users.
+    const privateCustomInspect = SymbolFor("Deno.privateCustomInspect");
     if (
-      nonUniqueCustomInspect in value &&
-      typeof value[nonUniqueCustomInspect] === "function"
+      privateCustomInspect in value &&
+      typeof value[privateCustomInspect] === "function"
     ) {
       // TODO(nayeemrmn): `inspect` is passed as an argument because custom
       // inspect implementations in `extensions` need it, but may not have access
       // to the `Deno` namespace in web workers. Remove when the `Deno`
       // namespace is always enabled.
-      return String(value[nonUniqueCustomInspect](inspect));
+      return String(value[privateCustomInspect](inspect));
     }
     if (value instanceof Error) {
       return String(value.stack);
-    } else if (Array.isArray(value)) {
+    } else if (ArrayIsArray(value)) {
       return inspectArray(value, level, inspectOptions);
     } else if (value instanceof Number) {
       return inspectNumberObject(value, inspectOptions);
@@ -946,7 +1107,7 @@
       return inspectWeakMap(inspectOptions);
     } else if (isTypedArray(value)) {
       return inspectTypedArray(
-        Object.getPrototypeOf(value).constructor.name,
+        ObjectGetPrototypeOf(value).constructor.name,
         value,
         level,
         inspectOptions,
@@ -1109,11 +1270,11 @@
   ]);
 
   function parseCssColor(colorString) {
-    if (colorKeywords.has(colorString)) {
-      colorString = colorKeywords.get(colorString);
+    if (MapPrototypeHas(colorKeywords, colorString)) {
+      colorString = MapPrototypeGet(colorKeywords, colorString);
     }
     // deno-fmt-ignore
-    const hashMatch = colorString.match(/^#([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})?$/);
+    const hashMatch = StringPrototypeMatch(colorString, /^#([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})([\dA-Fa-f]{2})?$/);
     if (hashMatch != null) {
       return [
         Number(`0x${hashMatch[1]}`),
@@ -1122,7 +1283,7 @@
       ];
     }
     // deno-fmt-ignore
-    const smallHashMatch = colorString.match(/^#([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])?$/);
+    const smallHashMatch = StringPrototypeMatch(colorString, /^#([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])([\dA-Fa-f])?$/);
     if (smallHashMatch != null) {
       return [
         Number(`0x${smallHashMatch[1]}0`),
@@ -1131,26 +1292,26 @@
       ];
     }
     // deno-fmt-ignore
-    const rgbMatch = colorString.match(/^rgba?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/);
+    const rgbMatch = StringPrototypeMatch(colorString, /^rgba?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/);
     if (rgbMatch != null) {
       return [
-        Math.round(Math.max(0, Math.min(255, Number(rgbMatch[1])))),
-        Math.round(Math.max(0, Math.min(255, Number(rgbMatch[2])))),
-        Math.round(Math.max(0, Math.min(255, Number(rgbMatch[3])))),
+        MathRound(MathMax(0, MathMin(255, Number(rgbMatch[1])))),
+        MathRound(MathMax(0, MathMin(255, Number(rgbMatch[2])))),
+        MathRound(MathMax(0, MathMin(255, Number(rgbMatch[3])))),
       ];
     }
     // deno-fmt-ignore
-    const hslMatch = colorString.match(/^hsla?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)%\s*,\s*([+\-]?\d*\.?\d+)%\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/);
+    const hslMatch = StringPrototypeMatch(colorString, /^hsla?\(\s*([+\-]?\d*\.?\d+)\s*,\s*([+\-]?\d*\.?\d+)%\s*,\s*([+\-]?\d*\.?\d+)%\s*(,\s*([+\-]?\d*\.?\d+)\s*)?\)$/);
     if (hslMatch != null) {
       // https://www.rapidtables.com/convert/color/hsl-to-rgb.html
       let h = Number(hslMatch[1]) % 360;
       if (h < 0) {
         h += 360;
       }
-      const s = Math.max(0, Math.min(100, Number(hslMatch[2]))) / 100;
-      const l = Math.max(0, Math.min(100, Number(hslMatch[3]))) / 100;
-      const c = (1 - Math.abs(2 * l - 1)) * s;
-      const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+      const s = MathMax(0, MathMin(100, Number(hslMatch[2]))) / 100;
+      const l = MathMax(0, MathMin(100, Number(hslMatch[3]))) / 100;
+      const c = (1 - MathAbs(2 * l - 1)) * s;
+      const x = c * (1 - MathAbs((h / 60) % 2 - 1));
       const m = l - c / 2;
       let r_;
       let g_;
@@ -1169,9 +1330,9 @@
         [r_, g_, b_] = [c, 0, x];
       }
       return [
-        Math.round((r_ + m) * 255),
-        Math.round((g_ + m) * 255),
-        Math.round((b_ + m) * 255),
+        MathRound((r_ + m) * 255),
+        MathRound((g_ + m) * 255),
+        MathRound((b_ + m) * 255),
       ];
     }
     return null;
@@ -1206,9 +1367,9 @@
         }
       } else if (inValue) {
         if (c == ";") {
-          const value = currentPart.trim();
+          const value = StringPrototypeTrim(currentPart);
           if (value != "") {
-            rawEntries.push([currentKey, value]);
+            ArrayPrototypePush(rawEntries, [currentKey, value]);
           }
           currentKey = null;
           currentPart = "";
@@ -1216,7 +1377,7 @@
           continue;
         }
       } else if (c == ":") {
-        currentKey = currentPart.trim();
+        currentKey = StringPrototypeTrim(currentPart);
         currentPart = "";
         inValue = true;
         continue;
@@ -1224,9 +1385,9 @@
       currentPart += c;
     }
     if (inValue && parenthesesDepth == 0) {
-      const value = currentPart.trim();
+      const value = StringPrototypeTrim(currentPart);
       if (value != "") {
-        rawEntries.push([currentKey, value]);
+        ArrayPrototypePush(rawEntries, [currentKey, value]);
       }
       currentKey = null;
       currentPart = "";
@@ -1248,14 +1409,21 @@
           css.fontWeight = value;
         }
       } else if (key == "font-style") {
-        if (["italic", "oblique", "oblique 14deg"].includes(value)) {
+        if (
+          ArrayPrototypeIncludes(["italic", "oblique", "oblique 14deg"], value)
+        ) {
           css.fontStyle = "italic";
         }
       } else if (key == "text-decoration-line") {
         css.textDecorationLine = [];
-        for (const lineType of value.split(/\s+/g)) {
-          if (["line-through", "overline", "underline"].includes(lineType)) {
-            css.textDecorationLine.push(lineType);
+        for (const lineType of StringPrototypeSplit(value, /\s+/g)) {
+          if (
+            ArrayPrototypeIncludes(
+              ["line-through", "overline", "underline"],
+              lineType,
+            )
+          ) {
+            ArrayPrototypePush(css.textDecorationLine, lineType);
           }
         }
       } else if (key == "text-decoration-color") {
@@ -1266,12 +1434,17 @@
       } else if (key == "text-decoration") {
         css.textDecorationColor = null;
         css.textDecorationLine = [];
-        for (const arg of value.split(/\s+/g)) {
+        for (const arg of StringPrototypeSplit(value, /\s+/g)) {
           const maybeColor = parseCssColor(arg);
           if (maybeColor != null) {
             css.textDecorationColor = maybeColor;
-          } else if (["line-through", "overline", "underline"].includes(arg)) {
-            css.textDecorationLine.push(arg);
+          } else if (
+            ArrayPrototypeIncludes(
+              ["line-through", "overline", "underline"],
+              arg,
+            )
+          ) {
+            ArrayPrototypePush(css.textDecorationLine, arg);
           }
         }
       }
@@ -1327,30 +1500,30 @@
       }
     }
     if (
-      css.textDecorationLine.includes("line-through") !=
-        prevCss.textDecorationLine.includes("line-through")
+      ArrayPrototypeIncludes(css.textDecorationLine, "line-through") !=
+        ArrayPrototypeIncludes(prevCss.textDecorationLine, "line-through")
     ) {
-      if (css.textDecorationLine.includes("line-through")) {
+      if (ArrayPrototypeIncludes(css.textDecorationLine, "line-through")) {
         ansi += "\x1b[9m";
       } else {
         ansi += "\x1b[29m";
       }
     }
     if (
-      css.textDecorationLine.includes("overline") !=
-        prevCss.textDecorationLine.includes("overline")
+      ArrayPrototypeIncludes(css.textDecorationLine, "overline") !=
+        ArrayPrototypeIncludes(prevCss.textDecorationLine, "overline")
     ) {
-      if (css.textDecorationLine.includes("overline")) {
+      if (ArrayPrototypeIncludes(css.textDecorationLine, "overline")) {
         ansi += "\x1b[53m";
       } else {
         ansi += "\x1b[55m";
       }
     }
     if (
-      css.textDecorationLine.includes("underline") !=
-        prevCss.textDecorationLine.includes("underline")
+      ArrayPrototypeIncludes(css.textDecorationLine, "underline") !=
+        ArrayPrototypeIncludes(prevCss.textDecorationLine, "underline")
     ) {
-      if (css.textDecorationLine.includes("underline")) {
+      if (ArrayPrototypeIncludes(css.textDecorationLine, "underline")) {
         ansi += "\x1b[4m";
       } else {
         ansi += "\x1b[24m";
@@ -1381,13 +1554,13 @@
             if (char == "s") {
               // Format as a string.
               formattedArg = String(args[a++]);
-            } else if (["d", "i"].includes(char)) {
+            } else if (ArrayPrototypeIncludes(["d", "i"], char)) {
               // Format as an integer.
               const value = args[a++];
               if (typeof value == "bigint") {
                 formattedArg = `${value}n`;
               } else if (typeof value == "number") {
-                formattedArg = `${parseInt(String(value))}`;
+                formattedArg = `${NumberParseInt(String(value))}`;
               } else {
                 formattedArg = "NaN";
               }
@@ -1399,7 +1572,7 @@
               } else {
                 formattedArg = "NaN";
               }
-            } else if (["O", "o"].includes(char)) {
+            } else if (ArrayPrototypeIncludes(["O", "o"], char)) {
               // Format as an object.
               formattedArg = inspectValue(
                 args[a++],
@@ -1421,17 +1594,18 @@
             }
 
             if (formattedArg != null) {
-              string += first.slice(appendedChars, i - 1) + formattedArg;
+              string += StringPrototypeSlice(first, appendedChars, i - 1) +
+                formattedArg;
               appendedChars = i + 1;
             }
           }
           if (char == "%") {
-            string += first.slice(appendedChars, i - 1) + "%";
+            string += StringPrototypeSlice(first, appendedChars, i - 1) + "%";
             appendedChars = i + 1;
           }
         }
       }
-      string += first.slice(appendedChars);
+      string += StringPrototypeSlice(first, appendedChars);
       if (usedStyle) {
         string += "\x1b[0m";
       }
@@ -1450,8 +1624,12 @@
     }
 
     if (rInspectOptions.indentLevel > 0) {
-      const groupIndent = DEFAULT_INDENT.repeat(rInspectOptions.indentLevel);
-      string = groupIndent + string.replaceAll("\n", `\n${groupIndent}`);
+      const groupIndent = StringPrototypeRepeat(
+        DEFAULT_INDENT,
+        rInspectOptions.indentLevel,
+      );
+      string = groupIndent +
+        StringPrototypeReplaceAll(string, "\n", `\n${groupIndent}`);
     }
 
     return string;
@@ -1481,15 +1659,15 @@
       // For historical web-compatibility reasons, the namespace object for
       // console must have as its [[Prototype]] an empty object, created as if
       // by ObjectCreate(%ObjectPrototype%), instead of %ObjectPrototype%.
-      const console = Object.create({}, {
-        [Symbol.toStringTag]: {
+      const console = ObjectCreate({}, {
+        [SymbolToStringTag]: {
           enumerable: false,
           writable: false,
           configurable: true,
           value: "console",
         },
       });
-      Object.assign(console, this);
+      ObjectAssign(console, this);
       return console;
     }
 
@@ -1523,7 +1701,7 @@
       );
     };
 
-    dir = (obj, options = {}) => {
+    dir = (obj = undefined, options = {}) => {
       this.#printFunc(
         inspectArgs([obj], { ...getConsoleInspectOptions(), ...options }) +
           "\n",
@@ -1576,28 +1754,28 @@
     count = (label = "default") => {
       label = String(label);
 
-      if (countMap.has(label)) {
-        const current = countMap.get(label) || 0;
-        countMap.set(label, current + 1);
+      if (MapPrototypeHas(countMap, label)) {
+        const current = MapPrototypeGet(countMap, label) || 0;
+        MapPrototypeSet(countMap, label, current + 1);
       } else {
-        countMap.set(label, 1);
+        MapPrototypeSet(countMap, label, 1);
       }
 
-      this.info(`${label}: ${countMap.get(label)}`);
+      this.info(`${label}: ${MapPrototypeGet(countMap, label)}`);
     };
 
     countReset = (label = "default") => {
       label = String(label);
 
-      if (countMap.has(label)) {
-        countMap.set(label, 0);
+      if (MapPrototypeHas(countMap, label)) {
+        MapPrototypeSet(countMap, label, 0);
       } else {
         this.warn(`Count for '${label}' does not exist`);
       }
     };
 
-    table = (data, properties) => {
-      if (properties !== undefined && !Array.isArray(properties)) {
+    table = (data = undefined, properties = undefined) => {
+      if (properties !== undefined && !ArrayIsArray(properties)) {
         throw new Error(
           "The 'properties' argument must be of type Array. " +
             "Received type string",
@@ -1627,7 +1805,7 @@
         let idx = 0;
         resultData = {};
 
-        data.forEach((v, k) => {
+        MapPrototypeForEach(data, (v, k) => {
           resultData[idx] = { Key: k, Values: v };
           idx++;
         });
@@ -1635,12 +1813,15 @@
         resultData = data;
       }
 
-      const keys = Object.keys(resultData);
+      const keys = ObjectKeys(resultData);
       const numRows = keys.length;
 
       const objectValues = properties
-        ? Object.fromEntries(
-          properties.map((name) => [name, new Array(numRows).fill("")]),
+        ? ObjectFromEntries(
+          ArrayPrototypeMap(
+            properties,
+            (name) => [name, ArrayPrototypeFill(new Array(numRows), "")],
+          ),
         )
         : {};
       const indexKeys = [];
@@ -1653,31 +1834,31 @@
           (typeof value !== "function" && typeof value !== "object");
         if (properties === undefined && primitive) {
           hasPrimitives = true;
-          values.push(stringifyValue(value));
+          ArrayPrototypePush(values, stringifyValue(value));
         } else {
           const valueObj = value || {};
-          const keys = properties || Object.keys(valueObj);
+          const keys = properties || ObjectKeys(valueObj);
           for (const k of keys) {
             if (!primitive && k in valueObj) {
               if (!(k in objectValues)) {
-                objectValues[k] = new Array(numRows).fill("");
+                objectValues[k] = ArrayPrototypeFill(new Array(numRows), "");
               }
               objectValues[k][idx] = stringifyValue(valueObj[k]);
             }
           }
-          values.push("");
+          ArrayPrototypePush(values, "");
         }
 
-        indexKeys.push(k);
+        ArrayPrototypePush(indexKeys, k);
       });
 
-      const headerKeys = Object.keys(objectValues);
-      const bodyValues = Object.values(objectValues);
-      const header = [
+      const headerKeys = ObjectKeys(objectValues);
+      const bodyValues = ObjectValues(objectValues);
+      const header = ArrayPrototypeFilter([
         indexKey,
         ...(properties ||
           [...headerKeys, !isMap && hasPrimitives && valuesKey]),
-      ].filter(Boolean);
+      ], Boolean);
       const body = [indexKeys, ...bodyValues, values];
 
       toTable(header, body);
@@ -1686,24 +1867,24 @@
     time = (label = "default") => {
       label = String(label);
 
-      if (timerMap.has(label)) {
+      if (MapPrototypeHas(timerMap, label)) {
         this.warn(`Timer '${label}' already exists`);
         return;
       }
 
-      timerMap.set(label, Date.now());
+      MapPrototypeSet(timerMap, label, DateNow());
     };
 
     timeLog = (label = "default", ...args) => {
       label = String(label);
 
-      if (!timerMap.has(label)) {
+      if (!MapPrototypeHas(timerMap, label)) {
         this.warn(`Timer '${label}' does not exists`);
         return;
       }
 
-      const startTime = timerMap.get(label);
-      const duration = Date.now() - startTime;
+      const startTime = MapPrototypeGet(timerMap, label);
+      const duration = DateNow() - startTime;
 
       this.info(`${label}: ${duration}ms`, ...args);
     };
@@ -1711,14 +1892,14 @@
     timeEnd = (label = "default") => {
       label = String(label);
 
-      if (!timerMap.has(label)) {
+      if (!MapPrototypeHas(timerMap, label)) {
         this.warn(`Timer '${label}' does not exists`);
         return;
       }
 
-      const startTime = timerMap.get(label);
-      timerMap.delete(label);
-      const duration = Date.now() - startTime;
+      const startTime = MapPrototypeGet(timerMap, label);
+      MapPrototypeDelete(timerMap, label);
+      const duration = DateNow() - startTime;
 
       this.info(`${label}: ${duration}ms`);
     };
@@ -1753,16 +1934,16 @@
         name: "Trace",
         message,
       };
-      Error.captureStackTrace(err, this.trace);
+      ErrorCaptureStackTrace(err, this.trace);
       this.error(err.stack);
     };
 
-    static [Symbol.hasInstance](instance) {
+    static [SymbolHasInstance](instance) {
       return instance[isConsoleInstance];
     }
   }
 
-  const customInspect = Symbol("Deno.customInspect");
+  const customInspect = SymbolFor("Deno.customInspect");
 
   function inspect(
     value,
@@ -1774,6 +1955,85 @@
       // TODO(nayeemrmn): Indent level is not supported.
       indentLevel: 0,
     });
+  }
+
+  /** Creates a proxy that represents a subset of the properties
+   * of the original object optionally without evaluating the properties
+   * in order to get the values. */
+  function createFilteredInspectProxy({ object, keys, evaluate }) {
+    return new Proxy({}, {
+      get(_target, key) {
+        if (key === SymbolToStringTag) {
+          return object.constructor?.name;
+        } else if (ArrayPrototypeIncludes(keys, key)) {
+          return ReflectGet(object, key);
+        } else {
+          return undefined;
+        }
+      },
+      getOwnPropertyDescriptor(_target, key) {
+        if (!ArrayPrototypeIncludes(keys, key)) {
+          return undefined;
+        } else if (evaluate) {
+          return getEvaluatedDescriptor(object, key);
+        } else {
+          return getDescendantPropertyDescriptor(object, key) ??
+            getEvaluatedDescriptor(object, key);
+        }
+      },
+      has(_target, key) {
+        return ArrayPrototypeIncludes(keys, key);
+      },
+      ownKeys() {
+        return keys;
+      },
+    });
+
+    function getDescendantPropertyDescriptor(object, key) {
+      let propertyDescriptor = ReflectGetOwnPropertyDescriptor(object, key);
+      if (!propertyDescriptor) {
+        const prototype = ReflectGetPrototypeOf(object);
+        if (prototype) {
+          propertyDescriptor = getDescendantPropertyDescriptor(prototype, key);
+        }
+      }
+      return propertyDescriptor;
+    }
+
+    function getEvaluatedDescriptor(object, key) {
+      return {
+        configurable: true,
+        enumerable: true,
+        value: object[key],
+      };
+    }
+  }
+
+  // A helper function that will bind our own console implementation
+  // with default implementation of Console from V8. This will cause
+  // console messages to be piped to inspector console.
+  //
+  // We are using `Deno.core.callConsole` binding to preserve proper stack
+  // frames in inspector console. This has to be done because V8 considers
+  // the last JS stack frame as gospel for the inspector. In our case we
+  // specifically want the latest user stack frame to be the one that matters
+  // though.
+  //
+  // Inspired by:
+  // https://github.com/nodejs/node/blob/1317252dfe8824fd9cfee125d2aaa94004db2f3b/lib/internal/util/inspector.js#L39-L61
+  function wrapConsole(consoleFromDeno, consoleFromV8) {
+    const callConsole = core.callConsole;
+
+    for (const key of ObjectKeys(consoleFromV8)) {
+      if (ObjectPrototypeHasOwnProperty(consoleFromDeno, key)) {
+        consoleFromDeno[key] = FunctionPrototypeBind(
+          callConsole,
+          consoleFromDeno,
+          consoleFromV8[key],
+          consoleFromDeno[key],
+        );
+      }
+    }
   }
 
   // Expose these fields to internalObject for tests.
@@ -1792,5 +2052,7 @@
     Console,
     customInspect,
     inspect,
+    wrapConsole,
+    createFilteredInspectProxy,
   };
 })(this);

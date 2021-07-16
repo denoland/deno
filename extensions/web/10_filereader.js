@@ -3,6 +3,7 @@
 // @ts-check
 /// <reference no-default-lib="true" />
 /// <reference path="../../core/lib.deno_core.d.ts" />
+/// <reference path="../../core/internal.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
@@ -16,6 +17,24 @@
   const { forgivingBase64Encode } = window.__bootstrap.infra;
   const { decode, TextDecoder } = window.__bootstrap.encoding;
   const { parseMimeType } = window.__bootstrap.mimesniff;
+  const { DOMException } = window.__bootstrap.domException;
+  const {
+    ArrayPrototypeJoin,
+    ArrayPrototypeMap,
+    ArrayPrototypePush,
+    ArrayPrototypeReduce,
+    FunctionPrototypeCall,
+    Map,
+    MapPrototypeGet,
+    MapPrototypeSet,
+    ObjectDefineProperty,
+    StringFromCodePoint,
+    Symbol,
+    SymbolToStringTag,
+    TypedArrayPrototypeSet,
+    TypeError,
+    Uint8Array,
+  } = window.__bootstrap.primordials;
 
   const state = Symbol("[[state]]");
   const result = Symbol("[[result]]");
@@ -23,7 +42,7 @@
   const aborted = Symbol("[[aborted]]");
 
   class FileReader extends EventTarget {
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "FileReader";
     }
 
@@ -33,8 +52,8 @@
     [result] = null;
     /** @type {null | DOMException} */
     [error] = null;
-
-    [aborted] = false;
+    /** @type {null | {aborted: boolean}} */
+    [aborted] = null;
 
     /**
      * @param {Blob} blob
@@ -55,6 +74,12 @@
       // 4. Set fr’s error to null.
       this[error] = null;
 
+      // We set this[aborted] to a new object, and keep track of it in a
+      // separate variable, so if a new read operation starts while there are
+      // remaining tasks from a previous aborted operation, the new operation
+      // will run while the tasks from the previous one are still aborted.
+      const abortedState = this[aborted] = { aborted: false };
+
       // 5. Let stream be the result of calling get stream on blob.
       const stream /*: ReadableStream<ArrayBufferView>*/ = blob.stream();
 
@@ -73,17 +98,17 @@
 
       // 10 in parallel while true
       (async () => {
-        while (!this[aborted]) {
+        while (!abortedState.aborted) {
           // 1. Wait for chunkPromise to be fulfilled or rejected.
           try {
             const chunk = await chunkPromise;
-            if (this[aborted]) return;
+            if (abortedState.aborted) return;
 
             // 2. If chunkPromise is fulfilled, and isFirstChunk is true, queue a task to fire a progress event called loadstart at fr.
             if (isFirstChunk) {
               // TODO(lucacasonato): this is wrong, should be HTML "queue a task"
               queueMicrotask(() => {
-                if (this[aborted]) return;
+                if (abortedState.aborted) return;
                 // fire a progress event for loadstart
                 const ev = new ProgressEvent("loadstart", {});
                 this.dispatchEvent(ev);
@@ -95,17 +120,21 @@
             // 4. If chunkPromise is fulfilled with an object whose done property is false
             // and whose value property is a Uint8Array object, run these steps:
             if (!chunk.done && chunk.value instanceof Uint8Array) {
-              chunks.push(chunk.value);
+              ArrayPrototypePush(chunks, chunk.value);
 
               // TODO(bartlomieju): (only) If roughly 50ms have passed since last progress
               {
-                const size = chunks.reduce((p, i) => p + i.byteLength, 0);
+                const size = ArrayPrototypeReduce(
+                  chunks,
+                  (p, i) => p + i.byteLength,
+                  0,
+                );
                 const ev = new ProgressEvent("progress", {
                   loaded: size,
                 });
                 // TODO(lucacasonato): this is wrong, should be HTML "queue a task"
                 queueMicrotask(() => {
-                  if (this[aborted]) return;
+                  if (abortedState.aborted) return;
                   this.dispatchEvent(ev);
                 });
               }
@@ -115,15 +144,19 @@
             else if (chunk.done === true) {
               // TODO(lucacasonato): this is wrong, should be HTML "queue a task"
               queueMicrotask(() => {
-                if (this[aborted]) return;
+                if (abortedState.aborted) return;
                 // 1. Set fr’s state to "done".
                 this[state] = "done";
                 // 2. Let result be the result of package data given bytes, type, blob’s type, and encodingName.
-                const size = chunks.reduce((p, i) => p + i.byteLength, 0);
+                const size = ArrayPrototypeReduce(
+                  chunks,
+                  (p, i) => p + i.byteLength,
+                  0,
+                );
                 const bytes = new Uint8Array(size);
                 let offs = 0;
                 for (const chunk of chunks) {
-                  bytes.set(chunk, offs);
+                  TypedArrayPrototypeSet(bytes, chunk, offs);
                   offs += chunk.byteLength;
                 }
                 switch (readtype.kind) {
@@ -132,9 +165,13 @@
                     break;
                   }
                   case "BinaryString":
-                    this[result] = [...new Uint8Array(bytes.buffer)].map((v) =>
-                      String.fromCodePoint(v)
-                    ).join("");
+                    this[result] = ArrayPrototypeJoin(
+                      ArrayPrototypeMap(
+                        [...new Uint8Array(bytes.buffer)],
+                        (v) => StringFromCodePoint(v),
+                      ),
+                      "",
+                    );
                     break;
                   case "Text": {
                     let decoder = undefined;
@@ -148,7 +185,10 @@
                     if (decoder === undefined) {
                       const mimeType = parseMimeType(blob.type);
                       if (mimeType) {
-                        const charset = mimeType.parameters.get("charset");
+                        const charset = MapPrototypeGet(
+                          mimeType.parameters,
+                          "charset",
+                        );
                         if (charset) {
                           try {
                             decoder = new TextDecoder(charset);
@@ -198,7 +238,7 @@
           } catch (err) {
             // TODO(lucacasonato): this is wrong, should be HTML "queue a task"
             queueMicrotask(() => {
-              if (this[aborted]) return;
+              if (abortedState.aborted) return;
 
               // chunkPromise rejected
               this[state] = "done";
@@ -269,7 +309,9 @@
       }
       // If there are any tasks from the context object on the file reading task source in an affiliated task queue, then remove those tasks from that task queue.
       // Terminate the algorithm for the read method being processed.
-      this[aborted] = true;
+      if (this[aborted] !== null) {
+        this[aborted].aborted = true;
+      }
 
       // Fire a progress event called abort at the context object.
       const ev = new ProgressEvent("abort", {});
@@ -329,37 +371,37 @@
 
   webidl.configurePrototype(FileReader);
 
-  Object.defineProperty(FileReader, "EMPTY", {
+  ObjectDefineProperty(FileReader, "EMPTY", {
     writable: false,
     enumerable: true,
     configurable: false,
     value: 0,
   });
-  Object.defineProperty(FileReader, "LOADING", {
+  ObjectDefineProperty(FileReader, "LOADING", {
     writable: false,
     enumerable: true,
     configurable: false,
     value: 1,
   });
-  Object.defineProperty(FileReader, "DONE", {
+  ObjectDefineProperty(FileReader, "DONE", {
     writable: false,
     enumerable: true,
     configurable: false,
     value: 2,
   });
-  Object.defineProperty(FileReader.prototype, "EMPTY", {
+  ObjectDefineProperty(FileReader.prototype, "EMPTY", {
     writable: false,
     enumerable: true,
     configurable: false,
     value: 0,
   });
-  Object.defineProperty(FileReader.prototype, "LOADING", {
+  ObjectDefineProperty(FileReader.prototype, "LOADING", {
     writable: false,
     enumerable: true,
     configurable: false,
     value: 1,
   });
-  Object.defineProperty(FileReader.prototype, "DONE", {
+  ObjectDefineProperty(FileReader.prototype, "DONE", {
     writable: false,
     enumerable: true,
     configurable: false,
@@ -373,7 +415,7 @@
       if (typeof wrappedHandler.handler !== "function") {
         return;
       }
-      return wrappedHandler.handler.call(this, ...args);
+      return FunctionPrototypeCall(wrappedHandler.handler, this, ...args);
     }
     wrappedHandler.handler = handler;
     return wrappedHandler;
@@ -381,22 +423,25 @@
   // TODO(benjamingr) reuse when we can reuse code between web crates
   function defineEventHandler(emitter, name) {
     // HTML specification section 8.1.5.1
-    Object.defineProperty(emitter, `on${name}`, {
+    ObjectDefineProperty(emitter, `on${name}`, {
       get() {
-        return this[handlerSymbol]?.get(name)?.handler ?? null;
+        const maybeMap = this[handlerSymbol];
+        if (!maybeMap) return null;
+
+        return MapPrototypeGet(maybeMap, name)?.handler ?? null;
       },
       set(value) {
         if (!this[handlerSymbol]) {
           this[handlerSymbol] = new Map();
         }
-        let handlerWrapper = this[handlerSymbol]?.get(name);
+        let handlerWrapper = MapPrototypeGet(this[handlerSymbol], name);
         if (handlerWrapper) {
           handlerWrapper.handler = value;
         } else {
           handlerWrapper = makeWrappedHandler(value);
           this.addEventListener(name, handlerWrapper);
         }
-        this[handlerSymbol].set(name, handlerWrapper);
+        MapPrototypeSet(this[handlerSymbol], name, handlerWrapper);
       },
       configurable: true,
       enumerable: true,

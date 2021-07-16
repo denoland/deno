@@ -1,10 +1,26 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+/// <reference path="../../core/internal.d.ts" />
+
 "use strict";
 
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { setTarget } = window.__bootstrap.event;
+  const { DOMException } = window.__bootstrap.domException;
+  const {
+    ArrayPrototypeIndexOf,
+    ArrayPrototypeSplice,
+    ArrayPrototypePush,
+    Symbol,
+    Uint8Array,
+    ObjectDefineProperty,
+    Map,
+    MapPrototypeSet,
+    MapPrototypeGet,
+    FunctionPrototypeCall,
+  } = window.__bootstrap.primordials;
 
   const handlerSymbol = Symbol("eventHandlers");
   function makeWrappedHandler(handler) {
@@ -12,7 +28,7 @@
       if (typeof wrappedHandler.handler !== "function") {
         return;
       }
-      return wrappedHandler.handler.call(this, ...args);
+      return FunctionPrototypeCall(wrappedHandler.handler, this, ...args);
     }
     wrappedHandler.handler = handler;
     return wrappedHandler;
@@ -20,25 +36,28 @@
   // TODO(lucacasonato) reuse when we can reuse code between web crates
   function defineEventHandler(emitter, name) {
     // HTML specification section 8.1.5.1
-    Object.defineProperty(emitter, `on${name}`, {
+    ObjectDefineProperty(emitter, `on${name}`, {
       get() {
         // TODO(bnoordhuis) The "BroadcastChannel should have an onmessage
         // event" WPT test expects that .onmessage !== undefined. Returning
         // null makes it pass but is perhaps not exactly in the spirit.
-        return this[handlerSymbol]?.get(name)?.handler ?? null;
+        if (!this[handlerSymbol]) {
+          return null;
+        }
+        return MapPrototypeGet(this[handlerSymbol], name)?.handler ?? null;
       },
       set(value) {
         if (!this[handlerSymbol]) {
           this[handlerSymbol] = new Map();
         }
-        let handlerWrapper = this[handlerSymbol]?.get(name);
+        let handlerWrapper = MapPrototypeGet(this[handlerSymbol], name);
         if (handlerWrapper) {
           handlerWrapper.handler = value;
         } else {
           handlerWrapper = makeWrappedHandler(value);
           this.addEventListener(name, handlerWrapper);
         }
-        this[handlerSymbol].set(name, handlerWrapper);
+        MapPrototypeSet(this[handlerSymbol], name, handlerWrapper);
       },
       configurable: true,
       enumerable: true,
@@ -115,7 +134,7 @@
 
       this[webidl.brand] = webidl.brand;
 
-      channels.push(this);
+      ArrayPrototypePush(channels, this);
 
       if (rid === null) {
         // Create the rid immediately, otherwise there is a time window (and a
@@ -152,10 +171,10 @@
       webidl.assertBranded(this, BroadcastChannel);
       this[_closed] = true;
 
-      const index = channels.indexOf(this);
+      const index = ArrayPrototypeIndexOf(channels, this);
       if (index === -1) return;
 
-      channels.splice(index, 1);
+      ArrayPrototypeSplice(channels, index, 1);
       if (channels.length === 0) core.opSync("op_broadcast_unsubscribe", rid);
     }
   }

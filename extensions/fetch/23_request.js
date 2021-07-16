@@ -5,13 +5,14 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
-/// <reference path="./11_streams_types.d.ts" />
+/// <reference path="../web/06_streams_types.d.ts" />
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 "use strict";
 
 ((window) => {
   const webidl = window.__bootstrap.webidl;
+  const consoleInternal = window.__bootstrap.console;
   const { HTTP_TOKEN_CODE_POINT_RE, byteUpperCase } = window.__bootstrap.infra;
   const { URL } = window.__bootstrap.url;
   const { guardFromHeaders } = window.__bootstrap.headers;
@@ -26,6 +27,20 @@
   } = window.__bootstrap.headers;
   const { HttpClient } = window.__bootstrap.fetch;
   const abortSignal = window.__bootstrap.abortSignal;
+  const {
+    ArrayPrototypeMap,
+    ArrayPrototypeSlice,
+    ArrayPrototypeSplice,
+    MapPrototypeHas,
+    MapPrototypeGet,
+    MapPrototypeSet,
+    ObjectKeys,
+    RegExpPrototypeTest,
+    Symbol,
+    SymbolFor,
+    SymbolToStringTag,
+    TypeError,
+  } = window.__bootstrap.primordials;
 
   const _request = Symbol("request");
   const _headers = Symbol("headers");
@@ -81,7 +96,9 @@
    * @returns {InnerRequest}
    */
   function cloneInnerRequest(request) {
-    const headerList = [...request.headerList.map((x) => [x[0], x[1]])];
+    const headerList = [
+      ...ArrayPrototypeMap(request.headerList, (x) => [x[0], x[1]]),
+    ];
     let body = null;
     if (request.body !== null) {
       body = request.body.clone();
@@ -129,7 +146,7 @@
     }
 
     // Regular path
-    if (!HTTP_TOKEN_CODE_POINT_RE.test(m)) {
+    if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, m)) {
       throw new TypeError("Method is not valid.");
     }
     const upperCase = byteUpperCase(m);
@@ -152,10 +169,8 @@
       let charset = null;
       let essence = null;
       let mimeType = null;
-      const values = getDecodeSplitHeader(
-        headerListFromHeaders(this[_headers]),
-        "Content-Type",
-      );
+      const headerList = headerListFromHeaders(this[_headers]);
+      const values = getDecodeSplitHeader(headerList, "content-type");
       if (values === null) return null;
       for (const value of values) {
         const temporaryMimeType = mimesniff.parseMimeType(value);
@@ -168,14 +183,17 @@
         mimeType = temporaryMimeType;
         if (mimesniff.essence(mimeType) !== essence) {
           charset = null;
-          const newCharset = mimeType.parameters.get("charset");
+          const newCharset = MapPrototypeGet(mimeType.parameters, "charset");
           if (newCharset !== undefined) {
             charset = newCharset;
           }
           essence = mimesniff.essence(mimeType);
         } else {
-          if (mimeType.parameters.has("charset") === null && charset !== null) {
-            mimeType.parameters.set("charset", charset);
+          if (
+            MapPrototypeHas(mimeType.parameters, "charset") === null &&
+            charset !== null
+          ) {
+            MapPrototypeSet(mimeType.parameters, "charset", charset);
           }
         }
       }
@@ -259,36 +277,40 @@
 
       // 28.
       this[_signal] = abortSignal.newSignal();
+
+      // 29.
       if (signal !== null) {
         abortSignal.follow(this[_signal], signal);
       }
 
-      // 29.
+      // 30.
       this[_headers] = headersFromHeaderList(request.headerList, "request");
 
-      // 31.
-      if (Object.keys(init).length > 0) {
-        let headers = headerListFromHeaders(this[_headers]).slice(
+      // 32.
+      if (ObjectKeys(init).length > 0) {
+        let headers = ArrayPrototypeSlice(
+          headerListFromHeaders(this[_headers]),
           0,
           headerListFromHeaders(this[_headers]).length,
         );
         if (init.headers !== undefined) {
           headers = init.headers;
         }
-        headerListFromHeaders(this[_headers]).splice(
+        ArrayPrototypeSplice(
+          headerListFromHeaders(this[_headers]),
           0,
           headerListFromHeaders(this[_headers]).length,
         );
         fillHeaders(this[_headers], headers);
       }
 
-      // 32.
+      // 33.
       let inputBody = null;
       if (input instanceof Request) {
         inputBody = input[_body];
       }
 
-      // 33.
+      // 34.
       if (
         (request.method === "GET" || request.method === "HEAD") &&
         ((init.body !== undefined && init.body !== null) ||
@@ -297,10 +319,10 @@
         throw new TypeError("Request with GET/HEAD method cannot have body.");
       }
 
-      // 34.
+      // 35.
       let initBody = null;
 
-      // 35.
+      // 36.
       if (init.body !== undefined && init.body !== null) {
         const res = extractBody(init.body);
         initBody = res.body;
@@ -309,20 +331,22 @@
         }
       }
 
-      // 36.
+      // 37.
       const inputOrInitBody = initBody ?? inputBody;
 
-      // 38.
-      const finalBody = inputOrInitBody;
-
       // 39.
-      // TODO(lucacasonato): implement this step. Is it needed?
+      let finalBody = inputOrInitBody;
 
       // 40.
-      request.body = finalBody;
+      if (initBody === null && inputBody !== null) {
+        if (input[_body] && input[_body].unusable()) {
+          throw new TypeError("Input request's body is unusable.");
+        }
+        finalBody = inputBody.createProxy();
+      }
 
       // 41.
-      // TODO(lucacasonato): Extranious? https://github.com/whatwg/fetch/issues/1249
+      request.body = finalBody;
     }
 
     get method() {
@@ -365,19 +389,22 @@
       );
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "Request";
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
-      const inner = {
-        bodyUsed: this.bodyUsed,
-        headers: this.headers,
-        method: this.method,
-        redirect: this.redirect,
-        url: this.url,
-      };
-      return `Request ${inspect(inner)}`;
+    [SymbolFor("Deno.customInspect")](inspect) {
+      return inspect(consoleInternal.createFilteredInspectProxy({
+        object: this,
+        evaluate: this instanceof Request,
+        keys: [
+          "bodyUsed",
+          "headers",
+          "method",
+          "redirect",
+          "url",
+        ],
+      }));
     }
   }
 

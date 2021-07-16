@@ -218,7 +218,7 @@ fn main() {
 
   let future = async move {
     js_runtime
-      .execute(
+      .execute_script(
         "http_bench_json_ops.js",
         include_str!("http_bench_json_ops.js"),
       )

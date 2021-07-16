@@ -14,6 +14,7 @@ import {
   autoConfig,
   cargoBuild,
   checkPy3Available,
+  escapeLoneSurrogates,
   Expectation,
   generateRunInfo,
   getExpectation,
@@ -29,17 +30,8 @@ import {
   updateManifest,
   wptreport,
 } from "./wpt/utils.ts";
-import {
-  blue,
-  bold,
-  green,
-  red,
-  yellow,
-} from "https://deno.land/std@0.84.0/fmt/colors.ts";
-import {
-  writeAll,
-  writeAllSync,
-} from "https://deno.land/std@0.95.0/io/util.ts";
+import { blue, bold, green, red, yellow } from "../test_util/std/fmt/colors.ts";
+import { writeAll, writeAllSync } from "../test_util/std/io/util.ts";
 import { saveExpectation } from "./wpt/utils.ts";
 
 const command = Deno.args[0];
@@ -80,27 +72,27 @@ More details at https://deno.land/manual@main/contributing/web_platform_tests
 }
 
 async function setup() {
+  const hostsPath = Deno.build.os == "windows"
+    ? `${Deno.env.get("SystemRoot")}\\System32\\drivers\\etc\\hosts`
+    : "/etc/hosts";
   // TODO(lucacsonato): use this when 1.7.1 is released.
   // const records = await Deno.resolveDns("web-platform.test", "A");
   // const etcHostsConfigured = records[0] == "127.0.0.1";
-  const hostsFile = await Deno.readTextFile("/etc/hosts");
+  const hostsFile = await Deno.readTextFile(hostsPath);
   const etcHostsConfigured = hostsFile.includes("web-platform.test");
 
   if (etcHostsConfigured) {
-    console.log("/etc/hosts is already configured.");
+    console.log(hostsPath + " is already configured.");
   } else {
     const autoConfigure = autoConfig ||
       confirm(
-        "The WPT require certain entries to be present in your /etc/hosts file. Should these be configured automatically?",
+        `The WPT require certain entries to be present in your ${hostsPath} file. Should these be configured automatically?`,
       );
     if (autoConfigure) {
       const proc = runPy(["wpt", "make-hosts-file"], { stdout: "piped" });
       const status = await proc.status();
       assert(status.success, "wpt make-hosts-file should not fail");
       const entries = new TextDecoder().decode(await proc.output());
-      const hostsPath = Deno.build.os == "windows"
-        ? `${Deno.env.get("SystemRoot")}\\System32\\drivers\\etc\\hosts`
-        : "/etc/hosts";
       const file = await Deno.open(hostsPath, { append: true }).catch((err) => {
         if (err instanceof Deno.errors.PermissionDenied) {
           throw new Error(
@@ -116,9 +108,9 @@ async function setup() {
           "\n\n# Configured for Web Platform Tests (Deno)\n" + entries,
         ),
       );
-      console.log("Updated /etc/hosts");
+      console.log(`Updated ${hostsPath}`);
     } else {
-      console.log("Please configure the /etc/hosts entries manually.");
+      console.log(`Please configure the ${hostsPath} entries manually.`);
       if (Deno.build.os == "windows") {
         console.log("To do this run the following command in PowerShell:");
         console.log("");
@@ -197,7 +189,7 @@ async function run() {
   }
 
   if (wptreport) {
-    const report = await generateWptreport(results, startTime, endTime);
+    const report = await generateWptReport(results, startTime, endTime);
     await Deno.writeTextFile(wptreport, JSON.stringify(report));
   }
 
@@ -205,7 +197,7 @@ async function run() {
   Deno.exit(code);
 }
 
-async function generateWptreport(
+async function generateWptReport(
   results: { test: TestToRun; result: TestResult }[],
   startTime: number,
   endTime: number,
@@ -218,6 +210,14 @@ async function generateWptreport(
       : result.harnessStatus?.status === 0
       ? "OK"
       : "ERROR";
+    let message;
+    if (result.harnessStatus === null && result.status === 0) {
+      // If the only error is the event loop running out of tasks, using stderr
+      // as the message won't help.
+      message = "Event loop run out of tasks.";
+    } else {
+      message = result.harnessStatus?.message ?? (result.stderr.trim() || null);
+    }
     const reportResult = {
       test: test.url.pathname + test.url.search + test.url.hash,
       subtests: result.cases.map((case_) => {
@@ -231,16 +231,15 @@ async function generateWptreport(
         }
 
         return {
-          name: case_.name,
+          name: escapeLoneSurrogates(case_.name),
           status: case_.passed ? "PASS" : "FAIL",
-          message: case_.message,
+          message: escapeLoneSurrogates(case_.message),
           expected,
           known_intermittent: [],
         };
       }),
       status,
-      message: result.harnessStatus?.message ??
-        (result.stderr.trim() || null),
+      message: escapeLoneSurrogates(message),
       duration: result.duration,
       expected: status === "OK" ? undefined : "OK",
       "known_intermittent": [],
@@ -327,14 +326,14 @@ async function update() {
 
   const resultTests: Record<
     string,
-    { passed: string[]; failed: string[]; status: number }
+    { passed: string[]; failed: string[]; testSucceeded: boolean }
   > = {};
   for (const { test, result } of results) {
     if (!resultTests[test.path]) {
       resultTests[test.path] = {
         passed: [],
         failed: [],
-        status: result.status,
+        testSucceeded: result.status === 0 && result.harnessStatus !== null,
       };
     }
     for (const case_ of result.cases) {
@@ -349,11 +348,11 @@ async function update() {
   const currentExpectation = getExpectation();
 
   for (const path in resultTests) {
-    const { passed, failed, status } = resultTests[path];
+    const { passed, failed, testSucceeded } = resultTests[path];
     let finalExpectation: boolean | string[];
-    if (failed.length == 0 && status == 0) {
+    if (failed.length == 0 && testSucceeded) {
       finalExpectation = true;
-    } else if (failed.length > 0 && passed.length > 0 && status == 0) {
+    } else if (failed.length > 0 && passed.length > 0 && testSucceeded) {
       finalExpectation = failed;
     } else {
       finalExpectation = false;
@@ -420,7 +419,7 @@ function reportFinal(
       result,
       test.expectation,
     );
-    if (result.status !== 0) {
+    if (result.status !== 0 || result.harnessStatus === null) {
       if (test.expectation === false) {
         finalExpectedFailedAndFailedCount += 1;
       } else {
@@ -527,15 +526,18 @@ function analyzeTestResult(
 }
 
 function reportVariation(result: TestResult, expectation: boolean | string[]) {
-  if (result.status !== 0) {
+  if (result.status !== 0 || result.harnessStatus === null) {
     console.log(`test stderr:`);
     writeAllSync(Deno.stdout, new TextEncoder().encode(result.stderr));
 
     const expectFail = expectation === false;
+    const failReason = result.status !== 0
+      ? "runner failed during test"
+      : "the event loop run out of tasks during the test";
     console.log(
       `\nfile result: ${
         expectFail ? yellow("failed (expected)") : red("failed")
-      }. runner failed during test\n`,
+      }. ${failReason}\n`,
     );
     return;
   }

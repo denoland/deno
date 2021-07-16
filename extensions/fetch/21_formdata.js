@@ -5,7 +5,7 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
-/// <reference path="./11_streams_types.d.ts" />
+/// <reference path="../web/06_streams_types.d.ts" />
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 "use strict";
@@ -13,7 +13,32 @@
 ((window) => {
   const core = window.Deno.core;
   const webidl = globalThis.__bootstrap.webidl;
-  const { Blob, File, _byteSequence } = globalThis.__bootstrap.file;
+  const { Blob, File } = globalThis.__bootstrap.file;
+  const {
+    ArrayPrototypeMap,
+    ArrayPrototypePush,
+    ArrayPrototypeSlice,
+    ArrayPrototypeSplice,
+    ArrayPrototypeFilter,
+    ArrayPrototypeForEach,
+    Map,
+    MapPrototypeGet,
+    MapPrototypeSet,
+    MathRandom,
+    Symbol,
+    SymbolToStringTag,
+    StringFromCharCode,
+    StringPrototypeTrim,
+    StringPrototypeSlice,
+    StringPrototypeSplit,
+    StringPrototypeReplace,
+    StringPrototypeIndexOf,
+    StringPrototypePadStart,
+    StringPrototypeCodePointAt,
+    StringPrototypeReplaceAll,
+    TypeError,
+    TypedArrayPrototypeSubarray,
+  } = window.__bootstrap.primordials;
 
   const entryList = Symbol("entry list");
 
@@ -25,10 +50,10 @@
    */
   function createEntry(name, value, filename) {
     if (value instanceof Blob && !(value instanceof File)) {
-      value = new File([value[_byteSequence]], "blob", { type: value.type });
+      value = new File([value], "blob", { type: value.type });
     }
     if (value instanceof File && filename !== undefined) {
-      value = new File([value[_byteSequence]], filename, {
+      value = new File([value], filename, {
         type: value.type,
         lastModified: value.lastModified,
       });
@@ -47,7 +72,7 @@
    */
 
   class FormData {
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "FormData";
     }
 
@@ -97,7 +122,7 @@
 
       const entry = createEntry(name, valueOrBlobValue, filename);
 
-      this[entryList].push(entry);
+      ArrayPrototypePush(this[entryList], entry);
     }
 
     /**
@@ -117,7 +142,7 @@
       const list = this[entryList];
       for (let i = 0; i < list.length; i++) {
         if (list[i].name === name) {
-          list.splice(i, 1);
+          ArrayPrototypeSplice(list, i, 1);
           i--;
         }
       }
@@ -159,7 +184,7 @@
 
       const returnList = [];
       for (const entry of this[entryList]) {
-        if (entry.name === name) returnList.push(entry.value);
+        if (entry.name === name) ArrayPrototypePush(returnList, entry.value);
       }
       return returnList;
     }
@@ -227,13 +252,13 @@
             list[i] = entry;
             added = true;
           } else {
-            list.splice(i, 1);
+            ArrayPrototypeSplice(list, i, 1);
             i--;
           }
         }
       }
       if (!added) {
-        list.push(entry);
+        ArrayPrototypePush(list, entry);
       }
     }
   }
@@ -242,170 +267,61 @@
 
   webidl.configurePrototype(FormData);
 
-  class MultipartBuilder {
-    /**
-     * @param {FormData} formData
-     */
-    constructor(formData) {
-      this.entryList = formData[entryList];
-      this.boundary = this.#createBoundary();
-      /** @type {Uint8Array[]} */
-      this.chunks = [];
-    }
-
-    /**
-     * @returns {string}
-     */
-    getContentType() {
-      return `multipart/form-data; boundary=${this.boundary}`;
-    }
-
-    /**
-     * @returns {Uint8Array}
-     */
-    getBody() {
-      for (const { name, value } of this.entryList) {
-        if (value instanceof File) {
-          this.#writeFile(name, value);
-        } else this.#writeField(name, value);
-      }
-
-      this.chunks.push(core.encode(`\r\n--${this.boundary}--`));
-
-      let totalLength = 0;
-      for (const chunk of this.chunks) {
-        totalLength += chunk.byteLength;
-      }
-
-      const finalBuffer = new Uint8Array(totalLength);
-      let i = 0;
-      for (const chunk of this.chunks) {
-        finalBuffer.set(chunk, i);
-        i += chunk.byteLength;
-      }
-
-      return finalBuffer;
-    }
-
-    #createBoundary() {
-      return (
-        "----------" +
-        Array.from(Array(32))
-          .map(() => Math.random().toString(36)[2] || 0)
-          .join("")
-      );
-    }
-
-    /**
-     * @param {[string, string][]} headers
-     * @returns {void}
-     */
-    #writeHeaders(headers) {
-      let buf = (this.chunks.length === 0) ? "" : "\r\n";
-
-      buf += `--${this.boundary}\r\n`;
-      for (const [key, value] of headers) {
-        buf += `${key}: ${value}\r\n`;
-      }
-      buf += `\r\n`;
-
-      this.chunks.push(core.encode(buf));
-    }
-
-    /**
-     * @param {string} field
-     * @param {string} filename
-     * @param {string} [type]
-     * @returns {void}
-     */
-    #writeFileHeaders(
-      field,
-      filename,
-      type,
-    ) {
-      const escapedField = this.#headerEscape(field);
-      const escapedFilename = this.#headerEscape(filename, true);
-      /** @type {[string, string][]} */
-      const headers = [
-        [
-          "Content-Disposition",
-          `form-data; name="${escapedField}"; filename="${escapedFilename}"`,
-        ],
-        ["Content-Type", type || "application/octet-stream"],
-      ];
-      return this.#writeHeaders(headers);
-    }
-
-    /**
-     * @param {string} field
-     * @returns {void}
-     */
-    #writeFieldHeaders(field) {
-      /** @type {[string, string][]} */
-      const headers = [[
-        "Content-Disposition",
-        `form-data; name="${this.#headerEscape(field)}"`,
-      ]];
-      return this.#writeHeaders(headers);
-    }
-
-    /**
-     * @param {string} field
-     * @param {string} value
-     * @returns {void}
-     */
-    #writeField(field, value) {
-      this.#writeFieldHeaders(field);
-      this.chunks.push(core.encode(this.#normalizeNewlines(value)));
-    }
-
-    /**
-     * @param {string} field
-     * @param {File} value
-     * @returns {void}
-     */
-    #writeFile(field, value) {
-      this.#writeFileHeaders(field, value.name, value.type);
-      this.chunks.push(value[_byteSequence]);
-    }
-
-    /**
-     * @param {string} string
-     * @returns {string}
-     */
-    #normalizeNewlines(string) {
-      return string.replace(/\r(?!\n)|(?<!\r)\n/g, "\r\n");
-    }
-
-    /**
-     * Performs the percent-escaping and the normalization required for field
-     * names and filenames in Content-Disposition headers.
-     * @param {string} name
-     * @param {boolean} isFilename Whether we are encoding a filename. This
-     * skips the newline normalization that takes place for field names.
-     * @returns {string}
-     */
-    #headerEscape(name, isFilename = false) {
-      if (!isFilename) {
-        name = this.#normalizeNewlines(name);
-      }
-      return name
-        .replaceAll("\n", "%0A")
-        .replaceAll("\r", "%0D")
-        .replaceAll('"', "%22");
-    }
-  }
+  const escape = (str, isFilename) =>
+    StringPrototypeReplace(
+      StringPrototypeReplace(
+        StringPrototypeReplace(
+          (isFilename ? str : StringPrototypeReplace(str, /\r?\n|\r/g, "\r\n")),
+          /\n/g,
+          "%0A",
+        ),
+        /\r/g,
+        "%0D",
+      ),
+      /"/g,
+      "%22",
+    );
 
   /**
-   * @param {FormData} formdata
-   * @returns {{body: Uint8Array, contentType: string}}
+   * convert FormData to a Blob synchronous without reading all of the files
+   * @param {globalThis.FormData} formData
    */
-  function encodeFormData(formdata) {
-    const builder = new MultipartBuilder(formdata);
-    return {
-      body: builder.getBody(),
-      contentType: builder.getContentType(),
-    };
+  function formDataToBlob(formData) {
+    const boundary = StringPrototypePadStart(
+      StringPrototypeSlice(
+        StringPrototypeReplaceAll(`${MathRandom()}${MathRandom()}`, ".", ""),
+        -28,
+      ),
+      32,
+      "-",
+    );
+    const chunks = [];
+    const prefix = `--${boundary}\r\nContent-Disposition: form-data; name="`;
+
+    for (const [name, value] of formData) {
+      if (typeof value === "string") {
+        ArrayPrototypePush(
+          chunks,
+          prefix + escape(name) + '"' + CRLF + CRLF +
+            StringPrototypeReplace(value, /\r(?!\n)|(?<!\r)\n/g, CRLF) + CRLF,
+        );
+      } else {
+        ArrayPrototypePush(
+          chunks,
+          prefix + escape(name) + `"; filename="${escape(value.name, true)}"` +
+            CRLF +
+            `Content-Type: ${value.type || "application/octet-stream"}\r\n\r\n`,
+          value,
+          CRLF,
+        );
+      }
+    }
+
+    ArrayPrototypePush(chunks, `--${boundary}--`);
+
+    return new Blob(chunks, {
+      type: "multipart/form-data; boundary=" + boundary,
+    });
   }
 
   /**
@@ -416,18 +332,26 @@
     /** @type {Map<string, string>} */
     const params = new Map();
     // Forced to do so for some Map constructor param mismatch
-    value
-      .split(";")
-      .slice(1)
-      .map((s) => s.trim().split("="))
-      .filter((arr) => arr.length > 1)
-      .map(([k, v]) => [k, v.replace(/^"([^"]*)"$/, "$1")])
-      .forEach(([k, v]) => params.set(k, v));
+    ArrayPrototypeForEach(
+      ArrayPrototypeMap(
+        ArrayPrototypeFilter(
+          ArrayPrototypeMap(
+            ArrayPrototypeSlice(StringPrototypeSplit(value, ";"), 1),
+            (s) => StringPrototypeSplit(StringPrototypeTrim(s), "="),
+          ),
+          (arr) => arr.length > 1,
+        ),
+        ([k, v]) => [k, StringPrototypeReplace(v, /^"([^"]*)"$/, "$1")],
+      ),
+      ([k, v]) => MapPrototypeSet(params, k, v),
+    );
+
     return params;
   }
 
-  const LF = "\n".codePointAt(0);
-  const CR = "\r".codePointAt(0);
+  const CRLF = "\r\n";
+  const LF = StringPrototypeCodePointAt(CRLF, 1);
+  const CR = StringPrototypeCodePointAt(CRLF, 0);
 
   class MultipartParser {
     /**
@@ -450,14 +374,14 @@
      */
     #parseHeaders(headersText) {
       const headers = new Headers();
-      const rawHeaders = headersText.split("\r\n");
+      const rawHeaders = StringPrototypeSplit(headersText, "\r\n");
       for (const rawHeader of rawHeaders) {
-        const sepIndex = rawHeader.indexOf(":");
+        const sepIndex = StringPrototypeIndexOf(rawHeader, ":");
         if (sepIndex < 0) {
           continue; // Skip this header
         }
-        const key = rawHeader.slice(0, sepIndex);
-        const value = rawHeader.slice(sepIndex + 1);
+        const key = StringPrototypeSlice(rawHeader, 0, sepIndex);
+        const value = StringPrototypeSlice(rawHeader, sepIndex + 1);
         headers.set(key, value);
       }
 
@@ -489,7 +413,7 @@
         const isNewLine = byte === LF && prevByte === CR;
 
         if (state === 1 || state === 2 || state == 3) {
-          headerText += String.fromCharCode(byte);
+          headerText += StringFromCharCode(byte);
         }
         if (state === 0 && isNewLine) {
           state = 1;
@@ -515,13 +439,14 @@
 
           if (boundaryIndex >= this.boundary.length) {
             const { headers, disposition } = this.#parseHeaders(headerText);
-            const content = this.body.subarray(
+            const content = TypedArrayPrototypeSubarray(
+              this.body,
               fileStart,
               i - boundaryIndex - 1,
             );
             // https://fetch.spec.whatwg.org/#ref-for-dom-body-formdata
-            const filename = disposition.get("filename");
-            const name = disposition.get("name");
+            const filename = MapPrototypeGet(disposition, "filename");
+            const name = MapPrototypeGet(disposition, "name");
 
             state = 5;
             // Reset
@@ -575,7 +500,7 @@
 
   globalThis.__bootstrap.formData = {
     FormData,
-    encodeFormData,
+    formDataToBlob,
     parseFormData,
     formDataFromEntries,
   };
