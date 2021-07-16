@@ -14,7 +14,7 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.89.0", path = "../../core" }
+deno_core = { version = "0.93.0", path = "../../core" }
 rusb = "0.7.0"
 libusb1-sys = "0.5.0"
 serde = { version = "1.0.123", features = ["derive"] }

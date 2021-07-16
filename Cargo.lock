@@ -2907,16 +2907,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rusb"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c470dc7dc6e4710b6f85e9c4aa4650bc742260b39a36328180578db76fa258c1"
-dependencies = [
- "libc",
- "libusb1-sys",
-]
-
-[[package]]
 name = "rose_tree"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2943,6 +2933,16 @@ dependencies = [
  "simple_asn1",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "rusb"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c470dc7dc6e4710b6f85e9c4aa4650bc742260b39a36328180578db76fa258c1"
+dependencies = [
+ "libc",
+ "libusb1-sys",
 ]
 
 [[package]]
