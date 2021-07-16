@@ -1,3 +1,4 @@
+warning: The flag --no-check is deprecated and will be removed in the future.
 a(): evaluated
 a(): called
 method

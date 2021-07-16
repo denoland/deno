@@ -45,6 +45,6 @@ itest!(redirect_cache {
 
 itest!(ignore_require {
   args: "cache --reload --no-check ignore_require.js",
-  output_str: Some(""),
+  output_str: Some("warning: The flag --no-check is deprecated and will be removed in the future.\n"),
   exit_code: 0,
 });

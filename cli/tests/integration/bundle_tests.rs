@@ -375,3 +375,9 @@ itest!(ts_decorators_bundle {
   args: "bundle ts_decorators_bundle.ts",
   output: "ts_decorators_bundle.out",
 });
+
+itest!(bundle_check {
+  args: "bundle --check bundle_check.ts",
+  output: "bundle_check.ts.out",
+  exit_code: 1,
+});
