@@ -4,8 +4,8 @@
 > be used to enable it).
 
 The runtime compiler API allows access to the internals of Deno to be able to
-type check, transpile and bundle JavaScript and TypeScript. As of Deno 1.7,
-several disparate APIs we consolidated into a single API, `Deno.emit()`.
+type check, transpile and bundle JavaScript and TypeScript. It consists of
+`Deno.emit()` and `Deno.emitBundle()`.
 
 ### Deno.emit()
 
@@ -22,35 +22,30 @@ The emit options are defined in the `Deno` namespace as:
 
 ```ts
 interface EmitOptions {
-  /** Indicate that the source code should be emitted to a single file
-    * JavaScript bundle that is a single ES module (`"module"`) or a single
-    * file self contained script we executes in an immediately invoked function
-    * when loaded (`"classic"`). */
-  bundle?: "module" | "classic";
   /** If `true` then the sources will be typed checked, returning any
-    * diagnostic errors in the result.  If `false` type checking will be
-    * skipped.  Defaults to `true`.
-    *
-    * *Note* by default, only TypeScript will be type checked, just like on
-    * the command line.  Use the `compilerOptions` options of `checkJs` to
-    * enable type checking of JavaScript. */
+   * diagnostic errors in the result.  If `false` type checking will be
+   * skipped.  Defaults to `true`.
+   *
+   * *Note* by default, only TypeScript will be type checked, just like on
+   * the command line.  Use the `compilerOptions` options of `checkJs` to
+   * enable type checking of JavaScript. */
   check?: boolean;
   /** A set of options that are aligned to TypeScript compiler options that
-    * are supported by Deno. */
+   * are supported by Deno. */
   compilerOptions?: CompilerOptions;
   /** An [import-map](https://deno.land/manual/linking_to_external_code/import_maps#import-maps)
-    * which will be applied to the imports. */
+   * which will be applied to the imports. */
   importMap?: ImportMap;
   /** An absolute path to an [import-map](https://deno.land/manual/linking_to_external_code/import_maps#import-maps).
-    * Required to be specified if an `importMap` is specified to be able to
-    * determine resolution of relative paths. If a `importMap` is not
-    * specified, then it will assumed the file path points to an import map on
-    * disk and will be attempted to be loaded based on current runtime
-    * permissions.
-    */
+   * Required to be specified if an `importMap` is specified to be able to
+   * determine resolution of relative paths. If a `importMap` is not
+   * specified, then it will assumed the file path points to an import map on
+   * disk and will be attempted to be loaded based on current runtime
+   * permissions.
+   */
   importMapPath?: string;
   /** A record of sources to use when doing the emit.  If provided, Deno will
-    * use these sources instead of trying to resolve the modules externally. */
+   * use these sources instead of trying to resolve the modules externally. */
   sources?: Record<string, string>;
 }
 ```
@@ -61,12 +56,62 @@ The emit result is defined in the `Deno` namespace as:
 interface EmitResult {
   /** Diagnostic messages returned from the type checker (`tsc`). */
   diagnostics: Diagnostic[];
-  /** Any emitted files.  If bundled, then the JavaScript will have the
-   * key of `deno:///bundle.js` with an optional map (based on
-   * `compilerOptions`) in `deno:///bundle.js.map`. */
-  files: Record<string, string>;
+  /** Module entries containing transpiled code, source maps, declarations or
+   * errors. */
+  modules: Array<
+    {
+      specifier: string;
+      code: string;
+      map: string | null;
+      declaration: string | null;
+    } | {
+      specifier: string;
+      error: string;
+    }
+  >;
   /** An optional array of any compiler options that were ignored by Deno. */
-  ignoredOptions?: string[];
+  ignoredOptions: string[] | null;
+  /** An array of internal statistics related to the emit, for diagnostic
+   * purposes. */
+  stats: Array<[string, number]>;
+}
+```
+
+### Deno.emitBundle()
+
+The API is defined in the `Deno` namespace as:
+
+```ts
+function emitBundle(
+  rootSpecifier: string | URL,
+  options?: EmitBundleOptions,
+): Promise<EmitBundleResult>;
+```
+
+The emit bundle options are defined in the `Deno` namespace as:
+
+```ts
+interface EmitBundleOptions extends EmitOptions {
+  /** Indicate that the source code should be emitted to a single file
+   * JavaScript bundle that is a single ES module (default: `"module"`) or a
+   * single file self contained script we executes in an immediately invoked
+   * function when loaded (`"classic"`). */
+  type?: "module" | "classic";
+}
+```
+
+The emit bundle result is defined in the `Deno` namespace as:
+
+```ts
+interface EmitBundleResult {
+  /** Diagnostic messages returned from the type checker (`tsc`). */
+  diagnostics: Diagnostic[];
+  /** The transpiled JavaScript bundle. */
+  code: string;
+  /** An optional source map. */
+  map: string | null;
+  /** An optional array of any compiler options that were ignored by Deno. */
+  ignoredOptions: string[] | null;
   /** An array of internal statistics related to the emit, for diagnostic
    * purposes. */
   stats: Array<[string, number]>;
@@ -95,13 +140,12 @@ For example if you did:
 You could do something similar with `Deno.emit()`:
 
 ```ts
-try {
-  const { files } = await Deno.emit("mod.ts");
-  for (const [fileName, text] of Object.entries(files)) {
-    console.log(`emitted ${fileName} with a length of ${text.length}`);
-  }
-} catch (e) {
-  // something went wrong, inspect `e` to determine
+const { modules } = await Deno.emit("mod.ts");
+for (const module of modules) {
+  assert(!("error" in module));
+  console.log(
+    `Transpiled ${module.specifier} to:\n\n${module.code}\n\n`,
+  );
 }
 ```
 
@@ -128,7 +172,7 @@ The sources are passed in the _sources_ property of the `Deno.emit()` _options_
 argument:
 
 ```ts
-const { files } = await Deno.emit("/mod.ts", {
+const { modules } = await Deno.emit("/mod.ts", {
   sources: {
     "/mod.ts": `import * as a from "./a.ts";\nconsole.log(a);\n`,
     "/a.ts": `export const a: Record<string, string> = {};\n`,
@@ -153,7 +197,7 @@ JavaScript as well, you could set the _checkJs_ option to `true` in the compiler
 options:
 
 ```ts
-const { files, diagnostics } = await Deno.emit("./mod.js", {
+const { modules, diagnostics } = await Deno.emit("./mod.js", {
   compilerOptions: {
     checkJs: true,
   },
@@ -171,7 +215,7 @@ handy formatting function available to make it easier to potentially log the
 diagnostics to the console for the user called `Deno.formatDiagnostics()`:
 
 ```ts
-const { files, diagnostics } = await Deno.emit("./mod.ts");
+const { modules, diagnostics } = await Deno.emit("./mod.ts");
 if (diagnostics.length) {
   // there is something that impacted the emit
   console.warn(Deno.formatDiagnostics(diagnostics));
@@ -180,19 +224,15 @@ if (diagnostics.length) {
 
 ### Bundling
 
-`Deno.emit()` is also capable of providing output similar to `deno bundle` on
-the command line. This is enabled by setting the _bundle_ option to `"module"`
-or `"classic"`. Currently Deno supports bundling as a single file ES module
-(`"module"`) or a single file self contained legacy script (`"classic"`).
+`Deno.emitBundle()` is capable of providing output similar to `deno bundle` on
+the command line. Deno supports bundling as a single file ES module (default:
+`"module"`) or a single file self contained legacy script (`"classic"`).
 
 ```ts
-const { files, diagnostics } = await Deno.emit("./mod.ts", {
-  bundle: "module",
+const { code, diagnostics } = await Deno.emitBundle("./mod.ts", {
+  type: "classic",
 });
 ```
-
-The _files_ of the result will contain a single key named `deno:///bundle.js` of
-which the value with be the resulting bundle.
 
 > ⚠️ Just like with `deno bundle`, the bundle will not include things like
 > dynamic imports or worker scripts, and those would be expected to be resolved
@@ -214,7 +254,7 @@ An example might be that I want to use a bare specifier to load a special
 version of _lodash_ I am using with my project. I could do the following:
 
 ```ts
-const { files } = await Deno.emit("mod.ts", {
+const { modules } = await Deno.emit("mod.ts", {
   bundle: "module",
   importMap: {
     imports: {
@@ -237,7 +277,7 @@ on the command line. This is accomplished by setting the _check_ property to
 `false`:
 
 ```ts
-const { files } = await Deno.emit("./mod.ts", {
+const { modules } = await Deno.emit("./mod.ts", {
   check: false,
 });
 ```

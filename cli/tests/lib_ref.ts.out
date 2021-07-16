@@ -1,2 +1,9 @@
 []
-[ "file:///[WILDCARD]main.ts.js", "file:///[WILDCARD]main.ts.js.map" ]
+[
+  {
+    specifier: "file:///[WILDCARD]main.ts",
+    code: [WILDCARD],
+    map: '[WILDCARD]',
+    declaration: null
+  }
+]

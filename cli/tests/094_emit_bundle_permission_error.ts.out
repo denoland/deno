@@ -1,0 +1,5 @@
+[WILDCARD]error: Uncaught (in promise) PermissionDenied: Requires net access to "deno.land", run again with the --allow-net flag
+    at [WILDCARD]
+await Deno.emitBundle(new URL("093_root.ts", import.meta.url));
+^
+    at [WILDCARD]

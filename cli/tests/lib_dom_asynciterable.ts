@@ -1,4 +1,4 @@
-const { diagnostics, files } = await Deno.emit("/main.ts", {
+const { diagnostics, modules } = await Deno.emit("/main.ts", {
   compilerOptions: {
     target: "esnext",
     lib: ["esnext", "dom", "dom.iterable", "dom.asynciterable"],
@@ -11,7 +11,7 @@ const { diagnostics, files } = await Deno.emit("/main.ts", {
         c.close();
       }
     });
-    
+
     for await (const s of rs) {
       console.log("s");
     }
@@ -20,4 +20,4 @@ const { diagnostics, files } = await Deno.emit("/main.ts", {
 });
 
 console.log(diagnostics);
-console.log(Object.keys(files).sort());
+console.log(modules);
