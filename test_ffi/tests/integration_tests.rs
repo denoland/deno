@@ -25,6 +25,7 @@ fn basic() {
     .arg("--allow-read")
     .arg("--unstable")
     .arg("tests/test.js")
+    .env("NO_COLOR", "1")
     .output()
     .unwrap();
   let stdout = std::str::from_utf8(&output.stdout).unwrap();
@@ -37,7 +38,7 @@ fn basic() {
   assert!(output.status.success());
   let expected = "\
     something\n\
-    912\n\
+    579\n\
     Correct number of resources\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
