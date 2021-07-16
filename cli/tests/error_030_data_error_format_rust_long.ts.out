@@ -1,0 +1,2 @@
+[WILDCARD]error: Uncaught (in promise) Error: bad
+    at data:application/javascript,const...%22);:1:220

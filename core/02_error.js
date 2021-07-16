@@ -77,9 +77,24 @@
 
     let result = "";
 
-    const fileName = callSite.getFileName();
+    let fileName = callSite.getFileName();
 
     if (fileName) {
+      try {
+        const fileNameUrl = new URL(fileName);
+        if (fileNameUrl.protocol == "data:" && fileName.length > 150) {
+          const dataPieces = fileNameUrl.pathname.split(",", 2);
+          fileName = `${fileNameUrl.protocol}${dataPieces[0]},${
+            dataPieces[1].substring(0, 5)
+          }...${dataPieces[1].substring(dataPieces[1].length - 5)}`;
+        }
+      } catch (e) {
+        if (e instanceof TypeError) {
+          // TypeError is expected if fileName is not a valid URL
+        } else {
+          throw e;
+        }
+      }
       result += fileName;
     } else {
       if (callSite.isEval()) {

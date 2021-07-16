@@ -136,6 +136,30 @@ itest!(_028_args {
   output: "028_args.ts.out",
 });
 
+itest!(error_028_data_error_format_js {
+  args: "run --reload error_028_data_error_format_js.ts",
+  exit_code: 0,
+  output: "error_028_data_error_format_js.ts.out",
+});
+
+itest!(error_029_data_error_format_rust {
+  args: "run --reload error_029_data_error_format_rust.ts",
+  exit_code: 1,
+  output: "error_029_data_error_format_rust.ts.out",
+});
+
+itest!(error_030_data_error_format_rust_long {
+  args: "run --reload error_030_data_error_format_rust_long.ts",
+  exit_code: 1,
+  output: "error_030_data_error_format_rust_long.ts.out",
+});
+
+itest!(error_031_data_error_format_js_long {
+  args: "run --reload error_031_data_error_format_js_long.ts",
+  exit_code: 0,
+  output: "error_031_data_error_format_js_long.ts.out",
+});
+
 itest!(_033_import_map {
   args:
     "run --quiet --reload --import-map=import_maps/import_map.json import_maps/test.ts",
