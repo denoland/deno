@@ -24,6 +24,13 @@
     "secret",
   ]);
 
+  webidl.converters.KeyFormat = webidl.createEnumConverter("KeyFormat", [
+    "raw",
+    "pkcs8",
+    "spki",
+    "jwk",
+  ]);
+
   webidl.converters.KeyUsage = webidl.createEnumConverter("KeyUsage", [
     "encrypt",
     "decrypt",
@@ -142,6 +149,23 @@
 
   webidl.converters["EcdsaParams"] = webidl
     .createDictionaryConverter("EcdsaParams", dictEcdsaParams);
+
+  const dictHmacImportParams = [
+    ...dictAlgorithm,
+    {
+      key: "hash",
+      converter: webidl.converters.HashAlgorithmIdentifier,
+      required: true,
+    },
+    {
+      key: "length",
+      converter: (V, opts) =>
+        webidl.converters["unsigned long"](V, { ...opts, enforceRange: true }),
+    },
+  ];
+
+  webidl.converters.HmacImportParams = webidl
+    .createDictionaryConverter("HmacImportParams", dictHmacImportParams);
 
   webidl.converters.CryptoKey = webidl.createInterfaceConverter(
     "CryptoKey",

@@ -37,6 +37,16 @@
 
   // P-521 is not yet supported.
   const supportedNamedCurves = ["P-256", "P-384"];
+  const recognisedUsages = [
+    "encrypt",
+    "decrypt",
+    "sign",
+    "verify",
+    "deriveKey",
+    "deriveBits",
+    "wrapKey",
+    "unwrapKey",
+  ];
 
   const simpleAlgorithmDictionaries = {
     RsaHashedKeyGenParams: { hash: "HashAlgorithmIdentifier" },
@@ -44,6 +54,7 @@
     HmacKeyGenParams: { hash: "HashAlgorithmIdentifier" },
     RsaPssParams: {},
     EcdsaParams: { hash: "HashAlgorithmIdentifier" },
+    HmacImportParams: { hash: "HashAlgorithmIdentifier" },
   };
 
   const supportedAlgorithms = {
@@ -68,6 +79,9 @@
     "verify": {
       "RSASSA-PKCS1-v1_5": null,
       "RSA-PSS": "RsaPssParams",
+    },
+    "importKey": {
+      "HMAC": "HmacImportParams",
     },
   };
 
@@ -224,14 +238,13 @@
   }
 
   // https://w3c.github.io/webcrypto/#concept-usage-intersection
-  // TODO(littledivy): When the need arises, make `b` a list.
   /**
    * @param {string[]} a
-   * @param {string} b
+   * @param {string[]} b
    * @returns
    */
   function usageIntersection(a, b) {
-    return ArrayPrototypeIncludes(a, b) ? [b] : [];
+    return a.filter((i) => b.includes(i));
   }
 
   // TODO(lucacasonato): this should be moved to rust
@@ -412,6 +425,162 @@
       }
 
       throw new TypeError("unreachable");
+    }
+
+    /**
+     * @param {string} format
+     * @param {BufferSource} keyData
+     * @param {string} algorithm
+     * @param {boolean} extractable
+     * @param {KeyUsages[]} keyUsages
+     * @returns {Promise<any>}
+     */
+    // deno-lint-ignore require-await
+    async importKey(format, keyData, algorithm, extractable, keyUsages) {
+      webidl.assertBranded(this, SubtleCrypto);
+      const prefix = "Failed to execute 'importKey' on 'SubtleCrypto'";
+      webidl.requiredArguments(arguments.length, 4, { prefix });
+      format = webidl.converters.KeyFormat(format, {
+        prefix,
+        context: "Argument 1",
+      });
+      keyData = webidl.converters.BufferSource(keyData, {
+        prefix,
+        context: "Argument 2",
+      });
+      algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+        prefix,
+        context: "Argument 3",
+      });
+      extractable = webidl.converters.boolean(extractable, {
+        prefix,
+        context: "Argument 4",
+      });
+      keyUsages = webidl.converters["sequence<KeyUsage>"](keyUsages, {
+        prefix,
+        context: "Argument 5",
+      });
+
+      const normalizedAlgorithm = normalizeAlgorithm(algorithm, "importKey");
+
+      if (
+        ArrayPrototypeFind(
+          keyUsages,
+          (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
+        ) !== undefined
+      ) {
+        throw new DOMException("Invalid key usages", "SyntaxError");
+      }
+
+      switch (normalizedAlgorithm.name) {
+        case "HMAC": {
+          switch (format) {
+            case "raw": {
+              const hash = normalizedAlgorithm.hash;
+              let length = keyData.byteLength * 8;
+
+              if (length === 0) {
+                throw new DOMException("Key length is zero", "DataError");
+              }
+
+              if (normalizeAlgorithm.length) {
+                if (
+                  normalizedAlgorithm.length > length ||
+                  normalizedAlgorithm.length <= (length - 8)
+                ) {
+                  throw new DOMException(
+                    "Key length is invalid",
+                    "DataError",
+                  );
+                }
+                length = normalizeAlgorithm.length;
+              }
+
+              if (keyUsages.length == 0) {
+                throw new DOMException("Key usage is empty", "SyntaxError");
+              }
+
+              const handle = {};
+              WeakMapPrototypeSet(KEY_STORE, handle, {
+                type: "raw",
+                data: keyData,
+              });
+
+              const algorithm = {
+                name: "HMAC",
+                length,
+                hash,
+              };
+
+              const key = constructKey(
+                "secret",
+                true,
+                usageIntersection(keyUsages, recognisedUsages),
+                algorithm,
+                handle,
+              );
+
+              return key;
+            }
+            // TODO(@littledivy): jwk
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
+        // TODO(@littledivy): RSASSA-PKCS1-v1_5
+        // TODO(@littledivy): RSA-PSS
+        // TODO(@littledivy): ECDSA
+        default:
+          throw new DOMException("Not implemented", "NotSupportedError");
+      }
+    }
+
+    /**
+    * @param {string} format
+    * @param {CryptoKey} key
+    * @returns {Promise<any>}
+    */
+    // deno-lint-ignore require-await
+    async exportKey(format, key) {
+      webidl.assertBranded(this, SubtleCrypto);
+      const prefix = "Failed to execute 'exportKey' on 'SubtleCrypto'";
+      webidl.requiredArguments(arguments.length, 2, { prefix });
+      format = webidl.converters.KeyFormat(format, {
+        prefix,
+        context: "Argument 1",
+      });
+      key = webidl.converters.CryptoKey(key, {
+        prefix,
+        context: "Argument 2",
+      });
+
+      const handle = key[_handle];
+      const bits = WeakMapPrototypeGet(KEY_STORE, handle);
+
+      switch (key[_algorithm].name) {
+        case "HMAC": {
+          if (bits == null) {
+            throw new DOMException("Key is not available", "OperationError");
+          }
+          switch (format) {
+            case "raw": {
+              for (let _i = 7 & (8 - bits.length % 8); _i > 0; _i--) {
+                bits.push(0);
+              }
+
+              return bits.buffer;
+            }
+            // TODO(@littledivy): jwk
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
+        // TODO(@littledivy): RSASSA-PKCS1-v1_5
+        // TODO(@littledivy): RSA-PSS
+        // TODO(@littledivy): ECDSA
+        default:
+          throw new DOMException("Not implemented", "NotSupportedError");
+      }
     }
 
     /**
@@ -622,7 +791,7 @@
         const publicKey = constructKey(
           "public",
           true,
-          usageIntersection(usages, "verify"),
+          usageIntersection(usages, ["verify"]),
           algorithm,
           handle,
         );
@@ -631,7 +800,7 @@
         const privateKey = constructKey(
           "private",
           extractable,
-          usageIntersection(usages, "sign"),
+          usageIntersection(usages, ["sign"]),
           algorithm,
           handle,
         );
@@ -681,7 +850,7 @@
         const publicKey = constructKey(
           "public",
           true,
-          usageIntersection(usages, "verify"),
+          usageIntersection(usages, ["verify"]),
           algorithm,
           handle,
         );
@@ -690,7 +859,7 @@
         const privateKey = constructKey(
           "private",
           extractable,
-          usageIntersection(usages, "sign"),
+          usageIntersection(usages, ["sign"]),
           algorithm,
           handle,
         );
