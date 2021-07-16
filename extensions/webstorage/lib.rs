@@ -64,6 +64,18 @@ fn get_webstorage(
       })?;
       std::fs::create_dir_all(&path.0)?;
       let conn = Connection::open(path.0.join("local_storage"))?;
+      // Enable write-ahead-logging and tweak some other stuff.
+      let initial_pragmas = "
+        -- enable write-ahead-logging mode
+        PRAGMA journal_mode=WAL;
+        PRAGMA temp_store=memory;
+        PRAGMA page_size=4096;
+        PRAGMA mmap_size=6000000;
+        PRAGMA optimize;
+      ";
+
+      conn.execute_batch(initial_pragmas)?;
+      conn.set_prepared_statement_cache_capacity(128);
       conn.execute(
         "CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)",
         params![],
@@ -97,7 +109,7 @@ pub fn op_webstorage_length(
 ) -> Result<u32, AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt = conn.prepare("SELECT COUNT(*) FROM data")?;
+  let mut stmt = conn.prepare_cached("SELECT COUNT(*) FROM data")?;
 
   let length: u32 = stmt.query_row(params![], |row| row.get(0))?;
 
@@ -111,7 +123,8 @@ pub fn op_webstorage_key(
 ) -> Result<Option<String>, AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt = conn.prepare("SELECT key FROM data LIMIT 1 OFFSET ?")?;
+  let mut stmt =
+    conn.prepare_cached("SELECT key FROM data LIMIT 1 OFFSET ?")?;
 
   let key: Option<String> = stmt
     .query_row(params![index], |row| row.get(0))
@@ -134,8 +147,8 @@ pub fn op_webstorage_set(
 ) -> Result<(), AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt =
-    conn.prepare("SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'")?;
+  let mut stmt = conn
+    .prepare_cached("SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'")?;
   let size: u32 = stmt.query_row(params![], |row| row.get(0))?;
 
   if size >= MAX_STORAGE_BYTES {
@@ -162,7 +175,7 @@ pub fn op_webstorage_get(
 ) -> Result<Option<String>, AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt = conn.prepare("SELECT value FROM data WHERE key = ?")?;
+  let mut stmt = conn.prepare_cached("SELECT value FROM data WHERE key = ?")?;
 
   let val = stmt
     .query_row(params![key_name], |row| row.get(0))
@@ -206,7 +219,7 @@ pub fn op_webstorage_iterate_keys(
 ) -> Result<Vec<String>, AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt = conn.prepare("SELECT key FROM data")?;
+  let mut stmt = conn.prepare_cached("SELECT key FROM data")?;
 
   let keys = stmt
     .query_map(params![], |row| row.get::<_, String>(0))?
