@@ -42,7 +42,7 @@ chapter:
 - Using the [`std/node`](./npm_nodejs/std_node.md) modules of the Deno standard
   library to "polyfill" the built-in modules of Node.js
 - Using [CDNs](./npm_nodejs/cdns.md) to access the vast majority of npm packages
-  in ways the work under Deno.
+  in ways that work under Deno.
 - How [import maps](./npm_nodejs/import_maps.md) can be used to provide "bare
   specifier" imports like Node.js under Deno, without needing to use a package
   manager to install packages locally.
