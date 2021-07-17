@@ -632,9 +632,9 @@ dependencies = [
 
 [[package]]
 name = "deno-libffi-sys"
-version = "0.0.1"
+version = "0.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d276ad08904077eb743488644e9b9a3238f563ffc691bd03cce2543f24a809b3"
+checksum = "4f12850973c8aa0c653694901373bc1ec0d5c978b233b5286f65cb90c5f0d351"
 dependencies = [
  "cc",
  "make-cmd",
