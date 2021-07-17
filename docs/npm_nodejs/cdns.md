@@ -35,7 +35,7 @@ directly address some of the challenges in consuming code written for Node.js:
 - The CDNs also "polyfill" the built-in Node.js modules, making a lot of code
   that leverages the built-in Node.js modules _just work_.
 - The CDNs deal with all the semver matching for packages that a package manager
-  like `npm` would be required to for a Node.js application, meaning you as a
+  like `npm` would be required for a Node.js application, meaning you as a
   developer can express your 3rd party dependency versioning as part of the URL
   you use to import the package.
 
