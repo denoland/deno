@@ -30,7 +30,7 @@ directly address some of the challenges in consuming code written for Node.js:
 - They resolve all the dependencies as the modules are served, meaning that all
   the "magical" Node.js resolution logic is handled by the CDN.
 - Often, they inform Deno of type definitions for a package, meaning that Deno
-  and use them to type check your code and provide a better development
+  can use them to type check your code and provide a better development
   experience.
 - The CDNs also "polyfill" the built-in Node.js modules, making a lot of code
   that leverages the built-in Node.js modules _just work_.
