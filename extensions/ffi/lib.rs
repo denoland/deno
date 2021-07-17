@@ -234,7 +234,7 @@ impl NativeValue {
     }
   }
 
-  unsafe fn to_arg(&self, native_type: NativeType) -> Arg {
+  unsafe fn as_arg(&self, native_type: NativeType) -> Arg {
     match native_type {
       NativeType::Void => Arg::new(&self.void_value),
       NativeType::U8 => Arg::new(&self.u8_value),
@@ -344,54 +344,54 @@ fn op_ffi_call(
     .map(|(&native_type, value)| NativeValue::new(native_type, value))
     .collect::<Vec<_>>();
 
-  let args = symbol
+  let call_args = symbol
     .parameter_types
     .iter()
     .zip(native_values.iter())
     .map(|(&native_type, native_value)| unsafe {
-      native_value.to_arg(native_type)
+      native_value.as_arg(native_type)
     })
     .collect::<Vec<_>>();
 
   Ok(match symbol.result_type {
     NativeType::Void => {
-      json!(unsafe { symbol.cif.call::<()>(symbol.ptr, &args) })
+      json!(unsafe { symbol.cif.call::<()>(symbol.ptr, &call_args) })
     }
     NativeType::U8 => {
-      json!(unsafe { symbol.cif.call::<u8>(symbol.ptr, &args) })
+      json!(unsafe { symbol.cif.call::<u8>(symbol.ptr, &call_args) })
     }
     NativeType::I8 => {
-      json!(unsafe { symbol.cif.call::<i8>(symbol.ptr, &args) })
+      json!(unsafe { symbol.cif.call::<i8>(symbol.ptr, &call_args) })
     }
     NativeType::U16 => {
-      json!(unsafe { symbol.cif.call::<u16>(symbol.ptr, &args) })
+      json!(unsafe { symbol.cif.call::<u16>(symbol.ptr, &call_args) })
     }
     NativeType::I16 => {
-      json!(unsafe { symbol.cif.call::<i16>(symbol.ptr, &args) })
+      json!(unsafe { symbol.cif.call::<i16>(symbol.ptr, &call_args) })
     }
     NativeType::U32 => {
-      json!(unsafe { symbol.cif.call::<u32>(symbol.ptr, &args) })
+      json!(unsafe { symbol.cif.call::<u32>(symbol.ptr, &call_args) })
     }
     NativeType::I32 => {
-      json!(unsafe { symbol.cif.call::<i32>(symbol.ptr, &args) })
+      json!(unsafe { symbol.cif.call::<i32>(symbol.ptr, &call_args) })
     }
     NativeType::U64 => {
-      json!(unsafe { symbol.cif.call::<u64>(symbol.ptr, &args) })
+      json!(unsafe { symbol.cif.call::<u64>(symbol.ptr, &call_args) })
     }
     NativeType::I64 => {
-      json!(unsafe { symbol.cif.call::<i64>(symbol.ptr, &args) })
+      json!(unsafe { symbol.cif.call::<i64>(symbol.ptr, &call_args) })
     }
     NativeType::USize => {
-      json!(unsafe { symbol.cif.call::<usize>(symbol.ptr, &args) })
+      json!(unsafe { symbol.cif.call::<usize>(symbol.ptr, &call_args) })
     }
     NativeType::ISize => {
-      json!(unsafe { symbol.cif.call::<isize>(symbol.ptr, &args) })
+      json!(unsafe { symbol.cif.call::<isize>(symbol.ptr, &call_args) })
     }
     NativeType::F32 => {
-      json!(unsafe { symbol.cif.call::<f32>(symbol.ptr, &args) })
+      json!(unsafe { symbol.cif.call::<f32>(symbol.ptr, &call_args) })
     }
     NativeType::F64 => {
-      json!(unsafe { symbol.cif.call::<f64>(symbol.ptr, &args) })
+      json!(unsafe { symbol.cif.call::<f64>(symbol.ptr, &call_args) })
     }
   })
 }
