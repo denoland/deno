@@ -170,7 +170,7 @@ up from the CDN.
 While CDNs can make it easy to allow Deno to consume packages and modules from
 the npm registry, there can still be some things to consider:
 
-- Deno does not (and will not) support Node.js plugins. If the package require a
+- Deno does not (and will not) support Node.js plugins. If the package requires a
   native plugin, it won't work under Deno.
 - Dependency management can always be a bit of a challenge and a CDN can make it
   a bit more obfuscated what dependencies are there. You can always use
