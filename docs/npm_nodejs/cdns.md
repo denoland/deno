@@ -16,8 +16,9 @@ at the same time, there is some code that just isn't well maintained (or doesn't
 work at all). If you are familiar with the npm registry, you know that as well,
 there are varying degrees of quality.
 
-Because it is basically a redirection service, it doesn't really help when
-trying to use code that didn't specifically consider Deno when authored.
+Because it simply serves up the original published source code, it doesn't
+really help when trying to use code that didn't specifically consider Deno when
+authored.
 
 ### Deno "friendly" CDNs
 
@@ -28,7 +29,7 @@ directly address some of the challenges in consuming code written for Node.js:
 - The provide packages and modules in the ES Module format, irrespective of how
   they are published on npm.
 - They resolve all the dependencies as the modules are served, meaning that all
-  the "magical" Node.js resolution logic is handled by the CDN.
+  the Node.js specific module resolution logic is handled by the CDN.
 - Often, they inform Deno of type definitions for a package, meaning that Deno
   can use them to type check your code and provide a better development
   experience.
@@ -170,8 +171,8 @@ up from the CDN.
 While CDNs can make it easy to allow Deno to consume packages and modules from
 the npm registry, there can still be some things to consider:
 
-- Deno does not (and will not) support Node.js plugins. If the package requires a
-  native plugin, it won't work under Deno.
+- Deno does not (and will not) support Node.js plugins. If the package requires
+  a native plugin, it won't work under Deno.
 - Dependency management can always be a bit of a challenge and a CDN can make it
   a bit more obfuscated what dependencies are there. You can always use
   `deno info` with the module or URL to get a full breakdown of how Deno
