@@ -8,7 +8,7 @@ this chapter we will explore how to use it.
 The good news, is that in many cases, it _just works_.
 
 There are some foundational things to understand about differences between
-Node.js and Deno that can help in understanding that challenges might be faced:
+Node.js and Deno that can help in understanding what challenges might be faced:
 
 - Current Node.js supports both CommonJS and ES Modules, while Deno only
   supports ES Modules. The addition of stabilized ES Modules in Node.js is
