@@ -8,7 +8,7 @@ usage is described below:
 
 ### To reload everything
 
-```ts
+```bash
 deno cache --reload my_module.ts
 ```
 
@@ -19,14 +19,14 @@ argument to a `--reload` flag.
 
 To reload all \$STD_VERSION standard modules:
 
-```ts
+```bash
 deno cache --reload=https://deno.land/std@$STD_VERSION my_module.ts
 ```
 
 To reload specific modules (in this example - colors and file system copy) use a
 comma to separate URLs.
 
-```ts
+```bash
 deno cache --reload=https://deno.land/std@$STD_VERSION/fs/copy.ts,https://deno.land/std@$STD_VERSION/fmt/colors.ts my_module.ts
 ```
 
