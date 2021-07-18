@@ -1,12 +1,12 @@
 ## Types and Type Declarations
 
-One of the design principles of Deno is no _magical_ resolution. When TypeScript
-is type checking a file, it only cares about the types for the file, and the
-`tsc` compiler has a lot of logic to try to resolve those types. By default, it
-expects _ambiguous_ module specifiers with an extension, and will attempt to
-look for the file under the `.ts` specifier, then `.d.ts`, and finally `.js`
-(plus a whole other set of logic when the module resolution is set to `"node"`).
-Deno deals with explicit specifiers.
+One of the design principles of Deno is no non-standard module resolution. When
+TypeScript is type checking a file, it only cares about the types for the file,
+and the `tsc` compiler has a lot of logic to try to resolve those types. By
+default, it expects _ambiguous_ module specifiers with an extension, and will
+attempt to look for the file under the `.ts` specifier, then `.d.ts`, and
+finally `.js` (plus a whole other set of logic when the module resolution is set
+to `"node"`). Deno deals with explicit specifiers.
 
 This can cause a couple problems though. For example, let's say I want to
 consume a TypeScript file that has already been transpiled to JavaScript along
