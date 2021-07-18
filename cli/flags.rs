@@ -1773,6 +1773,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 
   flags.coverage_dir = matches.value_of("coverage").map(String::from);
+  flags.watch = matches.is_present("watch");
   flags.subcommand = DenoSubcommand::Test {
     no_run,
     doc,
