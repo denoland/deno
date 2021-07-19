@@ -1160,6 +1160,11 @@ itest!(worker_event_handler_test {
   output: "worker_event_handler_test.js.out",
 });
 
+itest!(worker_close_race {
+  args: "run --quiet --reload --allow-read worker_close_race.js",
+  output: "worker_close_race.js.out",
+});
+
 #[test]
 fn no_validate_asm() {
   let output = util::deno_cmd()

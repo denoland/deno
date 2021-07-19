@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_net"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2018"
 description = "Networking for Deno"
 authors = ["the Deno authors"]
@@ -14,7 +14,7 @@ repository = "https://github.com/denoland/deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.92.0", path = "../../core" }
+deno_core = { version = "0.93.0", path = "../../core" }
 
 log = "0.4.14"
 lazy_static = "1.4.0"

@@ -662,3 +662,30 @@ unitTest({ perms: { net: true } }, async function httpServerWebSocket() {
   await def;
   await promise;
 });
+
+unitTest({ perms: { net: true } }, async function httpCookieConcatenation() {
+  const promise = (async () => {
+    const listener = Deno.listen({ port: 4501 });
+    for await (const conn of listener) {
+      const httpConn = Deno.serveHttp(conn);
+      for await (const { request, respondWith } of httpConn) {
+        assertEquals(new URL(request.url).href, "http://127.0.0.1:4501/");
+        assertEquals(await request.text(), "");
+        assertEquals(request.headers.get("cookie"), "foo=bar; bar=foo");
+        respondWith(new Response("ok"));
+      }
+      break;
+    }
+  })();
+
+  const resp = await fetch("http://127.0.0.1:4501/", {
+    headers: [
+      ["connection", "close"],
+      ["cookie", "foo=bar"],
+      ["cookie", "bar=foo"],
+    ],
+  });
+  const text = await resp.text();
+  assertEquals(text, "ok");
+  await promise;
+});

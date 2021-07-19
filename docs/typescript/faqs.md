@@ -18,10 +18,10 @@ If you are using `tsc` as stand-alone, the setting to use is `"isolatedModules"`
 and setting it to `true` to help ensure that your code can be properly handled
 by Deno.
 
-One of the ways to deal with the extension and the lack of _magical_ resolution
-is to use [import maps](../linking_to_external_code/import_maps.md) which would
-allow you to specify "packages" of bare specifiers which then Deno could resolve
-and load.
+One of the ways to deal with the extension and the lack of Node.js non-standard
+resolution logic is to use
+[import maps](../linking_to_external_code/import_maps.md) which would allow you
+to specify "packages" of bare specifiers which then Deno could resolve and load.
 
 ### What version(s) of TypeScript does Deno support?
 

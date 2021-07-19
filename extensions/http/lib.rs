@@ -217,12 +217,41 @@ async fn op_http_request_next(
       let req = request_resource.request;
       let method = req.method().to_string();
 
+      // We treat cookies specially, because we don't want them to get them
+      // mangled by the `Headers` object in JS. What we do is take all cookie
+      // headers and concat them into a single cookie header, seperated by
+      // semicolons.
+      let mut total_cookie_length = 0;
+      let mut cookies = vec![];
+
       let mut headers = Vec::with_capacity(req.headers().len());
       for (name, value) in req.headers().iter() {
-        let name: &[u8] = name.as_ref();
-        let value = value.as_bytes();
-        headers
-          .push((ByteString(name.to_owned()), ByteString(value.to_owned())));
+        if name == hyper::header::COOKIE {
+          let bytes = value.as_bytes();
+          total_cookie_length += bytes.len();
+          cookies.push(bytes);
+        } else {
+          let name: &[u8] = name.as_ref();
+          let value = value.as_bytes();
+          headers
+            .push((ByteString(name.to_owned()), ByteString(value.to_owned())));
+        }
+      }
+
+      if !cookies.is_empty() {
+        let cookie_count = cookies.len();
+        total_cookie_length += (cookie_count * 2) - 2;
+        let mut bytes = Vec::with_capacity(total_cookie_length);
+        for (i, cookie) in cookies.into_iter().enumerate() {
+          bytes.extend(cookie);
+          if i != cookie_count - 1 {
+            bytes.extend("; ".as_bytes());
+          }
+        }
+        headers.push((
+          ByteString("cookie".as_bytes().to_owned()),
+          ByteString(bytes),
+        ));
       }
 
       let url = {
