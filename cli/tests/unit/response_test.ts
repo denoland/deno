@@ -46,14 +46,13 @@ unitTest(async function responseBlob() {
 unitTest(async function responseFormData() {
   const input = new FormData();
   input.append("hello", "world");
-  const response = new Response(input, {
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
+  const response = new Response(input);
+  assertEquals(response.headers.get("content-type"), "multipart/form-data");
   const formDataPromise = response.formData();
   assert(formDataPromise instanceof Promise);
   const formData = await formDataPromise;
   assert(formData instanceof FormData);
-  assertEquals(formData, input);
+  assertEquals([...formData], [...input]);
 });
 
 unitTest(function customInspectFunction(): void {
