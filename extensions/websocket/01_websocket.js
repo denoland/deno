@@ -31,6 +31,7 @@
     ArrayPrototypeMap,
     ArrayPrototypeSome,
     PromisePrototypeThen,
+    PromisePrototypeCatch,
   } = window.__bootstrap.primordials;
 
   webidl.converters["sequence<DOMString> or DOMString"] = (V, opts) => {
@@ -280,14 +281,8 @@
                 rid: this[_rid],
               }),
               () => {
-                this[_readyState] = CLOSED;
-
                 const errEvent = new ErrorEvent("error");
                 this.dispatchEvent(errEvent);
-
-                const event = new CloseEvent("close");
-                this.dispatchEvent(event);
-                tryClose(this[_rid]);
               },
             );
           } else {
@@ -408,20 +403,21 @@
       } else if (this[_readyState] === OPEN) {
         this[_readyState] = CLOSING;
 
-        PromisePrototypeThen(
+        PromisePrototypeCatch(
           core.opAsync("op_ws_close", {
             rid: this[_rid],
             code,
             reason,
           }),
-          () => {
-            this[_readyState] = CLOSED;
-            const event = new CloseEvent("close", {
-              wasClean: true,
-              code: code ?? 1005,
-              reason,
+          (err) => {
+            const errorEv = new ErrorEvent("error", {
+              error: err,
+              message: ErrorPrototypeToString(err),
             });
-            this.dispatchEvent(event);
+            this.dispatchEvent(errorEv);
+
+            const closeEv = new CloseEvent("close");
+            this.dispatchEvent(closeEv);
             tryClose(this[_rid]);
           },
         );
@@ -429,7 +425,7 @@
     }
 
     async [_eventLoop]() {
-      while (this[_readyState] === OPEN) {
+      while (this[_readyState] !== CLOSED) {
         const { kind, value } = await core.opAsync(
           "op_ws_next_event",
           this[_rid],
