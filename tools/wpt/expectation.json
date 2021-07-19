@@ -3150,8 +3150,5 @@
     "eventhandlers.any.html?wpt_flags=h2": false,
     "eventhandlers.any.html?wss": false,
     "referrer.any.html": true
-  },
-  "workers" : {
-    "WorkerNavigator-hardware-concurrency.any": true
   }
 }
