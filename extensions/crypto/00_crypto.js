@@ -776,11 +776,13 @@
         !(
           arrayBufferView instanceof Int8Array ||
           arrayBufferView instanceof Uint8Array ||
+          arrayBufferView instanceof Uint8ClampedArray ||
           arrayBufferView instanceof Int16Array ||
           arrayBufferView instanceof Uint16Array ||
           arrayBufferView instanceof Int32Array ||
           arrayBufferView instanceof Uint32Array ||
-          arrayBufferView instanceof Uint8ClampedArray
+          arrayBufferView instanceof BigInt64Array ||
+          arrayBufferView instanceof BigUint64Array
         )
       ) {
         throw new DOMException(
