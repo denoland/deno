@@ -289,9 +289,8 @@
             this[_readyState] = OPEN;
             const event = new Event("open");
             this.dispatchEvent(event);
-
-            this[_eventLoop]();
           }
+          this[_eventLoop]();
         },
         (err) => {
           this[_readyState] = CLOSED;
@@ -433,28 +432,32 @@
 
         switch (kind) {
           case "string": {
-            const event = new MessageEvent("message", {
-              data: value,
-              origin: this[_url],
-            });
-            this.dispatchEvent(event);
-            break;
+            if (this[_readyState] === OPEN) {
+              const event = new MessageEvent("message", {
+                data: value,
+                origin: this[_url],
+              });
+              this.dispatchEvent(event);
+              break;
+            }
           }
           case "binary": {
-            let data;
+            if (this[_readyState] === OPEN) {
+              let data;
 
-            if (this.binaryType === "blob") {
-              data = new Blob([value]);
-            } else {
-              data = value.buffer;
+              if (this.binaryType === "blob") {
+                data = new Blob([value]);
+              } else {
+                data = value.buffer;
+              }
+
+              const event = new MessageEvent("message", {
+                data,
+                origin: this[_url],
+              });
+              this.dispatchEvent(event);
+              break;
             }
-
-            const event = new MessageEvent("message", {
-              data,
-              origin: this[_url],
-            });
-            this.dispatchEvent(event);
-            break;
           }
           case "ping": {
             core.opAsync("op_ws_send", {
