@@ -46,8 +46,8 @@ chapter:
 - How [import maps](./npm_nodejs/import_maps.md) can be used to provide "bare
   specifier" imports like Node.js under Deno, without needing to use a package
   manager to install packages locally.
-- And finally, a general section of [frequently asked
-  questions][./npm_nodejs/faqs.md]
+- And finally, a general section of
+  [frequently asked questions](./npm_nodejs/faqs.md)
 
 That being said, there are some differences that cannot be overcome:
 
