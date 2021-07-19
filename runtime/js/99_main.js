@@ -247,7 +247,9 @@ delete Object.prototype.__proto__;
 
   const navigator = webidl.createBranded(Navigator);
 
-  const cores = core.opSync("op_system_cpu_info");
+  function numCpus() {
+    return core.opSync("op_system_cpu_info");
+  }
 
   ObjectDefineProperties(Navigator.prototype, {
     gpu: {
@@ -263,7 +265,7 @@ delete Object.prototype.__proto__;
       enumerable: true,
       get() {
         webidl.assertBranded(this, Navigator);
-        return cores;
+        return numCpus();
       },
     },
   });
@@ -294,7 +296,7 @@ delete Object.prototype.__proto__;
       enumerable: true,
       get() {
         webidl.assertBranded(this, Navigator);
-        return cores;
+        return numCpus();
       },
     },
   });
