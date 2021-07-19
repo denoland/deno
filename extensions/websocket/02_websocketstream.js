@@ -157,12 +157,28 @@
                   rid: create.rid,
                 }),
                 () => {
-                  const err = new DOMException(
-                    "Closed while connecting",
-                    "NetworkError",
+                  PromisePrototypeThen(
+                    (async () => {
+                      while (true) {
+                        const { kind } = await core.opAsync(
+                          "op_ws_next_event",
+                          this[_rid],
+                        );
+
+                        if (kind === "close") {
+                          break;
+                        }
+                      }
+                    })(),
+                    () => {
+                      const err = new DOMException(
+                        "Closed while connecting",
+                        "NetworkError",
+                      );
+                      this[_connection].reject(err);
+                      this[_closed].reject(err);
+                    },
                   );
-                  this[_connection].reject(err);
-                  this[_closed].reject(err);
                 },
                 () => {
                   const err = new DOMException(
