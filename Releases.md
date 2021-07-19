@@ -6,6 +6,16 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.12.1 / 2021.07.19
+
+- fix: Big{U|}Int64Array in crypto.getRandomValues (#11447)
+- fix(extensions/http): correctly concat cookie headers (#11422)
+- fix(extensions/web): aborting a FileReader should not affect later reads
+  (#11381)
+- fix(repl): output error without hanging when input is invalid (#11426)
+- fix(tsc): add .at() types manually to tsc (#11443)
+- fix(workers): silently ignore non-existent worker IDs (#11417)
+
 ### 1.12.0 / 2021.07.13
 
 - feat: Add `MessageChannel` and `MessagePort` APIs (#11051)
