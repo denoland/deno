@@ -203,9 +203,3 @@ unitTest({ perms: { env: true } }, function systemMemoryInfo(): void {
   assert(info.swapTotal >= 0);
   assert(info.swapFree >= 0);
 });
-
-unitTest({ perms: { env: true } }, function systemCpuInfo(): void {
-  const { cores, speed } = Deno.systemCpuInfo();
-  assert(cores === undefined || cores > 0);
-  assert(speed === undefined || speed > 0);
-});
