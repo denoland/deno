@@ -17,6 +17,7 @@
     ArrayPrototypeMap,
     ArrayPrototypeJoin,
     PromisePrototypeThen,
+    PromisePrototypeCatch,
     Uint8Array,
     TypeError,
   } = window.__bootstrap.primordials;
@@ -338,19 +339,12 @@
       if (this[_connection].state === "pending") {
         this[_earlyClose] = true;
       } else if (this[_closed].state === "pending") {
-        PromisePrototypeThen(
+        PromisePrototypeCatch(
           core.opAsync("op_ws_close", {
             rid: this[_rid],
             code,
             reason: closeInfo.reason,
           }),
-          () => {
-            tryClose(this[_rid]);
-            this[_closed].resolve({
-              code: code ?? 1005,
-              reason: closeInfo.reason,
-            });
-          },
           (err) => {
             this[_rid] && tryClose(this[_rid]);
             this[_closed].reject(err);

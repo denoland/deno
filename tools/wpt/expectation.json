@@ -3101,9 +3101,7 @@
         "abort.any.html?wss": true,
         "backpressure-receive.any.html?wss": true,
         "backpressure-send.any.html?wss": true,
-        "close.any.html?wss": [
-          "writer close() promise should not resolve until handshake completes"
-        ],
+        "close.any.html?wss": true,
         "constructor.any.html?wss": true
       }
     }
