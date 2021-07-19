@@ -183,7 +183,7 @@ fn op_system_memory_info(
 
 #[derive(Serialize)]
 struct CpuInfo {
-  cores: Option<u32>,
+  cores: u32,
   speed: Option<u64>,
 }
 
@@ -191,12 +191,7 @@ fn op_system_cpu_info(
   state: &mut OpState,
   _args: (),
   _: (),
-) -> Result<CpuInfo, AnyError> {
-  super::check_unstable(state, "Deno.systemCpuInfo");
-  state.borrow_mut::<Permissions>().env.check_all()?;
-
+) -> Result<u32, AnyError> {
   let cores = sys_info::cpu_num().ok();
-  let speed = sys_info::cpu_speed().ok();
-
-  Ok(CpuInfo { cores, speed })
+  Ok(cores)
 }
