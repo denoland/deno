@@ -3,8 +3,8 @@
 `deno bundle [URL]` will output a single JavaScript file, which includes all
 dependencies of the specified input. For example:
 
-```
-> deno bundle https://deno.land/std@$STD_VERSION/examples/colors.ts colors.bundle.js
+```bash
+deno bundle https://deno.land/std@$STD_VERSION/examples/colors.ts colors.bundle.js
 Bundle https://deno.land/std@$STD_VERSION/examples/colors.ts
 Download https://deno.land/std@$STD_VERSION/examples/colors.ts
 Download https://deno.land/std@$STD_VERSION/fmt/colors.ts
@@ -15,7 +15,7 @@ If you omit the out file, the bundle will be sent to `stdout`.
 
 The bundle can just be run as any other module in Deno would:
 
-```
+```bash
 deno run colors.bundle.js
 ```
 

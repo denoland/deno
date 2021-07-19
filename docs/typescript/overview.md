@@ -152,8 +152,8 @@ bypass type checking all together.
 
 ### Type resolution
 
-One of the core design principles of Deno is to avoid "magical" resolution, and
-this applies to type resolution as well. If you want to utilise JavaScript that
-has type definitions (e.g. a `.d.ts` file), you have to explicitly tell Deno
-about this. The details of how this is accomplished are covered in the
-[Types and type declarations](./types.md) section.
+One of the core design principles of Deno is to avoid non-standard module
+resolution, and this applies to type resolution as well. If you want to utilise
+JavaScript that has type definitions (e.g. a `.d.ts` file), you have to
+explicitly tell Deno about this. The details of how this is accomplished are
+covered in the [Types and type declarations](./types.md) section.

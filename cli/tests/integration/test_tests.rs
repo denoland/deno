@@ -97,6 +97,12 @@ itest!(exit_sanitizer {
   exit_code: 1,
 });
 
+itest!(clear_timeout {
+  args: "test test/clear_timeout.ts",
+  exit_code: 0,
+  output: "test/clear_timeout.out",
+});
+
 itest!(finally_timeout {
   args: "test test/finally_timeout.ts",
   exit_code: 1,
