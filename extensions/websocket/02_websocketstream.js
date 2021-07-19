@@ -162,7 +162,7 @@
                       while (true) {
                         const { kind } = await core.opAsync(
                           "op_ws_next_event",
-                          this[_rid],
+                          create.rid,
                         );
 
                         if (kind === "close") {
