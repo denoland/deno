@@ -275,7 +275,7 @@ unitTest(
         await response.formData();
       },
       TypeError,
-      "Invalid form data",
+      "Body can not be decoded as form data",
     );
   },
 );

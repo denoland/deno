@@ -47,7 +47,8 @@ unitTest(async function responseFormData() {
   const input = new FormData();
   input.append("hello", "world");
   const response = new Response(input);
-  assertEquals(response.headers.get("content-type"), "multipart/form-data");
+  const contentType = response.headers.get("content-type")!;
+  assert(contentType.startsWith("multipart/form-data"));
   const formDataPromise = response.formData();
   assert(formDataPromise instanceof Promise);
   const formData = await formDataPromise;
