@@ -310,6 +310,7 @@ mod tests {
       blob_store: BlobStore::default(),
       broadcast_channel: InMemoryBroadcastChannel::default(),
       shared_array_buffer_store: None,
+      cpu_count: 1,
     };
 
     MainWorker::from_options(main_module, permissions, &options)
