@@ -432,32 +432,28 @@
 
         switch (kind) {
           case "string": {
-            if (this[_readyState] === OPEN) {
-              const event = new MessageEvent("message", {
-                data: value,
-                origin: this[_url],
-              });
-              this.dispatchEvent(event);
-              break;
-            }
+            const event = new MessageEvent("message", {
+              data: value,
+              origin: this[_url],
+            });
+            this.dispatchEvent(event);
+            break;
           }
           case "binary": {
-            if (this[_readyState] === OPEN) {
-              let data;
+            let data;
 
-              if (this.binaryType === "blob") {
-                data = new Blob([value]);
-              } else {
-                data = value.buffer;
-              }
-
-              const event = new MessageEvent("message", {
-                data,
-                origin: this[_url],
-              });
-              this.dispatchEvent(event);
-              break;
+            if (this.binaryType === "blob") {
+              data = new Blob([value]);
+            } else {
+              data = value.buffer;
             }
+
+            const event = new MessageEvent("message", {
+              data,
+              origin: this[_url],
+            });
+            this.dispatchEvent(event);
+            break;
           }
           case "ping": {
             core.opAsync("op_ws_send", {
