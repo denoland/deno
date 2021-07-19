@@ -43,18 +43,17 @@ unitTest(async function responseBlob() {
   assertEquals(await blob.arrayBuffer(), new Uint8Array([1, 2, 3]).buffer);
 });
 
-// TODO(lucacasonato): re-enable test once #10002 is fixed.
-unitTest({ ignore: true }, async function responseFormData() {
+unitTest(async function responseFormData() {
   const input = new FormData();
   input.append("hello", "world");
-  const response = new Response(input, {
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-  });
+  const response = new Response(input);
+  const contentType = response.headers.get("content-type")!;
+  assert(contentType.startsWith("multipart/form-data"));
   const formDataPromise = response.formData();
   assert(formDataPromise instanceof Promise);
   const formData = await formDataPromise;
   assert(formData instanceof FormData);
-  assertEquals(formData, input);
+  assertEquals([...formData], [...input]);
 });
 
 unitTest(function customInspectFunction(): void {
