@@ -1962,7 +1962,7 @@
       "wrapKey_unwrapKey.https.any.html": false
     },
     "randomUUID.any.html": true,
-    "getRandomValues-bigint.tentative.any.html": false
+    "getRandomValues-bigint.tentative.any.html": true
   },
   "console": {
     "console-is-a-namespace.any.html": true,
