@@ -72,6 +72,7 @@ pub struct WorkerOptions {
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+  pub cpu_count: u32,
 }
 
 impl MainWorker {
@@ -177,6 +178,7 @@ impl MainWorker {
       "unstableFlag": options.unstable,
       "v8Version": deno_core::v8_version(),
       "location": options.location,
+      "cpuCount": options.cpu_count,
     });
 
     let script = format!(

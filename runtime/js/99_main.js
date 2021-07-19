@@ -247,9 +247,7 @@ delete Object.prototype.__proto__;
 
   const navigator = webidl.createBranded(Navigator);
 
-  function numCpus() {
-    return core.opSync("op_system_cpu_info");
-  }
+  let numCpus;
 
   ObjectDefineProperties(Navigator.prototype, {
     gpu: {
@@ -265,7 +263,7 @@ delete Object.prototype.__proto__;
       enumerable: true,
       get() {
         webidl.assertBranded(this, Navigator);
-        return numCpus();
+        return numCpus;
       },
     },
   });
@@ -296,7 +294,7 @@ delete Object.prototype.__proto__;
       enumerable: true,
       get() {
         webidl.assertBranded(this, Navigator);
-        return numCpus();
+        return numCpus;
       },
     },
   });
@@ -511,12 +509,13 @@ delete Object.prototype.__proto__;
       pid,
       ppid,
       unstableFlag,
+      cpuCount,
     } = runtimeOptions;
 
     if (locationHref != null) {
       location.setLocationHref(locationHref);
     }
-
+    numCpus = cpuCount;
     registerErrors();
 
     const internalSymbol = Symbol("Deno.internal");
@@ -587,10 +586,17 @@ delete Object.prototype.__proto__;
       runtimeOptions,
       internalName ?? name,
     );
-    const { unstableFlag, pid, noColor, args, location: locationHref } =
-      runtimeOptions;
+    const {
+      unstableFlag,
+      pid,
+      noColor,
+      args,
+      location: locationHref,
+      cpuCount,
+    } = runtimeOptions;
 
     location.setLocationHref(locationHref);
+    numCpus = cpuCount;
     registerErrors();
 
     pollForMessages();
