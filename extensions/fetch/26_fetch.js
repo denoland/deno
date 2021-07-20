@@ -113,6 +113,7 @@
     }
     // TODO(lucacasonato): clean up registration
     terminator[abortSignal.add](onAbort);
+    const unregisterToken = {};
     const readable = new ReadableStream({
       type: "bytes",
       async pull(controller) {
@@ -128,6 +129,7 @@
             // We read some data. Enqueue it onto the stream.
             controller.enqueue(TypedArrayPrototypeSubarray(chunk, 0, read));
           } else {
+            RESOURCE_REGISTRY.unregister(unregisterToken);
             // We have reached the end of the body, so we close the stream.
             controller.close();
             try {
@@ -137,6 +139,7 @@
             }
           }
         } catch (err) {
+          RESOURCE_REGISTRY.unregister(unregisterToken);
           if (terminator.aborted) {
             controller.error(
               new DOMException("Ongoing fetch was aborted.", "AbortError"),
@@ -159,7 +162,11 @@
         }
       },
     });
-    RESOURCE_REGISTRY.register(readable, responseBodyRid);
+    RESOURCE_REGISTRY.register(
+      readable,
+      responseBodyRid,
+      unregisterToken,
+    );
     return readable;
   }
 
