@@ -3475,6 +3475,29 @@ mod tests {
   }
 
   #[test]
+  fn test_watch() {
+    let r = flags_from_vec(svec!["deno", "test", "--watch"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: None,
+          allow_none: false,
+          quiet: false,
+          shuffle: None,
+          include: None,
+          concurrent_jobs: 1,
+        },
+        watch: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn bundle_with_cafile() {
     let r = flags_from_vec(svec![
       "deno",
