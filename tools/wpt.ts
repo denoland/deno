@@ -209,6 +209,8 @@ async function generateWptReport(
       ? "CRASH"
       : result.harnessStatus?.status === 0
       ? "OK"
+      : result.harnessStatus?.status === 3
+      ? "TIMEOUT"
       : "ERROR";
     let message;
     if (result.harnessStatus === null && result.status === 0) {
@@ -333,7 +335,8 @@ async function update() {
       resultTests[test.path] = {
         passed: [],
         failed: [],
-        testSucceeded: result.status === 0 && result.harnessStatus !== null,
+        testSucceeded: result.status === 0 &&
+          result.harnessStatus?.status !== 0,
       };
     }
     for (const case_ of result.cases) {
@@ -419,7 +422,7 @@ function reportFinal(
       result,
       test.expectation,
     );
-    if (result.status !== 0 || result.harnessStatus === null) {
+    if (result.status !== 0 || result.harnessStatus?.status !== 0) {
       if (test.expectation === false) {
         finalExpectedFailedAndFailedCount += 1;
       } else {
@@ -526,14 +529,22 @@ function analyzeTestResult(
 }
 
 function reportVariation(result: TestResult, expectation: boolean | string[]) {
-  if (result.status !== 0 || result.harnessStatus === null) {
+  if (
+    result.status !== 0 || result.harnessStatus === null ||
+    result.harnessStatus.status !== 0
+  ) {
     console.log(`test stderr:`);
     writeAllSync(Deno.stdout, new TextEncoder().encode(result.stderr));
 
     const expectFail = expectation === false;
-    const failReason = result.status !== 0
-      ? "runner failed during test"
-      : "the event loop run out of tasks during the test";
+    let failReason;
+    if (result.status !== 0) {
+      failReason = "runner failed during test";
+    } else if (result.harnessStatus === null) {
+      failReason = "the event loop run out of tasks during the test";
+    } else {
+      failReason = result.harnessStatus.message;
+    }
     console.log(
       `\nfile result: ${
         expectFail ? yellow("failed (expected)") : red("failed")

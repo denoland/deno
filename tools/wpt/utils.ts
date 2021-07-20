@@ -13,10 +13,14 @@ export const {
   ["--"]: rest,
   ["auto-config"]: autoConfig,
   binary,
+  timeout,
 } = parse(Deno.args, {
   "--": true,
-  boolean: ["quiet", "release", "no-interactive"],
+  boolean: ["quiet", "release", "no-interactive", "timeout"],
   string: ["json", "wptreport", "binary"],
+  default: {
+    timeout: true,
+  },
 });
 
 export function denoBinary() {

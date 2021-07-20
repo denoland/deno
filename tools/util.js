@@ -9,7 +9,7 @@ import {
 export { dirname, fromFileUrl, join, resolve, toFileUrl };
 export { existsSync } from "../test_util/std/fs/mod.ts";
 export { readLines } from "../test_util/std/io/mod.ts";
-export { delay } from "../test_util/std/async/delay.ts";
+export { deadline, DeadlineError, delay } from "../test_util/std/async/mod.ts";
 
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
 

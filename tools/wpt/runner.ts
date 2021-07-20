@@ -1,6 +1,20 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { delay, join, readLines, ROOT_PATH, toFileUrl } from "../util.js";
-import { assert, denoBinary, ManifestTestOptions, runPy } from "./utils.ts";
+import {
+  deadline,
+  DeadlineError,
+  delay,
+  join,
+  readLines,
+  ROOT_PATH,
+  toFileUrl,
+} from "../util.js";
+import {
+  assert,
+  denoBinary,
+  ManifestTestOptions,
+  runPy,
+  timeout,
+} from "./utils.ts";
 import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.3-alpha2/deno-dom-wasm.ts";
 
 export async function runWithTestUtil<T>(
@@ -77,11 +91,19 @@ export async function runSingleTest(
   _options: ManifestTestOptions,
   reporter: (result: TestCaseResult) => void,
 ): Promise<TestResult> {
-  const bundle = await generateBundle(url);
+  const { bundle, longTimeout } = await generateBundle(url);
   const tempFile = await Deno.makeTempFile({
     prefix: "wpt-bundle-",
     suffix: ".js",
   });
+
+  // Short is 10 seconds, long is 60 seconds.
+  // If `--no-timeout` is passed, we as long as possible (2^31 - 1 millis).
+  const timeoutMillis = !timeout
+    ? 2 ** 31 - 1
+    : longTimeout
+    ? 60 * 1000
+    : 10 * 1000;
 
   try {
     await Deno.writeTextFile(tempFile, bundle);
@@ -108,29 +130,53 @@ export async function runSingleTest(
       stderr: "piped",
     });
 
-    const cases = [];
+    const cases: TestCaseResult[] = [];
     let stderr = "";
 
-    let harnessStatus = null;
+    let harnessStatus: TestHarnessStatus | null = null;
 
-    const lines = readLines(proc.stderr);
-    for await (const line of lines) {
-      if (line.startsWith("{")) {
-        const data = JSON.parse(line);
-        const result = { ...data, passed: data.status == 0 };
-        cases.push(result);
-        reporter(result);
-      } else if (line.startsWith("#$#$#{")) {
-        harnessStatus = JSON.parse(line.slice(5));
+    const code = await deadline(
+      (async () => {
+        const lines = readLines(proc.stderr);
+        for await (const line of lines) {
+          if (line.startsWith("{")) {
+            const data = JSON.parse(line);
+            const result = { ...data, passed: data.status == 0 };
+            cases.push(result);
+            reporter(result);
+          } else if (line.startsWith("#$#$#{")) {
+            harnessStatus = JSON.parse(line.slice(5));
+          } else {
+            stderr += line + "\n";
+            console.error(line);
+          }
+        }
+
+        const { code } = await proc.status();
+        return code;
+      })(),
+      timeoutMillis,
+    ).catch((err) => {
+      if (err instanceof DeadlineError) {
+        if (Deno.build.os === "windows") {
+          proc.close();
+        } else {
+          proc.kill(Deno.Signal.SIGKILL);
+        }
+
+        harnessStatus = {
+          status: 3, // TIMEOUT
+          message: `test timed out after ${longTimeout ? 60 : 10} seconds`,
+          stack: null,
+        };
+        return 0;
       } else {
-        stderr += line + "\n";
-        console.error(line);
+        return Promise.reject(err);
       }
-    }
+    });
 
     const duration = new Date().getTime() - startTime;
 
-    const { code } = await proc.status();
     return {
       status: code,
       harnessStatus,
@@ -143,11 +189,25 @@ export async function runSingleTest(
   }
 }
 
-async function generateBundle(location: URL): Promise<string> {
+async function generateBundle(
+  location: URL,
+): Promise<{ bundle: string; longTimeout: boolean }> {
   const res = await fetch(location);
   const body = await res.text();
   const doc = new DOMParser().parseFromString(body, "text/html");
   assert(doc, "document should have been parsed");
+
+  let longTimeout = false;
+  for (const meta of doc.getElementsByTagName("meta")) {
+    if (
+      meta.getAttribute("name") === "timeout" &&
+      meta.getAttribute("content") === "long"
+    ) {
+      longTimeout = true;
+      break;
+    }
+  }
+
   const scripts = doc.getElementsByTagName("script");
   const scriptContents = [];
   let inlineScriptCount = 0;
@@ -173,7 +233,7 @@ async function generateBundle(location: URL): Promise<string> {
     }
   }
 
-  return scriptContents.map(([url, contents]) => `
+  const bundle = scriptContents.map(([url, contents]) => `
 (function() {
   const [_,err] = Deno.core.evalContext(${JSON.stringify(contents)}, ${
     JSON.stringify(url)
@@ -182,4 +242,5 @@ async function generateBundle(location: URL): Promise<string> {
     throw err?.thrown;
   }
 })();`).join("\n");
+  return { bundle, longTimeout };
 }
