@@ -1001,12 +1001,12 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("fail-fast")
         .long("fail-fast")
         .alias("failfast")
-        .help("Stop after N errors. Defaults to stopping after first failure.")
+        .help("Stop after N failures. Defaults to stopping after first failure.")
         .min_values(0)
         .required(false)
         .takes_value(true)
         .require_equals(true)
-        .value_name("N")
+        .value_name("Number")
         .validator(|val: String| match val.parse::<usize>() {
           Ok(val) => {
             if val == 0 {
