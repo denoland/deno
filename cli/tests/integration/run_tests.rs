@@ -372,6 +372,13 @@ itest!(blob_gc_finalization {
   exit_code: 0,
 });
 
+itest!(fetch_response_finalization {
+  args: "run --v8-flags=--expose-gc --allow-net fetch_response_finalization.js",
+  output: "fetch_response_finalization.js.out",
+  http_server: true,
+  exit_code: 0,
+});
+
 itest!(lock_write_requires_lock {
   args: "run --lock-write some_file.ts",
   output: "lock_write_requires_lock.out",
