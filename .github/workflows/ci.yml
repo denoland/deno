@@ -380,8 +380,6 @@ jobs:
           github.ref == 'refs/heads/main'
         run: |
           gsutil cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
-          echo $(git rev-parse HEAD) > canary-latest.txt
-          gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
 
       - name: Upload canary to dl.deno.land (windows)
         if: |
@@ -395,8 +393,6 @@ jobs:
         shell: bash
         run: |
           gsutil cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
-          echo $(git rev-parse HEAD) > canary-latest.txt
-          gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
 
       - name: Test debug
         if: |
@@ -575,3 +571,22 @@ jobs:
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
           draft: true
+
+  publish-canary:
+    name: publish canary
+    runs-on: ubuntu-20.04
+    needs: ['build']
+    if: github.repository == 'denoland/deno' &&
+        (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
+    steps:
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@master
+        with:
+          project_id: denoland
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
+      - name: Upload canary version file to dl.deno.land
+        run: |
+          echo $(git rev-parse HEAD) > canary-latest.txt
+          gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
