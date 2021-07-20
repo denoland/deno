@@ -3018,9 +3018,11 @@
     "Create-asciiSep-protocol-string.any.html": true,
     "Create-asciiSep-protocol-string.any.html?wpt_flags=h2": true,
     "Create-asciiSep-protocol-string.any.html?wss": true,
-    "Create-blocked-port.any.html": false,
-    "Create-blocked-port.any.html?wpt_flags=h2": false,
-    "Create-blocked-port.any.html?wss": false,
+    "Create-blocked-port.any.html": true,
+    "Create-blocked-port.any.html?wpt_flags=h2": [
+      "Basic check"
+    ],
+    "Create-blocked-port.any.html?wss": true,
     "Create-extensions-empty.any.html": true,
     "Create-extensions-empty.any.html?wpt_flags=h2": false,
     "Create-extensions-empty.any.html?wss": true,
