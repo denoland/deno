@@ -83,6 +83,15 @@
     return core.opAsync("op_fetch_response_read", rid, body);
   }
 
+  // A finalization registry to clean up underlying fetch resources that are GC'ed.
+  const RESOURCE_REGISTRY = new FinalizationRegistry((rid) => {
+    try {
+      core.close(rid);
+    } catch {
+      // might have already been closed
+    }
+  });
+
   /**
    * @param {number} responseBodyRid
    * @param {AbortSignal} [terminator]
@@ -150,6 +159,7 @@
         }
       },
     });
+    RESOURCE_REGISTRY.register(readable, responseBodyRid);
     return readable;
   }
 
