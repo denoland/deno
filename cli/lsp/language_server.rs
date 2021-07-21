@@ -2441,9 +2441,18 @@ impl Inner {
       let mut sources_specifiers = self.sources.specifiers();
       sources_specifiers.sort();
       let measures = self.performance.to_vec();
+      let workspace_settings = self.config.get_workspace_settings();
 
       contents.push_str(&format!(
         r#"# Deno Language Server Status
+
+## Workspace Settings
+
+```json
+{}
+```
+
+## Workspace Details
 
   - <details><summary>Documents in memory: {}</summary>
 
@@ -2463,6 +2472,7 @@ impl Inner {
 
   </details>
 "#,
+        serde_json::to_string_pretty(&workspace_settings).unwrap(),
         self.documents.len(),
         documents_specifiers
           .into_iter()
