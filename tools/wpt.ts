@@ -336,7 +336,7 @@ async function update() {
         passed: [],
         failed: [],
         testSucceeded: result.status === 0 &&
-          result.harnessStatus?.status !== 0,
+          result.harnessStatus?.status === 0,
       };
     }
     for (const case_ of result.cases) {
@@ -529,10 +529,7 @@ function analyzeTestResult(
 }
 
 function reportVariation(result: TestResult, expectation: boolean | string[]) {
-  if (
-    result.status !== 0 || result.harnessStatus === null ||
-    result.harnessStatus.status !== 0
-  ) {
+  if (result.status !== 0 || result.harnessStatus?.status !== 0) {
     console.log(`test stderr:`);
     writeAllSync(Deno.stdout, new TextEncoder().encode(result.stderr));
 
