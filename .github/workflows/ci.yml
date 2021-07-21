@@ -588,5 +588,5 @@ jobs:
 
       - name: Upload canary version file to dl.deno.land
         run: |
-          echo $(git rev-parse HEAD) > canary-latest.txt
+          echo ${{ github.sha }} > canary-latest.txt
           gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
