@@ -476,10 +476,10 @@ https://deno.land/x/a.ts (123B)
                 "code": "https://deno.land/x/d.js"
               }
             ],
-            "size":789,
+            "size": 789,
             "mediaType": "JavaScript",
             "local": "/cache/deps/https/deno.land/x/c.js",
-            "checksum":"9876abcef"
+            "checksum": "9876abcef"
           },
           {
             "specifier": "https://deno.land/x/c.d.ts",
