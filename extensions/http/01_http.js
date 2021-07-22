@@ -321,7 +321,7 @@
       );
     }
 
-    if (request.headers.get("connection") !== "Upgrade") {
+    if (request.headers.get("connection")?.toLowerCase() !== "upgrade") {
       throw new TypeError(
         "Invalid Header: 'connection' header must be 'Upgrade'",
       );
