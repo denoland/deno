@@ -1785,3 +1785,13 @@ mod permissions {
     exit_code: 1,
   });
 }
+
+itest!(tls_starttls {
+  args: "run --quiet --reload --allow-net --allow-read --unstable --cert tls/RootCA.pem tls_starttls.js",
+  output: "tls.out",
+});
+
+itest!(tls_connecttls {
+  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem tls_connecttls.js",
+  output: "tls.out",
+});
