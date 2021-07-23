@@ -174,12 +174,7 @@
         }
       }
 
-      const workerType = String(type);
-      if (workerType !== "classic" && workerType !== "module") {
-        throw new TypeError(
-          `The provided value '${workerType}' is not a valid enum value of type WorkerType.`,
-        );
-      }
+      const workerType = webidl.converters["WorkerType"](type);
 
       if (
         StringPrototypeStartsWith(specifier, "./") ||
@@ -339,6 +334,11 @@
   defineEventHandler(Worker.prototype, "error");
   defineEventHandler(Worker.prototype, "message");
   defineEventHandler(Worker.prototype, "messageerror");
+
+  webidl.converters["WorkerType"] = webidl.createEnumConverter("WorkerType", [
+    "classic",
+    "module",
+  ]);
 
   window.__bootstrap.worker = {
     parsePermissions,
