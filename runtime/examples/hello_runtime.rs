@@ -27,6 +27,7 @@ async fn main() -> Result<(), AnyError> {
     args: vec![],
     debug_flag: false,
     unstable: false,
+    enable_testing_features: false,
     ca_data: None,
     user_agent: "hello_runtime".to_string(),
     seed: None,
