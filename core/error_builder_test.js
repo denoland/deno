@@ -1,3 +1,5 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// deno-lint-ignore-file prefer-primordials
 const { core } = Deno;
 
 class DOMException {
