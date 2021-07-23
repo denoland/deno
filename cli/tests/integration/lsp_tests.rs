@@ -259,12 +259,13 @@ fn lsp_import_map() {
     .unwrap();
 
   client.write_notification("initialized", json!({})).unwrap();
+  let uri = Url::from_file_path(temp_dir.path().join("a.ts")).unwrap();
 
   let diagnostics = did_open(
     &mut client,
     json!({
       "textDocument": {
-        "uri": "file:///a/file.ts",
+        "uri": uri,
         "languageId": "typescript",
         "version": 1,
         "text": "import { b } from \"/~/b.ts\";\n\nconsole.log(b);\n"
@@ -280,7 +281,7 @@ fn lsp_import_map() {
       "textDocument/hover",
       json!({
         "textDocument": {
-          "uri": "file:///a/file.ts"
+          "uri": uri
         },
         "position": {
           "line": 2,
