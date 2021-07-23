@@ -11,10 +11,12 @@
 
 ((window) => {
   const {
-    Error,
+    ErrorPrototype,
     ObjectDefineProperty,
     ObjectEntries,
     ObjectSetPrototypeOf,
+    SymbolFor,
+    SymbolToStringTag,
   } = window.__bootstrap.primordials;
   const webidl = window.__bootstrap.webidl;
   const consoleInternal = window.__bootstrap.console;
@@ -106,11 +108,11 @@
       return this.#code;
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "DOMException";
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [SymbolFor("Deno.customInspect")](inspect) {
       if (this instanceof DOMException) {
         return `DOMException: ${this.#message}`;
       } else {
@@ -127,7 +129,7 @@
     }
   }
 
-  ObjectSetPrototypeOf(DOMException.prototype, Error.prototype);
+  ObjectSetPrototypeOf(DOMException.prototype, ErrorPrototype);
 
   webidl.configurePrototype(DOMException);
 
