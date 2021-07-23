@@ -3476,7 +3476,7 @@ mod tests {
 
   #[test]
   fn test_shuffle() {
-    let r = flags_from_vec(svec!["deno", "test", "--shuffle=2"]);
+    let r = flags_from_vec(svec!["deno", "test", "--shuffle=1"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3487,7 +3487,7 @@ mod tests {
           filter: None,
           allow_none: false,
           quiet: false,
-          shuffle: Some(2),
+          shuffle: Some(1),
           include: None,
           concurrent_jobs: 1,
         },
