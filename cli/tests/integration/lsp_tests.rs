@@ -240,8 +240,11 @@ fn lsp_import_map() {
     serde_json::to_vec_pretty(&load_fixture("import-map.json")).unwrap();
   fs::write(temp_dir.path().join("import-map.json"), import_map).unwrap();
   fs::create_dir(temp_dir.path().join("lib")).unwrap();
-  fs::write(temp_dir.path().join("lib").join("b.ts"), r#"export const b = "b";"#)
-    .unwrap();
+  fs::write(
+    temp_dir.path().join("lib").join("b.ts"),
+    r#"export const b = "b";"#,
+  )
+  .unwrap();
 
   params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
   if let Some(Value::Object(mut map)) = params.initialization_options {
