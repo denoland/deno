@@ -12,8 +12,10 @@
   const {
     ArrayBuffer,
     ArrayBufferIsView,
+    ArrayPrototypeForEach,
     ArrayPrototypePush,
     ArrayPrototypeSort,
+    ArrayIteratorPrototype,
     BigInt,
     BigIntAsIntN,
     BigIntAsUintN,
@@ -497,45 +499,48 @@
     ObjectGetPrototypeOf(Uint8Array).prototype,
     SymbolToStringTag,
   ).get;
-  [
-    Int8Array,
-    Int16Array,
-    Int32Array,
-    Uint8Array,
-    Uint16Array,
-    Uint32Array,
-    Uint8ClampedArray,
-    Float32Array,
-    Float64Array,
-  ].forEach((func) => {
-    const name = func.name;
-    const article = RegExpPrototypeTest(/^[AEIOU]/, name) ? "an" : "a";
-    converters[name] = (V, opts = {}) => {
-      if (!ArrayBufferIsView(V) || typedArrayNameGetter.call(V) !== name) {
-        throw makeException(
-          TypeError,
-          `is not ${article} ${name} object`,
-          opts,
-        );
-      }
-      if (!opts.allowShared && isSharedArrayBuffer(V.buffer)) {
-        throw makeException(
-          TypeError,
-          "is a view on a SharedArrayBuffer, which is not allowed",
-          opts,
-        );
-      }
-      if (isArrayBufferDetached(V.buffer)) {
-        throw makeException(
-          TypeError,
-          "is a view on a detached ArrayBuffer",
-          opts,
-        );
-      }
+  ArrayPrototypeForEach(
+    [
+      Int8Array,
+      Int16Array,
+      Int32Array,
+      Uint8Array,
+      Uint16Array,
+      Uint32Array,
+      Uint8ClampedArray,
+      Float32Array,
+      Float64Array,
+    ],
+    (func) => {
+      const name = func.name;
+      const article = RegExpPrototypeTest(/^[AEIOU]/, name) ? "an" : "a";
+      converters[name] = (V, opts = {}) => {
+        if (!ArrayBufferIsView(V) || typedArrayNameGetter.call(V) !== name) {
+          throw makeException(
+            TypeError,
+            `is not ${article} ${name} object`,
+            opts,
+          );
+        }
+        if (!opts.allowShared && isSharedArrayBuffer(V.buffer)) {
+          throw makeException(
+            TypeError,
+            "is a view on a SharedArrayBuffer, which is not allowed",
+            opts,
+          );
+        }
+        if (isArrayBufferDetached(V.buffer)) {
+          throw makeException(
+            TypeError,
+            "is a view on a detached ArrayBuffer",
+            opts,
+          );
+        }
 
-      return V;
-    };
-  });
+        return V;
+      };
+    },
+  );
 
   // Common definitions
 
@@ -921,9 +926,7 @@
 
   const _iteratorInternal = Symbol("iterator internal");
 
-  const globalIteratorPrototype = ObjectGetPrototypeOf(ObjectGetPrototypeOf(
-    [][SymbolIterator](),
-  ));
+  const globalIteratorPrototype = ObjectGetPrototypeOf(ArrayIteratorPrototype);
 
   function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
     const iteratorPrototype = ObjectCreate(globalIteratorPrototype, {
