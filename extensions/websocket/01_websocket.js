@@ -463,15 +463,46 @@
             break;
           }
           case "close": {
-            this[_readyState] = CLOSED;
+            if (this[_readyState] !== CLOSING) {
+              PromisePrototypeThen(
+                core.opAsync("op_ws_close", {
+                  rid: this[_rid],
+                  code: value.code,
+                  reason: value.reason,
+                }),
+                (value) => {
+                  this[_readyState] = CLOSED;
+                  const event = new CloseEvent("close", {
+                    wasClean: true,
+                    code: value.code,
+                    reason: value.reason,
+                  });
+                  this.dispatchEvent(event);
+                  tryClose(this[_rid]);
+                },
+                (err) => {
+                  this[_readyState] = CLOSED;
+                  const errorEv = new ErrorEvent("error", {
+                    error: err,
+                    message: ErrorPrototypeToString(err),
+                  });
+                  this.dispatchEvent(errorEv);
 
-            const event = new CloseEvent("close", {
-              wasClean: true,
-              code: value.code,
-              reason: value.reason,
-            });
-            this.dispatchEvent(event);
-            tryClose(this[_rid]);
+                  const closeEv = new CloseEvent("close");
+                  this.dispatchEvent(closeEv);
+                  tryClose(this[_rid]);
+                },
+              );
+            } else {
+              this[_readyState] = CLOSED;
+              const event = new CloseEvent("close", {
+                wasClean: true,
+                code: value.code,
+                reason: value.reason,
+              });
+              this.dispatchEvent(event);
+              tryClose(this[_rid]);
+            }
             break;
           }
           case "error": {
