@@ -186,8 +186,6 @@ delete Object.prototype.__proto__;
     } else {
       prepareStackTrace = core.createPrepareStackTrace();
     }
-    // TODO(magurotuna): `prepareStackTrace` should be ignored without the directive
-    // deno-lint-ignore prefer-primordials
     Error.prepareStackTrace = prepareStackTrace;
   }
 

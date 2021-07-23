@@ -1,5 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-// deno-lint-ignore-file prefer-primordials
 "use strict";
 
 function assert(cond) {
