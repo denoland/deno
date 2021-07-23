@@ -263,6 +263,7 @@ pub struct WebWorkerOptions {
   pub args: Vec<String>,
   pub debug_flag: bool,
   pub unstable: bool,
+  pub enable_testing_features: bool,
   pub ca_data: Option<Vec<u8>>,
   pub user_agent: String,
   pub seed: Option<u64>,
@@ -295,10 +296,14 @@ impl WebWorker {
   ) -> (Self, SendableWebWorkerHandle) {
     // Permissions: many ops depend on this
     let unstable = options.unstable;
+    let enable_testing_features = options.enable_testing_features;
     let perm_ext = Extension::builder()
       .state(move |state| {
         state.put::<Permissions>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
+        state.put(ops::TestingFeatureChecker {
+          enable_testing_features,
+        });
         Ok(())
       })
       .build();
@@ -423,6 +428,7 @@ impl WebWorker {
       "target": env!("TARGET"),
       "tsVersion": options.ts_version,
       "unstableFlag": options.unstable,
+      "enableTestingFeaturesFlag": options.enable_testing_features,
       "v8Version": deno_core::v8_version(),
       "location": self.main_module,
     });

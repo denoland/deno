@@ -447,7 +447,7 @@ fn op_create_worker(
   }
   let worker_type = args.worker_type;
   if let WebWorkerType::Classic = worker_type {
-    super::check_unstable(state, "Worker.classic");
+    super::check_testing_features(state, "Worker.classic");
   }
   let parent_permissions = state.borrow::<Permissions>().clone();
   let worker_permissions = if let Some(permissions) = args.permissions {

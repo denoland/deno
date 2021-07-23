@@ -109,6 +109,7 @@ fn create_web_worker_callback(
         .log_level
         .map_or(false, |l| l == log::Level::Debug),
       unstable: program_state.flags.unstable,
+      enable_testing_features: program_state.flags.enable_testing_features,
       ca_data: program_state.ca_data.clone(),
       user_agent: version::get_user_agent(),
       seed: program_state.flags.seed,
@@ -189,6 +190,7 @@ pub fn create_main_worker(
       .log_level
       .map_or(false, |l| l == log::Level::Debug),
     unstable: program_state.flags.unstable,
+    enable_testing_features: program_state.flags.enable_testing_features,
     ca_data: program_state.ca_data.clone(),
     user_agent: version::get_user_agent(),
     seed: program_state.flags.seed,

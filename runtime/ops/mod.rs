@@ -85,3 +85,35 @@ pub fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
   let state = state.borrow();
   state.borrow::<UnstableChecker>().check_unstable(api_name)
 }
+
+pub struct TestingFeatureChecker {
+  pub enable_testing_features: bool,
+}
+
+impl TestingFeatureChecker {
+  pub fn check_testing_features(&self, feature_name: &str) {
+    if !self.enable_testing_features {
+      eprintln!(
+        "Testing feature '{}'. The --enable-testing-features-do-not-use must be provided.",
+        feature_name
+      );
+      std::process::exit(70);
+    }
+  }
+}
+
+pub fn check_testing_features(state: &OpState, feature_name: &str) {
+  state
+    .borrow::<TestingFeatureChecker>()
+    .check_testing_features(feature_name)
+}
+
+pub fn check_testing_features2(
+  state: &Rc<RefCell<OpState>>,
+  feature_name: &str,
+) {
+  let state = state.borrow();
+  state
+    .borrow::<TestingFeatureChecker>()
+    .check_testing_features(feature_name)
+}

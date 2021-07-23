@@ -598,6 +598,13 @@ delete Object.prototype.__proto__;
     ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, { name: util.readOnly(name) });
+    if (runtimeOptions.enableTestingFeaturesFlag) {
+      ObjectDefineProperty(
+        globalThis,
+        "importScripts",
+        util.writable(importScripts),
+      );
+    }
     Object.setPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
     const consoleFromDeno = globalThis.console;
@@ -614,14 +621,6 @@ delete Object.prototype.__proto__;
     );
     const { unstableFlag, pid, noColor, args, location: locationHref } =
       runtimeOptions;
-
-    if (unstableFlag) {
-      ObjectDefineProperty(
-        globalThis,
-        "importScripts",
-        util.writable(importScripts),
-      );
-    }
 
     location.setLocationHref(locationHref);
     registerErrors();

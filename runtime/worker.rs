@@ -50,6 +50,7 @@ pub struct WorkerOptions {
   pub args: Vec<String>,
   pub debug_flag: bool,
   pub unstable: bool,
+  pub enable_testing_features: bool,
   pub ca_data: Option<Vec<u8>>,
   pub user_agent: String,
   pub seed: Option<u64>,
@@ -82,10 +83,14 @@ impl MainWorker {
   ) -> Self {
     // Permissions: many ops depend on this
     let unstable = options.unstable;
+    let enable_testing_features = options.enable_testing_features;
     let perm_ext = Extension::builder()
       .state(move |state| {
         state.put::<Permissions>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
+        state.put(ops::TestingFeatureChecker {
+          enable_testing_features,
+        });
         Ok(())
       })
       .build();
@@ -292,6 +297,7 @@ mod tests {
       args: vec![],
       debug_flag: false,
       unstable: false,
+      enable_testing_features: false,
       ca_data: None,
       seed: None,
       js_error_create_fn: None,
