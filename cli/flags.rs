@@ -137,22 +137,23 @@ pub struct Flags {
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
-  pub location: Option<Url>,
-  pub cache_blocklist: Vec<String>,
   pub ca_file: Option<String>,
+  pub cache_blocklist: Vec<String>,
   pub cached_only: bool,
   pub config_path: Option<String>,
   pub coverage_dir: Option<String>,
+  pub enable_testing_features: bool,
   pub ignore: Vec<PathBuf>,
   pub import_map_path: Option<String>,
-  pub inspect: Option<SocketAddr>,
   pub inspect_brk: Option<SocketAddr>,
-  pub lock: Option<PathBuf>,
+  pub inspect: Option<SocketAddr>,
+  pub location: Option<Url>,
   pub lock_write: bool,
+  pub lock: Option<PathBuf>,
   pub log_level: Option<Level>,
   pub no_check: bool,
-  pub prompt: bool,
   pub no_remote: bool,
+  pub prompt: bool,
   pub reload: bool,
   pub repl: bool,
   pub seed: Option<u64>,
@@ -1267,6 +1268,7 @@ fn runtime_args<'a, 'b>(
     .arg(location_arg())
     .arg(v8_flags_arg())
     .arg(seed_arg())
+    .arg(enable_testing_features_arg())
 }
 
 fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
@@ -1366,6 +1368,13 @@ fn location_arg<'a, 'b>() -> Arg<'a, 'b> {
       Ok(())
     })
     .help("Value of 'globalThis.location' used by some web APIs")
+}
+
+fn enable_testing_features_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("enable-testing-features-do-not-use")
+    .long("enable-testing-features-do-not-use")
+    .help("INTERNAL: Enable internal features used during integration testing")
+    .hidden(true)
 }
 
 fn v8_flags_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -1902,6 +1911,7 @@ fn runtime_args_parse(
   v8_flags_arg_parse(flags, matches);
   seed_arg_parse(flags, matches);
   inspect_arg_parse(flags, matches);
+  enable_testing_features_arg_parse(flags, matches);
 }
 
 fn inspect_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -1946,6 +1956,15 @@ fn reload_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
 
 fn ca_file_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.ca_file = matches.value_of("cert").map(ToOwned::to_owned);
+}
+
+fn enable_testing_features_arg_parse(
+  flags: &mut Flags,
+  matches: &clap::ArgMatches,
+) {
+  if matches.is_present("enable-testing-features-do-not-use") {
+    flags.enable_testing_features = true
+  }
 }
 
 fn cached_only_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
@@ -3453,6 +3472,26 @@ mod tests {
   }
 
   #[test]
+  fn run_with_enable_testing_features() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--enable-testing-features-do-not-use",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        enable_testing_features: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn test_with_fail_fast() {
     let r = flags_from_vec(svec!["deno", "test", "--fail-fast=3"]);
     assert_eq!(
@@ -3474,6 +3513,32 @@ mod tests {
     );
   }
 
+  #[test]
+  fn test_with_enable_testing_features() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "test",
+      "--enable-testing-features-do-not-use"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: None,
+          allow_none: false,
+          quiet: false,
+          shuffle: None,
+          include: None,
+          concurrent_jobs: 1,
+        },
+        enable_testing_features: true,
+        ..Flags::default()
+      }
+    );
+  }
   #[test]
   fn test_watch() {
     let r = flags_from_vec(svec!["deno", "test", "--watch"]);
