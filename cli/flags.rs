@@ -1059,6 +1059,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
       Arg::with_name("jobs")
         .short("j")
         .long("jobs")
+        .help("Number of parallel workers, defaults to # of CPUs when no value is provided. Defaults to 1 when the option is not present.")
         .min_values(0)
         .max_values(1)
         .takes_value(true)
@@ -1772,6 +1773,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
 
   flags.coverage_dir = matches.value_of("coverage").map(String::from);
+  flags.watch = matches.is_present("watch");
   flags.subcommand = DenoSubcommand::Test {
     no_run,
     doc,
@@ -3467,6 +3469,29 @@ mod tests {
           include: None,
           concurrent_jobs: 1,
         },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_watch() {
+    let r = flags_from_vec(svec!["deno", "test", "--watch"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: None,
+          allow_none: false,
+          quiet: false,
+          shuffle: None,
+          include: None,
+          concurrent_jobs: 1,
+        },
+        watch: true,
         ..Flags::default()
       }
     );

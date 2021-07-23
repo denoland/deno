@@ -6,7 +6,6 @@
       "dependencies": [
         {
           "specifier": "./recursive_imports/A.ts",
-          "isDynamic": false,
           "code": "file://[WILDCARD]/cli/tests/recursive_imports/A.ts"
         }
       ],
@@ -20,12 +19,10 @@
       "dependencies": [
         {
           "specifier": "./B.ts",
-          "isDynamic": false,
           "code": "file://[WILDCARD]/cli/tests/recursive_imports/B.ts"
         },
         {
           "specifier": "./common.ts",
-          "isDynamic": false,
           "code": "file://[WILDCARD]/cli/tests/recursive_imports/common.ts"
         }
       ],
@@ -39,12 +36,10 @@
       "dependencies": [
         {
           "specifier": "./C.ts",
-          "isDynamic": false,
           "code": "file://[WILDCARD]/cli/tests/recursive_imports/C.ts"
         },
         {
           "specifier": "./common.ts",
-          "isDynamic": false,
           "code": "file://[WILDCARD]/cli/tests/recursive_imports/common.ts"
         }
       ],
@@ -58,12 +53,10 @@
       "dependencies": [
         {
           "specifier": "./A.ts",
-          "isDynamic": false,
           "code": "file://[WILDCARD]/cli/tests/recursive_imports/A.ts"
         },
         {
           "specifier": "./common.ts",
-          "isDynamic": false,
           "code": "file://[WILDCARD]/cli/tests/recursive_imports/common.ts"
         }
       ],

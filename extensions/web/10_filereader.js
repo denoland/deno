@@ -52,8 +52,8 @@
     [result] = null;
     /** @type {null | DOMException} */
     [error] = null;
-
-    [aborted] = false;
+    /** @type {null | {aborted: boolean}} */
+    [aborted] = null;
 
     /**
      * @param {Blob} blob
@@ -74,6 +74,12 @@
       // 4. Set fr’s error to null.
       this[error] = null;
 
+      // We set this[aborted] to a new object, and keep track of it in a
+      // separate variable, so if a new read operation starts while there are
+      // remaining tasks from a previous aborted operation, the new operation
+      // will run while the tasks from the previous one are still aborted.
+      const abortedState = this[aborted] = { aborted: false };
+
       // 5. Let stream be the result of calling get stream on blob.
       const stream /*: ReadableStream<ArrayBufferView>*/ = blob.stream();
 
@@ -92,17 +98,17 @@
 
       // 10 in parallel while true
       (async () => {
-        while (!this[aborted]) {
+        while (!abortedState.aborted) {
           // 1. Wait for chunkPromise to be fulfilled or rejected.
           try {
             const chunk = await chunkPromise;
-            if (this[aborted]) return;
+            if (abortedState.aborted) return;
 
             // 2. If chunkPromise is fulfilled, and isFirstChunk is true, queue a task to fire a progress event called loadstart at fr.
             if (isFirstChunk) {
               // TODO(lucacasonato): this is wrong, should be HTML "queue a task"
               queueMicrotask(() => {
-                if (this[aborted]) return;
+                if (abortedState.aborted) return;
                 // fire a progress event for loadstart
                 const ev = new ProgressEvent("loadstart", {});
                 this.dispatchEvent(ev);
@@ -128,7 +134,7 @@
                 });
                 // TODO(lucacasonato): this is wrong, should be HTML "queue a task"
                 queueMicrotask(() => {
-                  if (this[aborted]) return;
+                  if (abortedState.aborted) return;
                   this.dispatchEvent(ev);
                 });
               }
@@ -138,7 +144,7 @@
             else if (chunk.done === true) {
               // TODO(lucacasonato): this is wrong, should be HTML "queue a task"
               queueMicrotask(() => {
-                if (this[aborted]) return;
+                if (abortedState.aborted) return;
                 // 1. Set fr’s state to "done".
                 this[state] = "done";
                 // 2. Let result be the result of package data given bytes, type, blob’s type, and encodingName.
@@ -232,7 +238,7 @@
           } catch (err) {
             // TODO(lucacasonato): this is wrong, should be HTML "queue a task"
             queueMicrotask(() => {
-              if (this[aborted]) return;
+              if (abortedState.aborted) return;
 
               // chunkPromise rejected
               this[state] = "done";
@@ -303,7 +309,9 @@
       }
       // If there are any tasks from the context object on the file reading task source in an affiliated task queue, then remove those tasks from that task queue.
       // Terminate the algorithm for the read method being processed.
-      this[aborted] = true;
+      if (this[aborted] !== null) {
+        this[aborted].aborted = true;
+      }
 
       // Fire a progress event called abort at the context object.
       const ev = new ProgressEvent("abort", {});

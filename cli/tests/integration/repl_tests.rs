@@ -14,9 +14,9 @@ fn pty_multiline() {
     master.write_all(b"'{'\n").unwrap();
     master.write_all(b"'('\n").unwrap();
     master.write_all(b"'['\n").unwrap();
-    master.write_all(b"/{/'\n").unwrap();
-    master.write_all(b"/(/'\n").unwrap();
-    master.write_all(b"/[/'\n").unwrap();
+    master.write_all(b"/{/\n").unwrap();
+    master.write_all(b"/\\(/\n").unwrap();
+    master.write_all(b"/\\[/\n").unwrap();
     master.write_all(b"console.log(\"{test1} abc {test2} def {{test3}}\".match(/{([^{].+?)}/));\n").unwrap();
     master.write_all(b"close();\n").unwrap();
 
@@ -31,8 +31,8 @@ fn pty_multiline() {
     assert!(output.contains("\"(\""));
     assert!(output.contains("\"[\""));
     assert!(output.contains("/{/"));
-    assert!(output.contains("/(/"));
-    assert!(output.contains("/{/"));
+    assert!(output.contains("/\\(/"));
+    assert!(output.contains("/\\[/"));
     assert!(output.contains("[ \"{test1}\", \"test1\" ]"));
   });
 }
@@ -68,6 +68,23 @@ fn pty_bad_input() {
     master.read_to_string(&mut output).unwrap();
 
     assert!(output.contains("Unterminated string literal"));
+  });
+}
+
+#[cfg(unix)]
+#[test]
+fn pty_syntax_error_input() {
+  use std::io::{Read, Write};
+  run_pty_test(|master| {
+    master.write_all(b"('\\u')\n").unwrap();
+    master.write_all(b"('\n").unwrap();
+    master.write_all(b"close();\n").unwrap();
+
+    let mut output = String::new();
+    master.read_to_string(&mut output).unwrap();
+
+    assert!(output.contains("Unterminated string constant"));
+    assert!(output.contains("Unexpected eof"));
   });
 }
 
