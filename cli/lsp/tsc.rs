@@ -10,6 +10,7 @@ use super::semantic_tokens::SemanticTokensBuilder;
 use super::semantic_tokens::TsTokenEncodingConsts;
 use super::text;
 use super::text::LineIndex;
+use super::urls::INVALID_SPECIFIER;
 
 use crate::config_file::TsConfig;
 use crate::media_type::MediaType;
@@ -48,14 +49,6 @@ use tokio::sync::oneshot;
 
 const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
   &[".d.ts", ".ts", ".tsx", ".js", ".jsx", ".json"];
-
-lazy_static::lazy_static! {
-  /// Used in situations where tsc is holding onto a reference to a module
-  /// specifier that doesn't exist anymore and we cannot return an option or
-  /// result. This occurs in situations like when an import map is updated but
-  /// tsc has a cached version of a document in memory.
-  static ref INVALID_SPECIFIER: ModuleSpecifier = ModuleSpecifier::parse("deno://invalid").unwrap();
-}
 
 type Request = (
   RequestMethod,

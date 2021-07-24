@@ -3,6 +3,7 @@
 use super::analysis;
 use super::text::LineIndex;
 use super::tsc;
+use super::urls::INVALID_SPECIFIER;
 
 use crate::config_file::ConfigFile;
 use crate::file_fetcher::get_source_from_bytes;
@@ -30,10 +31,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 use tsc::NavigationTree;
-
-lazy_static::lazy_static! {
-  static ref INVALID_SPECIFIER: ModuleSpecifier = ModuleSpecifier::parse("deno://invalid").unwrap();
-}
 
 pub async fn cache(
   specifier: &ModuleSpecifier,
