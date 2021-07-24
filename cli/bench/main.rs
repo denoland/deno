@@ -96,21 +96,17 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   ),
   (
     "fetch_single_large_file",
-    &[
-      "run",
-      "--allow-net",
-      "cli/tests/fetch_single_large_file.ts"
-    ],
-    None
+    &["run", "--allow-net", "cli/tests/fetch_single_large_file.ts"],
+    None,
   ),
   (
     "fetch_multiple_large_files",
     &[
       "run",
       "--allow-net",
-      "cli/tests/fetch_multiple_large_files.ts"
+      "cli/tests/fetch_multiple_large_files.ts",
     ],
-    None
+    None,
   ),
   (
     "check",
