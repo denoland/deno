@@ -36,7 +36,8 @@
     "module": {
       "type": "object",
       "required": [
-        "specifier"
+        "specifier",
+        "dependencies"
       ],
       "properties": {
         "specifier": {
@@ -49,6 +50,10 @@
           "items": {
             "$ref": "#/definitions/dependency"
           }
+        },
+        "typeDependency": {
+          "$ref": "#/definitions/dependency",
+          "description": "The type dependency for the module. This is set when the file contains a reference to its types or the module was supplied with a types header."
         },
         "size": {
           "type": "integer",
@@ -101,6 +106,10 @@
         "specifier": {
           "type": "string",
           "description": "The specifier provided from within the module."
+        },
+        "isDynamic": {
+          "type": "boolean",
+          "description": "A flag that indicates if the import is dynamically imported. A dynamic import may not be fully resolved until it is accessed at runtime."
         },
         "code": {
           "type": "string",
