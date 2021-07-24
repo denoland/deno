@@ -1,5 +1,4 @@
 use crate::tools::test_runner::TestEvent;
-use crate::tools::test_runner::TestMessage;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::JsRuntime;
@@ -8,7 +7,6 @@ use deno_core::OpState;
 use deno_runtime::ops::worker_host::create_worker_permissions;
 use deno_runtime::ops::worker_host::PermissionsArg;
 use deno_runtime::permissions::Permissions;
-use serde::Deserialize;
 use std::sync::mpsc::Sender;
 use uuid::Uuid;
 
@@ -19,7 +17,8 @@ pub fn init(rt: &mut JsRuntime) {
     "op_restore_test_permissions",
     op_restore_test_permissions,
   );
-  super::reg_sync(rt, "op_post_test_message", op_post_test_message);
+  super::reg_sync(rt, "op_get_test_origin", op_get_test_origin);
+  super::reg_sync(rt, "op_dispatch_test_event", op_dispatch_test_event);
 }
 
 #[derive(Clone)]
@@ -65,27 +64,21 @@ pub fn op_restore_test_permissions(
   }
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PostTestMessageArgs {
-  message: TestMessage,
+fn op_get_test_origin(
+  state: &mut OpState,
+  _: (),
+  _: (),
+) -> Result<String, AnyError> {
+  Ok(state.borrow::<ModuleSpecifier>().to_string())
 }
 
-fn op_post_test_message(
+fn op_dispatch_test_event(
   state: &mut OpState,
-  args: PostTestMessageArgs,
+  event: TestEvent,
   _: (),
-) -> Result<bool, AnyError> {
-  let origin = state.borrow::<ModuleSpecifier>().to_string();
-  let message = args.message;
-
-  let event = TestEvent { origin, message };
-
+) -> Result<(), AnyError> {
   let sender = state.borrow::<Sender<TestEvent>>().clone();
+  sender.send(event).ok();
 
-  if sender.send(event).is_err() {
-    Ok(false)
-  } else {
-    Ok(true)
-  }
+  Ok(())
 }

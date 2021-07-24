@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fetch"
-version = "0.33.0"
+version = "0.34.0"
 edition = "2018"
 description = "Fetch API implementation for Deno"
 authors = ["the Deno authors"]
@@ -16,8 +16,8 @@ path = "lib.rs"
 [dependencies]
 bytes = "1.0.1"
 data-url = "0.1.0"
-deno_core = { version = "0.93.0", path = "../../core" }
-deno_web = { version = "0.42.0", path = "../web" }
+deno_core = { version = "0.94.0", path = "../../core" }
+deno_web = { version = "0.43.0", path = "../web" }
 http = "0.2.4"
 reqwest = { version = "0.11.4", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
 serde = { version = "1.0.126", features = ["derive"] }

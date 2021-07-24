@@ -386,10 +386,11 @@ impl Module {
     for desc in dependencies.iter().filter(|desc| {
       desc.kind != swc_ecmascript::dep_graph::DependencyKind::Require
     }) {
+      let loc = parsed_module.source_map.lookup_char_pos(desc.span.lo);
       let location = Location {
         filename: self.specifier.to_string(),
-        col: desc.col,
-        line: desc.line,
+        col: loc.col_display,
+        line: loc.line,
       };
 
       // In situations where there is a potential issue with resolving the
@@ -434,17 +435,9 @@ impl Module {
         .entry(desc.specifier.to_string())
         .or_insert_with(|| Dependency::new(location));
       dep.is_dynamic = desc.is_dynamic;
-      if let Some(specifier) = maybe_specifier {
-        if desc.kind == swc_ecmascript::dep_graph::DependencyKind::ExportType
-          || desc.kind == swc_ecmascript::dep_graph::DependencyKind::ImportType
-        {
-          dep.maybe_type = Some(specifier);
-        } else {
-          dep.maybe_code = Some(specifier);
-        }
-      }
-      // If the dependency wasn't a type only dependency already, and there is
-      // a `@deno-types` comment, then we will set the `maybe_type` dependency.
+      dep.maybe_code = maybe_specifier;
+      // If there is a `@deno-types` pragma, we will add it to the dependency
+      // if one doesn't already exist.
       if maybe_type.is_some() && dep.maybe_type.is_none() {
         dep.maybe_type = maybe_type;
       }
@@ -1474,9 +1467,19 @@ impl Graph {
             } else {
               (None, None)
             };
+          let maybe_type_dependency =
+            module.maybe_types.clone().map(|(specifier, _type)| {
+              info::ModuleGraphInfoDep {
+                specifier,
+                is_dynamic: false,
+                maybe_code: None,
+                maybe_type: Some(_type),
+              }
+            });
           Some(info::ModuleGraphInfoMod {
             specifier: sp.clone(),
             dependencies,
+            maybe_type_dependency,
             size: Some(module.size()),
             media_type: Some(module.media_type),
             local: Some(module.source_path.clone()),

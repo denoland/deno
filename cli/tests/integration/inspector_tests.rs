@@ -493,3 +493,29 @@ async fn inspector_json_list() {
   assert!(matching_endpoint.is_some());
   child.kill().unwrap();
 }
+
+#[tokio::test]
+async fn inspector_connect_non_ws() {
+  // https://github.com/denoland/deno/issues/11449
+  // Verify we don't panic if non-WS connection is being established
+  let script = util::tests_path().join("inspector1.js");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    .arg(inspect_flag_with_unique_port("--inspect"))
+    .arg(script)
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+  let mut ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  // Change scheme to URL and try send a request. We're not interested
+  // in the request result, just that the process doesn't panic.
+  ws_url.set_scheme("http").unwrap();
+  let resp = reqwest::get(ws_url).await.unwrap();
+  assert_eq!("400 Bad Request", resp.status().to_string());
+  child.kill().unwrap();
+  child.wait().unwrap();
+}
