@@ -693,6 +693,18 @@ unitTest(function httpUpgradeWebSocketLowercaseUpgradeHeader() {
   assertEquals(response.status, 101);
 });
 
+unitTest(function httpUpgradeWebSocketMultipleConnectionOptions() {
+  const request = new Request("https://deno.land/", {
+    headers: {
+      connection: "keep-alive, upgrade",
+      upgrade: "websocket",
+      "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+    },
+  });
+  const { response } = Deno.upgradeWebSocket(request);
+  assertEquals(response.status, 101);
+});
+
 unitTest({ perms: { net: true } }, async function httpCookieConcatenation() {
   const promise = (async () => {
     const listener = Deno.listen({ port: 4501 });
