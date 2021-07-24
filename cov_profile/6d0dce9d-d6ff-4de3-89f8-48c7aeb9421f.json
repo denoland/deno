@@ -1,0 +1,17 @@
+{
+  "scriptId": "58",
+  "url": "deno:runtime/js/30_os.js",
+  "functions": [
+    {
+      "functionName": "setExitHandler",
+      "ranges": [
+        {
+          "startOffset": 900,
+          "endOffset": 955,
+          "count": 2
+        }
+      ],
+      "isBlockCoverage": true
+    }
+  ]
+}

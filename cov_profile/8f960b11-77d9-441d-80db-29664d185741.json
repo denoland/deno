@@ -1,0 +1,22 @@
+{
+  "scriptId": "52",
+  "url": "deno:runtime/js/06_util.js",
+  "functions": [
+    {
+      "functionName": "assert",
+      "ranges": [
+        {
+          "startOffset": 870,
+          "endOffset": 984,
+          "count": 2
+        },
+        {
+          "startOffset": 936,
+          "endOffset": 980,
+          "count": 0
+        }
+      ],
+      "isBlockCoverage": true
+    }
+  ]
+}

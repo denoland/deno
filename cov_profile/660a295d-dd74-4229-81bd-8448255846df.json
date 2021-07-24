@@ -1,0 +1,61 @@
+{
+  "scriptId": "82",
+  "url": "https://deno.land/std@0.102.0/testing/_diff.ts",
+  "functions": [
+    {
+      "functionName": "",
+      "ranges": [
+        {
+          "startOffset": 0,
+          "endOffset": 21039,
+          "count": 1
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "",
+      "ranges": [
+        {
+          "startOffset": 22,
+          "endOffset": 150,
+          "count": 1
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "createCommon",
+      "ranges": [
+        {
+          "startOffset": 236,
+          "endOffset": 658,
+          "count": 0
+        }
+      ],
+      "isBlockCoverage": false
+    },
+    {
+      "functionName": "diff",
+      "ranges": [
+        {
+          "startOffset": 666,
+          "endOffset": 4946,
+          "count": 0
+        }
+      ],
+      "isBlockCoverage": false
+    },
+    {
+      "functionName": "diffstr",
+      "ranges": [
+        {
+          "startOffset": 4954,
+          "endOffset": 7536,
+          "count": 0
+        }
+      ],
+      "isBlockCoverage": false
+    }
+  ]
+}

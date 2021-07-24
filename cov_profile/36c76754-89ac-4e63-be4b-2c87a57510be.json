@@ -1,0 +1,17 @@
+{
+  "scriptId": "85",
+  "url": "[deno:cli/tools/test_runner.rs:309:6]",
+  "functions": [
+    {
+      "functionName": "",
+      "ranges": [
+        {
+          "startOffset": 0,
+          "endOffset": 41,
+          "count": 1
+        }
+      ],
+      "isBlockCoverage": true
+    }
+  ]
+}

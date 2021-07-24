@@ -1,0 +1,17 @@
+{
+  "scriptId": "84",
+  "url": "file:///home/getspooky/Documents/open-source/deno/$deno$test.js",
+  "functions": [
+    {
+      "functionName": "",
+      "ranges": [
+        {
+          "startOffset": 0,
+          "endOffset": 86,
+          "count": 1
+        }
+      ],
+      "isBlockCoverage": true
+    }
+  ]
+}

@@ -1,0 +1,591 @@
+{
+  "scriptId": "13",
+  "url": "deno:extensions/web/02_event.js",
+  "functions": [
+    {
+      "functionName": "getDispatched",
+      "ranges": [
+        {
+          "startOffset": 1208,
+          "endOffset": 1283,
+          "count": 1
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "getPath",
+      "ranges": [
+        {
+          "startOffset": 1287,
+          "endOffset": 1347,
+          "count": 3
+        },
+        {
+          "startOffset": 1337,
+          "endOffset": 1342,
+          "count": 0
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "getStopImmediatePropagation",
+      "ranges": [
+        {
+          "startOffset": 1351,
+          "endOffset": 1458,
+          "count": 1
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "setCurrentTarget",
+      "ranges": [
+        {
+          "startOffset": 1462,
+          "endOffset": 1566,
+          "count": 2
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "setDispatched",
+      "ranges": [
+        {
+          "startOffset": 1646,
+          "endOffset": 1720,
+          "count": 2
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "setEventPhase",
+      "ranges": [
+        {
+          "startOffset": 1724,
+          "endOffset": 1809,
+          "count": 3
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "setInPassiveListener",
+      "ranges": [
+        {
+          "startOffset": 1813,
+          "endOffset": 1901,
+          "count": 1
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "setPath",
+      "ranges": [
+        {
+          "startOffset": 1905,
+          "endOffset": 1967,
+          "count": 1
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "setRelatedTarget",
+      "ranges": [
+        {
+          "startOffset": 1971,
+          "endOffset": 2075,
+          "count": 1
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "setTarget",
+      "ranges": [
+        {
+          "startOffset": 2079,
+          "endOffset": 2156,
+          "count": 2
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "setStopImmediatePropagation",
+      "ranges": [
+        {
+          "startOffset": 2160,
+          "endOffset": 2279,
+          "count": 1
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "hasRelatedTarget",
+      "ranges": [
+        {
+          "startOffset": 2327,
+          "endOffset": 2411,
+          "count": 1
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "<instance_members_initializer>",
+      "ranges": [
+        {
+          "startOffset": 3387,
+          "endOffset": 3620,
+          "count": 2
+        }
+      ],
+      "isBlockCoverage": false
+    },
+    {
+      "functionName": "Event",
+      "ranges": [
+        {
+          "startOffset": 3627,
+          "endOffset": 4363,
+          "count": 2
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "get type",
+      "ranges": [
+        {
+          "startOffset": 4599,
+          "endOffset": 4654,
+          "count": 4
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "get currentTarget",
+      "ranges": [
+        {
+          "startOffset": 4840,
+          "endOffset": 4913,
+          "count": 1
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "get NONE",
+      "ranges": [
+        {
+          "startOffset": 7998,
+          "endOffset": 8032,
+          "count": 4
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "get CAPTURING_PHASE",
+      "ranges": [
+        {
+          "startOffset": 8045,
+          "endOffset": 8090,
+          "count": 2
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "get AT_TARGET",
+      "ranges": [
+        {
+          "startOffset": 8103,
+          "endOffset": 8142,
+          "count": 2
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "get BUBBLING_PHASE",
+      "ranges": [
+        {
+          "startOffset": 8155,
+          "endOffset": 8199,
+          "count": 2
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "get eventPhase",
+      "ranges": [
+        {
+          "startOffset": 8205,
+          "endOffset": 8272,
+          "count": 5
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "get cancelBubble",
+      "ranges": [
+        {
+          "startOffset": 8350,
+          "endOffset": 8417,
+          "count": 1
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "set cancelBubble",
+      "ranges": [
+        {
+          "startOffset": 8423,
+          "endOffset": 8523,
+          "count": 1
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "get defaultPrevented",
+      "ranges": [
+        {
+          "startOffset": 9138,
+          "endOffset": 9202,
+          "count": 1
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "getParent",
+      "ranges": [
+        {
+          "startOffset": 10267,
+          "endOffset": 10368,
+          "count": 1
+        },
+        {
+          "startOffset": 10332,
+          "endOffset": 10356,
+          "count": 0
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "isNode",
+      "ranges": [
+        {
+          "startOffset": 10508,
+          "endOffset": 10613,
+          "count": 7
+        },
+        {
+          "startOffset": 10579,
+          "endOffset": 10607,
+          "count": 5
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "isShadowRoot",
+      "ranges": [
+        {
+          "startOffset": 11006,
+          "endOffset": 11207,
+          "count": 1
+        },
+        {
+          "startOffset": 11103,
+          "endOffset": 11158,
+          "count": 0
+        },
+        {
+          "startOffset": 11159,
+          "endOffset": 11195,
+          "count": 0
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "isSlotable",
+      "ranges": [
+        {
+          "startOffset": 11211,
+          "endOffset": 11323,
+          "count": 1
+        },
+        {
+          "startOffset": 11288,
+          "endOffset": 11317,
+          "count": 0
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "appendToEventPath",
+      "ranges": [
+        {
+          "startOffset": 11474,
+          "endOffset": 12018,
+          "count": 1
+        },
+        {
+          "startOffset": 11658,
+          "endOffset": 11690,
+          "count": 0
+        },
+        {
+          "startOffset": 11742,
+          "endOffset": 11779,
+          "count": 0
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "dispatch",
+      "ranges": [
+        {
+          "startOffset": 12022,
+          "endOffset": 16458,
+          "count": 1
+        },
+        {
+          "startOffset": 12315,
+          "endOffset": 12340,
+          "count": 0
+        },
+        {
+          "startOffset": 12459,
+          "endOffset": 12495,
+          "count": 0
+        },
+        {
+          "startOffset": 12778,
+          "endOffset": 12817,
+          "count": 0
+        },
+        {
+          "startOffset": 12819,
+          "endOffset": 12867,
+          "count": 0
+        },
+        {
+          "startOffset": 12949,
+          "endOffset": 12979,
+          "count": 0
+        },
+        {
+          "startOffset": 12988,
+          "endOffset": 13000,
+          "count": 0
+        },
+        {
+          "startOffset": 13168,
+          "endOffset": 14497,
+          "count": 0
+        },
+        {
+          "startOffset": 14906,
+          "endOffset": 14964,
+          "count": 0
+        },
+        {
+          "startOffset": 15018,
+          "endOffset": 15085,
+          "count": 0
+        },
+        {
+          "startOffset": 15263,
+          "endOffset": 15324,
+          "count": 0
+        },
+        {
+          "startOffset": 15511,
+          "endOffset": 15586,
+          "count": 0
+        },
+        {
+          "startOffset": 15658,
+          "endOffset": 15690,
+          "count": 0
+        },
+        {
+          "startOffset": 16089,
+          "endOffset": 16171,
+          "count": 0
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "innerInvokeEventListeners",
+      "ranges": [
+        {
+          "startOffset": 16635,
+          "endOffset": 18559,
+          "count": 1
+        },
+        {
+          "startOffset": 16822,
+          "endOffset": 16849,
+          "count": 0
+        },
+        {
+          "startOffset": 17183,
+          "endOffset": 17275,
+          "count": 0
+        },
+        {
+          "startOffset": 17577,
+          "endOffset": 17604,
+          "count": 0
+        },
+        {
+          "startOffset": 17694,
+          "endOffset": 17705,
+          "count": 0
+        },
+        {
+          "startOffset": 17765,
+          "endOffset": 17775,
+          "count": 0
+        },
+        {
+          "startOffset": 17785,
+          "endOffset": 17812,
+          "count": 0
+        },
+        {
+          "startOffset": 17830,
+          "endOffset": 17992,
+          "count": 0
+        },
+        {
+          "startOffset": 18013,
+          "endOffset": 18069,
+          "count": 0
+        },
+        {
+          "startOffset": 18120,
+          "endOffset": 18258,
+          "count": 0
+        },
+        {
+          "startOffset": 18499,
+          "endOffset": 18530,
+          "count": 0
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "invokeEventListeners",
+      "ranges": [
+        {
+          "startOffset": 18715,
+          "endOffset": 19249,
+          "count": 1
+        },
+        {
+          "startOffset": 19109,
+          "endOffset": 19130,
+          "count": 0
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "retarget",
+      "ranges": [
+        {
+          "startOffset": 19887,
+          "endOffset": 20236,
+          "count": 1
+        },
+        {
+          "startOffset": 19981,
+          "endOffset": 20226,
+          "count": 0
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "getListeners",
+      "ranges": [
+        {
+          "startOffset": 20815,
+          "endOffset": 20924,
+          "count": 1
+        },
+        {
+          "startOffset": 20914,
+          "endOffset": 20919,
+          "count": 0
+        }
+      ],
+      "isBlockCoverage": true
+    },
+    {
+      "functionName": "dispatchEvent",
+      "ranges": [
+        {
+          "startOffset": 24039,
+          "endOffset": 24708,
+          "count": 2
+        },
+        {
+          "startOffset": 24220,
+          "endOffset": 24233,
+          "count": 0
+        },
+        {
+          "startOffset": 24352,
+          "endOffset": 24448,
+          "count": 1
+        },
+        {
+          "startOffset": 24448,
+          "endOffset": 24534,
+          "count": 0
+        },
+        {
+          "startOffset": 24534,
+          "endOffset": 24579,
+          "count": 1
+        },
+        {
+          "startOffset": 24579,
+          "endOffset": 24665,
+          "count": 0
+        },
+        {
+          "startOffset": 24665,
+          "endOffset": 24707,
+          "count": 1
+        }
+      ],
+      "isBlockCoverage": true
+    }
+  ]
+}
