@@ -13,6 +13,7 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use log::debug;
+use regex::Regex;
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::Hash;
@@ -174,12 +175,26 @@ pub struct WriteDescriptor(pub PathBuf);
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
 pub struct NetDescriptor(pub String, pub Option<u16>);
 
+fn is_cidr(addr: &str) -> bool {
+  lazy_static::lazy_static! {
+    static ref RE: Regex = Regex::new("^[0-9]{1,3}(.[0-9]{1,3}){3}/[0-9]{1,2}($|(:[0-9]{1,5}))$").unwrap();
+  }
+  RE.is_match(addr)
+}
+
 impl NetDescriptor {
   fn new<T: AsRef<str>>(host: &&(T, Option<u16>)) -> Self {
     NetDescriptor(host.0.as_ref().to_string(), host.1)
   }
 
   pub fn from_string(host: String) -> Self {
+    if is_cidr(host.as_str()) {
+      let mut parts = host.split(':');
+      return NetDescriptor(
+        parts.next().unwrap_or(&"").to_string(),
+        parts.next().unwrap_or(&"").parse::<u16>().ok(),
+      );
+    }
     let url = url::Url::parse(&format!("http://{}", host)).unwrap();
     let hostname = url.host_str().unwrap().to_string();
 
@@ -434,6 +449,29 @@ impl UnaryPermission<WriteDescriptor> {
   }
 }
 
+fn is_ip(addr: &str) -> bool {
+  lazy_static::lazy_static! {
+    static ref RE: Regex = Regex::new("^[0-9]{1,3}(.[0-9]{1,3}){3}$").unwrap();
+  }
+  RE.is_match(addr)
+}
+
+fn parse_ip(addr: &str) -> u32 {
+  let mut parts = addr.split('.');
+  (parts.next().unwrap_or(&"0").parse::<u32>().unwrap() << 24)
+    + (parts.next().unwrap_or(&"0").parse::<u32>().unwrap() << 16)
+    + (parts.next().unwrap_or(&"0").parse::<u32>().unwrap() << 8)
+    + parts.next().unwrap_or("0").parse::<u32>().unwrap()
+}
+
+fn parse_cidr(cidr: &str) -> (u32, u32) {
+  let mut parts = cidr.split('/');
+  let cidr_base = parse_ip(parts.next().unwrap_or(&"127.0.0.1"));
+  let mask = parts.next().unwrap_or(&"32").parse::<u32>().unwrap();
+  let mutate = 2_u32.pow(32 - mask) - 1;
+  (cidr_base & !mutate, (cidr_base & !mutate) + mutate)
+}
+
 impl UnaryPermission<NetDescriptor> {
   pub fn query<T: AsRef<str>>(
     &self,
@@ -461,6 +499,26 @@ impl UnaryPermission<NetDescriptor> {
             None,
           )))
             || self.granted_list.contains(&NetDescriptor::new(host))
+            || {
+              let mut found_matching_cidr = false;
+              for x in self.granted_list.iter() {
+                if !is_cidr(&x.0) {
+                  continue;
+                }
+                if !is_ip(host.0.as_ref()) {
+                  break;
+                }
+                let host_ip = parse_ip(host.0.as_ref());
+                let (min, max) = parse_cidr(x.0.as_ref());
+                found_matching_cidr = (host_ip >= min)
+                  && (host_ip <= max)
+                  && (x.1 == None || host.1 == x.1);
+                if found_matching_cidr {
+                  break;
+                }
+              }
+              found_matching_cidr
+            }
         }
       }
     {
