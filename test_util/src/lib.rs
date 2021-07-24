@@ -648,6 +648,16 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       } else {
         Ok(Response::new(Body::empty()))
       }
+    },
+    (_, "/single-large-file") => {
+      let stream = futures::stream::repeat::<std::result::Result<_, &str>>(Ok("0")).take(100_000_000);
+      let res = Response::new(Body::wrap_stream(stream));
+      Ok(res)
+    },
+    (_, "/single-small-file") => {
+      let stream = futures::stream::repeat::<std::result::Result<_, &str>>(Ok("0")).take(1_000_000);
+      let res = Response::new(Body::wrap_stream(stream));
+      Ok(res)
     }
     _ => {
       let mut file_path = root_path();

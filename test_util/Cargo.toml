@@ -16,7 +16,7 @@ anyhow = "1.0.41"
 async-stream = "0.3.2"
 bytes = "1.0.1"
 futures = "0.3.15"
-hyper = { version = "0.14.10", features = ["server", "http1", "runtime"] }
+hyper = { version = "0.14.10", features = ["server", "http1", "runtime", "stream"] }
 lazy_static = "1.4.0"
 os_pipe = "0.9.2"
 regex = "1.4.3"
