@@ -1268,7 +1268,9 @@ mod tests {
         "github.com:3000",
         "127.0.0.1",
         "172.16.0.2:8000",
-        "www.github.com:443"
+        "www.github.com:443",
+        "10.7.0.0/24:8000",
+        "10.8.0.0/26"
       ]),
       ..Default::default()
     });
@@ -1291,6 +1293,14 @@ mod tests {
       ("172.16.0.2", 0, false),
       ("172.16.0.2", 6000, false),
       ("172.16.0.1", 8000, false),
+      ("10.7.0.1", 8000, true),
+      ("10.7.0.78", 8000, true),
+      ("10.7.0.1", 6000, false),
+      ("10.7.0.78", 6000, false),
+      ("10.8.0.1", 8000, true),
+      ("10.8.0.1", 6000, true),
+      ("10.8.0.78", 8000, false),
+      ("10.8.0.78", 6000, false),
       // Just some random hosts that should err
       ("somedomain", 0, false),
       ("192.168.0.1", 0, false),
@@ -1378,7 +1388,9 @@ mod tests {
         "github.com:3000",
         "127.0.0.1",
         "172.16.0.2:8000",
-        "www.github.com:443"
+        "www.github.com:443",
+        "10.7.0.0/24:8000",
+        "10.8.0.0/26"
       ]),
       ..Default::default()
     });
@@ -1418,6 +1430,10 @@ mod tests {
       ("https://172.16.0.2:6000", false),
       ("tcp://172.16.0.1:8000", false),
       ("https://172.16.0.1:8000", false),
+      ("tcp://10.7.0.78:8000", true),
+      ("tcp://10.7.0.78:6000", false),
+      ("tcp://10.8.0.1:1234", true),
+      ("tcp://10.8.0.78:1234", false),
       // Testing issue #6531 (Network permissions check doesn't account for well-known default ports) so we dont regress
       ("https://www.github.com:443/robots.txt", true),
     ];
