@@ -26,7 +26,6 @@
     Promise,
     StringPrototypeIncludes,
     StringPrototypeToLowerCase,
-    StringPrototypeTrim,
     StringPrototypeSplit,
     Symbol,
     SymbolAsyncIterator,
@@ -327,9 +326,8 @@
     const connection = request.headers.get("connection");
     const connectionHasUpgradeOption = connection !== null &&
       ArrayPrototypeSome(
-        StringPrototypeSplit(connection, ","),
-        (option) =>
-          StringPrototypeToLowerCase(StringPrototypeTrim(option)) === "upgrade",
+        StringPrototypeSplit(connection, /\s*,\s*/),
+        (option) => StringPrototypeToLowerCase(option) === "upgrade",
       );
     if (!connectionHasUpgradeOption) {
       throw new TypeError(
