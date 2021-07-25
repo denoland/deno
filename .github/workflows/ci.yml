@@ -90,7 +90,7 @@ jobs:
       - name: Install Deno
         if: matrix.kind == 'lint'
         run: |
-          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.7.2
+          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.11.3
           echo "$HOME/.deno/bin" >> $GITHUB_PATH
 
       - name: Install Python
@@ -253,7 +253,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: d-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: e-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -380,8 +380,6 @@ jobs:
           github.ref == 'refs/heads/main'
         run: |
           gsutil cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
-          echo $(git rev-parse HEAD) > canary-latest.txt
-          gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
 
       - name: Upload canary to dl.deno.land (windows)
         if: |
@@ -395,8 +393,6 @@ jobs:
         shell: bash
         run: |
           gsutil cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
-          echo $(git rev-parse HEAD) > canary-latest.txt
-          gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
 
       - name: Test debug
         if: |
@@ -575,3 +571,22 @@ jobs:
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
           draft: true
+
+  publish-canary:
+    name: publish canary
+    runs-on: ubuntu-20.04
+    needs: ['build']
+    if: github.repository == 'denoland/deno' &&
+        (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
+    steps:
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@master
+        with:
+          project_id: denoland
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
+      - name: Upload canary version file to dl.deno.land
+        run: |
+          echo ${{ github.sha }} > canary-latest.txt
+          gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt

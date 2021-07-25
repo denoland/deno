@@ -372,6 +372,13 @@ itest!(blob_gc_finalization {
   exit_code: 0,
 });
 
+itest!(fetch_response_finalization {
+  args: "run --v8-flags=--expose-gc --allow-net fetch_response_finalization.js",
+  output: "fetch_response_finalization.js.out",
+  http_server: true,
+  exit_code: 0,
+});
+
 itest!(lock_write_requires_lock {
   args: "run --lock-write some_file.ts",
   output: "lock_write_requires_lock.out",
@@ -1155,6 +1162,16 @@ itest!(error_import_map_unable_to_load {
   exit_code: 1,
 });
 
+itest!(worker_event_handler_test {
+  args: "run --quiet --reload --allow-read worker_event_handler_test.js",
+  output: "worker_event_handler_test.js.out",
+});
+
+itest!(worker_close_race {
+  args: "run --quiet --reload --allow-read worker_close_race.js",
+  output: "worker_close_race.js.out",
+});
+
 #[test]
 fn no_validate_asm() {
   let output = util::deno_cmd()
@@ -1768,3 +1785,13 @@ mod permissions {
     exit_code: 1,
   });
 }
+
+itest!(tls_starttls {
+  args: "run --quiet --reload --allow-net --allow-read --unstable --cert tls/RootCA.pem tls_starttls.js",
+  output: "tls.out",
+});
+
+itest!(tls_connecttls {
+  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem tls_connecttls.js",
+  output: "tls.out",
+});

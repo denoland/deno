@@ -1,0 +1,11 @@
+Target from self.onmessage: [object DedicatedWorkerGlobalScope]
+Target from message event listener: [object DedicatedWorkerGlobalScope]
+Arguments from self.onerror: [
+  "Some error message",
+  "",
+  0,
+  0,
+  Error: Some error message
+    at [WILDCARD]
+]
+Is event canceled?: true

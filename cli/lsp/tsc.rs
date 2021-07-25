@@ -10,6 +10,7 @@ use super::semantic_tokens::SemanticTokensBuilder;
 use super::semantic_tokens::TsTokenEncodingConsts;
 use super::text;
 use super::text::LineIndex;
+use super::urls::INVALID_SPECIFIER;
 
 use crate::config_file::TsConfig;
 use crate::media_type::MediaType;
@@ -577,7 +578,7 @@ impl DocumentSpan {
     line_index: &LineIndex,
     language_server: &mut language_server::Inner,
   ) -> Option<lsp::LocationLink> {
-    let target_specifier = normalize_specifier(&self.file_name).unwrap();
+    let target_specifier = normalize_specifier(&self.file_name).ok()?;
     let target_line_index = language_server
       .get_line_index(target_specifier.clone())
       .await
@@ -585,7 +586,7 @@ impl DocumentSpan {
     let target_uri = language_server
       .url_map
       .normalize_specifier(&target_specifier)
-      .unwrap();
+      .ok()?;
     let (target_range, target_selection_range) =
       if let Some(context_span) = &self.context_span {
         (
@@ -778,11 +779,12 @@ impl ImplementationLocation {
     line_index: &LineIndex,
     language_server: &mut language_server::Inner,
   ) -> lsp::Location {
-    let specifier = normalize_specifier(&self.document_span.file_name).unwrap();
+    let specifier = normalize_specifier(&self.document_span.file_name)
+      .unwrap_or_else(|_| ModuleSpecifier::parse("deno://invalid").unwrap());
     let uri = language_server
       .url_map
       .normalize_specifier(&specifier)
-      .unwrap();
+      .unwrap_or_else(|_| ModuleSpecifier::parse("deno://invalid").unwrap());
     lsp::Location {
       uri,
       range: self.document_span.text_span.to_range(line_index),
@@ -1107,11 +1109,12 @@ impl ReferenceEntry {
     line_index: &LineIndex,
     language_server: &mut language_server::Inner,
   ) -> lsp::Location {
-    let specifier = normalize_specifier(&self.document_span.file_name).unwrap();
+    let specifier = normalize_specifier(&self.document_span.file_name)
+      .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
     let uri = language_server
       .url_map
       .normalize_specifier(&specifier)
-      .unwrap();
+      .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
     lsp::Location {
       uri,
       range: self.document_span.text_span.to_range(line_index),
@@ -1139,7 +1142,7 @@ impl CallHierarchyItem {
     language_server: &mut language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyItem> {
-    let target_specifier = normalize_specifier(&self.file).unwrap();
+    let target_specifier = normalize_specifier(&self.file).ok()?;
     let target_line_index = language_server
       .get_line_index(target_specifier)
       .await
@@ -1158,11 +1161,12 @@ impl CallHierarchyItem {
     language_server: &mut language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> lsp::CallHierarchyItem {
-    let target_specifier = normalize_specifier(&self.file).unwrap();
+    let target_specifier = normalize_specifier(&self.file)
+      .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
     let uri = language_server
       .url_map
       .normalize_specifier(&target_specifier)
-      .unwrap();
+      .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
 
     let use_file_name = self.is_source_file_item();
     let maybe_file_path = if uri.scheme() == "file" {
@@ -1239,7 +1243,7 @@ impl CallHierarchyIncomingCall {
     language_server: &mut language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyIncomingCall> {
-    let target_specifier = normalize_specifier(&self.from.file).unwrap();
+    let target_specifier = normalize_specifier(&self.from.file).ok()?;
     let target_line_index = language_server
       .get_line_index(target_specifier)
       .await
@@ -1274,7 +1278,7 @@ impl CallHierarchyOutgoingCall {
     language_server: &mut language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyOutgoingCall> {
-    let target_specifier = normalize_specifier(&self.to.file).unwrap();
+    let target_specifier = normalize_specifier(&self.to.file).ok()?;
     let target_line_index = language_server
       .get_line_index(target_specifier)
       .await

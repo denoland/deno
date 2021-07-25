@@ -3,6 +3,7 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.net_unstable" />
+/// <reference lib="deno.http_unstable" />
 
 declare namespace Deno {
   /**
@@ -128,6 +129,37 @@ declare namespace Deno {
     /** The speed of the cpu measured in MHz */
     speed: number | undefined;
   }
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Open and initialize a plugin.
+   *
+   * ```ts
+   * import { assert } from "https://deno.land/std/testing/asserts.ts";
+   * const rid = Deno.openPlugin("./path/to/some/plugin.so");
+   *
+   * // The Deno.core namespace is needed to interact with plugins, but this is
+   * // internal so we use ts-ignore to skip type checking these calls.
+   * // @ts-ignore
+   * const { op_test_sync, op_test_async } = Deno.core.ops();
+   *
+   * assert(op_test_sync);
+   * assert(op_test_async);
+   *
+   * // @ts-ignore
+   * const result = Deno.core.opSync("op_test_sync");
+   *
+   * // @ts-ignore
+   * const result = await Deno.core.opAsync("op_test_sync");
+   * ```
+   *
+   * Requires `allow-plugin` permission.
+   *
+   * The plugin system is not stable and will change in the future, hence the
+   * lack of docs. For now take a look at the example
+   * https://github.com/denoland/deno/tree/main/test_plugin
+   */
+  export function openPlugin(filename: string): number;
 
   /** The log category for a diagnostic message. */
   export enum DiagnosticCategory {
@@ -1067,6 +1099,24 @@ declare namespace Deno {
       write?: "inherit" | boolean | Array<string | URL>;
     };
   }
+
+  /** **UNSTABLE**: new API, yet to be vetted.
+   *
+   * Services HTTP requests given a TCP or TLS socket.
+   *
+   * ```ts
+   * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
+   * const httpConn = Deno.serveHttp(conn);
+   * const e = await httpConn.nextRequest();
+   * if (e) {
+   *   e.respondWith(new Response("Hello World"));
+   * }
+   * ```
+   *
+   * If `httpConn.nextRequest()` encounters an error or returns `null`
+   * then the underlying HttpConn resource is closed automatically.
+   */
+  export function serveHttp(conn: Conn): HttpConn;
 }
 
 declare function fetch(

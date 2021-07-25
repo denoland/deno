@@ -88,11 +88,6 @@ delete Object.prototype.__proto__;
     core.opSync("op_worker_close");
   }
 
-  // TODO(bartlomieju): remove these functions
-  // Stuff for workers
-  const onmessage = () => {};
-  const onerror = () => {};
-
   function postMessage(message, transferOrOptions = {}) {
     const prefix =
       "Failed to execute 'postMessage' on 'DedicatedWorkerGlobalScope'";
@@ -144,39 +139,19 @@ delete Object.prototype.__proto__;
       });
 
       try {
-        if (globalThis.onmessage) {
-          await globalThis.onmessage(msgEvent);
-        }
         globalDispatchEvent(msgEvent);
       } catch (e) {
-        let handled = false;
-
         const errorEvent = new ErrorEvent("error", {
           cancelable: true,
           message: e.message,
           lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
           colno: e.columnNumber ? e.columnNumber + 1 : undefined,
           filename: e.fileName,
-          error: null,
+          error: e,
         });
 
-        if (globalThis["onerror"]) {
-          const ret = globalThis.onerror(
-            e.message,
-            e.fileName,
-            e.lineNumber,
-            e.columnNumber,
-            e,
-          );
-          handled = ret === true;
-        }
-
         globalDispatchEvent(errorEvent);
-        if (errorEvent.defaultPrevented) {
-          handled = true;
-        }
-
-        if (!handled) {
+        if (!errorEvent.defaultPrevented) {
           core.opSync(
             "op_worker_unhandled_error",
             e.message,
@@ -465,8 +440,8 @@ delete Object.prototype.__proto__;
       get: () => workerNavigator,
     },
     self: util.readOnly(globalThis),
-    onmessage: util.writable(onmessage),
-    onerror: util.writable(onerror),
+    onmessage: util.writable(null),
+    onerror: util.writable(null),
     // TODO(bartlomieju): should be readonly?
     close: util.nonEnumerable(workerClose),
     postMessage: util.writable(postMessage),
@@ -551,7 +526,6 @@ delete Object.prototype.__proto__;
     // `Deno` with `Deno` namespace from "./deno.ts".
     ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
     ObjectFreeze(globalThis.Deno.core);
-    ObjectFreeze(globalThis.Deno.core.sharedQueue);
     signals.setSignals();
 
     util.log("args", args);
@@ -584,6 +558,9 @@ delete Object.prototype.__proto__;
     wrapConsole(consoleFromDeno, consoleFromV8);
 
     eventTarget.setEventTargetData(globalThis);
+
+    defineEventHandler(self, "message", null);
+    defineEventHandler(self, "error", null, true);
 
     runtimeStart(
       runtimeOptions,
@@ -621,7 +598,6 @@ delete Object.prototype.__proto__;
       util.immutableDefine(globalThis, "Deno", finalDenoNs);
       ObjectFreeze(globalThis.Deno);
       ObjectFreeze(globalThis.Deno.core);
-      ObjectFreeze(globalThis.Deno.core.sharedQueue);
       signals.setSignals();
     } else {
       delete globalThis.Deno;

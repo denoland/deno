@@ -259,7 +259,7 @@ impl fmt::Debug for ParsedModule {
 impl ParsedModule {
   /// Return a vector of dependencies for the module.
   pub fn analyze_dependencies(&self) -> Vec<DependencyDescriptor> {
-    analyze_dependencies(&self.module, &self.source_map, &self.comments)
+    analyze_dependencies(&self.module, &self.comments)
   }
 
   /// Get the module's leading comments, where triple slash directives might
@@ -595,14 +595,13 @@ impl swc_bundler::Hook for BundleHook {
 mod tests {
   use super::*;
   use std::collections::HashMap;
+  use swc_common::BytePos;
   use swc_ecmascript::dep_graph::DependencyKind;
 
   #[test]
   fn test_parsed_module_analyze_dependencies() {
     let specifier = resolve_url_or_path("https://deno.land/x/mod.js").unwrap();
-    let source = r#"import * as bar from "./test.ts";
-    const foo = await import("./foo.ts");
-    "#;
+    let source = "import * as bar from './test.ts';\nconst foo = await import('./foo.ts');";
     let parsed_module =
       parse(specifier.as_str(), source, &MediaType::JavaScript)
         .expect("could not parse module");
@@ -614,22 +613,26 @@ mod tests {
           kind: DependencyKind::Import,
           is_dynamic: false,
           leading_comments: Vec::new(),
-          col: 0,
-          line: 1,
+          span: Span::new(BytePos(0), BytePos(33), Default::default()),
           specifier: "./test.ts".into(),
-          specifier_col: 21,
-          specifier_line: 1,
+          specifier_span: Span::new(
+            BytePos(21),
+            BytePos(32),
+            Default::default()
+          ),
           import_assertions: HashMap::default(),
         },
         DependencyDescriptor {
           kind: DependencyKind::Import,
           is_dynamic: true,
           leading_comments: Vec::new(),
-          col: 22,
-          line: 2,
+          span: Span::new(BytePos(52), BytePos(70), Default::default()),
           specifier: "./foo.ts".into(),
-          specifier_col: 29,
-          specifier_line: 2,
+          specifier_span: Span::new(
+            BytePos(59),
+            BytePos(69),
+            Default::default()
+          ),
           import_assertions: HashMap::default(),
         }
       ]

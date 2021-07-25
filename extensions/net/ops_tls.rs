@@ -10,6 +10,7 @@ use crate::ops::OpAddr;
 use crate::ops::OpConn;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
+use crate::DefaultTlsOptions;
 use crate::NetPermissions;
 use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
@@ -60,6 +61,7 @@ use std::convert::From;
 use std::fs::File;
 use std::io;
 use std::io::BufReader;
+use std::io::Cursor;
 use std::io::ErrorKind;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -702,6 +704,7 @@ where
   };
   let cert_file = args.cert_file.as_deref();
 
+  let default_tls_options;
   {
     super::check_unstable2(&state, "Deno.startTls");
     let mut s = state.borrow_mut();
@@ -710,6 +713,7 @@ where
     if let Some(path) = cert_file {
       permissions.check_read(Path::new(path))?;
     }
+    default_tls_options = s.borrow::<DefaultTlsOptions>().clone();
   }
 
   let hostname_dns = DNSNameRef::try_from_ascii_str(hostname)
@@ -733,6 +737,10 @@ where
   tls_config
     .root_store
     .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+  if let Some(ca_data) = default_tls_options.ca_data {
+    let reader = &mut Cursor::new(ca_data);
+    tls_config.root_store.add_pem_file(reader).unwrap();
+  };
   if let Some(path) = cert_file {
     let key_file = File::open(path)?;
     let reader = &mut BufReader::new(key_file);
@@ -779,6 +787,7 @@ where
   let port = args.port;
   let cert_file = args.cert_file.as_deref();
 
+  let default_tls_options;
   {
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
@@ -786,6 +795,7 @@ where
     if let Some(path) = cert_file {
       permissions.check_read(Path::new(path))?;
     }
+    default_tls_options = s.borrow::<DefaultTlsOptions>().clone();
   }
 
   let hostname_dns = DNSNameRef::try_from_ascii_str(hostname)
@@ -804,6 +814,10 @@ where
   tls_config
     .root_store
     .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+  if let Some(ca_data) = default_tls_options.ca_data {
+    let reader = &mut Cursor::new(ca_data);
+    tls_config.root_store.add_pem_file(reader).unwrap();
+  };
   if let Some(path) = cert_file {
     let key_file = File::open(path)?;
     let reader = &mut BufReader::new(key_file);
