@@ -642,7 +642,7 @@ unitTest({ perms: { net: true } }, async function httpServerWebSocket() {
       const {
         response,
         websocket,
-      } = await Deno.upgradeWebSocket(request);
+      } = Deno.upgradeWebSocket(request);
       websocket.onerror = () => fail();
       websocket.onmessage = (m) => {
         websocket.send(m.data);
@@ -660,5 +660,74 @@ unitTest({ perms: { net: true } }, async function httpServerWebSocket() {
   ws.onclose = () => def.resolve();
   ws.onopen = () => ws.send("foo");
   await def;
+  await promise;
+});
+
+unitTest(function httpUpgradeWebSocket() {
+  const request = new Request("https://deno.land/", {
+    headers: {
+      connection: "Upgrade",
+      upgrade: "websocket",
+      "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+    },
+  });
+  const { response } = Deno.upgradeWebSocket(request);
+  assertEquals(response.status, 101);
+  assertEquals(response.headers.get("connection"), "Upgrade");
+  assertEquals(response.headers.get("upgrade"), "websocket");
+  assertEquals(
+    response.headers.get("sec-websocket-accept"),
+    "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=",
+  );
+});
+
+unitTest(function httpUpgradeWebSocketLowercaseUpgradeHeader() {
+  const request = new Request("https://deno.land/", {
+    headers: {
+      connection: "upgrade",
+      upgrade: "websocket",
+      "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+    },
+  });
+  const { response } = Deno.upgradeWebSocket(request);
+  assertEquals(response.status, 101);
+});
+
+unitTest(function httpUpgradeWebSocketMultipleConnectionOptions() {
+  const request = new Request("https://deno.land/", {
+    headers: {
+      connection: "keep-alive, upgrade",
+      upgrade: "websocket",
+      "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+    },
+  });
+  const { response } = Deno.upgradeWebSocket(request);
+  assertEquals(response.status, 101);
+});
+
+unitTest({ perms: { net: true } }, async function httpCookieConcatenation() {
+  const promise = (async () => {
+    const listener = Deno.listen({ port: 4501 });
+    for await (const conn of listener) {
+      const httpConn = Deno.serveHttp(conn);
+      for await (const { request, respondWith } of httpConn) {
+        assertEquals(new URL(request.url).href, "http://127.0.0.1:4501/");
+        assertEquals(await request.text(), "");
+        assertEquals(request.headers.get("cookie"), "foo=bar; bar=foo");
+        respondWith(new Response("ok"));
+      }
+      break;
+    }
+  })();
+
+  const resp = await fetch("http://127.0.0.1:4501/", {
+    headers: [
+      ["connection", "close"],
+      ["cookie", "foo=bar"],
+      ["cookie", "bar=foo"],
+    ],
+  });
+  const text = await resp.text();
+  assertEquals(text, "ok");
   await promise;
 });

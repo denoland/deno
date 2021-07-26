@@ -88,11 +88,21 @@ pub fn get_unstable_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_net.unstable.d.ts")
 }
 
-pub fn init<P: NetPermissions + 'static>(unstable: bool) -> Extension {
+#[derive(Clone)]
+pub struct DefaultTlsOptions {
+  pub ca_data: Option<Vec<u8>>,
+}
+
+pub fn init<P: NetPermissions + 'static>(
+  ca_data: Option<Vec<u8>>,
+  unstable: bool,
+) -> Extension {
   let mut ops_to_register = vec![];
   ops_to_register.extend(io::init());
   ops_to_register.extend(ops::init::<P>());
   ops_to_register.extend(ops_tls::init::<P>());
+
+  let default_tls_options = DefaultTlsOptions { ca_data };
 
   Extension::builder()
     .js(include_js_files!(
@@ -103,6 +113,7 @@ pub fn init<P: NetPermissions + 'static>(unstable: bool) -> Extension {
     ))
     .ops(ops_to_register)
     .state(move |state| {
+      state.put(default_tls_options.clone());
       state.put(UnstableChecker { unstable });
       Ok(())
     })

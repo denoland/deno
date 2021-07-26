@@ -965,8 +965,7 @@ async fn coverage_command(
   lcov: bool,
 ) -> Result<(), AnyError> {
   if files.is_empty() {
-    println!("No matching coverage profiles found");
-    std::process::exit(1);
+    return Err(generic_error("No matching coverage profiles found"));
   }
 
   tools::coverage::cover_files(
@@ -1187,7 +1186,7 @@ async fn test_command(
         let test_modules = tools::test::collect_test_module_specifiers(
           include.clone(),
           &cwd,
-          tools::test_runner::is_supported,
+          tools::test::is_supported,
         )?;
 
         let test_modules_to_reload = test_modules
@@ -1231,10 +1230,10 @@ async fn test_command(
     let test_modules = tools::test::collect_test_module_specifiers(
       include.clone(),
       &cwd,
-      tools::test_runner::is_supported,
+      tools::test::is_supported,
     )?;
 
-    let failed = tools::test::run_tests(
+    tools::test::run_tests(
       program_state.clone(),
       permissions,
       lib,
@@ -1249,10 +1248,6 @@ async fn test_command(
       concurrent_jobs,
     )
     .await?;
-
-    if failed {
-      std::process::exit(1);
-    }
   }
 
   Ok(())

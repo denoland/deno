@@ -1,4 +1,4 @@
-use crate::tools::test_runner::TestEvent;
+use crate::tools::test::TestEvent;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::JsRuntime;

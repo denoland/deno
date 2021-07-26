@@ -11,6 +11,7 @@ use crate::module_graph;
 use crate::program_state::ProgramState;
 use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
@@ -375,7 +376,6 @@ where
 
 /// Runs tests.
 ///
-/// Returns a boolean indicating whether the tests failed.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_tests(
   program_state: Arc<ProgramState>,
@@ -390,7 +390,11 @@ pub async fn run_tests(
   filter: Option<String>,
   shuffle: Option<u64>,
   concurrent_jobs: usize,
-) -> Result<bool, AnyError> {
+) -> Result<(), AnyError> {
+  if !allow_none && doc_modules.is_empty() && test_modules.is_empty() {
+    return Err(generic_error("No test modules found"));
+  }
+
   let test_modules = if let Some(seed) = shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut test_modules = test_modules.clone();
@@ -478,13 +482,6 @@ pub async fn run_tests(
         program_state.maybe_import_map.clone(),
       )
       .await?;
-  } else if test_modules.is_empty() {
-    println!("No matching test modules found");
-    if !allow_none {
-      std::process::exit(1);
-    }
-
-    return Ok(false);
   }
 
   program_state
@@ -498,7 +495,7 @@ pub async fn run_tests(
     .await?;
 
   if no_run {
-    return Ok(false);
+    return Ok(());
   }
 
   let earlier = Instant::now();
@@ -566,10 +563,21 @@ pub async fn run_tests(
     })
   });
 
-  let _join_results = stream::iter(join_handles)
+  let join_results = stream::iter(join_handles)
     .buffer_unordered(concurrent_jobs)
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>()
     .await;
+
+  let mut join_errors = join_results.into_iter().filter_map(|join_result| {
+    join_result
+      .ok()
+      .map(|handle_result| handle_result.err())
+      .flatten()
+  });
+
+  if let Some(e) = join_errors.next() {
+    return Err(e);
+  }
 
   let summary = summary_lock.lock().unwrap();
   let elapsed = Instant::now().duration_since(earlier);
@@ -578,7 +586,7 @@ pub async fn run_tests(
     .unwrap()
     .report_summary(&summary, &elapsed);
 
-  Ok(summary.failed > 0)
+  Ok(())
 }
 
 #[cfg(test)]
