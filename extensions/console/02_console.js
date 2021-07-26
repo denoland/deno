@@ -51,6 +51,7 @@
     RegExpPrototypeToString,
     Set,
     SetPrototypeEntries,
+    Symbol,
     SymbolPrototypeToString,
     SymbolToStringTag,
     SymbolHasInstance,

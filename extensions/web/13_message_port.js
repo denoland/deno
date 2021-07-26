@@ -14,6 +14,13 @@
   const { setEventTargetData } = window.__bootstrap.eventTarget;
   const { defineEventHandler } = window.__bootstrap.event;
   const { DOMException } = window.__bootstrap.domException;
+  const {
+    ObjectSetPrototypeOf,
+    Symbol,
+    SymbolFor,
+    SymbolToStringTag,
+    TypeError,
+  } = window.__bootstrap.primordials;
 
   class MessageChannel {
     /** @type {MessagePort} */
@@ -40,13 +47,13 @@
       return this.#port2;
     }
 
-    [Symbol.for("Deno.inspect")](inspect) {
+    [SymbolFor("Deno.inspect")](inspect) {
       return `MessageChannel ${
         inspect({ port1: this.port1, port2: this.port2 })
       }`;
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "MessageChannel";
     }
   }
@@ -62,7 +69,7 @@
    */
   function createMessagePort(id) {
     const port = core.createHostObject();
-    Object.setPrototypeOf(port, MessagePort.prototype);
+    ObjectSetPrototypeOf(port, MessagePort.prototype);
     port[webidl.brand] = webidl.brand;
     setEventTargetData(port);
     port[_id] = id;
@@ -155,7 +162,7 @@
       }
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "MessagePort";
     }
   }
