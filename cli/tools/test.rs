@@ -272,6 +272,7 @@ async fn test_module<F>(
   program_state: Arc<ProgramState>,
   module_specifier: ModuleSpecifier,
   permissions: Permissions,
+  quiet: bool,
   process_event: F,
 ) -> Result<(), AnyError>
 where
@@ -292,6 +293,13 @@ where
 
     registry
   };
+
+  if quiet {
+    worker.js_runtime.execute_script(
+      "deno:test_module",
+      "globalThis.console = new globalThis.console.Console();",
+    )?;
+  }
 
   let descriptions = {
     let mut scope = worker.js_runtime.handle_scope();
@@ -556,6 +564,7 @@ pub async fn run_tests(
           program_state,
           main_module,
           permissions,
+          quiet,
           process_event,
         ))
       })
