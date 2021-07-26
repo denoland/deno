@@ -417,7 +417,7 @@ fn programs_from_source_comments(
       let file = File {
         local: specifier.to_file_path().unwrap(),
         maybe_types: None,
-        media_type: media_type,
+        media_type,
         source: source.clone(),
         specifier: specifier.clone(),
       };
