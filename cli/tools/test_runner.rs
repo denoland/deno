@@ -370,6 +370,24 @@ fn programs_from_source_comments(
     }
 
     for block in blocks_regex.captures_iter(&comment.text) {
+      let maybe_attributes = block.get(1).map(|m| m.as_str().split(' '));
+      let media_type = if let Some(mut attributes) = maybe_attributes {
+        match attributes.next() {
+          Some("js") => MediaType::JavaScript,
+          Some("jsx") => MediaType::Jsx,
+          Some("ts") => MediaType::TypeScript,
+          Some("tsx") => MediaType::Tsx,
+          Some("") => file.media_type,
+          _ => MediaType::Unknown,
+        }
+      } else {
+        file.media_type
+      };
+
+      if media_type == MediaType::Unknown {
+        continue;
+      }
+
       let body = block.get(2).unwrap();
       let text = body.as_str();
 
@@ -389,16 +407,17 @@ fn programs_from_source_comments(
       let location = parsed_module.get_location(&span);
 
       let specifier = deno_core::resolve_url_or_path(&format!(
-        "{}${}-{}",
+        "{}${}-{}{}",
         location.filename,
         location.line,
         location.line + element.as_str().split('\n').count(),
+        media_type.as_ts_extension(),
       ))?;
 
       let file = File {
         local: specifier.to_file_path().unwrap(),
         maybe_types: None,
-        media_type: MediaType::TypeScript, // media_type.clone(),
+        media_type: media_type,
         source: source.clone(),
         specifier: specifier.clone(),
       };
