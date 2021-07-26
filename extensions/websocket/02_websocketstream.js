@@ -68,6 +68,7 @@
   const _url = Symbol("[[url]]");
   const _connection = Symbol("[[connection]]");
   const _closed = Symbol("[[closed]]");
+  const _closing = Symbol("[[closing]]");
   const _earlyClose = Symbol("[[earlyClose]]");
   class WebSocketStream {
     [_rid];
@@ -269,8 +270,26 @@
                       break;
                     }
                     case "close": {
-                      this[_closed].resolve(value);
-                      tryClose(this[_rid]);
+                      if (this[_closing]) {
+                        this[_closed].resolve(value);
+                        tryClose(this[_rid]);
+                      } else {
+                        PromisePrototypeThen(
+                          core.opAsync("op_ws_close", {
+                            rid: this[_rid],
+                            ...value,
+                          }),
+                          () => {
+                            this[_closed].resolve(value);
+                            tryClose(this[_rid]);
+                          },
+                          (err) => {
+                            this[_closed].reject(err);
+                            controller.error(err);
+                            tryClose(this[_rid]);
+                          },
+                        );
+                      }
                       break;
                     }
                     case "error": {
@@ -315,6 +334,7 @@
     }
 
     [_earlyClose] = false;
+    [_closing] = false;
     [_closed] = new Deferred();
     get closed() {
       return this[_closed].promise;
@@ -355,6 +375,7 @@
       if (this[_connection].state === "pending") {
         this[_earlyClose] = true;
       } else if (this[_closed].state === "pending") {
+        this[_closing] = true;
         PromisePrototypeCatch(
           core.opAsync("op_ws_close", {
             rid: this[_rid],
