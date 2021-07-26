@@ -543,7 +543,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.12.0"
+version = "1.12.2"
 dependencies = [
  "atty",
  "base64 0.13.0",
@@ -642,7 +642,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.5.0"
+version = "0.7.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -651,7 +651,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.5.0"
+version = "0.7.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -661,14 +661,14 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.11.0"
+version = "0.13.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_core"
-version = "0.93.0"
+version = "0.95.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -688,7 +688,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.25.0"
+version = "0.27.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -722,7 +722,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.33.0"
+version = "0.35.0"
 dependencies = [
  "bytes",
  "data-url",
@@ -748,7 +748,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.2.0"
+version = "0.4.0"
 dependencies = [
  "base64 0.13.0",
  "bytes",
@@ -783,7 +783,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.2.0"
+version = "0.4.0"
 dependencies = [
  "deno_core",
  "lazy_static",
@@ -799,7 +799,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.19.0"
+version = "0.21.0"
 dependencies = [
  "atty",
  "deno_broadcast_channel",
@@ -844,7 +844,7 @@ dependencies = [
 
 [[package]]
 name = "deno_timers"
-version = "0.9.0"
+version = "0.11.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -856,7 +856,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.11.0"
+version = "0.13.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -868,7 +868,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.42.0"
+version = "0.44.0"
 dependencies = [
  "async-trait",
  "base64 0.13.0",
@@ -882,7 +882,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.12.0"
+version = "0.14.0"
 dependencies = [
  "deno_core",
  "serde",
@@ -893,14 +893,14 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.11.0"
+version = "0.13.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_websocket"
-version = "0.16.0"
+version = "0.18.0"
 dependencies = [
  "deno_core",
  "http",
@@ -915,7 +915,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.6.0"
+version = "0.8.0"
 dependencies = [
  "deno_core",
  "deno_web",

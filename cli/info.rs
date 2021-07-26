@@ -23,11 +23,16 @@ const EMPTY_CONNECTOR: char = ' ';
 #[serde(rename_all = "camelCase")]
 pub struct ModuleGraphInfoDep {
   pub specifier: String,
+  #[serde(skip_serializing_if = "is_false")]
   pub is_dynamic: bool,
   #[serde(rename = "code", skip_serializing_if = "Option::is_none")]
   pub maybe_code: Option<ModuleSpecifier>,
   #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
   pub maybe_type: Option<ModuleSpecifier>,
+}
+
+fn is_false(b: &bool) -> bool {
+  !b
 }
 
 impl ModuleGraphInfoDep {
@@ -68,6 +73,8 @@ impl ModuleGraphInfoDep {
 pub struct ModuleGraphInfoMod {
   pub specifier: ModuleSpecifier,
   pub dependencies: Vec<ModuleGraphInfoDep>,
+  #[serde(rename = "typeDependency", skip_serializing_if = "Option::is_none")]
+  pub maybe_type_dependency: Option<ModuleGraphInfoDep>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub size: Option<usize>,
   #[serde(
@@ -92,6 +99,7 @@ impl Default for ModuleGraphInfoMod {
     ModuleGraphInfoMod {
       specifier: resolve_url("https://deno.land/x/mod.ts").unwrap(),
       dependencies: Vec::new(),
+      maybe_type_dependency: None,
       size: None,
       media_type: None,
       local: None,
@@ -119,7 +127,10 @@ impl ModuleGraphInfoMod {
     } else {
       SIBLING_CONNECTOR
     };
-    let child_connector = if self.dependencies.is_empty() || was_seen {
+    let child_connector = if (self.dependencies.is_empty()
+      && self.maybe_type_dependency.is_none())
+      || was_seen
+    {
       CHILD_NO_DEPS_CONNECTOR
     } else {
       CHILD_DEPS_CONNECTOR
@@ -175,7 +186,16 @@ impl ModuleGraphInfoMod {
       prefix.push(EMPTY_CONNECTOR);
       let dep_count = self.dependencies.len();
       for (idx, dep) in self.dependencies.iter().enumerate() {
-        dep.write_info(f, &prefix, idx == dep_count - 1, modules, seen)?;
+        dep.write_info(
+          f,
+          &prefix,
+          idx == dep_count - 1 && self.maybe_type_dependency.is_none(),
+          modules,
+          seen,
+        )?;
+      }
+      if let Some(dep) = &self.maybe_type_dependency {
+        dep.write_info(f, &prefix, true, modules, seen)?;
       }
     }
 
@@ -233,7 +253,16 @@ impl fmt::Display for ModuleGraphInfo {
       let mut seen = HashSet::new();
       let dep_len = root.dependencies.len();
       for (idx, dep) in root.dependencies.iter().enumerate() {
-        dep.write_info(f, "", idx == dep_len - 1, &self.modules, &mut seen)?;
+        dep.write_info(
+          f,
+          "",
+          idx == dep_len - 1 && root.maybe_type_dependency.is_none(),
+          &self.modules,
+          &mut seen,
+        )?;
+      }
+      if let Some(dep) = &root.maybe_type_dependency {
+        dep.write_info(f, "", true, &self.modules, &mut seen)?;
       }
       Ok(())
     }
@@ -296,6 +325,8 @@ mod test {
     let specifier_b = resolve_url("https://deno.land/x/b.ts").unwrap();
     let specifier_c_js = resolve_url("https://deno.land/x/c.js").unwrap();
     let specifier_c_dts = resolve_url("https://deno.land/x/c.d.ts").unwrap();
+    let specifier_d_js = resolve_url("https://deno.land/x/d.js").unwrap();
+    let specifier_d_dts = resolve_url("https://deno.land/x/d.d.ts").unwrap();
     let modules = vec![
       ModuleGraphInfoMod {
         specifier: specifier_a.clone(),
@@ -329,6 +360,12 @@ mod test {
       },
       ModuleGraphInfoMod {
         specifier: specifier_c_js,
+        dependencies: vec![ModuleGraphInfoDep {
+          specifier: "./d.js".to_string(),
+          is_dynamic: false,
+          maybe_code: Some(specifier_d_js.clone()),
+          maybe_type: None,
+        }],
         size: Some(789),
         media_type: Some(MediaType::JavaScript),
         local: Some(PathBuf::from("/cache/deps/https/deno.land/x/c.js")),
@@ -341,6 +378,28 @@ mod test {
         media_type: Some(MediaType::Dts),
         local: Some(PathBuf::from("/cache/deps/https/deno.land/x/c.d.ts")),
         checksum: Some("a2b3c4d5".to_string()),
+        ..Default::default()
+      },
+      ModuleGraphInfoMod {
+        specifier: specifier_d_js,
+        size: Some(987),
+        maybe_type_dependency: Some(ModuleGraphInfoDep {
+          specifier: "/x/d.d.ts".to_string(),
+          is_dynamic: false,
+          maybe_code: None,
+          maybe_type: Some(specifier_d_dts.clone()),
+        }),
+        media_type: Some(MediaType::JavaScript),
+        local: Some(PathBuf::from("/cache/deps/https/deno.land/x/d.js")),
+        checksum: Some("5k6j7h8g".to_string()),
+        ..Default::default()
+      },
+      ModuleGraphInfoMod {
+        specifier: specifier_d_dts,
+        size: Some(67),
+        media_type: Some(MediaType::Dts),
+        local: Some(PathBuf::from("/cache/deps/https/deno.land/x/d.d.ts")),
+        checksum: Some("0h0h0h0h0h".to_string()),
         ..Default::default()
       },
     ];
@@ -359,11 +418,13 @@ mod test {
     let expected = r#"local: /cache/deps/https/deno.land/x/a.ts
 type: TypeScript
 emit: /cache/emit/https/deno.land/x/a.js
-dependencies: 3 unique (total 97.66KB)
+dependencies: 5 unique (total 97.66KB)
 
 https://deno.land/x/a.ts (123B)
 └─┬ https://deno.land/x/b.ts (456B)
-  ├── https://deno.land/x/c.js (789B)
+  ├─┬ https://deno.land/x/c.js (789B)
+  │ └─┬ https://deno.land/x/d.js (987B)
+  │   └── https://deno.land/x/d.d.ts (67B)
   └── https://deno.land/x/c.d.ts (999B)
 "#;
     assert_eq!(actual, expected);
@@ -383,7 +444,6 @@ https://deno.land/x/a.ts (123B)
             "dependencies": [
               {
                 "specifier": "./b.ts",
-                "isDynamic": false,
                 "code": "https://deno.land/x/b.ts"
               }
             ],
@@ -398,7 +458,6 @@ https://deno.land/x/a.ts (123B)
             "dependencies": [
               {
                 "specifier": "./c.js",
-                "isDynamic": false,
                 "code": "https://deno.land/x/c.js",
                 "type": "https://deno.land/x/c.d.ts"
               }
@@ -411,7 +470,12 @@ https://deno.land/x/a.ts (123B)
           },
           {
             "specifier": "https://deno.land/x/c.js",
-            "dependencies": [],
+            "dependencies": [
+              {
+                "specifier": "./d.js",
+                "code": "https://deno.land/x/d.js"
+              }
+            ],
             "size": 789,
             "mediaType": "JavaScript",
             "local": "/cache/deps/https/deno.land/x/c.js",
@@ -424,6 +488,26 @@ https://deno.land/x/a.ts (123B)
             "mediaType": "Dts",
             "local": "/cache/deps/https/deno.land/x/c.d.ts",
             "checksum": "a2b3c4d5"
+          },
+          {
+            "specifier": "https://deno.land/x/d.js",
+            "dependencies": [],
+            "typeDependency": {
+              "specifier": "/x/d.d.ts",
+              "type": "https://deno.land/x/d.d.ts"
+            },
+            "size": 987,
+            "mediaType": "JavaScript",
+            "local": "/cache/deps/https/deno.land/x/d.js",
+            "checksum": "5k6j7h8g"
+          },
+          {
+            "specifier": "https://deno.land/x/d.d.ts",
+            "dependencies": [],
+            "size": 67,
+            "mediaType": "Dts",
+            "local": "/cache/deps/https/deno.land/x/d.d.ts",
+            "checksum": "0h0h0h0h0h"
           }
         ],
         "size": 99999

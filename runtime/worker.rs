@@ -125,7 +125,7 @@ impl MainWorker {
       ops::fs::init(),
       ops::io::init(),
       ops::io::init_stdio(),
-      deno_net::init::<Permissions>(options.unstable),
+      deno_net::init::<Permissions>(options.ca_data.clone(), options.unstable),
       ops::os::init(),
       ops::permissions::init(),
       ops::process::init(),

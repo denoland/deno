@@ -22,8 +22,10 @@
   const {
     ArrayPrototypeIncludes,
     ArrayPrototypePush,
+    ArrayPrototypeSome,
     Promise,
     StringPrototypeIncludes,
+    StringPrototypeToLowerCase,
     StringPrototypeSplit,
     Symbol,
     SymbolAsyncIterator,
@@ -321,7 +323,13 @@
       );
     }
 
-    if (request.headers.get("connection") !== "Upgrade") {
+    const connection = request.headers.get("connection");
+    const connectionHasUpgradeOption = connection !== null &&
+      ArrayPrototypeSome(
+        StringPrototypeSplit(connection, /\s*,\s*/),
+        (option) => StringPrototypeToLowerCase(option) === "upgrade",
+      );
+    if (!connectionHasUpgradeOption) {
       throw new TypeError(
         "Invalid Header: 'connection' header must be 'Upgrade'",
       );
