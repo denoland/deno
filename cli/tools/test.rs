@@ -499,6 +499,8 @@ pub async fn run_tests(
 
   let earlier = Instant::now();
   let concurrent = concurrent_jobs > 0;
+
+  // TODO(caspervonb): still gonna need channels, this gets too hot.
   let reporter_lock = Arc::new(Mutex::new(create_reporter(concurrent)));
   let summary_lock = Arc::new(Mutex::new(TestSummary::new()));
 
