@@ -13,6 +13,7 @@ use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::StreamExt;
@@ -347,18 +348,16 @@ where
       let result = future::poll_fn(|cx| {
         worker.poll_event_loop(cx, false);
 
-        let state = {
-          let mut scope = worker.js_runtime.handle_scope();
-          let result_promise = result_promise.get(&mut scope);
+        let mut scope = worker.js_runtime.handle_scope();
+        let result_promise = result_promise.get(&mut scope);
 
-          result_promise.state()
-        };
-
-        match state {
+        match result_promise.state() {
           v8::PromiseState::Pending => Poll::Pending,
           v8::PromiseState::Fulfilled => Poll::Ready(TestResult::Ok),
           v8::PromiseState::Rejected => {
-            Poll::Ready(TestResult::Failed("TODO".to_string()))
+            let error = result_promise.result(&mut scope);
+            let error = JsError::from_v8_exception(&mut scope, error);
+            Poll::Ready(TestResult::Failed(error.to_string()))
           }
         }
       })
