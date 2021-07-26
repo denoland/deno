@@ -515,59 +515,17 @@ pub async fn run_tests(
   }
 
   let earlier = Instant::now();
-  let concurrent = concurrent_jobs > 0;
 
-  // TODO(caspervonb): still gonna need channels, this gets too hot.
-  let reporter_lock = Arc::new(Mutex::new(create_reporter(concurrent)));
-  let summary_lock = Arc::new(Mutex::new(TestSummary::new()));
-
-  let process_event = {
-    let reporter_lock = reporter_lock.clone();
-    let summary_lock = summary_lock.clone();
-
-    move |event: TestEvent| {
-      let mut reporter = reporter_lock.lock().unwrap();
-      let mut summary = summary_lock.lock().unwrap();
-
-      match event {
-        TestEvent::Plan(plan) => {
-          summary.total += plan.total;
-          summary.filtered_out += plan.filtered_out;
-          reporter.report_plan(&plan);
-        }
-
-        TestEvent::Wait(description) => {
-          reporter.report_wait(&description);
-        }
-
-        TestEvent::Result(description, result, elapsed) => {
-          match &result {
-            TestResult::Ok => {
-              summary.passed += 1;
-            }
-
-            TestResult::Ignored => {
-              summary.ignored += 1;
-            }
-
-            TestResult::Failed(reason) => {
-              summary.failed += 1;
-              summary.failures.push((description.clone(), reason.clone()));
-            }
-          }
-
-          reporter.report_result(&description, &result, &elapsed);
-        }
-      }
-    }
-  };
+  let (sender, mut receiver) =
+    tokio::sync::mpsc::unbounded_channel::<TestEvent>();
 
   let join_handles = test_modules.iter().map(move |main_module| {
     let program_state = program_state.clone();
     let main_module = main_module.clone();
     let permissions = permissions.clone();
     let shuffle = shuffle.clone();
-    let process_event = process_event.clone();
+    let sender = sender.clone();
+
     tokio::task::spawn_blocking(move || {
       std::thread::spawn(move || {
         tokio_util::run_basic(test_module(
@@ -576,7 +534,9 @@ pub async fn run_tests(
           permissions,
           quiet,
           shuffle,
-          process_event,
+          move |event| {
+            sender.send(event);
+          },
         ))
       })
       .join()
@@ -584,10 +544,56 @@ pub async fn run_tests(
     })
   });
 
-  let join_results = stream::iter(join_handles)
+  let join_future = stream::iter(join_handles)
     .buffer_unordered(concurrent_jobs)
-    .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>()
-    .await;
+    .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
+
+  let result_future = tokio::task::spawn(async move {
+    let mut summary = TestSummary::new();
+    let mut reporter = create_reporter(concurrent_jobs > 0);
+
+    loop {
+      let maybe_event = receiver.recv().await;
+      if let Some(event) = maybe_event {
+        match event {
+          TestEvent::Plan(plan) => {
+            summary.total += plan.total;
+            summary.filtered_out += plan.filtered_out;
+            reporter.report_plan(&plan);
+          }
+
+          TestEvent::Wait(description) => {
+            reporter.report_wait(&description);
+          }
+
+          TestEvent::Result(description, result, elapsed) => {
+            match &result {
+              TestResult::Ok => {
+                summary.passed += 1;
+              }
+
+              TestResult::Ignored => {
+                summary.ignored += 1;
+              }
+
+              TestResult::Failed(reason) => {
+                summary.failed += 1;
+                summary.failures.push((description.clone(), reason.clone()));
+              }
+            }
+
+            reporter.report_result(&description, &result, &elapsed);
+          }
+        }
+      } else {
+        break;
+      }
+    }
+
+    (reporter, summary)
+  });
+
+  let (join_results, result) = future::join(join_future, result_future).await;
 
   let mut join_errors = join_results.into_iter().filter_map(|join_result| {
     join_result
@@ -600,12 +606,9 @@ pub async fn run_tests(
     return Err(e);
   }
 
-  let summary = summary_lock.lock().unwrap();
+  let (mut reporter, summary) = result.unwrap();
   let elapsed = Instant::now().duration_since(earlier);
-  reporter_lock
-    .lock()
-    .unwrap()
-    .report_summary(&summary, &elapsed);
+  reporter.report_summary(&summary, &elapsed);
 
   if summary.failed > 0 {
     return Err(generic_error("Test failed"));
