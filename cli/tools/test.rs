@@ -587,6 +587,10 @@ pub async fn run_tests(
     .unwrap()
     .report_summary(&summary, &elapsed);
 
+  if summary.failed > 0 {
+    return Err(generic_error("Test failed"));
+  }
+
   Ok(())
 }
 
