@@ -19,6 +19,12 @@ fn no_color() {
   assert!(out.contains("test result: FAILED. 1 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out"));
 }
 
+itest!(meta {
+  args: "test test/meta.ts",
+  exit_code: 0,
+  output: "test/meta.out",
+});
+
 itest!(pass {
   args: "test test/pass.ts",
   exit_code: 0,
