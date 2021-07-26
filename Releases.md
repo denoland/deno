@@ -6,6 +6,25 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.12.2 / 2021.07.26
+
+- feat(lsp, unstable): add workspace config to status page (#11459)
+- fix: panic for non-WS connections to inspector (#11466)
+- fix: support --cert flag for TLS connect APIs (#11484)
+- fix(cli): info now displays type reference deps (#11478)
+- fix(cli): normalize test command errors (#11375)
+- fix(cli): rebuild when environment variables change (#11471)
+- fix(cli): side-load test modules (#11515)
+- fix(extensions/fetch): close fetch response body on GC (#11467)
+- fix(extensions/http): support multiple options in connection header for
+  websocket (#11505)
+- fix(extensions/websocket): case insensitive connection header (#11489)
+- fix(lsp): do not populate maybe_type slot with import type dep (#11477)
+- fix(lsp): handle importmaps properly (#11496)
+
+Release notes for std version 0.103.0:
+https://github.com/denoland/deno_std/releases/tag/0.103.0
+
 ### 1.12.1 / 2021.07.19
 
 - fix: Big{U|}Int64Array in crypto.getRandomValues (#11447)
@@ -15,6 +34,9 @@ https://github.com/denoland/deno_install
 - fix(repl): output error without hanging when input is invalid (#11426)
 - fix(tsc): add .at() types manually to tsc (#11443)
 - fix(workers): silently ignore non-existent worker IDs (#11417)
+
+Release notes for std version 0.102.0:
+https://github.com/denoland/deno_std/releases/tag/0.102.0
 
 ### 1.12.0 / 2021.07.13
 

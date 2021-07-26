@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.12.1"
+version = "1.12.2"
 license = "MIT"
 authors = ["the Deno authors"]
 edition = "2018"
@@ -20,20 +20,20 @@ harness = false
 path = "./bench/main.rs"
 
 [build-dependencies]
-deno_broadcast_channel = { version = "0.6.0", path = "../extensions/broadcast_channel" }
-deno_console = { version = "0.12.0", path = "../extensions/console" }
-deno_core = { version = "0.94.0", path = "../core" }
-deno_crypto = { version = "0.26.0", path = "../extensions/crypto" }
-deno_fetch = { version = "0.34.0", path = "../extensions/fetch" }
-deno_http = { version = "0.3.0", path = "../extensions/http" }
-deno_net = { version = "0.3.0", path = "../extensions/net" }
-deno_timers = { version = "0.10.0", path = "../extensions/timers" }
-deno_url = { version = "0.12.0", path = "../extensions/url" }
-deno_web = { version = "0.43.0", path = "../extensions/web" }
-deno_webgpu = { version = "0.13.0", path = "../extensions/webgpu" }
-deno_webidl = { version = "0.12.0", path = "../extensions/webidl" }
-deno_websocket = { version = "0.17.0", path = "../extensions/websocket" }
-deno_webstorage = { version = "0.7.0", path = "../extensions/webstorage" }
+deno_broadcast_channel = { version = "0.7.0", path = "../extensions/broadcast_channel" }
+deno_console = { version = "0.13.0", path = "../extensions/console" }
+deno_core = { version = "0.95.0", path = "../core" }
+deno_crypto = { version = "0.27.0", path = "../extensions/crypto" }
+deno_fetch = { version = "0.35.0", path = "../extensions/fetch" }
+deno_http = { version = "0.4.0", path = "../extensions/http" }
+deno_net = { version = "0.4.0", path = "../extensions/net" }
+deno_timers = { version = "0.11.0", path = "../extensions/timers" }
+deno_url = { version = "0.13.0", path = "../extensions/url" }
+deno_web = { version = "0.44.0", path = "../extensions/web" }
+deno_webgpu = { version = "0.14.0", path = "../extensions/webgpu" }
+deno_webidl = { version = "0.13.0", path = "../extensions/webidl" }
+deno_websocket = { version = "0.18.0", path = "../extensions/websocket" }
+deno_webstorage = { version = "0.8.0", path = "../extensions/webstorage" }
 regex = "1.4.3"
 serde = { version = "1.0.125", features = ["derive"] }
 
@@ -42,10 +42,10 @@ winapi = "0.3.9"
 winres = "0.1.11"
 
 [dependencies]
-deno_core = { version = "0.94.0", path = "../core" }
+deno_core = { version = "0.95.0", path = "../core" }
 deno_doc = "0.9.0"
 deno_lint = "0.11.0"
-deno_runtime = { version = "0.20.0", path = "../runtime" }
+deno_runtime = { version = "0.21.0", path = "../runtime" }
 
 atty = "0.2.14"
 base64 = "0.13.0"
