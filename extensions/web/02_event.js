@@ -33,6 +33,7 @@
     Symbol,
     SymbolFor,
     SymbolToStringTag,
+    TypeError,
     WeakMap,
     WeakMapPrototypeGet,
     WeakMapPrototypeSet,
@@ -929,7 +930,10 @@
             this.removeEventListener(type, callback, options);
           });
         }
+      } else if (options?.signal === null) {
+        throw new TypeError("signal must be non-null");
       }
+
       ArrayPrototypePush(listeners[type], { callback, options });
     }
 
