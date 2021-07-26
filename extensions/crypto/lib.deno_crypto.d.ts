@@ -98,61 +98,17 @@ interface SubtleCrypto {
   sign(
     algorithm: AlgorithmIdentifier | RsaPssParams | EcdsaParams,
     key: CryptoKey,
-    data:
-      | Int8Array
-      | Int16Array
-      | Int32Array
-      | Uint8Array
-      | Uint16Array
-      | Uint32Array
-      | Uint8ClampedArray
-      | Float32Array
-      | Float64Array
-      | DataView
-      | ArrayBuffer,
+    data: BufferSource,
   ): Promise<ArrayBuffer>;
   verify(
     algorithm: AlgorithmIdentifier | RsaPssParams,
     key: CryptoKey,
-    signature:
-      | Int8Array
-      | Int16Array
-      | Int32Array
-      | Uint8Array
-      | Uint16Array
-      | Uint32Array
-      | Uint8ClampedArray
-      | Float32Array
-      | Float64Array
-      | DataView
-      | ArrayBuffer,
-    data:
-      | Int8Array
-      | Int16Array
-      | Int32Array
-      | Uint8Array
-      | Uint16Array
-      | Uint32Array
-      | Uint8ClampedArray
-      | Float32Array
-      | Float64Array
-      | DataView
-      | ArrayBuffer,
+    signature: BufferSource,
+    data: BufferSource,
   ): Promise<boolean>;
   digest(
     algorithm: AlgorithmIdentifier,
-    data:
-      | Int8Array
-      | Int16Array
-      | Int32Array
-      | Uint8Array
-      | Uint16Array
-      | Uint32Array
-      | Uint8ClampedArray
-      | Float32Array
-      | Float64Array
-      | DataView
-      | ArrayBuffer,
+    data: BufferSource,
   ): Promise<ArrayBuffer>;
 }
 
