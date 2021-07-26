@@ -28,6 +28,7 @@
     MapPrototypeGet,
     MapPrototypeSet,
     ObjectDefineProperty,
+    queueMicrotask,
     StringFromCodePoint,
     Symbol,
     SymbolToStringTag,

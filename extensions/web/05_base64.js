@@ -21,6 +21,7 @@
     ArrayPrototypeJoin,
     StringFromCharCode,
     TypedArrayFrom,
+    Uint8Array,
   } = window.__bootstrap.primordials;
 
   /**

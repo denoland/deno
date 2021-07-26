@@ -163,15 +163,15 @@ impl Inner {
   fn analyze_dependencies(
     &mut self,
     specifier: &ModuleSpecifier,
+    media_type: &MediaType,
     source: &str,
   ) {
-    let media_type = MediaType::from(specifier);
     if let Ok(parsed_module) =
-      analysis::parse_module(specifier, source, &media_type)
+      analysis::parse_module(specifier, source, media_type)
     {
       let (mut deps, _) = analysis::analyze_dependencies(
         specifier,
-        &media_type,
+        media_type,
         &parsed_module,
         &self.maybe_import_map,
       );
@@ -191,6 +191,24 @@ impl Inner {
       {
         error!("{}", err);
       }
+    }
+  }
+
+  /// Analyzes all dependencies for all documents that have been opened in the
+  /// editor and sets the dependencies property on the documents.
+  fn analyze_dependencies_all(&mut self) {
+    let docs: Vec<(ModuleSpecifier, String, MediaType)> = self
+      .documents
+      .docs
+      .iter()
+      .filter_map(|(s, doc)| {
+        let source = doc.content().ok().flatten()?;
+        let media_type = MediaType::from(&doc.language_id);
+        Some((s.clone(), source, media_type))
+      })
+      .collect();
+    for (specifier, source, media_type) in docs {
+      self.analyze_dependencies(&specifier, &media_type, &source);
     }
   }
 
@@ -445,8 +463,10 @@ impl Inner {
       let import_map =
         ImportMap::from_json(&import_map_url.to_string(), &import_map_json)?;
       self.maybe_import_map_uri = Some(import_map_url);
-      self.maybe_import_map = Some(import_map);
+      self.maybe_import_map = Some(import_map.clone());
+      self.sources.set_import_map(Some(import_map));
     } else {
+      self.sources.set_import_map(None);
       self.maybe_import_map = None;
     }
     self.performance.measure(mark);
@@ -694,6 +714,7 @@ impl Inner {
         LanguageId::TypeScript
       }
     };
+    let media_type = MediaType::from(&language_id);
     self.documents.open(
       specifier.clone(),
       params.text_document.version,
@@ -702,7 +723,11 @@ impl Inner {
     );
 
     if self.documents.is_diagnosable(&specifier) {
-      self.analyze_dependencies(&specifier, &params.text_document.text);
+      self.analyze_dependencies(
+        &specifier,
+        &media_type,
+        &params.text_document.text,
+      );
       self
         .diagnostics_server
         .invalidate(self.documents.dependents(&specifier))
@@ -724,7 +749,10 @@ impl Inner {
     ) {
       Ok(Some(source)) => {
         if self.documents.is_diagnosable(&specifier) {
-          self.analyze_dependencies(&specifier, &source);
+          let media_type = MediaType::from(
+            &self.documents.get_language_id(&specifier).unwrap(),
+          );
+          self.analyze_dependencies(&specifier, &media_type, &source);
           self
             .diagnostics_server
             .invalidate(self.documents.dependents(&specifier))
@@ -825,12 +853,14 @@ impl Inner {
     let mark = self
       .performance
       .mark("did_change_watched_files", Some(&params));
+    let mut touched = false;
     // if the current import map has changed, we need to reload it
     if let Some(import_map_uri) = &self.maybe_import_map_uri {
       if params.changes.iter().any(|fe| *import_map_uri == fe.uri) {
         if let Err(err) = self.update_import_map().await {
           self.client.show_message(MessageType::Warning, err).await;
         }
+        touched = true;
       }
     }
     // if the current tsconfig has changed, we need to reload it
@@ -839,6 +869,14 @@ impl Inner {
         if let Err(err) = self.update_tsconfig().await {
           self.client.show_message(MessageType::Warning, err).await;
         }
+        touched = true;
+      }
+    }
+    if touched {
+      self.analyze_dependencies_all();
+      self.diagnostics_server.invalidate_all().await;
+      if let Err(err) = self.diagnostics_server.update() {
+        error!("Cannot update diagnostics: {}", err);
       }
     }
     self.performance.measure(mark);
@@ -2392,7 +2430,9 @@ impl Inner {
     // invalidate some diagnostics
     if self.documents.contains_key(&referrer) {
       if let Some(source) = self.documents.content(&referrer).unwrap() {
-        self.analyze_dependencies(&referrer, &source);
+        let media_type =
+          MediaType::from(&self.documents.get_language_id(&referrer).unwrap());
+        self.analyze_dependencies(&referrer, &media_type, &source);
       }
       self.diagnostics_server.invalidate(vec![referrer]).await;
     }
