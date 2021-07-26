@@ -771,15 +771,21 @@ impl Inner {
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
     let mark = self.performance.mark("did_close", Some(&params));
     if params.text_document.uri.scheme() == "deno" {
-      // we can ignore virtual text documents opening, as they don't need to
+      // we can ignore virtual text documents closing, as they don't need to
       // be tracked in memory, as they are static assets that won't change
       // already managed by the language service
       return;
     }
     let specifier = self.url_map.normalize_url(&params.text_document.uri);
-    self.documents.close(&specifier);
+    let is_diagnosable = self.documents.is_diagnosable(&specifier);
 
-    if self.documents.is_diagnosable(&specifier) {
+    if is_diagnosable {
+      let mut specifiers = self.documents.dependents(&specifier);
+      specifiers.push(specifier.clone());
+      self.diagnostics_server.invalidate(specifiers).await;
+    }
+    self.documents.close(&specifier);
+    if is_diagnosable {
       if let Err(err) = self.diagnostics_server.update() {
         error!("{}", err);
       }
