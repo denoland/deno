@@ -372,6 +372,13 @@ itest!(blob_gc_finalization {
   exit_code: 0,
 });
 
+itest!(fetch_response_finalization {
+  args: "run --v8-flags=--expose-gc --allow-net fetch_response_finalization.js",
+  output: "fetch_response_finalization.js.out",
+  http_server: true,
+  exit_code: 0,
+});
+
 itest!(lock_write_requires_lock {
   args: "run --lock-write some_file.ts",
   output: "lock_write_requires_lock.out",
@@ -1778,3 +1785,13 @@ mod permissions {
     exit_code: 1,
   });
 }
+
+itest!(tls_starttls {
+  args: "run --quiet --reload --allow-net --allow-read --unstable --cert tls/RootCA.pem tls_starttls.js",
+  output: "tls.out",
+});
+
+itest!(tls_connecttls {
+  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem tls_connecttls.js",
+  output: "tls.out",
+});
