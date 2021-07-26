@@ -130,11 +130,8 @@ impl PrettyTestReporter {
 
 impl TestReporter for PrettyTestReporter {
   fn report_plan(&mut self, plan: &TestPlan) {
-    println!(
-      "running {} tests from {}",
-      plan.total,
-      plan.origin.to_string()
-    );
+    let inflection = if plan.total == 1 { "test" } else { "tests" };
+    println!("running {} {} from {}", plan.total, inflection, plan.origin);
   }
 
   fn report_wait(&mut self, description: &TestDescription) {
