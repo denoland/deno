@@ -22,6 +22,7 @@
   const { isReadableStreamDisturbed, errorReadableStream, createProxy } =
     globalThis.__bootstrap.streams;
   const {
+    ArrayBuffer,
     ArrayBufferIsView,
     ArrayPrototypePush,
     ArrayPrototypeMap,

@@ -20,8 +20,10 @@
     ObjectKeys,
     StringPrototypeSlice,
     Symbol,
+    SymbolFor,
     SymbolIterator,
     SymbolToStringTag,
+    TypeError,
   } = window.__bootstrap.primordials;
 
   const _list = Symbol("list");
@@ -280,7 +282,7 @@
       this[_url] = parts;
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       const object = {
         href: this.href,
         origin: this.origin,

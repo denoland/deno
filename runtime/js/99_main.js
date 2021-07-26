@@ -552,7 +552,7 @@ delete Object.prototype.__proto__;
     ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, { name: util.readOnly(name) });
-    Object.setPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
+    ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
     const consoleFromDeno = globalThis.console;
     wrapConsole(consoleFromDeno, consoleFromV8);
