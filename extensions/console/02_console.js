@@ -51,6 +51,7 @@
     RegExpPrototypeToString,
     Set,
     SetPrototypeEntries,
+    Symbol,
     SymbolPrototypeToString,
     SymbolToStringTag,
     SymbolHasInstance,
@@ -351,15 +352,22 @@
     const entries = [];
     let iter;
 
-    // TODO(littledivy): Avoid re-checking iterable type
-    if (ArrayIsArray(value) || isTypedArray(value)) {
-      iter = ArrayPrototypeEntries(value);
-    } else if (value instanceof Set) {
-      iter = SetPrototypeEntries(value);
-    } else if (value instanceof Map) {
-      iter = MapPrototypeEntries(value);
-    } else {
-      throw new TypeError("Unreachable");
+    switch (options.typeName) {
+      case "Map":
+        iter = MapPrototypeEntries(value);
+        break;
+      case "Set":
+        iter = SetPrototypeEntries(value);
+        break;
+      case "Array":
+        iter = ArrayPrototypeEntries(value);
+        break;
+      default:
+        if (isTypedArray(value)) {
+          iter = ArrayPrototypeEntries(value);
+        } else {
+          throw new TypeError("unreachable");
+        }
     }
 
     let entriesLength = 0;

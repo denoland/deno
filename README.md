@@ -91,7 +91,7 @@ The complete API reference is available at the runtime
 We appreciate your help!
 
 To contribute, please read our
-[guidelines](https://github.com/denoland/deno/blob/main/docs/contributing/style_guide.md).
+[guidelines](https://deno.land/manual/contributing/style_guide).
 
 [Build Status - Cirrus]: https://github.com/denoland/deno/workflows/ci/badge.svg?branch=main&event=push
 [Build status]: https://github.com/denoland/deno/actions

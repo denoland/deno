@@ -81,7 +81,7 @@ pub struct DocumentData {
   bytes: Option<Vec<u8>>,
   dependencies: Option<HashMap<String, analysis::Dependency>>,
   dependency_ranges: Option<analysis::DependencyRanges>,
-  language_id: LanguageId,
+  pub(crate) language_id: LanguageId,
   line_index: Option<LineIndex>,
   maybe_navigation_tree: Option<tsc::NavigationTree>,
   specifier: ModuleSpecifier,
@@ -180,7 +180,7 @@ impl DocumentData {
 #[derive(Debug, Clone, Default)]
 pub struct DocumentCache {
   dependents_graph: HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>>,
-  pub docs: HashMap<ModuleSpecifier, DocumentData>,
+  pub(crate) docs: HashMap<ModuleSpecifier, DocumentData>,
 }
 
 impl DocumentCache {
@@ -272,16 +272,29 @@ impl DocumentCache {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<HashMap<String, analysis::Dependency>> {
-    let doc = self.docs.get(specifier)?;
-    doc.dependencies.clone()
+    self
+      .docs
+      .get(specifier)
+      .map(|doc| doc.dependencies.clone())
+      .flatten()
+  }
+
+  pub fn get_language_id(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<LanguageId> {
+    self.docs.get(specifier).map(|doc| doc.language_id.clone())
   }
 
   pub fn get_navigation_tree(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<tsc::NavigationTree> {
-    let doc = self.docs.get(specifier)?;
-    doc.maybe_navigation_tree.clone()
+    self
+      .docs
+      .get(specifier)
+      .map(|doc| doc.maybe_navigation_tree.clone())
+      .flatten()
   }
 
   /// Determines if the specifier should be processed for diagnostics and other

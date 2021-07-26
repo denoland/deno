@@ -73,6 +73,23 @@ fn pty_bad_input() {
 
 #[cfg(unix)]
 #[test]
+fn pty_syntax_error_input() {
+  use std::io::{Read, Write};
+  run_pty_test(|master| {
+    master.write_all(b"('\\u')\n").unwrap();
+    master.write_all(b"('\n").unwrap();
+    master.write_all(b"close();\n").unwrap();
+
+    let mut output = String::new();
+    master.read_to_string(&mut output).unwrap();
+
+    assert!(output.contains("Unterminated string constant"));
+    assert!(output.contains("Unexpected eof"));
+  });
+}
+
+#[cfg(unix)]
+#[test]
 fn pty_complete_symbol() {
   use std::io::{Read, Write};
   run_pty_test(|master| {
