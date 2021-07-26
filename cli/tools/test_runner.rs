@@ -424,7 +424,8 @@ fn programs_from_fenced_blocks(
     let line = file.source[0..block.get(0).unwrap().start()]
       .chars()
       .filter(|c| *c == '\n')
-      .count();
+      .count()
+      + 1;
 
     let specifier = deno_core::resolve_url_or_path(&format!(
       "{}${}-{}",
