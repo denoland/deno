@@ -42,7 +42,7 @@ use swc_common::comments::CommentKind;
 // Expression used to get the array containing the actual test definitions in the runtime.
 static TEST_REGISTRY: &str = "(Deno[Deno.internal].tests)";
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, PartialOrd, Ord)]
 #[serde(rename_all = "camelCase")]
 pub struct TestDescription {
   pub name: String,
@@ -273,6 +273,7 @@ async fn test_module<F>(
   module_specifier: ModuleSpecifier,
   permissions: Permissions,
   quiet: bool,
+  shuffle: Option<u64>,
   process_event: F,
 ) -> Result<(), AnyError>
 where
@@ -312,14 +313,25 @@ where
     descriptions
   };
 
-  let filtered = descriptions
+  let filtered: Vec<(usize, &TestDescription)> = descriptions
     .iter()
     .enumerate()
-    .filter(|(_, _description)| true);
+    .filter(|(_, _description)| true)
+    .collect();
+
+  let filtered = if let Some(seed) = shuffle {
+    let mut rng = SmallRng::seed_from_u64(seed);
+    let mut filtered = filtered.clone();
+    filtered.sort();
+    filtered.shuffle(&mut rng);
+    filtered
+  } else {
+    filtered
+  };
 
   process_event(TestEvent::Plan(TestPlan {
     origin: module_specifier,
-    total: filtered.clone().count(),
+    total: filtered.len(),
     filtered_out: 0,
   }));
 
@@ -557,6 +569,7 @@ pub async fn run_tests(
     let program_state = program_state.clone();
     let main_module = main_module.clone();
     let permissions = permissions.clone();
+    let shuffle = shuffle.clone();
     let process_event = process_event.clone();
     tokio::task::spawn_blocking(move || {
       std::thread::spawn(move || {
@@ -565,6 +578,7 @@ pub async fn run_tests(
           main_module,
           permissions,
           quiet,
+          shuffle,
           process_event,
         ))
       })
