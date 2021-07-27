@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast::Location;
-use crate::deno_dir::DenoDir;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::FileFetcher;
 use crate::media_type::MediaType;
@@ -19,7 +18,6 @@ use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use log::debug;
 use std::collections::HashMap;
-use std::env;
 use std::fmt;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -236,9 +234,7 @@ impl FetchHandler {
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
   ) -> Result<Self, AnyError> {
-    let custom_root = env::var("DENO_DIR").map(String::into).ok();
-    let deno_dir = DenoDir::new(custom_root)?;
-    let disk_cache = deno_dir.gen_cache;
+    let disk_cache = program_state.dir.gen_cache.clone();
     let file_fetcher = program_state.file_fetcher.clone();
 
     Ok(FetchHandler {
@@ -571,10 +567,12 @@ impl SpecifierHandler for MemoryHandler {
 #[cfg(test)]
 pub mod tests {
   use super::*;
+  use crate::deno_dir::DenoDir;
   use crate::file_fetcher::CacheSetting;
   use crate::http_cache::HttpCache;
   use deno_core::resolve_url_or_path;
   use deno_runtime::deno_web::BlobStore;
+  use std::env;
   use tempfile::TempDir;
 
   macro_rules! map (

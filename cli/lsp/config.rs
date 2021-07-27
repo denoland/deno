@@ -148,6 +148,10 @@ pub struct WorkspaceSettings {
   #[serde(default)]
   pub enable: bool,
 
+  /// An option that points to a path string of the path to utilise as the
+  /// cache/DENO_DIR for the language server.
+  pub cache: Option<String>,
+
   /// An option that points to a path string of the config file to apply to
   /// code within the workspace.
   pub config: Option<String>,
@@ -475,6 +479,7 @@ mod tests {
       config.get_workspace_settings(),
       WorkspaceSettings {
         enable: false,
+        cache: None,
         config: None,
         import_map: None,
         code_lens: CodeLensSettings {
