@@ -57,7 +57,7 @@ itest!(doc {
 
 itest!(doc_markdown {
   args: "test --doc --allow-all test/doc_markdown",
-  exit_code: 0,
+  exit_code: 1,
   output: "test/doc_markdown.out",
 });
 

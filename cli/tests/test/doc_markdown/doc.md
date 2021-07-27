@@ -17,3 +17,9 @@ The following block should be given a ts extension on extraction:
 ```ts
 console.log("ts");
 ```
+
+The following example will trigger the type-checker to fail:
+
+```ts
+const a:string = 42;
+```
