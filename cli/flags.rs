@@ -3540,7 +3540,6 @@ mod tests {
     );
   }
 
-
   #[test]
   fn test_shuffle() {
     let r = flags_from_vec(svec!["deno", "test", "--shuffle=1"]);
