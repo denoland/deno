@@ -326,7 +326,7 @@ fn main() {
   );
   println!(
     "cargo:rustc-env=DENO_HTTP_LIB_PATH={}",
-    deno_http::get_unstable_declaration().display()
+    deno_http::get_declaration().display()
   );
 
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());
