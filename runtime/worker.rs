@@ -101,6 +101,7 @@ impl MainWorker {
         options.user_agent.clone(),
         options.ca_data.clone(),
         None,
+        None,
       ),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
