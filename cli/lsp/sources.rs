@@ -9,6 +9,7 @@ use crate::config_file::ConfigFile;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
+use crate::flags::Flags;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
 use crate::import_map::ImportMap;
@@ -36,8 +37,15 @@ pub async fn cache(
   specifier: &ModuleSpecifier,
   maybe_import_map: &Option<ImportMap>,
   maybe_config_file: &Option<ConfigFile>,
+  maybe_cache_path: &Option<PathBuf>,
 ) -> Result<(), AnyError> {
-  let program_state = Arc::new(ProgramState::build(Default::default()).await?);
+  let program_state = Arc::new(
+    ProgramState::build(Flags {
+      cache_path: maybe_cache_path.clone(),
+      ..Default::default()
+    })
+    .await?,
+  );
   let handler = Arc::new(Mutex::new(FetchHandler::new(
     &program_state,
     Permissions::allow_all(),

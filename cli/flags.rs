@@ -139,6 +139,9 @@ pub struct Flags {
   pub allow_write: Option<Vec<PathBuf>>,
   pub ca_file: Option<String>,
   pub cache_blocklist: Vec<String>,
+  /// This is not exposed as an option in the CLI, it is used internally when
+  /// the language server is configured with an explicit cache option.
+  pub cache_path: Option<PathBuf>,
   pub cached_only: bool,
   pub config_path: Option<String>,
   pub coverage_dir: Option<String>,

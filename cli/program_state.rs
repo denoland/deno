@@ -61,8 +61,11 @@ pub struct ProgramState {
 
 impl ProgramState {
   pub async fn build(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
-    let custom_root = env::var("DENO_DIR").map(String::into).ok();
-    let dir = deno_dir::DenoDir::new(custom_root)?;
+    let maybe_custom_root = flags
+      .cache_path
+      .clone()
+      .or_else(|| env::var("DENO_DIR").map(String::into).ok());
+    let dir = deno_dir::DenoDir::new(maybe_custom_root)?;
     let deps_cache_location = dir.root.join("deps");
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
     let ca_file = flags.ca_file.clone().or_else(|| env::var("DENO_CERT").ok());

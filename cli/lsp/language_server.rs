@@ -95,6 +95,9 @@ pub(crate) struct Inner {
   module_registries: registries::ModuleRegistry,
   /// The path to the module registries cache
   module_registries_location: PathBuf,
+  /// An optional path to the DENO_DIR which has been specified in the client
+  /// options.
+  maybe_cache_path: Option<PathBuf>,
   /// An optional configuration file which has been specified in the client
   /// options.
   maybe_config_file: Option<ConfigFile>,
@@ -144,10 +147,11 @@ impl Inner {
       config,
       diagnostics_server,
       documents: Default::default(),
-      maybe_config_file: Default::default(),
-      maybe_config_uri: Default::default(),
-      maybe_import_map: Default::default(),
-      maybe_import_map_uri: Default::default(),
+      maybe_cache_path: None,
+      maybe_config_file: None,
+      maybe_config_uri: None,
+      maybe_import_map: None,
+      maybe_import_map_uri: None,
       module_registries,
       module_registries_location,
       performance,
@@ -358,7 +362,7 @@ impl Inner {
     self.maybe_config_uri = None;
     if let Some(config_str) = maybe_config {
       if !config_str.is_empty() {
-        info!("Updating TypeScript configuration from: \"{}\"", config_str);
+        info!("Setting TypeScript configuration from: \"{}\"", config_str);
         let config_url = if let Ok(url) = Url::from_file_path(config_str) {
           Ok(url)
         } else if let Some(root_uri) = maybe_root_uri {
@@ -417,6 +421,62 @@ impl Inner {
     })
   }
 
+  pub fn update_cache(&mut self) -> Result<(), AnyError> {
+    let mark = self.performance.mark("update_cache", None::<()>);
+    self.performance.measure(mark);
+    let (maybe_cache, maybe_root_uri) = {
+      let config = &self.config;
+      (
+        config.get_workspace_settings().cache,
+        config.root_uri.clone(),
+      )
+    };
+    let maybe_cache_path = if let Some(cache_str) = &maybe_cache {
+      info!("Setting cache path from: \"{}\"", cache_str);
+      let cache_url = if let Ok(url) = Url::from_file_path(cache_str) {
+        Ok(url)
+      } else if let Some(root_uri) = &maybe_root_uri {
+        let root_path = root_uri
+          .to_file_path()
+          .map_err(|_| anyhow!("Bad root_uri: {}", root_uri))?;
+        let cache_path = root_path.join(cache_str);
+        Url::from_file_path(cache_path).map_err(|_| {
+          anyhow!("Bad file path for import path: {:?}", cache_str)
+        })
+      } else {
+        Err(anyhow!(
+          "The path to the cache path (\"{}\") is not resolvable.",
+          cache_str
+        ))
+      }?;
+      let cache_path = cache_url.to_file_path().map_err(|_| {
+        anyhow!("Cannot convert \"{}\" into a file path.", cache_url)
+      })?;
+      info!(
+        "  Resolved cache path: \"{}\"",
+        cache_path.to_string_lossy()
+      );
+      Some(cache_path)
+    } else {
+      None
+    };
+    if self.maybe_cache_path != maybe_cache_path {
+      let maybe_custom_root = maybe_cache_path
+        .clone()
+        .or_else(|| env::var("DENO_DIR").map(String::into).ok());
+      let dir = deno_dir::DenoDir::new(maybe_custom_root)
+        .expect("could not access DENO_DIR");
+      let module_registries_location = dir.root.join(REGISTRIES_PATH);
+      self.module_registries =
+        registries::ModuleRegistry::new(&module_registries_location);
+      self.module_registries_location = module_registries_location;
+      let sources_location = dir.root.join(SOURCES_PATH);
+      self.sources = Sources::new(&sources_location);
+      self.maybe_cache_path = maybe_cache_path;
+    }
+    Ok(())
+  }
+
   pub async fn update_import_map(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_import_map", None::<()>);
     let (maybe_import_map, maybe_root_uri) = {
@@ -427,7 +487,7 @@ impl Inner {
       )
     };
     if let Some(import_map_str) = &maybe_import_map {
-      info!("Updating import map from: \"{}\"", import_map_str);
+      info!("Setting import map from: \"{}\"", import_map_str);
       let import_map_url = if let Ok(url) = Url::from_file_path(import_map_str)
       {
         Ok(url)
@@ -620,8 +680,12 @@ impl Inner {
     }
 
     self.update_debug_flag();
+    // Check to see if we need to change the cache path
+    if let Err(err) = self.update_cache() {
+      self.client.show_message(MessageType::Warning, err).await;
+    }
     if let Err(err) = self.update_tsconfig().await {
-      warn!("Updating tsconfig has errored: {}", err);
+      self.client.show_message(MessageType::Warning, err).await;
     }
 
     if capabilities.code_action_provider.is_some() {
@@ -636,14 +700,6 @@ impl Inner {
       self.ts_fixable_diagnostics = fixable_diagnostics;
     }
 
-    self.performance.measure(mark);
-    Ok(InitializeResult {
-      capabilities,
-      server_info: Some(server_info),
-    })
-  }
-
-  async fn initialized(&mut self, _: InitializedParams) {
     // Check to see if we need to setup the import map
     if let Err(err) = self.update_import_map().await {
       self.client.show_message(MessageType::Warning, err).await;
@@ -653,6 +709,14 @@ impl Inner {
       self.client.show_message(MessageType::Warning, err).await;
     }
 
+    self.performance.measure(mark);
+    Ok(InitializeResult {
+      capabilities,
+      server_info: Some(server_info),
+    })
+  }
+
+  async fn initialized(&mut self, _: InitializedParams) {
     if self
       .config
       .client_capabilities
@@ -836,6 +900,9 @@ impl Inner {
     }
 
     self.update_debug_flag();
+    if let Err(err) = self.update_cache() {
+      self.client.show_message(MessageType::Warning, err).await;
+    }
     if let Err(err) = self.update_import_map().await {
       self.client.show_message(MessageType::Warning, err).await;
     }
@@ -2413,6 +2480,7 @@ impl Inner {
           &specifier,
           &self.maybe_import_map,
           &self.maybe_config_file,
+          &self.maybe_cache_path,
         )
         .await
         .map_err(|err| {
@@ -2425,6 +2493,7 @@ impl Inner {
         &referrer,
         &self.maybe_import_map,
         &self.maybe_config_file,
+        &self.maybe_cache_path,
       )
       .await
       .map_err(|err| {

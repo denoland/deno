@@ -207,6 +207,7 @@ pub fn compile_to_runtime_flags(
     allow_write: flags.allow_write,
     ca_file: flags.ca_file,
     cache_blocklist: vec![],
+    cache_path: None,
     cached_only: false,
     config_path: None,
     coverage_dir: flags.coverage_dir,
