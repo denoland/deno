@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast;
+use crate::ast::Location;
 use crate::colors;
 use crate::create_main_worker;
 use crate::file_fetcher::File;
@@ -346,179 +347,170 @@ pub async fn run_test_file(
   Ok(())
 }
 
-fn programs_from_source_comments(
-  program_state: Arc<ProgramState>,
-  file: &File,
-) -> Result<Vec<ModuleSpecifier>, AnyError> {
-  let mut specifiers = Vec::new();
+fn extract_files_from_regex_blocks(
+  location: &Location,
+  source: &str,
+  media_type: &MediaType,
+  blocks_regex: &Regex,
+  lines_regex: &Regex,
+) -> Result<Vec<File>, AnyError> {
+  let files = blocks_regex
+    .captures_iter(&source)
+    .filter_map(|block| {
+      let maybe_attributes = block
+        .get(1)
+        .map(|attributes| attributes.as_str().split(' '));
 
-  let parsed_module =
-    ast::parse(&file.specifier.as_str(), &file.source, &file.media_type)?;
-
-  let mut comments = parsed_module.get_comments();
-  comments.sort_by_key(|comment| {
-    let location = parsed_module.get_location(&comment.span);
-    location.line
-  });
-
-  let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
-  let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
-
-  for comment in comments {
-    if comment.kind != CommentKind::Block || !comment.text.starts_with('*') {
-      continue;
-    }
-
-    for block in blocks_regex.captures_iter(&comment.text) {
-      let maybe_attributes = block.get(1).map(|m| m.as_str().split(' '));
-      let media_type = if let Some(mut attributes) = maybe_attributes {
+      let file_media_type = if let Some(mut attributes) = maybe_attributes {
         match attributes.next() {
           Some("js") => MediaType::JavaScript,
           Some("jsx") => MediaType::Jsx,
           Some("ts") => MediaType::TypeScript,
           Some("tsx") => MediaType::Tsx,
-          Some("") => file.media_type,
+          Some("") => *media_type,
           _ => MediaType::Unknown,
         }
       } else {
-        file.media_type
+        *media_type
       };
 
-      if media_type == MediaType::Unknown {
-        continue;
+      if file_media_type == MediaType::Unknown {
+        return None;
       }
+
+      let line_offset = source[0..block.get(0).unwrap().start()]
+        .chars()
+        .filter(|c| *c == '\n')
+        .count();
+
+      let line_count = block.get(0).unwrap().as_str().split('\n').count();
 
       let body = block.get(2).unwrap();
       let text = body.as_str();
 
       // TODO(caspervonb) generate an inline source map
-      let mut source = String::new();
+      let mut file_source = String::new();
       for line in lines_regex.captures_iter(&text) {
         let text = line.get(1).unwrap();
-        source.push_str(&format!("{}\n", text.as_str()));
+        file_source.push_str(&format!("{}\n", text.as_str()));
       }
 
-      source.push_str("export {};");
+      file_source.push_str("export {};");
 
-      let element = block.get(0).unwrap();
-      let span = comment
-        .span
-        .from_inner_byte_pos(element.start(), element.end());
-      let location = parsed_module.get_location(&span);
-
-      let specifier = deno_core::resolve_url_or_path(&format!(
+      let file_specifier = deno_core::resolve_url_or_path(&format!(
         "{}${}-{}{}",
         location.filename,
-        location.line,
-        location.line + element.as_str().split('\n').count(),
-        media_type.as_ts_extension(),
-      ))?;
+        location.line + line_offset,
+        location.line + line_offset + line_count,
+        file_media_type.as_ts_extension(),
+      ))
+      .unwrap();
 
-      let file = File {
-        local: specifier.to_file_path().unwrap(),
+      Some(File {
+        local: file_specifier.to_file_path().unwrap(),
         maybe_types: None,
-        media_type,
-        source: source.clone(),
-        specifier: specifier.clone(),
-      };
+        media_type: file_media_type,
+        source: file_source,
+        specifier: file_specifier,
+      })
+    })
+    .collect();
 
-      specifiers.push(file.specifier.clone());
-      program_state.file_fetcher.insert_cached(file);
-    }
-  }
-
-  Ok(specifiers)
+  Ok(files)
 }
 
-fn programs_from_fenced_blocks(
-  program_state: Arc<ProgramState>,
-  file: &File,
-) -> Result<Vec<ModuleSpecifier>, AnyError> {
-  let mut specifiers = Vec::new();
+fn extract_files_from_source_comments(
+  specifier: &ModuleSpecifier,
+  source: &str,
+  media_type: &MediaType,
+) -> Result<Vec<File>, AnyError> {
+  let parsed_module = ast::parse(&specifier.as_str(), &source, &media_type)?;
+  let mut comments = parsed_module.get_comments();
+  comments
+    .sort_by_key(|comment| parsed_module.get_location(&comment.span).line);
+
+  let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
+  let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
+
+  let files = comments
+    .iter()
+    .filter(|comment| {
+      if comment.kind != CommentKind::Block || !comment.text.starts_with('*') {
+        return false;
+      }
+
+      true
+    })
+    .flat_map(|comment| {
+      let location = parsed_module.get_location(&comment.span);
+
+      extract_files_from_regex_blocks(
+        &location,
+        &comment.text,
+        &media_type,
+        &blocks_regex,
+        &lines_regex,
+      )
+    })
+    .flatten()
+    .collect();
+
+  Ok(files)
+}
+
+fn extract_files_from_fenced_blocks(
+  specifier: &ModuleSpecifier,
+  source: &str,
+  media_type: &MediaType,
+) -> Result<Vec<File>, AnyError> {
+  let location = Location {
+    filename: specifier.to_string(),
+    line: 1,
+    col: 0,
+  };
+
   let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
 
-  for block in blocks_regex.captures_iter(&file.source) {
-    let maybe_attributes = block.get(1).map(|m| m.as_str().split(' '));
-    let media_type = if let Some(mut attributes) = maybe_attributes {
-      match attributes.next() {
-        Some("js") => MediaType::JavaScript,
-        Some("jsx") => MediaType::Jsx,
-        Some("ts") => MediaType::TypeScript,
-        Some("tsx") => MediaType::Tsx,
-        _ => MediaType::Unknown,
-      }
-    } else {
-      MediaType::Unknown
-    };
-
-    if media_type == MediaType::Unknown {
-      continue;
-    }
-
-    let body = block.get(2).unwrap();
-    let text = body.as_str();
-
-    // TODO(caspervonb) generate an inline source map
-    let mut source = String::new();
-    for line in lines_regex.captures_iter(&text) {
-      let text = line.get(1).unwrap();
-      source.push_str(&format!("{}\n", text.as_str()));
-    }
-
-    source.push_str("export {};");
-
-    let line = file.source[0..block.get(0).unwrap().start()]
-      .chars()
-      .filter(|c| *c == '\n')
-      .count()
-      + 1;
-
-    let specifier = deno_core::resolve_url_or_path(&format!(
-      "{}${}-{}",
-      file.specifier.as_str(),
-      line,
-      line + block.get(0).unwrap().as_str().split('\n').count(),
-    ))?;
-
-    let file = File {
-      local: specifier.to_file_path().unwrap(),
-      maybe_types: None,
-      media_type,
-      source: source.clone(),
-      specifier: specifier.clone(),
-    };
-
-    specifiers.push(file.specifier.clone());
-    program_state.file_fetcher.insert_cached(file);
-  }
-
-  Ok(specifiers)
+  extract_files_from_regex_blocks(
+    &location,
+    &source,
+    &media_type,
+    &blocks_regex,
+    &lines_regex,
+  )
 }
 
-async fn collect_programs(
+async fn fetch_inline_files(
   program_state: Arc<ProgramState>,
   specifiers: Vec<ModuleSpecifier>,
-) -> Result<Vec<ModuleSpecifier>, AnyError> {
-  let mut programs = Vec::new();
-
-  for specifier in &specifiers {
+) -> Result<Vec<File>, AnyError> {
+  let mut files = Vec::new();
+  for specifier in specifiers {
     let mut fetch_permissions = Permissions::allow_all();
     let file = program_state
       .file_fetcher
       .fetch(&specifier, &mut fetch_permissions)
       .await?;
 
-    let file_programs = if file.media_type == MediaType::Unknown {
-      programs_from_fenced_blocks(program_state.clone(), &file)?
+    let inline_files = if file.media_type == MediaType::Unknown {
+      extract_files_from_fenced_blocks(
+        &file.specifier,
+        &file.source,
+        &file.media_type,
+      )
     } else {
-      programs_from_source_comments(program_state.clone(), &file)?
+      extract_files_from_source_comments(
+        &file.specifier,
+        &file.source,
+        &file.media_type,
+      )
     };
 
-    programs.extend(file_programs);
+    files.extend(inline_files?);
   }
 
-  Ok(programs)
+  Ok(files)
 }
 
 /// Runs tests.
@@ -553,12 +545,16 @@ pub async fn run_tests(
   };
 
   if !doc_modules.is_empty() {
-    let test_programs =
-      collect_programs(program_state.clone(), doc_modules).await?;
+    let files = fetch_inline_files(program_state.clone(), doc_modules).await?;
+    let specifiers = files.iter().map(|file| file.specifier.clone()).collect();
+
+    for file in files {
+      program_state.file_fetcher.insert_cached(file);
+    }
 
     program_state
       .prepare_module_graph(
-        test_programs,
+        specifiers,
         lib.clone(),
         Permissions::allow_all(),
         permissions.clone(),
