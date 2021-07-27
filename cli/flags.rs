@@ -3539,6 +3539,30 @@ mod tests {
       }
     );
   }
+
+  #[test]
+  fn test_shuffle() {
+    let r = flags_from_vec(svec!["deno", "test", "--shuffle=1"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: None,
+          allow_none: false,
+          quiet: false,
+          shuffle: Some(1),
+          include: None,
+          concurrent_jobs: 1,
+        },
+        watch: false,
+        ..Flags::default()
+      }
+    );
+  }
+
   #[test]
   fn test_watch() {
     let r = flags_from_vec(svec!["deno", "test", "--watch"]);
