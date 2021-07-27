@@ -101,6 +101,8 @@
     permissions: __bootstrap.permissions.permissions,
     Permissions: __bootstrap.permissions.Permissions,
     PermissionStatus: __bootstrap.permissions.PermissionStatus,
+    serveHttp: __bootstrap.http.serveHttp,
+    upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
   };
 
   __bootstrap.denoNsUnstable = {
@@ -126,16 +128,13 @@
     listen: __bootstrap.netUnstable.listen,
     connect: __bootstrap.netUnstable.connect,
     listenDatagram: __bootstrap.netUnstable.listenDatagram,
-    serveHttp: __bootstrap.http.serveHttp,
     startTls: __bootstrap.tls.startTls,
     umask: __bootstrap.fs.umask,
-    upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
     futime: __bootstrap.fs.futime,
     futimeSync: __bootstrap.fs.futimeSync,
     utime: __bootstrap.fs.utime,
     utimeSync: __bootstrap.fs.utimeSync,
     HttpClient: __bootstrap.fetch.HttpClient,
     createHttpClient: __bootstrap.fetch.createHttpClient,
-    http: __bootstrap.http,
   };
 })(this);

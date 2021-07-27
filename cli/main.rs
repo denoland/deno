@@ -341,6 +341,7 @@ pub fn get_types(unstable: bool) -> String {
     crate::tsc::DENO_CRYPTO_LIB,
     crate::tsc::DENO_BROADCAST_CHANNEL_LIB,
     crate::tsc::DENO_NET_LIB,
+    crate::tsc::DENO_HTTP_LIB
     crate::tsc::SHARED_GLOBALS_LIB,
     crate::tsc::WINDOW_LIB,
   ];
@@ -348,7 +349,6 @@ pub fn get_types(unstable: bool) -> String {
   if unstable {
     types.push(crate::tsc::UNSTABLE_NS_LIB);
     types.push(crate::tsc::DENO_NET_UNSTABLE_LIB);
-    types.push(crate::tsc::DENO_HTTP_UNSTABLE_LIB);
   }
 
   types.join("\n")

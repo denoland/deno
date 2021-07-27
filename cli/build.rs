@@ -325,7 +325,7 @@ fn main() {
     deno_net::get_unstable_declaration().display()
   );
   println!(
-    "cargo:rustc-env=DENO_HTTP_UNSTABLE_LIB_PATH={}",
+    "cargo:rustc-env=DENO_HTTP_LIB_PATH={}",
     deno_http::get_unstable_declaration().display()
   );
 
