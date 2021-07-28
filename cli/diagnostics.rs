@@ -61,7 +61,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "osRelease",
   "ppid",
   "resolveDns",
-  "serveHttp",
   "setRaw",
   "shutdown",
   "signal",
