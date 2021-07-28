@@ -18,7 +18,7 @@ declare namespace Deno {
 
   export interface WebSocketUpgrade {
     response: Response;
-    websocket: WebSocket;
+    socket: WebSocket;
   }
 
   export interface UpgradeWebSocketOptions {
@@ -38,16 +38,16 @@ declare namespace Deno {
    * const httpConn = Deno.serveHttp(conn);
    * const e = await httpConn.nextRequest();
    * if (e) {
-   *   const { websocket, response } = Deno.upgradeWebSocket(e.request);
-   *   websocket.onopen = () => {
-   *     websocket.send("Hello World!");
+   *   const { socket, response } = Deno.upgradeWebSocket(e.request);
+   *   socket.onopen = () => {
+   *     socket.send("Hello World!");
    *   };
-   *   websocket.onmessage = (e) => {
+   *   socket.onmessage = (e) => {
    *     console.log(e.data);
-   *     websocket.close();
+   *     socket.close();
    *   };
-   *   websocket.onclose = () => console.log("WebSocket has been closed.");
-   *   websocket.onerror = (e) => console.error("WebSocket error:", e.message);
+   *   socket.onclose = () => console.log("WebSocket has been closed.");
+   *   socket.onerror = (e) => console.error("WebSocket error:", e.message);
    *   e.respondWith(response);
    * }
    * ```
