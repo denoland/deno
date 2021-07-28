@@ -641,12 +641,12 @@ unitTest({ perms: { net: true } }, async function httpServerWebSocket() {
       const { request, respondWith } = (await httpConn.nextRequest())!;
       const {
         response,
-        websocket,
+        socket,
       } = Deno.upgradeWebSocket(request);
-      websocket.onerror = () => fail();
-      websocket.onmessage = (m) => {
-        websocket.send(m.data);
-        websocket.close();
+      socket.onerror = () => fail();
+      socket.onmessage = (m) => {
+        socket.send(m.data);
+        socket.close();
       };
       await respondWith(response);
       break;
