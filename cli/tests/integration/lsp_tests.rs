@@ -2526,6 +2526,96 @@ fn lsp_auto_discover_registry() {
 }
 
 #[test]
+fn lsp_cache_location() {
+  let _g = http_server();
+  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert("cache".to_string(), json!(".cache"));
+    params.initialization_options = Some(Value::Object(map));
+  }
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file_01.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export const a = \"a\";\n",
+      }
+    }),
+  );
+  let diagnostics = did_open(
+    &mut client,
+    load_fixture("did_open_params_import_hover.json"),
+  );
+  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
+  assert_eq!(diagnostics.count(), 12);
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": "file:///a/file.ts",
+        },
+        "uris": [],
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "position": {
+          "line": 0,
+          "character": 28
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.js\n"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 20
+        },
+        "end":{
+          "line": 0,
+          "character": 61
+        }
+      }
+    }))
+  );
+  let cache_path = temp_dir.path().join(".cache");
+  assert!(cache_path.is_dir());
+  assert!(cache_path.join("gen").is_dir());
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_diagnostics_warn() {
   let _g = http_server();
   let mut client = init("initialize_params.json");
