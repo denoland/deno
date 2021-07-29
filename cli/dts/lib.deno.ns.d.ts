@@ -2415,6 +2415,18 @@ declare namespace Deno {
    */
   export function fstat(rid: number): Promise<FileInfo>;
 
+  export interface RequestEvent {
+    readonly request: Request;
+    respondWith(r: Response | Promise<Response>): Promise<void>;
+  }
+
+  export interface HttpConn extends AsyncIterable<RequestEvent> {
+    readonly rid: number;
+
+    nextRequest(): Promise<RequestEvent | null>;
+    close(): void;
+  }
+
   /**
    * Services HTTP requests given a TCP or TLS socket.
    *
