@@ -101,6 +101,7 @@ impl MainWorker {
         options.user_agent.clone(),
         options.ca_data.clone(),
         None,
+        None,
       ),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
@@ -123,7 +124,7 @@ impl MainWorker {
       ops::fs::init(),
       ops::io::init(),
       ops::io::init_stdio(),
-      deno_net::init::<Permissions>(options.unstable),
+      deno_net::init::<Permissions>(options.ca_data.clone(), options.unstable),
       ops::os::init(),
       ops::permissions::init(),
       ops::plugin::init(),

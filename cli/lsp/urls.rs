@@ -11,6 +11,12 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use std::collections::HashMap;
 
+lazy_static::lazy_static! {
+  /// Used in situations where a default URL needs to be used where otherwise a
+  /// panic is undesired.
+  pub(crate) static ref INVALID_SPECIFIER: ModuleSpecifier = ModuleSpecifier::parse("deno://invalid").unwrap();
+}
+
 /// Matches the `encodeURIComponent()` encoding from JavaScript, which matches
 /// the component percent encoding set.
 ///

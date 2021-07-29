@@ -1030,7 +1030,7 @@ async fn test_command(
         test_runner::collect_test_module_specifiers(
           include.clone(),
           &cwd,
-          fs_util::is_supported_ext,
+          fs_util::is_supported_ext_test,
         )
       } else {
         test_runner::collect_test_module_specifiers(
@@ -1172,7 +1172,7 @@ async fn test_command(
           test_runner::collect_test_module_specifiers(
             include.clone(),
             &cwd,
-            fs_util::is_supported_ext,
+            fs_util::is_supported_ext_test,
           )?
         } else {
           Vec::new()
@@ -1222,7 +1222,7 @@ async fn test_command(
       test_runner::collect_test_module_specifiers(
         include.clone(),
         &cwd,
-        fs_util::is_supported_ext,
+        fs_util::is_supported_ext_test,
       )?
     } else {
       Vec::new()
@@ -1234,7 +1234,7 @@ async fn test_command(
       tools::test_runner::is_supported,
     )?;
 
-    let failed = test_runner::run_tests(
+    test_runner::run_tests(
       program_state.clone(),
       permissions,
       lib,
@@ -1249,10 +1249,6 @@ async fn test_command(
       concurrent_jobs,
     )
     .await?;
-
-    if failed {
-      std::process::exit(1);
-    }
   }
 
   Ok(())

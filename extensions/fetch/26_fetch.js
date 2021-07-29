@@ -83,6 +83,15 @@
     return core.opAsync("op_fetch_response_read", rid, body);
   }
 
+  // A finalization registry to clean up underlying fetch resources that are GC'ed.
+  const RESOURCE_REGISTRY = new FinalizationRegistry((rid) => {
+    try {
+      core.close(rid);
+    } catch {
+      // might have already been closed
+    }
+  });
+
   /**
    * @param {number} responseBodyRid
    * @param {AbortSignal} [terminator]
@@ -119,6 +128,7 @@
             // We read some data. Enqueue it onto the stream.
             controller.enqueue(TypedArrayPrototypeSubarray(chunk, 0, read));
           } else {
+            RESOURCE_REGISTRY.unregister(readable);
             // We have reached the end of the body, so we close the stream.
             controller.close();
             try {
@@ -128,6 +138,7 @@
             }
           }
         } catch (err) {
+          RESOURCE_REGISTRY.unregister(readable);
           if (terminator.aborted) {
             controller.error(
               new DOMException("Ongoing fetch was aborted.", "AbortError"),
@@ -150,6 +161,7 @@
         }
       },
     });
+    RESOURCE_REGISTRY.register(readable, responseBodyRid, readable);
     return readable;
   }
 

@@ -22,6 +22,7 @@
   const { isReadableStreamDisturbed, errorReadableStream, createProxy } =
     globalThis.__bootstrap.streams;
   const {
+    ArrayBuffer,
     ArrayBufferIsView,
     ArrayPrototypePush,
     ArrayPrototypeMap,
@@ -286,27 +287,25 @@
         });
       case "FormData": {
         if (mimeType !== null) {
-          if (mimeType !== null) {
-            const essence = mimesniff.essence(mimeType);
-            if (essence === "multipart/form-data") {
-              const boundary = mimeType.parameters.get("boundary");
-              if (boundary === null) {
-                throw new TypeError(
-                  "Missing boundary parameter in mime type of multipart formdata.",
-                );
-              }
-              return parseFormData(bytes, boundary);
-            } else if (essence === "application/x-www-form-urlencoded") {
-              const entries = parseUrlEncoded(bytes);
-              return formDataFromEntries(
-                ArrayPrototypeMap(
-                  entries,
-                  (x) => ({ name: x[0], value: x[1] }),
-                ),
+          const essence = mimesniff.essence(mimeType);
+          if (essence === "multipart/form-data") {
+            const boundary = mimeType.parameters.get("boundary");
+            if (boundary === null) {
+              throw new TypeError(
+                "Missing boundary parameter in mime type of multipart formdata.",
               );
             }
+            return parseFormData(bytes, boundary);
+          } else if (essence === "application/x-www-form-urlencoded") {
+            const entries = parseUrlEncoded(bytes);
+            return formDataFromEntries(
+              ArrayPrototypeMap(
+                entries,
+                (x) => ({ name: x[0], value: x[1] }),
+              ),
+            );
           }
-          throw new TypeError("Invalid form data");
+          throw new TypeError("Body can not be decoded as form data");
         }
         throw new TypeError("Missing content type");
       }

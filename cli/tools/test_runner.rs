@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast;
+use crate::ast::Location;
 use crate::colors;
 use crate::create_main_worker;
 use crate::file_fetcher::File;
@@ -11,6 +12,7 @@ use crate::module_graph;
 use crate::program_state::ProgramState;
 use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
@@ -34,6 +36,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 use swc_common::comments::CommentKind;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -262,10 +265,38 @@ where
 pub async fn run_test_file(
   program_state: Arc<ProgramState>,
   main_module: ModuleSpecifier,
-  test_module: ModuleSpecifier,
   permissions: Permissions,
+  quiet: bool,
+  filter: Option<String>,
+  shuffle: Option<u64>,
   channel: Sender<TestEvent>,
 ) -> Result<(), AnyError> {
+  let test_module =
+    deno_core::resolve_path(&format!("{}$deno$test.js", Uuid::new_v4()))?;
+  let test_source = format!(
+    r#"
+      import "{}";
+      await new Promise(resolve => setTimeout(resolve, 0));
+      await Deno[Deno.internal].runTests({});
+  "#,
+    main_module,
+    json!({
+        "disableLog": quiet,
+        "filter": filter,
+        "shuffle": shuffle,
+    })
+  );
+
+  let test_file = File {
+    local: test_module.to_file_path().unwrap(),
+    maybe_types: None,
+    media_type: MediaType::JavaScript,
+    source: test_source.clone(),
+    specifier: test_module.clone(),
+  };
+
+  program_state.file_fetcher.insert_cached(test_file);
+
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions, true);
 
@@ -292,8 +323,6 @@ pub async fn run_test_file(
     None
   };
 
-  worker.execute_module(&main_module).await?;
-
   worker.execute_script(
     &located_script_name!(),
     "window.dispatchEvent(new Event('load'))",
@@ -318,9 +347,174 @@ pub async fn run_test_file(
   Ok(())
 }
 
+fn extract_files_from_regex_blocks(
+  location: &Location,
+  source: &str,
+  media_type: &MediaType,
+  blocks_regex: &Regex,
+  lines_regex: &Regex,
+) -> Result<Vec<File>, AnyError> {
+  let files = blocks_regex
+    .captures_iter(&source)
+    .filter_map(|block| {
+      let maybe_attributes = block
+        .get(1)
+        .map(|attributes| attributes.as_str().split(' '));
+
+      let file_media_type = if let Some(mut attributes) = maybe_attributes {
+        match attributes.next() {
+          Some("js") => MediaType::JavaScript,
+          Some("jsx") => MediaType::Jsx,
+          Some("ts") => MediaType::TypeScript,
+          Some("tsx") => MediaType::Tsx,
+          Some("") => *media_type,
+          _ => MediaType::Unknown,
+        }
+      } else {
+        *media_type
+      };
+
+      if file_media_type == MediaType::Unknown {
+        return None;
+      }
+
+      let line_offset = source[0..block.get(0).unwrap().start()]
+        .chars()
+        .filter(|c| *c == '\n')
+        .count();
+
+      let line_count = block.get(0).unwrap().as_str().split('\n').count();
+
+      let body = block.get(2).unwrap();
+      let text = body.as_str();
+
+      // TODO(caspervonb) generate an inline source map
+      let mut file_source = String::new();
+      for line in lines_regex.captures_iter(&text) {
+        let text = line.get(1).unwrap();
+        file_source.push_str(&format!("{}\n", text.as_str()));
+      }
+
+      file_source.push_str("export {};");
+
+      let file_specifier = deno_core::resolve_url_or_path(&format!(
+        "{}${}-{}{}",
+        location.filename,
+        location.line + line_offset,
+        location.line + line_offset + line_count,
+        file_media_type.as_ts_extension(),
+      ))
+      .unwrap();
+
+      Some(File {
+        local: file_specifier.to_file_path().unwrap(),
+        maybe_types: None,
+        media_type: file_media_type,
+        source: file_source,
+        specifier: file_specifier,
+      })
+    })
+    .collect();
+
+  Ok(files)
+}
+
+fn extract_files_from_source_comments(
+  specifier: &ModuleSpecifier,
+  source: &str,
+  media_type: &MediaType,
+) -> Result<Vec<File>, AnyError> {
+  let parsed_module = ast::parse(&specifier.as_str(), &source, &media_type)?;
+  let mut comments = parsed_module.get_comments();
+  comments
+    .sort_by_key(|comment| parsed_module.get_location(&comment.span).line);
+
+  let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
+  let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
+
+  let files = comments
+    .iter()
+    .filter(|comment| {
+      if comment.kind != CommentKind::Block || !comment.text.starts_with('*') {
+        return false;
+      }
+
+      true
+    })
+    .flat_map(|comment| {
+      let location = parsed_module.get_location(&comment.span);
+
+      extract_files_from_regex_blocks(
+        &location,
+        &comment.text,
+        &media_type,
+        &blocks_regex,
+        &lines_regex,
+      )
+    })
+    .flatten()
+    .collect();
+
+  Ok(files)
+}
+
+fn extract_files_from_fenced_blocks(
+  specifier: &ModuleSpecifier,
+  source: &str,
+  media_type: &MediaType,
+) -> Result<Vec<File>, AnyError> {
+  let location = Location {
+    filename: specifier.to_string(),
+    line: 1,
+    col: 0,
+  };
+
+  let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
+  let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
+
+  extract_files_from_regex_blocks(
+    &location,
+    &source,
+    &media_type,
+    &blocks_regex,
+    &lines_regex,
+  )
+}
+
+async fn fetch_inline_files(
+  program_state: Arc<ProgramState>,
+  specifiers: Vec<ModuleSpecifier>,
+) -> Result<Vec<File>, AnyError> {
+  let mut files = Vec::new();
+  for specifier in specifiers {
+    let mut fetch_permissions = Permissions::allow_all();
+    let file = program_state
+      .file_fetcher
+      .fetch(&specifier, &mut fetch_permissions)
+      .await?;
+
+    let inline_files = if file.media_type == MediaType::Unknown {
+      extract_files_from_fenced_blocks(
+        &file.specifier,
+        &file.source,
+        &file.media_type,
+      )
+    } else {
+      extract_files_from_source_comments(
+        &file.specifier,
+        &file.source,
+        &file.media_type,
+      )
+    };
+
+    files.extend(inline_files?);
+  }
+
+  Ok(files)
+}
+
 /// Runs tests.
 ///
-/// Returns a boolean indicating whether the tests failed.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_tests(
   program_state: Arc<ProgramState>,
@@ -335,7 +529,11 @@ pub async fn run_tests(
   filter: Option<String>,
   shuffle: Option<u64>,
   concurrent_jobs: usize,
-) -> Result<bool, AnyError> {
+) -> Result<(), AnyError> {
+  if !allow_none && doc_modules.is_empty() && test_modules.is_empty() {
+    return Err(generic_error("No test modules found"));
+  }
+
   let test_modules = if let Some(seed) = shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut test_modules = test_modules.clone();
@@ -347,89 +545,22 @@ pub async fn run_tests(
   };
 
   if !doc_modules.is_empty() {
-    let mut test_programs = Vec::new();
+    let files = fetch_inline_files(program_state.clone(), doc_modules).await?;
+    let specifiers = files.iter().map(|file| file.specifier.clone()).collect();
 
-    let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
-    let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
-
-    for specifier in &doc_modules {
-      let mut fetch_permissions = Permissions::allow_all();
-      let file = program_state
-        .file_fetcher
-        .fetch(&specifier, &mut fetch_permissions)
-        .await?;
-
-      let parsed_module =
-        ast::parse(&file.specifier.as_str(), &file.source, &file.media_type)?;
-
-      let mut comments = parsed_module.get_comments();
-      comments.sort_by_key(|comment| {
-        let location = parsed_module.get_location(&comment.span);
-        location.line
-      });
-
-      for comment in comments {
-        if comment.kind != CommentKind::Block || !comment.text.starts_with('*')
-        {
-          continue;
-        }
-
-        for block in blocks_regex.captures_iter(&comment.text) {
-          let body = block.get(2).unwrap();
-          let text = body.as_str();
-
-          // TODO(caspervonb) generate an inline source map
-          let mut source = String::new();
-          for line in lines_regex.captures_iter(&text) {
-            let text = line.get(1).unwrap();
-            source.push_str(&format!("{}\n", text.as_str()));
-          }
-
-          source.push_str("export {};");
-
-          let element = block.get(0).unwrap();
-          let span = comment
-            .span
-            .from_inner_byte_pos(element.start(), element.end());
-          let location = parsed_module.get_location(&span);
-
-          let specifier = deno_core::resolve_url_or_path(&format!(
-            "{}${}-{}",
-            location.filename,
-            location.line,
-            location.line + element.as_str().split('\n').count(),
-          ))?;
-
-          let file = File {
-            local: specifier.to_file_path().unwrap(),
-            maybe_types: None,
-            media_type: MediaType::TypeScript, // media_type.clone(),
-            source: source.clone(),
-            specifier: specifier.clone(),
-          };
-
-          program_state.file_fetcher.insert_cached(file.clone());
-          test_programs.push(file.specifier.clone());
-        }
-      }
+    for file in files {
+      program_state.file_fetcher.insert_cached(file);
     }
 
     program_state
       .prepare_module_graph(
-        test_programs.clone(),
+        specifiers,
         lib.clone(),
         Permissions::allow_all(),
         permissions.clone(),
         program_state.maybe_import_map.clone(),
       )
       .await?;
-  } else if test_modules.is_empty() {
-    println!("No matching test modules found");
-    if !allow_none {
-      std::process::exit(1);
-    }
-
-    return Ok(false);
   }
 
   program_state
@@ -443,37 +574,16 @@ pub async fn run_tests(
     .await?;
 
   if no_run {
-    return Ok(false);
+    return Ok(());
   }
-
-  // Because scripts, and therefore worker.execute cannot detect unresolved promises at the moment
-  // we generate a module for the actual test execution.
-  let test_options = json!({
-      "disableLog": quiet,
-      "filter": filter,
-      "shuffle": shuffle,
-  });
-
-  let test_module = deno_core::resolve_path("$deno$test.js")?;
-  let test_source =
-    format!("await Deno[Deno.internal].runTests({});", test_options);
-  let test_file = File {
-    local: test_module.to_file_path().unwrap(),
-    maybe_types: None,
-    media_type: MediaType::JavaScript,
-    source: test_source.clone(),
-    specifier: test_module.clone(),
-  };
-
-  program_state.file_fetcher.insert_cached(test_file);
 
   let (sender, receiver) = channel::<TestEvent>();
 
   let join_handles = test_modules.iter().map(move |main_module| {
     let program_state = program_state.clone();
     let main_module = main_module.clone();
-    let test_module = test_module.clone();
     let permissions = permissions.clone();
+    let filter = filter.clone();
     let sender = sender.clone();
 
     tokio::task::spawn_blocking(move || {
@@ -481,8 +591,10 @@ pub async fn run_tests(
         let future = run_test_file(
           program_state,
           main_module,
-          test_module,
           permissions,
+          quiet,
+          filter,
+          shuffle,
           sender,
         );
 
@@ -493,7 +605,7 @@ pub async fn run_tests(
     })
   });
 
-  let join_futures = stream::iter(join_handles)
+  let join_stream = stream::iter(join_handles)
     .buffer_unordered(concurrent_jobs)
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
@@ -552,17 +664,20 @@ pub async fn run_tests(
       reporter.report_summary(&summary, &elapsed);
 
       if used_only {
-        println!(
-          "{} because the \"only\" option was used\n",
-          colors::red("FAILED")
-        );
+        return Err(generic_error(
+          "Test failed because the \"only\" option was used",
+        ));
       }
 
-      used_only || summary.failed > 0
+      if summary.failed > 0 {
+        return Err(generic_error("Test failed"));
+      }
+
+      Ok(())
     })
   };
 
-  let (result, join_results) = future::join(handler, join_futures).await;
+  let (join_results, result) = future::join(join_stream, handler).await;
 
   let mut join_errors = join_results.into_iter().filter_map(|join_result| {
     join_result
@@ -572,10 +687,22 @@ pub async fn run_tests(
   });
 
   if let Some(e) = join_errors.next() {
-    Err(e)
-  } else {
-    Ok(result.unwrap_or(false))
+    return Err(e);
   }
+
+  match result {
+    Ok(result) => {
+      if let Some(err) = result.err() {
+        return Err(err);
+      }
+    }
+
+    Err(err) => {
+      return Err(err.into());
+    }
+  }
+
+  Ok(())
 }
 
 #[cfg(test)]

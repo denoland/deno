@@ -301,6 +301,7 @@ impl WebWorker {
         options.user_agent.clone(),
         options.ca_data.clone(),
         None,
+        None,
       ),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
@@ -332,7 +333,10 @@ impl WebWorker {
       vec![
         ops::fs_events::init(),
         ops::fs::init(),
-        deno_net::init::<Permissions>(options.unstable),
+        deno_net::init::<Permissions>(
+          options.ca_data.clone(),
+          options.unstable,
+        ),
         ops::os::init(),
         ops::permissions::init(),
         ops::plugin::init(),

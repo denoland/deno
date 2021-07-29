@@ -729,7 +729,7 @@ Deno.test({
     await result;
 
     assert(worker);
-    const response = await fetch("http://localhost:4500");
+    const response = await fetch("http://localhost:4506");
     assert(await response.arrayBuffer());
     worker.terminate();
   },

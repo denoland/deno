@@ -28,7 +28,10 @@
     PromiseReject,
     queueMicrotask,
     RangeError,
+    Symbol,
     SymbolAsyncIterator,
+    SymbolFor,
+    SymbolToStringTag,
     TypeError,
     Uint8Array,
     WeakMap,
@@ -198,7 +201,7 @@
   function transferArrayBuffer(O) {
     assert(!isDetachedBuffer(O));
     const transferredIshVersion = O.slice(0);
-    Object.defineProperty(O, "byteLength", {
+    ObjectDefineProperty(O, "byteLength", {
       get() {
         return 0;
       },
@@ -3018,7 +3021,7 @@
       return WeakMapPrototypeGet(byteSizeFunctionWeakMap, this[_globalObject]);
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof ByteLengthQueuingStrategy,
@@ -3029,7 +3032,7 @@
       }));
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "ByteLengthQueuingStrategy";
     }
   }
@@ -3074,7 +3077,7 @@
       return WeakMapPrototypeGet(countSizeFunctionWeakMap, this[_globalObject]);
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof CountQueuingStrategy,
@@ -3085,7 +3088,7 @@
       }));
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "CountQueuingStrategy";
     }
   }
@@ -3333,11 +3336,11 @@
       return iterator;
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect({ locked: this.locked })}`;
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "ReadableStream";
     }
   }
@@ -3453,11 +3456,11 @@
       return readableStreamReaderGenericCancel(this, reason);
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect({ closed: this.closed })}`;
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "ReadableStreamDefaultReader";
     }
   }
@@ -3571,7 +3574,7 @@
       readableByteStreamControllerError(this, e);
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof ReadableByteStreamController,
@@ -3579,7 +3582,7 @@
       }));
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "ReadableByteStreamController";
     }
 
@@ -3696,7 +3699,7 @@
       readableStreamDefaultControllerError(this, e);
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof ReadableStreamDefaultController,
@@ -3704,7 +3707,7 @@
       }));
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "ReadableStreamDefaultController";
     }
 
@@ -3854,13 +3857,13 @@
       return this[_writable];
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({ readable: this.readable, writable: this.writable })
       }`;
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "TransformStream";
     }
   }
@@ -3919,7 +3922,7 @@
       transformStreamDefaultControllerTerminate(this);
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof TransformStreamDefaultController,
@@ -3927,7 +3930,7 @@
       }));
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "TransformStreamDefaultController";
     }
   }
@@ -4057,11 +4060,11 @@
       return acquireWritableStreamDefaultWriter(this);
     }
 
-    [Symbol.for("Deno.privateCustomInspect")](inspect) {
+    [SymbolFor("Deno.privateCustomInspect")](inspect) {
       return `${this.constructor.name} ${inspect({ locked: this.locked })}`;
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "WritableStream";
     }
   }
@@ -4198,7 +4201,7 @@
       return writableStreamDefaultWriterWrite(this, chunk);
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof WritableStreamDefaultWriter,
@@ -4210,7 +4213,7 @@
       }));
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "WritableStreamDefaultWriter";
     }
   }
@@ -4258,7 +4261,7 @@
       writableStreamDefaultControllerError(this, e);
     }
 
-    [Symbol.for("Deno.customInspect")](inspect) {
+    [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
         evaluate: this instanceof WritableStreamDefaultController,
@@ -4266,7 +4269,7 @@
       }));
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "WritableStreamDefaultController";
     }
 

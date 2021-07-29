@@ -133,7 +133,13 @@ fn handle_ws_request(
 
     if resp.is_ok() {
       tokio::task::spawn_local(async move {
-        let upgraded = hyper::upgrade::on(req).await.unwrap();
+        let upgrade_result = hyper::upgrade::on(req).await;
+        let upgraded = if let Ok(u) = upgrade_result {
+          u
+        } else {
+          eprintln!("Inspector server failed to upgrade to WS connection");
+          return;
+        };
         let websocket =
           deno_websocket::tokio_tungstenite::WebSocketStream::from_raw_socket(
             upgraded,
