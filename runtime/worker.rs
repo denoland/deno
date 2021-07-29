@@ -72,6 +72,7 @@ pub struct WorkerOptions {
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+  pub cpu_count: usize,
 }
 
 impl MainWorker {
@@ -178,6 +179,7 @@ impl MainWorker {
       "unstableFlag": options.unstable,
       "v8Version": deno_core::v8_version(),
       "location": options.location,
+      "cpuCount": options.cpu_count,
     });
 
     let script = format!(
@@ -309,6 +311,7 @@ mod tests {
       blob_store: BlobStore::default(),
       broadcast_channel: InMemoryBroadcastChannel::default(),
       shared_array_buffer_store: None,
+      cpu_count: 1,
     };
 
     MainWorker::from_options(main_module, permissions, &options)

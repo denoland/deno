@@ -249,6 +249,7 @@ pub async fn run(
     blob_store,
     broadcast_channel,
     shared_array_buffer_store: None,
+    cpu_count: num_cpus::get(),
   };
   let mut worker =
     MainWorker::from_options(main_module.clone(), permissions, &options);
