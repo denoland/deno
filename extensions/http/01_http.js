@@ -368,11 +368,11 @@
 
     const response = fromInnerResponse(r, "immutable");
 
-    const websocket = webidl.createBranded(WebSocket);
-    setEventTargetData(websocket);
-    response[_ws] = websocket;
+    const socket = webidl.createBranded(WebSocket);
+    setEventTargetData(socket);
+    response[_ws] = socket;
 
-    return { response, websocket };
+    return { response, socket };
   }
 
   window.__bootstrap.http = {

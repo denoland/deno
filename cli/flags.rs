@@ -139,6 +139,9 @@ pub struct Flags {
   pub allow_write: Option<Vec<PathBuf>>,
   pub ca_file: Option<String>,
   pub cache_blocklist: Vec<String>,
+  /// This is not exposed as an option in the CLI, it is used internally when
+  /// the language server is configured with an explicit cache option.
+  pub cache_path: Option<PathBuf>,
   pub cached_only: bool,
   pub config_path: Option<String>,
   pub coverage_dir: Option<String>,
@@ -3539,6 +3542,30 @@ mod tests {
       }
     );
   }
+
+  #[test]
+  fn test_shuffle() {
+    let r = flags_from_vec(svec!["deno", "test", "--shuffle=1"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: None,
+          allow_none: false,
+          quiet: false,
+          shuffle: Some(1),
+          include: None,
+          concurrent_jobs: 1,
+        },
+        watch: false,
+        ..Flags::default()
+      }
+    );
+  }
+
   #[test]
   fn test_watch() {
     let r = flags_from_vec(svec!["deno", "test", "--watch"]);

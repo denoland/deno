@@ -1032,7 +1032,7 @@ async fn test_command(
         test_runner::collect_test_module_specifiers(
           include.clone(),
           &cwd,
-          fs_util::is_supported_ext,
+          fs_util::is_supported_ext_test,
         )
       } else {
         test_runner::collect_test_module_specifiers(
@@ -1174,7 +1174,7 @@ async fn test_command(
           test_runner::collect_test_module_specifiers(
             include.clone(),
             &cwd,
-            fs_util::is_supported_ext,
+            fs_util::is_supported_ext_test,
           )?
         } else {
           Vec::new()
@@ -1224,7 +1224,7 @@ async fn test_command(
       test_runner::collect_test_module_specifiers(
         include.clone(),
         &cwd,
-        fs_util::is_supported_ext,
+        fs_util::is_supported_ext_test,
       )?
     } else {
       Vec::new()
