@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::AnyError;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Map;
@@ -179,6 +180,32 @@ impl ImportMap {
 
     // "bare" specifier
     Some(specifier_key.to_string())
+  }
+
+  fn append_specifier_to_base(
+    base: &Url,
+    specifier: &str,
+  ) -> Result<Url, AnyError> {
+    let mut base = base.clone();
+    let is_relative_or_absolute_specifier = specifier.starts_with("../")
+      || specifier.starts_with("./")
+      || specifier.starts_with('/');
+
+    // The specifier could be a windows path such as "C:/a/test.ts" in which
+    // case we don't want to use `join` because it will make the specifier
+    // the url since it contains what looks to be a uri scheme. To work around
+    // this, we append the specifier to the path segments of the base url when
+    // the specifier is not relative or absolute.
+    if !is_relative_or_absolute_specifier && base.path_segments_mut().is_ok() {
+      {
+        let mut segments = base.path_segments_mut().unwrap();
+        segments.pop_if_empty();
+        segments.extend(specifier.split('/'));
+      }
+      Ok(base)
+    } else {
+      Ok(base.join(specifier)?)
+    }
   }
 
   /// Convert provided JSON map to valid SpecifierMap.
@@ -380,21 +407,22 @@ impl ImportMap {
         }
       }
 
-      if maybe_address.is_none() {
-        return Err(ImportMapError::Other(format!(
+      let resolution_result = maybe_address.as_ref().ok_or_else(|| {
+        ImportMapError::Other(format!(
           "Blocked by null entry for \"{:?}\"",
           specifier_key
-        )));
-      }
-
-      let resolution_result = maybe_address.clone().unwrap();
+        ))
+      })?;
 
       // Enforced by parsing.
       assert!(resolution_result.to_string().ends_with('/'));
 
       let after_prefix = &normalized_specifier[specifier_key.len()..];
 
-      let url = match resolution_result.join(after_prefix) {
+      let url = match ImportMap::append_specifier_to_base(
+        resolution_result,
+        after_prefix,
+      ) {
         Ok(url) => url,
         Err(_) => {
           return Err(ImportMapError::Other(format!(
@@ -744,5 +772,28 @@ mod tests {
     }"#;
     let result = ImportMap::from_json("https://deno.land", json_map);
     assert!(result.is_ok());
+  }
+
+  #[test]
+  fn mapped_windows_file_specifier() {
+    // from issue #11530
+    let mut specifiers = SpecifierMap::new();
+    specifiers.insert(
+      "file:///".to_string(),
+      Some(Url::parse("http://localhost/").unwrap()),
+    );
+
+    let resolved_specifier = ImportMap::resolve_imports_match(
+      &specifiers,
+      "file:///C:/folder/file.ts",
+      None,
+    )
+    .unwrap()
+    .unwrap();
+
+    assert_eq!(
+      resolved_specifier.as_str(),
+      "http://localhost/C:/folder/file.ts"
+    );
   }
 }
