@@ -457,7 +457,7 @@ impl WebWorker {
 
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
-      maybe_result = receiver.next() => {
+      maybe_result = &mut receiver => {
         debug!("received worker module evaluate {:#?}", maybe_result);
         // If `None` is returned it means that runtime was destroyed before
         // evaluation was complete. This can happen in Web Worker when `self.close()`
@@ -470,7 +470,7 @@ impl WebWorker {
            return Ok(());
         }
         event_loop_result?;
-        let maybe_result = receiver.next().await;
+        let maybe_result = receiver.await;
         maybe_result.unwrap_or(Ok(()))
       }
     }
