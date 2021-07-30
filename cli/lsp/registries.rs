@@ -183,13 +183,13 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
         .collect()
     });
 
-    
-
     for key_name in &key_names {
       if !registry
-      .variables
-      .iter()
-      .map(|var| var.key.to_owned()).any(|x| x == *key_name) {
+        .variables
+        .iter()
+        .map(|var| var.key.to_owned())
+        .any(|x| x == *key_name)
+      {
         return Err(anyhow!("Invalid registry configuration. Registry with schema \"{}\" is missing variable declaration for key \"{}\".", registry.schema, key_name));
       }
     }

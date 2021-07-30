@@ -115,9 +115,10 @@ impl ProgramState {
         None => None,
         Some(import_map_url) => {
           let import_map_specifier =
-            deno_core::resolve_url_or_path(import_map_url).context(
-              format!("Bad URL (\"{}\") for import map.", import_map_url),
-            )?;
+            deno_core::resolve_url_or_path(import_map_url).context(format!(
+              "Bad URL (\"{}\") for import map.",
+              import_map_url
+            ))?;
           let file = file_fetcher
             .fetch(&import_map_specifier, &mut Permissions::allow_all())
             .await
