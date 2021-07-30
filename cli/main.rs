@@ -1088,7 +1088,7 @@ async fn test_command(
                   output.insert(specifier);
 
                   get_dependencies(
-                    &graph,
+                    graph,
                     graph.get_specifier(specifier)?,
                     output,
                   )?;
@@ -1099,7 +1099,7 @@ async fn test_command(
                   output.insert(specifier);
 
                   get_dependencies(
-                    &graph,
+                    graph,
                     graph.get_specifier(specifier)?,
                     output,
                   )?;

@@ -268,7 +268,7 @@ impl ImportMap {
     }
 
     // Sort in longest and alphabetical order.
-    normalized_map.sort_by(|k1, _v1, k2, _v2| match k1.cmp(&k2) {
+    normalized_map.sort_by(|k1, _v1, k2, _v2| match k1.cmp(k2) {
       Ordering::Greater => Ordering::Less,
       Ordering::Less => Ordering::Greater,
       // JSON guarantees that there can't be duplicate keys
@@ -324,7 +324,7 @@ impl ImportMap {
     }
 
     // Sort in longest and alphabetical order.
-    normalized_map.sort_by(|k1, _v1, k2, _v2| match k1.cmp(&k2) {
+    normalized_map.sort_by(|k1, _v1, k2, _v2| match k1.cmp(k2) {
       Ordering::Greater => Ordering::Less,
       Ordering::Less => Ordering::Greater,
       // JSON guarantees that there can't be duplicate keys
@@ -691,7 +691,7 @@ mod tests {
             ImportMap::from_json(&test.import_map_base_url, &test.import_map)
               .unwrap();
           let maybe_resolved = import_map
-            .resolve(&given_specifier, &base_url)
+            .resolve(given_specifier, base_url)
             .ok()
             .map(|url| url.to_string());
           assert_eq!(expected_specifier, &maybe_resolved, "{}", test.name);

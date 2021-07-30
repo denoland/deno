@@ -48,24 +48,19 @@ declare namespace __bootstrap {
    */
   declare namespace primordials {
     type UncurryThis<T extends (this: unknown, ...args: unknown[]) => unknown> =
-      (
-        self: ThisParameterType<T>,
-        ...args: Parameters<T>
-      ) => ReturnType<T>;
+      (self: ThisParameterType<T>, ...args: Parameters<T>) => ReturnType<T>;
     type UncurryThisStaticApply<
-      T extends (this: unknown, ...args: unknown[]) => unknown,
+      T extends (this: unknown, ...args: unknown[]) => unknown
     > = (self: ThisParameterType<T>, args: Parameters<T>) => ReturnType<T>;
     type StaticApply<T extends (this: unknown, ...args: unknown[]) => unknown> =
-      (
-        args: Parameters<T>,
-      ) => ReturnType<T>;
+      (args: Parameters<T>) => ReturnType<T>;
 
-    export function uncurryThis<
-      T extends (...args: unknown[]) => unknown,
-    >(fn: T): (self: ThisType<T>, ...args: Parameters<T>) => ReturnType<T>;
+    export function uncurryThis<T extends (...args: unknown[]) => unknown>(
+      fn: T
+    ): (self: ThisType<T>, ...args: Parameters<T>) => ReturnType<T>;
     export function makeSafe<T extends NewableFunction>(
       unsafe: NewableFunction,
-      safe: T,
+      safe: T
     ): T;
 
     export const isNaN: typeof globalThis.isNaN;
@@ -124,8 +119,7 @@ declare namespace __bootstrap {
     export const ReflectApply: typeof Reflect.apply;
     export const ReflectConstruct: typeof Reflect.construct;
     export const ReflectGet: typeof Reflect.get;
-    export const ReflectGetOwnPropertyDescriptor:
-      typeof Reflect.getOwnPropertyDescriptor;
+    export const ReflectGetOwnPropertyDescriptor: typeof Reflect.getOwnPropertyDescriptor;
     export const ReflectGetPrototypeOf: typeof Reflect.getPrototypeOf;
     export const ReflectHas: typeof Reflect.has;
     export const ReflectIsExtensible: typeof Reflect.isExtensible;
@@ -244,14 +238,12 @@ declare namespace __bootstrap {
     export const BigInt64ArrayLength: typeof BigInt64Array.length;
     export const BigInt64ArrayName: typeof BigInt64Array.name;
     export const BigInt64ArrayPrototype: typeof BigInt64Array.prototype;
-    export const BigInt64ArrayBYTES_PER_ELEMENT:
-      typeof BigInt64Array.BYTES_PER_ELEMENT;
+    export const BigInt64ArrayBYTES_PER_ELEMENT: typeof BigInt64Array.BYTES_PER_ELEMENT;
     export const BigUint64Array: typeof globalThis.BigUint64Array;
     export const BigUint64ArrayLength: typeof BigUint64Array.length;
     export const BigUint64ArrayName: typeof BigUint64Array.name;
     export const BigUint64ArrayPrototype: typeof BigUint64Array.prototype;
-    export const BigUint64ArrayBYTES_PER_ELEMENT:
-      typeof BigUint64Array.BYTES_PER_ELEMENT;
+    export const BigUint64ArrayBYTES_PER_ELEMENT: typeof BigUint64Array.BYTES_PER_ELEMENT;
     export const Boolean: typeof globalThis.Boolean;
     export const BooleanLength: typeof Boolean.length;
     export const BooleanName: typeof Boolean.name;
@@ -484,14 +476,12 @@ declare namespace __bootstrap {
     export const Float32ArrayLength: typeof Float32Array.length;
     export const Float32ArrayName: typeof Float32Array.name;
     export const Float32ArrayPrototype: typeof Float32Array.prototype;
-    export const Float32ArrayBYTES_PER_ELEMENT:
-      typeof Float32Array.BYTES_PER_ELEMENT;
+    export const Float32ArrayBYTES_PER_ELEMENT: typeof Float32Array.BYTES_PER_ELEMENT;
     export const Float64Array: typeof globalThis.Float64Array;
     export const Float64ArrayLength: typeof Float64Array.length;
     export const Float64ArrayName: typeof Float64Array.name;
     export const Float64ArrayPrototype: typeof Float64Array.prototype;
-    export const Float64ArrayBYTES_PER_ELEMENT:
-      typeof Float64Array.BYTES_PER_ELEMENT;
+    export const Float64ArrayBYTES_PER_ELEMENT: typeof Float64Array.BYTES_PER_ELEMENT;
     export const Function: typeof globalThis.Function;
     export const FunctionLength: typeof Function.length;
     export const FunctionName: typeof Function.name;
@@ -512,14 +502,12 @@ declare namespace __bootstrap {
     export const Int16ArrayLength: typeof Int16Array.length;
     export const Int16ArrayName: typeof Int16Array.name;
     export const Int16ArrayPrototype: typeof Int16Array.prototype;
-    export const Int16ArrayBYTES_PER_ELEMENT:
-      typeof Int16Array.BYTES_PER_ELEMENT;
+    export const Int16ArrayBYTES_PER_ELEMENT: typeof Int16Array.BYTES_PER_ELEMENT;
     export const Int32Array: typeof globalThis.Int32Array;
     export const Int32ArrayLength: typeof Int32Array.length;
     export const Int32ArrayName: typeof Int32Array.name;
     export const Int32ArrayPrototype: typeof Int32Array.prototype;
-    export const Int32ArrayBYTES_PER_ELEMENT:
-      typeof Int32Array.BYTES_PER_ELEMENT;
+    export const Int32ArrayBYTES_PER_ELEMENT: typeof Int32Array.BYTES_PER_ELEMENT;
     export const Int8Array: typeof globalThis.Int8Array;
     export const Int8ArrayLength: typeof Int8Array.length;
     export const Int8ArrayName: typeof Int8Array.name;
@@ -579,13 +567,10 @@ declare namespace __bootstrap {
     export const ObjectName: typeof Object.name;
     export const ObjectPrototype: typeof Object.prototype;
     export const ObjectAssign: typeof Object.assign;
-    export const ObjectGetOwnPropertyDescriptor:
-      typeof Object.getOwnPropertyDescriptor;
-    export const ObjectGetOwnPropertyDescriptors:
-      typeof Object.getOwnPropertyDescriptors;
+    export const ObjectGetOwnPropertyDescriptor: typeof Object.getOwnPropertyDescriptor;
+    export const ObjectGetOwnPropertyDescriptors: typeof Object.getOwnPropertyDescriptors;
     export const ObjectGetOwnPropertyNames: typeof Object.getOwnPropertyNames;
-    export const ObjectGetOwnPropertySymbols:
-      typeof Object.getOwnPropertySymbols;
+    export const ObjectGetOwnPropertySymbols: typeof Object.getOwnPropertySymbols;
     export const ObjectIs: typeof Object.is;
     export const ObjectPreventExtensions: typeof Object.preventExtensions;
     export const ObjectSeal: typeof Object.seal;
@@ -836,7 +821,7 @@ declare namespace __bootstrap {
     export const TypeErrorPrototype: typeof TypeError.prototype;
     export const TypedArrayFrom: (
       constructor: Uint8ArrayConstructor,
-      arrayLike: ArrayLike<number>,
+      arrayLike: ArrayLike<number>
     ) => Uint8Array;
     export const TypedArrayPrototypeCopyWithin: UncurryThis<
       typeof Uint8Array.prototype.copyWithin
@@ -912,26 +897,22 @@ declare namespace __bootstrap {
     export const Uint16ArrayLength: typeof Uint16Array.length;
     export const Uint16ArrayName: typeof Uint16Array.name;
     export const Uint16ArrayPrototype: typeof Uint16Array.prototype;
-    export const Uint16ArrayBYTES_PER_ELEMENT:
-      typeof Uint16Array.BYTES_PER_ELEMENT;
+    export const Uint16ArrayBYTES_PER_ELEMENT: typeof Uint16Array.BYTES_PER_ELEMENT;
     export const Uint32Array: typeof globalThis.Uint32Array;
     export const Uint32ArrayLength: typeof Uint32Array.length;
     export const Uint32ArrayName: typeof Uint32Array.name;
     export const Uint32ArrayPrototype: typeof Uint32Array.prototype;
-    export const Uint32ArrayBYTES_PER_ELEMENT:
-      typeof Uint32Array.BYTES_PER_ELEMENT;
+    export const Uint32ArrayBYTES_PER_ELEMENT: typeof Uint32Array.BYTES_PER_ELEMENT;
     export const Uint8Array: typeof globalThis.Uint8Array;
     export const Uint8ArrayLength: typeof Uint8Array.length;
     export const Uint8ArrayName: typeof Uint8Array.name;
     export const Uint8ArrayPrototype: typeof Uint8Array.prototype;
-    export const Uint8ArrayBYTES_PER_ELEMENT:
-      typeof Uint8Array.BYTES_PER_ELEMENT;
+    export const Uint8ArrayBYTES_PER_ELEMENT: typeof Uint8Array.BYTES_PER_ELEMENT;
     export const Uint8ClampedArray: typeof globalThis.Uint8ClampedArray;
     export const Uint8ClampedArrayLength: typeof Uint8ClampedArray.length;
     export const Uint8ClampedArrayName: typeof Uint8ClampedArray.name;
     export const Uint8ClampedArrayPrototype: typeof Uint8ClampedArray.prototype;
-    export const Uint8ClampedArrayBYTES_PER_ELEMENT:
-      typeof Uint8ClampedArray.BYTES_PER_ELEMENT;
+    export const Uint8ClampedArrayBYTES_PER_ELEMENT: typeof Uint8ClampedArray.BYTES_PER_ELEMENT;
     export const WeakMap: typeof globalThis.WeakMap;
     export const WeakMapLength: typeof WeakMap.length;
     export const WeakMapName: typeof WeakMap.name;

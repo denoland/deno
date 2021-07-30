@@ -115,7 +115,7 @@ impl ProgramState {
         None => None,
         Some(import_map_url) => {
           let import_map_specifier =
-            deno_core::resolve_url_or_path(&import_map_url).context(
+            deno_core::resolve_url_or_path(import_map_url).context(
               format!("Bad URL (\"{}\") for import map.", import_map_url),
             )?;
           let file = file_fetcher
@@ -369,11 +369,11 @@ impl ProgramState {
     let emit_path = self
       .dir
       .gen_cache
-      .get_cache_filename_with_extension(&url, "js")?;
+      .get_cache_filename_with_extension(url, "js")?;
     let emit_map_path = self
       .dir
       .gen_cache
-      .get_cache_filename_with_extension(&url, "js.map")?;
+      .get_cache_filename_with_extension(url, "js.map")?;
     if let Ok(code) = self.dir.gen_cache.get(&emit_path) {
       let maybe_map = if let Ok(map) = self.dir.gen_cache.get(&emit_map_path) {
         Some(map)
