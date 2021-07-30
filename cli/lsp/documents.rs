@@ -119,13 +119,13 @@ impl DocumentData {
     let mut line_index = if let Some(line_index) = &self.line_index {
       line_index.clone()
     } else {
-      LineIndex::new(&content)
+      LineIndex::new(content)
     };
     let mut index_valid = IndexValid::All;
     for change in content_changes {
       if let Some(range) = change.range {
         if !index_valid.covers(range.start.line) {
-          line_index = LineIndex::new(&content);
+          line_index = LineIndex::new(content);
         }
         index_valid = IndexValid::UpTo(range.start.line);
         let range = line_index.get_text_range(range)?;
@@ -139,7 +139,7 @@ impl DocumentData {
     self.line_index = if index_valid == IndexValid::All {
       Some(line_index)
     } else {
-      Some(LineIndex::new(&content))
+      Some(LineIndex::new(content))
     };
     self.maybe_navigation_tree = None;
     Ok(())

@@ -327,7 +327,7 @@ impl SpecifierHandler for FetchHandler {
 
       let mut maybe_map_path = None;
       let map_path =
-        disk_cache.get_cache_filename_with_extension(&url, "js.map");
+        disk_cache.get_cache_filename_with_extension(url, "js.map");
       let maybe_map = if let Some(map_path) = map_path {
         if let Ok(map) = disk_cache.get(&map_path) {
           maybe_map_path = Some(disk_cache.location.join(map_path));
@@ -340,7 +340,7 @@ impl SpecifierHandler for FetchHandler {
       };
       let mut maybe_emit = None;
       let mut maybe_emit_path = None;
-      let emit_path = disk_cache.get_cache_filename_with_extension(&url, "js");
+      let emit_path = disk_cache.get_cache_filename_with_extension(url, "js");
       if let Some(emit_path) = emit_path {
         if let Ok(code) = disk_cache.get(&emit_path) {
           maybe_emit =

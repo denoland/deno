@@ -79,7 +79,7 @@ jobs:
       - name: Install Rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.53.0
+          rust-version: 1.54.0
 
       - name: Install clippy and rustfmt
         if: matrix.kind == 'lint'
@@ -253,7 +253,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: e-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: f-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -268,7 +268,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: |
-            d-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+            f-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
@@ -284,7 +284,7 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: |
-            d-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+            f-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
 
       # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)

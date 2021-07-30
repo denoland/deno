@@ -81,7 +81,7 @@ pub async fn lint_files(
           sort_diagnostics(&mut file_diagnostics);
           for d in file_diagnostics.iter() {
             has_error.store(true, Ordering::Relaxed);
-            reporter.visit_diagnostic(&d, source.split('\n').collect());
+            reporter.visit_diagnostic(d, source.split('\n').collect());
           }
         }
         Err(err) => {

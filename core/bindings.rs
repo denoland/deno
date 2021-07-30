@@ -690,7 +690,7 @@ fn decode(
   // - https://encoding.spec.whatwg.org/#dom-textdecoder-decode
   // - https://github.com/denoland/deno/issues/6649
   // - https://github.com/v8/v8/blob/d68fb4733e39525f9ff0a9222107c02c28096e2a/include/v8.h#L3277-L3278
-  match v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal) {
+  match v8::String::new_from_utf8(scope, buf, v8::NewStringType::Normal) {
     Some(text) => rv.set(text.into()),
     None => {
       let msg = v8::String::new(scope, "string too long").unwrap();
