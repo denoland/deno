@@ -3,12 +3,12 @@
 [package]
 name = "deno_net"
 version = "0.4.0"
-edition = "2018"
-description = "Networking for Deno"
 authors = ["the Deno authors"]
+edition = "2018"
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/denoland/deno"
+description = "Networking for Deno"
 
 [lib]
 path = "lib.rs"
@@ -16,12 +16,12 @@ path = "lib.rs"
 [dependencies]
 deno_core = { version = "0.95.0", path = "../../core" }
 
-log = "0.4.14"
 lazy_static = "1.4.0"
+log = "0.4.14"
 rustls = "0.19.0"
 serde = { version = "1.0.126", features = ["derive"] }
 tokio = { version = "1.8.1", features = ["full"] }
-webpki = "0.21.4"
-webpki-roots = "0.21.1"
 trust-dns-proto = "0.20.3"
 trust-dns-resolver = { version = "0.20.3", features = ["tokio-runtime", "serde-config"] }
+webpki = "0.21.4"
+webpki-roots = "0.21.1"
