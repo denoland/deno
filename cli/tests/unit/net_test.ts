@@ -423,7 +423,7 @@ unitTest(
 unitTest(
   { perms: { net: true } },
   async function netTcpListenCloseWhileIterating(): Promise<void> {
-    const listener = Deno.listen({ port: 8000 });
+    const listener = Deno.listen({ port: 8001 });
     const nextWhileClosing = listener[Symbol.asyncIterator]().next();
     listener.close();
     assertEquals(await nextWhileClosing, { value: undefined, done: true });
