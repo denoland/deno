@@ -101,6 +101,7 @@
     permissions: __bootstrap.permissions.permissions,
     Permissions: __bootstrap.permissions.Permissions,
     PermissionStatus: __bootstrap.permissions.PermissionStatus,
+    serveHttp: __bootstrap.http.serveHttp,
   };
 
   __bootstrap.denoNsUnstable = {
@@ -125,7 +126,6 @@
     listen: __bootstrap.netUnstable.listen,
     connect: __bootstrap.netUnstable.connect,
     listenDatagram: __bootstrap.netUnstable.listenDatagram,
-    serveHttp: __bootstrap.http.serveHttp,
     startTls: __bootstrap.tls.startTls,
     umask: __bootstrap.fs.umask,
     upgradeWebSocket: __bootstrap.http.upgradeWebSocket,

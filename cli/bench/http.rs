@@ -203,7 +203,6 @@ fn deno_http_native(deno_exe: &str) -> Result<HttpBenchmarkResult> {
       "run",
       "--allow-net",
       "--reload",
-      "--unstable",
       "cli/bench/deno_http_native.js",
       &server_addr(port),
     ],
