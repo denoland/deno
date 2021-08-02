@@ -3,12 +3,12 @@
 [package]
 name = "deno_crypto"
 version = "0.27.0"
-edition = "2018"
-description = "Web Cryptography API implementation for Deno"
 authors = ["the Deno authors"]
+edition = "2018"
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/denoland/deno"
+description = "Web Cryptography API implementation for Deno"
 
 [lib]
 path = "lib.rs"
@@ -16,13 +16,13 @@ path = "lib.rs"
 [dependencies]
 deno_core = { version = "0.95.0", path = "../../core" }
 deno_web = { version = "0.44.0", path = "../web" }
-tokio = { version = "1.8.1", features = ["full"] }
+lazy_static = "1.4.0"
+num-traits = "0.2.14"
 rand = "0.8.4"
 ring = { version = "0.16.20", features = ["std"] }
 rsa = "0.4.0" # TODO: remove "pem" feature when next release is on crates.io
+serde = { version = "1.0.126", features = ["derive"] }
 sha-1 = "0.9.6"
 sha2 = "0.9.5"
-serde = { version = "1.0.126", features = ["derive"] }
+tokio = { version = "1.8.1", features = ["full"] }
 uuid = { version = "0.8.2", features = ["v4"] }
-lazy_static = "1.4.0"
-num-traits = "0.2.14"

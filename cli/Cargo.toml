@@ -3,12 +3,12 @@
 [package]
 name = "deno"
 version = "1.12.2"
-license = "MIT"
 authors = ["the Deno authors"]
-edition = "2018"
-description = "Provides the deno executable"
-repository = "https://github.com/denoland/deno"
 default-run = "deno"
+edition = "2018"
+license = "MIT"
+repository = "https://github.com/denoland/deno"
+description = "Provides the deno executable"
 
 [[bin]]
 name = "deno"
@@ -62,7 +62,7 @@ fancy-regex = "0.5.0"
 filetime = "0.2.14"
 http = "0.2.4"
 # TODO(lucacasonato): unlock when https://github.com/tkaitchuck/aHash/issues/95 is resolved
-indexmap = { version = "=1.6.2", features = ["serde"] } 
+indexmap = { version = "=1.6.2", features = ["serde"] }
 jsonc-parser = { version = "0.17.0", features = ["serde"] }
 lazy_static = "1.4.0"
 libc = "0.2.98"
@@ -72,8 +72,8 @@ notify = "5.0.0-pre.10"
 num_cpus = "1.13.0"
 percent-encoding = "2.1.0"
 pin-project = "1.0.7"
+rand = { version = "0.8.4", features = ["small_rng"] }
 regex = "1.4.3"
-rand = { version = "0.8.4", features = [ "small_rng" ] }
 ring = "0.16.20"
 rustyline = { version = "8.2.0", default-features = false }
 rustyline-derive = "0.4.0"
@@ -102,8 +102,8 @@ chrono = "0.4.19"
 os_pipe = "0.9.2"
 test_util = { path = "../test_util" }
 tower-test = "0.4.0"
-trust-dns-server = "0.20.3"
 trust-dns-client = "0.20.3"
+trust-dns-server = "0.20.3"
 
 [target.'cfg(unix)'.dev-dependencies]
 exec = "0.3.1" # Used in test_raw_tty
