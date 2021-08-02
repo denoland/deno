@@ -291,7 +291,7 @@ pub fn parse_module(
   ast::parse_with_source_map(
     &specifier.to_string(),
     source,
-    &media_type,
+    media_type,
     source_map,
   )
 }
@@ -309,7 +309,7 @@ pub fn analyze_dependencies(
 
   // Parse leading comments for supported triple slash references.
   for comment in parsed_module.get_leading_comments().iter() {
-    if let Some((ts_reference, span)) = parse_ts_reference(&comment) {
+    if let Some((ts_reference, span)) = parse_ts_reference(comment) {
       let loc = parsed_module.source_map.lookup_char_pos(span.lo);
       match ts_reference {
         TypeScriptReference::Path(import) => {
@@ -364,7 +364,7 @@ pub fn analyze_dependencies(
     let maybe_resolved_type_dependency =
       // Check for `@deno-types` pragmas that affect the import
       if let Some(comment) = desc.leading_comments.last() {
-        parse_deno_types(&comment).as_ref().map(|(deno_types, span)| {
+        parse_deno_types(comment).as_ref().map(|(deno_types, span)| {
           (
             resolve_import(deno_types, specifier, maybe_import_map),
             deno_types.clone(),

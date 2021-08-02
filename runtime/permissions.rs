@@ -712,7 +712,7 @@ impl UnaryPermission<RunDescriptor> {
 
   pub fn request(&mut self, cmd: Option<&str>) -> PermissionState {
     if let Some(cmd) = cmd {
-      let state = self.query(Some(&cmd));
+      let state = self.query(Some(cmd));
       if state == PermissionState::Prompt {
         if permission_prompt(&format!("run access to \"{}\"", cmd)) {
           self.granted_list.retain(|cmd_| cmd_.0 != cmd);
@@ -819,7 +819,7 @@ impl Permissions {
       name: "read",
       description: "read the file system",
       global_state: global_state_from_option(state),
-      granted_list: resolve_read_allowlist(&state),
+      granted_list: resolve_read_allowlist(state),
       denied_list: Default::default(),
       prompt,
     }
@@ -833,7 +833,7 @@ impl Permissions {
       name: "write",
       description: "write to the file system",
       global_state: global_state_from_option(state),
-      granted_list: resolve_write_allowlist(&state),
+      granted_list: resolve_write_allowlist(state),
       denied_list: Default::default(),
       prompt,
     }
@@ -1469,15 +1469,15 @@ mod tests {
     #[rustfmt::skip]
     {
       assert_eq!(perms1.read.query(None), PermissionState::Granted);
-      assert_eq!(perms1.read.query(Some(&Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms1.read.query(Some(Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms2.read.query(None), PermissionState::Prompt);
-      assert_eq!(perms2.read.query(Some(&Path::new("/foo"))), PermissionState::Granted);
-      assert_eq!(perms2.read.query(Some(&Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms2.read.query(Some(Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms2.read.query(Some(Path::new("/foo/bar"))), PermissionState::Granted);
       assert_eq!(perms1.write.query(None), PermissionState::Granted);
-      assert_eq!(perms1.write.query(Some(&Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms1.write.query(Some(Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms2.write.query(None), PermissionState::Prompt);
-      assert_eq!(perms2.write.query(Some(&Path::new("/foo"))), PermissionState::Granted);
-      assert_eq!(perms2.write.query(Some(&Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms2.write.query(Some(Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms2.write.query(Some(Path::new("/foo/bar"))), PermissionState::Granted);
       assert_eq!(perms1.net.query::<&str>(None), PermissionState::Granted);
       assert_eq!(perms1.net.query(Some(&("127.0.0.1", None))), PermissionState::Granted);
       assert_eq!(perms2.net.query::<&str>(None), PermissionState::Prompt);
@@ -1504,13 +1504,13 @@ mod tests {
     {
       let _guard = PERMISSION_PROMPT_GUARD.lock();
       set_prompt_result(true);
-      assert_eq!(perms.read.request(Some(&Path::new("/foo"))), PermissionState::Granted);
+      assert_eq!(perms.read.request(Some(Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms.read.query(None), PermissionState::Prompt);
       set_prompt_result(false);
-      assert_eq!(perms.read.request(Some(&Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms.read.request(Some(Path::new("/foo/bar"))), PermissionState::Granted);
       set_prompt_result(false);
-      assert_eq!(perms.write.request(Some(&Path::new("/foo"))), PermissionState::Denied);
-      assert_eq!(perms.write.query(Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
+      assert_eq!(perms.write.request(Some(Path::new("/foo"))), PermissionState::Denied);
+      assert_eq!(perms.write.query(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
       set_prompt_result(true);
       assert_eq!(perms.write.request(None), PermissionState::Denied);
       set_prompt_result(true);
@@ -1572,12 +1572,12 @@ mod tests {
     };
     #[rustfmt::skip]
     {
-      assert_eq!(perms.read.revoke(Some(&Path::new("/foo/bar"))), PermissionState::Granted);
-      assert_eq!(perms.read.revoke(Some(&Path::new("/foo"))), PermissionState::Prompt);
-      assert_eq!(perms.read.query(Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
-      assert_eq!(perms.write.revoke(Some(&Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms.read.revoke(Some(Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms.read.revoke(Some(Path::new("/foo"))), PermissionState::Prompt);
+      assert_eq!(perms.read.query(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
+      assert_eq!(perms.write.revoke(Some(Path::new("/foo/bar"))), PermissionState::Granted);
       assert_eq!(perms.write.revoke(None), PermissionState::Prompt);
-      assert_eq!(perms.write.query(Some(&Path::new("/foo/bar"))), PermissionState::Prompt);
+      assert_eq!(perms.write.query(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
       assert_eq!(perms.net.revoke(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
       assert_eq!(perms.net.revoke(Some(&("127.0.0.1", None))), PermissionState::Prompt);
       assert_eq!(perms.env.revoke(Some(&"HOME".to_string())), PermissionState::Prompt);
@@ -1602,16 +1602,16 @@ mod tests {
     let _guard = PERMISSION_PROMPT_GUARD.lock();
 
     set_prompt_result(true);
-    assert!(perms.read.check(&Path::new("/foo")).is_ok());
+    assert!(perms.read.check(Path::new("/foo")).is_ok());
     set_prompt_result(false);
-    assert!(perms.read.check(&Path::new("/foo")).is_ok());
-    assert!(perms.read.check(&Path::new("/bar")).is_err());
+    assert!(perms.read.check(Path::new("/foo")).is_ok());
+    assert!(perms.read.check(Path::new("/bar")).is_err());
 
     set_prompt_result(true);
-    assert!(perms.write.check(&Path::new("/foo")).is_ok());
+    assert!(perms.write.check(Path::new("/foo")).is_ok());
     set_prompt_result(false);
-    assert!(perms.write.check(&Path::new("/foo")).is_ok());
-    assert!(perms.write.check(&Path::new("/bar")).is_err());
+    assert!(perms.write.check(Path::new("/foo")).is_ok());
+    assert!(perms.write.check(Path::new("/bar")).is_err());
 
     set_prompt_result(true);
     assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_ok());
@@ -1655,20 +1655,20 @@ mod tests {
     let _guard = PERMISSION_PROMPT_GUARD.lock();
 
     set_prompt_result(false);
-    assert!(perms.read.check(&Path::new("/foo")).is_err());
+    assert!(perms.read.check(Path::new("/foo")).is_err());
     set_prompt_result(true);
-    assert!(perms.read.check(&Path::new("/foo")).is_err());
-    assert!(perms.read.check(&Path::new("/bar")).is_ok());
+    assert!(perms.read.check(Path::new("/foo")).is_err());
+    assert!(perms.read.check(Path::new("/bar")).is_ok());
     set_prompt_result(false);
-    assert!(perms.read.check(&Path::new("/bar")).is_ok());
+    assert!(perms.read.check(Path::new("/bar")).is_ok());
 
     set_prompt_result(false);
-    assert!(perms.write.check(&Path::new("/foo")).is_err());
+    assert!(perms.write.check(Path::new("/foo")).is_err());
     set_prompt_result(true);
-    assert!(perms.write.check(&Path::new("/foo")).is_err());
-    assert!(perms.write.check(&Path::new("/bar")).is_ok());
+    assert!(perms.write.check(Path::new("/foo")).is_err());
+    assert!(perms.write.check(Path::new("/bar")).is_ok());
     set_prompt_result(false);
-    assert!(perms.write.check(&Path::new("/bar")).is_ok());
+    assert!(perms.write.check(Path::new("/bar")).is_ok());
 
     set_prompt_result(false);
     assert!(perms.net.check(&("127.0.0.1", Some(8000))).is_err());

@@ -40,7 +40,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "Signal",
   "SignalStream",
   "StartTlsOptions",
-  "SystemCpuInfo",
   "SystemMemoryInfo",
   "UnixConnectOptions",
   "UnixListenOptions",
@@ -68,7 +67,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "signals",
   "sleepSync",
   "startTls",
-  "systemCpuInfo",
   "systemMemoryInfo",
   "umask",
   "utime",
@@ -191,7 +189,7 @@ impl DiagnosticMessageChain {
   pub fn format_message(&self, level: usize) -> String {
     let mut s = String::new();
 
-    s.push_str(&std::iter::repeat(" ").take(level * 2).collect::<String>());
+    s.push_str(&" ".repeat(level * 2));
     s.push_str(&self.message_text);
     if let Some(next) = &self.next {
       s.push('\n');
