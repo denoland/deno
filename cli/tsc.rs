@@ -510,9 +510,9 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     .map(|(s, mt)| match s.scheme() {
       "data" | "blob" => {
         let specifier_str = if s.scheme() == "data" {
-          hash_data_url(&s, &mt)
+          hash_data_url(s, mt)
         } else {
-          hash_blob_url(&s, &mt)
+          hash_blob_url(s, mt)
         };
         data_url_map.insert(specifier_str.clone(), s.clone());
         specifier_str
@@ -640,7 +640,7 @@ mod tests {
       ..Default::default()
     }));
     let mut builder = GraphBuilder::new(handler.clone(), None, None);
-    builder.add(&specifier, false).await?;
+    builder.add(specifier, false).await?;
     let graph = Arc::new(Mutex::new(builder.get_graph()));
     let config = TsConfig::new(json!({
       "allowJs": true,

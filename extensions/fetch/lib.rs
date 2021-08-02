@@ -37,6 +37,7 @@ use reqwest::redirect::Policy;
 use reqwest::Body;
 use reqwest::Client;
 use reqwest::Method;
+use reqwest::RequestBuilder;
 use reqwest::Response;
 use serde::Deserialize;
 use serde::Serialize;
@@ -60,7 +61,7 @@ pub fn init<P: FetchPermissions + 'static>(
   user_agent: String,
   ca_data: Option<Vec<u8>>,
   proxy: Option<Proxy>,
-  frozen_headers: Option<HeaderMap>,
+  request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -90,7 +91,7 @@ pub fn init<P: FetchPermissions + 'static>(
         ca_data: ca_data.clone(),
         user_agent: user_agent.clone(),
         proxy: proxy.clone(),
-        frozen_headers: frozen_headers.clone(),
+        request_builder_hook,
       });
       Ok(())
     })
@@ -101,7 +102,7 @@ pub struct HttpClientDefaults {
   pub user_agent: String,
   pub ca_data: Option<Vec<u8>>,
   pub proxy: Option<Proxy>,
-  pub frozen_headers: Option<HeaderMap>,
+  pub request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
 }
 
 pub trait FetchPermissions {
@@ -217,13 +218,9 @@ where
         }
       }
 
-      // Set frozen_headers after the user provided headers, so the
-      // end user can't override them.
       let defaults = state.borrow::<HttpClientDefaults>();
-      if let Some(frozen_headers) = &defaults.frozen_headers {
-        for (key, value) in frozen_headers {
-          request = request.header(key, value)
-        }
+      if let Some(request_builder_hook) = defaults.request_builder_hook {
+        request = request_builder_hook(request);
       }
 
       let cancel_handle = CancelHandle::new_rc();

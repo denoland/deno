@@ -40,6 +40,8 @@
     TypeError,
     Uint8Array,
   } = window.__bootstrap.primordials;
+  const { getLocationHref } = window.__bootstrap.location;
+  const { URL } = window.__bootstrap.url;
 
   const REQUEST_BODY_HEADER_NAMES = [
     "content-encoding",
@@ -428,6 +430,17 @@
         reject(abortFetch(request, responseObject));
       }
       requestObject.signal[abortSignal.add](onabort);
+
+      const baseURL = getLocationHref();
+      if (
+        baseURL &&
+        (requestObject.method !== "GET" && requestObject.method !== "HEAD")
+      ) {
+        ArrayPrototypePush(request.headerList, [
+          "origin",
+          new URL(baseURL).origin,
+        ]);
+      }
 
       if (!requestObject.headers.has("accept")) {
         ArrayPrototypePush(request.headerList, ["accept", "*/*"]);

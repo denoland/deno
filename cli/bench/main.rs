@@ -234,11 +234,11 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, u64>> {
   );
 
   // add up size for everything in target/release/deps/libswc*
-  let swc_size = rlib_size(&target_dir, "libswc");
+  let swc_size = rlib_size(target_dir, "libswc");
   println!("swc {} bytes", swc_size);
   sizes.insert("swc_rlib".to_string(), swc_size);
 
-  let rusty_v8_size = rlib_size(&target_dir, "librusty_v8");
+  let rusty_v8_size = rlib_size(target_dir, "librusty_v8");
   println!("rusty_v8 {} bytes", rusty_v8_size);
   sizes.insert("rusty_v8_rlib".to_string(), rusty_v8_size);
 

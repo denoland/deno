@@ -24,7 +24,7 @@ deno_broadcast_channel = { version = "0.7.0", path = "../extensions/broadcast_ch
 deno_console = { version = "0.13.0", path = "../extensions/console" }
 deno_core = { version = "0.95.0", path = "../core" }
 deno_crypto = { version = "0.27.0", path = "../extensions/crypto" }
-deno_fetch = { version = "0.35.0", path = "../extensions/fetch" }
+deno_fetch = { version = "0.36.0", path = "../extensions/fetch" }
 deno_http = { version = "0.4.0", path = "../extensions/http" }
 deno_net = { version = "0.4.0", path = "../extensions/net" }
 deno_timers = { version = "0.11.0", path = "../extensions/timers" }

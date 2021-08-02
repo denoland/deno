@@ -469,7 +469,7 @@ impl FileFetcher {
       Ok((_, headers)) => headers.get("etag").cloned(),
       _ => None,
     };
-    let maybe_auth_token = self.auth_tokens.get(&specifier);
+    let maybe_auth_token = self.auth_tokens.get(specifier);
     let specifier = specifier.clone();
     let mut permissions = permissions.clone();
     let client = self.http_client.clone();
