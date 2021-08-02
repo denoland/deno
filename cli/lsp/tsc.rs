@@ -1293,7 +1293,7 @@ impl CallHierarchyOutgoingCall {
       from_ranges: self
         .from_spans
         .iter()
-        .map(|span| span.to_range(&line_index))
+        .map(|span| span.to_range(line_index))
         .collect(),
     })
   }

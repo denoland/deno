@@ -620,7 +620,7 @@ impl Inner {
       Ok(maybe_asset.clone())
     } else {
       let maybe_asset =
-        tsc::get_asset(&specifier, &self.ts_server, self.snapshot()?).await?;
+        tsc::get_asset(specifier, &self.ts_server, self.snapshot()?).await?;
       self.assets.insert(specifier.clone(), maybe_asset.clone());
       Ok(maybe_asset)
     }

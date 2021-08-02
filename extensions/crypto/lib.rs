@@ -362,7 +362,7 @@ pub async fn op_crypto_sign_key(
       };
 
       let rng = RingRand::SystemRandom::new();
-      let signature = key_pair.sign(&rng, &data)?;
+      let signature = key_pair.sign(&rng, data)?;
 
       // Signature data as buffer.
       signature.as_ref().to_vec()
@@ -372,7 +372,7 @@ pub async fn op_crypto_sign_key(
 
       let key = HmacKey::new(hash, &*args.key.data);
 
-      let signature = ring::hmac::sign(&key, &data);
+      let signature = ring::hmac::sign(&key, data);
       signature.as_ref().to_vec()
     }
     _ => return Err(type_error("Unsupported algorithm".to_string())),

@@ -44,6 +44,7 @@ async fn main() -> Result<(), AnyError> {
     blob_store: BlobStore::default(),
     broadcast_channel: InMemoryBroadcastChannel::default(),
     shared_array_buffer_store: None,
+    cpu_count: 1,
   };
 
   let js_path =

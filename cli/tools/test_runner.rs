@@ -355,7 +355,7 @@ fn extract_files_from_regex_blocks(
   lines_regex: &Regex,
 ) -> Result<Vec<File>, AnyError> {
   let files = blocks_regex
-    .captures_iter(&source)
+    .captures_iter(source)
     .filter_map(|block| {
       let maybe_attributes = block
         .get(1)
@@ -390,7 +390,7 @@ fn extract_files_from_regex_blocks(
 
       // TODO(caspervonb) generate an inline source map
       let mut file_source = String::new();
-      for line in lines_regex.captures_iter(&text) {
+      for line in lines_regex.captures_iter(text) {
         let text = line.get(1).unwrap();
         file_source.push_str(&format!("{}\n", text.as_str()));
       }
@@ -424,7 +424,7 @@ fn extract_files_from_source_comments(
   source: &str,
   media_type: &MediaType,
 ) -> Result<Vec<File>, AnyError> {
-  let parsed_module = ast::parse(&specifier.as_str(), &source, &media_type)?;
+  let parsed_module = ast::parse(specifier.as_str(), source, media_type)?;
   let mut comments = parsed_module.get_comments();
   comments
     .sort_by_key(|comment| parsed_module.get_location(&comment.span).line);
@@ -447,7 +447,7 @@ fn extract_files_from_source_comments(
       extract_files_from_regex_blocks(
         &location,
         &comment.text,
-        &media_type,
+        media_type,
         &blocks_regex,
         &lines_regex,
       )
@@ -474,8 +474,8 @@ fn extract_files_from_fenced_blocks(
 
   extract_files_from_regex_blocks(
     &location,
-    &source,
-    &media_type,
+    source,
+    media_type,
     &blocks_regex,
     &lines_regex,
   )

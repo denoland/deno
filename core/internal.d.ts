@@ -48,21 +48,16 @@ declare namespace __bootstrap {
    */
   declare namespace primordials {
     type UncurryThis<T extends (this: unknown, ...args: unknown[]) => unknown> =
-      (
-        self: ThisParameterType<T>,
-        ...args: Parameters<T>
-      ) => ReturnType<T>;
+      (self: ThisParameterType<T>, ...args: Parameters<T>) => ReturnType<T>;
     type UncurryThisStaticApply<
       T extends (this: unknown, ...args: unknown[]) => unknown,
     > = (self: ThisParameterType<T>, args: Parameters<T>) => ReturnType<T>;
     type StaticApply<T extends (this: unknown, ...args: unknown[]) => unknown> =
-      (
-        args: Parameters<T>,
-      ) => ReturnType<T>;
+      (args: Parameters<T>) => ReturnType<T>;
 
-    export function uncurryThis<
-      T extends (...args: unknown[]) => unknown,
-    >(fn: T): (self: ThisType<T>, ...args: Parameters<T>) => ReturnType<T>;
+    export function uncurryThis<T extends (...args: unknown[]) => unknown>(
+      fn: T,
+    ): (self: ThisType<T>, ...args: Parameters<T>) => ReturnType<T>;
     export function makeSafe<T extends NewableFunction>(
       unsafe: NewableFunction,
       safe: T,

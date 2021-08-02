@@ -361,7 +361,7 @@ impl Inner {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
-    let metadata = self.get_metadata(&specifier)?;
+    let metadata = self.get_metadata(specifier)?;
     metadata.maybe_warning
   }
 
@@ -399,7 +399,7 @@ impl Inner {
         map_content_type(specifier, maybe_content_type);
       let source = get_source_from_bytes(bytes, maybe_charset).ok()?;
       let maybe_types = headers.get("x-typescript-types").map(|s| {
-        analysis::resolve_import(s, &specifier, &self.maybe_import_map)
+        analysis::resolve_import(s, specifier, &self.maybe_import_map)
       });
       let maybe_warning = headers.get("x-deno-warning").cloned();
       (source, media_type, maybe_types, maybe_warning)
@@ -432,10 +432,10 @@ impl Inner {
   fn get_path(&mut self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
     if specifier.scheme() == "file" {
       specifier.to_file_path().ok()
-    } else if let Some(path) = self.remotes.get(&specifier) {
+    } else if let Some(path) = self.remotes.get(specifier) {
       Some(path.clone())
     } else {
-      let path = self.http_cache.get_cache_filename(&specifier)?;
+      let path = self.http_cache.get_cache_filename(specifier)?;
       if path.is_file() {
         self.remotes.insert(specifier.clone(), path.clone());
         Some(path)

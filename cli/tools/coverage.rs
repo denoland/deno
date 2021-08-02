@@ -709,7 +709,7 @@ pub async fn cover_files(
 
     reporter.visit_coverage(
       &script_coverage,
-      &script_source,
+      script_source,
       maybe_source_map,
       maybe_cached_source,
     );
