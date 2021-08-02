@@ -1295,7 +1295,7 @@ impl Inner {
     all_actions.extend(
       refactor::prune_invalid_actions(&refactor_actions, 5)
         .into_iter()
-        .map(|i| CodeActionOrCommand::CodeAction(i)),
+        .map(CodeActionOrCommand::CodeAction),
     );
 
     let response = if !all_actions.is_empty() {

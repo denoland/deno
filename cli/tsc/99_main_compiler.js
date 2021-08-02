@@ -596,7 +596,7 @@ delete Object.prototype.__proto__;
               provideRefactorNotApplicableReason: true,
             },
             undefined,
-            request.kind
+            request.kind,
           ),
         );
       }
