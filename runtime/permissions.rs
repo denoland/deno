@@ -813,7 +813,7 @@ impl UnaryPermission<FfiDescriptor> {
 
   pub fn request(&mut self, lib: Option<&str>) -> PermissionState {
     if let Some(lib) = lib {
-      let state = self.query(Some(&lib));
+      let state = self.query(Some(lib));
       if state == PermissionState::Prompt {
         if permission_prompt(&format!("ffi access to \"{}\"", lib)) {
           self.granted_list.retain(|lib_| lib_.0 != lib);
