@@ -6,10 +6,11 @@ use super::code_lens;
 use super::config;
 use super::language_server;
 use super::language_server::StateSnapshot;
-use super::refactor::{
-  RefactorCodeActionData, ALL_KNOWN_REFACTOR_ACTION_KINDS, EXTRACT_CONSTANT,
-  EXTRACT_INTERFACE, EXTRACT_TYPE,
-};
+use super::refactor::RefactorCodeActionData;
+use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
+use super::refactor::EXTRACT_CONSTANT;
+use super::refactor::EXTRACT_INTERFACE;
+use super::refactor::EXTRACT_TYPE;
 use super::semantic_tokens::SemanticTokensBuilder;
 use super::semantic_tokens::TsTokenEncodingConsts;
 use super::text;

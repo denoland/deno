@@ -592,6 +592,8 @@ delete Object.prototype.__proto__;
             request.range,
             {
               quotePreference: "double",
+              allowTextChangesInNewFiles: true,
+              provideRefactorNotApplicableReason: true,
             },
             undefined,
             request.kind
@@ -605,8 +607,11 @@ delete Object.prototype.__proto__;
             request.specifier,
             {
               indentSize: 2,
-              indentStyle: ts.IndentStyle.Block,
+              indentStyle: ts.IndentStyle.Smart,
               semicolons: ts.SemicolonPreference.Insert,
+              convertTabsToSpaces: true,
+              insertSpaceBeforeAndAfterBinaryOperators: true,
+              insertSpaceAfterCommaDelimiter: true,
             },
             request.range,
             request.refactorName,

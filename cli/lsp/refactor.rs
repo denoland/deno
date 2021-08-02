@@ -1,5 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+// The logic of this module is heavily influenced by
+// https://github.com/microsoft/vscode/blob/main/extensions/typescript-language-features/src/languageFeatures/refactor.ts
+
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::ModuleSpecifier;
@@ -57,7 +60,7 @@ lazy_static::lazy_static! {
     matches_callback: Box::new(|tag: &str| tag.starts_with("Add or remove braces in an arrow function")),
   };
 
-  pub static ref REWRITE_PARAMETERS_TODESTRUCTURED: RefactorCodeActionKind = RefactorCodeActionKind {
+  pub static ref REWRITE_PARAMETERS_TO_DESTRUCTURED: RefactorCodeActionKind = RefactorCodeActionKind {
     kind : [lsp::CodeActionKind::REFACTOR_REWRITE.as_str(), "parameters", "toDestructured"].join(".").into(),
     matches_callback: Box::new(|tag: &str| tag.starts_with("Convert parameters to destructured object")),
   };
@@ -76,7 +79,7 @@ lazy_static::lazy_static! {
     &REWRITE_IMPORT,
     &REWRITE_EXPORT,
     &REWRITE_ARROW_BRACES,
-    &REWRITE_PARAMETERS_TODESTRUCTURED,
+    &REWRITE_PARAMETERS_TO_DESTRUCTURED,
     &REWRITE_PROPERTY_GENERATEACCESSORS
   ];
 }
@@ -88,4 +91,41 @@ pub struct RefactorCodeActionData {
   pub range: lsp::Range,
   pub refactor_name: String,
   pub action_name: String,
+}
+
+pub fn prune_invalid_actions(
+  actions: &[lsp::CodeAction],
+  number_of_invalid: usize,
+) -> Vec<lsp::CodeAction> {
+  let mut available_actions = Vec::<lsp::CodeAction>::new();
+  let mut invalid_common_actions = Vec::<lsp::CodeAction>::new();
+  let mut invalid_uncommon_actions = Vec::<lsp::CodeAction>::new();
+  for action in actions {
+    if action.disabled.is_none() {
+      available_actions.push(action.clone());
+      continue;
+    }
+
+    // These are the common refactors that we should always show if applicable.
+    let action_kind =
+      action.kind.as_ref().map(|a| a.as_str()).unwrap_or_default();
+    if action_kind.starts_with(EXTRACT_CONSTANT.kind.as_str())
+      || action_kind.starts_with(EXTRACT_FUNCTION.kind.as_str())
+    {
+      invalid_common_actions.push(action.clone());
+      continue;
+    }
+
+    // These are the remaining refactors that we can show if we haven't reached the max limit with just common refactors.
+    invalid_uncommon_actions.push(action.clone());
+  }
+
+  let mut prioritized_actions = Vec::<lsp::CodeAction>::new();
+  prioritized_actions.extend(invalid_common_actions);
+  prioritized_actions.extend(invalid_uncommon_actions);
+  let top_n_invalid = prioritized_actions
+    [0..std::cmp::min(number_of_invalid, prioritized_actions.len())]
+    .to_vec();
+  available_actions.extend(top_n_invalid);
+  available_actions
 }

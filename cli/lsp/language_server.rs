@@ -41,7 +41,7 @@ use super::documents::LanguageId;
 use super::lsp_custom;
 use super::parent_process_checker;
 use super::performance::Performance;
-use super::refactor::RefactorCodeActionData;
+use super::refactor;
 use super::registries;
 use super::sources;
 use super::sources::Sources;
@@ -643,8 +643,6 @@ impl Inner {
     }
 
     let capabilities = capabilities::server_capabilities(&params.capabilities);
-    info!("capabilities: {}", serde_json::to_string_pretty(&params.capabilities).unwrap());
-
 
     let version = format!(
       "{} ({}, {})",
@@ -1289,14 +1287,16 @@ impl Inner {
         error!("Failed to request to tsserver {}", err);
         LspError::invalid_request()
       })?;
+    let mut refactor_actions = Vec::<CodeAction>::new();
     for refactor_info in refactor_infos.iter() {
-      let refactor_actions = refactor_info.to_code_actions(&specifier, &params.range);
-      all_actions.extend(
-        refactor_actions
-          .into_iter()
-          .map(|i| CodeActionOrCommand::CodeAction(i)),
-      );
+      refactor_actions
+        .extend(refactor_info.to_code_actions(&specifier, &params.range));
     }
+    all_actions.extend(
+      refactor::prune_invalid_actions(&refactor_actions, 5)
+        .into_iter()
+        .map(|i| CodeActionOrCommand::CodeAction(i)),
+    );
 
     let response = if !all_actions.is_empty() {
       Some(all_actions)
@@ -1365,8 +1365,8 @@ impl Inner {
       code_action
     } else if kind.as_str().starts_with(CodeActionKind::REFACTOR.as_str()) {
       let mut code_action = params.clone();
-      let action_data: RefactorCodeActionData =
-        from_value(data).map_err(|err| {
+      let action_data: refactor::RefactorCodeActionData = from_value(data)
+        .map_err(|err| {
           error!("Unable to decode code action data: {}", err);
           LspError::invalid_params("The CodeAction's data is invalid.")
         })?;
@@ -1388,10 +1388,13 @@ impl Inner {
           error!("Failed to request to tsserver {}", err);
           LspError::invalid_request()
         })?;
-      code_action.edit = refactor_edit_info.to_workspace_edit(self).await.map_err(|err| {
-        error!("Unable to convert changes to edits: {}", err);
-        LspError::internal_error()
-      })?;
+      code_action.edit = refactor_edit_info
+        .to_workspace_edit(self)
+        .await
+        .map_err(|err| {
+          error!("Unable to convert changes to edits: {}", err);
+          LspError::internal_error()
+        })?;
       code_action
     } else {
       // The code action doesn't need to be resolved
