@@ -2646,7 +2646,26 @@
         "request-headers-nonascii.any.html": true,
         "request-headers.any.html": [
           "Fetch with PUT without body",
-          "Fetch with POST without body"
+          "Fetch with PUT with body",
+          "Fetch with POST without body",
+          "Fetch with POST with text body",
+          "Fetch with POST with FormData body",
+          "Fetch with POST with URLSearchParams body",
+          "Fetch with POST with Blob body",
+          "Fetch with POST with ArrayBuffer body",
+          "Fetch with POST with Uint8Array body",
+          "Fetch with POST with Int8Array body",
+          "Fetch with POST with Float32Array body",
+          "Fetch with POST with Float64Array body",
+          "Fetch with POST with DataView body",
+          "Fetch with POST with Blob body with mime type",
+          "Fetch with Chicken",
+          "Fetch with Chicken with body",
+          "Fetch with POST and mode \"same-origin\" needs an Origin header",
+          "Fetch with POST and mode \"no-cors\" needs an Origin header",
+          "Fetch with PUT and mode \"same-origin\" needs an Origin header",
+          "Fetch with TacO and mode \"same-origin\" needs an Origin header",
+          "Fetch with TacO and mode \"cors\" needs an Origin header"
         ],
         "text-utf8.any.html": true,
         "accept-header.any.html": [
