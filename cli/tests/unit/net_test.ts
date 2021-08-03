@@ -599,7 +599,7 @@ unitTest(
   },
 );
 
-unitTest({ perms: { net: true } }, function netTcpListenCloseSignal(): void {
+unitTest({ perms: { net: true } }, async function netTcpListenCloseSignal(): void {
   const ac = new AbortController();
   const listener = Deno.listen({
     hostname: "127.0.0.1",
