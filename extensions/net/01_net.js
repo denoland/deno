@@ -207,7 +207,16 @@
       ...options,
     });
 
-    return new Listener(res.rid, res.localAddr);
+    const listener = new Listener(res.rid, res.localAddr);
+    if (options?.signal) {
+      // TODO(benjamingr) there is memory leak potential here if the signal outlives the
+      // server significantly it can retain it. Ideally Deno would have internal weak
+      // event listener like Node does *or* it would have an event for the server closing.
+      options?.signal?.addEventListener("abort", () => listener.close(), {
+        once: true,
+      });
+    }
+    return listener;
   }
 
   async function connect(options) {

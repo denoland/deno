@@ -60,8 +60,16 @@
       hostname,
       transport,
       alpnProtocols,
+      signal,
     });
-    return new TLSListener(res.rid, res.localAddr);
+    const listener = new TLSListener(res.rid, res.localAddr);
+    if (signal) {
+      // TODO(benjamingr) there is memory leak potential here. See comment in 01_net.js
+      options?.signal?.addEventListener("abort", () => listener.close(), {
+        once: true,
+      });
+    }
+    return listener;
   }
 
   async function startTls(
