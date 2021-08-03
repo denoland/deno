@@ -599,19 +599,22 @@ unitTest(
   },
 );
 
-unitTest({ perms: { net: true } }, async function netTcpListenCloseSignal(): void {
-  const ac = new AbortController();
-  const listener = Deno.listen({
-    hostname: "127.0.0.1",
-    port: 3500,
-    signal: ac.signal,
-  });
-  ac.abort();
-  await assertThrowsAsync(
-    async (): Promise<void> => {
-      await listener.accept();
-    },
-    Deno.errors.BadResource,
-    "Listener has been closed",
-  );
-});
+unitTest(
+  { perms: { net: true } },
+  async function netTcpListenCloseSignal(): void {
+    const ac = new AbortController();
+    const listener = Deno.listen({
+      hostname: "127.0.0.1",
+      port: 3500,
+      signal: ac.signal,
+    });
+    ac.abort();
+    await assertThrowsAsync(
+      async (): Promise<void> => {
+        await listener.accept();
+      },
+      Deno.errors.BadResource,
+      "Listener has been closed",
+    );
+  },
+);
