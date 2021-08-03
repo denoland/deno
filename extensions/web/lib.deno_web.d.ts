@@ -673,7 +673,7 @@ declare class MessageEvent<T = any> extends Event {
 
 type Transferable = ArrayBuffer | MessagePort;
 
-interface PostMessageOptions {
+interface StructuredSerializeOptions {
   transfer?: Transferable[];
 }
 
@@ -710,7 +710,7 @@ declare class MessagePort extends EventTarget {
    * objects or port, or if message could not be cloned.
    */
   postMessage(message: any, transfer: Transferable[]): void;
-  postMessage(message: any, options?: PostMessageOptions): void;
+  postMessage(message: any, options?: StructuredSerializeOptions): void;
   /**
    * Begins dispatching messages received on the port. This is implictly called
    * when assiging a value to `this.onmessage`.
@@ -737,3 +737,8 @@ declare class MessagePort extends EventTarget {
     options?: boolean | EventListenerOptions,
   ): void;
 }
+
+declare function structuredClone(
+  value: any,
+  options?: StructuredSerializeOptions,
+): any;
