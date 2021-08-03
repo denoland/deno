@@ -513,7 +513,7 @@ unitTest({ perms: { run: true, read: true } }, function killFailed(): void {
 
 unitTest(
   { perms: { run: true, read: true, env: true } },
-  async function cleanEnv(): Promise<void> {
+  async function clearEnv(): Promise<void> {
     const p = Deno.run({
       cmd: [
         Deno.execPath(),
@@ -522,7 +522,7 @@ unitTest(
         "JSON.stringify(Deno.env.toObject())",
       ],
       stdout: "piped",
-      cleanEnv: true,
+      clearEnv: true,
       env: {
         FOO: "23147",
       },
