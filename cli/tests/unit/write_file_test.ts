@@ -274,7 +274,7 @@ unitTest(
     }
     try {
       Deno.statSync(filename);
-      throw new Error('should not get here');
+      throw new Error("should not get here");
     } catch (e) {
       assert(e instanceof Deno.errors.NotFound);
     }
