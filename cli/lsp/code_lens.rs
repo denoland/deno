@@ -102,7 +102,7 @@ impl DenoTestCollector {
                       key_value_prop.value.as_ref()
                     {
                       let name = lit_str.value.to_string();
-                      self.add_code_lens(name, &span);
+                      self.add_code_lens(name, span);
                     }
                   }
                 }
@@ -112,7 +112,7 @@ impl DenoTestCollector {
         }
         ast::Expr::Lit(ast::Lit::Str(lit_str)) => {
           let name = lit_str.value.to_string();
-          self.add_code_lens(name, &span);
+          self.add_code_lens(name, span);
         }
         _ => (),
       }
@@ -415,7 +415,7 @@ async fn collect_tsc(
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
   let workspace_settings = language_server.config.get_workspace_settings();
   let line_index = language_server
-    .get_line_index_sync(&specifier)
+    .get_line_index_sync(specifier)
     .ok_or_else(|| anyhow!("Missing line index."))?;
   let navigation_tree = language_server.get_navigation_tree(specifier).await?;
   let code_lenses = Rc::new(RefCell::new(Vec::new()));
@@ -435,7 +435,7 @@ async fn collect_tsc(
         | tsc::ScriptElementKind::MemberGetAccessorElement
         | tsc::ScriptElementKind::MemberSetAccessorElement => {
           if ABSTRACT_MODIFIER.is_match(&i.kind_modifiers) {
-            code_lenses.push(i.to_code_lens(&line_index, &specifier, &source));
+            code_lenses.push(i.to_code_lens(&line_index, specifier, &source));
           }
         }
         _ => (),
@@ -447,31 +447,31 @@ async fn collect_tsc(
       let source = CodeLensSource::References;
       if let Some(parent) = &mp {
         if parent.kind == tsc::ScriptElementKind::EnumElement {
-          code_lenses.push(i.to_code_lens(&line_index, &specifier, &source));
+          code_lenses.push(i.to_code_lens(&line_index, specifier, &source));
         }
       }
       match i.kind {
         tsc::ScriptElementKind::FunctionElement => {
           if workspace_settings.code_lens.references_all_functions {
-            code_lenses.push(i.to_code_lens(&line_index, &specifier, &source));
+            code_lenses.push(i.to_code_lens(&line_index, specifier, &source));
           }
         }
         tsc::ScriptElementKind::ConstElement
         | tsc::ScriptElementKind::LetElement
         | tsc::ScriptElementKind::VariableElement => {
           if EXPORT_MODIFIER.is_match(&i.kind_modifiers) {
-            code_lenses.push(i.to_code_lens(&line_index, &specifier, &source));
+            code_lenses.push(i.to_code_lens(&line_index, specifier, &source));
           }
         }
         tsc::ScriptElementKind::ClassElement => {
           if i.text != "<class>" {
-            code_lenses.push(i.to_code_lens(&line_index, &specifier, &source));
+            code_lenses.push(i.to_code_lens(&line_index, specifier, &source));
           }
         }
         tsc::ScriptElementKind::InterfaceElement
         | tsc::ScriptElementKind::TypeElement
         | tsc::ScriptElementKind::EnumElement => {
-          code_lenses.push(i.to_code_lens(&line_index, &specifier, &source));
+          code_lenses.push(i.to_code_lens(&line_index, specifier, &source));
         }
         tsc::ScriptElementKind::LocalFunctionElement
         | tsc::ScriptElementKind::MemberGetAccessorElement
@@ -486,7 +486,7 @@ async fn collect_tsc(
                 | tsc::ScriptElementKind::TypeElement => {
                   code_lenses.push(i.to_code_lens(
                     &line_index,
-                    &specifier,
+                    specifier,
                     &source,
                   ));
                 }

@@ -7,6 +7,7 @@
   "rootUri": null,
   "initializationOptions": {
     "enable": true,
+    "cache": null,
     "importMap": null,
     "lint": true,
     "suggest": {

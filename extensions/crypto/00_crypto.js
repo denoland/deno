@@ -17,6 +17,7 @@
     ArrayPrototypeFind,
     ArrayBufferIsView,
     ArrayPrototypeIncludes,
+    BigInt64Array,
     StringPrototypeToUpperCase,
     Symbol,
     SymbolFor,
@@ -201,7 +202,7 @@
       return this[_algorithm];
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "CryptoKey";
     }
 

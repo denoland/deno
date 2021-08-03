@@ -81,7 +81,7 @@ pub struct DocumentData {
   bytes: Option<Vec<u8>>,
   dependencies: Option<HashMap<String, analysis::Dependency>>,
   dependency_ranges: Option<analysis::DependencyRanges>,
-  language_id: LanguageId,
+  pub(crate) language_id: LanguageId,
   line_index: Option<LineIndex>,
   maybe_navigation_tree: Option<tsc::NavigationTree>,
   specifier: ModuleSpecifier,
@@ -119,13 +119,13 @@ impl DocumentData {
     let mut line_index = if let Some(line_index) = &self.line_index {
       line_index.clone()
     } else {
-      LineIndex::new(&content)
+      LineIndex::new(content)
     };
     let mut index_valid = IndexValid::All;
     for change in content_changes {
       if let Some(range) = change.range {
         if !index_valid.covers(range.start.line) {
-          line_index = LineIndex::new(&content);
+          line_index = LineIndex::new(content);
         }
         index_valid = IndexValid::UpTo(range.start.line);
         let range = line_index.get_text_range(range)?;
@@ -139,7 +139,7 @@ impl DocumentData {
     self.line_index = if index_valid == IndexValid::All {
       Some(line_index)
     } else {
-      Some(LineIndex::new(&content))
+      Some(LineIndex::new(content))
     };
     self.maybe_navigation_tree = None;
     Ok(())
@@ -180,7 +180,7 @@ impl DocumentData {
 #[derive(Debug, Clone, Default)]
 pub struct DocumentCache {
   dependents_graph: HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>>,
-  pub docs: HashMap<ModuleSpecifier, DocumentData>,
+  pub(crate) docs: HashMap<ModuleSpecifier, DocumentData>,
 }
 
 impl DocumentCache {
@@ -272,16 +272,29 @@ impl DocumentCache {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<HashMap<String, analysis::Dependency>> {
-    let doc = self.docs.get(specifier)?;
-    doc.dependencies.clone()
+    self
+      .docs
+      .get(specifier)
+      .map(|doc| doc.dependencies.clone())
+      .flatten()
+  }
+
+  pub fn get_language_id(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<LanguageId> {
+    self.docs.get(specifier).map(|doc| doc.language_id.clone())
   }
 
   pub fn get_navigation_tree(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<tsc::NavigationTree> {
-    let doc = self.docs.get(specifier)?;
-    doc.maybe_navigation_tree.clone()
+    self
+      .docs
+      .get(specifier)
+      .map(|doc| doc.maybe_navigation_tree.clone())
+      .flatten()
   }
 
   /// Determines if the specifier should be processed for diagnostics and other

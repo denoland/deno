@@ -271,6 +271,7 @@ pub struct WebWorkerOptions {
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+  pub cpu_count: usize,
 }
 
 impl WebWorker {
@@ -300,6 +301,7 @@ impl WebWorker {
       deno_fetch::init::<Permissions>(
         options.user_agent.clone(),
         options.ca_data.clone(),
+        None,
         None,
       ),
       deno_websocket::init::<Permissions>(
@@ -411,6 +413,7 @@ impl WebWorker {
       "unstableFlag": options.unstable,
       "v8Version": deno_core::v8_version(),
       "location": self.main_module,
+      "cpuCount": options.cpu_count,
     });
 
     let runtime_options_str =
@@ -454,7 +457,7 @@ impl WebWorker {
 
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
-      maybe_result = receiver.next() => {
+      maybe_result = &mut receiver => {
         debug!("received worker module evaluate {:#?}", maybe_result);
         // If `None` is returned it means that runtime was destroyed before
         // evaluation was complete. This can happen in Web Worker when `self.close()`
@@ -467,7 +470,7 @@ impl WebWorker {
            return Ok(());
         }
         event_loop_result?;
-        let maybe_result = receiver.next().await;
+        let maybe_result = receiver.await;
         maybe_result.unwrap_or(Ok(()))
       }
     }

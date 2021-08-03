@@ -7,7 +7,6 @@ use crate::ops;
 use crate::permissions::Permissions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
-use deno_core::futures::stream::StreamExt;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
 use deno_core::serde_json;
@@ -72,6 +71,7 @@ pub struct WorkerOptions {
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+  pub cpu_count: usize,
 }
 
 impl MainWorker {
@@ -100,6 +100,7 @@ impl MainWorker {
       deno_fetch::init::<Permissions>(
         options.user_agent.clone(),
         options.ca_data.clone(),
+        None,
         None,
       ),
       deno_websocket::init::<Permissions>(
@@ -177,6 +178,7 @@ impl MainWorker {
       "unstableFlag": options.unstable,
       "v8Version": deno_core::v8_version(),
       "location": options.location,
+      "cpuCount": options.cpu_count,
     });
 
     let script = format!(
@@ -215,14 +217,14 @@ impl MainWorker {
     self.wait_for_inspector_session();
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
-      maybe_result = receiver.next() => {
+      maybe_result = &mut receiver => {
         debug!("received module evaluate {:#?}", maybe_result);
         maybe_result.expect("Module evaluation result not provided.")
       }
 
       event_loop_result = self.run_event_loop(false) => {
         event_loop_result?;
-        let maybe_result = receiver.next().await;
+        let maybe_result = receiver.await;
         maybe_result.expect("Module evaluation result not provided.")
       }
     }
@@ -308,6 +310,7 @@ mod tests {
       blob_store: BlobStore::default(),
       broadcast_channel: InMemoryBroadcastChannel::default(),
       shared_array_buffer_store: None,
+      cpu_count: 1,
     };
 
     MainWorker::from_options(main_module, permissions, &options)
