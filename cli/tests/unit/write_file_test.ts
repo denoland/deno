@@ -273,7 +273,8 @@ unitTest(
       assertEquals(e.name, "AbortError");
     }
     try {
-      const stat = Deno.statSync(filename);
+      Deno.statSync(filename);
+      throw new Error('should not get here');
     } catch (e) {
       assert(e instanceof Deno.errors.NotFound);
     }
