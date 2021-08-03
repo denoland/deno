@@ -65,10 +65,11 @@ impl ImportMap {
   ) -> Result<Self, ImportMapError> {
     let v: Value = match serde_json::from_str(json_string) {
       Ok(v) => v,
-      Err(_) => {
-        return Err(ImportMapError::Other(
-          "Unable to parse import map JSON".to_string(),
-        ));
+      Err(err) => {
+        return Err(ImportMapError::Other(format!(
+          "Unable to parse import map JSON: {}",
+          err.to_string()
+        )));
       }
     };
 
@@ -741,6 +742,14 @@ mod tests {
     for non_object in non_object_strings.to_vec() {
       assert!(ImportMap::from_json(base_url, non_object).is_err());
     }
+
+    // invalid JSON message test
+    assert_eq!(
+      ImportMap::from_json(base_url, "{\"a\":1,}")
+        .unwrap_err()
+        .to_string(),
+      "Unable to parse import map JSON: trailing comma at line 1 column 8",
+    );
 
     // invalid schema: 'imports' is non-object
     for non_object in non_object_strings.to_vec() {
