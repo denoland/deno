@@ -474,17 +474,19 @@
       }
 
       switch (normalizedAlgorithm.name) {
+        // https://w3c.github.io/webcrypto/#hmac-operations
         case "HMAC": {
           switch (format) {
             case "raw": {
               const hash = normalizedAlgorithm.hash;
+              // 5.
               let length = keyData.byteLength * 8;
-
+              // 6.
               if (length === 0) {
                 throw new DOMException("Key length is zero", "DataError");
               }
-
               if (normalizeAlgorithm.length) {
+                // 7.
                 if (
                   normalizedAlgorithm.length > length ||
                   normalizedAlgorithm.length <= (length - 8)
@@ -556,6 +558,7 @@
       });
 
       const handle = key[_handle];
+      // 2.
       const bits = WeakMapPrototypeGet(KEY_STORE, handle);
 
       switch (key[_algorithm].name) {
@@ -564,11 +567,12 @@
             throw new DOMException("Key is not available", "OperationError");
           }
           switch (format) {
+            // 3.
             case "raw": {
               for (let _i = 7 & (8 - bits.length % 8); _i > 0; _i--) {
                 bits.push(0);
               }
-
+              // 4-5.
               return bits.buffer;
             }
             // TODO(@littledivy): jwk
