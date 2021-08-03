@@ -510,3 +510,26 @@ unitTest({ perms: { run: true, read: true } }, function killFailed(): void {
 
   p.close();
 });
+
+unitTest(
+  { perms: { run: true, read: true, env: true } },
+  async function cleanEnv(): Promise<void> {
+    const p = Deno.run({
+      cmd: [
+        Deno.execPath(),
+        "eval",
+        "-p",
+        "JSON.stringify(Deno.env.toObject())",
+      ],
+      stdout: "piped",
+      cleanEnv: true,
+      env: {
+        FOO: "23147",
+      },
+    });
+
+    const obj = JSON.parse(new TextDecoder().decode(await p.output()));
+
+    assertEquals(obj, { FOO: 23147 });
+  },
+);
