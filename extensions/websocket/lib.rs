@@ -222,37 +222,46 @@ where
 
   let request = request.body(())?;
 
-  let mut req_headers = HashMap::<String, String>::default();
-  req_headers.insert("connection".to_string(), "Upgrade".to_string());
-  req_headers.insert("upgrade".to_string(), "websocket".to_string());
-  req_headers.insert("sec-websocket-version".to_string(), "13".to_string());
-  for (k, v) in request.headers() {
-    if let Ok(v) = v.to_str() {
-      req_headers.insert(k.to_string(), v.to_string());
-    }
-  }
-
-  dev_tools_agent.send_event(
-    "Network.webSocketCreated",
-    json!({
-      "requestId": id,
-      "url": uri.to_string(),
-      "initiator": {
-        "type": "script"
-      },
-    }),
-  );
-  dev_tools_agent.send_event(
-    "Network.webSocketWillSendHandshakeRequest",
-    json!({
-      "requestId": id,
-      "timestamp": start_time.elapsed().as_secs_f64(),
-      "wallTime": SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64(),
-      "request": {
-        "headers": req_headers
+  if dev_tools_agent.has_subscribers_for_domain("Network") {
+    let mut req_headers = HashMap::<String, String>::default();
+    req_headers.insert("connection".to_string(), "Upgrade".to_string());
+    req_headers.insert("upgrade".to_string(), "websocket".to_string());
+    req_headers.insert("sec-websocket-version".to_string(), "13".to_string());
+    for (k, v) in request.headers() {
+      if let Ok(v) = v.to_str() {
+        req_headers.insert(k.to_string(), v.to_string());
       }
-    }),
-  );
+    }
+    let authority = uri.authority().unwrap().as_str();
+    let host = if let Some(idx) = authority.find('@') {
+      // handle possible name:password@
+      authority.split_at(idx + 1).1
+    } else {
+      authority
+    };
+    req_headers.insert("host".to_string(), host.to_string());
+    dev_tools_agent.notify_subscribers(
+      "Network.webSocketCreated",
+      json!({
+        "requestId": id,
+        "url": uri.to_string(),
+        "initiator": {
+          "type": "script"
+        },
+      }),
+    );
+    dev_tools_agent.notify_subscribers(
+      "Network.webSocketWillSendHandshakeRequest",
+      json!({
+        "requestId": id,
+        "timestamp": start_time.elapsed().as_secs_f64(),
+        "wallTime": SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64(),
+        "request": {
+          "headers": req_headers
+        }
+      }),
+    );
+  }
 
   let domain = &uri.host().unwrap().to_string();
   let port = &uri.port_u16().unwrap_or(match uri.scheme_str() {
@@ -296,7 +305,7 @@ where
   let socket = match socket_res {
     Ok(socket) => socket,
     Err(err) => {
-      dev_tools_agent.send_event(
+      dev_tools_agent.notify_subscribers(
         "Network.webSocketClosed",
         json!({
           "requestId": id,
@@ -313,7 +322,7 @@ where
   let (stream, response) = match client_async(request, socket).await {
     Ok((stream, response)) => (stream, response),
     Err(err) => {
-      dev_tools_agent.send_event(
+      dev_tools_agent.notify_subscribers(
         "Network.webSocketFrameError",
         json!({
           "requestId": id,
@@ -321,7 +330,7 @@ where
           "errorMessage": err.to_string(),
         }),
       );
-      dev_tools_agent.send_event(
+      dev_tools_agent.notify_subscribers(
         "Network.webSocketClosed",
         json!({
           "requestId": id,
@@ -335,35 +344,26 @@ where
     }
   };
 
-  let mut res_headers = HashMap::<String, String>::default();
-  for (k, v) in response.headers() {
-    if let Ok(v) = v.to_str() {
-      res_headers.insert(k.to_string(), v.to_string());
-    }
-  }
-
-  let authority = uri.authority().unwrap().as_str();
-  let host = if let Some(idx) = authority.find('@') {
-    // handle possible name:password@
-    authority.split_at(idx + 1).1
-  } else {
-    authority
-  };
-  req_headers.insert("host".to_string(), host.to_string());
-
-  dev_tools_agent.send_event(
-    "Network.webSocketHandshakeResponseReceived",
-    json!({
-      "requestId": id,
-      "timestamp": start_time.elapsed().as_secs_f64(),
-      "response": {
-        "status": response.status().as_u16(),
-        "statusText": response.status().canonical_reason().unwrap_or_default(),
-        "headers": res_headers,
-        "requestHeaders": req_headers,
+  if dev_tools_agent.has_subscribers_for_domain("Network") {
+    let mut res_headers = HashMap::<String, String>::default();
+    for (k, v) in response.headers() {
+      if let Ok(v) = v.to_str() {
+        res_headers.insert(k.to_string(), v.to_string());
       }
-    }),
-  );
+    }
+    dev_tools_agent.notify_subscribers(
+      "Network.webSocketHandshakeResponseReceived",
+      json!({
+        "requestId": id,
+        "timestamp": start_time.elapsed().as_secs_f64(),
+        "response": {
+          "status": response.status().as_u16(),
+          "statusText": response.status().canonical_reason().unwrap_or_default(),
+          "headers": res_headers,
+        }
+      }),
+    );
+  }
 
   let (ws_tx, ws_rx) = stream.split();
   let resource = WsStreamResource {
@@ -422,23 +422,29 @@ pub async fn op_ws_send(
     .get::<WsStreamResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
 
-  let event = if let Some(id) = resource.id {
-    let start_time = state.borrow().start_time.clone();
-    let (opcode, payload_data) = match &msg {
-      Message::Text(str) => (1, Cow::Borrowed(str)),
-      Message::Binary(buf) => (2, Cow::Owned(base64::encode(buf))),
-      Message::Pong(buf) => (10, Cow::Owned(base64::encode(buf))),
-      _ => unreachable!(),
-    };
-    Some(json!({
-      "requestId": id,
-      "timestamp": start_time.elapsed().as_secs_f64(),
-      "response": {
-        "opcode": opcode,
-        "mask": false,
-        "payloadData": payload_data
-      }
-    }))
+  let dev_tools_agent = state.borrow().dev_tools_agent.clone();
+
+  let event = if dev_tools_agent.has_subscribers_for_domain("Network") {
+    if let Some(id) = resource.id {
+      let start_time = state.borrow().start_time.clone();
+      let (opcode, payload_data) = match &msg {
+        Message::Text(str) => (1, Cow::Borrowed(str)),
+        Message::Binary(buf) => (2, Cow::Owned(base64::encode(buf))),
+        Message::Pong(buf) => (10, Cow::Owned(base64::encode(buf))),
+        _ => unreachable!(),
+      };
+      Some(json!({
+        "requestId": id,
+        "timestamp": start_time.elapsed().as_secs_f64(),
+        "response": {
+          "opcode": opcode,
+          "mask": false,
+          "payloadData": payload_data
+        }
+      }))
+    } else {
+      None
+    }
   } else {
     None
   };
@@ -447,7 +453,7 @@ pub async fn op_ws_send(
 
   if let Some(event) = event {
     let dev_tools_agent = state.borrow().dev_tools_agent.clone();
-    dev_tools_agent.send_event("Network.webSocketFrameSent", event);
+    dev_tools_agent.notify_subscribers("Network.webSocketFrameSent", event);
   }
 
   Ok(())
@@ -486,7 +492,7 @@ pub async fn op_ws_close(
   if let Some(id) = resource.id {
     let dev_tools_agent = state.borrow().dev_tools_agent.clone();
     let start_time = state.borrow().start_time.clone();
-    dev_tools_agent.send_event(
+    dev_tools_agent.notify_subscribers(
       "Network.webSocketClosed",
       json!({
         "requestId": id,
@@ -530,18 +536,20 @@ pub async fn op_ws_next_event(
     Some(Ok(Message::Text(text))) => NextEventResponse::String(text),
     Some(Ok(Message::Binary(data))) => {
       if let Some(id) = resource.id {
-        dev_tools_agent.send_event(
-          "Network.webSocketFrameReceived",
-          json!({
-            "requestId": id,
-            "timestamp": start_time.elapsed().as_secs_f64(),
-            "response": {
-              "opcode": 2,
-              "mask": false,
-              "payloadData": base64::encode(&data)
-            }
-          }),
-        );
+        if dev_tools_agent.has_subscribers_for_domain("Network") {
+          dev_tools_agent.notify_subscribers(
+            "Network.webSocketFrameReceived",
+            json!({
+              "requestId": id,
+              "timestamp": start_time.elapsed().as_secs_f64(),
+              "response": {
+                "opcode": 2,
+                "mask": false,
+                "payloadData": base64::encode(&data)
+              }
+            }),
+          );
+        }
       }
       NextEventResponse::Binary(data.into())
     }
@@ -563,38 +571,41 @@ pub async fn op_ws_next_event(
   };
 
   if let Some(id) = resource.id {
-    match &res {
-      NextEventResponse::String(text) => dev_tools_agent.send_event(
-        "Network.webSocketFrameReceived",
-        json!({
-          "requestId": id,
-          "timestamp": start_time.elapsed().as_secs_f64(),
-          "response": {
-            "opcode": 1,
-            "mask": false,
-            "payloadData": text
-          }
-        }),
-      ),
-      // Binary data is handled above.
-      NextEventResponse::Close { .. } | NextEventResponse::Closed => {
-        dev_tools_agent.send_event(
-          "Network.webSocketClosed",
+    if dev_tools_agent.has_subscribers_for_domain("Network") {
+      match &res {
+        NextEventResponse::String(text) => dev_tools_agent.notify_subscribers(
+          "Network.webSocketFrameReceived",
           json!({
             "requestId": id,
             "timestamp": start_time.elapsed().as_secs_f64(),
+            "response": {
+              "opcode": 1,
+              "mask": false,
+              "payloadData": text
+            }
           }),
-        )
+        ),
+        // Binary data is handled above.
+        NextEventResponse::Close { .. } | NextEventResponse::Closed => {
+          dev_tools_agent.notify_subscribers(
+            "Network.webSocketClosed",
+            json!({
+              "requestId": id,
+              "timestamp": start_time.elapsed().as_secs_f64(),
+            }),
+          )
+        }
+        NextEventResponse::Error(message) => dev_tools_agent
+          .notify_subscribers(
+            "Network.webSocketFrameError",
+            json!({
+              "requestId": id,
+              "timestamp": start_time.elapsed().as_secs_f64(),
+              "errorText": message,
+            }),
+          ),
+        _ => {}
       }
-      NextEventResponse::Error(message) => dev_tools_agent.send_event(
-        "Network.webSocketFrameError",
-        json!({
-          "requestId": id,
-          "timestamp": start_time.elapsed().as_secs_f64(),
-          "errorText": message,
-        }),
-      ),
-      _ => {}
     }
   }
   Ok(res)

@@ -5,6 +5,7 @@
 //! faciliates sending events over the DevTools protocol back to the client.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::future::Future;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -41,17 +42,48 @@ pub struct DevToolsAgent {
   pub request_bodies: Arc<Mutex<HashMap<Uuid, Vec<u8>>>>,
 }
 
+fn domain_from_method(method: &str) -> Option<&str> {
+  method.split_once(".").map(|(domain, _)| domain)
+}
+
 impl DevToolsAgent {
-  /// Send an event to all connected DevTools sessions where the method's
-  /// domain is enabled.
-  pub fn send_event(&self, method: &'static str, params: serde_json::Value) {
+  /// Check if any session has the given domain enabled.
+  pub fn has_subscribers_for_domain(&self, domain: &str) -> bool {
     let sessions = self.sessions.lock().unwrap();
     for session in &*sessions {
-      // TODO(lucacasonato): only send to a session if the domain is enabled
+      if session.is_domain_enabled(domain) {
+        eprintln!("has_subscribers_for_domain {} true", domain);
+        return true;
+      }
+    }
+    eprintln!("has_subscribers_for_domain {} false", domain);
+    return false;
+  }
+
+  /// Send an event to all connected DevTools sessions.
+  pub fn notify_all(&self, method: &str, params: serde_json::Value) {
+    let sessions = self.sessions.lock().unwrap();
+    for session in &*sessions {
       let _ = session.send(CdpMessage::Event {
         method: method.to_owned(),
         params: params.clone(),
       });
+    }
+  }
+
+  /// Send an event to all connected DevTools sessions where the method's
+  /// domain is enabled.
+  pub fn notify_subscribers(&self, method: &str, params: serde_json::Value) {
+    let domain =
+      domain_from_method(method).expect("method is missing a domain");
+    let sessions = self.sessions.lock().unwrap();
+    for session in &*sessions {
+      if session.is_domain_enabled(domain) {
+        let _ = session.send(CdpMessage::Event {
+          method: method.to_owned(),
+          params: params.clone(),
+        });
+      }
     }
   }
 }
@@ -113,22 +145,6 @@ impl CdpMessage {
   }
 }
 
-/// The DevTools session represents a single Chrome DevTools session on a
-/// specific isolate. There can be multiple sessions in one isolate.
-///
-/// The session is responsible for:
-///   - Maintaining the domain enablement state across the lifetime of a session
-///   - Sharing per session state between multiple CDP requests, and event
-///     dispatches from ops.
-#[derive(Clone)]
-pub struct DevToolsSession {
-  transport_tx: UnboundedSender<String>,
-  v8_tx: UnboundedSender<Result<Vec<u8>, AnyError>>,
-
-  /// The agent this session is associated with.
-  pub agent: DevToolsAgent,
-}
-
 // TODO(lucacasonato): replace with `V8InspectorSession::canDispatchMethod` once
 // that has rusty_v8 bindings.
 fn v8_inspector_can_dispatch_method(method: &str) -> bool {
@@ -144,13 +160,21 @@ fn v8_inspector_can_dispatch_method(method: &str) -> bool {
 // This is a temporary solution to dispatching until we have a dynamic
 // dispatch system, just like ops.
 fn handle_message(
-  agent: &DevToolsAgent,
+  session: &DevToolsSession,
   method: &str,
   params: serde_json::Value,
 ) -> Result<serde_json::Value, CdpError> {
   match method {
-    "Network.enable" => Ok(json!({})),
-    "Network.disable" => Ok(json!({})),
+    "Network.enable" => {
+      eprintln!("enabled network");
+      session.enable_domain("Network");
+      Ok(json!({}))
+    }
+    "Network.disable" => {
+      eprintln!("disabled network");
+      session.disable_domain("Network");
+      Ok(json!({}))
+    }
     "Network.getResponseBody" => {
       #[derive(Deserialize)]
       #[serde(rename_all = "camelCase")]
@@ -158,7 +182,7 @@ fn handle_message(
         request_id: Uuid,
       }
       let params: Params = serde_json::from_value(params).unwrap();
-      let request_bodies = agent.request_bodies.lock().unwrap();
+      let request_bodies = session.agent.request_bodies.lock().unwrap();
       let body = request_bodies.get(&params.request_id).unwrap();
       Ok(json!({
         "base64Encoded": true,
@@ -173,6 +197,45 @@ fn handle_message(
         message,
       })
     }
+  }
+}
+
+/// The DevTools session represents a single Chrome DevTools session on a
+/// specific isolate. There can be multiple sessions in one isolate.
+///
+/// The session is responsible for:
+///   - Maintaining the domain enablement state across the lifetime of a session
+///   - Sharing per session state between multiple CDP requests, and event
+///     dispatches from ops.
+#[derive(Clone)]
+pub struct DevToolsSession {
+  transport_tx: UnboundedSender<String>,
+  v8_tx: UnboundedSender<Result<Vec<u8>, AnyError>>,
+
+  /// The agent this session is associated with.
+  pub agent: DevToolsAgent,
+
+  /// The domains that are enabled for this session.
+  enabled_domains: Arc<Mutex<HashSet<String>>>,
+}
+
+impl DevToolsSession {
+  /// Enable a domain for this session.
+  pub fn enable_domain(&self, domain: &str) {
+    let mut domains = self.enabled_domains.lock().unwrap();
+    domains.insert(domain.to_owned());
+  }
+
+  /// Disable a domain for this session.
+  pub fn disable_domain(&self, domain: &str) {
+    let mut domains = self.enabled_domains.lock().unwrap();
+    domains.remove(domain);
+  }
+
+  /// Check if a domain is enabled for this session.
+  pub fn is_domain_enabled(&self, domain: &str) -> bool {
+    let domains = self.enabled_domains.lock().unwrap();
+    domains.contains(domain)
   }
 }
 
@@ -209,6 +272,7 @@ impl DevToolsSession {
       transport_tx: transport_outbound_tx.clone(),
       v8_tx: v8_inbound_tx,
       agent: agent.clone(),
+      enabled_domains: Default::default(),
     };
     let session_ = session.clone();
 
@@ -281,7 +345,7 @@ impl DevToolsSession {
     // async fn<P: Deserialize, R: Serialize>(session: DevToolsSession, params: P) -> Result<R, CdpError>
 
     // TODO(lucacasonato): Temporary handler while the above is implemented.
-    let res = handle_message(&self.agent, &method, params);
+    let res = handle_message(self, &method, params);
 
     let msg = match res {
       Ok(result) => CdpMessage::ResponseOk { id, result },

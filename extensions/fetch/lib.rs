@@ -241,37 +241,39 @@ where
       let request =
         request.build().map_err(|err| type_error(err.to_string()))?;
 
-      let mut headers = HashMap::<String, String>::new();
-      for (key, value) in request.headers() {
-        if let Ok(value) = value.to_str() {
-          headers.insert(key.to_string(), value.to_string());
+      if dev_tools_agent.has_subscribers_for_domain("Network") {
+        let mut headers = HashMap::<String, String>::new();
+        for (key, value) in request.headers() {
+          if let Ok(value) = value.to_str() {
+            headers.insert(key.to_string(), value.to_string());
+          }
         }
-      }
 
-      dev_tools_agent.send_event(
-        "Network.requestWillBeSent",
-        json!({
-          "requestId": id,
-          "loaderId": "",
-          "documentURL": "", // TODO(lucacasonato): Set this correctly
-          "request": {
-            "url": request.url().to_string(),
-            "method": request.method().to_string(),
-            "headers": headers,
-            // TODO(lucacasonato): Set postData and hasPostData, and postDataEntries
-            "mixedContentType": "none",
-            "initialPriority": "High",
-            "referrerPolicy": "no-referrer",
-          },
-          "timestamp": start_time.elapsed().as_secs_f64(),
-          "wallTime": SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64(),
-          "initiator": {
-            "type": "script",
-            // TODO(lucacasonato): Add a stack trace for the script that initiated the request.
-          },
-          "type": "Fetch",
-        }),
-      );
+        dev_tools_agent.notify_subscribers(
+          "Network.requestWillBeSent",
+          json!({
+            "requestId": id,
+            "loaderId": "",
+            "documentURL": "", // TODO(lucacasonato): Set this correctly
+            "request": {
+              "url": request.url().to_string(),
+              "method": request.method().to_string(),
+              "headers": headers,
+              // TODO(lucacasonato): Set postData and hasPostData, and postDataEntries
+              "mixedContentType": "none",
+              "initialPriority": "High",
+              "referrerPolicy": "no-referrer",
+            },
+            "timestamp": start_time.elapsed().as_secs_f64(),
+            "wallTime": SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64(),
+            "initiator": {
+              "type": "script",
+              // TODO(lucacasonato): Add a stack trace for the script that initiated the request.
+            },
+            "type": "Fetch",
+          }),
+        );
+      }
 
       let fut = async move {
         client
@@ -304,29 +306,31 @@ where
         .header(http::header::CONTENT_TYPE, data_url.mime_type().to_string())
         .body(reqwest::Body::from(body))?;
 
-      dev_tools_agent.send_event(
-        "Network.requestWillBeSent",
-        json!({
-          "requestId": id,
-          "loaderId": "",
-          "documentURL": "", // TODO(lucacasonato): Set this correctly
-          "request": {
-            "url": url.to_string(),
-            "method": method.to_string(),
-            "headers": {},
-            "mixedContentType": "none",
-            "initialPriority": "High",
-            "referrerPolicy": "no-referrer",
-          },
-          "timestamp": start_time.elapsed().as_secs_f64(),
-          "wallTime": SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64(),
-          "initiator": {
-            "type": "script",
-            // TODO(lucacasonato): Add a stack trace for the script that initiated the request.
-          },
-          "type": "Fetch",
-        }),
-      );
+      if dev_tools_agent.has_subscribers_for_domain("Network") {
+        dev_tools_agent.notify_subscribers(
+          "Network.requestWillBeSent",
+          json!({
+            "requestId": id,
+            "loaderId": "",
+            "documentURL": "", // TODO(lucacasonato): Set this correctly
+            "request": {
+              "url": url.to_string(),
+              "method": method.to_string(),
+              "headers": {},
+              "mixedContentType": "none",
+              "initialPriority": "High",
+              "referrerPolicy": "no-referrer",
+            },
+            "timestamp": start_time.elapsed().as_secs_f64(),
+            "wallTime": SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64(),
+            "initiator": {
+              "type": "script",
+              // TODO(lucacasonato): Add a stack trace for the script that initiated the request.
+            },
+            "type": "Fetch",
+          }),
+        );
+      }
 
       let fut = async move { Ok(Ok(Response::from(response))) };
 
@@ -353,29 +357,31 @@ where
       let cancel_handle = CancelHandle::new_rc();
       let cancel_handle_ = cancel_handle.clone();
 
-      dev_tools_agent.send_event(
-        "Network.requestWillBeSent",
-        json!({
-          "requestId": id,
-          "loaderId": "",
-          "documentURL": "", // TODO(lucacasonato): Set this correctly
-          "request": {
-            "url": url.to_string(),
-            "method": "GET",
-            "headers": {},
-            "mixedContentType": "none",
-            "initialPriority": "High",
-            "referrerPolicy": "no-referrer",
-          },
-          "timestamp": start_time.elapsed().as_secs_f64(),
-          "wallTime": SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64(),
-          "initiator": {
-            "type": "script",
-            // TODO(lucacasonato): Add a stack trace for the script that initiated the request.
-          },
-          "type": "Fetch",
-        }),
-      );
+      if dev_tools_agent.has_subscribers_for_domain("Network") {
+        dev_tools_agent.notify_subscribers(
+          "Network.requestWillBeSent",
+          json!({
+            "requestId": id,
+            "loaderId": "",
+            "documentURL": "", // TODO(lucacasonato): Set this correctly
+            "request": {
+              "url": url.to_string(),
+              "method": "GET",
+              "headers": {},
+              "mixedContentType": "none",
+              "initialPriority": "High",
+              "referrerPolicy": "no-referrer",
+            },
+            "timestamp": start_time.elapsed().as_secs_f64(),
+            "wallTime": SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64(),
+            "initiator": {
+              "type": "script",
+              // TODO(lucacasonato): Add a stack trace for the script that initiated the request.
+            },
+            "type": "Fetch",
+          }),
+        );
+      }
 
       let fut = async move {
         // TODO(lucacsonato): this should be a stream!
@@ -459,50 +465,50 @@ pub async fn op_fetch_send(
     ));
   }
 
-  let content_type = res
-    .headers()
-    .get(http::header::CONTENT_TYPE)
-    .map(|val| val.to_str().ok())
-    .flatten()
-    .unwrap_or_else(|| "");
-  let mime_type: mime::Mime = content_type
-    .parse()
-    .unwrap_or(mime::APPLICATION_OCTET_STREAM);
-
-  let mut headers = HashMap::<String, String>::new();
-  for (key, value) in res.headers() {
-    if let Ok(value) = value.to_str() {
-      headers.insert(key.to_string(), value.to_string());
-    }
-  }
-
   let dev_tools_agent = state.borrow().dev_tools_agent.clone();
   let start_time = state.borrow().start_time.clone();
 
-  dev_tools_agent.send_event(
-    "Network.responseReceived",
-    json!({
-      "requestId": request.id,
-      "loaderId": "",
-      "timestamp": start_time.elapsed().as_secs_f64(),
-      "type": "Fetch",
-      "response": {
-        "url": url,
-        "status": status.as_u16(),
-        "statusText": status.canonical_reason().unwrap_or(""),
-        "headers": headers,
-        "mimeType": mime_type.to_string(),
-        "connectionReused": false, // TODO(lucacasonato): Set this correctly
-        "connectionId": 0, // TODO(lucacasonato): Set this correctly
-        "encodedDataLength": 0, // TODO(lucacasonato): Set this correctly
-        "securityLevel": "unknown",
-      }
-    }),
-  );
+  if dev_tools_agent.has_subscribers_for_domain("Network") {
+    let content_type = res
+      .headers()
+      .get(http::header::CONTENT_TYPE)
+      .map(|val| val.to_str().ok())
+      .flatten()
+      .unwrap_or_else(|| "");
+    let mime_type: mime::Mime = content_type
+      .parse()
+      .unwrap_or(mime::APPLICATION_OCTET_STREAM);
 
-  {
+    let mut headers = HashMap::<String, String>::new();
+    for (key, value) in res.headers() {
+      if let Ok(value) = value.to_str() {
+        headers.insert(key.to_string(), value.to_string());
+      }
+    }
+
     let mut request_bodies = dev_tools_agent.request_bodies.lock().unwrap();
     request_bodies.insert(request.id, vec![]);
+
+    dev_tools_agent.notify_subscribers(
+      "Network.responseReceived",
+      json!({
+        "requestId": request.id,
+        "loaderId": "",
+        "timestamp": start_time.elapsed().as_secs_f64(),
+        "type": "Fetch",
+        "response": {
+          "url": url,
+          "status": status.as_u16(),
+          "statusText": status.canonical_reason().unwrap_or(""),
+          "headers": headers,
+          "mimeType": mime_type.to_string(),
+          "connectionReused": false, // TODO(lucacasonato): Set this correctly
+          "connectionId": 0, // TODO(lucacasonato): Set this correctly
+          "encodedDataLength": 0, // TODO(lucacasonato): Set this correctly
+          "securityLevel": "unknown",
+        }
+      }),
+    );
   }
 
   let stream: BytesStream = Box::pin(res.bytes_stream().map(|r| {
@@ -569,22 +575,28 @@ pub async fn op_fetch_response_read(
   let cancel = RcRef::map(&resource, |r| &r.cancel);
   let mut buf = data.clone();
   let read = reader.read(&mut buf).try_or_cancel(cancel).await?;
+
+  // Update the bytes read for DevTools
   resource.bytes_read.fetch_add(read as u32, Ordering::SeqCst);
-
-  resource.dev_tools_agent.send_event(
-    "Network.dataReceived",
-    json!({
-      "requestId": resource.id,
-      "timestamp": resource.start_time.elapsed().as_secs_f64(),
-      "dataLength": read,
-      "encodedDataLength": read,
-    }),
-  );
-
   let mut request_bodies =
     resource.dev_tools_agent.request_bodies.lock().unwrap();
   if let Some(body) = request_bodies.get_mut(&resource.id) {
     body.extend_from_slice(&buf[..read])
+  }
+
+  if resource
+    .dev_tools_agent
+    .has_subscribers_for_domain("Network")
+  {
+    resource.dev_tools_agent.notify_subscribers(
+      "Network.dataReceived",
+      json!({
+        "requestId": resource.id,
+        "timestamp": resource.start_time.elapsed().as_secs_f64(),
+        "dataLength": read,
+        "encodedDataLength": read,
+      }),
+    );
   }
 
   Ok(read)
@@ -650,15 +662,16 @@ impl Resource for FetchResponseBodyResource {
   }
 
   fn close(self: Rc<Self>) {
-    self.dev_tools_agent.send_event(
-      "Network.loadingFinished",
-      json!({
-        "requestId": self.id,
-        "timestamp": self.start_time.elapsed().as_secs_f64(),
-        "encodedDataLength": self.bytes_read.load(Ordering::SeqCst),
-      }),
-    );
-
+    if self.dev_tools_agent.has_subscribers_for_domain("Network") {
+      self.dev_tools_agent.notify_subscribers(
+        "Network.loadingFinished",
+        json!({
+          "requestId": self.id,
+          "timestamp": self.start_time.elapsed().as_secs_f64(),
+          "encodedDataLength": self.bytes_read.load(Ordering::SeqCst),
+        }),
+      );
+    }
     self.cancel.cancel()
   }
 }

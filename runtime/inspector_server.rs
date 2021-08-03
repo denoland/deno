@@ -328,6 +328,7 @@ fn create_websocket_proxy(
 
     let inbound_pump = websocket_rx
       .map(|result| {
+        // TODO(lucacsonato): this unwrap is not safe. Panics: Protocol(ResetWithoutClosingHandshake)
         let result = result.map(|msg| msg.into_data()).unwrap();
         transport_tx.unbounded_send(result)
       })
