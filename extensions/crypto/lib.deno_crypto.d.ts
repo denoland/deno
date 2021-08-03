@@ -54,6 +54,11 @@ interface RsaPssParams extends Algorithm {
   saltLength: number;
 }
 
+interface HmacImportParams extends Algorithm {
+  hash: HashAlgorithmIdentifier;
+  length?: number;
+}
+
 /** The CryptoKey dictionary of the Web Crypto API represents a cryptographic key. */
 interface CryptoKey {
   readonly algorithm: KeyAlgorithm;
@@ -95,6 +100,13 @@ interface SubtleCrypto {
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKeyPair | CryptoKey>;
+  importKey(
+    format: "raw",
+    keyData: BufferSource,
+    algorithm: AlgorithmIdentifier | HmacImportParams,
+    extractable: boolean,
+    keyUsages: KeyUsage[],
+  ): Promise<CryptoKey>;
   sign(
     algorithm: AlgorithmIdentifier | RsaPssParams | EcdsaParams,
     key: CryptoKey,
