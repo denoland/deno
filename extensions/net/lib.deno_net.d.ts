@@ -51,6 +51,8 @@ declare namespace Deno {
     /** A literal IP address or host name that can be resolved to an IP address.
    * If not specified, defaults to `0.0.0.0`. */
     hostname?: string;
+    // Allows closing the server by aborting the associated AbortController
+    signal?: AbortSignal;
   }
 
   /** Listen announces on the local transport address.
