@@ -12,6 +12,7 @@ use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
 use deno_core::op_async;
 use deno_core::op_sync;
+use deno_core::serde_json::json;
 use deno_core::url;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
@@ -23,30 +24,36 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 
-use http::{Method, Request, Uri};
+use http::Method;
+use http::Request;
+use http::Uri;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::SystemTime;
 use tokio::net::TcpStream;
-use tokio_rustls::{rustls::ClientConfig, TlsConnector};
-use tokio_tungstenite::tungstenite::{
-  handshake::client::Response, protocol::frame::coding::CloseCode,
-  protocol::CloseFrame, Message,
-};
+use tokio_rustls::rustls::ClientConfig;
+use tokio_rustls::TlsConnector;
+use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
+use tokio_tungstenite::tungstenite::protocol::CloseFrame;
+use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::{client_async, WebSocketStream};
+use uuid::Uuid;
 use webpki::DNSNameRef;
 
 pub use tokio_tungstenite; // Re-export tokio_tungstenite
 
 #[derive(Clone)]
 pub struct WsCaData(pub Vec<u8>);
+
 #[derive(Clone)]
 pub struct WsUserAgent(pub String);
 
@@ -78,6 +85,7 @@ pub enum WebSocketStreamType {
 }
 
 pub struct WsStreamResource {
+  pub id: Option<Uuid>,
   pub stream: WebSocketStreamType,
   // When a `WsStreamResource` resource is closed, all pending 'read' ops are
   // canceled, while 'write' ops are allowed to complete. Therefore only
@@ -199,6 +207,10 @@ where
 
   let ws_ca_data = state.borrow().try_borrow::<WsCaData>().cloned();
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
+  let dev_tools_agent = state.borrow().dev_tools_agent.clone();
+  let start_time = state.borrow().start_time.clone();
+
+  let id = Uuid::new_v4();
   let uri: Uri = args.url.parse()?;
   let mut request = Request::builder().method(Method::GET).uri(&uri);
 
@@ -209,6 +221,39 @@ where
   }
 
   let request = request.body(())?;
+
+  let mut req_headers = HashMap::<String, String>::default();
+  req_headers.insert("connection".to_string(), "Upgrade".to_string());
+  req_headers.insert("upgrade".to_string(), "websocket".to_string());
+  req_headers.insert("sec-websocket-version".to_string(), "13".to_string());
+  for (k, v) in request.headers() {
+    if let Ok(v) = v.to_str() {
+      req_headers.insert(k.to_string(), v.to_string());
+    }
+  }
+
+  dev_tools_agent.send_event(
+    "Network.webSocketCreated",
+    json!({
+      "requestId": id,
+      "url": uri.to_string(),
+      "initiator": {
+        "type": "script"
+      },
+    }),
+  );
+  dev_tools_agent.send_event(
+    "Network.webSocketWillSendHandshakeRequest",
+    json!({
+      "requestId": id,
+      "timestamp": start_time.elapsed().as_secs_f64(),
+      "wallTime": SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64(),
+      "request": {
+        "headers": req_headers
+      }
+    }),
+  );
+
   let domain = &uri.host().unwrap().to_string();
   let port = &uri.port_u16().unwrap_or(match uri.scheme_str() {
     Some("wss") => 443,
@@ -216,40 +261,113 @@ where
     _ => unreachable!(),
   });
   let addr = format!("{}:{}", domain, port);
-  let tcp_socket = TcpStream::connect(addr).await?;
 
-  let socket: MaybeTlsStream<TcpStream> = match uri.scheme_str() {
-    Some("ws") => MaybeTlsStream::Plain(tcp_socket),
-    Some("wss") => {
-      let mut config = ClientConfig::new();
-      config
-        .root_store
-        .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+  let uri_ = uri.clone();
 
-      if let Some(ws_ca_data) = ws_ca_data {
-        let reader = &mut BufReader::new(Cursor::new(ws_ca_data.0));
-        config.root_store.add_pem_file(reader).unwrap();
+  let socket_res = async move {
+    let tcp_socket = TcpStream::connect(addr).await?;
+
+    let socket: MaybeTlsStream<TcpStream> = match uri_.scheme_str() {
+      Some("ws") => MaybeTlsStream::Plain(tcp_socket),
+      Some("wss") => {
+        let mut config = ClientConfig::new();
+        config
+          .root_store
+          .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+
+        if let Some(ws_ca_data) = ws_ca_data {
+          let reader = &mut BufReader::new(Cursor::new(ws_ca_data.0));
+          config.root_store.add_pem_file(reader).unwrap();
+        }
+
+        let tls_connector = TlsConnector::from(Arc::new(config));
+        let dnsname = DNSNameRef::try_from_ascii_str(domain)
+          .map_err(|_| invalid_hostname(domain))?;
+        let tls_socket = tls_connector.connect(dnsname, tcp_socket).await?;
+        MaybeTlsStream::Rustls(tls_socket)
       }
+      _ => unreachable!(),
+    };
 
-      let tls_connector = TlsConnector::from(Arc::new(config));
-      let dnsname = DNSNameRef::try_from_ascii_str(domain)
-        .map_err(|_| invalid_hostname(domain))?;
-      let tls_socket = tls_connector.connect(dnsname, tcp_socket).await?;
-      MaybeTlsStream::Rustls(tls_socket)
+    Ok::<_, AnyError>(socket)
+  }
+  .await;
+
+  let socket = match socket_res {
+    Ok(socket) => socket,
+    Err(err) => {
+      dev_tools_agent.send_event(
+        "Network.webSocketClosed",
+        json!({
+          "requestId": id,
+          "timestamp": start_time.elapsed().as_secs_f64(),
+        }),
+      );
+      return Err(type_error(format!(
+        "Failed to establish connection for WebSocket: {}",
+        err.to_string()
+      )));
     }
-    _ => unreachable!(),
   };
 
-  let (stream, response): (WsStream, Response) =
-    client_async(request, socket).await.map_err(|err| {
-      type_error(format!(
-        "failed to connect to WebSocket: {}",
+  let (stream, response) = match client_async(request, socket).await {
+    Ok((stream, response)) => (stream, response),
+    Err(err) => {
+      dev_tools_agent.send_event(
+        "Network.webSocketFrameError",
+        json!({
+          "requestId": id,
+          "timestamp": start_time.elapsed().as_secs_f64(),
+          "errorMessage": err.to_string(),
+        }),
+      );
+      dev_tools_agent.send_event(
+        "Network.webSocketClosed",
+        json!({
+          "requestId": id,
+          "timestamp": start_time.elapsed().as_secs_f64(),
+        }),
+      );
+      return Err(type_error(format!(
+        "Failed to establish WebSocket: {}",
         err.to_string()
-      ))
-    })?;
+      )));
+    }
+  };
+
+  let mut res_headers = HashMap::<String, String>::default();
+  for (k, v) in response.headers() {
+    if let Ok(v) = v.to_str() {
+      res_headers.insert(k.to_string(), v.to_string());
+    }
+  }
+
+  let authority = uri.authority().unwrap().as_str();
+  let host = if let Some(idx) = authority.find('@') {
+    // handle possible name:password@
+    authority.split_at(idx + 1).1
+  } else {
+    authority
+  };
+  req_headers.insert("host".to_string(), host.to_string());
+
+  dev_tools_agent.send_event(
+    "Network.webSocketHandshakeResponseReceived",
+    json!({
+      "requestId": id,
+      "timestamp": start_time.elapsed().as_secs_f64(),
+      "response": {
+        "status": response.status().as_u16(),
+        "statusText": response.status().canonical_reason().unwrap_or_default(),
+        "headers": res_headers,
+        "requestHeaders": req_headers,
+      }
+    }),
+  );
 
   let (ws_tx, ws_rx) = stream.split();
   let resource = WsStreamResource {
+    id: Some(id),
     stream: WebSocketStreamType::Client {
       rx: AsyncRefCell::new(ws_rx),
       tx: AsyncRefCell::new(ws_tx),
@@ -263,12 +381,14 @@ where
     Some(header) => header.to_str().unwrap(),
     None => "",
   };
+
   let extensions = response
     .headers()
     .get_all("Sec-WebSocket-Extensions")
     .iter()
     .map(|header| header.to_str().unwrap())
     .collect::<String>();
+
   Ok(CreateResponse {
     rid,
     protocol: protocol.to_string(),
@@ -301,7 +421,35 @@ pub async fn op_ws_send(
     .resource_table
     .get::<WsStreamResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
+
+  let event = if let Some(id) = resource.id {
+    let start_time = state.borrow().start_time.clone();
+    let (opcode, payload_data) = match &msg {
+      Message::Text(str) => (1, Cow::Borrowed(str)),
+      Message::Binary(buf) => (2, Cow::Owned(base64::encode(buf))),
+      Message::Pong(buf) => (10, Cow::Owned(base64::encode(buf))),
+      _ => unreachable!(),
+    };
+    Some(json!({
+      "requestId": id,
+      "timestamp": start_time.elapsed().as_secs_f64(),
+      "response": {
+        "opcode": opcode,
+        "mask": false,
+        "payloadData": payload_data
+      }
+    }))
+  } else {
+    None
+  };
+
   resource.send(msg).await?;
+
+  if let Some(event) = event {
+    let dev_tools_agent = state.borrow().dev_tools_agent.clone();
+    dev_tools_agent.send_event("Network.webSocketFrameSent", event);
+  }
+
   Ok(())
 }
 
@@ -332,7 +480,21 @@ pub async fn op_ws_close(
     .resource_table
     .get::<WsStreamResource>(rid)
     .ok_or_else(bad_resource_id)?;
+
   resource.send(msg).await?;
+
+  if let Some(id) = resource.id {
+    let dev_tools_agent = state.borrow().dev_tools_agent.clone();
+    let start_time = state.borrow().start_time.clone();
+    dev_tools_agent.send_event(
+      "Network.webSocketClosed",
+      json!({
+        "requestId": id,
+        "timestamp": start_time.elapsed().as_secs_f64(),
+      }),
+    )
+  }
+
   Ok(())
 }
 
@@ -359,11 +521,30 @@ pub async fn op_ws_next_event(
     .get::<WsStreamResource>(rid)
     .ok_or_else(bad_resource_id)?;
 
+  let dev_tools_agent = state.borrow().dev_tools_agent.clone();
+  let start_time = state.borrow().start_time.clone();
+
   let cancel = RcRef::map(&resource, |r| &r.cancel);
   let val = resource.next_message(cancel).await?;
   let res = match val {
     Some(Ok(Message::Text(text))) => NextEventResponse::String(text),
-    Some(Ok(Message::Binary(data))) => NextEventResponse::Binary(data.into()),
+    Some(Ok(Message::Binary(data))) => {
+      if let Some(id) = resource.id {
+        dev_tools_agent.send_event(
+          "Network.webSocketFrameReceived",
+          json!({
+            "requestId": id,
+            "timestamp": start_time.elapsed().as_secs_f64(),
+            "response": {
+              "opcode": 2,
+              "mask": false,
+              "payloadData": base64::encode(&data)
+            }
+          }),
+        );
+      }
+      NextEventResponse::Binary(data.into())
+    }
     Some(Ok(Message::Close(Some(frame)))) => NextEventResponse::Close {
       code: frame.code.into(),
       reason: frame.reason.to_string(),
@@ -380,6 +561,42 @@ pub async fn op_ws_next_event(
       NextEventResponse::Closed
     }
   };
+
+  if let Some(id) = resource.id {
+    match &res {
+      NextEventResponse::String(text) => dev_tools_agent.send_event(
+        "Network.webSocketFrameReceived",
+        json!({
+          "requestId": id,
+          "timestamp": start_time.elapsed().as_secs_f64(),
+          "response": {
+            "opcode": 1,
+            "mask": false,
+            "payloadData": text
+          }
+        }),
+      ),
+      // Binary data is handled above.
+      NextEventResponse::Close { .. } | NextEventResponse::Closed => {
+        dev_tools_agent.send_event(
+          "Network.webSocketClosed",
+          json!({
+            "requestId": id,
+            "timestamp": start_time.elapsed().as_secs_f64(),
+          }),
+        )
+      }
+      NextEventResponse::Error(message) => dev_tools_agent.send_event(
+        "Network.webSocketFrameError",
+        json!({
+          "requestId": id,
+          "timestamp": start_time.elapsed().as_secs_f64(),
+          "errorText": message,
+        }),
+      ),
+      _ => {}
+    }
+  }
   Ok(res)
 }
 

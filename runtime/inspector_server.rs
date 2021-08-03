@@ -1,6 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use core::convert::Infallible as Never; // Alias for the future `!` type.
+use core::convert::Infallible as Never;
+use deno_core::DevToolsAgent;
+use deno_core::DevToolsSession;
+// Alias for the future `!` type.
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
@@ -65,9 +68,15 @@ impl InspectorServer {
     session_sender: UnboundedSender<InspectorSessionProxy>,
     deregister_rx: oneshot::Receiver<()>,
     module_url: String,
+    dev_tools_agent: DevToolsAgent,
   ) {
-    let info =
-      InspectorInfo::new(self.host, session_sender, deregister_rx, module_url);
+    let info = InspectorInfo::new(
+      self.host,
+      session_sender,
+      deregister_rx,
+      module_url,
+      dev_tools_agent,
+    );
     self.register_inspector_tx.unbounded_send(info).unwrap();
   }
 }
@@ -107,7 +116,7 @@ fn handle_ws_request(
   let (parts, body) = req.into_parts();
   let req = http::Request::from_parts(parts, ());
 
-  if let Some(new_session_tx) = req
+  if let Some((new_session_tx, dev_tools_agent)) = req
     .uri()
     .path()
     .strip_prefix("/ws/")
@@ -116,7 +125,7 @@ fn handle_ws_request(
       inspector_map
         .borrow()
         .get(&uuid)
-        .map(|info| info.new_session_tx.clone())
+        .map(|info| (info.new_session_tx.clone(), info.dev_tools_agent.clone()))
     })
   {
     let resp = tungstenite::handshake::server::create_response(&req)
@@ -147,10 +156,12 @@ fn handle_ws_request(
             None,
           )
           .await;
-        let (proxy, pump) = create_websocket_proxy(websocket);
+        let (proxy, pump) = create_websocket_proxy(websocket, dev_tools_agent);
         eprintln!("Debugger session started.");
         let _ = new_session_tx.unbounded_send(proxy);
-        pump.await;
+        if let Err(err) = pump.await {
+          eprintln!("Debugger session failed: {}", err);
+        }
       });
     }
     resp
@@ -295,17 +306,13 @@ fn create_websocket_proxy(
   websocket: deno_websocket::tokio_tungstenite::WebSocketStream<
     hyper::upgrade::Upgraded,
   >,
-) -> (InspectorSessionProxy, impl Future<Output = ()> + Send) {
-  // The 'outbound' channel carries messages sent to the websocket.
-  let (outbound_tx, outbound_rx) = mpsc::unbounded();
-
-  // The 'inbound' channel carries messages received from the websocket.
-  let (inbound_tx, inbound_rx) = mpsc::unbounded();
-
-  let proxy = InspectorSessionProxy {
-    tx: outbound_tx,
-    rx: inbound_rx,
-  };
+  dev_tools_agent: DevToolsAgent,
+) -> (
+  InspectorSessionProxy,
+  impl Future<Output = Result<((), ()), AnyError>> + Send,
+) {
+  let (transport_rx, transport_tx, proxy, dispatcher_fut) =
+    DevToolsSession::start(dev_tools_agent);
 
   // The pump future takes care of forwarding messages between the websocket
   // and channels. It resolves to () when either side disconnects, ignoring any
@@ -313,24 +320,28 @@ fn create_websocket_proxy(
   let pump = async move {
     let (websocket_tx, websocket_rx) = websocket.split();
 
-    let outbound_pump = outbound_rx
-      .map(|(_maybe_call_id, msg)| tungstenite::Message::text(msg))
+    let outbound_pump = transport_rx
+      .map(|data| tungstenite::Message::Text(data))
       .map(Ok)
       .forward(websocket_tx)
       .map_err(|_| ());
 
     let inbound_pump = websocket_rx
       .map(|result| {
-        let result = result.map(|msg| msg.into_data()).map_err(AnyError::from);
-        inbound_tx.unbounded_send(result)
+        let result = result.map(|msg| msg.into_data()).unwrap();
+        transport_tx.unbounded_send(result)
       })
       .map_err(|_| ())
       .try_collect::<()>();
 
     let _ = future::try_join(outbound_pump, inbound_pump).await;
+
+    Ok::<(), AnyError>(())
   };
 
-  (proxy, pump)
+  let fut = future::try_join(pump, dispatcher_fut);
+
+  (proxy, fut)
 }
 
 /// Inspector information that is sent from the isolate thread to the server
@@ -342,6 +353,7 @@ pub struct InspectorInfo {
   pub new_session_tx: UnboundedSender<InspectorSessionProxy>,
   pub deregister_rx: oneshot::Receiver<()>,
   pub url: String,
+  pub dev_tools_agent: DevToolsAgent,
 }
 
 impl InspectorInfo {
@@ -350,6 +362,7 @@ impl InspectorInfo {
     new_session_tx: mpsc::UnboundedSender<InspectorSessionProxy>,
     deregister_rx: oneshot::Receiver<()>,
     url: String,
+    dev_tools_agent: DevToolsAgent,
   ) -> Self {
     Self {
       host,
@@ -358,6 +371,7 @@ impl InspectorInfo {
       new_session_tx,
       deregister_rx,
       url,
+      dev_tools_agent,
     }
   }
 
@@ -368,7 +382,7 @@ impl InspectorInfo {
       "faviconUrl": "https://deno.land/favicon.ico",
       "id": self.uuid.to_string(),
       "title": self.get_title(),
-      "type": "node",
+      "type": "deno",
       "url": self.url.to_string(),
       "webSocketDebuggerUrl": self.get_websocket_debugger_url(),
     })

@@ -367,6 +367,8 @@ impl WebWorker {
     });
 
     if let Some(server) = options.maybe_inspector_server.clone() {
+      let dev_tools_agent =
+        js_runtime.op_state().borrow().dev_tools_agent.clone();
       let inspector = js_runtime.inspector();
       let session_sender = inspector.get_session_sender();
       let deregister_rx = inspector.add_deregister_handler();
@@ -374,6 +376,7 @@ impl WebWorker {
         session_sender,
         deregister_rx,
         main_module.to_string(),
+        dev_tools_agent,
       );
     }
 

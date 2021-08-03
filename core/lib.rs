@@ -2,6 +2,7 @@
 mod async_cancel;
 mod async_cell;
 mod bindings;
+mod dev_tools;
 pub mod error;
 mod extensions;
 mod flags;
@@ -88,6 +89,8 @@ pub use crate::runtime::JsRuntime;
 pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::Snapshot;
 // pub use crate::runtime_modules::include_js_files!;
+pub use crate::dev_tools::DevToolsAgent;
+pub use crate::dev_tools::DevToolsSession;
 pub use crate::extensions::Extension;
 pub use crate::extensions::OpMiddlewareFn;
 pub use crate::extensions::OpPair;

@@ -11,6 +11,7 @@ use deno_core::futures::StreamExt;
 use deno_core::include_js_files;
 use deno_core::op_async;
 use deno_core::op_sync;
+use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
@@ -18,6 +19,7 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Canceled;
+use deno_core::DevToolsAgent;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -43,6 +45,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::convert::From;
 use std::fs::File;
 use std::io::Read;
@@ -50,10 +53,15 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::Ordering;
+use std::time::Instant;
+use std::time::SystemTime;
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::io::StreamReader;
+use uuid::Uuid;
 
 pub use reqwest; // Re-export reqwest
 
@@ -168,6 +176,10 @@ where
   let method = Method::from_bytes(&args.method)?;
   let url = Url::parse(&args.url)?;
 
+  let dev_tools_agent = state.dev_tools_agent.clone();
+  let start_time = state.start_time.clone();
+  let id = Uuid::new_v4();
+
   // Check scheme before asking for net permission
   let scheme = url.scheme();
   let (request_rid, request_body_rid, cancel_handle_rid) = match scheme {
@@ -226,17 +238,53 @@ where
       let cancel_handle = CancelHandle::new_rc();
       let cancel_handle_ = cancel_handle.clone();
 
+      let request =
+        request.build().map_err(|err| type_error(err.to_string()))?;
+
+      let mut headers = HashMap::<String, String>::new();
+      for (key, value) in request.headers() {
+        if let Ok(value) = value.to_str() {
+          headers.insert(key.to_string(), value.to_string());
+        }
+      }
+
+      dev_tools_agent.send_event(
+        "Network.requestWillBeSent",
+        json!({
+          "requestId": id,
+          "loaderId": "",
+          "documentURL": "", // TODO(lucacasonato): Set this correctly
+          "request": {
+            "url": request.url().to_string(),
+            "method": request.method().to_string(),
+            "headers": headers,
+            // TODO(lucacasonato): Set postData and hasPostData, and postDataEntries
+            "mixedContentType": "none",
+            "initialPriority": "High",
+            "referrerPolicy": "no-referrer",
+          },
+          "timestamp": start_time.elapsed().as_secs_f64(),
+          "wallTime": SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64(),
+          "initiator": {
+            "type": "script",
+            // TODO(lucacasonato): Add a stack trace for the script that initiated the request.
+          },
+          "type": "Fetch",
+        }),
+      );
+
       let fut = async move {
-        request
-          .send()
+        client
+          .execute(request)
           .or_cancel(cancel_handle_)
           .await
           .map(|res| res.map_err(|err| type_error(err.to_string())))
       };
 
-      let request_rid = state
-        .resource_table
-        .add(FetchRequestResource(Box::pin(fut)));
+      let request_rid = state.resource_table.add(FetchRequestResource {
+        id,
+        fut: Box::pin(fut),
+      });
 
       let cancel_handle_rid =
         state.resource_table.add(FetchCancelHandle(cancel_handle));
@@ -256,11 +304,36 @@ where
         .header(http::header::CONTENT_TYPE, data_url.mime_type().to_string())
         .body(reqwest::Body::from(body))?;
 
+      dev_tools_agent.send_event(
+        "Network.requestWillBeSent",
+        json!({
+          "requestId": id,
+          "loaderId": "",
+          "documentURL": "", // TODO(lucacasonato): Set this correctly
+          "request": {
+            "url": url.to_string(),
+            "method": method.to_string(),
+            "headers": {},
+            "mixedContentType": "none",
+            "initialPriority": "High",
+            "referrerPolicy": "no-referrer",
+          },
+          "timestamp": start_time.elapsed().as_secs_f64(),
+          "wallTime": SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64(),
+          "initiator": {
+            "type": "script",
+            // TODO(lucacasonato): Add a stack trace for the script that initiated the request.
+          },
+          "type": "Fetch",
+        }),
+      );
+
       let fut = async move { Ok(Ok(Response::from(response))) };
 
-      let request_rid = state
-        .resource_table
-        .add(FetchRequestResource(Box::pin(fut)));
+      let request_rid = state.resource_table.add(FetchRequestResource {
+        id,
+        fut: Box::pin(fut),
+      });
 
       (request_rid, None, None)
     }
@@ -270,7 +343,7 @@ where
       })?;
 
       let blob = blob_store
-        .get_object_url(url)?
+        .get_object_url(url.clone())?
         .ok_or_else(|| type_error("Blob for the given URL not found."))?;
 
       if method != "GET" {
@@ -279,6 +352,30 @@ where
 
       let cancel_handle = CancelHandle::new_rc();
       let cancel_handle_ = cancel_handle.clone();
+
+      dev_tools_agent.send_event(
+        "Network.requestWillBeSent",
+        json!({
+          "requestId": id,
+          "loaderId": "",
+          "documentURL": "", // TODO(lucacasonato): Set this correctly
+          "request": {
+            "url": url.to_string(),
+            "method": "GET",
+            "headers": {},
+            "mixedContentType": "none",
+            "initialPriority": "High",
+            "referrerPolicy": "no-referrer",
+          },
+          "timestamp": start_time.elapsed().as_secs_f64(),
+          "wallTime": SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64(),
+          "initiator": {
+            "type": "script",
+            // TODO(lucacasonato): Add a stack trace for the script that initiated the request.
+          },
+          "type": "Fetch",
+        }),
+      );
 
       let fut = async move {
         // TODO(lucacsonato): this should be a stream!
@@ -300,9 +397,10 @@ where
         }
       };
 
-      let request_rid = state
-        .resource_table
-        .add(FetchRequestResource(Box::pin(fut)));
+      let request_rid = state.resource_table.add(FetchRequestResource {
+        id,
+        fut: Box::pin(fut),
+      });
 
       let cancel_handle_rid =
         state.resource_table.add(FetchCancelHandle(cancel_handle));
@@ -344,13 +442,12 @@ pub async fn op_fetch_send(
     .ok()
     .expect("multiple op_fetch_send ongoing");
 
-  let res = match request.0.await {
+  let res = match request.fut.await {
     Ok(Ok(res)) => res,
     Ok(Err(err)) => return Err(type_error(err.to_string())),
     Err(_) => return Err(type_error("request was cancelled")),
   };
 
-  //debug!("Fetch response {}", url);
   let status = res.status();
   let url = res.url().to_string();
   let mut res_headers = Vec::new();
@@ -360,6 +457,52 @@ pub async fn op_fetch_send(
       ByteString(key_bytes.to_owned()),
       ByteString(val.as_bytes().to_owned()),
     ));
+  }
+
+  let content_type = res
+    .headers()
+    .get(http::header::CONTENT_TYPE)
+    .map(|val| val.to_str().ok())
+    .flatten()
+    .unwrap_or_else(|| "");
+  let mime_type: mime::Mime = content_type
+    .parse()
+    .unwrap_or(mime::APPLICATION_OCTET_STREAM);
+
+  let mut headers = HashMap::<String, String>::new();
+  for (key, value) in res.headers() {
+    if let Ok(value) = value.to_str() {
+      headers.insert(key.to_string(), value.to_string());
+    }
+  }
+
+  let dev_tools_agent = state.borrow().dev_tools_agent.clone();
+  let start_time = state.borrow().start_time.clone();
+
+  dev_tools_agent.send_event(
+    "Network.responseReceived",
+    json!({
+      "requestId": request.id,
+      "loaderId": "",
+      "timestamp": start_time.elapsed().as_secs_f64(),
+      "type": "Fetch",
+      "response": {
+        "url": url,
+        "status": status.as_u16(),
+        "statusText": status.canonical_reason().unwrap_or(""),
+        "headers": headers,
+        "mimeType": mime_type.to_string(),
+        "connectionReused": false, // TODO(lucacasonato): Set this correctly
+        "connectionId": 0, // TODO(lucacasonato): Set this correctly
+        "encodedDataLength": 0, // TODO(lucacasonato): Set this correctly
+        "securityLevel": "unknown",
+      }
+    }),
+  );
+
+  {
+    let mut request_bodies = dev_tools_agent.request_bodies.lock().unwrap();
+    request_bodies.insert(request.id, vec![]);
   }
 
   let stream: BytesStream = Box::pin(res.bytes_stream().map(|r| {
@@ -372,6 +515,11 @@ pub async fn op_fetch_send(
     .add(FetchResponseBodyResource {
       reader: AsyncRefCell::new(stream_reader),
       cancel: CancelHandle::default(),
+
+      id: request.id,
+      bytes_read: 0.into(),
+      dev_tools_agent,
+      start_time,
     });
 
   Ok(FetchResponse {
@@ -418,17 +566,36 @@ pub async fn op_fetch_response_read(
     .get::<FetchResponseBodyResource>(rid)
     .ok_or_else(bad_resource_id)?;
   let mut reader = RcRef::map(&resource, |r| &r.reader).borrow_mut().await;
-  let cancel = RcRef::map(resource, |r| &r.cancel);
+  let cancel = RcRef::map(&resource, |r| &r.cancel);
   let mut buf = data.clone();
   let read = reader.read(&mut buf).try_or_cancel(cancel).await?;
+  resource.bytes_read.fetch_add(read as u32, Ordering::SeqCst);
+
+  resource.dev_tools_agent.send_event(
+    "Network.dataReceived",
+    json!({
+      "requestId": resource.id,
+      "timestamp": resource.start_time.elapsed().as_secs_f64(),
+      "dataLength": read,
+      "encodedDataLength": read,
+    }),
+  );
+
+  let mut request_bodies =
+    resource.dev_tools_agent.request_bodies.lock().unwrap();
+  if let Some(body) = request_bodies.get_mut(&resource.id) {
+    body.extend_from_slice(&buf[..read])
+  }
+
   Ok(read)
 }
 
 type CancelableResponseResult = Result<Result<Response, AnyError>, Canceled>;
 
-struct FetchRequestResource(
-  Pin<Box<dyn Future<Output = CancelableResponseResult>>>,
-);
+struct FetchRequestResource {
+  id: Uuid,
+  fut: Pin<Box<dyn Future<Output = CancelableResponseResult>>>,
+}
 
 impl Resource for FetchRequestResource {
   fn name(&self) -> Cow<str> {
@@ -469,6 +636,12 @@ type BytesStream =
 struct FetchResponseBodyResource {
   reader: AsyncRefCell<StreamReader<BytesStream, bytes::Bytes>>,
   cancel: CancelHandle,
+
+  // Things for devtools
+  id: Uuid,
+  bytes_read: AtomicU32,
+  dev_tools_agent: DevToolsAgent,
+  start_time: Instant,
 }
 
 impl Resource for FetchResponseBodyResource {
@@ -477,6 +650,15 @@ impl Resource for FetchResponseBodyResource {
   }
 
   fn close(self: Rc<Self>) {
+    self.dev_tools_agent.send_event(
+      "Network.loadingFinished",
+      json!({
+        "requestId": self.id,
+        "timestamp": self.start_time.elapsed().as_secs_f64(),
+        "encodedDataLength": self.bytes_read.load(Ordering::SeqCst),
+      }),
+    );
+
     self.cancel.cancel()
   }
 }

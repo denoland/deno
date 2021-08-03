@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::dev_tools::DevToolsAgent;
 use crate::error::type_error;
 use crate::error::AnyError;
 use crate::gotham_state::GothamState;
@@ -16,6 +17,7 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::time::Instant;
 
 pub type PromiseId = u64;
 pub type OpAsyncFuture = Pin<Box<dyn Future<Output = (PromiseId, OpResult)>>>;
@@ -96,6 +98,8 @@ pub struct OpState {
   pub resource_table: ResourceTable,
   pub op_table: OpTable,
   pub get_error_class_fn: GetErrorClassFn,
+  pub dev_tools_agent: DevToolsAgent,
+  pub start_time: Instant,
   gotham_state: GothamState,
 }
 
@@ -105,6 +109,8 @@ impl OpState {
       resource_table: Default::default(),
       op_table: OpTable::default(),
       get_error_class_fn: &|_| "Error",
+      dev_tools_agent: DevToolsAgent::default(),
+      start_time: Instant::now(),
       gotham_state: Default::default(),
     }
   }

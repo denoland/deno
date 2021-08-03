@@ -610,6 +610,7 @@ async fn op_http_upgrade_websocket(
         .borrow_mut()
         .resource_table
         .add(deno_websocket::WsStreamResource {
+          id: None,
           stream: deno_websocket::WebSocketStreamType::Server {
             rx: AsyncRefCell::new(ws_rx),
             tx: AsyncRefCell::new(ws_tx),

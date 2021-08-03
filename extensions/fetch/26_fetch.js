@@ -345,7 +345,7 @@
       response.url() ?? undefined,
     );
     if (locationURL.hash === "") {
-      locationURL.hash = request.currentUrl().hash;
+      locationURL.hash = new URL(request.currentUrl()).hash;
     }
     if (locationURL.protocol !== "https:" && locationURL.protocol !== "http:") {
       return networkError("Can not redirect to a non HTTP(s) url");

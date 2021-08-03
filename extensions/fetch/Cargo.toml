@@ -19,8 +19,10 @@ data-url = "0.1.0"
 deno_core = { version = "0.95.0", path = "../../core" }
 deno_web = { version = "0.44.0", path = "../web" }
 http = "0.2.4"
+mime = "0.3.16"
 reqwest = { version = "0.11.4", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
 serde = { version = "1.0.126", features = ["derive"] }
 tokio = { version = "1.8.1", features = ["full"] }
 tokio-stream = "0.1.7"
 tokio-util = "0.6.7"
+uuid = "0.8.2"

@@ -643,6 +643,7 @@ name = "deno_core"
 version = "0.95.0"
 dependencies = [
  "anyhow",
+ "base64 0.13.0",
  "futures",
  "indexmap",
  "lazy_static",
@@ -656,6 +657,7 @@ dependencies = [
  "serde_v8",
  "tokio",
  "url",
+ "uuid",
 ]
 
 [[package]]
@@ -701,11 +703,13 @@ dependencies = [
  "deno_core",
  "deno_web",
  "http",
+ "mime",
  "reqwest",
  "serde",
  "tokio",
  "tokio-stream",
  "tokio-util",
+ "uuid",
 ]
 
 [[package]]
@@ -863,6 +867,7 @@ dependencies = [
 name = "deno_websocket"
 version = "0.18.0"
 dependencies = [
+ "base64 0.13.0",
  "deno_core",
  "http",
  "hyper",
@@ -870,6 +875,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite",
+ "uuid",
  "webpki",
  "webpki-roots",
 ]
