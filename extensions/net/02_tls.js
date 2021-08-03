@@ -52,6 +52,7 @@
     hostname = "0.0.0.0",
     transport = "tcp",
     alpnProtocols,
+    signal,
   }) {
     const res = opListenTls({
       port,
@@ -60,12 +61,11 @@
       hostname,
       transport,
       alpnProtocols,
-      signal,
     });
     const listener = new TLSListener(res.rid, res.localAddr);
     if (signal) {
       // TODO(benjamingr) there is memory leak potential here. See comment in 01_net.js
-      options?.signal?.addEventListener("abort", () => listener.close(), {
+      signal.addEventListener("abort", () => listener.close(), {
         once: true,
       });
     }
