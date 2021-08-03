@@ -61,7 +61,7 @@ fn subprocess_stdio_map(s: &str) -> Result<std::process::Stdio, AnyError> {
 pub struct RunArgs {
   cmd: Vec<String>,
   cwd: Option<String>,
-  clean_env: bool,
+  clear_env: bool,
   env: Vec<(String, String)>,
   stdin: String,
   stdout: String,
@@ -115,7 +115,8 @@ fn op_run(
   });
   cwd.map(|d| c.current_dir(d));
 
-  if run_args.clean_env {
+  if run_args.clear_env {
+    super::check_unstable(state, "Deno.run.clearEnv");
     c.env_clear();
   }
   for (key, value) in &env {

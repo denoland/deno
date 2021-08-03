@@ -2014,7 +2014,6 @@ declare namespace Deno {
      * binary */
     cmd: string[] | [URL, ...string[]];
     cwd?: string;
-    clearEnv?: boolean;
     env?: {
       [key: string]: string;
     };
