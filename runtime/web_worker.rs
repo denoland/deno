@@ -253,6 +253,7 @@ pub struct WebWorkerOptions {
   pub debug_flag: bool,
   pub unstable: bool,
   pub ca_data: Option<Vec<u8>>,
+  pub allow_insecure_certificates: Option<Vec<String>>,
   pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
@@ -303,10 +304,12 @@ impl WebWorker {
         options.ca_data.clone(),
         None,
         None,
+        options.allow_insecure_certificates.clone(),
       ),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
         options.ca_data.clone(),
+        options.allow_insecure_certificates.clone(),
       ),
       deno_broadcast_channel::init(
         options.broadcast_channel.clone(),
@@ -337,6 +340,7 @@ impl WebWorker {
         deno_net::init::<Permissions>(
           options.ca_data.clone(),
           options.unstable,
+          options.allow_insecure_certificates.clone(),
         ),
         ops::os::init(),
         ops::permissions::init(),

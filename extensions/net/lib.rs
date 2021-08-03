@@ -93,9 +93,16 @@ pub struct DefaultTlsOptions {
   pub ca_data: Option<Vec<u8>>,
 }
 
+/// `NoCertificateValidation` is a wrapper struct so it can be placed inside `GothamState`;
+/// using type alias for a `Option<Vec<String>>` could work, but there's a high chance
+/// that there might be another type alias pointing to a `Option<Vec<String>>`, which
+/// would override previously used alias.
+pub struct NoCertificateValidation(Option<Vec<String>>);
+
 pub fn init<P: NetPermissions + 'static>(
   ca_data: Option<Vec<u8>>,
   unstable: bool,
+  allow_insecure_certificates: Option<Vec<String>>,
 ) -> Extension {
   let mut ops_to_register = vec![];
   ops_to_register.extend(io::init());
@@ -115,6 +122,7 @@ pub fn init<P: NetPermissions + 'static>(
     .state(move |state| {
       state.put(default_tls_options.clone());
       state.put(UnstableChecker { unstable });
+      state.put(NoCertificateValidation(allow_insecure_certificates.clone()));
       Ok(())
     })
     .build()

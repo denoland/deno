@@ -24,3 +24,4 @@ serde = { version = "1.0.126", features = ["derive"] }
 tokio = { version = "1.8.1", features = ["full"] }
 tokio-stream = "0.1.7"
 tokio-util = "0.6.7"
+rustls = { version = "0.19.1", features = ["dangerous_configuration"] }

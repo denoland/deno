@@ -99,6 +99,7 @@ pub fn create_standalone_binary(
     location: flags.location.clone(),
     permissions: flags.clone().into(),
     v8_flags: flags.v8_flags.clone(),
+    allow_insecure_certificates: flags.allow_insecure_certificates.clone(),
     log_level: flags.log_level,
     ca_data,
   };
@@ -221,6 +222,7 @@ pub fn compile_to_runtime_flags(
     lock: None,
     log_level: flags.log_level,
     no_check: false,
+    allow_insecure_certificates: flags.allow_insecure_certificates,
     no_remote: false,
     prompt: flags.prompt,
     reload: false,

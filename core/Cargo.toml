@@ -27,6 +27,8 @@ serde = { version = "1.0.126", features = ["derive"] }
 serde_json = { version = "1.0.64", features = ["preserve_order"] }
 serde_v8 = { version = "0.8.0" }
 url = { version = "2.2.2", features = ["serde"] }
+rustls = { version = "0.19.1", features = ["dangerous_configuration"] }
+webpki = "0.21.4"
 
 [[example]]
 name = "http_bench_json_ops"

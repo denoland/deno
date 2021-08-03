@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::combine_allow_insecure_certificates;
 use deno_core::error::bad_resource_id;
 use deno_core::error::generic_error;
 use deno_core::error::null_opbuf;
@@ -19,6 +20,7 @@ use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Canceled;
 use deno_core::Extension;
+use deno_core::NoCertificateVerification;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -39,6 +41,7 @@ use reqwest::Client;
 use reqwest::Method;
 use reqwest::RequestBuilder;
 use reqwest::Response;
+use rustls::ClientConfig;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -50,6 +53,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -62,6 +66,7 @@ pub fn init<P: FetchPermissions + 'static>(
   ca_data: Option<Vec<u8>>,
   proxy: Option<Proxy>,
   request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
+  allow_insecure_certificates: Option<Vec<String>>,
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -84,14 +89,20 @@ pub fn init<P: FetchPermissions + 'static>(
     ])
     .state(move |state| {
       state.put::<reqwest::Client>({
-        create_http_client(user_agent.clone(), ca_data.clone(), proxy.clone())
-          .unwrap()
+        create_http_client(
+          user_agent.clone(),
+          ca_data.clone(),
+          proxy.clone(),
+          allow_insecure_certificates.clone(),
+        )
+        .unwrap()
       });
       state.put::<HttpClientDefaults>(HttpClientDefaults {
         ca_data: ca_data.clone(),
         user_agent: user_agent.clone(),
         proxy: proxy.clone(),
         request_builder_hook,
+        allow_insecure_certificates: allow_insecure_certificates.clone(),
       });
       Ok(())
     })
@@ -103,6 +114,7 @@ pub struct HttpClientDefaults {
   pub ca_data: Option<Vec<u8>>,
   pub proxy: Option<Proxy>,
   pub request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
+  pub allow_insecure_certificates: Option<Vec<String>>,
 }
 
 pub trait FetchPermissions {
@@ -504,6 +516,10 @@ pub struct CreateHttpClientOptions {
   ca_file: Option<String>,
   ca_data: Option<ByteString>,
   proxy: Option<Proxy>,
+  #[serde(
+    deserialize_with = "deno_core::deserialize_allow_insecure_certificates"
+  )]
+  allow_insecure_certificates: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Default, Debug, Clone)]
@@ -544,10 +560,17 @@ where
 
   let cert_data =
     get_cert_data(args.ca_file.as_deref(), args.ca_data.as_deref())?;
+
+  let allow_insecure_certificates_list = combine_allow_insecure_certificates(
+    defaults.allow_insecure_certificates.clone(),
+    args.allow_insecure_certificates.clone(),
+  );
+
   let client = create_http_client(
     defaults.user_agent.clone(),
     cert_data.or_else(|| defaults.ca_data.clone()),
     args.proxy,
+    allow_insecure_certificates_list,
   )
   .unwrap();
 
@@ -576,6 +599,7 @@ pub fn create_http_client(
   user_agent: String,
   ca_data: Option<Vec<u8>>,
   proxy: Option<Proxy>,
+  allow_insecure_certificates: Option<Vec<String>>,
 ) -> Result<Client, AnyError> {
   let mut headers = HeaderMap::new();
   headers.insert(USER_AGENT, user_agent.parse().unwrap());
@@ -596,6 +620,15 @@ pub fn create_http_client(
         reqwest_proxy.basic_auth(&basic_auth.username, &basic_auth.password);
     }
     builder = builder.proxy(reqwest_proxy);
+  }
+
+  if let Some(ic_allowlist) = allow_insecure_certificates {
+    let mut tls = ClientConfig::new();
+    tls.dangerous().set_certificate_verifier(Arc::new(
+      NoCertificateVerification(ic_allowlist),
+    ));
+
+    builder = builder.use_preconfigured_tls(tls)
   }
 
   builder

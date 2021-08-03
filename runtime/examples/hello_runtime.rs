@@ -28,6 +28,7 @@ async fn main() -> Result<(), AnyError> {
     debug_flag: false,
     unstable: false,
     ca_data: None,
+    allow_insecure_certificates: None,
     user_agent: "hello_runtime".to_string(),
     seed: None,
     js_error_create_fn: None,

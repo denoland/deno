@@ -110,6 +110,10 @@ fn create_web_worker_callback(
         .map_or(false, |l| l == log::Level::Debug),
       unstable: program_state.flags.unstable,
       ca_data: program_state.ca_data.clone(),
+      allow_insecure_certificates: program_state
+        .flags
+        .allow_insecure_certificates
+        .clone(),
       user_agent: version::get_user_agent(),
       seed: program_state.flags.seed,
       module_loader,
@@ -190,6 +194,10 @@ pub fn create_main_worker(
       .map_or(false, |l| l == log::Level::Debug),
     unstable: program_state.flags.unstable,
     ca_data: program_state.ca_data.clone(),
+    allow_insecure_certificates: program_state
+      .flags
+      .allow_insecure_certificates
+      .clone(),
     user_agent: version::get_user_agent(),
     seed: program_state.flags.seed,
     js_error_create_fn: Some(js_error_create_fn),

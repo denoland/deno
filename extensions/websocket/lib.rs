@@ -17,6 +17,7 @@ use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::Extension;
+use deno_core::NoCertificateVerification;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -53,6 +54,12 @@ pub struct WsUserAgent(pub String);
 pub trait WebSocketPermissions {
   fn check_net_url(&mut self, _url: &url::Url) -> Result<(), AnyError>;
 }
+
+/// `NoCertificateValidation` is a wrapper struct so it can be placed inside `GothamState`;
+/// using type alias for a `Option<Vec<String>>` could work, but there's a high chance
+/// that there might be another type alias pointing to a `Option<Vec<String>>`, which
+/// would override previously used alias.
+pub struct NoCertificateValidation(Option<Vec<String>>);
 
 /// For use with `op_websocket_*` when the user does not want permissions.
 pub struct NoWebSocketPermissions;
@@ -197,6 +204,8 @@ where
       );
   }
 
+  let allow_insecure_certificates =
+    state.borrow().borrow::<NoCertificateValidation>().0.clone();
   let ws_ca_data = state.borrow().try_borrow::<WsCaData>().cloned();
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
   let uri: Uri = args.url.parse()?;
@@ -229,6 +238,12 @@ where
       if let Some(ws_ca_data) = ws_ca_data {
         let reader = &mut BufReader::new(Cursor::new(ws_ca_data.0));
         config.root_store.add_pem_file(reader).unwrap();
+      }
+
+      if let Some(ic_allowlist) = allow_insecure_certificates {
+        config.dangerous().set_certificate_verifier(Arc::new(
+          NoCertificateVerification(ic_allowlist),
+        ));
       }
 
       let tls_connector = TlsConnector::from(Arc::new(config));
@@ -386,6 +401,7 @@ pub async fn op_ws_next_event(
 pub fn init<P: WebSocketPermissions + 'static>(
   user_agent: String,
   ca_data: Option<Vec<u8>>,
+  allow_insecure_certificates: Option<Vec<String>>,
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -407,6 +423,7 @@ pub fn init<P: WebSocketPermissions + 'static>(
       if let Some(ca_data) = ca_data.clone() {
         state.put::<WsCaData>(WsCaData(ca_data));
       }
+      state.put(NoCertificateValidation(allow_insecure_certificates.clone()));
       Ok(())
     })
     .build()

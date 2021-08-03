@@ -52,6 +52,7 @@ pub struct Metadata {
   pub v8_flags: Vec<String>,
   pub log_level: Option<Level>,
   pub ca_data: Option<Vec<u8>>,
+  pub allow_insecure_certificates: Option<Vec<String>>,
 }
 
 pub const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
@@ -234,6 +235,7 @@ pub async fn run(
     user_agent: version::get_user_agent(),
     unstable: metadata.unstable,
     ca_data: metadata.ca_data,
+    allow_insecure_certificates: metadata.allow_insecure_certificates,
     seed: metadata.seed,
     js_error_create_fn: None,
     create_web_worker_cb,

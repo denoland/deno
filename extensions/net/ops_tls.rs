@@ -12,6 +12,8 @@ use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
 use crate::DefaultTlsOptions;
 use crate::NetPermissions;
+use crate::NoCertificateValidation;
+use deno_core::combine_allow_insecure_certificates;
 use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
@@ -33,6 +35,7 @@ use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::NoCertificateVerification;
 use deno_core::OpPair;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -679,6 +682,10 @@ pub struct ConnectTlsArgs {
   hostname: String,
   port: u16,
   cert_file: Option<String>,
+  #[serde(
+    deserialize_with = "deno_core::deserialize_allow_insecure_certificates"
+  )]
+  allow_insecure_certificates: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -786,6 +793,9 @@ where
   };
   let port = args.port;
   let cert_file = args.cert_file.as_deref();
+  let arg_allow_insecure_certificates = args.allow_insecure_certificates;
+  let global_allow_insecure_certificates =
+    state.borrow().borrow::<NoCertificateValidation>().0.clone();
 
   let default_tls_options;
   {
@@ -823,6 +833,18 @@ where
     let reader = &mut BufReader::new(key_file);
     tls_config.root_store.add_pem_file(reader).unwrap();
   }
+
+  let allow_insecure_certificates_list = combine_allow_insecure_certificates(
+    global_allow_insecure_certificates.clone(),
+    arg_allow_insecure_certificates.clone(),
+  );
+
+  if let Some(ic_allowlist) = allow_insecure_certificates_list {
+    tls_config.dangerous().set_certificate_verifier(Arc::new(
+      NoCertificateVerification(ic_allowlist),
+    ));
+  }
+
   let tls_config = Arc::new(tls_config);
 
   let tls_stream =
