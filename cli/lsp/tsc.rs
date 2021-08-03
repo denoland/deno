@@ -1179,30 +1179,12 @@ impl ApplicableRefactorInfo {
     range: &lsp::Range,
   ) -> Vec<lsp::CodeAction> {
     let mut code_actions = Vec::<lsp::CodeAction>::new();
-    if !self.inlineable.unwrap_or(true) {
-      code_actions.push(self.as_select_code_action());
-    } else {
-      for action in self.actions.iter() {
-        code_actions.push(
-          self.as_inline_code_action(action, specifier, range, &self.name),
-        );
-      }
+    // All typescript refactoring actions are inlineable
+    for action in self.actions.iter() {
+      code_actions
+        .push(self.as_inline_code_action(action, specifier, range, &self.name));
     }
     code_actions
-  }
-
-  fn as_select_code_action(&self) -> lsp::CodeAction {
-    lsp::CodeAction {
-      title: self.description.clone(),
-      kind: Some(lsp::CodeActionKind::REFACTOR),
-      command: Some(lsp::Command {
-        title: self.description.clone(),
-        // TODO: this should be handled in the vscode_deno extension
-        command: "_typescript_deno.selectRefactoring".to_string(),
-        arguments: Option::None,
-      }),
-      ..Default::default()
-    }
   }
 
   fn as_inline_code_action(
