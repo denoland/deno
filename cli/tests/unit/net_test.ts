@@ -608,10 +608,11 @@ unitTest(
       port: 3500,
       signal: ac.signal,
     });
+    const p = listener.accept();
     ac.abort();
     await assertThrowsAsync(
       async (): Promise<void> => {
-        await listener.accept();
+        await p;
       },
       Deno.errors.BadResource,
       "Listener has been closed",
