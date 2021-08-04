@@ -527,6 +527,6 @@ unitTest(
     const status = await p.status();
     assertEquals(status.success, false);
     assertEquals(status.code, 143);
-    assertEquals(status.signal, "SIGTERM");
+    assertEquals(status.signal, Deno.Signal.SIGTERM);
   },
 );
