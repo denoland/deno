@@ -4,6 +4,6 @@ export function returnsFoo(): string {
   return "Foo";
 }
 
-export function printHello2(): void {
+export function printHello2() {
   printHello();
 }

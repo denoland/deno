@@ -23,7 +23,7 @@ const intArrays = [
   Float32Array,
   Float64Array,
 ];
-unitTest(async function arrayBufferFromByteArrays(): Promise<void> {
+unitTest(async function arrayBufferFromByteArrays() {
   const buffer = new TextEncoder().encode("ahoyhoy8").buffer;
 
   for (const type of intArrays) {
@@ -36,7 +36,7 @@ unitTest(async function arrayBufferFromByteArrays(): Promise<void> {
 //FormData
 unitTest(
   { perms: { net: true } },
-  async function bodyMultipartFormData(): Promise<void> {
+  async function bodyMultipartFormData() {
     const response = await fetch(
       "http://localhost:4545/multipart_form_data.txt",
     );
@@ -55,7 +55,7 @@ unitTest(
 
 unitTest(
   { perms: { net: true } },
-  async function bodyURLEncodedFormData(): Promise<void> {
+  async function bodyURLEncodedFormData() {
     const response = await fetch(
       "http://localhost:4545/cli/tests/subdir/form_urlencoded.txt",
     );
@@ -73,14 +73,14 @@ unitTest(
   },
 );
 
-unitTest({ perms: {} }, async function bodyURLSearchParams(): Promise<void> {
+unitTest({ perms: {} }, async function bodyURLSearchParams() {
   const body = buildBody(new URLSearchParams({ hello: "world" }));
 
   const text = await body.text();
   assertEquals(text, "hello=world");
 });
 
-unitTest(async function bodyArrayBufferMultipleParts(): Promise<void> {
+unitTest(async function bodyArrayBufferMultipleParts() {
   const parts: Uint8Array[] = [];
   let size = 0;
   for (let i = 0; i <= 150000; i++) {
@@ -91,7 +91,7 @@ unitTest(async function bodyArrayBufferMultipleParts(): Promise<void> {
 
   let offset = 0;
   const stream = new ReadableStream({
-    pull(controller): void {
+    pull(controller) {
       // parts.shift() takes forever: https://github.com/denoland/deno/issues/5259
       const chunk = parts[offset++];
       if (!chunk) return controller.close();

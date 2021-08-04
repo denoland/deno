@@ -8,7 +8,7 @@ import {
   unitTest,
 } from "./test_util.ts";
 
-unitTest({ perms: { read: true } }, function fstatSyncSuccess(): void {
+unitTest({ perms: { read: true } }, function fstatSyncSuccess() {
   const file = Deno.openSync("README.md");
   const fileInfo = Deno.fstatSync(file.rid);
   assert(fileInfo.isFile);
@@ -23,9 +23,7 @@ unitTest({ perms: { read: true } }, function fstatSyncSuccess(): void {
   Deno.close(file.rid);
 });
 
-unitTest({ perms: { read: true } }, async function fstatSuccess(): Promise<
-  void
-> {
+unitTest({ perms: { read: true } }, async function fstatSuccess() {
   const file = await Deno.open("README.md");
   const fileInfo = await Deno.fstat(file.rid);
   assert(fileInfo.isFile);
@@ -42,7 +40,7 @@ unitTest({ perms: { read: true } }, async function fstatSuccess(): Promise<
 
 unitTest(
   { perms: { read: true, write: true } },
-  function statSyncSuccess(): void {
+  function statSyncSuccess() {
     const packageInfo = Deno.statSync("README.md");
     assert(packageInfo.isFile);
     assert(!packageInfo.isSymlink);
@@ -103,19 +101,19 @@ unitTest(
   },
 );
 
-unitTest({ perms: { read: false } }, function statSyncPerm(): void {
+unitTest({ perms: { read: false } }, function statSyncPerm() {
   assertThrows(() => {
     Deno.statSync("README.md");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ perms: { read: true } }, function statSyncNotFound(): void {
+unitTest({ perms: { read: true } }, function statSyncNotFound() {
   assertThrows(() => {
     Deno.statSync("bad_file_name");
   }, Deno.errors.NotFound);
 });
 
-unitTest({ perms: { read: true } }, function lstatSyncSuccess(): void {
+unitTest({ perms: { read: true } }, function lstatSyncSuccess() {
   const packageInfo = Deno.lstatSync("README.md");
   assert(packageInfo.isFile);
   assert(!packageInfo.isSymlink);
@@ -143,13 +141,13 @@ unitTest({ perms: { read: true } }, function lstatSyncSuccess(): void {
   assert(!coreInfoByUrl.isSymlink);
 });
 
-unitTest({ perms: { read: false } }, function lstatSyncPerm(): void {
+unitTest({ perms: { read: false } }, function lstatSyncPerm() {
   assertThrows(() => {
     Deno.lstatSync("README.md");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ perms: { read: true } }, function lstatSyncNotFound(): void {
+unitTest({ perms: { read: true } }, function lstatSyncNotFound() {
   assertThrows(() => {
     Deno.lstatSync("bad_file_name");
   }, Deno.errors.NotFound);
@@ -157,7 +155,7 @@ unitTest({ perms: { read: true } }, function lstatSyncNotFound(): void {
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function statSuccess(): Promise<void> {
+  async function statSuccess() {
     const packageInfo = await Deno.stat("README.md");
     assert(packageInfo.isFile);
     assert(!packageInfo.isSymlink);
@@ -221,25 +219,21 @@ unitTest(
   },
 );
 
-unitTest({ perms: { read: false } }, async function statPerm(): Promise<void> {
+unitTest({ perms: { read: false } }, async function statPerm() {
   await assertThrowsAsync(async () => {
     await Deno.stat("README.md");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ perms: { read: true } }, async function statNotFound(): Promise<
-  void
-> {
+unitTest({ perms: { read: true } }, async function statNotFound() {
   await assertThrowsAsync(
-    async (): Promise<void> => {
+    async () => {
       await Deno.stat("bad_file_name"), Deno.errors.NotFound;
     },
   );
 });
 
-unitTest({ perms: { read: true } }, async function lstatSuccess(): Promise<
-  void
-> {
+unitTest({ perms: { read: true } }, async function lstatSuccess() {
   const packageInfo = await Deno.lstat("README.md");
   assert(packageInfo.isFile);
   assert(!packageInfo.isSymlink);
@@ -267,15 +261,13 @@ unitTest({ perms: { read: true } }, async function lstatSuccess(): Promise<
   assert(!coreInfoByUrl.isSymlink);
 });
 
-unitTest({ perms: { read: false } }, async function lstatPerm(): Promise<void> {
+unitTest({ perms: { read: false } }, async function lstatPerm() {
   await assertThrowsAsync(async () => {
     await Deno.lstat("README.md");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ perms: { read: true } }, async function lstatNotFound(): Promise<
-  void
-> {
+unitTest({ perms: { read: true } }, async function lstatNotFound() {
   await assertThrowsAsync(async () => {
     await Deno.lstat("bad_file_name");
   }, Deno.errors.NotFound);
@@ -283,7 +275,7 @@ unitTest({ perms: { read: true } }, async function lstatNotFound(): Promise<
 
 unitTest(
   { ignore: Deno.build.os !== "windows", perms: { read: true, write: true } },
-  function statNoUnixFields(): void {
+  function statNoUnixFields() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const tempDir = Deno.makeTempDirSync();
@@ -304,7 +296,7 @@ unitTest(
 
 unitTest(
   { ignore: Deno.build.os === "windows", perms: { read: true, write: true } },
-  function statUnixFields(): void {
+  function statUnixFields() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const tempDir = Deno.makeTempDirSync();
