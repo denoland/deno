@@ -510,3 +510,31 @@ unitTest({ perms: { run: true, read: true } }, function killFailed(): void {
 
   p.close();
 });
+
+unitTest(
+  { perms: { run: true, read: true, env: true } },
+  async function clearEnv(): Promise<void> {
+    const p = Deno.run({
+      cmd: [
+        Deno.execPath(),
+        "eval",
+        "-p",
+        "JSON.stringify(Deno.env.toObject())",
+      ],
+      stdout: "piped",
+      clearEnv: true,
+      env: {
+        FOO: "23147",
+      },
+    });
+
+    const obj = JSON.parse(new TextDecoder().decode(await p.output()));
+
+    // can't check for object equality because the OS may set additional env vars for processes
+    // so we check if PATH isn't present as that is a common env var across OS's and isn't set for processes.
+    assertEquals(obj.FOO, "23147");
+    assert(!("PATH" in obj));
+
+    p.close();
+  },
+);

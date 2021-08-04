@@ -2034,6 +2034,10 @@ declare namespace Deno {
    * Subprocess uses same working directory as parent process unless `opt.cwd`
    * is specified.
    *
+   * Environmental variables from parent process can be cleared using `opt.clearEnv`.
+   * Doesn't guarantee that only `opt.env` variables are present,
+   * as the OS may set environmental variables for processes.
+   *
    * Environmental variables for subprocess can be specified using `opt.env`
    * mapping.
    *

@@ -791,6 +791,14 @@ declare namespace Deno {
     mtime: number | Date,
   ): Promise<void>;
 
+  export function run<
+    T extends RunOptions & {
+      clearEnv?: boolean;
+    } = RunOptions & {
+      clearEnv?: boolean;
+    },
+  >(opt: T): Process<T>;
+
   /** **UNSTABLE**: The `signo` argument may change to require the Deno.Signal
    * enum.
    *
