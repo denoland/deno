@@ -505,6 +505,11 @@ pub async fn op_crypto_verify_key(
         .verify(padding, &hashed, &*args.signature)
         .is_ok()
     }
+    Algorithm::Hmac => {
+      let hash: HmacAlgorithm = args.hash.ok_or_else(not_supported)?.into();
+      let key = HmacKey::new(hash, &*args.key.data);
+      ring::hmac::verify(&key, data, &*args.signature).is_ok()
+    }
     _ => return Err(type_error("Unsupported algorithm".to_string())),
   };
 
