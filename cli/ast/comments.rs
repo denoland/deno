@@ -1,13 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use std::cell::RefCell;
 use std::rc::Rc;
-use swc_common::BytePos;
+use std::sync::Arc;
 use swc_common::comments::Comment;
 use swc_common::comments::Comments;
 use swc_common::comments::SingleThreadedComments;
 use swc_common::comments::SingleThreadedCommentsMapInner;
-use std::cell::RefCell;
-use std::sync::Arc;
+use swc_common::BytePos;
 
 #[derive(Clone, Debug)]
 pub struct MultiThreadedComments {
@@ -29,36 +29,43 @@ impl MultiThreadedComments {
     SingleThreadedComments::from_leading_and_trailing(leading, trailing)
   }
 
+  /// Gets a vector of all the comments sorted by position.
   pub fn get_vec(&self) -> Vec<Comment> {
-    let mut comments = Vec::new();
-
-    for value in self.leading.values() {
-      comments.extend(value.clone());
-    }
-
-    for value in self.trailing.values() {
-      comments.extend(value.clone());
-    }
-
+    let mut comments = self
+      .leading
+      .values()
+      .chain(self.trailing.values())
+      .flatten()
+      .cloned()
+      .collect::<Vec<_>>();
+    comments.sort_by_key(|comment| comment.span.lo);
     comments
   }
 }
 
 impl Comments for MultiThreadedComments {
+  fn has_leading(&self, pos: BytePos) -> bool {
+    self.leading.contains_key(&pos)
+  }
+
+  fn get_leading(&self, pos: BytePos) -> Option<Vec<Comment>> {
+    self.leading.get(&pos).cloned()
+  }
+
+  fn has_trailing(&self, pos: BytePos) -> bool {
+    self.trailing.contains_key(&pos)
+  }
+
+  fn get_trailing(&self, pos: BytePos) -> Option<Vec<Comment>> {
+    self.trailing.get(&pos).cloned()
+  }
+
   fn add_leading(&self, _pos: BytePos, _cmt: Comment) {
     panic_readonly();
   }
 
-  fn add_leading_comments(
-    &self,
-    _pos: BytePos,
-    _comments: Vec<Comment>,
-  ) {
+  fn add_leading_comments(&self, _pos: BytePos, _comments: Vec<Comment>) {
     panic_readonly();
-  }
-
-  fn has_leading(&self, pos: BytePos) -> bool {
-    self.leading.contains_key(&pos)
   }
 
   fn move_leading(&self, _from: BytePos, _to: BytePos) {
@@ -69,24 +76,12 @@ impl Comments for MultiThreadedComments {
     panic_readonly();
   }
 
-  fn get_leading(&self, pos: BytePos) -> Option<Vec<Comment>> {
-    self.leading.get(&pos).map(|c| c.clone())
-  }
-
   fn add_trailing(&self, _pos: BytePos, _cmt: Comment) {
     panic_readonly();
   }
 
-  fn add_trailing_comments(
-    &self,
-    _pos: BytePos,
-    _comments: Vec<Comment>,
-  ) {
+  fn add_trailing_comments(&self, _pos: BytePos, _comments: Vec<Comment>) {
     panic_readonly();
-  }
-
-  fn has_trailing(&self, pos: BytePos) -> bool {
-    self.trailing.contains_key(&pos)
   }
 
   fn move_trailing(&self, _from: BytePos, _to: BytePos) {
@@ -95,10 +90,6 @@ impl Comments for MultiThreadedComments {
 
   fn take_trailing(&self, _pos: BytePos) -> Option<Vec<Comment>> {
     panic_readonly();
-  }
-
-  fn get_trailing(&self, pos: BytePos) -> Option<Vec<Comment>> {
-    self.trailing.get(&pos).map(|c| c.clone())
   }
 
   fn add_pure_comment(&self, _pos: BytePos) {

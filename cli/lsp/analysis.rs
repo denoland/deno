@@ -368,10 +368,8 @@ pub fn analyze_dependencies(
 
     let dep = dependencies.entry(desc.specifier.to_string()).or_default();
     dep.is_dynamic = desc.is_dynamic;
-    let start = parsed_module
-      .get_location(desc.specifier_span.lo);
-    let end = parsed_module
-      .get_location(desc.specifier_span.hi);
+    let start = parsed_module.get_location(desc.specifier_span.lo);
+    let end = parsed_module.get_location(desc.specifier_span.hi);
     let range = Range {
       start: Position {
         line: (start.line - 1) as u32,
@@ -961,7 +959,10 @@ fn prepend_whitespace(content: String, line_content: Option<String>) -> String {
 }
 
 /// Get LSP range from the provided start and end locations.
-fn get_range_from_location(start: &ast::Location, end: &ast::Location) -> lsp::Range {
+fn get_range_from_location(
+  start: &ast::Location,
+  end: &ast::Location,
+) -> lsp::Range {
   lsp::Range {
     start: lsp::Position {
       line: (start.line - 1) as u32,
@@ -1097,8 +1098,7 @@ impl<'a> Visit for DependencyRangeCollector<'a> {
 pub fn analyze_dependency_ranges(
   parsed_module: &ast::ParsedModule,
 ) -> Result<DependencyRanges, AnyError> {
-  let mut collector =
-    DependencyRangeCollector::new(parsed_module);
+  let mut collector = DependencyRangeCollector::new(parsed_module);
   parsed_module
     .module
     .visit_with(&swc_ast::Invalid { span: DUMMY_SP }, &mut collector);

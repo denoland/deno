@@ -463,7 +463,7 @@ impl Module {
     let referrer_scheme = self.specifier.scheme();
     let specifier_scheme = specifier.scheme();
     let location = maybe_location.unwrap_or(Location {
-      filename: self.specifier.to_string(),
+      specifier: self.specifier.to_string(),
       line: 0,
       col: 0,
     });

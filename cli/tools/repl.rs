@@ -231,7 +231,7 @@ impl Validator for EditorHelper {
     let mut stack: Vec<Token> = Vec::new();
     let mut in_template = false;
 
-    for item in ast::lex("", ctx.input(), &MediaType::TypeScript) {
+    for item in ast::lex(ctx.input(), &MediaType::TypeScript) {
       if let TokenOrComment::Token(token) = item.inner {
         match token {
           Token::BackQuote => in_template = !in_template,
@@ -302,7 +302,7 @@ impl Highlighter for EditorHelper {
   fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
     let mut out_line = String::from(line);
 
-    for item in ast::lex("", line, &MediaType::TypeScript) {
+    for item in ast::lex(line, &MediaType::TypeScript) {
       // Adding color adds more bytes to the string,
       // so an offset is needed to stop spans falling out of sync.
       let offset = out_line.len() - line.len();

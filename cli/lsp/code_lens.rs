@@ -1,9 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::ast::ParsedModule;
 use super::analysis;
 use super::language_server;
 use super::tsc;
+use crate::ast::ParsedModule;
 
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
@@ -67,7 +67,10 @@ struct DenoTestCollector<'a> {
 }
 
 impl<'a> DenoTestCollector<'a> {
-  pub fn new(specifier: ModuleSpecifier, parsed_module: &'a ParsedModule) -> Self {
+  pub fn new(
+    specifier: ModuleSpecifier,
+    parsed_module: &'a ParsedModule,
+  ) -> Self {
     Self {
       code_lenses: Vec::new(),
       parsed_module,
@@ -392,10 +395,8 @@ fn collect_test(
     if let Ok(parsed_module) =
       analysis::parse_module(specifier, &source, &media_type)
     {
-      let mut collector = DenoTestCollector::new(
-        specifier.clone(),
-        &parsed_module,
-      );
+      let mut collector =
+        DenoTestCollector::new(specifier.clone(), &parsed_module);
       parsed_module.module.visit_with(
         &ast::Invalid {
           span: swc_common::DUMMY_SP,
@@ -521,8 +522,7 @@ mod tests {
     let parsed_module =
       analysis::parse_module(&specifier, source, &MediaType::TypeScript)
         .unwrap();
-    let mut collector =
-      DenoTestCollector::new(specifier, &parsed_module);
+    let mut collector = DenoTestCollector::new(specifier, &parsed_module);
     parsed_module.module.visit_with(
       &ast::Invalid {
         span: swc_common::DUMMY_SP,

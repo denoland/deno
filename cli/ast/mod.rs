@@ -7,7 +7,6 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
-use swc_common::comments::Comments;
 use std::error::Error;
 use std::fmt;
 use std::ops::Range;
@@ -16,6 +15,7 @@ use std::sync::Arc;
 use swc_common::chain;
 use swc_common::comments::Comment;
 use swc_common::comments::CommentKind;
+use swc_common::comments::Comments;
 use swc_common::comments::SingleThreadedComments;
 use swc_common::BytePos;
 use swc_common::FileName;
@@ -46,10 +46,12 @@ use swc_ecmascript::transforms::react;
 use swc_ecmascript::transforms::typescript;
 use swc_ecmascript::visit::FoldWith;
 
+mod bundle_hook;
 mod comments;
 mod source_file_info;
 mod transforms;
 
+pub use bundle_hook::BundleHook;
 use comments::MultiThreadedComments;
 use source_file_info::SourceFileInfo;
 
@@ -57,7 +59,7 @@ static TARGET: JscTarget = JscTarget::Es2020;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Location {
-  pub filename: String,
+  pub specifier: String,
   pub line: usize,
   pub col: usize,
 }
@@ -73,7 +75,7 @@ impl From<swc_common::Loc> for Location {
     };
 
     Location {
-      filename,
+      specifier: filename,
       line: swc_loc.line,
       col: swc_loc.col_display,
     }
@@ -82,13 +84,13 @@ impl From<swc_common::Loc> for Location {
 
 impl From<Location> for ModuleSpecifier {
   fn from(loc: Location) -> Self {
-    resolve_url_or_path(&loc.filename).unwrap()
+    resolve_url_or_path(&loc.specifier).unwrap()
   }
 }
 
 impl std::fmt::Display for Location {
   fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-    write!(f, "{}:{}:{}", self.filename, self.line, self.col)
+    write!(f, "{}:{}:{}", self.specifier, self.line, self.col)
   }
 }
 
@@ -270,10 +272,13 @@ impl ParsedModule {
   /// Get the module's leading comments, where triple slash directives might
   /// be located.
   pub fn get_leading_comments(&self) -> Vec<Comment> {
-    self.comments.get_leading(self.module.span.lo).unwrap_or_else(Vec::new)
+    self
+      .comments
+      .get_leading(self.module.span.lo)
+      .unwrap_or_else(Vec::new)
   }
 
-  /// Get the module's comments.
+  /// Get the module's comments sorted by position.
   pub fn get_comments(&self) -> Vec<Comment> {
     self.comments.get_vec()
   }
@@ -388,7 +393,11 @@ pub fn parse(
   media_type: &MediaType,
 ) -> Result<ParsedModule, AnyError> {
   let info = SourceFileInfo::new(specifier, source_text);
-  let input = StringInput::new(source_text, BytePos(0), BytePos(source_text.len() as u32));
+  let input = StringInput::new(
+    source_text,
+    BytePos(0),
+    BytePos(source_text.len() as u32),
+  );
   let (comments, module) = parse_string_input(&info, input, media_type)?;
 
   Ok(ParsedModule {
@@ -396,21 +405,6 @@ pub fn parse(
     comments: MultiThreadedComments::from_single_threaded(comments),
     module,
   })
-}
-
-fn parse_string_input(info: &SourceFileInfo, input: StringInput, media_type: &MediaType) -> Result<(SingleThreadedComments, Module), AnyError> {
-  let syntax = get_syntax(media_type);
-  let comments = SingleThreadedComments::default();
-
-  let lexer = Lexer::new(syntax, TARGET, input, Some(&comments));
-  let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
-
-  let module = parser.parse_module().map_err(|err| Diagnostic {
-    location: info.get_location(err.span().lo),
-    message: err.into_kind().msg().to_string(),
-  })?;
-
-  Ok((comments, module))
 }
 
 pub enum TokenOrComment {
@@ -438,21 +432,12 @@ fn flatten_comments(
   comments.into_iter().flat_map(|el| el.1)
 }
 
-pub fn lex(
-  specifier: &str,
-  source: &str,
-  media_type: &MediaType,
-) -> Vec<LexedItem> {
-  let source_map = SourceMap::default();
-  let source_file = source_map.new_source_file(
-    FileName::Custom(specifier.to_string()),
-    source.to_string(),
-  );
+pub fn lex(source: &str, media_type: &MediaType) -> Vec<LexedItem> {
   let comments = SingleThreadedComments::default();
   let lexer = Lexer::new(
     get_syntax(media_type),
     TARGET,
-    StringInput::from(source_file.as_ref()),
+    StringInput::new(source, BytePos(0), BytePos(source.len() as u32)),
     Some(&comments),
   );
 
@@ -487,8 +472,10 @@ pub fn transpile_module(
   cm: Rc<SourceMap>,
 ) -> Result<(Rc<SourceFile>, Module), AnyError> {
   let info = SourceFileInfo::new(specifier, source_text);
-  let source_file =
-    cm.new_source_file(FileName::Custom(specifier.to_string()), source_text.to_string());
+  let source_file = cm.new_source_file(
+    FileName::Custom(specifier.to_string()),
+    source_text.to_string(),
+  );
   let input = StringInput::from(&*source_file);
   let (comments, module) = parse_string_input(&info, input, media_type)?;
 
@@ -526,55 +513,22 @@ pub fn transpile_module(
   Ok((source_file, module))
 }
 
-pub struct BundleHook;
+fn parse_string_input(
+  info: &SourceFileInfo,
+  input: StringInput,
+  media_type: &MediaType,
+) -> Result<(SingleThreadedComments, Module), AnyError> {
+  let syntax = get_syntax(media_type);
+  let comments = SingleThreadedComments::default();
+  let lexer = Lexer::new(syntax, TARGET, input, Some(&comments));
+  let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
 
-impl swc_bundler::Hook for BundleHook {
-  fn get_import_meta_props(
-    &self,
-    span: swc_common::Span,
-    module_record: &swc_bundler::ModuleRecord,
-  ) -> Result<Vec<swc_ecmascript::ast::KeyValueProp>, AnyError> {
-    use swc_ecmascript::ast;
+  let module = parser.parse_module().map_err(|err| Diagnostic {
+    location: info.get_location(err.span().lo),
+    message: err.into_kind().msg().to_string(),
+  })?;
 
-    // we use custom file names, and swc "wraps" these in `<` and `>` so, we
-    // want to strip those back out.
-    let mut value = module_record.file_name.to_string();
-    value.pop();
-    value.remove(0);
-
-    Ok(vec![
-      ast::KeyValueProp {
-        key: ast::PropName::Ident(ast::Ident::new("url".into(), span)),
-        value: Box::new(ast::Expr::Lit(ast::Lit::Str(ast::Str {
-          span,
-          value: value.into(),
-          kind: ast::StrKind::Synthesized,
-          has_escape: false,
-        }))),
-      },
-      ast::KeyValueProp {
-        key: ast::PropName::Ident(ast::Ident::new("main".into(), span)),
-        value: Box::new(if module_record.is_entry {
-          ast::Expr::Member(ast::MemberExpr {
-            span,
-            obj: ast::ExprOrSuper::Expr(Box::new(ast::Expr::MetaProp(
-              ast::MetaPropExpr {
-                meta: ast::Ident::new("import".into(), span),
-                prop: ast::Ident::new("meta".into(), span),
-              },
-            ))),
-            prop: Box::new(ast::Expr::Ident(ast::Ident::new(
-              "main".into(),
-              span,
-            ))),
-            computed: false,
-          })
-        } else {
-          ast::Expr::Lit(ast::Lit::Bool(ast::Bool { span, value: false }))
-        }),
-      },
-    ])
-  }
+  Ok((comments, module))
 }
 
 #[cfg(test)]
