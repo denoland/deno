@@ -551,7 +551,6 @@ unitTest(
   },
   async function netHangsOnClose() {
     let acceptedConn: Deno.Conn;
-    const resolvable = deferred();
 
     async function iteratorReq(listener: Deno.Listener): Promise<void> {
       const p = new Uint8Array(10);
@@ -570,21 +569,25 @@ unitTest(
         assert(!!err);
         assert(err instanceof Deno.errors.BadResource);
       }
-
-      resolvable.resolve();
     }
 
     const addr = { hostname: "127.0.0.1", port: 3500 };
     const listener = Deno.listen(addr);
-    iteratorReq(listener);
-    const conn = await Deno.connect(addr);
-    await conn.write(new Uint8Array([1, 2, 3, 4]));
-    const buf = new Uint8Array(10);
-    await conn.read(buf);
-    conn!.close();
-    acceptedConn!.close();
-    listener.close();
-    await resolvable;
+    const listenerPromise = iteratorReq(listener);
+    const connectionPromise = (async () => {
+      const conn = await Deno.connect(addr);
+      await conn.write(new Uint8Array([1, 2, 3, 4]));
+      const buf = new Uint8Array(10);
+      await conn.read(buf);
+      conn!.close();
+      acceptedConn!.close();
+      listener.close();
+    })();
+
+    await Promise.all([
+      listenerPromise,
+      connectionPromise,
+    ]);
   },
 );
 
