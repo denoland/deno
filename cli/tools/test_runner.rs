@@ -427,7 +427,7 @@ fn extract_files_from_source_comments(
   let parsed_module = ast::parse(specifier.as_str(), source, media_type)?;
   let mut comments = parsed_module.get_comments();
   comments
-    .sort_by_key(|comment| parsed_module.get_location(&comment.span).line);
+    .sort_by_key(|comment| parsed_module.get_location(comment.span.lo).line);
 
   let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
@@ -442,7 +442,7 @@ fn extract_files_from_source_comments(
       true
     })
     .flat_map(|comment| {
-      let location = parsed_module.get_location(&comment.span);
+      let location = parsed_module.get_location(comment.span.lo);
 
       extract_files_from_regex_blocks(
         &location,
