@@ -126,6 +126,7 @@ fn create_web_worker_callback(
       shared_array_buffer_store: Some(
         program_state.shared_array_buffer_store.clone(),
       ),
+      cpu_count: num_cpus::get(),
     };
 
     let (mut worker, external_handle) = WebWorker::from_options(
@@ -215,6 +216,7 @@ pub fn create_main_worker(
     shared_array_buffer_store: Some(
       program_state.shared_array_buffer_store.clone(),
     ),
+    cpu_count: num_cpus::get(),
   };
 
   let mut worker = MainWorker::from_options(main_module, permissions, &options);
@@ -966,8 +968,7 @@ async fn coverage_command(
   lcov: bool,
 ) -> Result<(), AnyError> {
   if files.is_empty() {
-    println!("No matching coverage profiles found");
-    std::process::exit(1);
+    return Err(generic_error("No matching coverage profiles found"));
   }
 
   tools::coverage::cover_files(
@@ -1031,7 +1032,7 @@ async fn test_command(
         test_runner::collect_test_module_specifiers(
           include.clone(),
           &cwd,
-          fs_util::is_supported_ext,
+          fs_util::is_supported_ext_test,
         )
       } else {
         test_runner::collect_test_module_specifiers(
@@ -1087,7 +1088,7 @@ async fn test_command(
                   output.insert(specifier);
 
                   get_dependencies(
-                    &graph,
+                    graph,
                     graph.get_specifier(specifier)?,
                     output,
                   )?;
@@ -1098,7 +1099,7 @@ async fn test_command(
                   output.insert(specifier);
 
                   get_dependencies(
-                    &graph,
+                    graph,
                     graph.get_specifier(specifier)?,
                     output,
                   )?;
@@ -1173,7 +1174,7 @@ async fn test_command(
           test_runner::collect_test_module_specifiers(
             include.clone(),
             &cwd,
-            fs_util::is_supported_ext,
+            fs_util::is_supported_ext_test,
           )?
         } else {
           Vec::new()
@@ -1223,7 +1224,7 @@ async fn test_command(
       test_runner::collect_test_module_specifiers(
         include.clone(),
         &cwd,
-        fs_util::is_supported_ext,
+        fs_util::is_supported_ext_test,
       )?
     } else {
       Vec::new()
@@ -1235,7 +1236,7 @@ async fn test_command(
       tools::test_runner::is_supported,
     )?;
 
-    let failed = test_runner::run_tests(
+    test_runner::run_tests(
       program_state.clone(),
       permissions,
       lib,
@@ -1250,10 +1251,6 @@ async fn test_command(
       concurrent_jobs,
     )
     .await?;
-
-    if failed {
-      std::process::exit(1);
-    }
   }
 
   Ok(())

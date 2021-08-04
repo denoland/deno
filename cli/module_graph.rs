@@ -348,7 +348,7 @@ impl Module {
 
     // parse out any triple slash references
     for comment in parsed_module.get_leading_comments().iter() {
-      if let Some((ts_reference, _)) = parse_ts_reference(&comment) {
+      if let Some((ts_reference, _)) = parse_ts_reference(comment) {
         let location = parsed_module.get_location(&comment.span);
         match ts_reference {
           TypeScriptReference::Path(import) => {
@@ -386,10 +386,11 @@ impl Module {
     for desc in dependencies.iter().filter(|desc| {
       desc.kind != swc_ecmascript::dep_graph::DependencyKind::Require
     }) {
+      let loc = parsed_module.source_map.lookup_char_pos(desc.span.lo);
       let location = Location {
         filename: self.specifier.to_string(),
-        col: desc.col,
-        line: desc.line,
+        col: loc.col_display,
+        line: loc.line,
       };
 
       // In situations where there is a potential issue with resolving the
@@ -420,7 +421,7 @@ impl Module {
       // Parse out any `@deno-types` pragmas and modify dependency
       let maybe_type = if !desc.leading_comments.is_empty() {
         let comment = desc.leading_comments.last().unwrap();
-        if let Some((deno_types, _)) = parse_deno_types(&comment).as_ref() {
+        if let Some((deno_types, _)) = parse_deno_types(comment).as_ref() {
           Some(self.resolve_import(deno_types, Some(location.clone()))?)
         } else {
           None
@@ -434,17 +435,9 @@ impl Module {
         .entry(desc.specifier.to_string())
         .or_insert_with(|| Dependency::new(location));
       dep.is_dynamic = desc.is_dynamic;
-      if let Some(specifier) = maybe_specifier {
-        if desc.kind == swc_ecmascript::dep_graph::DependencyKind::ExportType
-          || desc.kind == swc_ecmascript::dep_graph::DependencyKind::ImportType
-        {
-          dep.maybe_type = Some(specifier);
-        } else {
-          dep.maybe_code = Some(specifier);
-        }
-      }
-      // If the dependency wasn't a type only dependency already, and there is
-      // a `@deno-types` comment, then we will set the `maybe_type` dependency.
+      dep.maybe_code = maybe_specifier;
+      // If there is a `@deno-types` pragma, we will add it to the dependency
+      // if one doesn't already exist.
       if maybe_type.is_some() && dep.maybe_type.is_none() {
         dep.maybe_type = maybe_type;
       }
@@ -930,7 +923,7 @@ impl Graph {
             // to ESM, which we don't really want unless someone has enabled the
             // check_js option.
             if !check_js
-              && graph.get_media_type(&specifier) == Some(MediaType::JavaScript)
+              && graph.get_media_type(specifier) == Some(MediaType::JavaScript)
             {
               debug!("skipping emit for {}", specifier);
               continue;
@@ -1474,9 +1467,19 @@ impl Graph {
             } else {
               (None, None)
             };
+          let maybe_type_dependency =
+            module.maybe_types.clone().map(|(specifier, _type)| {
+              info::ModuleGraphInfoDep {
+                specifier,
+                is_dynamic: false,
+                maybe_code: None,
+                maybe_type: Some(_type),
+              }
+            });
           Some(info::ModuleGraphInfoMod {
             specifier: sp.clone(),
             dependencies,
+            maybe_type_dependency,
             size: Some(module.size()),
             media_type: Some(module.media_type),
             local: Some(module.source_path.clone()),
@@ -1928,7 +1931,7 @@ impl GraphBuilder {
     maybe_referrer: &Option<Location>,
     is_dynamic: bool,
   ) {
-    if !self.graph.modules.contains_key(&specifier) {
+    if !self.graph.modules.contains_key(specifier) {
       self
         .graph
         .modules
@@ -2228,21 +2231,21 @@ pub mod tests {
   #[test]
   fn test_get_version() {
     let doc_a = "console.log(42);";
-    let version_a = get_version(&doc_a, "1.2.3", b"");
+    let version_a = get_version(doc_a, "1.2.3", b"");
     let doc_b = "console.log(42);";
-    let version_b = get_version(&doc_b, "1.2.3", b"");
+    let version_b = get_version(doc_b, "1.2.3", b"");
     assert_eq!(version_a, version_b);
 
-    let version_c = get_version(&doc_a, "1.2.3", b"options");
+    let version_c = get_version(doc_a, "1.2.3", b"options");
     assert_ne!(version_a, version_c);
 
-    let version_d = get_version(&doc_b, "1.2.3", b"options");
+    let version_d = get_version(doc_b, "1.2.3", b"options");
     assert_eq!(version_c, version_d);
 
-    let version_e = get_version(&doc_a, "1.2.4", b"");
+    let version_e = get_version(doc_a, "1.2.4", b"");
     assert_ne!(version_a, version_e);
 
-    let version_f = get_version(&doc_b, "1.2.4", b"");
+    let version_f = get_version(doc_b, "1.2.4", b"");
     assert_eq!(version_e, version_f);
   }
 

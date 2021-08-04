@@ -20,7 +20,7 @@ members = [
   "extensions/webgpu",
   "extensions/webidl",
   "extensions/websocket",
-  "extensions/webstorage"
+  "extensions/webstorage",
 ]
 exclude = ["test_util/std/hash/_wasm"]
 

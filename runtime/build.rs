@@ -46,6 +46,7 @@ fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
       "".to_owned(),
       None,
       None,
+      None,
     ),
     deno_websocket::init::<deno_websocket::NoWebSocketPermissions>(
       "".to_owned(),
@@ -59,7 +60,7 @@ fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
       false, // No --unstable.
     ),
-    deno_net::init::<deno_net::NoNetPermissions>(false), // No --unstable.
+    deno_net::init::<deno_net::NoNetPermissions>(None, false), // No --unstable.
     deno_http::init(),
   ];
 

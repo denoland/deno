@@ -6,7 +6,6 @@
       "dependencies": [
         {
           "specifier": "./subdir/mod1.ts",
-          "isDynamic": false,
           "code": "file://[WILDCARD]/cli/tests/subdir/mod1.ts"
         }
       ],
@@ -20,7 +19,6 @@
       "dependencies": [
         {
           "specifier": "./subdir2/mod2.ts",
-          "isDynamic": false,
           "code": "file://[WILDCARD]/cli/tests/subdir/subdir2/mod2.ts"
         }
       ],
@@ -42,7 +40,6 @@
       "dependencies": [
         {
           "specifier": "../print_hello.ts",
-          "isDynamic": false,
           "code": "file://[WILDCARD]/cli/tests/subdir/print_hello.ts"
         }
       ],

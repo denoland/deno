@@ -61,8 +61,11 @@ pub struct ProgramState {
 
 impl ProgramState {
   pub async fn build(flags: flags::Flags) -> Result<Arc<Self>, AnyError> {
-    let custom_root = env::var("DENO_DIR").map(String::into).ok();
-    let dir = deno_dir::DenoDir::new(custom_root)?;
+    let maybe_custom_root = flags
+      .cache_path
+      .clone()
+      .or_else(|| env::var("DENO_DIR").map(String::into).ok());
+    let dir = deno_dir::DenoDir::new(maybe_custom_root)?;
     let deps_cache_location = dir.root.join("deps");
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
     let ca_file = flags.ca_file.clone().or_else(|| env::var("DENO_CERT").ok());
@@ -112,9 +115,10 @@ impl ProgramState {
         None => None,
         Some(import_map_url) => {
           let import_map_specifier =
-            deno_core::resolve_url_or_path(&import_map_url).context(
-              format!("Bad URL (\"{}\") for import map.", import_map_url),
-            )?;
+            deno_core::resolve_url_or_path(import_map_url).context(format!(
+              "Bad URL (\"{}\") for import map.",
+              import_map_url
+            ))?;
           let file = file_fetcher
             .fetch(&import_map_specifier, &mut Permissions::allow_all())
             .await
@@ -366,11 +370,11 @@ impl ProgramState {
     let emit_path = self
       .dir
       .gen_cache
-      .get_cache_filename_with_extension(&url, "js")?;
+      .get_cache_filename_with_extension(url, "js")?;
     let emit_map_path = self
       .dir
       .gen_cache
-      .get_cache_filename_with_extension(&url, "js.map")?;
+      .get_cache_filename_with_extension(url, "js.map")?;
     if let Ok(code) = self.dir.gen_cache.get(&emit_path) {
       let maybe_map = if let Ok(map) = self.dir.gen_cache.get(&emit_map_path) {
         Some(map)

@@ -50,6 +50,7 @@ declare class WorkerGlobalScope extends EventTarget {
 declare class WorkerNavigator {
   constructor();
   readonly gpu: GPU;
+  readonly hardwareConcurrency: number;
 }
 
 declare var navigator: WorkerNavigator;

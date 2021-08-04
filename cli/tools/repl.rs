@@ -29,6 +29,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
+use swc_ecmascript::parser::error::SyntaxError;
 use swc_ecmascript::parser::token::{Token, Word};
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::unbounded_channel;
@@ -252,6 +253,17 @@ impl Validator for EditorHelper {
               }
               (None, _) => {
                 // While technically invalid when unpaired, it should be V8's task to output error instead.
+                // Thus marked as valid with no info.
+                return Ok(ValidationResult::Valid(None));
+              }
+            }
+          }
+          Token::Error(error) => {
+            match error.kind() {
+              // If there is unterminated template, it continues to read input.
+              SyntaxError::UnterminatedTpl => {}
+              _ => {
+                // If it failed parsing, it should be V8's task to output error instead.
                 // Thus marked as valid with no info.
                 return Ok(ValidationResult::Valid(None));
               }
@@ -543,7 +555,7 @@ impl ReplSession {
       if evaluate_response.get("exceptionDetails").is_some()
         && wrapped_line != line
       {
-        self.evaluate_ts_expression(&line).await?
+        self.evaluate_ts_expression(line).await?
       } else {
         evaluate_response
       };
@@ -620,7 +632,7 @@ impl ReplSession {
     expression: &str,
   ) -> Result<Value, AnyError> {
     let parsed_module =
-      crate::ast::parse("repl.ts", &expression, &crate::MediaType::TypeScript)?;
+      crate::ast::parse("repl.ts", expression, &crate::MediaType::TypeScript)?;
 
     let transpiled_src = parsed_module
       .transpile(&crate::ast::EmitOptions {

@@ -22,7 +22,7 @@ use crate::OpPayload;
 use crate::OpResult;
 use crate::OpState;
 use crate::PromiseId;
-use futures::channel::mpsc;
+use futures::channel::oneshot;
 use futures::future::poll_fn;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
@@ -96,7 +96,7 @@ struct DynImportModEvaluate {
 
 struct ModEvaluate {
   promise: v8::Global<v8::Promise>,
-  sender: mpsc::Sender<Result<(), AnyError>>,
+  sender: oneshot::Sender<Result<(), AnyError>>,
 }
 
 #[derive(Default, Clone)]
@@ -978,7 +978,7 @@ impl JsRuntime {
   pub fn mod_evaluate(
     &mut self,
     id: ModuleId,
-  ) -> mpsc::Receiver<Result<(), AnyError>> {
+  ) -> oneshot::Receiver<Result<(), AnyError>> {
     let state_rc = Self::state(self.v8_isolate());
     let module_map_rc = Self::module_map(self.v8_isolate());
     let scope = &mut self.handle_scope();
@@ -991,7 +991,7 @@ impl JsRuntime {
     let mut status = module.get_status();
     assert_eq!(status, v8::ModuleStatus::Instantiated);
 
-    let (sender, receiver) = mpsc::channel(1);
+    let (sender, receiver) = oneshot::channel();
 
     // IMPORTANT: Top-level-await is enabled, which means that return value
     // of module evaluation is a promise.
@@ -1238,7 +1238,6 @@ impl JsRuntime {
     let scope = &mut self.handle_scope();
 
     let promise = module_evaluation.promise.get(scope);
-    let mut sender = module_evaluation.sender.clone();
     let promise_state = promise.state();
 
     match promise_state {
@@ -1250,7 +1249,7 @@ impl JsRuntime {
       v8::PromiseState::Fulfilled => {
         scope.perform_microtask_checkpoint();
         // Receiver end might have been already dropped, ignore the result
-        let _ = sender.try_send(Ok(()));
+        let _ = module_evaluation.sender.send(Ok(()));
       }
       v8::PromiseState::Rejected => {
         let exception = promise.result(scope);
@@ -1259,7 +1258,7 @@ impl JsRuntime {
           .map_err(|err| attach_handle_to_error(scope, err, exception))
           .unwrap_err();
         // Receiver end might have been already dropped, ignore the result
-        let _ = sender.try_send(Err(err1));
+        let _ = module_evaluation.sender.send(Err(err1));
       }
     }
   }
@@ -1955,7 +1954,7 @@ pub mod tests {
     )
     .unwrap();
 
-    runtime.mod_evaluate(module_id);
+    let _ = runtime.mod_evaluate(module_id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
 
     let _snapshot = runtime.snapshot();

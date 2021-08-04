@@ -291,7 +291,7 @@ pub fn parse_module(
   ast::parse_with_source_map(
     &specifier.to_string(),
     source,
-    &media_type,
+    media_type,
     source_map,
   )
 }
@@ -309,7 +309,7 @@ pub fn analyze_dependencies(
 
   // Parse leading comments for supported triple slash references.
   for comment in parsed_module.get_leading_comments().iter() {
-    if let Some((ts_reference, span)) = parse_ts_reference(&comment) {
+    if let Some((ts_reference, span)) = parse_ts_reference(comment) {
       let loc = parsed_module.source_map.lookup_char_pos(span.lo);
       match ts_reference {
         TypeScriptReference::Path(import) => {
@@ -364,7 +364,7 @@ pub fn analyze_dependencies(
     let maybe_resolved_type_dependency =
       // Check for `@deno-types` pragmas that affect the import
       if let Some(comment) = desc.leading_comments.last() {
-        parse_deno_types(&comment).as_ref().map(|(deno_types, span)| {
+        parse_deno_types(comment).as_ref().map(|(deno_types, span)| {
           (
             resolve_import(deno_types, specifier, maybe_import_map),
             deno_types.clone(),
@@ -377,37 +377,24 @@ pub fn analyze_dependencies(
 
     let dep = dependencies.entry(desc.specifier.to_string()).or_default();
     dep.is_dynamic = desc.is_dynamic;
-    match desc.kind {
-      swc_ecmascript::dep_graph::DependencyKind::ExportType
-      | swc_ecmascript::dep_graph::DependencyKind::ImportType => {
-        dep.maybe_type_specifier_range = Some(Range {
-          start: Position {
-            line: (desc.specifier_line - 1) as u32,
-            character: desc.specifier_col as u32,
-          },
-          end: Position {
-            line: (desc.specifier_line - 1) as u32,
-            character: (desc.specifier_col + desc.specifier.chars().count() + 2)
-              as u32,
-          },
-        });
-        dep.maybe_type = Some(resolved_import)
-      }
-      _ => {
-        dep.maybe_code_specifier_range = Some(Range {
-          start: Position {
-            line: (desc.specifier_line - 1) as u32,
-            character: desc.specifier_col as u32,
-          },
-          end: Position {
-            line: (desc.specifier_line - 1) as u32,
-            character: (desc.specifier_col + desc.specifier.chars().count() + 2)
-              as u32,
-          },
-        });
-        dep.maybe_code = Some(resolved_import);
-      }
-    }
+    let start = parsed_module
+      .source_map
+      .lookup_char_pos(desc.specifier_span.lo);
+    let end = parsed_module
+      .source_map
+      .lookup_char_pos(desc.specifier_span.hi);
+    let range = Range {
+      start: Position {
+        line: (start.line - 1) as u32,
+        character: start.col_display as u32,
+      },
+      end: Position {
+        line: (end.line - 1) as u32,
+        character: end.col_display as u32,
+      },
+    };
+    dep.maybe_code_specifier_range = Some(range);
+    dep.maybe_code = Some(resolved_import);
     if dep.maybe_type.is_none() {
       if let Some((resolved_dependency, specifier, loc)) =
         maybe_resolved_type_dependency
@@ -1264,8 +1251,11 @@ mod tests {
       Status,
     } from "https://deno.land/x/oak@v6.3.2/mod.ts";
 
+    import type { Component } from "https://esm.sh/preact";
+    import { h, Fragment } from "https://esm.sh/preact";
+
     // @deno-types="https://deno.land/x/types/react/index.d.ts";
-    import * as React from "https://cdn.skypack.dev/react";
+    import React from "https://cdn.skypack.dev/react";
     "#;
     let parsed_module =
       parse_module(&specifier, source, &MediaType::TypeScript).unwrap();
@@ -1276,7 +1266,7 @@ mod tests {
       &None,
     );
     assert!(maybe_type.is_none());
-    assert_eq!(actual.len(), 2);
+    assert_eq!(actual.len(), 3);
     assert_eq!(
       actual.get("https://cdn.skypack.dev/react").cloned(),
       Some(Dependency {
@@ -1289,21 +1279,21 @@ mod tests {
         )),
         maybe_code_specifier_range: Some(Range {
           start: Position {
-            line: 8,
-            character: 27,
+            line: 11,
+            character: 22,
           },
           end: Position {
-            line: 8,
-            character: 58,
+            line: 11,
+            character: 53,
           }
         }),
         maybe_type_specifier_range: Some(Range {
           start: Position {
-            line: 7,
+            line: 10,
             character: 20,
           },
           end: Position {
-            line: 7,
+            line: 10,
             character: 62,
           }
         })
@@ -1329,6 +1319,27 @@ mod tests {
         }),
         maybe_type_specifier_range: None,
       })
+    );
+    assert_eq!(
+      actual.get("https://esm.sh/preact").cloned(),
+      Some(Dependency {
+        is_dynamic: false,
+        maybe_code: Some(ResolvedDependency::Resolved(
+          resolve_url("https://esm.sh/preact").unwrap()
+        )),
+        maybe_type: None,
+        maybe_code_specifier_range: Some(Range {
+          start: Position {
+            line: 8,
+            character: 32
+          },
+          end: Position {
+            line: 8,
+            character: 55
+          }
+        }),
+        maybe_type_specifier_range: None,
+      }),
     );
   }
 
