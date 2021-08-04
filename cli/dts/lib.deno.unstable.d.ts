@@ -951,7 +951,7 @@ declare namespace Deno {
       *
       * Defaults to "inherit".
       */
-      env?: "inherit" | boolean;
+      env?: "inherit" | boolean | string[];
 
       /** Specifies if the `hrtime` permission should be requested or revoked.
       * If set to `"inherit"`, the current `hrtime` permission will be inherited.
@@ -1062,7 +1062,7 @@ declare namespace Deno {
       *
       * Defaults to "inherit".
       */
-      run?: "inherit" | boolean;
+      run?: "inherit" | boolean | Array<string | URL>;
 
       /** Specifies if the `write` permission should be requested or revoked.
       * If set to `"inherit"`, the current `write` permission will be inherited.

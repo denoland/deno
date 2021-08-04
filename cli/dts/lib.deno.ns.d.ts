@@ -2129,17 +2129,17 @@ declare namespace Deno {
 
   export interface RunPermissionDescriptor {
     name: "run";
-    command?: string;
+    command?: string | URL;
   }
 
   export interface ReadPermissionDescriptor {
     name: "read";
-    path?: string;
+    path?: string | URL;
   }
 
   export interface WritePermissionDescriptor {
     name: "write";
-    path?: string;
+    path?: string | URL;
   }
 
   export interface NetPermissionDescriptor {
