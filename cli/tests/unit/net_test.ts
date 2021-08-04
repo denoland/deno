@@ -573,7 +573,7 @@ unitTest(
 
     const addr = { hostname: "127.0.0.1", port: 3500 };
     const listener = Deno.listen(addr);
-    const listnerPromise = iteratorReq(listener);
+    const listenerPromise = iteratorReq(listener);
     const connectionPromise = (async () => {
       const conn = await Deno.connect(addr);
       await conn.write(new Uint8Array([1, 2, 3, 4]));
@@ -585,7 +585,7 @@ unitTest(
     })();
 
     await Promise.all([
-      listnerPromise,
+      listenerPromise,
       connectionPromise,
     ]);
   },
