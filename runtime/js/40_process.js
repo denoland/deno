@@ -104,6 +104,7 @@
     stdout = "inherit",
     stderr = "inherit",
     stdin = "inherit",
+    signal,
   }) {
     if (cmd[0] != null) {
       cmd[0] = pathFromURL(cmd[0]);
@@ -119,7 +120,17 @@
       stdoutRid: isRid(stdout) ? stdout : 0,
       stderrRid: isRid(stderr) ? stderr : 0,
     });
-    return new Process(res);
+    const p = new Process(res);
+    if (signal) {
+      const stopper = () => {
+        p.kill(Deno.Signal.SIGTERM);
+      };
+      signal.addEventListener("abort", stopper);
+      p.status().then(() => {
+        signal.removeEventListener("abort", stopper);
+      });
+    }
+    return p;
   }
 
   window.__bootstrap.process = {

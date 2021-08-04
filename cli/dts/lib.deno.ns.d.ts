@@ -2020,6 +2020,11 @@ declare namespace Deno {
     stdout?: "inherit" | "piped" | "null" | number;
     stderr?: "inherit" | "piped" | "null" | number;
     stdin?: "inherit" | "piped" | "null" | number;
+    /**
+     * An AbortSignal that allows closing the process using the corresponding
+     * AbortController by sending the process a SIGTERM signal.
+     */
+    signal?: AbortSignal;
   }
 
   /** Spawns new subprocess.  RunOptions must contain at a minimum the `opt.cmd`,

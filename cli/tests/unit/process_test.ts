@@ -510,3 +510,23 @@ unitTest({ perms: { run: true, read: true } }, function killFailed(): void {
 
   p.close();
 });
+
+unitTest(
+  { perms: { run: true, read: true } },
+  async function runAbortSignal(): Promise<void> {
+    const ac = new AbortController();
+    const p = Deno.run({
+      cmd: [
+        Deno.execPath(),
+        "eval",
+        "setTimeout(console.log, 1e8)",
+      ],
+      signal: ac.signal,
+    });
+    queueMicrotask(() => ac.abort());
+    const status = await p.status();
+    assertEquals(status.success, false);
+    assertEquals(status.code, 143);
+    assertEquals(status.signal, "SIGTERM");
+  },
+);
