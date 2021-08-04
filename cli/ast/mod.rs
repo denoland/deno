@@ -300,7 +300,7 @@ impl ParsedModule {
     let source_map = Rc::new(SourceMap::default());
     let file_name = FileName::Custom(self.info.specifier.clone());
     source_map.new_source_file(file_name, self.info.text.clone());
-    let comments = self.comments.as_single_threaded();
+    let comments = self.comments.as_single_threaded(); // needs to be mutable
 
     let jsx_pass = react::react(
       source_map.clone(),
@@ -375,13 +375,13 @@ impl ParsedModule {
   }
 }
 
-/// For a given specifier, source text, and media type, parse the text of the
+/// For a given specifier, source, and media type, parse the text of the
 /// module and return a representation which can be further processed.
 ///
 /// # Arguments
 ///
 /// - `specifier` - The module specifier for the module.
-/// - `source_text` - The source code for the module.
+/// - `source` - The source code for the module.
 /// - `media_type` - The media type for the module.
 ///
 // NOTE(bartlomieju): `specifier` has `&str` type instead of
@@ -389,15 +389,12 @@ impl ParsedModule {
 // require valid module specifiers
 pub fn parse(
   specifier: &str,
-  source_text: &str,
+  source: &str,
   media_type: &MediaType,
 ) -> Result<ParsedModule, AnyError> {
-  let info = SourceFileInfo::new(specifier, source_text);
-  let input = StringInput::new(
-    source_text,
-    BytePos(0),
-    BytePos(source_text.len() as u32),
-  );
+  let info = SourceFileInfo::new(specifier, source);
+  let input =
+    StringInput::new(source, BytePos(0), BytePos(source.len() as u32));
   let (comments, module) = parse_string_input(&info, input, media_type)?;
 
   Ok(ParsedModule {
@@ -465,16 +462,16 @@ pub fn lex(source: &str, media_type: &MediaType) -> Vec<LexedItem> {
 /// SourceFile.
 pub fn transpile_module(
   specifier: &str,
-  source_text: &str,
+  source: &str,
   media_type: &MediaType,
   emit_options: &EmitOptions,
   globals: &Globals,
   cm: Rc<SourceMap>,
 ) -> Result<(Rc<SourceFile>, Module), AnyError> {
-  let info = SourceFileInfo::new(specifier, source_text);
+  let info = SourceFileInfo::new(specifier, source);
   let source_file = cm.new_source_file(
     FileName::Custom(specifier.to_string()),
-    source_text.to_string(),
+    source.to_string(),
   );
   let input = StringInput::from(&*source_file);
   let (comments, module) = parse_string_input(&info, input, media_type)?;
