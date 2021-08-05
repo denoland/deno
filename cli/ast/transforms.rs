@@ -21,33 +21,12 @@ impl Fold for DownlevelImportsFolder {
       ModuleItem::ModuleDecl(ModuleDecl::Import(import_decl)) => {
         // Handle type only imports
         if import_decl.type_only {
-          return ModuleItem::Stmt(Stmt::Empty(EmptyStmt { span: DUMMY_SP }));
+          // should have no side effects
+          return create_empty_stmt();
         }
 
         // The initializer (ex. `await import('./mod.ts')`)
-        let initializer = Box::new(Expr::Await(AwaitExpr {
-          span: DUMMY_SP,
-          arg: Box::new(Expr::Call(CallExpr {
-            span: DUMMY_SP,
-            callee: ExprOrSuper::Expr(Box::new(Expr::Ident(Ident {
-              span: DUMMY_SP,
-              sym: "import".into(),
-              optional: false,
-            }))),
-            args: vec![ExprOrSpread {
-              spread: None,
-              expr: Box::new(Expr::Lit(Lit::Str(Str {
-                span: DUMMY_SP,
-                has_escape: false,
-                kind: StrKind::Normal {
-                  contains_quote: false,
-                },
-                value: import_decl.src.value.clone(),
-              }))),
-            }],
-            type_args: None,
-          })),
-        }));
+        let initializer = create_await_import_expr(&import_decl.src.value);
 
         // Handle imports for the side effects
         // ex. `import "module.ts"` -> `await import("module.ts");`
@@ -141,9 +120,22 @@ impl Fold for StripExportsFolder {
     use swc_ecmascript::ast::*;
 
     match module_item {
-      ModuleItem::ModuleDecl(
-        ModuleDecl::ExportAll(_) | ModuleDecl::ExportNamed(_),
-      ) => ModuleItem::Stmt(Stmt::Empty(EmptyStmt { span: DUMMY_SP })),
+      ModuleItem::ModuleDecl(ModuleDecl::ExportAll(export_all)) => {
+        ModuleItem::Stmt(Stmt::Expr(ExprStmt {
+          span: DUMMY_SP,
+          expr: create_await_import_expr(&export_all.src.value),
+        }))
+      }
+      ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(export_named)) => {
+        if let Some(src) = export_named.src {
+          ModuleItem::Stmt(Stmt::Expr(ExprStmt {
+            span: DUMMY_SP,
+            expr: create_await_import_expr(&src.value),
+          }))
+        } else {
+          create_empty_stmt()
+        }
+      }
       ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultExpr(default_expr)) => {
         // transform a default export expression to its expression
         ModuleItem::Stmt(Stmt::Expr(ExprStmt {
@@ -174,12 +166,17 @@ impl Fold for StripExportsFolder {
             ident,
             class,
           }))),
-          _ => ModuleItem::Stmt(Stmt::Empty(EmptyStmt { span: DUMMY_SP })),
+          _ => create_empty_stmt(),
         }
       }
       _ => module_item,
     }
   }
+}
+
+fn create_empty_stmt() -> swc_ast::ModuleItem {
+  use swc_ast::*;
+  ModuleItem::Stmt(Stmt::Empty(EmptyStmt { span: DUMMY_SP }))
 }
 
 fn create_binding_ident(name: String) -> swc_ast::BindingIdent {
@@ -213,6 +210,33 @@ fn create_key_value(key: String, value: String) -> swc_ast::ObjectPatProp {
       type_ann: None,
     })),
   })
+}
+
+fn create_await_import_expr(module_specifier: &str) -> Box<swc_ast::Expr> {
+  use swc_ast::*;
+  Box::new(Expr::Await(AwaitExpr {
+    span: DUMMY_SP,
+    arg: Box::new(Expr::Call(CallExpr {
+      span: DUMMY_SP,
+      callee: ExprOrSuper::Expr(Box::new(Expr::Ident(Ident {
+        span: DUMMY_SP,
+        sym: "import".into(),
+        optional: false,
+      }))),
+      args: vec![ExprOrSpread {
+        spread: None,
+        expr: Box::new(Expr::Lit(Lit::Str(Str {
+          span: DUMMY_SP,
+          has_escape: false,
+          kind: StrKind::Normal {
+            contains_quote: false,
+          },
+          value: module_specifier.into(),
+        }))),
+      }],
+      type_args: None,
+    })),
+  }))
 }
 
 fn create_assignment(key: String) -> swc_ast::ObjectPatProp {
@@ -320,7 +344,11 @@ mod test {
 
   #[test]
   fn test_strip_exports_export_all() {
-    test_transform(StripExportsFolder, r#"export * from "./test.ts";"#, r#";"#);
+    test_transform(
+      StripExportsFolder,
+      r#"export * from "./test.ts";"#,
+      r#"await import("./test.ts");"#,
+    );
   }
 
   #[test]
@@ -328,8 +356,10 @@ mod test {
     test_transform(
       StripExportsFolder,
       r#"export { test } from "./test.ts";"#,
-      ";",
+      r#"await import("./test.ts");"#,
     );
+
+    test_transform(StripExportsFolder, r#"export { test };"#, ";");
   }
 
   #[test]
