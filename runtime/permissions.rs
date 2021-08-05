@@ -71,14 +71,13 @@ impl PermissionState {
     self,
     name: &str,
     info: Option<&str>,
-    prompt: bool,
   ) -> (Result<(), AnyError>, bool) {
     match self {
       PermissionState::Granted => {
         Self::log_perm_access(name, info);
         (Ok(()), false)
       }
-      PermissionState::Prompt if prompt => {
+      _ => {
         let msg = Self::fmt_access(name, info);
         if permission_prompt(&msg) {
           Self::log_perm_access(name, info);
@@ -87,7 +86,6 @@ impl PermissionState {
           (Err(Self::error(name, info)), true)
         }
       }
-      _ => (Err(Self::error(name, info)), false),
     }
   }
 }
@@ -140,7 +138,7 @@ impl UnitPermission {
   }
 
   pub fn check(&mut self) -> Result<(), AnyError> {
-    let (result, prompted) = self.state.check(self.name, None, self.prompt);
+    let (result, prompted) = self.state.check(self.name, None);
     if prompted {
       if result.is_ok() {
         self.state = PermissionState::Granted;
@@ -289,11 +287,9 @@ impl UnaryPermission<ReadDescriptor> {
 
   pub fn check(&mut self, path: &Path) -> Result<(), AnyError> {
     let (resolved_path, display_path) = resolved_and_display_path(path);
-    let (result, prompted) = self.query(Some(&resolved_path)).check(
-      self.name,
-      Some(&format!("\"{}\"", display_path.display())),
-      self.prompt,
-    );
+    let (result, prompted) = self
+      .query(Some(&resolved_path))
+      .check(self.name, Some(&format!("\"{}\"", display_path.display())));
     if prompted {
       if result.is_ok() {
         self.granted_list.insert(ReadDescriptor(resolved_path));
@@ -313,11 +309,9 @@ impl UnaryPermission<ReadDescriptor> {
     display: &str,
   ) -> Result<(), AnyError> {
     let resolved_path = resolve_from_cwd(path).unwrap();
-    let (result, prompted) = self.query(Some(&resolved_path)).check(
-      self.name,
-      Some(&format!("<{}>", display)),
-      self.prompt,
-    );
+    let (result, prompted) = self
+      .query(Some(&resolved_path))
+      .check(self.name, Some(&format!("<{}>", display)));
     if prompted {
       if result.is_ok() {
         self.granted_list.insert(ReadDescriptor(resolved_path));
@@ -417,11 +411,9 @@ impl UnaryPermission<WriteDescriptor> {
 
   pub fn check(&mut self, path: &Path) -> Result<(), AnyError> {
     let (resolved_path, display_path) = resolved_and_display_path(path);
-    let (result, prompted) = self.query(Some(&resolved_path)).check(
-      self.name,
-      Some(&format!("\"{}\"", display_path.display())),
-      self.prompt,
-    );
+    let (result, prompted) = self
+      .query(Some(&resolved_path))
+      .check(self.name, Some(&format!("\"{}\"", display_path.display())));
     if prompted {
       if result.is_ok() {
         self.granted_list.insert(WriteDescriptor(resolved_path));
@@ -535,11 +527,9 @@ impl UnaryPermission<NetDescriptor> {
     host: &(T, Option<u16>),
   ) -> Result<(), AnyError> {
     let new_host = NetDescriptor::new(&host);
-    let (result, prompted) = self.query(Some(host)).check(
-      self.name,
-      Some(&format!("\"{}\"", new_host)),
-      self.prompt,
-    );
+    let (result, prompted) = self
+      .query(Some(host))
+      .check(self.name, Some(&format!("\"{}\"", new_host)));
     if prompted {
       if result.is_ok() {
         self.granted_list.insert(new_host);
@@ -561,11 +551,9 @@ impl UnaryPermission<NetDescriptor> {
       Some(port) => format!("{}:{}", hostname, port),
     };
     let host = &(&hostname, url.port_or_known_default());
-    let (result, prompted) = self.query(Some(host)).check(
-      self.name,
-      Some(&format!("\"{}\"", display_host)),
-      self.prompt,
-    );
+    let (result, prompted) = self
+      .query(Some(host))
+      .check(self.name, Some(&format!("\"{}\"", display_host)));
     if prompted {
       if result.is_ok() {
         self.granted_list.insert(NetDescriptor::new(&host));
@@ -659,11 +647,9 @@ impl UnaryPermission<EnvDescriptor> {
   pub fn check(&mut self, env: &str) -> Result<(), AnyError> {
     #[cfg(windows)]
     let env = &env.to_uppercase();
-    let (result, prompted) = self.query(Some(env)).check(
-      self.name,
-      Some(&format!("\"{}\"", env)),
-      self.prompt,
-    );
+    let (result, prompted) = self
+      .query(Some(env))
+      .check(self.name, Some(&format!("\"{}\"", env)));
     if prompted {
       if result.is_ok() {
         self.granted_list.insert(EnvDescriptor(env.to_string()));
@@ -676,8 +662,7 @@ impl UnaryPermission<EnvDescriptor> {
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
-    let (result, prompted) =
-      self.query(None).check(self.name, Some("all"), self.prompt);
+    let (result, prompted) = self.query(None).check(self.name, Some("all"));
     if prompted {
       if result.is_ok() {
         self.global_state = PermissionState::Granted;
@@ -757,11 +742,9 @@ impl UnaryPermission<RunDescriptor> {
   }
 
   pub fn check(&mut self, cmd: &str) -> Result<(), AnyError> {
-    let (result, prompted) = self.query(Some(cmd)).check(
-      self.name,
-      Some(&format!("\"{}\"", cmd)),
-      self.prompt,
-    );
+    let (result, prompted) = self
+      .query(Some(cmd))
+      .check(self.name, Some(&format!("\"{}\"", cmd)));
     if prompted {
       if result.is_ok() {
         self.granted_list.insert(RunDescriptor(cmd.to_string()));
@@ -774,8 +757,7 @@ impl UnaryPermission<RunDescriptor> {
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
-    let (result, prompted) =
-      self.query(None).check(self.name, Some("all"), self.prompt);
+    let (result, prompted) = self.query(None).check(self.name, Some("all"));
     if prompted {
       if result.is_ok() {
         self.global_state = PermissionState::Granted;
