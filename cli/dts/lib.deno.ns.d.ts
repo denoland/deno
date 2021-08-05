@@ -2041,6 +2041,9 @@ declare namespace Deno {
    * Environmental variables for subprocess can be specified using `opt.env`
    * mapping.
    *
+   * On unix `opt.gid` and `opt.uid` can be used to define the gid and uid for
+   * the subprocess.
+   *
    * By default subprocess inherits stdio of parent process. To change that
    * `opt.stdout`, `opt.stderr` and `opt.stdin` can be specified independently -
    * they can be set to either an rid of open file or set to "inherit" "piped"
