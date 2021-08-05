@@ -44,12 +44,12 @@ interface UnitTestOptions {
 
 type TestFunction = () => void | Promise<void>;
 
-export function unitTest(fn: TestFunction);
-export function unitTest(options: UnitTestOptions, fn: TestFunction);
+export function unitTest(fn: TestFunction): void;
+export function unitTest(options: UnitTestOptions, fn: TestFunction): void;
 export function unitTest(
   optionsOrFn: UnitTestOptions | TestFunction,
   maybeFn?: TestFunction,
-) {
+): void {
   assert(optionsOrFn, "At least one argument is required");
 
   let options: UnitTestOptions;

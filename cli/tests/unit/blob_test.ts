@@ -87,7 +87,7 @@ unitTest(async function blobStream() {
   assert(stream instanceof ReadableStream);
   const reader = stream.getReader();
   let bytes = new Uint8Array();
-  const read = async () => {
+  const read = async (): Promise<void> => {
     const { done, value } = await reader.read();
     if (!done && value) {
       bytes = concat(bytes, value);
