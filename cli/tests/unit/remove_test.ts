@@ -10,7 +10,7 @@ const REMOVE_METHODS = ["remove", "removeSync"] as const;
 
 unitTest(
   { perms: { write: true, read: true } },
-  async function removeDirSuccess(): Promise<void> {
+  async function removeDirSuccess() {
     for (const method of REMOVE_METHODS) {
       // REMOVE EMPTY DIRECTORY
       const path = Deno.makeTempDirSync() + "/subdir";
@@ -28,7 +28,7 @@ unitTest(
 
 unitTest(
   { perms: { write: true, read: true } },
-  async function removeFileSuccess(): Promise<void> {
+  async function removeFileSuccess() {
     for (const method of REMOVE_METHODS) {
       // REMOVE FILE
       const enc = new TextEncoder();
@@ -48,7 +48,7 @@ unitTest(
 
 unitTest(
   { perms: { write: true, read: true } },
-  async function removeFileByUrl(): Promise<void> {
+  async function removeFileByUrl() {
     for (const method of REMOVE_METHODS) {
       // REMOVE FILE
       const enc = new TextEncoder();
@@ -73,7 +73,7 @@ unitTest(
 
 unitTest(
   { perms: { write: true, read: true } },
-  async function removeFail(): Promise<void> {
+  async function removeFail() {
     for (const method of REMOVE_METHODS) {
       // NON-EMPTY DIRECTORY
       const path = Deno.makeTempDirSync() + "/dir/subdir";
@@ -100,7 +100,7 @@ unitTest(
 
 unitTest(
   { perms: { write: true, read: true } },
-  async function removeDanglingSymlinkSuccess(): Promise<void> {
+  async function removeDanglingSymlinkSuccess() {
     for (const method of REMOVE_METHODS) {
       const danglingSymlinkPath = Deno.makeTempDirSync() + "/dangling_symlink";
       if (Deno.build.os === "windows") {
@@ -122,7 +122,7 @@ unitTest(
 
 unitTest(
   { perms: { write: true, read: true } },
-  async function removeValidSymlinkSuccess(): Promise<void> {
+  async function removeValidSymlinkSuccess() {
     for (const method of REMOVE_METHODS) {
       const encoder = new TextEncoder();
       const data = encoder.encode("Test");
@@ -146,9 +146,7 @@ unitTest(
   },
 );
 
-unitTest({ perms: { write: false } }, async function removePerm(): Promise<
-  void
-> {
+unitTest({ perms: { write: false } }, async function removePerm() {
   for (const method of REMOVE_METHODS) {
     await assertThrowsAsync(async () => {
       await Deno[method]("/baddir");
@@ -158,7 +156,7 @@ unitTest({ perms: { write: false } }, async function removePerm(): Promise<
 
 unitTest(
   { perms: { write: true, read: true } },
-  async function removeAllDirSuccess(): Promise<void> {
+  async function removeAllDirSuccess() {
     for (const method of REMOVE_METHODS) {
       // REMOVE EMPTY DIRECTORY
       let path = Deno.makeTempDirSync() + "/dir/subdir";
@@ -195,7 +193,7 @@ unitTest(
 
 unitTest(
   { perms: { write: true, read: true } },
-  async function removeAllFileSuccess(): Promise<void> {
+  async function removeAllFileSuccess() {
     for (const method of REMOVE_METHODS) {
       // REMOVE FILE
       const enc = new TextEncoder();
@@ -214,9 +212,7 @@ unitTest(
   },
 );
 
-unitTest({ perms: { write: true } }, async function removeAllFail(): Promise<
-  void
-> {
+unitTest({ perms: { write: true } }, async function removeAllFail() {
   for (const method of REMOVE_METHODS) {
     // NON-EXISTENT DIRECTORY/FILE
     await assertThrowsAsync(async () => {
@@ -226,9 +222,7 @@ unitTest({ perms: { write: true } }, async function removeAllFail(): Promise<
   }
 });
 
-unitTest({ perms: { write: false } }, async function removeAllPerm(): Promise<
-  void
-> {
+unitTest({ perms: { write: false } }, async function removeAllPerm() {
   for (const method of REMOVE_METHODS) {
     await assertThrowsAsync(async () => {
       await Deno[method]("/baddir", { recursive: true });
@@ -241,7 +235,7 @@ unitTest(
     ignore: Deno.build.os === "windows",
     perms: { write: true, read: true },
   },
-  async function removeUnixSocketSuccess(): Promise<void> {
+  async function removeUnixSocketSuccess() {
     for (const method of REMOVE_METHODS) {
       // MAKE TEMPORARY UNIX SOCKET
       const path = Deno.makeTempDirSync() + "/test.sock";
@@ -260,7 +254,7 @@ unitTest(
 if (Deno.build.os === "windows") {
   unitTest(
     { perms: { run: true, write: true, read: true } },
-    async function removeFileSymlink(): Promise<void> {
+    async function removeFileSymlink() {
       const symlink = Deno.run({
         cmd: ["cmd", "/c", "mklink", "file_link", "bar"],
         stdout: "null",
@@ -277,7 +271,7 @@ if (Deno.build.os === "windows") {
 
   unitTest(
     { perms: { run: true, write: true, read: true } },
-    async function removeDirSymlink(): Promise<void> {
+    async function removeDirSymlink() {
       const symlink = Deno.run({
         cmd: ["cmd", "/c", "mklink", "/d", "dir_link", "bar"],
         stdout: "null",

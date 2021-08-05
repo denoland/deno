@@ -22,7 +22,7 @@ const simpleWasm = new Uint8Array([
   0x00, 0x20, 0x01, 0x6a, 0x0b
 ]);
 
-unitTest(async function wasmInstantiateWorksWithBuffer(): Promise<void> {
+unitTest(async function wasmInstantiateWorksWithBuffer() {
   const { module, instance } = await WebAssembly.instantiate(simpleWasm);
   assertEquals(WebAssembly.Module.exports(module), [{
     name: "add",
@@ -38,7 +38,7 @@ unitTest(async function wasmInstantiateWorksWithBuffer(): Promise<void> {
 // don't set the WASM streaming callback, is to take a byte source. Here we
 // check that our implementation of the callback disallows it.
 unitTest(
-  async function wasmInstantiateStreamingFailsWithBuffer(): Promise<void> {
+  async function wasmInstantiateStreamingFailsWithBuffer() {
     await assertThrowsAsync(async () => {
       await WebAssembly.instantiateStreaming(
         // Bypassing the type system
@@ -48,7 +48,7 @@ unitTest(
   },
 );
 
-unitTest(async function wasmInstantiateStreaming(): Promise<void> {
+unitTest(async function wasmInstantiateStreaming() {
   let isomorphic = "";
   for (const byte of simpleWasm) {
     isomorphic += String.fromCharCode(byte);
@@ -70,7 +70,7 @@ unitTest(async function wasmInstantiateStreaming(): Promise<void> {
 
 unitTest(
   { perms: { net: true } },
-  async function wasmStreamingNonTrivial(): Promise<void> {
+  async function wasmStreamingNonTrivial() {
     // deno-dom's WASM file is a real-world non-trivial case that gave us
     // trouble when implementing this.
     await WebAssembly.instantiateStreaming(fetch(

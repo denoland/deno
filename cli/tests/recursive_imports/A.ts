@@ -1,7 +1,7 @@
 import { B } from "./B.ts";
 import { thing } from "./common.ts";
 
-export function A(): void {
+export function A() {
   thing();
   B();
 }

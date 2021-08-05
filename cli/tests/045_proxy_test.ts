@@ -4,7 +4,7 @@ import { assertEquals } from "../../test_util/std/testing/asserts.ts";
 
 const addr = Deno.args[1] || "127.0.0.1:4555";
 
-async function proxyServer(): Promise<void> {
+async function proxyServer() {
   const server = serve(addr);
 
   console.log(`Proxy server listening on http://${addr}/`);
@@ -13,7 +13,7 @@ async function proxyServer(): Promise<void> {
   }
 }
 
-async function proxyRequest(req: ServerRequest): Promise<void> {
+async function proxyRequest(req: ServerRequest) {
   console.log(`Proxy request to: ${req.url}`);
   const proxyAuthorization = req.headers.get("proxy-authorization");
   if (proxyAuthorization) {
@@ -31,7 +31,7 @@ async function proxyRequest(req: ServerRequest): Promise<void> {
   });
 }
 
-async function testFetch(): Promise<void> {
+async function testFetch() {
   const c = Deno.run({
     cmd: [
       Deno.execPath(),
@@ -52,7 +52,7 @@ async function testFetch(): Promise<void> {
   c.close();
 }
 
-async function testModuleDownload(): Promise<void> {
+async function testModuleDownload() {
   const http = Deno.run({
     cmd: [
       Deno.execPath(),
@@ -72,7 +72,7 @@ async function testModuleDownload(): Promise<void> {
   http.close();
 }
 
-async function testFetchNoProxy(): Promise<void> {
+async function testFetchNoProxy() {
   const c = Deno.run({
     cmd: [
       Deno.execPath(),
@@ -94,7 +94,7 @@ async function testFetchNoProxy(): Promise<void> {
   c.close();
 }
 
-async function testModuleDownloadNoProxy(): Promise<void> {
+async function testModuleDownloadNoProxy() {
   const http = Deno.run({
     cmd: [
       Deno.execPath(),
@@ -115,7 +115,7 @@ async function testModuleDownloadNoProxy(): Promise<void> {
   http.close();
 }
 
-async function testFetchProgrammaticProxy(): Promise<void> {
+async function testFetchProgrammaticProxy() {
   const c = Deno.run({
     cmd: [
       Deno.execPath(),

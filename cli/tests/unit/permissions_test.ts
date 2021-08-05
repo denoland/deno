@@ -7,14 +7,14 @@ import {
   unitTest,
 } from "./test_util.ts";
 
-unitTest(async function permissionInvalidName(): Promise<void> {
+unitTest(async function permissionInvalidName() {
   await assertThrowsAsync(async () => {
     // deno-lint-ignore no-explicit-any
     await Deno.permissions.query({ name: "foo" as any });
   }, TypeError);
 });
 
-unitTest(async function permissionNetInvalidHost(): Promise<void> {
+unitTest(async function permissionNetInvalidHost() {
   await assertThrowsAsync(async () => {
     await Deno.permissions.query({ name: "net", host: ":" });
   }, URIError);
