@@ -314,6 +314,7 @@ impl ParsedModule {
     let mut passes = chain!(
       Optional::new(jsx_pass, options.transform_jsx),
       Optional::new(transforms::DownlevelImportsFolder, options.repl_imports),
+      Optional::new(transforms::StripExportsFolder, options.repl_imports),
       proposals::decorators::decorators(proposals::decorators::Config {
         legacy: true,
         emit_metadata: options.emit_metadata

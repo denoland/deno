@@ -128,6 +128,60 @@ impl Fold for DownlevelImportsFolder {
   }
 }
 
+/// Strips export declarations and exports on named exports for the REPL.
+pub struct StripExportsFolder;
+
+impl Fold for StripExportsFolder {
+  noop_fold_type!(); // skip typescript specific nodes
+
+  fn fold_module_item(
+    &mut self,
+    module_item: swc_ast::ModuleItem,
+  ) -> swc_ast::ModuleItem {
+    use swc_ecmascript::ast::*;
+
+    match module_item {
+      ModuleItem::ModuleDecl(
+        ModuleDecl::ExportAll(_) | ModuleDecl::ExportNamed(_),
+      ) => ModuleItem::Stmt(Stmt::Empty(EmptyStmt { span: DUMMY_SP })),
+      ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultExpr(default_expr)) => {
+        // transform a default export expression to its expression
+        ModuleItem::Stmt(Stmt::Expr(ExprStmt {
+          span: DUMMY_SP,
+          expr: default_expr.expr,
+        }))
+      }
+      ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(export_decl)) => {
+        // strip the export keyword on an exported declaration
+        ModuleItem::Stmt(Stmt::Decl(export_decl.decl))
+      }
+      ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultDecl(default_decl)) => {
+        // only keep named default exports
+        match default_decl.decl {
+          DefaultDecl::Fn(FnExpr {
+            ident: Some(ident),
+            function,
+          }) => ModuleItem::Stmt(Stmt::Decl(Decl::Fn(FnDecl {
+            declare: false,
+            ident,
+            function,
+          }))),
+          DefaultDecl::Class(ClassExpr {
+            ident: Some(ident),
+            class,
+          }) => ModuleItem::Stmt(Stmt::Decl(Decl::Class(ClassDecl {
+            declare: false,
+            ident,
+            class,
+          }))),
+          _ => ModuleItem::Stmt(Stmt::Empty(EmptyStmt { span: DUMMY_SP })),
+        }
+      }
+      _ => module_item,
+    }
+  }
+}
+
 fn create_binding_ident(name: String) -> swc_ast::BindingIdent {
   swc_ast::BindingIdent {
     id: create_ident(name),
@@ -261,6 +315,79 @@ mod test {
       DownlevelImportsFolder,
       r#"import myDefault, * as mod from "./mod.ts";"#,
       r#"const { default: myDefault  } = await import("./mod.ts"), mod = await import("./mod.ts");"#,
+    );
+  }
+
+  #[test]
+  fn test_strip_exports_export_all() {
+    test_transform(StripExportsFolder, r#"export * from "./test.ts";"#, r#";"#);
+  }
+
+  #[test]
+  fn test_strip_exports_export_named() {
+    test_transform(
+      StripExportsFolder,
+      r#"export { test } from "./test.ts";"#,
+      ";",
+    );
+  }
+
+  #[test]
+  fn test_strip_exports_export_default_expr() {
+    test_transform(StripExportsFolder, "export default 5;", "5;");
+  }
+
+  #[test]
+  fn test_strip_exports_export_default_decl_name() {
+    test_transform(
+      StripExportsFolder,
+      "export default class Test {}",
+      "class Test {\n}",
+    );
+
+    test_transform(
+      StripExportsFolder,
+      "export default function test() {}",
+      "function test() {\n}",
+    );
+  }
+
+  #[test]
+  fn test_strip_exports_export_default_decl_no_name() {
+    test_transform(StripExportsFolder, "export default class {}", ";");
+
+    test_transform(StripExportsFolder, "export default function() {}", ";");
+  }
+
+  #[test]
+  fn test_strip_exports_export_named_decls() {
+    test_transform(
+      StripExportsFolder,
+      "export class Test {}",
+      "class Test {\n}",
+    );
+
+    test_transform(
+      StripExportsFolder,
+      "export function test() {}",
+      "function test() {\n}",
+    );
+
+    test_transform(StripExportsFolder, "export enum Test {}", "enum Test {\n}");
+
+    test_transform(
+      StripExportsFolder,
+      "export namespace Test {}",
+      "module Test {\n}",
+    );
+  }
+
+  #[test]
+  fn test_strip_exports_not_in_namespace() {
+    test_transform(
+      StripExportsFolder,
+      "namespace Test { export class Test {} }",
+      "module Test {\n    export class Test {\n    }\n}",
     );
   }
 
