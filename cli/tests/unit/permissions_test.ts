@@ -57,3 +57,22 @@ unitTest(function permissionStatusIllegalConstructor() {
   );
   assertEquals(Deno.PermissionStatus.length, 0);
 });
+
+unitTest(async function permissionURL() {
+  await Deno.permissions.query({
+    name: "read",
+    path: new URL(".", import.meta.url),
+  });
+  await Deno.permissions.query({
+    name: "write",
+    path: new URL(".", import.meta.url),
+  });
+  await Deno.permissions.query({
+    name: "run",
+    command: new URL(".", import.meta.url),
+  });
+  await Deno.permissions.query({
+    name: "net",
+    host: new URL("https://deno.land/foo"),
+  });
+});
