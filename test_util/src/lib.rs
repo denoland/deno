@@ -1143,9 +1143,25 @@ pub fn run_and_collect_output(
   envs: Option<Vec<(String, String)>>,
   need_http_server: bool,
 ) -> (String, String) {
+  run_and_collect_output_with_args(
+    expect_success,
+    args.split_whitespace().collect(),
+    input,
+    envs,
+    need_http_server,
+  )
+}
+
+pub fn run_and_collect_output_with_args(
+  expect_success: bool,
+  args: Vec<&str>,
+  input: Option<Vec<&str>>,
+  envs: Option<Vec<(String, String)>>,
+  need_http_server: bool,
+) -> (String, String) {
   let mut deno_process_builder = deno_cmd();
   deno_process_builder
-    .args(args.split_whitespace())
+    .args(args)
     .current_dir(&tests_path())
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())

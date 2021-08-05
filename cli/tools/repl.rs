@@ -418,6 +418,20 @@ Object.defineProperty(globalThis, "_error", {
 });
 "#;
 
+enum EvaluationOutput {
+  Value(String),
+  Error(String),
+}
+
+impl std::fmt::Display for EvaluationOutput {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      EvaluationOutput::Value(value) => f.write_str(value),
+      EvaluationOutput::Error(value) => f.write_str(value),
+    }
+  }
+}
+
 struct ReplSession {
   worker: MainWorker,
   session: LocalInspectorSession,
@@ -497,7 +511,7 @@ impl ReplSession {
   pub async fn evaluate_line_and_get_output(
     &mut self,
     line: &str,
-  ) -> Result<String, AnyError> {
+  ) -> Result<EvaluationOutput, AnyError> {
     match self.evaluate_line_with_object_wrapping(line).await {
       Ok(evaluate_response) => {
         let evaluate_result = evaluate_response.get("result").unwrap();
@@ -512,20 +526,20 @@ impl ReplSession {
 
         let value = self.get_eval_value(evaluate_result).await?;
         Ok(match evaluate_exception_details {
-          Some(_) => format!("Uncaught {}", value),
-          None => value,
+          Some(_) => EvaluationOutput::Error(format!("Uncaught {}", value)),
+          None => EvaluationOutput::Value(value),
         })
       }
       Err(err) => {
         // handle a parsing diagnostic
         match err.downcast_ref::<Diagnostic>() {
-          Some(diagnostic) => Ok(format!(
+          Some(diagnostic) => Ok(EvaluationOutput::Error(format!(
             "{}: {} at {}:{}",
             colors::red("parse error"),
             diagnostic.message,
             diagnostic.location.line,
             diagnostic.location.col
-          )),
+          ))),
           None => Err(err),
         }
       }
@@ -707,6 +721,7 @@ async fn read_line_and_poll(
 pub async fn run(
   program_state: &ProgramState,
   worker: MainWorker,
+  maybe_eval: Option<String>,
 ) -> Result<(), AnyError> {
   let mut repl_session = ReplSession::initialize(worker).await?;
   let (message_tx, mut message_rx) = channel(1);
@@ -720,6 +735,14 @@ pub async fn run(
 
   let history_file_path = program_state.dir.root.join("deno_history.txt");
   let editor = ReplEditor::new(helper, history_file_path);
+
+  if let Some(eval) = maybe_eval {
+    let output = repl_session.evaluate_line_and_get_output(&eval).await?;
+    // only output errors
+    if let EvaluationOutput::Error(error_text) = output {
+      println!("error in --eval flag. {}", error_text);
+    }
+  }
 
   println!("Deno {}", crate::version::deno());
   println!("exit using ctrl+d or close()");
