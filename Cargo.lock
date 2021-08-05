@@ -200,12 +200,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
-name = "base64ct"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0d27fb6b6f1e43147af148af49d49329413ba781aa0d5e10979831c210173b5"
-
-[[package]]
 name = "bencher"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2409,15 +2403,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pem-rfc7468"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8fe90c78c9a17442665a41a1a45dcd24bbab0e1794748edc19b27fffb146c13"
-dependencies = [
- "base64ct",
-]
-
-[[package]]
 name = "percent-encoding"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2525,7 +2510,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "359e7852310174a810f078124edb73c66e88a1a731b2fd586dba34ee32dbe416"
 dependencies = [
  "der",
- "pem-rfc7468",
  "zeroize",
 ]
 
@@ -2536,7 +2520,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fbee84ed13e44dd82689fa18348a49934fa79cc774a344c42fc9b301c71b140a"
 dependencies = [
  "der",
- "pem-rfc7468",
  "pkcs1",
  "spki",
  "zeroize",
