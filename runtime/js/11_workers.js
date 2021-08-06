@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+  // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 "use strict";
 
 ((window) => {
@@ -93,9 +93,6 @@
     } else if (ArrayIsArray(value)) {
       value = ArrayPrototypeMap(value, (route) => {
         if (route instanceof URL) {
-          if (permission === "net") {
-            route = route.host;
-          }
           if (permission === "env") {
             throw new Error(
               `Expected 'string' for env permission, received 'URL'`,
@@ -124,12 +121,12 @@
     write = "inherit",
   }) {
     return {
-      env: parseArrayPermission(env, "env"),
+      env: parseUnitPermission(env, "env"),
       hrtime: parseUnitPermission(hrtime, "hrtime"),
       net: parseArrayPermission(net, "net"),
       plugin: parseUnitPermission(plugin, "plugin"),
       read: parseArrayPermission(read, "read"),
-      run: parseArrayPermission(run, "run"),
+      run: parseUnitPermission(run, "run"),
       write: parseArrayPermission(write, "write"),
     };
   }
