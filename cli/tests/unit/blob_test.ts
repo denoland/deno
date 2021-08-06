@@ -5,7 +5,7 @@ import {
   assertStringIncludes,
   unitTest,
 } from "./test_util.ts";
-import { concat } from "../../../../test_util/std/bytes/mod.ts";
+import { concat } from "../../../test_util/std/bytes/mod.ts";
 
 unitTest(function blobString() {
   const b1 = new Blob(["Hello World"]);

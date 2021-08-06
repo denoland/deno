@@ -954,7 +954,7 @@ fn js_unit_tests_lint() {
   let status = util::deno_cmd()
     .arg("lint")
     .arg("--unstable")
-    .arg(util::testdata_path().join("unit"))
+    .arg(util::tests_path().join("unit"))
     .spawn()
     .unwrap()
     .wait()
@@ -975,7 +975,7 @@ fn js_unit_tests() {
     .arg("--unstable")
     .arg("--location=http://js-unit-tests/foo/bar")
     .arg("-A")
-    .arg("unit")
+    .arg("../unit")
     .spawn()
     .expect("failed to spawn script");
 

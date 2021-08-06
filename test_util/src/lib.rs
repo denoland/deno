@@ -87,8 +87,12 @@ pub fn prebuilt_path() -> PathBuf {
   third_party_path().join("prebuilt")
 }
 
+pub fn tests_path() -> PathBuf {
+  root_path().join("cli").join("tests")
+}
+
 pub fn testdata_path() -> PathBuf {
-  root_path().join("cli").join("tests").join("testdata")
+  tests_path().join("testdata")
 }
 
 pub fn third_party_path() -> PathBuf {

@@ -30,10 +30,10 @@ There are two ways to run `unit_test_runner.ts`:
 
 ```sh
 # Run all tests.
-(cd cli/tests/testdata && ../../target/debug/deno test --allow-all --unstable unit)
+(cd cli/tests/testdata && ../../target/debug/deno test --allow-all --unstable ../unit)
 
 # Run a specific test module
-(cd cli/tests/testdata && ../../target/debug/deno test --allow-all --unstable unit/files_test.ts)
+(cd cli/tests/testdata && ../../target/debug/deno test --allow-all --unstable ../unit/files_test.ts)
 ```
 
 ### Http server

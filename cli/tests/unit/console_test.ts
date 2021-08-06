@@ -15,7 +15,7 @@ import {
   assertThrows,
   unitTest,
 } from "./test_util.ts";
-import { stripColor } from "../../../../test_util/std/fmt/colors.ts";
+import { stripColor } from "../../../test_util/std/fmt/colors.ts";
 
 const customInspect = Symbol.for("Deno.customInspect");
 const {

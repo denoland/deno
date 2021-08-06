@@ -8,7 +8,7 @@ import {
   unimplemented,
   unitTest,
 } from "./test_util.ts";
-import { Buffer } from "../../../../test_util/std/io/buffer.ts";
+import { Buffer } from "../../../test_util/std/io/buffer.ts";
 
 unitTest(
   { perms: { net: true } },
