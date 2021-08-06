@@ -9,6 +9,10 @@ use swc_common::comments::SingleThreadedComments;
 use swc_common::comments::SingleThreadedCommentsMapInner;
 use swc_common::BytePos;
 
+/// An implementation of swc's `Comments` that implements `Sync`
+/// to support being used in multi-threaded code. This implementation
+/// is immutable and should you need mutability you may create a copy
+/// by converting it to an swc `SingleThreadedComments`.
 #[derive(Clone, Debug)]
 pub struct MultiThreadedComments {
   leading: Arc<SingleThreadedCommentsMapInner>,
