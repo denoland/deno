@@ -2159,7 +2159,7 @@ declare namespace Deno {
      *      "github.com"
      *      "deno.land:8080"
      */
-    host?: string | URL;
+    host?: string;
   }
 
   export interface EnvPermissionDescriptor {
