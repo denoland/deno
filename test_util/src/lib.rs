@@ -374,7 +374,7 @@ async fn run_tls_client_auth_server() {
     .unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
   let listener =
-    TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], TLS_CLIENT_AUTH_PORT)))
+    TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], TLS_CLIENT_AUTH_PORT)))
       .await
       .unwrap();
   println!("ready: tls client auth");
