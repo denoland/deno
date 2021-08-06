@@ -115,6 +115,8 @@ impl MainWorker {
       ),
       deno_webgpu::init(options.unstable),
       deno_timers::init::<Permissions>(),
+      // ffi
+      deno_ffi::init::<Permissions>(options.unstable),
       // Metrics
       metrics::init(),
       // Runtime ops
@@ -127,7 +129,6 @@ impl MainWorker {
       deno_net::init::<Permissions>(options.ca_data.clone(), options.unstable),
       ops::os::init(),
       ops::permissions::init(),
-      ops::plugin::init(),
       ops::process::init(),
       ops::signal::init(),
       ops::tty::init(),

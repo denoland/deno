@@ -201,7 +201,7 @@ pub fn compile_to_runtime_flags(
     allow_env: flags.allow_env,
     allow_hrtime: flags.allow_hrtime,
     allow_net: flags.allow_net,
-    allow_plugin: flags.allow_plugin,
+    allow_ffi: flags.allow_ffi,
     allow_read: flags.allow_read,
     allow_run: flags.allow_run,
     allow_write: flags.allow_write,

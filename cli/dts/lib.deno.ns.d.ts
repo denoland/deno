@@ -2131,7 +2131,7 @@ declare namespace Deno {
     | "write"
     | "net"
     | "env"
-    | "plugin"
+    | "ffi"
     | "hrtime";
 
   /** The current status of the permission. */
@@ -2167,8 +2167,8 @@ declare namespace Deno {
     variable?: string;
   }
 
-  export interface PluginPermissionDescriptor {
-    name: "plugin";
+  export interface FFIPermissionDescriptor {
+    name: "ffi";
   }
 
   export interface HrtimePermissionDescriptor {
@@ -2183,7 +2183,7 @@ declare namespace Deno {
     | WritePermissionDescriptor
     | NetPermissionDescriptor
     | EnvPermissionDescriptor
-    | PluginPermissionDescriptor
+    | FFIPermissionDescriptor
     | HrtimePermissionDescriptor;
 
   export interface PermissionStatusEventMap {

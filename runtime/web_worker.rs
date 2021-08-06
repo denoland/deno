@@ -315,6 +315,8 @@ impl WebWorker {
       deno_crypto::init(options.seed),
       deno_webgpu::init(options.unstable),
       deno_timers::init::<Permissions>(),
+      // ffi
+      deno_ffi::init::<Permissions>(options.unstable),
       // Metrics
       metrics::init(),
       // Permissions ext (worker specific state)
@@ -340,7 +342,6 @@ impl WebWorker {
         ),
         ops::os::init(),
         ops::permissions::init(),
-        ops::plugin::init(),
         ops::process::init(),
         ops::signal::init(),
         ops::tty::init(),

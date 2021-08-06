@@ -91,7 +91,9 @@ pub enum DenoSubcommand {
     rules: bool,
     json: bool,
   },
-  Repl,
+  Repl {
+    eval: Option<String>,
+  },
   Run {
     script: String,
   },
@@ -119,7 +121,7 @@ pub enum DenoSubcommand {
 
 impl Default for DenoSubcommand {
   fn default() -> DenoSubcommand {
-    DenoSubcommand::Repl
+    DenoSubcommand::Repl { eval: None }
   }
 }
 
@@ -133,7 +135,7 @@ pub struct Flags {
   pub allow_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
   pub allow_net: Option<Vec<String>>,
-  pub allow_plugin: bool,
+  pub allow_ffi: Option<Vec<String>>,
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
@@ -235,8 +237,15 @@ impl Flags {
       _ => {}
     }
 
-    if self.allow_plugin {
-      args.push("--allow-plugin".to_string());
+    match &self.allow_ffi {
+      Some(ffi_allowlist) if ffi_allowlist.is_empty() => {
+        args.push("--allow-ffi".to_string());
+      }
+      Some(ffi_allowlist) => {
+        let s = format!("--allow-ffi={}", ffi_allowlist.join(","));
+        args.push(s);
+      }
+      _ => {}
     }
 
     if self.allow_hrtime {
@@ -253,7 +262,7 @@ impl From<Flags> for PermissionsOptions {
       allow_env: flags.allow_env,
       allow_hrtime: flags.allow_hrtime,
       allow_net: flags.allow_net,
-      allow_plugin: flags.allow_plugin,
+      allow_ffi: flags.allow_ffi,
       allow_read: flags.allow_read,
       allow_run: flags.allow_run,
       allow_write: flags.allow_write,
@@ -948,6 +957,13 @@ Ignore linting a file by adding an ignore comment at the top of the file:
 fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
   runtime_args(SubCommand::with_name("repl"), false, true)
     .about("Read Eval Print Loop")
+    .arg(
+      Arg::with_name("eval")
+        .long("eval")
+        .help("Evaluates the provided code when the REPL starts.")
+        .takes_value(true)
+        .value_name("code"),
+    )
 }
 
 fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1228,9 +1244,13 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .help("Allow running subprocesses"),
     )
     .arg(
-      Arg::with_name("allow-plugin")
-        .long("allow-plugin")
-        .help("Allow loading plugins"),
+      Arg::with_name("allow-ffi")
+        .long("allow-ffi")
+        .min_values(0)
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Allow loading dynamic libraries"),
     )
     .arg(
       Arg::with_name("allow-hrtime")
@@ -1577,7 +1597,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_run = Some(vec![]);
   flags.allow_read = Some(vec![]);
   flags.allow_write = Some(vec![]);
-  flags.allow_plugin = true;
+  flags.allow_ffi = Some(vec![]);
   flags.allow_hrtime = true;
   // TODO(@satyarohith): remove this flag in 2.0.
   let as_typescript = matches.is_present("ts");
@@ -1690,13 +1710,15 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, false, true);
   flags.repl = true;
-  flags.subcommand = DenoSubcommand::Repl;
+  flags.subcommand = DenoSubcommand::Repl {
+    eval: matches.value_of("eval").map(ToOwned::to_owned),
+  };
   flags.allow_net = Some(vec![]);
   flags.allow_env = Some(vec![]);
   flags.allow_run = Some(vec![]);
   flags.allow_read = Some(vec![]);
   flags.allow_write = Some(vec![]);
-  flags.allow_plugin = true;
+  flags.allow_ffi = Some(vec![]);
   flags.allow_hrtime = true;
 }
 
@@ -1876,9 +1898,12 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     debug!("run allowlist: {:#?}", &flags.allow_run);
   }
 
-  if matches.is_present("allow-plugin") {
-    flags.allow_plugin = true;
+  if let Some(ffi_wl) = matches.values_of("allow-ffi") {
+    let ffi_allowlist: Vec<String> = ffi_wl.map(ToString::to_string).collect();
+    flags.allow_ffi = Some(ffi_allowlist);
+    debug!("ffi allowlist: {:#?}", &flags.allow_ffi);
   }
+
   if matches.is_present("allow-hrtime") {
     flags.allow_hrtime = true;
   }
@@ -1888,7 +1913,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_net = Some(vec![]);
     flags.allow_run = Some(vec![]);
     flags.allow_write = Some(vec![]);
-    flags.allow_plugin = true;
+    flags.allow_ffi = Some(vec![]);
     flags.allow_hrtime = true;
   }
   if matches.is_present("prompt") {
@@ -2227,7 +2252,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_plugin: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2564,7 +2589,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_plugin: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2587,7 +2612,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_plugin: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2611,7 +2636,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_plugin: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2648,7 +2673,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_plugin: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2678,7 +2703,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_plugin: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2692,13 +2717,13 @@ mod tests {
       r.unwrap(),
       Flags {
         repl: true,
-        subcommand: DenoSubcommand::Repl,
+        subcommand: DenoSubcommand::Repl { eval: None },
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_plugin: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2713,7 +2738,7 @@ mod tests {
       r.unwrap(),
       Flags {
         repl: true,
-        subcommand: DenoSubcommand::Repl,
+        subcommand: DenoSubcommand::Repl { eval: None },
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
@@ -2727,6 +2752,29 @@ mod tests {
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
+        allow_net: Some(vec![]),
+        allow_env: Some(vec![]),
+        allow_run: Some(vec![]),
+        allow_read: Some(vec![]),
+        allow_write: Some(vec![]),
+        allow_ffi: Some(vec![]),
+        allow_hrtime: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn repl_with_eval_flag() {
+    #[rustfmt::skip]
+    let r = flags_from_vec(svec!["deno", "repl", "--eval", "console.log('hello');"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        repl: true,
+        subcommand: DenoSubcommand::Repl {
+          eval: Some("console.log('hello');".to_string()),
+        },
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
