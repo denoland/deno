@@ -71,8 +71,4 @@ unitTest(async function permissionURL() {
     name: "run",
     command: new URL(".", import.meta.url),
   });
-  await Deno.permissions.query({
-    name: "net",
-    host: new URL("https://deno.land/foo"),
-  });
 });
