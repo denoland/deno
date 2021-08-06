@@ -93,7 +93,11 @@
     } else if (ArrayIsArray(value)) {
       value = ArrayPrototypeMap(value, (route) => {
         if (route instanceof URL) {
-          if (permission === "env") {
+          if (permission === "net") {
+            throw new Error(
+              `Expected 'string' for net permission, received 'URL'`,
+            );
+          } else if (permission === "env") {
             throw new Error(
               `Expected 'string' for env permission, received 'URL'`,
             );
