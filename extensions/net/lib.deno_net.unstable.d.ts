@@ -189,7 +189,7 @@ declare namespace Deno {
 * Requires `allow-net` permission for "tcp" and `allow-read` for "unix". */
   export function connect(
     options: ConnectOptions | UnixConnectOptions,
-  ): Promise<Conn>
+  ): Promise<Conn>;
 
   export interface ConnectTlsClientCertOptions {
     /** PEM formatted client certificate chain. */
