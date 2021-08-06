@@ -655,7 +655,7 @@ mod tests {
     expected: &str,
   ) {
     let url_str =
-      format!("http://127.0.0.1:4545/cli/tests/encoding/{}", fixture);
+      format!("http://127.0.0.1:4545/encoding/{}", fixture);
     let specifier = resolve_url(&url_str).unwrap();
     let (file, headers) = test_fetch_remote(&specifier).await;
     assert_eq!(file.source, expected);
@@ -902,7 +902,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::Use, None);
     let specifier = resolve_url(
-      "http://localhost:4548/cli/tests/subdir/redirects/redirect1.js",
+      "http://localhost:4548/subdir/redirects/redirect1.js",
     )
     .unwrap();
 
@@ -918,7 +918,7 @@ mod tests {
     assert_eq!(
       file.specifier,
       resolve_url(
-        "http://localhost:4545/cli/tests/subdir/redirects/redirect1.js"
+        "http://localhost:4545/subdir/redirects/redirect1.js"
       )
       .unwrap()
     );
@@ -990,7 +990,7 @@ mod tests {
     let (file_fetcher_01, _) = setup(CacheSetting::Use, Some(temp_dir.clone()));
     let (file_fetcher_02, _) = setup(CacheSetting::Use, Some(temp_dir.clone()));
     let specifier =
-      resolve_url_or_path("http://localhost:4545/cli/tests/subdir/mod2.ts")
+      resolve_url_or_path("http://localhost:4545/subdir/mod2.ts")
         .unwrap();
 
     let result = file_fetcher
@@ -1087,7 +1087,7 @@ mod tests {
     )
     .expect("could not create file fetcher");
     let specifier =
-      resolve_url("http://localhost:4545/cli/tests/subdir/mismatch_ext.ts")
+      resolve_url("http://localhost:4545/subdir/mismatch_ext.ts")
         .unwrap();
     let cache_filename = file_fetcher_01
       .http_cache
@@ -1137,7 +1137,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::Use, None);
     let specifier = resolve_url(
-      "http://localhost:4546/cli/tests/subdir/redirects/redirect1.js",
+      "http://localhost:4546/subdir/redirects/redirect1.js",
     )
     .unwrap();
     let cached_filename = file_fetcher
@@ -1145,7 +1145,7 @@ mod tests {
       .get_cache_filename(&specifier)
       .unwrap();
     let redirected_specifier = resolve_url(
-      "http://localhost:4545/cli/tests/subdir/redirects/redirect1.js",
+      "http://localhost:4545/subdir/redirects/redirect1.js",
     )
     .unwrap();
     let redirected_cached_filename = file_fetcher
@@ -1171,7 +1171,7 @@ mod tests {
       .expect("could not get file");
     assert_eq!(
       headers.get("location").unwrap(),
-      "http://localhost:4545/cli/tests/subdir/redirects/redirect1.js"
+      "http://localhost:4545/subdir/redirects/redirect1.js"
     );
 
     assert_eq!(
@@ -1190,7 +1190,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::Use, None);
     let specifier = resolve_url(
-      "http://localhost:4548/cli/tests/subdir/redirects/redirect1.js",
+      "http://localhost:4548/subdir/redirects/redirect1.js",
     )
     .unwrap();
     let cached_filename = file_fetcher
@@ -1198,7 +1198,7 @@ mod tests {
       .get_cache_filename(&specifier)
       .unwrap();
     let redirected_01_specifier = resolve_url(
-      "http://localhost:4546/cli/tests/subdir/redirects/redirect1.js",
+      "http://localhost:4546/subdir/redirects/redirect1.js",
     )
     .unwrap();
     let redirected_01_cached_filename = file_fetcher
@@ -1206,7 +1206,7 @@ mod tests {
       .get_cache_filename(&redirected_01_specifier)
       .unwrap();
     let redirected_02_specifier = resolve_url(
-      "http://localhost:4545/cli/tests/subdir/redirects/redirect1.js",
+      "http://localhost:4545/subdir/redirects/redirect1.js",
     )
     .unwrap();
     let redirected_02_cached_filename = file_fetcher
@@ -1232,7 +1232,7 @@ mod tests {
       .expect("could not get file");
     assert_eq!(
       headers.get("location").unwrap(),
-      "http://localhost:4546/cli/tests/subdir/redirects/redirect1.js"
+      "http://localhost:4546/subdir/redirects/redirect1.js"
     );
 
     assert_eq!(
@@ -1246,7 +1246,7 @@ mod tests {
       .expect("could not get file");
     assert_eq!(
       headers.get("location").unwrap(),
-      "http://localhost:4545/cli/tests/subdir/redirects/redirect1.js"
+      "http://localhost:4545/subdir/redirects/redirect1.js"
     );
 
     assert_eq!(
@@ -1276,10 +1276,10 @@ mod tests {
     )
     .expect("could not create file fetcher");
     let specifier =
-      resolve_url("http://localhost:4548/cli/tests/subdir/mismatch_ext.ts")
+      resolve_url("http://localhost:4548/subdir/mismatch_ext.ts")
         .unwrap();
     let redirected_specifier =
-      resolve_url("http://localhost:4546/cli/tests/subdir/mismatch_ext.ts")
+      resolve_url("http://localhost:4546/subdir/mismatch_ext.ts")
         .unwrap();
     let redirected_cache_filename = file_fetcher_01
       .http_cache
@@ -1329,7 +1329,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::Use, None);
     let specifier = resolve_url(
-      "http://localhost:4548/cli/tests/subdir/redirects/redirect1.js",
+      "http://localhost:4548/subdir/redirects/redirect1.js",
     )
     .unwrap();
 
@@ -1355,7 +1355,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::Use, None);
     let specifier = resolve_url(
-      "http://localhost:4550/REDIRECT/cli/tests/subdir/redirects/redirect1.js",
+      "http://localhost:4550/REDIRECT/subdir/redirects/redirect1.js",
     )
     .unwrap();
     let cached_filename = file_fetcher
@@ -1363,7 +1363,7 @@ mod tests {
       .get_cache_filename(&specifier)
       .unwrap();
     let redirected_specifier = resolve_url(
-      "http://localhost:4550/cli/tests/subdir/redirects/redirect1.js",
+      "http://localhost:4550/subdir/redirects/redirect1.js",
     )
     .unwrap();
     let redirected_cached_filename = file_fetcher
@@ -1389,7 +1389,7 @@ mod tests {
       .expect("could not get file");
     assert_eq!(
       headers.get("location").unwrap(),
-      "/cli/tests/subdir/redirects/redirect1.js"
+      "/subdir/redirects/redirect1.js"
     );
 
     assert_eq!(
@@ -1417,7 +1417,7 @@ mod tests {
     )
     .expect("could not create file fetcher");
     let specifier =
-      resolve_url("http://localhost:4545/cli/tests/002_hello.ts").unwrap();
+      resolve_url("http://localhost:4545/002_hello.ts").unwrap();
 
     let result = file_fetcher
       .fetch(&specifier, &mut Permissions::allow_all())
@@ -1425,7 +1425,7 @@ mod tests {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(get_custom_error_class(&err), Some("NoRemote"));
-    assert_eq!(err.to_string(), "A remote specifier was requested: \"http://localhost:4545/cli/tests/002_hello.ts\", but --no-remote is specified.");
+    assert_eq!(err.to_string(), "A remote specifier was requested: \"http://localhost:4545/002_hello.ts\", but --no-remote is specified.");
   }
 
   #[tokio::test]
@@ -1452,7 +1452,7 @@ mod tests {
     )
     .expect("could not create file fetcher");
     let specifier =
-      resolve_url("http://localhost:4545/cli/tests/002_hello.ts").unwrap();
+      resolve_url("http://localhost:4545/002_hello.ts").unwrap();
 
     let result = file_fetcher_01
       .fetch(&specifier, &mut Permissions::allow_all())
@@ -1460,7 +1460,7 @@ mod tests {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(get_custom_error_class(&err), Some("NotFound"));
-    assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/cli/tests/002_hello.ts\", --cached-only is specified.");
+    assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/002_hello.ts\", --cached-only is specified.");
 
     let result = file_fetcher_02
       .fetch(&specifier, &mut Permissions::allow_all())

@@ -9,7 +9,7 @@ import {
 } from "./test_util.ts";
 
 unitTest({ perms: { read: true } }, function fstatSyncSuccess() {
-  const file = Deno.openSync("README.md");
+  const file = Deno.openSync("hello.txt");
   const fileInfo = Deno.fstatSync(file.rid);
   assert(fileInfo.isFile);
   assert(!fileInfo.isSymlink);
@@ -24,7 +24,7 @@ unitTest({ perms: { read: true } }, function fstatSyncSuccess() {
 });
 
 unitTest({ perms: { read: true } }, async function fstatSuccess() {
-  const file = await Deno.open("README.md");
+  const file = await Deno.open("hello.txt");
   const fileInfo = await Deno.fstat(file.rid);
   assert(fileInfo.isFile);
   assert(!fileInfo.isSymlink);
@@ -41,17 +41,17 @@ unitTest({ perms: { read: true } }, async function fstatSuccess() {
 unitTest(
   { perms: { read: true, write: true } },
   function statSyncSuccess() {
-    const packageInfo = Deno.statSync("README.md");
-    assert(packageInfo.isFile);
-    assert(!packageInfo.isSymlink);
+    const helloInfo = Deno.statSync("hello.txt");
+    assert(helloInfo.isFile);
+    assert(!helloInfo.isSymlink);
 
-    const modulesInfo = Deno.statSync("cli/tests/symlink_to_subdir");
+    const modulesInfo = Deno.statSync("symlink_to_subdir");
     assert(modulesInfo.isDirectory);
     assert(!modulesInfo.isSymlink);
 
-    const testsInfo = Deno.statSync("cli/tests");
-    assert(testsInfo.isDirectory);
-    assert(!testsInfo.isSymlink);
+    const subdirInfo = Deno.statSync("subdir");
+    assert(subdirInfo.isDirectory);
+    assert(!subdirInfo.isSymlink);
 
     const tempFile = Deno.makeTempFileSync();
     const tempInfo = Deno.statSync(tempFile);
@@ -62,19 +62,19 @@ unitTest(
       tempInfo.birthtime === null || now - tempInfo.birthtime.valueOf() < 1000,
     );
 
-    const packageInfoByUrl = Deno.statSync(pathToAbsoluteFileUrl("README.md"));
+    const packageInfoByUrl = Deno.statSync(pathToAbsoluteFileUrl("hello.txt"));
     assert(packageInfoByUrl.isFile);
     assert(!packageInfoByUrl.isSymlink);
 
     const modulesInfoByUrl = Deno.statSync(
-      pathToAbsoluteFileUrl("cli/tests/symlink_to_subdir"),
+      pathToAbsoluteFileUrl("symlink_to_subdir"),
     );
     assert(modulesInfoByUrl.isDirectory);
     assert(!modulesInfoByUrl.isSymlink);
 
-    const testsInfoByUrl = Deno.statSync(pathToAbsoluteFileUrl("cli/tests"));
-    assert(testsInfoByUrl.isDirectory);
-    assert(!testsInfoByUrl.isSymlink);
+    const subDirInfoByUrl = Deno.statSync(pathToAbsoluteFileUrl("subdir"));
+    assert(subDirInfoByUrl.isDirectory);
+    assert(!subDirInfoByUrl.isSymlink);
 
     const tempFileForUrl = Deno.makeTempFileSync();
     const tempInfoByUrl = Deno.statSync(
@@ -103,7 +103,7 @@ unitTest(
 
 unitTest({ perms: { read: false } }, function statSyncPerm() {
   assertThrows(() => {
-    Deno.statSync("README.md");
+    Deno.statSync("hello.txt");
   }, Deno.errors.PermissionDenied);
 });
 
@@ -114,36 +114,36 @@ unitTest({ perms: { read: true } }, function statSyncNotFound() {
 });
 
 unitTest({ perms: { read: true } }, function lstatSyncSuccess() {
-  const packageInfo = Deno.lstatSync("README.md");
+  const packageInfo = Deno.lstatSync("hello.txt");
   assert(packageInfo.isFile);
   assert(!packageInfo.isSymlink);
 
-  const packageInfoByUrl = Deno.lstatSync(pathToAbsoluteFileUrl("README.md"));
+  const packageInfoByUrl = Deno.lstatSync(pathToAbsoluteFileUrl("hello.txt"));
   assert(packageInfoByUrl.isFile);
   assert(!packageInfoByUrl.isSymlink);
 
-  const modulesInfo = Deno.lstatSync("cli/tests/symlink_to_subdir");
+  const modulesInfo = Deno.lstatSync("symlink_to_subdir");
   assert(!modulesInfo.isDirectory);
   assert(modulesInfo.isSymlink);
 
   const modulesInfoByUrl = Deno.lstatSync(
-    pathToAbsoluteFileUrl("cli/tests/symlink_to_subdir"),
+    pathToAbsoluteFileUrl("symlink_to_subdir"),
   );
   assert(!modulesInfoByUrl.isDirectory);
   assert(modulesInfoByUrl.isSymlink);
 
-  const coreInfo = Deno.lstatSync("core");
-  assert(coreInfo.isDirectory);
-  assert(!coreInfo.isSymlink);
+  const subDirInfo = Deno.lstatSync("subdir");
+  assert(subDirInfo.isDirectory);
+  assert(!subDirInfo.isSymlink);
 
-  const coreInfoByUrl = Deno.lstatSync(pathToAbsoluteFileUrl("core"));
-  assert(coreInfoByUrl.isDirectory);
-  assert(!coreInfoByUrl.isSymlink);
+  const subDirInfoByUrl = Deno.lstatSync(pathToAbsoluteFileUrl("subdir"));
+  assert(subDirInfoByUrl.isDirectory);
+  assert(!subDirInfoByUrl.isSymlink);
 });
 
 unitTest({ perms: { read: false } }, function lstatSyncPerm() {
   assertThrows(() => {
-    Deno.lstatSync("README.md");
+    Deno.lstatSync("hello.txt");
   }, Deno.errors.PermissionDenied);
 });
 
@@ -156,33 +156,33 @@ unitTest({ perms: { read: true } }, function lstatSyncNotFound() {
 unitTest(
   { perms: { read: true, write: true } },
   async function statSuccess() {
-    const packageInfo = await Deno.stat("README.md");
+    const packageInfo = await Deno.stat("hello.txt");
     assert(packageInfo.isFile);
     assert(!packageInfo.isSymlink);
 
     const packageInfoByUrl = await Deno.stat(
-      pathToAbsoluteFileUrl("README.md"),
+      pathToAbsoluteFileUrl("hello.txt"),
     );
     assert(packageInfoByUrl.isFile);
     assert(!packageInfoByUrl.isSymlink);
 
-    const modulesInfo = await Deno.stat("cli/tests/symlink_to_subdir");
+    const modulesInfo = await Deno.stat("symlink_to_subdir");
     assert(modulesInfo.isDirectory);
     assert(!modulesInfo.isSymlink);
 
     const modulesInfoByUrl = await Deno.stat(
-      pathToAbsoluteFileUrl("cli/tests/symlink_to_subdir"),
+      pathToAbsoluteFileUrl("symlink_to_subdir"),
     );
     assert(modulesInfoByUrl.isDirectory);
     assert(!modulesInfoByUrl.isSymlink);
 
-    const testsInfo = await Deno.stat("cli/tests");
-    assert(testsInfo.isDirectory);
-    assert(!testsInfo.isSymlink);
+    const subDirInfo = await Deno.stat("subdir");
+    assert(subDirInfo.isDirectory);
+    assert(!subDirInfo.isSymlink);
 
-    const testsInfoByUrl = await Deno.stat(pathToAbsoluteFileUrl("cli/tests"));
-    assert(testsInfoByUrl.isDirectory);
-    assert(!testsInfoByUrl.isSymlink);
+    const subDirInfoByUrl = await Deno.stat(pathToAbsoluteFileUrl("subdir"));
+    assert(subDirInfoByUrl.isDirectory);
+    assert(!subDirInfoByUrl.isSymlink);
 
     const tempFile = await Deno.makeTempFile();
     const tempInfo = await Deno.stat(tempFile);
@@ -221,7 +221,7 @@ unitTest(
 
 unitTest({ perms: { read: false } }, async function statPerm() {
   await assertThrowsAsync(async () => {
-    await Deno.stat("README.md");
+    await Deno.stat("hello.txt");
   }, Deno.errors.PermissionDenied);
 });
 
@@ -234,36 +234,36 @@ unitTest({ perms: { read: true } }, async function statNotFound() {
 });
 
 unitTest({ perms: { read: true } }, async function lstatSuccess() {
-  const packageInfo = await Deno.lstat("README.md");
+  const packageInfo = await Deno.lstat("hello.txt");
   assert(packageInfo.isFile);
   assert(!packageInfo.isSymlink);
 
-  const packageInfoByUrl = await Deno.lstat(pathToAbsoluteFileUrl("README.md"));
+  const packageInfoByUrl = await Deno.lstat(pathToAbsoluteFileUrl("hello.txt"));
   assert(packageInfoByUrl.isFile);
   assert(!packageInfoByUrl.isSymlink);
 
-  const modulesInfo = await Deno.lstat("cli/tests/symlink_to_subdir");
+  const modulesInfo = await Deno.lstat("symlink_to_subdir");
   assert(!modulesInfo.isDirectory);
   assert(modulesInfo.isSymlink);
 
   const modulesInfoByUrl = await Deno.lstat(
-    pathToAbsoluteFileUrl("cli/tests/symlink_to_subdir"),
+    pathToAbsoluteFileUrl("symlink_to_subdir"),
   );
   assert(!modulesInfoByUrl.isDirectory);
   assert(modulesInfoByUrl.isSymlink);
 
-  const coreInfo = await Deno.lstat("core");
-  assert(coreInfo.isDirectory);
-  assert(!coreInfo.isSymlink);
+  const subDirInfo = await Deno.lstat("subdir");
+  assert(subDirInfo.isDirectory);
+  assert(!subDirInfo.isSymlink);
 
-  const coreInfoByUrl = await Deno.lstat(pathToAbsoluteFileUrl("core"));
-  assert(coreInfoByUrl.isDirectory);
-  assert(!coreInfoByUrl.isSymlink);
+  const subDirInfoByUrl = await Deno.lstat(pathToAbsoluteFileUrl("subdir"));
+  assert(subDirInfoByUrl.isDirectory);
+  assert(!subDirInfoByUrl.isSymlink);
 });
 
 unitTest({ perms: { read: false } }, async function lstatPerm() {
   await assertThrowsAsync(async () => {
-    await Deno.lstat("README.md");
+    await Deno.lstat("hello.txt");
   }, Deno.errors.PermissionDenied);
 });
 

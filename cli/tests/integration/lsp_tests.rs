@@ -12,17 +12,17 @@ use tempfile::TempDir;
 use test_util::deno_exe_path;
 use test_util::http_server;
 use test_util::lsp::LspClient;
-use test_util::root_path;
+use test_util::testdata_path;
 
 fn load_fixture(path: &str) -> Value {
-  let fixtures_path = root_path().join("cli/tests/lsp");
+  let fixtures_path = testdata_path().join("lsp");
   let path = fixtures_path.join(path);
   let fixture_str = fs::read_to_string(path).unwrap();
   serde_json::from_str(&fixture_str).unwrap()
 }
 
 fn load_fixture_str(path: &str) -> String {
-  let fixtures_path = root_path().join("cli/tests/lsp");
+  let fixtures_path = testdata_path().join("lsp");
   let path = fixtures_path.join(path);
   fs::read_to_string(path).unwrap()
 }
@@ -930,7 +930,7 @@ fn lsp_hover_dependency() {
         },
         "end":{
           "line": 3,
-          "character": 76
+          "character": 66
         }
       }
     }))
@@ -964,7 +964,7 @@ fn lsp_hover_dependency() {
         },
         "end":{
           "line": 4,
-          "character": 66
+          "character": 56
         }
       }
     }))
@@ -2707,7 +2707,7 @@ fn lsp_diagnostics_warn() {
           },
           end: lsp::Position {
             line: 0,
-            character: 70
+            character: 60
           }
         },
         severity: Some(lsp::DiagnosticSeverity::Warning),

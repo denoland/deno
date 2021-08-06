@@ -179,7 +179,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url =
-      Url::parse("http://127.0.0.1:4545/cli/tests/fixture.json").unwrap();
+      Url::parse("http://127.0.0.1:4545/fixture.json").unwrap();
     let client = create_test_client(None);
     let result = fetch_once(FetchOnceArgs {
       client,
@@ -203,7 +203,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse(
-      "http://127.0.0.1:4545/cli/tests/053_import_compression/gziped",
+      "http://127.0.0.1:4545/053_import_compression/gziped",
     )
     .unwrap();
     let client = create_test_client(None);
@@ -266,7 +266,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse(
-      "http://127.0.0.1:4545/cli/tests/053_import_compression/brotli",
+      "http://127.0.0.1:4545/053_import_compression/brotli",
     )
     .unwrap();
     let client = create_test_client(None);
@@ -296,10 +296,10 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url =
-      Url::parse("http://127.0.0.1:4546/cli/tests/fixture.json").unwrap();
+      Url::parse("http://127.0.0.1:4546/fixture.json").unwrap();
     // Dns resolver substitutes `127.0.0.1` with `localhost`
     let target_url =
-      Url::parse("http://localhost:4545/cli/tests/fixture.json").unwrap();
+      Url::parse("http://localhost:4545/fixture.json").unwrap();
     let client = create_test_client(None);
     let result = fetch_once(FetchOnceArgs {
       client,
@@ -358,7 +358,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url =
-      Url::parse("https://localhost:5545/cli/tests/fixture.json").unwrap();
+      Url::parse("https://localhost:5545/fixture.json").unwrap();
 
     let client = create_http_client(
       version::get_user_agent(),
@@ -395,7 +395,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse(
-      "https://localhost:5545/cli/tests/053_import_compression/gziped",
+      "https://localhost:5545/053_import_compression/gziped",
     )
     .unwrap();
     let client = create_http_client(
@@ -483,15 +483,15 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse(
-      "https://localhost:5545/cli/tests/053_import_compression/brotli",
+      "https://localhost:5545/053_import_compression/brotli",
     )
     .unwrap();
     let client = create_http_client(
       version::get_user_agent(),
       Some(
         read(
-          test_util::root_path()
-            .join("cli/tests/tls/RootCA.pem")
+          test_util::testdata_path()
+            .join("tls/RootCA.pem")
             .to_str()
             .unwrap(),
         )

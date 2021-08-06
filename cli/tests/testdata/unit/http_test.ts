@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { chunkedBodyReader } from "../../../../test_util/std/http/_io.ts";
 import { BufReader, BufWriter } from "../../../../test_util/std/io/bufio.ts";
-import { Buffer } from "../../../test_util/../std/io/buffer.ts";
-import { TextProtoReader } from "../../../test_util/../std/textproto/mod.ts";
+import { Buffer } from "../../../../test_util/std/io/buffer.ts";
+import { TextProtoReader } from "../../../../test_util/std/textproto/mod.ts";
 import {
   assert,
   assertEquals,
@@ -208,8 +208,8 @@ unitTest(
       const listener = Deno.listenTls({
         hostname,
         port,
-        certFile: "cli/tests/tls/localhost.crt",
-        keyFile: "cli/tests/tls/localhost.key",
+        certFile: "tls/localhost.crt",
+        keyFile: "tls/localhost.key",
       });
       const conn = await listener.accept();
       const httpConn = Deno.serveHttp(conn);
@@ -226,7 +226,7 @@ unitTest(
       listener.close();
     })();
 
-    const caData = Deno.readTextFileSync("cli/tests/tls/RootCA.pem");
+    const caData = Deno.readTextFileSync("tls/RootCA.pem");
     const client = Deno.createHttpClient({ caData });
     const resp = await fetch(`https://${hostname}:${port}/`, {
       client,

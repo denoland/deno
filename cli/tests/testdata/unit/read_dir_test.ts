@@ -12,7 +12,7 @@ function assertSameContent(files: Deno.DirEntry[]) {
   let counter = 0;
 
   for (const entry of files) {
-    if (entry.name === "subdir") {
+    if (entry.name === "subdir2") {
       assert(entry.isDirectory);
       counter++;
     }
@@ -22,12 +22,12 @@ function assertSameContent(files: Deno.DirEntry[]) {
 }
 
 unitTest({ perms: { read: true } }, function readDirSyncSuccess() {
-  const files = [...Deno.readDirSync("cli/tests/")];
+  const files = [...Deno.readDirSync("subdir")];
   assertSameContent(files);
 });
 
 unitTest({ perms: { read: true } }, function readDirSyncWithUrl() {
-  const files = [...Deno.readDirSync(pathToAbsoluteFileUrl("cli/tests"))];
+  const files = [...Deno.readDirSync(pathToAbsoluteFileUrl("subdir"))];
   assertSameContent(files);
 });
 
@@ -39,7 +39,7 @@ unitTest({ perms: { read: false } }, function readDirSyncPerm() {
 
 unitTest({ perms: { read: true } }, function readDirSyncNotDir() {
   assertThrows(() => {
-    Deno.readDirSync("cli/tests/fixture.json");
+    Deno.readDirSync("fixture.json");
   }, Error);
 });
 
@@ -51,7 +51,7 @@ unitTest({ perms: { read: true } }, function readDirSyncNotFound() {
 
 unitTest({ perms: { read: true } }, async function readDirSuccess() {
   const files = [];
-  for await (const dirEntry of Deno.readDir("cli/tests/")) {
+  for await (const dirEntry of Deno.readDir("subdir")) {
     files.push(dirEntry);
   }
   assertSameContent(files);
@@ -60,7 +60,7 @@ unitTest({ perms: { read: true } }, async function readDirSuccess() {
 unitTest({ perms: { read: true } }, async function readDirWithUrl() {
   const files = [];
   for await (
-    const dirEntry of Deno.readDir(pathToAbsoluteFileUrl("cli/tests"))
+    const dirEntry of Deno.readDir(pathToAbsoluteFileUrl("subdir"))
   ) {
     files.push(dirEntry);
   }

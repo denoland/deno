@@ -649,7 +649,7 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       let mut file_path = testdata_path();
       file_path.push(&req.uri().path()[1..]);
       if let Ok(file) = tokio::fs::read(file_path).await {
-        let file_resp = custom_headers(&req.uri().path()[1..], file);
+        let file_resp = custom_headers(&req.uri().path(), file);
         return Ok(file_resp);
       }
 

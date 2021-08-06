@@ -299,7 +299,7 @@ fn _083_legacy_external_source_map() {
   std::fs::write(faulty_map_path, "{\"version\":3,\"file\":\"\",\"sourceRoot\":\"\",\"sources\":[\"http://localhost:4545/083_legacy_external_source_map.ts\"],\"names\":[],\"mappings\":\";AAAA,MAAM,IAAI,KAAK,CAAC,KAAK,CAAC,CAAC\"}").expect("Failed to write faulty source map.");
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg(module_url.to_string())
     .output()
@@ -452,7 +452,7 @@ itest!(config_types_remote {
 
 itest!(empty_typescript {
   args: "run --reload subdir/empty.ts",
-  output_str: Some("Check file:[WILDCARD]tests/subdir/empty.ts\n"),
+  output_str: Some("Check file:[WILDCARD]/subdir/empty.ts\n"),
 });
 
 itest!(error_001 {
@@ -1175,9 +1175,9 @@ itest!(worker_close_race {
 #[test]
 fn no_validate_asm() {
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
-    .arg("cli/tests/no_validate_asm.js")
+    .arg("no_validate_asm.js")
     .stderr(std::process::Stdio::piped())
     .stdout(std::process::Stdio::piped())
     .spawn()
@@ -1192,10 +1192,10 @@ fn no_validate_asm() {
 #[test]
 fn exec_path() {
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg("--allow-read")
-    .arg("cli/tests/exec_path.ts")
+    .arg("exec_path.ts")
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -1223,7 +1223,7 @@ fn run_deno_script_constrained(
   script_path: std::path::PathBuf,
   constraints: WinProcConstraints,
 ) -> Result<(), i64> {
-  let file_path = "cli/tests/DenoWinRunner.ps1";
+  let file_path = "DenoWinRunner.ps1";
   let constraints = match constraints {
     WinProcConstraints::NoStdIn => "1",
     WinProcConstraints::NoStdOut => "2",
@@ -1274,9 +1274,9 @@ fn should_not_panic_on_no_stderr() {
 #[test]
 fn should_not_panic_on_undefined_home_environment_variable() {
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
-    .arg("cli/tests/echo.ts")
+    .arg("echo.ts")
     .env_remove("HOME")
     .spawn()
     .unwrap()
@@ -1288,9 +1288,9 @@ fn should_not_panic_on_undefined_home_environment_variable() {
 #[test]
 fn should_not_panic_on_undefined_deno_dir_environment_variable() {
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
-    .arg("cli/tests/echo.ts")
+    .arg("echo.ts")
     .env_remove("DENO_DIR")
     .spawn()
     .unwrap()
@@ -1303,9 +1303,9 @@ fn should_not_panic_on_undefined_deno_dir_environment_variable() {
 #[test]
 fn should_not_panic_on_undefined_deno_dir_and_home_environment_variables() {
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
-    .arg("cli/tests/echo.ts")
+    .arg("echo.ts")
     .env_remove("DENO_DIR")
     .env_remove("HOME")
     .spawn()
@@ -1319,9 +1319,9 @@ fn should_not_panic_on_undefined_deno_dir_and_home_environment_variables() {
 fn rust_log() {
   // Without RUST_LOG the stderr is empty.
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
-    .arg("cli/tests/001_hello.js")
+    .arg("001_hello.js")
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap()
@@ -1332,9 +1332,9 @@ fn rust_log() {
 
   // With RUST_LOG the stderr is not empty.
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
-    .arg("cli/tests/001_hello.js")
+    .arg("001_hello.js")
     .env("RUST_LOG", "debug")
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -1389,7 +1389,7 @@ mod permissions {
         .arg(format!(
           "--allow-{0}={1}",
           permission,
-          util::root_path().into_os_string().into_string().unwrap()
+          util::testdata_path().into_os_string().into_string().unwrap()
         ))
         .arg("complex_permissions_test.ts")
         .arg(permission)

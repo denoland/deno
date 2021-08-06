@@ -59,7 +59,7 @@ async function testModuleDownload() {
       "cache",
       "--reload",
       "--quiet",
-      "http://localhost:4545/test_util/std/examples/colors.ts",
+      "http://localhost:4545/045_mod.ts",
     ],
     stdout: "piped",
     env: {
@@ -101,7 +101,7 @@ async function testModuleDownloadNoProxy() {
       "cache",
       "--reload",
       "--quiet",
-      "http://localhost:4545/test_util/std/examples/colors.ts",
+      "http://localhost:4545/045_mod.ts",
     ],
     stdout: "piped",
     env: {

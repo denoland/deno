@@ -417,7 +417,7 @@ mod tests {
 
     install(
       Flags::default(),
-      "http://localhost:4545/cli/tests/echo_server.ts",
+      "http://localhost:4545/echo_server.ts",
       vec![],
       Some("echo_test".to_string()),
       None,
@@ -438,10 +438,10 @@ mod tests {
 
     if cfg!(windows) {
       assert!(content
-        .contains(r#""run" "http://localhost:4545/cli/tests/echo_server.ts""#));
+        .contains(r#""run" "http://localhost:4545/echo_server.ts""#));
     } else {
       assert!(content
-        .contains(r#"run 'http://localhost:4545/cli/tests/echo_server.ts'"#));
+        .contains(r#"run 'http://localhost:4545/echo_server.ts'"#));
     }
     if let Some(home) = original_home {
       env::set_var("HOME", home);
@@ -465,7 +465,7 @@ mod tests {
         unstable: true,
         ..Flags::default()
       },
-      "http://localhost:4545/cli/tests/echo_server.ts",
+      "http://localhost:4545/echo_server.ts",
       vec![],
       Some("echo_test".to_string()),
       Some(temp_dir.path().to_path_buf()),
@@ -484,11 +484,11 @@ mod tests {
     println!("this is the file path {:?}", content);
     if cfg!(windows) {
       assert!(content.contains(
-        r#""run" "--unstable" "http://localhost:4545/cli/tests/echo_server.ts""#
+        r#""run" "--unstable" "http://localhost:4545/echo_server.ts""#
       ));
     } else {
       assert!(content.contains(
-        r#"run --unstable 'http://localhost:4545/cli/tests/echo_server.ts'"#
+        r#"run --unstable 'http://localhost:4545/echo_server.ts'"#
       ));
     }
   }
@@ -501,7 +501,7 @@ mod tests {
 
     install(
       Flags::default(),
-      "http://localhost:4545/cli/tests/echo_server.ts",
+      "http://localhost:4545/echo_server.ts",
       vec![],
       None,
       Some(temp_dir.path().to_path_buf()),
@@ -518,10 +518,10 @@ mod tests {
     let content = fs::read_to_string(file_path).unwrap();
     if cfg!(windows) {
       assert!(content
-        .contains(r#""run" "http://localhost:4545/cli/tests/echo_server.ts""#));
+        .contains(r#""run" "http://localhost:4545/echo_server.ts""#));
     } else {
       assert!(content
-        .contains(r#"run 'http://localhost:4545/cli/tests/echo_server.ts'"#));
+        .contains(r#"run 'http://localhost:4545/echo_server.ts'"#));
     }
   }
 
@@ -533,7 +533,7 @@ mod tests {
 
     install(
       Flags::default(),
-      "http://localhost:4545/cli/tests/subdir/main.ts",
+      "http://localhost:4545/subdir/main.ts",
       vec![],
       None,
       Some(temp_dir.path().to_path_buf()),
@@ -550,10 +550,10 @@ mod tests {
     let content = fs::read_to_string(file_path).unwrap();
     if cfg!(windows) {
       assert!(content
-        .contains(r#""run" "http://localhost:4545/cli/tests/subdir/main.ts""#));
+        .contains(r#""run" "http://localhost:4545/subdir/main.ts""#));
     } else {
       assert!(content
-        .contains(r#"run 'http://localhost:4545/cli/tests/subdir/main.ts'"#));
+        .contains(r#"run 'http://localhost:4545/subdir/main.ts'"#));
     }
   }
 
@@ -565,7 +565,7 @@ mod tests {
 
     install(
       Flags::default(),
-      "http://localhost:4545/cli/tests/echo_server.ts",
+      "http://localhost:4545/echo_server.ts",
       vec![],
       Some("echo_test".to_string()),
       Some(temp_dir.path().to_path_buf()),
@@ -582,10 +582,10 @@ mod tests {
     let content = fs::read_to_string(file_path).unwrap();
     if cfg!(windows) {
       assert!(content
-        .contains(r#""run" "http://localhost:4545/cli/tests/echo_server.ts""#));
+        .contains(r#""run" "http://localhost:4545/echo_server.ts""#));
     } else {
       assert!(content
-        .contains(r#"run 'http://localhost:4545/cli/tests/echo_server.ts'"#));
+        .contains(r#"run 'http://localhost:4545/echo_server.ts'"#));
     }
   }
 
@@ -600,7 +600,7 @@ mod tests {
 
     install(
       Flags::default(),
-      "http://localhost:4545/cli/tests/echo_server.ts",
+      "http://localhost:4545/echo_server.ts",
       vec![],
       Some("echo_test".to_string()),
       None,
@@ -617,10 +617,10 @@ mod tests {
     let content = fs::read_to_string(file_path).unwrap();
     if cfg!(windows) {
       assert!(content
-        .contains(r#""run" "http://localhost:4545/cli/tests/echo_server.ts""#));
+        .contains(r#""run" "http://localhost:4545/echo_server.ts""#));
     } else {
       assert!(content
-        .contains(r#"run 'http://localhost:4545/cli/tests/echo_server.ts'"#));
+        .contains(r#"run 'http://localhost:4545/echo_server.ts'"#));
     }
     if let Some(install_root) = original_install_root {
       env::set_var("DENO_INSTALL_ROOT", install_root);
@@ -641,7 +641,7 @@ mod tests {
         log_level: Some(Level::Error),
         ..Flags::default()
       },
-      "http://localhost:4545/cli/tests/echo_server.ts",
+      "http://localhost:4545/echo_server.ts",
       vec!["--foobar".to_string()],
       Some("echo_test".to_string()),
       Some(temp_dir.path().to_path_buf()),
@@ -657,9 +657,9 @@ mod tests {
     assert!(file_path.exists());
     let content = fs::read_to_string(file_path).unwrap();
     if cfg!(windows) {
-      assert!(content.contains(r#""run" "--allow-read" "--allow-net" "--quiet" "--no-check" "http://localhost:4545/cli/tests/echo_server.ts" "--foobar""#));
+      assert!(content.contains(r#""run" "--allow-read" "--allow-net" "--quiet" "--no-check" "http://localhost:4545/echo_server.ts" "--foobar""#));
     } else {
-      assert!(content.contains(r#"run --allow-read --allow-net --quiet --no-check 'http://localhost:4545/cli/tests/echo_server.ts' --foobar"#));
+      assert!(content.contains(r#"run --allow-read --allow-net --quiet --no-check 'http://localhost:4545/echo_server.ts' --foobar"#));
     }
   }
 
@@ -700,7 +700,7 @@ mod tests {
 
     install(
       Flags::default(),
-      "http://localhost:4545/cli/tests/echo_server.ts",
+      "http://localhost:4545/echo_server.ts",
       vec![],
       Some("echo_test".to_string()),
       Some(temp_dir.path().to_path_buf()),
@@ -717,7 +717,7 @@ mod tests {
     // No force. Install failed.
     let no_force_result = install(
       Flags::default(),
-      "http://localhost:4545/cli/tests/cat.ts", // using a different URL
+      "http://localhost:4545/cat.ts", // using a different URL
       vec![],
       Some("echo_test".to_string()),
       Some(temp_dir.path().to_path_buf()),
@@ -735,7 +735,7 @@ mod tests {
     // Force. Install success.
     let force_result = install(
       Flags::default(),
-      "http://localhost:4545/cli/tests/cat.ts", // using a different URL
+      "http://localhost:4545/cat.ts", // using a different URL
       vec![],
       Some("echo_test".to_string()),
       Some(temp_dir.path().to_path_buf()),
@@ -762,7 +762,7 @@ mod tests {
         config_path: Some(config_file_path.to_string_lossy().to_string()),
         ..Flags::default()
       },
-      "http://localhost:4545/cli/tests/cat.ts",
+      "http://localhost:4545/cat.ts",
       vec![],
       Some("echo_test".to_string()),
       Some(temp_dir.path().to_path_buf()),
@@ -789,7 +789,7 @@ mod tests {
 
     install(
       Flags::default(),
-      "http://localhost:4545/cli/tests/echo_server.ts",
+      "http://localhost:4545/echo_server.ts",
       vec!["\"".to_string()],
       Some("echo_test".to_string()),
       Some(temp_dir.path().to_path_buf()),
@@ -809,7 +809,7 @@ mod tests {
       // TODO: see comment above this test
     } else {
       assert!(content.contains(
-        r#"run 'http://localhost:4545/cli/tests/echo_server.ts' '"'"#
+        r#"run 'http://localhost:4545/echo_server.ts' '"'"#
       ));
     }
   }
@@ -864,7 +864,7 @@ mod tests {
         import_map_path: Some(import_map_path.to_string_lossy().to_string()),
         ..Flags::default()
       },
-      "http://localhost:4545/cli/tests/cat.ts",
+      "http://localhost:4545/cat.ts",
       vec![],
       Some("echo_test".to_string()),
       Some(temp_dir.path().to_path_buf()),
@@ -879,12 +879,12 @@ mod tests {
     assert!(file_path.exists());
 
     let mut expected_string = format!(
-      "--import-map '{}' 'http://localhost:4545/cli/tests/cat.ts'",
+      "--import-map '{}' 'http://localhost:4545/cat.ts'",
       import_map_url.to_string()
     );
     if cfg!(windows) {
       expected_string = format!(
-        "\"--import-map\" \"{}\" \"http://localhost:4545/cli/tests/cat.ts\"",
+        "\"--import-map\" \"{}\" \"http://localhost:4545/cat.ts\"",
         import_map_url.to_string()
       );
     }

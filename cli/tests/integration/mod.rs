@@ -979,7 +979,7 @@ fn js_unit_tests() {
     .arg("--unstable")
     .arg("--location=http://js-unit-tests/foo/bar")
     .arg("-A")
-    .arg("cli/tests/unit")
+    .arg("unit")
     .spawn()
     .expect("failed to spawn script");
 

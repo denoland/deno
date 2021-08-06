@@ -8,7 +8,7 @@ import {
   unimplemented,
   unitTest,
 } from "./test_util.ts";
-import { Buffer } from "../../../test_util/std/io/buffer.ts";
+import { Buffer } from "../../../../test_util/std/io/buffer.ts";
 
 unitTest(
   { perms: { net: true } },
@@ -360,12 +360,12 @@ unitTest(
     perms: { net: true },
   },
   async function fetchWithRedirection() {
-    const response = await fetch("http://localhost:4546/README.md");
+    const response = await fetch("http://localhost:4546/hello.txt");
     assertEquals(response.status, 200);
     assertEquals(response.statusText, "OK");
-    assertEquals(response.url, "http://localhost:4545/README.md");
+    assertEquals(response.url, "http://localhost:4545/hello.txt");
     const body = await response.text();
-    assert(body.includes("Deno"));
+    assert(body.includes("Hello world!"));
   },
 );
 
@@ -411,7 +411,7 @@ unitTest(
   },
   async function fetchWithInfRedirection() {
     await assertThrowsAsync(
-      () => fetch("http://localhost:4549/cli/tests"),
+      () => fetch("http://localhost:4549"),
       TypeError,
       "redirect",
     );
