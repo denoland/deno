@@ -1,3 +1,3 @@
-function define(_foo: string[]): void {}
+function define(_foo: string[]) {}
 define(["long"]);
 console.log("ok");

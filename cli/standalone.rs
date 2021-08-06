@@ -142,7 +142,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _referrer: &str,
     _is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if let Ok(module_specifier) = resolve_url(&specifier) {
+    if let Ok(module_specifier) = resolve_url(specifier) {
       if get_source_from_data_url(&module_specifier).is_ok()
         || specifier == SPECIFIER
       {
@@ -249,6 +249,7 @@ pub async fn run(
     blob_store,
     broadcast_channel,
     shared_array_buffer_store: None,
+    cpu_count: num_cpus::get(),
   };
   let mut worker =
     MainWorker::from_options(main_module.clone(), permissions, &options);

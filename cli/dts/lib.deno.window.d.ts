@@ -37,6 +37,7 @@ declare var sessionStorage: Storage;
 declare class Navigator {
   constructor();
   readonly gpu: GPU;
+  readonly hardwareConcurrency: number;
 }
 
 declare var navigator: Navigator;

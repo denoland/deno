@@ -4,7 +4,7 @@ const [hostname, port] = addr.split(":");
 const listener = Deno.listen({ hostname, port: Number(port) });
 console.log("listening on", addr);
 listener.accept().then(
-  async (conn): Promise<void> => {
+  async (conn) => {
     console.log("received bytes:", await copy(conn, conn));
     conn.close();
     listener.close();

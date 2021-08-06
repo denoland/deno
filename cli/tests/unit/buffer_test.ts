@@ -21,7 +21,7 @@ let testString: string | null;
 
 const ignoreMaxSizeTests = true;
 
-function init(): void {
+function init() {
   if (testBytes == null) {
     testBytes = new Uint8Array(N);
     for (let i = 0; i < N; i++) {
@@ -32,7 +32,7 @@ function init(): void {
   }
 }
 
-function check(buf: Deno.Buffer, s: string): void {
+function check(buf: Deno.Buffer, s: string) {
   const bytes = buf.bytes();
   assertEquals(buf.length, bytes.byteLength);
   const decoder = new TextDecoder();
@@ -67,7 +67,7 @@ async function empty(
   buf: Deno.Buffer,
   s: string,
   fub: Uint8Array,
-): Promise<void> {
+) {
   check(buf, s);
   while (true) {
     const r = await buf.read(fub);
@@ -87,7 +87,7 @@ function repeat(c: string, bytes: number): Uint8Array {
   return ui8;
 }
 
-unitTest(function bufferNewBuffer(): void {
+unitTest(function bufferNewBuffer() {
   init();
   assert(testBytes);
   assert(testString);
@@ -95,7 +95,7 @@ unitTest(function bufferNewBuffer(): void {
   check(buf, testString);
 });
 
-unitTest(async function bufferBasicOperations(): Promise<void> {
+unitTest(async function bufferBasicOperations() {
   init();
   assert(testBytes);
   assert(testString);
@@ -135,7 +135,7 @@ unitTest(async function bufferBasicOperations(): Promise<void> {
   }
 });
 
-unitTest(async function bufferReadEmptyAtEOF(): Promise<void> {
+unitTest(async function bufferReadEmptyAtEOF() {
   // check that EOF of 'buf' is not reached (even though it's empty) if
   // results are written to buffer that has 0 length (ie. it can't store any data)
   const buf = new Deno.Buffer();
@@ -144,7 +144,7 @@ unitTest(async function bufferReadEmptyAtEOF(): Promise<void> {
   assertEquals(result, 0);
 });
 
-unitTest(async function bufferLargeByteWrites(): Promise<void> {
+unitTest(async function bufferLargeByteWrites() {
   init();
   const buf = new Deno.Buffer();
   const limit = 9;
@@ -155,7 +155,7 @@ unitTest(async function bufferLargeByteWrites(): Promise<void> {
   check(buf, "");
 });
 
-unitTest(async function bufferTooLargeByteWrites(): Promise<void> {
+unitTest(async function bufferTooLargeByteWrites() {
   init();
   const tmp = new Uint8Array(72);
   const growLen = Number.MAX_VALUE;
@@ -174,7 +174,7 @@ unitTest(async function bufferTooLargeByteWrites(): Promise<void> {
 
 unitTest(
   { ignore: ignoreMaxSizeTests },
-  function bufferGrowWriteMaxBuffer(): void {
+  function bufferGrowWriteMaxBuffer() {
     const bufSize = 16 * 1024;
     const capacities = [MAX_SIZE, MAX_SIZE - 1];
     for (const capacity of capacities) {
@@ -196,7 +196,7 @@ unitTest(
 
 unitTest(
   { ignore: ignoreMaxSizeTests },
-  async function bufferGrowReadCloseMaxBufferPlus1(): Promise<void> {
+  async function bufferGrowReadCloseMaxBufferPlus1() {
     const reader = new Deno.Buffer(new ArrayBuffer(MAX_SIZE + 1));
     const buf = new Deno.Buffer();
 
@@ -212,7 +212,7 @@ unitTest(
 
 unitTest(
   { ignore: ignoreMaxSizeTests },
-  function bufferGrowReadSyncCloseMaxBufferPlus1(): void {
+  function bufferGrowReadSyncCloseMaxBufferPlus1() {
     const reader = new Deno.Buffer(new ArrayBuffer(MAX_SIZE + 1));
     const buf = new Deno.Buffer();
 
@@ -228,7 +228,7 @@ unitTest(
 
 unitTest(
   { ignore: ignoreMaxSizeTests },
-  function bufferGrowReadSyncCloseToMaxBuffer(): void {
+  function bufferGrowReadSyncCloseToMaxBuffer() {
     const capacities = [MAX_SIZE, MAX_SIZE - 1];
     for (const capacity of capacities) {
       const reader = new Deno.Buffer(new ArrayBuffer(capacity));
@@ -242,7 +242,7 @@ unitTest(
 
 unitTest(
   { ignore: ignoreMaxSizeTests },
-  async function bufferGrowReadCloseToMaxBuffer(): Promise<void> {
+  async function bufferGrowReadCloseToMaxBuffer() {
     const capacities = [MAX_SIZE, MAX_SIZE - 1];
     for (const capacity of capacities) {
       const reader = new Deno.Buffer(new ArrayBuffer(capacity));
@@ -255,7 +255,7 @@ unitTest(
 
 unitTest(
   { ignore: ignoreMaxSizeTests },
-  async function bufferReadCloseToMaxBufferWithInitialGrow(): Promise<void> {
+  async function bufferReadCloseToMaxBufferWithInitialGrow() {
     const capacities = [MAX_SIZE, MAX_SIZE - 1, MAX_SIZE - 512];
     for (const capacity of capacities) {
       const reader = new Deno.Buffer(new ArrayBuffer(capacity));
@@ -267,7 +267,7 @@ unitTest(
   },
 );
 
-unitTest(async function bufferLargeByteReads(): Promise<void> {
+unitTest(async function bufferLargeByteReads() {
   init();
   assert(testBytes);
   assert(testString);
@@ -280,12 +280,12 @@ unitTest(async function bufferLargeByteReads(): Promise<void> {
   check(buf, "");
 });
 
-unitTest(function bufferCapWithPreallocatedSlice(): void {
+unitTest(function bufferCapWithPreallocatedSlice() {
   const buf = new Deno.Buffer(new ArrayBuffer(10));
   assertEquals(buf.capacity, 10);
 });
 
-unitTest(async function bufferReadFrom(): Promise<void> {
+unitTest(async function bufferReadFrom() {
   init();
   assert(testBytes);
   assert(testString);
@@ -307,7 +307,7 @@ unitTest(async function bufferReadFrom(): Promise<void> {
   });
 });
 
-unitTest(async function bufferReadFromSync(): Promise<void> {
+unitTest(async function bufferReadFromSync() {
   init();
   assert(testBytes);
   assert(testString);
@@ -329,7 +329,7 @@ unitTest(async function bufferReadFromSync(): Promise<void> {
   });
 });
 
-unitTest(async function bufferTestGrow(): Promise<void> {
+unitTest(async function bufferTestGrow() {
   const tmp = new Uint8Array(72);
   for (const startLen of [0, 100, 1000, 10000]) {
     const xBytes = repeat("x", startLen);
@@ -353,7 +353,7 @@ unitTest(async function bufferTestGrow(): Promise<void> {
   }
 });
 
-unitTest(async function testReadAll(): Promise<void> {
+unitTest(async function testReadAll() {
   init();
   assert(testBytes);
   const reader = new Deno.Buffer(testBytes.buffer as ArrayBuffer);
@@ -364,7 +364,7 @@ unitTest(async function testReadAll(): Promise<void> {
   }
 });
 
-unitTest(function testReadAllSync(): void {
+unitTest(function testReadAllSync() {
   init();
   assert(testBytes);
   const reader = new Deno.Buffer(testBytes.buffer as ArrayBuffer);
@@ -375,7 +375,7 @@ unitTest(function testReadAllSync(): void {
   }
 });
 
-unitTest(async function testWriteAll(): Promise<void> {
+unitTest(async function testWriteAll() {
   init();
   assert(testBytes);
   const writer = new Deno.Buffer();
@@ -387,7 +387,7 @@ unitTest(async function testWriteAll(): Promise<void> {
   }
 });
 
-unitTest(function testWriteAllSync(): void {
+unitTest(function testWriteAllSync() {
   init();
   assert(testBytes);
   const writer = new Deno.Buffer();
@@ -399,7 +399,7 @@ unitTest(function testWriteAllSync(): void {
   }
 });
 
-unitTest(function testBufferBytesArrayBufferLength(): void {
+unitTest(function testBufferBytesArrayBufferLength() {
   // defaults to copy
   const args = [{}, { copy: undefined }, undefined, { copy: true }];
   for (const arg of args) {
@@ -418,7 +418,7 @@ unitTest(function testBufferBytesArrayBufferLength(): void {
   }
 });
 
-unitTest(function testBufferBytesCopyFalse(): void {
+unitTest(function testBufferBytesCopyFalse() {
   const bufSize = 64 * 1024;
   const bytes = new TextEncoder().encode("a".repeat(bufSize));
   const reader = new Deno.Buffer();
@@ -433,7 +433,7 @@ unitTest(function testBufferBytesCopyFalse(): void {
   assert(actualBytes.buffer.byteLength > actualBytes.byteLength);
 });
 
-unitTest(function testBufferBytesCopyFalseGrowExactBytes(): void {
+unitTest(function testBufferBytesCopyFalseGrowExactBytes() {
   const bufSize = 64 * 1024;
   const bytes = new TextEncoder().encode("a".repeat(bufSize));
   const reader = new Deno.Buffer();

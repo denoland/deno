@@ -2,18 +2,18 @@
 const name = Deno.args[0];
 // deno-lint-ignore no-explicit-any
 const test: { [key: string]: (...args: any[]) => void | Promise<void> } = {
-  read(files: string[]): void {
+  read(files: string[]) {
     files.forEach((file) => Deno.readFileSync(file));
   },
-  write(files: string[]): void {
+  write(files: string[]) {
     files.forEach((file) =>
       Deno.writeFileSync(file, new Uint8Array(0), { append: true })
     );
   },
-  netFetch(urls: string[]): void {
+  netFetch(urls: string[]) {
     urls.forEach((url) => fetch(url));
   },
-  netListen(endpoints: string[]): void {
+  netListen(endpoints: string[]) {
     endpoints.forEach((endpoint) => {
       const index = endpoint.lastIndexOf(":");
       const [hostname, port] = [
@@ -28,7 +28,7 @@ const test: { [key: string]: (...args: any[]) => void | Promise<void> } = {
       listener.close();
     });
   },
-  async netConnect(endpoints: string[]): Promise<void> {
+  async netConnect(endpoints: string[]) {
     for (const endpoint of endpoints) {
       const index = endpoint.lastIndexOf(":");
       const [hostname, port] = [

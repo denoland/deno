@@ -1,27 +1,12 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::itest;
-use test_util as util;
 
-#[test]
-fn workers() {
-  let _g = util::http_server();
-  let status = util::deno_cmd()
-    .current_dir(util::tests_path())
-    .arg("test")
-    .arg("--reload")
-    .arg("--location")
-    .arg("http://127.0.0.1:4545/cli/tests/")
-    .arg("--allow-net")
-    .arg("--allow-read")
-    .arg("--unstable")
-    .arg("workers/test.ts")
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-  assert!(status.success());
-}
+itest!(workers {
+  args: "test --reload --location http://127.0.0.1:4545/cli/tests/ --allow-net --allow-read --unstable workers/test.ts",
+  output: "workers/test.ts.out",
+  http_server: true,
+});
 
 itest!(worker_error {
   args: "run -A workers/worker_error.ts",

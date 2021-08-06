@@ -3,11 +3,13 @@
 use super::analysis;
 use super::text::LineIndex;
 use super::tsc;
+use super::urls::INVALID_SPECIFIER;
 
 use crate::config_file::ConfigFile;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
+use crate::flags::Flags;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
 use crate::import_map::ImportMap;
@@ -35,8 +37,15 @@ pub async fn cache(
   specifier: &ModuleSpecifier,
   maybe_import_map: &Option<ImportMap>,
   maybe_config_file: &Option<ConfigFile>,
+  maybe_cache_path: &Option<PathBuf>,
 ) -> Result<(), AnyError> {
-  let program_state = Arc::new(ProgramState::build(Default::default()).await?);
+  let program_state = Arc::new(
+    ProgramState::build(Flags {
+      cache_path: maybe_cache_path.clone(),
+      ..Default::default()
+    })
+    .await?,
+  );
   let handler = Arc::new(Mutex::new(FetchHandler::new(
     &program_state,
     Permissions::allow_all(),
@@ -105,7 +114,7 @@ fn resolve_specifier(
   }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 struct Metadata {
   dependencies: Option<HashMap<String, analysis::Dependency>>,
   length_utf16: usize,
@@ -115,7 +124,25 @@ struct Metadata {
   maybe_warning: Option<String>,
   media_type: MediaType,
   source: String,
+  specifier: ModuleSpecifier,
   version: String,
+}
+
+impl Default for Metadata {
+  fn default() -> Self {
+    Self {
+      dependencies: None,
+      length_utf16: 0,
+      line_index: LineIndex::default(),
+      maybe_navigation_tree: None,
+      maybe_types: None,
+      maybe_warning: None,
+      media_type: MediaType::default(),
+      source: String::default(),
+      specifier: INVALID_SPECIFIER.clone(),
+      version: String::default(),
+    }
+  }
 }
 
 impl Metadata {
@@ -151,8 +178,27 @@ impl Metadata {
       maybe_warning,
       media_type: media_type.to_owned(),
       source: source.to_string(),
+      specifier: specifier.clone(),
       version: version.to_string(),
     }
+  }
+
+  fn refresh(&mut self, maybe_import_map: &Option<ImportMap>) {
+    let (dependencies, maybe_types) = if let Ok(parsed_module) =
+      analysis::parse_module(&self.specifier, &self.source, &self.media_type)
+    {
+      let (deps, maybe_types) = analysis::analyze_dependencies(
+        &self.specifier,
+        &self.media_type,
+        &parsed_module,
+        maybe_import_map,
+      );
+      (Some(deps), maybe_types)
+    } else {
+      (None, None)
+    };
+    self.dependencies = dependencies;
+    self.maybe_types = maybe_types;
   }
 }
 
@@ -239,6 +285,10 @@ impl Sources {
     self.0.lock().metadata.keys().cloned().collect()
   }
 
+  pub fn set_import_map(&self, maybe_import_map: Option<ImportMap>) {
+    self.0.lock().set_import_map(maybe_import_map)
+  }
+
   pub fn set_navigation_tree(
     &self,
     specifier: &ModuleSpecifier,
@@ -311,7 +361,7 @@ impl Inner {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
-    let metadata = self.get_metadata(&specifier)?;
+    let metadata = self.get_metadata(specifier)?;
     metadata.maybe_warning
   }
 
@@ -349,7 +399,7 @@ impl Inner {
         map_content_type(specifier, maybe_content_type);
       let source = get_source_from_bytes(bytes, maybe_charset).ok()?;
       let maybe_types = headers.get("x-typescript-types").map(|s| {
-        analysis::resolve_import(s, &specifier, &self.maybe_import_map)
+        analysis::resolve_import(s, specifier, &self.maybe_import_map)
       });
       let maybe_warning = headers.get("x-deno-warning").cloned();
       (source, media_type, maybe_types, maybe_warning)
@@ -382,10 +432,10 @@ impl Inner {
   fn get_path(&mut self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
     if specifier.scheme() == "file" {
       specifier.to_file_path().ok()
-    } else if let Some(path) = self.remotes.get(&specifier) {
+    } else if let Some(path) = self.remotes.get(specifier) {
       Some(path.clone())
     } else {
-      let path = self.http_cache.get_cache_filename(&specifier)?;
+      let path = self.http_cache.get_cache_filename(specifier)?;
       if path.is_file() {
         self.remotes.insert(specifier.clone(), path.clone());
         Some(path)
@@ -483,6 +533,13 @@ impl Inner {
     }
   }
 
+  fn set_import_map(&mut self, maybe_import_map: Option<ImportMap>) {
+    for (_, metadata) in self.metadata.iter_mut() {
+      metadata.refresh(&maybe_import_map);
+    }
+    self.maybe_import_map = maybe_import_map;
+  }
+
   fn set_maybe_type(
     &mut self,
     specifier: &str,
@@ -517,6 +574,7 @@ mod tests {
   use super::*;
   use deno_core::resolve_path;
   use deno_core::resolve_url;
+  use deno_core::serde_json::json;
   use std::env;
   use tempfile::TempDir;
 
@@ -652,6 +710,102 @@ mod tests {
       .unwrap();
     let actual = sources.resolve_import("./evil.ts", &remote_specifier);
     assert_eq!(actual, None);
+  }
+
+  #[test]
+  fn test_resolve_with_import_map() {
+    let (sources, location) = setup();
+    let import_map_json = json!({
+      "imports": {
+        "mylib": "https://deno.land/x/myLib/index.js"
+      }
+    });
+    let import_map = ImportMap::from_json(
+      "https://deno.land/x/",
+      &import_map_json.to_string(),
+    )
+    .unwrap();
+    sources.set_import_map(Some(import_map));
+    let cache = HttpCache::new(&location);
+    let mylib_specifier =
+      resolve_url("https://deno.land/x/myLib/index.js").unwrap();
+    let mut mylib_headers_map = HashMap::new();
+    mylib_headers_map.insert(
+      "content-type".to_string(),
+      "application/javascript".to_string(),
+    );
+    cache
+      .set(
+        &mylib_specifier,
+        mylib_headers_map,
+        b"export const a = \"a\";\n",
+      )
+      .unwrap();
+    let referrer = resolve_url("https://deno.land/x/mod.ts").unwrap();
+    cache
+      .set(
+        &referrer,
+        Default::default(),
+        b"export { a } from \"mylib\";",
+      )
+      .unwrap();
+    let actual = sources.resolve_import("mylib", &referrer);
+    assert_eq!(actual, Some((mylib_specifier, MediaType::JavaScript)));
+  }
+
+  #[test]
+  fn test_update_import_map() {
+    let (sources, location) = setup();
+    let import_map_json = json!({
+      "imports": {
+        "otherlib": "https://deno.land/x/otherlib/index.js"
+      }
+    });
+    let import_map = ImportMap::from_json(
+      "https://deno.land/x/",
+      &import_map_json.to_string(),
+    )
+    .unwrap();
+    sources.set_import_map(Some(import_map));
+    let cache = HttpCache::new(&location);
+    let mylib_specifier =
+      resolve_url("https://deno.land/x/myLib/index.js").unwrap();
+    let mut mylib_headers_map = HashMap::new();
+    mylib_headers_map.insert(
+      "content-type".to_string(),
+      "application/javascript".to_string(),
+    );
+    cache
+      .set(
+        &mylib_specifier,
+        mylib_headers_map,
+        b"export const a = \"a\";\n",
+      )
+      .unwrap();
+    let referrer = resolve_url("https://deno.land/x/mod.ts").unwrap();
+    cache
+      .set(
+        &referrer,
+        Default::default(),
+        b"export { a } from \"mylib\";",
+      )
+      .unwrap();
+    let actual = sources.resolve_import("mylib", &referrer);
+    assert_eq!(actual, None);
+    let import_map_json = json!({
+      "imports": {
+        "otherlib": "https://deno.land/x/otherlib/index.js",
+        "mylib": "https://deno.land/x/myLib/index.js"
+      }
+    });
+    let import_map = ImportMap::from_json(
+      "https://deno.land/x/",
+      &import_map_json.to_string(),
+    )
+    .unwrap();
+    sources.set_import_map(Some(import_map));
+    let actual = sources.resolve_import("mylib", &referrer);
+    assert_eq!(actual, Some((mylib_specifier, MediaType::JavaScript)));
   }
 
   #[test]

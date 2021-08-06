@@ -104,7 +104,7 @@ fn get_completor_type(
         if let StringOrNumber::String(name) = &k.name {
           let value = match_result
             .get(name)
-            .map(|s| s.to_string(Some(&k)))
+            .map(|s| s.to_string(Some(k)))
             .unwrap_or_default();
           len += value.chars().count();
           if offset <= len {
@@ -183,14 +183,13 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
         .collect()
     });
 
-    let variable_names: Vec<String> = registry
-      .variables
-      .iter()
-      .map(|var| var.key.to_owned())
-      .collect();
-
     for key_name in &key_names {
-      if !variable_names.contains(key_name) {
+      if !registry
+        .variables
+        .iter()
+        .map(|var| var.key.to_owned())
+        .any(|x| x == *key_name)
+      {
         return Err(anyhow!("Invalid registry configuration. Registry with schema \"{}\" is missing variable declaration for key \"{}\".", registry.schema, key_name));
       }
     }
@@ -254,8 +253,10 @@ pub struct ModuleRegistry {
 
 impl Default for ModuleRegistry {
   fn default() -> Self {
-    let custom_root = std::env::var("DENO_DIR").map(String::into).ok();
-    let dir = deno_dir::DenoDir::new(custom_root).unwrap();
+    // This only gets used when creating the tsc runtime and for testing, and so
+    // it shouldn't ever actually access the DenoDir, so it doesn't support a
+    // custom root.
+    let dir = deno_dir::DenoDir::new(None).unwrap();
     let location = dir.root.join("registries");
     let http_cache = HttpCache::new(&location);
     let cache_setting = CacheSetting::Use;

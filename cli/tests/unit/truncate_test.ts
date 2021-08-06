@@ -8,7 +8,7 @@ import {
 
 unitTest(
   { perms: { read: true, write: true } },
-  function ftruncateSyncSuccess(): void {
+  function ftruncateSyncSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_ftruncateSync.txt";
     const file = Deno.openSync(filename, {
       create: true,
@@ -30,7 +30,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function ftruncateSuccess(): Promise<void> {
+  async function ftruncateSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_ftruncate.txt";
     const file = await Deno.open(filename, {
       create: true,
@@ -52,7 +52,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  function truncateSyncSuccess(): void {
+  function truncateSyncSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_truncateSync.txt";
     Deno.writeFileSync(filename, new Uint8Array(5));
     Deno.truncateSync(filename, 20);
@@ -67,7 +67,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function truncateSuccess(): Promise<void> {
+  async function truncateSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_truncate.txt";
     await Deno.writeFile(filename, new Uint8Array(5));
     await Deno.truncate(filename, 20);
@@ -80,15 +80,13 @@ unitTest(
   },
 );
 
-unitTest({ perms: { write: false } }, function truncateSyncPerm(): void {
+unitTest({ perms: { write: false } }, function truncateSyncPerm() {
   assertThrows(() => {
     Deno.truncateSync("/test_truncateSyncPermission.txt");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ perms: { write: false } }, async function truncatePerm(): Promise<
-  void
-> {
+unitTest({ perms: { write: false } }, async function truncatePerm() {
   await assertThrowsAsync(async () => {
     await Deno.truncate("/test_truncatePermission.txt");
   }, Deno.errors.PermissionDenied);

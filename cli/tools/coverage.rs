@@ -653,7 +653,7 @@ fn filter_coverages(
     .filter(|e| {
       let is_internal = e.url.starts_with("deno:")
         || e.url.ends_with("__anonymous__")
-        || e.url.ends_with("$deno$test.ts");
+        || e.url.ends_with("$deno$test.js");
 
       let is_included = include.iter().any(|p| p.is_match(&e.url));
       let is_excluded = exclude.iter().any(|p| p.is_match(&e.url));
@@ -709,7 +709,7 @@ pub async fn cover_files(
 
     reporter.visit_coverage(
       &script_coverage,
-      &script_source,
+      script_source,
       maybe_source_map,
       maybe_cached_source,
     );

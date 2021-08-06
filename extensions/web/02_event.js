@@ -33,6 +33,7 @@
     Symbol,
     SymbolFor,
     SymbolToStringTag,
+    TypeError,
     WeakMap,
     WeakMapPrototypeGet,
     WeakMapPrototypeSet,

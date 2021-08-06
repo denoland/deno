@@ -98,7 +98,7 @@ pub async fn print_docs(
       get_types(flags.unstable).as_str(),
     )
   } else {
-    let module_specifier = resolve_url_or_path(&source_file).unwrap();
+    let module_specifier = resolve_url_or_path(&source_file)?;
 
     // If the root module has external types, the module graph won't redirect it,
     // so instead create a dummy file which exports everything from the actual file being documented.

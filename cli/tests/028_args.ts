@@ -1,3 +1,3 @@
-Deno.args.forEach((arg): void => {
+Deno.args.forEach((arg) => {
   console.log(arg);
 });
