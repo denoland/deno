@@ -1,0 +1,21 @@
+{
+  "textDocument": {
+    "uri": "file:///a/file.ts"
+  },
+  "range": {
+    "start": {
+      "line": 0,
+      "character": 7
+    },
+    "end": {
+      "line": 0,
+      "character": 33
+    }
+  },
+  "context": {
+    "diagnostics": [],
+    "only": [
+      "refactor"
+    ]
+  }
+}

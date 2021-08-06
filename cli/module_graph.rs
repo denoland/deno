@@ -349,7 +349,7 @@ impl Module {
     // parse out any triple slash references
     for comment in parsed_module.get_leading_comments().iter() {
       if let Some((ts_reference, _)) = parse_ts_reference(comment) {
-        let location = parsed_module.get_location(&comment.span);
+        let location = parsed_module.get_location(comment.span.lo);
         match ts_reference {
           TypeScriptReference::Path(import) => {
             let specifier =
@@ -386,12 +386,7 @@ impl Module {
     for desc in dependencies.iter().filter(|desc| {
       desc.kind != swc_ecmascript::dep_graph::DependencyKind::Require
     }) {
-      let loc = parsed_module.source_map.lookup_char_pos(desc.span.lo);
-      let location = Location {
-        filename: self.specifier.to_string(),
-        col: loc.col_display,
-        line: loc.line,
-      };
+      let location = parsed_module.get_location(desc.span.lo);
 
       // In situations where there is a potential issue with resolving the
       // import specifier, that ends up being a module resolution error for a
@@ -468,7 +463,7 @@ impl Module {
     let referrer_scheme = self.specifier.scheme();
     let specifier_scheme = specifier.scheme();
     let location = maybe_location.unwrap_or(Location {
-      filename: self.specifier.to_string(),
+      specifier: self.specifier.to_string(),
       line: 0,
       col: 0,
     });

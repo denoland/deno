@@ -399,7 +399,7 @@ fn extract_files_from_regex_blocks(
 
       let file_specifier = deno_core::resolve_url_or_path(&format!(
         "{}${}-{}{}",
-        location.filename,
+        location.specifier,
         location.line + line_offset,
         location.line + line_offset + line_count,
         file_media_type.as_ts_extension(),
@@ -425,10 +425,7 @@ fn extract_files_from_source_comments(
   media_type: &MediaType,
 ) -> Result<Vec<File>, AnyError> {
   let parsed_module = ast::parse(specifier.as_str(), source, media_type)?;
-  let mut comments = parsed_module.get_comments();
-  comments
-    .sort_by_key(|comment| parsed_module.get_location(&comment.span).line);
-
+  let comments = parsed_module.get_comments();
   let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
 
@@ -442,7 +439,7 @@ fn extract_files_from_source_comments(
       true
     })
     .flat_map(|comment| {
-      let location = parsed_module.get_location(&comment.span);
+      let location = parsed_module.get_location(comment.span.lo);
 
       extract_files_from_regex_blocks(
         &location,
@@ -464,7 +461,7 @@ fn extract_files_from_fenced_blocks(
   media_type: &MediaType,
 ) -> Result<Vec<File>, AnyError> {
   let location = Location {
-    filename: specifier.to_string(),
+    specifier: specifier.to_string(),
     line: 1,
     col: 0,
   };

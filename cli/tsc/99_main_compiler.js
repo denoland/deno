@@ -584,6 +584,44 @@ delete Object.prototype.__proto__;
         );
         return respond(id, sourceFile && sourceFile.text);
       }
+      case "getApplicableRefactors": {
+        return respond(
+          id,
+          languageService.getApplicableRefactors(
+            request.specifier,
+            request.range,
+            {
+              quotePreference: "double",
+              allowTextChangesInNewFiles: true,
+              provideRefactorNotApplicableReason: true,
+            },
+            undefined,
+            request.kind,
+          ),
+        );
+      }
+      case "getEditsForRefactor": {
+        return respond(
+          id,
+          languageService.getEditsForRefactor(
+            request.specifier,
+            {
+              indentSize: 2,
+              indentStyle: ts.IndentStyle.Smart,
+              semicolons: ts.SemicolonPreference.Insert,
+              convertTabsToSpaces: true,
+              insertSpaceBeforeAndAfterBinaryOperators: true,
+              insertSpaceAfterCommaDelimiter: true,
+            },
+            request.range,
+            request.refactorName,
+            request.actionName,
+            {
+              quotePreference: "double",
+            },
+          ),
+        );
+      }
       case "getCodeFixes": {
         return respond(
           id,
