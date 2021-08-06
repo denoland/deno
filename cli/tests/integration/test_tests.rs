@@ -144,3 +144,32 @@ itest!(shuffle_with_seed {
   exit_code: 0,
   output: "test/shuffle.out",
 });
+
+#[test]
+fn tls_integration() {
+  let _g = util::http_server();
+
+  let script = util::tests_path().join("tls_test.ts");
+  let root_ca = util::tests_path().join("tls/RootCA.pem");
+  let output = util::deno_cmd()
+    .arg("test")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("--allow-read")
+    .arg("--cert")
+    .arg(root_ca)
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  let stderr = std::str::from_utf8(&output.stderr).unwrap().trim();
+  eprintln!("stderr: {}", stderr);
+  let stdout = std::str::from_utf8(&output.stdout).unwrap().trim();
+  eprintln!("stdout: {}", stdout);
+
+  assert!(output.status.success());
+}

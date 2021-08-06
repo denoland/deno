@@ -6,7 +6,7 @@ import { TextProtoReader } from "../../test_util/std/textproto/mod.ts";
 Deno.test("connect with client certificate", async () => {
   const conn = await Deno.connectTls({
     hostname: "localhost",
-    port: 4551,
+    port: 4552,
     certChain: await Deno.readTextFile("tests/tls/localhost.crt"),
     privateKey: await Deno.readTextFile("tests/tls/localhost.key"),
     certFile: "tests/tls/RootCA.pem",
