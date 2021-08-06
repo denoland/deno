@@ -145,7 +145,7 @@ unitTest(
 );
 
 unitTest({ perms: { read: true } }, function fileStatSyncSuccess() {
-  const file = Deno.openSync("hello.txt");
+  const file = Deno.openSync("README.md");
   const fileInfo = file.statSync();
   assert(fileInfo.isFile);
   assert(!fileInfo.isSymlink);
@@ -160,7 +160,7 @@ unitTest({ perms: { read: true } }, function fileStatSyncSuccess() {
 });
 
 unitTest({ perms: { read: true } }, async function fileStatSuccess() {
-  const file = await Deno.open("hello.txt");
+  const file = await Deno.open("README.md");
   const fileInfo = await file.stat();
   assert(fileInfo.isFile);
   assert(!fileInfo.isSymlink);

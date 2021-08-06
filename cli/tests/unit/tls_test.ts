@@ -36,8 +36,8 @@ unitTest(
     const listener = await Deno.listenTls({
       hostname: "localhost",
       port: 3567,
-      certFile: "tls/localhost.crt",
-      keyFile: "tls/localhost.key",
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
     });
 
     await assertThrowsAsync(async () => {
@@ -53,7 +53,7 @@ unitTest(async function connectTLSCertFileNoReadPerm() {
     await Deno.connectTls({
       hostname: "github.com",
       port: 443,
-      certFile: "tls/RootCA.crt",
+      certFile: "cli/tests/testdata/tls/RootCA.crt",
     });
   }, Deno.errors.PermissionDenied);
 });
@@ -64,8 +64,8 @@ unitTest(
     const options = {
       hostname: "localhost",
       port: 3500,
-      certFile: "tls/localhost.crt",
-      keyFile: "tls/localhost.key",
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
     };
 
     assertThrows(() => {
@@ -89,8 +89,8 @@ unitTest({ perms: { net: true } }, function listenTLSNoReadPerm() {
     Deno.listenTls({
       hostname: "localhost",
       port: 3500,
-      certFile: "tls/localhost.crt",
-      keyFile: "tls/localhost.key",
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
     });
   }, Deno.errors.PermissionDenied);
 });
@@ -103,8 +103,8 @@ unitTest(
     const options = {
       hostname: "localhost",
       port: 3500,
-      certFile: "tls/localhost.crt",
-      keyFile: "tls/localhost.key",
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
     };
 
     const testDir = Deno.makeTempDirSync();
@@ -128,8 +128,8 @@ unitTest(
     const options = {
       hostname: "localhost",
       port: 3500,
-      certFile: "tls/localhost.crt",
-      keyFile: "tls/localhost.key",
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
     };
 
     const testDir = Deno.makeTempDirSync();
@@ -157,8 +157,8 @@ unitTest(
     const listener = Deno.listenTls({
       hostname,
       port,
-      certFile: "tls/localhost.crt",
-      keyFile: "tls/localhost.key",
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
     });
 
     const response = encoder.encode(
@@ -181,7 +181,7 @@ unitTest(
     const conn = await Deno.connectTls({
       hostname,
       port,
-      certFile: "tls/RootCA.pem",
+      certFile: "cli/tests/testdata/tls/RootCA.pem",
     });
     assert(conn.rid > 0);
     const w = new BufWriter(conn);
@@ -221,15 +221,15 @@ async function tlsPair(): Promise<[Deno.Conn, Deno.Conn]> {
   const listener = Deno.listenTls({
     hostname: "localhost",
     port,
-    certFile: "tls/localhost.crt",
-    keyFile: "tls/localhost.key",
+    certFile: "cli/tests/testdata/tls/localhost.crt",
+    keyFile: "cli/tests/testdata/tls/localhost.key",
   });
 
   const acceptPromise = listener.accept();
   const connectPromise = Deno.connectTls({
     hostname: "localhost",
     port,
-    certFile: "tls/RootCA.pem",
+    certFile: "cli/tests/testdata/tls/RootCA.pem",
   });
   const endpoints = await Promise.all([acceptPromise, connectPromise]);
 
@@ -552,8 +552,8 @@ async function tlsWithTcpFailureTestImpl(
   const tlsListener = Deno.listenTls({
     hostname: "localhost",
     port: tlsPort,
-    certFile: "tls/localhost.crt",
-    keyFile: "tls/localhost.key",
+    certFile: "cli/tests/testdata/tls/localhost.crt",
+    keyFile: "cli/tests/testdata/tls/localhost.key",
   });
 
   const tcpPort = getPort();
@@ -569,7 +569,7 @@ async function tlsWithTcpFailureTestImpl(
     Deno.connectTls({
       hostname: "localhost",
       port: tcpPort,
-      certFile: "tls/RootCA.crt",
+      certFile: "cli/tests/testdata/tls/RootCA.crt",
     }),
   ]);
 
@@ -844,8 +844,8 @@ function createHttpsListener(port: number): Deno.Listener {
   const listener = Deno.listenTls({
     hostname: "localhost",
     port,
-    certFile: "./tls/localhost.crt",
-    keyFile: "./tls/localhost.key",
+    certFile: "./cli/tests/testdata/tls/localhost.crt",
+    keyFile: "./cli/tests/testdata/tls/localhost.key",
   });
 
   serve(listener);

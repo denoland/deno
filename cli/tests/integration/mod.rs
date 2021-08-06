@@ -970,12 +970,12 @@ fn js_unit_tests() {
   // of one because there are some chdir tests in there.
   // TODO(caspervonb) split these tests into two groups: parallel and serial.
   let mut deno = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(util::root_path())
     .arg("test")
     .arg("--unstable")
     .arg("--location=http://js-unit-tests/foo/bar")
     .arg("-A")
-    .arg("../unit")
+    .arg(util::tests_path().join("unit"))
     .spawn()
     .expect("failed to spawn script");
 
