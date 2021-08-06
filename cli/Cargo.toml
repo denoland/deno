@@ -82,7 +82,7 @@ serde = { version = "1.0.126", features = ["derive"] }
 shell-escape = "0.1.5"
 sourcemap = "6.0.1"
 swc_bundler = "0.46.0"
-swc_common = { version = "0.11.0", features = ["sourcemap"] }
+swc_common = { version = "0.11.4", features = ["sourcemap"] }
 swc_ecmascript = { version = "0.46.0", features = ["codegen", "dep_graph", "parser", "proposal", "react", "transforms", "typescript", "visit"] }
 tempfile = "3.2.0"
 termcolor = "1.1.2"
