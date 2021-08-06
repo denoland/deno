@@ -16,7 +16,6 @@ use reqwest::Client;
 use rustls::ClientConfig;
 use rustls::RootCertStore;
 use rustls::StoresClientSessions;
-// use rustls_native_certs::load_native_certs;
 use reqwest::header::HeaderMap;
 use reqwest::header::USER_AGENT;
 use reqwest::redirect::Policy;
@@ -26,7 +25,7 @@ use std::io::BufReader;
 use std::io::Cursor;
 use std::sync::Arc;
 
-/// This extension has no runtime apis only exports some shared native functions
+/// This extension has no runtime apis, it only exports some shared native functions.
 pub fn init() -> Extension {
   Extension::builder().build()
 }
@@ -73,7 +72,7 @@ impl StoresClientSessions for ClientSessionMemoryCache {
 
 pub fn create_default_root_cert_store() -> RootCertStore {
   let mut root_cert_store = RootCertStore::empty();
-  // todo: Consider also loading the system keychain here
+  // TODO(@justinmchase): Consider also loading the system keychain here
   root_cert_store.add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
   root_cert_store
 }

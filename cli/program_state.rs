@@ -106,7 +106,6 @@ impl ProgramState {
       }
     }
 
-    // Should this do a permissions check?
     let ca_file = flags.ca_file.clone().or_else(|| env::var("DENO_CERT").ok());
     if let Some(ca_file) = ca_file {
       let certfile = File::open(&ca_file)?;

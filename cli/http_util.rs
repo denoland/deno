@@ -395,7 +395,7 @@ mod tests {
     }
   }
 
-  // todo: Windows should verify certs too and fail to make this request without ca certs
+  // TODO(@justinmchase): Windows should verify certs too and fail to make this request without ca certs
   #[cfg(not(windows))]
   #[tokio::test]
   async fn test_fetch_with_empty_certificate_store() {
