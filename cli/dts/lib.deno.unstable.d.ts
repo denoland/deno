@@ -1049,7 +1049,7 @@ declare namespace Deno {
       * });
       * ```
       */
-      net?: "inherit" | boolean | Array<string | URL>;
+      net?: "inherit" | boolean | string[];
 
       /** Specifies if the `ffi` permission should be requested or revoked.
       * If set to `"inherit"`, the current `ffi` permission will be inherited.
@@ -1144,7 +1144,7 @@ declare interface WorkerOptions {
        *
        * For example: `["https://deno.land", "localhost:8080"]`.
        */
-      net?: "inherit" | boolean | Array<string | URL>;
+      net?: "inherit" | boolean | string[];
       ffi?: "inherit" | boolean;
       read?: "inherit" | boolean | Array<string | URL>;
       run?: "inherit" | boolean | Array<string | URL>;

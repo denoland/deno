@@ -167,10 +167,6 @@
         desc.path = pathFromURL(desc.path);
       } else if (desc.name === "run") {
         desc.command = pathFromURL(desc.command);
-      } else if (desc.name === "net") {
-        if (desc.host instanceof URL) {
-          desc.host = desc.host.host;
-        }
       }
 
       const state = opQuery(desc);
@@ -190,10 +186,6 @@
         desc.path = pathFromURL(desc.path);
       } else if (desc.name === "run") {
         desc.command = pathFromURL(desc.command);
-      } else if (desc.name === "net") {
-        if (desc.host instanceof URL) {
-          desc.host = desc.host.host;
-        }
       }
 
       const state = opRevoke(desc);
@@ -213,10 +205,6 @@
         desc.path = pathFromURL(desc.path);
       } else if (desc.name === "run") {
         desc.command = pathFromURL(desc.command);
-      } else if (desc.name === "net") {
-        if (desc.host instanceof URL) {
-          desc.host = desc.host.host;
-        }
       }
 
       const state = opRequest(desc);
