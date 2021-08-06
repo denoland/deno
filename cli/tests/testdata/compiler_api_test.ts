@@ -4,7 +4,7 @@ import {
   assertEquals,
   assertStringIncludes,
   assertThrowsAsync,
-} from "../../test_util/std/testing/asserts.ts";
+} from "../../../test_util/std/testing/asserts.ts";
 
 Deno.test({
   name: "Deno.emit() - sources provided",
@@ -40,8 +40,8 @@ Deno.test({
     assertEquals(stats.length, 12);
     const keys = Object.keys(files).sort();
     assertEquals(keys.length, 6);
-    assert(keys[0].endsWith("cli/tests/subdir/mod1.ts.js"));
-    assert(keys[1].endsWith("cli/tests/subdir/mod1.ts.js.map"));
+    assert(keys[0].endsWith("subdir/mod1.ts.js"));
+    assert(keys[1].endsWith("subdir/mod1.ts.js.map"));
   },
 });
 

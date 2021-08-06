@@ -1,3 +1,3 @@
-/// <reference types="http://localhost:4545/cli/tests/subdir/types.d.ts" />
+/// <reference types="http://localhost:4545/subdir/types.d.ts" />
 
 console.log(globalThis.a);

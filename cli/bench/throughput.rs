@@ -14,7 +14,7 @@ const CLIENT_ADDR: &str = "127.0.0.1 4544";
 pub(crate) fn cat(deno_exe: &Path, megs: usize) -> f64 {
   let size = megs * MB;
   let shell_cmd = format!(
-    "{} run --allow-read cli/tests/cat.ts /dev/zero | head -c {}",
+    "{} run --allow-read cli/tests/testdata/cat.ts /dev/zero | head -c {}",
     deno_exe.to_str().unwrap(),
     size
   );
@@ -50,9 +50,10 @@ pub(crate) fn tcp(deno_exe: &Path, megs: usize) -> Result<f64> {
     .args(&[
       "run",
       "--allow-net",
-      "cli/tests/echo_server.ts",
+      "echo_server.ts",
       SERVER_ADDR,
     ])
+    .current_dir(test_util::testdata_path())
     .spawn()?;
 
   std::thread::sleep(Duration::from_secs(5)); // wait for deno to wake up. TODO racy.

@@ -6,15 +6,15 @@
       "variables": [
         {
           "key": "module",
-          "url": "http://localhost:4545/cli/tests/lsp/registries/modules.json"
+          "url": "http://localhost:4545/lsp/registries/modules.json"
         },
         {
           "key": "version",
-          "url": "http://localhost:4545/cli/tests/lsp/registries/${module}_versions.json"
+          "url": "http://localhost:4545/lsp/registries/${module}_versions.json"
         },
         {
           "key": "path",
-          "url": "http://localhost:4545/cli/tests/lsp/registries/${module}_${{version}}.json"
+          "url": "http://localhost:4545/lsp/registries/${module}_${{version}}.json"
         }
       ]
     },
@@ -23,11 +23,11 @@
       "variables": [
         {
           "key": "module",
-          "url": "http://localhost:4545/cli/tests/lsp/registries/modules.json"
+          "url": "http://localhost:4545/lsp/registries/modules.json"
         },
         {
           "key": "path",
-          "url": "http://localhost:4545/cli/tests/lsp/registries/${module}_latest.json"
+          "url": "http://localhost:4545/lsp/registries/${module}_latest.json"
         }
       ]
     }

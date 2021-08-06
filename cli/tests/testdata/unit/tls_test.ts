@@ -10,8 +10,8 @@ import {
   deferred,
   unitTest,
 } from "./test_util.ts";
-import { BufReader, BufWriter } from "../../../test_util/std/io/bufio.ts";
-import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
+import { BufReader, BufWriter } from "../../../../test_util/std/io/bufio.ts";
+import { TextProtoReader } from "../../../../test_util/std/textproto/mod.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -844,8 +844,8 @@ function createHttpsListener(port: number): Deno.Listener {
   const listener = Deno.listenTls({
     hostname: "localhost",
     port,
-    certFile: "./cli/tests/tls/localhost.crt",
-    keyFile: "./cli/tests/tls/localhost.key",
+    certFile: "./tls/localhost.crt",
+    keyFile: "./tls/localhost.key",
   });
 
   serve(listener);

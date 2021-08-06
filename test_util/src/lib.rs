@@ -24,6 +24,7 @@ use std::io::Read;
 use std::io::Write;
 use std::mem::replace;
 use std::net::SocketAddr;
+use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::Child;
@@ -198,7 +199,7 @@ async fn inf_redirects(req: Request<Body>) -> hyper::Result<Response<Body>> {
 async fn another_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
-  let url = format!("http://localhost:{}/cli/tests/subdir{}", PORT, p);
+  let url = format!("http://localhost:{}/subdir{}", PORT, p);
 
   Ok(redirect_resp(url))
 }
@@ -258,14 +259,9 @@ async fn run_ws_close_server(addr: &SocketAddr) {
 }
 
 async fn get_tls_config(
-  cert: &str,
-  key: &str,
+  cert_path: &Path,
+  key_path: &Path,
 ) -> io::Result<Arc<rustls::ServerConfig>> {
-  let mut cert_path = root_path();
-  let mut key_path = root_path();
-  cert_path.push(cert);
-  key_path.push(key);
-
   let cert_file = std::fs::File::open(cert_path)?;
   let key_file = std::fs::File::open(key_path)?;
 
@@ -305,10 +301,10 @@ async fn get_tls_config(
 }
 
 async fn run_wss_server(addr: &SocketAddr) {
-  let cert_file = "cli/tests/tls/localhost.crt";
-  let key_file = "cli/tests/tls/localhost.key";
+  let cert_file = testdata_path().join("tls/localhost.crt");
+  let key_file = testdata_path().join("tls/localhost.key");
 
-  let tls_config = get_tls_config(cert_file, key_file).await.unwrap();
+  let tls_config = get_tls_config(&cert_file, &key_file).await.expect("Cannot get TLS config");
   let tls_acceptor = TlsAcceptor::from(tls_config);
   let listener = TcpListener::bind(addr).await.unwrap();
 
@@ -357,7 +353,7 @@ async fn absolute_redirect(
     }
   }
 
-  let mut file_path = root_path();
+  let mut file_path = testdata_path();
   file_path.push(&req.uri().path()[1..]);
   if file_path.is_dir() || !file_path.exists() {
     let mut not_found_resp = Response::new(Body::empty());
@@ -589,7 +585,7 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       );
       Ok(res)
     }
-    (_, "/cli/tests/subdir/xTypeScriptTypesRedirect.d.ts") => {
+    (_, "/subdir/xTypeScriptTypesRedirect.d.ts") => {
       let mut res = Response::new(Body::from(
         "import './xTypeScriptTypesRedirected.d.ts';",
       ));
@@ -599,7 +595,7 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       );
       Ok(res)
     }
-    (_, "/cli/tests/subdir/xTypeScriptTypesRedirected.d.ts") => {
+    (_, "/subdir/xTypeScriptTypesRedirected.d.ts") => {
       let mut res = Response::new(Body::from("export const foo: 'foo';"));
       res.headers_mut().insert(
         "Content-type",
@@ -615,7 +611,7 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       );
       Ok(res)
     }
-    (_, "/cli/tests/subdir/file_with_:_in_name.ts") => {
+    (_, "/subdir/file_with_:_in_name.ts") => {
       let mut res = Response::new(Body::from(
         "console.log('Hello from file_with_:_in_name.ts');",
       ));
@@ -625,7 +621,7 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       );
       Ok(res)
     }
-    (_, "/cli/tests/subdir/no_js_ext@1.0.0") => {
+    (_, "/subdir/no_js_ext@1.0.0") => {
       let mut res = Response::new(Body::from(
         r#"import { printHello } from "./mod2.ts";
         printHello();
@@ -638,8 +634,8 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       Ok(res)
     }
     (_, "/.well-known/deno-import-intellisense.json") => {
-      let file_path = root_path()
-        .join("cli/tests/lsp/registries/deno-import-intellisense.json");
+      let file_path = testdata_path()
+        .join("lsp/registries/deno-import-intellisense.json");
       if let Ok(body) = tokio::fs::read(file_path).await {
         Ok(custom_headers(
           "/.well-known/deno-import-intellisense.json",
@@ -650,7 +646,7 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       }
     }
     _ => {
-      let mut file_path = root_path();
+      let mut file_path = testdata_path();
       file_path.push(&req.uri().path()[1..]);
       if let Ok(file) = tokio::fs::read(file_path).await {
         let file_resp = custom_headers(&req.uri().path()[1..], file);
@@ -773,9 +769,9 @@ async fn wrap_main_server() {
 
 async fn wrap_main_https_server() {
   let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], HTTPS_PORT));
-  let cert_file = "cli/tests/tls/localhost.crt";
-  let key_file = "cli/tests/tls/localhost.key";
-  let tls_config = get_tls_config(cert_file, key_file)
+  let cert_file = testdata_path().join("tls/localhost.crt");
+  let key_file = testdata_path().join("tls/localhost.key");
+  let tls_config = get_tls_config(&cert_file, &key_file)
     .await
     .expect("Cannot get TLS config");
   loop {
@@ -866,7 +862,7 @@ pub async fn run_all_servers() {
 fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
   let mut response = Response::new(Body::from(body));
 
-  if p.ends_with("cli/tests/x_deno_warning.js") {
+  if p.ends_with("/x_deno_warning.js") {
     response.headers_mut().insert(
       "Content-Type",
       HeaderValue::from_static("application/javascript"),
@@ -876,7 +872,7 @@ fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
       .insert("X-Deno-Warning", HeaderValue::from_static("foobar"));
     return response;
   }
-  if p.ends_with("cli/tests/053_import_compression/brotli") {
+  if p.ends_with("/053_import_compression/brotli") {
     response
       .headers_mut()
       .insert("Content-Encoding", HeaderValue::from_static("br"));
@@ -889,7 +885,7 @@ fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
       .insert("Content-Length", HeaderValue::from_static("26"));
     return response;
   }
-  if p.ends_with("cli/tests/053_import_compression/gziped") {
+  if p.ends_with("/053_import_compression/gziped") {
     response
       .headers_mut()
       .insert("Content-Encoding", HeaderValue::from_static("gzip"));
@@ -903,7 +899,7 @@ fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
     return response;
   }
 
-  if p.contains("cli/tests/encoding/") {
+  if p.contains("/encoding/") {
     let charset = p
       .split_terminator('/')
       .last()
@@ -978,7 +974,7 @@ impl HttpServerCount {
 
       println!("test_server starting...");
       let mut test_server = Command::new(test_server_path())
-        .current_dir(root_path())
+        .current_dir(testdata_path())
         .stdout(Stdio::piped())
         .spawn()
         .expect("failed to execute test_server");
@@ -1208,7 +1204,7 @@ pub fn run_powershell_script_file(
 
   command
     .env("DENO_DIR", deno_dir.path())
-    .current_dir(root_path())
+    .current_dir(testdata_path())
     .arg("-file")
     .arg(script_file_path);
 
@@ -1243,9 +1239,7 @@ pub struct CheckOutputIntegrationTest {
 impl CheckOutputIntegrationTest {
   pub fn run(&self) {
     let args = self.args.split_whitespace();
-    let root = root_path();
     let deno_exe = deno_exe_path();
-    println!("root path {}", root.display());
     println!("deno_exe path {}", deno_exe.display());
 
     let _http_server_guard = if self.http_server {
@@ -1255,12 +1249,12 @@ impl CheckOutputIntegrationTest {
     };
 
     let (mut reader, writer) = pipe().unwrap();
-    let tests_dir = root.join("cli").join("tests");
+    let testdata_dir = testdata_path();
     let mut command = deno_cmd();
     println!("deno_exe args {}", self.args);
-    println!("deno_exe tests path {:?}", &tests_dir);
+    println!("deno_exe testdata path {:?}", &testdata_dir);
     command.args(args);
-    command.current_dir(&tests_dir);
+    command.current_dir(&testdata_dir);
     command.stdin(Stdio::piped());
     let writer_clone = writer.try_clone().unwrap();
     command.stderr(writer_clone);
@@ -1315,7 +1309,7 @@ impl CheckOutputIntegrationTest {
     let expected = if let Some(s) = self.output_str {
       s.to_owned()
     } else {
-      let output_path = tests_dir.join(self.output);
+      let output_path = testdata_dir.join(self.output);
       println!("output path {}", output_path.display());
       std::fs::read_to_string(output_path).expect("cannot read output")
     };
@@ -1387,7 +1381,7 @@ pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
 pub fn test_pty(args: &str, output_path: &str, input: &[u8]) {
   use pty::fork::Fork;
 
-  let tests_path = tests_path();
+  let tests_path = testdata_path();
   let fork = Fork::from_ptmx().unwrap();
   if let Ok(mut master) = fork.is_parent() {
     let mut output_actual = String::new();

@@ -1,6 +1,6 @@
 const blob = new Blob(
   [
-    'export { printHello } from "http://localhost:4545/cli/tests/subdir/mod2.ts"',
+    'export { printHello } from "http://localhost:4545/subdir/mod2.ts"',
   ],
   { type: "application/javascript" },
 );

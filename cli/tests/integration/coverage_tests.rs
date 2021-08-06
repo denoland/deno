@@ -142,7 +142,7 @@ fn complex() {
       .to_string();
 
   let expected = fs::read_to_string(
-    util::root_path().join("coverage/expected_complex.lcov"),
+    util::testdata_path().join("coverage/expected_complex.lcov"),
   )
   .unwrap();
 

@@ -1,1 +1,1 @@
-import "http://localhost:4545/cli/tests/subdir/mt_text_typescript.t1.ts";
+import "http://localhost:4545/subdir/mt_text_typescript.t1.ts";

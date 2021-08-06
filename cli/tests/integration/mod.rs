@@ -74,7 +74,7 @@ mod worker;
 #[test]
 fn help_flag() {
   let status = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("--help")
     .spawn()
     .unwrap()
@@ -86,7 +86,7 @@ fn help_flag() {
 #[test]
 fn version_short_flag() {
   let status = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("-V")
     .spawn()
     .unwrap()
@@ -98,7 +98,7 @@ fn version_short_flag() {
 #[test]
 fn version_long_flag() {
   let status = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("--version")
     .spawn()
     .unwrap()
@@ -117,11 +117,11 @@ fn cache_test() {
   let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
-    url::Url::parse("http://localhost:4545/cli/tests/006_url_imports.ts")
+    url::Url::parse("http://localhost:4545/006_url_imports.ts")
       .unwrap();
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("cache")
     .arg("-L")
     .arg("debug")
@@ -141,7 +141,7 @@ fn cache_test() {
     .env("DENO_DIR", deno_dir.path())
     .env("HTTP_PROXY", "http://nil")
     .env("NO_COLOR", "1")
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg(module_url.to_string())
     .output()
@@ -150,7 +150,7 @@ fn cache_test() {
   let str_output = std::str::from_utf8(&output.stdout).unwrap();
 
   let module_output_path =
-    util::root_path().join("cli/tests/006_url_imports.ts.out");
+    util::testdata_path().join("006_url_imports.ts.out");
   let mut module_output = String::new();
   let mut module_output_file = fs::File::open(module_output_path).unwrap();
   module_output_file
@@ -173,7 +173,7 @@ fn cache_invalidation_test() {
   }
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg(fixture_path.to_str().unwrap())
     .output()
@@ -190,7 +190,7 @@ fn cache_invalidation_test() {
   }
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg(fixture_path.to_str().unwrap())
     .output()
@@ -213,7 +213,7 @@ fn cache_invalidation_test_no_check() {
   }
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg("--no-check")
     .arg(fixture_path.to_str().unwrap())
@@ -231,7 +231,7 @@ fn cache_invalidation_test_no_check() {
   }
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg("--no-check")
     .arg(fixture_path.to_str().unwrap())
@@ -269,7 +269,7 @@ fn ts_dependency_recompilation() {
   .unwrap();
 
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .env("NO_COLOR", "1")
     .arg("run")
     .arg(&ats)
@@ -291,7 +291,7 @@ fn ts_dependency_recompilation() {
   .expect("error writing file");
 
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .env("NO_COLOR", "1")
     .arg("run")
     .arg(&ats)
@@ -312,12 +312,12 @@ fn ts_no_recheck_on_redirect() {
   let deno_dir = util::new_deno_dir();
   let e = util::deno_exe_path();
 
-  let redirect_ts = util::root_path().join("cli/tests/017_import_redirect.ts");
+  let redirect_ts = util::testdata_path().join("017_import_redirect.ts");
   assert!(redirect_ts.is_file());
   let mut cmd = Command::new(e.clone());
   cmd.env("DENO_DIR", deno_dir.path());
   let mut initial = cmd
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg(redirect_ts.clone())
     .spawn()
@@ -329,7 +329,7 @@ fn ts_no_recheck_on_redirect() {
   let mut cmd = Command::new(e);
   cmd.env("DENO_DIR", deno_dir.path());
   let output = cmd
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg(redirect_ts)
     .output()
@@ -340,12 +340,12 @@ fn ts_no_recheck_on_redirect() {
 
 #[test]
 fn ts_reload() {
-  let hello_ts = util::root_path().join("cli/tests/002_hello.ts");
+  let hello_ts = util::testdata_path().join("002_hello.ts");
   assert!(hello_ts.is_file());
 
   let deno_dir = TempDir::new().expect("tempdir fail");
   let mut initial = util::deno_cmd_with_deno_dir(deno_dir.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("cache")
     .arg(&hello_ts)
     .spawn()
@@ -355,7 +355,7 @@ fn ts_reload() {
   assert!(status_initial.success());
 
   let output = util::deno_cmd_with_deno_dir(deno_dir.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("cache")
     .arg("--reload")
     .arg("-L")
@@ -431,7 +431,7 @@ fn broken_stdout() {
   drop(reader);
 
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("eval")
     .arg("console.log(3.14)")
     .stdout(writer)
@@ -462,14 +462,14 @@ fn broken_stdout() {
 // });
 
 // itest!(cafile_eval {
-//   args: "eval --cert tls/RootCA.pem fetch('https://localhost:5545/cli/tests/cafile_ts_fetch.ts.out').then(r=>r.text()).then(t=>console.log(t.trimEnd()))",
+//   args: "eval --cert tls/RootCA.pem fetch('https://localhost:5545/cafile_ts_fetch.ts.out').then(r=>r.text()).then(t=>console.log(t.trimEnd()))",
 //   output: "cafile_ts_fetch.ts.out",
 //   http_server: true,
 // });
 
 // itest!(cafile_info {
 //   args:
-//     "info --quiet --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
+//     "info --quiet --cert tls/RootCA.pem https://localhost:5545/cafile_info.ts",
 //   output: "cafile_info.ts.out",
 //   http_server: true,
 // });
@@ -481,13 +481,13 @@ fn cafile_env_fetch() {
   let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
-    Url::parse("https://localhost:5545/cli/tests/cafile_url_imports.ts")
+    Url::parse("https://localhost:5545/cafile_url_imports.ts")
       .unwrap();
   let cafile = util::testdata_path().join("tls/RootCA.pem");
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .env("DENO_CERT", cafile)
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("cache")
     .arg(module_url.to_string())
     .output()
@@ -502,12 +502,12 @@ fn cafile_fetch() {
   let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
-    Url::parse("http://localhost:4545/cli/tests/cafile_url_imports.ts")
+    Url::parse("http://localhost:4545/cafile_url_imports.ts")
       .unwrap();
-  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+  let cafile = util::testdata_path().join("tls/RootCA.pem");
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("cache")
     .arg("--cert")
     .arg(cafile)
@@ -527,11 +527,11 @@ fn cafile_install_remote_module() {
   let bin_dir = temp_dir.path().join("bin");
   std::fs::create_dir(&bin_dir).unwrap();
   let deno_dir = TempDir::new().expect("tempdir fail");
-  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+  let cafile = util::testdata_path().join("tls/RootCA.pem");
 
   let install_output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("install")
     .arg("--cert")
     .arg(cafile)
@@ -539,7 +539,7 @@ fn cafile_install_remote_module() {
     .arg(temp_dir.path())
     .arg("-n")
     .arg("echo_test")
-    .arg("https://localhost:5545/cli/tests/echo.ts")
+    .arg("https://localhost:5545/echo.ts")
     .output()
     .expect("Failed to spawn script");
   println!("{}", std::str::from_utf8(&install_output.stdout).unwrap());
@@ -568,12 +568,12 @@ fn cafile_bundle_remote_exports() {
   let _g = util::http_server();
 
   // First we have to generate a bundle of some remote module that has exports.
-  let mod1 = "https://localhost:5545/cli/tests/subdir/mod1.ts";
-  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+  let mod1 = "https://localhost:5545/subdir/mod1.ts";
+  let cafile = util::testdata_path().join("tls/RootCA.pem");
   let t = TempDir::new().expect("tempdir fail");
   let bundle = t.path().join("mod1.bundle.js");
   let mut deno = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("bundle")
     .arg("--cert")
     .arg(cafile)
@@ -596,7 +596,7 @@ fn cafile_bundle_remote_exports() {
   .expect("error writing file");
 
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg(&test)
     .output()
@@ -958,7 +958,7 @@ fn js_unit_tests_lint() {
   let status = util::deno_cmd()
     .arg("lint")
     .arg("--unstable")
-    .arg(util::root_path().join("cli/tests/unit"))
+    .arg(util::testdata_path().join("unit"))
     .spawn()
     .unwrap()
     .wait()
@@ -974,7 +974,7 @@ fn js_unit_tests() {
   // of one because there are some chdir tests in there.
   // TODO(caspervonb) split these tests into two groups: parallel and serial.
   let mut deno = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("test")
     .arg("--unstable")
     .arg("--location=http://js-unit-tests/foo/bar")
@@ -995,13 +995,13 @@ async fn listen_tls_alpn() {
   LocalSet::new()
     .run_until(async {
       let mut child = util::deno_cmd()
-        .current_dir(util::root_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg("--unstable")
         .arg("--quiet")
         .arg("--allow-net")
         .arg("--allow-read")
-        .arg("./cli/tests/listen_tls_alpn.ts")
+        .arg("./listen_tls_alpn.ts")
         .arg("4504")
         .stdout(std::process::Stdio::piped())
         .spawn()
@@ -1047,13 +1047,13 @@ async fn listen_tls_alpn_fail() {
   LocalSet::new()
     .run_until(async {
       let mut child = util::deno_cmd()
-        .current_dir(util::root_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg("--unstable")
         .arg("--quiet")
         .arg("--allow-net")
         .arg("--allow-read")
-        .arg("./cli/tests/listen_tls_alpn.ts")
+        .arg("./listen_tls_alpn.ts")
         .arg("4505")
         .stdout(std::process::Stdio::piped())
         .spawn()

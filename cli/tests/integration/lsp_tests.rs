@@ -921,7 +921,7 @@ fn lsp_hover_dependency() {
     Some(json!({
       "contents": {
         "kind": "markdown",
-        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/cli/tests/subdir/type_reference.js\n"
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/subdir/type_reference.js\n"
       },
       "range": {
         "start": {
@@ -955,7 +955,7 @@ fn lsp_hover_dependency() {
     Some(json!({
       "contents": {
         "kind": "markdown",
-        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/cli/tests/subdir/mod1.ts\n"
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/subdir/mod1.ts\n"
       },
       "range": {
         "start": {
@@ -2665,7 +2665,7 @@ fn lsp_diagnostics_warn() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "import * as a from \"http://127.0.0.1:4545/cli/tests/x_deno_warning.js\";\n\nconsole.log(a)\n",
+        "text": "import * as a from \"http://127.0.0.1:4545/x_deno_warning.js\";\n\nconsole.log(a)\n",
       },
     }),
   );
@@ -2678,7 +2678,7 @@ fn lsp_diagnostics_warn() {
         },
         "uris": [
           {
-            "uri": "http://127.0.0.1:4545/cli/tests/x_deno_warning.js",
+            "uri": "http://127.0.0.1:4545/x_deno_warning.js",
           }
         ],
       }),

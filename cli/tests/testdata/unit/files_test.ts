@@ -8,7 +8,7 @@ import {
   assertThrowsAsync,
   unitTest,
 } from "./test_util.ts";
-import { copy } from "../../../test_util/std/io/util.ts";
+import { copy } from "../../../../test_util/std/io/util.ts";
 
 unitTest(function filesStdioFileDescriptors() {
   assertEquals(Deno.stdin.rid, 0);

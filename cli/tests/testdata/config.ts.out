@@ -4,4 +4,4 @@
 error: TS1219 [ERROR]: Experimental support for decorators is a feature that is subject to change in a future release. Set the 'experimentalDecorators' option in your 'tsconfig' or 'jsconfig' to remove this warning.
   a() {
   ^
-    at file:///[WILDCARD]cli/tests/config.ts:[WILDCARD]
+    at file:///[WILDCARD]/config.ts:[WILDCARD]

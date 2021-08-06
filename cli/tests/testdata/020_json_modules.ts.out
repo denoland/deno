@@ -1,5 +1,5 @@
 [WILDCARD]
 error: An unsupported media type was attempted to be imported as a module.
-  Specifier: [WILDCARD]cli/tests/subdir/config.json
+  Specifier: [WILDCARD]/subdir/config.json
   MediaType: Json
 [WILDCARD]

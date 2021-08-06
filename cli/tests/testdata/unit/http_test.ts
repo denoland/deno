@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { chunkedBodyReader } from "../../../test_util/std/http/_io.ts";
-import { BufReader, BufWriter } from "../../../test_util/std/io/bufio.ts";
-import { Buffer } from "../../../test_util/std/io/buffer.ts";
-import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
+import { chunkedBodyReader } from "../../../../test_util/std/http/_io.ts";
+import { BufReader, BufWriter } from "../../../../test_util/std/io/bufio.ts";
+import { Buffer } from "../../../test_util/../std/io/buffer.ts";
+import { TextProtoReader } from "../../../test_util/../std/textproto/mod.ts";
 import {
   assert,
   assertEquals,

@@ -57,7 +57,7 @@ unitTest(
   { perms: { net: true } },
   async function bodyURLEncodedFormData() {
     const response = await fetch(
-      "http://localhost:4545/cli/tests/subdir/form_urlencoded.txt",
+      "http://localhost:4545/subdir/form_urlencoded.txt",
     );
     assert(response.body instanceof ReadableStream);
 

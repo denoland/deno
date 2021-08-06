@@ -1,7 +1,10 @@
-import { deferred } from "../../test_util/std/async/deferred.ts";
-import { assert, assertEquals } from "../../test_util/std/testing/asserts.ts";
-import { BufReader, BufWriter } from "../../test_util/std/io/bufio.ts";
-import { TextProtoReader } from "../../test_util/std/textproto/mod.ts";
+import { deferred } from "../../../test_util/std/async/deferred.ts";
+import {
+  assert,
+  assertEquals,
+} from "../../../test_util/std/testing/asserts.ts";
+import { BufReader, BufWriter } from "../../../test_util/std/io/bufio.ts";
+import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

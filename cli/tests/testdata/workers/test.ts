@@ -6,9 +6,9 @@ import {
   assert,
   assertEquals,
   assertThrows,
-} from "../../../test_util/std/testing/asserts.ts";
-import { deferred } from "../../../test_util/std/async/deferred.ts";
-import { fromFileUrl } from "../../../test_util/std/path/mod.ts";
+} from "../../../../test_util/std/testing/asserts.ts";
+import { deferred } from "../../../../test_util/std/async/deferred.ts";
+import { fromFileUrl } from "../../../../test_util/std/path/mod.ts";
 
 Deno.test({
   name: "worker terminate",
@@ -668,7 +668,7 @@ Deno.test({
 Deno.test({
   name: "worker with relative specifier",
   fn: async function () {
-    assertEquals(location.href, "http://127.0.0.1:4545/cli/tests/");
+    assertEquals(location.href, "http://127.0.0.1:4545/");
     const promise = deferred();
     const w = new Worker(
       "./workers/test_worker.ts",
@@ -773,7 +773,7 @@ Deno.test({
 Deno.test({
   name: "worker with relative specifier",
   fn: async function () {
-    assertEquals(location.href, "http://127.0.0.1:4545/cli/tests/");
+    assertEquals(location.href, "http://127.0.0.1:4545/");
     const promise = deferred();
     const w = new Worker(
       "./workers/test_worker.ts",

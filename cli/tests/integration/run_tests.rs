@@ -144,7 +144,7 @@ itest!(_033_import_map {
 
 itest!(_033_import_map_remote {
   args:
-    "run --quiet --reload --import-map=http://127.0.0.1:4545/cli/tests/import_maps/import_map_remote.json --unstable import_maps/test_remote.ts",
+    "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --unstable import_maps/test_remote.ts",
   output: "033_import_map_remote.out",
   http_server: true,
 });
@@ -156,7 +156,7 @@ itest!(_034_onload {
 
 itest!(_035_cached_only_flag {
   args:
-    "run --reload --cached-only http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+    "run --reload --cached-only http://127.0.0.1:4545/019_media_types.ts",
   output: "035_cached_only_flag.out",
   exit_code: 1,
   http_server: true,
@@ -204,7 +204,7 @@ itest!(_048_media_types_jsx {
 
 itest!(_052_no_remote_flag {
   args:
-    "run --reload --no-remote http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+    "run --reload --no-remote http://127.0.0.1:4545/019_media_types.ts",
   output: "052_no_remote_flag.out",
   exit_code: 1,
   http_server: true,
@@ -239,7 +239,7 @@ itest!(_071_location_unset {
 });
 
 itest!(_072_location_relative_fetch {
-    args: "run --location http://127.0.0.1:4545/cli/tests/ --allow-net 072_location_relative_fetch.ts",
+    args: "run --location http://127.0.0.1:4545/ --allow-net 072_location_relative_fetch.ts",
     output: "072_location_relative_fetch.ts.out",
     http_server: true,
   });
@@ -289,14 +289,14 @@ fn _083_legacy_external_source_map() {
   let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url = url::Url::parse(
-    "http://localhost:4545/cli/tests/083_legacy_external_source_map.ts",
+    "http://localhost:4545/083_legacy_external_source_map.ts",
   )
   .unwrap();
   // Write a faulty old external source map.
   let faulty_map_path = deno_dir.path().join("gen/http/localhost_PORT4545/9576bd5febd0587c5c4d88d57cb3ac8ebf2600c529142abe3baa9a751d20c334.js.map");
   std::fs::create_dir_all(faulty_map_path.parent().unwrap())
     .expect("Failed to create faulty source map dir.");
-  std::fs::write(faulty_map_path, "{\"version\":3,\"file\":\"\",\"sourceRoot\":\"\",\"sources\":[\"http://localhost:4545/cli/tests/083_legacy_external_source_map.ts\"],\"names\":[],\"mappings\":\";AAAA,MAAM,IAAI,KAAK,CAAC,KAAK,CAAC,CAAC\"}").expect("Failed to write faulty source map.");
+  std::fs::write(faulty_map_path, "{\"version\":3,\"file\":\"\",\"sourceRoot\":\"\",\"sources\":[\"http://localhost:4545/083_legacy_external_source_map.ts\"],\"names\":[],\"mappings\":\";AAAA,MAAM,IAAI,KAAK,CAAC,KAAK,CAAC,CAAC\"}").expect("Failed to write faulty source map.");
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::root_path())
@@ -394,7 +394,7 @@ itest!(lock_write_fetch {
 });
 
 itest!(lock_check_ok {
-    args: "run --lock=lock_check_ok.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
+    args: "run --lock=lock_check_ok.json http://127.0.0.1:4545/003_relative_import.ts",
     output: "003_relative_import.ts.out",
     http_server: true,
   });
@@ -406,14 +406,14 @@ itest!(lock_check_ok2 {
 });
 
 itest!(lock_dynamic_imports {
-  args: "run --lock=lock_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/cli/tests/013_dynamic_import.ts",
+  args: "run --lock=lock_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/013_dynamic_import.ts",
   output: "lock_dynamic_imports.out",
   exit_code: 10,
   http_server: true,
 });
 
 itest!(lock_check_err {
-  args: "run --lock=lock_check_err.json http://127.0.0.1:4545/cli/tests/003_relative_import.ts",
+  args: "run --lock=lock_check_err.json http://127.0.0.1:4545/003_relative_import.ts",
   output: "lock_check_err.out",
   exit_code: 10,
   http_server: true,
@@ -649,14 +649,14 @@ itest!(error_type_definitions {
 });
 
 itest!(error_local_static_import_from_remote_ts {
-    args: "run --reload http://localhost:4545/cli/tests/error_local_static_import_from_remote.ts",
+    args: "run --reload http://localhost:4545/error_local_static_import_from_remote.ts",
     exit_code: 1,
     http_server: true,
     output: "error_local_static_import_from_remote.ts.out",
   });
 
 itest!(error_local_static_import_from_remote_js {
-    args: "run --reload http://localhost:4545/cli/tests/error_local_static_import_from_remote.js",
+    args: "run --reload http://localhost:4545/error_local_static_import_from_remote.js",
     exit_code: 1,
     http_server: true,
     output: "error_local_static_import_from_remote.js.out",
@@ -938,14 +938,14 @@ itest!(_053_import_compression {
 });
 
 itest!(disallow_http_from_https_js {
-  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.js",
+  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/disallow_http_from_https.js",
   output: "disallow_http_from_https_js.out",
   http_server: true,
   exit_code: 1,
 });
 
 itest!(disallow_http_from_https_ts {
-  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/cli/tests/disallow_http_from_https.ts",
+  args: "run --quiet --reload --cert tls/RootCA.pem https://localhost:5545/disallow_http_from_https.ts",
   output: "disallow_http_from_https_ts.out",
   http_server: true,
   exit_code: 1,

@@ -1,12 +1,12 @@
 {
-  "root": "file://[WILDCARD]/cli/tests/005_more_imports.ts",
+  "root": "file://[WILDCARD]/005_more_imports.ts",
   "modules": [
     {
-      "specifier": "file://[WILDCARD]/cli/tests/005_more_imports.ts",
+      "specifier": "file://[WILDCARD]/005_more_imports.ts",
       "dependencies": [
         {
           "specifier": "./subdir/mod1.ts",
-          "code": "file://[WILDCARD]/cli/tests/subdir/mod1.ts"
+          "code": "file://[WILDCARD]/subdir/mod1.ts"
         }
       ],
       "size": 211,
@@ -15,11 +15,11 @@
       [WILDCARD]
     },
     {
-      "specifier": "file://[WILDCARD]/cli/tests/subdir/mod1.ts",
+      "specifier": "file://[WILDCARD]/subdir/mod1.ts",
       "dependencies": [
         {
           "specifier": "./subdir2/mod2.ts",
-          "code": "file://[WILDCARD]/cli/tests/subdir/subdir2/mod2.ts"
+          "code": "file://[WILDCARD]/subdir/subdir2/mod2.ts"
         }
       ],
       "size": 308,
@@ -28,7 +28,7 @@
       [WILDCARD]
     },
     {
-      "specifier": "file://[WILDCARD]/cli/tests/subdir/print_hello.ts",
+      "specifier": "file://[WILDCARD]/subdir/print_hello.ts",
       "dependencies": [],
       "size": 57,
       "mediaType": "TypeScript",
@@ -36,11 +36,11 @@
       [WILDCARD]
     },
     {
-      "specifier": "file://[WILDCARD]/cli/tests/subdir/subdir2/mod2.ts",
+      "specifier": "file://[WILDCARD]/subdir/subdir2/mod2.ts",
       "dependencies": [
         {
           "specifier": "../print_hello.ts",
-          "code": "file://[WILDCARD]/cli/tests/subdir/print_hello.ts"
+          "code": "file://[WILDCARD]/subdir/print_hello.ts"
         }
       ],
       "size": 157,
