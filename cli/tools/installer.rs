@@ -437,11 +437,11 @@ mod tests {
     assert_eq!(content.chars().last().unwrap(), '\n');
 
     if cfg!(windows) {
-      assert!(content
-        .contains(r#""run" "http://localhost:4545/echo_server.ts""#));
+      assert!(
+        content.contains(r#""run" "http://localhost:4545/echo_server.ts""#)
+      );
     } else {
-      assert!(content
-        .contains(r#"run 'http://localhost:4545/echo_server.ts'"#));
+      assert!(content.contains(r#"run 'http://localhost:4545/echo_server.ts'"#));
     }
     if let Some(home) = original_home {
       env::set_var("HOME", home);
@@ -487,9 +487,8 @@ mod tests {
         r#""run" "--unstable" "http://localhost:4545/echo_server.ts""#
       ));
     } else {
-      assert!(content.contains(
-        r#"run --unstable 'http://localhost:4545/echo_server.ts'"#
-      ));
+      assert!(content
+        .contains(r#"run --unstable 'http://localhost:4545/echo_server.ts'"#));
     }
   }
 
@@ -517,11 +516,11 @@ mod tests {
     assert!(file_path.exists());
     let content = fs::read_to_string(file_path).unwrap();
     if cfg!(windows) {
-      assert!(content
-        .contains(r#""run" "http://localhost:4545/echo_server.ts""#));
+      assert!(
+        content.contains(r#""run" "http://localhost:4545/echo_server.ts""#)
+      );
     } else {
-      assert!(content
-        .contains(r#"run 'http://localhost:4545/echo_server.ts'"#));
+      assert!(content.contains(r#"run 'http://localhost:4545/echo_server.ts'"#));
     }
   }
 
@@ -549,11 +548,11 @@ mod tests {
     assert!(file_path.exists());
     let content = fs::read_to_string(file_path).unwrap();
     if cfg!(windows) {
-      assert!(content
-        .contains(r#""run" "http://localhost:4545/subdir/main.ts""#));
+      assert!(
+        content.contains(r#""run" "http://localhost:4545/subdir/main.ts""#)
+      );
     } else {
-      assert!(content
-        .contains(r#"run 'http://localhost:4545/subdir/main.ts'"#));
+      assert!(content.contains(r#"run 'http://localhost:4545/subdir/main.ts'"#));
     }
   }
 
@@ -581,11 +580,11 @@ mod tests {
     assert!(file_path.exists());
     let content = fs::read_to_string(file_path).unwrap();
     if cfg!(windows) {
-      assert!(content
-        .contains(r#""run" "http://localhost:4545/echo_server.ts""#));
+      assert!(
+        content.contains(r#""run" "http://localhost:4545/echo_server.ts""#)
+      );
     } else {
-      assert!(content
-        .contains(r#"run 'http://localhost:4545/echo_server.ts'"#));
+      assert!(content.contains(r#"run 'http://localhost:4545/echo_server.ts'"#));
     }
   }
 
@@ -616,11 +615,11 @@ mod tests {
     assert!(file_path.exists());
     let content = fs::read_to_string(file_path).unwrap();
     if cfg!(windows) {
-      assert!(content
-        .contains(r#""run" "http://localhost:4545/echo_server.ts""#));
+      assert!(
+        content.contains(r#""run" "http://localhost:4545/echo_server.ts""#)
+      );
     } else {
-      assert!(content
-        .contains(r#"run 'http://localhost:4545/echo_server.ts'"#));
+      assert!(content.contains(r#"run 'http://localhost:4545/echo_server.ts'"#));
     }
     if let Some(install_root) = original_install_root {
       env::set_var("DENO_INSTALL_ROOT", install_root);
@@ -808,9 +807,9 @@ mod tests {
     if cfg!(windows) {
       // TODO: see comment above this test
     } else {
-      assert!(content.contains(
-        r#"run 'http://localhost:4545/echo_server.ts' '"'"#
-      ));
+      assert!(
+        content.contains(r#"run 'http://localhost:4545/echo_server.ts' '"'"#)
+      );
     }
   }
 

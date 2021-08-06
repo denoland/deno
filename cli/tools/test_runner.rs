@@ -721,8 +721,7 @@ mod tests {
       is_supported,
     )
     .unwrap();
-    let test_data_url =
-      Url::from_file_path(sub_dir_path).unwrap().to_string();
+    let test_data_url = Url::from_file_path(sub_dir_path).unwrap().to_string();
 
     let expected: Vec<Url> = vec![
       format!("{}/mod1.ts", test_data_url),

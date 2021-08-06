@@ -23,8 +23,7 @@ fn fmt_test() {
   std::fs::copy(&badly_formatted_original_md, &badly_formatted_md)
     .expect("Failed to copy file");
 
-  let fixed_json =
-    util::testdata_path().join("badly_formatted_fixed.json");
+  let fixed_json = util::testdata_path().join("badly_formatted_fixed.json");
   let badly_formatted_original_json =
     util::testdata_path().join("badly_formatted.json");
   let badly_formatted_json = t.path().join("badly_formatted.json");

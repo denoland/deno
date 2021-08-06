@@ -117,8 +117,7 @@ fn cache_test() {
   let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
-    url::Url::parse("http://localhost:4545/006_url_imports.ts")
-      .unwrap();
+    url::Url::parse("http://localhost:4545/006_url_imports.ts").unwrap();
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::testdata_path())
@@ -149,8 +148,7 @@ fn cache_test() {
 
   let str_output = std::str::from_utf8(&output.stdout).unwrap();
 
-  let module_output_path =
-    util::testdata_path().join("006_url_imports.ts.out");
+  let module_output_path = util::testdata_path().join("006_url_imports.ts.out");
   let mut module_output = String::new();
   let mut module_output_file = fs::File::open(module_output_path).unwrap();
   module_output_file
@@ -481,8 +479,7 @@ fn cafile_env_fetch() {
   let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
-    Url::parse("https://localhost:5545/cafile_url_imports.ts")
-      .unwrap();
+    Url::parse("https://localhost:5545/cafile_url_imports.ts").unwrap();
   let cafile = util::testdata_path().join("tls/RootCA.pem");
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
@@ -502,8 +499,7 @@ fn cafile_fetch() {
   let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
-    Url::parse("http://localhost:4545/cafile_url_imports.ts")
-      .unwrap();
+    Url::parse("http://localhost:4545/cafile_url_imports.ts").unwrap();
   let cafile = util::testdata_path().join("tls/RootCA.pem");
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
@@ -1014,8 +1010,9 @@ async fn listen_tls_alpn() {
       assert_eq!(msg, "READY");
 
       let mut cfg = rustls::ClientConfig::new();
-      let reader =
-        &mut BufReader::new(Cursor::new(include_bytes!("../testdata/tls/RootCA.crt")));
+      let reader = &mut BufReader::new(Cursor::new(include_bytes!(
+        "../testdata/tls/RootCA.crt"
+      )));
       cfg.root_store.add_pem_file(reader).unwrap();
       cfg.alpn_protocols.push("foobar".as_bytes().to_vec());
       let cfg = Arc::new(cfg);
@@ -1066,8 +1063,9 @@ async fn listen_tls_alpn_fail() {
       assert_eq!(msg, "READY");
 
       let mut cfg = rustls::ClientConfig::new();
-      let reader =
-        &mut BufReader::new(Cursor::new(include_bytes!("../testdata/tls/RootCA.crt")));
+      let reader = &mut BufReader::new(Cursor::new(include_bytes!(
+        "../testdata/tls/RootCA.crt"
+      )));
       cfg.root_store.add_pem_file(reader).unwrap();
       cfg.alpn_protocols.push("boofar".as_bytes().to_vec());
       let cfg = Arc::new(cfg);

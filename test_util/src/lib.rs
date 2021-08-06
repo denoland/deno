@@ -304,7 +304,9 @@ async fn run_wss_server(addr: &SocketAddr) {
   let cert_file = testdata_path().join("tls/localhost.crt");
   let key_file = testdata_path().join("tls/localhost.key");
 
-  let tls_config = get_tls_config(&cert_file, &key_file).await.expect("Cannot get TLS config");
+  let tls_config = get_tls_config(&cert_file, &key_file)
+    .await
+    .expect("Cannot get TLS config");
   let tls_acceptor = TlsAcceptor::from(tls_config);
   let listener = TcpListener::bind(addr).await.unwrap();
 
@@ -634,8 +636,8 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       Ok(res)
     }
     (_, "/.well-known/deno-import-intellisense.json") => {
-      let file_path = testdata_path()
-        .join("lsp/registries/deno-import-intellisense.json");
+      let file_path =
+        testdata_path().join("lsp/registries/deno-import-intellisense.json");
       if let Ok(body) = tokio::fs::read(file_path).await {
         Ok(custom_headers(
           "/.well-known/deno-import-intellisense.json",
@@ -649,7 +651,7 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       let mut file_path = testdata_path();
       file_path.push(&req.uri().path()[1..]);
       if let Ok(file) = tokio::fs::read(file_path).await {
-        let file_resp = custom_headers(&req.uri().path(), file);
+        let file_resp = custom_headers(req.uri().path(), file);
         return Ok(file_resp);
       }
 

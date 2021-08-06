@@ -2471,8 +2471,10 @@ pub mod tests {
     let specifier = resolve_url_or_path("file:///tests/checkwithconfig.ts")
       .expect("could not resolve module");
     let (graph, handler) = setup(specifier.clone()).await;
-    let config_file =
-      ConfigFile::read(test_util::testdata_path().join("module_graph/tsconfig_01.json")).unwrap();
+    let config_file = ConfigFile::read(
+      test_util::testdata_path().join("module_graph/tsconfig_01.json"),
+    )
+    .unwrap();
     let result_info = graph
       .check(CheckOptions {
         debug: false,
@@ -2493,8 +2495,10 @@ pub mod tests {
 
     // let's do it all over again to ensure that the versions are determinstic
     let (graph, handler) = setup(specifier).await;
-    let config_file =
-      ConfigFile::read(test_util::testdata_path().join("module_graph/tsconfig_01.json")).unwrap();
+    let config_file = ConfigFile::read(
+      test_util::testdata_path().join("module_graph/tsconfig_01.json"),
+    )
+    .unwrap();
     let result_info = graph
       .check(CheckOptions {
         debug: false,
@@ -2722,8 +2726,10 @@ pub mod tests {
     let specifier = resolve_url_or_path("https://deno.land/x/transpile.tsx")
       .expect("could not resolve module");
     let (mut graph, handler) = setup(specifier).await;
-    let config_file =
-      ConfigFile::read(test_util::testdata_path().join("module_graph/tsconfig.json")).unwrap();
+    let config_file = ConfigFile::read(
+      test_util::testdata_path().join("module_graph/tsconfig.json"),
+    )
+    .unwrap();
     let result_info = graph
       .transpile(TranspileOptions {
         debug: false,

@@ -124,8 +124,7 @@ fn bundle_circular() {
 #[test]
 fn bundle_single_module() {
   // First we have to generate a bundle of some module that has exports.
-  let single_module =
-    util::testdata_path().join("subdir/single_module.ts");
+  let single_module = util::testdata_path().join("subdir/single_module.ts");
   assert!(single_module.is_file());
   let t = TempDir::new().expect("tempdir fail");
   let bundle = t.path().join("single_module.bundle.js");
@@ -227,8 +226,7 @@ fn bundle_js() {
 #[test]
 fn bundle_dynamic_import() {
   let _g = util::http_server();
-  let dynamic_import =
-    util::testdata_path().join("bundle_dynamic_import.ts");
+  let dynamic_import = util::testdata_path().join("bundle_dynamic_import.ts");
   assert!(dynamic_import.is_file());
   let t = TempDir::new().expect("tempdir fail");
   let bundle = t.path().join("bundle_dynamic_import.bundle.js");

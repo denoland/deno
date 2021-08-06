@@ -155,8 +155,7 @@ itest!(_034_onload {
 });
 
 itest!(_035_cached_only_flag {
-  args:
-    "run --reload --cached-only http://127.0.0.1:4545/019_media_types.ts",
+  args: "run --reload --cached-only http://127.0.0.1:4545/019_media_types.ts",
   output: "035_cached_only_flag.out",
   exit_code: 1,
   http_server: true,
@@ -203,8 +202,7 @@ itest!(_048_media_types_jsx {
 });
 
 itest!(_052_no_remote_flag {
-  args:
-    "run --reload --no-remote http://127.0.0.1:4545/019_media_types.ts",
+  args: "run --reload --no-remote http://127.0.0.1:4545/019_media_types.ts",
   output: "052_no_remote_flag.out",
   exit_code: 1,
   http_server: true,
@@ -288,10 +286,9 @@ itest!(_082_prepare_stack_trace_throw {
 fn _083_legacy_external_source_map() {
   let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
-  let module_url = url::Url::parse(
-    "http://localhost:4545/083_legacy_external_source_map.ts",
-  )
-  .unwrap();
+  let module_url =
+    url::Url::parse("http://localhost:4545/083_legacy_external_source_map.ts")
+      .unwrap();
   // Write a faulty old external source map.
   let faulty_map_path = deno_dir.path().join("gen/http/localhost_PORT4545/9576bd5febd0587c5c4d88d57cb3ac8ebf2600c529142abe3baa9a751d20c334.js.map");
   std::fs::create_dir_all(faulty_map_path.parent().unwrap())
@@ -394,10 +391,11 @@ itest!(lock_write_fetch {
 });
 
 itest!(lock_check_ok {
-    args: "run --lock=lock_check_ok.json http://127.0.0.1:4545/003_relative_import.ts",
-    output: "003_relative_import.ts.out",
-    http_server: true,
-  });
+  args:
+    "run --lock=lock_check_ok.json http://127.0.0.1:4545/003_relative_import.ts",
+  output: "003_relative_import.ts.out",
+  http_server: true,
+});
 
 itest!(lock_check_ok2 {
   args: "run --lock=lock_check_ok2.json 019_media_types.ts",
@@ -1389,7 +1387,10 @@ mod permissions {
         .arg(format!(
           "--allow-{0}={1}",
           permission,
-          util::testdata_path().into_os_string().into_string().unwrap()
+          util::testdata_path()
+            .into_os_string()
+            .into_string()
+            .unwrap()
         ))
         .arg("complex_permissions_test.ts")
         .arg(permission)

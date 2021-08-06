@@ -349,8 +349,9 @@ mod tests {
 
   #[test]
   fn read_config_file_relative() {
-    let config_file = ConfigFile::read("tests/testdata/module_graph/tsconfig.json")
-      .expect("Failed to load config file");
+    let config_file =
+      ConfigFile::read("tests/testdata/module_graph/tsconfig.json")
+        .expect("Failed to load config file");
     assert!(config_file.json.compiler_options.is_some());
   }
 

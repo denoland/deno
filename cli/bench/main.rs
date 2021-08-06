@@ -41,7 +41,11 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   ),
   (
     "cold_relative_import",
-    &["run", "--reload", "cli/tests/testdata/003_relative_import.ts"],
+    &[
+      "run",
+      "--reload",
+      "cli/tests/testdata/003_relative_import.ts",
+    ],
     None,
   ),
   ("hello", &["run", "cli/tests/testdata/002_hello.ts"], None),
@@ -50,15 +54,28 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &["run", "cli/tests/testdata/003_relative_import.ts"],
     None,
   ),
-  ("error_001", &["run", "cli/tests/testdata/error_001.ts"], Some(1)),
+  (
+    "error_001",
+    &["run", "cli/tests/testdata/error_001.ts"],
+    Some(1),
+  ),
   (
     "no_check_hello",
-    &["run", "--reload", "--no-check", "cli/tests/testdata/002_hello.ts"],
+    &[
+      "run",
+      "--reload",
+      "--no-check",
+      "cli/tests/testdata/002_hello.ts",
+    ],
     None,
   ),
   (
     "workers_startup",
-    &["run", "--allow-read", "cli/tests/testdata/workers/bench_startup.ts"],
+    &[
+      "run",
+      "--allow-read",
+      "cli/tests/testdata/workers/bench_startup.ts",
+    ],
     None,
   ),
   (

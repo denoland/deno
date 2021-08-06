@@ -47,12 +47,7 @@ pub(crate) fn tcp(deno_exe: &Path, megs: usize) -> Result<f64> {
 
   // Run deno echo server in the background.
   let mut echo_server = Command::new(deno_exe.to_str().unwrap())
-    .args(&[
-      "run",
-      "--allow-net",
-      "echo_server.ts",
-      SERVER_ADDR,
-    ])
+    .args(&["run", "--allow-net", "echo_server.ts", SERVER_ADDR])
     .current_dir(test_util::testdata_path())
     .spawn()?;
 
