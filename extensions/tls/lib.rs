@@ -12,13 +12,13 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::Extension;
 
+use reqwest::header::HeaderMap;
+use reqwest::header::USER_AGENT;
+use reqwest::redirect::Policy;
 use reqwest::Client;
 use rustls::ClientConfig;
 use rustls::RootCertStore;
 use rustls::StoresClientSessions;
-use reqwest::header::HeaderMap;
-use reqwest::header::USER_AGENT;
-use reqwest::redirect::Policy;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::io::BufReader;

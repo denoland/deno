@@ -696,7 +696,7 @@ where
     .map_err(|_| invalid_hostname(hostname))?;
 
   // TODO(@justinmchase): Ideally the certificate store is created once
-  // and not cloned. The store should be wrapped in Arc<T> to reduce 
+  // and not cloned. The store should be wrapped in Arc<T> to reduce
   // copying memory unnecessarily.
   let root_cert_store = state
     .borrow()
