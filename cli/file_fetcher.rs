@@ -667,8 +667,7 @@ mod tests {
   }
 
   async fn test_fetch_local_encoded(charset: &str, expected: String) {
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .join(format!("tests/encoding/{}.ts", charset));
+    let p = test_util::testdata_path().join(format!("encoding/{}.ts", charset));
     let specifier = resolve_url_or_path(p.to_str().unwrap()).unwrap();
     let (file, _) = test_fetch(&specifier).await;
     assert_eq!(file.source, expected);

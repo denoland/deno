@@ -2069,7 +2069,6 @@ pub mod tests {
   use crate::specifier_handler::MemoryHandler;
   use deno_core::futures::future;
   use deno_core::parking_lot::Mutex;
-  use std::env;
   use std::fs;
   use std::path::PathBuf;
 
@@ -2753,8 +2752,7 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_import_map_remote_to_local() {
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/module_graph");
+    let fixtures = test_util::testdata_path().join("module_graph");
     let maybe_import_map = Some(
       ImportMap::from_json(
         "file:///tests/importmap.json",
