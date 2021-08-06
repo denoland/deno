@@ -13,9 +13,10 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use log::debug;
-use regex::Regex;
+use ipnet::IpNet;
 use std::collections::HashSet;
 use std::fmt;
+use std::net::IpAddr;
 use std::hash::Hash;
 #[cfg(not(test))]
 use std::io;
@@ -176,10 +177,13 @@ pub struct WriteDescriptor(pub PathBuf);
 pub struct NetDescriptor(pub String, pub Option<u16>);
 
 fn is_cidr(addr: &str) -> bool {
-  lazy_static::lazy_static! {
-    static ref RE: Regex = Regex::new("^[0-9]{1,3}(.[0-9]{1,3}){3}/[0-9]{1,2}($|(:[0-9]{1,5}))$").unwrap();
+  let res: Result<IpNet, _> = addr.parse();
+  if res.is_err() {
+    return false;
   }
-  RE.is_match(addr)
+  let res = res.unwrap();
+
+  res.prefix_len() < res.max_prefix_len()
 }
 
 impl NetDescriptor {
@@ -188,13 +192,10 @@ impl NetDescriptor {
   }
 
   pub fn from_string(host: String) -> Self {
-    if is_cidr(host.as_str()) {
-      let mut parts = host.split(':');
-      return NetDescriptor(
-        parts.next().unwrap_or(&"").to_string(),
-        parts.next().unwrap_or(&"").parse::<u16>().ok(),
-      );
+    if is_cidr(&host) {
+      return NetDescriptor(host, None);
     }
+
     let url = url::Url::parse(&format!("http://{}", host)).unwrap();
     let hostname = url.host_str().unwrap().to_string();
 
@@ -449,29 +450,6 @@ impl UnaryPermission<WriteDescriptor> {
   }
 }
 
-fn is_ip(addr: &str) -> bool {
-  lazy_static::lazy_static! {
-    static ref RE: Regex = Regex::new("^[0-9]{1,3}(.[0-9]{1,3}){3}$").unwrap();
-  }
-  RE.is_match(addr)
-}
-
-fn parse_ip(addr: &str) -> u32 {
-  let mut parts = addr.split('.');
-  (parts.next().unwrap_or(&"0").parse::<u32>().unwrap() << 24)
-    + (parts.next().unwrap_or(&"0").parse::<u32>().unwrap() << 16)
-    + (parts.next().unwrap_or(&"0").parse::<u32>().unwrap() << 8)
-    + parts.next().unwrap_or("0").parse::<u32>().unwrap()
-}
-
-fn parse_cidr(cidr: &str) -> (u32, u32) {
-  let mut parts = cidr.split('/');
-  let cidr_base = parse_ip(parts.next().unwrap_or(&"127.0.0.1"));
-  let mask = parts.next().unwrap_or(&"32").parse::<u32>().unwrap();
-  let mutate = 2_u32.pow(32 - mask) - 1;
-  (cidr_base & !mutate, (cidr_base & !mutate) + mutate)
-}
-
 impl UnaryPermission<NetDescriptor> {
   pub fn query<T: AsRef<str>>(
     &self,
@@ -501,18 +479,22 @@ impl UnaryPermission<NetDescriptor> {
             || self.granted_list.contains(&NetDescriptor::new(host))
             || {
               let mut found_matching_cidr = false;
+              let ip: Result<IpAddr, _> = host.0.as_ref().parse();
+              if ip.is_err() {
+                return PermissionState::Prompt;
+              }
+              let ip = ip.unwrap();
+
               for x in self.granted_list.iter() {
-                if !is_cidr(&x.0) {
+                let net: &str = x.0.as_ref();
+                let net: Result<IpNet, _> = net.parse();
+                if net.is_err() {
                   continue;
                 }
-                if !is_ip(host.0.as_ref()) {
-                  break;
-                }
-                let host_ip = parse_ip(host.0.as_ref());
-                let (min, max) = parse_cidr(x.0.as_ref());
-                found_matching_cidr = (host_ip >= min)
-                  && (host_ip <= max)
-                  && (x.1 == None || host.1 == x.1);
+                let net = net.unwrap();
+
+                found_matching_cidr = net.contains(&ip);
+
                 if found_matching_cidr {
                   break;
                 }
@@ -1269,8 +1251,9 @@ mod tests {
         "127.0.0.1",
         "172.16.0.2:8000",
         "www.github.com:443",
-        "10.7.0.0/24:8000",
-        "10.8.0.0/26"
+        "10.7.0.0/24",
+        "10.8.0.0/26",
+        "2001:db8::/32"
       ]),
       ..Default::default()
     });
@@ -1295,12 +1278,11 @@ mod tests {
       ("172.16.0.1", 8000, false),
       ("10.7.0.1", 8000, true),
       ("10.7.0.78", 8000, true),
-      ("10.7.0.1", 6000, false),
-      ("10.7.0.78", 6000, false),
       ("10.8.0.1", 8000, true),
-      ("10.8.0.1", 6000, true),
       ("10.8.0.78", 8000, false),
-      ("10.8.0.78", 6000, false),
+      ("2001:db8::1", 8000, true),
+      ("2001:db8:ffff::", 8000, true),
+      ("2001:db9::", 8000, false),
       // Just some random hosts that should err
       ("somedomain", 0, false),
       ("192.168.0.1", 0, false),
@@ -1389,7 +1371,7 @@ mod tests {
         "127.0.0.1",
         "172.16.0.2:8000",
         "www.github.com:443",
-        "10.7.0.0/24:8000",
+        "10.7.0.0/24",
         "10.8.0.0/26"
       ]),
       ..Default::default()
@@ -1431,7 +1413,6 @@ mod tests {
       ("tcp://172.16.0.1:8000", false),
       ("https://172.16.0.1:8000", false),
       ("tcp://10.7.0.78:8000", true),
-      ("tcp://10.7.0.78:6000", false),
       ("tcp://10.8.0.1:1234", true),
       ("tcp://10.8.0.78:1234", false),
       // Testing issue #6531 (Network permissions check doesn't account for well-known default ports) so we dont regress

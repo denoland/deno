@@ -61,6 +61,7 @@ http = "0.2.4"
 hyper = { version = "0.14.10", features = ["server", "stream", "http1", "http2", "runtime"] }
 # TODO(lucacasonato): unlock when https://github.com/tkaitchuck/aHash/issues/95 is resolved
 indexmap = "=1.6.2"
+ipnet = "2.3.1"
 lazy_static = "1.4.0"
 libc = "0.2.98"
 log = "0.4.14"
