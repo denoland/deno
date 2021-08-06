@@ -1714,6 +1714,12 @@ declare namespace Deno {
     create?: boolean;
     /** Permissions always applied to file. */
     mode?: number;
+    /**
+     * An abort signal to allow cancellation of the file write operation.
+     * If the signal becomes aborted the writeFile operation will be stopped
+     * and the promise returned will be rejected with an AbortError.
+     */
+    signal?: AbortSignal;
   }
 
   /** Synchronously write `data` to the given `path`, by default creating a new
