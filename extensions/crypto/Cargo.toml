@@ -20,9 +20,9 @@ lazy_static = "1.4.0"
 num-traits = "0.2.14"
 rand = "0.8.4"
 ring = { version = "0.16.20", features = ["std"] }
-rsa = "0.4.0" # TODO: remove "pem" feature when next release is on crates.io
+rsa = { version = "0.5.0", default-features = false, features = ["std"] }
 serde = { version = "1.0.126", features = ["derive"] }
-sha-1 = "0.9.6"
+sha-1 = "0.9.7"
 sha2 = "0.9.5"
 tokio = { version = "1.8.1", features = ["full"] }
 uuid = { version = "0.8.2", features = ["v4"] }
