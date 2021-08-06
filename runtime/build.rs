@@ -73,11 +73,6 @@ fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
 }
 
 fn main() {
-  // Skip building from docs.rs.
-  if env::var_os("DOCS_RS").is_some() {
-    return;
-  }
-
   // To debug snapshot issues uncomment:
   // op_fetch_asset::trace_serializer();
 
