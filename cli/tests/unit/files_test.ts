@@ -264,7 +264,7 @@ unitTest(
 );
 
 unitTest(async function openOptions() {
-  const filename = "fixture.json";
+  const filename = "cli/tests/testdata/fixture.json";
   await assertThrowsAsync(
     async () => {
       await Deno.open(filename, { write: false });
