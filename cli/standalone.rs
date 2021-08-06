@@ -242,7 +242,7 @@ pub async fn run(
     let reader = &mut BufReader::new(Cursor::new(cert));
     // This function does not return specific errors, if it fails give a generic message.
     if let Err(_err) = root_cert_store.add_pem_file(reader) {
-      return Err(anyhow!("Unable to add pen file to certificate store"));
+      return Err(anyhow!("Unable to add pem file to certificate store"));
     }
   }
 
