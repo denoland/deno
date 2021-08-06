@@ -1013,3 +1013,29 @@ unitTest(
     conn.close();
   },
 );
+
+unitTest(
+  { perms: { read: true, net: true } },
+  async function connectWithClientCert() {
+    /* Try:
+         curl --key cli/tests/tls/localhost.key \
+              --cert cli/tests/tls/localhost.crt \
+              --cacert cli/tests/tls/RootCA.crt https://localhost:4552/
+    */
+    const conn = await Deno.connectTls({
+      hostname: "localhost",
+      port: 4552,
+      certChain: await Deno.readTextFile("cli/tests/tls/localhost.crt"),
+      privateKey: await Deno.readTextFile("cli/tests/tls/localhost.key"),
+      certFile: "cli/tests/tls/RootCA.crt",
+    });
+
+    const reader = new TextProtoReader(new BufReader(conn));
+    const result = await reader.readLine() as string;
+
+    // Server will respond with PASS if client authentication was successful.
+    assertEquals(result, "PASS");
+
+    conn.close();
+  },
+);

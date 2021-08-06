@@ -361,6 +361,11 @@ async fn run_wss_server(addr: &SocketAddr) {
 }
 
 async fn run_tls_client_auth_server(addr: &SocketAddr) {
+  /* Expect PASS
+       curl --key cli/tests/tls/localhost.key \
+            --cert cli/tests/tls/localhost.crt \
+            --cacert cli/tests/tls/RootCA.crt https://localhost:4552/
+  */
   let cert_file = "cli/tests/tls/localhost.crt";
   let key_file = "cli/tests/tls/localhost.key";
   let ca_cert_file = "cli/tests/tls/RootCA.pem";
