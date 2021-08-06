@@ -27,7 +27,7 @@ async fn main() -> Result<(), AnyError> {
     args: vec![],
     debug_flag: false,
     unstable: false,
-    ca_data: None,
+    root_cert_store: None,
     user_agent: "hello_runtime".to_string(),
     seed: None,
     js_error_create_fn: None,

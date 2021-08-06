@@ -26,6 +26,7 @@ deno_fetch = { version = "0.36.0", path = "../extensions/fetch" }
 deno_http = { version = "0.4.0", path = "../extensions/http" }
 deno_net = { version = "0.4.0", path = "../extensions/net" }
 deno_timers = { version = "0.11.0", path = "../extensions/timers" }
+deno_tls = { version = "0.1.0", path = "../extensions/tls" }
 deno_url = { version = "0.13.0", path = "../extensions/url" }
 deno_web = { version = "0.44.0", path = "../extensions/web" }
 deno_webgpu = { version = "0.14.0", path = "../extensions/webgpu" }
@@ -46,6 +47,7 @@ deno_fetch = { version = "0.36.0", path = "../extensions/fetch" }
 deno_http = { version = "0.4.0", path = "../extensions/http" }
 deno_net = { version = "0.4.0", path = "../extensions/net" }
 deno_timers = { version = "0.11.0", path = "../extensions/timers" }
+deno_tls = { version = "0.1.0", path = "../extensions/tls" }
 deno_url = { version = "0.13.0", path = "../extensions/url" }
 deno_web = { version = "0.44.0", path = "../extensions/web" }
 deno_webgpu = { version = "0.14.0", path = "../extensions/webgpu" }
