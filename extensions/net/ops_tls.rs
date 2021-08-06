@@ -838,7 +838,7 @@ where
 
     tls_config.set_single_client_cert(
       load_certs(&mut cert_chain.as_bytes())?,
-      load_private_keys(&private_key.as_bytes())?.remove(0),
+      load_private_keys(private_key.as_bytes())?.remove(0),
     )?;
   }
 
@@ -906,10 +906,10 @@ fn load_pkcs8_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
 }
 
 fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
-  let mut keys = load_rsa_keys(&bytes)?;
+  let mut keys = load_rsa_keys(bytes)?;
 
   if keys.is_empty() {
-    keys = load_pkcs8_keys(&bytes)?;
+    keys = load_pkcs8_keys(bytes)?;
   }
 
   if keys.is_empty() {
@@ -982,8 +982,8 @@ where
   }
   tls_config
     .set_single_cert(
-      load_certs_from_file(&cert_file)?,
-      load_private_keys_from_file(&key_file)?.remove(0),
+      load_certs_from_file(cert_file)?,
+      load_private_keys_from_file(key_file)?.remove(0),
     )
     .expect("invalid key or certificate");
 
