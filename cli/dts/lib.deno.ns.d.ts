@@ -2133,17 +2133,17 @@ declare namespace Deno {
 
   export interface RunPermissionDescriptor {
     name: "run";
-    command?: string;
+    command?: string | URL;
   }
 
   export interface ReadPermissionDescriptor {
     name: "read";
-    path?: string;
+    path?: string | URL;
   }
 
   export interface WritePermissionDescriptor {
     name: "write";
-    path?: string;
+    path?: string | URL;
   }
 
   export interface NetPermissionDescriptor {
@@ -2153,7 +2153,7 @@ declare namespace Deno {
      *      "github.com"
      *      "deno.land:8080"
      */
-    host?: string;
+    host?: string | URL;
   }
 
   export interface EnvPermissionDescriptor {

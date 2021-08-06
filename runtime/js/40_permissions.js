@@ -8,6 +8,7 @@
     Deno: { core },
     __bootstrap: { webUtil: { illegalConstructorKey } },
   } = window;
+  const { pathFromURL } = window.__bootstrap.util;
   const {
     ArrayPrototypeIncludes,
     Map,
@@ -161,6 +162,17 @@
           ),
         );
       }
+
+      if (desc.name === "read" || desc.name === "write") {
+        desc.path = pathFromURL(desc.path);
+      } else if (desc.name === "run") {
+        desc.command = pathFromURL(desc.command);
+      } else if (desc.name === "net") {
+        if (desc.host instanceof URL) {
+          desc.host = desc.host.host;
+        }
+      }
+
       const state = opQuery(desc);
       return PromiseResolve(cache(desc, state));
     }
@@ -173,6 +185,17 @@
           ),
         );
       }
+
+      if (desc.name === "read" || desc.name === "write") {
+        desc.path = pathFromURL(desc.path);
+      } else if (desc.name === "run") {
+        desc.command = pathFromURL(desc.command);
+      } else if (desc.name === "net") {
+        if (desc.host instanceof URL) {
+          desc.host = desc.host.host;
+        }
+      }
+
       const state = opRevoke(desc);
       return PromiseResolve(cache(desc, state));
     }
@@ -185,6 +208,17 @@
           ),
         );
       }
+
+      if (desc.name === "read" || desc.name === "write") {
+        desc.path = pathFromURL(desc.path);
+      } else if (desc.name === "run") {
+        desc.command = pathFromURL(desc.command);
+      } else if (desc.name === "net") {
+        if (desc.host instanceof URL) {
+          desc.host = desc.host.host;
+        }
+      }
+
       const state = opRequest(desc);
       return PromiseResolve(cache(desc, state));
     }
