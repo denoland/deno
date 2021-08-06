@@ -2,7 +2,7 @@ import { a as defaultA, O } from "./subdir/m.ts";
 export { O } from "./subdir/m.ts";
 
 interface AOptions {
-  a?(): void;
+  a?();
   c?: O;
 }
 

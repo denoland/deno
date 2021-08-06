@@ -1,5 +1,5 @@
 export default class A {
   render() {
-    return (<div>Hello world!</div>);
+    return <div>Hello world!</div>;
   }
 }

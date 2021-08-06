@@ -1,2 +1,2 @@
-export function thing(): void {
+export function thing() {
 }

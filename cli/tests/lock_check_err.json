@@ -1,4 +1,4 @@
 {
-  "http://127.0.0.1:4545/cli/tests/subdir/print_hello.ts": "fe7bbccaedb6579200a8b582f905139296402d06b1b91109d6e12c41a23125da",
+  "http://127.0.0.1:4545/cli/tests/subdir/print_hello.ts": "fa6692c8f9ff3fb107e773c3ece5274e9d08be282867a1e3ded1d9c00fcaa63c",
   "http://127.0.0.1:4545/cli/tests/003_relative_import.ts": "bad"
 }

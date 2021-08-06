@@ -423,6 +423,19 @@ fn import_declarations() {
 }
 
 #[test]
+fn exports_stripped() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["export default 5;", "export class Test {}"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(out.contains("5\n"));
+  assert!(err.is_empty());
+}
+
+#[test]
 fn eval_unterminated() {
   let (out, err) = util::run_and_collect_output(
     true,

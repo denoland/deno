@@ -1,4 +1,4 @@
-const p = (async (): Promise<void> => {
+const p = (async () => {
   await Promise.resolve().then((): never => {
     throw new Error("async");
   });

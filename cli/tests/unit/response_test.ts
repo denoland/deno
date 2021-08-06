@@ -56,7 +56,7 @@ unitTest(async function responseFormData() {
   assertEquals([...formData], [...input]);
 });
 
-unitTest(function customInspectFunction(): void {
+unitTest(function customInspectFunction() {
   const response = new Response();
   assertEquals(
     Deno.inspect(response),

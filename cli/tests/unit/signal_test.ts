@@ -10,7 +10,7 @@ import {
 
 unitTest(
   { ignore: Deno.build.os !== "windows" },
-  function signalsNotImplemented(): void {
+  function signalsNotImplemented() {
     assertThrows(
       () => {
         Deno.signal(1);
@@ -100,7 +100,7 @@ unitTest(
 
 unitTest(
   { ignore: Deno.build.os === "windows", perms: { run: true, net: true } },
-  async function signalStreamTest(): Promise<void> {
+  async function signalStreamTest() {
     const resolvable = deferred();
     // This prevents the program from exiting.
     const t = setInterval(() => {}, 1000);
@@ -132,7 +132,7 @@ unitTest(
 // This tests that pending op_signal_poll doesn't block the runtime from exiting the process.
 unitTest(
   { ignore: Deno.build.os === "windows", perms: { run: true, read: true } },
-  async function signalStreamExitTest(): Promise<void> {
+  async function signalStreamExitTest() {
     const p = Deno.run({
       cmd: [
         Deno.execPath(),
@@ -149,7 +149,7 @@ unitTest(
 
 unitTest(
   { ignore: Deno.build.os === "windows", perms: { run: true } },
-  async function signalPromiseTest(): Promise<void> {
+  async function signalPromiseTest() {
     const resolvable = deferred();
     // This prevents the program from exiting.
     const t = setInterval(() => {}, 1000);
@@ -170,7 +170,7 @@ unitTest(
 // https://github.com/denoland/deno/issues/9806
 unitTest(
   { ignore: Deno.build.os === "windows", perms: { run: true } },
-  async function signalPromiseTest2(): Promise<void> {
+  async function signalPromiseTest2() {
     const resolvable = deferred();
     // This prevents the program from exiting.
     const t = setInterval(() => {}, 1000);
@@ -198,7 +198,7 @@ unitTest(
 
 unitTest(
   { ignore: Deno.build.os === "windows", perms: { run: true } },
-  function signalShorthandsTest(): void {
+  function signalShorthandsTest() {
     let s: Deno.SignalStream;
     s = Deno.signals.alarm(); // for SIGALRM
     assert(s instanceof Deno.SignalStream);

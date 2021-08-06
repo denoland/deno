@@ -2116,6 +2116,45 @@ fn lsp_code_actions_imports() {
 }
 
 #[test]
+fn lsp_code_actions_refactor() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "var x: { a?: number; b?: string } = {};\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeAction",
+      load_fixture("code_action_params_refactor.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_action_response_refactor.json"))
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "codeAction/resolve",
+      load_fixture("code_action_resolve_params_refactor.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_action_resolve_response_refactor.json"))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_code_actions_deadlock() {
   let mut client = init("initialize_params.json");
   client

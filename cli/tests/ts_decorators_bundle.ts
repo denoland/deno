@@ -18,7 +18,7 @@ function Decorator() {
 
 class SomeClass {
   @Decorator()
-  async test(): Promise<void> {}
+  async test() {}
 }
 
 new SomeClass().test();
