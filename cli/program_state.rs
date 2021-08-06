@@ -83,7 +83,7 @@ impl ProgramState {
           env_ca_store
             .split(',')
             .map(|s| s.trim().to_string())
-            .filter(|s| s != "")
+            .filter(|s| !s.is_empty())
             .collect(),
         )
       })
