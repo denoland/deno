@@ -549,8 +549,7 @@ fn lexical_scoped_variable() {
 fn missing_deno_dir() {
   use std::fs::{read_dir, remove_dir_all};
   const DENO_DIR: &str = "nonexistent";
-  let test_deno_dir =
-    util::root_path().join("cli").join("tests").join(DENO_DIR);
+  let test_deno_dir = test_util::testdata_path().join(DENO_DIR);
   let (out, err) = util::run_and_collect_output(
     true,
     "repl",

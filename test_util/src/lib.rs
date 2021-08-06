@@ -86,8 +86,8 @@ pub fn prebuilt_path() -> PathBuf {
   third_party_path().join("prebuilt")
 }
 
-pub fn tests_path() -> PathBuf {
-  root_path().join("cli").join("tests")
+pub fn testdata_path() -> PathBuf {
+  root_path().join("cli").join("tests").join("testdata")
 }
 
 pub fn third_party_path() -> PathBuf {
@@ -1146,7 +1146,7 @@ pub fn run_and_collect_output(
   let mut deno_process_builder = deno_cmd();
   deno_process_builder
     .args(args.split_whitespace())
-    .current_dir(&tests_path())
+    .current_dir(&testdata_path())
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())
     .stderr(Stdio::piped());

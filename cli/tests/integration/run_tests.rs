@@ -1244,7 +1244,7 @@ fn run_deno_script_constrained(
 #[test]
 fn should_not_panic_on_no_stdin() {
   let output = run_deno_script_constrained(
-    util::tests_path().join("echo.ts"),
+    util::testdata_path().join("echo.ts"),
     WinProcConstraints::NoStdIn,
   );
   output.unwrap();
@@ -1254,7 +1254,7 @@ fn should_not_panic_on_no_stdin() {
 #[test]
 fn should_not_panic_on_no_stdout() {
   let output = run_deno_script_constrained(
-    util::tests_path().join("echo.ts"),
+    util::testdata_path().join("echo.ts"),
     WinProcConstraints::NoStdOut,
   );
   output.unwrap();
@@ -1264,7 +1264,7 @@ fn should_not_panic_on_no_stdout() {
 #[test]
 fn should_not_panic_on_no_stderr() {
   let output = run_deno_script_constrained(
-    util::tests_path().join("echo.ts"),
+    util::testdata_path().join("echo.ts"),
     WinProcConstraints::NoStdErr,
   );
   output.unwrap();
@@ -1352,7 +1352,7 @@ mod permissions {
   fn with_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::tests_path())
+        .current_dir(&util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{0}", permission))
         .arg("permission_test.ts")
@@ -1384,7 +1384,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::tests_path())
+        .current_dir(&util::testdata_path())
         .arg("run")
         .arg(format!(
           "--allow-{0}={1}",
@@ -1411,9 +1411,7 @@ mod permissions {
         &format!(
           "run --allow-{0}={1} complex_permissions_test.ts {0} {2}",
           permission,
-          util::root_path()
-            .join("cli")
-            .join("tests")
+          util::testdata_path()
             .into_os_string()
             .into_string()
             .unwrap(),
@@ -1436,14 +1434,12 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::tests_path())
+        .current_dir(&util::testdata_path())
         .arg("run")
         .arg(format!(
           "--allow-{0}={1}",
           permission,
-          util::root_path()
-            .join("cli")
-            .join("tests")
+          util::testdata_path()
             .into_os_string()
             .into_string()
             .unwrap()
@@ -1462,9 +1458,7 @@ mod permissions {
   #[test]
   fn rw_outside_test_and_js_dir() {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
-    let test_dir = util::root_path()
-      .join("cli")
-      .join("tests")
+    let test_dir = util::testdata_path()
       .into_os_string()
       .into_string()
       .unwrap();
@@ -1498,9 +1492,7 @@ mod permissions {
   #[test]
   fn rw_inside_test_and_js_dir() {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
-    let test_dir = util::root_path()
-      .join("cli")
-      .join("tests")
+    let test_dir = util::testdata_path()
       .into_os_string()
       .into_string()
       .unwrap();
@@ -1511,7 +1503,7 @@ mod permissions {
       .unwrap();
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::tests_path())
+        .current_dir(&util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{0}={1},{2}", permission, test_dir, js_dir))
         .arg("complex_permissions_test.ts")
@@ -1530,7 +1522,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::tests_path())
+        .current_dir(&util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{0}=.", permission))
         .arg("complex_permissions_test.ts")
@@ -1549,7 +1541,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::tests_path())
+        .current_dir(&util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{0}=tls/../", permission))
         .arg("complex_permissions_test.ts")

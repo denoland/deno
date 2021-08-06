@@ -391,7 +391,7 @@ console.log("finish");
 "#;
 
   let mut p = util::deno_cmd()
-    .current_dir(util::tests_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg("-")
     .stdin(std::process::Stdio::piped())
@@ -411,7 +411,7 @@ console.log("finish");
 #[test]
 fn compiler_api() {
   let status = util::deno_cmd()
-    .current_dir(util::tests_path())
+    .current_dir(util::testdata_path())
     .arg("test")
     .arg("--unstable")
     .arg("--reload")
@@ -483,7 +483,7 @@ fn cafile_env_fetch() {
   let module_url =
     Url::parse("https://localhost:5545/cli/tests/cafile_url_imports.ts")
       .unwrap();
-  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+  let cafile = util::testdata_path().join("tls/RootCA.pem");
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .env("DENO_CERT", cafile)
@@ -613,8 +613,8 @@ fn cafile_bundle_remote_exports() {
 fn websocket() {
   let _g = util::http_server();
 
-  let script = util::tests_path().join("websocket_test.ts");
-  let root_ca = util::tests_path().join("tls/RootCA.pem");
+  let script = util::testdata_path().join("websocket_test.ts");
+  let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let status = util::deno_cmd()
     .arg("test")
     .arg("--unstable")
@@ -829,7 +829,7 @@ async fn test_resolve_dns() {
   // Pass: `--allow-net`
   {
     let output = util::deno_cmd()
-      .current_dir(util::tests_path())
+      .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
       .arg("run")
       .arg("--allow-net")
@@ -847,7 +847,7 @@ async fn test_resolve_dns() {
     assert!(err.starts_with("Check file"));
 
     let expected =
-      std::fs::read_to_string(util::tests_path().join("resolve_dns.ts.out"))
+      std::fs::read_to_string(util::testdata_path().join("resolve_dns.ts.out"))
         .unwrap();
     assert_eq!(expected, out);
   }
@@ -855,7 +855,7 @@ async fn test_resolve_dns() {
   // Pass: `--allow-net=127.0.0.1:4553`
   {
     let output = util::deno_cmd()
-      .current_dir(util::tests_path())
+      .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
       .arg("run")
       .arg("--allow-net=127.0.0.1:4553")
@@ -873,7 +873,7 @@ async fn test_resolve_dns() {
     assert!(err.starts_with("Check file"));
 
     let expected =
-      std::fs::read_to_string(util::tests_path().join("resolve_dns.ts.out"))
+      std::fs::read_to_string(util::testdata_path().join("resolve_dns.ts.out"))
         .unwrap();
     assert_eq!(expected, out);
   }
@@ -881,7 +881,7 @@ async fn test_resolve_dns() {
   // Permission error: `--allow-net=deno.land`
   {
     let output = util::deno_cmd()
-      .current_dir(util::tests_path())
+      .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
       .arg("run")
       .arg("--allow-net=deno.land")
@@ -904,7 +904,7 @@ async fn test_resolve_dns() {
   // Permission error: no permission specified
   {
     let output = util::deno_cmd()
-      .current_dir(util::tests_path())
+      .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
       .arg("run")
       .arg("--unstable")
@@ -1015,7 +1015,7 @@ async fn listen_tls_alpn() {
 
       let mut cfg = rustls::ClientConfig::new();
       let reader =
-        &mut BufReader::new(Cursor::new(include_bytes!("../tls/RootCA.crt")));
+        &mut BufReader::new(Cursor::new(include_bytes!("../testdata/tls/RootCA.crt")));
       cfg.root_store.add_pem_file(reader).unwrap();
       cfg.alpn_protocols.push("foobar".as_bytes().to_vec());
       let cfg = Arc::new(cfg);
@@ -1067,7 +1067,7 @@ async fn listen_tls_alpn_fail() {
 
       let mut cfg = rustls::ClientConfig::new();
       let reader =
-        &mut BufReader::new(Cursor::new(include_bytes!("../tls/RootCA.crt")));
+        &mut BufReader::new(Cursor::new(include_bytes!("../testdata/tls/RootCA.crt")));
       cfg.root_store.add_pem_file(reader).unwrap();
       cfg.alpn_protocols.push("boofar".as_bytes().to_vec());
       let cfg = Arc::new(cfg);

@@ -364,8 +364,8 @@ mod tests {
       version::get_user_agent(),
       Some(
         read(
-          test_util::root_path()
-            .join("cli/tests/tls/RootCA.pem")
+          test_util::testdata_path()
+            .join("tls/RootCA.pem")
             .to_str()
             .unwrap(),
         )
@@ -402,8 +402,8 @@ mod tests {
       version::get_user_agent(),
       Some(
         read(
-          test_util::root_path()
-            .join("cli/tests/tls/RootCA.pem")
+          test_util::testdata_path()
+            .join("tls/RootCA.pem")
             .to_str()
             .unwrap(),
         )
@@ -439,8 +439,8 @@ mod tests {
       version::get_user_agent(),
       Some(
         read(
-          test_util::root_path()
-            .join("cli/tests/tls/RootCA.pem")
+          test_util::testdata_path()
+            .join("tls/RootCA.pem")
             .to_str()
             .unwrap(),
         )
