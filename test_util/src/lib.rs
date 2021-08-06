@@ -360,7 +360,7 @@ async fn run_wss_server(addr: &SocketAddr) {
   }
 }
 
-async fn run_tls_client_auth_server(addr: &SocketAddr) {
+async fn run_tls_client_auth_server() {
   /* Expect PASS
        curl --key cli/tests/tls/localhost.key \
             --cert cli/tests/tls/localhost.crt \
@@ -369,12 +369,14 @@ async fn run_tls_client_auth_server(addr: &SocketAddr) {
   let cert_file = "cli/tests/tls/localhost.crt";
   let key_file = "cli/tests/tls/localhost.key";
   let ca_cert_file = "cli/tests/tls/RootCA.pem";
-
   let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
     .await
     .unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
-  let listener = TcpListener::bind(addr).await.unwrap();
+  let listener =
+    TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], TLS_CLIENT_AUTH_PORT)))
+      .await
+      .unwrap();
   println!("ready: tls client auth");
 
   while let Ok((stream, _addr)) = listener.accept().await {
@@ -897,10 +899,7 @@ pub async fn run_all_servers() {
   let ws_close_addr = SocketAddr::from(([127, 0, 0, 1], WS_CLOSE_PORT));
   let ws_close_server_fut = run_ws_close_server(&ws_close_addr);
 
-  let tls_client_auth_addr =
-    SocketAddr::from(([127, 0, 0, 1], TLS_CLIENT_AUTH_PORT));
-  let tls_client_auth_server_fut =
-    run_tls_client_auth_server(&tls_client_auth_addr);
+  let tls_client_auth_server_fut = run_tls_client_auth_server();
 
   let main_server_fut = wrap_main_server();
   let main_server_https_fut = wrap_main_https_server();
