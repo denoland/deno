@@ -10,7 +10,6 @@ use crate::resolve_addr::resolve_addr_sync;
 use crate::DefaultTlsOptions;
 use crate::NetPermissions;
 use crate::NoCertificateValidation;
-use deno_core::combine_allow_insecure_certificates;
 use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
@@ -32,12 +31,12 @@ use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::NoCertificateVerification;
 use deno_core::OpPair;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_tls::combine_allow_insecure_certificates;
 use deno_tls::create_client_config;
 use deno_tls::rustls::internal::pemfile::certs;
 use deno_tls::rustls::internal::pemfile::pkcs8_private_keys;
@@ -723,7 +722,8 @@ where
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
-  let tls_config = Arc::new(create_client_config(root_cert_store, ca_data)?);
+  let tls_config =
+    Arc::new(create_client_config(root_cert_store, ca_data, None)?);
   let tls_stream =
     TlsStream::new_client_side(tcp_stream, &tls_config, hostname_dns);
 
@@ -765,8 +765,11 @@ where
   let arg_allow_insecure_certificates = args.allow_insecure_certificates;
   let global_allow_insecure_certificates =
     state.borrow().borrow::<NoCertificateValidation>().0.clone();
+  let allow_insecure_certificates_list = combine_allow_insecure_certificates(
+    global_allow_insecure_certificates.clone(),
+    arg_allow_insecure_certificates.clone(),
+  );
 
-  let default_tls_options;
   {
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
@@ -800,7 +803,11 @@ where
   let tcp_stream = TcpStream::connect(connect_addr).await?;
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
-  let tls_config = Arc::new(create_client_config(root_cert_store, ca_data)?);
+  let tls_config = Arc::new(create_client_config(
+    root_cert_store,
+    ca_data,
+    allow_insecure_certificates_list,
+  )?);
   let tls_stream =
     TlsStream::new_client_side(tcp_stream, &tls_config, hostname_dns);
 

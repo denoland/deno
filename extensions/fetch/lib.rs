@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::combine_allow_insecure_certificates;
 use data_url::DataUrl;
 use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
@@ -20,12 +19,12 @@ use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Canceled;
 use deno_core::Extension;
-use deno_core::NoCertificateVerification;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+use deno_tls::combine_allow_insecure_certificates;
 use deno_tls::create_http_client;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
@@ -39,7 +38,6 @@ use reqwest::Client;
 use reqwest::Method;
 use reqwest::RequestBuilder;
 use reqwest::Response;
-use rustls::ClientConfig;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -51,7 +49,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -90,6 +87,7 @@ pub fn init<P: FetchPermissions + 'static>(
         create_http_client(
           user_agent.clone(),
           root_cert_store.clone(),
+          None,
           proxy.clone(),
           allow_insecure_certificates.clone(),
         )

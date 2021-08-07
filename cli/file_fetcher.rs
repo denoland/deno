@@ -235,6 +235,7 @@ impl FileFetcher {
         root_cert_store,
         None,
         None,
+        None,
       )?,
       blob_store,
     })

@@ -10,7 +10,6 @@ mod gotham_state;
 mod inspector;
 mod module_specifier;
 mod modules;
-mod no_certificate_verification;
 mod normalize_path;
 mod ops;
 mod ops_builtin;
@@ -94,8 +93,6 @@ pub use crate::allow_insecure_certificates_deserializer::deserialize_allow_insec
 pub use crate::extensions::Extension;
 pub use crate::extensions::OpMiddlewareFn;
 pub use crate::extensions::OpPair;
-pub use crate::no_certificate_verification::combine_allow_insecure_certificates;
-pub use crate::no_certificate_verification::NoCertificateVerification;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()

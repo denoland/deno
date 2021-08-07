@@ -17,7 +17,6 @@ use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::Extension;
-use deno_core::NoCertificateVerification;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -230,7 +229,11 @@ where
   let socket: MaybeTlsStream<TcpStream> = match uri.scheme_str() {
     Some("ws") => MaybeTlsStream::Plain(tcp_socket),
     Some("wss") => {
-      let tls_config = create_client_config(root_cert_store, None)?;
+      let tls_config = create_client_config(
+        root_cert_store,
+        None,
+        allow_insecure_certificates,
+      )?;
       let tls_connector = TlsConnector::from(Arc::new(tls_config));
       let dnsname = DNSNameRef::try_from_ascii_str(domain)
         .map_err(|_| invalid_hostname(domain))?;
