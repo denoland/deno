@@ -29,6 +29,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_tls::rustls::RootCertStore;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
 use deno_web::MessagePort;
@@ -252,7 +253,7 @@ pub struct WebWorkerOptions {
   pub args: Vec<String>,
   pub debug_flag: bool,
   pub unstable: bool,
-  pub ca_data: Option<Vec<u8>>,
+  pub root_cert_store: Option<RootCertStore>,
   pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
@@ -300,13 +301,13 @@ impl WebWorker {
       deno_web::init(options.blob_store.clone(), Some(main_module.clone())),
       deno_fetch::init::<Permissions>(
         options.user_agent.clone(),
-        options.ca_data.clone(),
+        options.root_cert_store.clone(),
         None,
         None,
       ),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
-        options.ca_data.clone(),
+        options.root_cert_store.clone(),
       ),
       deno_broadcast_channel::init(
         options.broadcast_channel.clone(),
@@ -336,8 +337,9 @@ impl WebWorker {
       vec![
         ops::fs_events::init(),
         ops::fs::init(),
+        deno_tls::init(),
         deno_net::init::<Permissions>(
-          options.ca_data.clone(),
+          options.root_cert_store.clone(),
           options.unstable,
         ),
         ops::os::init(),

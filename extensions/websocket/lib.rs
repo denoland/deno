@@ -22,31 +22,31 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+use deno_tls::create_client_config;
+use deno_tls::webpki::DNSNameRef;
 
 use http::{Method, Request, Uri};
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::io::BufReader;
-use std::io::Cursor;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use tokio::net::TcpStream;
-use tokio_rustls::{rustls::ClientConfig, TlsConnector};
+use tokio_rustls::rustls::RootCertStore;
+use tokio_rustls::TlsConnector;
 use tokio_tungstenite::tungstenite::{
   handshake::client::Response, protocol::frame::coding::CloseCode,
   protocol::CloseFrame, Message,
 };
 use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::{client_async, WebSocketStream};
-use webpki::DNSNameRef;
 
 pub use tokio_tungstenite; // Re-export tokio_tungstenite
 
 #[derive(Clone)]
-pub struct WsCaData(pub Vec<u8>);
+pub struct WsRootStore(pub Option<RootCertStore>);
 #[derive(Clone)]
 pub struct WsUserAgent(pub String);
 
@@ -197,7 +197,7 @@ where
       );
   }
 
-  let ws_ca_data = state.borrow().try_borrow::<WsCaData>().cloned();
+  let root_cert_store = state.borrow().borrow::<WsRootStore>().0.clone();
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
   let uri: Uri = args.url.parse()?;
   let mut request = Request::builder().method(Method::GET).uri(&uri);
@@ -221,17 +221,8 @@ where
   let socket: MaybeTlsStream<TcpStream> = match uri.scheme_str() {
     Some("ws") => MaybeTlsStream::Plain(tcp_socket),
     Some("wss") => {
-      let mut config = ClientConfig::new();
-      config
-        .root_store
-        .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
-
-      if let Some(ws_ca_data) = ws_ca_data {
-        let reader = &mut BufReader::new(Cursor::new(ws_ca_data.0));
-        config.root_store.add_pem_file(reader).unwrap();
-      }
-
-      let tls_connector = TlsConnector::from(Arc::new(config));
+      let tls_config = create_client_config(root_cert_store, None)?;
+      let tls_connector = TlsConnector::from(Arc::new(tls_config));
       let dnsname = DNSNameRef::try_from_ascii_str(domain)
         .map_err(|_| invalid_hostname(domain))?;
       let tls_socket = tls_connector.connect(dnsname, tcp_socket).await?;
@@ -385,7 +376,7 @@ pub async fn op_ws_next_event(
 
 pub fn init<P: WebSocketPermissions + 'static>(
   user_agent: String,
-  ca_data: Option<Vec<u8>>,
+  root_cert_store: Option<RootCertStore>,
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -404,9 +395,7 @@ pub fn init<P: WebSocketPermissions + 'static>(
     ])
     .state(move |state| {
       state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));
-      if let Some(ca_data) = ca_data.clone() {
-        state.put::<WsCaData>(WsCaData(ca_data));
-      }
+      state.put::<WsRootStore>(WsRootStore(root_cert_store.clone()));
       Ok(())
     })
     .build()

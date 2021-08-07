@@ -139,6 +139,7 @@ pub struct Flags {
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
+  pub ca_stores: Option<Vec<String>>,
   pub ca_file: Option<String>,
   pub cache_blocklist: Vec<String>,
   /// This is not exposed as an option in the CLI, it is used internally when
@@ -276,6 +277,9 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
                          hostnames to use when fetching remote modules from
                          private repositories
                          (e.g. "abcde12345@deno.land;54321edcba@github.com")
+    DENO_TLS_CA_STORE    Comma-seperated list of order dependent certificate stores
+                         (system, mozilla)
+                         (defaults to mozilla)
     DENO_CERT            Load certificate authority from PEM encoded file
     DENO_DIR             Set the cache directory
     DENO_INSTALL_ROOT    Set deno install's output directory

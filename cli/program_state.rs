@@ -30,12 +30,16 @@ use deno_core::resolve_url;
 use deno_core::url::Url;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
+use deno_tls::rustls::RootCertStore;
+use deno_tls::rustls_native_certs::load_native_certs;
+use deno_tls::webpki_roots::TLS_SERVER_ROOTS;
 use log::debug;
 use log::warn;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
-use std::fs::read;
+use std::fs::File;
+use std::io::BufReader;
 use std::sync::Arc;
 
 /// This structure represents state of single "deno" program.
@@ -53,7 +57,7 @@ pub struct ProgramState {
   pub maybe_config_file: Option<ConfigFile>,
   pub maybe_import_map: Option<ImportMap>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
-  pub ca_data: Option<Vec<u8>>,
+  pub root_cert_store: Option<RootCertStore>,
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: SharedArrayBufferStore,
@@ -68,11 +72,50 @@ impl ProgramState {
     let dir = deno_dir::DenoDir::new(maybe_custom_root)?;
     let deps_cache_location = dir.root.join("deps");
     let http_cache = http_cache::HttpCache::new(&deps_cache_location);
+
+    let mut root_cert_store = RootCertStore::empty();
+    let ca_stores: Vec<String> = flags
+      .ca_stores
+      .clone()
+      .or_else(|| {
+        let env_ca_store = env::var("DENO_TLS_CA_STORE").ok()?;
+        Some(
+          env_ca_store
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
+        )
+      })
+      .unwrap_or_else(|| vec!["mozilla".to_string()]);
+
+    for store in ca_stores.iter() {
+      match store.as_str() {
+        "mozilla" => {
+          root_cert_store.add_server_trust_anchors(&TLS_SERVER_ROOTS);
+        }
+        "system" => {
+          let roots = load_native_certs()
+            .expect("could not load platform certs")
+            .roots;
+          root_cert_store.roots.extend(roots);
+        }
+        _ => {
+          return Err(anyhow!("Unknown certificate store \"{}\" specified (allowed: \"system,mozilla\")", store));
+        }
+      }
+    }
+
     let ca_file = flags.ca_file.clone().or_else(|| env::var("DENO_CERT").ok());
-    let ca_data = match &ca_file {
-      Some(ca_file) => Some(read(ca_file).context("Failed to open ca file")?),
-      None => None,
-    };
+    if let Some(ca_file) = ca_file {
+      let certfile = File::open(&ca_file)?;
+      let mut reader = BufReader::new(certfile);
+
+      // This function does not return specific errors, if it fails give a generic message.
+      if let Err(_err) = root_cert_store.add_pem_file(&mut reader) {
+        return Err(anyhow!("Unable to add pem file to certificate store"));
+      }
+    }
 
     let cache_usage = if flags.cached_only {
       CacheSetting::Only
@@ -92,7 +135,7 @@ impl ProgramState {
       http_cache,
       cache_usage,
       !flags.no_remote,
-      ca_data.clone(),
+      Some(root_cert_store.clone()),
       blob_store.clone(),
     )?;
 
@@ -152,7 +195,7 @@ impl ProgramState {
       maybe_config_file,
       maybe_import_map,
       maybe_inspector_server,
-      ca_data,
+      root_cert_store: Some(root_cert_store.clone()),
       blob_store,
       broadcast_channel,
       shared_array_buffer_store,
