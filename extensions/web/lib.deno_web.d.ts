@@ -673,6 +673,14 @@ declare class MessageEvent<T = any> extends Event {
 
 type Transferable = ArrayBuffer | MessagePort;
 
+/**
+ * @deprecated
+ *
+ * This type has been renamed to StructuredSerializeOptions. Use this type for
+ * new code.
+ */
+type PostMessageOptions = StructuredSerializeOptions;
+
 interface StructuredSerializeOptions {
   transfer?: Transferable[];
 }
