@@ -239,3 +239,39 @@ unitTest(
     assertEquals("Hello", actual);
   },
 );
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function writeFileAbortSignal(): Promise<void> {
+    const ac = new AbortController();
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    queueMicrotask(() => ac.abort());
+    try {
+      await Deno.writeFile(filename, data, { signal: ac.signal });
+    } catch (e) {
+      assertEquals(e.name, "AbortError");
+    }
+    const stat = Deno.statSync(filename);
+    assertEquals(stat.size, 0);
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function writeFileAbortSignalPreAborted(): Promise<void> {
+    const ac = new AbortController();
+    ac.abort();
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    try {
+      await Deno.writeFile(filename, data, { signal: ac.signal });
+    } catch (e) {
+      assertEquals(e.name, "AbortError");
+    }
+    const stat = Deno.statSync(filename);
+    assertEquals(stat.size, 0);
+  },
+);

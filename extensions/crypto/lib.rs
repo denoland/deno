@@ -32,11 +32,12 @@ use ring::rand::SecureRandom;
 use ring::signature::EcdsaKeyPair;
 use ring::signature::EcdsaSigningAlgorithm;
 use rsa::padding::PaddingScheme;
+use rsa::pkcs8::FromPrivateKey;
+use rsa::pkcs8::ToPrivateKey;
 use rsa::BigUint;
-use rsa::PrivateKeyEncoding;
 use rsa::PublicKey;
-use rsa::RSAPrivateKey;
-use rsa::RSAPublicKey;
+use rsa::RsaPrivateKey;
+use rsa::RsaPublicKey;
 use sha1::Sha1;
 use sha2::Digest;
 use sha2::Sha256;
@@ -141,9 +142,9 @@ pub async fn op_crypto_generate_key(
 
       let mut rng = OsRng;
 
-      let private_key: RSAPrivateKey = tokio::task::spawn_blocking(
-        move || -> Result<RSAPrivateKey, rsa::errors::Error> {
-          RSAPrivateKey::new_with_exp(
+      let private_key: RsaPrivateKey = tokio::task::spawn_blocking(
+        move || -> Result<RsaPrivateKey, rsa::errors::Error> {
+          RsaPrivateKey::new_with_exp(
             &mut rng,
             modulus_length as usize,
             &exponent,
@@ -154,7 +155,7 @@ pub async fn op_crypto_generate_key(
       .unwrap()
       .map_err(|e| custom_error("DOMExceptionOperationError", e.to_string()))?;
 
-      private_key.to_pkcs8()?
+      private_key.to_pkcs8_der()?.as_ref().to_vec()
     }
     Algorithm::Ecdsa => {
       let curve: &EcdsaSigningAlgorithm =
@@ -248,7 +249,7 @@ pub async fn op_crypto_sign_key(
 
   let signature = match algorithm {
     Algorithm::RsassaPkcs1v15 => {
-      let private_key = RSAPrivateKey::from_pkcs8(&*args.key.data)?;
+      let private_key = RsaPrivateKey::from_pkcs8_der(&*args.key.data)?;
       let (padding, hashed) = match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
@@ -298,7 +299,7 @@ pub async fn op_crypto_sign_key(
       private_key.sign(padding, &hashed)?
     }
     Algorithm::RsaPss => {
-      let private_key = RSAPrivateKey::from_pkcs8(&*args.key.data)?;
+      let private_key = RsaPrivateKey::from_pkcs8_der(&*args.key.data)?;
 
       let salt_len = args
         .salt_length
@@ -402,8 +403,8 @@ pub async fn op_crypto_verify_key(
 
   let verification = match algorithm {
     Algorithm::RsassaPkcs1v15 => {
-      let public_key: RSAPublicKey =
-        RSAPrivateKey::from_pkcs8(&*args.key.data)?.to_public_key();
+      let public_key: RsaPublicKey =
+        RsaPrivateKey::from_pkcs8_der(&*args.key.data)?.to_public_key();
       let (padding, hashed) = match args
         .hash
         .ok_or_else(|| type_error("Missing argument hash".to_string()))?
@@ -459,8 +460,8 @@ pub async fn op_crypto_verify_key(
         .salt_length
         .ok_or_else(|| type_error("Missing argument saltLength".to_string()))?
         as usize;
-      let public_key: RSAPublicKey =
-        RSAPrivateKey::from_pkcs8(&*args.key.data)?.to_public_key();
+      let public_key: RsaPublicKey =
+        RsaPrivateKey::from_pkcs8_der(&*args.key.data)?.to_public_key();
 
       let rng = OsRng;
       let (padding, hashed) = match args

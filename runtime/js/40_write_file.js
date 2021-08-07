@@ -13,6 +13,9 @@
     data,
     options = {},
   ) {
+    if (options?.signal?.aborted) {
+      throw new DOMException("The write operation was aborted.", "AbortError");
+    }
     if (options.create !== undefined) {
       const create = !!options.create;
       if (!create) {
@@ -68,12 +71,17 @@
       await chmod(path, options.mode);
     }
 
+    const signal = options?.signal ?? null;
     let nwritten = 0;
-    while (nwritten < data.length) {
+    while (!signal?.aborted && nwritten < data.length) {
       nwritten += await file.write(TypedArrayPrototypeSubarray(data, nwritten));
     }
 
     file.close();
+
+    if (signal?.aborted) {
+      throw new DOMException("The write operation was aborted.", "AbortError");
+    }
   }
 
   function writeTextFileSync(
