@@ -16,5 +16,10 @@ path = "lib.rs"
 [dependencies]
 deno_core = { version = "0.95.0", path = "../../core" }
 dlopen = "0.1.8"
-libffi = { version = "0.0.4", package = "deno-libffi" }
 serde = { version = "1.0.125", features = ["derive"] }
+
+[target.'cfg(windows)'.dependencies]
+libffi = { version = "=0.0.3", package = "deno-libffi" }
+
+[target.'cfg(not(windows))'.dependencies]
+libffi = { version = "=0.0.4", package = "deno-libffi" }
