@@ -1030,12 +1030,10 @@ unitTest(
       certFile: "cli/tests/tls/RootCA.crt",
     });
 
-    const reader = new TextProtoReader(new BufReader(conn));
-    const result = await reader.readLine() as string;
-
+    const bytes = await Deno.readAll(conn);
+    const result = decoder.decode(bytes);
     // Server will respond with PASS if client authentication was successful.
     assertEquals(result, "PASS");
-
     conn.close();
   },
 );
