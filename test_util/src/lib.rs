@@ -360,12 +360,12 @@ async fn run_wss_server(addr: &SocketAddr) {
   }
 }
 
+/// This server responds with 'PASS' if client authentication was successful. Try it by running
+/// test_server and
+///   curl --key cli/tests/tls/localhost.key \
+///        --cert cli/tests/tls/localhost.crt \
+///        --cacert cli/tests/tls/RootCA.crt https://localhost:4552/
 async fn run_tls_client_auth_server() {
-  /* Expect PASS
-       curl --key cli/tests/tls/localhost.key \
-            --cert cli/tests/tls/localhost.crt \
-            --cacert cli/tests/tls/RootCA.crt https://localhost:4552/
-  */
   let cert_file = "cli/tests/tls/localhost.crt";
   let key_file = "cli/tests/tls/localhost.key";
   let ca_cert_file = "cli/tests/tls/RootCA.pem";
@@ -385,14 +385,12 @@ async fn run_tls_client_auth_server() {
       match acceptor.accept(stream).await {
         Ok(mut tls_stream) => {
           let (_, tls_session) = tls_stream.get_mut();
-
           // We only need to check for the presence of client certificates
           // here. Rusttls ensures that they are valid and signed by the CA.
           let response = match tls_session.get_peer_certificates() {
             Some(_certs) => b"PASS",
             None => b"FAIL",
           };
-
           tls_stream.write_all(response).await.unwrap();
         }
 

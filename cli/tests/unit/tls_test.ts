@@ -1018,11 +1018,11 @@ unitTest(
 unitTest(
   { perms: { read: true, net: true } },
   async function connectWithClientCert() {
-    /* Try:
-         curl --key cli/tests/tls/localhost.key \
-              --cert cli/tests/tls/localhost.crt \
-              --cacert cli/tests/tls/RootCA.crt https://localhost:4552/
-    */
+    // The test_server running on port 4552 responds with 'PASS' if client
+    // authentication was successful. Try it by running test_server and
+    //   curl --key cli/tests/tls/localhost.key \
+    //        --cert cli/tests/tls/localhost.crt \
+    //        --cacert cli/tests/tls/RootCA.crt https://localhost:4552/
     const conn = await Deno.connectTls({
       hostname: "localhost",
       port: 4552,
@@ -1030,10 +1030,7 @@ unitTest(
       privateKey: await Deno.readTextFile("cli/tests/tls/localhost.key"),
       certFile: "cli/tests/tls/RootCA.crt",
     });
-
-    const bytes = await readAll(conn);
-    const result = decoder.decode(bytes);
-    // Server will respond with PASS if client authentication was successful.
+    const result = decoder.decode(await readAll(conn));
     assertEquals(result, "PASS");
     conn.close();
   },
