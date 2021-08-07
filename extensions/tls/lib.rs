@@ -75,28 +75,6 @@ impl ServerCertVerifier for NoCertificateVerification {
   }
 }
 
-pub fn combine_allow_insecure_certificates(
-  lhs: Option<Vec<String>>,
-  rhs: Option<Vec<String>>,
-) -> Option<Vec<String>> {
-  if lhs.is_some() || rhs.is_some() {
-    let mut r = {
-      let size = lhs.as_ref().map_or(0, |v| v.len())
-        + rhs.as_ref().map_or(0, |v| v.len());
-      Vec::<String>::with_capacity(size)
-    };
-    if let Some(gl) = lhs {
-      r.extend(gl)
-    }
-    if let Some(al) = rhs {
-      r.extend(al)
-    }
-    Some(r)
-  } else {
-    None
-  }
-}
-
 #[derive(Deserialize, Default, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]

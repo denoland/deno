@@ -1,5 +1,4 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-mod allow_insecure_certificates_deserializer;
 mod async_cancel;
 mod async_cell;
 mod bindings;
@@ -89,7 +88,6 @@ pub use crate::runtime::JsRuntime;
 pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::Snapshot;
 // pub use crate::runtime_modules::include_js_files!;
-pub use crate::allow_insecure_certificates_deserializer::deserialize_allow_insecure_certificates;
 pub use crate::extensions::Extension;
 pub use crate::extensions::OpMiddlewareFn;
 pub use crate::extensions::OpPair;

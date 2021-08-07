@@ -24,7 +24,6 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
-use deno_tls::combine_allow_insecure_certificates;
 use deno_tls::create_http_client;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
@@ -513,10 +512,6 @@ pub struct CreateHttpClientOptions {
   ca_file: Option<String>,
   ca_data: Option<ByteString>,
   proxy: Option<Proxy>,
-  #[serde(
-    deserialize_with = "deno_core::deserialize_allow_insecure_certificates"
-  )]
-  allow_insecure_certificates: Option<Vec<String>>,
 }
 
 pub fn op_create_http_client<FP>(
@@ -542,17 +537,12 @@ where
   let cert_data =
     get_cert_data(args.ca_file.as_deref(), args.ca_data.as_deref())?;
 
-  let allow_insecure_certificates_list = combine_allow_insecure_certificates(
-    defaults.allow_insecure_certificates.clone(),
-    args.allow_insecure_certificates.clone(),
-  );
-
   let client = create_http_client(
     defaults.user_agent.clone(),
     defaults.root_cert_store.clone(),
     cert_data,
     args.proxy,
-    allow_insecure_certificates_list,
+    defaults.allow_insecure_certificates.clone(),
   )
   .unwrap();
 

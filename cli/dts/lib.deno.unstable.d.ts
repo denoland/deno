@@ -859,8 +859,6 @@ declare namespace Deno {
      */
     caData?: string;
     proxy?: Proxy;
-    /** Bypass certificate validation. */
-    bypassCertificates?: string | string[] | boolean;
   }
 
   export interface Proxy {

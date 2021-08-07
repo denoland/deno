@@ -696,14 +696,12 @@ dependencies = [
  "log",
  "parking_lot",
  "pin-project",
- "rustls",
  "rusty_v8",
  "serde",
  "serde_json",
  "serde_v8",
  "tokio",
  "url",
- "webpki",
 ]
 
 [[package]]
@@ -752,7 +750,6 @@ dependencies = [
  "http",
  "lazy_static",
  "reqwest",
- "rustls",
  "serde",
  "tokio",
  "tokio-stream",

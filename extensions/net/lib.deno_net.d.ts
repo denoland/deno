@@ -117,8 +117,6 @@ declare namespace Deno {
     hostname?: string;
     /** Server certificate file. */
     certFile?: string;
-    /** Bypass certificate validation. */
-    bypassCertificates?: string | string[] | boolean;
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using

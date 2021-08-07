@@ -36,7 +36,6 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_tls::combine_allow_insecure_certificates;
 use deno_tls::create_client_config;
 use deno_tls::rustls::internal::pemfile::certs;
 use deno_tls::rustls::internal::pemfile::pkcs8_private_keys;
@@ -651,10 +650,6 @@ pub struct ConnectTlsArgs {
   hostname: String,
   port: u16,
   cert_file: Option<String>,
-  #[serde(
-    deserialize_with = "deno_core::deserialize_allow_insecure_certificates"
-  )]
-  allow_insecure_certificates: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -762,13 +757,8 @@ where
   };
   let port = args.port;
   let cert_file = args.cert_file.as_deref();
-  let arg_allow_insecure_certificates = args.allow_insecure_certificates;
-  let global_allow_insecure_certificates =
+  let allow_insecure_certificates =
     state.borrow().borrow::<NoCertificateValidation>().0.clone();
-  let allow_insecure_certificates_list = combine_allow_insecure_certificates(
-    global_allow_insecure_certificates.clone(),
-    arg_allow_insecure_certificates.clone(),
-  );
 
   {
     let mut s = state.borrow_mut();
@@ -806,7 +796,7 @@ where
   let tls_config = Arc::new(create_client_config(
     root_cert_store,
     ca_data,
-    allow_insecure_certificates_list,
+    allow_insecure_certificates,
   )?);
   let tls_stream =
     TlsStream::new_client_side(tcp_stream, &tls_config, hostname_dns);
