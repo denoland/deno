@@ -676,7 +676,7 @@ type Transferable = ArrayBuffer | MessagePort;
 /**
  * @deprecated
  *
- * This type has been renamed to StructuredSerializeOptions. Use this type for
+ * This type has been renamed to StructuredSerializeOptions. Use that type for
  * new code.
  */
 type PostMessageOptions = StructuredSerializeOptions;
