@@ -109,11 +109,11 @@ fn create_web_worker_callback(
         .log_level
         .map_or(false, |l| l == log::Level::Debug),
       unstable: program_state.flags.unstable,
-      ca_data: program_state.ca_data.clone(),
       allow_insecure_certificates: program_state
         .flags
         .allow_insecure_certificates
         .clone(),
+      root_cert_store: program_state.root_cert_store.clone(),
       user_agent: version::get_user_agent(),
       seed: program_state.flags.seed,
       module_loader,
@@ -193,11 +193,11 @@ pub fn create_main_worker(
       .log_level
       .map_or(false, |l| l == log::Level::Debug),
     unstable: program_state.flags.unstable,
-    ca_data: program_state.ca_data.clone(),
     allow_insecure_certificates: program_state
       .flags
       .allow_insecure_certificates
       .clone(),
+    root_cert_store: program_state.root_cert_store.clone(),
     user_agent: version::get_user_agent(),
     seed: program_state.flags.seed,
     js_error_create_fn: Some(js_error_create_fn),
@@ -782,7 +782,10 @@ async fn format_command(
   Ok(())
 }
 
-async fn run_repl(flags: Flags) -> Result<(), AnyError> {
+async fn run_repl(
+  flags: Flags,
+  maybe_eval: Option<String>,
+) -> Result<(), AnyError> {
   let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
   let permissions = Permissions::from_options(&flags.clone().into());
   let program_state = ProgramState::build(flags).await?;
@@ -790,7 +793,7 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
     create_main_worker(&program_state, main_module.clone(), permissions, false);
   worker.run_event_loop(false).await?;
 
-  tools::repl::run(&program_state, worker).await
+  tools::repl::run(&program_state, worker, maybe_eval).await
 }
 
 async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
@@ -1349,7 +1352,7 @@ fn get_subcommand(
       ignore,
       json,
     } => lint_command(flags, files, rules, ignore, json).boxed_local(),
-    DenoSubcommand::Repl => run_repl(flags).boxed_local(),
+    DenoSubcommand::Repl { eval } => run_repl(flags, eval).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {
       no_run,

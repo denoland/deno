@@ -12,7 +12,7 @@ import { fromFileUrl } from "../../../test_util/std/path/mod.ts";
 
 Deno.test({
   name: "worker terminate",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     const promise = deferred();
 
     const jsWorker = new Worker(
@@ -24,17 +24,17 @@ Deno.test({
       { type: "module", name: "tsWorker" },
     );
 
-    tsWorker.onmessage = (e): void => {
+    tsWorker.onmessage = (e) => {
       assertEquals(e.data, "Hello World");
       promise.resolve();
     };
 
-    jsWorker.onmessage = (e): void => {
+    jsWorker.onmessage = (e) => {
       assertEquals(e.data, "Hello World");
       tsWorker.postMessage("Hello World");
     };
 
-    jsWorker.onerror = (e: Event): void => {
+    jsWorker.onerror = (e: Event) => {
       e.preventDefault();
       jsWorker.postMessage("Hello World");
     };
@@ -55,7 +55,7 @@ Deno.test({
       { type: "module", name: "tsWorker" },
     );
 
-    tsWorker.onmessage = (e): void => {
+    tsWorker.onmessage = (e) => {
       assertEquals(e.data, "Hello World");
       promise.resolve();
     };
@@ -69,7 +69,7 @@ Deno.test({
 
 Deno.test({
   name: "worker nested",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     const promise = deferred();
 
     const nestedWorker = new Worker(
@@ -77,7 +77,7 @@ Deno.test({
       { type: "module", name: "nested" },
     );
 
-    nestedWorker.onmessage = (e): void => {
+    nestedWorker.onmessage = (e) => {
       assert(e.data.type !== "error");
       promise.resolve();
     };
@@ -90,7 +90,7 @@ Deno.test({
 
 Deno.test({
   name: "worker throws when executing",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     const promise = deferred();
     const throwingWorker = new Worker(
       new URL("throwing_worker.js", import.meta.url).href,
@@ -98,7 +98,7 @@ Deno.test({
     );
 
     // deno-lint-ignore no-explicit-any
-    throwingWorker.onerror = (e: any): void => {
+    throwingWorker.onerror = (e: any) => {
       e.preventDefault();
       assert(/Uncaught Error: Thrown error/.test(e.message));
       promise.resolve();
@@ -111,14 +111,14 @@ Deno.test({
 
 Deno.test({
   name: "worker globals",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     const promise = deferred();
     const workerOptions: WorkerOptions = { type: "module" };
     const w = new Worker(
       new URL("worker_globals.ts", import.meta.url).href,
       workerOptions,
     );
-    w.onmessage = (e): void => {
+    w.onmessage = (e) => {
       assertEquals(e.data, "true, true, true, true");
       promise.resolve();
     };
@@ -130,7 +130,7 @@ Deno.test({
 
 Deno.test({
   name: "worker fetch API",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     const promise = deferred();
 
     const fetchingWorker = new Worker(
@@ -139,13 +139,13 @@ Deno.test({
     );
 
     // deno-lint-ignore no-explicit-any
-    fetchingWorker.onerror = (e: any): void => {
+    fetchingWorker.onerror = (e: any) => {
       e.preventDefault();
       promise.reject(e.message);
     };
 
     // Defer promise.resolve() to allow worker to shut down
-    fetchingWorker.onmessage = (e): void => {
+    fetchingWorker.onmessage = (e) => {
       assert(e.data === "Done!");
       promise.resolve();
     };
@@ -157,7 +157,7 @@ Deno.test({
 
 Deno.test({
   name: "worker terminate busy loop",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     const promise = deferred();
 
     const busyWorker = new Worker(
@@ -167,11 +167,11 @@ Deno.test({
 
     let testResult = 0;
 
-    busyWorker.onmessage = (e): void => {
+    busyWorker.onmessage = (e) => {
       testResult = e.data;
       if (testResult >= 10000) {
         busyWorker.terminate();
-        busyWorker.onmessage = (_e): void => {
+        busyWorker.onmessage = (_e) => {
           throw new Error("unreachable");
         };
         setTimeout(() => {
@@ -188,7 +188,7 @@ Deno.test({
 
 Deno.test({
   name: "worker race condition",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     // See issue for details
     // https://github.com/denoland/deno/issues/4080
     const promise = deferred();
@@ -198,7 +198,7 @@ Deno.test({
       { type: "module" },
     );
 
-    racyWorker.onmessage = (_e): void => {
+    racyWorker.onmessage = (_e) => {
       setTimeout(() => {
         promise.resolve();
       }, 100);
@@ -211,7 +211,7 @@ Deno.test({
 
 Deno.test({
   name: "worker is event listener",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     let messageHandlersCalled = 0;
     let errorHandlersCalled = 0;
 
@@ -223,7 +223,7 @@ Deno.test({
       { type: "module" },
     );
 
-    worker.onmessage = (_e: Event): void => {
+    worker.onmessage = (_e: Event) => {
       messageHandlersCalled++;
     };
     worker.addEventListener("message", (_e: Event) => {
@@ -234,7 +234,7 @@ Deno.test({
       promise1.resolve();
     });
 
-    worker.onerror = (e): void => {
+    worker.onerror = (e) => {
       errorHandlersCalled++;
       e.preventDefault();
     };
@@ -259,7 +259,7 @@ Deno.test({
 
 Deno.test({
   name: "worker scope is event listener",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     const promise1 = deferred();
 
     const worker = new Worker(
@@ -267,14 +267,14 @@ Deno.test({
       { type: "module" },
     );
 
-    worker.onmessage = (e: MessageEvent): void => {
+    worker.onmessage = (e: MessageEvent) => {
       const { messageHandlersCalled, errorHandlersCalled } = e.data;
       assertEquals(messageHandlersCalled, 4);
       assertEquals(errorHandlersCalled, 4);
       promise1.resolve();
     };
 
-    worker.onerror = (_e): void => {
+    worker.onerror = (_e) => {
       throw new Error("unreachable");
     };
 
@@ -287,7 +287,7 @@ Deno.test({
 
 Deno.test({
   name: "worker with Deno namespace",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     const promise = deferred();
     const promise2 = deferred();
 
@@ -306,13 +306,13 @@ Deno.test({
       },
     );
 
-    regularWorker.onmessage = (e): void => {
+    regularWorker.onmessage = (e) => {
       assertEquals(e.data, "Hello World");
       regularWorker.terminate();
       promise.resolve();
     };
 
-    denoWorker.onmessage = (e): void => {
+    denoWorker.onmessage = (e) => {
       assertEquals(e.data, "Hello World");
       denoWorker.terminate();
       promise2.resolve();
@@ -327,13 +327,13 @@ Deno.test({
 
 Deno.test({
   name: "worker with crypto in scope",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     const promise = deferred();
     const w = new Worker(
       new URL("worker_crypto.js", import.meta.url).href,
       { type: "module" },
     );
-    w.onmessage = (e): void => {
+    w.onmessage = (e) => {
       assertEquals(e.data, true);
       promise.resolve();
     };
@@ -345,7 +345,7 @@ Deno.test({
 
 Deno.test({
   name: "Worker event handler order",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     const promise = deferred();
     const w = new Worker(
       new URL("test_worker.ts", import.meta.url).href,
@@ -353,7 +353,7 @@ Deno.test({
     );
     const arr: number[] = [];
     w.addEventListener("message", () => arr.push(1));
-    w.onmessage = (_e): void => {
+    w.onmessage = (_e) => {
       arr.push(2);
     };
     w.addEventListener("message", () => arr.push(3));
@@ -369,7 +369,7 @@ Deno.test({
 
 Deno.test({
   name: "Worker immediate close",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     const promise = deferred();
     const w = new Worker(
       new URL("./immediately_close_worker.js", import.meta.url).href,
@@ -385,14 +385,14 @@ Deno.test({
 
 Deno.test({
   name: "Worker post undefined",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     const promise = deferred();
     const worker = new Worker(
       new URL("./post_undefined.ts", import.meta.url).href,
       { type: "module" },
     );
 
-    const handleWorkerMessage = (e: MessageEvent): void => {
+    const handleWorkerMessage = (e: MessageEvent) => {
       console.log("main <- worker:", e.data);
       worker.terminate();
       promise.resolve();
@@ -650,12 +650,12 @@ Deno.test("Worker with disabled permissions", async function () {
 
 Deno.test({
   name: "worker location",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     const promise = deferred();
     const workerModuleHref =
       new URL("worker_location.ts", import.meta.url).href;
     const w = new Worker(workerModuleHref, { type: "module" });
-    w.onmessage = (e): void => {
+    w.onmessage = (e) => {
       assertEquals(e.data, `${workerModuleHref}, true`);
       promise.resolve();
     };
@@ -667,14 +667,14 @@ Deno.test({
 
 Deno.test({
   name: "worker with relative specifier",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     assertEquals(location.href, "http://127.0.0.1:4545/cli/tests/");
     const promise = deferred();
     const w = new Worker(
       "./workers/test_worker.ts",
       { type: "module", name: "tsWorker" },
     );
-    w.onmessage = (e): void => {
+    w.onmessage = (e) => {
       assertEquals(e.data, "Hello, world!");
       promise.resolve();
     };
@@ -686,13 +686,13 @@ Deno.test({
 
 Deno.test({
   name: "Worker with top-level-await",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     const result = deferred();
     const worker = new Worker(
       new URL("worker_with_top_level_await.ts", import.meta.url).href,
       { type: "module" },
     );
-    worker.onmessage = (e): void => {
+    worker.onmessage = (e) => {
       if (e.data == "ready") {
         worker.postMessage("trigger worker handler");
       } else if (e.data == "triggered worker handler") {
@@ -737,14 +737,14 @@ Deno.test({
 
 Deno.test({
   name: "structured cloning postMessage",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     const result = deferred();
     const worker = new Worker(
       new URL("worker_structured_cloning.ts", import.meta.url).href,
       { type: "module" },
     );
 
-    worker.onmessage = (e): void => {
+    worker.onmessage = (e) => {
       // self field should reference itself (circular ref)
       const value = e.data.self.self.self;
 
@@ -772,14 +772,14 @@ Deno.test({
 
 Deno.test({
   name: "worker with relative specifier",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     assertEquals(location.href, "http://127.0.0.1:4545/cli/tests/");
     const promise = deferred();
     const w = new Worker(
       "./workers/test_worker.ts",
       { type: "module", name: "tsWorker" },
     );
-    w.onmessage = (e): void => {
+    w.onmessage = (e) => {
       assertEquals(e.data, "Hello, world!");
       promise.resolve();
     };
@@ -791,7 +791,7 @@ Deno.test({
 
 Deno.test({
   name: "worker SharedArrayBuffer",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     const promise = deferred();
     const workerOptions: WorkerOptions = { type: "module" };
     const w = new Worker(
@@ -804,9 +804,9 @@ Deno.test({
     const bytes2 = new Uint8Array(sab2);
     assertEquals(bytes1[0], 0);
     assertEquals(bytes2[0], 0);
-    w.onmessage = (): void => {
+    w.onmessage = () => {
       w.postMessage([sab1, sab2]);
-      w.onmessage = (): void => {
+      w.onmessage = () => {
         assertEquals(bytes1[0], 1);
         assertEquals(bytes2[0], 2);
         promise.resolve();
@@ -819,7 +819,7 @@ Deno.test({
 
 Deno.test({
   name: "Send MessagePorts from / to workers",
-  fn: async function (): Promise<void> {
+  fn: async function () {
     const result = deferred();
     const worker = new Worker(
       new URL("message_port.ts", import.meta.url).href,

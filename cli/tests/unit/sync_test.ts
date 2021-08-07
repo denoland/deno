@@ -3,7 +3,7 @@ import { assertEquals, unitTest } from "./test_util.ts";
 
 unitTest(
   { perms: { read: true, write: true } },
-  function fdatasyncSyncSuccess(): void {
+  function fdatasyncSyncSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_fdatasyncSync.txt";
     const file = Deno.openSync(filename, {
       read: true,
@@ -21,7 +21,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function fdatasyncSuccess(): Promise<void> {
+  async function fdatasyncSuccess() {
     const filename = (await Deno.makeTempDir()) + "/test_fdatasync.txt";
     const file = await Deno.open(filename, {
       read: true,
@@ -39,7 +39,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  function fsyncSyncSuccess(): void {
+  function fsyncSyncSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_fsyncSync.txt";
     const file = Deno.openSync(filename, {
       read: true,
@@ -57,7 +57,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function fsyncSuccess(): Promise<void> {
+  async function fsyncSuccess() {
     const filename = (await Deno.makeTempDir()) + "/test_fsync.txt";
     const file = await Deno.open(filename, {
       read: true,

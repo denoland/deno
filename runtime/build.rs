@@ -41,6 +41,7 @@ fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
     deno_webidl::init(),
     deno_console::init(),
     deno_url::init(),
+    deno_tls::init(),
     deno_web::init(deno_web::BlobStore::default(), Default::default()),
     deno_fetch::init::<deno_fetch::NoFetchPermissions>(
       "".to_owned(),
@@ -67,6 +68,7 @@ fn create_runtime_snapshot(snapshot_path: &Path, files: Vec<PathBuf>) {
       false, // No --unstable.
       None,
     ),
+    deno_ffi::init::<deno_ffi::NoFfiPermissions>(false),
     deno_http::init(),
   ];
 

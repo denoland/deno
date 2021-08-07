@@ -6,6 +6,11 @@ use super::code_lens;
 use super::config;
 use super::language_server;
 use super::language_server::StateSnapshot;
+use super::refactor::RefactorCodeActionData;
+use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
+use super::refactor::EXTRACT_CONSTANT;
+use super::refactor::EXTRACT_INTERFACE;
+use super::refactor::EXTRACT_TYPE;
 use super::semantic_tokens::SemanticTokensBuilder;
 use super::semantic_tokens::TsTokenEncodingConsts;
 use super::text;
@@ -1004,6 +1009,47 @@ impl FileTextChanges {
       edits,
     })
   }
+
+  pub(crate) async fn to_text_document_change_ops(
+    &self,
+    language_server: &mut language_server::Inner,
+  ) -> Result<Vec<lsp::DocumentChangeOperation>, AnyError> {
+    let mut ops = Vec::<lsp::DocumentChangeOperation>::new();
+    let specifier = normalize_specifier(&self.file_name)?;
+    let line_index = if !self.is_new_file.unwrap_or(false) {
+      language_server.get_line_index(specifier.clone()).await?
+    } else {
+      LineIndex::new("")
+    };
+
+    if self.is_new_file.unwrap_or(false) {
+      ops.push(lsp::DocumentChangeOperation::Op(lsp::ResourceOp::Create(
+        lsp::CreateFile {
+          uri: specifier.clone(),
+          options: Some(lsp::CreateFileOptions {
+            ignore_if_exists: Some(true),
+            overwrite: None,
+          }),
+          annotation_id: None,
+        },
+      )));
+    }
+
+    let edits = self
+      .text_changes
+      .iter()
+      .map(|tc| tc.as_text_edit(&line_index))
+      .collect();
+    ops.push(lsp::DocumentChangeOperation::Edit(lsp::TextDocumentEdit {
+      text_document: lsp::OptionalVersionedTextDocumentIdentifier {
+        uri: specifier.clone(),
+        version: language_server.document_version(specifier),
+      },
+      edits,
+    }));
+
+    Ok(ops)
+  }
 }
 
 #[derive(Debug, Deserialize)]
@@ -1053,6 +1099,149 @@ impl Classifications {
 
   fn get_token_modifier_from_classification(ts_classification: u32) -> u32 {
     ts_classification & (TsTokenEncodingConsts::ModifierMask as u32)
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefactorActionInfo {
+  name: String,
+  description: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  not_applicable_reason: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  kind: Option<String>,
+}
+
+impl RefactorActionInfo {
+  pub fn get_action_kind(&self) -> lsp::CodeActionKind {
+    if let Some(kind) = &self.kind {
+      kind.clone().into()
+    } else {
+      let maybe_match = ALL_KNOWN_REFACTOR_ACTION_KINDS
+        .iter()
+        .find(|action| action.matches(&self.name));
+      maybe_match
+        .map_or(lsp::CodeActionKind::REFACTOR, |action| action.kind.clone())
+    }
+  }
+
+  pub fn is_preferred(&self, all_actions: &[RefactorActionInfo]) -> bool {
+    if EXTRACT_CONSTANT.matches(&self.name) {
+      let get_scope = |name: &str| -> Option<u32> {
+        let scope_regex = Regex::new(r"scope_(\d)").unwrap();
+        if let Some(captures) = scope_regex.captures(name) {
+          captures[1].parse::<u32>().ok()
+        } else {
+          None
+        }
+      };
+
+      return if let Some(scope) = get_scope(&self.name) {
+        all_actions
+          .iter()
+          .filter(|other| {
+            !std::ptr::eq(&self, other) && EXTRACT_CONSTANT.matches(&other.name)
+          })
+          .all(|other| {
+            if let Some(other_scope) = get_scope(&other.name) {
+              scope < other_scope
+            } else {
+              true
+            }
+          })
+      } else {
+        false
+      };
+    }
+    if EXTRACT_TYPE.matches(&self.name) || EXTRACT_INTERFACE.matches(&self.name)
+    {
+      return true;
+    }
+    false
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicableRefactorInfo {
+  name: String,
+  description: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  inlineable: Option<bool>,
+  actions: Vec<RefactorActionInfo>,
+}
+
+impl ApplicableRefactorInfo {
+  pub fn to_code_actions(
+    &self,
+    specifier: &ModuleSpecifier,
+    range: &lsp::Range,
+  ) -> Vec<lsp::CodeAction> {
+    let mut code_actions = Vec::<lsp::CodeAction>::new();
+    // All typescript refactoring actions are inlineable
+    for action in self.actions.iter() {
+      code_actions
+        .push(self.as_inline_code_action(action, specifier, range, &self.name));
+    }
+    code_actions
+  }
+
+  fn as_inline_code_action(
+    &self,
+    action: &RefactorActionInfo,
+    specifier: &ModuleSpecifier,
+    range: &lsp::Range,
+    refactor_name: &str,
+  ) -> lsp::CodeAction {
+    let disabled = action.not_applicable_reason.as_ref().map(|reason| {
+      lsp::CodeActionDisabled {
+        reason: reason.clone(),
+      }
+    });
+
+    lsp::CodeAction {
+      title: action.description.to_string(),
+      kind: Some(action.get_action_kind()),
+      is_preferred: Some(action.is_preferred(&self.actions)),
+      disabled,
+      data: Some(
+        serde_json::to_value(RefactorCodeActionData {
+          specifier: specifier.clone(),
+          range: *range,
+          refactor_name: refactor_name.to_owned(),
+          action_name: action.name.clone(),
+        })
+        .unwrap(),
+      ),
+      ..Default::default()
+    }
+  }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefactorEditInfo {
+  edits: Vec<FileTextChanges>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub rename_location: Option<u32>,
+}
+
+impl RefactorEditInfo {
+  pub(crate) async fn to_workspace_edit(
+    &self,
+    language_server: &mut language_server::Inner,
+  ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
+    let mut all_ops = Vec::<lsp::DocumentChangeOperation>::new();
+    for edit in self.edits.iter() {
+      let ops = edit.to_text_document_change_ops(language_server).await?;
+      all_ops.extend(ops);
+    }
+
+    Ok(Some(lsp::WorkspaceEdit {
+      document_changes: Some(lsp::DocumentChanges::Operations(all_ops)),
+      ..Default::default()
+    }))
   }
 }
 
@@ -2421,6 +2610,10 @@ pub enum RequestMethod {
   },
   /// Retrieve the text of an assets that exists in memory in the isolate.
   GetAsset(ModuleSpecifier),
+  /// Retrieve the possible refactor info for a range of a file.
+  GetApplicableRefactors((ModuleSpecifier, TextSpan, String)),
+  /// Retrieve the refactor edit info for a range.
+  GetEditsForRefactor((ModuleSpecifier, TextSpan, String, String)),
   /// Retrieve code fixes for a range of a file with the provided error codes.
   GetCodeFixes((ModuleSpecifier, u32, u32, Vec<String>)),
   /// Get completion information at a given position (IntelliSense).
@@ -2490,6 +2683,26 @@ impl RequestMethod {
         "id": id,
         "method": "getAsset",
         "specifier": specifier,
+      }),
+      RequestMethod::GetApplicableRefactors((specifier, span, kind)) => json!({
+        "id": id,
+        "method": "getApplicableRefactors",
+        "specifier": state.denormalize_specifier(specifier),
+        "range": { "pos": span.start, "end": span.start + span.length},
+        "kind": kind,
+      }),
+      RequestMethod::GetEditsForRefactor((
+        specifier,
+        span,
+        refactor_name,
+        action_name,
+      )) => json!({
+        "id": id,
+        "method": "getEditsForRefactor",
+        "specifier": state.denormalize_specifier(specifier),
+        "range": { "pos": span.start, "end": span.start + span.length},
+        "refactorName": refactor_name,
+        "actionName": action_name,
       }),
       RequestMethod::GetCodeFixes((
         specifier,

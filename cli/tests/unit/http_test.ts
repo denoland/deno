@@ -200,7 +200,7 @@ unitTest({ perms: { net: true } }, async function httpServerInvalidMethod() {
 
 unitTest(
   { perms: { read: true, net: true } },
-  async function httpServerWithTls(): Promise<void> {
+  async function httpServerWithTls() {
     const hostname = "localhost";
     const port = 4501;
 
