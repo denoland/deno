@@ -373,10 +373,12 @@ async fn run_tls_client_auth_server() {
     .await
     .unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
-  let listener =
-    TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], TLS_CLIENT_AUTH_PORT)))
-      .await
-      .unwrap();
+  let addr = SocketAddr::new(
+    std::net::IpAddr::V6(std::net::Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
+    TLS_CLIENT_AUTH_PORT,
+  );
+  // SocketAddr::from(([127, 0, 0, 1], TLS_CLIENT_AUTH_PORT))
+  let listener = TcpListener::bind(addr).await.unwrap();
   println!("ready: tls client auth");
 
   while let Ok((stream, _addr)) = listener.accept().await {
