@@ -274,7 +274,7 @@ impl SpecifierHandler for FetchHandler {
               let message = if let Some(location) = &maybe_location {
                 format!(
                   "Cannot resolve module \"{}\" from \"{}\".",
-                  requested_specifier, location.filename
+                  requested_specifier, location.specifier
                 )
               } else {
                 format!("Cannot resolve module \"{}\".", requested_specifier)
@@ -291,7 +291,7 @@ impl SpecifierHandler for FetchHandler {
             // they are confusing to the user to print out the location because
             // they cannot actually get to the source code that is quoted, as
             // it only exists in the runtime memory of Deno.
-            if !location.filename.contains("$deno$") {
+            if !location.specifier.contains("$deno$") {
               (
                 requested_specifier.clone(),
                 HandlerError::FetchErrorWithLocation(err.to_string(), location)

@@ -1,0 +1,157 @@
+[
+  {
+    "title": "Extract to type alias",
+    "kind": "refactor.extract.type",
+    "isPreferred": true,
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 7
+        },
+        "end": {
+          "line": 0,
+          "character": 33
+        }
+      },
+      "refactorName": "Extract type",
+      "actionName": "Extract to type alias"
+    }
+  },
+  {
+    "title": "Extract to interface",
+    "kind": "refactor.extract.interface",
+    "isPreferred": true,
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 7
+        },
+        "end": {
+          "line": 0,
+          "character": 33
+        }
+      },
+      "refactorName": "Extract type",
+      "actionName": "Extract to interface"
+    }
+  },
+  {
+    "title": "Extract function",
+    "kind": "refactor.extract.function",
+    "isPreferred": false,
+    "disabled": {
+      "reason": "Statement or expression expected."
+    },
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 7
+        },
+        "end": {
+          "line": 0,
+          "character": 33
+        }
+      },
+      "refactorName": "Extract Symbol",
+      "actionName": "Extract Function"
+    }
+  },
+  {
+    "title": "Extract constant",
+    "kind": "refactor.extract.constant",
+    "isPreferred": false,
+    "disabled": {
+      "reason": "Statement or expression expected."
+    },
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 7
+        },
+        "end": {
+          "line": 0,
+          "character": 33
+        }
+      },
+      "refactorName": "Extract Symbol",
+      "actionName": "Extract Constant"
+    }
+  },
+  {
+    "title": "Convert default export to named export",
+    "kind": "refactor.rewrite.export.named",
+    "isPreferred": false,
+    "disabled": {
+      "reason": "Could not find export statement"
+    },
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 7
+        },
+        "end": {
+          "line": 0,
+          "character": 33
+        }
+      },
+      "refactorName": "Convert export",
+      "actionName": "Convert default export to named export"
+    }
+  },
+  {
+    "title": "Convert named export to default export",
+    "kind": "refactor.rewrite.export.default",
+    "isPreferred": false,
+    "disabled": {
+      "reason": "Could not find export statement"
+    },
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 7
+        },
+        "end": {
+          "line": 0,
+          "character": 33
+        }
+      },
+      "refactorName": "Convert export",
+      "actionName": "Convert named export to default export"
+    }
+  },
+  {
+    "title": "Convert namespace import to named imports",
+    "kind": "refactor.rewrite.import.named",
+    "isPreferred": false,
+    "disabled": {
+      "reason": "Selection is not an import declaration."
+    },
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 7
+        },
+        "end": {
+          "line": 0,
+          "character": 33
+        }
+      },
+      "refactorName": "Convert import",
+      "actionName": "Convert namespace import to named imports"
+    }
+  }
+]

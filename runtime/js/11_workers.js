@@ -93,7 +93,16 @@
     } else if (ArrayIsArray(value)) {
       value = ArrayPrototypeMap(value, (route) => {
         if (route instanceof URL) {
-          route = pathFromURL(route);
+          if (permission === "net") {
+            route = route.host;
+          }
+          if (permission === "env") {
+            throw new Error(
+              `Expected 'string' for env permission, received 'URL'`,
+            );
+          } else {
+            route = pathFromURL(route);
+          }
         }
         return route;
       });
@@ -115,12 +124,12 @@
     write = "inherit",
   }) {
     return {
-      env: parseUnitPermission(env, "env"),
+      env: parseArrayPermission(env, "env"),
       hrtime: parseUnitPermission(hrtime, "hrtime"),
       net: parseArrayPermission(net, "net"),
       plugin: parseUnitPermission(plugin, "plugin"),
       read: parseArrayPermission(read, "read"),
-      run: parseUnitPermission(run, "run"),
+      run: parseArrayPermission(run, "run"),
       write: parseArrayPermission(write, "write"),
     };
   }

@@ -4,6 +4,6 @@ import "./subdir/auto_print_hello.ts";
 
 import "./subdir/auto_print_hello.ts";
 
-(async (): Promise<void> => {
+(async () => {
   await import("./subdir/auto_print_hello.ts");
 })();

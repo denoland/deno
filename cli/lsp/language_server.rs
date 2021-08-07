@@ -41,6 +41,7 @@ use super::documents::LanguageId;
 use super::lsp_custom;
 use super::parent_process_checker;
 use super::performance::Performance;
+use super::refactor;
 use super::registries;
 use super::sources;
 use super::sources::Sources;
@@ -1156,6 +1157,10 @@ impl Inner {
     }
 
     let mark = self.performance.mark("code_action", Some(&params));
+    let mut all_actions = CodeActionResponse::new();
+    let line_index = self.get_line_index_sync(&specifier).unwrap();
+
+    // QuickFix
     let fixable_diagnostics: Vec<&Diagnostic> = params
       .context
       .diagnostics
@@ -1183,93 +1188,139 @@ impl Inner {
         None => false,
       })
       .collect();
-    if fixable_diagnostics.is_empty() {
-      self.performance.measure(mark);
-      return Ok(None);
-    }
-    let line_index = self.get_line_index_sync(&specifier).unwrap();
-    let mut code_actions = CodeActionCollection::default();
-    let file_diagnostics = self
-      .diagnostics_server
-      .get(&specifier, DiagnosticSource::TypeScript)
-      .await;
-    for diagnostic in &fixable_diagnostics {
-      match diagnostic.source.as_deref() {
-        Some("deno-ts") => {
-          let code = match diagnostic.code.as_ref().unwrap() {
-            NumberOrString::String(code) => code.to_string(),
-            NumberOrString::Number(code) => code.to_string(),
-          };
-          let codes = vec![code];
-          let req = tsc::RequestMethod::GetCodeFixes((
-            specifier.clone(),
-            line_index.offset_tsc(diagnostic.range.start)?,
-            line_index.offset_tsc(diagnostic.range.end)?,
-            codes,
-          ));
-          let actions: Vec<tsc::CodeFixAction> =
-            match self.ts_server.request(self.snapshot()?, req).await {
-              Ok(items) => items,
-              Err(err) => {
-                // sometimes tsc reports errors when retrieving code actions
-                // because they don't reflect the current state of the document
-                // so we will log them to the output, but we won't send an error
-                // message back to the client.
-                error!("Error getting actions from TypeScript: {}", err);
-                Vec::new()
-              }
+    if !fixable_diagnostics.is_empty() {
+      let mut code_actions = CodeActionCollection::default();
+      let file_diagnostics = self
+        .diagnostics_server
+        .get(&specifier, DiagnosticSource::TypeScript)
+        .await;
+      for diagnostic in &fixable_diagnostics {
+        match diagnostic.source.as_deref() {
+          Some("deno-ts") => {
+            let code = match diagnostic.code.as_ref().unwrap() {
+              NumberOrString::String(code) => code.to_string(),
+              NumberOrString::Number(code) => code.to_string(),
             };
-          for action in actions {
-            code_actions
-              .add_ts_fix_action(&specifier, &action, diagnostic, self)
-              .await
-              .map_err(|err| {
-                error!("Unable to convert fix: {}", err);
-                LspError::internal_error()
-              })?;
-            if code_actions.is_fix_all_action(
-              &action,
-              diagnostic,
-              &file_diagnostics,
-            ) {
+            let codes = vec![code];
+            let req = tsc::RequestMethod::GetCodeFixes((
+              specifier.clone(),
+              line_index.offset_tsc(diagnostic.range.start)?,
+              line_index.offset_tsc(diagnostic.range.end)?,
+              codes,
+            ));
+            let actions: Vec<tsc::CodeFixAction> =
+              match self.ts_server.request(self.snapshot()?, req).await {
+                Ok(items) => items,
+                Err(err) => {
+                  // sometimes tsc reports errors when retrieving code actions
+                  // because they don't reflect the current state of the document
+                  // so we will log them to the output, but we won't send an error
+                  // message back to the client.
+                  error!("Error getting actions from TypeScript: {}", err);
+                  Vec::new()
+                }
+              };
+            for action in actions {
               code_actions
-                .add_ts_fix_all_action(&action, &specifier, diagnostic);
+                .add_ts_fix_action(&specifier, &action, diagnostic, self)
+                .await
+                .map_err(|err| {
+                  error!("Unable to convert fix: {}", err);
+                  LspError::internal_error()
+                })?;
+              if code_actions.is_fix_all_action(
+                &action,
+                diagnostic,
+                &file_diagnostics,
+              ) {
+                code_actions
+                  .add_ts_fix_all_action(&action, &specifier, diagnostic);
+              }
             }
           }
-        }
-        Some("deno") => {
-          code_actions
+          Some("deno") => code_actions
             .add_deno_fix_action(diagnostic)
             .map_err(|err| {
               error!("{}", err);
               LspError::internal_error()
-            })?
+            })?,
+          Some("deno-lint") => code_actions
+            .add_deno_lint_ignore_action(
+              &specifier,
+              self.documents.docs.get(&specifier),
+              diagnostic,
+            )
+            .map_err(|err| {
+              error!("Unable to fix lint error: {}", err);
+              LspError::internal_error()
+            })?,
+          _ => (),
         }
-        Some("deno-lint") => code_actions
-          .add_deno_lint_ignore_action(
-            &specifier,
-            self.documents.docs.get(&specifier),
-            diagnostic,
-          )
-          .map_err(|err| {
-            error!("Unable to fix lint error: {}", err);
-            LspError::internal_error()
-          })?,
-        _ => (),
       }
+      code_actions.set_preferred_fixes();
+      all_actions.extend(code_actions.get_response());
     }
-    code_actions.set_preferred_fixes();
-    let code_action_response = code_actions.get_response();
+
+    // Refactor
+    let start = line_index.offset_tsc(params.range.start)?;
+    let length = line_index.offset_tsc(params.range.end)? - start;
+    let only =
+      params
+        .context
+        .only
+        .as_ref()
+        .map_or(String::default(), |values| {
+          values
+            .first()
+            .map_or(String::default(), |v| v.as_str().to_owned())
+        });
+    let req = tsc::RequestMethod::GetApplicableRefactors((
+      specifier.clone(),
+      tsc::TextSpan { start, length },
+      only,
+    ));
+    let refactor_infos: Vec<tsc::ApplicableRefactorInfo> = self
+      .ts_server
+      .request(self.snapshot()?, req)
+      .await
+      .map_err(|err| {
+        error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })?;
+    let mut refactor_actions = Vec::<CodeAction>::new();
+    for refactor_info in refactor_infos.iter() {
+      refactor_actions
+        .extend(refactor_info.to_code_actions(&specifier, &params.range));
+    }
+    all_actions.extend(
+      refactor::prune_invalid_actions(&refactor_actions, 5)
+        .into_iter()
+        .map(CodeActionOrCommand::CodeAction),
+    );
+
+    let response = if !all_actions.is_empty() {
+      Some(all_actions)
+    } else {
+      None
+    };
     self.performance.measure(mark);
-    Ok(Some(code_action_response))
+    Ok(response)
   }
 
   async fn code_action_resolve(
     &mut self,
     params: CodeAction,
   ) -> LspResult<CodeAction> {
+    if params.kind.is_none() || params.data.is_none() {
+      return Ok(params);
+    }
+
     let mark = self.performance.mark("code_action_resolve", Some(&params));
-    let result = if let Some(data) = params.data.clone() {
+    let kind = params.kind.clone().unwrap();
+    let data = params.data.clone().unwrap();
+
+    let result = if kind.as_str().starts_with(CodeActionKind::QUICKFIX.as_str())
+    {
       let code_action_data: CodeActionData =
         from_value(data).map_err(|err| {
           error!("Unable to decode code action data: {}", err);
@@ -1289,35 +1340,69 @@ impl Inner {
         })?;
       if combined_code_actions.commands.is_some() {
         error!("Deno does not support code actions with commands.");
-        Err(LspError::invalid_request())
-      } else {
-        let changes = if code_action_data.fix_id == "fixMissingImport" {
-          fix_ts_import_changes(
-            &code_action_data.specifier,
-            &combined_code_actions.changes,
-            self,
-          )
-          .map_err(|err| {
-            error!("Unable to remap changes: {}", err);
-            LspError::internal_error()
-          })?
-        } else {
-          combined_code_actions.changes.clone()
-        };
-        let mut code_action = params.clone();
-        code_action.edit =
-          ts_changes_to_edit(&changes, self).await.map_err(|err| {
-            error!("Unable to convert changes to edits: {}", err);
-            LspError::internal_error()
-          })?;
-        Ok(code_action)
+        return Err(LspError::invalid_request());
       }
+
+      let changes = if code_action_data.fix_id == "fixMissingImport" {
+        fix_ts_import_changes(
+          &code_action_data.specifier,
+          &combined_code_actions.changes,
+          self,
+        )
+        .map_err(|err| {
+          error!("Unable to remap changes: {}", err);
+          LspError::internal_error()
+        })?
+      } else {
+        combined_code_actions.changes.clone()
+      };
+      let mut code_action = params.clone();
+      code_action.edit =
+        ts_changes_to_edit(&changes, self).await.map_err(|err| {
+          error!("Unable to convert changes to edits: {}", err);
+          LspError::internal_error()
+        })?;
+      code_action
+    } else if kind.as_str().starts_with(CodeActionKind::REFACTOR.as_str()) {
+      let mut code_action = params.clone();
+      let action_data: refactor::RefactorCodeActionData = from_value(data)
+        .map_err(|err| {
+          error!("Unable to decode code action data: {}", err);
+          LspError::invalid_params("The CodeAction's data is invalid.")
+        })?;
+      let line_index =
+        self.get_line_index_sync(&action_data.specifier).unwrap();
+      let start = line_index.offset_tsc(action_data.range.start)?;
+      let length = line_index.offset_tsc(action_data.range.end)? - start;
+      let req = tsc::RequestMethod::GetEditsForRefactor((
+        action_data.specifier.clone(),
+        tsc::TextSpan { start, length },
+        action_data.refactor_name.clone(),
+        action_data.action_name.clone(),
+      ));
+      let refactor_edit_info: tsc::RefactorEditInfo = self
+        .ts_server
+        .request(self.snapshot()?, req)
+        .await
+        .map_err(|err| {
+          error!("Failed to request to tsserver {}", err);
+          LspError::invalid_request()
+        })?;
+      code_action.edit = refactor_edit_info
+        .to_workspace_edit(self)
+        .await
+        .map_err(|err| {
+          error!("Unable to convert changes to edits: {}", err);
+          LspError::internal_error()
+        })?;
+      code_action
     } else {
       // The code action doesn't need to be resolved
-      Ok(params)
+      params
     };
+
     self.performance.measure(mark);
-    result
+    Ok(result)
   }
 
   async fn code_lens(

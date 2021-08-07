@@ -12,7 +12,7 @@ function readFileString(filename: string | URL): string {
   return dec.decode(dataRead);
 }
 
-function writeFileString(filename: string | URL, s: string): void {
+function writeFileString(filename: string | URL, s: string) {
   const enc = new TextEncoder();
   const data = enc.encode(s);
   Deno.writeFileSync(filename, data, { mode: 0o666 });
@@ -21,7 +21,7 @@ function writeFileString(filename: string | URL, s: string): void {
 function assertSameContent(
   filename1: string | URL,
   filename2: string | URL,
-): void {
+) {
   const data1 = Deno.readFileSync(filename1);
   const data2 = Deno.readFileSync(filename2);
   assertEquals(data1, data2);
@@ -29,7 +29,7 @@ function assertSameContent(
 
 unitTest(
   { perms: { read: true, write: true } },
-  function copyFileSyncSuccess(): void {
+  function copyFileSyncSuccess() {
     const tempDir = Deno.makeTempDirSync();
     const fromFilename = tempDir + "/from.txt";
     const toFilename = tempDir + "/to.txt";
@@ -46,7 +46,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  function copyFileSyncByUrl(): void {
+  function copyFileSyncByUrl() {
     const tempDir = Deno.makeTempDirSync();
     const fromUrl = new URL(
       `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/from.txt`,
@@ -67,7 +67,7 @@ unitTest(
 
 unitTest(
   { perms: { write: true, read: true } },
-  function copyFileSyncFailure(): void {
+  function copyFileSyncFailure() {
     const tempDir = Deno.makeTempDirSync();
     const fromFilename = tempDir + "/from.txt";
     const toFilename = tempDir + "/to.txt";
@@ -82,7 +82,7 @@ unitTest(
 
 unitTest(
   { perms: { write: true, read: false } },
-  function copyFileSyncPerm1(): void {
+  function copyFileSyncPerm1() {
     assertThrows(() => {
       Deno.copyFileSync("/from.txt", "/to.txt");
     }, Deno.errors.PermissionDenied);
@@ -91,7 +91,7 @@ unitTest(
 
 unitTest(
   { perms: { write: false, read: true } },
-  function copyFileSyncPerm2(): void {
+  function copyFileSyncPerm2() {
     assertThrows(() => {
       Deno.copyFileSync("/from.txt", "/to.txt");
     }, Deno.errors.PermissionDenied);
@@ -100,7 +100,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  function copyFileSyncOverwrite(): void {
+  function copyFileSyncOverwrite() {
     const tempDir = Deno.makeTempDirSync();
     const fromFilename = tempDir + "/from.txt";
     const toFilename = tempDir + "/to.txt";
@@ -119,7 +119,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function copyFileSuccess(): Promise<void> {
+  async function copyFileSuccess() {
     const tempDir = Deno.makeTempDirSync();
     const fromFilename = tempDir + "/from.txt";
     const toFilename = tempDir + "/to.txt";
@@ -136,7 +136,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function copyFileByUrl(): Promise<void> {
+  async function copyFileByUrl() {
     const tempDir = Deno.makeTempDirSync();
     const fromUrl = new URL(
       `file://${Deno.build.os === "windows" ? "/" : ""}${tempDir}/from.txt`,
@@ -157,7 +157,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function copyFileFailure(): Promise<void> {
+  async function copyFileFailure() {
     const tempDir = Deno.makeTempDirSync();
     const fromFilename = tempDir + "/from.txt";
     const toFilename = tempDir + "/to.txt";
@@ -172,7 +172,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function copyFileOverwrite(): Promise<void> {
+  async function copyFileOverwrite() {
     const tempDir = Deno.makeTempDirSync();
     const fromFilename = tempDir + "/from.txt";
     const toFilename = tempDir + "/to.txt";
@@ -191,7 +191,7 @@ unitTest(
 
 unitTest(
   { perms: { read: false, write: true } },
-  async function copyFilePerm1(): Promise<void> {
+  async function copyFilePerm1() {
     await assertThrowsAsync(async () => {
       await Deno.copyFile("/from.txt", "/to.txt");
     }, Deno.errors.PermissionDenied);
@@ -200,7 +200,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: false } },
-  async function copyFilePerm2(): Promise<void> {
+  async function copyFilePerm2() {
     await assertThrowsAsync(async () => {
       await Deno.copyFile("/from.txt", "/to.txt");
     }, Deno.errors.PermissionDenied);
