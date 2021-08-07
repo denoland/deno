@@ -11,6 +11,7 @@ import {
   unitTest,
 } from "./test_util.ts";
 import { BufReader, BufWriter } from "../../../test_util/std/io/bufio.ts";
+import { readAll } from "../../../test_util/std/io/util.ts";
 import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
 
 const encoder = new TextEncoder();
@@ -1030,7 +1031,7 @@ unitTest(
       certFile: "cli/tests/tls/RootCA.crt",
     });
 
-    const bytes = await Deno.readAll(conn);
+    const bytes = await readAll(conn);
     const result = decoder.decode(bytes);
     // Server will respond with PASS if client authentication was successful.
     assertEquals(result, "PASS");
