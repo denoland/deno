@@ -108,7 +108,10 @@ declare var onmessageerror:
   | null;
 declare function close(): void;
 declare function postMessage(message: any, transfer: Transferable[]): void;
-declare function postMessage(message: any, options?: StructuredSerializeOptions): void;
+declare function postMessage(
+  message: any,
+  options?: StructuredSerializeOptions,
+): void;
 declare var navigator: WorkerNavigator;
 declare var onerror:
   | ((this: DedicatedWorkerGlobalScope, ev: ErrorEvent) => any)
