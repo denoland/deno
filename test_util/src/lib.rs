@@ -373,11 +373,16 @@ async fn run_tls_client_auth_server() {
     .await
     .unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
-  let addr = SocketAddr::new(
-    std::net::IpAddr::V6(std::net::Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
-    TLS_CLIENT_AUTH_PORT,
-  );
-  // SocketAddr::from(([127, 0, 0, 1], TLS_CLIENT_AUTH_PORT))
+
+  // This bit of nastiness is to support the case when localhost resolves to
+  // ::1 on github actions and 127.0.0.1 locally.
+  let addr = {
+    use std::net::ToSocketAddrs;
+    let mut addrs_iter = format!("localhost:{}", TLS_CLIENT_AUTH_PORT)
+      .to_socket_addrs()
+      .unwrap();
+    addrs_iter.next().unwrap()
+  };
   let listener = TcpListener::bind(addr).await.unwrap();
   println!("ready: tls client auth");
 
