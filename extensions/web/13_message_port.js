@@ -271,9 +271,8 @@
       prefix,
       context: "Argument 2",
     });
-    const [data] = deserializeJsMessageData(
-      serializeJsMessageData(value, options.transfer),
-    );
+    const messageData = serializeJsMessageData(value, options.transfer);
+    const [data] = deserializeJsMessageData(messageData);
     return data;
   }
 
