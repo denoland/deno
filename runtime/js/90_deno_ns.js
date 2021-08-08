@@ -136,5 +136,7 @@
     HttpClient: __bootstrap.fetch.HttpClient,
     createHttpClient: __bootstrap.fetch.createHttpClient,
     http: __bootstrap.http,
+    Command: __bootstrap.command.Command,
+    Child: __bootstrap.command.Child,
   };
 })(this);

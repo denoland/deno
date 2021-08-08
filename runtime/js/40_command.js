@@ -1,0 +1,165 @@
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+"use strict";
+
+((window) => {
+  const core = window.Deno.core;
+  const { assert, pathFromURL } = window.__bootstrap.util;
+  const { read } = window.__bootstrap.io;
+  const { writeAll } = window.__bootstrap.buffer;
+  const { illegalConstructorKey } = window.__bootstrap.webUtil;
+  const { ArrayPrototypeMap, ObjectEntries, String } =
+    window.__bootstrap.primordials;
+
+  class Command {
+    #args;
+
+    constructor({
+      cmd,
+      cwd = undefined,
+      clearEnv = false,
+      env = {},
+      stdout = "inherit",
+      stderr = "inherit",
+      stdin = "inherit",
+    }) {
+      assert(cmd.length > 0, "No command was passed.");
+      cmd[0] = pathFromURL(cmd[0]);
+
+      this.#args = {
+        cmd: ArrayPrototypeMap(cmd, String),
+        cwd,
+        clearEnv,
+        env: ObjectEntries(env),
+        stdin,
+        stdout,
+        stderr,
+      };
+    }
+
+    spawn() {
+      const child = core.opSync("op_command_spawn", this.#args);
+
+      return new Child(illegalConstructorKey, child);
+    }
+
+    async status() {
+      return await core.opAsync("op_command_status", this.#args);
+    }
+    async output() {
+      return await core.opAsync("op_command_output", this.#args);
+    }
+  }
+
+  class Child {
+    #rid;
+
+    #pid;
+    get pid() {
+      return this.#pid;
+    }
+
+    #stdin;
+    get stdin() {
+      return this.#stdin;
+    }
+
+    #stdoutRid;
+    #stdout;
+    get stdout() {
+      return this.#stdout;
+    }
+
+    #stderrRid;
+    #stderr;
+    get stderr() {
+      return this.#stderr;
+    }
+
+    constructor(key = null, {
+      rid,
+      pid,
+      stdinRid,
+      stdoutRid,
+      stderrRid,
+    } = null) {
+      if (key !== illegalConstructorKey) {
+        throw new TypeError("Illegal constructor.");
+      }
+
+      this.#rid = rid;
+      this.#pid = pid;
+
+      if (stdinRid !== undefined) {
+        this.#stdin = new WritableStream({
+          async write(chunk) {
+            await writeAll(stdinRid, chunk);
+          },
+          close() {
+            core.close(stdinRid);
+          },
+        });
+      }
+
+      if (stdoutRid !== undefined) {
+        this.#stdoutRid = stdoutRid;
+        // TODO: BYOB Stream
+        this.#stdout = new ReadableStream({
+          async pull(controller) {
+            const buf = new Uint8Array(1024); // TODO
+            const res = await read(stdoutRid, buf);
+            if (res === null) {
+              core.close(stdoutRid);
+              controller.close();
+            } else {
+              controller.enqueue(buf);
+            }
+          },
+          cancel() {
+            core.close(stdoutRid);
+          },
+        });
+      }
+
+      if (stderrRid !== undefined) {
+        this.#stderrRid = stderrRid;
+        // TODO: BYOB Stream
+        this.#stderr = new ReadableStream({
+          async pull(controller) {
+            const buf = new Uint8Array(1024); // TODO
+            const res = await read(stderrRid, buf);
+            if (res === null) {
+              core.close(stderrRid);
+              controller.close();
+            } else {
+              controller.enqueue(buf);
+            }
+          },
+          cancel() {
+            core.close(stderrRid);
+          },
+        });
+      }
+    }
+
+    get status() {
+      return core.opSync("op_command_child_status", this.#rid);
+    }
+
+    async wait() {
+      return await core.opAsync("op_command_child_wait", this.#rid);
+    }
+
+    async output() {
+      return await core.opAsync("op_command_child_output", {
+        rid: this.#rid,
+        stdoutRid: this.#stdoutRid,
+        stderrRid: this.#stderrRid,
+      });
+    }
+  }
+
+  window.__bootstrap.command = {
+    Command,
+    Child,
+  };
+})(this);

@@ -120,6 +120,7 @@ impl MainWorker {
       // Runtime ops
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(options.create_web_worker_cb.clone()),
+      ops::command::init(),
       ops::fs_events::init(),
       ops::fs::init(),
       ops::io::init(),

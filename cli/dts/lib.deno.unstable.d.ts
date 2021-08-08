@@ -1084,6 +1084,44 @@ declare namespace Deno {
       write?: "inherit" | boolean | Array<string | URL>;
     };
   }
+
+  interface CommandOptions {
+    cmd: [string | URL, ...string[]];
+    cwd?: string;
+    env?: Record<string, string>;
+    clearEnv?: boolean;
+
+    stdin?: "piped" | "inherit" | "null";
+    stdout?: "piped" | "inherit" | "null";
+    stderr?: "piped" | "inherit" | "null";
+  }
+
+  class Command {
+    constructor(options: CommandOptions);
+
+    spawn(): Child;
+    status(): Promise<ProcessStatus>;
+    output(): Promise<CommandOutput>;
+  }
+
+  class Child {
+    readonly stdin?: WritableStream<Uint8Array>; // TODO: strict up the typings depending on CommandOptions
+    readonly stdout?: ReadableStream<Uint8Array>; // TODO: strict up the typings depending on CommandOptions
+    readonly stderr?: ReadableStream<Uint8Array>; // TODO: strict up the typings depending on CommandOptions
+
+    readonly pid: number;
+    readonly status: ProcessStatus | undefined;
+
+    wait(): Promise<ProcessStatus>;
+    output(): Promise<CommandOutput>;
+    // TODO: kill
+  }
+
+  interface CommandOutput {
+    status: ProcessStatus;
+    stdout?: Uint8Array; // TODO: strict up the typings depending on CommandOptions
+    stderr?: Uint8Array; // TODO: strict up the typings depending on CommandOptions
+  }
 }
 
 declare function fetch(
