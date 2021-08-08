@@ -317,7 +317,7 @@
         );
         options = { transfer };
       } else {
-        options = webidl.converters.PostMessageOptions(transferOrOptions, {
+        options = webidl.converters.StructuredSerializeOptions(transferOrOptions, {
           prefix,
           context: "Argument 2",
         });
