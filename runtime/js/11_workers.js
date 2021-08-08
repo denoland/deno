@@ -317,10 +317,13 @@
         );
         options = { transfer };
       } else {
-        options = webidl.converters.StructuredSerializeOptions(transferOrOptions, {
-          prefix,
-          context: "Argument 2",
-        });
+        options = webidl.converters.StructuredSerializeOptions(
+          transferOrOptions,
+          {
+            prefix,
+            context: "Argument 2",
+          },
+        );
       }
       const { transfer } = options;
       const data = serializeJsMessageData(message, transfer);
