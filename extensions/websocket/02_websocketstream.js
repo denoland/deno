@@ -75,10 +75,12 @@
 
     [_url];
     get url() {
+      webidl.assertBranded(this, WebSocketStream);
       return this[_url];
     }
 
     constructor(url, options) {
+      this[webidl.brand] = webidl.brand;
       const prefix = "Failed to construct 'WebSocketStream'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
       url = webidl.converters.USVString(url, {
@@ -330,6 +332,7 @@
 
     [_connection] = new Deferred();
     get connection() {
+      webidl.assertBranded(this, WebSocketStream);
       return this[_connection].promise;
     }
 
@@ -337,10 +340,12 @@
     [_closing] = false;
     [_closed] = new Deferred();
     get closed() {
+      webidl.assertBranded(this, WebSocketStream);
       return this[_closed].promise;
     }
 
     close(closeInfo) {
+      webidl.assertBranded(this, WebSocketStream);
       closeInfo = webidl.converters.WebSocketCloseInfo(closeInfo, {
         prefix: "Failed to execute 'close' on 'WebSocketStream'",
         context: "Argument 1",
