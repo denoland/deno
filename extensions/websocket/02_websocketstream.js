@@ -28,7 +28,9 @@
       {
         key: "protocols",
         converter: webidl.converters["sequence<USVString>"],
-        defaultValue: [],
+        get defaultValue() {
+          return [];
+        },
       },
       {
         key: "signal",
