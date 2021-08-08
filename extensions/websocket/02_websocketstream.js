@@ -8,6 +8,8 @@
   const webidl = window.__bootstrap.webidl;
   const { writableStreamClose, Deferred } = window.__bootstrap.streams;
   const { DOMException } = window.__bootstrap.domException;
+  const { add, remove } = window.__bootstrap.abortSignal;
+
   const {
     StringPrototypeEndsWith,
     StringPrototypeToLowerCase,
@@ -143,7 +145,7 @@
         const abort = () => {
           core.close(cancelRid);
         };
-        options.signal?.addEventListener("abort", abort);
+        options.signal?.[add](abort);
         PromisePrototypeThen(
           core.opAsync("op_ws_create", {
             url: this[_url],
@@ -153,7 +155,7 @@
             cancelHandle: cancelRid,
           }),
           (create) => {
-            options.signal?.removeEventListener("abort", abort);
+            options.signal?.[remove](abort);
             if (this[_earlyClose]) {
               PromisePrototypeThen(
                 core.opAsync("op_ws_close", {
