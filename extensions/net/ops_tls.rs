@@ -764,7 +764,7 @@ where
     super::check_unstable2(&state, "ConnecTlsOptions.certChain");
   }
   if args.private_key.is_some() {
-    super::check_unstable2(&state, "ConnecTlsOptions.privateKey");
+    super::check_unstable2(&state, "ConnectTlsOptions.privateKey");
   }
 
   {
