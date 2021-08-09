@@ -25,6 +25,7 @@ deno_console = { version = "0.13.0", path = "../extensions/console" }
 deno_core = { version = "0.95.0", path = "../core" }
 deno_crypto = { version = "0.27.0", path = "../extensions/crypto" }
 deno_fetch = { version = "0.36.0", path = "../extensions/fetch" }
+deno_ffi = { version = "0.1.0", path = "../extensions/ffi" }
 deno_http = { version = "0.4.0", path = "../extensions/http" }
 deno_net = { version = "0.4.0", path = "../extensions/net" }
 deno_timers = { version = "0.11.0", path = "../extensions/timers" }
@@ -46,6 +47,7 @@ deno_core = { version = "0.95.0", path = "../core" }
 deno_doc = "0.9.0"
 deno_lint = "0.11.0"
 deno_runtime = { version = "0.21.0", path = "../runtime" }
+deno_tls = { version = "0.1.0", path = "../extensions/tls" }
 
 atty = "0.2.14"
 base64 = "0.13.0"

@@ -15,13 +15,11 @@ path = "lib.rs"
 
 [dependencies]
 deno_core = { version = "0.95.0", path = "../../core" }
+deno_tls = { version = "0.1.0", path = "../tls" }
 
 lazy_static = "1.4.0"
 log = "0.4.14"
-rustls = "0.19.0"
 serde = { version = "1.0.126", features = ["derive"] }
 tokio = { version = "1.8.1", features = ["full"] }
 trust-dns-proto = "0.20.3"
 trust-dns-resolver = { version = "0.20.3", features = ["tokio-runtime", "serde-config"] }
-webpki = "0.21.4"
-webpki-roots = "0.21.1"

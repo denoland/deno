@@ -94,9 +94,10 @@
       value = ArrayPrototypeMap(value, (route) => {
         if (route instanceof URL) {
           if (permission === "net") {
-            route = route.host;
-          }
-          if (permission === "env") {
+            throw new Error(
+              `Expected 'string' for net permission, received 'URL'`,
+            );
+          } else if (permission === "env") {
             throw new Error(
               `Expected 'string' for env permission, received 'URL'`,
             );
@@ -118,18 +119,18 @@
     env = "inherit",
     hrtime = "inherit",
     net = "inherit",
-    plugin = "inherit",
+    ffi = "inherit",
     read = "inherit",
     run = "inherit",
     write = "inherit",
   }) {
     return {
-      env: parseArrayPermission(env, "env"),
+      env: parseUnitPermission(env, "env"),
       hrtime: parseUnitPermission(hrtime, "hrtime"),
       net: parseArrayPermission(net, "net"),
-      plugin: parseUnitPermission(plugin, "plugin"),
+      ffi: parseUnitPermission(ffi, "ffi"),
       read: parseArrayPermission(read, "read"),
-      run: parseArrayPermission(run, "run"),
+      run: parseUnitPermission(run, "run"),
       write: parseArrayPermission(write, "write"),
     };
   }
@@ -174,7 +175,7 @@
             env: false,
             hrtime: false,
             net: false,
-            plugin: false,
+            ffi: false,
             read: false,
             run: false,
             write: false,

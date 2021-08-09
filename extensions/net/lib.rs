@@ -11,6 +11,7 @@ use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::Extension;
 use deno_core::OpState;
+use deno_tls::rustls::RootCertStore;
 use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
@@ -90,20 +91,17 @@ pub fn get_unstable_declaration() -> PathBuf {
 
 #[derive(Clone)]
 pub struct DefaultTlsOptions {
-  pub ca_data: Option<Vec<u8>>,
+  pub root_cert_store: Option<RootCertStore>,
 }
 
 pub fn init<P: NetPermissions + 'static>(
-  ca_data: Option<Vec<u8>>,
+  root_cert_store: Option<RootCertStore>,
   unstable: bool,
 ) -> Extension {
   let mut ops_to_register = vec![];
   ops_to_register.extend(io::init());
   ops_to_register.extend(ops::init::<P>());
   ops_to_register.extend(ops_tls::init::<P>());
-
-  let default_tls_options = DefaultTlsOptions { ca_data };
-
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:extensions/net",
@@ -113,7 +111,9 @@ pub fn init<P: NetPermissions + 'static>(
     ))
     .ops(ops_to_register)
     .state(move |state| {
-      state.put(default_tls_options.clone());
+      state.put(DefaultTlsOptions {
+        root_cert_store: root_cert_store.clone(),
+      });
       state.put(UnstableChecker { unstable });
       Ok(())
     })
