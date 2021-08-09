@@ -598,6 +598,7 @@ pub mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
     )
     .expect("could not setup");
     let disk_cache = deno_dir.gen_cache;

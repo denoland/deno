@@ -474,6 +474,19 @@ fn broken_stdout() {
 //   http_server: true,
 // });
 
+itest!(cafile_url_imports_unsafe_ssl {
+  args: "run --quiet --reload --unsafely-treat-insecure-origin-as-secure=localhost cafile_url_imports.ts",
+  output: "cafile_url_imports_unsafe_ssl.ts.out",
+  http_server: true,
+});
+
+itest!(cafile_ts_fetch_unsafe_ssl {
+  args:
+    "run --quiet --reload --allow-net --unsafely-treat-insecure-origin-as-secure cafile_ts_fetch.ts",
+  output: "cafile_ts_fetch_unsafe_ssl.ts.out",
+  http_server: true,
+});
+
 #[test]
 #[ignore]
 fn cafile_env_fetch() {

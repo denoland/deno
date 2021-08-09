@@ -17,7 +17,7 @@
   const { BadResource, Interrupted } = core;
   const { ReadableStream } = window.__bootstrap.streams;
   const abortSignal = window.__bootstrap.abortSignal;
-  const { WebSocket, _rid, _readyState, _eventLoop, _protocol } =
+  const { WebSocket, _rid, _readyState, _eventLoop, _protocol, _server } =
     window.__bootstrap.webSocket;
   const {
     ArrayPrototypeIncludes,
@@ -370,6 +370,7 @@
 
     const socket = webidl.createBranded(WebSocket);
     setEventTargetData(socket);
+    socket[_server] = true;
     response[_ws] = socket;
 
     return { response, socket };

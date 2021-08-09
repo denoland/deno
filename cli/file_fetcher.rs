@@ -223,6 +223,7 @@ impl FileFetcher {
     allow_remote: bool,
     root_cert_store: Option<RootCertStore>,
     blob_store: BlobStore,
+    unsafely_treat_insecure_origin_as_secure: Option<Vec<String>>,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       auth_tokens: AuthTokens::new(env::var(DENO_AUTH_TOKENS).ok()),
@@ -235,6 +236,7 @@ impl FileFetcher {
         root_cert_store,
         None,
         None,
+        unsafely_treat_insecure_origin_as_secure,
       )?,
       blob_store,
     })
@@ -618,6 +620,7 @@ mod tests {
       true,
       None,
       blob_store.clone(),
+      None,
     )
     .expect("setup failed");
     (file_fetcher, temp_dir, blob_store)
@@ -1063,6 +1066,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
     )
     .expect("setup failed");
     let result = file_fetcher
@@ -1090,6 +1094,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
     let specifier =
@@ -1118,6 +1123,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
     let result = file_fetcher_02
@@ -1279,6 +1285,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
     let specifier =
@@ -1310,6 +1317,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
     let result = file_fetcher_02
@@ -1420,6 +1428,7 @@ mod tests {
       false,
       None,
       BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
     let specifier =
@@ -1447,6 +1456,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
     let file_fetcher_02 = FileFetcher::new(
@@ -1455,6 +1465,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
     let specifier =
