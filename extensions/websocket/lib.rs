@@ -29,6 +29,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::fmt;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
