@@ -272,14 +272,15 @@ struct ChildStdio {
 async fn op_command_child_output(
   state: Rc<RefCell<OpState>>,
   args: ChildStdio,
-  _: ()
+  _: (),
 ) -> Result<CommandOutput, AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
     .take::<ChildResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
-  let mut child = resource.borrow_mut().await;
+  let resource = Rc::try_unwrap(resource).unwrap();
+  let mut child = resource.0.into_inner();
 
   if let Some(stdout_rid) = args.stdout_rid {
     let stdout = state
@@ -287,7 +288,7 @@ async fn op_command_child_output(
       .resource_table
       .take::<ChildStdoutResource>(stdout_rid)
       .ok_or_else(bad_resource_id)?;
-    child.stdout = Some(stdout);
+    child.stdout = Some(Rc::try_unwrap(stdout).unwrap().into_inner());
   }
   if let Some(stderr_rid) = args.stderr_rid {
     let stderr = state
@@ -295,7 +296,7 @@ async fn op_command_child_output(
       .resource_table
       .take::<ChildStderrResource>(stderr_rid)
       .ok_or_else(bad_resource_id)?;
-    child.stderr = Some(stderr.into());
+    child.stderr = Some(Rc::try_unwrap(stderr).unwrap().into_inner());
   }
 
   let output = child.wait_with_output().await?;
@@ -324,7 +325,7 @@ fn op_command_child_status(
     .resource_table
     .get::<ChildResource>(rid)
     .ok_or_else(bad_resource_id)?;
-  let resource = Rc::try_unwrap(resource).ok().unwrap();
+  let resource = Rc::try_unwrap(resource).unwrap();
   let mut child = resource.0.into_inner();
   let status = child.try_wait()?.map(|status| status.into());
 

@@ -102,10 +102,10 @@
 
       if (stdoutRid !== undefined) {
         this.#stdoutRid = stdoutRid;
-        // TODO: BYOB Stream
+        // TODO(crowlkats): BYOB Stream
         this.#stdout = new ReadableStream({
           async pull(controller) {
-            const buf = new Uint8Array(1024); // TODO
+            const buf = new Uint8Array(1024); // TODO(crowlkats): different number? wouldnt bee needed with byob stream
             const res = await read(stdoutRid, buf);
             if (res === null) {
               core.close(stdoutRid);
@@ -122,10 +122,10 @@
 
       if (stderrRid !== undefined) {
         this.#stderrRid = stderrRid;
-        // TODO: BYOB Stream
+        // TODO(crowlkats): BYOB Stream
         this.#stderr = new ReadableStream({
           async pull(controller) {
-            const buf = new Uint8Array(1024); // TODO
+            const buf = new Uint8Array(1024); // TODO(crowlkats): different number? wouldnt bee needed with byob stream
             const res = await read(stderrRid, buf);
             if (res === null) {
               core.close(stderrRid);

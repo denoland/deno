@@ -235,6 +235,10 @@ where
     let nread = rd.read(buf).try_or_cancel(self.cancel_handle()).await?;
     Ok(nread)
   }
+
+  pub fn into_inner(self) -> S {
+    self.stream.into_inner()
+  }
 }
 
 pub type ChildStdinResource = WriteOnlyResource<process::ChildStdin>;
