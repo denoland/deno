@@ -959,7 +959,7 @@ declare namespace Deno {
       *
       * Defaults to "inherit".
       */
-      env?: "inherit" | boolean;
+      env?: "inherit" | boolean | string[];
 
       /** Specifies if the `hrtime` permission should be requested or revoked.
       * If set to `"inherit"`, the current `hrtime` permission will be inherited.
@@ -1041,7 +1041,7 @@ declare namespace Deno {
       * });
       * ```
       */
-      net?: "inherit" | boolean | string[];
+      net?: "inherit" | boolean | Array<string | URL>;
 
       /** Specifies if the `plugin` permission should be requested or revoked.
       * If set to `"inherit"`, the current `plugin` permission will be inherited.
@@ -1070,7 +1070,7 @@ declare namespace Deno {
       *
       * Defaults to "inherit".
       */
-      run?: "inherit" | boolean;
+      run?: "inherit" | boolean | Array<string | URL>;
 
       /** Specifies if the `write` permission should be requested or revoked.
       * If set to `"inherit"`, the current `write` permission will be inherited.
@@ -1129,17 +1129,17 @@ declare interface WorkerOptions {
     namespace?: boolean;
     /** Set to `"none"` to disable all the permissions in the worker. */
     permissions?: "inherit" | "none" | {
-      env?: "inherit" | boolean;
+      env?: "inherit" | boolean | string[];
       hrtime?: "inherit" | boolean;
       /** The format of the net access list must be `hostname[:port]`
        * in order to be resolved.
        *
        * For example: `["https://deno.land", "localhost:8080"]`.
        */
-      net?: "inherit" | boolean | string[];
+      net?: "inherit" | boolean | Array<string | URL>;
       plugin?: "inherit" | boolean;
       read?: "inherit" | boolean | Array<string | URL>;
-      run?: "inherit" | boolean;
+      run?: "inherit" | boolean | Array<string | URL>;
       write?: "inherit" | boolean | Array<string | URL>;
     };
   };
