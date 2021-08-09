@@ -234,7 +234,11 @@
 
       this[_url] = wsURL.href;
 
-      core.opSync("op_ws_check_permission", this[_url]);
+      core.opSync(
+        "op_ws_check_permission_and_cancel_handle",
+        this[_url],
+        false,
+      );
 
       if (typeof protocols === "string") {
         protocols = [protocols];

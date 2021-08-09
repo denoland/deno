@@ -231,6 +231,18 @@ delete Object.prototype.__proto__;
       },
     );
     core.registerErrorBuilder(
+      "DOMExceptionNetworkError",
+      function DOMExceptionNetworkError(msg) {
+        return new domException.DOMException(msg, "NetworkError");
+      },
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionAbortError",
+      function DOMExceptionAbortError(msg) {
+        return new domException.DOMException(msg, "AbortError");
+      },
+    );
+    core.registerErrorBuilder(
       "DOMExceptionInvalidCharacterError",
       function DOMExceptionInvalidCharacterError(msg) {
         return new domException.DOMException(msg, "InvalidCharacterError");
@@ -342,7 +354,6 @@ delete Object.prototype.__proto__;
     URL: util.nonEnumerable(url.URL),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
-    BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
     MessageChannel: util.nonEnumerable(messagePort.MessageChannel),
     MessagePort: util.nonEnumerable(messagePort.MessagePort),
     Worker: util.nonEnumerable(worker.Worker),
@@ -377,6 +388,11 @@ delete Object.prototype.__proto__;
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
     structuredClone: util.writable(messagePort.structuredClone),
+  };
+
+  const unstableWindowOrWorkerGlobalScope = {
+    WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
+    BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
 
     GPU: util.nonEnumerable(webgpu.GPU),
     GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
@@ -485,6 +501,9 @@ delete Object.prototype.__proto__;
     util.log("bootstrapMainRuntime");
     hasBootstrapped = true;
     ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
+    if (runtimeOptions.unstableFlag) {
+      ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
+    }
     ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
     ObjectSetPrototypeOf(globalThis, Window.prototype);
 
@@ -573,6 +592,9 @@ delete Object.prototype.__proto__;
     util.log("bootstrapWorkerRuntime");
     hasBootstrapped = true;
     ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
+    if (runtimeOptions.unstableFlag) {
+      ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
+    }
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, { name: util.readOnly(name) });
     ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);

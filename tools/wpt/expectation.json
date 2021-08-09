@@ -16765,6 +16765,15 @@
     "referrer.any.html": true,
     "Close-delayed.any.html": false,
     "Close-delayed.any.html?wpt_flags=h2": false,
-    "Close-delayed.any.html?wss": false
+    "Close-delayed.any.html?wss": false,
+    "stream": {
+      "tentative": {
+        "abort.any.html?wss": true,
+        "backpressure-receive.any.html?wss": true,
+        "backpressure-send.any.html?wss": true,
+        "close.any.html?wss": true,
+        "constructor.any.html?wss": true
+      }
+    }
   }
 }

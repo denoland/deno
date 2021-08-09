@@ -643,6 +643,27 @@ fn websocket() {
   assert!(status.success());
 }
 
+#[test]
+fn websocketstream() {
+  let _g = util::http_server();
+
+  let script = util::tests_path().join("websocketstream_test.ts");
+  let root_ca = util::tests_path().join("tls/RootCA.pem");
+  let status = util::deno_cmd()
+    .arg("test")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("--cert")
+    .arg(root_ca)
+    .arg(script)
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+
+  assert!(status.success());
+}
+
 #[cfg(not(windows))]
 #[test]
 fn set_raw_should_not_panic_on_no_tty() {
