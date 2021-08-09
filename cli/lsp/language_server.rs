@@ -1299,7 +1299,24 @@ impl Inner {
     );
 
     let response = if !all_actions.is_empty() {
-      Some(all_actions)
+      if self.config.client_capabilities.code_action_disabled_support {
+        Some(all_actions)
+      } else {
+        // if the client does not support disabled code actions, then we should
+        // drop them
+        Some(
+          all_actions
+            .into_iter()
+            .filter(|ca| {
+              if let CodeActionOrCommand::CodeAction(ca) = ca {
+                ca.disabled.is_none()
+              } else {
+                true
+              }
+            })
+            .collect(),
+        )
+      }
     } else {
       None
     };

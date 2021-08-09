@@ -32,12 +32,14 @@
         "codeActionLiteralSupport": {
           "codeActionKind": {
             "valueSet": [
-              "quickfix"
+              "quickfix",
+              "refactor"
             ]
           }
         },
         "isPreferredSupport": true,
         "dataSupport": true,
+        "disabledSupport": true,
         "resolveSupport": {
           "properties": [
             "edit"

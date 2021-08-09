@@ -13,7 +13,7 @@
       "references": true,
       "test": true
     },
-    "config": "bad_tsconfig.json",
+    "config": "",
     "importMap": null,
     "lint": true,
     "suggest": {
@@ -40,7 +40,6 @@
         },
         "isPreferredSupport": true,
         "dataSupport": true,
-        "disabledSupport": true,
         "resolveSupport": {
           "properties": [
             "edit"
