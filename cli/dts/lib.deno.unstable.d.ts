@@ -1105,9 +1105,12 @@ declare namespace Deno {
   }
 
   class Child<T extends CommandOptions = CommandOptions> {
-    readonly stdin: T["stdin"] extends "piped" ? WritableStream<Uint8Array> : null;
-    readonly stdout: T["stdout"] extends "piped" ? ReadableStream<Uint8Array> : null;
-    readonly stderr: T["stderr"] extends "piped" ? ReadableStream<Uint8Array> : null;
+    readonly stdin: T["stdin"] extends "piped" ? WritableStream<Uint8Array>
+      : null;
+    readonly stdout: T["stdout"] extends "piped" ? ReadableStream<Uint8Array>
+      : null;
+    readonly stderr: T["stderr"] extends "piped" ? ReadableStream<Uint8Array>
+      : null;
 
     readonly pid: number;
     readonly status?: ProcessStatus;
