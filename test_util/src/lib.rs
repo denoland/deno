@@ -374,19 +374,35 @@ async fn run_tls_client_auth_server() {
     .unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
 
-  // This bit of nastiness is to support the case when localhost resolves to
-  // ::1 on github actions and 127.0.0.1 locally.
-  let addr = {
-    use std::net::ToSocketAddrs;
-    let mut addrs_iter = format!("localhost:{}", TLS_CLIENT_AUTH_PORT)
-      .to_socket_addrs()
-      .unwrap();
-    addrs_iter.next().unwrap()
+  // Listen on ALL addresses that localhost can resolves to.
+  let accept = |listener: tokio::net::TcpListener| {
+    async {
+      let result = listener.accept().await;
+      Some((result, listener))
+    }
+    .boxed()
   };
-  let listener = TcpListener::bind(addr).await.unwrap();
+
+  let host_and_port = &format!("localhost:{}", TLS_CLIENT_AUTH_PORT);
+
+  let listeners = tokio::net::lookup_host(host_and_port)
+    .await
+    .expect(host_and_port)
+    .inspect(|address| println!("{} -> {}", host_and_port, address))
+    .map(tokio::net::TcpListener::bind)
+    .collect::<futures::stream::FuturesUnordered<_>>()
+    .collect::<Vec<_>>()
+    .await
+    .into_iter()
+    .map(|s| s.unwrap())
+    .map(|listener| futures::stream::unfold(listener, accept))
+    .collect::<Vec<_>>();
+
   println!("ready: tls client auth");
 
-  while let Ok((stream, _addr)) = listener.accept().await {
+  let mut listeners = futures::stream::select_all(listeners);
+
+  while let Some(Ok((stream, _addr))) = listeners.next().await {
     let acceptor = tls_acceptor.clone();
     tokio::spawn(async move {
       match acceptor.accept(stream).await {
