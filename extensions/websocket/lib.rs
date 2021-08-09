@@ -54,11 +54,11 @@ pub trait WebSocketPermissions {
   fn check_net_url(&mut self, _url: &url::Url) -> Result<(), AnyError>;
 }
 
-/// `NoCertificateValidation` is a wrapper struct so it can be placed inside `GothamState`;
+/// `UnsafelyTreatInsecureOriginAsSecure` is a wrapper struct so it can be placed inside `GothamState`;
 /// using type alias for a `Option<Vec<String>>` could work, but there's a high chance
 /// that there might be another type alias pointing to a `Option<Vec<String>>`, which
 /// would override previously used alias.
-pub struct NoCertificateValidation(Option<Vec<String>>);
+pub struct UnsafelyTreatInsecureOriginAsSecure(Option<Vec<String>>);
 
 /// For use with `op_websocket_*` when the user does not want permissions.
 pub struct NoWebSocketPermissions;
@@ -203,8 +203,11 @@ where
       );
   }
 
-  let unsafely_treat_insecure_origin_as_secure =
-    state.borrow().borrow::<NoCertificateValidation>().0.clone();
+  let unsafely_treat_insecure_origin_as_secure = state
+    .borrow()
+    .borrow::<UnsafelyTreatInsecureOriginAsSecure>()
+    .0
+    .clone();
   let root_cert_store = state.borrow().borrow::<WsRootStore>().0.clone();
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
   let uri: Uri = args.url.parse()?;
@@ -408,7 +411,7 @@ pub fn init<P: WebSocketPermissions + 'static>(
     ])
     .state(move |state| {
       state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));
-      state.put(NoCertificateValidation(
+      state.put(UnsafelyTreatInsecureOriginAsSecure(
         unsafely_treat_insecure_origin_as_secure.clone(),
       ));
       state.put::<WsRootStore>(WsRootStore(root_cert_store.clone()));

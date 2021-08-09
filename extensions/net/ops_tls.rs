@@ -9,7 +9,7 @@ use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
 use crate::DefaultTlsOptions;
 use crate::NetPermissions;
-use crate::NoCertificateValidation;
+use crate::UnsafelyTreatInsecureOriginAsSecure;
 use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
@@ -757,8 +757,11 @@ where
   };
   let port = args.port;
   let cert_file = args.cert_file.as_deref();
-  let unsafely_treat_insecure_origin_as_secure =
-    state.borrow().borrow::<NoCertificateValidation>().0.clone();
+  let unsafely_treat_insecure_origin_as_secure = state
+    .borrow()
+    .borrow::<UnsafelyTreatInsecureOriginAsSecure>()
+    .0
+    .clone();
 
   {
     let mut s = state.borrow_mut();
