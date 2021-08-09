@@ -16763,8 +16763,8 @@
     "eventhandlers.any.html?wpt_flags=h2": false,
     "eventhandlers.any.html?wss": false,
     "referrer.any.html": true,
-    "Close-delayed.any.html": false,
+    "Close-delayed.any.html": true,
     "Close-delayed.any.html?wpt_flags=h2": false,
-    "Close-delayed.any.html?wss": false
+    "Close-delayed.any.html?wss": true
   }
 }
