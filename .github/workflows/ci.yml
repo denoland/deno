@@ -79,7 +79,7 @@ jobs:
       - name: Install Rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.53.0
+          rust-version: 1.54.0
 
       - name: Install clippy and rustfmt
         if: matrix.kind == 'lint'
@@ -164,11 +164,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install debootstrap
 
-          # Note: git, nc, strace, and time, are needed to run the benchmarks.
-          sudo debootstrap                                                     \
-                 --include=ca-certificates,curl,git,netcat-openbsd,strace,time \
-                 --no-merged-usr --variant=minbase bionic /sysroot             \
-                 http://azure.archive.ubuntu.com/ubuntu
+          # `file` and `make` are needed to build libffi-sys.
+          # `curl` is needed to build rusty_v8.
+          # `git`, `nc`, `strace`, and `time`, are needed to run the benchmarks.
+          sudo debootstrap                                                          \
+            --include=ca-certificates,curl,file,git,make,netcat-openbsd,strace,time \
+            --no-merged-usr --variant=minbase bionic /sysroot                       \
+            http://azure.archive.ubuntu.com/ubuntu
           sudo mount --rbind /dev /sysroot/dev
           sudo mount --rbind /sys /sysroot/sys
           sudo mount --rbind /home /sysroot/home
@@ -253,7 +255,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: e-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: f-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -268,7 +270,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: |
-            d-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+            f-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
@@ -284,7 +286,7 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: |
-            d-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+            f-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
 
       # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)
@@ -380,8 +382,6 @@ jobs:
           github.ref == 'refs/heads/main'
         run: |
           gsutil cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
-          echo $(git rev-parse HEAD) > canary-latest.txt
-          gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
 
       - name: Upload canary to dl.deno.land (windows)
         if: |
@@ -395,8 +395,6 @@ jobs:
         shell: bash
         run: |
           gsutil cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
-          echo $(git rev-parse HEAD) > canary-latest.txt
-          gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
 
       - name: Test debug
         if: |
@@ -575,3 +573,22 @@ jobs:
             target/release/deno_src.tar.gz
             target/release/lib.deno.d.ts
           draft: true
+
+  publish-canary:
+    name: publish canary
+    runs-on: ubuntu-20.04
+    needs: ['build']
+    if: github.repository == 'denoland/deno' &&
+        (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
+    steps:
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@master
+        with:
+          project_id: denoland
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
+      - name: Upload canary version file to dl.deno.land
+        run: |
+          echo ${{ github.sha }} > canary-latest.txt
+          gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt

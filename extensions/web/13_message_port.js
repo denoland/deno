@@ -14,6 +14,13 @@
   const { setEventTargetData } = window.__bootstrap.eventTarget;
   const { defineEventHandler } = window.__bootstrap.event;
   const { DOMException } = window.__bootstrap.domException;
+  const {
+    ObjectSetPrototypeOf,
+    Symbol,
+    SymbolFor,
+    SymbolToStringTag,
+    TypeError,
+  } = window.__bootstrap.primordials;
 
   class MessageChannel {
     /** @type {MessagePort} */
@@ -40,13 +47,13 @@
       return this.#port2;
     }
 
-    [Symbol.for("Deno.inspect")](inspect) {
+    [SymbolFor("Deno.inspect")](inspect) {
       return `MessageChannel ${
         inspect({ port1: this.port1, port2: this.port2 })
       }`;
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "MessageChannel";
     }
   }
@@ -62,7 +69,7 @@
    */
   function createMessagePort(id) {
     const port = core.createHostObject();
-    Object.setPrototypeOf(port, MessagePort.prototype);
+    ObjectSetPrototypeOf(port, MessagePort.prototype);
     port[webidl.brand] = webidl.brand;
     setEventTargetData(port);
     port[_id] = id;
@@ -82,7 +89,7 @@
 
     /**
      * @param {any} message
-     * @param {object[] | PostMessageOptions} transferOrOptions
+     * @param {object[] | StructuredSerializeOptions} transferOrOptions
      */
     postMessage(message, transferOrOptions = {}) {
       webidl.assertBranded(this, MessagePort);
@@ -101,10 +108,13 @@
         );
         options = { transfer };
       } else {
-        options = webidl.converters.PostMessageOptions(transferOrOptions, {
-          prefix,
-          context: "Argument 2",
-        });
+        options = webidl.converters.StructuredSerializeOptions(
+          transferOrOptions,
+          {
+            prefix,
+            context: "Argument 2",
+          },
+        );
       }
       const { transfer } = options;
       if (transfer.includes(this)) {
@@ -155,7 +165,7 @@
       }
     }
 
-    get [Symbol.toStringTag]() {
+    get [SymbolToStringTag]() {
       return "MessagePort";
     }
   }
@@ -240,23 +250,37 @@
     };
   }
 
-  webidl.converters.PostMessageOptions = webidl.createDictionaryConverter(
-    "PostMessageOptions",
-    [
-      {
-        key: "transfer",
-        converter: webidl.converters["sequence<object>"],
-        get defaultValue() {
-          return [];
+  webidl.converters.StructuredSerializeOptions = webidl
+    .createDictionaryConverter(
+      "StructuredSerializeOptions",
+      [
+        {
+          key: "transfer",
+          converter: webidl.converters["sequence<object>"],
+          get defaultValue() {
+            return [];
+          },
         },
-      },
-    ],
-  );
+      ],
+    );
+
+  function structuredClone(value, options) {
+    const prefix = "Failed to execute 'structuredClone'";
+    webidl.requiredArguments(arguments.length, 1, { prefix });
+    options = webidl.converters.StructuredSerializeOptions(options, {
+      prefix,
+      context: "Argument 2",
+    });
+    const messageData = serializeJsMessageData(value, options.transfer);
+    const [data] = deserializeJsMessageData(messageData);
+    return data;
+  }
 
   window.__bootstrap.messagePort = {
     MessageChannel,
     MessagePort,
     deserializeJsMessageData,
     serializeJsMessageData,
+    structuredClone,
   };
 })(globalThis);

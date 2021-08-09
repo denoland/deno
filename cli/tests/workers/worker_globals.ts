@@ -1,4 +1,4 @@
-onmessage = function (): void {
+onmessage = function () {
   postMessage(
     [
       self instanceof DedicatedWorkerGlobalScope,

@@ -232,6 +232,91 @@ fn lsp_triple_slash_types() {
 }
 
 #[test]
+fn lsp_import_map() {
+  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let import_map =
+    serde_json::to_vec_pretty(&load_fixture("import-map.json")).unwrap();
+  fs::write(temp_dir.path().join("import-map.json"), import_map).unwrap();
+  fs::create_dir(temp_dir.path().join("lib")).unwrap();
+  fs::write(
+    temp_dir.path().join("lib").join("b.ts"),
+    r#"export const b = "b";"#,
+  )
+  .unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert("importMap".to_string(), json!("import-map.json"));
+    params.initialization_options = Some(Value::Object(map));
+  }
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+  let uri = Url::from_file_path(temp_dir.path().join("a.ts")).unwrap();
+
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": uri,
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import { b } from \"/~/b.ts\";\n\nconsole.log(b);\n"
+      }
+    }),
+  );
+
+  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
+  assert_eq!(diagnostics.count(), 0);
+
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": uri
+        },
+        "position": {
+          "line": 2,
+          "character": 12
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value":"(alias) const b: \"b\"\nimport b"
+        },
+        ""
+      ],
+      "range": {
+        "start": {
+          "line": 2,
+          "character": 12
+        },
+        "end": {
+          "line": 2,
+          "character": 13
+        }
+      }
+    }))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_hover() {
   let mut client = init("initialize_params.json");
   did_open(
@@ -417,7 +502,7 @@ fn lsp_hover_unstable_disabled() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "console.log(Deno.openPlugin);\n"
+        "text": "console.log(Deno.dlopen);\n"
       }
     }),
   );
@@ -452,7 +537,7 @@ fn lsp_hover_unstable_disabled() {
         },
         "end": {
           "line": 0,
-          "character": 27
+          "character": 23
         }
       }
     }))
@@ -470,7 +555,7 @@ fn lsp_hover_unstable_enabled() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "console.log(Deno.openPlugin);\n"
+        "text": "console.log(Deno.ppid);\n"
       }
     }),
   );
@@ -495,9 +580,9 @@ fn lsp_hover_unstable_enabled() {
       "contents":[
         {
           "language":"typescript",
-          "value":"function Deno.openPlugin(filename: string): number"
+          "value":"const Deno.ppid: number"
         },
-        "**UNSTABLE**: new API, yet to be vetted.\n\nOpen and initialize a plugin.\n\n```ts\nimport { assert } from \"https://deno.land/std/testing/asserts.ts\";\nconst rid = Deno.openPlugin(\"./path/to/some/plugin.so\");\n\n// The Deno.core namespace is needed to interact with plugins, but this is\n// internal so we use ts-ignore to skip type checking these calls.\n// @ts-ignore\nconst { op_test_sync, op_test_async } = Deno.core.ops();\n\nassert(op_test_sync);\nassert(op_test_async);\n\n// @ts-ignore\nconst result = Deno.core.opSync(\"op_test_sync\");\n\n// @ts-ignore\nconst result = await Deno.core.opAsync(\"op_test_sync\");\n```\n\nRequires `allow-plugin` permission.\n\nThe plugin system is not stable and will change in the future, hence the\nlack of docs. For now take a look at the example\nhttps://github.com/denoland/deno/tree/main/test_plugin"
+        "The pid of the current process's parent."
       ],
       "range":{
         "start":{
@@ -506,7 +591,7 @@ fn lsp_hover_unstable_enabled() {
         },
         "end":{
           "line":0,
-          "character":27
+          "character":21
         }
       }
     }))
@@ -2031,6 +2116,45 @@ fn lsp_code_actions_imports() {
 }
 
 #[test]
+fn lsp_code_actions_refactor() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "var x: { a?: number; b?: string } = {};\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeAction",
+      load_fixture("code_action_params_refactor.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_action_response_refactor.json"))
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "codeAction/resolve",
+      load_fixture("code_action_resolve_params_refactor.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_action_resolve_response_refactor.json"))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_code_actions_deadlock() {
   let mut client = init("initialize_params.json");
   client
@@ -2437,6 +2561,96 @@ fn lsp_auto_discover_registry() {
       "suggestions": true,
     }))
   );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_cache_location() {
+  let _g = http_server();
+  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert("cache".to_string(), json!(".cache"));
+    params.initialization_options = Some(Value::Object(map));
+  }
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client.write_notification("initialized", json!({})).unwrap();
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file_01.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export const a = \"a\";\n",
+      }
+    }),
+  );
+  let diagnostics = did_open(
+    &mut client,
+    load_fixture("did_open_params_import_hover.json"),
+  );
+  let diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
+  assert_eq!(diagnostics.count(), 12);
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": "file:///a/file.ts",
+        },
+        "uris": [],
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+        },
+        "position": {
+          "line": 0,
+          "character": 28
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.js\n"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 20
+        },
+        "end":{
+          "line": 0,
+          "character": 61
+        }
+      }
+    }))
+  );
+  let cache_path = temp_dir.path().join(".cache");
+  assert!(cache_path.is_dir());
+  assert!(cache_path.join("gen").is_dir());
   shutdown(&mut client);
 }
 

@@ -96,7 +96,7 @@ pub fn resolve_import(
       } else {
         Url::parse(base).map_err(InvalidBaseUrl)?
       };
-      base.join(&specifier).map_err(InvalidUrl)?
+      base.join(specifier).map_err(InvalidUrl)?
     }
 
     // If parsing the specifier as a URL failed for a different reason than

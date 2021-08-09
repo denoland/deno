@@ -17,13 +17,15 @@
   const { BadResource, Interrupted } = core;
   const { ReadableStream } = window.__bootstrap.streams;
   const abortSignal = window.__bootstrap.abortSignal;
-  const { WebSocket, _rid, _readyState, _eventLoop, _protocol } =
+  const { WebSocket, _rid, _readyState, _eventLoop, _protocol, _server } =
     window.__bootstrap.webSocket;
   const {
     ArrayPrototypeIncludes,
     ArrayPrototypePush,
+    ArrayPrototypeSome,
     Promise,
     StringPrototypeIncludes,
+    StringPrototypeToLowerCase,
     StringPrototypeSplit,
     Symbol,
     SymbolAsyncIterator,
@@ -321,7 +323,13 @@
       );
     }
 
-    if (request.headers.get("connection") !== "Upgrade") {
+    const connection = request.headers.get("connection");
+    const connectionHasUpgradeOption = connection !== null &&
+      ArrayPrototypeSome(
+        StringPrototypeSplit(connection, /\s*,\s*/),
+        (option) => StringPrototypeToLowerCase(option) === "upgrade",
+      );
+    if (!connectionHasUpgradeOption) {
       throw new TypeError(
         "Invalid Header: 'connection' header must be 'Upgrade'",
       );
@@ -360,11 +368,12 @@
 
     const response = fromInnerResponse(r, "immutable");
 
-    const websocket = webidl.createBranded(WebSocket);
-    setEventTargetData(websocket);
-    response[_ws] = websocket;
+    const socket = webidl.createBranded(WebSocket);
+    setEventTargetData(socket);
+    socket[_server] = true;
+    response[_ws] = socket;
 
-    return { response, websocket };
+    return { response, socket };
   }
 
   window.__bootstrap.http = {

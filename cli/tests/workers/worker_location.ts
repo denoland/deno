@@ -1,4 +1,4 @@
-onmessage = function (): void {
+onmessage = function () {
   postMessage(
     `${location.href}, ${location instanceof WorkerLocation}`,
   );

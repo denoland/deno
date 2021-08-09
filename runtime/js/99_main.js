@@ -105,10 +105,13 @@ delete Object.prototype.__proto__;
       );
       options = { transfer };
     } else {
-      options = webidl.converters.PostMessageOptions(transferOrOptions, {
-        prefix,
-        context: "Argument 2",
-      });
+      options = webidl.converters.StructuredSerializeOptions(
+        transferOrOptions,
+        {
+          prefix,
+          context: "Argument 2",
+        },
+      );
     }
     const { transfer } = options;
     const data = serializeJsMessageData(message, transfer);
@@ -247,6 +250,8 @@ delete Object.prototype.__proto__;
 
   const navigator = webidl.createBranded(Navigator);
 
+  let numCpus;
+
   ObjectDefineProperties(Navigator.prototype, {
     gpu: {
       configurable: true,
@@ -254,6 +259,14 @@ delete Object.prototype.__proto__;
       get() {
         webidl.assertBranded(this, Navigator);
         return webgpu.gpu;
+      },
+    },
+    hardwareConcurrency: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, Navigator);
+        return numCpus;
       },
     },
   });
@@ -277,6 +290,14 @@ delete Object.prototype.__proto__;
       get() {
         webidl.assertBranded(this, WorkerNavigator);
         return webgpu.gpu;
+      },
+    },
+    hardwareConcurrency: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, Navigator);
+        return numCpus;
       },
     },
   });
@@ -355,6 +376,7 @@ delete Object.prototype.__proto__;
     performance: util.writable(performance.performance),
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
+    structuredClone: util.writable(messagePort.structuredClone),
 
     GPU: util.nonEnumerable(webgpu.GPU),
     GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
@@ -491,12 +513,13 @@ delete Object.prototype.__proto__;
       pid,
       ppid,
       unstableFlag,
+      cpuCount,
     } = runtimeOptions;
 
     if (locationHref != null) {
       location.setLocationHref(locationHref);
     }
-
+    numCpus = cpuCount;
     registerErrors();
 
     const internalSymbol = Symbol("Deno.internal");
@@ -526,7 +549,6 @@ delete Object.prototype.__proto__;
     // `Deno` with `Deno` namespace from "./deno.ts".
     ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
     ObjectFreeze(globalThis.Deno.core);
-    ObjectFreeze(globalThis.Deno.core.sharedQueue);
     signals.setSignals();
 
     util.log("args", args);
@@ -553,7 +575,7 @@ delete Object.prototype.__proto__;
     ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, { name: util.readOnly(name) });
-    Object.setPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
+    ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
     const consoleFromDeno = globalThis.console;
     wrapConsole(consoleFromDeno, consoleFromV8);
@@ -567,10 +589,17 @@ delete Object.prototype.__proto__;
       runtimeOptions,
       internalName ?? name,
     );
-    const { unstableFlag, pid, noColor, args, location: locationHref } =
-      runtimeOptions;
+    const {
+      unstableFlag,
+      pid,
+      noColor,
+      args,
+      location: locationHref,
+      cpuCount,
+    } = runtimeOptions;
 
     location.setLocationHref(locationHref);
+    numCpus = cpuCount;
     registerErrors();
 
     pollForMessages();
@@ -599,7 +628,6 @@ delete Object.prototype.__proto__;
       util.immutableDefine(globalThis, "Deno", finalDenoNs);
       ObjectFreeze(globalThis.Deno);
       ObjectFreeze(globalThis.Deno.core);
-      ObjectFreeze(globalThis.Deno.core.sharedQueue);
       signals.setSignals();
     } else {
       delete globalThis.Deno;

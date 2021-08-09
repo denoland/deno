@@ -91,7 +91,9 @@ pub enum DenoSubcommand {
     rules: bool,
     json: bool,
   },
-  Repl,
+  Repl {
+    eval: Option<String>,
+  },
   Run {
     script: String,
   },
@@ -119,7 +121,7 @@ pub enum DenoSubcommand {
 
 impl Default for DenoSubcommand {
   fn default() -> DenoSubcommand {
-    DenoSubcommand::Repl
+    DenoSubcommand::Repl { eval: None }
   }
 }
 
@@ -133,30 +135,36 @@ pub struct Flags {
   pub allow_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
   pub allow_net: Option<Vec<String>>,
-  pub allow_plugin: bool,
+  pub allow_ffi: Option<Vec<String>>,
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
-  pub location: Option<Url>,
-  pub cache_blocklist: Vec<String>,
+  pub ca_stores: Option<Vec<String>>,
   pub ca_file: Option<String>,
+  pub cache_blocklist: Vec<String>,
+  /// This is not exposed as an option in the CLI, it is used internally when
+  /// the language server is configured with an explicit cache option.
+  pub cache_path: Option<PathBuf>,
   pub cached_only: bool,
   pub config_path: Option<String>,
   pub coverage_dir: Option<String>,
+  pub enable_testing_features: bool,
   pub ignore: Vec<PathBuf>,
   pub import_map_path: Option<String>,
-  pub inspect: Option<SocketAddr>,
   pub inspect_brk: Option<SocketAddr>,
-  pub lock: Option<PathBuf>,
+  pub inspect: Option<SocketAddr>,
+  pub location: Option<Url>,
   pub lock_write: bool,
+  pub lock: Option<PathBuf>,
   pub log_level: Option<Level>,
   pub no_check: bool,
-  pub prompt: bool,
   pub no_remote: bool,
+  pub prompt: bool,
   pub reload: bool,
   pub repl: bool,
   pub seed: Option<u64>,
   pub unstable: bool,
+  pub unsafely_treat_insecure_origin_as_secure: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
   pub version: bool,
   pub watch: bool,
@@ -209,6 +217,20 @@ impl Flags {
       _ => {}
     }
 
+    match &self.unsafely_treat_insecure_origin_as_secure {
+      Some(ic_allowlist) if ic_allowlist.is_empty() => {
+        args.push("--unsafely-treat-insecure-origin-as-secure".to_string());
+      }
+      Some(ic_allowlist) => {
+        let s = format!(
+          "--unsafely-treat-insecure-origin-as-secure={}",
+          ic_allowlist.join(",")
+        );
+        args.push(s);
+      }
+      _ => {}
+    }
+
     match &self.allow_env {
       Some(env_allowlist) if env_allowlist.is_empty() => {
         args.push("--allow-env".to_string());
@@ -231,8 +253,15 @@ impl Flags {
       _ => {}
     }
 
-    if self.allow_plugin {
-      args.push("--allow-plugin".to_string());
+    match &self.allow_ffi {
+      Some(ffi_allowlist) if ffi_allowlist.is_empty() => {
+        args.push("--allow-ffi".to_string());
+      }
+      Some(ffi_allowlist) => {
+        let s = format!("--allow-ffi={}", ffi_allowlist.join(","));
+        args.push(s);
+      }
+      _ => {}
     }
 
     if self.allow_hrtime {
@@ -249,7 +278,7 @@ impl From<Flags> for PermissionsOptions {
       allow_env: flags.allow_env,
       allow_hrtime: flags.allow_hrtime,
       allow_net: flags.allow_net,
-      allow_plugin: flags.allow_plugin,
+      allow_ffi: flags.allow_ffi,
       allow_read: flags.allow_read,
       allow_run: flags.allow_run,
       allow_write: flags.allow_write,
@@ -263,6 +292,9 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
                          hostnames to use when fetching remote modules from
                          private repositories
                          (e.g. "abcde12345@deno.land;54321edcba@github.com")
+    DENO_TLS_CA_STORE    Comma-seperated list of order dependent certificate stores
+                         (system, mozilla)
+                         (defaults to mozilla)
     DENO_CERT            Load certificate authority from PEM encoded file
     DENO_DIR             Set the cache directory
     DENO_INSTALL_ROOT    Set deno install's output directory
@@ -944,6 +976,13 @@ Ignore linting a file by adding an ignore comment at the top of the file:
 fn repl_subcommand<'a, 'b>() -> App<'a, 'b> {
   runtime_args(SubCommand::with_name("repl"), false, true)
     .about("Read Eval Print Loop")
+    .arg(
+      Arg::with_name("eval")
+        .long("eval")
+        .help("Evaluates the provided code when the REPL starts.")
+        .takes_value(true)
+        .value_name("code"),
+    )
 }
 
 fn run_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1198,6 +1237,16 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .validator(crate::flags_allow_net::validator),
     )
     .arg(
+      Arg::with_name("unsafely-treat-insecure-origin-as-secure")
+        .long("unsafely-treat-insecure-origin-as-secure")
+        .min_values(0)
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("DANGER: Disables verification of SSL certificates")
+        .validator(crate::flags_allow_net::validator),
+    )
+    .arg(
       Arg::with_name("allow-env")
         .long("allow-env")
         .min_values(0)
@@ -1224,9 +1273,13 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .help("Allow running subprocesses"),
     )
     .arg(
-      Arg::with_name("allow-plugin")
-        .long("allow-plugin")
-        .help("Allow loading plugins"),
+      Arg::with_name("allow-ffi")
+        .long("allow-ffi")
+        .min_values(0)
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Allow loading dynamic libraries"),
     )
     .arg(
       Arg::with_name("allow-hrtime")
@@ -1267,6 +1320,7 @@ fn runtime_args<'a, 'b>(
     .arg(location_arg())
     .arg(v8_flags_arg())
     .arg(seed_arg())
+    .arg(enable_testing_features_arg())
 }
 
 fn inspect_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
@@ -1366,6 +1420,13 @@ fn location_arg<'a, 'b>() -> Arg<'a, 'b> {
       Ok(())
     })
     .help("Value of 'globalThis.location' used by some web APIs")
+}
+
+fn enable_testing_features_arg<'a, 'b>() -> Arg<'a, 'b> {
+  Arg::with_name("enable-testing-features-do-not-use")
+    .long("enable-testing-features-do-not-use")
+    .help("INTERNAL: Enable internal features used during integration testing")
+    .hidden(true)
 }
 
 fn v8_flags_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -1565,7 +1626,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_run = Some(vec![]);
   flags.allow_read = Some(vec![]);
   flags.allow_write = Some(vec![]);
-  flags.allow_plugin = true;
+  flags.allow_ffi = Some(vec![]);
   flags.allow_hrtime = true;
   // TODO(@satyarohith): remove this flag in 2.0.
   let as_typescript = matches.is_present("ts");
@@ -1678,13 +1739,15 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, false, true);
   flags.repl = true;
-  flags.subcommand = DenoSubcommand::Repl;
+  flags.subcommand = DenoSubcommand::Repl {
+    eval: matches.value_of("eval").map(ToOwned::to_owned),
+  };
   flags.allow_net = Some(vec![]);
   flags.allow_env = Some(vec![]);
   flags.allow_run = Some(vec![]);
   flags.allow_read = Some(vec![]);
   flags.allow_write = Some(vec![]);
-  flags.allow_plugin = true;
+  flags.allow_ffi = Some(vec![]);
   flags.allow_hrtime = true;
 }
 
@@ -1841,7 +1904,15 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
       crate::flags_allow_net::parse(net_wl.map(ToString::to_string).collect())
         .unwrap();
     flags.allow_net = Some(net_allowlist);
-    debug!("net allowlist: {:#?}", &flags.allow_net);
+  }
+
+  if let Some(ic_wl) =
+    matches.values_of("unsafely-treat-insecure-origin-as-secure")
+  {
+    let ic_allowlist: Vec<String> =
+      crate::flags_allow_net::parse(ic_wl.map(ToString::to_string).collect())
+        .unwrap();
+    flags.unsafely_treat_insecure_origin_as_secure = Some(ic_allowlist);
   }
 
   if let Some(env_wl) = matches.values_of("allow-env") {
@@ -1864,9 +1935,12 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     debug!("run allowlist: {:#?}", &flags.allow_run);
   }
 
-  if matches.is_present("allow-plugin") {
-    flags.allow_plugin = true;
+  if let Some(ffi_wl) = matches.values_of("allow-ffi") {
+    let ffi_allowlist: Vec<String> = ffi_wl.map(ToString::to_string).collect();
+    flags.allow_ffi = Some(ffi_allowlist);
+    debug!("ffi allowlist: {:#?}", &flags.allow_ffi);
   }
+
   if matches.is_present("allow-hrtime") {
     flags.allow_hrtime = true;
   }
@@ -1876,7 +1950,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_net = Some(vec![]);
     flags.allow_run = Some(vec![]);
     flags.allow_write = Some(vec![]);
-    flags.allow_plugin = true;
+    flags.allow_ffi = Some(vec![]);
     flags.allow_hrtime = true;
   }
   if matches.is_present("prompt") {
@@ -1902,6 +1976,7 @@ fn runtime_args_parse(
   v8_flags_arg_parse(flags, matches);
   seed_arg_parse(flags, matches);
   inspect_arg_parse(flags, matches);
+  enable_testing_features_arg_parse(flags, matches);
 }
 
 fn inspect_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
@@ -1946,6 +2021,15 @@ fn reload_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
 
 fn ca_file_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.ca_file = matches.value_of("cert").map(ToOwned::to_owned);
+}
+
+fn enable_testing_features_arg_parse(
+  flags: &mut Flags,
+  matches: &clap::ArgMatches,
+) {
+  if matches.is_present("enable-testing-features-do-not-use") {
+    flags.enable_testing_features = true
+  }
 }
 
 fn cached_only_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
@@ -2205,7 +2289,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_plugin: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2542,7 +2626,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_plugin: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2565,7 +2649,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_plugin: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2589,7 +2673,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_plugin: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2626,7 +2710,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_plugin: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2656,7 +2740,7 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_plugin: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2670,13 +2754,14 @@ mod tests {
       r.unwrap(),
       Flags {
         repl: true,
-        subcommand: DenoSubcommand::Repl,
+        subcommand: DenoSubcommand::Repl { eval: None },
         allow_net: Some(vec![]),
+        unsafely_treat_insecure_origin_as_secure: None,
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_plugin: true,
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -2691,7 +2776,7 @@ mod tests {
       r.unwrap(),
       Flags {
         repl: true,
-        subcommand: DenoSubcommand::Repl,
+        subcommand: DenoSubcommand::Repl { eval: None },
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
         config_path: Some("tsconfig.json".to_string()),
@@ -2710,7 +2795,30 @@ mod tests {
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
         allow_write: Some(vec![]),
-        allow_plugin: true,
+        allow_ffi: Some(vec![]),
+        allow_hrtime: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn repl_with_eval_flag() {
+    #[rustfmt::skip]
+    let r = flags_from_vec(svec!["deno", "repl", "--eval", "console.log('hello');"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        repl: true,
+        subcommand: DenoSubcommand::Repl {
+          eval: Some("console.log('hello');".to_string()),
+        },
+        allow_net: Some(vec![]),
+        allow_env: Some(vec![]),
+        allow_run: Some(vec![]),
+        allow_read: Some(vec![]),
+        allow_write: Some(vec![]),
+        allow_ffi: Some(vec![]),
         allow_hrtime: true,
         ..Flags::default()
       }
@@ -3124,7 +3232,7 @@ mod tests {
   #[test]
   fn install_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "install", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "https://deno.land/std/http/file_server.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "install", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-treat-insecure-origin-as-secure", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "https://deno.land/std/http/file_server.ts", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3148,6 +3256,7 @@ mod tests {
         seed: Some(1),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
         allow_net: Some(vec![]),
+        unsafely_treat_insecure_origin_as_secure: Some(vec![]),
         allow_read: Some(vec![]),
         ..Flags::default()
       }
@@ -3287,6 +3396,53 @@ mod tests {
           script: "script.ts".to_string(),
         },
         no_check: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn unsafely_treat_insecure_origin_as_secure() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--unsafely-treat-insecure-origin-as-secure",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        unsafely_treat_insecure_origin_as_secure: Some(vec![]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn unsafely_treat_insecure_origin_as_secure_with_ipv6_address() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--unsafely-treat-insecure-origin-as-secure=deno.land,localhost,::,127.0.0.1,[::1],1.2.3.4",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        unsafely_treat_insecure_origin_as_secure: Some(svec![
+          "deno.land",
+          "localhost",
+          "::",
+          "127.0.0.1",
+          "[::1]",
+          "1.2.3.4"
+        ]),
         ..Flags::default()
       }
     );
@@ -3453,6 +3609,26 @@ mod tests {
   }
 
   #[test]
+  fn run_with_enable_testing_features() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--enable-testing-features-do-not-use",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run {
+          script: "script.ts".to_string(),
+        },
+        enable_testing_features: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn test_with_fail_fast() {
     let r = flags_from_vec(svec!["deno", "test", "--fail-fast=3"]);
     assert_eq!(
@@ -3469,6 +3645,79 @@ mod tests {
           include: None,
           concurrent_jobs: 1,
         },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_with_enable_testing_features() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "test",
+      "--enable-testing-features-do-not-use"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: None,
+          allow_none: false,
+          quiet: false,
+          shuffle: None,
+          include: None,
+          concurrent_jobs: 1,
+        },
+        enable_testing_features: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_shuffle() {
+    let r = flags_from_vec(svec!["deno", "test", "--shuffle=1"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: None,
+          allow_none: false,
+          quiet: false,
+          shuffle: Some(1),
+          include: None,
+          concurrent_jobs: 1,
+        },
+        watch: false,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_watch() {
+    let r = flags_from_vec(svec!["deno", "test", "--watch"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: None,
+          allow_none: false,
+          quiet: false,
+          shuffle: None,
+          include: None,
+          concurrent_jobs: 1,
+        },
+        watch: true,
         ..Flags::default()
       }
     );
@@ -3678,7 +3927,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-treat-insecure-origin-as-secure", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3699,6 +3948,7 @@ mod tests {
         cached_only: true,
         location: Some(Url::parse("https://foo/").unwrap()),
         allow_read: Some(vec![]),
+        unsafely_treat_insecure_origin_as_secure: Some(vec![]),
         allow_net: Some(vec![]),
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),

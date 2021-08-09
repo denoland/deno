@@ -19,6 +19,7 @@ methods that the client calls via the Language Server RPC protocol.
 There are several settings that the language server supports for a workspace:
 
 - `deno.enable`
+- `deno.cache`
 - `deno.config`
 - `deno.importMap`
 - `deno.codeLens.implementations`

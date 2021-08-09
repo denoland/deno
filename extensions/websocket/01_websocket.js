@@ -126,6 +126,7 @@
   const _binaryType = Symbol("[[binaryType]]");
   const _bufferedAmount = Symbol("[[bufferedAmount]]");
   const _eventLoop = Symbol("[[eventLoop]]");
+  const _server = Symbol("[[server]]");
   class WebSocket extends EventTarget {
     [_rid];
 
@@ -381,13 +382,16 @@
         });
       }
 
-      if (
-        code !== undefined && !(code === 1000 || (3000 <= code && code < 5000))
-      ) {
-        throw new DOMException(
-          "The close code must be either 1000 or in the range of 3000 to 4999.",
-          "InvalidAccessError",
-        );
+      if (!this[_server]) {
+        if (
+          code !== undefined &&
+          !(code === 1000 || (3000 <= code && code < 5000))
+        ) {
+          throw new DOMException(
+            "The close code must be either 1000 or in the range of 3000 to 4999.",
+            "InvalidAccessError",
+          );
+        }
       }
 
       if (reason !== undefined && core.encode(reason).byteLength > 123) {
@@ -551,5 +555,6 @@
     _readyState,
     _eventLoop,
     _protocol,
+    _server,
   };
 })(this);

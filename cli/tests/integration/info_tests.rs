@@ -118,3 +118,9 @@ itest!(data_null_error {
   args: "info info/data_null_error/mod.ts",
   output: "info/data_null_error/data_null_error.out",
 });
+
+itest!(deno_info_types_header_direct {
+  args: "info --reload type_directives_01.ts",
+  output: "info/types_header.out",
+  http_server: true,
+});

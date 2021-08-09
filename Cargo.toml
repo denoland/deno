@@ -6,12 +6,13 @@ members = [
   "cli",
   "core",
   "runtime",
-  "test_plugin",
+  "test_ffi",
   "test_util",
   "extensions/broadcast_channel",
   "extensions/console",
   "extensions/crypto",
   "extensions/fetch",
+  "extensions/ffi",
   "extensions/http",
   "extensions/net",
   "extensions/timers",
@@ -20,7 +21,7 @@ members = [
   "extensions/webgpu",
   "extensions/webidl",
   "extensions/websocket",
-  "extensions/webstorage"
+  "extensions/webstorage",
 ]
 exclude = ["test_util/std/hash/_wasm"]
 

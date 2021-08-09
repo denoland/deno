@@ -10,7 +10,7 @@ import { Deferred, deferred } from "../../../test_util/std/async/deferred.ts";
 function handleAsyncMsgFromWorker(
   promiseTable: Map<number, Deferred<string>>,
   msg: { cmdId: number; data: string },
-): void {
+) {
   const promise = promiseTable.get(msg.cmdId);
   if (promise === null) {
     throw new Error(`Failed to find promise: cmdId: ${msg.cmdId}, msg: ${msg}`);
@@ -18,7 +18,7 @@ function handleAsyncMsgFromWorker(
   promise?.resolve(data);
 }
 
-async function main(): Promise<void> {
+async function main() {
   const workers: Array<[Map<number, Deferred<string>>, Worker]> = [];
   for (let i = 1; i <= workerCount; ++i) {
     const worker = new Worker(
@@ -26,7 +26,7 @@ async function main(): Promise<void> {
       { type: "module" },
     );
     const promise = deferred();
-    worker.onmessage = (e): void => {
+    worker.onmessage = (e) => {
       if (e.data.cmdId === 0) promise.resolve();
     };
     worker.postMessage({ cmdId: 0, action: 2 });
@@ -35,7 +35,7 @@ async function main(): Promise<void> {
   }
   // assign callback function
   for (const [promiseTable, worker] of workers) {
-    worker.onmessage = (e): void => {
+    worker.onmessage = (e) => {
       handleAsyncMsgFromWorker(promiseTable, e.data);
     };
   }
@@ -53,7 +53,7 @@ async function main(): Promise<void> {
   }
   for (const [, worker] of workers) {
     const promise = deferred();
-    worker.onmessage = (e): void => {
+    worker.onmessage = (e) => {
       if (e.data.cmdId === 3) promise.resolve();
     };
     worker.postMessage({ action: 3 });

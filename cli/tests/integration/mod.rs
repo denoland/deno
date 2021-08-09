@@ -2,9 +2,9 @@
 
 use crate::itest;
 use deno_core::url;
-use deno_runtime::deno_net::ops_tls::rustls;
-use deno_runtime::deno_net::ops_tls::webpki;
 use deno_runtime::deno_net::ops_tls::TlsStream;
+use deno_runtime::deno_tls::rustls;
+use deno_runtime::deno_tls::webpki;
 use std::fs;
 use std::io::BufReader;
 use std::io::Cursor;
@@ -473,6 +473,19 @@ fn broken_stdout() {
 //   output: "cafile_info.ts.out",
 //   http_server: true,
 // });
+
+itest!(cafile_url_imports_unsafe_ssl {
+  args: "run --quiet --reload --unsafely-treat-insecure-origin-as-secure=localhost cafile_url_imports.ts",
+  output: "cafile_url_imports_unsafe_ssl.ts.out",
+  http_server: true,
+});
+
+itest!(cafile_ts_fetch_unsafe_ssl {
+  args:
+    "run --quiet --reload --allow-net --unsafely-treat-insecure-origin-as-secure cafile_ts_fetch.ts",
+  output: "cafile_ts_fetch_unsafe_ssl.ts.out",
+  http_server: true,
+});
 
 #[test]
 #[ignore]

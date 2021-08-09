@@ -8,7 +8,11 @@ cut.**
 
 1. Open a PR on the `deno_std` repo that bumps the version in `version.ts` and
    updates `Releases.md`
-2. Create a tag with the version number (_without_ `v` prefix).
+
+2. Before merging the PR, make sure that all tests pass when run using binary
+   produced from bumping crates (point 3. from below).
+
+3. Create a tag with the version number (_without_ `v` prefix).
 
 ## Updating the main repo
 
@@ -79,6 +83,10 @@ The CI pipeline will create a release draft on GitHub
 
 13. Update the Deno version on the website by updating
     https://github.com/denoland/deno_website2/blob/main/versions.json.
+
+14. Push a new tag to [`manual`](https://github.com/denoland/manual). The tag
+    must match the tag from point 9; you don't need to create dedicated commit
+    for that purpose, it's enough to tag the latest commit in that repo.
 
 ## Updating `deno_docker`
 

@@ -9,7 +9,7 @@ import {
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function futimeSyncSuccess(): Promise<void> {
+  async function futimeSyncSuccess() {
     const testDir = await Deno.makeTempDir();
     const filename = testDir + "/file.txt";
     const file = await Deno.open(filename, {
@@ -31,7 +31,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  function futimeSyncSuccess(): void {
+  function futimeSyncSuccess() {
     const testDir = Deno.makeTempDirSync();
     const filename = testDir + "/file.txt";
     const file = Deno.openSync(filename, {
@@ -53,7 +53,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  function utimeSyncFileSuccess(): void {
+  function utimeSyncFileSuccess() {
     const testDir = Deno.makeTempDirSync();
     const filename = testDir + "/file.txt";
     Deno.writeFileSync(filename, new TextEncoder().encode("hello"), {
@@ -72,7 +72,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  function utimeSyncUrlSuccess(): void {
+  function utimeSyncUrlSuccess() {
     const testDir = Deno.makeTempDirSync();
     const filename = testDir + "/file.txt";
     Deno.writeFileSync(filename, new TextEncoder().encode("hello"), {
@@ -91,7 +91,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  function utimeSyncDirectorySuccess(): void {
+  function utimeSyncDirectorySuccess() {
     const testDir = Deno.makeTempDirSync();
 
     const atime = 1000;
@@ -106,7 +106,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  function utimeSyncDateSuccess(): void {
+  function utimeSyncDateSuccess() {
     const testDir = Deno.makeTempDirSync();
 
     const atime = new Date(1000_000);
@@ -139,7 +139,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  function utimeSyncLargeNumberSuccess(): void {
+  function utimeSyncLargeNumberSuccess() {
     const testDir = Deno.makeTempDirSync();
 
     // There are Rust side caps (might be fs relate),
@@ -156,7 +156,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  function utimeSyncNotFound(): void {
+  function utimeSyncNotFound() {
     const atime = 1000;
     const mtime = 50000;
 
@@ -168,7 +168,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: false } },
-  function utimeSyncPerm(): void {
+  function utimeSyncPerm() {
     const atime = 1000;
     const mtime = 50000;
 
@@ -180,7 +180,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function utimeFileSuccess(): Promise<void> {
+  async function utimeFileSuccess() {
     const testDir = Deno.makeTempDirSync();
     const filename = testDir + "/file.txt";
     Deno.writeFileSync(filename, new TextEncoder().encode("hello"), {
@@ -199,7 +199,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function utimeUrlSuccess(): Promise<void> {
+  async function utimeUrlSuccess() {
     const testDir = Deno.makeTempDirSync();
     const filename = testDir + "/file.txt";
     Deno.writeFileSync(filename, new TextEncoder().encode("hello"), {
@@ -218,7 +218,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function utimeDirectorySuccess(): Promise<void> {
+  async function utimeDirectorySuccess() {
     const testDir = Deno.makeTempDirSync();
 
     const atime = 1000;
@@ -233,7 +233,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function utimeDateSuccess(): Promise<void> {
+  async function utimeDateSuccess() {
     const testDir = Deno.makeTempDirSync();
 
     const atime = new Date(100_000);
@@ -248,7 +248,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function utimeFileDateSuccess(): Promise<void> {
+  async function utimeFileDateSuccess() {
     const testDir = Deno.makeTempDirSync();
     const filename = testDir + "/file.txt";
     Deno.writeFileSync(filename, new TextEncoder().encode("hello"), {
@@ -267,7 +267,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function utimeNotFound(): Promise<void> {
+  async function utimeNotFound() {
     const atime = 1000;
     const mtime = 50000;
 
@@ -279,7 +279,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: false } },
-  async function utimeSyncPerm(): Promise<void> {
+  async function utimeSyncPerm() {
     const atime = 1000;
     const mtime = 50000;
 

@@ -5,14 +5,14 @@ const {
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.internal];
 
-unitTest(function headersHasCorrectNameProp(): void {
+unitTest(function headersHasCorrectNameProp() {
   assertEquals(Headers.name, "Headers");
 });
 
 // Logic heavily copied from web-platform-tests, make
 // sure pass mostly header basic test
 // ref: https://github.com/web-platform-tests/wpt/blob/7c50c216081d6ea3c9afe553ee7b64534020a1b2/fetch/api/headers/headers-basic.html
-unitTest(function newHeaderTest(): void {
+unitTest(function newHeaderTest() {
   new Headers();
   new Headers(undefined);
   new Headers({});
@@ -38,7 +38,7 @@ for (const name in headerDict) {
   headerSeq.push([name, headerDict[name]]);
 }
 
-unitTest(function newHeaderWithSequence(): void {
+unitTest(function newHeaderWithSequence() {
   const headers = new Headers(headerSeq);
   for (const name in headerDict) {
     assertEquals(headers.get(name), String(headerDict[name]));
@@ -46,14 +46,14 @@ unitTest(function newHeaderWithSequence(): void {
   assertEquals(headers.get("length"), null);
 });
 
-unitTest(function newHeaderWithRecord(): void {
+unitTest(function newHeaderWithRecord() {
   const headers = new Headers(headerDict);
   for (const name in headerDict) {
     assertEquals(headers.get(name), String(headerDict[name]));
   }
 });
 
-unitTest(function newHeaderWithHeadersInstance(): void {
+unitTest(function newHeaderWithHeadersInstance() {
   const headers = new Headers(headerDict);
   const headers2 = new Headers(headers);
   for (const name in headerDict) {
@@ -61,7 +61,7 @@ unitTest(function newHeaderWithHeadersInstance(): void {
   }
 });
 
-unitTest(function headerAppendSuccess(): void {
+unitTest(function headerAppendSuccess() {
   const headers = new Headers();
   for (const name in headerDict) {
     headers.append(name, headerDict[name]);
@@ -69,7 +69,7 @@ unitTest(function headerAppendSuccess(): void {
   }
 });
 
-unitTest(function headerSetSuccess(): void {
+unitTest(function headerSetSuccess() {
   const headers = new Headers();
   for (const name in headerDict) {
     headers.set(name, headerDict[name]);
@@ -77,7 +77,7 @@ unitTest(function headerSetSuccess(): void {
   }
 });
 
-unitTest(function headerHasSuccess(): void {
+unitTest(function headerHasSuccess() {
   const headers = new Headers(headerDict);
   for (const name in headerDict) {
     assert(headers.has(name), "headers has name " + name);
@@ -88,7 +88,7 @@ unitTest(function headerHasSuccess(): void {
   }
 });
 
-unitTest(function headerDeleteSuccess(): void {
+unitTest(function headerDeleteSuccess() {
   const headers = new Headers(headerDict);
   for (const name in headerDict) {
     assert(headers.has(name), "headers have a header: " + name);
@@ -97,7 +97,7 @@ unitTest(function headerDeleteSuccess(): void {
   }
 });
 
-unitTest(function headerGetSuccess(): void {
+unitTest(function headerGetSuccess() {
   const headers = new Headers(headerDict);
   for (const name in headerDict) {
     assertEquals(headers.get(name), String(headerDict[name]));
@@ -105,7 +105,7 @@ unitTest(function headerGetSuccess(): void {
   }
 });
 
-unitTest(function headerEntriesSuccess(): void {
+unitTest(function headerEntriesSuccess() {
   const headers = new Headers(headerDict);
   const iterators = headers.entries();
   for (const it of iterators) {
@@ -116,7 +116,7 @@ unitTest(function headerEntriesSuccess(): void {
   }
 });
 
-unitTest(function headerKeysSuccess(): void {
+unitTest(function headerKeysSuccess() {
   const headers = new Headers(headerDict);
   const iterators = headers.keys();
   for (const it of iterators) {
@@ -124,7 +124,7 @@ unitTest(function headerKeysSuccess(): void {
   }
 });
 
-unitTest(function headerValuesSuccess(): void {
+unitTest(function headerValuesSuccess() {
   const headers = new Headers(headerDict);
   const iterators = headers.values();
   const entries = headers.entries();
@@ -146,16 +146,16 @@ const headerEntriesDict: Record<string, string> = {
   "Content-Types": "value6",
 };
 
-unitTest(function headerForEachSuccess(): void {
+unitTest(function headerForEachSuccess() {
   const headers = new Headers(headerEntriesDict);
   const keys = Object.keys(headerEntriesDict);
-  keys.forEach((key): void => {
+  keys.forEach((key) => {
     const value = headerEntriesDict[key];
     const newkey = key.toLowerCase();
     headerEntriesDict[newkey] = value;
   });
   let callNum = 0;
-  headers.forEach((value, key, container): void => {
+  headers.forEach((value, key, container) => {
     assertEquals(headers, container);
     assertEquals(value, headerEntriesDict[key]);
     callNum++;
@@ -163,7 +163,7 @@ unitTest(function headerForEachSuccess(): void {
   assertEquals(callNum, keys.length);
 });
 
-unitTest(function headerSymbolIteratorSuccess(): void {
+unitTest(function headerSymbolIteratorSuccess() {
   assert(Symbol.iterator in Headers.prototype);
   const headers = new Headers(headerEntriesDict);
   for (const header of headers) {
@@ -174,7 +174,7 @@ unitTest(function headerSymbolIteratorSuccess(): void {
   }
 });
 
-unitTest(function headerTypesAvailable(): void {
+unitTest(function headerTypesAvailable() {
   function newHeaders(): Headers {
     return new Headers();
   }
@@ -184,7 +184,7 @@ unitTest(function headerTypesAvailable(): void {
 
 // Modified from https://github.com/bitinn/node-fetch/blob/7d3293200a91ad52b5ca7962f9d6fd1c04983edb/test/test.js#L2001-L2014
 // Copyright (c) 2016 David Frank. MIT License.
-unitTest(function headerIllegalReject(): void {
+unitTest(function headerIllegalReject() {
   let errorCount = 0;
   try {
     new Headers({ "He y": "ok" });
@@ -238,7 +238,7 @@ unitTest(function headerIllegalReject(): void {
 });
 
 // If pair does not contain exactly two items,then throw a TypeError.
-unitTest(function headerParamsShouldThrowTypeError(): void {
+unitTest(function headerParamsShouldThrowTypeError() {
   let hasThrown = 0;
 
   try {
@@ -255,12 +255,12 @@ unitTest(function headerParamsShouldThrowTypeError(): void {
   assertEquals(hasThrown, 2);
 });
 
-unitTest(function headerParamsArgumentsCheck(): void {
+unitTest(function headerParamsArgumentsCheck() {
   const methodRequireOneParam = ["delete", "get", "has", "forEach"] as const;
 
   const methodRequireTwoParams = ["append", "set"] as const;
 
-  methodRequireOneParam.forEach((method): void => {
+  methodRequireOneParam.forEach((method) => {
     const headers = new Headers();
     let hasThrown = 0;
     try {
@@ -277,7 +277,7 @@ unitTest(function headerParamsArgumentsCheck(): void {
     assertEquals(hasThrown, 2);
   });
 
-  methodRequireTwoParams.forEach((method): void => {
+  methodRequireTwoParams.forEach((method) => {
     const headers = new Headers();
     let hasThrown = 0;
 
@@ -310,7 +310,7 @@ unitTest(function headerParamsArgumentsCheck(): void {
   });
 });
 
-unitTest(function headersInitMultiple(): void {
+unitTest(function headersInitMultiple() {
   const headers = new Headers([
     ["Set-Cookie", "foo=bar"],
     ["Set-Cookie", "bar=baz"],
@@ -325,7 +325,7 @@ unitTest(function headersInitMultiple(): void {
   ]);
 });
 
-unitTest(function headersAppendMultiple(): void {
+unitTest(function headersAppendMultiple() {
   const headers = new Headers([
     ["Set-Cookie", "foo=bar"],
     ["X-Deno", "foo"],
@@ -340,7 +340,7 @@ unitTest(function headersAppendMultiple(): void {
   ]);
 });
 
-unitTest(function headersAppendDuplicateSetCookieKey(): void {
+unitTest(function headersAppendDuplicateSetCookieKey() {
   const headers = new Headers([["Set-Cookie", "foo=bar"]]);
   headers.append("set-Cookie", "foo=baz");
   headers.append("Set-cookie", "baz=bar");
@@ -352,7 +352,7 @@ unitTest(function headersAppendDuplicateSetCookieKey(): void {
   ]);
 });
 
-unitTest(function headersGetSetCookie(): void {
+unitTest(function headersGetSetCookie() {
   const headers = new Headers([
     ["Set-Cookie", "foo=bar"],
     ["set-Cookie", "bar=qat"],
@@ -360,7 +360,7 @@ unitTest(function headersGetSetCookie(): void {
   assertEquals(headers.get("SET-COOKIE"), "foo=bar, bar=qat");
 });
 
-unitTest(function toStringShouldBeWebCompatibility(): void {
+unitTest(function toStringShouldBeWebCompatibility() {
   const headers = new Headers();
   assertEquals(headers.toString(), "[object Headers]");
 });
@@ -369,7 +369,7 @@ function stringify(...args: unknown[]): string {
   return inspectArgs(args).replace(/\n$/, "");
 }
 
-unitTest(function customInspectReturnsCorrectHeadersFormat(): void {
+unitTest(function customInspectReturnsCorrectHeadersFormat() {
   const blankHeaders = new Headers();
   assertEquals(stringify(blankHeaders), "Headers {}");
   const singleHeader = new Headers([["Content-Type", "application/json"]]);

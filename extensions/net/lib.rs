@@ -11,6 +11,7 @@ use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::Extension;
 use deno_core::OpState;
+use deno_tls::rustls::RootCertStore;
 use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
@@ -88,12 +89,26 @@ pub fn get_unstable_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_net.unstable.d.ts")
 }
 
-pub fn init<P: NetPermissions + 'static>(unstable: bool) -> Extension {
+#[derive(Clone)]
+pub struct DefaultTlsOptions {
+  pub root_cert_store: Option<RootCertStore>,
+}
+
+/// `UnsafelyTreatInsecureOriginAsSecure` is a wrapper struct so it can be placed inside `GothamState`;
+/// using type alias for a `Option<Vec<String>>` could work, but there's a high chance
+/// that there might be another type alias pointing to a `Option<Vec<String>>`, which
+/// would override previously used alias.
+pub struct UnsafelyTreatInsecureOriginAsSecure(Option<Vec<String>>);
+
+pub fn init<P: NetPermissions + 'static>(
+  root_cert_store: Option<RootCertStore>,
+  unstable: bool,
+  unsafely_treat_insecure_origin_as_secure: Option<Vec<String>>,
+) -> Extension {
   let mut ops_to_register = vec![];
   ops_to_register.extend(io::init());
   ops_to_register.extend(ops::init::<P>());
   ops_to_register.extend(ops_tls::init::<P>());
-
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:extensions/net",
@@ -103,7 +118,13 @@ pub fn init<P: NetPermissions + 'static>(unstable: bool) -> Extension {
     ))
     .ops(ops_to_register)
     .state(move |state| {
+      state.put(DefaultTlsOptions {
+        root_cert_store: root_cert_store.clone(),
+      });
       state.put(UnstableChecker { unstable });
+      state.put(UnsafelyTreatInsecureOriginAsSecure(
+        unsafely_treat_insecure_origin_as_secure.clone(),
+      ));
       Ok(())
     })
     .build()

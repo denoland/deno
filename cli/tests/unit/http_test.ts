@@ -200,7 +200,7 @@ unitTest({ perms: { net: true } }, async function httpServerInvalidMethod() {
 
 unitTest(
   { perms: { read: true, net: true } },
-  async function httpServerWithTls(): Promise<void> {
+  async function httpServerWithTls() {
     const hostname = "localhost";
     const port = 4501;
 
@@ -641,12 +641,12 @@ unitTest({ perms: { net: true } }, async function httpServerWebSocket() {
       const { request, respondWith } = (await httpConn.nextRequest())!;
       const {
         response,
-        websocket,
-      } = await Deno.upgradeWebSocket(request);
-      websocket.onerror = () => fail();
-      websocket.onmessage = (m) => {
-        websocket.send(m.data);
-        websocket.close();
+        socket,
+      } = Deno.upgradeWebSocket(request);
+      socket.onerror = () => fail();
+      socket.onmessage = (m) => {
+        socket.send(m.data);
+        socket.close(1001);
       };
       await respondWith(response);
       break;
@@ -661,6 +661,48 @@ unitTest({ perms: { net: true } }, async function httpServerWebSocket() {
   ws.onopen = () => ws.send("foo");
   await def;
   await promise;
+});
+
+unitTest(function httpUpgradeWebSocket() {
+  const request = new Request("https://deno.land/", {
+    headers: {
+      connection: "Upgrade",
+      upgrade: "websocket",
+      "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+    },
+  });
+  const { response } = Deno.upgradeWebSocket(request);
+  assertEquals(response.status, 101);
+  assertEquals(response.headers.get("connection"), "Upgrade");
+  assertEquals(response.headers.get("upgrade"), "websocket");
+  assertEquals(
+    response.headers.get("sec-websocket-accept"),
+    "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=",
+  );
+});
+
+unitTest(function httpUpgradeWebSocketLowercaseUpgradeHeader() {
+  const request = new Request("https://deno.land/", {
+    headers: {
+      connection: "upgrade",
+      upgrade: "websocket",
+      "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+    },
+  });
+  const { response } = Deno.upgradeWebSocket(request);
+  assertEquals(response.status, 101);
+});
+
+unitTest(function httpUpgradeWebSocketMultipleConnectionOptions() {
+  const request = new Request("https://deno.land/", {
+    headers: {
+      connection: "keep-alive, upgrade",
+      upgrade: "websocket",
+      "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+    },
+  });
+  const { response } = Deno.upgradeWebSocket(request);
+  assertEquals(response.status, 101);
 });
 
 unitTest({ perms: { net: true } }, async function httpCookieConcatenation() {

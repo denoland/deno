@@ -68,9 +68,10 @@ declare namespace Deno {
   ): Listener;
 
   export interface ListenTlsOptions extends ListenOptions {
-    /** Server certificate file. */
+    /** Path to a file containing a PEM formatted CA certificate. Requires
+     * `--allow-read`. */
     certFile: string;
-    /** Server public key file. */
+    /** Server public key file. Requires `--allow-read`.*/
     keyFile: string;
 
     transport?: "tcp";

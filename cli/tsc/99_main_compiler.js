@@ -75,6 +75,9 @@ delete Object.prototype.__proto__;
   /** @type {Map<string, ts.SourceFile>} */
   const sourceFileCache = new Map();
 
+  /** @type {string[]=} */
+  let scriptFileNamesCache;
+
   /** @type {Map<string, string>} */
   const scriptVersionCache = new Map();
 
@@ -370,7 +373,12 @@ delete Object.prototype.__proto__;
     },
     getScriptFileNames() {
       debug("host.getScriptFileNames()");
-      return core.opSync("op_script_names", undefined);
+      // tsc requests the script file names multiple times even though it can't
+      // possibly have changed, so we will memoize it on a per request basis.
+      if (scriptFileNamesCache) {
+        return scriptFileNamesCache;
+      }
+      return scriptFileNamesCache = core.opSync("op_script_names", undefined);
     },
     getScriptVersion(specifier) {
       debug(`host.getScriptVersion("${specifier}")`);
@@ -378,9 +386,8 @@ delete Object.prototype.__proto__;
       if (sourceFile) {
         return sourceFile.version ?? "1";
       }
-      // tsc neurotically requests the script version multiple times even though
-      // it can't possibly have changed, so we will memoize it on a per request
-      // basis.
+      // tsc requests the script version multiple times even though it can't
+      // possibly have changed, so we will memoize it on a per request basis.
       if (scriptVersionCache.has(specifier)) {
         return scriptVersionCache.get(specifier);
       }
@@ -543,6 +550,8 @@ delete Object.prototype.__proto__;
    */
   function serverRequest({ id, ...request }) {
     debug(`serverRequest()`, { id, ...request });
+    // reset all memoized source files names
+    scriptFileNamesCache = undefined;
     // evict all memoized source file versions
     scriptVersionCache.clear();
     switch (request.method) {
@@ -574,6 +583,44 @@ delete Object.prototype.__proto__;
           ts.ScriptTarget.ESNext,
         );
         return respond(id, sourceFile && sourceFile.text);
+      }
+      case "getApplicableRefactors": {
+        return respond(
+          id,
+          languageService.getApplicableRefactors(
+            request.specifier,
+            request.range,
+            {
+              quotePreference: "double",
+              allowTextChangesInNewFiles: true,
+              provideRefactorNotApplicableReason: true,
+            },
+            undefined,
+            request.kind,
+          ),
+        );
+      }
+      case "getEditsForRefactor": {
+        return respond(
+          id,
+          languageService.getEditsForRefactor(
+            request.specifier,
+            {
+              indentSize: 2,
+              indentStyle: ts.IndentStyle.Smart,
+              semicolons: ts.SemicolonPreference.Insert,
+              convertTabsToSpaces: true,
+              insertSpaceBeforeAndAfterBinaryOperators: true,
+              insertSpaceAfterCommaDelimiter: true,
+            },
+            request.range,
+            request.refactorName,
+            request.actionName,
+            {
+              quotePreference: "double",
+            },
+          ),
+        );
       }
       case "getCodeFixes": {
         return respond(
