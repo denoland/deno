@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::colors;
 use crate::config_file::ConfigFile;
 use crate::deno_dir;
 use crate::file_fetcher::CacheSetting;
@@ -115,6 +116,12 @@ impl ProgramState {
       if let Err(_err) = root_cert_store.add_pem_file(&mut reader) {
         return Err(anyhow!("Unable to add pem file to certificate store"));
       }
+    }
+
+    if flags.unsafely_treat_insecure_origin_as_secure.is_some() {
+      let msg =
+        colors::yellow("DANGER: SSL ceritificate validation is disabled");
+      eprintln!("{}", msg);
     }
 
     let cache_usage = if flags.cached_only {
