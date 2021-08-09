@@ -812,12 +812,8 @@ where
       .private_key
       .ok_or_else(|| type_error("No private key provided"))?;
 
-    let private_key = load_private_keys(private_key.as_bytes())?
-      .drain(0..)
-      .next()
-      .ok_or_else(|| {
-        type_error("Passed privateKey does not contain a private key")
-      })?;
+    // The `remove` is safe because load_private_keys checks that there is at least one key.
+    let private_key = load_private_keys(private_key.as_bytes())?.remove(0);
 
     tls_config.set_single_client_cert(
       load_certs(&mut cert_chain.as_bytes())?,

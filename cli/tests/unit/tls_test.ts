@@ -1025,7 +1025,7 @@ unitTest(
         certChain: await Deno.readTextFile("cli/tests/tls/localhost.crt"),
         privateKey: "",
       });
-    }, TypeError);
+    }, Deno.errors.InvalidData);
   },
 );
 
