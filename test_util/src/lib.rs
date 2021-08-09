@@ -37,9 +37,10 @@ use std::sync::MutexGuard;
 use std::task::Context;
 use std::task::Poll;
 use tempfile::TempDir;
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-use tokio_rustls::rustls;
+use tokio_rustls::rustls::{self, Session};
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
 
@@ -56,6 +57,7 @@ const DOUBLE_REDIRECTS_PORT: u16 = 4548;
 const INF_REDIRECTS_PORT: u16 = 4549;
 const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
 const AUTH_REDIRECT_PORT: u16 = 4551;
+const TLS_CLIENT_AUTH_PORT: u16 = 4552;
 const HTTPS_PORT: u16 = 5545;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
@@ -224,6 +226,7 @@ async fn auth_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
 
 async fn run_ws_server(addr: &SocketAddr) {
   let listener = TcpListener::bind(addr).await.unwrap();
+  println!("ready: ws"); // Eye catcher for HttpServerCount
   while let Ok((stream, _addr)) = listener.accept().await {
     tokio::spawn(async move {
       let ws_stream_fut = accept_async(stream);
@@ -260,18 +263,28 @@ async fn run_ws_close_server(addr: &SocketAddr) {
 async fn get_tls_config(
   cert: &str,
   key: &str,
+  ca: &str,
 ) -> io::Result<Arc<rustls::ServerConfig>> {
   let mut cert_path = root_path();
   let mut key_path = root_path();
+  let mut ca_path = root_path();
   cert_path.push(cert);
   key_path.push(key);
+  ca_path.push(ca);
 
   let cert_file = std::fs::File::open(cert_path)?;
   let key_file = std::fs::File::open(key_path)?;
+  let ca_file = std::fs::File::open(ca_path)?;
 
   let mut cert_reader = io::BufReader::new(cert_file);
   let cert = rustls::internal::pemfile::certs(&mut cert_reader)
     .expect("Cannot load certificate");
+
+  let mut ca_cert_reader = io::BufReader::new(ca_file);
+  let ca_cert = rustls::internal::pemfile::certs(&mut ca_cert_reader)
+    .expect("Cannot load CA certificate")
+    .remove(0);
+
   let mut key_reader = io::BufReader::new(key_file);
   let key = {
     let pkcs8_key =
@@ -290,7 +303,12 @@ async fn get_tls_config(
 
   match key {
     Some(key) => {
-      let mut config = rustls::ServerConfig::new(rustls::NoClientAuth::new());
+      let mut root_cert_store = rustls::RootCertStore::empty();
+      root_cert_store.add(&ca_cert).unwrap();
+      // Allow (but do not require) client authentication.
+      let allow_client_auth =
+        rustls::AllowAnyAnonymousOrAuthenticatedClient::new(root_cert_store);
+      let mut config = rustls::ServerConfig::new(allow_client_auth);
       config
         .set_single_cert(cert, key)
         .map_err(|e| {
@@ -307,10 +325,14 @@ async fn get_tls_config(
 async fn run_wss_server(addr: &SocketAddr) {
   let cert_file = "cli/tests/tls/localhost.crt";
   let key_file = "cli/tests/tls/localhost.key";
+  let ca_cert_file = "cli/tests/tls/RootCA.pem";
 
-  let tls_config = get_tls_config(cert_file, key_file).await.unwrap();
+  let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
+    .await
+    .unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
   let listener = TcpListener::bind(addr).await.unwrap();
+  println!("ready: wss"); // Eye catcher for HttpServerCount
 
   while let Ok((stream, _addr)) = listener.accept().await {
     let acceptor = tls_acceptor.clone();
@@ -330,6 +352,71 @@ async fn run_wss_server(addr: &SocketAddr) {
               .await;
           }
         }
+        Err(e) => {
+          eprintln!("TLS accept error: {:?}", e);
+        }
+      }
+    });
+  }
+}
+
+/// This server responds with 'PASS' if client authentication was successful. Try it by running
+/// test_server and
+///   curl --key cli/tests/tls/localhost.key \
+///        --cert cli/tests/tls/localhost.crt \
+///        --cacert cli/tests/tls/RootCA.crt https://localhost:4552/
+async fn run_tls_client_auth_server() {
+  let cert_file = "cli/tests/tls/localhost.crt";
+  let key_file = "cli/tests/tls/localhost.key";
+  let ca_cert_file = "cli/tests/tls/RootCA.pem";
+  let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
+    .await
+    .unwrap();
+  let tls_acceptor = TlsAcceptor::from(tls_config);
+
+  // Listen on ALL addresses that localhost can resolves to.
+  let accept = |listener: tokio::net::TcpListener| {
+    async {
+      let result = listener.accept().await;
+      Some((result, listener))
+    }
+    .boxed()
+  };
+
+  let host_and_port = &format!("localhost:{}", TLS_CLIENT_AUTH_PORT);
+
+  let listeners = tokio::net::lookup_host(host_and_port)
+    .await
+    .expect(host_and_port)
+    .inspect(|address| println!("{} -> {}", host_and_port, address))
+    .map(tokio::net::TcpListener::bind)
+    .collect::<futures::stream::FuturesUnordered<_>>()
+    .collect::<Vec<_>>()
+    .await
+    .into_iter()
+    .map(|s| s.unwrap())
+    .map(|listener| futures::stream::unfold(listener, accept))
+    .collect::<Vec<_>>();
+
+  println!("ready: tls client auth"); // Eye catcher for HttpServerCount
+
+  let mut listeners = futures::stream::select_all(listeners);
+
+  while let Some(Ok((stream, _addr))) = listeners.next().await {
+    let acceptor = tls_acceptor.clone();
+    tokio::spawn(async move {
+      match acceptor.accept(stream).await {
+        Ok(mut tls_stream) => {
+          let (_, tls_session) = tls_stream.get_mut();
+          // We only need to check for the presence of client certificates
+          // here. Rusttls ensures that they are valid and signed by the CA.
+          let response = match tls_session.get_peer_certificates() {
+            Some(_certs) => b"PASS",
+            None => b"FAIL",
+          };
+          tls_stream.write_all(response).await.unwrap();
+        }
+
         Err(e) => {
           eprintln!("TLS accept error: {:?}", e);
         }
@@ -775,14 +862,15 @@ async fn wrap_main_https_server() {
   let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], HTTPS_PORT));
   let cert_file = "cli/tests/tls/localhost.crt";
   let key_file = "cli/tests/tls/localhost.key";
-  let tls_config = get_tls_config(cert_file, key_file)
+  let ca_cert_file = "cli/tests/tls/RootCA.pem";
+  let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
     .await
     .expect("Cannot get TLS config");
   loop {
     let tcp = TcpListener::bind(&main_server_https_addr)
       .await
       .expect("Cannot bind TCP");
-    println!("tls ready");
+    println!("ready: https"); // Eye catcher for HttpServerCount
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
     // Prepare a long-running future stream to accept and serve cients.
     let incoming_tls_stream = async_stream::stream! {
@@ -832,6 +920,8 @@ pub async fn run_all_servers() {
   let ws_close_addr = SocketAddr::from(([127, 0, 0, 1], WS_CLOSE_PORT));
   let ws_close_server_fut = run_ws_close_server(&ws_close_addr);
 
+  let tls_client_auth_server_fut = run_tls_client_auth_server();
+
   let main_server_fut = wrap_main_server();
   let main_server_https_fut = wrap_main_https_server();
 
@@ -840,6 +930,7 @@ pub async fn run_all_servers() {
       redirect_server_fut,
       ws_server_fut,
       wss_server_fut,
+      tls_client_auth_server_fut,
       ws_close_server_fut,
       another_redirect_server_fut,
       auth_redirect_server_fut,
@@ -856,7 +947,7 @@ pub async fn run_all_servers() {
   futures::future::poll_fn(move |cx| {
     let poll_result = server_fut.poll_unpin(cx);
     if !replace(&mut did_print_ready, true) {
-      println!("ready");
+      println!("ready: server_fut"); // Eye catcher for HttpServerCount
     }
     poll_result
   })
@@ -985,17 +1076,15 @@ impl HttpServerCount {
       let stdout = test_server.stdout.as_mut().unwrap();
       use std::io::{BufRead, BufReader};
       let lines = BufReader::new(stdout).lines();
-      let mut ready = false;
-      let mut tls_ready = false;
+
+      // Wait for all the servers to report being ready.
+      let mut ready_count = 0;
       for maybe_line in lines {
         if let Ok(line) = maybe_line {
-          if line.starts_with("ready") {
-            ready = true;
+          if line.starts_with("ready:") {
+            ready_count += 1;
           }
-          if line.starts_with("tls ready") {
-            tls_ready = true;
-          }
-          if ready && tls_ready {
+          if ready_count == 5 {
             break;
           }
         } else {
