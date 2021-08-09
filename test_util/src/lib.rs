@@ -226,7 +226,7 @@ async fn auth_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
 
 async fn run_ws_server(addr: &SocketAddr) {
   let listener = TcpListener::bind(addr).await.unwrap();
-  println!("ready: ws");
+  println!("ready: ws"); // Eye catcher for HttpServerCount
   while let Ok((stream, _addr)) = listener.accept().await {
     tokio::spawn(async move {
       let ws_stream_fut = accept_async(stream);
@@ -332,7 +332,7 @@ async fn run_wss_server(addr: &SocketAddr) {
     .unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
   let listener = TcpListener::bind(addr).await.unwrap();
-  println!("ready: wss");
+  println!("ready: wss"); // Eye catcher for HttpServerCount
 
   while let Ok((stream, _addr)) = listener.accept().await {
     let acceptor = tls_acceptor.clone();
@@ -398,7 +398,7 @@ async fn run_tls_client_auth_server() {
     .map(|listener| futures::stream::unfold(listener, accept))
     .collect::<Vec<_>>();
 
-  println!("ready: tls client auth");
+  println!("ready: tls client auth"); // Eye catcher for HttpServerCount
 
   let mut listeners = futures::stream::select_all(listeners);
 
@@ -870,7 +870,7 @@ async fn wrap_main_https_server() {
     let tcp = TcpListener::bind(&main_server_https_addr)
       .await
       .expect("Cannot bind TCP");
-    println!("ready: https");
+    println!("ready: https"); // Eye catcher for HttpServerCount
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
     // Prepare a long-running future stream to accept and serve cients.
     let incoming_tls_stream = async_stream::stream! {
@@ -947,7 +947,7 @@ pub async fn run_all_servers() {
   futures::future::poll_fn(move |cx| {
     let poll_result = server_fut.poll_unpin(cx);
     if !replace(&mut did_print_ready, true) {
-      println!("ready: server_fut");
+      println!("ready: server_fut"); // Eye catcher for HttpServerCount
     }
     poll_result
   })
