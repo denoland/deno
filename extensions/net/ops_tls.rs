@@ -14,6 +14,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::invalid_hostname;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::ready;
@@ -806,14 +807,21 @@ where
   if args.cert_chain.is_some() || args.private_key.is_some() {
     let cert_chain = args
       .cert_chain
-      .ok_or_else(|| generic_error("No certificate chain provided"))?;
+      .ok_or_else(|| type_error("No certificate chain provided"))?;
     let private_key = args
       .private_key
-      .ok_or_else(|| generic_error("No private key provided"))?;
+      .ok_or_else(|| type_error("No private key provided"))?;
+
+    let private_key = load_private_keys(private_key.as_bytes())?
+      .drain(0..)
+      .next()
+      .ok_or_else(|| {
+        type_error("Passed privateKey does not contain a private key")
+      })?;
 
     tls_config.set_single_client_cert(
       load_certs(&mut cert_chain.as_bytes())?,
-      load_private_keys(private_key.as_bytes())?.remove(0),
+      private_key,
     )?;
   }
 

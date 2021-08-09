@@ -1003,7 +1003,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, net: true } },
-  async function connectTLSBadClientCertChain(): Promise<void> {
+  async function connectTLSBadPrivateKey(): Promise<void> {
     await assertThrowsAsync(async () => {
       await Deno.connectTls({
         hostname: "deno.land",
@@ -1012,6 +1012,20 @@ unitTest(
         privateKey: "bad data",
       });
     }, Deno.errors.InvalidData);
+  },
+);
+
+unitTest(
+  { perms: { read: true, net: true } },
+  async function connectTLSNotPrivateKey(): Promise<void> {
+    await assertThrowsAsync(async () => {
+      await Deno.connectTls({
+        hostname: "deno.land",
+        port: 443,
+        certChain: await Deno.readTextFile("cli/tests/tls/localhost.crt"),
+        privateKey: "",
+      });
+    }, TypeError);
   },
 );
 
