@@ -54,6 +54,12 @@ pub trait WebSocketPermissions {
   fn check_net_url(&mut self, _url: &url::Url) -> Result<(), AnyError>;
 }
 
+/// `UnsafelyTreatInsecureOriginAsSecure` is a wrapper struct so it can be placed inside `GothamState`;
+/// using type alias for a `Option<Vec<String>>` could work, but there's a high chance
+/// that there might be another type alias pointing to a `Option<Vec<String>>`, which
+/// would override previously used alias.
+pub struct UnsafelyTreatInsecureOriginAsSecure(Option<Vec<String>>);
+
 /// For use with `op_websocket_*` when the user does not want permissions.
 pub struct NoWebSocketPermissions;
 
@@ -197,6 +203,11 @@ where
       );
   }
 
+  let unsafely_treat_insecure_origin_as_secure = state
+    .borrow()
+    .borrow::<UnsafelyTreatInsecureOriginAsSecure>()
+    .0
+    .clone();
   let root_cert_store = state.borrow().borrow::<WsRootStore>().0.clone();
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
   let uri: Uri = args.url.parse()?;
@@ -221,7 +232,11 @@ where
   let socket: MaybeTlsStream<TcpStream> = match uri.scheme_str() {
     Some("ws") => MaybeTlsStream::Plain(tcp_socket),
     Some("wss") => {
-      let tls_config = create_client_config(root_cert_store, None)?;
+      let tls_config = create_client_config(
+        root_cert_store,
+        None,
+        unsafely_treat_insecure_origin_as_secure,
+      )?;
       let tls_connector = TlsConnector::from(Arc::new(tls_config));
       let dnsname = DNSNameRef::try_from_ascii_str(domain)
         .map_err(|_| invalid_hostname(domain))?;
@@ -377,6 +392,7 @@ pub async fn op_ws_next_event(
 pub fn init<P: WebSocketPermissions + 'static>(
   user_agent: String,
   root_cert_store: Option<RootCertStore>,
+  unsafely_treat_insecure_origin_as_secure: Option<Vec<String>>,
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -395,6 +411,9 @@ pub fn init<P: WebSocketPermissions + 'static>(
     ])
     .state(move |state| {
       state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));
+      state.put(UnsafelyTreatInsecureOriginAsSecure(
+        unsafely_treat_insecure_origin_as_secure.clone(),
+      ));
       state.put::<WsRootStore>(WsRootStore(root_cert_store.clone()));
       Ok(())
     })

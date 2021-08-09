@@ -9,6 +9,7 @@ use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
 use crate::DefaultTlsOptions;
 use crate::NetPermissions;
+use crate::UnsafelyTreatInsecureOriginAsSecure;
 use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
@@ -720,8 +721,8 @@ where
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
-  let tls_config = Arc::new(create_client_config(root_cert_store, ca_data)?);
-
+  let tls_config =
+    Arc::new(create_client_config(root_cert_store, ca_data, None)?);
   let tls_stream =
     TlsStream::new_client_side(tcp_stream, &tls_config, hostname_dns);
 
@@ -760,6 +761,11 @@ where
   };
   let port = args.port;
   let cert_file = args.cert_file.as_deref();
+  let unsafely_treat_insecure_origin_as_secure = state
+    .borrow()
+    .borrow::<UnsafelyTreatInsecureOriginAsSecure>()
+    .0
+    .clone();
 
   if args.cert_chain.is_some() {
     super::check_unstable2(&state, "ConnectTlsOptions.certChain");
@@ -801,8 +807,11 @@ where
   let tcp_stream = TcpStream::connect(connect_addr).await?;
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
-
-  let mut tls_config = create_client_config(root_cert_store, ca_data)?;
+  let mut tls_config = create_client_config(
+    root_cert_store,
+    ca_data,
+    unsafely_treat_insecure_origin_as_secure,
+  )?;
 
   if args.cert_chain.is_some() || args.private_key.is_some() {
     let cert_chain = args

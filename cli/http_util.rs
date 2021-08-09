@@ -145,7 +145,8 @@ mod tests {
   use std::fs::read;
 
   fn create_test_client(ca_data: Option<Vec<u8>>) -> Client {
-    create_http_client("test_client".to_string(), None, ca_data, None).unwrap()
+    create_http_client("test_client".to_string(), None, ca_data, None, None)
+      .unwrap()
   }
 
   #[tokio::test]
@@ -347,6 +348,7 @@ mod tests {
         .unwrap(),
       ),
       None,
+      None,
     )
     .unwrap();
     let result = fetch_once(FetchOnceArgs {
@@ -374,6 +376,7 @@ mod tests {
     let client = create_http_client(
       version::get_user_agent(),
       None, // This will load mozilla certs by default
+      None,
       None,
       None,
     )
@@ -405,6 +408,7 @@ mod tests {
     let client = create_http_client(
       version::get_user_agent(),
       Some(RootCertStore::empty()), // no certs loaded at all
+      None,
       None,
       None,
     )
@@ -445,6 +449,7 @@ mod tests {
         .unwrap(),
       ),
       None,
+      None,
     )
     .unwrap();
     let result = fetch_once(FetchOnceArgs {
@@ -483,6 +488,7 @@ mod tests {
         )
         .unwrap(),
       ),
+      None,
       None,
     )
     .unwrap();
@@ -536,6 +542,7 @@ mod tests {
         )
         .unwrap(),
       ),
+      None,
       None,
     )
     .unwrap();

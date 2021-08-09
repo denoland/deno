@@ -60,6 +60,7 @@ pub fn init<P: FetchPermissions + 'static>(
   root_cert_store: Option<RootCertStore>,
   proxy: Option<Proxy>,
   request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
+  unsafely_treat_insecure_origin_as_secure: Option<Vec<String>>,
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -87,6 +88,7 @@ pub fn init<P: FetchPermissions + 'static>(
           root_cert_store.clone(),
           None,
           proxy.clone(),
+          unsafely_treat_insecure_origin_as_secure.clone(),
         )
         .unwrap()
       });
@@ -95,6 +97,8 @@ pub fn init<P: FetchPermissions + 'static>(
         root_cert_store: root_cert_store.clone(),
         proxy: proxy.clone(),
         request_builder_hook,
+        unsafely_treat_insecure_origin_as_secure:
+          unsafely_treat_insecure_origin_as_secure.clone(),
       });
       Ok(())
     })
@@ -106,6 +110,7 @@ pub struct HttpClientDefaults {
   pub root_cert_store: Option<RootCertStore>,
   pub proxy: Option<Proxy>,
   pub request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
+  pub unsafely_treat_insecure_origin_as_secure: Option<Vec<String>>,
 }
 
 pub trait FetchPermissions {
@@ -532,11 +537,13 @@ where
   let defaults = state.borrow::<HttpClientDefaults>();
   let cert_data =
     get_cert_data(args.ca_file.as_deref(), args.ca_data.as_deref())?;
+
   let client = create_http_client(
     defaults.user_agent.clone(),
     defaults.root_cert_store.clone(),
     cert_data,
     args.proxy,
+    defaults.unsafely_treat_insecure_origin_as_secure.clone(),
   )
   .unwrap();
 
