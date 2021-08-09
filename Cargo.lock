@@ -639,9 +639,9 @@ dependencies = [
 
 [[package]]
 name = "deno-libffi"
-version = "0.0.3"
+version = "0.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a844ceea9e6233005c62dfe0bb7c1adab786ea78bab4ac1e5ea5cd2a5d47761"
+checksum = "a8c576e40bd48d120b433ee248e221a89f6c2556d580e409aeede79c5c899c86"
 dependencies = [
  "abort_on_panic",
  "deno-libffi-sys",
@@ -650,9 +650,9 @@ dependencies = [
 
 [[package]]
 name = "deno-libffi-sys"
-version = "0.0.3"
+version = "0.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15a12b5205cc4f3944cefa192e851a0ee15c226b41733468b2660d4ab2bdf555"
+checksum = "d17b3e8597c2424b077029461fae4f24e1c01b2073cf91ae2a13412d676181b8"
 dependencies = [
  "cc",
  "make-cmd",
