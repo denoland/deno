@@ -761,7 +761,7 @@ where
   let cert_file = args.cert_file.as_deref();
 
   if args.cert_chain.is_some() {
-    super::check_unstable2(&state, "ConnecTlsOptions.certChain");
+    super::check_unstable2(&state, "ConnectTlsOptions.certChain");
   }
   if args.private_key.is_some() {
     super::check_unstable2(&state, "ConnectTlsOptions.privateKey");
