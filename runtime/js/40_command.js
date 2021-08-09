@@ -156,6 +156,10 @@
         stderrRid: this.#stderrRid,
       });
     }
+
+    kill(signal) {
+      core.opSync("op_kill", this.#pid, signal);
+    }
   }
 
   window.__bootstrap.command = {

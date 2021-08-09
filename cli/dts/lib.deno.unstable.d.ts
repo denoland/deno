@@ -1096,31 +1096,31 @@ declare namespace Deno {
     stderr?: "piped" | "inherit" | "null";
   }
 
-  class Command {
-    constructor(options: CommandOptions);
+  class Command<T extends CommandOptions = CommandOptions> {
+    constructor(options: T);
 
-    spawn(): Child;
+    spawn(): Child<T>;
     status(): Promise<ProcessStatus>;
-    output(): Promise<CommandOutput>;
+    output(): Promise<CommandOutput<T>>;
   }
 
-  class Child {
-    readonly stdin?: WritableStream<Uint8Array>; // TODO: strict up the typings depending on CommandOptions
-    readonly stdout?: ReadableStream<Uint8Array>; // TODO: strict up the typings depending on CommandOptions
-    readonly stderr?: ReadableStream<Uint8Array>; // TODO: strict up the typings depending on CommandOptions
+  class Child<T extends CommandOptions = CommandOptions> {
+    readonly stdin: T["stdin"] extends "piped" ? WritableStream<Uint8Array> : null;
+    readonly stdout: T["stdout"] extends "piped" ? ReadableStream<Uint8Array> : null;
+    readonly stderr: T["stderr"] extends "piped" ? ReadableStream<Uint8Array> : null;
 
     readonly pid: number;
-    readonly status: ProcessStatus | undefined;
+    readonly status?: ProcessStatus;
 
     wait(): Promise<ProcessStatus>;
     output(): Promise<CommandOutput>;
-    // TODO: kill
+    kill(signo: number): void;
   }
 
-  interface CommandOutput {
+  interface CommandOutput<T extends CommandOptions = CommandOptions> {
     status: ProcessStatus;
-    stdout?: Uint8Array; // TODO: strict up the typings depending on CommandOptions
-    stderr?: Uint8Array; // TODO: strict up the typings depending on CommandOptions
+    stdout: T["stdin"] extends "piped" ? Uint8Array : null;
+    stderr: T["stderr"] extends "piped" ? Uint8Array : null;
   }
 }
 

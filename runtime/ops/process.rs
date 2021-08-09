@@ -286,16 +286,10 @@ pub fn kill(pid: i32, signal: i32) -> Result<(), AnyError> {
   }
 }
 
-#[derive(Deserialize)]
-struct KillArgs {
-  pid: i32,
-  signo: i32,
-}
-
-fn op_kill(state: &mut OpState, args: KillArgs, _: ()) -> Result<(), AnyError> {
+fn op_kill(state: &mut OpState, pid: i32, signo: i32) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.kill");
   state.borrow_mut::<Permissions>().run.check_all()?;
 
-  kill(args.pid, args.signo)?;
+  kill(pid, signo)?;
   Ok(())
 }
