@@ -1237,13 +1237,13 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .validator(crate::flags_allow_net::validator),
     )
     .arg(
-      Arg::with_name("allow-insecure-certificates")
-        .long("allow-insecure-certificates")
+      Arg::with_name("unsafely-treat-insecure-origin-as-secure")
+        .long("unsafely-treat-insecure-origin-as-secure")
         .min_values(0)
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
-        .help("Allow insecure certificates (requires network access)")
+        .help("DANGER: Disables verification of SSL certificates")
         .validator(crate::flags_allow_net::validator),
     )
     .arg(
