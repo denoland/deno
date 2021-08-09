@@ -200,7 +200,7 @@ unitTest({ perms: { net: true } }, async function httpServerInvalidMethod() {
 
 unitTest(
   { perms: { read: true, net: true } },
-  async function httpServerWithTls(): Promise<void> {
+  async function httpServerWithTls() {
     const hostname = "localhost";
     const port = 4501;
 
@@ -646,7 +646,7 @@ unitTest({ perms: { net: true } }, async function httpServerWebSocket() {
       socket.onerror = () => fail();
       socket.onmessage = (m) => {
         socket.send(m.data);
-        socket.close();
+        socket.close(1001);
       };
       await respondWith(response);
       break;

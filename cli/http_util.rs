@@ -1,45 +1,17 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-
 use crate::auth_tokens::AuthToken;
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
-use deno_runtime::deno_fetch::reqwest;
-use deno_runtime::deno_fetch::reqwest::header::HeaderMap;
 use deno_runtime::deno_fetch::reqwest::header::HeaderValue;
 use deno_runtime::deno_fetch::reqwest::header::AUTHORIZATION;
 use deno_runtime::deno_fetch::reqwest::header::IF_NONE_MATCH;
 use deno_runtime::deno_fetch::reqwest::header::LOCATION;
-use deno_runtime::deno_fetch::reqwest::header::USER_AGENT;
-use deno_runtime::deno_fetch::reqwest::redirect::Policy;
 use deno_runtime::deno_fetch::reqwest::Client;
 use deno_runtime::deno_fetch::reqwest::StatusCode;
 use log::debug;
 use std::collections::HashMap;
-
-/// Create new instance of async reqwest::Client. This client supports
-/// proxies and doesn't follow redirects.
-pub fn create_http_client(
-  user_agent: String,
-  ca_data: Option<Vec<u8>>,
-) -> Result<Client, AnyError> {
-  let mut headers = HeaderMap::new();
-  headers.insert(USER_AGENT, user_agent.parse().unwrap());
-  let mut builder = Client::builder()
-    .redirect(Policy::none())
-    .default_headers(headers)
-    .use_rustls_tls();
-
-  if let Some(ca_data) = ca_data {
-    let cert = reqwest::Certificate::from_pem(&ca_data)?;
-    builder = builder.add_root_certificate(cert);
-  }
-
-  builder
-    .build()
-    .map_err(|e| generic_error(format!("Unable to build http client: {}", e)))
-}
 
 /// Construct the next uri based on base uri and location header fragment
 /// See <https://tools.ietf.org/html/rfc3986#section-4.2>
@@ -168,10 +140,12 @@ pub async fn fetch_once(
 mod tests {
   use super::*;
   use crate::version;
+  use deno_tls::create_http_client;
+  use deno_tls::rustls::RootCertStore;
   use std::fs::read;
 
   fn create_test_client(ca_data: Option<Vec<u8>>) -> Client {
-    create_http_client("test_client".to_string(), ca_data).unwrap()
+    create_http_client("test_client".to_string(), None, ca_data, None).unwrap()
   }
 
   #[tokio::test]
@@ -362,6 +336,7 @@ mod tests {
 
     let client = create_http_client(
       version::get_user_agent(),
+      None,
       Some(
         read(
           test_util::root_path()
@@ -371,6 +346,7 @@ mod tests {
         )
         .unwrap(),
       ),
+      None,
     )
     .unwrap();
     let result = fetch_once(FetchOnceArgs {
@@ -391,6 +367,64 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn test_fetch_with_default_certificate_store() {
+    let _http_server_guard = test_util::http_server();
+    // Relies on external http server with a valid mozilla root CA cert.
+    let url = Url::parse("https://deno.land").unwrap();
+    let client = create_http_client(
+      version::get_user_agent(),
+      None, // This will load mozilla certs by default
+      None,
+      None,
+    )
+    .unwrap();
+
+    let result = fetch_once(FetchOnceArgs {
+      client,
+      url,
+      maybe_etag: None,
+      maybe_auth_token: None,
+    })
+    .await;
+
+    println!("{:?}", result);
+    if let Ok(FetchOnceResult::Code(body, _headers)) = result {
+      assert!(!body.is_empty());
+    } else {
+      panic!();
+    }
+  }
+
+  // TODO(@justinmchase): Windows should verify certs too and fail to make this request without ca certs
+  #[cfg(not(windows))]
+  #[tokio::test]
+  async fn test_fetch_with_empty_certificate_store() {
+    let _http_server_guard = test_util::http_server();
+    // Relies on external http server with a valid mozilla root CA cert.
+    let url = Url::parse("https://deno.land").unwrap();
+    let client = create_http_client(
+      version::get_user_agent(),
+      Some(RootCertStore::empty()), // no certs loaded at all
+      None,
+      None,
+    )
+    .unwrap();
+
+    let result = fetch_once(FetchOnceArgs {
+      client,
+      url,
+      maybe_etag: None,
+      maybe_auth_token: None,
+    })
+    .await;
+
+    if let Ok(FetchOnceResult::Code(_body, _headers)) = result {
+      // This test is expected to fail since to CA certs have been loaded
+      panic!();
+    }
+  }
+
+  #[tokio::test]
   async fn test_fetch_with_cafile_gzip() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
@@ -400,6 +434,7 @@ mod tests {
     .unwrap();
     let client = create_http_client(
       version::get_user_agent(),
+      None,
       Some(
         read(
           test_util::root_path()
@@ -409,6 +444,7 @@ mod tests {
         )
         .unwrap(),
       ),
+      None,
     )
     .unwrap();
     let result = fetch_once(FetchOnceArgs {
@@ -437,6 +473,7 @@ mod tests {
     let url = Url::parse("https://localhost:5545/etag_script.ts").unwrap();
     let client = create_http_client(
       version::get_user_agent(),
+      None,
       Some(
         read(
           test_util::root_path()
@@ -446,6 +483,7 @@ mod tests {
         )
         .unwrap(),
       ),
+      None,
     )
     .unwrap();
     let result = fetch_once(FetchOnceArgs {
@@ -488,6 +526,7 @@ mod tests {
     .unwrap();
     let client = create_http_client(
       version::get_user_agent(),
+      None,
       Some(
         read(
           test_util::root_path()
@@ -497,6 +536,7 @@ mod tests {
         )
         .unwrap(),
       ),
+      None,
     )
     .unwrap();
     let result = fetch_once(FetchOnceArgs {

@@ -3,6 +3,7 @@
 use super::analysis;
 use super::language_server;
 use super::tsc;
+use crate::ast::ParsedModule;
 
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
@@ -17,7 +18,6 @@ use regex::Regex;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
-use swc_common::SourceMap;
 use swc_common::Span;
 use swc_ecmascript::ast;
 use swc_ecmascript::visit::Node;
@@ -44,40 +44,43 @@ pub struct CodeLensData {
   pub specifier: ModuleSpecifier,
 }
 
-fn span_to_range(span: &Span, source_map: Rc<SourceMap>) -> lsp::Range {
-  let start = source_map.lookup_char_pos(span.lo);
-  let end = source_map.lookup_char_pos(span.hi);
+fn span_to_range(span: &Span, parsed_module: &ParsedModule) -> lsp::Range {
+  let start = parsed_module.get_location(span.lo);
+  let end = parsed_module.get_location(span.hi);
   lsp::Range {
     start: lsp::Position {
       line: (start.line - 1) as u32,
-      character: start.col_display as u32,
+      character: start.col as u32,
     },
     end: lsp::Position {
       line: (end.line - 1) as u32,
-      character: end.col_display as u32,
+      character: end.col as u32,
     },
   }
 }
 
-struct DenoTestCollector {
+struct DenoTestCollector<'a> {
   code_lenses: Vec<lsp::CodeLens>,
-  source_map: Rc<SourceMap>,
+  parsed_module: &'a ParsedModule,
   specifier: ModuleSpecifier,
   test_vars: HashSet<String>,
 }
 
-impl DenoTestCollector {
-  pub fn new(specifier: ModuleSpecifier, source_map: Rc<SourceMap>) -> Self {
+impl<'a> DenoTestCollector<'a> {
+  pub fn new(
+    specifier: ModuleSpecifier,
+    parsed_module: &'a ParsedModule,
+  ) -> Self {
     Self {
       code_lenses: Vec::new(),
-      source_map,
+      parsed_module,
       specifier,
       test_vars: HashSet::new(),
     }
   }
 
   fn add_code_lens<N: AsRef<str>>(&mut self, name: N, span: &Span) {
-    let range = span_to_range(span, self.source_map.clone());
+    let range = span_to_range(span, self.parsed_module);
     self.code_lenses.push(lsp::CodeLens {
       range,
       command: Some(lsp::Command {
@@ -125,7 +128,7 @@ impl DenoTestCollector {
   }
 }
 
-impl Visit for DenoTestCollector {
+impl<'a> Visit for DenoTestCollector<'a> {
   fn visit_call_expr(&mut self, node: &ast::CallExpr, _parent: &dyn Node) {
     if let ast::ExprOrSuper::Expr(callee_expr) = &node.callee {
       match callee_expr.as_ref() {
@@ -392,10 +395,8 @@ fn collect_test(
     if let Ok(parsed_module) =
       analysis::parse_module(specifier, &source, &media_type)
     {
-      let mut collector = DenoTestCollector::new(
-        specifier.clone(),
-        parsed_module.source_map.clone(),
-      );
+      let mut collector =
+        DenoTestCollector::new(specifier.clone(), &parsed_module);
       parsed_module.module.visit_with(
         &ast::Invalid {
           span: swc_common::DUMMY_SP,
@@ -521,8 +522,7 @@ mod tests {
     let parsed_module =
       analysis::parse_module(&specifier, source, &MediaType::TypeScript)
         .unwrap();
-    let mut collector =
-      DenoTestCollector::new(specifier, parsed_module.source_map.clone());
+    let mut collector = DenoTestCollector::new(specifier, &parsed_module);
     parsed_module.module.visit_with(
       &ast::Invalid {
         span: swc_common::DUMMY_SP,

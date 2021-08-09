@@ -1,8 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-pub use rustls;
-pub use webpki;
-
 use crate::io::TcpStreamResource;
 use crate::io::TlsStreamResource;
 use crate::ops::IpAddr;
@@ -38,30 +35,29 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_tls::create_client_config;
+use deno_tls::rustls::internal::pemfile::certs;
+use deno_tls::rustls::internal::pemfile::pkcs8_private_keys;
+use deno_tls::rustls::internal::pemfile::rsa_private_keys;
+use deno_tls::rustls::Certificate;
+use deno_tls::rustls::ClientConfig;
+use deno_tls::rustls::ClientSession;
+use deno_tls::rustls::NoClientAuth;
+use deno_tls::rustls::PrivateKey;
+use deno_tls::rustls::ServerConfig;
+use deno_tls::rustls::ServerSession;
+use deno_tls::rustls::Session;
+use deno_tls::webpki::DNSNameRef;
 use io::Error;
 use io::Read;
 use io::Write;
-use rustls::internal::pemfile::certs;
-use rustls::internal::pemfile::pkcs8_private_keys;
-use rustls::internal::pemfile::rsa_private_keys;
-use rustls::Certificate;
-use rustls::ClientConfig;
-use rustls::ClientSession;
-use rustls::NoClientAuth;
-use rustls::PrivateKey;
-use rustls::ServerConfig;
-use rustls::ServerSession;
-use rustls::Session;
-use rustls::StoresClientSessions;
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::convert::From;
 use std::fs::File;
 use std::io;
 use std::io::BufReader;
-use std::io::Cursor;
 use std::io::ErrorKind;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -76,32 +72,6 @@ use tokio::io::ReadBuf;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::task::spawn_local;
-use webpki::DNSNameRef;
-
-lazy_static::lazy_static! {
-  static ref CLIENT_SESSION_MEMORY_CACHE: Arc<ClientSessionMemoryCache> =
-    Arc::new(ClientSessionMemoryCache::default());
-}
-
-#[derive(Default)]
-struct ClientSessionMemoryCache(Mutex<HashMap<Vec<u8>, Vec<u8>>>);
-
-impl StoresClientSessions for ClientSessionMemoryCache {
-  fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
-    self.0.lock().get(key).cloned()
-  }
-
-  fn put(&self, key: Vec<u8>, value: Vec<u8>) -> bool {
-    let mut sessions = self.0.lock();
-    // TODO(bnoordhuis) Evict sessions LRU-style instead of arbitrarily.
-    while sessions.len() >= 1024 {
-      let key = sessions.keys().next().unwrap().clone();
-      sessions.remove(&key);
-    }
-    sessions.insert(key, value);
-    true
-  }
-}
 
 #[derive(Debug)]
 enum TlsSession {
@@ -703,8 +673,6 @@ where
     n => n,
   };
   let cert_file = args.cert_file.as_deref();
-
-  let default_tls_options;
   {
     super::check_unstable2(&state, "Deno.startTls");
     let mut s = state.borrow_mut();
@@ -713,12 +681,28 @@ where
     if let Some(path) = cert_file {
       permissions.check_read(Path::new(path))?;
     }
-    default_tls_options = s.borrow::<DefaultTlsOptions>().clone();
   }
+
+  let ca_data = match cert_file {
+    Some(path) => {
+      let mut buf = Vec::new();
+      File::open(path)?.read_to_end(&mut buf)?;
+      Some(buf)
+    }
+    _ => None,
+  };
 
   let hostname_dns = DNSNameRef::try_from_ascii_str(hostname)
     .map_err(|_| invalid_hostname(hostname))?;
 
+  // TODO(@justinmchase): Ideally the certificate store is created once
+  // and not cloned. The store should be wrapped in Arc<T> to reduce
+  // copying memory unnecessarily.
+  let root_cert_store = state
+    .borrow()
+    .borrow::<DefaultTlsOptions>()
+    .root_cert_store
+    .clone();
   let resource_rc = state
     .borrow_mut()
     .resource_table
@@ -732,22 +716,7 @@ where
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
-  let mut tls_config = ClientConfig::new();
-  tls_config.set_persistence(CLIENT_SESSION_MEMORY_CACHE.clone());
-  tls_config
-    .root_store
-    .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
-  if let Some(ca_data) = default_tls_options.ca_data {
-    let reader = &mut Cursor::new(ca_data);
-    tls_config.root_store.add_pem_file(reader).unwrap();
-  };
-  if let Some(path) = cert_file {
-    let key_file = File::open(path)?;
-    let reader = &mut BufReader::new(key_file);
-    tls_config.root_store.add_pem_file(reader).unwrap();
-  }
-  let tls_config = Arc::new(tls_config);
-
+  let tls_config = Arc::new(create_client_config(root_cert_store, ca_data)?);
   let tls_stream =
     TlsStream::new_client_side(tcp_stream, &tls_config, hostname_dns);
 
@@ -786,8 +755,6 @@ where
   };
   let port = args.port;
   let cert_file = args.cert_file.as_deref();
-
-  let default_tls_options;
   {
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
@@ -795,9 +762,22 @@ where
     if let Some(path) = cert_file {
       permissions.check_read(Path::new(path))?;
     }
-    default_tls_options = s.borrow::<DefaultTlsOptions>().clone();
   }
 
+  let ca_data = match cert_file {
+    Some(path) => {
+      let mut buf = Vec::new();
+      File::open(path)?.read_to_end(&mut buf)?;
+      Some(buf)
+    }
+    _ => None,
+  };
+
+  let root_cert_store = state
+    .borrow()
+    .borrow::<DefaultTlsOptions>()
+    .root_cert_store
+    .clone();
   let hostname_dns = DNSNameRef::try_from_ascii_str(hostname)
     .map_err(|_| invalid_hostname(hostname))?;
 
@@ -808,23 +788,7 @@ where
   let tcp_stream = TcpStream::connect(connect_addr).await?;
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
-
-  let mut tls_config = ClientConfig::new();
-  tls_config.set_persistence(CLIENT_SESSION_MEMORY_CACHE.clone());
-  tls_config
-    .root_store
-    .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
-  if let Some(ca_data) = default_tls_options.ca_data {
-    let reader = &mut Cursor::new(ca_data);
-    tls_config.root_store.add_pem_file(reader).unwrap();
-  };
-  if let Some(path) = cert_file {
-    let key_file = File::open(path)?;
-    let reader = &mut BufReader::new(key_file);
-    tls_config.root_store.add_pem_file(reader).unwrap();
-  }
-  let tls_config = Arc::new(tls_config);
-
+  let tls_config = Arc::new(create_client_config(root_cert_store, ca_data)?);
   let tls_stream =
     TlsStream::new_client_side(tcp_stream, &tls_config, hostname_dns);
 

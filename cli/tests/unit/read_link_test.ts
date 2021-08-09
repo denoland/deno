@@ -9,7 +9,7 @@ import {
 
 unitTest(
   { perms: { write: true, read: true } },
-  function readLinkSyncSuccess(): void {
+  function readLinkSyncSuccess() {
     const testDir = Deno.makeTempDirSync();
     const target = testDir +
       (Deno.build.os == "windows" ? "\\target" : "/target");
@@ -24,7 +24,7 @@ unitTest(
 
 unitTest(
   { perms: { write: true, read: true } },
-  function readLinkSyncUrlSuccess(): void {
+  function readLinkSyncUrlSuccess() {
     const testDir = Deno.makeTempDirSync();
     const target = testDir +
       (Deno.build.os == "windows" ? "\\target" : "/target");
@@ -37,13 +37,13 @@ unitTest(
   },
 );
 
-unitTest({ perms: { read: false } }, function readLinkSyncPerm(): void {
+unitTest({ perms: { read: false } }, function readLinkSyncPerm() {
   assertThrows(() => {
     Deno.readLinkSync("/symlink");
   }, Deno.errors.PermissionDenied);
 });
 
-unitTest({ perms: { read: true } }, function readLinkSyncNotFound(): void {
+unitTest({ perms: { read: true } }, function readLinkSyncNotFound() {
   assertThrows(() => {
     Deno.readLinkSync("bad_filename");
   }, Deno.errors.NotFound);
@@ -51,7 +51,7 @@ unitTest({ perms: { read: true } }, function readLinkSyncNotFound(): void {
 
 unitTest(
   { perms: { write: true, read: true } },
-  async function readLinkSuccess(): Promise<void> {
+  async function readLinkSuccess() {
     const testDir = Deno.makeTempDirSync();
     const target = testDir +
       (Deno.build.os == "windows" ? "\\target" : "/target");
@@ -66,7 +66,7 @@ unitTest(
 
 unitTest(
   { perms: { write: true, read: true } },
-  async function readLinkUrlSuccess(): Promise<void> {
+  async function readLinkUrlSuccess() {
     const testDir = Deno.makeTempDirSync();
     const target = testDir +
       (Deno.build.os == "windows" ? "\\target" : "/target");
@@ -79,9 +79,7 @@ unitTest(
   },
 );
 
-unitTest({ perms: { read: false } }, async function readLinkPerm(): Promise<
-  void
-> {
+unitTest({ perms: { read: false } }, async function readLinkPerm() {
   await assertThrowsAsync(async () => {
     await Deno.readLink("/symlink");
   }, Deno.errors.PermissionDenied);

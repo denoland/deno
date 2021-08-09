@@ -1,4 +1,4 @@
-function echo(args: string[]): void {
+function echo(args: string[]) {
   const msg = args.join(", ");
   Deno.stdout.write(new TextEncoder().encode(msg));
 }

@@ -13,7 +13,7 @@ const BUILD_VARIANT: &str = "release";
 fn basic() {
   let mut build_plugin_base = Command::new("cargo");
   let mut build_plugin =
-    build_plugin_base.arg("build").arg("-p").arg("test_plugin");
+    build_plugin_base.arg("build").arg("-p").arg("test_ffi");
   if BUILD_VARIANT == "release" {
     build_plugin = build_plugin.arg("--release");
   }
@@ -21,10 +21,11 @@ fn basic() {
   assert!(build_plugin_output.status.success());
   let output = deno_cmd()
     .arg("run")
-    .arg("--allow-plugin")
+    .arg("--allow-ffi")
+    .arg("--allow-read")
     .arg("--unstable")
     .arg("tests/test.js")
-    .arg(BUILD_VARIANT)
+    .env("NO_COLOR", "1")
     .output()
     .unwrap();
   let stdout = std::str::from_utf8(&output.stdout).unwrap();
@@ -36,23 +37,9 @@ fn basic() {
   println!("{:?}", output.status);
   assert!(output.status.success());
   let expected = "\
-    Plugin rid: 3\n\
-    Hello from sync plugin op.\n\
-    args: TestArgs { val: \"1\" }\n\
-    zero_copy: test\n\
-    op_test_sync returned: test\n\
-    Hello from async plugin op.\n\
-    args: TestArgs { val: \"1\" }\n\
-    zero_copy: 123\n\
-    op_test_async returned: test\n\
-    Hello from resource_table.add plugin op.\n\
-    TestResource rid: 4\n\
-    Hello from resource_table.get plugin op.\n\
-    TestResource get value: hello plugin!\n\
-    Hello from sync plugin op.\n\
-    args: TestArgs { val: \"1\" }\n\
-    Ops completed count is correct!\n\
-    Ops dispatched count is correct!\n";
+    something\n\
+    579\n\
+    Correct number of resources\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
 }

@@ -411,7 +411,7 @@ declare class Worker extends EventTarget {
     options?: WorkerOptions,
   );
   postMessage(message: any, transfer: Transferable[]): void;
-  postMessage(message: any, options?: PostMessageOptions): void;
+  postMessage(message: any, options?: StructuredSerializeOptions): void;
   addEventListener<K extends keyof WorkerEventMap>(
     type: K,
     listener: (this: Worker, ev: WorkerEventMap[K]) => any,

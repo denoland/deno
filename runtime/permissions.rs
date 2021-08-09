@@ -202,6 +202,9 @@ pub struct EnvDescriptor(pub String);
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
 pub struct RunDescriptor(pub String);
 
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default, Deserialize)]
+pub struct FfiDescriptor(pub String);
+
 impl UnaryPermission<ReadDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
     let path = path.map(|p| resolve_from_cwd(p).unwrap());
@@ -787,6 +790,104 @@ impl UnaryPermission<RunDescriptor> {
   }
 }
 
+impl UnaryPermission<FfiDescriptor> {
+  pub fn query(&self, lib: Option<&str>) -> PermissionState {
+    if self.global_state == PermissionState::Denied
+      && match lib {
+        None => true,
+        Some(lib) => self.denied_list.iter().any(|lib_| lib_.0 == lib),
+      }
+    {
+      PermissionState::Denied
+    } else if self.global_state == PermissionState::Granted
+      || match lib {
+        None => false,
+        Some(lib) => self.granted_list.iter().any(|lib_| lib_.0 == lib),
+      }
+    {
+      PermissionState::Granted
+    } else {
+      PermissionState::Prompt
+    }
+  }
+
+  pub fn request(&mut self, lib: Option<&str>) -> PermissionState {
+    if let Some(lib) = lib {
+      let state = self.query(Some(lib));
+      if state == PermissionState::Prompt {
+        if permission_prompt(&format!("ffi access to \"{}\"", lib)) {
+          self.granted_list.retain(|lib_| lib_.0 != lib);
+          self.granted_list.insert(FfiDescriptor(lib.to_string()));
+          PermissionState::Granted
+        } else {
+          self.denied_list.retain(|lib_| lib_.0 != lib);
+          self.denied_list.insert(FfiDescriptor(lib.to_string()));
+          self.global_state = PermissionState::Denied;
+          PermissionState::Denied
+        }
+      } else {
+        state
+      }
+    } else {
+      let state = self.query(None);
+      if state == PermissionState::Prompt {
+        if permission_prompt("ffi access") {
+          self.granted_list.clear();
+          self.global_state = PermissionState::Granted;
+          PermissionState::Granted
+        } else {
+          self.global_state = PermissionState::Denied;
+          PermissionState::Denied
+        }
+      } else {
+        state
+      }
+    }
+  }
+
+  pub fn revoke(&mut self, lib: Option<&str>) -> PermissionState {
+    if let Some(lib) = lib {
+      self.granted_list.retain(|lib_| lib_.0 != lib);
+    } else {
+      self.granted_list.clear();
+      if self.global_state == PermissionState::Granted {
+        self.global_state = PermissionState::Prompt;
+      }
+    }
+    self.query(lib)
+  }
+
+  pub fn check(&mut self, lib: &str) -> Result<(), AnyError> {
+    let (result, prompted) = self.query(Some(lib)).check(
+      self.name,
+      Some(&format!("\"{}\"", lib)),
+      self.prompt,
+    );
+    if prompted {
+      if result.is_ok() {
+        self.granted_list.insert(FfiDescriptor(lib.to_string()));
+      } else {
+        self.denied_list.insert(FfiDescriptor(lib.to_string()));
+        self.global_state = PermissionState::Denied;
+      }
+    }
+    result
+  }
+
+  pub fn check_all(&mut self) -> Result<(), AnyError> {
+    let (result, prompted) =
+      self.query(None).check(self.name, Some("all"), self.prompt);
+    if prompted {
+      if result.is_ok() {
+        self.global_state = PermissionState::Granted;
+      } else {
+        self.global_state = PermissionState::Denied;
+      }
+    }
+    result
+  }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Permissions {
   pub read: UnaryPermission<ReadDescriptor>,
@@ -794,7 +895,7 @@ pub struct Permissions {
   pub net: UnaryPermission<NetDescriptor>,
   pub env: UnaryPermission<EnvDescriptor>,
   pub run: UnaryPermission<RunDescriptor>,
-  pub plugin: UnitPermission,
+  pub ffi: UnaryPermission<FfiDescriptor>,
   pub hrtime: UnitPermission,
 }
 
@@ -803,7 +904,7 @@ pub struct PermissionsOptions {
   pub allow_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
   pub allow_net: Option<Vec<String>>,
-  pub allow_plugin: bool,
+  pub allow_ffi: Option<Vec<String>>,
   pub allow_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
@@ -904,8 +1005,21 @@ impl Permissions {
     }
   }
 
-  pub fn new_plugin(state: bool, prompt: bool) -> UnitPermission {
-    unit_permission_from_flag_bool(state, "plugin", "open a plugin", prompt)
+  pub fn new_ffi(
+    state: &Option<Vec<String>>,
+    prompt: bool,
+  ) -> UnaryPermission<FfiDescriptor> {
+    UnaryPermission::<FfiDescriptor> {
+      name: "ffi",
+      description: "load a dynamic library",
+      global_state: global_state_from_option(state),
+      granted_list: state
+        .as_ref()
+        .map(|v| v.iter().map(|x| FfiDescriptor(x.clone())).collect())
+        .unwrap_or_else(HashSet::new),
+      denied_list: Default::default(),
+      prompt,
+    }
   }
 
   pub fn new_hrtime(state: bool, prompt: bool) -> UnitPermission {
@@ -924,7 +1038,7 @@ impl Permissions {
       net: Permissions::new_net(&opts.allow_net, opts.prompt),
       env: Permissions::new_env(&opts.allow_env, opts.prompt),
       run: Permissions::new_run(&opts.allow_run, opts.prompt),
-      plugin: Permissions::new_plugin(opts.allow_plugin, opts.prompt),
+      ffi: Permissions::new_ffi(&opts.allow_ffi, opts.prompt),
       hrtime: Permissions::new_hrtime(opts.allow_hrtime, opts.prompt),
     }
   }
@@ -936,7 +1050,7 @@ impl Permissions {
       net: Permissions::new_net(&Some(vec![]), false),
       env: Permissions::new_env(&Some(vec![]), false),
       run: Permissions::new_run(&Some(vec![]), false),
-      plugin: Permissions::new_plugin(true, false),
+      ffi: Permissions::new_ffi(&Some(vec![]), false),
       hrtime: Permissions::new_hrtime(true, false),
     }
   }
@@ -1002,6 +1116,12 @@ impl deno_timers::TimersPermission for Permissions {
 impl deno_websocket::WebSocketPermissions for Permissions {
   fn check_net_url(&mut self, url: &url::Url) -> Result<(), AnyError> {
     self.net.check_url(url)
+  }
+}
+
+impl deno_ffi::FfiPermissions for Permissions {
+  fn check(&mut self, path: &str) -> Result<(), AnyError> {
+    self.ffi.check(path)
   }
 }
 
@@ -1457,9 +1577,9 @@ mod tests {
         global_state: PermissionState::Prompt,
         ..Permissions::new_run(&Some(svec!["deno"]), false)
       },
-      plugin: UnitPermission {
-        state: PermissionState::Prompt,
-        ..Default::default()
+      ffi: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        ..Permissions::new_ffi(&Some(svec!["deno"]), false)
       },
       hrtime: UnitPermission {
         state: PermissionState::Prompt,
@@ -1490,8 +1610,10 @@ mod tests {
       assert_eq!(perms1.run.query(Some(&"deno".to_string())), PermissionState::Granted);
       assert_eq!(perms2.run.query(None), PermissionState::Prompt);
       assert_eq!(perms2.run.query(Some(&"deno".to_string())), PermissionState::Granted);
-      assert_eq!(perms1.plugin.query(), PermissionState::Granted);
-      assert_eq!(perms2.plugin.query(), PermissionState::Prompt);
+      assert_eq!(perms1.ffi.query(None), PermissionState::Granted);
+      assert_eq!(perms1.ffi.query(Some(&"deno".to_string())), PermissionState::Granted);
+      assert_eq!(perms2.ffi.query(None), PermissionState::Prompt);
+      assert_eq!(perms2.ffi.query(Some(&"deno".to_string())), PermissionState::Granted);
       assert_eq!(perms1.hrtime.query(), PermissionState::Granted);
       assert_eq!(perms2.hrtime.query(), PermissionState::Prompt);
     };
@@ -1528,9 +1650,10 @@ mod tests {
       set_prompt_result(false);
       assert_eq!(perms.run.request(Some(&"deno".to_string())), PermissionState::Granted);
       set_prompt_result(true);
-      assert_eq!(perms.plugin.request(), PermissionState::Granted);
+      assert_eq!(perms.ffi.request(Some(&"deno".to_string())), PermissionState::Granted);
+      assert_eq!(perms.ffi.query(None), PermissionState::Prompt);
       set_prompt_result(false);
-      assert_eq!(perms.plugin.request(), PermissionState::Granted);
+      assert_eq!(perms.ffi.request(Some(&"deno".to_string())), PermissionState::Granted);
       set_prompt_result(false);
       assert_eq!(perms.hrtime.request(), PermissionState::Denied);
       set_prompt_result(true);
@@ -1561,9 +1684,9 @@ mod tests {
         global_state: PermissionState::Prompt,
         ..Permissions::new_run(&Some(svec!["deno"]), false)
       },
-      plugin: UnitPermission {
-        state: PermissionState::Prompt,
-        ..Default::default()
+      ffi: UnaryPermission {
+        global_state: PermissionState::Prompt,
+        ..Permissions::new_ffi(&Some(svec!["deno"]), false)
       },
       hrtime: UnitPermission {
         state: PermissionState::Denied,
@@ -1582,7 +1705,7 @@ mod tests {
       assert_eq!(perms.net.revoke(Some(&("127.0.0.1", None))), PermissionState::Prompt);
       assert_eq!(perms.env.revoke(Some(&"HOME".to_string())), PermissionState::Prompt);
       assert_eq!(perms.run.revoke(Some(&"deno".to_string())), PermissionState::Prompt);
-      assert_eq!(perms.plugin.revoke(), PermissionState::Prompt);
+      assert_eq!(perms.ffi.revoke(Some(&"deno".to_string())), PermissionState::Prompt);
       assert_eq!(perms.hrtime.revoke(), PermissionState::Denied);
     };
   }
@@ -1595,7 +1718,7 @@ mod tests {
       net: Permissions::new_net(&None, true),
       env: Permissions::new_env(&None, true),
       run: Permissions::new_run(&None, true),
-      plugin: Permissions::new_plugin(false, true),
+      ffi: Permissions::new_ffi(&None, true),
       hrtime: Permissions::new_hrtime(false, true),
     };
 
@@ -1648,7 +1771,7 @@ mod tests {
       net: Permissions::new_net(&None, true),
       env: Permissions::new_env(&None, true),
       run: Permissions::new_run(&None, true),
-      plugin: Permissions::new_plugin(false, true),
+      ffi: Permissions::new_ffi(&None, true),
       hrtime: Permissions::new_hrtime(false, true),
     };
 

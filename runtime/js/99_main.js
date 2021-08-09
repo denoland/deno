@@ -105,10 +105,13 @@ delete Object.prototype.__proto__;
       );
       options = { transfer };
     } else {
-      options = webidl.converters.PostMessageOptions(transferOrOptions, {
-        prefix,
-        context: "Argument 2",
-      });
+      options = webidl.converters.StructuredSerializeOptions(
+        transferOrOptions,
+        {
+          prefix,
+          context: "Argument 2",
+        },
+      );
     }
     const { transfer } = options;
     const data = serializeJsMessageData(message, transfer);
@@ -373,6 +376,7 @@ delete Object.prototype.__proto__;
     performance: util.writable(performance.performance),
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
+    structuredClone: util.writable(messagePort.structuredClone),
 
     GPU: util.nonEnumerable(webgpu.GPU),
     GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),

@@ -8,10 +8,10 @@ export function returnsFoo2(): string {
   return returnsFoo();
 }
 
-export function printHello3(): void {
+export function printHello3() {
   printHello2();
 }
 
-export function throwsError(): void {
+export function throwsError() {
   throw Error("exception from mod1");
 }

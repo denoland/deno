@@ -2,20 +2,20 @@
 const name = Deno.args[0];
 // deno-lint-ignore no-explicit-any
 const test: { [key: string]: (...args: any[]) => void | Promise<void> } = {
-  readRequired(): Promise<void> {
+  readRequired() {
     Deno.readFileSync("README.md");
     return Promise.resolve();
   },
-  writeRequired(): void {
+  writeRequired() {
     Deno.makeTempDirSync();
   },
-  envRequired(): void {
+  envRequired() {
     Deno.env.get("home");
   },
-  netRequired(): void {
+  netRequired() {
     Deno.listen({ transport: "tcp", port: 4541 });
   },
-  runRequired(): void {
+  runRequired() {
     const p = Deno.run({
       cmd: Deno.build.os === "windows"
         ? ["cmd.exe", "/c", "echo hello"]
