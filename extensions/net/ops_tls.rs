@@ -757,7 +757,7 @@ where
   };
   let port = args.port;
   let cert_file = args.cert_file.as_deref();
-  let allow_insecure_certificates =
+  let unsafely_treat_insecure_origin_as_secure =
     state.borrow().borrow::<NoCertificateValidation>().0.clone();
 
   {
@@ -796,7 +796,7 @@ where
   let tls_config = Arc::new(create_client_config(
     root_cert_store,
     ca_data,
-    allow_insecure_certificates,
+    unsafely_treat_insecure_origin_as_secure,
   )?);
   let tls_stream =
     TlsStream::new_client_side(tcp_stream, &tls_config, hostname_dns);

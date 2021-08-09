@@ -203,7 +203,7 @@ where
       );
   }
 
-  let allow_insecure_certificates =
+  let unsafely_treat_insecure_origin_as_secure =
     state.borrow().borrow::<NoCertificateValidation>().0.clone();
   let root_cert_store = state.borrow().borrow::<WsRootStore>().0.clone();
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
@@ -232,7 +232,7 @@ where
       let tls_config = create_client_config(
         root_cert_store,
         None,
-        allow_insecure_certificates,
+        unsafely_treat_insecure_origin_as_secure,
       )?;
       let tls_connector = TlsConnector::from(Arc::new(tls_config));
       let dnsname = DNSNameRef::try_from_ascii_str(domain)
@@ -389,7 +389,7 @@ pub async fn op_ws_next_event(
 pub fn init<P: WebSocketPermissions + 'static>(
   user_agent: String,
   root_cert_store: Option<RootCertStore>,
-  allow_insecure_certificates: Option<Vec<String>>,
+  unsafely_treat_insecure_origin_as_secure: Option<Vec<String>>,
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -408,7 +408,9 @@ pub fn init<P: WebSocketPermissions + 'static>(
     ])
     .state(move |state| {
       state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));
-      state.put(NoCertificateValidation(allow_insecure_certificates.clone()));
+      state.put(NoCertificateValidation(
+        unsafely_treat_insecure_origin_as_secure.clone(),
+      ));
       state.put::<WsRootStore>(WsRootStore(root_cert_store.clone()));
       Ok(())
     })

@@ -109,9 +109,9 @@ fn create_web_worker_callback(
         .log_level
         .map_or(false, |l| l == log::Level::Debug),
       unstable: program_state.flags.unstable,
-      allow_insecure_certificates: program_state
+      unsafely_treat_insecure_origin_as_secure: program_state
         .flags
-        .allow_insecure_certificates
+        .unsafely_treat_insecure_origin_as_secure
         .clone(),
       root_cert_store: program_state.root_cert_store.clone(),
       user_agent: version::get_user_agent(),
@@ -193,9 +193,9 @@ pub fn create_main_worker(
       .log_level
       .map_or(false, |l| l == log::Level::Debug),
     unstable: program_state.flags.unstable,
-    allow_insecure_certificates: program_state
+    unsafely_treat_insecure_origin_as_secure: program_state
       .flags
-      .allow_insecure_certificates
+      .unsafely_treat_insecure_origin_as_secure
       .clone(),
     root_cert_store: program_state.root_cert_store.clone(),
     user_agent: version::get_user_agent(),

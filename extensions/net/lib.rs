@@ -103,7 +103,7 @@ pub struct NoCertificateValidation(Option<Vec<String>>);
 pub fn init<P: NetPermissions + 'static>(
   root_cert_store: Option<RootCertStore>,
   unstable: bool,
-  allow_insecure_certificates: Option<Vec<String>>,
+  unsafely_treat_insecure_origin_as_secure: Option<Vec<String>>,
 ) -> Extension {
   let mut ops_to_register = vec![];
   ops_to_register.extend(io::init());
@@ -122,7 +122,9 @@ pub fn init<P: NetPermissions + 'static>(
         root_cert_store: root_cert_store.clone(),
       });
       state.put(UnstableChecker { unstable });
-      state.put(NoCertificateValidation(allow_insecure_certificates.clone()));
+      state.put(NoCertificateValidation(
+        unsafely_treat_insecure_origin_as_secure.clone(),
+      ));
       Ok(())
     })
     .build()

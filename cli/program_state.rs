@@ -137,6 +137,7 @@ impl ProgramState {
       !flags.no_remote,
       Some(root_cert_store.clone()),
       blob_store.clone(),
+      flags.unsafely_treat_insecure_origin_as_secure.clone(),
     )?;
 
     let lockfile = if let Some(filename) = &flags.lock {
