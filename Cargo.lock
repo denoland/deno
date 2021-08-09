@@ -13,6 +13,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "abort_on_panic"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "955f37ac58af2416bac687c8ab66a4ccba282229bd7422a28d2281a5e66a6116"
+
+[[package]]
 name = "adler"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -568,11 +574,13 @@ dependencies = [
  "deno_crypto",
  "deno_doc",
  "deno_fetch",
+ "deno_ffi",
  "deno_http",
  "deno_lint",
  "deno_net",
  "deno_runtime",
  "deno_timers",
+ "deno_tls",
  "deno_url",
  "deno_web",
  "deno_webgpu",
@@ -627,6 +635,27 @@ dependencies = [
  "walkdir",
  "winapi 0.3.9",
  "winres",
+]
+
+[[package]]
+name = "deno-libffi"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a844ceea9e6233005c62dfe0bb7c1adab786ea78bab4ac1e5ea5cd2a5d47761"
+dependencies = [
+ "abort_on_panic",
+ "deno-libffi-sys",
+ "libc",
+]
+
+[[package]]
+name = "deno-libffi-sys"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15a12b5205cc4f3944cefa192e851a0ee15c226b41733468b2660d4ab2bdf555"
+dependencies = [
+ "cc",
+ "make-cmd",
 ]
 
 [[package]]
@@ -716,13 +745,25 @@ dependencies = [
  "bytes",
  "data-url",
  "deno_core",
+ "deno_tls",
  "deno_web",
  "http",
+ "lazy_static",
  "reqwest",
  "serde",
  "tokio",
  "tokio-stream",
  "tokio-util",
+]
+
+[[package]]
+name = "deno_ffi"
+version = "0.1.0"
+dependencies = [
+ "deno-libffi",
+ "deno_core",
+ "dlopen",
+ "serde",
 ]
 
 [[package]]
@@ -765,15 +806,13 @@ name = "deno_net"
 version = "0.4.0"
 dependencies = [
  "deno_core",
+ "deno_tls",
  "lazy_static",
  "log",
- "rustls",
  "serde",
  "tokio",
  "trust-dns-proto",
  "trust-dns-resolver",
- "webpki",
- "webpki-roots",
 ]
 
 [[package]]
@@ -786,9 +825,11 @@ dependencies = [
  "deno_core",
  "deno_crypto",
  "deno_fetch",
+ "deno_ffi",
  "deno_http",
  "deno_net",
  "deno_timers",
+ "deno_tls",
  "deno_url",
  "deno_web",
  "deno_webgpu",
@@ -830,6 +871,20 @@ dependencies = [
  "deno_web",
  "deno_webidl",
  "tokio",
+]
+
+[[package]]
+name = "deno_tls"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "lazy_static",
+ "reqwest",
+ "rustls",
+ "rustls-native-certs",
+ "serde",
+ "webpki",
+ "webpki-roots",
 ]
 
 [[package]]
@@ -881,14 +936,13 @@ name = "deno_websocket"
 version = "0.18.0"
 dependencies = [
  "deno_core",
+ "deno_tls",
  "http",
  "hyper",
  "serde",
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite",
- "webpki",
- "webpki-roots",
 ]
 
 [[package]]
@@ -2107,6 +2161,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "make-cmd"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8ca8afbe8af1785e09636acb5a41e08a765f5f0340568716c18a8700ba3c0d3"
+
+[[package]]
 name = "malloc_buf"
 version = "0.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2357,6 +2417,12 @@ name = "opaque-debug"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
+
+[[package]]
+name = "openssl-probe"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28988d872ab76095a6e6ac88d99b54fd267702734fd7ffe610ca27f533ddb95a"
 
 [[package]]
 name = "os_pipe"
@@ -2984,6 +3050,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustls-native-certs"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a07b7c1885bd8ed3831c289b7870b13ef46fe0e856d288c30d9cc17d75a2092"
+dependencies = [
+ "openssl-probe",
+ "rustls",
+ "schannel",
+ "security-framework",
+]
+
+[[package]]
 name = "rusty_v8"
 version = "0.25.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3045,6 +3123,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "schannel"
+version = "0.1.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f05ba609c234e60bee0d547fe94a4c7e9da733d1c962cf6e59efa4cd9c8bc75"
+dependencies = [
+ "lazy_static",
+ "winapi 0.3.9",
+]
+
+[[package]]
 name = "scoped-tls"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3064,6 +3152,29 @@ checksum = "b362b83898e0e69f38515b82ee15aa80636befe47c3b6d3d89a911e78fc228ce"
 dependencies = [
  "ring",
  "untrusted",
+]
+
+[[package]]
+name = "security-framework"
+version = "2.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23a2ac85147a3a11d77ecf1bc7166ec0b92febfa4461c37944e180f319ece467"
+dependencies = [
+ "bitflags",
+ "core-foundation",
+ "core-foundation-sys",
+ "libc",
+ "security-framework-sys",
+]
+
+[[package]]
+name = "security-framework-sys"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e4effb91b4b8b6fb7732e670b6cee160278ff8e6bf485c7805d9e319d76e284"
+dependencies = [
+ "core-foundation-sys",
+ "libc",
 ]
 
 [[package]]
@@ -3831,12 +3942,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "test_plugin"
-version = "0.0.1"
+name = "test_ffi"
+version = "0.1.0"
 dependencies = [
- "deno_core",
- "futures",
- "serde",
  "test_util",
 ]
 

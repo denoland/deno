@@ -89,7 +89,7 @@
 
     /**
      * @param {any} message
-     * @param {object[] | PostMessageOptions} transferOrOptions
+     * @param {object[] | StructuredSerializeOptions} transferOrOptions
      */
     postMessage(message, transferOrOptions = {}) {
       webidl.assertBranded(this, MessagePort);
@@ -108,10 +108,13 @@
         );
         options = { transfer };
       } else {
-        options = webidl.converters.PostMessageOptions(transferOrOptions, {
-          prefix,
-          context: "Argument 2",
-        });
+        options = webidl.converters.StructuredSerializeOptions(
+          transferOrOptions,
+          {
+            prefix,
+            context: "Argument 2",
+          },
+        );
       }
       const { transfer } = options;
       if (transfer.includes(this)) {
@@ -247,23 +250,37 @@
     };
   }
 
-  webidl.converters.PostMessageOptions = webidl.createDictionaryConverter(
-    "PostMessageOptions",
-    [
-      {
-        key: "transfer",
-        converter: webidl.converters["sequence<object>"],
-        get defaultValue() {
-          return [];
+  webidl.converters.StructuredSerializeOptions = webidl
+    .createDictionaryConverter(
+      "StructuredSerializeOptions",
+      [
+        {
+          key: "transfer",
+          converter: webidl.converters["sequence<object>"],
+          get defaultValue() {
+            return [];
+          },
         },
-      },
-    ],
-  );
+      ],
+    );
+
+  function structuredClone(value, options) {
+    const prefix = "Failed to execute 'structuredClone'";
+    webidl.requiredArguments(arguments.length, 1, { prefix });
+    options = webidl.converters.StructuredSerializeOptions(options, {
+      prefix,
+      context: "Argument 2",
+    });
+    const messageData = serializeJsMessageData(value, options.transfer);
+    const [data] = deserializeJsMessageData(messageData);
+    return data;
+  }
 
   window.__bootstrap.messagePort = {
     MessageChannel,
     MessagePort,
     deserializeJsMessageData,
     serializeJsMessageData,
+    structuredClone,
   };
 })(globalThis);
