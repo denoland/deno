@@ -141,7 +141,6 @@ mod tests {
   use super::*;
   use crate::version;
   use deno_tls::create_http_client;
-  use deno_tls::rustls::RootCertStore;
   use std::fs::read;
 
   fn create_test_client(ca_data: Option<Vec<u8>>) -> Client {
@@ -407,7 +406,7 @@ mod tests {
     let url = Url::parse("https://deno.land").unwrap();
     let client = create_http_client(
       version::get_user_agent(),
-      Some(RootCertStore::empty()), // no certs loaded at all
+      Some(deno_tls::rustls::RootCertStore::empty()), // no certs loaded at all
       None,
       None,
       None,
