@@ -118,10 +118,19 @@ impl ProgramState {
       }
     }
 
-    if flags.unsafely_treat_insecure_origin_as_secure.is_some() {
-      let msg =
-        colors::yellow("DANGER: SSL ceritificate validation is disabled");
-      eprintln!("{}", msg);
+    if let Some(insecure_allowlist) =
+      flags.unsafely_treat_insecure_origin_as_secure.as_ref()
+    {
+      let domains = if insecure_allowlist.is_empty() {
+        "for all domains".to_string()
+      } else {
+        format!("for: {}", insecure_allowlist.join(", "))
+      };
+      let msg = format!(
+        "DANGER: SSL ceritificate validation is disabled {}",
+        domains
+      );
+      eprintln!("{}", colors::yellow(msg));
     }
 
     let cache_usage = if flags.cached_only {
