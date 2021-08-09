@@ -279,7 +279,7 @@ async fn op_command_child_output(
     .resource_table
     .take::<ChildResource>(args.rid)
     .ok_or_else(bad_resource_id)?;
-  let resource = Rc::try_unwrap(resource).unwrap();
+  let resource = Rc::try_unwrap(resource).ok().unwrap();
   let mut child = resource.0.into_inner();
 
   if let Some(stdout_rid) = args.stdout_rid {
@@ -325,8 +325,7 @@ fn op_command_child_status(
     .resource_table
     .get::<ChildResource>(rid)
     .ok_or_else(bad_resource_id)?;
-  let resource = Rc::try_unwrap(resource).unwrap();
-  let mut child = resource.0.into_inner();
+  let mut child = resource.borrow_mut().await; // TODO: fix
   let status = child.try_wait()?.map(|status| status.into());
 
   Ok(status)
