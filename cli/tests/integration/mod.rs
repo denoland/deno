@@ -657,8 +657,8 @@ fn websocket() {
 fn websocketstream() {
   let _g = util::http_server();
 
-  let script = util::tests_path().join("websocketstream_test.ts");
-  let root_ca = util::tests_path().join("tls/RootCA.pem");
+  let script = util::testdata_path().join("websocketstream_test.ts");
+  let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let status = util::deno_cmd()
     .arg("test")
     .arg("--unstable")

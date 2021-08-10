@@ -24,7 +24,6 @@ use std::io::Read;
 use std::io::Write;
 use std::mem::replace;
 use std::net::SocketAddr;
-use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::Child;
@@ -266,16 +265,13 @@ async fn run_ws_close_server(addr: &SocketAddr) {
 }
 
 async fn get_tls_config(
-  cert_path: &Path,
-  key_path: &Path,
+  cert: &str,
+  key: &str,
   ca: &str,
 ) -> io::Result<Arc<rustls::ServerConfig>> {
-  let mut cert_path = root_path();
-  let mut key_path = root_path();
-  let mut ca_path = root_path();
-  cert_path.push(cert);
-  key_path.push(key);
-  ca_path.push(ca);
+  let cert_path = testdata_path().join(cert);
+  let key_path = testdata_path().join(key);
+  let ca_path = testdata_path().join(ca);
 
   let cert_file = std::fs::File::open(cert_path)?;
   let key_file = std::fs::File::open(key_path)?;
@@ -328,13 +324,13 @@ async fn get_tls_config(
 }
 
 async fn run_wss_server(addr: &SocketAddr) {
-  let cert_file = testdata_path().join("tls/localhost.crt");
-  let key_file = testdata_path().join("tls/localhost.key");
-  let ca_cert_file = "cli/tests/tls/RootCA.pem";
+  let cert_file = "tls/localhost.crt";
+  let key_file = "tls/localhost.key";
+  let ca_cert_file = "tls/RootCA.pem";
 
   let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
     .await
-    .expect("Cannot get TLS config");
+    .unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
   let listener = TcpListener::bind(addr).await.unwrap();
   println!("ready: wss"); // Eye catcher for HttpServerCount
@@ -367,13 +363,13 @@ async fn run_wss_server(addr: &SocketAddr) {
 
 /// This server responds with 'PASS' if client authentication was successful. Try it by running
 /// test_server and
-///   curl --key cli/tests/tls/localhost.key \
-///        --cert cli/tests/tls/localhost.crt \
-///        --cacert cli/tests/tls/RootCA.crt https://localhost:4552/
+///   curl --key cli/tests/testdata/tls/localhost.key \
+///        --cert cli/tests/testsdata/tls/localhost.crt \
+///        --cacert cli/tests/testdata/tls/RootCA.crt https://localhost:4552/
 async fn run_tls_client_auth_server() {
-  let cert_file = "cli/tests/tls/localhost.crt";
-  let key_file = "cli/tests/tls/localhost.key";
-  let ca_cert_file = "cli/tests/tls/RootCA.pem";
+  let cert_file = "tls/localhost.crt";
+  let key_file = "tls/localhost.key";
+  let ca_cert_file = "tls/RootCA.pem";
   let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
     .await
     .unwrap();
@@ -865,12 +861,12 @@ async fn wrap_main_server() {
 
 async fn wrap_main_https_server() {
   let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], HTTPS_PORT));
-  let cert_file = testdata_path().join("tls/localhost.crt");
-  let key_file = testdata_path().join("tls/localhost.key");
-  let ca_cert_file = "cli/tests/tls/RootCA.pem";
+  let cert_file = "tls/localhost.crt";
+  let key_file = "tls/localhost.key";
+  let ca_cert_file = "tls/RootCA.pem";
   let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
     .await
-    .expect("Cannot get TLS config");
+    .unwrap();
   loop {
     let tcp = TcpListener::bind(&main_server_https_addr)
       .await

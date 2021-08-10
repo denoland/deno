@@ -995,7 +995,9 @@ unitTest(
         hostname: "deno.land",
         port: 443,
         certChain: "bad data",
-        privateKey: await Deno.readTextFile("cli/tests/tls/localhost.key"),
+        privateKey: await Deno.readTextFile(
+          "cli/tests/testdata/tls/localhost.key",
+        ),
       });
     }, Deno.errors.InvalidData);
   },
@@ -1008,7 +1010,9 @@ unitTest(
       await Deno.connectTls({
         hostname: "deno.land",
         port: 443,
-        certChain: await Deno.readTextFile("cli/tests/tls/localhost.crt"),
+        certChain: await Deno.readTextFile(
+          "cli/tests/testdata/tls/localhost.crt",
+        ),
         privateKey: "bad data",
       });
     }, Deno.errors.InvalidData);
@@ -1022,7 +1026,9 @@ unitTest(
       await Deno.connectTls({
         hostname: "deno.land",
         port: 443,
-        certChain: await Deno.readTextFile("cli/tests/tls/localhost.crt"),
+        certChain: await Deno.readTextFile(
+          "cli/tests/testdata/tls/localhost.crt",
+        ),
         privateKey: "",
       });
     }, Deno.errors.InvalidData);
@@ -1034,15 +1040,19 @@ unitTest(
   async function connectWithClientCert() {
     // The test_server running on port 4552 responds with 'PASS' if client
     // authentication was successful. Try it by running test_server and
-    //   curl --key cli/tests/tls/localhost.key \
-    //        --cert cli/tests/tls/localhost.crt \
-    //        --cacert cli/tests/tls/RootCA.crt https://localhost:4552/
+    //   curl --key cli/tests/testdata/tls/localhost.key \
+    //        --cert cli/tests/testdata/tls/localhost.crt \
+    //        --cacert cli/tests/testdata/tls/RootCA.crt https://localhost:4552/
     const conn = await Deno.connectTls({
       hostname: "localhost",
       port: 4552,
-      certChain: await Deno.readTextFile("cli/tests/tls/localhost.crt"),
-      privateKey: await Deno.readTextFile("cli/tests/tls/localhost.key"),
-      certFile: "cli/tests/tls/RootCA.crt",
+      certChain: await Deno.readTextFile(
+        "cli/tests/testdata/tls/localhost.crt",
+      ),
+      privateKey: await Deno.readTextFile(
+        "cli/tests/testdata/tls/localhost.key",
+      ),
+      certFile: "cli/tests/testdata/tls/RootCA.crt",
     });
     const result = decoder.decode(await readAll(conn));
     assertEquals(result, "PASS");
