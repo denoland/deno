@@ -122,7 +122,7 @@ impl ProgramState {
       flags.unsafely_ignore_certificate_errors.as_ref()
     {
       let domains = if insecure_allowlist.is_empty() {
-        "for all domains".to_string()
+        "for all hostnames".to_string()
       } else {
         format!("for: {}", insecure_allowlist.join(", "))
       };
