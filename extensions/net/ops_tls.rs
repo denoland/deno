@@ -700,6 +700,12 @@ where
   let hostname_dns = DNSNameRef::try_from_ascii_str(hostname)
     .map_err(|_| invalid_hostname(hostname))?;
 
+  let unsafely_ignore_certificate_errors = state
+    .borrow()
+    .borrow::<UnsafelyIgnoreCertificateErrors>()
+    .0
+    .clone();
+
   // TODO(@justinmchase): Ideally the certificate store is created once
   // and not cloned. The store should be wrapped in Arc<T> to reduce
   // copying memory unnecessarily.
@@ -721,8 +727,11 @@ where
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
-  let tls_config =
-    Arc::new(create_client_config(root_cert_store, ca_data, None)?);
+  let tls_config = Arc::new(create_client_config(
+    root_cert_store,
+    ca_data,
+    unsafely_ignore_certificate_errors,
+  )?);
   let tls_stream =
     TlsStream::new_client_side(tcp_stream, &tls_config, hostname_dns);
 
