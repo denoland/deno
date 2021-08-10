@@ -119,15 +119,15 @@ impl ProgramState {
     }
 
     if let Some(insecure_allowlist) =
-      flags.unsafely_treat_insecure_origin_as_secure.as_ref()
+      flags.unsafely_ignore_certificate_errors.as_ref()
     {
       let domains = if insecure_allowlist.is_empty() {
-        "for all domains".to_string()
+        "for all hostnames".to_string()
       } else {
         format!("for: {}", insecure_allowlist.join(", "))
       };
       let msg = format!(
-        "DANGER: SSL ceritificate validation is disabled {}",
+        "DANGER: TLS ceritificate validation is disabled {}",
         domains
       );
       eprintln!("{}", colors::yellow(msg));
@@ -153,7 +153,7 @@ impl ProgramState {
       !flags.no_remote,
       Some(root_cert_store.clone()),
       blob_store.clone(),
-      flags.unsafely_treat_insecure_origin_as_secure.clone(),
+      flags.unsafely_ignore_certificate_errors.clone(),
     )?;
 
     let lockfile = if let Some(filename) = &flags.lock {

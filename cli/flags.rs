@@ -164,7 +164,7 @@ pub struct Flags {
   pub repl: bool,
   pub seed: Option<u64>,
   pub unstable: bool,
-  pub unsafely_treat_insecure_origin_as_secure: Option<Vec<String>>,
+  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
   pub version: bool,
   pub watch: bool,
@@ -217,13 +217,13 @@ impl Flags {
       _ => {}
     }
 
-    match &self.unsafely_treat_insecure_origin_as_secure {
+    match &self.unsafely_ignore_certificate_errors {
       Some(ic_allowlist) if ic_allowlist.is_empty() => {
-        args.push("--unsafely-treat-insecure-origin-as-secure".to_string());
+        args.push("--unsafely-ignore_certificate_errors".to_string());
       }
       Some(ic_allowlist) => {
         let s = format!(
-          "--unsafely-treat-insecure-origin-as-secure={}",
+          "--unsafely-ignore_certificate_errors={}",
           ic_allowlist.join(",")
         );
         args.push(s);
@@ -1237,13 +1237,14 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .validator(crate::flags_allow_net::validator),
     )
     .arg(
-      Arg::with_name("unsafely-treat-insecure-origin-as-secure")
-        .long("unsafely-treat-insecure-origin-as-secure")
+      Arg::with_name("unsafely-ignore-certificate-errors")
+        .long("unsafely-ignore-certificate-errors")
         .min_values(0)
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
-        .help("DANGER: Disables verification of SSL certificates")
+        .value_name("HOSTNAMES")
+        .help("DANGER: Disables verification of TLS certificates")
         .validator(crate::flags_allow_net::validator),
     )
     .arg(
@@ -1906,13 +1907,11 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_net = Some(net_allowlist);
   }
 
-  if let Some(ic_wl) =
-    matches.values_of("unsafely-treat-insecure-origin-as-secure")
-  {
+  if let Some(ic_wl) = matches.values_of("unsafely-ignore-certificate-errors") {
     let ic_allowlist: Vec<String> =
       crate::flags_allow_net::parse(ic_wl.map(ToString::to_string).collect())
         .unwrap();
-    flags.unsafely_treat_insecure_origin_as_secure = Some(ic_allowlist);
+    flags.unsafely_ignore_certificate_errors = Some(ic_allowlist);
   }
 
   if let Some(env_wl) = matches.values_of("allow-env") {
@@ -2756,7 +2755,7 @@ mod tests {
         repl: true,
         subcommand: DenoSubcommand::Repl { eval: None },
         allow_net: Some(vec![]),
-        unsafely_treat_insecure_origin_as_secure: None,
+        unsafely_ignore_certificate_errors: None,
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
@@ -3232,7 +3231,7 @@ mod tests {
   #[test]
   fn install_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "install", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-treat-insecure-origin-as-secure", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "https://deno.land/std/http/file_server.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "install", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "https://deno.land/std/http/file_server.ts", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3256,7 +3255,7 @@ mod tests {
         seed: Some(1),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
         allow_net: Some(vec![]),
-        unsafely_treat_insecure_origin_as_secure: Some(vec![]),
+        unsafely_ignore_certificate_errors: Some(vec![]),
         allow_read: Some(vec![]),
         ..Flags::default()
       }
@@ -3402,11 +3401,11 @@ mod tests {
   }
 
   #[test]
-  fn unsafely_treat_insecure_origin_as_secure() {
+  fn unsafely_ignore_certificate_errors() {
     let r = flags_from_vec(svec![
       "deno",
       "run",
-      "--unsafely-treat-insecure-origin-as-secure",
+      "--unsafely-ignore-certificate-errors",
       "script.ts"
     ]);
     assert_eq!(
@@ -3415,7 +3414,7 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
-        unsafely_treat_insecure_origin_as_secure: Some(vec![]),
+        unsafely_ignore_certificate_errors: Some(vec![]),
         ..Flags::default()
       }
     );
@@ -3426,7 +3425,7 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "run",
-      "--unsafely-treat-insecure-origin-as-secure=deno.land,localhost,::,127.0.0.1,[::1],1.2.3.4",
+      "--unsafely-ignore-certificate-errors=deno.land,localhost,::,127.0.0.1,[::1],1.2.3.4",
       "script.ts"
     ]);
     assert_eq!(
@@ -3435,7 +3434,7 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
-        unsafely_treat_insecure_origin_as_secure: Some(svec![
+        unsafely_ignore_certificate_errors: Some(svec![
           "deno.land",
           "localhost",
           "::",
@@ -3927,7 +3926,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-treat-insecure-origin-as-secure", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -3948,7 +3947,7 @@ mod tests {
         cached_only: true,
         location: Some(Url::parse("https://foo/").unwrap()),
         allow_read: Some(vec![]),
-        unsafely_treat_insecure_origin_as_secure: Some(vec![]),
+        unsafely_ignore_certificate_errors: Some(vec![]),
         allow_net: Some(vec![]),
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),

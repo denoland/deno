@@ -125,7 +125,7 @@ pub fn create_default_root_cert_store() -> RootCertStore {
 pub fn create_client_config(
   root_cert_store: Option<RootCertStore>,
   ca_data: Option<Vec<u8>>,
-  unsafely_treat_insecure_origin_as_secure: Option<Vec<String>>,
+  unsafely_ignore_certificate_errors: Option<Vec<String>>,
 ) -> Result<ClientConfig, AnyError> {
   let mut tls_config = ClientConfig::new();
   tls_config.set_persistence(CLIENT_SESSION_MEMORY_CACHE.clone());
@@ -141,7 +141,7 @@ pub fn create_client_config(
     }
   }
 
-  if let Some(ic_allowlist) = unsafely_treat_insecure_origin_as_secure {
+  if let Some(ic_allowlist) = unsafely_ignore_certificate_errors {
     tls_config.dangerous().set_certificate_verifier(Arc::new(
       NoCertificateVerification(ic_allowlist),
     ));
@@ -157,12 +157,12 @@ pub fn create_http_client(
   root_cert_store: Option<RootCertStore>,
   ca_data: Option<Vec<u8>>,
   proxy: Option<Proxy>,
-  unsafely_treat_insecure_origin_as_secure: Option<Vec<String>>,
+  unsafely_ignore_certificate_errors: Option<Vec<String>>,
 ) -> Result<Client, AnyError> {
   let tls_config = create_client_config(
     root_cert_store,
     ca_data,
-    unsafely_treat_insecure_origin_as_secure,
+    unsafely_ignore_certificate_errors,
   )?;
   let mut headers = HeaderMap::new();
   headers.insert(USER_AGENT, user_agent.parse().unwrap());
