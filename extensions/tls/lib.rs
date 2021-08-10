@@ -25,6 +25,7 @@ use rustls::ServerCertVerified;
 use rustls::ServerCertVerifier;
 use rustls::StoresClientSessions;
 use rustls::TLSError;
+use rustls::WebPKIVerifier;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::io::BufReader;
@@ -42,17 +43,22 @@ pub struct NoCertificateVerification(pub Vec<String>);
 impl ServerCertVerifier for NoCertificateVerification {
   fn verify_server_cert(
     &self,
-    _roots: &RootCertStore,
-    _presented_certs: &[Certificate],
-    dns_name: DNSNameRef<'_>,
-    _ocsp: &[u8],
+    roots: &RootCertStore,
+    presented_certs: &[Certificate],
+    dns_name_ref: DNSNameRef<'_>,
+    ocsp: &[u8],
   ) -> Result<ServerCertVerified, TLSError> {
-    let dns_name: &str = dns_name.into();
+    let dns_name: &str = dns_name_ref.into();
     let dns_name: String = dns_name.to_owned();
     if self.0.is_empty() || self.0.contains(&dns_name) {
       Ok(ServerCertVerified::assertion())
     } else {
-      Err(TLSError::General(dns_name))
+      WebPKIVerifier::new().verify_server_cert(
+        roots,
+        presented_certs,
+        dns_name_ref,
+        ocsp,
+      )
     }
   }
 

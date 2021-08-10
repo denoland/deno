@@ -487,6 +487,20 @@ itest!(cafile_ts_fetch_unsafe_ssl {
   http_server: true,
 });
 
+itest!(deno_land_unsafe_ssl {
+  args:
+    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land deno_land_unsafe_ssl.ts",
+  output: "deno_land_unsafe_ssl.ts.out",
+});
+
+itest!(localhost_unsafe_ssl {
+  args:
+    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cafile_url_imports.ts",
+  output: "localhost_unsafe_ssl.ts.out",
+  http_server: true,
+  exit_code: 1,
+});
+
 #[test]
 #[ignore]
 fn cafile_env_fetch() {

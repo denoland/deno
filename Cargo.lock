@@ -560,7 +560,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "1.12.2"
+version = "1.13.0"
 dependencies = [
  "atty",
  "base64 0.13.0",
@@ -875,7 +875,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "deno_core",
  "lazy_static",

@@ -6,6 +6,43 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.13.0 / 2021.08.10
+
+- BREAKING(unstable): Rename Deno.WebSocketUpgrade::websocket to socket (#11542)
+- feat: Add --unsafely-treat-insecure-origin-as-secure flag to disable SSL
+  verification (#11324)
+- feat: add experimental WebSocketStream API (#10365)
+- feat: FFI API replacing native plugins (#11152)
+- feat: stabilize Deno.serveHttp() (#11544)
+- feat: support AbortSignal in writeFile (#11568)
+- feat: support client certificates for connectTls (#11598)
+- feat: type check codeblocks in Markdown file with "deno test --doc" (#11421)
+- feat(extensions/crypto): implement importKey and exportKey for raw HMAC keys
+  (#11367)
+- feat(extensions/crypto): implement verify() for HMAC (#11387)
+- feat(extensions/tls): Optionally support loading native certs (#11491)
+- feat(extensions/web): add structuredClone function (#11572)
+- feat(fmt): format top-level JSX elements/fragments with parens when multi-line
+  (#11582)
+- feat(lsp): ability to set DENO_DIR via settings (#11527)
+- feat(lsp): implement refactoring code actions (#11555)
+- feat(lsp): support clients which do not support disabled code actions (#11612)
+- feat(repl): add --eval flag for evaluating code when the repl starts (#11590)
+- feat(repl): support exports in the REPL (#11592)
+- feat(runtime): allow URL for permissions (#11578)
+- feat(runtime): implement navigator.hardwareConcurrency (#11448)
+- feat(unstable): clean environmental variables for subprocess (#11571)
+- fix: support windows file specifiers with import maps (#11551)
+- fix: Type `Deno.errors.*` as subclasses of `Error` (#10702)
+- fix(doc): panic on invalid url (#11536)
+- fix(extensions/fetch): Add Origin header to outgoing requests for fetch
+  (#11557)
+- fix(extensions/websocket): allow any close code for server (#11614)
+- fix(lsp): do not output to stderr before exiting the process (#11562)
+
+Release notes for std version 0.104.0:
+https://github.com/denoland/deno_std/releases/tag/0.104.0
+
 ### 1.12.2 / 2021.07.26
 
 - feat(lsp, unstable): add workspace config to status page (#11459)
