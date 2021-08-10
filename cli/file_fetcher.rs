@@ -223,7 +223,7 @@ impl FileFetcher {
     allow_remote: bool,
     root_cert_store: Option<RootCertStore>,
     blob_store: BlobStore,
-    unsafely_treat_insecure_origin_as_secure: Option<Vec<String>>,
+    unsafely_ignore_certificate_errors: Option<Vec<String>>,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       auth_tokens: AuthTokens::new(env::var(DENO_AUTH_TOKENS).ok()),
@@ -236,7 +236,7 @@ impl FileFetcher {
         root_cert_store,
         None,
         None,
-        unsafely_treat_insecure_origin_as_secure,
+        unsafely_ignore_certificate_errors,
       )?,
       blob_store,
     })

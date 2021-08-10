@@ -475,14 +475,14 @@ fn broken_stdout() {
 // });
 
 itest!(cafile_url_imports_unsafe_ssl {
-  args: "run --quiet --reload --unsafely-treat-insecure-origin-as-secure=localhost cafile_url_imports.ts",
+  args: "run --quiet --reload --unsafely-ignore-certificate-errors=localhost cafile_url_imports.ts",
   output: "cafile_url_imports_unsafe_ssl.ts.out",
   http_server: true,
 });
 
 itest!(cafile_ts_fetch_unsafe_ssl {
   args:
-    "run --quiet --reload --allow-net --unsafely-treat-insecure-origin-as-secure cafile_ts_fetch.ts",
+    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors cafile_ts_fetch.ts",
   output: "cafile_ts_fetch_unsafe_ssl.ts.out",
   http_server: true,
 });

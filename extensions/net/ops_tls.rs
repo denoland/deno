@@ -9,7 +9,7 @@ use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
 use crate::DefaultTlsOptions;
 use crate::NetPermissions;
-use crate::UnsafelyTreatInsecureOriginAsSecure;
+use crate::UnsafelyIgnoreCertificateErrors;
 use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
@@ -761,9 +761,9 @@ where
   };
   let port = args.port;
   let cert_file = args.cert_file.as_deref();
-  let unsafely_treat_insecure_origin_as_secure = state
+  let unsafely_ignore_certificate_errors = state
     .borrow()
-    .borrow::<UnsafelyTreatInsecureOriginAsSecure>()
+    .borrow::<UnsafelyIgnoreCertificateErrors>()
     .0
     .clone();
 
@@ -810,7 +810,7 @@ where
   let mut tls_config = create_client_config(
     root_cert_store,
     ca_data,
-    unsafely_treat_insecure_origin_as_secure,
+    unsafely_ignore_certificate_errors,
   )?;
 
   if args.cert_chain.is_some() || args.private_key.is_some() {
