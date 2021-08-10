@@ -557,7 +557,7 @@ jobs:
           gsutil cp release-latest.txt gs://dl.deno.land/release-latest.txt
 
       - name: Upload release to GitHub
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@59c3b4891632ff9a897f99a91d7bc557467a3a22
         if: |
           matrix.kind == 'test' &&
           matrix.profile == 'release' &&
