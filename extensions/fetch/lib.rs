@@ -60,7 +60,7 @@ pub fn init<P: FetchPermissions + 'static>(
   root_cert_store: Option<RootCertStore>,
   proxy: Option<Proxy>,
   request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
-  unsafely_treat_insecure_origin_as_secure: Option<Vec<String>>,
+  unsafely_ignore_certificate_errors: Option<Vec<String>>,
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -88,7 +88,7 @@ pub fn init<P: FetchPermissions + 'static>(
           root_cert_store.clone(),
           None,
           proxy.clone(),
-          unsafely_treat_insecure_origin_as_secure.clone(),
+          unsafely_ignore_certificate_errors.clone(),
         )
         .unwrap()
       });
@@ -97,8 +97,8 @@ pub fn init<P: FetchPermissions + 'static>(
         root_cert_store: root_cert_store.clone(),
         proxy: proxy.clone(),
         request_builder_hook,
-        unsafely_treat_insecure_origin_as_secure:
-          unsafely_treat_insecure_origin_as_secure.clone(),
+        unsafely_ignore_certificate_errors: unsafely_ignore_certificate_errors
+          .clone(),
       });
       Ok(())
     })
@@ -110,7 +110,7 @@ pub struct HttpClientDefaults {
   pub root_cert_store: Option<RootCertStore>,
   pub proxy: Option<Proxy>,
   pub request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
-  pub unsafely_treat_insecure_origin_as_secure: Option<Vec<String>>,
+  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
 }
 
 pub trait FetchPermissions {
@@ -543,7 +543,7 @@ where
     defaults.root_cert_store.clone(),
     cert_data,
     args.proxy,
-    defaults.unsafely_treat_insecure_origin_as_secure.clone(),
+    defaults.unsafely_ignore_certificate_errors.clone(),
   )
   .unwrap();
 

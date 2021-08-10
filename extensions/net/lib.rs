@@ -94,16 +94,16 @@ pub struct DefaultTlsOptions {
   pub root_cert_store: Option<RootCertStore>,
 }
 
-/// `UnsafelyTreatInsecureOriginAsSecure` is a wrapper struct so it can be placed inside `GothamState`;
+/// `UnsafelyIgnoreCertificateErrors` is a wrapper struct so it can be placed inside `GothamState`;
 /// using type alias for a `Option<Vec<String>>` could work, but there's a high chance
 /// that there might be another type alias pointing to a `Option<Vec<String>>`, which
 /// would override previously used alias.
-pub struct UnsafelyTreatInsecureOriginAsSecure(Option<Vec<String>>);
+pub struct UnsafelyIgnoreCertificateErrors(Option<Vec<String>>);
 
 pub fn init<P: NetPermissions + 'static>(
   root_cert_store: Option<RootCertStore>,
   unstable: bool,
-  unsafely_treat_insecure_origin_as_secure: Option<Vec<String>>,
+  unsafely_ignore_certificate_errors: Option<Vec<String>>,
 ) -> Extension {
   let mut ops_to_register = vec![];
   ops_to_register.extend(io::init());
@@ -122,8 +122,8 @@ pub fn init<P: NetPermissions + 'static>(
         root_cert_store: root_cert_store.clone(),
       });
       state.put(UnstableChecker { unstable });
-      state.put(UnsafelyTreatInsecureOriginAsSecure(
-        unsafely_treat_insecure_origin_as_secure.clone(),
+      state.put(UnsafelyIgnoreCertificateErrors(
+        unsafely_ignore_certificate_errors.clone(),
       ));
       Ok(())
     })

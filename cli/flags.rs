@@ -164,7 +164,7 @@ pub struct Flags {
   pub repl: bool,
   pub seed: Option<u64>,
   pub unstable: bool,
-  pub unsafely_treat_insecure_origin_as_secure: Option<Vec<String>>,
+  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
   pub version: bool,
   pub watch: bool,
@@ -217,7 +217,7 @@ impl Flags {
       _ => {}
     }
 
-    match &self.unsafely_treat_insecure_origin_as_secure {
+    match &self.unsafely_ignore_certificate_errors {
       Some(ic_allowlist) if ic_allowlist.is_empty() => {
         args.push("--unsafely-treat-insecure-origin-as-secure".to_string());
       }
@@ -1237,13 +1237,14 @@ fn permission_args<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .validator(crate::flags_allow_net::validator),
     )
     .arg(
-      Arg::with_name("unsafely-treat-insecure-origin-as-secure")
-        .long("unsafely-treat-insecure-origin-as-secure")
+      Arg::with_name("unsafely-ignore-certificate-errors")
+        .long("unsafely-ignore-certificate-errors")
         .min_values(0)
         .takes_value(true)
         .use_delimiter(true)
         .require_equals(true)
-        .help("DANGER: Disables verification of SSL certificates")
+        .value_name("HOSTNAMES")
+        .help("DANGER: Disables verification of TLS certificates")
         .validator(crate::flags_allow_net::validator),
     )
     .arg(
@@ -1912,7 +1913,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     let ic_allowlist: Vec<String> =
       crate::flags_allow_net::parse(ic_wl.map(ToString::to_string).collect())
         .unwrap();
-    flags.unsafely_treat_insecure_origin_as_secure = Some(ic_allowlist);
+    flags.unsafely_ignore_certificate_errors = Some(ic_allowlist);
   }
 
   if let Some(env_wl) = matches.values_of("allow-env") {
@@ -2756,7 +2757,7 @@ mod tests {
         repl: true,
         subcommand: DenoSubcommand::Repl { eval: None },
         allow_net: Some(vec![]),
-        unsafely_treat_insecure_origin_as_secure: None,
+        unsafely_ignore_certificate_errors: None,
         allow_env: Some(vec![]),
         allow_run: Some(vec![]),
         allow_read: Some(vec![]),
@@ -3256,7 +3257,7 @@ mod tests {
         seed: Some(1),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
         allow_net: Some(vec![]),
-        unsafely_treat_insecure_origin_as_secure: Some(vec![]),
+        unsafely_ignore_certificate_errors: Some(vec![]),
         allow_read: Some(vec![]),
         ..Flags::default()
       }
@@ -3402,7 +3403,7 @@ mod tests {
   }
 
   #[test]
-  fn unsafely_treat_insecure_origin_as_secure() {
+  fn unsafely_ignore_certificate_errors() {
     let r = flags_from_vec(svec![
       "deno",
       "run",
@@ -3415,7 +3416,7 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
-        unsafely_treat_insecure_origin_as_secure: Some(vec![]),
+        unsafely_ignore_certificate_errors: Some(vec![]),
         ..Flags::default()
       }
     );
@@ -3435,7 +3436,7 @@ mod tests {
         subcommand: DenoSubcommand::Run {
           script: "script.ts".to_string(),
         },
-        unsafely_treat_insecure_origin_as_secure: Some(svec![
+        unsafely_ignore_certificate_errors: Some(svec![
           "deno.land",
           "localhost",
           "::",
@@ -3948,7 +3949,7 @@ mod tests {
         cached_only: true,
         location: Some(Url::parse("https://foo/").unwrap()),
         allow_read: Some(vec![]),
-        unsafely_treat_insecure_origin_as_secure: Some(vec![]),
+        unsafely_ignore_certificate_errors: Some(vec![]),
         allow_net: Some(vec![]),
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
