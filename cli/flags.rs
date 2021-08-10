@@ -1907,9 +1907,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_net = Some(net_allowlist);
   }
 
-  if let Some(ic_wl) =
-    matches.values_of("unsafely-treat-insecure-origin-as-secure")
-  {
+  if let Some(ic_wl) = matches.values_of("unsafely-ignore-certificate-errors") {
     let ic_allowlist: Vec<String> =
       crate::flags_allow_net::parse(ic_wl.map(ToString::to_string).collect())
         .unwrap();
