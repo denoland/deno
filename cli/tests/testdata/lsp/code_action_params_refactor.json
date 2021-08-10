@@ -5,11 +5,11 @@
   "range": {
     "start": {
       "line": 0,
-      "character": 7
+      "character": 0
     },
     "end": {
-      "line": 0,
-      "character": 33
+      "line": 1,
+      "character": 0
     }
   },
   "context": {

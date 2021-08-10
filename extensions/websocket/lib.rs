@@ -3,7 +3,6 @@
 use deno_core::error::bad_resource_id;
 use deno_core::error::invalid_hostname;
 use deno_core::error::null_opbuf;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::SplitSink;
 use deno_core::futures::stream::SplitStream;
@@ -22,37 +21,44 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+use deno_tls::create_client_config;
+use deno_tls::webpki::DNSNameRef;
 
 use http::{Method, Request, Uri};
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::io::BufReader;
-use std::io::Cursor;
+use std::fmt;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use tokio::net::TcpStream;
-use tokio_rustls::{rustls::ClientConfig, TlsConnector};
+use tokio_rustls::rustls::RootCertStore;
+use tokio_rustls::TlsConnector;
 use tokio_tungstenite::tungstenite::{
   handshake::client::Response, protocol::frame::coding::CloseCode,
   protocol::CloseFrame, Message,
 };
 use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::{client_async, WebSocketStream};
-use webpki::DNSNameRef;
 
 pub use tokio_tungstenite; // Re-export tokio_tungstenite
 
 #[derive(Clone)]
-pub struct WsCaData(pub Vec<u8>);
+pub struct WsRootStore(pub Option<RootCertStore>);
 #[derive(Clone)]
 pub struct WsUserAgent(pub String);
 
 pub trait WebSocketPermissions {
   fn check_net_url(&mut self, _url: &url::Url) -> Result<(), AnyError>;
 }
+
+/// `UnsafelyIgnoreCertificateErrors` is a wrapper struct so it can be placed inside `GothamState`;
+/// using type alias for a `Option<Vec<String>>` could work, but there's a high chance
+/// that there might be another type alias pointing to a `Option<Vec<String>>`, which
+/// would override previously used alias.
+pub struct UnsafelyIgnoreCertificateErrors(Option<Vec<String>>);
 
 /// For use with `op_websocket_*` when the user does not want permissions.
 pub struct NoWebSocketPermissions;
@@ -147,14 +153,26 @@ impl Resource for WsStreamResource {
   }
 }
 
+pub struct WsCancelResource(Rc<CancelHandle>);
+
+impl Resource for WsCancelResource {
+  fn name(&self) -> Cow<str> {
+    "webSocketCancel".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.0.cancel()
+  }
+}
+
 // This op is needed because creating a WS instance in JavaScript is a sync
 // operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
-pub fn op_ws_check_permission<WP>(
+pub fn op_ws_check_permission_and_cancel_handle<WP>(
   state: &mut OpState,
   url: String,
-  _: (),
-) -> Result<(), AnyError>
+  cancel_handle: bool,
+) -> Result<Option<ResourceId>, AnyError>
 where
   WP: WebSocketPermissions + 'static,
 {
@@ -162,7 +180,14 @@ where
     .borrow_mut::<WP>()
     .check_net_url(&url::Url::parse(&url)?)?;
 
-  Ok(())
+  if cancel_handle {
+    let rid = state
+      .resource_table
+      .add(WsCancelResource(CancelHandle::new_rc()));
+    Ok(Some(rid))
+  } else {
+    Ok(None)
+  }
 }
 
 #[derive(Deserialize)]
@@ -170,6 +195,7 @@ where
 pub struct CreateArgs {
   url: String,
   protocols: String,
+  cancel_handle: Option<ResourceId>,
 }
 
 #[derive(Serialize)]
@@ -197,7 +223,12 @@ where
       );
   }
 
-  let ws_ca_data = state.borrow().try_borrow::<WsCaData>().cloned();
+  let unsafely_ignore_certificate_errors = state
+    .borrow()
+    .borrow::<UnsafelyIgnoreCertificateErrors>()
+    .0
+    .clone();
+  let root_cert_store = state.borrow().borrow::<WsRootStore>().0.clone();
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
   let uri: Uri = args.url.parse()?;
   let mut request = Request::builder().method(Method::GET).uri(&uri);
@@ -221,17 +252,12 @@ where
   let socket: MaybeTlsStream<TcpStream> = match uri.scheme_str() {
     Some("ws") => MaybeTlsStream::Plain(tcp_socket),
     Some("wss") => {
-      let mut config = ClientConfig::new();
-      config
-        .root_store
-        .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
-
-      if let Some(ws_ca_data) = ws_ca_data {
-        let reader = &mut BufReader::new(Cursor::new(ws_ca_data.0));
-        config.root_store.add_pem_file(reader).unwrap();
-      }
-
-      let tls_connector = TlsConnector::from(Arc::new(config));
+      let tls_config = create_client_config(
+        root_cert_store,
+        None,
+        unsafely_ignore_certificate_errors,
+      )?;
+      let tls_connector = TlsConnector::from(Arc::new(tls_config));
       let dnsname = DNSNameRef::try_from_ascii_str(domain)
         .map_err(|_| invalid_hostname(domain))?;
       let tls_socket = tls_connector.connect(dnsname, tcp_socket).await?;
@@ -240,13 +266,31 @@ where
     _ => unreachable!(),
   };
 
+  let client = client_async(request, socket);
   let (stream, response): (WsStream, Response) =
-    client_async(request, socket).await.map_err(|err| {
-      type_error(format!(
+    if let Some(cancel_rid) = args.cancel_handle {
+      let r = state
+        .borrow_mut()
+        .resource_table
+        .get::<WsCancelResource>(cancel_rid)
+        .ok_or_else(bad_resource_id)?;
+      client
+        .or_cancel(r.0.to_owned())
+        .await
+        .map_err(|_| DomExceptionAbortError::new("connection was aborted"))?
+    } else {
+      client.await
+    }
+    .map_err(|err| {
+      DomExceptionNetworkError::new(&format!(
         "failed to connect to WebSocket: {}",
         err.to_string()
       ))
     })?;
+
+  if let Some(cancel_rid) = args.cancel_handle {
+    state.borrow_mut().resource_table.close(cancel_rid);
+  }
 
   let (ws_tx, ws_rx) = stream.split();
   let resource = WsStreamResource {
@@ -385,17 +429,19 @@ pub async fn op_ws_next_event(
 
 pub fn init<P: WebSocketPermissions + 'static>(
   user_agent: String,
-  ca_data: Option<Vec<u8>>,
+  root_cert_store: Option<RootCertStore>,
+  unsafely_ignore_certificate_errors: Option<Vec<String>>,
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:extensions/websocket",
       "01_websocket.js",
+      "02_websocketstream.js",
     ))
     .ops(vec![
       (
-        "op_ws_check_permission",
-        op_sync(op_ws_check_permission::<P>),
+        "op_ws_check_permission_and_cancel_handle",
+        op_sync(op_ws_check_permission_and_cancel_handle::<P>),
       ),
       ("op_ws_create", op_async(op_ws_create::<P>)),
       ("op_ws_send", op_async(op_ws_send)),
@@ -404,9 +450,10 @@ pub fn init<P: WebSocketPermissions + 'static>(
     ])
     .state(move |state| {
       state.put::<WsUserAgent>(WsUserAgent(user_agent.clone()));
-      if let Some(ca_data) = ca_data.clone() {
-        state.put::<WsCaData>(WsCaData(ca_data));
-      }
+      state.put(UnsafelyIgnoreCertificateErrors(
+        unsafely_ignore_certificate_errors.clone(),
+      ));
+      state.put::<WsRootStore>(WsRootStore(root_cert_store.clone()));
       Ok(())
     })
     .build()
@@ -414,4 +461,56 @@ pub fn init<P: WebSocketPermissions + 'static>(
 
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_websocket.d.ts")
+}
+
+#[derive(Debug)]
+pub struct DomExceptionNetworkError {
+  pub msg: String,
+}
+
+impl DomExceptionNetworkError {
+  pub fn new(msg: &str) -> Self {
+    DomExceptionNetworkError {
+      msg: msg.to_string(),
+    }
+  }
+}
+
+impl fmt::Display for DomExceptionNetworkError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.pad(&self.msg)
+  }
+}
+
+impl std::error::Error for DomExceptionNetworkError {}
+
+pub fn get_network_error_class_name(e: &AnyError) -> Option<&'static str> {
+  e.downcast_ref::<DomExceptionNetworkError>()
+    .map(|_| "DOMExceptionNetworkError")
+}
+
+#[derive(Debug)]
+pub struct DomExceptionAbortError {
+  pub msg: String,
+}
+
+impl DomExceptionAbortError {
+  pub fn new(msg: &str) -> Self {
+    DomExceptionAbortError {
+      msg: msg.to_string(),
+    }
+  }
+}
+
+impl fmt::Display for DomExceptionAbortError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.pad(&self.msg)
+  }
+}
+
+impl std::error::Error for DomExceptionAbortError {}
+
+pub fn get_abort_error_class_name(e: &AnyError) -> Option<&'static str> {
+  e.downcast_ref::<DomExceptionAbortError>()
+    .map(|_| "DOMExceptionAbortError")
 }

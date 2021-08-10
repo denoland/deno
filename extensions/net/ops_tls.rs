@@ -1,8 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-pub use rustls;
-pub use webpki;
-
 use crate::io::TcpStreamResource;
 use crate::io::TlsStreamResource;
 use crate::ops::IpAddr;
@@ -12,11 +9,13 @@ use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
 use crate::DefaultTlsOptions;
 use crate::NetPermissions;
+use crate::UnsafelyIgnoreCertificateErrors;
 use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::invalid_hostname;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::ready;
@@ -38,30 +37,30 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_tls::create_client_config;
+use deno_tls::rustls::internal::pemfile::certs;
+use deno_tls::rustls::internal::pemfile::pkcs8_private_keys;
+use deno_tls::rustls::internal::pemfile::rsa_private_keys;
+use deno_tls::rustls::Certificate;
+use deno_tls::rustls::ClientConfig;
+use deno_tls::rustls::ClientSession;
+use deno_tls::rustls::NoClientAuth;
+use deno_tls::rustls::PrivateKey;
+use deno_tls::rustls::ServerConfig;
+use deno_tls::rustls::ServerSession;
+use deno_tls::rustls::Session;
+use deno_tls::webpki::DNSNameRef;
 use io::Error;
 use io::Read;
 use io::Write;
-use rustls::internal::pemfile::certs;
-use rustls::internal::pemfile::pkcs8_private_keys;
-use rustls::internal::pemfile::rsa_private_keys;
-use rustls::Certificate;
-use rustls::ClientConfig;
-use rustls::ClientSession;
-use rustls::NoClientAuth;
-use rustls::PrivateKey;
-use rustls::ServerConfig;
-use rustls::ServerSession;
-use rustls::Session;
-use rustls::StoresClientSessions;
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::convert::From;
 use std::fs::File;
 use std::io;
+use std::io::BufRead;
 use std::io::BufReader;
-use std::io::Cursor;
 use std::io::ErrorKind;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -76,32 +75,6 @@ use tokio::io::ReadBuf;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::task::spawn_local;
-use webpki::DNSNameRef;
-
-lazy_static::lazy_static! {
-  static ref CLIENT_SESSION_MEMORY_CACHE: Arc<ClientSessionMemoryCache> =
-    Arc::new(ClientSessionMemoryCache::default());
-}
-
-#[derive(Default)]
-struct ClientSessionMemoryCache(Mutex<HashMap<Vec<u8>, Vec<u8>>>);
-
-impl StoresClientSessions for ClientSessionMemoryCache {
-  fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
-    self.0.lock().get(key).cloned()
-  }
-
-  fn put(&self, key: Vec<u8>, value: Vec<u8>) -> bool {
-    let mut sessions = self.0.lock();
-    // TODO(bnoordhuis) Evict sessions LRU-style instead of arbitrarily.
-    while sessions.len() >= 1024 {
-      let key = sessions.keys().next().unwrap().clone();
-      sessions.remove(&key);
-    }
-    sessions.insert(key, value);
-    true
-  }
-}
 
 #[derive(Debug)]
 enum TlsSession {
@@ -679,6 +652,8 @@ pub struct ConnectTlsArgs {
   hostname: String,
   port: u16,
   cert_file: Option<String>,
+  cert_chain: Option<String>,
+  private_key: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -703,8 +678,6 @@ where
     n => n,
   };
   let cert_file = args.cert_file.as_deref();
-
-  let default_tls_options;
   {
     super::check_unstable2(&state, "Deno.startTls");
     let mut s = state.borrow_mut();
@@ -713,12 +686,34 @@ where
     if let Some(path) = cert_file {
       permissions.check_read(Path::new(path))?;
     }
-    default_tls_options = s.borrow::<DefaultTlsOptions>().clone();
   }
+
+  let ca_data = match cert_file {
+    Some(path) => {
+      let mut buf = Vec::new();
+      File::open(path)?.read_to_end(&mut buf)?;
+      Some(buf)
+    }
+    _ => None,
+  };
 
   let hostname_dns = DNSNameRef::try_from_ascii_str(hostname)
     .map_err(|_| invalid_hostname(hostname))?;
 
+  let unsafely_ignore_certificate_errors = state
+    .borrow()
+    .borrow::<UnsafelyIgnoreCertificateErrors>()
+    .0
+    .clone();
+
+  // TODO(@justinmchase): Ideally the certificate store is created once
+  // and not cloned. The store should be wrapped in Arc<T> to reduce
+  // copying memory unnecessarily.
+  let root_cert_store = state
+    .borrow()
+    .borrow::<DefaultTlsOptions>()
+    .root_cert_store
+    .clone();
   let resource_rc = state
     .borrow_mut()
     .resource_table
@@ -732,22 +727,11 @@ where
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
-  let mut tls_config = ClientConfig::new();
-  tls_config.set_persistence(CLIENT_SESSION_MEMORY_CACHE.clone());
-  tls_config
-    .root_store
-    .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
-  if let Some(ca_data) = default_tls_options.ca_data {
-    let reader = &mut Cursor::new(ca_data);
-    tls_config.root_store.add_pem_file(reader).unwrap();
-  };
-  if let Some(path) = cert_file {
-    let key_file = File::open(path)?;
-    let reader = &mut BufReader::new(key_file);
-    tls_config.root_store.add_pem_file(reader).unwrap();
-  }
-  let tls_config = Arc::new(tls_config);
-
+  let tls_config = Arc::new(create_client_config(
+    root_cert_store,
+    ca_data,
+    unsafely_ignore_certificate_errors,
+  )?);
   let tls_stream =
     TlsStream::new_client_side(tcp_stream, &tls_config, hostname_dns);
 
@@ -786,8 +770,19 @@ where
   };
   let port = args.port;
   let cert_file = args.cert_file.as_deref();
+  let unsafely_ignore_certificate_errors = state
+    .borrow()
+    .borrow::<UnsafelyIgnoreCertificateErrors>()
+    .0
+    .clone();
 
-  let default_tls_options;
+  if args.cert_chain.is_some() {
+    super::check_unstable2(&state, "ConnectTlsOptions.certChain");
+  }
+  if args.private_key.is_some() {
+    super::check_unstable2(&state, "ConnectTlsOptions.privateKey");
+  }
+
   {
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
@@ -795,9 +790,22 @@ where
     if let Some(path) = cert_file {
       permissions.check_read(Path::new(path))?;
     }
-    default_tls_options = s.borrow::<DefaultTlsOptions>().clone();
   }
 
+  let ca_data = match cert_file {
+    Some(path) => {
+      let mut buf = Vec::new();
+      File::open(path)?.read_to_end(&mut buf)?;
+      Some(buf)
+    }
+    _ => None,
+  };
+
+  let root_cert_store = state
+    .borrow()
+    .borrow::<DefaultTlsOptions>()
+    .root_cert_store
+    .clone();
   let hostname_dns = DNSNameRef::try_from_ascii_str(hostname)
     .map_err(|_| invalid_hostname(hostname))?;
 
@@ -808,21 +816,29 @@ where
   let tcp_stream = TcpStream::connect(connect_addr).await?;
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
+  let mut tls_config = create_client_config(
+    root_cert_store,
+    ca_data,
+    unsafely_ignore_certificate_errors,
+  )?;
 
-  let mut tls_config = ClientConfig::new();
-  tls_config.set_persistence(CLIENT_SESSION_MEMORY_CACHE.clone());
-  tls_config
-    .root_store
-    .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
-  if let Some(ca_data) = default_tls_options.ca_data {
-    let reader = &mut Cursor::new(ca_data);
-    tls_config.root_store.add_pem_file(reader).unwrap();
-  };
-  if let Some(path) = cert_file {
-    let key_file = File::open(path)?;
-    let reader = &mut BufReader::new(key_file);
-    tls_config.root_store.add_pem_file(reader).unwrap();
+  if args.cert_chain.is_some() || args.private_key.is_some() {
+    let cert_chain = args
+      .cert_chain
+      .ok_or_else(|| type_error("No certificate chain provided"))?;
+    let private_key = args
+      .private_key
+      .ok_or_else(|| type_error("No private key provided"))?;
+
+    // The `remove` is safe because load_private_keys checks that there is at least one key.
+    let private_key = load_private_keys(private_key.as_bytes())?.remove(0);
+
+    tls_config.set_single_client_cert(
+      load_certs(&mut cert_chain.as_bytes())?,
+      private_key,
+    )?;
   }
+
   let tls_config = Arc::new(tls_config);
 
   let tls_stream =
@@ -848,10 +864,7 @@ where
   })
 }
 
-fn load_certs(path: &str) -> Result<Vec<Certificate>, AnyError> {
-  let cert_file = File::open(path)?;
-  let reader = &mut BufReader::new(cert_file);
-
+fn load_certs(reader: &mut dyn BufRead) -> Result<Vec<Certificate>, AnyError> {
   let certs = certs(reader)
     .map_err(|_| custom_error("InvalidData", "Unable to decode certificate"))?;
 
@@ -863,6 +876,12 @@ fn load_certs(path: &str) -> Result<Vec<Certificate>, AnyError> {
   Ok(certs)
 }
 
+fn load_certs_from_file(path: &str) -> Result<Vec<Certificate>, AnyError> {
+  let cert_file = File::open(path)?;
+  let reader = &mut BufReader::new(cert_file);
+  load_certs(reader)
+}
+
 fn key_decode_err() -> AnyError {
   custom_error("InvalidData", "Unable to decode key")
 }
@@ -872,27 +891,22 @@ fn key_not_found_err() -> AnyError {
 }
 
 /// Starts with -----BEGIN RSA PRIVATE KEY-----
-fn load_rsa_keys(path: &str) -> Result<Vec<PrivateKey>, AnyError> {
-  let key_file = File::open(path)?;
-  let reader = &mut BufReader::new(key_file);
-  let keys = rsa_private_keys(reader).map_err(|_| key_decode_err())?;
+fn load_rsa_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
+  let keys = rsa_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
   Ok(keys)
 }
 
 /// Starts with -----BEGIN PRIVATE KEY-----
-fn load_pkcs8_keys(path: &str) -> Result<Vec<PrivateKey>, AnyError> {
-  let key_file = File::open(path)?;
-  let reader = &mut BufReader::new(key_file);
-  let keys = pkcs8_private_keys(reader).map_err(|_| key_decode_err())?;
+fn load_pkcs8_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
+  let keys = pkcs8_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
   Ok(keys)
 }
 
-fn load_keys(path: &str) -> Result<Vec<PrivateKey>, AnyError> {
-  let path = path.to_string();
-  let mut keys = load_rsa_keys(&path)?;
+fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
+  let mut keys = load_rsa_keys(bytes)?;
 
   if keys.is_empty() {
-    keys = load_pkcs8_keys(&path)?;
+    keys = load_pkcs8_keys(bytes)?;
   }
 
   if keys.is_empty() {
@@ -900,6 +914,13 @@ fn load_keys(path: &str) -> Result<Vec<PrivateKey>, AnyError> {
   }
 
   Ok(keys)
+}
+
+fn load_private_keys_from_file(
+  path: &str,
+) -> Result<Vec<PrivateKey>, AnyError> {
+  let key_bytes = std::fs::read(path)?;
+  load_private_keys(&key_bytes)
 }
 
 pub struct TlsListenerResource {
@@ -957,7 +978,10 @@ where
       alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
   }
   tls_config
-    .set_single_cert(load_certs(cert_file)?, load_keys(key_file)?.remove(0))
+    .set_single_cert(
+      load_certs_from_file(cert_file)?,
+      load_private_keys_from_file(key_file)?.remove(0),
+    )
     .expect("invalid key or certificate");
 
   let bind_addr = resolve_addr_sync(hostname, port)?
