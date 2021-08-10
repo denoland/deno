@@ -135,9 +135,6 @@ pub fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
   LinterBuilder::default()
     .ignore_file_directive("deno-lint-ignore-file")
     .ignore_diagnostic_directive("deno-lint-ignore")
-    .lint_unused_ignore_directives(true)
-    // TODO(bartlomieju): switch to true
-    .lint_unknown_rules(false)
     .syntax(syntax)
     .rules(rules)
     .build()
