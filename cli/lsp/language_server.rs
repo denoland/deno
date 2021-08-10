@@ -202,16 +202,16 @@ impl Inner {
   /// Analyzes all dependencies for all documents that have been opened in the
   /// editor and sets the dependencies property on the documents.
   fn analyze_dependencies_all(&mut self) {
-    let docs: Vec<(ModuleSpecifier, String, MediaType)> = self
+    let docs = self
       .documents
       .docs
       .iter()
-      .filter_map(|(s, doc)| {
-        let source = doc.content().ok().flatten()?;
+      .map(|(s, doc)| {
+        let source = doc.content();
         let media_type = MediaType::from(&doc.language_id);
-        Some((s.clone(), source, media_type))
+        (s.clone(), source.to_owned(), media_type)
       })
-      .collect();
+      .collect::<Vec<_>>();
     for (specifier, source, media_type) in docs {
       self.analyze_dependencies(&specifier, &media_type, &source);
     }
@@ -288,7 +288,7 @@ impl Inner {
         .get(specifier)
         .map(|o| o.clone().map(|a| a.text))?
     } else if self.documents.contains_key(specifier) {
-      self.documents.content(specifier).unwrap()
+      self.documents.content(specifier).map(ToOwned::to_owned)
     } else {
       self.sources.get_source(specifier)
     }
@@ -812,7 +812,8 @@ impl Inner {
       params.text_document.version,
       params.content_changes,
     ) {
-      Ok(Some(source)) => {
+      Ok(source) => {
+        let source = source.to_owned();
         if self.documents.is_diagnosable(&specifier) {
           let media_type = MediaType::from(
             &self.documents.get_language_id(&specifier).unwrap(),
@@ -827,7 +828,6 @@ impl Inner {
           }
         }
       }
-      Ok(_) => error!("No content returned from change."),
       Err(err) => error!("{}", err),
     }
     self.performance.measure(mark);
@@ -1014,12 +1014,12 @@ impl Inner {
     let file_text = self
       .documents
       .content(&specifier)
-      .map_err(|_| {
+      .ok_or_else(|| {
         LspError::invalid_params(
           "The specified file could not be found in memory.",
         )
       })?
-      .unwrap();
+      .to_owned();
     let line_index = self.documents.line_index(&specifier);
     let file_path =
       if let Ok(file_path) = params.text_document.uri.to_file_path() {
@@ -2596,7 +2596,7 @@ impl Inner {
     // now that we have dependencies loaded, we need to re-analyze them and
     // invalidate some diagnostics
     if self.documents.contains_key(&referrer) {
-      if let Some(source) = self.documents.content(&referrer).unwrap() {
+      if let Some(source) = self.documents.content(&referrer).map(ToOwned::to_owned) {
         let media_type =
           MediaType::from(&self.documents.get_language_id(&referrer).unwrap());
         self.analyze_dependencies(&referrer, &media_type, &source);

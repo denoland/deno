@@ -9,7 +9,6 @@ use crate::media_type::MediaType;
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::error::Context;
 use deno_core::ModuleSpecifier;
 use lspower::lsp;
 use std::collections::HashMap;
@@ -78,11 +77,11 @@ impl IndexValid {
 
 #[derive(Debug, Clone)]
 pub struct DocumentData {
-  bytes: Option<Vec<u8>>,
+  source: String,
   dependencies: Option<HashMap<String, analysis::Dependency>>,
   dependency_ranges: Option<analysis::DependencyRanges>,
   pub(crate) language_id: LanguageId,
-  line_index: Option<LineIndex>,
+  line_index: LineIndex,
   maybe_navigation_tree: Option<tsc::NavigationTree>,
   specifier: ModuleSpecifier,
   version: Option<i32>,
@@ -93,14 +92,15 @@ impl DocumentData {
     specifier: ModuleSpecifier,
     version: i32,
     language_id: LanguageId,
-    source: &str,
+    source: String,
   ) -> Self {
+    let line_index = LineIndex::new(&source);
     Self {
-      bytes: Some(source.as_bytes().to_owned()),
+      source,
       dependencies: None,
       dependency_ranges: None,
       language_id,
-      line_index: Some(LineIndex::new(source)),
+      line_index,
       maybe_navigation_tree: None,
       specifier,
       version: Some(version),
@@ -111,59 +111,39 @@ impl DocumentData {
     &mut self,
     content_changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<(), AnyError> {
-    if self.bytes.is_none() {
-      return Ok(());
-    }
-    let content = &mut String::from_utf8(self.bytes.clone().unwrap())
-      .context("unable to parse bytes to string")?;
-    let mut line_index = if let Some(line_index) = &self.line_index {
-      line_index.clone()
-    } else {
-      LineIndex::new(content)
-    };
+    let mut content = self.source.clone();
+    let mut line_index = self.line_index.clone();
     let mut index_valid = IndexValid::All;
     for change in content_changes {
       if let Some(range) = change.range {
         if !index_valid.covers(range.start.line) {
-          line_index = LineIndex::new(content);
+          line_index = LineIndex::new(&content);
         }
         index_valid = IndexValid::UpTo(range.start.line);
         let range = line_index.get_text_range(range)?;
         content.replace_range(Range::<usize>::from(range), &change.text);
       } else {
-        *content = change.text;
+        content = change.text;
         index_valid = IndexValid::UpTo(0);
       }
     }
-    self.bytes = Some(content.as_bytes().to_owned());
     self.line_index = if index_valid == IndexValid::All {
-      Some(line_index)
+      line_index
     } else {
-      Some(LineIndex::new(content))
+      LineIndex::new(&content)
     };
+    self.source = content;
     self.maybe_navigation_tree = None;
     Ok(())
   }
 
-  pub fn content(&self) -> Result<Option<String>, AnyError> {
-    if let Some(bytes) = &self.bytes {
-      Ok(Some(
-        String::from_utf8(bytes.clone())
-          .context("cannot decode bytes to string")?,
-      ))
-    } else {
-      Ok(None)
-    }
+  pub fn content(&self) -> &str {
+    &self.source
   }
 
-  pub fn content_line(&self, line: usize) -> Result<Option<String>, AnyError> {
-    let content = self.content().ok().flatten();
-    if let Some(content) = content {
-      let lines = content.lines().into_iter().collect::<Vec<&str>>();
-      Ok(Some(lines[line].to_string()))
-    } else {
-      Ok(None)
-    }
+  pub fn content_line(&self, line: usize) -> String {
+    let lines = self.source.lines().into_iter().collect::<Vec<&str>>();
+    lines[line].to_string()
   }
 
   /// Determines if a position within the document is within a dependency range
@@ -220,7 +200,7 @@ impl DocumentCache {
     specifier: &ModuleSpecifier,
     version: i32,
     content_changes: Vec<lsp::TextDocumentContentChangeEvent>,
-  ) -> Result<Option<String>, AnyError> {
+  ) -> Result<&str, AnyError> {
     if !self.contains_key(specifier) {
       return Err(custom_error(
         "NotFound",
@@ -234,7 +214,7 @@ impl DocumentCache {
     let doc = self.docs.get_mut(specifier).unwrap();
     doc.apply_content_changes(content_changes)?;
     doc.version = Some(version);
-    doc.content()
+    Ok(doc.content())
   }
 
   pub fn close(&mut self, specifier: &ModuleSpecifier) {
@@ -249,12 +229,8 @@ impl DocumentCache {
   pub fn content(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<Option<String>, AnyError> {
-    if let Some(doc) = self.docs.get(specifier) {
-      doc.content()
-    } else {
-      Ok(None)
-    }
+  ) -> Option<&str> {
+    self.docs.get(specifier).map(|d| d.content())
   }
 
   // For a given specifier, get all open documents which directly or indirectly
@@ -347,7 +323,7 @@ impl DocumentCache {
 
   pub fn line_index(&self, specifier: &ModuleSpecifier) -> Option<LineIndex> {
     let doc = self.docs.get(specifier)?;
-    doc.line_index.clone()
+    Some(doc.line_index.clone())
   }
 
   pub fn open(
@@ -359,7 +335,7 @@ impl DocumentCache {
   ) {
     self.docs.insert(
       specifier.clone(),
-      DocumentData::new(specifier, version, language_id, source),
+      DocumentData::new(specifier, version, language_id, source.to_string()),
     );
   }
 
@@ -496,7 +472,7 @@ mod tests {
     let actual = document_cache
       .content(&specifier)
       .expect("failed to get content");
-    assert_eq!(actual, Some("console.log(\"Hello Deno\");\n".to_string()));
+    assert_eq!(actual, "console.log(\"Hello Deno\");\n");
   }
 
   #[test]
@@ -532,7 +508,7 @@ mod tests {
     let actual = document_cache
       .content(&specifier)
       .expect("failed to get content");
-    assert_eq!(actual, Some("console.log(\"Hello Deno\");\n".to_string()));
+    assert_eq!(actual, "console.log(\"Hello Deno\");\n");
   }
 
   #[test]

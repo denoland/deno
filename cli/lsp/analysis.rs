@@ -692,14 +692,7 @@ impl CodeActionCollection {
       })
       .unwrap();
 
-    let line_content = if let Some(doc) = document {
-      doc
-        .content_line(diagnostic.range.start.line as usize)
-        .ok()
-        .flatten()
-    } else {
-      None
-    };
+    let line_content = document.map(|d| d.content_line(diagnostic.range.start.line as usize));
 
     let mut changes = HashMap::new();
     changes.insert(

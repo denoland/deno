@@ -2057,7 +2057,8 @@ fn cache_snapshot(
       state
         .state_snapshot
         .documents
-        .content(specifier)?
+        .content(specifier)
+        .map(ToOwned::to_owned)
         .ok_or_else(|| {
           anyhow!("Specifier unexpectedly doesn't have content: {}", specifier)
         })?

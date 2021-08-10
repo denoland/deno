@@ -329,7 +329,7 @@ async fn generate_lint_diagnostics(
           .get_version(specifier, &DiagnosticSource::DenoLint);
         let media_type = MediaType::from(specifier);
         if version != current_version {
-          if let Ok(Some(source_code)) = documents.content(specifier) {
+          if let Some(source_code) = documents.content(specifier) {
             if let Ok(references) = analysis::get_lint_references(
               specifier,
               &media_type,
