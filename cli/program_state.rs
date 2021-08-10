@@ -127,7 +127,7 @@ impl ProgramState {
         format!("for: {}", insecure_allowlist.join(", "))
       };
       let msg = format!(
-        "DANGER: TLS ceritificate validation is disabled {}",
+        "DANGER: TLS certificate validation is disabled {}",
         domains
       );
       eprintln!("{}", colors::yellow(msg));
