@@ -219,11 +219,11 @@ impl Flags {
 
     match &self.unsafely_ignore_certificate_errors {
       Some(ic_allowlist) if ic_allowlist.is_empty() => {
-        args.push("--unsafely-ignore_certificate_errors".to_string());
+        args.push("--unsafely-ignore-certificate-errors".to_string());
       }
       Some(ic_allowlist) => {
         let s = format!(
-          "--unsafely-ignore_certificate_errors={}",
+          "--unsafely-ignore-certificate-errors={}",
           ic_allowlist.join(",")
         );
         args.push(s);
