@@ -817,7 +817,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.22.0"
+version = "0.22.1"
 dependencies = [
  "atty",
  "deno_broadcast_channel",
