@@ -74,13 +74,15 @@ Or a more complex one:
 ```ts
 const listener = Deno.listen({ port: 8000 });
 console.log("http://localhost:8000/");
+
+async function serve(conn: Deno.Conn) {
+  for await (const { respondWith } of Deno.serveHttp(conn)) {
+    respondWith(new Response("Hello world"));
+  }
+}
+
 for await (const conn of listener) {
-  (async () => {
-    const requests = Deno.serveHttp(conn);
-    for await (const { respondWith } of requests) {
-      respondWith(new Response("Hello world"));
-    }
-  })();
+  serve(conn);
 }
 ```
 
