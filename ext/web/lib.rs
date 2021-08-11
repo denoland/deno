@@ -50,7 +50,7 @@ pub use crate::message_port::MessagePort;
 pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
   Extension::builder()
     .js(include_js_files!(
-      prefix "deno:extensions/web",
+      prefix "deno:ext/web",
       "00_infra.js",
       "01_dom_exception.js",
       "01_mimesniff.js",

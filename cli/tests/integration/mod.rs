@@ -445,32 +445,31 @@ fn broken_stdout() {
   assert!(!stderr.contains("panic"));
 }
 
-// TODO(lucacasonato): reenable these tests once we figure out what is wrong with cafile tests
-// itest!(cafile_url_imports {
-//   args: "run --quiet --reload --cert tls/RootCA.pem cafile_url_imports.ts",
-//   output: "cafile_url_imports.ts.out",
-//   http_server: true,
-// });
+itest!(cafile_url_imports {
+  args: "run --quiet --reload --cert tls/RootCA.pem cafile_url_imports.ts",
+  output: "cafile_url_imports.ts.out",
+  http_server: true,
+});
 
-// itest!(cafile_ts_fetch {
-//   args:
-//     "run --quiet --reload --allow-net --cert tls/RootCA.pem cafile_ts_fetch.ts",
-//   output: "cafile_ts_fetch.ts.out",
-//   http_server: true,
-// });
+itest!(cafile_ts_fetch {
+  args:
+    "run --quiet --reload --allow-net --cert tls/RootCA.pem cafile_ts_fetch.ts",
+  output: "cafile_ts_fetch.ts.out",
+  http_server: true,
+});
 
-// itest!(cafile_eval {
-//   args: "eval --cert tls/RootCA.pem fetch('https://localhost:5545/cafile_ts_fetch.ts.out').then(r=>r.text()).then(t=>console.log(t.trimEnd()))",
-//   output: "cafile_ts_fetch.ts.out",
-//   http_server: true,
-// });
+itest!(cafile_eval {
+  args: "eval --cert tls/RootCA.pem fetch('https://localhost:5545/cli/tests/cafile_ts_fetch.ts.out').then(r=>r.text()).then(t=>console.log(t.trimEnd()))",
+  output: "cafile_ts_fetch.ts.out",
+  http_server: true,
+});
 
-// itest!(cafile_info {
-//   args:
-//     "info --quiet --cert tls/RootCA.pem https://localhost:5545/cafile_info.ts",
-//   output: "cafile_info.ts.out",
-//   http_server: true,
-// });
+itest!(cafile_info {
+  args:
+    "info --quiet --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
+  output: "cafile_info.ts.out",
+  http_server: true,
+});
 
 itest!(cafile_url_imports_unsafe_ssl {
   args: "run --quiet --reload --unsafely-ignore-certificate-errors=localhost cafile_url_imports.ts",
@@ -500,7 +499,6 @@ itest!(localhost_unsafe_ssl {
 });
 
 #[test]
-#[ignore]
 fn cafile_env_fetch() {
   use deno_core::url::Url;
   let _g = util::http_server();
@@ -520,7 +518,6 @@ fn cafile_env_fetch() {
 }
 
 #[test]
-#[ignore]
 fn cafile_fetch() {
   use deno_core::url::Url;
   let _g = util::http_server();
@@ -543,7 +540,6 @@ fn cafile_fetch() {
 }
 
 #[test]
-#[ignore]
 fn cafile_install_remote_module() {
   let _g = util::http_server();
   let temp_dir = TempDir::new().expect("tempdir fail");
@@ -586,7 +582,6 @@ fn cafile_install_remote_module() {
 }
 
 #[test]
-#[ignore]
 fn cafile_bundle_remote_exports() {
   let _g = util::http_server();
 
