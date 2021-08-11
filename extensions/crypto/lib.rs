@@ -555,7 +555,7 @@ pub async fn op_crypto_derive_bits(
       pbkdf2::derive(algorithm, iterations, salt, &secret, &mut out);
       Ok(out.into())
     }
-    _ => return Err(type_error("Unsupported algorithm".to_string())),
+    _ => Err(type_error("Unsupported algorithm".to_string())),
   }
 }
 
