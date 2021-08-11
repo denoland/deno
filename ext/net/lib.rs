@@ -111,7 +111,7 @@ pub fn init<P: NetPermissions + 'static>(
   ops_to_register.extend(ops_tls::init::<P>());
   Extension::builder()
     .js(include_js_files!(
-      prefix "deno:extensions/net",
+      prefix "deno:ext/net",
       "01_net.js",
       "02_tls.js",
       "04_net_unstable.js",

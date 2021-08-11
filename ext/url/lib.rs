@@ -19,7 +19,7 @@ use std::path::PathBuf;
 pub fn init() -> Extension {
   Extension::builder()
     .js(include_js_files!(
-      prefix "deno:extensions/url",
+      prefix "deno:ext/url",
       "00_url.js",
     ))
     .ops(vec![
