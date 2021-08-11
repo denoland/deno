@@ -470,18 +470,18 @@
 
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "importKey");
 
-      if (
-        ArrayPrototypeFind(
-          keyUsages,
-          (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
-        ) !== undefined
-      ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
-      }
-
       switch (normalizedAlgorithm.name) {
         // https://w3c.github.io/webcrypto/#hmac-operations
         case "HMAC": {
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+
           switch (format) {
             case "raw": {
               const hash = normalizedAlgorithm.hash;
@@ -641,9 +641,10 @@
     }
 
     /**
-    * @param {string} format
-    * @param {CryptoKey} key
-    * @returns {Promise<any>}
+    * @param {AlgorithmIdentifier} algorithm
+    * @param {CryptoKey} baseKey
+    * @param {number} length
+    * @returns {Promise<ArrayBuffer>}
     */
     async deriveBits(algorithm, baseKey, length) {
       webidl.assertBranded(this, SubtleCrypto);
