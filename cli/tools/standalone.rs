@@ -160,8 +160,12 @@ pub async fn write_standalone_binary(
     let mut output_file = File::open(&output)?;
     // This seek may fail because the file is too small to possibly be
     // `deno compile` output.
-    if output_file.seek(SeekFrom::End(-24)).is_ok() {
-      let mut trailer = [0; 24];
+    let pointer_size = std::mem::size_of::<usize>();
+    if output_file
+      .seek(SeekFrom::End(-((8 + pointer_size * 2) as i64)))
+      .is_ok()
+    {
+      let mut trailer = vec![0; 8 + pointer_size * 2];
       output_file.read_exact(&mut trailer)?;
       let (magic_trailer, _) = trailer.split_at(8);
       has_trailer = magic_trailer == MAGIC_TRAILER;

@@ -66,8 +66,8 @@ pub const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 /// produced by `deno compile`. It determines if this is a standalone
 /// binary by checking for the magic trailer string `D3N0` at EOF-12.
 /// The magic trailer is followed by:
-/// - a u64 pointer to the JS bundle embedded in the binary
-/// - a u64 pointer to JSON metadata (serialized flags) embedded in the binary
+/// - a usize pointer to the JS bundle embedded in the binary
+/// - a usize pointer to JSON metadata (serialized flags) embedded in the binary
 /// These are dereferenced, and the bundle is executed under the configuration
 /// specified by the metadata. If no magic trailer is present, this function
 /// exits with `Ok(None)`.
@@ -77,18 +77,20 @@ pub fn extract_standalone(
   let current_exe_path = current_exe()?;
 
   let mut current_exe = File::open(current_exe_path)?;
-  let trailer_pos = current_exe.seek(SeekFrom::End(-24))?;
-  let mut trailer = [0; 24];
+  let pointer_size = std::mem::size_of::<usize>();
+  let trailer_pos =
+    current_exe.seek(SeekFrom::End(-((8 + pointer_size * 2) as i64)))?;
+  let mut trailer = vec![0; 8 + pointer_size * 2];
   current_exe.read_exact(&mut trailer)?;
   let (magic_trailer, rest) = trailer.split_at(8);
   if magic_trailer != MAGIC_TRAILER {
     return Ok(None);
   }
 
-  let (bundle_pos, rest) = rest.split_at(8);
+  let (bundle_pos, rest) = rest.split_at(pointer_size);
   let metadata_pos = rest;
-  let bundle_pos = u64_from_bytes(bundle_pos)?;
-  let metadata_pos = u64_from_bytes(metadata_pos)?;
+  let bundle_pos = usize_from_bytes(bundle_pos)? as u64;
+  let metadata_pos = usize_from_bytes(metadata_pos)? as u64;
   let bundle_len = metadata_pos - bundle_pos;
   let metadata_len = trailer_pos - metadata_pos;
   current_exe.seek(SeekFrom::Start(bundle_pos))?;
@@ -104,11 +106,20 @@ pub fn extract_standalone(
   Ok(Some((metadata, bundle)))
 }
 
-fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
+#[cfg(target_pointer_width = "64")]
+fn usize_from_bytes(arr: &[u8]) -> Result<usize, AnyError> {
   let fixed_arr: &[u8; 8] = arr
     .try_into()
     .context("Failed to convert the buffer into a fixed-size array")?;
-  Ok(u64::from_be_bytes(*fixed_arr))
+  Ok(usize::from_be_bytes(*fixed_arr))
+}
+
+#[cfg(target_pointer_width = "32")]
+fn usize_from_bytes(arr: &[u8]) -> Result<usize, AnyError> {
+  let fixed_arr: &[u8; 4] = arr
+    .try_into()
+    .context("Failed to convert the buffer into a fixed-size array")?;
+  Ok(usize::from_be_bytes(*fixed_arr))
 }
 
 fn read_string_slice(
