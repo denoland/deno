@@ -56,6 +56,7 @@
     RsaPssParams: {},
     EcdsaParams: { hash: "HashAlgorithmIdentifier" },
     HmacImportParams: { hash: "HashAlgorithmIdentifier" },
+    Pbkdf2Params: { hash: "HashAlgorithmIdentifier", salt: "BufferSource" },
   };
 
   const supportedAlgorithms = {
@@ -84,7 +85,11 @@
     },
     "importKey": {
       "HMAC": "HmacImportParams",
+      "PBKDF2": "Pbkdf2Params",
     },
+    "deriveBits": {
+      "PBKDF2": null,
+    }
   };
 
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
@@ -534,6 +539,49 @@
         // TODO(@littledivy): RSASSA-PKCS1-v1_5
         // TODO(@littledivy): RSA-PSS
         // TODO(@littledivy): ECDSA
+        case "PBKDF2": {
+          // 1.
+          if(format !== "raw") {
+            throw new DOMException("Format not supported", "NotSupportedError");
+          }
+
+          // 2.
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+
+          // 3.
+          if(extractable !== false) {
+            throw new DOMException("Key must not be extractable", "SyntaxError");
+          }
+
+          // 4.
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, {
+            type: "raw",
+            data: keyData,
+          });
+
+          // 5-9.
+          const algorithm = {
+            name: "PBKDF2"
+          };
+          const key = constructKey(
+            "secret",
+            false,
+            usageIntersection(keyUsages, recognisedUsages),
+            algorithm,
+            handle,
+          );
+          
+          // 10.
+          return key;
+        }
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
       }
@@ -584,6 +632,64 @@
         // TODO(@littledivy): RSASSA-PKCS1-v1_5
         // TODO(@littledivy): RSA-PSS
         // TODO(@littledivy): ECDSA
+        default:
+          throw new DOMException("Not implemented", "NotSupportedError");
+      }
+    }
+
+    /**
+    * @param {string} format
+    * @param {CryptoKey} key
+    * @returns {Promise<any>}
+    */
+    async deriveBits(algorithm, baseKey, length) {
+      webidl.assertBranded(this, SubtleCrypto);
+      const prefix = "Failed to execute 'deriveBits' on 'SubtleCrypto'";
+      webidl.requiredArguments(arguments.length, 3, { prefix });
+      algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+        prefix,
+        context: "Argument 1",
+      });
+      baseKey = webidl.converters.CryptoKey(baseKey, {
+        prefix,
+        context: "Argument 2",
+      });
+      length = webidl.converters["unsigned long"](length, {
+        prefix,
+        context: "Argument 3",
+      });
+
+      const normalizedAlgorithm = normalizeAlgorithm(algorithm, "deriveBits");
+      switch(normalizedAlgorithm.name) {
+        case "PBKDF2": {
+          // 1.
+          if(length == null || length % 8 !== 0) {
+            throw new DOMException("Invalid length", "OperationError");
+          }
+
+          const handle = baseKey[_handle];
+          const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
+          
+          if (ArrayBufferIsView(normalizedAlgorithm.salt)) {
+            normalizedAlgorithm.salt = new Uint8Array(
+              normalizedAlgorithm.salt.buffer,
+              normalizedAlgorithm.salt.byteOffset,
+              normalizedAlgorithm.salt.byteLength,
+            );
+          } else {
+            normalizedAlgorithm.salt = new Uint8Array(normalizedAlgorithm.salt);
+          }
+          normalizedAlgorithm.salt = TypedArrayPrototypeSlice(normalizedAlgorithm.salt);
+
+          const buf = await core.opAsync("op_crypto_derive_bits", {
+            key: keyData,
+            algorithm: "PBKDF2",
+            hash: normalizedAlgorithm.hash,
+            length,
+          }, normalizedAlgorithm.salt); 
+
+          return buf.buffer;
+        }
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
       }
