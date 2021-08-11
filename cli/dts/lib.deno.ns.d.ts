@@ -2167,7 +2167,7 @@ declare namespace Deno {
     variable?: string;
   }
 
-  export interface FFIPermissionDescriptor {
+  export interface FfiPermissionDescriptor {
     name: "ffi";
   }
 
@@ -2183,7 +2183,7 @@ declare namespace Deno {
     | WritePermissionDescriptor
     | NetPermissionDescriptor
     | EnvPermissionDescriptor
-    | FFIPermissionDescriptor
+    | FfiPermissionDescriptor
     | HrtimePermissionDescriptor;
 
   export interface PermissionStatusEventMap {
