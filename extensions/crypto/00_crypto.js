@@ -89,7 +89,7 @@
     },
     "deriveBits": {
       "PBKDF2": null,
-    }
+    },
   };
 
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
@@ -541,7 +541,7 @@
         // TODO(@littledivy): ECDSA
         case "PBKDF2": {
           // 1.
-          if(format !== "raw") {
+          if (format !== "raw") {
             throw new DOMException("Format not supported", "NotSupportedError");
           }
 
@@ -556,8 +556,11 @@
           }
 
           // 3.
-          if(extractable !== false) {
-            throw new DOMException("Key must not be extractable", "SyntaxError");
+          if (extractable !== false) {
+            throw new DOMException(
+              "Key must not be extractable",
+              "SyntaxError",
+            );
           }
 
           // 4.
@@ -569,7 +572,7 @@
 
           // 5-9.
           const algorithm = {
-            name: "PBKDF2"
+            name: "PBKDF2",
           };
           const key = constructKey(
             "secret",
@@ -578,7 +581,7 @@
             algorithm,
             handle,
           );
-          
+
           // 10.
           return key;
         }
@@ -660,16 +663,16 @@
       });
 
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "deriveBits");
-      switch(normalizedAlgorithm.name) {
+      switch (normalizedAlgorithm.name) {
         case "PBKDF2": {
           // 1.
-          if(length == null || length % 8 !== 0) {
+          if (length == null || length % 8 !== 0) {
             throw new DOMException("Invalid length", "OperationError");
           }
 
           const handle = baseKey[_handle];
           const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
-          
+
           if (ArrayBufferIsView(normalizedAlgorithm.salt)) {
             normalizedAlgorithm.salt = new Uint8Array(
               normalizedAlgorithm.salt.buffer,
@@ -679,14 +682,16 @@
           } else {
             normalizedAlgorithm.salt = new Uint8Array(normalizedAlgorithm.salt);
           }
-          normalizedAlgorithm.salt = TypedArrayPrototypeSlice(normalizedAlgorithm.salt);
+          normalizedAlgorithm.salt = TypedArrayPrototypeSlice(
+            normalizedAlgorithm.salt,
+          );
 
           const buf = await core.opAsync("op_crypto_derive_bits", {
             key: keyData,
             algorithm: "PBKDF2",
             hash: normalizedAlgorithm.hash,
             length,
-          }, normalizedAlgorithm.salt); 
+          }, normalizedAlgorithm.salt);
 
           return buf.buffer;
         }

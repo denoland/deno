@@ -166,7 +166,7 @@
 
   webidl.converters.HmacImportParams = webidl
     .createDictionaryConverter("HmacImportParams", dictHmacImportParams);
-  
+
   const dictPbkdf2Params = [
     ...dictAlgorithm,
     {

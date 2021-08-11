@@ -15,8 +15,8 @@ use serde::Deserialize;
 
 use std::cell::RefCell;
 use std::convert::TryInto;
-use std::rc::Rc;
 use std::num::NonZeroU32;
+use std::rc::Rc;
 
 use lazy_static::lazy_static;
 use num_traits::cast::FromPrimitive;
@@ -28,11 +28,11 @@ use rand::SeedableRng;
 use ring::digest;
 use ring::hmac::Algorithm as HmacAlgorithm;
 use ring::hmac::Key as HmacKey;
+use ring::pbkdf2;
 use ring::rand as RingRand;
 use ring::rand::SecureRandom;
 use ring::signature::EcdsaKeyPair;
 use ring::signature::EcdsaSigningAlgorithm;
-use ring::pbkdf2;
 use rsa::padding::PaddingScheme;
 use rsa::pkcs8::FromPrivateKey;
 use rsa::pkcs8::ToPrivateKey;
@@ -520,7 +520,6 @@ pub async fn op_crypto_verify_key(
   Ok(verification)
 }
 
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeriveKeyArg {
@@ -541,19 +540,20 @@ pub async fn op_crypto_derive_bits(
   let algorithm = args.algorithm;
   match algorithm {
     Algorithm::Pbkdf2 => {
-        let algorithm = match args.hash.ok_or_else(not_supported)? {
-          CryptoHash::Sha1 => pbkdf2::PBKDF2_HMAC_SHA1,
-          CryptoHash::Sha256 => pbkdf2::PBKDF2_HMAC_SHA256,
-          CryptoHash::Sha384 => pbkdf2::PBKDF2_HMAC_SHA384,
-          CryptoHash::Sha512 => pbkdf2::PBKDF2_HMAC_SHA512,
-        };
+      let algorithm = match args.hash.ok_or_else(not_supported)? {
+        CryptoHash::Sha1 => pbkdf2::PBKDF2_HMAC_SHA1,
+        CryptoHash::Sha256 => pbkdf2::PBKDF2_HMAC_SHA256,
+        CryptoHash::Sha384 => pbkdf2::PBKDF2_HMAC_SHA384,
+        CryptoHash::Sha512 => pbkdf2::PBKDF2_HMAC_SHA512,
+      };
 
-        // This will never panic. We have already checked length earlier.
-        let iterations = NonZeroU32::new(args.iterations.ok_or_else(not_supported)?).unwrap();
-        let secret = args.key.data;
-        let mut out = vec![0; args.length / 8];
-        pbkdf2::derive(algorithm, iterations, salt, &secret, &mut out);
-        Ok(out.into())
+      // This will never panic. We have already checked length earlier.
+      let iterations =
+        NonZeroU32::new(args.iterations.ok_or_else(not_supported)?).unwrap();
+      let secret = args.key.data;
+      let mut out = vec![0; args.length / 8];
+      pbkdf2::derive(algorithm, iterations, salt, &secret, &mut out);
+      Ok(out.into())
     }
     _ => return Err(type_error("Unsupported algorithm".to_string())),
   }
