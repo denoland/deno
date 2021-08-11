@@ -287,7 +287,7 @@ pub async fn test_specifier(
   }
 
   test_source
-    .push_str(&"await new Promise(resolve => setTimeout(resolve, 0));\n");
+    .push_str("await new Promise(resolve => setTimeout(resolve, 0));\n");
 
   test_source.push_str(&format!(
     "await Deno[Deno.internal].runTests({});\n",
@@ -577,7 +577,7 @@ pub async fn run_tests(
     for specifier in &test_modules {
       let file = program_state
         .file_fetcher
-        .fetch(&specifier, &mut fetch_permissions)
+        .fetch(specifier, &mut fetch_permissions)
         .await?;
 
       files.push(file);
