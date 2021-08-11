@@ -502,7 +502,7 @@ fn lsp_hover_unstable_disabled() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "console.log(Deno.openPlugin);\n"
+        "text": "console.log(Deno.dlopen);\n"
       }
     }),
   );
@@ -537,7 +537,7 @@ fn lsp_hover_unstable_disabled() {
         },
         "end": {
           "line": 0,
-          "character": 27
+          "character": 23
         }
       }
     }))
@@ -555,7 +555,7 @@ fn lsp_hover_unstable_enabled() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "console.log(Deno.openPlugin);\n"
+        "text": "console.log(Deno.ppid);\n"
       }
     }),
   );
@@ -580,9 +580,9 @@ fn lsp_hover_unstable_enabled() {
       "contents":[
         {
           "language":"typescript",
-          "value":"function Deno.openPlugin(filename: string): number"
+          "value":"const Deno.ppid: number"
         },
-        "**UNSTABLE**: new API, yet to be vetted.\n\nOpen and initialize a plugin.\n\n```ts\nimport { assert } from \"https://deno.land/std/testing/asserts.ts\";\nconst rid = Deno.openPlugin(\"./path/to/some/plugin.so\");\n\n// The Deno.core namespace is needed to interact with plugins, but this is\n// internal so we use ts-ignore to skip type checking these calls.\n// @ts-ignore\nconst { op_test_sync, op_test_async } = Deno.core.ops();\n\nassert(op_test_sync);\nassert(op_test_async);\n\n// @ts-ignore\nconst result = Deno.core.opSync(\"op_test_sync\");\n\n// @ts-ignore\nconst result = await Deno.core.opAsync(\"op_test_sync\");\n```\n\nRequires `allow-plugin` permission.\n\nThe plugin system is not stable and will change in the future, hence the\nlack of docs. For now take a look at the example\nhttps://github.com/denoland/deno/tree/main/test_plugin"
+        "The pid of the current process's parent."
       ],
       "range":{
         "start":{
@@ -591,7 +591,7 @@ fn lsp_hover_unstable_enabled() {
         },
         "end":{
           "line":0,
-          "character":27
+          "character":21
         }
       }
     }))
@@ -2150,6 +2150,54 @@ fn lsp_code_actions_refactor() {
   assert_eq!(
     maybe_res,
     Some(load_fixture("code_action_resolve_response_refactor.json"))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_code_actions_refactor_no_disabled_support() {
+  let mut client = init("initialize_params_ca_no_disabled.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "interface A {\n  a: string;\n}\n\ninterface B {\n  b: string;\n}\n\nclass AB implements A, B {\n  a = \"a\";\n  b = \"b\";\n}\n\nnew AB().a;\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeAction",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 14,
+            "character": 0
+          }
+        },
+        "context": {
+          "diagnostics": [],
+          "only": [
+            "refactor"
+          ]
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_action_response_no_disabled.json"))
   );
   shutdown(&mut client);
 }

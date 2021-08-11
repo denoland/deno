@@ -3,7 +3,6 @@
 use crate::auth_tokens::AuthTokens;
 use crate::colors;
 use crate::http_cache::HttpCache;
-use crate::http_util::create_http_client;
 use crate::http_util::fetch_once;
 use crate::http_util::FetchOnceArgs;
 use crate::http_util::FetchOnceResult;
@@ -22,6 +21,8 @@ use deno_core::ModuleSpecifier;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
+use deno_tls::create_http_client;
+use deno_tls::rustls::RootCertStore;
 use log::debug;
 use log::info;
 use std::borrow::Borrow;
@@ -220,8 +221,9 @@ impl FileFetcher {
     http_cache: HttpCache,
     cache_setting: CacheSetting,
     allow_remote: bool,
-    ca_data: Option<Vec<u8>>,
+    root_cert_store: Option<RootCertStore>,
     blob_store: BlobStore,
+    unsafely_ignore_certificate_errors: Option<Vec<String>>,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       auth_tokens: AuthTokens::new(env::var(DENO_AUTH_TOKENS).ok()),
@@ -229,7 +231,13 @@ impl FileFetcher {
       cache: Default::default(),
       cache_setting,
       http_cache,
-      http_client: create_http_client(get_user_agent(), ca_data)?,
+      http_client: create_http_client(
+        get_user_agent(),
+        root_cert_store,
+        None,
+        None,
+        unsafely_ignore_certificate_errors,
+      )?,
       blob_store,
     })
   }
@@ -612,6 +620,7 @@ mod tests {
       true,
       None,
       blob_store.clone(),
+      None,
     )
     .expect("setup failed");
     (file_fetcher, temp_dir, blob_store)
@@ -1057,6 +1066,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
     )
     .expect("setup failed");
     let result = file_fetcher
@@ -1084,6 +1094,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
     let specifier =
@@ -1112,6 +1123,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
     let result = file_fetcher_02
@@ -1273,6 +1285,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
     let specifier =
@@ -1304,6 +1317,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
     let result = file_fetcher_02
@@ -1414,6 +1428,7 @@ mod tests {
       false,
       None,
       BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
     let specifier =
@@ -1441,6 +1456,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
     let file_fetcher_02 = FileFetcher::new(
@@ -1449,6 +1465,7 @@ mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
     )
     .expect("could not create file fetcher");
     let specifier =

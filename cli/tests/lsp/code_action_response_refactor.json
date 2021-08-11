@@ -1,88 +1,62 @@
 [
   {
-    "title": "Extract to type alias",
-    "kind": "refactor.extract.type",
-    "isPreferred": true,
-    "data": {
-      "specifier": "file:///a/file.ts",
-      "range": {
-        "start": {
-          "line": 0,
-          "character": 7
-        },
-        "end": {
-          "line": 0,
-          "character": 33
-        }
-      },
-      "refactorName": "Extract type",
-      "actionName": "Extract to type alias"
-    }
-  },
-  {
-    "title": "Extract to interface",
-    "kind": "refactor.extract.interface",
-    "isPreferred": true,
-    "data": {
-      "specifier": "file:///a/file.ts",
-      "range": {
-        "start": {
-          "line": 0,
-          "character": 7
-        },
-        "end": {
-          "line": 0,
-          "character": 33
-        }
-      },
-      "refactorName": "Extract type",
-      "actionName": "Extract to interface"
-    }
-  },
-  {
-    "title": "Extract function",
+    "title": "Extract to function in global scope",
     "kind": "refactor.extract.function",
     "isPreferred": false,
-    "disabled": {
-      "reason": "Statement or expression expected."
-    },
     "data": {
       "specifier": "file:///a/file.ts",
       "range": {
         "start": {
           "line": 0,
-          "character": 7
+          "character": 0
         },
         "end": {
-          "line": 0,
-          "character": 33
+          "line": 1,
+          "character": 0
         }
       },
       "refactorName": "Extract Symbol",
-      "actionName": "Extract Function"
+      "actionName": "function_scope_0"
     }
   },
   {
-    "title": "Extract constant",
+    "title": "Extract to constant in enclosing scope",
     "kind": "refactor.extract.constant",
     "isPreferred": false,
-    "disabled": {
-      "reason": "Statement or expression expected."
-    },
     "data": {
       "specifier": "file:///a/file.ts",
       "range": {
         "start": {
           "line": 0,
-          "character": 7
+          "character": 0
         },
         "end": {
-          "line": 0,
-          "character": 33
+          "line": 1,
+          "character": 0
         }
       },
       "refactorName": "Extract Symbol",
-      "actionName": "Extract Constant"
+      "actionName": "constant_scope_0"
+    }
+  },
+  {
+    "title": "Move to a new file",
+    "kind": "refactor.move.newFile",
+    "isPreferred": false,
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 1,
+          "character": 0
+        }
+      },
+      "refactorName": "Move to a new file",
+      "actionName": "Move to a new file"
     }
   },
   {
@@ -90,18 +64,18 @@
     "kind": "refactor.rewrite.export.named",
     "isPreferred": false,
     "disabled": {
-      "reason": "Could not find export statement"
+      "reason": "This file already has a default export"
     },
     "data": {
       "specifier": "file:///a/file.ts",
       "range": {
         "start": {
           "line": 0,
-          "character": 7
+          "character": 0
         },
         "end": {
-          "line": 0,
-          "character": 33
+          "line": 1,
+          "character": 0
         }
       },
       "refactorName": "Convert export",
@@ -113,18 +87,18 @@
     "kind": "refactor.rewrite.export.default",
     "isPreferred": false,
     "disabled": {
-      "reason": "Could not find export statement"
+      "reason": "This file already has a default export"
     },
     "data": {
       "specifier": "file:///a/file.ts",
       "range": {
         "start": {
           "line": 0,
-          "character": 7
+          "character": 0
         },
         "end": {
-          "line": 0,
-          "character": 33
+          "line": 1,
+          "character": 0
         }
       },
       "refactorName": "Convert export",
@@ -143,15 +117,61 @@
       "range": {
         "start": {
           "line": 0,
-          "character": 7
+          "character": 0
         },
         "end": {
-          "line": 0,
-          "character": 33
+          "line": 1,
+          "character": 0
         }
       },
       "refactorName": "Convert import",
       "actionName": "Convert namespace import to named imports"
+    }
+  },
+  {
+    "title": "Convert named imports to namespace import",
+    "kind": "refactor.rewrite.import.namespace",
+    "isPreferred": false,
+    "disabled": {
+      "reason": "Selection is not an import declaration."
+    },
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 1,
+          "character": 0
+        }
+      },
+      "refactorName": "Convert import",
+      "actionName": "Convert named imports to namespace import"
+    }
+  },
+  {
+    "title": "Convert to optional chain expression",
+    "kind": "refactor.rewrite.expression.optionalChain",
+    "isPreferred": false,
+    "disabled": {
+      "reason": "Could not find convertible access expression"
+    },
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 1,
+          "character": 0
+        }
+      },
+      "refactorName": "Convert to optional chain expression",
+      "actionName": "Convert to optional chain expression"
     }
   }
 ]

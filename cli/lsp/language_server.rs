@@ -1298,11 +1298,18 @@ impl Inner {
         .map(CodeActionOrCommand::CodeAction),
     );
 
-    let response = if !all_actions.is_empty() {
-      Some(all_actions)
-    } else {
+    let code_action_disabled_support =
+      self.config.client_capabilities.code_action_disabled_support;
+    let actions: Vec<CodeActionOrCommand> = all_actions.into_iter().filter(|ca| {
+      code_action_disabled_support
+        || matches!(ca, CodeActionOrCommand::CodeAction(ca) if ca.disabled.is_none())
+    }).collect();
+    let response = if actions.is_empty() {
       None
+    } else {
+      Some(actions)
     };
+
     self.performance.measure(mark);
     Ok(response)
   }

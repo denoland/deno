@@ -646,7 +646,7 @@ unitTest({ perms: { net: true } }, async function httpServerWebSocket() {
       socket.onerror = () => fail();
       socket.onmessage = (m) => {
         socket.send(m.data);
-        socket.close();
+        socket.close(1001);
       };
       await respondWith(response);
       break;
