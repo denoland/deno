@@ -55,10 +55,10 @@ itest!(doc {
   output: "test/doc.out",
 });
 
-itest!(doc_markdown {
-  args: "test --doc --allow-all test/doc_markdown",
+itest!(markdown {
+  args: "test --doc --allow-all test/markdown.md",
   exit_code: 1,
-  output: "test/doc_markdown.out",
+  output: "test/markdown.out",
 });
 
 itest!(quiet {
