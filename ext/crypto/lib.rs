@@ -128,7 +128,7 @@ pub async fn op_crypto_generate_key(
   let algorithm = args.name;
 
   let key = match algorithm {
-    Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss => {
+    Algorithm::RsassaPkcs1v15 | Algorithm::RsaPss | Algorithm::RsaOaep => {
       let public_exponent = args.public_exponent.ok_or_else(not_supported)?;
       let modulus_length = args.modulus_length.ok_or_else(not_supported)?;
 
