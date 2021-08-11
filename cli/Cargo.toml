@@ -106,6 +106,7 @@ test_util = { path = "../test_util" }
 tower-test = "0.4.0"
 trust-dns-client = "0.20.3"
 trust-dns-server = "0.20.3"
+flaky_test = "0.1.0"
 
 [target.'cfg(unix)'.dev-dependencies]
 exec = "0.3.1" # Used in test_raw_tty

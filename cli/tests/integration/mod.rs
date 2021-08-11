@@ -30,6 +30,21 @@ macro_rules! itest(
 }
 );
 
+#[macro_export]
+macro_rules! itest_flaky(
+($name:ident {$( $key:ident: $value:expr,)*})  => {
+  #[flaky_test::flaky_test]
+  fn $name() {
+    (test_util::CheckOutputIntegrationTest {
+      $(
+        $key: $value,
+       )*
+      .. Default::default()
+    }).run()
+  }
+}
+);
+
 // These files have `_tests.rs` suffix to make it easier to tell which file is
 // the test (ex. `lint_tests.rs`) and which is the implementation (ex. `lint.rs`)
 // when both are open, especially for two tabs in VS Code
@@ -447,39 +462,39 @@ fn broken_stdout() {
   assert!(!stderr.contains("panic"));
 }
 
-itest!(cafile_url_imports {
+itest_flaky!(cafile_url_imports {
   args: "run --quiet --reload --cert tls/RootCA.pem cafile_url_imports.ts",
   output: "cafile_url_imports.ts.out",
   http_server: true,
 });
 
-itest!(cafile_ts_fetch {
+itest_flaky!(cafile_ts_fetch {
   args:
     "run --quiet --reload --allow-net --cert tls/RootCA.pem cafile_ts_fetch.ts",
   output: "cafile_ts_fetch.ts.out",
   http_server: true,
 });
 
-itest!(cafile_eval {
+itest_flaky!(cafile_eval {
   args: "eval --cert tls/RootCA.pem fetch('https://localhost:5545/cli/tests/cafile_ts_fetch.ts.out').then(r=>r.text()).then(t=>console.log(t.trimEnd()))",
   output: "cafile_ts_fetch.ts.out",
   http_server: true,
 });
 
-itest!(cafile_info {
+itest_flaky!(cafile_info {
   args:
     "info --quiet --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
   output: "cafile_info.ts.out",
   http_server: true,
 });
 
-itest!(cafile_url_imports_unsafe_ssl {
+itest_flaky!(cafile_url_imports_unsafe_ssl {
   args: "run --quiet --reload --unsafely-ignore-certificate-errors=localhost cafile_url_imports.ts",
   output: "cafile_url_imports_unsafe_ssl.ts.out",
   http_server: true,
 });
 
-itest!(cafile_ts_fetch_unsafe_ssl {
+itest_flaky!(cafile_ts_fetch_unsafe_ssl {
   args:
     "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors cafile_ts_fetch.ts",
   output: "cafile_ts_fetch_unsafe_ssl.ts.out",
@@ -500,7 +515,7 @@ itest!(localhost_unsafe_ssl {
   exit_code: 1,
 });
 
-#[test]
+#[flaky_test::flaky_test]
 fn cafile_env_fetch() {
   use deno_core::url::Url;
   let _g = util::http_server();
@@ -520,7 +535,7 @@ fn cafile_env_fetch() {
   assert!(output.status.success());
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn cafile_fetch() {
   use deno_core::url::Url;
   let _g = util::http_server();
@@ -543,7 +558,7 @@ fn cafile_fetch() {
   assert_eq!(out, "");
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn cafile_install_remote_module() {
   let _g = util::http_server();
   let temp_dir = TempDir::new().expect("tempdir fail");
@@ -585,7 +600,7 @@ fn cafile_install_remote_module() {
   assert!(stdout.ends_with("foo"));
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn cafile_bundle_remote_exports() {
   let _g = util::http_server();
 
