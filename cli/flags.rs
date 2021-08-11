@@ -1093,7 +1093,7 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .value_name("coverage_dir")
         .conflicts_with("inspect")
         .conflicts_with("inspect-brk")
-        .help("Collect coverage profile data into coverage_dir"),
+        .help("UNSTABLE: Collect coverage profile data into DIR"),
     )
     .arg(
       Arg::with_name("jobs")
