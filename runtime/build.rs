@@ -90,6 +90,15 @@ fn main() {
   // Main snapshot
   let runtime_snapshot_path = o.join("CLI_SNAPSHOT.bin");
 
+  // If we're building on docs.rs we just create
+  // and empty snapshot file and return, because `rusty_v8`
+  // doesn't actually compile on docs.rs
+  if env::var_os("DOCS_RS").is_some() {
+    let snapshot_slice = &[];
+    std::fs::write(&runtime_snapshot_path, snapshot_slice).unwrap();
+    return;
+  }
+
   let js_files = get_js_files("js");
   create_runtime_snapshot(&runtime_snapshot_path, js_files);
 }
