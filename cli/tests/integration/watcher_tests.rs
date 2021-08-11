@@ -50,15 +50,15 @@ fn wait_for_process_failed(
 #[test]
 fn fmt_watch_test() {
   let t = TempDir::new().expect("tempdir fail");
-  let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
+  let fixed = util::testdata_path().join("badly_formatted_fixed.js");
   let badly_formatted_original =
-    util::root_path().join("cli/tests/badly_formatted.mjs");
+    util::testdata_path().join("badly_formatted.mjs");
   let badly_formatted = t.path().join("badly_formatted.js");
   std::fs::copy(&badly_formatted_original, &badly_formatted)
     .expect("Failed to copy file");
 
   let mut child = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("fmt")
     .arg(&badly_formatted)
     .arg("--watch")
@@ -109,7 +109,7 @@ fn bundle_js_watch() {
   let t = TempDir::new().expect("tempdir fail");
   let bundle = t.path().join("mod6.bundle.js");
   let mut deno = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("bundle")
     .arg(&file_to_watch)
     .arg(&bundle)
@@ -173,7 +173,7 @@ fn bundle_watch_not_exit() {
   let target_file = t.path().join("target.js");
 
   let mut deno = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("bundle")
     .arg(&file_to_watch)
     .arg(&target_file)
@@ -224,7 +224,7 @@ fn run_watch() {
     .expect("error writing file");
 
   let mut child = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg("--watch")
     .arg("--unstable")
@@ -330,7 +330,7 @@ fn run_watch_not_exit() {
     .expect("error writing file");
 
   let mut child = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg("--watch")
     .arg("--unstable")
@@ -377,14 +377,14 @@ fn run_watch_with_import_map_and_relative_paths() {
     let absolute_path = directory.path().join(filename);
     std::fs::write(&absolute_path, filecontent).expect("error writing file");
     let relative_path = absolute_path
-      .strip_prefix(util::root_path())
+      .strip_prefix(util::testdata_path())
       .expect("unable to create relative temporary file")
       .to_owned();
     assert!(relative_path.is_relative());
     relative_path
   }
   let temp_directory =
-    TempDir::new_in(util::root_path()).expect("tempdir fail");
+    TempDir::new_in(util::testdata_path()).expect("tempdir fail");
   let file_to_watch = create_relative_tmp_file(
     &temp_directory,
     "file_to_watch.js",
@@ -397,7 +397,7 @@ fn run_watch_with_import_map_and_relative_paths() {
   );
 
   let mut child = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg("--unstable")
     .arg("--watch")
@@ -443,7 +443,7 @@ fn test_watch() {
   let t = TempDir::new().expect("tempdir fail");
 
   let mut child = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("test")
     .arg("--watch")
     .arg("--unstable")
@@ -612,7 +612,7 @@ fn test_watch_doc() {
   let t = TempDir::new().expect("tempdir fail");
 
   let mut child = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("test")
     .arg("--watch")
     .arg("--doc")

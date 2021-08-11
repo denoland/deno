@@ -17,7 +17,7 @@ unitTest(function filesStdioFileDescriptors() {
 });
 
 unitTest({ perms: { read: true } }, async function filesCopyToStdout() {
-  const filename = "cli/tests/fixture.json";
+  const filename = "cli/tests/testdata/fixture.json";
   const file = await Deno.open(filename);
   assert(file.rid > 2);
   const bytesWritten = await copy(file, Deno.stdout);
@@ -27,7 +27,7 @@ unitTest({ perms: { read: true } }, async function filesCopyToStdout() {
 });
 
 unitTest({ perms: { read: true } }, async function filesIter() {
-  const filename = "cli/tests/hello.txt";
+  const filename = "cli/tests/testdata/hello.txt";
   const file = await Deno.open(filename);
 
   let totalSize = 0;
@@ -42,7 +42,7 @@ unitTest({ perms: { read: true } }, async function filesIter() {
 unitTest(
   { perms: { read: true } },
   async function filesIterCustomBufSize() {
-    const filename = "cli/tests/hello.txt";
+    const filename = "cli/tests/testdata/hello.txt";
     const file = await Deno.open(filename);
 
     let totalSize = 0;
@@ -59,7 +59,7 @@ unitTest(
 );
 
 unitTest({ perms: { read: true } }, function filesIterSync() {
-  const filename = "cli/tests/hello.txt";
+  const filename = "cli/tests/testdata/hello.txt";
   const file = Deno.openSync(filename);
 
   let totalSize = 0;
@@ -74,7 +74,7 @@ unitTest({ perms: { read: true } }, function filesIterSync() {
 unitTest(
   { perms: { read: true } },
   function filesIterSyncCustomBufSize() {
-    const filename = "cli/tests/hello.txt";
+    const filename = "cli/tests/testdata/hello.txt";
     const file = Deno.openSync(filename);
 
     let totalSize = 0;
@@ -264,7 +264,7 @@ unitTest(
 );
 
 unitTest(async function openOptions() {
-  const filename = "cli/tests/fixture.json";
+  const filename = "cli/tests/testdata/fixture.json";
   await assertThrowsAsync(
     async () => {
       await Deno.open(filename, { write: false });
@@ -532,7 +532,7 @@ unitTest(
 );
 
 unitTest({ perms: { read: true } }, async function seekStart() {
-  const filename = "cli/tests/hello.txt";
+  const filename = "cli/tests/testdata/hello.txt";
   const file = await Deno.open(filename);
   const seekPosition = 6;
   // Deliberately move 1 step forward
@@ -549,7 +549,7 @@ unitTest({ perms: { read: true } }, async function seekStart() {
 });
 
 unitTest({ perms: { read: true } }, function seekSyncStart() {
-  const filename = "cli/tests/hello.txt";
+  const filename = "cli/tests/testdata/hello.txt";
   const file = Deno.openSync(filename);
   const seekPosition = 6;
   // Deliberately move 1 step forward
@@ -566,7 +566,7 @@ unitTest({ perms: { read: true } }, function seekSyncStart() {
 });
 
 unitTest({ perms: { read: true } }, async function seekCurrent() {
-  const filename = "cli/tests/hello.txt";
+  const filename = "cli/tests/testdata/hello.txt";
   const file = await Deno.open(filename);
   // Deliberately move 1 step forward
   await file.read(new Uint8Array(1)); // "H"
@@ -583,7 +583,7 @@ unitTest({ perms: { read: true } }, async function seekCurrent() {
 });
 
 unitTest({ perms: { read: true } }, function seekSyncCurrent() {
-  const filename = "cli/tests/hello.txt";
+  const filename = "cli/tests/testdata/hello.txt";
   const file = Deno.openSync(filename);
   // Deliberately move 1 step forward
   file.readSync(new Uint8Array(1)); // "H"
@@ -600,7 +600,7 @@ unitTest({ perms: { read: true } }, function seekSyncCurrent() {
 });
 
 unitTest({ perms: { read: true } }, async function seekEnd() {
-  const filename = "cli/tests/hello.txt";
+  const filename = "cli/tests/testdata/hello.txt";
   const file = await Deno.open(filename);
   const seekPosition = -6;
   // seek from end of file that has 12 chars, 12 - 6  = 6
@@ -614,7 +614,7 @@ unitTest({ perms: { read: true } }, async function seekEnd() {
 });
 
 unitTest({ perms: { read: true } }, function seekSyncEnd() {
-  const filename = "cli/tests/hello.txt";
+  const filename = "cli/tests/testdata/hello.txt";
   const file = Deno.openSync(filename);
   const seekPosition = -6;
   // seek from end of file that has 12 chars, 12 - 6  = 6
@@ -628,7 +628,7 @@ unitTest({ perms: { read: true } }, function seekSyncEnd() {
 });
 
 unitTest({ perms: { read: true } }, async function seekMode() {
-  const filename = "cli/tests/hello.txt";
+  const filename = "cli/tests/testdata/hello.txt";
   const file = await Deno.open(filename);
   await assertThrowsAsync(
     async () => {

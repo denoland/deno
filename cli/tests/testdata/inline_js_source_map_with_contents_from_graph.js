@@ -1,0 +1,4 @@
+"use strict";
+import "http://localhost:4545/inline_js_source_map.ts";
+throw new Error("Hello world!");
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiIiwic291cmNlUm9vdCI6IiIsInNvdXJjZXMiOlsiaHR0cDovL2xvY2FsaG9zdDo0NTQ1L2lubGluZV9qc19zb3VyY2VfbWFwLnRzIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiI7QUFBQSxDQUFDLEdBQUMsQ0FBQyxDQUFDO0FBS0osTUFBTSxJQUFJLEtBQUssQ0FBQyxjQUErQixDQUFDLENBQUMifQ==
