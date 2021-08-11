@@ -2,12 +2,16 @@
 
 [package]
 name = "deno_runtime"
-version = "0.22.0"
+version = "0.22.2"
 authors = ["the Deno authors"]
 edition = "2018"
 license = "MIT"
 repository = "https://github.com/denoland/deno"
 description = "Provides the deno runtime library"
+
+[features]
+# "fake" feature that allows to generate docs on docs.rs
+docsrs = []
 
 [lib]
 name = "deno_runtime"
@@ -88,3 +92,6 @@ nix = "0.20.0"
 [dev-dependencies]
 # Used in benchmark
 test_util = { path = "../test_util" }
+
+[package.metadata.docs.rs]
+features = ["docsrs"]
