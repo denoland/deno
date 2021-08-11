@@ -262,7 +262,7 @@ where
   Ok(prepared)
 }
 
-pub async fn run_test_file(
+pub async fn test_specifier(
   program_state: Arc<ProgramState>,
   main_module: ModuleSpecifier,
   permissions: Permissions,
@@ -599,7 +599,7 @@ pub async fn run_tests(
 
     tokio::task::spawn_blocking(move || {
       let join_handle = std::thread::spawn(move || {
-        let future = run_test_file(
+        let future = test_specifier(
           program_state,
           main_module,
           permissions,
