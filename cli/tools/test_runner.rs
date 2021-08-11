@@ -708,7 +708,7 @@ mod tests {
 
   #[test]
   fn test_collect_test_module_specifiers() {
-    let test_data_path = test_util::root_path().join("cli/tests/subdir");
+    let sub_dir_path = test_util::testdata_path().join("subdir");
     let mut matched_urls = collect_test_module_specifiers(
       vec![
         "https://example.com/colors_test.ts".to_string(),
@@ -717,12 +717,11 @@ mod tests {
         "subdir2/mod2.ts".to_string(),
         "http://example.com/printf_test.ts".to_string(),
       ],
-      &test_data_path,
+      &sub_dir_path,
       is_supported,
     )
     .unwrap();
-    let test_data_url =
-      Url::from_file_path(test_data_path).unwrap().to_string();
+    let test_data_url = Url::from_file_path(sub_dir_path).unwrap().to_string();
 
     let expected: Vec<Url> = vec![
       format!("{}/mod1.ts", test_data_url),

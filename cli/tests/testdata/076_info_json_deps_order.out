@@ -1,0 +1,78 @@
+{
+  "root": "file://[WILDCARD]/076_info_json_deps_order.ts",
+  "modules": [
+    {
+      "specifier": "file://[WILDCARD]/076_info_json_deps_order.ts",
+      "dependencies": [
+        {
+          "specifier": "./recursive_imports/A.ts",
+          "code": "file://[WILDCARD]/recursive_imports/A.ts"
+        }
+      ],
+      "size": 81,
+      "mediaType": "TypeScript",
+      "local": "[WILDCARD]076_info_json_deps_order.ts",
+      "checksum": "5dd40fe33e5924cca513489ce568e86c9b9fe318a87975403c8923629018680d"
+    },
+    {
+      "specifier": "file://[WILDCARD]/recursive_imports/A.ts",
+      "dependencies": [
+        {
+          "specifier": "./B.ts",
+          "code": "file://[WILDCARD]/recursive_imports/B.ts"
+        },
+        {
+          "specifier": "./common.ts",
+          "code": "file://[WILDCARD]/recursive_imports/common.ts"
+        }
+      ],
+      "size": 108,
+      "mediaType": "TypeScript",
+      "local": "[WILDCARD]A.ts",
+      "checksum": "3b45a105d892584298490cb73372b2cac57118e1e42a677a1d5cacea704d8d3a"
+    },
+    {
+      "specifier": "file://[WILDCARD]/recursive_imports/B.ts",
+      "dependencies": [
+        {
+          "specifier": "./C.ts",
+          "code": "file://[WILDCARD]/recursive_imports/C.ts"
+        },
+        {
+          "specifier": "./common.ts",
+          "code": "file://[WILDCARD]/recursive_imports/common.ts"
+        }
+      ],
+      "size": 108,
+      "mediaType": "TypeScript",
+      "local": "[WILDCARD]B.ts",
+      "checksum": "b12b0437ef9a91c4a4b1f66e8e4339f986b60bd8134031ccb296ce49df15b54e"
+    },
+    {
+      "specifier": "file://[WILDCARD]/recursive_imports/C.ts",
+      "dependencies": [
+        {
+          "specifier": "./A.ts",
+          "code": "file://[WILDCARD]/recursive_imports/A.ts"
+        },
+        {
+          "specifier": "./common.ts",
+          "code": "file://[WILDCARD]/recursive_imports/common.ts"
+        }
+      ],
+      "size": 126,
+      "mediaType": "TypeScript",
+      "local": "[WILDCARD]C.ts",
+      "checksum": "605875a410741bfaeeade28cbccf45f219ad99d987ea695e35eda75d2c53a658"
+    },
+    {
+      "specifier": "file://[WILDCARD]/recursive_imports/common.ts",
+      "dependencies": [],
+      "size": 28,
+      "mediaType": "TypeScript",
+      "local": "[WILDCARD]common.ts",
+      "checksum": "c70025f0b936c02980c3be1fbd78f6f36b6241927c44ea67580821a6e664d8b3"
+    }
+  ],
+  "size": 451
+}

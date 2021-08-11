@@ -94,40 +94,40 @@ unitTest(
 );
 
 unitTest({ perms: { net: true } }, async function fetchJsonSuccess() {
-  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
+  const response = await fetch("http://localhost:4545/fixture.json");
   const json = await response.json();
   assertEquals(json.name, "deno");
 });
 
 unitTest(async function fetchPerm() {
   await assertThrowsAsync(async () => {
-    await fetch("http://localhost:4545/cli/tests/fixture.json");
+    await fetch("http://localhost:4545/fixture.json");
   }, Deno.errors.PermissionDenied);
 });
 
 unitTest({ perms: { net: true } }, async function fetchUrl() {
-  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
-  assertEquals(response.url, "http://localhost:4545/cli/tests/fixture.json");
+  const response = await fetch("http://localhost:4545/fixture.json");
+  assertEquals(response.url, "http://localhost:4545/fixture.json");
   const _json = await response.json();
 });
 
 unitTest({ perms: { net: true } }, async function fetchURL() {
   const response = await fetch(
-    new URL("http://localhost:4545/cli/tests/fixture.json"),
+    new URL("http://localhost:4545/fixture.json"),
   );
-  assertEquals(response.url, "http://localhost:4545/cli/tests/fixture.json");
+  assertEquals(response.url, "http://localhost:4545/fixture.json");
   const _json = await response.json();
 });
 
 unitTest({ perms: { net: true } }, async function fetchHeaders() {
-  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
+  const response = await fetch("http://localhost:4545/fixture.json");
   const headers = response.headers;
   assertEquals(headers.get("Content-Type"), "application/json");
   const _json = await response.json();
 });
 
 unitTest({ perms: { net: true } }, async function fetchBlob() {
-  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
+  const response = await fetch("http://localhost:4545/fixture.json");
   const headers = response.headers;
   const blob = await response.blob();
   assertEquals(blob.type, headers.get("Content-Type"));
@@ -138,7 +138,7 @@ unitTest(
   { perms: { net: true } },
   async function fetchBodyUsedReader() {
     const response = await fetch(
-      "http://localhost:4545/cli/tests/fixture.json",
+      "http://localhost:4545/fixture.json",
     );
     assert(response.body !== null);
 
@@ -156,7 +156,7 @@ unitTest(
   { perms: { net: true } },
   async function fetchBodyUsedCancelStream() {
     const response = await fetch(
-      "http://localhost:4545/cli/tests/fixture.json",
+      "http://localhost:4545/fixture.json",
     );
     assert(response.body !== null);
 
@@ -168,7 +168,7 @@ unitTest(
 );
 
 unitTest({ perms: { net: true } }, async function fetchAsyncIterator() {
-  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
+  const response = await fetch("http://localhost:4545/fixture.json");
   const headers = response.headers;
 
   assert(response.body !== null);
@@ -182,7 +182,7 @@ unitTest({ perms: { net: true } }, async function fetchAsyncIterator() {
 });
 
 unitTest({ perms: { net: true } }, async function fetchBodyReader() {
-  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
+  const response = await fetch("http://localhost:4545/fixture.json");
   const headers = response.headers;
   assert(response.body !== null);
   const reader = response.body.getReader();
@@ -221,7 +221,7 @@ unitTest(
 );
 
 unitTest({ perms: { net: true } }, async function responseClone() {
-  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
+  const response = await fetch("http://localhost:4545/fixture.json");
   const response1 = response.clone();
   assert(response !== response1);
   assertEquals(response.status, response1.status);
@@ -272,7 +272,7 @@ unitTest(
   { perms: { net: true } },
   async function fetchURLEncodedFormDataSuccess() {
     const response = await fetch(
-      "http://localhost:4545/cli/tests/subdir/form_urlencoded.txt",
+      "http://localhost:4545/subdir/form_urlencoded.txt",
     );
     const formData = await response.formData();
     assert(formData.has("field_1"));
@@ -360,12 +360,12 @@ unitTest(
     perms: { net: true },
   },
   async function fetchWithRedirection() {
-    const response = await fetch("http://localhost:4546/README.md");
+    const response = await fetch("http://localhost:4546/hello.txt");
     assertEquals(response.status, 200);
     assertEquals(response.statusText, "OK");
-    assertEquals(response.url, "http://localhost:4545/README.md");
+    assertEquals(response.url, "http://localhost:4545/hello.txt");
     const body = await response.text();
-    assert(body.includes("Deno"));
+    assert(body.includes("Hello world!"));
   },
 );
 
@@ -375,7 +375,7 @@ unitTest(
   },
   async function fetchWithRelativeRedirection() {
     const response = await fetch(
-      "http://localhost:4545/cli/tests/001_hello.js",
+      "http://localhost:4545/001_hello.js",
     );
     assertEquals(response.status, 200);
     assertEquals(response.statusText, "OK");
@@ -411,7 +411,7 @@ unitTest(
   },
   async function fetchWithInfRedirection() {
     await assertThrowsAsync(
-      () => fetch("http://localhost:4549/cli/tests"),
+      () => fetch("http://localhost:4549"),
       TypeError,
       "redirect",
     );
@@ -450,7 +450,7 @@ unitTest(
   { perms: { net: true } },
   async function fetchSeparateInit() {
     // related to: https://github.com/denoland/deno/issues/10396
-    const req = new Request("http://localhost:4545/cli/tests/001_hello.js");
+    const req = new Request("http://localhost:4545/001_hello.js");
     const init = {
       method: "GET",
     };
@@ -815,7 +815,7 @@ unitTest(async function responseWithoutBody() {
 });
 
 unitTest({ perms: { net: true } }, async function fetchBodyReadTwice() {
-  const response = await fetch("http://localhost:4545/cli/tests/fixture.json");
+  const response = await fetch("http://localhost:4545/fixture.json");
 
   // Read body
   const _json = await response.json();
@@ -839,7 +839,7 @@ unitTest(
   { perms: { net: true } },
   async function fetchBodyReaderAfterRead() {
     const response = await fetch(
-      "http://localhost:4545/cli/tests/fixture.json",
+      "http://localhost:4545/fixture.json",
     );
     assert(response.body !== null);
     const reader = await response.body.getReader();
@@ -919,7 +919,7 @@ unitTest(
 unitTest(
   { perms: { net: true } },
   async function fetchResourceCloseAfterStreamCancel() {
-    const res = await fetch("http://localhost:4545/cli/tests/fixture.json");
+    const res = await fetch("http://localhost:4545/fixture.json");
     assert(res.body !== null);
 
     // After ReadableStream.cancel is called, resource handle must be closed
@@ -1047,7 +1047,7 @@ MNf4EgWfK+tZMnuqfpfO9740KzfcVoMNo4QJD4yn5YxroUOO/Azi
       },
     );
     const response = await fetch(
-      "https://localhost:5545/cli/tests/fixture.json",
+      "https://localhost:5545/fixture.json",
       { client },
     );
     const json = await response.json();
