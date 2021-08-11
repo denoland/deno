@@ -574,9 +574,30 @@ pub async fn run_tests(
       .await?;
   }
 
+  let prepare_roots = {
+    let mut files = Vec::new();
+    let mut fetch_permissions = Permissions::allow_all();
+    for specifier in &test_modules {
+      let file = program_state
+        .file_fetcher
+        .fetch(&specifier, &mut fetch_permissions)
+        .await?;
+
+      files.push(file);
+    }
+
+    let prepare_roots = files
+      .iter()
+      .filter(|file| file.media_type != MediaType::Unknown)
+      .map(|file| file.specifier.clone())
+      .collect();
+
+    prepare_roots
+  };
+
   program_state
     .prepare_module_graph(
-      test_modules.clone(),
+      prepare_roots,
       lib.clone(),
       Permissions::allow_all(),
       permissions.clone(),
