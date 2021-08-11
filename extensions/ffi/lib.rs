@@ -340,11 +340,8 @@ fn op_ffi_call(
     .get(&args.symbol)
     .ok_or_else(bad_resource_id)?;
 
-  let buffers: Vec<&[u8]> = args
-    .buffers
-    .iter()
-    .map(|buffer| &buffer[..])
-    .collect();
+  let buffers: Vec<&[u8]> =
+    args.buffers.iter().map(|buffer| &buffer[..]).collect();
 
   let native_values = symbol
     .parameter_types
