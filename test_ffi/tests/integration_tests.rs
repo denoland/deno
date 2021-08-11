@@ -38,7 +38,16 @@ fn basic() {
   assert!(output.status.success());
   let expected = "\
     something\n\
+    hello from deno!\n\
+    [1, 2, 3, 4, 5, 6, 7, 8]\n\
     579\n\
+    579\n\
+    579\n\
+    579\n\
+    579\n\
+    579\n\
+    579.9119873046875\n\
+    579.912\n\
     Correct number of resources\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");

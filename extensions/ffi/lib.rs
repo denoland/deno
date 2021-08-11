@@ -10,6 +10,7 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ZeroCopyBuf;
 use dlopen::raw::Library;
 use libffi::middle::Arg;
 use serde::Deserialize;
@@ -17,6 +18,9 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::ffi::c_void;
+use std::ffi::CStr;
+use std::ffi::CString;
+use std::os::raw::c_char;
 use std::rc::Rc;
 
 pub struct Unstable(pub bool);
@@ -50,6 +54,7 @@ struct Symbol {
   ptr: libffi::middle::CodePtr,
   parameter_types: Vec<NativeType>,
   result_type: NativeType,
+  result_length: Option<usize>,
 }
 
 struct DynamicLibraryResource {
@@ -90,6 +95,7 @@ impl DynamicLibraryResource {
         ptr,
         parameter_types: parameter_types.collect(),
         result_type,
+        result_length: foreign_fn.result_length,
       },
     );
 
@@ -131,6 +137,8 @@ enum NativeType {
   ISize,
   F32,
   F64,
+  String,
+  Buffer,
 }
 
 impl From<NativeType> for libffi::middle::Type {
@@ -149,6 +157,8 @@ impl From<NativeType> for libffi::middle::Type {
       NativeType::ISize => libffi::middle::Type::isize(),
       NativeType::F32 => libffi::middle::Type::f32(),
       NativeType::F64 => libffi::middle::Type::f64(),
+      NativeType::String => libffi::middle::Type::pointer(),
+      NativeType::Buffer => libffi::middle::Type::pointer(),
     }
   }
 }
@@ -169,86 +179,77 @@ impl From<String> for NativeType {
       "isize" => NativeType::ISize,
       "f32" => NativeType::F32,
       "f64" => NativeType::F64,
+      "string" => NativeType::String,
+      "buffer" => NativeType::Buffer,
       _ => unimplemented!(),
     }
   }
 }
 
-#[repr(C)]
-union NativeValue {
-  void_value: (),
-  u8_value: u8,
-  i8_value: i8,
-  u16_value: u16,
-  i16_value: i16,
-  u32_value: u32,
-  i32_value: i32,
-  u64_value: u64,
-  i64_value: i64,
-  usize_value: usize,
-  isize_value: isize,
-  f32_value: f32,
-  f64_value: f64,
+enum NativeValue {
+  Void,
+  U8(u8),
+  I8(i8),
+  U16(u16),
+  I16(i16),
+  U32(u32),
+  I32(i32),
+  U64(u64),
+  I64(i64),
+  USize(usize),
+  ISize(isize),
+  F32(f32),
+  F64(f64),
+  String(*const i8),
+  Buffer(*const u8),
 }
 
 impl NativeValue {
-  fn new(native_type: NativeType, value: Value) -> Self {
+  fn from_value(native_type: NativeType, value: Value) -> Self {
     match native_type {
-      NativeType::Void => Self { void_value: () },
-      NativeType::U8 => Self {
-        u8_value: value_as_uint::<u8>(value),
-      },
-      NativeType::I8 => Self {
-        i8_value: value_as_int::<i8>(value),
-      },
-      NativeType::U16 => Self {
-        u16_value: value_as_uint::<u16>(value),
-      },
-      NativeType::I16 => Self {
-        i16_value: value_as_int::<i16>(value),
-      },
-      NativeType::U32 => Self {
-        u32_value: value_as_uint::<u32>(value),
-      },
-      NativeType::I32 => Self {
-        i32_value: value_as_int::<i32>(value),
-      },
-      NativeType::U64 => Self {
-        u64_value: value_as_uint::<u64>(value),
-      },
-      NativeType::I64 => Self {
-        i64_value: value_as_int::<i64>(value),
-      },
-      NativeType::USize => Self {
-        usize_value: value_as_uint::<usize>(value),
-      },
-      NativeType::ISize => Self {
-        isize_value: value_as_int::<isize>(value),
-      },
-      NativeType::F32 => Self {
-        f32_value: value_as_f32(value),
-      },
-      NativeType::F64 => Self {
-        f64_value: value_as_f64(value),
-      },
+      NativeType::Void => Self::Void,
+      NativeType::U8 => Self::U8(value_as_uint::<u8>(value)),
+      NativeType::I8 => Self::I8(value_as_int::<i8>(value)),
+      NativeType::U16 => Self::U16(value_as_uint::<u16>(value)),
+      NativeType::I16 => Self::I16(value_as_int::<i16>(value)),
+      NativeType::U32 => Self::U32(value_as_uint::<u32>(value)),
+      NativeType::I32 => Self::I32(value_as_int::<i32>(value)),
+      NativeType::U64 => Self::U64(value_as_uint::<u64>(value)),
+      NativeType::I64 => Self::I64(value_as_int::<i64>(value)),
+      NativeType::USize => Self::USize(value_as_uint::<usize>(value)),
+      NativeType::ISize => Self::ISize(value_as_int::<isize>(value)),
+      NativeType::F32 => Self::F32(value_as_f32(value)),
+      NativeType::F64 => Self::F64(value_as_f64(value)),
+      NativeType::String => Self::String(
+        CString::new(
+          value
+            .as_str()
+            .expect("Expected ffi arg value to be a string"),
+        )
+        .unwrap()
+        .into_raw(),
+      ),
+      NativeType::Buffer => unreachable!(),
     }
   }
 
-  unsafe fn as_arg(&self, native_type: NativeType) -> Arg {
-    match native_type {
-      NativeType::Void => Arg::new(&self.void_value),
-      NativeType::U8 => Arg::new(&self.u8_value),
-      NativeType::I8 => Arg::new(&self.i8_value),
-      NativeType::U16 => Arg::new(&self.u16_value),
-      NativeType::I16 => Arg::new(&self.i16_value),
-      NativeType::U32 => Arg::new(&self.u32_value),
-      NativeType::I32 => Arg::new(&self.i32_value),
-      NativeType::U64 => Arg::new(&self.u64_value),
-      NativeType::I64 => Arg::new(&self.i64_value),
-      NativeType::USize => Arg::new(&self.usize_value),
-      NativeType::ISize => Arg::new(&self.isize_value),
-      NativeType::F32 => Arg::new(&self.f32_value),
-      NativeType::F64 => Arg::new(&self.f64_value),
+  fn as_arg(&self) -> Arg {
+    match self {
+      Self::Void => Arg::new(&()),
+      Self::U8(value) => Arg::new(value),
+      Self::I8(value) => Arg::new(value),
+      Self::U16(value) => Arg::new(value),
+      Self::I16(value) => Arg::new(value),
+      Self::U32(value) => Arg::new(value),
+      Self::I32(value) => Arg::new(value),
+      Self::U64(value) => Arg::new(value),
+      Self::I64(value) => Arg::new(value),
+      Self::USize(value) => Arg::new(value),
+      Self::ISize(value) => Arg::new(value),
+      Self::F32(value) => Arg::new(value),
+      Self::F64(value) => Arg::new(value),
+      Self::String(value) => Arg::new(value),
+      Self::Buffer(value) => Arg::new(value),
     }
   }
 }
@@ -281,6 +282,7 @@ fn value_as_f64(value: Value) -> f64 {
 struct ForeignFunction {
   parameters: Vec<String>,
   result: String,
+  result_length: Option<usize>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -314,12 +316,13 @@ where
   Ok(state.resource_table.add(resource))
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct FfiCallArgs {
   rid: ResourceId,
   symbol: String,
   parameters: Vec<Value>,
+  buffers: Vec<ZeroCopyBuf>,
 }
 
 fn op_ffi_call(
@@ -337,20 +340,30 @@ fn op_ffi_call(
     .get(&args.symbol)
     .ok_or_else(bad_resource_id)?;
 
+  let buffers: Vec<&[u8]> = args
+    .buffers
+    .iter()
+    .map(|buffer| &buffer[..])
+    .collect();
+
   let native_values = symbol
     .parameter_types
     .iter()
     .zip(args.parameters.into_iter())
-    .map(|(&native_type, value)| NativeValue::new(native_type, value))
+    .map(|(&native_type, value)| {
+      if let NativeType::Buffer = native_type {
+        let idx: usize = value_as_uint(value);
+        let ptr = buffers[idx].as_ptr();
+        NativeValue::Buffer(ptr)
+      } else {
+        NativeValue::from_value(native_type, value)
+      }
+    })
     .collect::<Vec<_>>();
 
-  let call_args = symbol
-    .parameter_types
+  let call_args = native_values
     .iter()
-    .zip(native_values.iter())
-    .map(|(&native_type, native_value)| unsafe {
-      native_value.as_arg(native_type)
-    })
+    .map(|native_value| native_value.as_arg())
     .collect::<Vec<_>>();
 
   Ok(match symbol.result_type {
@@ -392,6 +405,22 @@ fn op_ffi_call(
     }
     NativeType::F64 => {
       json!(unsafe { symbol.cif.call::<f64>(symbol.ptr, &call_args) })
+    }
+    NativeType::String => {
+      json!(unsafe {
+        let ptr = symbol.cif.call::<*const c_char>(symbol.ptr, &call_args);
+        let cstr = CStr::from_ptr(ptr);
+        cstr.to_str().unwrap()
+      })
+    }
+    NativeType::Buffer => {
+      let ptr = unsafe { symbol.cif.call::<*const u8>(symbol.ptr, &call_args) };
+      if let Some(len) = symbol.result_length {
+        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+        json!(slice)
+      } else {
+        json!(ptr as usize)
+      }
     }
   })
 }
