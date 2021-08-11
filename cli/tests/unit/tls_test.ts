@@ -11,6 +11,7 @@ import {
   unitTest,
 } from "./test_util.ts";
 import { BufReader, BufWriter } from "../../../test_util/std/io/bufio.ts";
+import { readAll } from "../../../test_util/std/io/util.ts";
 import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
 
 const encoder = new TextEncoder();
@@ -26,7 +27,7 @@ function unreachable(): never {
 
 unitTest(async function connectTLSNoPerm() {
   await assertThrowsAsync(async () => {
-    await Deno.connectTls({ hostname: "github.com", port: 443 });
+    await Deno.connectTls({ hostname: "deno.land", port: 443 });
   }, Deno.errors.PermissionDenied);
 });
 
@@ -36,8 +37,8 @@ unitTest(
     const listener = await Deno.listenTls({
       hostname: "localhost",
       port: 3567,
-      certFile: "cli/tests/tls/localhost.crt",
-      keyFile: "cli/tests/tls/localhost.key",
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
     });
 
     await assertThrowsAsync(async () => {
@@ -51,9 +52,9 @@ unitTest(
 unitTest(async function connectTLSCertFileNoReadPerm() {
   await assertThrowsAsync(async () => {
     await Deno.connectTls({
-      hostname: "github.com",
+      hostname: "deno.land",
       port: 443,
-      certFile: "cli/tests/tls/RootCA.crt",
+      certFile: "cli/tests/testdata/tls/RootCA.crt",
     });
   }, Deno.errors.PermissionDenied);
 });
@@ -64,8 +65,8 @@ unitTest(
     const options = {
       hostname: "localhost",
       port: 3500,
-      certFile: "cli/tests/tls/localhost.crt",
-      keyFile: "cli/tests/tls/localhost.key",
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
     };
 
     assertThrows(() => {
@@ -89,8 +90,8 @@ unitTest({ perms: { net: true } }, function listenTLSNoReadPerm() {
     Deno.listenTls({
       hostname: "localhost",
       port: 3500,
-      certFile: "cli/tests/tls/localhost.crt",
-      keyFile: "cli/tests/tls/localhost.key",
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
     });
   }, Deno.errors.PermissionDenied);
 });
@@ -103,8 +104,8 @@ unitTest(
     const options = {
       hostname: "localhost",
       port: 3500,
-      certFile: "cli/tests/tls/localhost.crt",
-      keyFile: "cli/tests/tls/localhost.key",
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
     };
 
     const testDir = Deno.makeTempDirSync();
@@ -128,8 +129,8 @@ unitTest(
     const options = {
       hostname: "localhost",
       port: 3500,
-      certFile: "cli/tests/tls/localhost.crt",
-      keyFile: "cli/tests/tls/localhost.key",
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
     };
 
     const testDir = Deno.makeTempDirSync();
@@ -157,8 +158,8 @@ unitTest(
     const listener = Deno.listenTls({
       hostname,
       port,
-      certFile: "cli/tests/tls/localhost.crt",
-      keyFile: "cli/tests/tls/localhost.key",
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
     });
 
     const response = encoder.encode(
@@ -181,7 +182,7 @@ unitTest(
     const conn = await Deno.connectTls({
       hostname,
       port,
-      certFile: "cli/tests/tls/RootCA.pem",
+      certFile: "cli/tests/testdata/tls/RootCA.pem",
     });
     assert(conn.rid > 0);
     const w = new BufWriter(conn);
@@ -221,15 +222,15 @@ async function tlsPair(): Promise<[Deno.Conn, Deno.Conn]> {
   const listener = Deno.listenTls({
     hostname: "localhost",
     port,
-    certFile: "cli/tests/tls/localhost.crt",
-    keyFile: "cli/tests/tls/localhost.key",
+    certFile: "cli/tests/testdata/tls/localhost.crt",
+    keyFile: "cli/tests/testdata/tls/localhost.key",
   });
 
   const acceptPromise = listener.accept();
   const connectPromise = Deno.connectTls({
     hostname: "localhost",
     port,
-    certFile: "cli/tests/tls/RootCA.pem",
+    certFile: "cli/tests/testdata/tls/RootCA.pem",
   });
   const endpoints = await Promise.all([acceptPromise, connectPromise]);
 
@@ -552,8 +553,8 @@ async function tlsWithTcpFailureTestImpl(
   const tlsListener = Deno.listenTls({
     hostname: "localhost",
     port: tlsPort,
-    certFile: "cli/tests/tls/localhost.crt",
-    keyFile: "cli/tests/tls/localhost.key",
+    certFile: "cli/tests/testdata/tls/localhost.crt",
+    keyFile: "cli/tests/testdata/tls/localhost.key",
   });
 
   const tcpPort = getPort();
@@ -569,7 +570,7 @@ async function tlsWithTcpFailureTestImpl(
     Deno.connectTls({
       hostname: "localhost",
       port: tcpPort,
-      certFile: "cli/tests/tls/RootCA.crt",
+      certFile: "cli/tests/testdata/tls/RootCA.crt",
     }),
   ]);
 
@@ -844,8 +845,8 @@ function createHttpsListener(port: number): Deno.Listener {
   const listener = Deno.listenTls({
     hostname: "localhost",
     port,
-    certFile: "./cli/tests/tls/localhost.crt",
-    keyFile: "./cli/tests/tls/localhost.key",
+    certFile: "./cli/tests/testdata/tls/localhost.crt",
+    keyFile: "./cli/tests/testdata/tls/localhost.key",
   });
 
   serve(listener);
@@ -982,6 +983,79 @@ unitTest(
       if (line.startsWith("250 ")) break;
     }
 
+    conn.close();
+  },
+);
+
+unitTest(
+  { perms: { read: true, net: true } },
+  async function connectTLSBadClientCertPrivateKey(): Promise<void> {
+    await assertThrowsAsync(async () => {
+      await Deno.connectTls({
+        hostname: "deno.land",
+        port: 443,
+        certChain: "bad data",
+        privateKey: await Deno.readTextFile(
+          "cli/tests/testdata/tls/localhost.key",
+        ),
+      });
+    }, Deno.errors.InvalidData);
+  },
+);
+
+unitTest(
+  { perms: { read: true, net: true } },
+  async function connectTLSBadPrivateKey(): Promise<void> {
+    await assertThrowsAsync(async () => {
+      await Deno.connectTls({
+        hostname: "deno.land",
+        port: 443,
+        certChain: await Deno.readTextFile(
+          "cli/tests/testdata/tls/localhost.crt",
+        ),
+        privateKey: "bad data",
+      });
+    }, Deno.errors.InvalidData);
+  },
+);
+
+unitTest(
+  { perms: { read: true, net: true } },
+  async function connectTLSNotPrivateKey(): Promise<void> {
+    await assertThrowsAsync(async () => {
+      await Deno.connectTls({
+        hostname: "deno.land",
+        port: 443,
+        certChain: await Deno.readTextFile(
+          "cli/tests/testdata/tls/localhost.crt",
+        ),
+        privateKey: "",
+      });
+    }, Deno.errors.InvalidData);
+  },
+);
+
+unitTest(
+  { perms: { read: true, net: true } },
+  async function connectWithClientCert() {
+    // The test_server running on port 4552 responds with 'PASS' if client
+    // authentication was successful. Try it by running test_server and
+    //   curl --key cli/tests/testdata/tls/localhost.key \
+    //        --cert cli/tests/testdata/tls/localhost.crt \
+    //        --cacert cli/tests/testdata/tls/RootCA.crt https://localhost:4552/
+    const conn = await Deno.connectTls({
+      hostname: "localhost",
+      port: 4552,
+      certChain: await Deno.readTextFile(
+        "cli/tests/testdata/tls/localhost.crt",
+      ),
+      privateKey: await Deno.readTextFile(
+        "cli/tests/testdata/tls/localhost.key",
+      ),
+      certFile: "cli/tests/testdata/tls/RootCA.crt",
+    });
+    const result = decoder.decode(await readAll(conn));
+    assertEquals(result, "PASS");
     conn.close();
   },
 );

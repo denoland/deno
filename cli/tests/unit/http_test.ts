@@ -208,8 +208,8 @@ unitTest(
       const listener = Deno.listenTls({
         hostname,
         port,
-        certFile: "cli/tests/tls/localhost.crt",
-        keyFile: "cli/tests/tls/localhost.key",
+        certFile: "cli/tests/testdata/tls/localhost.crt",
+        keyFile: "cli/tests/testdata/tls/localhost.key",
       });
       const conn = await listener.accept();
       const httpConn = Deno.serveHttp(conn);
@@ -226,7 +226,7 @@ unitTest(
       listener.close();
     })();
 
-    const caData = Deno.readTextFileSync("cli/tests/tls/RootCA.pem");
+    const caData = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caData });
     const resp = await fetch(`https://${hostname}:${port}/`, {
       client,

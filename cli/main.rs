@@ -109,6 +109,10 @@ fn create_web_worker_callback(
         .log_level
         .map_or(false, |l| l == log::Level::Debug),
       unstable: program_state.flags.unstable,
+      unsafely_ignore_certificate_errors: program_state
+        .flags
+        .unsafely_ignore_certificate_errors
+        .clone(),
       root_cert_store: program_state.root_cert_store.clone(),
       user_agent: version::get_user_agent(),
       seed: program_state.flags.seed,
@@ -189,6 +193,10 @@ pub fn create_main_worker(
       .log_level
       .map_or(false, |l| l == log::Level::Debug),
     unstable: program_state.flags.unstable,
+    unsafely_ignore_certificate_errors: program_state
+      .flags
+      .unsafely_ignore_certificate_errors
+      .clone(),
     root_cert_store: program_state.root_cert_store.clone(),
     user_agent: version::get_user_agent(),
     seed: program_state.flags.seed,

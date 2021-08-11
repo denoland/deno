@@ -41,11 +41,11 @@ unitTest({ perms: { read: true } }, async function fstatSuccess() {
 unitTest(
   { perms: { read: true, write: true } },
   function statSyncSuccess() {
-    const packageInfo = Deno.statSync("README.md");
-    assert(packageInfo.isFile);
-    assert(!packageInfo.isSymlink);
+    const readmeInfo = Deno.statSync("README.md");
+    assert(readmeInfo.isFile);
+    assert(!readmeInfo.isSymlink);
 
-    const modulesInfo = Deno.statSync("cli/tests/symlink_to_subdir");
+    const modulesInfo = Deno.statSync("cli/tests/testdata/symlink_to_subdir");
     assert(modulesInfo.isDirectory);
     assert(!modulesInfo.isSymlink);
 
@@ -62,12 +62,12 @@ unitTest(
       tempInfo.birthtime === null || now - tempInfo.birthtime.valueOf() < 1000,
     );
 
-    const packageInfoByUrl = Deno.statSync(pathToAbsoluteFileUrl("README.md"));
-    assert(packageInfoByUrl.isFile);
-    assert(!packageInfoByUrl.isSymlink);
+    const readmeInfoByUrl = Deno.statSync(pathToAbsoluteFileUrl("README.md"));
+    assert(readmeInfoByUrl.isFile);
+    assert(!readmeInfoByUrl.isSymlink);
 
     const modulesInfoByUrl = Deno.statSync(
-      pathToAbsoluteFileUrl("cli/tests/symlink_to_subdir"),
+      pathToAbsoluteFileUrl("cli/tests/testdata/symlink_to_subdir"),
     );
     assert(modulesInfoByUrl.isDirectory);
     assert(!modulesInfoByUrl.isSymlink);
@@ -122,12 +122,12 @@ unitTest({ perms: { read: true } }, function lstatSyncSuccess() {
   assert(packageInfoByUrl.isFile);
   assert(!packageInfoByUrl.isSymlink);
 
-  const modulesInfo = Deno.lstatSync("cli/tests/symlink_to_subdir");
+  const modulesInfo = Deno.lstatSync("cli/tests/testdata/symlink_to_subdir");
   assert(!modulesInfo.isDirectory);
   assert(modulesInfo.isSymlink);
 
   const modulesInfoByUrl = Deno.lstatSync(
-    pathToAbsoluteFileUrl("cli/tests/symlink_to_subdir"),
+    pathToAbsoluteFileUrl("cli/tests/testdata/symlink_to_subdir"),
   );
   assert(!modulesInfoByUrl.isDirectory);
   assert(modulesInfoByUrl.isSymlink);
@@ -143,7 +143,7 @@ unitTest({ perms: { read: true } }, function lstatSyncSuccess() {
 
 unitTest({ perms: { read: false } }, function lstatSyncPerm() {
   assertThrows(() => {
-    Deno.lstatSync("README.md");
+    Deno.lstatSync("hello.txt");
   }, Deno.errors.PermissionDenied);
 });
 
@@ -156,22 +156,22 @@ unitTest({ perms: { read: true } }, function lstatSyncNotFound() {
 unitTest(
   { perms: { read: true, write: true } },
   async function statSuccess() {
-    const packageInfo = await Deno.stat("README.md");
-    assert(packageInfo.isFile);
-    assert(!packageInfo.isSymlink);
+    const readmeInfo = await Deno.stat("README.md");
+    assert(readmeInfo.isFile);
+    assert(!readmeInfo.isSymlink);
 
-    const packageInfoByUrl = await Deno.stat(
+    const readmeInfoByUrl = await Deno.stat(
       pathToAbsoluteFileUrl("README.md"),
     );
-    assert(packageInfoByUrl.isFile);
-    assert(!packageInfoByUrl.isSymlink);
+    assert(readmeInfoByUrl.isFile);
+    assert(!readmeInfoByUrl.isSymlink);
 
-    const modulesInfo = await Deno.stat("cli/tests/symlink_to_subdir");
+    const modulesInfo = await Deno.stat("cli/tests/testdata/symlink_to_subdir");
     assert(modulesInfo.isDirectory);
     assert(!modulesInfo.isSymlink);
 
     const modulesInfoByUrl = await Deno.stat(
-      pathToAbsoluteFileUrl("cli/tests/symlink_to_subdir"),
+      pathToAbsoluteFileUrl("cli/tests/testdata/symlink_to_subdir"),
     );
     assert(modulesInfoByUrl.isDirectory);
     assert(!modulesInfoByUrl.isSymlink);
@@ -234,20 +234,20 @@ unitTest({ perms: { read: true } }, async function statNotFound() {
 });
 
 unitTest({ perms: { read: true } }, async function lstatSuccess() {
-  const packageInfo = await Deno.lstat("README.md");
-  assert(packageInfo.isFile);
-  assert(!packageInfo.isSymlink);
+  const readmeInfo = await Deno.lstat("README.md");
+  assert(readmeInfo.isFile);
+  assert(!readmeInfo.isSymlink);
 
-  const packageInfoByUrl = await Deno.lstat(pathToAbsoluteFileUrl("README.md"));
-  assert(packageInfoByUrl.isFile);
-  assert(!packageInfoByUrl.isSymlink);
+  const readmeInfoByUrl = await Deno.lstat(pathToAbsoluteFileUrl("README.md"));
+  assert(readmeInfoByUrl.isFile);
+  assert(!readmeInfoByUrl.isSymlink);
 
-  const modulesInfo = await Deno.lstat("cli/tests/symlink_to_subdir");
+  const modulesInfo = await Deno.lstat("cli/tests/testdata/symlink_to_subdir");
   assert(!modulesInfo.isDirectory);
   assert(modulesInfo.isSymlink);
 
   const modulesInfoByUrl = await Deno.lstat(
-    pathToAbsoluteFileUrl("cli/tests/symlink_to_subdir"),
+    pathToAbsoluteFileUrl("cli/tests/testdata/symlink_to_subdir"),
   );
   assert(!modulesInfoByUrl.isDirectory);
   assert(modulesInfoByUrl.isSymlink);

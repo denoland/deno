@@ -15445,8 +15445,7 @@
     "wrapKey_unwrapKey": {
       "wrapKey_unwrapKey.https.any.html": false
     },
-    "randomUUID.any.html": true,
-    "getRandomValues-bigint.tentative.any.html": true
+    "randomUUID.any.html": true
   },
   "console": {
     "console-is-a-namespace.any.html": true,
@@ -16055,7 +16054,30 @@
       "Parsing: <..//path> against <non-spec:/p>",
       "Parsing: <a/..//path> against <non-spec:/p>",
       "Parsing: <> against <non-spec:/..//p>",
-      "Parsing: <path> against <non-spec:/..//p>"
+      "Parsing: <path> against <non-spec:/..//p>",
+      "Parsing: <http://1.2.3.4.5> against <http://other.com/>",
+      "Parsing: <http://1.2.3.4.5.> against <http://other.com/>",
+      "Parsing: <http://0..0x300/> against <about:blank>",
+      "Parsing: <http://0..0x300./> against <about:blank>",
+      "Parsing: <http://256.256.256.256.256> against <http://other.com/>",
+      "Parsing: <http://256.256.256.256.256.> against <http://other.com/>",
+      "Parsing: <http://1.2.3.08> against <about:blank>",
+      "Parsing: <http://1.2.3.08.> against <about:blank>",
+      "Parsing: <http://1.2.3.09> against <about:blank>",
+      "Parsing: <http://09.2.3.4> against <about:blank>",
+      "Parsing: <http://09.2.3.4.> against <about:blank>",
+      "Parsing: <http://01.2.3.4.5> against <about:blank>",
+      "Parsing: <http://01.2.3.4.5.> against <about:blank>",
+      "Parsing: <http://0x1.2.3.4.5> against <about:blank>",
+      "Parsing: <http://0x1.2.3.4.5.> against <about:blank>",
+      "Parsing: <http://foo.1.2.3.4> against <about:blank>",
+      "Parsing: <http://foo.1.2.3.4.> against <about:blank>",
+      "Parsing: <http://foo.2.3.4> against <about:blank>",
+      "Parsing: <http://foo.2.3.4.> against <about:blank>",
+      "Parsing: <http://foo.09> against <about:blank>",
+      "Parsing: <http://foo.09.> against <about:blank>",
+      "Parsing: <http://foo.0x4> against <about:blank>",
+      "Parsing: <http://foo.0x4.> against <about:blank>"
     ],
     "url-origin.any.html": true,
     "url-searchparams.any.html": true,
@@ -16113,7 +16135,75 @@
         "request-consume-empty.any.html": [
           "Consume empty FormData request body as text"
         ],
-        "request-consume.any.html": true
+        "request-consume.any.html": true,
+        "request-disturbed.any.html": [
+          "Request construction failure should not set \"bodyUsed\"",
+          "Input request used for creating new request became disturbed",
+          "Input request used for creating new request became disturbed even if body is not used"
+        ],
+        "request-error.any.html": [
+          "RequestInit's window is not null",
+          "Input URL has credentials",
+          "RequestInit's mode is navigate",
+          "RequestInit's referrer is invalid",
+          "RequestInit's mode is no-cors and method is not simple",
+          "RequestInit's cache mode is only-if-cached and mode is not same-origin",
+          "Request with cache mode: only-if-cached and fetch mode cors",
+          "Request with cache mode: only-if-cached and fetch mode no-cors",
+          "Bad referrerPolicy init parameter value",
+          "Bad mode init parameter value",
+          "Bad credentials init parameter value",
+          "Bad cache init parameter value"
+        ],
+        "request-headers.any.html": [
+          "Adding invalid request header \"Accept-Charset: KO\"",
+          "Adding invalid request header \"accept-charset: KO\"",
+          "Adding invalid request header \"ACCEPT-ENCODING: KO\"",
+          "Adding invalid request header \"Accept-Encoding: KO\"",
+          "Adding invalid request header \"Access-Control-Request-Headers: KO\"",
+          "Adding invalid request header \"Access-Control-Request-Method: KO\"",
+          "Adding invalid request header \"Connection: KO\"",
+          "Adding invalid request header \"Content-Length: KO\"",
+          "Adding invalid request header \"Cookie: KO\"",
+          "Adding invalid request header \"Cookie2: KO\"",
+          "Adding invalid request header \"Date: KO\"",
+          "Adding invalid request header \"DNT: KO\"",
+          "Adding invalid request header \"Expect: KO\"",
+          "Adding invalid request header \"Host: KO\"",
+          "Adding invalid request header \"Keep-Alive: KO\"",
+          "Adding invalid request header \"Origin: KO\"",
+          "Adding invalid request header \"Referer: KO\"",
+          "Adding invalid request header \"TE: KO\"",
+          "Adding invalid request header \"Trailer: KO\"",
+          "Adding invalid request header \"Transfer-Encoding: KO\"",
+          "Adding invalid request header \"Upgrade: KO\"",
+          "Adding invalid request header \"Via: KO\"",
+          "Adding invalid request header \"Proxy-: KO\"",
+          "Adding invalid request header \"proxy-a: KO\"",
+          "Adding invalid request header \"Sec-: KO\"",
+          "Adding invalid request header \"sec-b: KO\"",
+          "Adding invalid no-cors request header \"Content-Type: KO\"",
+          "Adding invalid no-cors request header \"Potato: KO\"",
+          "Adding invalid no-cors request header \"proxy: KO\"",
+          "Adding invalid no-cors request header \"proxya: KO\"",
+          "Adding invalid no-cors request header \"sec: KO\"",
+          "Adding invalid no-cors request header \"secb: KO\"",
+          "Check that request constructor is filtering headers provided as init parameter",
+          "Check that no-cors request constructor is filtering headers provided as init parameter",
+          "Check that no-cors request constructor is filtering headers provided as part of request parameter"
+        ],
+        "request-init-contenttype.any.html": true,
+        "request-structure.any.html": [
+          "Check destination attribute",
+          "Check referrer attribute",
+          "Check referrerPolicy attribute",
+          "Check mode attribute",
+          "Check credentials attribute",
+          "Check cache attribute",
+          "Check integrity attribute",
+          "Check isReloadNavigation attribute",
+          "Check isHistoryNavigation attribute"
+        ]
       },
       "headers": {
         "headers-basic.any.html": true,
@@ -16162,7 +16252,6 @@
         "historical.any.html": true,
         "http-response-code.any.html": true,
         "request-upload.any.html": [
-          "Fetch with POST with ReadableStream",
           "Fetch with POST with ReadableStream containing String",
           "Fetch with POST with ReadableStream containing null",
           "Fetch with POST with ReadableStream containing number",
@@ -16184,7 +16273,16 @@
           "Object.prototype.size accessor returning invalid value should not affect stream creation by 'fetch'",
           "throwing Object.prototype.highWaterMark accessor should not affect stream creation by 'fetch'",
           "Object.prototype.highWaterMark accessor returning invalid value should not affect stream creation by 'fetch'"
-        ]
+        ],
+        "integrity.sub.any.html": [
+          "Invalid integrity",
+          "Multiple integrities: invalid stronger than valid",
+          "Multiple integrities: both are invalid",
+          "CORS invalid integrity",
+          "Empty string integrity for opaque response",
+          "SHA-* integrity for opaque response"
+        ],
+        "request-upload.h2.any.html": false
       },
       "response": {
         "json.any.html": true,
@@ -16228,7 +16326,8 @@
         "response-consume-empty.any.html": [
           "Consume empty FormData response body as text"
         ],
-        "response-consume-stream.any.html": true
+        "response-consume-stream.any.html": true,
+        "response-init-contenttype.any.html": true
       },
       "body": {
         "mime-type.any.html": true
@@ -16342,7 +16441,25 @@
       "filereader_readAsText.any.html": true,
       "filereader_readystate.any.html": true,
       "filereader_result.any.html": true
-    }
+    },
+    "idlharness.any.html": [
+      "Blob interface: operation slice(optional long long, optional long long, optional DOMString)",
+      "FileList interface: existence and properties of interface object",
+      "FileList interface object length",
+      "FileList interface object name",
+      "FileList interface: existence and properties of interface prototype object",
+      "FileList interface: existence and properties of interface prototype object's \"constructor\" property",
+      "FileList interface: existence and properties of interface prototype object's @@unscopables property",
+      "FileList interface: operation item(unsigned long)",
+      "FileList interface: attribute length",
+      "FileReader interface: operation readAsText(Blob, optional DOMString)",
+      "FileReader interface: attribute onloadstart",
+      "FileReader interface: attribute onprogress",
+      "FileReader interface: attribute onload",
+      "FileReader interface: attribute onabort",
+      "FileReader interface: attribute onerror",
+      "FileReader interface: attribute onloadend"
+    ]
   },
   "html": {
     "webappapis": {
@@ -16360,6 +16477,18 @@
       "microtask-queuing": {
         "queue-microtask-exceptions.any.html": false,
         "queue-microtask.any.html": true
+      },
+      "structured-clone": {
+        "structured-clone.any.html": [
+          "Blob basic",
+          "Blob unpaired high surrogate (invalid utf-8)",
+          "Blob unpaired low surrogate (invalid utf-8)",
+          "Blob paired surrogates (invalid utf-8)",
+          "Blob empty",
+          "Blob NUL",
+          "File basic",
+          "ArrayBuffer"
+        ]
       }
     }
   },
@@ -16633,6 +16762,18 @@
     "eventhandlers.any.html": false,
     "eventhandlers.any.html?wpt_flags=h2": false,
     "eventhandlers.any.html?wss": false,
-    "referrer.any.html": true
+    "referrer.any.html": true,
+    "Close-delayed.any.html": false,
+    "Close-delayed.any.html?wpt_flags=h2": false,
+    "Close-delayed.any.html?wss": false,
+    "stream": {
+      "tentative": {
+        "abort.any.html?wss": true,
+        "backpressure-receive.any.html?wss": true,
+        "backpressure-send.any.html?wss": true,
+        "close.any.html?wss": true,
+        "constructor.any.html?wss": true
+      }
+    }
   }
 }

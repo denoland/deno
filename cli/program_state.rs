@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::colors;
 use crate::config_file::ConfigFile;
 use crate::deno_dir;
 use crate::file_fetcher::CacheSetting;
@@ -117,6 +118,19 @@ impl ProgramState {
       }
     }
 
+    if let Some(insecure_allowlist) =
+      flags.unsafely_ignore_certificate_errors.as_ref()
+    {
+      let domains = if insecure_allowlist.is_empty() {
+        "for all hostnames".to_string()
+      } else {
+        format!("for: {}", insecure_allowlist.join(", "))
+      };
+      let msg =
+        format!("DANGER: TLS certificate validation is disabled {}", domains);
+      eprintln!("{}", colors::yellow(msg));
+    }
+
     let cache_usage = if flags.cached_only {
       CacheSetting::Only
     } else if !flags.cache_blocklist.is_empty() {
@@ -137,6 +151,7 @@ impl ProgramState {
       !flags.no_remote,
       Some(root_cert_store.clone()),
       blob_store.clone(),
+      flags.unsafely_ignore_certificate_errors.clone(),
     )?;
 
     let lockfile = if let Some(filename) = &flags.lock {

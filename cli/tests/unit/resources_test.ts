@@ -37,7 +37,7 @@ unitTest({ perms: { net: true } }, async function resourcesNet() {
 
 unitTest({ perms: { read: true } }, async function resourcesFile() {
   const resourcesBefore = Deno.resources();
-  const f = await Deno.open("cli/tests/hello.txt");
+  const f = await Deno.open("cli/tests/testdata/hello.txt");
   const resourcesAfter = Deno.resources();
   f.close();
 

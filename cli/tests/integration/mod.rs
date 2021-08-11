@@ -30,6 +30,21 @@ macro_rules! itest(
 }
 );
 
+#[macro_export]
+macro_rules! itest_flaky(
+($name:ident {$( $key:ident: $value:expr,)*})  => {
+  #[flaky_test::flaky_test]
+  fn $name() {
+    (test_util::CheckOutputIntegrationTest {
+      $(
+        $key: $value,
+       )*
+      .. Default::default()
+    }).run()
+  }
+}
+);
+
 // These files have `_tests.rs` suffix to make it easier to tell which file is
 // the test (ex. `lint_tests.rs`) and which is the implementation (ex. `lint.rs`)
 // when both are open, especially for two tabs in VS Code
@@ -74,7 +89,7 @@ mod worker;
 #[test]
 fn help_flag() {
   let status = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("--help")
     .spawn()
     .unwrap()
@@ -86,7 +101,7 @@ fn help_flag() {
 #[test]
 fn version_short_flag() {
   let status = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("-V")
     .spawn()
     .unwrap()
@@ -98,7 +113,7 @@ fn version_short_flag() {
 #[test]
 fn version_long_flag() {
   let status = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("--version")
     .spawn()
     .unwrap()
@@ -117,11 +132,10 @@ fn cache_test() {
   let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
-    url::Url::parse("http://localhost:4545/cli/tests/006_url_imports.ts")
-      .unwrap();
+    url::Url::parse("http://localhost:4545/006_url_imports.ts").unwrap();
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("cache")
     .arg("-L")
     .arg("debug")
@@ -141,7 +155,7 @@ fn cache_test() {
     .env("DENO_DIR", deno_dir.path())
     .env("HTTP_PROXY", "http://nil")
     .env("NO_COLOR", "1")
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg(module_url.to_string())
     .output()
@@ -149,8 +163,7 @@ fn cache_test() {
 
   let str_output = std::str::from_utf8(&output.stdout).unwrap();
 
-  let module_output_path =
-    util::root_path().join("cli/tests/006_url_imports.ts.out");
+  let module_output_path = util::testdata_path().join("006_url_imports.ts.out");
   let mut module_output = String::new();
   let mut module_output_file = fs::File::open(module_output_path).unwrap();
   module_output_file
@@ -173,7 +186,7 @@ fn cache_invalidation_test() {
   }
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg(fixture_path.to_str().unwrap())
     .output()
@@ -190,7 +203,7 @@ fn cache_invalidation_test() {
   }
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg(fixture_path.to_str().unwrap())
     .output()
@@ -213,7 +226,7 @@ fn cache_invalidation_test_no_check() {
   }
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg("--no-check")
     .arg(fixture_path.to_str().unwrap())
@@ -231,7 +244,7 @@ fn cache_invalidation_test_no_check() {
   }
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg("--no-check")
     .arg(fixture_path.to_str().unwrap())
@@ -269,7 +282,7 @@ fn ts_dependency_recompilation() {
   .unwrap();
 
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .env("NO_COLOR", "1")
     .arg("run")
     .arg(&ats)
@@ -291,7 +304,7 @@ fn ts_dependency_recompilation() {
   .expect("error writing file");
 
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .env("NO_COLOR", "1")
     .arg("run")
     .arg(&ats)
@@ -312,12 +325,12 @@ fn ts_no_recheck_on_redirect() {
   let deno_dir = util::new_deno_dir();
   let e = util::deno_exe_path();
 
-  let redirect_ts = util::root_path().join("cli/tests/017_import_redirect.ts");
+  let redirect_ts = util::testdata_path().join("017_import_redirect.ts");
   assert!(redirect_ts.is_file());
   let mut cmd = Command::new(e.clone());
   cmd.env("DENO_DIR", deno_dir.path());
   let mut initial = cmd
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg(redirect_ts.clone())
     .spawn()
@@ -329,7 +342,7 @@ fn ts_no_recheck_on_redirect() {
   let mut cmd = Command::new(e);
   cmd.env("DENO_DIR", deno_dir.path());
   let output = cmd
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg(redirect_ts)
     .output()
@@ -340,12 +353,12 @@ fn ts_no_recheck_on_redirect() {
 
 #[test]
 fn ts_reload() {
-  let hello_ts = util::root_path().join("cli/tests/002_hello.ts");
+  let hello_ts = util::testdata_path().join("002_hello.ts");
   assert!(hello_ts.is_file());
 
   let deno_dir = TempDir::new().expect("tempdir fail");
   let mut initial = util::deno_cmd_with_deno_dir(deno_dir.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("cache")
     .arg(&hello_ts)
     .spawn()
@@ -355,7 +368,7 @@ fn ts_reload() {
   assert!(status_initial.success());
 
   let output = util::deno_cmd_with_deno_dir(deno_dir.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("cache")
     .arg("--reload")
     .arg("-L")
@@ -391,7 +404,7 @@ console.log("finish");
 "#;
 
   let mut p = util::deno_cmd()
-    .current_dir(util::tests_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg("-")
     .stdin(std::process::Stdio::piped())
@@ -411,7 +424,7 @@ console.log("finish");
 #[test]
 fn compiler_api() {
   let status = util::deno_cmd()
-    .current_dir(util::tests_path())
+    .current_dir(util::testdata_path())
     .arg("test")
     .arg("--unstable")
     .arg("--reload")
@@ -431,7 +444,7 @@ fn broken_stdout() {
   drop(reader);
 
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("eval")
     .arg("console.log(3.14)")
     .stdout(writer)
@@ -447,47 +460,71 @@ fn broken_stdout() {
   assert!(!stderr.contains("panic"));
 }
 
-// TODO(lucacasonato): reenable these tests once we figure out what is wrong with cafile tests
-// itest!(cafile_url_imports {
-//   args: "run --quiet --reload --cert tls/RootCA.pem cafile_url_imports.ts",
-//   output: "cafile_url_imports.ts.out",
-//   http_server: true,
-// });
+itest_flaky!(cafile_url_imports {
+  args: "run --quiet --reload --cert tls/RootCA.pem cafile_url_imports.ts",
+  output: "cafile_url_imports.ts.out",
+  http_server: true,
+});
 
-// itest!(cafile_ts_fetch {
-//   args:
-//     "run --quiet --reload --allow-net --cert tls/RootCA.pem cafile_ts_fetch.ts",
-//   output: "cafile_ts_fetch.ts.out",
-//   http_server: true,
-// });
+itest_flaky!(cafile_ts_fetch {
+  args:
+    "run --quiet --reload --allow-net --cert tls/RootCA.pem cafile_ts_fetch.ts",
+  output: "cafile_ts_fetch.ts.out",
+  http_server: true,
+});
 
-// itest!(cafile_eval {
-//   args: "eval --cert tls/RootCA.pem fetch('https://localhost:5545/cli/tests/cafile_ts_fetch.ts.out').then(r=>r.text()).then(t=>console.log(t.trimEnd()))",
-//   output: "cafile_ts_fetch.ts.out",
-//   http_server: true,
-// });
+itest_flaky!(cafile_eval {
+  args: "eval --cert tls/RootCA.pem fetch('https://localhost:5545/cafile_ts_fetch.ts.out').then(r=>r.text()).then(t=>console.log(t.trimEnd()))",
+  output: "cafile_ts_fetch.ts.out",
+  http_server: true,
+});
 
-// itest!(cafile_info {
-//   args:
-//     "info --quiet --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
-//   output: "cafile_info.ts.out",
-//   http_server: true,
-// });
+itest_flaky!(cafile_info {
+  args:
+    "info --quiet --cert tls/RootCA.pem https://localhost:5545/cafile_info.ts",
+  output: "cafile_info.ts.out",
+  http_server: true,
+});
 
-#[test]
-#[ignore]
+itest_flaky!(cafile_url_imports_unsafe_ssl {
+  args: "run --quiet --reload --unsafely-ignore-certificate-errors=localhost cafile_url_imports.ts",
+  output: "cafile_url_imports_unsafe_ssl.ts.out",
+  http_server: true,
+});
+
+itest_flaky!(cafile_ts_fetch_unsafe_ssl {
+  args:
+    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors cafile_ts_fetch.ts",
+  output: "cafile_ts_fetch_unsafe_ssl.ts.out",
+  http_server: true,
+});
+
+itest!(deno_land_unsafe_ssl {
+  args:
+    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land deno_land_unsafe_ssl.ts",
+  output: "deno_land_unsafe_ssl.ts.out",
+});
+
+itest!(localhost_unsafe_ssl {
+  args:
+    "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors=deno.land cafile_url_imports.ts",
+  output: "localhost_unsafe_ssl.ts.out",
+  http_server: true,
+  exit_code: 1,
+});
+
+#[flaky_test::flaky_test]
 fn cafile_env_fetch() {
   use deno_core::url::Url;
   let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
-    Url::parse("https://localhost:5545/cli/tests/cafile_url_imports.ts")
-      .unwrap();
-  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+    Url::parse("https://localhost:5545/cafile_url_imports.ts").unwrap();
+  let cafile = util::testdata_path().join("tls/RootCA.pem");
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .env("DENO_CERT", cafile)
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("cache")
     .arg(module_url.to_string())
     .output()
@@ -495,19 +532,17 @@ fn cafile_env_fetch() {
   assert!(output.status.success());
 }
 
-#[test]
-#[ignore]
+#[flaky_test::flaky_test]
 fn cafile_fetch() {
   use deno_core::url::Url;
   let _g = util::http_server();
   let deno_dir = TempDir::new().expect("tempdir fail");
   let module_url =
-    Url::parse("http://localhost:4545/cli/tests/cafile_url_imports.ts")
-      .unwrap();
-  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+    Url::parse("http://localhost:4545/cafile_url_imports.ts").unwrap();
+  let cafile = util::testdata_path().join("tls/RootCA.pem");
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("cache")
     .arg("--cert")
     .arg(cafile)
@@ -519,19 +554,18 @@ fn cafile_fetch() {
   assert_eq!(out, "");
 }
 
-#[test]
-#[ignore]
+#[flaky_test::flaky_test]
 fn cafile_install_remote_module() {
   let _g = util::http_server();
   let temp_dir = TempDir::new().expect("tempdir fail");
   let bin_dir = temp_dir.path().join("bin");
   std::fs::create_dir(&bin_dir).unwrap();
   let deno_dir = TempDir::new().expect("tempdir fail");
-  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+  let cafile = util::testdata_path().join("tls/RootCA.pem");
 
   let install_output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("install")
     .arg("--cert")
     .arg(cafile)
@@ -539,7 +573,7 @@ fn cafile_install_remote_module() {
     .arg(temp_dir.path())
     .arg("-n")
     .arg("echo_test")
-    .arg("https://localhost:5545/cli/tests/echo.ts")
+    .arg("https://localhost:5545/echo.ts")
     .output()
     .expect("Failed to spawn script");
   println!("{}", std::str::from_utf8(&install_output.stdout).unwrap());
@@ -562,18 +596,17 @@ fn cafile_install_remote_module() {
   assert!(stdout.ends_with("foo"));
 }
 
-#[test]
-#[ignore]
+#[flaky_test::flaky_test]
 fn cafile_bundle_remote_exports() {
   let _g = util::http_server();
 
   // First we have to generate a bundle of some remote module that has exports.
-  let mod1 = "https://localhost:5545/cli/tests/subdir/mod1.ts";
-  let cafile = util::root_path().join("cli/tests/tls/RootCA.pem");
+  let mod1 = "https://localhost:5545/subdir/mod1.ts";
+  let cafile = util::testdata_path().join("tls/RootCA.pem");
   let t = TempDir::new().expect("tempdir fail");
   let bundle = t.path().join("mod1.bundle.js");
   let mut deno = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("bundle")
     .arg("--cert")
     .arg(cafile)
@@ -596,7 +629,7 @@ fn cafile_bundle_remote_exports() {
   .expect("error writing file");
 
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg(&test)
     .output()
@@ -613,8 +646,29 @@ fn cafile_bundle_remote_exports() {
 fn websocket() {
   let _g = util::http_server();
 
-  let script = util::tests_path().join("websocket_test.ts");
-  let root_ca = util::tests_path().join("tls/RootCA.pem");
+  let script = util::testdata_path().join("websocket_test.ts");
+  let root_ca = util::testdata_path().join("tls/RootCA.pem");
+  let status = util::deno_cmd()
+    .arg("test")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("--cert")
+    .arg(root_ca)
+    .arg(script)
+    .spawn()
+    .unwrap()
+    .wait()
+    .unwrap();
+
+  assert!(status.success());
+}
+
+#[test]
+fn websocketstream() {
+  let _g = util::http_server();
+
+  let script = util::testdata_path().join("websocketstream_test.ts");
+  let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let status = util::deno_cmd()
     .arg("test")
     .arg("--unstable")
@@ -829,7 +883,7 @@ async fn test_resolve_dns() {
   // Pass: `--allow-net`
   {
     let output = util::deno_cmd()
-      .current_dir(util::tests_path())
+      .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
       .arg("run")
       .arg("--allow-net")
@@ -847,7 +901,7 @@ async fn test_resolve_dns() {
     assert!(err.starts_with("Check file"));
 
     let expected =
-      std::fs::read_to_string(util::tests_path().join("resolve_dns.ts.out"))
+      std::fs::read_to_string(util::testdata_path().join("resolve_dns.ts.out"))
         .unwrap();
     assert_eq!(expected, out);
   }
@@ -855,7 +909,7 @@ async fn test_resolve_dns() {
   // Pass: `--allow-net=127.0.0.1:4553`
   {
     let output = util::deno_cmd()
-      .current_dir(util::tests_path())
+      .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
       .arg("run")
       .arg("--allow-net=127.0.0.1:4553")
@@ -873,7 +927,7 @@ async fn test_resolve_dns() {
     assert!(err.starts_with("Check file"));
 
     let expected =
-      std::fs::read_to_string(util::tests_path().join("resolve_dns.ts.out"))
+      std::fs::read_to_string(util::testdata_path().join("resolve_dns.ts.out"))
         .unwrap();
     assert_eq!(expected, out);
   }
@@ -881,7 +935,7 @@ async fn test_resolve_dns() {
   // Permission error: `--allow-net=deno.land`
   {
     let output = util::deno_cmd()
-      .current_dir(util::tests_path())
+      .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
       .arg("run")
       .arg("--allow-net=deno.land")
@@ -904,7 +958,7 @@ async fn test_resolve_dns() {
   // Permission error: no permission specified
   {
     let output = util::deno_cmd()
-      .current_dir(util::tests_path())
+      .current_dir(util::testdata_path())
       .env("NO_COLOR", "1")
       .arg("run")
       .arg("--unstable")
@@ -958,7 +1012,7 @@ fn js_unit_tests_lint() {
   let status = util::deno_cmd()
     .arg("lint")
     .arg("--unstable")
-    .arg(util::root_path().join("cli/tests/unit"))
+    .arg(util::tests_path().join("unit"))
     .spawn()
     .unwrap()
     .wait()
@@ -979,7 +1033,7 @@ fn js_unit_tests() {
     .arg("--unstable")
     .arg("--location=http://js-unit-tests/foo/bar")
     .arg("-A")
-    .arg("cli/tests/unit")
+    .arg(util::tests_path().join("unit"))
     .spawn()
     .expect("failed to spawn script");
 
@@ -995,13 +1049,13 @@ async fn listen_tls_alpn() {
   LocalSet::new()
     .run_until(async {
       let mut child = util::deno_cmd()
-        .current_dir(util::root_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg("--unstable")
         .arg("--quiet")
         .arg("--allow-net")
         .arg("--allow-read")
-        .arg("./cli/tests/listen_tls_alpn.ts")
+        .arg("./listen_tls_alpn.ts")
         .arg("4504")
         .stdout(std::process::Stdio::piped())
         .spawn()
@@ -1014,8 +1068,9 @@ async fn listen_tls_alpn() {
       assert_eq!(msg, "READY");
 
       let mut cfg = rustls::ClientConfig::new();
-      let reader =
-        &mut BufReader::new(Cursor::new(include_bytes!("../tls/RootCA.crt")));
+      let reader = &mut BufReader::new(Cursor::new(include_bytes!(
+        "../testdata/tls/RootCA.crt"
+      )));
       cfg.root_store.add_pem_file(reader).unwrap();
       cfg.alpn_protocols.push("foobar".as_bytes().to_vec());
       let cfg = Arc::new(cfg);
@@ -1047,13 +1102,13 @@ async fn listen_tls_alpn_fail() {
   LocalSet::new()
     .run_until(async {
       let mut child = util::deno_cmd()
-        .current_dir(util::root_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg("--unstable")
         .arg("--quiet")
         .arg("--allow-net")
         .arg("--allow-read")
-        .arg("./cli/tests/listen_tls_alpn.ts")
+        .arg("./listen_tls_alpn.ts")
         .arg("4505")
         .stdout(std::process::Stdio::piped())
         .spawn()
@@ -1066,8 +1121,9 @@ async fn listen_tls_alpn_fail() {
       assert_eq!(msg, "READY");
 
       let mut cfg = rustls::ClientConfig::new();
-      let reader =
-        &mut BufReader::new(Cursor::new(include_bytes!("../tls/RootCA.crt")));
+      let reader = &mut BufReader::new(Cursor::new(include_bytes!(
+        "../testdata/tls/RootCA.crt"
+      )));
       cfg.root_store.add_pem_file(reader).unwrap();
       cfg.alpn_protocols.push("boofar".as_bytes().to_vec());
       let cfg = Arc::new(cfg);

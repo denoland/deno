@@ -57,6 +57,7 @@ pub struct Metadata {
   pub log_level: Option<Level>,
   pub ca_stores: Option<Vec<String>>,
   pub ca_data: Option<Vec<u8>>,
+  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
 }
 
 pub const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
@@ -252,6 +253,8 @@ pub async fn run(
     debug_flag: metadata.log_level.map_or(false, |l| l == log::Level::Debug),
     user_agent: version::get_user_agent(),
     unstable: metadata.unstable,
+    unsafely_ignore_certificate_errors: metadata
+      .unsafely_ignore_certificate_errors,
     root_cert_store: Some(root_cert_store),
     seed: metadata.seed,
     js_error_create_fn: None,

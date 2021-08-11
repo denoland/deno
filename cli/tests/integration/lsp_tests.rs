@@ -12,17 +12,17 @@ use tempfile::TempDir;
 use test_util::deno_exe_path;
 use test_util::http_server;
 use test_util::lsp::LspClient;
-use test_util::root_path;
+use test_util::testdata_path;
 
 fn load_fixture(path: &str) -> Value {
-  let fixtures_path = root_path().join("cli/tests/lsp");
+  let fixtures_path = testdata_path().join("lsp");
   let path = fixtures_path.join(path);
   let fixture_str = fs::read_to_string(path).unwrap();
   serde_json::from_str(&fixture_str).unwrap()
 }
 
 fn load_fixture_str(path: &str) -> String {
-  let fixtures_path = root_path().join("cli/tests/lsp");
+  let fixtures_path = testdata_path().join("lsp");
   let path = fixtures_path.join(path);
   fs::read_to_string(path).unwrap()
 }
@@ -921,7 +921,7 @@ fn lsp_hover_dependency() {
     Some(json!({
       "contents": {
         "kind": "markdown",
-        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/cli/tests/subdir/type_reference.js\n"
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/subdir/type_reference.js\n"
       },
       "range": {
         "start": {
@@ -930,7 +930,7 @@ fn lsp_hover_dependency() {
         },
         "end":{
           "line": 3,
-          "character": 76
+          "character": 66
         }
       }
     }))
@@ -955,7 +955,7 @@ fn lsp_hover_dependency() {
     Some(json!({
       "contents": {
         "kind": "markdown",
-        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/cli/tests/subdir/mod1.ts\n"
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/subdir/mod1.ts\n"
       },
       "range": {
         "start": {
@@ -964,7 +964,7 @@ fn lsp_hover_dependency() {
         },
         "end":{
           "line": 4,
-          "character": 66
+          "character": 56
         }
       }
     }))
@@ -2155,6 +2155,54 @@ fn lsp_code_actions_refactor() {
 }
 
 #[test]
+fn lsp_code_actions_refactor_no_disabled_support() {
+  let mut client = init("initialize_params_ca_no_disabled.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "interface A {\n  a: string;\n}\n\ninterface B {\n  b: string;\n}\n\nclass AB implements A, B {\n  a = \"a\";\n  b = \"b\";\n}\n\nnew AB().a;\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeAction",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 14,
+            "character": 0
+          }
+        },
+        "context": {
+          "diagnostics": [],
+          "only": [
+            "refactor"
+          ]
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_action_response_no_disabled.json"))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_code_actions_deadlock() {
   let mut client = init("initialize_params.json");
   client
@@ -2665,7 +2713,7 @@ fn lsp_diagnostics_warn() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "import * as a from \"http://127.0.0.1:4545/cli/tests/x_deno_warning.js\";\n\nconsole.log(a)\n",
+        "text": "import * as a from \"http://127.0.0.1:4545/x_deno_warning.js\";\n\nconsole.log(a)\n",
       },
     }),
   );
@@ -2678,7 +2726,7 @@ fn lsp_diagnostics_warn() {
         },
         "uris": [
           {
-            "uri": "http://127.0.0.1:4545/cli/tests/x_deno_warning.js",
+            "uri": "http://127.0.0.1:4545/x_deno_warning.js",
           }
         ],
       }),
@@ -2707,7 +2755,7 @@ fn lsp_diagnostics_warn() {
           },
           end: lsp::Position {
             line: 0,
-            character: 70
+            character: 60
           }
         },
         severity: Some(lsp::DiagnosticSeverity::Warning),

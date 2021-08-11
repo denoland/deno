@@ -37,9 +37,10 @@ use std::sync::MutexGuard;
 use std::task::Context;
 use std::task::Poll;
 use tempfile::TempDir;
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-use tokio_rustls::rustls;
+use tokio_rustls::rustls::{self, Session};
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
 
@@ -56,6 +57,7 @@ const DOUBLE_REDIRECTS_PORT: u16 = 4548;
 const INF_REDIRECTS_PORT: u16 = 4549;
 const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
 const AUTH_REDIRECT_PORT: u16 = 4551;
+const TLS_CLIENT_AUTH_PORT: u16 = 4552;
 const HTTPS_PORT: u16 = 5545;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
@@ -88,6 +90,10 @@ pub fn prebuilt_path() -> PathBuf {
 
 pub fn tests_path() -> PathBuf {
   root_path().join("cli").join("tests")
+}
+
+pub fn testdata_path() -> PathBuf {
+  tests_path().join("testdata")
 }
 
 pub fn third_party_path() -> PathBuf {
@@ -198,7 +204,7 @@ async fn inf_redirects(req: Request<Body>) -> hyper::Result<Response<Body>> {
 async fn another_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
-  let url = format!("http://localhost:{}/cli/tests/subdir{}", PORT, p);
+  let url = format!("http://localhost:{}/subdir{}", PORT, p);
 
   Ok(redirect_resp(url))
 }
@@ -224,6 +230,7 @@ async fn auth_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
 
 async fn run_ws_server(addr: &SocketAddr) {
   let listener = TcpListener::bind(addr).await.unwrap();
+  println!("ready: ws"); // Eye catcher for HttpServerCount
   while let Ok((stream, _addr)) = listener.accept().await {
     tokio::spawn(async move {
       let ws_stream_fut = accept_async(stream);
@@ -260,18 +267,25 @@ async fn run_ws_close_server(addr: &SocketAddr) {
 async fn get_tls_config(
   cert: &str,
   key: &str,
+  ca: &str,
 ) -> io::Result<Arc<rustls::ServerConfig>> {
-  let mut cert_path = root_path();
-  let mut key_path = root_path();
-  cert_path.push(cert);
-  key_path.push(key);
+  let cert_path = testdata_path().join(cert);
+  let key_path = testdata_path().join(key);
+  let ca_path = testdata_path().join(ca);
 
   let cert_file = std::fs::File::open(cert_path)?;
   let key_file = std::fs::File::open(key_path)?;
+  let ca_file = std::fs::File::open(ca_path)?;
 
   let mut cert_reader = io::BufReader::new(cert_file);
   let cert = rustls::internal::pemfile::certs(&mut cert_reader)
     .expect("Cannot load certificate");
+
+  let mut ca_cert_reader = io::BufReader::new(ca_file);
+  let ca_cert = rustls::internal::pemfile::certs(&mut ca_cert_reader)
+    .expect("Cannot load CA certificate")
+    .remove(0);
+
   let mut key_reader = io::BufReader::new(key_file);
   let key = {
     let pkcs8_key =
@@ -290,7 +304,12 @@ async fn get_tls_config(
 
   match key {
     Some(key) => {
-      let mut config = rustls::ServerConfig::new(rustls::NoClientAuth::new());
+      let mut root_cert_store = rustls::RootCertStore::empty();
+      root_cert_store.add(&ca_cert).unwrap();
+      // Allow (but do not require) client authentication.
+      let allow_client_auth =
+        rustls::AllowAnyAnonymousOrAuthenticatedClient::new(root_cert_store);
+      let mut config = rustls::ServerConfig::new(allow_client_auth);
       config
         .set_single_cert(cert, key)
         .map_err(|e| {
@@ -305,12 +324,16 @@ async fn get_tls_config(
 }
 
 async fn run_wss_server(addr: &SocketAddr) {
-  let cert_file = "cli/tests/tls/localhost.crt";
-  let key_file = "cli/tests/tls/localhost.key";
+  let cert_file = "tls/localhost.crt";
+  let key_file = "tls/localhost.key";
+  let ca_cert_file = "tls/RootCA.pem";
 
-  let tls_config = get_tls_config(cert_file, key_file).await.unwrap();
+  let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
+    .await
+    .unwrap();
   let tls_acceptor = TlsAcceptor::from(tls_config);
   let listener = TcpListener::bind(addr).await.unwrap();
+  println!("ready: wss"); // Eye catcher for HttpServerCount
 
   while let Ok((stream, _addr)) = listener.accept().await {
     let acceptor = tls_acceptor.clone();
@@ -338,6 +361,71 @@ async fn run_wss_server(addr: &SocketAddr) {
   }
 }
 
+/// This server responds with 'PASS' if client authentication was successful. Try it by running
+/// test_server and
+///   curl --key cli/tests/testdata/tls/localhost.key \
+///        --cert cli/tests/testsdata/tls/localhost.crt \
+///        --cacert cli/tests/testdata/tls/RootCA.crt https://localhost:4552/
+async fn run_tls_client_auth_server() {
+  let cert_file = "tls/localhost.crt";
+  let key_file = "tls/localhost.key";
+  let ca_cert_file = "tls/RootCA.pem";
+  let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
+    .await
+    .unwrap();
+  let tls_acceptor = TlsAcceptor::from(tls_config);
+
+  // Listen on ALL addresses that localhost can resolves to.
+  let accept = |listener: tokio::net::TcpListener| {
+    async {
+      let result = listener.accept().await;
+      Some((result, listener))
+    }
+    .boxed()
+  };
+
+  let host_and_port = &format!("localhost:{}", TLS_CLIENT_AUTH_PORT);
+
+  let listeners = tokio::net::lookup_host(host_and_port)
+    .await
+    .expect(host_and_port)
+    .inspect(|address| println!("{} -> {}", host_and_port, address))
+    .map(tokio::net::TcpListener::bind)
+    .collect::<futures::stream::FuturesUnordered<_>>()
+    .collect::<Vec<_>>()
+    .await
+    .into_iter()
+    .map(|s| s.unwrap())
+    .map(|listener| futures::stream::unfold(listener, accept))
+    .collect::<Vec<_>>();
+
+  println!("ready: tls client auth"); // Eye catcher for HttpServerCount
+
+  let mut listeners = futures::stream::select_all(listeners);
+
+  while let Some(Ok((stream, _addr))) = listeners.next().await {
+    let acceptor = tls_acceptor.clone();
+    tokio::spawn(async move {
+      match acceptor.accept(stream).await {
+        Ok(mut tls_stream) => {
+          let (_, tls_session) = tls_stream.get_mut();
+          // We only need to check for the presence of client certificates
+          // here. Rusttls ensures that they are valid and signed by the CA.
+          let response = match tls_session.get_peer_certificates() {
+            Some(_certs) => b"PASS",
+            None => b"FAIL",
+          };
+          tls_stream.write_all(response).await.unwrap();
+        }
+
+        Err(e) => {
+          eprintln!("TLS accept error: {:?}", e);
+        }
+      }
+    });
+  }
+}
+
 async fn absolute_redirect(
   req: Request<Body>,
 ) -> hyper::Result<Response<Body>> {
@@ -357,7 +445,7 @@ async fn absolute_redirect(
     }
   }
 
-  let mut file_path = root_path();
+  let mut file_path = testdata_path();
   file_path.push(&req.uri().path()[1..]);
   if file_path.is_dir() || !file_path.exists() {
     let mut not_found_resp = Response::new(Body::empty());
@@ -589,7 +677,7 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       );
       Ok(res)
     }
-    (_, "/cli/tests/subdir/xTypeScriptTypesRedirect.d.ts") => {
+    (_, "/subdir/xTypeScriptTypesRedirect.d.ts") => {
       let mut res = Response::new(Body::from(
         "import './xTypeScriptTypesRedirected.d.ts';",
       ));
@@ -599,7 +687,7 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       );
       Ok(res)
     }
-    (_, "/cli/tests/subdir/xTypeScriptTypesRedirected.d.ts") => {
+    (_, "/subdir/xTypeScriptTypesRedirected.d.ts") => {
       let mut res = Response::new(Body::from("export const foo: 'foo';"));
       res.headers_mut().insert(
         "Content-type",
@@ -615,7 +703,7 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       );
       Ok(res)
     }
-    (_, "/cli/tests/subdir/file_with_:_in_name.ts") => {
+    (_, "/subdir/file_with_:_in_name.ts") => {
       let mut res = Response::new(Body::from(
         "console.log('Hello from file_with_:_in_name.ts');",
       ));
@@ -625,7 +713,7 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       );
       Ok(res)
     }
-    (_, "/cli/tests/subdir/no_js_ext@1.0.0") => {
+    (_, "/subdir/no_js_ext@1.0.0") => {
       let mut res = Response::new(Body::from(
         r#"import { printHello } from "./mod2.ts";
         printHello();
@@ -638,8 +726,8 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       Ok(res)
     }
     (_, "/.well-known/deno-import-intellisense.json") => {
-      let file_path = root_path()
-        .join("cli/tests/lsp/registries/deno-import-intellisense.json");
+      let file_path =
+        testdata_path().join("lsp/registries/deno-import-intellisense.json");
       if let Ok(body) = tokio::fs::read(file_path).await {
         Ok(custom_headers(
           "/.well-known/deno-import-intellisense.json",
@@ -650,10 +738,10 @@ async fn main_server(req: Request<Body>) -> hyper::Result<Response<Body>> {
       }
     }
     _ => {
-      let mut file_path = root_path();
+      let mut file_path = testdata_path();
       file_path.push(&req.uri().path()[1..]);
       if let Ok(file) = tokio::fs::read(file_path).await {
-        let file_resp = custom_headers(&req.uri().path()[1..], file);
+        let file_resp = custom_headers(req.uri().path(), file);
         return Ok(file_resp);
       }
 
@@ -773,16 +861,17 @@ async fn wrap_main_server() {
 
 async fn wrap_main_https_server() {
   let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], HTTPS_PORT));
-  let cert_file = "cli/tests/tls/localhost.crt";
-  let key_file = "cli/tests/tls/localhost.key";
-  let tls_config = get_tls_config(cert_file, key_file)
+  let cert_file = "tls/localhost.crt";
+  let key_file = "tls/localhost.key";
+  let ca_cert_file = "tls/RootCA.pem";
+  let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
     .await
-    .expect("Cannot get TLS config");
+    .unwrap();
   loop {
     let tcp = TcpListener::bind(&main_server_https_addr)
       .await
       .expect("Cannot bind TCP");
-    println!("tls ready");
+    println!("ready: https"); // Eye catcher for HttpServerCount
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
     // Prepare a long-running future stream to accept and serve cients.
     let incoming_tls_stream = async_stream::stream! {
@@ -832,6 +921,8 @@ pub async fn run_all_servers() {
   let ws_close_addr = SocketAddr::from(([127, 0, 0, 1], WS_CLOSE_PORT));
   let ws_close_server_fut = run_ws_close_server(&ws_close_addr);
 
+  let tls_client_auth_server_fut = run_tls_client_auth_server();
+
   let main_server_fut = wrap_main_server();
   let main_server_https_fut = wrap_main_https_server();
 
@@ -840,6 +931,7 @@ pub async fn run_all_servers() {
       redirect_server_fut,
       ws_server_fut,
       wss_server_fut,
+      tls_client_auth_server_fut,
       ws_close_server_fut,
       another_redirect_server_fut,
       auth_redirect_server_fut,
@@ -856,7 +948,7 @@ pub async fn run_all_servers() {
   futures::future::poll_fn(move |cx| {
     let poll_result = server_fut.poll_unpin(cx);
     if !replace(&mut did_print_ready, true) {
-      println!("ready");
+      println!("ready: server_fut"); // Eye catcher for HttpServerCount
     }
     poll_result
   })
@@ -866,7 +958,7 @@ pub async fn run_all_servers() {
 fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
   let mut response = Response::new(Body::from(body));
 
-  if p.ends_with("cli/tests/x_deno_warning.js") {
+  if p.ends_with("/x_deno_warning.js") {
     response.headers_mut().insert(
       "Content-Type",
       HeaderValue::from_static("application/javascript"),
@@ -876,7 +968,7 @@ fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
       .insert("X-Deno-Warning", HeaderValue::from_static("foobar"));
     return response;
   }
-  if p.ends_with("cli/tests/053_import_compression/brotli") {
+  if p.ends_with("/053_import_compression/brotli") {
     response
       .headers_mut()
       .insert("Content-Encoding", HeaderValue::from_static("br"));
@@ -889,7 +981,7 @@ fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
       .insert("Content-Length", HeaderValue::from_static("26"));
     return response;
   }
-  if p.ends_with("cli/tests/053_import_compression/gziped") {
+  if p.ends_with("/053_import_compression/gziped") {
     response
       .headers_mut()
       .insert("Content-Encoding", HeaderValue::from_static("gzip"));
@@ -903,7 +995,7 @@ fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
     return response;
   }
 
-  if p.contains("cli/tests/encoding/") {
+  if p.contains("/encoding/") {
     let charset = p
       .split_terminator('/')
       .last()
@@ -978,24 +1070,22 @@ impl HttpServerCount {
 
       println!("test_server starting...");
       let mut test_server = Command::new(test_server_path())
-        .current_dir(root_path())
+        .current_dir(testdata_path())
         .stdout(Stdio::piped())
         .spawn()
         .expect("failed to execute test_server");
       let stdout = test_server.stdout.as_mut().unwrap();
       use std::io::{BufRead, BufReader};
       let lines = BufReader::new(stdout).lines();
-      let mut ready = false;
-      let mut tls_ready = false;
+
+      // Wait for all the servers to report being ready.
+      let mut ready_count = 0;
       for maybe_line in lines {
         if let Ok(line) = maybe_line {
-          if line.starts_with("ready") {
-            ready = true;
+          if line.starts_with("ready:") {
+            ready_count += 1;
           }
-          if line.starts_with("tls ready") {
-            tls_ready = true;
-          }
-          if ready && tls_ready {
+          if ready_count == 5 {
             break;
           }
         } else {
@@ -1162,7 +1252,7 @@ pub fn run_and_collect_output_with_args(
   let mut deno_process_builder = deno_cmd();
   deno_process_builder
     .args(args)
-    .current_dir(&tests_path())
+    .current_dir(&testdata_path())
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())
     .stderr(Stdio::piped());
@@ -1224,7 +1314,7 @@ pub fn run_powershell_script_file(
 
   command
     .env("DENO_DIR", deno_dir.path())
-    .current_dir(root_path())
+    .current_dir(testdata_path())
     .arg("-file")
     .arg(script_file_path);
 
@@ -1259,9 +1349,7 @@ pub struct CheckOutputIntegrationTest {
 impl CheckOutputIntegrationTest {
   pub fn run(&self) {
     let args = self.args.split_whitespace();
-    let root = root_path();
     let deno_exe = deno_exe_path();
-    println!("root path {}", root.display());
     println!("deno_exe path {}", deno_exe.display());
 
     let _http_server_guard = if self.http_server {
@@ -1271,12 +1359,12 @@ impl CheckOutputIntegrationTest {
     };
 
     let (mut reader, writer) = pipe().unwrap();
-    let tests_dir = root.join("cli").join("tests");
+    let testdata_dir = testdata_path();
     let mut command = deno_cmd();
     println!("deno_exe args {}", self.args);
-    println!("deno_exe tests path {:?}", &tests_dir);
+    println!("deno_exe testdata path {:?}", &testdata_dir);
     command.args(args);
-    command.current_dir(&tests_dir);
+    command.current_dir(&testdata_dir);
     command.stdin(Stdio::piped());
     let writer_clone = writer.try_clone().unwrap();
     command.stderr(writer_clone);
@@ -1331,7 +1419,7 @@ impl CheckOutputIntegrationTest {
     let expected = if let Some(s) = self.output_str {
       s.to_owned()
     } else {
-      let output_path = tests_dir.join(self.output);
+      let output_path = testdata_dir.join(self.output);
       println!("output path {}", output_path.display());
       std::fs::read_to_string(output_path).expect("cannot read output")
     };
@@ -1403,7 +1491,7 @@ pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
 pub fn test_pty(args: &str, output_path: &str, input: &[u8]) {
   use pty::fork::Fork;
 
-  let tests_path = tests_path();
+  let tests_path = testdata_path();
   let fork = Fork::from_ptmx().unwrap();
   if let Ok(mut master) = fork.is_parent() {
     let mut output_actual = String::new();

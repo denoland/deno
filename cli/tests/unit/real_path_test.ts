@@ -10,7 +10,7 @@ import {
 } from "./test_util.ts";
 
 unitTest({ perms: { read: true } }, function realPathSyncSuccess() {
-  const relative = "cli/tests/fixture.json";
+  const relative = "cli/tests/testdata/fixture.json";
   const realPath = Deno.realPathSync(relative);
   if (Deno.build.os !== "windows") {
     assert(realPath.startsWith("/"));
@@ -22,7 +22,7 @@ unitTest({ perms: { read: true } }, function realPathSyncSuccess() {
 });
 
 unitTest({ perms: { read: true } }, function realPathSyncUrl() {
-  const relative = "cli/tests/fixture.json";
+  const relative = "cli/tests/testdata/fixture.json";
   const url = pathToAbsoluteFileUrl(relative);
   assertEquals(Deno.realPathSync(relative), Deno.realPathSync(url));
 });
@@ -61,7 +61,7 @@ unitTest({ perms: { read: true } }, function realPathSyncNotFound() {
 });
 
 unitTest({ perms: { read: true } }, async function realPathSuccess() {
-  const relativePath = "cli/tests/fixture.json";
+  const relativePath = "cli/tests/testdata/fixture.json";
   const realPath = await Deno.realPath(relativePath);
   if (Deno.build.os !== "windows") {
     assert(realPath.startsWith("/"));
@@ -75,7 +75,7 @@ unitTest({ perms: { read: true } }, async function realPathSuccess() {
 unitTest(
   { perms: { read: true } },
   async function realPathUrl() {
-    const relative = "cli/tests/fixture.json";
+    const relative = "cli/tests/testdata/fixture.json";
     const url = pathToAbsoluteFileUrl(relative);
     assertEquals(await Deno.realPath(relative), await Deno.realPath(url));
   },

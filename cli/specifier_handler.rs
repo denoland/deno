@@ -572,7 +572,6 @@ pub mod tests {
   use crate::http_cache::HttpCache;
   use deno_core::resolve_url_or_path;
   use deno_runtime::deno_web::BlobStore;
-  use std::env;
   use tempfile::TempDir;
 
   macro_rules! map (
@@ -598,6 +597,7 @@ pub mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
     )
     .expect("could not setup");
     let disk_cache = deno_dir.gen_cache;
@@ -617,8 +617,7 @@ pub mod tests {
     let _http_server_guard = test_util::http_server();
     let (_, mut file_fetcher) = setup();
     let specifier =
-      resolve_url_or_path("http://localhost:4545/cli/tests/subdir/mod2.ts")
-        .unwrap();
+      resolve_url_or_path("http://localhost:4545/subdir/mod2.ts").unwrap();
     let cached_module: CachedModule = file_fetcher
       .fetch(specifier.clone(), None, false)
       .await
@@ -638,8 +637,7 @@ pub mod tests {
     let _http_server_guard = test_util::http_server();
     let (_, mut file_fetcher) = setup();
     let specifier =
-      resolve_url_or_path("http://localhost:4545/cli/tests/subdir/mod2.ts")
-        .unwrap();
+      resolve_url_or_path("http://localhost:4545/subdir/mod2.ts").unwrap();
     let cached_module: CachedModule = file_fetcher
       .fetch(specifier.clone(), None, false)
       .await
@@ -664,14 +662,16 @@ pub mod tests {
     let _http_server_guard = test_util::http_server();
     let (_, mut file_fetcher) = setup();
     let specifier =
-      resolve_url_or_path("http://localhost:4545/cli/tests/subdir/mod2.ts")
-        .unwrap();
+      resolve_url_or_path("http://localhost:4545/subdir/mod2.ts").unwrap();
     let cached_module: CachedModule =
       file_fetcher.fetch(specifier, None, false).await.unwrap();
     assert!(cached_module.is_remote);
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let specifier = resolve_url_or_path(
-      c.join("tests/subdir/mod1.ts").as_os_str().to_str().unwrap(),
+      test_util::testdata_path()
+        .join("subdir/mod1.ts")
+        .as_os_str()
+        .to_str()
+        .unwrap(),
     )
     .unwrap();
     let cached_module: CachedModule =
