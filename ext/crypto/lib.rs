@@ -62,7 +62,7 @@ lazy_static! {
 pub fn init(maybe_seed: Option<u64>) -> Extension {
   Extension::builder()
     .js(include_js_files!(
-      prefix "deno:extensions/crypto",
+      prefix "deno:ext/crypto",
       "00_crypto.js",
       "01_webidl.js",
     ))

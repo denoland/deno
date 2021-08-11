@@ -52,7 +52,7 @@ pub fn get_unstable_declaration() -> PathBuf {
 pub fn init() -> Extension {
   Extension::builder()
     .js(include_js_files!(
-      prefix "deno:extensions/http",
+      prefix "deno:ext/http",
       "01_http.js",
     ))
     .ops(vec![
