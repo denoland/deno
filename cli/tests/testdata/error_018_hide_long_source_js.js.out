@@ -1,0 +1,2 @@
+error: Uncaught TypeError: Cannot read properties of undefined (reading 'a')
+    at file:///[WILDCARD]/error_018_hide_long_source_js.js:3:206

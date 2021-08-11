@@ -9,12 +9,12 @@ fn branch() {
   let tempdir = TempDir::new().expect("tempdir fail");
   let tempdir = tempdir.path().join("cov");
   let status = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("test")
     .arg("--quiet")
     .arg("--unstable")
     .arg(format!("--coverage={}", tempdir.to_str().unwrap()))
-    .arg("cli/tests/coverage/branch_test.ts")
+    .arg("coverage/branch_test.ts")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::inherit())
     .status()
@@ -23,7 +23,7 @@ fn branch() {
   assert!(status.success());
 
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("coverage")
     .arg("--quiet")
     .arg("--unstable")
@@ -38,7 +38,7 @@ fn branch() {
       .to_string();
 
   let expected = fs::read_to_string(
-    util::root_path().join("cli/tests/coverage/expected_branch.out"),
+    util::testdata_path().join("coverage/expected_branch.out"),
   )
   .unwrap();
 
@@ -51,7 +51,7 @@ fn branch() {
   assert!(output.status.success());
 
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("coverage")
     .arg("--quiet")
     .arg("--unstable")
@@ -67,7 +67,7 @@ fn branch() {
       .to_string();
 
   let expected = fs::read_to_string(
-    util::root_path().join("cli/tests/coverage/expected_branch.lcov"),
+    util::testdata_path().join("coverage/expected_branch.lcov"),
   )
   .unwrap();
 
@@ -84,12 +84,12 @@ fn branch() {
 fn complex() {
   let tempdir = TempDir::new().expect("tempdir fail");
   let status = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("test")
     .arg("--quiet")
     .arg("--unstable")
     .arg(format!("--coverage={}", tempdir.path().to_str().unwrap()))
-    .arg("cli/tests/coverage/complex_test.ts")
+    .arg("coverage/complex_test.ts")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::inherit())
     .status()
@@ -98,7 +98,7 @@ fn complex() {
   assert!(status.success());
 
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("coverage")
     .arg("--quiet")
     .arg("--unstable")
@@ -113,7 +113,7 @@ fn complex() {
       .to_string();
 
   let expected = fs::read_to_string(
-    util::root_path().join("cli/tests/coverage/expected_complex.out"),
+    util::testdata_path().join("coverage/expected_complex.out"),
   )
   .unwrap();
 
@@ -126,7 +126,7 @@ fn complex() {
   assert!(output.status.success());
 
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("coverage")
     .arg("--quiet")
     .arg("--unstable")
@@ -142,7 +142,7 @@ fn complex() {
       .to_string();
 
   let expected = fs::read_to_string(
-    util::root_path().join("cli/tests/coverage/expected_complex.lcov"),
+    util::testdata_path().join("coverage/expected_complex.lcov"),
   )
   .unwrap();
 

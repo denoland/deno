@@ -29,9 +29,6 @@ use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
-use std::rc::Rc;
-use swc_common::Loc;
-use swc_common::SourceMap;
 use swc_common::DUMMY_SP;
 use swc_ecmascript::ast as swc_ast;
 use swc_ecmascript::visit::Node;
@@ -287,13 +284,7 @@ pub fn parse_module(
   source: &str,
   media_type: &MediaType,
 ) -> Result<ast::ParsedModule, AnyError> {
-  let source_map = Rc::new(swc_common::SourceMap::default());
-  ast::parse_with_source_map(
-    &specifier.to_string(),
-    source,
-    media_type,
-    source_map,
-  )
+  ast::parse(&specifier.to_string(), source, media_type)
 }
 
 // TODO(@kitsonk) a lot of this logic is duplicated in module_graph.rs in
@@ -310,7 +301,7 @@ pub fn analyze_dependencies(
   // Parse leading comments for supported triple slash references.
   for comment in parsed_module.get_leading_comments().iter() {
     if let Some((ts_reference, span)) = parse_ts_reference(comment) {
-      let loc = parsed_module.source_map.lookup_char_pos(span.lo);
+      let loc = parsed_module.get_location(span.lo);
       match ts_reference {
         TypeScriptReference::Path(import) => {
           let dep = dependencies.entry(import.clone()).or_default();
@@ -320,11 +311,11 @@ pub fn analyze_dependencies(
           dep.maybe_code_specifier_range = Some(Range {
             start: Position {
               line: (loc.line - 1) as u32,
-              character: loc.col_display as u32,
+              character: loc.col as u32,
             },
             end: Position {
               line: (loc.line - 1) as u32,
-              character: (loc.col_display + import.chars().count() + 2) as u32,
+              character: (loc.col + import.chars().count() + 2) as u32,
             },
           });
         }
@@ -341,11 +332,11 @@ pub fn analyze_dependencies(
           dep.maybe_type_specifier_range = Some(Range {
             start: Position {
               line: (loc.line - 1) as u32,
-              character: loc.col_display as u32,
+              character: loc.col as u32,
             },
             end: Position {
               line: (loc.line - 1) as u32,
-              character: (loc.col_display + import.chars().count() + 2) as u32,
+              character: (loc.col + import.chars().count() + 2) as u32,
             },
           });
         }
@@ -368,7 +359,7 @@ pub fn analyze_dependencies(
           (
             resolve_import(deno_types, specifier, maybe_import_map),
             deno_types.clone(),
-            parsed_module.source_map.lookup_char_pos(span.lo)
+            parsed_module.get_location(span.lo)
           )
         })
       } else {
@@ -377,20 +368,16 @@ pub fn analyze_dependencies(
 
     let dep = dependencies.entry(desc.specifier.to_string()).or_default();
     dep.is_dynamic = desc.is_dynamic;
-    let start = parsed_module
-      .source_map
-      .lookup_char_pos(desc.specifier_span.lo);
-    let end = parsed_module
-      .source_map
-      .lookup_char_pos(desc.specifier_span.hi);
+    let start = parsed_module.get_location(desc.specifier_span.lo);
+    let end = parsed_module.get_location(desc.specifier_span.hi);
     let range = Range {
       start: Position {
         line: (start.line - 1) as u32,
-        character: start.col_display as u32,
+        character: start.col as u32,
       },
       end: Position {
         line: (end.line - 1) as u32,
-        character: end.col_display as u32,
+        character: end.col as u32,
       },
     };
     dep.maybe_code_specifier_range = Some(range);
@@ -402,11 +389,11 @@ pub fn analyze_dependencies(
         dep.maybe_type_specifier_range = Some(Range {
           start: Position {
             line: (loc.line - 1) as u32,
-            character: (loc.col_display + 1) as u32,
+            character: (loc.col + 1) as u32,
           },
           end: Position {
             line: (loc.line - 1) as u32,
-            character: (loc.col_display + 1 + specifier.chars().count()) as u32,
+            character: (loc.col + 1 + specifier.chars().count()) as u32,
           },
         });
         dep.maybe_type = Some(resolved_dependency);
@@ -971,16 +958,19 @@ fn prepend_whitespace(content: String, line_content: Option<String>) -> String {
   }
 }
 
-/// Get LSP range from the provided SWC start and end locations.
-fn get_range_from_loc(start: &Loc, end: &Loc) -> lsp::Range {
+/// Get LSP range from the provided start and end locations.
+fn get_range_from_location(
+  start: &ast::Location,
+  end: &ast::Location,
+) -> lsp::Range {
   lsp::Range {
     start: lsp::Position {
       line: (start.line - 1) as u32,
-      character: start.col_display as u32,
+      character: start.col as u32,
     },
     end: lsp::Position {
       line: (end.line - 1) as u32,
-      character: end.col_display as u32,
+      character: end.col as u32,
     },
   }
 }
@@ -1029,16 +1019,16 @@ impl DependencyRanges {
   }
 }
 
-struct DependencyRangeCollector {
+struct DependencyRangeCollector<'a> {
   import_ranges: DependencyRanges,
-  source_map: Rc<SourceMap>,
+  parsed_module: &'a ast::ParsedModule,
 }
 
-impl DependencyRangeCollector {
-  pub fn new(source_map: Rc<SourceMap>) -> Self {
+impl<'a> DependencyRangeCollector<'a> {
+  pub fn new(parsed_module: &'a ast::ParsedModule) -> Self {
     Self {
       import_ranges: DependencyRanges::default(),
-      source_map,
+      parsed_module,
     }
   }
 
@@ -1047,16 +1037,16 @@ impl DependencyRangeCollector {
   }
 }
 
-impl Visit for DependencyRangeCollector {
+impl<'a> Visit for DependencyRangeCollector<'a> {
   fn visit_import_decl(
     &mut self,
     node: &swc_ast::ImportDecl,
     _parent: &dyn Node,
   ) {
-    let start = self.source_map.lookup_char_pos(node.src.span.lo);
-    let end = self.source_map.lookup_char_pos(node.src.span.hi);
+    let start = self.parsed_module.get_location(node.src.span.lo);
+    let end = self.parsed_module.get_location(node.src.span.hi);
     self.import_ranges.0.push(DependencyRange {
-      range: narrow_range(get_range_from_loc(&start, &end)),
+      range: narrow_range(get_range_from_location(&start, &end)),
       specifier: node.src.value.to_string(),
     });
   }
@@ -1067,10 +1057,10 @@ impl Visit for DependencyRangeCollector {
     _parent: &dyn Node,
   ) {
     if let Some(src) = &node.src {
-      let start = self.source_map.lookup_char_pos(src.span.lo);
-      let end = self.source_map.lookup_char_pos(src.span.hi);
+      let start = self.parsed_module.get_location(src.span.lo);
+      let end = self.parsed_module.get_location(src.span.hi);
       self.import_ranges.0.push(DependencyRange {
-        range: narrow_range(get_range_from_loc(&start, &end)),
+        range: narrow_range(get_range_from_location(&start, &end)),
         specifier: src.value.to_string(),
       });
     }
@@ -1081,10 +1071,10 @@ impl Visit for DependencyRangeCollector {
     node: &swc_ast::ExportAll,
     _parent: &dyn Node,
   ) {
-    let start = self.source_map.lookup_char_pos(node.src.span.lo);
-    let end = self.source_map.lookup_char_pos(node.src.span.hi);
+    let start = self.parsed_module.get_location(node.src.span.lo);
+    let end = self.parsed_module.get_location(node.src.span.hi);
     self.import_ranges.0.push(DependencyRange {
-      range: narrow_range(get_range_from_loc(&start, &end)),
+      range: narrow_range(get_range_from_location(&start, &end)),
       specifier: node.src.value.to_string(),
     });
   }
@@ -1094,10 +1084,10 @@ impl Visit for DependencyRangeCollector {
     node: &swc_ast::TsImportType,
     _parent: &dyn Node,
   ) {
-    let start = self.source_map.lookup_char_pos(node.arg.span.lo);
-    let end = self.source_map.lookup_char_pos(node.arg.span.hi);
+    let start = self.parsed_module.get_location(node.arg.span.lo);
+    let end = self.parsed_module.get_location(node.arg.span.hi);
     self.import_ranges.0.push(DependencyRange {
-      range: narrow_range(get_range_from_loc(&start, &end)),
+      range: narrow_range(get_range_from_location(&start, &end)),
       specifier: node.arg.value.to_string(),
     });
   }
@@ -1108,8 +1098,7 @@ impl Visit for DependencyRangeCollector {
 pub fn analyze_dependency_ranges(
   parsed_module: &ast::ParsedModule,
 ) -> Result<DependencyRanges, AnyError> {
-  let mut collector =
-    DependencyRangeCollector::new(parsed_module.source_map.clone());
+  let mut collector = DependencyRangeCollector::new(parsed_module);
   parsed_module
     .module
     .visit_with(&swc_ast::Invalid { span: DUMMY_SP }, &mut collector);

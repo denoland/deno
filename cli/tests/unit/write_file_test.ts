@@ -8,7 +8,7 @@ import {
 
 unitTest(
   { perms: { read: true, write: true } },
-  function writeFileSyncSuccess(): void {
+  function writeFileSyncSuccess() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const filename = Deno.makeTempDirSync() + "/test.txt";
@@ -22,7 +22,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  function writeFileSyncUrl(): void {
+  function writeFileSyncUrl() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const tempDir = Deno.makeTempDirSync();
@@ -39,7 +39,7 @@ unitTest(
   },
 );
 
-unitTest({ perms: { write: true } }, function writeFileSyncFail(): void {
+unitTest({ perms: { write: true } }, function writeFileSyncFail() {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = "/baddir/test.txt";
@@ -49,7 +49,7 @@ unitTest({ perms: { write: true } }, function writeFileSyncFail(): void {
   }, Deno.errors.NotFound);
 });
 
-unitTest({ perms: { write: false } }, function writeFileSyncPerm(): void {
+unitTest({ perms: { write: false } }, function writeFileSyncPerm() {
   const enc = new TextEncoder();
   const data = enc.encode("Hello");
   const filename = "/baddir/test.txt";
@@ -61,7 +61,7 @@ unitTest({ perms: { write: false } }, function writeFileSyncPerm(): void {
 
 unitTest(
   { perms: { read: true, write: true } },
-  function writeFileSyncUpdateMode(): void {
+  function writeFileSyncUpdateMode() {
     if (Deno.build.os !== "windows") {
       const enc = new TextEncoder();
       const data = enc.encode("Hello");
@@ -76,7 +76,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  function writeFileSyncCreate(): void {
+  function writeFileSyncCreate() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const filename = Deno.makeTempDirSync() + "/test.txt";
@@ -97,7 +97,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  function writeFileSyncAppend(): void {
+  function writeFileSyncAppend() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const filename = Deno.makeTempDirSync() + "/test.txt";
@@ -122,7 +122,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function writeFileSuccess(): Promise<void> {
+  async function writeFileSuccess() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const filename = Deno.makeTempDirSync() + "/test.txt";
@@ -136,7 +136,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function writeFileUrl(): Promise<void> {
+  async function writeFileUrl() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const tempDir = await Deno.makeTempDir();
@@ -155,7 +155,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function writeFileNotFound(): Promise<void> {
+  async function writeFileNotFound() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const filename = "/baddir/test.txt";
@@ -168,7 +168,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: false } },
-  async function writeFilePerm(): Promise<void> {
+  async function writeFilePerm() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const filename = "/baddir/test.txt";
@@ -181,7 +181,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function writeFileUpdateMode(): Promise<void> {
+  async function writeFileUpdateMode() {
     if (Deno.build.os !== "windows") {
       const enc = new TextEncoder();
       const data = enc.encode("Hello");
@@ -196,7 +196,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function writeFileCreate(): Promise<void> {
+  async function writeFileCreate() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const filename = Deno.makeTempDirSync() + "/test.txt";
@@ -217,7 +217,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function writeFileAppend(): Promise<void> {
+  async function writeFileAppend() {
     const enc = new TextEncoder();
     const data = enc.encode("Hello");
     const filename = Deno.makeTempDirSync() + "/test.txt";
@@ -237,5 +237,41 @@ unitTest(
     dataRead = Deno.readFileSync(filename);
     actual = dec.decode(dataRead);
     assertEquals("Hello", actual);
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function writeFileAbortSignal(): Promise<void> {
+    const ac = new AbortController();
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    queueMicrotask(() => ac.abort());
+    try {
+      await Deno.writeFile(filename, data, { signal: ac.signal });
+    } catch (e) {
+      assertEquals(e.name, "AbortError");
+    }
+    const stat = Deno.statSync(filename);
+    assertEquals(stat.size, 0);
+  },
+);
+
+unitTest(
+  { perms: { read: true, write: true } },
+  async function writeFileAbortSignalPreAborted(): Promise<void> {
+    const ac = new AbortController();
+    ac.abort();
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    try {
+      await Deno.writeFile(filename, data, { signal: ac.signal });
+    } catch (e) {
+      assertEquals(e.name, "AbortError");
+    }
+    const stat = Deno.statSync(filename);
+    assertEquals(stat.size, 0);
   },
 );

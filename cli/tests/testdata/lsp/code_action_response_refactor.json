@@ -1,0 +1,177 @@
+[
+  {
+    "title": "Extract to function in global scope",
+    "kind": "refactor.extract.function",
+    "isPreferred": false,
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 1,
+          "character": 0
+        }
+      },
+      "refactorName": "Extract Symbol",
+      "actionName": "function_scope_0"
+    }
+  },
+  {
+    "title": "Extract to constant in enclosing scope",
+    "kind": "refactor.extract.constant",
+    "isPreferred": false,
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 1,
+          "character": 0
+        }
+      },
+      "refactorName": "Extract Symbol",
+      "actionName": "constant_scope_0"
+    }
+  },
+  {
+    "title": "Move to a new file",
+    "kind": "refactor.move.newFile",
+    "isPreferred": false,
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 1,
+          "character": 0
+        }
+      },
+      "refactorName": "Move to a new file",
+      "actionName": "Move to a new file"
+    }
+  },
+  {
+    "title": "Convert default export to named export",
+    "kind": "refactor.rewrite.export.named",
+    "isPreferred": false,
+    "disabled": {
+      "reason": "This file already has a default export"
+    },
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 1,
+          "character": 0
+        }
+      },
+      "refactorName": "Convert export",
+      "actionName": "Convert default export to named export"
+    }
+  },
+  {
+    "title": "Convert named export to default export",
+    "kind": "refactor.rewrite.export.default",
+    "isPreferred": false,
+    "disabled": {
+      "reason": "This file already has a default export"
+    },
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 1,
+          "character": 0
+        }
+      },
+      "refactorName": "Convert export",
+      "actionName": "Convert named export to default export"
+    }
+  },
+  {
+    "title": "Convert namespace import to named imports",
+    "kind": "refactor.rewrite.import.named",
+    "isPreferred": false,
+    "disabled": {
+      "reason": "Selection is not an import declaration."
+    },
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 1,
+          "character": 0
+        }
+      },
+      "refactorName": "Convert import",
+      "actionName": "Convert namespace import to named imports"
+    }
+  },
+  {
+    "title": "Convert named imports to namespace import",
+    "kind": "refactor.rewrite.import.namespace",
+    "isPreferred": false,
+    "disabled": {
+      "reason": "Selection is not an import declaration."
+    },
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 1,
+          "character": 0
+        }
+      },
+      "refactorName": "Convert import",
+      "actionName": "Convert named imports to namespace import"
+    }
+  },
+  {
+    "title": "Convert to optional chain expression",
+    "kind": "refactor.rewrite.expression.optionalChain",
+    "isPreferred": false,
+    "disabled": {
+      "reason": "Could not find convertible access expression"
+    },
+    "data": {
+      "specifier": "file:///a/file.ts",
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 0
+        },
+        "end": {
+          "line": 1,
+          "character": 0
+        }
+      },
+      "refactorName": "Convert to optional chain expression",
+      "actionName": "Convert to optional chain expression"
+    }
+  }
+]

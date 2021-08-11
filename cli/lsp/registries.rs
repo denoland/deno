@@ -266,6 +266,7 @@ impl Default for ModuleRegistry {
       true,
       None,
       BlobStore::default(),
+      None,
     )
     .unwrap();
 
@@ -285,6 +286,7 @@ impl ModuleRegistry {
       true,
       None,
       BlobStore::default(),
+      None,
     )
     .context("Error creating file fetcher in module registry.")
     .unwrap();

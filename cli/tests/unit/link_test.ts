@@ -3,7 +3,7 @@ import { assert, assertEquals, assertThrows, unitTest } from "./test_util.ts";
 
 unitTest(
   { perms: { read: true, write: true } },
-  function linkSyncSuccess(): void {
+  function linkSyncSuccess() {
     const testDir = Deno.makeTempDirSync();
     const oldData = "Hardlink";
     const oldName = testDir + "/oldname";
@@ -42,7 +42,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  function linkSyncExists(): void {
+  function linkSyncExists() {
     const testDir = Deno.makeTempDirSync();
     const oldName = testDir + "/oldname";
     const newName = testDir + "/newname";
@@ -58,7 +58,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  function linkSyncNotFound(): void {
+  function linkSyncNotFound() {
     const testDir = Deno.makeTempDirSync();
     const oldName = testDir + "/oldname";
     const newName = testDir + "/newname";
@@ -71,7 +71,7 @@ unitTest(
 
 unitTest(
   { perms: { read: false, write: true } },
-  function linkSyncReadPerm(): void {
+  function linkSyncReadPerm() {
     assertThrows(() => {
       Deno.linkSync("oldbaddir", "newbaddir");
     }, Deno.errors.PermissionDenied);
@@ -80,7 +80,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: false } },
-  function linkSyncWritePerm(): void {
+  function linkSyncWritePerm() {
     assertThrows(() => {
       Deno.linkSync("oldbaddir", "newbaddir");
     }, Deno.errors.PermissionDenied);
@@ -89,7 +89,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function linkSuccess(): Promise<void> {
+  async function linkSuccess() {
     const testDir = Deno.makeTempDirSync();
     const oldData = "Hardlink";
     const oldName = testDir + "/oldname";

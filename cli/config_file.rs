@@ -279,12 +279,12 @@ pub struct ConfigFile {
 }
 
 impl ConfigFile {
-  pub fn read(path_str: &str) -> Result<Self, AnyError> {
-    let path = Path::new(path_str);
+  pub fn read(path_ref: impl AsRef<Path>) -> Result<Self, AnyError> {
+    let path = Path::new(path_ref.as_ref());
     let config_file = if path.is_absolute() {
       path.to_path_buf()
     } else {
-      std::env::current_dir()?.join(path_str)
+      std::env::current_dir()?.join(path_ref)
     };
 
     let config_path = canonicalize_path(&config_file).map_err(|_| {
@@ -349,16 +349,15 @@ mod tests {
 
   #[test]
   fn read_config_file_relative() {
-    let config_file = ConfigFile::read("tests/module_graph/tsconfig.json")
-      .expect("Failed to load config file");
+    let config_file =
+      ConfigFile::read("tests/testdata/module_graph/tsconfig.json")
+        .expect("Failed to load config file");
     assert!(config_file.json.compiler_options.is_some());
   }
 
   #[test]
   fn read_config_file_absolute() {
-    let path = std::env::current_dir()
-      .unwrap()
-      .join("tests/module_graph/tsconfig.json");
+    let path = test_util::testdata_path().join("module_graph/tsconfig.json");
     let config_file = ConfigFile::read(path.to_str().unwrap())
       .expect("Failed to load config file");
     assert!(config_file.json.compiler_options.is_some());

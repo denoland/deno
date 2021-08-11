@@ -30,7 +30,7 @@ fn extract_ws_url_from_stderr(
 
 #[tokio::test]
 async fn inspector_connect() {
-  let script = util::tests_path().join("inspector1.js");
+  let script = util::testdata_path().join("inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
@@ -64,7 +64,7 @@ enum TestStep {
 
 #[tokio::test]
 async fn inspector_break_on_first_line() {
-  let script = util::tests_path().join("inspector2.js");
+  let script = util::testdata_path().join("inspector2.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
@@ -132,7 +132,7 @@ async fn inspector_break_on_first_line() {
 
 #[tokio::test]
 async fn inspector_pause() {
-  let script = util::tests_path().join("inspector1.js");
+  let script = util::testdata_path().join("inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
@@ -202,7 +202,7 @@ async fn inspector_port_collision() {
     return;
   }
 
-  let script = util::tests_path().join("inspector1.js");
+  let script = util::testdata_path().join("inspector1.js");
   let inspect_flag = inspect_flag_with_unique_port("--inspect");
 
   let mut child1 = util::deno_cmd()
@@ -242,7 +242,7 @@ async fn inspector_port_collision() {
 
 #[tokio::test]
 async fn inspector_does_not_hang() {
-  let script = util::tests_path().join("inspector3.js");
+  let script = util::testdata_path().join("inspector3.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
@@ -330,7 +330,7 @@ async fn inspector_does_not_hang() {
 
 #[tokio::test]
 async fn inspector_without_brk_runs_code() {
-  let script = util::tests_path().join("inspector4.js");
+  let script = util::testdata_path().join("inspector4.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
@@ -438,7 +438,7 @@ async fn inspector_runtime_evaluate_does_not_crash() {
 
 #[tokio::test]
 async fn inspector_json() {
-  let script = util::tests_path().join("inspector1.js");
+  let script = util::testdata_path().join("inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
@@ -467,7 +467,7 @@ async fn inspector_json() {
 
 #[tokio::test]
 async fn inspector_json_list() {
-  let script = util::tests_path().join("inspector1.js");
+  let script = util::testdata_path().join("inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
@@ -498,7 +498,7 @@ async fn inspector_json_list() {
 async fn inspector_connect_non_ws() {
   // https://github.com/denoland/deno/issues/11449
   // Verify we don't panic if non-WS connection is being established
-  let script = util::tests_path().join("inspector1.js");
+  let script = util::testdata_path().join("inspector1.js");
   let mut child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))

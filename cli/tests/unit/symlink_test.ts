@@ -8,7 +8,7 @@ import {
 
 unitTest(
   { perms: { read: true, write: true } },
-  function symlinkSyncSuccess(): void {
+  function symlinkSyncSuccess() {
     const testDir = Deno.makeTempDirSync();
     const oldname = testDir + "/oldname";
     const newname = testDir + "/newname";
@@ -23,7 +23,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  function symlinkSyncURL(): void {
+  function symlinkSyncURL() {
     const testDir = Deno.makeTempDirSync();
     const oldname = testDir + "/oldname";
     const newname = testDir + "/newname";
@@ -39,7 +39,7 @@ unitTest(
   },
 );
 
-unitTest(function symlinkSyncPerm(): void {
+unitTest(function symlinkSyncPerm() {
   assertThrows(() => {
     Deno.symlinkSync("oldbaddir", "newbaddir");
   }, Deno.errors.PermissionDenied);
@@ -47,7 +47,7 @@ unitTest(function symlinkSyncPerm(): void {
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function symlinkSuccess(): Promise<void> {
+  async function symlinkSuccess() {
     const testDir = Deno.makeTempDirSync();
     const oldname = testDir + "/oldname";
     const newname = testDir + "/newname";
@@ -62,7 +62,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function symlinkURL(): Promise<void> {
+  async function symlinkURL() {
     const testDir = Deno.makeTempDirSync();
     const oldname = testDir + "/oldname";
     const newname = testDir + "/newname";

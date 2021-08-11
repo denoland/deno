@@ -423,7 +423,20 @@ fn import_declarations() {
 }
 
 #[test]
-fn eval_unterminated() {
+fn exports_stripped() {
+  let (out, err) = util::run_and_collect_output(
+    true,
+    "repl",
+    Some(vec!["export default 5;", "export class Test {}"]),
+    Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
+    false,
+  );
+  assert!(out.contains("5\n"));
+  assert!(err.is_empty());
+}
+
+#[test]
+fn call_eval_unterminated() {
   let (out, err) = util::run_and_collect_output(
     true,
     "repl",
@@ -536,8 +549,7 @@ fn lexical_scoped_variable() {
 fn missing_deno_dir() {
   use std::fs::{read_dir, remove_dir_all};
   const DENO_DIR: &str = "nonexistent";
-  let test_deno_dir =
-    util::root_path().join("cli").join("tests").join(DENO_DIR);
+  let test_deno_dir = test_util::testdata_path().join(DENO_DIR);
   let (out, err) = util::run_and_collect_output(
     true,
     "repl",
@@ -629,5 +641,47 @@ fn custom_inspect() {
   );
 
   assert!(out.contains("Oops custom inspect error"));
+  assert!(err.is_empty());
+}
+
+#[test]
+fn eval_flag_valid_input() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--eval", "const t = 10;"],
+    Some(vec!["t * 500;"]),
+    None,
+    false,
+  );
+  assert!(out.contains("5000"));
+  assert!(err.is_empty());
+}
+
+#[test]
+fn eval_flag_parse_error() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--eval", "const %"],
+    Some(vec!["250 * 10"]),
+    None,
+    false,
+  );
+  assert!(test_util::strip_ansi_codes(&out)
+    .contains("error in --eval flag. parse error: Unexpected token `%`."));
+  assert!(out.contains("2500")); // should not prevent input
+  assert!(err.is_empty());
+}
+
+#[test]
+fn eval_flag_runtime_error() {
+  let (out, err) = util::run_and_collect_output_with_args(
+    true,
+    vec!["repl", "--eval", "throw new Error('Testing')"],
+    Some(vec!["250 * 10"]),
+    None,
+    false,
+  );
+  assert!(out.contains("error in --eval flag. Uncaught Error: Testing"));
+  assert!(out.contains("2500")); // should not prevent input
   assert!(err.is_empty());
 }

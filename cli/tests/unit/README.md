@@ -26,7 +26,7 @@ unitTest(
 
 ## Running tests
 
-There are three ways to run `unit_test_runner.ts`:
+There are two ways to run `unit_test_runner.ts`:
 
 ```sh
 # Run all tests.
