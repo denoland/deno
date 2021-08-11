@@ -596,6 +596,7 @@ dependencies = [
  "exec",
  "fancy-regex",
  "filetime",
+ "flaky_test",
  "fwdansi",
  "http",
  "indexmap",
@@ -1256,6 +1257,17 @@ name = "fixedbitset"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37ab347416e802de484e4d03c7316c48f1ecb56574dfd4a46a80f173ce1de04d"
+
+[[package]]
+name = "flaky_test"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "479cde5eb168cf5a056dd98f311cbfab7494c216394e4fb9eba0336827a8db93"
+dependencies = [
+ "proc-macro2 1.0.27",
+ "quote 1.0.9",
+ "syn 1.0.65",
+]
 
 [[package]]
 name = "flate2"
