@@ -30,6 +30,7 @@ use lspower::lsp::WorkDoneProgressOptions;
 use lspower::lsp::WorkspaceFoldersServerCapabilities;
 use lspower::lsp::WorkspaceServerCapabilities;
 
+use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
 use super::semantic_tokens::get_legend;
 
 fn code_action_capabilities(
@@ -41,8 +42,16 @@ fn code_action_capabilities(
     .and_then(|it| it.code_action.as_ref())
     .and_then(|it| it.code_action_literal_support.as_ref())
     .map_or(CodeActionProviderCapability::Simple(true), |_| {
+      let mut code_action_kinds =
+        vec![CodeActionKind::QUICKFIX, CodeActionKind::REFACTOR];
+      code_action_kinds.extend(
+        ALL_KNOWN_REFACTOR_ACTION_KINDS
+          .iter()
+          .map(|action| action.kind.clone()),
+      );
+
       CodeActionProviderCapability::Options(CodeActionOptions {
-        code_action_kinds: Some(vec![CodeActionKind::QUICKFIX]),
+        code_action_kinds: Some(code_action_kinds),
         resolve_provider: Some(true),
         work_done_progress_options: Default::default(),
       })

@@ -36,29 +36,46 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
   // invalidating that cache.
   (
     "cold_hello",
-    &["run", "--reload", "cli/tests/002_hello.ts"],
+    &["run", "--reload", "cli/tests/testdata/002_hello.ts"],
     None,
   ),
   (
     "cold_relative_import",
-    &["run", "--reload", "cli/tests/003_relative_import.ts"],
+    &[
+      "run",
+      "--reload",
+      "cli/tests/testdata/003_relative_import.ts",
+    ],
     None,
   ),
-  ("hello", &["run", "cli/tests/002_hello.ts"], None),
+  ("hello", &["run", "cli/tests/testdata/002_hello.ts"], None),
   (
     "relative_import",
-    &["run", "cli/tests/003_relative_import.ts"],
+    &["run", "cli/tests/testdata/003_relative_import.ts"],
     None,
   ),
-  ("error_001", &["run", "cli/tests/error_001.ts"], Some(1)),
+  (
+    "error_001",
+    &["run", "cli/tests/testdata/error_001.ts"],
+    Some(1),
+  ),
   (
     "no_check_hello",
-    &["run", "--reload", "--no-check", "cli/tests/002_hello.ts"],
+    &[
+      "run",
+      "--reload",
+      "--no-check",
+      "cli/tests/testdata/002_hello.ts",
+    ],
     None,
   ),
   (
     "workers_startup",
-    &["run", "--allow-read", "cli/tests/workers/bench_startup.ts"],
+    &[
+      "run",
+      "--allow-read",
+      "cli/tests/testdata/workers/bench_startup.ts",
+    ],
     None,
   ),
   (
@@ -66,7 +83,7 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/workers/bench_round_robin.ts",
+      "cli/tests/testdata/workers/bench_round_robin.ts",
     ],
     None,
   ),
@@ -75,23 +92,23 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "run",
       "--allow-read",
-      "cli/tests/workers/bench_large_message.ts",
+      "cli/tests/testdata/workers/bench_large_message.ts",
     ],
     None,
   ),
   (
     "text_decoder",
-    &["run", "cli/tests/text_decoder_perf.js"],
+    &["run", "cli/tests/testdata/text_decoder_perf.js"],
     None,
   ),
   (
     "text_encoder",
-    &["run", "cli/tests/text_encoder_perf.js"],
+    &["run", "cli/tests/testdata/text_encoder_perf.js"],
     None,
   ),
   (
     "text_encoder_into",
-    &["run", "cli/tests/text_encoder_into_perf.js"],
+    &["run", "cli/tests/testdata/text_encoder_into_perf.js"],
     None,
   ),
   (

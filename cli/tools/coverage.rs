@@ -432,7 +432,7 @@ impl CoverageReporter for PrettyCoverageReporter {
       .map(|source_map| SourceMap::from_slice(&source_map).unwrap());
 
     let mut ignored_spans: Vec<Span> = Vec::new();
-    for item in ast::lex("", script_source, &MediaType::JavaScript) {
+    for item in ast::lex(script_source, &MediaType::JavaScript) {
       if let TokenOrComment::Token(_) = item.inner {
         continue;
       }
