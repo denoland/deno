@@ -100,7 +100,7 @@ impl DynamicLibraryResource {
 pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
   Extension::builder()
     .js(include_js_files!(
-      prefix "deno:extensions/ffi",
+      prefix "deno:ext/ffi",
       "00_ffi.js",
     ))
     .ops(vec![

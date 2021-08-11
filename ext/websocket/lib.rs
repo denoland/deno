@@ -434,7 +434,7 @@ pub fn init<P: WebSocketPermissions + 'static>(
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
-      prefix "deno:extensions/websocket",
+      prefix "deno:ext/websocket",
       "01_websocket.js",
       "02_websocketstream.js",
     ))
