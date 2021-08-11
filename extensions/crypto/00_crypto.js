@@ -85,10 +85,10 @@
     },
     "importKey": {
       "HMAC": "HmacImportParams",
-      "PBKDF2": "Pbkdf2Params",
+      "PBKDF2": null,
     },
     "deriveBits": {
-      "PBKDF2": null,
+      "PBKDF2": "Pbkdf2Params",
     },
   };
 
