@@ -459,14 +459,14 @@ itest!(cafile_ts_fetch {
 });
 
 itest!(cafile_eval {
-  args: "eval --cert tls/RootCA.pem fetch('https://localhost:5545/cli/tests/cafile_ts_fetch.ts.out').then(r=>r.text()).then(t=>console.log(t.trimEnd()))",
+  args: "eval --cert tls/RootCA.pem fetch('https://localhost:5545/cafile_ts_fetch.ts.out').then(r=>r.text()).then(t=>console.log(t.trimEnd()))",
   output: "cafile_ts_fetch.ts.out",
   http_server: true,
 });
 
 itest!(cafile_info {
   args:
-    "info --quiet --cert tls/RootCA.pem https://localhost:5545/cli/tests/cafile_info.ts",
+    "info --quiet --cert tls/RootCA.pem https://localhost:5545/cafile_info.ts",
   output: "cafile_info.ts.out",
   http_server: true,
 });
