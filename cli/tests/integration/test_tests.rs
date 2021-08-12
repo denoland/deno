@@ -61,6 +61,12 @@ itest!(markdown {
   output: "test/markdown.out",
 });
 
+itest!(text {
+  args: "test --doc --allow-all test/text.md",
+  exit_code: 0,
+  output: "test/text.out",
+});
+
 itest!(quiet {
   args: "test --quiet test/quiet.ts",
   exit_code: 0,
