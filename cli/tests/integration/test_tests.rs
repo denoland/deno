@@ -133,6 +133,12 @@ itest!(unhandled_rejection {
   output: "test/unhandled_rejection.out",
 });
 
+itest!(interval {
+  args: "test test/interval.ts",
+  exit_code: 0,
+  output: "test/interval.out",
+});
+
 itest!(shuffle {
   args: "test --shuffle test/shuffle",
   exit_code: 0,
