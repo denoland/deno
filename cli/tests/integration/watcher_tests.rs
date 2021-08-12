@@ -216,7 +216,7 @@ fn bundle_watch_not_exit() {
   drop(t);
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn run_watch() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
