@@ -7,6 +7,7 @@ use crate::create_main_worker;
 use crate::file_fetcher::File;
 use crate::fs_util::collect_files;
 use crate::fs_util::normalize_path;
+use crate::located_script_name;
 use crate::media_type::MediaType;
 use crate::module_graph;
 use crate::program_state::ProgramState;
@@ -17,6 +18,7 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
+use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_v8;
 use deno_core::url::Url;
@@ -310,6 +312,26 @@ where
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions, true);
 
+  let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
+    program_state.coverage_dir
+  {
+    let session = worker.create_inspector_session().await;
+    let coverage_dir = PathBuf::from(coverage_dir);
+    let mut coverage_collector = CoverageCollector::new(coverage_dir, session);
+    worker
+      .with_event_loop(coverage_collector.start_collecting().boxed_local())
+      .await?;
+
+    Some(coverage_collector)
+  } else {
+    None
+  };
+
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('load'))",
+  )?;
+
   let registry = {
     worker.execute_module(&test_module).await?;
     let registry = worker
@@ -434,6 +456,17 @@ where
 
     let elapsed = Instant::now().duration_since(earlier);
     process_event(TestEvent::Result(description.clone(), result, elapsed));
+  }
+
+  worker.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('unload'))",
+  )?;
+
+  if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
+    worker
+      .with_event_loop(coverage_collector.stop_collecting().boxed_local())
+      .await?;
   }
 
   Ok(())
