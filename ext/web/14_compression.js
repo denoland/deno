@@ -11,10 +11,13 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
 
-  webidl.converters.compressionFormat = webidl.createEnumConverter("compressionFormat", [
-    "deflate",
-    "gzip",
-  ]); // TODO: not per spec, but close enough
+  webidl.converters.compressionFormat = webidl.createEnumConverter(
+    "compressionFormat",
+    [
+      "deflate",
+      "gzip",
+    ],
+  ); // TODO: not per spec, but close enough
 
   class CompressionStream extends TransformStream {
     constructor(format) {
@@ -24,21 +27,68 @@
         prefix,
         context: "Argument 1",
       });
+      const rid = core.opSync("op_compression_create_compressor", format);
 
       super({
         transform: (chunk, controller) => {
-          chunk = webidl.converters.BufferSource(chunk); // TODO: info?
-          const buffer = core.opSync("op_compression"); // TODO: compress
+          const data = webidl.converters.BufferSource(chunk); // TODO: info?
+          const buffer = core.opSync("op_compression_compress", {
+            format,
+            rid,
+            data,
+          }); // TODO: compress
           controller.enqueue(buffer);
         },
         flush: (controller) => {
-          // TODO: https://wicg.github.io/compression/#compress-flush-and-enqueue
-        }
+          const buffer = core.opSync(
+            "op_compression_compress_finalize",
+            format,
+            rid,
+          );
+          if (buffer.byteLength !== 0) {
+            controller.enqueue(buffer);
+          }
+        },
+      });
+    }
+  }
+
+  class DecompressionStream extends TransformStream {
+    constructor(format) {
+      const prefix = "Failed to construct 'DecompressionStream'";
+      webidl.requiredArguments(arguments.length, 1, { prefix });
+      format = webidl.converters.compressionFormat(format, {
+        prefix,
+        context: "Argument 1",
+      });
+      const rid = core.opSync("op_compression_create_decompressor", format);
+
+      super({
+        transform: (chunk, controller) => {
+          const data = webidl.converters.BufferSource(chunk); // TODO: info?
+          const buffer = core.opSync("op_compression_decompress", {
+            format,
+            rid,
+            data,
+          }); // TODO: compress
+          controller.enqueue(buffer);
+        },
+        flush: (controller) => {
+          const buffer = core.opSync(
+            "op_compression_decompress_finalize",
+            format,
+            rid,
+          );
+          if (buffer.byteLength !== 0) {
+            controller.enqueue(buffer);
+          }
+        },
       });
     }
   }
 
   window.__bootstrap.compression = {
     CompressionStream,
+    DecompressionStream,
   };
 })(globalThis);

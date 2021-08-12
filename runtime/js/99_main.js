@@ -34,6 +34,7 @@ delete Object.prototype.__proto__;
   const base64 = window.__bootstrap.base64;
   const encoding = window.__bootstrap.encoding;
   const Console = window.__bootstrap.console.Console;
+  const compression = window.__bootstrap.compression;
   const worker = window.__bootstrap.worker;
   const signals = window.__bootstrap.signals;
   const internals = window.__bootstrap.internals;
@@ -321,11 +322,13 @@ delete Object.prototype.__proto__;
       streams.ByteLengthQueuingStrategy,
     ),
     CloseEvent: util.nonEnumerable(CloseEvent),
+    CompressionStream: util.nonEnumerable(compression.CompressionStream),
     CountQueuingStrategy: util.nonEnumerable(
       streams.CountQueuingStrategy,
     ),
     CryptoKey: util.nonEnumerable(crypto.CryptoKey),
     CustomEvent: util.nonEnumerable(CustomEvent),
+    DecompressionStream: util.nonEnumerable(compression.DecompressionStream),
     DOMException: util.nonEnumerable(domException.DOMException),
     ErrorEvent: util.nonEnumerable(ErrorEvent),
     Event: util.nonEnumerable(Event),

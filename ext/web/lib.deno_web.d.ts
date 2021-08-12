@@ -757,3 +757,10 @@ declare class CompressionStream {
   readonly readable: ReadableStream<Uint8Array>;
   readonly writable: WritableStream<Uint8Array>;
 }
+
+declare class DecompressionStream {
+  constructor(format: string);
+
+  readonly readable: ReadableStream<Uint8Array>;
+  readonly writable: WritableStream<Uint8Array>;
+}

@@ -1,8 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 mod blob;
-mod message_port;
 mod compression;
+mod message_port;
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::range_error;
