@@ -17,8 +17,7 @@
     "matklad.rust-analyzer",
     "bungcip.better-toml",
     "vadimcn.vscode-lldb",
-    "mutantdino.resourcemonitor",
-    "denoland.vscode-deno"
+    "mutantdino.resourcemonitor"
   ],
 
   "postCreateCommand": "git submodule update --init",
