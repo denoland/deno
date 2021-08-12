@@ -1,5 +1,5 @@
-Check [WILDCARD]/test/filter/b_test.ts
 Check [WILDCARD]/test/filter/a_test.ts
+Check [WILDCARD]/test/filter/b_test.ts
 Check [WILDCARD]/test/filter/c_test.ts
 running 1 test from [WILDCARD]/test/filter/a_test.ts
 test foo ... ok ([WILDCARD])
