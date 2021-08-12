@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use flaky_test::flaky_test;
 use std::io::BufRead;
 use tempfile::TempDir;
 use test_util as util;
@@ -427,9 +428,7 @@ fn run_watch_with_import_map_and_relative_paths() {
   temp_directory.close().unwrap();
 }
 
-// TODO(bartlomieju): flaky (https://github.com/denoland/deno/issues/10552)
-#[ignore]
-#[test]
+#[flaky_test]
 fn test_watch() {
   macro_rules! assert_contains {
         ($string:expr, $($test:expr),+) => {
@@ -596,9 +595,7 @@ fn test_watch() {
   drop(t);
 }
 
-// TODO(bartlomieju): flaky (https://github.com/denoland/deno/issues/10552)
-#[ignore]
-#[test]
+#[flaky_test]
 fn test_watch_doc() {
   macro_rules! assert_contains {
         ($string:expr, $($test:expr),+) => {
