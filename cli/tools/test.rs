@@ -296,7 +296,7 @@ where
   if quiet {
     worker.js_runtime.execute_script(
       "deno:test_module",
-      "globalThis.console = new globalThis.console.Console();",
+      "globalThis.console = Deno[Deno.internal].disabledConsole;",
     )?;
   }
 

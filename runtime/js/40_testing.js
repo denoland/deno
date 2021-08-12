@@ -3,6 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
+  const { Console } = window.__bootstrap.console;
   const { parsePermissions } = window.__bootstrap.worker;
   const { setExitHandler } = window.__bootstrap.os;
   const { metrics } = window.__bootstrap.metrics;
@@ -177,9 +178,11 @@ finishing test case.`;
     ArrayPrototypePush(tests, testDef);
   }
 
+  const disabledConsole = new Console(() => {});
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
     tests,
+    disabledConsole,
   };
 
   window.__bootstrap.testing = {
