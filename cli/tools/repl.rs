@@ -387,37 +387,6 @@ impl ReplEditor {
   }
 }
 
-static PRELUDE: &str = r#"
-Object.defineProperty(globalThis, "_", {
-  configurable: true,
-  get: () => Deno[Deno.internal].lastEvalResult,
-  set: (value) => {
-   Object.defineProperty(globalThis, "_", {
-     value: value,
-     writable: true,
-     enumerable: true,
-     configurable: true,
-   });
-   console.log("Last evaluation result is no longer saved to _.");
-  },
-});
-
-Object.defineProperty(globalThis, "_error", {
-  configurable: true,
-  get: () => Deno[Deno.internal].lastThrownError,
-  set: (value) => {
-   Object.defineProperty(globalThis, "_error", {
-     value: value,
-     writable: true,
-     enumerable: true,
-     configurable: true,
-   });
-
-   console.log("Last thrown error is no longer saved to _error.");
-  },
-});
-"#;
-
 enum EvaluationOutput {
   Value(String),
   Error(String),
@@ -474,7 +443,8 @@ impl ReplSession {
     };
 
     // inject prelude
-    repl_session.evaluate_expression(PRELUDE).await?;
+    let prelude = include_str!("repl.js");
+    repl_session.evaluate_expression(prelude).await?;
 
     Ok(repl_session)
   }
