@@ -243,10 +243,12 @@ where
     let p = normalize_path(&root_path.join(path));
     if p.is_dir() {
       let test_files = collect_files(&[p], &[], &predicate).unwrap();
-      let test_files_as_urls = test_files
+      let mut test_files_as_urls = test_files
         .iter()
         .map(|f| Url::from_file_path(f).unwrap())
         .collect::<Vec<Url>>();
+
+      test_files_as_urls.sort();
       prepared.extend(test_files_as_urls);
     } else {
       let url = Url::from_file_path(p).unwrap();
@@ -766,13 +768,13 @@ mod tests {
       .join("std")
       .join("http");
     println!("root {:?}", root);
-    let mut matched_urls = collect_test_module_specifiers(
+    let matched_urls = collect_test_module_specifiers(
       vec![".".to_string()],
       &root,
       is_supported,
     )
     .unwrap();
-    matched_urls.sort();
+
     let root_url = Url::from_file_path(root).unwrap().to_string();
     println!("root_url {}", root_url);
     let expected: Vec<Url> = vec![
