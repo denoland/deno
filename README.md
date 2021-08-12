@@ -72,11 +72,17 @@ deno run https://deno.land/std/examples/welcome.ts
 Or a more complex one:
 
 ```ts
-import { serve } from "https://deno.land/std/http/server.ts";
-const s = serve({ port: 8000 });
+const listener = Deno.listen({ port: 8000 });
 console.log("http://localhost:8000/");
-for await (const req of s) {
-  req.respond({ body: "Hello World\n" });
+
+for await (const conn of listener) {
+  serve(conn);
+}
+
+async function serve(conn: Deno.Conn) {
+  for await (const { respondWith } of Deno.serveHttp(conn)) {
+    respondWith(new Response("Hello world"));
+  }
 }
 ```
 
