@@ -732,6 +732,7 @@ unitTest({ perms: { net: true } }, async function httpCookieConcatenation() {
   await promise;
 });
 
+// https://github.com/denoland/deno/issues/11651
 unitTest({ perms: { net: true } }, async function httpServerPanic() {
   const httpConns: Deno.HttpConn[] = [];
   let caught;
