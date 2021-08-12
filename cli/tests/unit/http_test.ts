@@ -744,9 +744,11 @@ unitTest({ perms: { net: true } }, async function httpServerPanic() {
         const httpConn = Deno.serveHttp(conn);
         httpConns.push(httpConn);
         try {
-          const { respondWith } = await httpConn.nextRequest();
+          const evt = await httpConn.nextRequest();
+          assert(evt);
+          const { respondWith } = evt;
           respondWith(new Response("hello"));
-        } catch (e) {
+        } catch (_e) {
           caught = true;
         }
 
