@@ -16443,7 +16443,6 @@
       "filereader_result.any.html": true
     },
     "idlharness.any.html": [
-      "Blob interface: operation slice(optional long long, optional long long, optional DOMString)",
       "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
