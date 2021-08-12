@@ -74,6 +74,7 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       ("op_crypto_generate_key", op_async(op_crypto_generate_key)),
       ("op_crypto_sign_key", op_async(op_crypto_sign_key)),
       ("op_crypto_verify_key", op_async(op_crypto_verify_key)),
+      ("op_crypto_encrypt_key", op_async(op_crypto_encrypt_key)),
       ("op_crypto_subtle_digest", op_async(op_crypto_subtle_digest)),
       ("op_crypto_random_uuid", op_sync(op_crypto_random_uuid)),
     ])
@@ -515,6 +516,62 @@ pub async fn op_crypto_verify_key(
   };
 
   Ok(verification)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EncryptArg {
+  key: KeyData,
+  algorithm: Algorithm,
+  hash: Option<CryptoHash>,
+  label: Option<ZeroCopyBuf>,
+}
+
+pub async fn op_crypto_encrypt_key(
+  _state: Rc<RefCell<OpState>>,
+  args: EncryptArg,
+  zero_copy: Option<ZeroCopyBuf>,
+) -> Result<ZeroCopyBuf, AnyError> {
+  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
+  let data = &*zero_copy;
+  let algorithm = args.algorithm;
+
+  match algorithm {
+    Algorithm::RsaOaep => {
+      let public_key: RsaPublicKey =
+        RsaPrivateKey::from_pkcs8_der(&*args.key.data)?.to_public_key();
+      let label = args.label.map(|l| String::from_utf8_lossy(&*l).to_string());
+      let mut rng = OsRng;
+      let padding = match args
+        .hash
+        .ok_or_else(|| type_error("Missing argument hash".to_string()))?
+      {
+        CryptoHash::Sha1 => PaddingScheme::OAEP {
+          digest: Box::new(Sha1::new()),
+          mgf_digest: Box::new(Sha1::new()),
+          label,
+        },
+        CryptoHash::Sha256 => PaddingScheme::OAEP {
+          digest: Box::new(Sha256::new()),
+          mgf_digest: Box::new(Sha256::new()),
+          label,
+        },
+        CryptoHash::Sha384 => PaddingScheme::OAEP {
+          digest: Box::new(Sha384::new()),
+          mgf_digest: Box::new(Sha384::new()),
+          label,
+        },
+        CryptoHash::Sha512 => PaddingScheme::OAEP {
+          digest: Box::new(Sha512::new()),
+          mgf_digest: Box::new(Sha512::new()),
+          label,
+        },
+      };
+
+      Ok(public_key.encrypt(&mut rng, padding, data)?.into())
+    }
+    _ => Err(type_error("Unsupported algorithm".to_string())),
+  }
 }
 
 pub fn op_crypto_random_uuid(

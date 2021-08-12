@@ -90,6 +90,9 @@
     "encrypt": {
       "RSA-OAEP": "RsaOaepParams",
     },
+    "decrypt": {
+      "RSA-OAEP": "RsaOaepParams",
+    },
   };
 
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
@@ -338,7 +341,7 @@
       const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
 
       switch (normalizeAlgorithm.name) {
-        case "RSA-OAEP":
+        case "RSA-OAEP": {
           // 1.
           if (key[_type] !== "public") {
             throw new DOMException(
@@ -377,10 +380,95 @@
 
           // 6.
           return cipherText.buffer;
+        }
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
       }
     }
+
+    /**
+     * @param {string} algorithm
+     * @param {CryptoKey} key
+     * @param {BufferSource} data
+     * @returns {Promise<any>}
+     */
+    async decrypt(algorithm, key, data) {
+      webidl.assertBranded(this, SubtleCrypto);
+      const prefix = "Failed to execute 'decrypt' on 'SubtleCrypto'";
+      webidl.requiredArguments(arguments.length, 3, { prefix });
+      algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+        prefix,
+        context: "Argument 1",
+      });
+      key = webidl.converters.CryptoKey(key, {
+        prefix,
+        context: "Argument 2",
+      });
+      data = webidl.converters.BufferSource(data, {
+        prefix,
+        context: "Argument 3",
+      });
+
+      // 2.
+      if (ArrayBufferIsView(data)) {
+        data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+      } else {
+        data = new Uint8Array(data);
+      }
+      data = TypedArrayPrototypeSlice(data);
+
+      // 3.
+      const normalizedAlgorithm = normalizeAlgorithm(algorithm, "decrypt");
+
+      const handle = key[_handle];
+      const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
+
+      switch (normalizeAlgorithm.name) {
+        case "RSA-OAEP": {
+          // 1.
+          if (key[_type] !== "public") {
+            throw new DOMException(
+              "Key type not supported",
+              "InvalidAccessError",
+            );
+          }
+
+          // 2.
+          if (normalizedAlgorithm.label) {
+            if (ArrayBufferIsView(normalizedAlgorithm.label)) {
+              normalizedAlgorithm.label = new Uint8Array(
+                normalizedAlgorithm.label.buffer,
+                normalizedAlgorithm.label.byteOffset,
+                normalizedAlgorithm.label.byteLength,
+              );
+            } else {
+              normalizedAlgorithm.label = new Uint8Array(
+                normalizedAlgorithm.label,
+              );
+            }
+            normalizedAlgorithm.label = TypedArrayPrototypeSlice(
+              normalizedAlgorithm.label,
+            );
+          } else {
+            normalizedAlgorithm.label = new Uint8Array();
+          }
+
+          // 3-5.
+          const hashAlgorithm = key[_algorithm].hash.name;
+          const plainText = await core.opAsync("op_crypto_decrypt_key", {
+            key: keyData,
+            algorithm: "RSA-OAEP",
+            hash: hashAlgorithm,
+          }, data);
+
+          // 6.
+          return plainText.buffer;
+        }
+        default:
+          throw new DOMException("Not implemented", "NotSupportedError");
+      }
+    }
+
     /**
      * @param {string} algorithm
      * @param {CryptoKey} key
