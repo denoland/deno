@@ -731,3 +731,51 @@ unitTest({ perms: { net: true } }, async function httpCookieConcatenation() {
   assertEquals(text, "ok");
   await promise;
 });
+
+unitTest({ perms: { net: true } }, async function httpServerPanic() {
+  const httpConns: Deno.HttpConn[] = [];
+  let caught;
+
+  const promise = (async () => {
+    const listener = Deno.listen({ port: 4501 });
+    for await (const conn of listener) {
+      (async () => {
+        const httpConn = Deno.serveHttp(conn);
+        httpConns.push(httpConn);
+        try {
+          const { respondWith } = await httpConn.nextRequest();
+          respondWith(new Response("hello"));
+        } catch (e) {
+          caught = true;
+        }
+
+        listener.close();
+      })();
+    }
+  })();
+
+  const client = await Deno.connect({ port: 4501 });
+  const w = new BufWriter(client);
+  // This message is incomplete on purpose, we'll forcefully close client connection
+  // after it's flushed to cause connection to error out on the server side.
+  const body = `GET / HTTP/1.1`;
+  const encoder = new TextEncoder();
+  await w.write(encoder.encode(body));
+  await w.flush();
+  await w.write(encoder.encode(body));
+
+  try {
+    await Promise.all([
+      Promise.resolve().then(() => {
+        httpConns[0].close();
+      }),
+      w.flush(),
+    ]);
+  } catch (_e) {
+    // pass
+  }
+
+  await promise;
+  client.close();
+  assert(caught);
+});
