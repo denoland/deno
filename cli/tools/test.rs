@@ -63,6 +63,7 @@ pub enum TestResult {
 pub struct TestPlan {
   pub origin: ModuleSpecifier,
   pub total: usize,
+  pub filtered_in: usize,
   pub filtered_out: usize,
 }
 
@@ -72,6 +73,7 @@ pub struct TestSummary {
   pub passed: usize,
   pub failed: usize,
   pub ignored: usize,
+  pub filtered_in: usize,
   pub filtered_out: usize,
   pub measured: usize,
   pub failures: Vec<(TestDescription, String)>,
@@ -84,6 +86,7 @@ impl TestSummary {
       passed: 0,
       failed: 0,
       ignored: 0,
+      filtered_in: 0,
       filtered_out: 0,
       measured: 0,
       failures: Vec::new(),
@@ -351,6 +354,7 @@ where
   process_event(TestEvent::Plan(TestPlan {
     origin: module_specifier,
     total: filtered_out.len(),
+    filtered_in: entries.len() - filtered_in.len(),
     filtered_out: entries.len() - filtered_out.len(),
   }));
 
@@ -580,6 +584,7 @@ pub async fn run_tests(
         match event {
           TestEvent::Plan(plan) => {
             summary.total += plan.total;
+            summary.filtered_in += plan.filtered_in;
             summary.filtered_out += plan.filtered_out;
             reporter.report_plan(&plan);
           }
@@ -640,6 +645,12 @@ pub async fn run_tests(
 
   if summary.failed > 0 {
     return Err(generic_error("Test failed"));
+  }
+
+  if summary.filtered_in > 0 {
+    return Err(generic_error(
+      "Test failed because the \"only\" option was used",
+    ));
   }
 
   Ok(())
