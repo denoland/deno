@@ -47,6 +47,7 @@ static TEST_REGISTRY: &str = "(Deno[Deno.internal].tests)";
 pub struct TestDescription {
   pub name: String,
   pub ignore: bool,
+  pub only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -310,29 +311,48 @@ where
     descriptions
   };
 
-  let filtered: Vec<(usize, &TestDescription)> = descriptions
+  let entries = descriptions
     .iter()
     .enumerate()
-    .filter(|(_, _description)| true)
-    .collect();
+    .collect::<Vec<(usize, &TestDescription)>>();
 
-  let filtered = if let Some(seed) = shuffle {
-    let mut rng = SmallRng::seed_from_u64(seed);
-    let mut filtered = filtered.clone();
-    filtered.sort();
-    filtered.shuffle(&mut rng);
-    filtered
-  } else {
-    filtered
+  let filtered_in = {
+    let only = entries
+      .clone()
+      .into_iter()
+      .filter(|(_, description)| description.only)
+      .collect::<Vec<(usize, &TestDescription)>>();
+
+    if only.is_empty() {
+      entries.clone()
+    } else {
+      only
+    }
+  };
+
+  let filtered_out = {
+    let mut filtered_out = filtered_in
+      .clone()
+      .into_iter()
+      .filter(|(_, _description)| true)
+      .collect::<Vec<(usize, &TestDescription)>>();
+
+    if let Some(seed) = shuffle {
+      let mut rng = SmallRng::seed_from_u64(seed);
+      filtered_out.sort();
+      filtered_out.shuffle(&mut rng);
+    }
+
+    filtered_out
   };
 
   process_event(TestEvent::Plan(TestPlan {
     origin: module_specifier,
-    total: filtered.len(),
-    filtered_out: 0,
+    total: filtered_out.len(),
+    filtered_out: entries.len() - filtered_out.len(),
   }));
 
-  for (index, description) in filtered {
+  for (index, description) in filtered_out {
     let earlier = Instant::now();
     process_event(TestEvent::Wait(description.clone()));
 
