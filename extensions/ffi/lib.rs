@@ -279,6 +279,7 @@ fn value_as_f64(value: Value) -> f64 {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 struct ForeignFunction {
   parameters: Vec<String>,
   result: String,
