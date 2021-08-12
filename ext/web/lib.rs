@@ -2,6 +2,7 @@
 
 mod blob;
 mod message_port;
+mod compression;
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::range_error;
