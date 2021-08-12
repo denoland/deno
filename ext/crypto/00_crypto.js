@@ -463,6 +463,18 @@
         context: "Argument 5",
       });
 
+      // 2.
+      if (ArrayBufferIsView(keyData)) {
+        keyData = new Uint8Array(
+          keyData.buffer,
+          keyData.byteOffset,
+          keyData.byteLength,
+        );
+      } else {
+        keyData = new Uint8Array(keyData);
+      }
+      keyData = TypedArrayPrototypeSlice(keyData);
+
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "importKey");
 
       if (
@@ -472,6 +484,14 @@
         ) !== undefined
       ) {
         throw new DOMException("Invalid key usages", "SyntaxError");
+      }
+
+      // https://github.com/denoland/deno/pull/9614#issuecomment-866049433
+      if (!extractable) {
+        throw new DOMException(
+          "Non-extractable keys are not supported",
+          "SecurityError",
+        );
       }
 
       switch (normalizedAlgorithm.name) {
