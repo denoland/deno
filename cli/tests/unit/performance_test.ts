@@ -8,12 +8,10 @@ import {
   unitTest,
 } from "./test_util.ts";
 
-unitTest({ perms: { hrtime: false } }, async function performanceNow(): Promise<
-  void
-> {
+unitTest({ perms: { hrtime: false } }, async function performanceNow() {
   const resolvable = deferred();
   const start = performance.now();
-  setTimeout((): void => {
+  setTimeout(() => {
     const end = performance.now();
     assert(end - start >= 10);
     resolvable.resolve();
@@ -82,7 +80,7 @@ unitTest(function performanceMeasure() {
   });
 });
 
-unitTest(function performanceCustomInspectFunction(): void {
+unitTest(function performanceCustomInspectFunction() {
   assertStringIncludes(Deno.inspect(performance), "Performance");
   assertStringIncludes(
     Deno.inspect(Performance.prototype),
@@ -90,7 +88,7 @@ unitTest(function performanceCustomInspectFunction(): void {
   );
 });
 
-unitTest(function performanceMarkCustomInspectFunction(): void {
+unitTest(function performanceMarkCustomInspectFunction() {
   const mark1 = performance.mark("mark1");
   assertStringIncludes(Deno.inspect(mark1), "PerformanceMark");
   assertStringIncludes(
@@ -99,7 +97,7 @@ unitTest(function performanceMarkCustomInspectFunction(): void {
   );
 });
 
-unitTest(function performanceMeasureCustomInspectFunction(): void {
+unitTest(function performanceMeasureCustomInspectFunction() {
   const measure1 = performance.measure("measure1");
   assertStringIncludes(Deno.inspect(measure1), "PerformanceMeasure");
   assertStringIncludes(

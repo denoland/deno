@@ -111,6 +111,16 @@ pub fn is_supported_ext_fmt(path: &Path) -> bool {
     false
   }
 }
+/// Checks if the path has extension Deno supports.
+/// This function is similar to is_supported_ext but adds additional extensions
+/// supported by `deno test`.
+pub fn is_supported_ext_test(path: &Path) -> bool {
+  if let Some(ext) = get_extension(path) {
+    matches!(ext.as_str(), "ts" | "tsx" | "js" | "jsx" | "mjs" | "md")
+  } else {
+    false
+  }
+}
 
 /// Get the extension of a file in lowercase.
 pub fn get_extension(file_path: &Path) -> Option<String> {
@@ -224,8 +234,8 @@ mod tests {
     assert!(!is_supported_ext(Path::new("tests/subdir/redirects")));
     assert!(!is_supported_ext(Path::new("README.md")));
     assert!(is_supported_ext(Path::new("lib/typescript.d.ts")));
-    assert!(is_supported_ext(Path::new("cli/tests/001_hello.js")));
-    assert!(is_supported_ext(Path::new("cli/tests/002_hello.ts")));
+    assert!(is_supported_ext(Path::new("testdata/001_hello.js")));
+    assert!(is_supported_ext(Path::new("testdata/002_hello.ts")));
     assert!(is_supported_ext(Path::new("foo.jsx")));
     assert!(is_supported_ext(Path::new("foo.tsx")));
     assert!(is_supported_ext(Path::new("foo.TS")));
@@ -242,8 +252,8 @@ mod tests {
     assert!(is_supported_ext_fmt(Path::new("README.md")));
     assert!(is_supported_ext_fmt(Path::new("readme.MD")));
     assert!(is_supported_ext_fmt(Path::new("lib/typescript.d.ts")));
-    assert!(is_supported_ext_fmt(Path::new("cli/tests/001_hello.js")));
-    assert!(is_supported_ext_fmt(Path::new("cli/tests/002_hello.ts")));
+    assert!(is_supported_ext_fmt(Path::new("testdata/001_hello.js")));
+    assert!(is_supported_ext_fmt(Path::new("testdata/002_hello.ts")));
     assert!(is_supported_ext_fmt(Path::new("foo.jsx")));
     assert!(is_supported_ext_fmt(Path::new("foo.tsx")));
     assert!(is_supported_ext_fmt(Path::new("foo.TS")));

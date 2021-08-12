@@ -6,6 +6,62 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.13.0 / 2021.08.10
+
+- BREAKING(unstable): Rename Deno.WebSocketUpgrade::websocket to socket (#11542)
+- feat: Add --unsafely-treat-insecure-origin-as-secure flag to disable SSL
+  verification (#11324)
+- feat: add experimental WebSocketStream API (#10365)
+- feat: FFI API replacing native plugins (#11152)
+- feat: stabilize Deno.serveHttp() (#11544)
+- feat: support AbortSignal in writeFile (#11568)
+- feat: support client certificates for connectTls (#11598)
+- feat: type check codeblocks in Markdown file with "deno test --doc" (#11421)
+- feat(extensions/crypto): implement importKey and exportKey for raw HMAC keys
+  (#11367)
+- feat(extensions/crypto): implement verify() for HMAC (#11387)
+- feat(extensions/tls): Optionally support loading native certs (#11491)
+- feat(extensions/web): add structuredClone function (#11572)
+- feat(fmt): format top-level JSX elements/fragments with parens when multi-line
+  (#11582)
+- feat(lsp): ability to set DENO_DIR via settings (#11527)
+- feat(lsp): implement refactoring code actions (#11555)
+- feat(lsp): support clients which do not support disabled code actions (#11612)
+- feat(repl): add --eval flag for evaluating code when the repl starts (#11590)
+- feat(repl): support exports in the REPL (#11592)
+- feat(runtime): allow URL for permissions (#11578)
+- feat(runtime): implement navigator.hardwareConcurrency (#11448)
+- feat(unstable): clean environmental variables for subprocess (#11571)
+- fix: support windows file specifiers with import maps (#11551)
+- fix: Type `Deno.errors.*` as subclasses of `Error` (#10702)
+- fix(doc): panic on invalid url (#11536)
+- fix(extensions/fetch): Add Origin header to outgoing requests for fetch
+  (#11557)
+- fix(extensions/websocket): allow any close code for server (#11614)
+- fix(lsp): do not output to stderr before exiting the process (#11562)
+
+Release notes for std version 0.104.0:
+https://github.com/denoland/deno_std/releases/tag/0.104.0
+
+### 1.12.2 / 2021.07.26
+
+- feat(lsp, unstable): add workspace config to status page (#11459)
+- fix: panic for non-WS connections to inspector (#11466)
+- fix: support --cert flag for TLS connect APIs (#11484)
+- fix(cli): info now displays type reference deps (#11478)
+- fix(cli): normalize test command errors (#11375)
+- fix(cli): rebuild when environment variables change (#11471)
+- fix(cli): side-load test modules (#11515)
+- fix(extensions/fetch): close fetch response body on GC (#11467)
+- fix(extensions/http): support multiple options in connection header for
+  websocket (#11505)
+- fix(extensions/websocket): case insensitive connection header (#11489)
+- fix(lsp): do not populate maybe_type slot with import type dep (#11477)
+- fix(lsp): handle importmaps properly (#11496)
+
+Release notes for std version 0.103.0:
+https://github.com/denoland/deno_std/releases/tag/0.103.0
+
 ### 1.12.1 / 2021.07.19
 
 - fix: Big{U|}Int64Array in crypto.getRandomValues (#11447)
@@ -15,6 +71,9 @@ https://github.com/denoland/deno_install
 - fix(repl): output error without hanging when input is invalid (#11426)
 - fix(tsc): add .at() types manually to tsc (#11443)
 - fix(workers): silently ignore non-existent worker IDs (#11417)
+
+Release notes for std version 0.102.0:
+https://github.com/denoland/deno_std/releases/tag/0.102.0
 
 ### 1.12.0 / 2021.07.13
 

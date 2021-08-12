@@ -101,6 +101,7 @@
     permissions: __bootstrap.permissions.permissions,
     Permissions: __bootstrap.permissions.Permissions,
     PermissionStatus: __bootstrap.permissions.PermissionStatus,
+    serveHttp: __bootstrap.http.serveHttp,
   };
 
   __bootstrap.denoNsUnstable = {
@@ -109,7 +110,6 @@
     Signal: __bootstrap.signals.Signal,
     SignalStream: __bootstrap.signals.SignalStream,
     emit: __bootstrap.compilerApi.emit,
-    openPlugin: __bootstrap.plugins.openPlugin,
     kill: __bootstrap.process.kill,
     setRaw: __bootstrap.tty.setRaw,
     consoleSize: __bootstrap.tty.consoleSize,
@@ -118,7 +118,6 @@
     hostname: __bootstrap.os.hostname,
     osRelease: __bootstrap.os.osRelease,
     systemMemoryInfo: __bootstrap.os.systemMemoryInfo,
-    systemCpuInfo: __bootstrap.os.systemCpuInfo,
     applySourceMap: __bootstrap.errorStack.opApplySourceMap,
     formatDiagnostics: __bootstrap.errorStack.opFormatDiagnostics,
     sleepSync: __bootstrap.timers.sleepSync,
@@ -126,7 +125,6 @@
     listen: __bootstrap.netUnstable.listen,
     connect: __bootstrap.netUnstable.connect,
     listenDatagram: __bootstrap.netUnstable.listenDatagram,
-    serveHttp: __bootstrap.http.serveHttp,
     startTls: __bootstrap.tls.startTls,
     umask: __bootstrap.fs.umask,
     upgradeWebSocket: __bootstrap.http.upgradeWebSocket,
@@ -137,5 +135,6 @@
     HttpClient: __bootstrap.fetch.HttpClient,
     createHttpClient: __bootstrap.fetch.createHttpClient,
     http: __bootstrap.http,
+    dlopen: __bootstrap.ffi.dlopen,
   };
 })(this);

@@ -8,11 +8,15 @@ cut.**
 
 1. Open a PR on the `deno_std` repo that bumps the version in `version.ts` and
    updates `Releases.md`
-2. Create a tag with the version number (_without_ `v` prefix).
+
+2. Before merging the PR, make sure that all tests pass when run using binary
+   produced from bumping crates (point 3. from below).
+
+3. Create a tag with the version number (_without_ `v` prefix).
 
 ## Updating the main repo
 
-1. Create a PR that bumps versions of all crates in `extensions` and `runtime`
+1. Create a PR that bumps versions of all crates in `ext` and `runtime`
    directories.
 
 To determine if you should bump a crate a minor version instead of a patch
@@ -41,7 +45,9 @@ between the crates, it must be done in specific order:
 - `deno_core` - all crates depend on `deno_core` so it must always be published
   first
 - `bench_util`
-- crates in `extensions/` directory
+- crates in `ext/` directory
+  - `deno_net`, `deno_websocket` and `deno_fetch` depend on `deno_tls`, so the
+    latter must be bumped and released first
   - `deno_fetch`, `deno_crypto`, `deno_timers` and `deno_webstorage` depend on
     `deno_web`, so the latter must be bumped and released first
   - `deno_url` depends on `deno_webidl`, so the latter must be bumped and
@@ -50,7 +56,7 @@ between the crates, it must be done in specific order:
     released first
   - `deno_http` depends on `deno_websocket`, so the latter must be bumped and
     released first
-- `runtime` - this crate depends on `deno_core` and all crates in `extensions/`
+- `runtime` - this crate depends on `deno_core` and all crates in `ext/`
   directory
 
 If there are any problems when you publish, that require you to change the code,
@@ -79,6 +85,10 @@ The CI pipeline will create a release draft on GitHub
 
 13. Update the Deno version on the website by updating
     https://github.com/denoland/deno_website2/blob/main/versions.json.
+
+14. Push a new tag to [`manual`](https://github.com/denoland/manual). The tag
+    must match the tag from point 9; you don't need to create dedicated commit
+    for that purpose, it's enough to tag the latest commit in that repo.
 
 ## Updating `deno_docker`
 

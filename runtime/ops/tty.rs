@@ -228,7 +228,7 @@ fn op_isatty(
       {
         use winapi::um::consoleapi;
 
-        let handle = get_windows_handle(&std_file)?;
+        let handle = get_windows_handle(std_file)?;
         let mut test_mode: DWORD = 0;
         // If I cannot get mode out of console, it is not a console.
         Ok(unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != 0 })

@@ -99,7 +99,11 @@ pub fn create_standalone_binary(
     location: flags.location.clone(),
     permissions: flags.clone().into(),
     v8_flags: flags.v8_flags.clone(),
+    unsafely_ignore_certificate_errors: flags
+      .unsafely_ignore_certificate_errors
+      .clone(),
     log_level: flags.log_level,
+    ca_stores: flags.ca_stores,
     ca_data,
   };
   let mut metadata = serde_json::to_string(&metadata)?.as_bytes().to_vec();
@@ -201,12 +205,14 @@ pub fn compile_to_runtime_flags(
     allow_env: flags.allow_env,
     allow_hrtime: flags.allow_hrtime,
     allow_net: flags.allow_net,
-    allow_plugin: flags.allow_plugin,
+    allow_ffi: flags.allow_ffi,
     allow_read: flags.allow_read,
     allow_run: flags.allow_run,
     allow_write: flags.allow_write,
+    ca_stores: flags.ca_stores,
     ca_file: flags.ca_file,
     cache_blocklist: vec![],
+    cache_path: None,
     cached_only: false,
     config_path: None,
     coverage_dir: flags.coverage_dir,
@@ -220,6 +226,8 @@ pub fn compile_to_runtime_flags(
     lock: None,
     log_level: flags.log_level,
     no_check: false,
+    unsafely_ignore_certificate_errors: flags
+      .unsafely_ignore_certificate_errors,
     no_remote: false,
     prompt: flags.prompt,
     reload: false,

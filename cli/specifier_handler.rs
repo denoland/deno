@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast::Location;
-use crate::deno_dir::DenoDir;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::FileFetcher;
 use crate::media_type::MediaType;
@@ -19,7 +18,6 @@ use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use log::debug;
 use std::collections::HashMap;
-use std::env;
 use std::fmt;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -236,9 +234,7 @@ impl FetchHandler {
     root_permissions: Permissions,
     dynamic_permissions: Permissions,
   ) -> Result<Self, AnyError> {
-    let custom_root = env::var("DENO_DIR").map(String::into).ok();
-    let deno_dir = DenoDir::new(custom_root)?;
-    let disk_cache = deno_dir.gen_cache;
+    let disk_cache = program_state.dir.gen_cache.clone();
     let file_fetcher = program_state.file_fetcher.clone();
 
     Ok(FetchHandler {
@@ -278,7 +274,7 @@ impl SpecifierHandler for FetchHandler {
               let message = if let Some(location) = &maybe_location {
                 format!(
                   "Cannot resolve module \"{}\" from \"{}\".",
-                  requested_specifier, location.filename
+                  requested_specifier, location.specifier
                 )
               } else {
                 format!("Cannot resolve module \"{}\".", requested_specifier)
@@ -295,7 +291,7 @@ impl SpecifierHandler for FetchHandler {
             // they are confusing to the user to print out the location because
             // they cannot actually get to the source code that is quoted, as
             // it only exists in the runtime memory of Deno.
-            if !location.filename.contains("$deno$") {
+            if !location.specifier.contains("$deno$") {
               (
                 requested_specifier.clone(),
                 HandlerError::FetchErrorWithLocation(err.to_string(), location)
@@ -331,7 +327,7 @@ impl SpecifierHandler for FetchHandler {
 
       let mut maybe_map_path = None;
       let map_path =
-        disk_cache.get_cache_filename_with_extension(&url, "js.map");
+        disk_cache.get_cache_filename_with_extension(url, "js.map");
       let maybe_map = if let Some(map_path) = map_path {
         if let Ok(map) = disk_cache.get(&map_path) {
           maybe_map_path = Some(disk_cache.location.join(map_path));
@@ -344,7 +340,7 @@ impl SpecifierHandler for FetchHandler {
       };
       let mut maybe_emit = None;
       let mut maybe_emit_path = None;
-      let emit_path = disk_cache.get_cache_filename_with_extension(&url, "js");
+      let emit_path = disk_cache.get_cache_filename_with_extension(url, "js");
       if let Some(emit_path) = emit_path {
         if let Ok(code) = disk_cache.get(&emit_path) {
           maybe_emit =
@@ -571,6 +567,7 @@ impl SpecifierHandler for MemoryHandler {
 #[cfg(test)]
 pub mod tests {
   use super::*;
+  use crate::deno_dir::DenoDir;
   use crate::file_fetcher::CacheSetting;
   use crate::http_cache::HttpCache;
   use deno_core::resolve_url_or_path;
@@ -600,6 +597,7 @@ pub mod tests {
       true,
       None,
       BlobStore::default(),
+      None,
     )
     .expect("could not setup");
     let disk_cache = deno_dir.gen_cache;
@@ -619,8 +617,7 @@ pub mod tests {
     let _http_server_guard = test_util::http_server();
     let (_, mut file_fetcher) = setup();
     let specifier =
-      resolve_url_or_path("http://localhost:4545/cli/tests/subdir/mod2.ts")
-        .unwrap();
+      resolve_url_or_path("http://localhost:4545/subdir/mod2.ts").unwrap();
     let cached_module: CachedModule = file_fetcher
       .fetch(specifier.clone(), None, false)
       .await
@@ -640,8 +637,7 @@ pub mod tests {
     let _http_server_guard = test_util::http_server();
     let (_, mut file_fetcher) = setup();
     let specifier =
-      resolve_url_or_path("http://localhost:4545/cli/tests/subdir/mod2.ts")
-        .unwrap();
+      resolve_url_or_path("http://localhost:4545/subdir/mod2.ts").unwrap();
     let cached_module: CachedModule = file_fetcher
       .fetch(specifier.clone(), None, false)
       .await
@@ -666,14 +662,16 @@ pub mod tests {
     let _http_server_guard = test_util::http_server();
     let (_, mut file_fetcher) = setup();
     let specifier =
-      resolve_url_or_path("http://localhost:4545/cli/tests/subdir/mod2.ts")
-        .unwrap();
+      resolve_url_or_path("http://localhost:4545/subdir/mod2.ts").unwrap();
     let cached_module: CachedModule =
       file_fetcher.fetch(specifier, None, false).await.unwrap();
     assert!(cached_module.is_remote);
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let specifier = resolve_url_or_path(
-      c.join("tests/subdir/mod1.ts").as_os_str().to_str().unwrap(),
+      test_util::testdata_path()
+        .join("subdir/mod1.ts")
+        .as_os_str()
+        .to_str()
+        .unwrap(),
     )
     .unwrap();
     let cached_module: CachedModule =

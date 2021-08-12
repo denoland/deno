@@ -21,7 +21,7 @@ declare global {
   }
 }
 
-unitTest(async function opsAsyncBadResource(): Promise<void> {
+unitTest(async function opsAsyncBadResource() {
   try {
     const nonExistingRid = 9999;
     await Deno.core.opAsync(
@@ -36,7 +36,7 @@ unitTest(async function opsAsyncBadResource(): Promise<void> {
   }
 });
 
-unitTest(function opsSyncBadResource(): void {
+unitTest(function opsSyncBadResource() {
   try {
     const nonExistingRid = 9999;
     Deno.core.opSync("op_read_sync", nonExistingRid, new Uint8Array(0));

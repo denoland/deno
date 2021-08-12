@@ -2,8 +2,14 @@
 "use strict";
 
 ((window) => {
-  const { ObjectDefineProperty, StringPrototypeReplace, TypeError, Promise } =
-    window.__bootstrap.primordials;
+  const {
+    ObjectDefineProperty,
+    StringPrototypeReplace,
+    TypeError,
+    Promise,
+    decodeURIComponent,
+    Error,
+  } = window.__bootstrap.primordials;
   const { build } = window.__bootstrap.build;
   const { URL } = window.__bootstrap.url;
   let logDebug = false;

@@ -47,6 +47,8 @@ declare global {
     | ConfigureRequest
     | FindRenameLocationsRequest
     | GetAsset
+    | GetApplicableRefactors
+    | GetEditsForRefactor
     | GetCodeFixes
     | GetCombinedCodeFix
     | GetCompletionDetails
@@ -90,6 +92,21 @@ declare global {
   interface GetAsset extends BaseLanguageServerRequest {
     method: "getAsset";
     specifier: string;
+  }
+
+  interface GetApplicableRefactors extends BaseLanguageServerRequest {
+    method: "getApplicableRefactors";
+    specifier: string;
+    range: ts.TextRange;
+    kind: string;
+  }
+
+  interface GetEditsForRefactor extends BaseLanguageServerRequest {
+    method: "getEditsForRefactor";
+    specifier: string;
+    range: ts.TextRange;
+    refactorName: string;
+    actionName: string;
   }
 
   interface GetCodeFixes extends BaseLanguageServerRequest {
