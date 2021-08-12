@@ -293,6 +293,8 @@ where
     registry
   };
 
+  // TODO(caspervonb): capture stdout/stderr to memory instead of overriding at the javascript
+  // layer.
   if quiet {
     worker.js_runtime.execute_script(
       "deno:test_module",
