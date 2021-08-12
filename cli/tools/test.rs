@@ -273,7 +273,7 @@ where
   Ok(prepared)
 }
 
-async fn test_specifier<F>(
+pub async fn test_specifier<F>(
   program_state: Arc<ProgramState>,
   main_module: ModuleSpecifier,
   permissions: Permissions,
@@ -284,13 +284,20 @@ async fn test_specifier<F>(
 where
   F: Fn(TestEvent) + Send + 'static + Clone,
 {
-  let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, true);
+  let mut fetch_permissions = Permissions::allow_all();
+
+  let main_file = program_state
+    .file_fetcher
+    .fetch(&main_module, &mut fetch_permissions)
+    .await?;
 
   let test_module =
     deno_core::resolve_path(&format!("{}$deno$test.js", Uuid::new_v4()))?;
 
-  let test_source = format!(r#"import "{}";"#, main_module);
+  let mut test_source = String::new();
+  if main_file.media_type != MediaType::Unknown {
+    test_source.push_str(&format!("import \"{}\";\n", main_module));
+  }
 
   let test_file = File {
     local: test_module.to_file_path().unwrap(),
@@ -301,6 +308,9 @@ where
   };
 
   program_state.file_fetcher.insert_cached(test_file);
+
+  let mut worker =
+    create_main_worker(&program_state, main_module.clone(), permissions, true);
 
   let registry = {
     worker.execute_module(&test_module).await?;
@@ -644,9 +654,30 @@ pub async fn run_tests(
       .await?;
   }
 
+  let prepare_roots = {
+    let mut files = Vec::new();
+    let mut fetch_permissions = Permissions::allow_all();
+    for specifier in &test_modules {
+      let file = program_state
+        .file_fetcher
+        .fetch(specifier, &mut fetch_permissions)
+        .await?;
+
+      files.push(file);
+    }
+
+    let prepare_roots = files
+      .iter()
+      .filter(|file| file.media_type != MediaType::Unknown)
+      .map(|file| file.specifier.clone())
+      .collect();
+
+    prepare_roots
+  };
+
   program_state
     .prepare_module_graph(
-      test_modules.clone(),
+      prepare_roots,
       lib.clone(),
       Permissions::allow_all(),
       permissions.clone(),
