@@ -30,17 +30,17 @@
       const rid = core.opSync("op_compression_create_compressor", format);
 
       super({
-        transform: (chunk, controller) => {
+        transform: async (chunk, controller) => {
           const data = webidl.converters.BufferSource(chunk); // TODO: info?
-          const buffer = core.opSync("op_compression_compress", {
+          const buffer = await core.opAsync("op_compression_compress", {
             format,
             rid,
             data,
-          }); // TODO: compress
+          });
           controller.enqueue(buffer);
         },
-        flush: (controller) => {
-          const buffer = core.opSync(
+        flush: async (controller) => {
+          const buffer = await core.opAsync(
             "op_compression_compress_finalize",
             format,
             rid,
@@ -64,17 +64,17 @@
       const rid = core.opSync("op_compression_create_decompressor", format);
 
       super({
-        transform: (chunk, controller) => {
+        transform: async (chunk, controller) => {
           const data = webidl.converters.BufferSource(chunk); // TODO: info?
-          const buffer = core.opSync("op_compression_decompress", {
+          const buffer = await core.opAsync("op_compression_decompress", {
             format,
             rid,
             data,
-          }); // TODO: compress
+          });
           controller.enqueue(buffer);
         },
-        flush: (controller) => {
-          const buffer = core.opSync(
+        flush: async (controller) => {
+          const buffer = await core.opAsync(
             "op_compression_decompress_finalize",
             format,
             rid,

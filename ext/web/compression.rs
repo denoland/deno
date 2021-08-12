@@ -1,38 +1,83 @@
-use deno_core::error::{bad_resource_id, AnyError};
-use deno_core::{OpState, Resource, ResourceId, ZeroCopyBuf};
-
-use flate2::write::GzDecoder;
-use flate2::write::GzEncoder;
-use flate2::Compression;
+use deno_core::error::bad_resource_id;
+use deno_core::error::AnyError;
+use deno_core::OpState;
+use deno_core::Resource;
+use deno_core::ResourceId;
+use deno_core::ZeroCopyBuf;
+use serde::Deserialize;
 use std::borrow::Cow;
-use std::io::prelude::*;
+use std::cell::RefCell;
+use std::rc::Rc;
 
-pub struct GzipCompressorResource(GzEncoder<Vec<u8>>);
+use async_compression::tokio::write::DeflateDecoder;
+use async_compression::tokio::write::DeflateEncoder;
+use async_compression::tokio::write::GzipDecoder;
+use async_compression::tokio::write::GzipEncoder;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
+use tokio::io::DuplexStream;
+
+pub struct GzipCompressorResource {
+  encoder: GzipEncoder<DuplexStream>,
+  tx: DuplexStream,
+}
 impl Resource for GzipCompressorResource {
   fn name(&self) -> Cow<str> {
     "gzipCompressor".into()
   }
 }
 
-pub struct GzipDecompressorResource(GzDecoder<Vec<u8>>);
+pub struct GzipDecompressorResource {
+  decoder: GzipDecoder<DuplexStream>,
+  tx: DuplexStream,
+}
 impl Resource for GzipDecompressorResource {
   fn name(&self) -> Cow<str> {
     "gzipDecompressor".into()
   }
 }
 
-fn op_compression_create_compressor(
+pub struct DeflateCompressorResource {
+  encoder: DeflateEncoder<DuplexStream>,
+  tx: DuplexStream,
+}
+impl Resource for DeflateCompressorResource {
+  fn name(&self) -> Cow<str> {
+    "deflateCompressor".into()
+  }
+}
+
+pub struct DeflateDecompressorResource {
+  decoder: DeflateDecoder<DuplexStream>,
+  tx: DuplexStream,
+}
+impl Resource for DeflateDecompressorResource {
+  fn name(&self) -> Cow<str> {
+    "deflateDecompressor".into()
+  }
+}
+
+pub fn op_compression_create_compressor(
   state: &mut OpState,
   format: String,
   _: (),
 ) -> Result<ResourceId, AnyError> {
   let rid = match format.as_str() {
     "gzip" => {
-      let comp = GzEncoder::new(Vec::new(), Compression::new(8)); // TODO: The only valid value of the CM (Compression Method) field is 8.
-      state.resource_table.add(GzipCompressorResource(comp))
+      let (rx, tx) = tokio::io::duplex(65536);
+      let encoder =
+        GzipEncoder::with_quality(rx, async_compression::Level::Precise(8));
+      state
+        .resource_table
+        .add(GzipCompressorResource { encoder, tx })
     }
     "deflate" => {
-      // TODO
+      let (rx, tx) = tokio::io::duplex(65536);
+      let encoder =
+        DeflateEncoder::with_quality(rx, async_compression::Level::Precise(8));
+      state
+        .resource_table
+        .add(DeflateCompressorResource { encoder, tx })
     }
     _ => unreachable!(),
   };
@@ -48,43 +93,33 @@ pub struct CompressArgs {
   data: ZeroCopyBuf,
 }
 
-fn op_compression_compress(
-  state: &mut OpState,
+pub async fn op_compression_compress(
+  state: Rc<RefCell<OpState>>,
   args: CompressArgs,
   _: (),
 ) -> Result<ZeroCopyBuf, AnyError> {
   let data = match args.format.as_str() {
     "gzip" => {
       let compressor = state
+        .borrow()
         .resource_table
         .get::<GzipCompressorResource>(args.rid)
         .ok_or_else(bad_resource_id)?;
-      compressor.0.write_all(args.data.as_ref())?;
+      compressor.encoder.write_all(args.data.as_ref()).await?;
+      let mut data = vec![];
+      let n = compressor.tx.read(data.as_mut_slice()).await?;
+      data[0..n].to_vec()
     }
     "deflate" => {
-      // TODO
-    }
-    _ => unreachable!(),
-  };
-
-  Ok(data) // TODO
-}
-
-fn op_compression_compress_finalize(
-  state: &mut OpState,
-  rid: ResourceId,
-  format: String,
-) -> Result<ZeroCopyBuf, AnyError> {
-  let data = match format.as_str() {
-    "gzip" => {
       let compressor = state
+        .borrow()
         .resource_table
-        .get::<GzipCompressorResource>(rid)
+        .get::<DeflateCompressorResource>(args.rid)
         .ok_or_else(bad_resource_id)?;
-      compressor.0.finish()?
-    }
-    "deflate" => {
-      // TODO
+      compressor.encoder.write_all(args.data.as_ref()).await?;
+      let mut data = vec![];
+      let n = compressor.tx.read(data.as_mut_slice()).await?;
+      data[0..n].to_vec()
     }
     _ => unreachable!(),
   };
@@ -92,18 +127,59 @@ fn op_compression_compress_finalize(
   Ok(data.into())
 }
 
-fn op_compression_create_decompressor(
+pub async fn op_compression_compress_finalize(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  format: String,
+) -> Result<ZeroCopyBuf, AnyError> {
+  let data = match format.as_str() {
+    "gzip" => {
+      let compressor = state
+        .borrow()
+        .resource_table
+        .get::<GzipCompressorResource>(rid)
+        .ok_or_else(bad_resource_id)?;
+      compressor.encoder.shutdown().await?;
+      let mut data = vec![];
+      let n = compressor.tx.read_to_end(&mut data).await?;
+      data[0..n].to_vec()
+    }
+    "deflate" => {
+      let compressor = state
+        .borrow()
+        .resource_table
+        .get::<DeflateCompressorResource>(rid)
+        .ok_or_else(bad_resource_id)?;
+      compressor.encoder.shutdown().await?;
+      let mut data = vec![];
+      let n = compressor.tx.read_to_end(&mut data).await?;
+      data[0..n].to_vec()
+    }
+    _ => unreachable!(),
+  };
+
+  Ok(data.into())
+}
+
+pub fn op_compression_create_decompressor(
   state: &mut OpState,
   format: String,
   _: (),
 ) -> Result<ResourceId, AnyError> {
   let rid = match format.as_str() {
     "gzip" => {
-      let comp = GzDecoder::new(Vec::new());
-      state.resource_table.add(GzipDecompressorResource(comp))
+      let (rx, tx) = tokio::io::duplex(65536);
+      let decoder = GzipDecoder::new(rx);
+      state
+        .resource_table
+        .add(GzipDecompressorResource { decoder, tx })
     }
     "deflate" => {
-      // TODO
+      let (rx, tx) = tokio::io::duplex(65536);
+      let decoder = DeflateDecoder::new(rx);
+      state
+        .resource_table
+        .add(DeflateDecompressorResource { decoder, tx })
     }
     _ => unreachable!(),
   };
@@ -111,44 +187,67 @@ fn op_compression_create_decompressor(
   Ok(rid)
 }
 
-fn op_compression_decompress(
-  state: &mut OpState,
+pub async fn op_compression_decompress(
+  state: Rc<RefCell<OpState>>,
   args: CompressArgs,
   _: (),
 ) -> Result<ZeroCopyBuf, AnyError> {
   let data = match args.format.as_str() {
     "gzip" => {
       let compressor = state
+        .borrow()
         .resource_table
         .get::<GzipDecompressorResource>(args.rid)
         .ok_or_else(bad_resource_id)?;
-      compressor.0.write_all(args.data.as_ref())?;
-      // TODO
+      compressor.decoder.write_all(args.data.as_ref()).await?;
+      let mut data = vec![];
+      let n = compressor.tx.read(data.as_mut_slice()).await?;
+      data[0..n].to_vec()
     }
     "deflate" => {
-      // TODO
+      let compressor = state
+        .borrow()
+        .resource_table
+        .get::<DeflateDecompressorResource>(args.rid)
+        .ok_or_else(bad_resource_id)?;
+      compressor.decoder.write_all(args.data.as_ref()).await?;
+      let mut data = vec![];
+      let n = compressor.tx.read(data.as_mut_slice()).await?;
+      data[0..n].to_vec()
     }
     _ => unreachable!(),
   };
 
-  Ok(data) // TODO
+  Ok(data.into())
 }
 
-fn op_compression_decompress_finalize(
-  state: &mut OpState,
+pub async fn op_compression_decompress_finalize(
+  state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   format: String,
 ) -> Result<ZeroCopyBuf, AnyError> {
   let data = match format.as_str() {
     "gzip" => {
       let compressor = state
+        .borrow()
         .resource_table
         .get::<GzipDecompressorResource>(rid)
         .ok_or_else(bad_resource_id)?;
-      compressor.0.finish()?
+      compressor.decoder.shutdown().await?;
+      let mut data = vec![];
+      let n = compressor.tx.read_to_end(&mut data).await?;
+      data[0..n].to_vec()
     }
     "deflate" => {
-      // TODO
+      let compressor = state
+        .borrow()
+        .resource_table
+        .get::<DeflateDecompressorResource>(rid)
+        .ok_or_else(bad_resource_id)?;
+      compressor.decoder.shutdown().await?;
+      let mut data = vec![];
+      let n = compressor.tx.read_to_end(&mut data).await?;
+      data[0..n].to_vec()
     }
     _ => unreachable!(),
   };

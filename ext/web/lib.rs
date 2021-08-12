@@ -67,6 +67,7 @@ pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
       "11_blob_url.js",
       "12_location.js",
       "13_message_port.js",
+      "14_compression.js",
     ))
     .ops(vec![
       ("op_base64_decode", op_sync(op_base64_decode)),
@@ -101,6 +102,30 @@ pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
       (
         "op_message_port_recv_message",
         op_async(op_message_port_recv_message),
+      ),
+      (
+        "op_compression_create_compressor",
+        op_sync(compression::op_compression_create_compressor),
+      ),
+      (
+        "op_compression_compress",
+        op_async(compression::op_compression_compress),
+      ),
+      (
+        "op_compression_compress_finalize",
+        op_async(compression::op_compression_compress_finalize),
+      ),
+      (
+        "op_compression_create_decompressor",
+        op_sync(compression::op_compression_create_decompressor),
+      ),
+      (
+        "op_compression_decompress",
+        op_async(compression::op_compression_decompress),
+      ),
+      (
+        "op_compression_decompress_finalize",
+        op_async(compression::op_compression_decompress_finalize),
       ),
     ])
     .state(move |state| {
