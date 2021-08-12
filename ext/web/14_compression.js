@@ -10,6 +10,7 @@
 ((window) => {
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
+  const { TransformStream } = window.__bootstrap.streams;
 
   webidl.converters.compressionFormat = webidl.createEnumConverter(
     "compressionFormat",
@@ -17,7 +18,7 @@
       "deflate",
       "gzip",
     ],
-  ); // TODO: not per spec, but close enough
+  );
 
   class CompressionStream extends TransformStream {
     constructor(format) {
@@ -37,6 +38,9 @@
             rid,
             data,
           });
+          if (buffer.byteLength === 0) {
+            return;
+          }
           controller.enqueue(buffer);
         },
         flush: async (controller) => {
@@ -45,9 +49,10 @@
             format,
             rid,
           );
-          if (buffer.byteLength !== 0) {
-            controller.enqueue(buffer);
+          if (buffer.byteLength === 0) {
+            return;
           }
+          controller.enqueue(buffer);
         },
       });
     }
@@ -71,6 +76,9 @@
             rid,
             data,
           });
+          if (buffer.byteLength === 0) {
+            return;
+          }
           controller.enqueue(buffer);
         },
         flush: async (controller) => {
@@ -79,9 +87,10 @@
             format,
             rid,
           );
-          if (buffer.byteLength !== 0) {
-            controller.enqueue(buffer);
+          if (buffer.byteLength === 0) {
+            return;
           }
+          controller.enqueue(buffer);
         },
       });
     }

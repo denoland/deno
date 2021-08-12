@@ -18,8 +18,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::io::DuplexStream;
 
 pub struct GzipCompressorResource {
-  encoder: GzipEncoder<DuplexStream>,
-  tx: DuplexStream,
+  encoder: RefCell<GzipEncoder<DuplexStream>>,
+  tx: RefCell<DuplexStream>,
 }
 impl Resource for GzipCompressorResource {
   fn name(&self) -> Cow<str> {
@@ -28,8 +28,8 @@ impl Resource for GzipCompressorResource {
 }
 
 pub struct GzipDecompressorResource {
-  decoder: GzipDecoder<DuplexStream>,
-  tx: DuplexStream,
+  decoder: RefCell<GzipDecoder<DuplexStream>>,
+  tx: RefCell<DuplexStream>,
 }
 impl Resource for GzipDecompressorResource {
   fn name(&self) -> Cow<str> {
@@ -38,8 +38,8 @@ impl Resource for GzipDecompressorResource {
 }
 
 pub struct DeflateCompressorResource {
-  encoder: DeflateEncoder<DuplexStream>,
-  tx: DuplexStream,
+  encoder: RefCell<DeflateEncoder<DuplexStream>>,
+  tx: RefCell<DuplexStream>,
 }
 impl Resource for DeflateCompressorResource {
   fn name(&self) -> Cow<str> {
@@ -48,8 +48,8 @@ impl Resource for DeflateCompressorResource {
 }
 
 pub struct DeflateDecompressorResource {
-  decoder: DeflateDecoder<DuplexStream>,
-  tx: DuplexStream,
+  decoder: RefCell<DeflateDecoder<DuplexStream>>,
+  tx: RefCell<DuplexStream>,
 }
 impl Resource for DeflateDecompressorResource {
   fn name(&self) -> Cow<str> {
@@ -67,17 +67,19 @@ pub fn op_compression_create_compressor(
       let (rx, tx) = tokio::io::duplex(65536);
       let encoder =
         GzipEncoder::with_quality(rx, async_compression::Level::Precise(8));
-      state
-        .resource_table
-        .add(GzipCompressorResource { encoder, tx })
+      state.resource_table.add(GzipCompressorResource {
+        encoder: RefCell::new(encoder),
+        tx: RefCell::new(tx),
+      })
     }
     "deflate" => {
       let (rx, tx) = tokio::io::duplex(65536);
       let encoder =
         DeflateEncoder::with_quality(rx, async_compression::Level::Precise(8));
-      state
-        .resource_table
-        .add(DeflateCompressorResource { encoder, tx })
+      state.resource_table.add(DeflateCompressorResource {
+        encoder: RefCell::new(encoder),
+        tx: RefCell::new(tx),
+      })
     }
     _ => unreachable!(),
   };
@@ -105,9 +107,13 @@ pub async fn op_compression_compress(
         .resource_table
         .get::<GzipCompressorResource>(args.rid)
         .ok_or_else(bad_resource_id)?;
-      compressor.encoder.write_all(args.data.as_ref()).await?;
+      compressor
+        .encoder
+        .borrow_mut()
+        .write_all(args.data.as_ref())
+        .await?;
       let mut data = vec![];
-      let n = compressor.tx.read(data.as_mut_slice()).await?;
+      let n = compressor.tx.borrow_mut().read(data.as_mut_slice()).await?;
       data[0..n].to_vec()
     }
     "deflate" => {
@@ -116,9 +122,13 @@ pub async fn op_compression_compress(
         .resource_table
         .get::<DeflateCompressorResource>(args.rid)
         .ok_or_else(bad_resource_id)?;
-      compressor.encoder.write_all(args.data.as_ref()).await?;
+      compressor
+        .encoder
+        .borrow_mut()
+        .write_all(args.data.as_ref())
+        .await?;
       let mut data = vec![];
-      let n = compressor.tx.read(data.as_mut_slice()).await?;
+      let n = compressor.tx.borrow_mut().read(data.as_mut_slice()).await?;
       data[0..n].to_vec()
     }
     _ => unreachable!(),
@@ -139,9 +149,9 @@ pub async fn op_compression_compress_finalize(
         .resource_table
         .get::<GzipCompressorResource>(rid)
         .ok_or_else(bad_resource_id)?;
-      compressor.encoder.shutdown().await?;
+      compressor.encoder.borrow_mut().shutdown().await?;
       let mut data = vec![];
-      let n = compressor.tx.read_to_end(&mut data).await?;
+      let n = compressor.tx.borrow_mut().read_to_end(&mut data).await?;
       data[0..n].to_vec()
     }
     "deflate" => {
@@ -150,9 +160,9 @@ pub async fn op_compression_compress_finalize(
         .resource_table
         .get::<DeflateCompressorResource>(rid)
         .ok_or_else(bad_resource_id)?;
-      compressor.encoder.shutdown().await?;
+      compressor.encoder.borrow_mut().shutdown().await?;
       let mut data = vec![];
-      let n = compressor.tx.read_to_end(&mut data).await?;
+      let n = compressor.tx.borrow_mut().read_to_end(&mut data).await?;
       data[0..n].to_vec()
     }
     _ => unreachable!(),
@@ -170,16 +180,18 @@ pub fn op_compression_create_decompressor(
     "gzip" => {
       let (rx, tx) = tokio::io::duplex(65536);
       let decoder = GzipDecoder::new(rx);
-      state
-        .resource_table
-        .add(GzipDecompressorResource { decoder, tx })
+      state.resource_table.add(GzipDecompressorResource {
+        decoder: RefCell::new(decoder),
+        tx: RefCell::new(tx),
+      })
     }
     "deflate" => {
       let (rx, tx) = tokio::io::duplex(65536);
       let decoder = DeflateDecoder::new(rx);
-      state
-        .resource_table
-        .add(DeflateDecompressorResource { decoder, tx })
+      state.resource_table.add(DeflateDecompressorResource {
+        decoder: RefCell::new(decoder),
+        tx: RefCell::new(tx),
+      })
     }
     _ => unreachable!(),
   };
@@ -199,9 +211,13 @@ pub async fn op_compression_decompress(
         .resource_table
         .get::<GzipDecompressorResource>(args.rid)
         .ok_or_else(bad_resource_id)?;
-      compressor.decoder.write_all(args.data.as_ref()).await?;
+      compressor
+        .decoder
+        .borrow_mut()
+        .write_all(args.data.as_ref())
+        .await?;
       let mut data = vec![];
-      let n = compressor.tx.read(data.as_mut_slice()).await?;
+      let n = compressor.tx.borrow_mut().read(data.as_mut_slice()).await?;
       data[0..n].to_vec()
     }
     "deflate" => {
@@ -210,9 +226,13 @@ pub async fn op_compression_decompress(
         .resource_table
         .get::<DeflateDecompressorResource>(args.rid)
         .ok_or_else(bad_resource_id)?;
-      compressor.decoder.write_all(args.data.as_ref()).await?;
+      compressor
+        .decoder
+        .borrow_mut()
+        .write_all(args.data.as_ref())
+        .await?;
       let mut data = vec![];
-      let n = compressor.tx.read(data.as_mut_slice()).await?;
+      let n = compressor.tx.borrow_mut().read(data.as_mut_slice()).await?;
       data[0..n].to_vec()
     }
     _ => unreachable!(),
@@ -233,9 +253,9 @@ pub async fn op_compression_decompress_finalize(
         .resource_table
         .get::<GzipDecompressorResource>(rid)
         .ok_or_else(bad_resource_id)?;
-      compressor.decoder.shutdown().await?;
+      compressor.decoder.borrow_mut().shutdown().await?;
       let mut data = vec![];
-      let n = compressor.tx.read_to_end(&mut data).await?;
+      let n = compressor.tx.borrow_mut().read_to_end(&mut data).await?;
       data[0..n].to_vec()
     }
     "deflate" => {
@@ -244,9 +264,9 @@ pub async fn op_compression_decompress_finalize(
         .resource_table
         .get::<DeflateDecompressorResource>(rid)
         .ok_or_else(bad_resource_id)?;
-      compressor.decoder.shutdown().await?;
+      compressor.decoder.borrow_mut().shutdown().await?;
       let mut data = vec![];
-      let n = compressor.tx.read_to_end(&mut data).await?;
+      let n = compressor.tx.borrow_mut().read_to_end(&mut data).await?;
       data[0..n].to_vec()
     }
     _ => unreachable!(),
