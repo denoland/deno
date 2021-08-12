@@ -127,7 +127,7 @@ pub fn print_rules_list(json: bool) {
     println!("Available rules:");
     for rule in lint_rules {
       println!(" - {}", rule.code());
-      println!("   https://lint.deno.land/#{}", rule.code());
+      println!("   help: https://lint.deno.land/#{}", rule.code());
       println!();
     }
   }
