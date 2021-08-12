@@ -599,6 +599,12 @@ pub async fn run_tests(
               TestResult::Failed(reason) => {
                 summary.failed += 1;
                 summary.failures.push((description.clone(), reason.clone()));
+
+                if let Some(x) = fail_fast {
+                  if summary.failed >= x {
+                    break;
+                  }
+                }
               }
             }
 
