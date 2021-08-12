@@ -264,7 +264,7 @@ where
   Ok(prepared)
 }
 
-pub async fn run_test_file(
+pub async fn test_specifier(
   program_state: Arc<ProgramState>,
   main_module: ModuleSpecifier,
   permissions: Permissions,
@@ -273,21 +273,32 @@ pub async fn run_test_file(
   shuffle: Option<u64>,
   channel: Sender<TestEvent>,
 ) -> Result<(), AnyError> {
+  let mut fetch_permissions = Permissions::allow_all();
+
+  let main_file = program_state
+    .file_fetcher
+    .fetch(&main_module, &mut fetch_permissions)
+    .await?;
+
   let test_module =
     deno_core::resolve_path(&format!("{}$deno$test.js", Uuid::new_v4()))?;
-  let test_source = format!(
-    r#"
-      import "{}";
-      await new Promise(resolve => setTimeout(resolve, 0));
-      await Deno[Deno.internal].runTests({});
-  "#,
-    main_module,
+
+  let mut test_source = String::new();
+  if main_file.media_type != MediaType::Unknown {
+    test_source.push_str(&format!("import \"{}\";\n", main_module));
+  }
+
+  test_source
+    .push_str("await new Promise(resolve => setTimeout(resolve, 0));\n");
+
+  test_source.push_str(&format!(
+    "await Deno[Deno.internal].runTests({});\n",
     json!({
-        "disableLog": quiet,
-        "filter": filter,
-        "shuffle": shuffle,
-    })
-  );
+      "disableLog": quiet,
+      "filter": filter,
+      "shuffle": shuffle,
+    }),
+  ));
 
   let test_file = File {
     local: test_module.to_file_path().unwrap(),
@@ -562,9 +573,30 @@ pub async fn run_tests(
       .await?;
   }
 
+  let prepare_roots = {
+    let mut files = Vec::new();
+    let mut fetch_permissions = Permissions::allow_all();
+    for specifier in &test_modules {
+      let file = program_state
+        .file_fetcher
+        .fetch(specifier, &mut fetch_permissions)
+        .await?;
+
+      files.push(file);
+    }
+
+    let prepare_roots = files
+      .iter()
+      .filter(|file| file.media_type != MediaType::Unknown)
+      .map(|file| file.specifier.clone())
+      .collect();
+
+    prepare_roots
+  };
+
   program_state
     .prepare_module_graph(
-      test_modules.clone(),
+      prepare_roots,
       lib.clone(),
       Permissions::allow_all(),
       permissions.clone(),
@@ -587,7 +619,7 @@ pub async fn run_tests(
 
     tokio::task::spawn_blocking(move || {
       let join_handle = std::thread::spawn(move || {
-        let future = run_test_file(
+        let future = test_specifier(
           program_state,
           main_module,
           permissions,
