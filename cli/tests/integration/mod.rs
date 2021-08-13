@@ -685,8 +685,9 @@ fn websocketstream() {
 }
 
 #[test]
-fn websocketserver() {
-  let script = util::testdata_path().join("websocketserverheaders_test.ts");
+fn websocket_server_multi_field_connection_header() {
+  let script = util::testdata_path()
+    .join("websocket_server_multi_field_connection_header_test.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let mut child = util::deno_cmd()
     .arg("run")
@@ -695,16 +696,26 @@ fn websocketserver() {
     .arg("--cert")
     .arg(root_ca)
     .arg(script)
+    .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap();
 
-  std::thread::sleep(std::time::Duration::from_secs(10));
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut buffer = [0; 5];
+  let read = stdout.read(&mut buffer).unwrap();
+  assert_eq!(read, 5);
+  let msg = std::str::from_utf8(&buffer).unwrap();
+  assert_eq!(msg, "READY");
+
   let req = http::request::Builder::new()
     .header(http::header::CONNECTION, "keep-alive, Upgrade")
     .uri("ws://localhost:4319")
     .body(())
     .unwrap();
-  assert!(deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req).is_ok());
+  assert!(
+    deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
+      .is_ok()
+  );
   assert!(child.wait().unwrap().success());
 }
 
