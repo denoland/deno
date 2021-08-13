@@ -968,7 +968,7 @@ mod tests {
     let specifier = blob_store.insert_object_url(
       Blob {
         media_type: "application/typescript".to_string(),
-        parts: vec![Arc::new(Box::new(InMemoryBlobPart::from(bytes)))],
+        parts: vec![Arc::new(InMemoryBlobPart::from(bytes))],
       },
       None,
     );
