@@ -127,6 +127,8 @@ pub fn print_rules_list(json: bool) {
     println!("Available rules:");
     for rule in lint_rules {
       println!(" - {}", rule.code());
+      println!("   help: https://lint.deno.land/#{}", rule.code());
+      println!();
     }
   }
 }
@@ -231,6 +233,7 @@ impl LintReporter for PrettyLintReporter {
       format!("({}) {}", colors::gray(&d.code), d.message.clone());
 
     let message = format_diagnostic(
+      &d.code,
       &pretty_message,
       &source_lines,
       d.range.clone(),
@@ -266,6 +269,7 @@ impl LintReporter for PrettyLintReporter {
 }
 
 pub fn format_diagnostic(
+  diagnostic_code: &str,
   message_line: &str,
   source_lines: &[&str],
   range: deno_lint::diagnostic::Range,
@@ -300,19 +304,23 @@ pub fn format_diagnostic(
 
   if let Some(hint) = maybe_hint {
     format!(
-      "{}\n{}\n    at {}\n\n    {} {}",
+      "{}\n{}\n    at {}\n\n    {} {}\n    {} for further information visit https://lint.deno.land/#{}",
       message_line,
       lines.join("\n"),
       formatted_location,
       colors::gray("hint:"),
       hint,
+      colors::gray("help:"),
+      diagnostic_code,
     )
   } else {
     format!(
-      "{}\n{}\n    at {}",
+      "{}\n{}\n    at {}\n\n    {} for further information visit https://lint.deno.land/#{}",
       message_line,
       lines.join("\n"),
-      formatted_location
+      formatted_location,
+      colors::gray("help:"),
+      diagnostic_code,
     )
   }
 }

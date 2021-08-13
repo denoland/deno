@@ -3,6 +3,7 @@
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 pub use deno_core::normalize_path;
+use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
 use std::env::current_dir;
 use std::fs::OpenOptions;
@@ -171,6 +172,49 @@ where
   Ok(target_files)
 }
 
+/// Collects module specifiers that satisfy the given predicate as a file path, by recursively walking `include`.
+/// Specifiers that start with http and https are left intact.
+pub fn collect_specifiers<P>(
+  include: Vec<String>,
+  predicate: P,
+) -> Result<Vec<ModuleSpecifier>, AnyError>
+where
+  P: Fn(&Path) -> bool,
+{
+  let (include_urls, include_paths): (Vec<String>, Vec<String>) =
+    include.into_iter().partition(|url| {
+      let url = url.to_lowercase();
+      url.starts_with("http://") || url.starts_with("https://")
+    });
+
+  let mut prepared = vec![];
+
+  let root_path = std::env::current_dir()?;
+  for path in include_paths {
+    let p = normalize_path(&root_path.join(path));
+    if p.is_dir() {
+      let test_files = collect_files(&[p], &[], &predicate).unwrap();
+      let mut test_files_as_urls = test_files
+        .iter()
+        .map(|f| ModuleSpecifier::from_file_path(f).unwrap())
+        .collect::<Vec<ModuleSpecifier>>();
+
+      test_files_as_urls.sort();
+      prepared.extend(test_files_as_urls);
+    } else {
+      let url = ModuleSpecifier::from_file_path(p).unwrap();
+      prepared.push(url);
+    }
+  }
+
+  for remote_url in include_urls {
+    let url = ModuleSpecifier::parse(&remote_url)?;
+    prepared.push(url);
+  }
+
+  Ok(prepared)
+}
+
 // Asynchronously removes a directory and all its descendants, but does not error
 // when the directory does not exist.
 pub async fn remove_dir_all_if_exists(path: &Path) -> std::io::Result<()> {
@@ -327,5 +371,83 @@ mod tests {
       assert!(result.iter().any(|r| r.ends_with(e)));
     }
     assert_eq!(result.len(), expected.len());
+  }
+
+  #[test]
+  fn test_collect_specifiers() {
+    fn create_files(dir_path: &Path, files: &[&str]) {
+      std::fs::create_dir(dir_path).expect("Failed to create directory");
+      for f in files {
+        let path = dir_path.join(f);
+        std::fs::write(path, "").expect("Failed to create file");
+      }
+    }
+
+    // dir.ts
+    // ├── a.ts
+    // ├── b.js
+    // ├── child
+    // │   ├── e.mjs
+    // │   ├── f.mjsx
+    // │   ├── .foo.TS
+    // │   └── README.md
+    // ├── c.tsx
+    // ├── d.jsx
+    // └── ignore
+    //     ├── g.d.ts
+    //     └── .gitignore
+
+    let t = TempDir::new().expect("tempdir fail");
+
+    let root_dir_path = t.path().join("dir.ts");
+    let root_dir_files = ["a.ts", "b.js", "c.tsx", "d.jsx"];
+    create_files(&root_dir_path, &root_dir_files);
+
+    let child_dir_path = root_dir_path.join("child");
+    let child_dir_files = ["e.mjs", "f.mjsx", ".foo.TS", "README.md"];
+    create_files(&child_dir_path, &child_dir_files);
+
+    let ignore_dir_path = root_dir_path.join("ignore");
+    let ignore_dir_files = ["g.d.ts", ".gitignore"];
+    create_files(&ignore_dir_path, &ignore_dir_files);
+
+    let result = collect_specifiers(
+      vec![
+        "http://localhost:8080".to_string(),
+        root_dir_path.to_str().unwrap().to_string(),
+        "https://localhost:8080".to_string(),
+      ],
+      |path| {
+        // exclude dotfiles
+        path
+          .file_name()
+          .and_then(|f| f.to_str())
+          .map_or(false, |f| !f.starts_with('.'))
+      },
+    )
+    .unwrap();
+
+    let root_dir_url = ModuleSpecifier::from_file_path(
+      canonicalize_path(&root_dir_path).unwrap(),
+    )
+    .unwrap()
+    .to_string();
+    let expected: Vec<ModuleSpecifier> = [
+      &format!("{}/a.ts", root_dir_url),
+      &format!("{}/b.js", root_dir_url),
+      &format!("{}/c.tsx", root_dir_url),
+      &format!("{}/child/README.md", root_dir_url),
+      &format!("{}/child/e.mjs", root_dir_url),
+      &format!("{}/child/f.mjsx", root_dir_url),
+      &format!("{}/d.jsx", root_dir_url),
+      &format!("{}/ignore/g.d.ts", root_dir_url),
+      "http://localhost:8080",
+      "https://localhost:8080",
+    ]
+    .iter()
+    .map(|f| ModuleSpecifier::parse(f).unwrap())
+    .collect::<Vec<ModuleSpecifier>>();
+
+    assert_eq!(result, expected);
   }
 }
