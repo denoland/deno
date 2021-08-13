@@ -887,29 +887,70 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     })
   };
 
+  struct ModuleExecutor {
+    worker: MainWorker,
+    pending_unload: bool,
+  }
+
+  impl ModuleExecutor {
+    pub fn new(worker: MainWorker) -> ModuleExecutor {
+      ModuleExecutor {
+        worker,
+        pending_unload: false,
+      }
+    }
+
+    pub async fn execute(
+      &mut self,
+      main_module: &ModuleSpecifier,
+    ) -> Result<(), AnyError> {
+      self.worker.execute_module(&main_module).await?;
+      self.worker.execute_script(
+        &located_script_name!(),
+        "window.dispatchEvent(new Event('load'))",
+      )?;
+      self.pending_unload = true;
+
+      self.worker.run_event_loop(false).await?;
+
+      self.worker.execute_script(
+        &located_script_name!(),
+        "window.dispatchEvent(new Event('unload'))",
+      )?;
+      self.pending_unload = false;
+
+      Ok(())
+    }
+  }
+
+  impl Drop for ModuleExecutor {
+    fn drop(&mut self) {
+      if self.pending_unload {
+        self
+          .worker
+          .execute_script(
+            &located_script_name!(),
+            "window.dispatchEvent(new Event('unload'))",
+          )
+          .unwrap();
+      }
+    }
+  }
+
   let operation =
     |(program_state, main_module): (Arc<ProgramState>, ModuleSpecifier)| {
       let flags = flags.clone();
       let permissions = Permissions::from_options(&flags.into());
       async move {
-        let main_module = main_module.clone();
-        let mut worker = create_main_worker(
+        let mut executor = ModuleExecutor::new(create_main_worker(
           &program_state,
           main_module.clone(),
           permissions,
           false,
-        );
-        debug!("main_module {}", main_module);
-        worker.execute_module(&main_module).await?;
-        worker.execute_script(
-          &located_script_name!(),
-          "window.dispatchEvent(new Event('load'))",
-        )?;
-        worker.run_event_loop(false).await?;
-        worker.execute_script(
-          &located_script_name!(),
-          "window.dispatchEvent(new Event('unload'))",
-        )?;
+        ));
+
+        executor.execute(&main_module).await?;
+
         Ok(())
       }
     };
