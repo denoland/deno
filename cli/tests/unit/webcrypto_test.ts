@@ -5,24 +5,9 @@ unitTest(async function testImportArrayBufferKey() {
   const subtle = window.crypto.subtle;
   assert(subtle);
 
-  const key = new Uint8Array([
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16,
-  ]);
+  // deno-fmt-ignore
+  const key = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+
   const cryptoKey = await subtle.importKey(
     "raw",
     key.buffer,
