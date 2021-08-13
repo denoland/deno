@@ -144,7 +144,7 @@
       const idlType = dict[member];
       const idlValue = normalizedAlgorithm[member];
 
-      if (idlType === "BufferSource") {
+      if (idlType === "BufferSource" && idlValue) {
         normalizedAlgorithm[member] = new Uint8Array(
           TypedArrayPrototypeSlice(
             (ArrayBufferIsView(idlValue) ? idlValue.buffer : idlValue),
@@ -340,7 +340,7 @@
       const handle = key[_handle];
       const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
 
-      switch (normalizeAlgorithm.name) {
+      switch (normalizedAlgorithm.name) {
         case "RSA-OAEP": {
           // 1.
           if (key[_type] !== "public") {
@@ -423,10 +423,10 @@
       const handle = key[_handle];
       const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
 
-      switch (normalizeAlgorithm.name) {
+      switch (normalizedAlgorithm.name) {
         case "RSA-OAEP": {
           // 1.
-          if (key[_type] !== "public") {
+          if (key[_type] !== "private") {
             throw new DOMException(
               "Key type not supported",
               "InvalidAccessError",
@@ -459,6 +459,7 @@
             key: keyData,
             algorithm: "RSA-OAEP",
             hash: hashAlgorithm,
+            label: normalizedAlgorithm.label,
           }, data);
 
           // 6.
