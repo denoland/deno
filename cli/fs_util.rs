@@ -427,9 +427,11 @@ mod tests {
     )
     .unwrap();
 
-    let root_dir_url = ModuleSpecifier::from_file_path(root_dir_path)
-      .unwrap()
-      .to_string();
+    let root_dir_url = ModuleSpecifier::from_file_path(
+      canonicalize_path(&root_dir_path).unwrap(),
+    )
+    .unwrap()
+    .to_string();
     let expected: Vec<ModuleSpecifier> = [
       &format!("{}/a.ts", root_dir_url),
       &format!("{}/b.js", root_dir_url),
