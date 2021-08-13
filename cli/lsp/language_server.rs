@@ -60,7 +60,7 @@ use crate::import_map::ImportMap;
 use crate::logger;
 use crate::media_type::MediaType;
 use crate::tools::fmt::format_file;
-use crate::tools::fmt::get_typescript_config;
+use crate::tools::fmt::format_parsed_module;
 
 pub const REGISTRIES_PATH: &str = "registries";
 const SOURCES_PATH: &str = "deps";
@@ -1011,38 +1011,41 @@ impl Inner {
       return Ok(None);
     }
     let mark = self.performance.mark("formatting", Some(&params));
-    let file_text = self
+    let document_data = self
       .documents
-      .content(&specifier)
+      .get(&specifier)
       .ok_or_else(|| {
         LspError::invalid_params(
           "The specified file could not be found in memory.",
         )
-      })?
-      .to_owned();
-    let line_index = self.documents.line_index(&specifier);
+      })?;
     let file_path =
       if let Ok(file_path) = params.text_document.uri.to_file_path() {
         file_path
       } else {
         PathBuf::from(params.text_document.uri.path())
       };
+    let file_text = document_data.content();
+
+    let format_result = match document_data.module() {
+      Some(Ok(parsed_module)) => {
+        Ok(format_parsed_module(parsed_module))
+      },
+      Some(Err(err)) => Err(err),
+      None => format_file(&file_path, &file_text).map_err(|e| anyhow!("{}", e)),
+    };
 
     // TODO(lucacasonato): handle error properly
-    let text_edits = tokio::task::spawn_blocking(move || {
-      let config = get_typescript_config();
-      match format_file(&file_path, &file_text, config) {
-        Ok(new_text) => {
-          Some(text::get_edits(&file_text, &new_text, line_index))
-        }
-        Err(err) => {
-          warn!("Format error: {}", err);
-          None
-        }
+    let text_edits = match format_result {
+      Ok(new_text) => {
+        let line_index = document_data.line_index();
+        Some(text::get_edits(&file_text, &new_text, line_index))
       }
-    })
-    .await
-    .unwrap();
+      Err(err) => {
+        warn!("Format error: {}", err);
+        None
+      }
+    };
 
     self.performance.measure(mark);
     if let Some(text_edits) = text_edits {
@@ -1247,7 +1250,7 @@ impl Inner {
           Some("deno-lint") => code_actions
             .add_deno_lint_ignore_action(
               &specifier,
-              self.documents.docs.get(&specifier),
+              self.documents.get(&specifier),
               diagnostic,
             )
             .map_err(|err| {

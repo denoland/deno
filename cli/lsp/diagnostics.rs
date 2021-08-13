@@ -327,22 +327,18 @@ async fn generate_lint_diagnostics(
           .lock()
           .await
           .get_version(specifier, &DiagnosticSource::DenoLint);
-        let media_type = MediaType::from(specifier);
         if version != current_version {
-          if let Some(source_code) = documents.content(specifier) {
-            if let Ok(references) = analysis::get_lint_references(
-              specifier,
-              &media_type,
-              &source_code,
-            ) {
-              let diagnostics =
-                references.into_iter().map(|r| r.to_diagnostic()).collect();
-              diagnostics_vec.push((specifier.clone(), version, diagnostics));
-            } else {
-              diagnostics_vec.push((specifier.clone(), version, Vec::new()));
-            }
-          } else {
-            error!("Missing file contents for: {}", specifier);
+          let module = documents.get(specifier).map(|d| d.module()).flatten();
+          if let Some(Ok(module)) = module {
+              if let Ok(references) = analysis::get_lint_references(module) {
+                let diagnostics =
+                  references.into_iter().map(|r| r.to_diagnostic()).collect();
+                diagnostics_vec.push((specifier.clone(), version, diagnostics));
+              } else {
+                diagnostics_vec.push((specifier.clone(), version, Vec::new()));
+              }
+          } else if module.is_none() {
+              error!("Missing file contents for: {}", specifier);
           }
         }
       }

@@ -4,6 +4,7 @@ use super::language_server;
 use super::tsc;
 
 use crate::ast;
+use crate::ast::ParsedModule;
 use crate::import_map::ImportMap;
 use crate::lsp::documents::DocumentData;
 use crate::media_type::MediaType;
@@ -120,28 +121,29 @@ impl Reference {
 fn as_lsp_range(range: &deno_lint::diagnostic::Range) -> Range {
   Range {
     start: Position {
-      line: (range.start.line - 1) as u32,
-      character: range.start.col as u32,
+      line: range.start.line_index as u32,
+      character: range.start.column_index as u32,
     },
     end: Position {
-      line: (range.end.line - 1) as u32,
-      character: range.end.col as u32,
+      line: range.end.line_index as u32,
+      character: range.end.column_index as u32,
     },
   }
 }
 
-pub fn get_lint_references(
-  specifier: &ModuleSpecifier,
-  media_type: &MediaType,
-  source_code: &str,
-) -> Result<Vec<Reference>, AnyError> {
-  let syntax = ast::get_syntax(media_type);
+pub fn get_lint_references(parsed_module: &ParsedModule) -> Result<Vec<Reference>, AnyError> {
+  let syntax = ast::get_syntax(&parsed_module.media_type());
   let lint_rules = rules::get_recommended_rules();
   let linter = create_linter(syntax, lint_rules);
-  // TODO(@kitsonk) we should consider caching the swc source file versions for
-  // reuse by other processes
-  let (_, lint_diagnostics) =
-    linter.lint(specifier.to_string(), source_code.to_string())?;
+  let lint_diagnostics =
+    linter.lint_with_ast(
+      parsed_module.specifier().to_string(),
+      parsed_module.source_file(),
+      (&parsed_module.module).into(),
+      parsed_module.comments.leading_map(),
+      parsed_module.comments.trailing_map(),
+      parsed_module.tokens(),
+    );
 
   Ok(
     lint_diagnostics
@@ -1165,13 +1167,13 @@ mod tests {
   fn test_as_lsp_range() {
     let fixture = deno_lint::diagnostic::Range {
       start: deno_lint::diagnostic::Position {
-        line: 1,
-        col: 2,
+        line_index: 0,
+        column_index: 2,
         byte_pos: 23,
       },
       end: deno_lint::diagnostic::Position {
-        line: 2,
-        col: 0,
+        line_index: 2,
+        column_index: 0,
         byte_pos: 33,
       },
     };
@@ -1195,8 +1197,8 @@ mod tests {
   fn test_get_lint_references() {
     let specifier = resolve_url("file:///a.ts").expect("bad specifier");
     let source = "const foo = 42;";
-    let actual =
-      get_lint_references(&specifier, &MediaType::TypeScript, source).unwrap();
+    let parsed_module = crate::ast::parse(&specifier.to_string(), source, &MediaType::TypeScript).unwrap();
+    let actual = get_lint_references(&parsed_module).unwrap();
 
     assert_eq!(
       actual,

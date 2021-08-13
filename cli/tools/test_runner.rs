@@ -425,7 +425,7 @@ fn extract_files_from_source_comments(
   media_type: &MediaType,
 ) -> Result<Vec<File>, AnyError> {
   let parsed_module = ast::parse(specifier.as_str(), source, media_type)?;
-  let comments = parsed_module.get_comments();
+  let comments = parsed_module.comments.get_vec();
   let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
 

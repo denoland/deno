@@ -7,6 +7,7 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
+use crate::ast::ParsedModule;
 use crate::colors;
 use crate::diff::diff;
 use crate::file_watcher;
@@ -65,12 +66,11 @@ pub async fn format(
     }
   };
   let operation = |paths: Vec<PathBuf>| {
-    let config = get_typescript_config();
     async move {
       if check {
-        check_source_files(config, paths).await?;
+        check_source_files(paths).await?;
       } else {
-        format_source_files(config, paths).await?;
+        format_source_files(paths).await?;
       }
       Ok(())
     }
@@ -93,14 +93,10 @@ pub async fn format(
 
 /// Formats markdown (using https://github.com/dprint/dprint-plugin-markdown) and its code blocks
 /// (ts/tsx, js/jsx).
-fn format_markdown(
-  file_text: &str,
-  ts_config: dprint_plugin_typescript::configuration::Configuration,
-) -> Result<String, String> {
-  let md_config = get_markdown_config();
+fn format_markdown(file_text: &str) -> Result<String, String> {
   dprint_plugin_markdown::format_text(
     file_text,
-    &md_config,
+    &MARKDOWN_CONFIG,
     move |tag, text, line_width| {
       let tag = tag.to_lowercase();
       if matches!(
@@ -123,13 +119,13 @@ fn format_markdown(
         };
 
         if matches!(extension, "json" | "jsonc") {
-          let mut json_config = get_json_config();
+          let mut json_config = JSON_CONFIG.clone();
           json_config.line_width = line_width;
           dprint_plugin_json::format_text(text, &json_config)
         } else {
           let fake_filename =
             PathBuf::from(format!("deno_fmt_stdin.{}", extension));
-          let mut codeblock_config = ts_config.clone();
+          let mut codeblock_config = TYPESCRIPT_CONFIG.clone();
           codeblock_config.line_width = line_width;
           dprint_plugin_typescript::format_text(
             &fake_filename,
@@ -149,32 +145,34 @@ fn format_markdown(
 /// of configuration builder of https://github.com/dprint/dprint-plugin-json.
 /// See https://git.io/Jt4ht for configuration.
 fn format_json(file_text: &str) -> Result<String, String> {
-  let json_config = get_json_config();
-  dprint_plugin_json::format_text(file_text, &json_config)
+  dprint_plugin_json::format_text(file_text, &JSON_CONFIG)
     .map_err(|e| e.to_string())
 }
 
 /// Formats a single TS, TSX, JS, JSX, JSONC, JSON, or MD file.
-pub fn format_file(
-  file_path: &Path,
-  file_text: &str,
-  config: dprint_plugin_typescript::configuration::Configuration,
-) -> Result<String, String> {
+pub fn format_file(file_path: &Path, file_text: &str) -> Result<String, String> {
   let ext = get_extension(file_path).unwrap_or_else(String::new);
   if ext == "md" {
-    format_markdown(file_text, config)
+    format_markdown(file_text)
   } else if matches!(ext.as_str(), "json" | "jsonc") {
     format_json(file_text)
   } else {
-    dprint_plugin_typescript::format_text(file_path, file_text, &config)
+    dprint_plugin_typescript::format_text(file_path, file_text, &TYPESCRIPT_CONFIG)
       .map_err(|e| e.to_string())
   }
 }
 
-async fn check_source_files(
-  config: dprint_plugin_typescript::configuration::Configuration,
-  paths: Vec<PathBuf>,
-) -> Result<(), AnyError> {
+pub fn format_parsed_module(parsed_module: &ParsedModule) -> String {
+  dprint_plugin_typescript::format_parsed_file(&dprint_plugin_typescript::SourceFileInfo {
+    info: parsed_module.source_file(),
+    leading_comments: parsed_module.comments.leading_map(),
+    trailing_comments: parsed_module.comments.trailing_map(),
+    module: &parsed_module.module,
+    tokens: parsed_module.tokens(),
+  }, &TYPESCRIPT_CONFIG)
+}
+
+async fn check_source_files(paths: Vec<PathBuf>) -> Result<(), AnyError> {
   let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
   let checked_files_count = Arc::new(AtomicUsize::new(0));
 
@@ -188,7 +186,7 @@ async fn check_source_files(
       checked_files_count.fetch_add(1, Ordering::Relaxed);
       let file_text = read_file_contents(&file_path)?.text;
 
-      match format_file(&file_path, &file_text, config) {
+      match format_file(&file_path, &file_text) {
         Ok(formatted_text) => {
           if formatted_text != file_text {
             not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
@@ -227,10 +225,7 @@ async fn check_source_files(
   }
 }
 
-async fn format_source_files(
-  config: dprint_plugin_typescript::configuration::Configuration,
-  paths: Vec<PathBuf>,
-) -> Result<(), AnyError> {
+async fn format_source_files(paths: Vec<PathBuf>) -> Result<(), AnyError> {
   let formatted_files_count = Arc::new(AtomicUsize::new(0));
   let checked_files_count = Arc::new(AtomicUsize::new(0));
   let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
@@ -242,7 +237,7 @@ async fn format_source_files(
       checked_files_count.fetch_add(1, Ordering::Relaxed);
       let file_contents = read_file_contents(&file_path)?;
 
-      match format_file(&file_path, &file_contents.text, config) {
+      match format_file(&file_path, &file_contents.text) {
         Ok(formatted_text) => {
           if formatted_text != file_contents.text {
             write_file_contents(
@@ -293,10 +288,9 @@ pub fn format_stdin(check: bool, ext: String) -> Result<(), AnyError> {
   if stdin().read_to_string(&mut source).is_err() {
     return Err(generic_error("Failed to read from stdin"));
   }
-  let config = get_typescript_config();
   let file_path = PathBuf::from(format!("_stdin.{}", ext));
 
-  match format_file(&file_path, &source, config) {
+  match format_file(&file_path, &source) {
     Ok(formatted_text) => {
       if check {
         if formatted_text != source {
@@ -321,24 +315,18 @@ fn files_str(len: usize) -> &'static str {
   }
 }
 
-pub fn get_typescript_config(
-) -> dprint_plugin_typescript::configuration::Configuration {
-  dprint_plugin_typescript::configuration::ConfigurationBuilder::new()
+lazy_static::lazy_static! {
+  static ref TYPESCRIPT_CONFIG: dprint_plugin_typescript::configuration::Configuration = dprint_plugin_typescript::configuration::ConfigurationBuilder::new()
     .deno()
-    .build()
-}
+    .build();
 
-fn get_markdown_config() -> dprint_plugin_markdown::configuration::Configuration
-{
-  dprint_plugin_markdown::configuration::ConfigurationBuilder::new()
+  static ref MARKDOWN_CONFIG: dprint_plugin_markdown::configuration::Configuration = dprint_plugin_markdown::configuration::ConfigurationBuilder::new()
     .deno()
-    .build()
-}
+    .build();
 
-fn get_json_config() -> dprint_plugin_json::configuration::Configuration {
-  dprint_plugin_json::configuration::ConfigurationBuilder::new()
+  static ref JSON_CONFIG: dprint_plugin_json::configuration::Configuration = dprint_plugin_json::configuration::ConfigurationBuilder::new()
     .deno()
-    .build()
+    .build();
 }
 
 struct FileContents {

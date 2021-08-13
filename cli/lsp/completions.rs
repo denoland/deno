@@ -420,8 +420,7 @@ mod tests {
         resolve_url(specifier).expect("failed to create specifier");
       documents.open(specifier.clone(), *version, language_id.clone(), source);
       let media_type = MediaType::from(&specifier);
-      let parsed_module =
-        analysis::parse_module(&specifier, source, &media_type).unwrap();
+      let parsed_module = documents.get(&specifier).unwrap().module().unwrap().unwrap();
       let (deps, _) = analysis::analyze_dependencies(
         &specifier,
         &media_type,

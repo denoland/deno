@@ -33,6 +33,14 @@ impl MultiThreadedComments {
     SingleThreadedComments::from_leading_and_trailing(leading, trailing)
   }
 
+  pub fn leading_map(&self) -> &SingleThreadedCommentsMapInner {
+    &self.leading
+  }
+
+  pub fn trailing_map(&self) -> &SingleThreadedCommentsMapInner {
+    &self.trailing
+  }
+
   /// Gets a vector of all the comments sorted by position.
   pub fn get_vec(&self) -> Vec<Comment> {
     let mut comments = self

@@ -7,11 +7,14 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
+use swc_ast_view::SourceFile;
+use swc_ecmascript::parser::token::TokenAndSpan;
 use std::error::Error;
 use std::fmt;
 use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
+use swc_ast_view::SourceFileTextInfo;
 use swc_common::chain;
 use swc_common::comments::Comment;
 use swc_common::comments::CommentKind;
@@ -20,7 +23,6 @@ use swc_common::comments::SingleThreadedComments;
 use swc_common::BytePos;
 use swc_common::FileName;
 use swc_common::Globals;
-use swc_common::SourceFile;
 use swc_common::SourceMap;
 use swc_common::Span;
 use swc_common::Spanned;
@@ -48,12 +50,10 @@ use swc_ecmascript::visit::FoldWith;
 
 mod bundle_hook;
 mod comments;
-mod source_file_info;
 mod transforms;
 
 pub use bundle_hook::BundleHook;
 use comments::MultiThreadedComments;
-use source_file_info::SourceFileInfo;
 
 static TARGET: JscTarget = JscTarget::Es2020;
 
@@ -62,6 +62,16 @@ pub struct Location {
   pub specifier: String,
   pub line: usize,
   pub col: usize,
+}
+
+impl Location {
+  fn from_line_and_column(specifier: String, line_and_column: swc_ast_view::LineAndColumnIndex) -> Self {
+    Location {
+      specifier,
+      line: line_and_column.line_index + 1,
+      col: line_and_column.column_index,
+    }
+  }
 }
 
 impl From<swc_common::Loc> for Location {
@@ -77,7 +87,7 @@ impl From<swc_common::Loc> for Location {
     Location {
       specifier: filename,
       line: swc_loc.line,
-      col: swc_loc.col_display,
+      col: swc_loc.col.0,
     }
   }
 }
@@ -249,9 +259,12 @@ fn strip_config_from_emit_options(
 /// processing.
 #[derive(Clone)]
 pub struct ParsedModule {
-  info: Arc<SourceFileInfo>,
-  comments: MultiThreadedComments,
+  specifier: String,
+  media_type: MediaType,
+  info: Arc<SourceFileTextInfo>,
+  pub comments: MultiThreadedComments,
   pub module: Module,
+  tokens: Option<Vec<TokenAndSpan>>,
 }
 
 impl fmt::Debug for ParsedModule {
@@ -264,6 +277,27 @@ impl fmt::Debug for ParsedModule {
 }
 
 impl ParsedModule {
+  /// Gets the module's specifier.
+  pub fn specifier(&self) -> &str {
+    &self.specifier
+  }
+
+  /// Gets the module's media type.
+  pub fn media_type(&self) -> MediaType {
+    self.media_type
+  }
+
+  /// Gets the module's source file.
+  pub fn source_file(&self) -> &SourceFileTextInfo {
+    let source_file: &SourceFileTextInfo = &self.info;
+    source_file
+  }
+
+  /// Gets the module's tokens.
+  pub fn tokens(&self) -> &[TokenAndSpan] {
+    self.tokens.as_ref().expect("Tokens not found because they were not captured during parsing.")
+  }
+
   /// Return a vector of dependencies for the module.
   pub fn analyze_dependencies(&self) -> Vec<DependencyDescriptor> {
     analyze_dependencies(&self.module, &self.comments)
@@ -278,14 +312,10 @@ impl ParsedModule {
       .unwrap_or_else(Vec::new)
   }
 
-  /// Get the module's comments sorted by position.
-  pub fn get_comments(&self) -> Vec<Comment> {
-    self.comments.get_vec()
-  }
-
   /// Get a location for a given position within the module.
   pub fn get_location(&self, pos: BytePos) -> Location {
-    self.info.get_location(pos)
+    let loc = self.info.line_and_column_index(pos);
+    Location::from_line_and_column(self.specifier.clone(), loc)
   }
 
   /// Transform a TypeScript file into a JavaScript file, based on the supplied
@@ -298,8 +328,8 @@ impl ParsedModule {
   ) -> Result<(String, Option<String>), AnyError> {
     let program = Program::Module(self.module);
     let source_map = Rc::new(SourceMap::default());
-    let file_name = FileName::Custom(self.info.specifier.clone());
-    source_map.new_source_file(file_name, self.info.text.clone());
+    let file_name = FileName::Custom(self.specifier.clone());
+    source_map.new_source_file(file_name, self.info.text().to_string());
     let comments = self.comments.as_single_threaded(); // needs to be mutable
 
     let jsx_pass = react::react(
@@ -392,15 +422,21 @@ pub fn parse(
   source: &str,
   media_type: &MediaType,
 ) -> Result<ParsedModule, AnyError> {
-  let info = SourceFileInfo::new(specifier, source);
+  let info = SourceFileTextInfo::new(BytePos(0), source.to_string());
   let input =
     StringInput::new(source, BytePos(0), BytePos(source.len() as u32));
-  let (comments, module) = parse_string_input(&info, input, media_type)?;
+  let (comments, module) = parse_string_input(input, media_type).map_err(|err| Diagnostic {
+    location: Location::from_line_and_column(specifier.to_string(), info.line_and_column_index(err.span().lo)),
+    message: err.into_kind().msg().to_string(),
+  })?;
 
   Ok(ParsedModule {
+    specifier: specifier.to_string(),
+    media_type: media_type.to_owned(),
     info: Arc::new(info),
     comments: MultiThreadedComments::from_single_threaded(comments),
     module,
+    tokens: None, // todo
   })
 }
 
@@ -467,14 +503,16 @@ pub fn transpile_module(
   emit_options: &EmitOptions,
   globals: &Globals,
   cm: Rc<SourceMap>,
-) -> Result<(Rc<SourceFile>, Module), AnyError> {
-  let info = SourceFileInfo::new(specifier, source);
+) -> Result<(Rc<swc_common::SourceFile>, Module), AnyError> {
   let source_file = cm.new_source_file(
     FileName::Custom(specifier.to_string()),
     source.to_string(),
   );
   let input = StringInput::from(&*source_file);
-  let (comments, module) = parse_string_input(&info, input, media_type)?;
+  let (comments, module) = parse_string_input(input, media_type).map_err(|err| Diagnostic {
+    location: cm.lookup_char_pos(err.span().lo).into(),
+    message: err.into_kind().msg().to_string(),
+  })?;
 
   let jsx_pass = react::react(
     cm,
@@ -511,19 +549,14 @@ pub fn transpile_module(
 }
 
 fn parse_string_input(
-  info: &SourceFileInfo,
   input: StringInput,
   media_type: &MediaType,
-) -> Result<(SingleThreadedComments, Module), AnyError> {
+) -> Result<(SingleThreadedComments, Module), swc_ecmascript::parser::error::Error> {
   let syntax = get_syntax(media_type);
   let comments = SingleThreadedComments::default();
   let lexer = Lexer::new(syntax, TARGET, input, Some(&comments));
   let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
-
-  let module = parser.parse_module().map_err(|err| Diagnostic {
-    location: info.get_location(err.span().lo),
-    message: err.into_kind().msg().to_string(),
-  })?;
+  let module = parser.parse_module()?;
 
   Ok((comments, module))
 }

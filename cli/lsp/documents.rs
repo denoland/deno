@@ -4,6 +4,8 @@ use super::analysis;
 use super::text::LineIndex;
 use super::tsc;
 
+use crate::ast::ParsedModule;
+use crate::ast::parse;
 use crate::media_type::MediaType;
 
 use deno_core::error::anyhow;
@@ -27,6 +29,12 @@ pub enum LanguageId {
   Json,
   JsonC,
   Markdown,
+}
+
+impl LanguageId {
+  pub fn is_js_or_ts(&self) -> bool {
+    matches!(*self, LanguageId::JavaScript | LanguageId::Jsx | LanguageId::TypeScript | LanguageId::Tsx)
+  }
 }
 
 impl FromStr for LanguageId {
@@ -76,8 +84,33 @@ impl IndexValid {
 }
 
 #[derive(Debug, Clone)]
+struct DocumentSource {
+  text: String,
+  maybe_parsed_module: Option<Result<ParsedModule, String>>,
+}
+
+impl DocumentSource {
+  pub fn new(specifier: &ModuleSpecifier, text: String, language_id: &LanguageId) -> Self {
+    let maybe_parsed_module = if language_id.is_js_or_ts() {
+      Some(parse(
+        specifier.as_str(),
+        &text,
+        &MediaType::from(language_id),
+      ).map_err(|e| e.to_string()))
+    } else {
+      None
+    };
+
+    Self {
+      text,
+      maybe_parsed_module,
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
 pub struct DocumentData {
-  source: String,
+  source: DocumentSource,
   dependencies: Option<HashMap<String, analysis::Dependency>>,
   dependency_ranges: Option<analysis::DependencyRanges>,
   pub(crate) language_id: LanguageId,
@@ -92,11 +125,11 @@ impl DocumentData {
     specifier: ModuleSpecifier,
     version: i32,
     language_id: LanguageId,
-    source: String,
+    source_text: String,
   ) -> Self {
-    let line_index = LineIndex::new(&source);
+    let line_index = LineIndex::new(&source_text);
     Self {
-      source,
+      source: DocumentSource::new(&specifier, source_text, &language_id),
       dependencies: None,
       dependency_ranges: None,
       language_id,
@@ -111,7 +144,7 @@ impl DocumentData {
     &mut self,
     content_changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<(), AnyError> {
-    let mut content = self.source.clone();
+    let mut content = self.source.text.clone();
     let mut line_index = self.line_index.clone();
     let mut index_valid = IndexValid::All;
     for change in content_changes {
@@ -132,17 +165,27 @@ impl DocumentData {
     } else {
       LineIndex::new(&content)
     };
-    self.source = content;
+    self.source = DocumentSource::new(&self.specifier, content, &self.language_id);
     self.maybe_navigation_tree = None;
     Ok(())
   }
 
   pub fn content(&self) -> &str {
-    &self.source
+    &self.source.text
+  }
+
+  pub fn line_index(&self) -> &LineIndex {
+    &self.line_index
+  }
+
+  pub fn module(&self) -> Option<Result<&ParsedModule, AnyError>> {
+    self.source.maybe_parsed_module.as_ref()
+      .map(|parsed_module_result| parsed_module_result.as_ref().map_err(|err_text| anyhow!("{}", err_text)))
   }
 
   pub fn content_line(&self, line: usize) -> String {
-    let lines = self.source.lines().into_iter().collect::<Vec<&str>>();
+    // todo: get the line from the SourceFileInfo
+    let lines = self.source.text.lines().into_iter().collect::<Vec<&str>>();
     lines[line].to_string()
   }
 
@@ -224,6 +267,10 @@ impl DocumentCache {
 
   pub fn contains_key(&self, specifier: &ModuleSpecifier) -> bool {
     self.docs.contains_key(specifier)
+  }
+
+  pub fn get(&self, specifier: &ModuleSpecifier) -> Option<&DocumentData> {
+    self.docs.get(specifier)
   }
 
   pub fn content(

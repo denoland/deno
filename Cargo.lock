@@ -591,6 +591,7 @@ dependencies = [
  "dprint-plugin-json",
  "dprint-plugin-markdown",
  "dprint-plugin-typescript",
+ "dprint-swc-ecma-ast-view",
  "encoding_rs",
  "env_logger",
  "exec",
@@ -784,8 +785,6 @@ dependencies = [
 [[package]]
 name = "deno_lint"
 version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad9f741b34ff43cdf67f3c43d5b7824a4b6c330d1cfb644b1420d3ca68a1787d"
 dependencies = [
  "anyhow",
  "derive_more",
@@ -1053,8 +1052,6 @@ dependencies = [
 [[package]]
 name = "dprint-plugin-typescript"
 version = "0.50.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99e1bd07c904835664ed50d0c04ecd5a4f2259a156e3cd2ae5ceeab02e0c9257"
 dependencies = [
  "dprint-core",
  "dprint-swc-ecma-ast-view",
@@ -1066,9 +1063,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-swc-ecma-ast-view"
-version = "0.25.0"
+version = "0.29.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31911862aff0e98a1864984450f842b108aa0f4e95aa314539605b093774d329"
+checksum = "1e0b3e6ed225d00331200847a92fe50a5d9cea6c5f956e3640757c476467fedf"
 dependencies = [
  "bumpalo",
  "fnv",
@@ -1076,6 +1073,7 @@ dependencies = [
  "swc_atoms",
  "swc_common",
  "swc_ecmascript",
+ "text_lines",
 ]
 
 [[package]]
@@ -3974,6 +3972,12 @@ name = "text-size"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "288cb548dbe72b652243ea797201f3d481a0609a967980fcc5b2315ea811560a"
+
+[[package]]
+name = "text_lines"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "116279ecd8fa26fbdcf20c79ee6f85a5ce325a953486e11e71c51670bdaa308f"
 
 [[package]]
 name = "textwrap"
