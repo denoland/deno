@@ -16443,7 +16443,6 @@
       "filereader_result.any.html": true
     },
     "idlharness.any.html": [
-      "Blob interface: operation slice(optional long long, optional long long, optional DOMString)",
       "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
@@ -16765,6 +16764,15 @@
     "referrer.any.html": true,
     "Close-delayed.any.html": true,
     "Close-delayed.any.html?wpt_flags=h2": false,
-    "Close-delayed.any.html?wss": true
+    "Close-delayed.any.html?wss": true,
+    "stream": {
+      "tentative": {
+        "abort.any.html?wss": true,
+        "backpressure-receive.any.html?wss": true,
+        "backpressure-send.any.html?wss": true,
+        "close.any.html?wss": true,
+        "constructor.any.html?wss": true
+      }
+    }
   }
 }

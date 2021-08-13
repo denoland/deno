@@ -50,7 +50,7 @@ pub struct WorkerOptions {
   pub args: Vec<String>,
   pub debug_flag: bool,
   pub unstable: bool,
-  pub unsafely_treat_insecure_origin_as_secure: Option<Vec<String>>,
+  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
   pub user_agent: String,
   pub seed: Option<u64>,
@@ -104,12 +104,12 @@ impl MainWorker {
         options.root_cert_store.clone(),
         None,
         None,
-        options.unsafely_treat_insecure_origin_as_secure.clone(),
+        options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
         options.root_cert_store.clone(),
-        options.unsafely_treat_insecure_origin_as_secure.clone(),
+        options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_webstorage::init(options.origin_storage_dir.clone()),
       deno_crypto::init(options.seed),
@@ -134,7 +134,7 @@ impl MainWorker {
       deno_net::init::<Permissions>(
         options.root_cert_store.clone(),
         options.unstable,
-        options.unsafely_treat_insecure_origin_as_secure.clone(),
+        options.unsafely_ignore_certificate_errors.clone(),
       ),
       ops::os::init(),
       ops::permissions::init(),
@@ -304,7 +304,7 @@ mod tests {
       args: vec![],
       debug_flag: false,
       unstable: false,
-      unsafely_treat_insecure_origin_as_secure: None,
+      unsafely_ignore_certificate_errors: None,
       root_cert_store: None,
       seed: None,
       js_error_create_fn: None,
@@ -329,10 +329,7 @@ mod tests {
 
   #[tokio::test]
   async fn execute_mod_esm_imports_a() {
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
-      .join("cli/tests/esm_imports_a.js");
+    let p = test_util::testdata_path().join("esm_imports_a.js");
     let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let mut worker = create_test_worker();
     let result = worker.execute_module(&module_specifier).await;
@@ -375,10 +372,7 @@ mod tests {
     // This assumes cwd is project root (an assumption made throughout the
     // tests).
     let mut worker = create_test_worker();
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
-      .join("cli/tests/001_hello.js");
+    let p = test_util::testdata_path().join("001_hello.js");
     let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let result = worker.execute_module(&module_specifier).await;
     assert!(result.is_ok());

@@ -4,7 +4,7 @@ import { assert, assertThrows, unitTest } from "./test_util.ts";
 // Note tests for Deno.setRaw is in integration tests.
 
 unitTest({ perms: { read: true } }, function consoleSizeFile() {
-  const file = Deno.openSync("cli/tests/hello.txt");
+  const file = Deno.openSync("cli/tests/testdata/hello.txt");
   assertThrows(() => {
     Deno.consoleSize(file.rid);
   }, Error);
@@ -20,7 +20,7 @@ unitTest(function consoleSizeError() {
 
 unitTest({ perms: { read: true } }, function isatty() {
   // CI not under TTY, so cannot test stdin/stdout/stderr.
-  const f = Deno.openSync("cli/tests/hello.txt");
+  const f = Deno.openSync("cli/tests/testdata/hello.txt");
   assert(!Deno.isatty(f.rid));
   f.close();
 });

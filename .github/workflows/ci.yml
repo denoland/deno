@@ -255,7 +255,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: f-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          key: g-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
 
       # In main branch, always creates fresh cache
       - name: Cache build output (main)
@@ -270,7 +270,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: |
-            f-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
+            g-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ github.sha }}
 
       # Restore cache from the latest 'main' branch build.
       - name: Cache build output (PR)
@@ -286,7 +286,7 @@ jobs:
             !./target/*/*.tar.gz
           key: never_saved
           restore-keys: |
-            f-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
+            g-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-
 
       # Don't save cache after building PRs or branches other than 'main'.
       - name: Skip save cache (PR)
@@ -557,7 +557,7 @@ jobs:
           gsutil cp release-latest.txt gs://dl.deno.land/release-latest.txt
 
       - name: Upload release to GitHub
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@59c3b4891632ff9a897f99a91d7bc557467a3a22
         if: |
           matrix.kind == 'test' &&
           matrix.profile == 'release' &&

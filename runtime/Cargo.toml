@@ -2,12 +2,16 @@
 
 [package]
 name = "deno_runtime"
-version = "0.21.0"
+version = "0.22.2"
 authors = ["the Deno authors"]
 edition = "2018"
 license = "MIT"
 repository = "https://github.com/denoland/deno"
 description = "Provides the deno runtime library"
+
+[features]
+# "fake" feature that allows to generate docs on docs.rs
+docsrs = []
 
 [lib]
 name = "deno_runtime"
@@ -18,44 +22,44 @@ name = "hello_runtime"
 path = "examples/hello_runtime.rs"
 
 [build-dependencies]
-deno_broadcast_channel = { version = "0.7.0", path = "../extensions/broadcast_channel" }
-deno_console = { version = "0.13.0", path = "../extensions/console" }
-deno_core = { version = "0.95.0", path = "../core" }
-deno_crypto = { version = "0.27.0", path = "../extensions/crypto" }
-deno_fetch = { version = "0.36.0", path = "../extensions/fetch" }
-deno_ffi = { version = "0.1.0", path = "../extensions/ffi" }
-deno_http = { version = "0.4.0", path = "../extensions/http" }
-deno_net = { version = "0.4.0", path = "../extensions/net" }
-deno_timers = { version = "0.11.0", path = "../extensions/timers" }
-deno_tls = { version = "0.1.0", path = "../extensions/tls" }
-deno_url = { version = "0.13.0", path = "../extensions/url" }
-deno_web = { version = "0.44.0", path = "../extensions/web" }
-deno_webgpu = { version = "0.14.0", path = "../extensions/webgpu" }
-deno_webidl = { version = "0.13.0", path = "../extensions/webidl" }
-deno_websocket = { version = "0.18.0", path = "../extensions/websocket" }
-deno_webstorage = { version = "0.8.0", path = "../extensions/webstorage" }
+deno_broadcast_channel = { version = "0.8.0", path = "../ext/broadcast_channel" }
+deno_console = { version = "0.14.0", path = "../ext/console" }
+deno_core = { version = "0.96.0", path = "../core" }
+deno_crypto = { version = "0.28.0", path = "../ext/crypto" }
+deno_fetch = { version = "0.37.0", path = "../ext/fetch" }
+deno_ffi = { version = "0.1.0", path = "../ext/ffi" }
+deno_http = { version = "0.5.0", path = "../ext/http" }
+deno_net = { version = "0.5.0", path = "../ext/net" }
+deno_timers = { version = "0.12.0", path = "../ext/timers" }
+deno_tls = { version = "0.1.0", path = "../ext/tls" }
+deno_url = { version = "0.14.0", path = "../ext/url" }
+deno_web = { version = "0.45.0", path = "../ext/web" }
+deno_webgpu = { version = "0.15.0", path = "../ext/webgpu" }
+deno_webidl = { version = "0.14.0", path = "../ext/webidl" }
+deno_websocket = { version = "0.19.0", path = "../ext/websocket" }
+deno_webstorage = { version = "0.9.0", path = "../ext/webstorage" }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1.11"
 winapi = "0.3.9"
 
 [dependencies]
-deno_broadcast_channel = { version = "0.7.0", path = "../extensions/broadcast_channel" }
-deno_console = { version = "0.13.0", path = "../extensions/console" }
-deno_core = { version = "0.95.0", path = "../core" }
-deno_crypto = { version = "0.27.0", path = "../extensions/crypto" }
-deno_fetch = { version = "0.36.0", path = "../extensions/fetch" }
-deno_ffi = { version = "0.1.0", path = "../extensions/ffi" }
-deno_http = { version = "0.4.0", path = "../extensions/http" }
-deno_net = { version = "0.4.0", path = "../extensions/net" }
-deno_timers = { version = "0.11.0", path = "../extensions/timers" }
-deno_tls = { version = "0.1.0", path = "../extensions/tls" }
-deno_url = { version = "0.13.0", path = "../extensions/url" }
-deno_web = { version = "0.44.0", path = "../extensions/web" }
-deno_webgpu = { version = "0.14.0", path = "../extensions/webgpu" }
-deno_webidl = { version = "0.13.0", path = "../extensions/webidl" }
-deno_websocket = { version = "0.18.0", path = "../extensions/websocket" }
-deno_webstorage = { version = "0.8.0", path = "../extensions/webstorage" }
+deno_broadcast_channel = { version = "0.8.0", path = "../ext/broadcast_channel" }
+deno_console = { version = "0.14.0", path = "../ext/console" }
+deno_core = { version = "0.96.0", path = "../core" }
+deno_crypto = { version = "0.28.0", path = "../ext/crypto" }
+deno_fetch = { version = "0.37.0", path = "../ext/fetch" }
+deno_ffi = { version = "0.1.0", path = "../ext/ffi" }
+deno_http = { version = "0.5.0", path = "../ext/http" }
+deno_net = { version = "0.5.0", path = "../ext/net" }
+deno_timers = { version = "0.12.0", path = "../ext/timers" }
+deno_tls = { version = "0.1.0", path = "../ext/tls" }
+deno_url = { version = "0.14.0", path = "../ext/url" }
+deno_web = { version = "0.45.0", path = "../ext/web" }
+deno_webgpu = { version = "0.15.0", path = "../ext/webgpu" }
+deno_webidl = { version = "0.14.0", path = "../ext/webidl" }
+deno_websocket = { version = "0.19.0", path = "../ext/websocket" }
+deno_webstorage = { version = "0.9.0", path = "../ext/webstorage" }
 
 atty = "0.2.14"
 dlopen = "0.1.8"
@@ -88,3 +92,6 @@ nix = "0.20.0"
 [dev-dependencies]
 # Used in benchmark
 test_util = { path = "../test_util" }
+
+[package.metadata.docs.rs]
+features = ["docsrs"]
