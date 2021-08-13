@@ -34,6 +34,9 @@ unitTest(async function testSignVerify() {
         "SHA-512",
       ]
     ) {
+      const keyUsages: KeyUsage[] = algorithm == "RSA-OAEP"
+        ? ["encrypt", "decrypt"]
+        : ["sign", "verify"];
       const keyPair = await subtle.generateKey(
         {
           name: algorithm,
@@ -42,7 +45,7 @@ unitTest(async function testSignVerify() {
           hash,
         },
         true,
-        ["sign", "verify"],
+        keyUsages,
       );
 
       const data = new Uint8Array([1, 2, 3]);
@@ -64,7 +67,8 @@ unitTest(async function testSignVerify() {
           encypted,
         );
         assert(decrypted);
-        assertEquals(decrypted, data);
+        assert(decrypted instanceof ArrayBuffer);
+        assertEquals(new Uint8Array(decrypted), data);
       } else {
         const signAlgorithm = { name: algorithm, saltLength: 32 };
 
