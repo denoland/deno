@@ -461,9 +461,10 @@ fn test_watch() {
   let mut stderr_lines =
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
+  assert_eq!(stdout_lines.next().unwrap(), "");
   assert_contains!(
     stdout_lines.next().unwrap(),
-    "No matching test modules found"
+    "0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"
   );
   wait_for_process_finished("Test", &mut stderr_lines);
 
@@ -486,6 +487,7 @@ fn test_watch() {
   )
   .expect("error writing file");
 
+  assert_eq!(stdout_lines.next().unwrap(), "");
   assert_contains!(stdout_lines.next().unwrap(), "running 1 test");
   assert_contains!(stdout_lines.next().unwrap(), "foo", "bar");
   assert_contains!(stdout_lines.next().unwrap(), "running 1 test");
@@ -628,11 +630,11 @@ fn test_watch_doc() {
   let mut stderr_lines =
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
+  assert_eq!(stdout_lines.next().unwrap(), "");
   assert_contains!(
     stdout_lines.next().unwrap(),
-    "No matching test modules found"
+    "0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"
   );
-
   wait_for_process_finished("Test", &mut stderr_lines);
 
   let foo_file = t.path().join("foo.ts");
