@@ -491,6 +491,14 @@
         throw new DOMException("Invalid key usages", "SyntaxError");
       }
 
+      // https://github.com/denoland/deno/pull/9614#issuecomment-866049433
+      if (!extractable) {
+        throw new DOMException(
+          "Non-extractable keys are not supported",
+          "SecurityError",
+        );
+      }
+
       switch (normalizedAlgorithm.name) {
         // https://w3c.github.io/webcrypto/#hmac-operations
         case "HMAC": {
