@@ -3,7 +3,7 @@
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 pub use deno_core::normalize_path;
-use deno_core::url::Url;
+use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
 use std::env::current_dir;
 use std::fs::OpenOptions;
@@ -177,7 +177,7 @@ where
 pub fn collect_specifiers<P>(
   include: Vec<String>,
   predicate: P,
-) -> Result<Vec<Url>, AnyError>
+) -> Result<Vec<ModuleSpecifier>, AnyError>
 where
   P: Fn(&Path) -> bool,
 {
@@ -196,19 +196,19 @@ where
       let test_files = collect_files(&[p], &[], &predicate).unwrap();
       let mut test_files_as_urls = test_files
         .iter()
-        .map(|f| Url::from_file_path(f).unwrap())
-        .collect::<Vec<Url>>();
+        .map(|f| ModuleSpecifier::from_file_path(f).unwrap())
+        .collect::<Vec<ModuleSpecifier>>();
 
       test_files_as_urls.sort();
       prepared.extend(test_files_as_urls);
     } else {
-      let url = Url::from_file_path(p).unwrap();
+      let url = ModuleSpecifier::from_file_path(p).unwrap();
       prepared.push(url);
     }
   }
 
   for remote_url in include_urls {
-    let url = Url::parse(&remote_url)?;
+    let url = ModuleSpecifier::parse(&remote_url)?;
     prepared.push(url);
   }
 
@@ -427,8 +427,10 @@ mod tests {
     )
     .unwrap();
 
-    let root_dir_url = Url::from_file_path(root_dir_path).unwrap().to_string();
-    let expected: Vec<Url> = [
+    let root_dir_url = ModuleSpecifier::from_file_path(root_dir_path)
+      .unwrap()
+      .to_string();
+    let expected: Vec<ModuleSpecifier> = [
       &format!("{}/a.ts", root_dir_url),
       &format!("{}/b.js", root_dir_url),
       &format!("{}/c.tsx", root_dir_url),
@@ -441,8 +443,8 @@ mod tests {
       "https://localhost:8080",
     ]
     .iter()
-    .map(|f| Url::parse(f).unwrap())
-    .collect::<Vec<Url>>();
+    .map(|f| ModuleSpecifier::parse(f).unwrap())
+    .collect::<Vec<ModuleSpecifier>>();
 
     assert_eq!(result, expected);
   }
