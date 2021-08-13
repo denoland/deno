@@ -5,8 +5,6 @@ use crate::ast::Location;
 use crate::colors;
 use crate::create_main_worker;
 use crate::file_fetcher::File;
-use crate::fs_util::collect_files;
-use crate::fs_util::normalize_path;
 use crate::media_type::MediaType;
 use crate::module_graph;
 use crate::program_state::ProgramState;
@@ -20,7 +18,6 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
 use deno_core::serde_json::json;
-use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use rand::rngs::SmallRng;
@@ -220,48 +217,6 @@ pub(crate) fn is_supported(p: &Path) -> bool {
   } else {
     false
   }
-}
-
-pub fn is_remote_url(module_url: &str) -> bool {
-  let lower = module_url.to_lowercase();
-  lower.starts_with("http://") || lower.starts_with("https://")
-}
-
-pub fn collect_test_module_specifiers<P>(
-  include: Vec<String>,
-  root_path: &Path,
-  predicate: P,
-) -> Result<Vec<Url>, AnyError>
-where
-  P: Fn(&Path) -> bool,
-{
-  let (include_paths, include_urls): (Vec<String>, Vec<String>) =
-    include.into_iter().partition(|n| !is_remote_url(n));
-  let mut prepared = vec![];
-
-  for path in include_paths {
-    let p = normalize_path(&root_path.join(path));
-    if p.is_dir() {
-      let test_files = collect_files(&[p], &[], &predicate).unwrap();
-      let mut test_files_as_urls = test_files
-        .iter()
-        .map(|f| Url::from_file_path(f).unwrap())
-        .collect::<Vec<Url>>();
-
-      test_files_as_urls.sort();
-      prepared.extend(test_files_as_urls);
-    } else {
-      let url = Url::from_file_path(p).unwrap();
-      prepared.push(url);
-    }
-  }
-
-  for remote_url in include_urls {
-    let url = Url::parse(&remote_url)?;
-    prepared.push(url);
-  }
-
-  Ok(prepared)
 }
 
 pub async fn test_specifier(
@@ -741,37 +696,6 @@ mod tests {
   use super::*;
 
   #[test]
-  fn test_collect_test_module_specifiers() {
-    let sub_dir_path = test_util::testdata_path().join("subdir");
-    let mut matched_urls = collect_test_module_specifiers(
-      vec![
-        "https://example.com/colors_test.ts".to_string(),
-        "./mod1.ts".to_string(),
-        "./mod3.js".to_string(),
-        "subdir2/mod2.ts".to_string(),
-        "http://example.com/printf_test.ts".to_string(),
-      ],
-      &sub_dir_path,
-      is_supported,
-    )
-    .unwrap();
-    let test_data_url = Url::from_file_path(sub_dir_path).unwrap().to_string();
-
-    let expected: Vec<Url> = vec![
-      format!("{}/mod1.ts", test_data_url),
-      format!("{}/mod3.js", test_data_url),
-      format!("{}/subdir2/mod2.ts", test_data_url),
-      "http://example.com/printf_test.ts".to_string(),
-      "https://example.com/colors_test.ts".to_string(),
-    ]
-    .into_iter()
-    .map(|f| Url::parse(&f).unwrap())
-    .collect();
-    matched_urls.sort();
-    assert_eq!(matched_urls, expected);
-  }
-
-  #[test]
   fn test_is_supported() {
     assert!(is_supported(Path::new("tests/subdir/foo_test.ts")));
     assert!(is_supported(Path::new("tests/subdir/foo_test.tsx")));
@@ -789,47 +713,5 @@ mod tests {
     assert!(!is_supported(Path::new("lib/typescript.d.ts")));
     assert!(!is_supported(Path::new("notatest.js")));
     assert!(!is_supported(Path::new("NotAtest.ts")));
-  }
-
-  #[test]
-  fn supports_dirs() {
-    // TODO(caspervonb) generate some fixtures in a temporary directory instead, there's no need
-    // for this to rely on external fixtures.
-    let root = test_util::root_path()
-      .join("test_util")
-      .join("std")
-      .join("http");
-    println!("root {:?}", root);
-    let matched_urls = collect_test_module_specifiers(
-      vec![".".to_string()],
-      &root,
-      is_supported,
-    )
-    .unwrap();
-
-    let root_url = Url::from_file_path(root).unwrap().to_string();
-    println!("root_url {}", root_url);
-    let expected: Vec<Url> = vec![
-      format!("{}/_io_test.ts", root_url),
-      format!("{}/cookie_test.ts", root_url),
-      format!("{}/file_server_test.ts", root_url),
-      format!("{}/racing_server_test.ts", root_url),
-      format!("{}/server_test.ts", root_url),
-      format!("{}/test.ts", root_url),
-    ]
-    .into_iter()
-    .map(|f| Url::parse(&f).unwrap())
-    .collect();
-    assert_eq!(matched_urls, expected);
-  }
-
-  #[test]
-  fn test_is_remote_url() {
-    assert!(is_remote_url("https://deno.land/std/http/file_server.ts"));
-    assert!(is_remote_url("http://deno.land/std/http/file_server.ts"));
-    assert!(is_remote_url("HTTP://deno.land/std/http/file_server.ts"));
-    assert!(is_remote_url("HTTp://deno.land/std/http/file_server.ts"));
-    assert!(!is_remote_url("file:///dev/deno_std/http/file_server.ts"));
-    assert!(!is_remote_url("./dev/deno_std/http/file_server.ts"));
   }
 }
