@@ -139,6 +139,12 @@ itest!(unhandled_rejection {
   output: "test/unhandled_rejection.out",
 });
 
+itest!(filter {
+  args: "test --filter=foo test/filter",
+  exit_code: 0,
+  output: "test/filter.out",
+});
+
 itest!(shuffle {
   args: "test --shuffle test/shuffle",
   exit_code: 0,

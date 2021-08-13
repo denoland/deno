@@ -731,3 +731,23 @@ unitTest({ perms: { net: true } }, async function httpCookieConcatenation() {
   assertEquals(text, "ok");
   await promise;
 });
+
+// https://github.com/denoland/deno/issues/11651
+unitTest({ perms: { net: true } }, async function httpServerPanic() {
+  const listener = Deno.listen({ port: 4501 });
+  const client = await Deno.connect({ port: 4501 });
+  const conn = await listener.accept();
+  const httpConn = Deno.serveHttp(conn);
+
+  // This message is incomplete on purpose, we'll forcefully close client connection
+  // after it's flushed to cause connection to error out on the server side.
+  const encoder = new TextEncoder();
+  await client.write(encoder.encode("GET / HTTP/1.1"));
+
+  httpConn.nextRequest();
+  await client.write(encoder.encode("\r\n\r\n"));
+  httpConn.close();
+
+  client.close();
+  listener.close();
+});

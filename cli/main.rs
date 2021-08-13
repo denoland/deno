@@ -1019,7 +1019,6 @@ async fn test_command(
   let program_state = ProgramState::build(flags.clone()).await?;
 
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let cwd = std::env::current_dir().expect("No current directory");
 
   let permissions = Permissions::from_options(&flags.clone().into());
   let lib = if flags.unstable {
@@ -1045,11 +1044,8 @@ async fn test_command(
 
     // TODO(caspervonb) clean this up.
     let resolver = |changed: Option<Vec<PathBuf>>| {
-      let test_modules_result = test_runner::collect_test_module_specifiers(
-        include.clone(),
-        &cwd,
-        collect_predicate,
-      );
+      let test_modules_result =
+        fs_util::collect_specifiers(include.clone(), collect_predicate);
 
       let paths_to_watch = paths_to_watch.clone();
       let paths_to_watch_clone = paths_to_watch.clone();
@@ -1199,11 +1195,8 @@ async fn test_command(
 
     file_watcher::watch_func(resolver, operation, "Test").await?;
   } else {
-    let modules = test_runner::collect_test_module_specifiers(
-      include.clone(),
-      &cwd,
-      collect_predicate,
-    )?;
+    let modules =
+      fs_util::collect_specifiers(include.clone(), collect_predicate)?;
 
     test_runner::run_tests(
       program_state.clone(),
