@@ -734,51 +734,20 @@ unitTest({ perms: { net: true } }, async function httpCookieConcatenation() {
 
 // https://github.com/denoland/deno/issues/11651
 unitTest({ perms: { net: true } }, async function httpServerPanic() {
-  const httpConns: Deno.HttpConn[] = [];
-  let caught;
-
-  const promise = (async () => {
-    const listener = Deno.listen({ port: 4501 });
-    for await (const conn of listener) {
-      (async () => {
-        const httpConn = Deno.serveHttp(conn);
-        httpConns.push(httpConn);
-        try {
-          const evt = await httpConn.nextRequest();
-          assert(evt);
-          const { respondWith } = evt;
-          respondWith(new Response("hello"));
-        } catch (_e) {
-          caught = true;
-        }
-
-        listener.close();
-      })();
-    }
-  })();
-
+  const listener = Deno.listen({ port: 4501 });
   const client = await Deno.connect({ port: 4501 });
-  const w = new BufWriter(client);
+  const conn = await listener.accept();
+  const httpConn = Deno.serveHttp(conn);
+
   // This message is incomplete on purpose, we'll forcefully close client connection
   // after it's flushed to cause connection to error out on the server side.
-  const body = `GET / HTTP/1.1`;
   const encoder = new TextEncoder();
-  await w.write(encoder.encode(body));
-  await w.flush();
-  await w.write(encoder.encode(body));
+  await client.write(encoder.encode("GET / HTTP/1.1"));
 
-  try {
-    await Promise.all([
-      Promise.resolve().then(() => {
-        httpConns[0].close();
-      }),
-      w.flush(),
-    ]);
-  } catch (_e) {
-    // pass
-  }
+  httpConn.nextRequest();
+  await client.write(encoder.encode("\r\n\r\n"));
+  httpConn.close();
 
-  await promise;
   client.close();
-  assert(caught);
+  listener.close();
 });
