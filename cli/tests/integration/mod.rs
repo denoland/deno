@@ -684,6 +684,30 @@ fn websocketstream() {
   assert!(status.success());
 }
 
+#[test]
+fn websocketserver() {
+  let script = util::testdata_path().join("websocketserverheaders_test.ts");
+  let root_ca = util::testdata_path().join("tls/RootCA.pem");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("--cert")
+    .arg(root_ca)
+    .arg(script)
+    .spawn()
+    .unwrap();
+
+  std::thread::sleep(std::time::Duration::from_secs(10));
+  let req = http::request::Builder::new()
+    .header(http::header::CONNECTION, "keep-alive, Upgrade")
+    .uri("ws://localhost:4319")
+    .body(())
+    .unwrap();
+  assert!(deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req).is_ok());
+  assert!(child.wait().unwrap().success());
+}
+
 #[cfg(not(windows))]
 #[test]
 fn set_raw_should_not_panic_on_no_tty() {
