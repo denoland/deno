@@ -25,7 +25,7 @@ unitTest(async function testImportArrayBufferKey() {
 unitTest(async function testSignVerify() {
   const subtle = window.crypto.subtle;
   assert(subtle);
-  for (const algorithm of ["RSA-PSS", "RSASSA-PKCS1-v1_5"]) {
+  for (const algorithm of ["RSA-PSS", "RSASSA-PKCS1-v1_5", "RSA-OAEP"]) {
     for (
       const hash of [
         "SHA-1",
@@ -46,26 +46,47 @@ unitTest(async function testSignVerify() {
       );
 
       const data = new Uint8Array([1, 2, 3]);
-      const signAlgorithm = { name: algorithm, saltLength: 32 };
+      if (algorithm == "RSA-OAEP") {
+        const encryptAlgorithm = { name: algorithm };
+        const encypted = await subtle.encrypt(
+          encryptAlgorithm,
+          keyPair.publicKey,
+          data,
+        );
 
-      const signature = await subtle.sign(
-        signAlgorithm,
-        keyPair.privateKey,
-        data,
-      );
+        assert(encypted);
+        assert(encypted.byteLength > 0);
+        assert(encypted instanceof ArrayBuffer);
 
-      assert(signature);
-      assert(signature.byteLength > 0);
-      assert(signature.byteLength % 8 == 0);
-      assert(signature instanceof ArrayBuffer);
+        const decrypted = await subtle.decrypt(
+          encryptAlgorithm,
+          keyPair.privateKey,
+          encypted,
+        );
+        assert(decrypted);
+        assertEquals(decrypted, data);
+      } else {
+        const signAlgorithm = { name: algorithm, saltLength: 32 };
 
-      const verified = await subtle.verify(
-        signAlgorithm,
-        keyPair.publicKey,
-        signature,
-        data,
-      );
-      assert(verified);
+        const signature = await subtle.sign(
+          signAlgorithm,
+          keyPair.privateKey,
+          data,
+        );
+
+        assert(signature);
+        assert(signature.byteLength > 0);
+        assert(signature.byteLength % 8 == 0);
+        assert(signature instanceof ArrayBuffer);
+
+        const verified = await subtle.verify(
+          signAlgorithm,
+          keyPair.publicKey,
+          signature,
+          data,
+        );
+        assert(verified);
+      }
     }
   }
 });
