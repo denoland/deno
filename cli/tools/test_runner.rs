@@ -493,7 +493,7 @@ fn extract_files_from_fenced_blocks(
 
 async fn fetch_inline_files(
   program_state: Arc<ProgramState>,
-  specifiers: Vec<ModuleSpecifier>,
+  specifiers: &[ModuleSpecifier],
 ) -> Result<Vec<File>, AnyError> {
   let mut files = Vec::new();
   for specifier in specifiers {
@@ -530,9 +530,9 @@ pub async fn run_tests(
   program_state: Arc<ProgramState>,
   permissions: Permissions,
   lib: module_graph::TypeLib,
-  doc_modules: Vec<ModuleSpecifier>,
   test_modules: Vec<ModuleSpecifier>,
   no_run: bool,
+  doc: bool,
   fail_fast: Option<usize>,
   quiet: bool,
   allow_none: bool,
@@ -540,7 +540,7 @@ pub async fn run_tests(
   shuffle: Option<u64>,
   concurrent_jobs: usize,
 ) -> Result<(), AnyError> {
-  if !allow_none && doc_modules.is_empty() && test_modules.is_empty() {
+  if !allow_none && test_modules.is_empty() {
     return Err(generic_error("No test modules found"));
   }
 
@@ -554,8 +554,9 @@ pub async fn run_tests(
     test_modules
   };
 
-  if !doc_modules.is_empty() {
-    let files = fetch_inline_files(program_state.clone(), doc_modules).await?;
+  if doc {
+    let files =
+      fetch_inline_files(program_state.clone(), &test_modules).await?;
     let specifiers = files.iter().map(|file| file.specifier.clone()).collect();
 
     for file in files {

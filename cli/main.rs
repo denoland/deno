@@ -1028,6 +1028,12 @@ async fn test_command(
     module_graph::TypeLib::DenoWindow
   };
 
+  let collect_predicate = if doc {
+    fs_util::is_supported_ext_test
+  } else {
+    tools::test_runner::is_supported
+  };
+
   if flags.watch {
     let handler = Arc::new(Mutex::new(FetchHandler::new(
       &program_state,
@@ -1039,19 +1045,11 @@ async fn test_command(
 
     // TODO(caspervonb) clean this up.
     let resolver = |changed: Option<Vec<PathBuf>>| {
-      let test_modules_result = if doc {
-        test_runner::collect_test_module_specifiers(
-          include.clone(),
-          &cwd,
-          fs_util::is_supported_ext_test,
-        )
-      } else {
-        test_runner::collect_test_module_specifiers(
-          include.clone(),
-          &cwd,
-          tools::test_runner::is_supported,
-        )
-      };
+      let test_modules_result = test_runner::collect_test_module_specifiers(
+        include.clone(),
+        &cwd,
+        collect_predicate,
+      );
 
       let paths_to_watch = paths_to_watch.clone();
       let paths_to_watch_clone = paths_to_watch.clone();
@@ -1173,49 +1171,19 @@ async fn test_command(
     };
 
     let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
-      let cwd = cwd.clone();
       let filter = filter.clone();
-      let include = include.clone();
       let lib = lib.clone();
       let permissions = permissions.clone();
       let program_state = program_state.clone();
 
       async move {
-        let doc_modules = if doc {
-          test_runner::collect_test_module_specifiers(
-            include.clone(),
-            &cwd,
-            fs_util::is_supported_ext_test,
-          )?
-        } else {
-          Vec::new()
-        };
-
-        let doc_modules_to_reload = doc_modules
-          .iter()
-          .filter(|specifier| modules_to_reload.contains(specifier))
-          .cloned()
-          .collect();
-
-        let test_modules = test_runner::collect_test_module_specifiers(
-          include.clone(),
-          &cwd,
-          tools::test_runner::is_supported,
-        )?;
-
-        let test_modules_to_reload = test_modules
-          .iter()
-          .filter(|specifier| modules_to_reload.contains(specifier))
-          .cloned()
-          .collect();
-
         test_runner::run_tests(
           program_state.clone(),
           permissions.clone(),
           lib.clone(),
-          doc_modules_to_reload,
-          test_modules_to_reload,
+          modules_to_reload,
           no_run,
+          doc,
           fail_fast,
           quiet,
           true,
@@ -1231,29 +1199,19 @@ async fn test_command(
 
     file_watcher::watch_func(resolver, operation, "Test").await?;
   } else {
-    let doc_modules = if doc {
-      test_runner::collect_test_module_specifiers(
-        include.clone(),
-        &cwd,
-        fs_util::is_supported_ext_test,
-      )?
-    } else {
-      Vec::new()
-    };
-
-    let test_modules = test_runner::collect_test_module_specifiers(
+    let modules = test_runner::collect_test_module_specifiers(
       include.clone(),
       &cwd,
-      tools::test_runner::is_supported,
+      collect_predicate,
     )?;
 
     test_runner::run_tests(
       program_state.clone(),
       permissions,
       lib,
-      doc_modules,
-      test_modules,
+      modules,
       no_run,
+      doc,
       fail_fast,
       quiet,
       allow_none,
