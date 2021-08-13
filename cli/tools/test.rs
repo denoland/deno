@@ -445,7 +445,7 @@ where
       };
 
       let result = future::poll_fn(|cx| {
-        worker.poll_event_loop(cx, false);
+        let _ = worker.poll_event_loop(cx, false);
 
         let mut scope = worker.js_runtime.handle_scope();
         let result_promise = result_promise.get(&mut scope);
@@ -754,7 +754,7 @@ pub async fn run_tests(
           shuffle,
           filter,
           move |event| {
-            sender.send(event);
+            sender.send(event).ok();
           },
         ))
       })
