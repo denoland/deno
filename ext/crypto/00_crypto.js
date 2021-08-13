@@ -463,6 +463,18 @@
         context: "Argument 5",
       });
 
+      // 2.
+      if (ArrayBufferIsView(keyData)) {
+        keyData = new Uint8Array(
+          keyData.buffer,
+          keyData.byteOffset,
+          keyData.byteLength,
+        );
+      } else {
+        keyData = new Uint8Array(keyData);
+      }
+      keyData = TypedArrayPrototypeSlice(keyData);
+
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "importKey");
 
       if (

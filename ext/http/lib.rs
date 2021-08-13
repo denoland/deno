@@ -196,13 +196,12 @@ async fn op_http_request_next(
       Poll::Ready(Err(e)) => {
         // TODO(ry) close RequestResource associated with connection
         // TODO(ry) close ResponseBodyResource associated with connection
-        // close ConnResource
-        state
+        // try to close ConnResource, but don't unwrap as it might
+        // already be closed
+        let _ = state
           .borrow_mut()
           .resource_table
-          .take::<ConnResource>(conn_rid)
-          .unwrap();
-
+          .take::<ConnResource>(conn_rid);
         if should_ignore_error(&e) {
           true
         } else {
