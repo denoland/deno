@@ -235,7 +235,60 @@ fn prepare_next_request(
   let tx = request_resource.response_tx;
   let req = request_resource.request;
   let method = req.method().to_string();
+  let headers = req_headers(&req);
+  let url = req_url(&req, scheme, addr)?;
 
+  let is_websocket = is_websocket_request(&req);
+  let has_body = if let Some(exact_size) = req.size_hint().exact() {
+    exact_size > 0
+  } else {
+    true
+  };
+
+  let maybe_request_rid = if is_websocket || has_body {
+    let request_rid = state.resource_table.add(RequestResource {
+      conn_rid,
+      inner: AsyncRefCell::new(RequestOrStreamReader::Request(Some(req))),
+      cancel: CancelHandle::default(),
+    });
+    Some(request_rid)
+  } else {
+    None
+  };
+
+  let response_sender_rid = state.resource_table.add(ResponseSenderResource {
+    sender: tx,
+    conn_rid,
+  });
+
+  Ok(NextRequestResponse(
+    maybe_request_rid,
+    response_sender_rid,
+    method,
+    headers,
+    url,
+  ))
+}
+
+fn req_url(
+  req: &hyper::Request<hyper::Body>,
+  scheme: &'static str,
+  addr: SocketAddr,
+) -> Result<String, AnyError> {
+  let host: Cow<str> = if let Some(host) = req.uri().host() {
+    Cow::Borrowed(host)
+  } else if let Some(host) = req.headers().get("HOST") {
+    Cow::Borrowed(host.to_str()?)
+  } else {
+    Cow::Owned(addr.to_string())
+  };
+  let path = req.uri().path_and_query().map_or("/", |p| p.as_str());
+  Ok(format!("{}://{}{}", scheme, host, path))
+}
+
+fn req_headers(
+  req: &hyper::Request<hyper::Body>,
+) -> Vec<(ByteString, ByteString)> {
   // We treat cookies specially, because we don't want them to get them
   // mangled by the `Headers` object in JS. What we do is take all cookie
   // headers and concat them into a single cookie header, seperated by
@@ -272,66 +325,24 @@ fn prepare_next_request(
     ));
   }
 
-  let url = {
-    let host: Cow<str> = if let Some(host) = req.uri().host() {
-      Cow::Borrowed(host)
-    } else if let Some(host) = req.headers().get("HOST") {
-      Cow::Borrowed(host.to_str()?)
-    } else {
-      Cow::Owned(addr.to_string())
-    };
-    let path = req.uri().path_and_query().map_or("/", |p| p.as_str());
-    format!("{}://{}{}", scheme, host, path)
-  };
+  headers
+}
 
-  let is_websocket_request = req
-    .headers()
-    .get_all(hyper::header::CONNECTION)
-    .iter()
-    .any(|v| {
-      v.to_str()
-        .map(|s| s.to_lowercase().contains("upgrade"))
-        .unwrap_or(false)
-    })
-    && req
-      .headers()
-      .get_all(hyper::header::UPGRADE)
-      .iter()
-      .any(|v| {
-        v.to_str()
-          .map(|s| s.to_lowercase().contains("websocket"))
-          .unwrap_or(false)
-      });
+fn is_websocket_request(req: &hyper::Request<hyper::Body>) -> bool {
+  req_header_contains(req, hyper::header::CONNECTION, "upgrade")
+    && req_header_contains(req, hyper::header::UPGRADE, "websocket")
+}
 
-  let has_body = if let Some(exact_size) = req.size_hint().exact() {
-    exact_size > 0
-  } else {
-    true
-  };
-
-  let maybe_request_rid = if is_websocket_request || has_body {
-    let request_rid = state.resource_table.add(RequestResource {
-      conn_rid,
-      inner: AsyncRefCell::new(RequestOrStreamReader::Request(Some(req))),
-      cancel: CancelHandle::default(),
-    });
-    Some(request_rid)
-  } else {
-    None
-  };
-
-  let response_sender_rid = state.resource_table.add(ResponseSenderResource {
-    sender: tx,
-    conn_rid,
-  });
-
-  Ok(NextRequestResponse(
-    maybe_request_rid,
-    response_sender_rid,
-    method,
-    headers,
-    url,
-  ))
+fn req_header_contains(
+  req: &hyper::Request<hyper::Body>,
+  key: impl hyper::header::AsHeaderName,
+  value: &str,
+) -> bool {
+  req.headers().get_all(key).iter().any(|v| {
+    v.to_str()
+      .map(|s| s.to_lowercase().contains(value))
+      .unwrap_or(false)
+  })
 }
 
 fn should_ignore_error(e: &AnyError) -> bool {
