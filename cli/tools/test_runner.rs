@@ -455,7 +455,7 @@ async fn fetch_inline_files(
     let mut fetch_permissions = Permissions::allow_all();
     let file = program_state
       .file_fetcher
-      .fetch(&specifier, &mut fetch_permissions)
+      .fetch(specifier, &mut fetch_permissions)
       .await?;
 
     let inline_files = if file.media_type == MediaType::Unknown {
