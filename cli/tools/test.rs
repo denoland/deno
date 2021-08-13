@@ -279,6 +279,7 @@ pub async fn test_specifier<F>(
   permissions: Permissions,
   quiet: bool,
   shuffle: Option<u64>,
+  filter: Option<String>,
   process_event: F,
 ) -> Result<(), AnyError>
 where
@@ -381,10 +382,20 @@ where
   };
 
   let filtered_out = {
+    let regex = if let Some(filter) = filter {
+      if filter.starts_with("/") && filter.ends_with("/") {
+        Regex::new(&filter[1..filter.len()])?
+      } else {
+        Regex::new(&regex::escape(&filter))?
+      }
+    } else {
+      Regex::new(".*")?
+    };
+
     let mut filtered_out = filtered_in
       .clone()
       .into_iter()
-      .filter(|(_, _description)| true)
+      .filter(|(_, description)| regex.is_match(&description.name))
       .collect::<Vec<(usize, &TestDescription)>>();
 
     if let Some(seed) = shuffle {
@@ -730,6 +741,7 @@ pub async fn run_tests(
     let main_module = main_module.clone();
     let permissions = permissions.clone();
     let shuffle = shuffle.clone();
+    let filter = filter.clone();
     let sender = sender.clone();
 
     tokio::task::spawn_blocking(move || {
@@ -740,6 +752,7 @@ pub async fn run_tests(
           permissions,
           quiet,
           shuffle,
+          filter,
           move |event| {
             sender.send(event);
           },
