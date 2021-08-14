@@ -9,6 +9,7 @@ use deno_core::OpState;
 use deno_fetch::data_url::DataUrl;
 use deno_fetch::reqwest;
 use deno_web::BlobStore;
+use deno_websocket::DomExceptionNetworkError;
 use hyper::body::Bytes;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
@@ -151,32 +152,4 @@ pub fn op_worker_sync_fetch(
     ret.push(script);
   }
   Ok(ret)
-}
-
-#[derive(Debug)]
-pub struct DomExceptionNetworkError {
-  pub msg: String,
-}
-
-impl DomExceptionNetworkError {
-  pub fn new(msg: &str) -> Self {
-    DomExceptionNetworkError {
-      msg: msg.to_string(),
-    }
-  }
-}
-
-impl std::fmt::Display for DomExceptionNetworkError {
-  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-    f.pad(&self.msg)
-  }
-}
-
-impl std::error::Error for DomExceptionNetworkError {}
-
-pub fn get_dom_exception_network_error_class_name(
-  e: &AnyError,
-) -> Option<&'static str> {
-  e.downcast_ref::<DomExceptionNetworkError>()
-    .map(|_| "DOMExceptionNetworkError")
 }
