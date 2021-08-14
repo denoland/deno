@@ -66,11 +66,24 @@ fn get_webstorage(
       })?;
       std::fs::create_dir_all(&path.0)?;
       let conn = Connection::open(path.0.join("local_storage"))?;
+      // Enable write-ahead-logging and tweak some other stuff.
+      let initial_pragmas = "
+        -- enable write-ahead-logging mode
+        PRAGMA journal_mode=WAL;
+        PRAGMA synchronous=NORMAL;
+        PRAGMA temp_store=memory;
+        PRAGMA page_size=4096;
+        PRAGMA mmap_size=6000000;
+        PRAGMA optimize;
+      ";
+
+      conn.execute_batch(initial_pragmas)?;
+      conn.set_prepared_statement_cache_capacity(128);
       {
         let mut stmt = conn.prepare_cached(
           "CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)",
         )?;
-        let _ = stmt.query(params![])?;
+        stmt.execute(params![])?;
       }
       state.put(LocalStorage(conn));
     }
@@ -83,7 +96,7 @@ fn get_webstorage(
         let mut stmt = conn.prepare_cached(
           "CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)",
         )?;
-        let _ = stmt.query(params![])?;
+        stmt.execute(params![])?;
       }
       state.put(SessionStorage(conn));
     }
@@ -153,7 +166,7 @@ pub fn op_webstorage_set(
 
   let mut stmt = conn
     .prepare_cached("INSERT OR REPLACE INTO data (key, value) VALUES (?, ?)")?;
-  let _ = stmt.query(params![args.key_name, args.key_value])?;
+  stmt.execute(params![args.key_name, args.key_value])?;
 
   Ok(())
 }
@@ -181,7 +194,7 @@ pub fn op_webstorage_remove(
   let conn = get_webstorage(state, persistent)?;
 
   let mut stmt = conn.prepare_cached("DELETE FROM data WHERE key = ?")?;
-  let _ = stmt.query(params![key_name])?;
+  stmt.execute(params![key_name])?;
 
   Ok(())
 }
@@ -193,12 +206,8 @@ pub fn op_webstorage_clear(
 ) -> Result<(), AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt = conn.prepare_cached("DROP TABLE data")?;
-  let _ = stmt.query(params![])?;
-
-  let mut stmt = conn
-    .prepare_cached("CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)")?;
-  let _ = stmt.query(params![])?;
+  let mut stmt = conn.prepare_cached("DELETE FROM data")?;
+  stmt.execute(params![])?;
 
   Ok(())
 }
