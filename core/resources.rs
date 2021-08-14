@@ -117,14 +117,21 @@ impl ResourceTable {
   }
 
   pub fn get_any(&self, rid: ResourceId) -> Result<Rc<dyn Resource>, AnyError> {
-    self.index.get(&rid).map(Clone::clone).ok_or_else(bad_resource_id)
+    self
+      .index
+      .get(&rid)
+      .map(Clone::clone)
+      .ok_or_else(bad_resource_id)
   }
 
   /// Removes a resource of type `T` from the resource table and returns it.
   /// If a resource with the given `rid` exists but its type does not match `T`,
   /// it is not removed from the resource table. Note that the resource's
   /// `close()` method is *not* called.
-  pub fn take<T: Resource>(&mut self, rid: ResourceId) -> Result<Rc<T>, AnyError> {
+  pub fn take<T: Resource>(
+    &mut self,
+    rid: ResourceId,
+  ) -> Result<Rc<T>, AnyError> {
     let resource = self.get::<T>(rid)?;
     self.index.remove(&rid);
     Ok(resource)
@@ -132,7 +139,10 @@ impl ResourceTable {
 
   /// Removes a resource from the resource table and returns it. Note that the
   /// resource's `close()` method is *not* called.
-  pub fn take_any(&mut self, rid: ResourceId) -> Result<Rc<dyn Resource>, AnyError> {
+  pub fn take_any(
+    &mut self,
+    rid: ResourceId,
+  ) -> Result<Rc<dyn Resource>, AnyError> {
     self.index.remove(&rid).ok_or_else(bad_resource_id)
   }
 
@@ -143,7 +153,11 @@ impl ResourceTable {
   /// may implement the `close()` method to perform clean-ups such as canceling
   /// ops.
   pub fn close(&mut self, rid: ResourceId) -> Result<(), AnyError> {
-    self.index.remove(&rid).ok_or_else(bad_resource_id).map(|resource| resource.close())
+    self
+      .index
+      .remove(&rid)
+      .ok_or_else(bad_resource_id)
+      .map(|resource| resource.close())
   }
 
   /// Returns an iterator that yields a `(id, name)` pair for every resource

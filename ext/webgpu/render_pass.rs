@@ -242,9 +242,10 @@ pub fn op_webgpu_render_pass_execute_bundles(
   let mut render_bundle_ids = vec![];
 
   for rid in &args.bundles {
-    let render_bundle_resource = state
-      .resource_table
-      .get::<super::bundle::WebGpuRenderBundle>(*rid)?;
+    let render_bundle_resource =
+      state
+        .resource_table
+        .get::<super::bundle::WebGpuRenderBundle>(*rid)?;
     render_bundle_ids.push(render_bundle_resource.0);
   }
 
@@ -278,8 +279,8 @@ pub fn op_webgpu_render_pass_end_pass(
   let command_encoder_resource = state
     .resource_table
     .get::<super::command_encoder::WebGpuCommandEncoder>(
-      args.command_encoder_rid,
-    )?;
+    args.command_encoder_rid,
+  )?;
   let command_encoder = command_encoder_resource.0;
   let render_pass_resource = state
     .resource_table
@@ -306,9 +307,10 @@ pub fn op_webgpu_render_pass_set_bind_group(
   args: RenderPassSetBindGroupArgs,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<WebGpuResult, AnyError> {
-  let bind_group_resource = state
-    .resource_table
-    .get::<super::binding::WebGpuBindGroup>(args.bind_group)?;
+  let bind_group_resource =
+    state
+      .resource_table
+      .get::<super::binding::WebGpuBindGroup>(args.bind_group)?;
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(args.render_pass_rid)?;
@@ -438,9 +440,10 @@ pub fn op_webgpu_render_pass_set_pipeline(
   args: RenderPassSetPipelineArgs,
   _: (),
 ) -> Result<WebGpuResult, AnyError> {
-  let render_pipeline_resource = state
-    .resource_table
-    .get::<super::pipeline::WebGpuRenderPipeline>(args.pipeline)?;
+  let render_pipeline_resource =
+    state
+      .resource_table
+      .get::<super::pipeline::WebGpuRenderPipeline>(args.pipeline)?;
   let render_pass_resource = state
     .resource_table
     .get::<WebGpuRenderPass>(args.render_pass_rid)?;

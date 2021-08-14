@@ -96,9 +96,7 @@ pub fn op_signal_unbind(
   _: (),
 ) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.signal");
-  state
-    .resource_table
-    .close(rid)?;
+  state.resource_table.close(rid)?;
   Ok(())
 }
 

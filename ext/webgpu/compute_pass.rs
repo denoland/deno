@@ -32,9 +32,10 @@ pub fn op_webgpu_compute_pass_set_pipeline(
   args: ComputePassSetPipelineArgs,
   _: (),
 ) -> Result<WebGpuResult, AnyError> {
-  let compute_pipeline_resource = state
-    .resource_table
-    .get::<super::pipeline::WebGpuComputePipeline>(args.pipeline)?;
+  let compute_pipeline_resource =
+    state
+      .resource_table
+      .get::<super::pipeline::WebGpuComputePipeline>(args.pipeline)?;
   let compute_pass_resource = state
     .resource_table
     .get::<WebGpuComputePass>(args.compute_pass_rid)?;
@@ -199,8 +200,8 @@ pub fn op_webgpu_compute_pass_end_pass(
   let command_encoder_resource = state
     .resource_table
     .get::<super::command_encoder::WebGpuCommandEncoder>(
-      args.command_encoder_rid,
-    )?;
+    args.command_encoder_rid,
+  )?;
   let command_encoder = command_encoder_resource.0;
   let compute_pass_resource = state
     .resource_table
@@ -230,9 +231,10 @@ pub fn op_webgpu_compute_pass_set_bind_group(
   args: ComputePassSetBindGroupArgs,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<WebGpuResult, AnyError> {
-  let bind_group_resource = state
-    .resource_table
-    .get::<super::binding::WebGpuBindGroup>(args.bind_group)?;
+  let bind_group_resource =
+    state
+      .resource_table
+      .get::<super::binding::WebGpuBindGroup>(args.bind_group)?;
   let compute_pass_resource = state
     .resource_table
     .get::<WebGpuComputePass>(args.compute_pass_rid)?;

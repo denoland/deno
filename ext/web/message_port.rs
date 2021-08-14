@@ -191,9 +191,7 @@ pub fn op_message_port_post_message(
     }
   }
 
-  let resource = state
-    .resource_table
-    .get::<MessagePortResource>(rid)?;
+  let resource = state.resource_table.get::<MessagePortResource>(rid)?;
 
   resource.port.send(state, data)
 }

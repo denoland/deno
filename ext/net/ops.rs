@@ -266,9 +266,7 @@ where
         .borrow()
         .resource_table
         .get::<net_unix::UnixDatagramResource>(rid)
-        .map_err(|_| {
-          custom_error("NotConnected", "Socket has been closed")
-        })?;
+        .map_err(|_| custom_error("NotConnected", "Socket has been closed"))?;
       let socket = RcRef::map(&resource, |r| &r.socket)
         .try_borrow_mut()
         .ok_or_else(|| custom_error("Busy", "Socket already in use"))?;

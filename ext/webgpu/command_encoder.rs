@@ -112,9 +112,10 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
   let mut color_attachments = vec![];
 
   for color_attachment in args.color_attachments {
-    let texture_view_resource = state
-      .resource_table
-      .get::<super::texture::WebGpuTextureView>(color_attachment.view)?;
+    let texture_view_resource =
+      state
+        .resource_table
+        .get::<super::texture::WebGpuTextureView>(color_attachment.view)?;
 
     let attachment = wgpu_core::command::RenderPassColorAttachment {
       view: texture_view_resource.0,
@@ -162,9 +163,10 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
   let mut depth_stencil_attachment = None;
 
   if let Some(attachment) = args.depth_stencil_attachment {
-    let texture_view_resource = state
-      .resource_table
-      .get::<super::texture::WebGpuTextureView>(attachment.view)?;
+    let texture_view_resource =
+      state
+        .resource_table
+        .get::<super::texture::WebGpuTextureView>(attachment.view)?;
 
     depth_stencil_attachment =
       Some(wgpu_core::command::RenderPassDepthStencilAttachment {
@@ -277,13 +279,15 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_buffer(
     .resource_table
     .get::<WebGpuCommandEncoder>(args.command_encoder_rid)?;
   let command_encoder = command_encoder_resource.0;
-  let source_buffer_resource = state
-    .resource_table
-    .get::<super::buffer::WebGpuBuffer>(args.source)?;
+  let source_buffer_resource =
+    state
+      .resource_table
+      .get::<super::buffer::WebGpuBuffer>(args.source)?;
   let source_buffer = source_buffer_resource.0;
-  let destination_buffer_resource = state
-    .resource_table
-    .get::<super::buffer::WebGpuBuffer>(args.destination)?;
+  let destination_buffer_resource =
+    state
+      .resource_table
+      .get::<super::buffer::WebGpuBuffer>(args.destination)?;
   let destination_buffer = destination_buffer_resource.0;
 
   gfx_ok!(command_encoder => instance.command_encoder_copy_buffer_to_buffer(
@@ -341,12 +345,14 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
     .resource_table
     .get::<WebGpuCommandEncoder>(args.command_encoder_rid)?;
   let command_encoder = command_encoder_resource.0;
-  let source_buffer_resource = state
-    .resource_table
-    .get::<super::buffer::WebGpuBuffer>(args.source.buffer)?;
-  let destination_texture_resource = state
-    .resource_table
-    .get::<super::texture::WebGpuTexture>(args.destination.texture)?;
+  let source_buffer_resource =
+    state
+      .resource_table
+      .get::<super::buffer::WebGpuBuffer>(args.source.buffer)?;
+  let destination_texture_resource =
+    state
+      .resource_table
+      .get::<super::texture::WebGpuTexture>(args.destination.texture)?;
 
   let source = wgpu_core::command::ImageCopyBuffer {
     buffer: source_buffer_resource.0,
@@ -399,12 +405,14 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
     .resource_table
     .get::<WebGpuCommandEncoder>(args.command_encoder_rid)?;
   let command_encoder = command_encoder_resource.0;
-  let source_texture_resource = state
-    .resource_table
-    .get::<super::texture::WebGpuTexture>(args.source.texture)?;
-  let destination_buffer_resource = state
-    .resource_table
-    .get::<super::buffer::WebGpuBuffer>(args.destination.buffer)?;
+  let source_texture_resource =
+    state
+      .resource_table
+      .get::<super::texture::WebGpuTexture>(args.source.texture)?;
+  let destination_buffer_resource =
+    state
+      .resource_table
+      .get::<super::buffer::WebGpuBuffer>(args.destination.buffer)?;
 
   let source = wgpu_core::command::ImageCopyTexture {
     texture: source_texture_resource.0,
@@ -460,12 +468,14 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
     .resource_table
     .get::<WebGpuCommandEncoder>(args.command_encoder_rid)?;
   let command_encoder = command_encoder_resource.0;
-  let source_texture_resource = state
-    .resource_table
-    .get::<super::texture::WebGpuTexture>(args.source.texture)?;
-  let destination_texture_resource = state
-    .resource_table
-    .get::<super::texture::WebGpuTexture>(args.destination.texture)?;
+  let source_texture_resource =
+    state
+      .resource_table
+      .get::<super::texture::WebGpuTexture>(args.source.texture)?;
+  let destination_texture_resource =
+    state
+      .resource_table
+      .get::<super::texture::WebGpuTexture>(args.destination.texture)?;
 
   let source = wgpu_core::command::ImageCopyTexture {
     texture: source_texture_resource.0,

@@ -67,9 +67,7 @@ pub fn op_broadcast_unsubscribe<BC: BroadcastChannel + 'static>(
   rid: ResourceId,
   _buf: (),
 ) -> Result<(), AnyError> {
-  let resource = state
-    .resource_table
-    .get::<BC::Resource>(rid)?;
+  let resource = state.resource_table.get::<BC::Resource>(rid)?;
   let bc = state.borrow::<BC>();
   bc.unsubscribe(&resource)
 }
@@ -79,10 +77,7 @@ pub async fn op_broadcast_send<BC: BroadcastChannel + 'static>(
   (rid, name): (ResourceId, String),
   buf: ZeroCopyBuf,
 ) -> Result<(), AnyError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<BC::Resource>(rid)?;
+  let resource = state.borrow().resource_table.get::<BC::Resource>(rid)?;
   let bc = state.borrow().borrow::<BC>().clone();
   bc.send(&resource, name, buf.to_vec()).await
 }
@@ -92,10 +87,7 @@ pub async fn op_broadcast_recv<BC: BroadcastChannel + 'static>(
   rid: ResourceId,
   _buf: (),
 ) -> Result<Option<Message>, AnyError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<BC::Resource>(rid)?;
+  let resource = state.borrow().resource_table.get::<BC::Resource>(rid)?;
   let bc = state.borrow().borrow::<BC>().clone();
   bc.recv(&resource).await
 }

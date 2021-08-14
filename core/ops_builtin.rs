@@ -46,9 +46,7 @@ pub fn op_close(
 ) -> Result<(), AnyError> {
   // TODO(@AaronO): drop Option after improving type-strictness balance in serde_v8
   let rid = rid.ok_or_else(|| type_error("missing or invalid `rid`"))?;
-  state
-    .resource_table
-    .close(rid)?;
+  state.resource_table.close(rid)?;
 
   Ok(())
 }

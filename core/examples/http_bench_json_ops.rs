@@ -139,10 +139,7 @@ fn op_close(
   _: (),
 ) -> Result<(), AnyError> {
   log::debug!("close rid={}", rid);
-  state
-    .resource_table
-    .close(rid)
-    .map(|_| ())
+  state.resource_table.close(rid).map(|_| ())
 }
 
 async fn op_accept(
@@ -152,10 +149,7 @@ async fn op_accept(
 ) -> Result<ResourceId, AnyError> {
   log::debug!("accept rid={}", rid);
 
-  let listener = state
-    .borrow()
-    .resource_table
-    .get::<TcpListener>(rid)?;
+  let listener = state.borrow().resource_table.get::<TcpListener>(rid)?;
   let stream = listener.accept().await?;
   let rid = state.borrow_mut().resource_table.add(stream);
   Ok(rid)
@@ -169,10 +163,7 @@ async fn op_read(
   let mut buf = buf.ok_or_else(null_opbuf)?;
   log::debug!("read rid={}", rid);
 
-  let stream = state
-    .borrow()
-    .resource_table
-    .get::<TcpStream>(rid)?;
+  let stream = state.borrow().resource_table.get::<TcpStream>(rid)?;
   let nread = stream.read(&mut buf).await?;
   Ok(nread)
 }
@@ -185,10 +176,7 @@ async fn op_write(
   let buf = buf.ok_or_else(null_opbuf)?;
   log::debug!("write rid={}", rid);
 
-  let stream = state
-    .borrow()
-    .resource_table
-    .get::<TcpStream>(rid)?;
+  let stream = state.borrow().resource_table.get::<TcpStream>(rid)?;
   let nwritten = stream.write(&buf).await?;
   Ok(nwritten)
 }

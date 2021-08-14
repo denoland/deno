@@ -134,10 +134,7 @@ async fn op_fs_events_poll(
   rid: ResourceId,
   _: (),
 ) -> Result<Option<FsEvent>, AnyError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<FsEventsResource>(rid)?;
+  let resource = state.borrow().resource_table.get::<FsEventsResource>(rid)?;
   let mut receiver = RcRef::map(&resource, |r| &r.receiver).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let maybe_result = receiver.recv().or_cancel(cancel).await?;

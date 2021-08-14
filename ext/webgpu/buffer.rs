@@ -88,9 +88,8 @@ pub async fn op_webgpu_buffer_get_map_async(
   {
     let state_ = state.borrow();
     let instance = state_.borrow::<super::Instance>();
-    let buffer_resource = state_
-      .resource_table
-      .get::<WebGpuBuffer>(args.buffer_rid)?;
+    let buffer_resource =
+      state_.resource_table.get::<WebGpuBuffer>(args.buffer_rid)?;
     let buffer = buffer_resource.0;
     let device_resource = state_
       .resource_table
@@ -176,9 +175,8 @@ pub fn op_webgpu_buffer_get_mapped_range(
 ) -> Result<WebGpuResult, AnyError> {
   let mut zero_copy = zero_copy.ok_or_else(null_opbuf)?;
   let instance = state.borrow::<super::Instance>();
-  let buffer_resource = state
-    .resource_table
-    .get::<WebGpuBuffer>(args.buffer_rid)?;
+  let buffer_resource =
+    state.resource_table.get::<WebGpuBuffer>(args.buffer_rid)?;
   let buffer = buffer_resource.0;
 
   let (slice_pointer, range_size) =
@@ -217,9 +215,8 @@ pub fn op_webgpu_buffer_unmap(
     .resource_table
     .take::<WebGpuBufferMapped>(args.mapped_rid)?;
   let instance = state.borrow::<super::Instance>();
-  let buffer_resource = state
-    .resource_table
-    .get::<WebGpuBuffer>(args.buffer_rid)?;
+  let buffer_resource =
+    state.resource_table.get::<WebGpuBuffer>(args.buffer_rid)?;
   let buffer = buffer_resource.0;
 
   let slice_pointer = mapped_resource.0;

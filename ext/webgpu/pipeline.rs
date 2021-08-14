@@ -176,17 +176,16 @@ pub fn op_webgpu_create_compute_pipeline(
   let device = device_resource.0;
 
   let pipeline_layout = if let Some(rid) = args.layout {
-    let id = state
-      .resource_table
-      .get::<WebGpuPipelineLayout>(rid)?;
+    let id = state.resource_table.get::<WebGpuPipelineLayout>(rid)?;
     Some(id.0)
   } else {
     None
   };
 
-  let compute_shader_module_resource = state
-    .resource_table
-    .get::<super::shader::WebGpuShaderModule>(args.compute.module)?;
+  let compute_shader_module_resource =
+    state
+      .resource_table
+      .get::<super::shader::WebGpuShaderModule>(args.compute.module)?;
 
   let descriptor = wgpu_core::pipeline::ComputePipelineDescriptor {
     label: args.label.map(Cow::from),
@@ -463,17 +462,17 @@ pub fn op_webgpu_create_render_pipeline(
   let device = device_resource.0;
 
   let layout = if let Some(rid) = args.layout {
-    let pipeline_layout_resource = state
-      .resource_table
-      .get::<WebGpuPipelineLayout>(rid)?;
+    let pipeline_layout_resource =
+      state.resource_table.get::<WebGpuPipelineLayout>(rid)?;
     Some(pipeline_layout_resource.0)
   } else {
     None
   };
 
-  let vertex_shader_module_resource = state
-    .resource_table
-    .get::<super::shader::WebGpuShaderModule>(args.vertex.module)?;
+  let vertex_shader_module_resource =
+    state
+      .resource_table
+      .get::<super::shader::WebGpuShaderModule>(args.vertex.module)?;
 
   let descriptor = wgpu_core::pipeline::RenderPipelineDescriptor {
     label: args.label.map(Cow::from),

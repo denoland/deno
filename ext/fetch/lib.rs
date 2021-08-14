@@ -162,9 +162,7 @@ where
   FP: FetchPermissions + 'static,
 {
   let client = if let Some(rid) = args.client_rid {
-    let r = state
-      .resource_table
-      .get::<HttpClientResource>(rid)?;
+    let r = state.resource_table.get::<HttpClientResource>(rid)?;
     r.client.clone()
   } else {
     let client = state.borrow::<reqwest::Client>();

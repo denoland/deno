@@ -221,9 +221,8 @@ pub fn op_webgpu_create_pipeline_layout(
   let mut bind_group_layouts = vec![];
 
   for rid in &args.bind_group_layouts {
-    let bind_group_layout = state
-      .resource_table
-      .get::<WebGpuBindGroupLayout>(*rid)?;
+    let bind_group_layout =
+      state.resource_table.get::<WebGpuBindGroupLayout>(*rid)?;
     bind_group_layouts.push(bind_group_layout.0);
   }
 
@@ -277,23 +276,26 @@ pub fn op_webgpu_create_bind_group(
       binding: entry.binding,
       resource: match entry.kind.as_str() {
         "GPUSampler" => {
-          let sampler_resource = state
-            .resource_table
-            .get::<super::sampler::WebGpuSampler>(entry.resource)?;
+          let sampler_resource =
+            state
+              .resource_table
+              .get::<super::sampler::WebGpuSampler>(entry.resource)?;
           wgpu_core::binding_model::BindingResource::Sampler(sampler_resource.0)
         }
         "GPUTextureView" => {
-          let texture_view_resource = state
-            .resource_table
-            .get::<super::texture::WebGpuTextureView>(entry.resource)?;
+          let texture_view_resource =
+            state
+              .resource_table
+              .get::<super::texture::WebGpuTextureView>(entry.resource)?;
           wgpu_core::binding_model::BindingResource::TextureView(
             texture_view_resource.0,
           )
         }
         "GPUBufferBinding" => {
-          let buffer_resource = state
-            .resource_table
-            .get::<super::buffer::WebGpuBuffer>(entry.resource)?;
+          let buffer_resource =
+            state
+              .resource_table
+              .get::<super::buffer::WebGpuBuffer>(entry.resource)?;
           wgpu_core::binding_model::BindingResource::Buffer(
             wgpu_core::binding_model::BufferBinding {
               buffer_id: buffer_resource.0,

@@ -89,9 +89,7 @@ fn op_set_raw(
     use winapi::shared::minwindef::FALSE;
     use winapi::um::{consoleapi, handleapi};
 
-    let resource = state
-      .resource_table
-      .get::<StdFileResource>(rid)?;
+    let resource = state.resource_table.get::<StdFileResource>(rid)?;
 
     if cbreak {
       return Err(not_supported());
@@ -155,9 +153,7 @@ fn op_set_raw(
   {
     use std::os::unix::io::AsRawFd;
 
-    let resource = state
-      .resource_table
-      .get::<StdFileResource>(rid)?;
+    let resource = state.resource_table.get::<StdFileResource>(rid)?;
 
     if resource.fs_file.is_none() {
       return Err(not_supported());
