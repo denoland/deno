@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 jobs:
   build:
-    name: ${{ matrix.kind }} ${{ matrix.profile }} ${{ matrix.os }}
+    name: ${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}
     if: |
       github.event_name == 'push' ||
       !startsWith(github.event.pull_request.head.label, 'denoland:')
@@ -13,26 +13,25 @@ jobs:
     strategy:
       matrix:
         include:
-          # TODO(ry) Rename 'kind' to 'job'?
           - os: macos-10.15
-            kind: test
+            job: test
             profile: release
           - os: windows-2019
-            kind: test
+            job: test
             profile: release
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
-            kind: test
-            profile: release
-            use_sysroot: true
-          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
-            kind: bench
+            job: test
             profile: release
             use_sysroot: true
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
-            kind: test
+            job: bench
+            profile: release
+            use_sysroot: true
+          - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
+            job: test
             profile: debug
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
-            kind: lint
+            job: lint
             profile: debug
 
       # Always run main branch builds to completion. This allows the cache to
@@ -68,7 +67,7 @@ jobs:
         if: |
           startsWith(matrix.os, 'ubuntu') &&
           matrix.profile == 'release' &&
-          matrix.kind == 'test' &&
+          matrix.job == 'test' &&
           github.repository == 'denoland/deno' &&
           startsWith(github.ref, 'refs/tags/')
         run: |
@@ -82,13 +81,13 @@ jobs:
           rust-version: 1.54.0
 
       - name: Install clippy and rustfmt
-        if: matrix.kind == 'lint'
+        if: matrix.job == 'lint'
         run: |
           rustup component add clippy
           rustup component add rustfmt
 
       - name: Install Deno
-        if: matrix.kind == 'lint'
+        if: matrix.job == 'lint'
         run: |
           curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.11.3
           echo "$HOME/.deno/bin" >> $GITHUB_PATH
@@ -115,7 +114,7 @@ jobs:
         if: |
           runner.os != 'Windows' &&
           matrix.profile == 'release' &&
-          matrix.kind == 'test' &&
+          matrix.job == 'test' &&
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/'))
@@ -128,7 +127,7 @@ jobs:
       - name: Setup gcloud (windows)
         if: |
           runner.os == 'Windows' &&
-          matrix.kind == 'test' &&
+          matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
@@ -148,7 +147,7 @@ jobs:
 
       - name: Configure canary build
         if: |
-          matrix.kind == 'test' &&
+          matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main'
@@ -242,7 +241,7 @@ jobs:
           rustc --version
           cargo --version
           # Deno is installed when linting.
-          if [ "${{ matrix.kind }}" == "lint" ]
+          if [ "${{ matrix.job }}" == "lint" ]
           then
             deno --version
           fi
@@ -317,29 +316,29 @@ jobs:
           fi
 
       - name: test_format.js
-        if: matrix.kind == 'lint'
+        if: matrix.job == 'lint'
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check
 
       - name: lint.js
-        if: matrix.kind == 'lint'
+        if: matrix.job == 'lint'
         # TODO(ry) assert matrix.profile == "debug"
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
 
       - name: Build debug
         if: |
-          (matrix.kind == 'test' || matrix.kind == 'bench') &&
+          (matrix.job == 'test' || matrix.job == 'bench') &&
           matrix.profile == 'debug' && !matrix.use_sysroot
         run: cargo build --locked --all-targets
 
       - name: Build release
         if: |
-          (matrix.kind == 'test' || matrix.kind == 'bench') &&
+          (matrix.job == 'test' || matrix.job == 'bench') &&
           matrix.profile == 'release' && !matrix.use_sysroot
         run: cargo build --release --locked --all-targets
 
       - name: Build release (in sysroot)
         if: |
-          (matrix.kind == 'test' || matrix.kind == 'bench') &&
+          (matrix.job == 'test' || matrix.job == 'bench') &&
           matrix.profile == 'release' && matrix.use_sysroot
         run: |
           sudo chroot /sysroot   \
@@ -349,7 +348,7 @@ jobs:
       - name: Pre-release (linux)
         if: |
           startsWith(matrix.os, 'ubuntu') &&
-          matrix.kind == 'test' &&
+          matrix.job == 'test' &&
           matrix.profile == 'release'
         run: |
           cd target/release
@@ -359,7 +358,7 @@ jobs:
       - name: Pre-release (mac)
         if: |
           startsWith(matrix.os, 'macOS') &&
-          matrix.kind == 'test' &&
+          matrix.job == 'test' &&
           matrix.profile == 'release'
         run: |
           cd target/release
@@ -368,7 +367,7 @@ jobs:
       - name: Pre-release (windows)
         if: |
           startsWith(matrix.os, 'windows') &&
-          matrix.kind == 'test' &&
+          matrix.job == 'test' &&
           matrix.profile == 'release'
         run: |
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
@@ -376,7 +375,7 @@ jobs:
       - name: Upload canary to dl.deno.land (unix)
         if: |
           runner.os != 'Windows' &&
-          matrix.kind == 'test' &&
+          matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main'
@@ -386,7 +385,7 @@ jobs:
       - name: Upload canary to dl.deno.land (windows)
         if: |
           runner.os == 'Windows' &&
-          matrix.kind == 'test' &&
+          matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main'
@@ -398,7 +397,7 @@ jobs:
 
       - name: Test debug
         if: |
-          matrix.kind == 'test' && matrix.profile == 'debug' &&
+          matrix.job == 'test' && matrix.profile == 'debug' &&
           !matrix.use_sysroot
         run: |
           cargo test --locked --doc
@@ -406,13 +405,13 @@ jobs:
 
       - name: Test release
         if: |
-          matrix.kind == 'test' && matrix.profile == 'release' &&
+          matrix.job == 'test' && matrix.profile == 'release' &&
           !matrix.use_sysroot
         run: cargo test --release --locked
 
       - name: Test release (in sysroot)
         if: |
-          matrix.kind == 'test' && matrix.profile == 'release' &&
+          matrix.job == 'test' && matrix.profile == 'release' &&
           matrix.use_sysroot
         run: |
           sudo chroot /sysroot   \
@@ -422,13 +421,13 @@ jobs:
       # TODO(ry): Because CI is so slow on for OSX and Windows, we currently
       #           run the Web Platform tests only on Linux.
       - name: Configure hosts file for WPT
-        if: startsWith(matrix.os, 'ubuntu') && matrix.kind == 'test'
+        if: startsWith(matrix.os, 'ubuntu') && matrix.job == 'test'
         run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
         working-directory: test_util/wpt/
 
       - name: Run web platform tests (debug)
         if: |
-          startsWith(matrix.os, 'ubuntu') && matrix.kind == 'test' &&
+          startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&
           matrix.profile == 'debug'
         env:
           DENO_BIN: ./target/debug/deno
@@ -442,7 +441,7 @@ jobs:
 
       - name: Run web platform tests (release)
         if: |
-          startsWith(matrix.os, 'ubuntu') && matrix.kind == 'test' &&
+          startsWith(matrix.os, 'ubuntu') && matrix.job == 'test' &&
           matrix.profile == 'release'
         env:
           DENO_BIN: ./target/release/deno
@@ -460,7 +459,7 @@ jobs:
       - name: Upload wpt results to dl.deno.land
         if: |
           runner.os == 'Linux' &&
-          matrix.kind == 'test' &&
+          matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main'
@@ -474,7 +473,7 @@ jobs:
       - name: Upload wpt results to wpt.fyi
         if: |
           runner.os == 'Linux' &&
-          matrix.kind == 'test' &&
+          matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main'
@@ -487,11 +486,11 @@ jobs:
               ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
 
       - name: Run benchmarks
-        if: matrix.kind == 'bench' && !matrix.use_sysroot
+        if: matrix.job == 'bench' && !matrix.use_sysroot
         run: cargo bench --locked
 
       - name: Run benchmarks (in sysroot)
-        if: matrix.kind == 'bench' && matrix.use_sysroot
+        if: matrix.job == 'bench' && matrix.use_sysroot
         run: |
           sudo chroot /sysroot   \
                su -l "$(whoami)" \
@@ -499,7 +498,7 @@ jobs:
 
       - name: Post Benchmarks
         if: |
-          matrix.kind == 'bench' &&
+          matrix.job == 'bench' &&
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main'
         env:
@@ -518,13 +517,13 @@ jobs:
           git push origin gh-pages
 
       - name: Build product size info
-        if: matrix.kind != 'lint'
+        if: matrix.job != 'lint'
         run: |
           du -hd1 "./target/${{ matrix.profile }}"
           du -ha  "./target/${{ matrix.profile }}/deno"
 
       - name: Worker info
-        if: matrix.kind == 'bench'
+        if: matrix.job == 'bench'
         run: |
           cat /proc/cpuinfo
           cat /proc/meminfo
@@ -532,7 +531,7 @@ jobs:
       - name: Upload release to dl.deno.land (unix)
         if: |
           runner.os != 'Windows' &&
-          matrix.kind == 'test' &&
+          matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
           startsWith(github.ref, 'refs/tags/')
@@ -544,7 +543,7 @@ jobs:
       - name: Upload release to dl.deno.land (windows)
         if: |
           runner.os == 'Windows' &&
-          matrix.kind == 'test' &&
+          matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
           startsWith(github.ref, 'refs/tags/')
@@ -559,7 +558,7 @@ jobs:
       - name: Upload release to GitHub
         uses: softprops/action-gh-release@59c3b4891632ff9a897f99a91d7bc557467a3a22
         if: |
-          matrix.kind == 'test' &&
+          matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
           startsWith(github.ref, 'refs/tags/')
