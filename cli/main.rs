@@ -920,7 +920,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       self.pending_unload = false;
 
       if let Err(err) = result {
-          return Err(err);
+        return Err(err);
       }
 
       self.worker.execute_script(
