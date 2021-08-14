@@ -1,12 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast;
+use std::path::PathBuf;
 use crate::ast::Location;
 use crate::colors;
 use crate::create_main_worker;
 use crate::file_fetcher::File;
-use crate::fs_util::collect_files;
-use crate::fs_util::normalize_path;
 use crate::located_script_name;
 use crate::media_type::MediaType;
 use crate::module_graph;
@@ -21,10 +20,7 @@ use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_v8;
-use deno_core::url::Url;
 use deno_core::v8;
-use deno_core::located_script_name;
-use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use rand::rngs::SmallRng;
@@ -34,8 +30,6 @@ use regex::Regex;
 use serde::Deserialize;
 use std::convert::TryFrom;
 use std::convert::TryInto;
-use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
@@ -676,7 +670,6 @@ pub async fn run_tests(
     let program_state = program_state.clone();
     let main_module = main_module.clone();
     let permissions = permissions.clone();
-    let shuffle = shuffle.clone();
     let filter = filter.clone();
     let sender = sender.clone();
 
