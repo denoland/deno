@@ -300,17 +300,21 @@ fn extract_files_from_regex_blocks(
   let files = blocks_regex
     .captures_iter(source)
     .filter_map(|block| {
-      let maybe_attributes = block
+      let maybe_attributes: Option<Vec<_>> = block
         .get(1)
-        .map(|attributes| attributes.as_str().split(' '));
+        .map(|attributes| attributes.as_str().split(' ').collect());
 
-      let file_media_type = if let Some(mut attributes) = maybe_attributes {
-        match attributes.next() {
-          Some("js") => MediaType::JavaScript,
-          Some("jsx") => MediaType::Jsx,
-          Some("ts") => MediaType::TypeScript,
-          Some("tsx") => MediaType::Tsx,
-          Some("") => *media_type,
+      let file_media_type = if let Some(attributes) = maybe_attributes {
+        if attributes.contains(&"ignore") {
+          return None;
+        }
+
+        match attributes.get(0) {
+          Some(&"js") => MediaType::JavaScript,
+          Some(&"jsx") => MediaType::Jsx,
+          Some(&"ts") => MediaType::TypeScript,
+          Some(&"tsx") => MediaType::Tsx,
+          Some(&"") => *media_type,
           _ => MediaType::Unknown,
         }
       } else {
