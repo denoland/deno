@@ -229,8 +229,7 @@ impl LintReporter for PrettyLintReporter {
   fn visit_diagnostic(&mut self, d: &LintDiagnostic, source_lines: Vec<&str>) {
     self.lint_count += 1;
 
-    let pretty_message =
-      format!("({}) {}", colors::gray(&d.code), d.message.clone());
+    let pretty_message = format!("({}) {}", colors::red(&d.code), &d.message);
 
     let message = format_diagnostic(
       &d.code,
@@ -308,9 +307,9 @@ pub fn format_diagnostic(
       message_line,
       lines.join("\n"),
       formatted_location,
-      colors::gray("hint:"),
+      colors::cyan("hint:"),
       hint,
-      colors::gray("help:"),
+      colors::cyan("help:"),
       diagnostic_code,
     )
   } else {
@@ -319,7 +318,7 @@ pub fn format_diagnostic(
       message_line,
       lines.join("\n"),
       formatted_location,
-      colors::gray("help:"),
+      colors::cyan("help:"),
       diagnostic_code,
     )
   }
