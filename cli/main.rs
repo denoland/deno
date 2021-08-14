@@ -904,7 +904,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       &mut self,
       main_module: &ModuleSpecifier,
     ) -> Result<(), AnyError> {
-      self.worker.execute_module(&main_module).await?;
+      self.worker.execute_module(main_module).await?;
       self.worker.execute_script(
         &located_script_name!(),
         "window.dispatchEvent(new Event('load'))",
