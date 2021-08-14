@@ -15910,7 +15910,11 @@
       "Parsing: <http://foo.09> against <about:blank>",
       "Parsing: <http://foo.09.> against <about:blank>",
       "Parsing: <http://foo.0x4> against <about:blank>",
-      "Parsing: <http://foo.0x4.> against <about:blank>"
+      "Parsing: <http://foo.0x4.> against <about:blank>",
+      "Parsing: <http://0999999999999999999/> against <about:blank>",
+      "Parsing: <http://foo.0x> against <about:blank>",
+      "Parsing: <http://foo.0XFfFfFfFfFfFfFfFfFfAcE123> against <about:blank>",
+      "Parsing: <http://💩.123/> against <about:blank>"
     ],
     "url-origin.any.html": true,
     "url-searchparams.any.html": true,
