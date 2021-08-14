@@ -54,6 +54,8 @@ mod not_docs {
         None,
         None,
         None,
+        None,
+        None,
       ),
       deno_websocket::init::<deno_websocket::NoWebSocketPermissions>(
         "".to_owned(),

@@ -61,6 +61,8 @@ pub fn init<P: FetchPermissions + 'static>(
   proxy: Option<Proxy>,
   request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  cert_chain: Option<String>,
+  private_key: Option<String>,
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -89,6 +91,8 @@ pub fn init<P: FetchPermissions + 'static>(
           None,
           proxy.clone(),
           unsafely_ignore_certificate_errors.clone(),
+          cert_chain.clone(),
+          private_key.clone(),
         )
         .unwrap()
       });
@@ -99,6 +103,8 @@ pub fn init<P: FetchPermissions + 'static>(
         request_builder_hook,
         unsafely_ignore_certificate_errors: unsafely_ignore_certificate_errors
           .clone(),
+        cert_chain:  cert_chain.clone(),
+        private_key: private_key.clone(),
       });
       Ok(())
     })
@@ -111,6 +117,8 @@ pub struct HttpClientDefaults {
   pub proxy: Option<Proxy>,
   pub request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  pub cert_chain: Option<String>,
+  pub private_key: Option<String>,
 }
 
 pub trait FetchPermissions {
@@ -513,6 +521,8 @@ pub struct CreateHttpClientOptions {
   ca_file: Option<String>,
   ca_data: Option<ByteString>,
   proxy: Option<Proxy>,
+  cert_chain: Option<String>,
+  private_key: Option<String>,
 }
 
 pub fn op_create_http_client<FP>(
@@ -534,6 +544,15 @@ where
     permissions.check_net_url(&url)?;
   }
 
+  if args.cert_chain.is_some() {
+    let permissions = state.borrow_mut::<FP>();
+    //permissions.check_unstable(state, "CreateHttpClientOptions.certChain");
+  }
+  if args.private_key.is_some() {
+    let permissions = state.borrow_mut::<FP>();
+    //permissions.check_unstable(state, "CreateHttpClientOptions.privateKey");
+  }
+
   let defaults = state.borrow::<HttpClientDefaults>();
   let cert_data =
     get_cert_data(args.ca_file.as_deref(), args.ca_data.as_deref())?;
@@ -544,6 +563,8 @@ where
     cert_data,
     args.proxy,
     defaults.unsafely_ignore_certificate_errors.clone(),
+    args.cert_chain.clone(),
+    args.private_key.clone(),
   )
   .unwrap();
 

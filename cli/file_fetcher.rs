@@ -237,6 +237,8 @@ impl FileFetcher {
         None,
         None,
         unsafely_ignore_certificate_errors,
+        None,
+        None,
       )?,
       blob_store,
     })

@@ -7,7 +7,9 @@ pub use webpki;
 pub use webpki_roots;
 
 use deno_core::error::anyhow;
+use deno_core::error::custom_error;
 use deno_core::error::generic_error;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::Extension;
@@ -17,9 +19,13 @@ use reqwest::header::USER_AGENT;
 use reqwest::redirect::Policy;
 use reqwest::Client;
 use rustls::internal::msgs::handshake::DigitallySignedStruct;
+use rustls::internal::pemfile::certs;
+use rustls::internal::pemfile::pkcs8_private_keys;
+use rustls::internal::pemfile::rsa_private_keys;
 use rustls::Certificate;
 use rustls::ClientConfig;
 use rustls::HandshakeSignatureValid;
+use rustls::PrivateKey;
 use rustls::RootCertStore;
 use rustls::ServerCertVerified;
 use rustls::ServerCertVerifier;
@@ -28,6 +34,7 @@ use rustls::TLSError;
 use rustls::WebPKIVerifier;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::sync::Arc;
@@ -156,6 +163,52 @@ pub fn create_client_config(
   Ok(tls_config)
 }
 
+fn load_certs(reader: &mut dyn BufRead) -> Result<Vec<Certificate>, AnyError> {
+  let certs = certs(reader)
+    .map_err(|_| custom_error("InvalidData", "Unable to decode certificate"))?;
+
+  if certs.is_empty() {
+    let e = custom_error("InvalidData", "No certificates found in cert file");
+    return Err(e);
+  }
+
+  Ok(certs)
+}
+
+fn key_decode_err() -> AnyError {
+  custom_error("InvalidData", "Unable to decode key")
+}
+
+fn key_not_found_err() -> AnyError {
+  custom_error("InvalidData", "No keys found in key file")
+}
+
+/// Starts with -----BEGIN RSA PRIVATE KEY-----
+fn load_rsa_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
+  let keys = rsa_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
+  Ok(keys)
+}
+
+/// Starts with -----BEGIN PRIVATE KEY-----
+fn load_pkcs8_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
+  let keys = pkcs8_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
+  Ok(keys)
+}
+
+fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
+  let mut keys = load_rsa_keys(bytes)?;
+
+  if keys.is_empty() {
+    keys = load_pkcs8_keys(bytes)?;
+  }
+
+  if keys.is_empty() {
+    return Err(key_not_found_err());
+  }
+
+  Ok(keys)
+}
+
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
 pub fn create_http_client(
@@ -164,12 +217,29 @@ pub fn create_http_client(
   ca_data: Option<Vec<u8>>,
   proxy: Option<Proxy>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  cert_chain: Option<String>,
+  private_key: Option<String>,
 ) -> Result<Client, AnyError> {
-  let tls_config = create_client_config(
+  let mut tls_config = create_client_config(
     root_cert_store,
     ca_data,
     unsafely_ignore_certificate_errors,
   )?;
+
+  if cert_chain.is_some() || private_key.is_some() {
+    let cert_chain = cert_chain.ok_or_else(|| type_error("No certificate chain provided"))?;
+    let private_key = private_key.ok_or_else(|| type_error("No private key provided"))?;
+
+    // The `remove` is safe because load_private_keys checks that there is at least one key.
+    let private_key = load_private_keys(private_key.as_bytes())?.remove(0);
+
+    tls_config.set_single_client_cert(
+      load_certs(&mut cert_chain.as_bytes())?,
+      private_key,
+    )?;
+  }
+
+
   let mut headers = HeaderMap::new();
   headers.insert(USER_AGENT, user_agent.parse().unwrap());
   let mut builder = Client::builder()
