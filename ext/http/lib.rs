@@ -293,15 +293,13 @@ fn req_headers(
   // mangled by the `Headers` object in JS. What we do is take all cookie
   // headers and concat them into a single cookie header, seperated by
   // semicolons.
-  let mut total_cookie_length = 0;
+  let cookie_sep = "; ".as_bytes();
   let mut cookies = vec![];
 
   let mut headers = Vec::with_capacity(req.headers().len());
   for (name, value) in req.headers().iter() {
     if name == hyper::header::COOKIE {
-      let bytes = value.as_bytes();
-      total_cookie_length += bytes.len();
-      cookies.push(bytes);
+      cookies.push(value.as_bytes());
     } else {
       let name: &[u8] = name.as_ref();
       let value = value.as_bytes();
@@ -310,18 +308,9 @@ fn req_headers(
   }
 
   if !cookies.is_empty() {
-    let cookie_count = cookies.len();
-    total_cookie_length += (cookie_count * 2) - 2;
-    let mut bytes = Vec::with_capacity(total_cookie_length);
-    for (i, cookie) in cookies.into_iter().enumerate() {
-      bytes.extend(cookie);
-      if i != cookie_count - 1 {
-        bytes.extend("; ".as_bytes());
-      }
-    }
     headers.push((
       ByteString("cookie".as_bytes().to_owned()),
-      ByteString(bytes),
+      ByteString(cookies.join(cookie_sep)),
     ));
   }
 
