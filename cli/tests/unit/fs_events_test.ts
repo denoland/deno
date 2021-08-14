@@ -38,7 +38,7 @@ async function getTwoEvents(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function watchFsBasic(): Promise<void> {
+  async function watchFsBasic() {
     const testDir = await Deno.makeTempDir();
     const iter = Deno.watchFs(testDir);
 
@@ -65,7 +65,7 @@ unitTest(
 // This should be removed at 2.0
 unitTest(
   { perms: { read: true, write: true } },
-  async function watchFsReturn(): Promise<void> {
+  async function watchFsReturn() {
     const testDir = await Deno.makeTempDir();
     const iter = Deno.watchFs(testDir);
 
@@ -83,7 +83,7 @@ unitTest(
 
 unitTest(
   { perms: { read: true, write: true } },
-  async function watchFsClose(): Promise<void> {
+  async function watchFsClose() {
     const testDir = await Deno.makeTempDir();
     const iter = Deno.watchFs(testDir);
 

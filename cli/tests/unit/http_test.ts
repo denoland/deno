@@ -200,7 +200,7 @@ unitTest({ perms: { net: true } }, async function httpServerInvalidMethod() {
 
 unitTest(
   { perms: { read: true, net: true } },
-  async function httpServerWithTls(): Promise<void> {
+  async function httpServerWithTls() {
     const hostname = "localhost";
     const port = 4501;
 
@@ -208,8 +208,8 @@ unitTest(
       const listener = Deno.listenTls({
         hostname,
         port,
-        certFile: "cli/tests/tls/localhost.crt",
-        keyFile: "cli/tests/tls/localhost.key",
+        certFile: "cli/tests/testdata/tls/localhost.crt",
+        keyFile: "cli/tests/testdata/tls/localhost.key",
       });
       const conn = await listener.accept();
       const httpConn = Deno.serveHttp(conn);
@@ -226,7 +226,7 @@ unitTest(
       listener.close();
     })();
 
-    const caData = Deno.readTextFileSync("cli/tests/tls/RootCA.pem");
+    const caData = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caData });
     const resp = await fetch(`https://${hostname}:${port}/`, {
       client,
@@ -641,12 +641,12 @@ unitTest({ perms: { net: true } }, async function httpServerWebSocket() {
       const { request, respondWith } = (await httpConn.nextRequest())!;
       const {
         response,
-        websocket,
+        socket,
       } = Deno.upgradeWebSocket(request);
-      websocket.onerror = () => fail();
-      websocket.onmessage = (m) => {
-        websocket.send(m.data);
-        websocket.close();
+      socket.onerror = () => fail();
+      socket.onmessage = (m) => {
+        socket.send(m.data);
+        socket.close(1001);
       };
       await respondWith(response);
       break;
@@ -730,4 +730,24 @@ unitTest({ perms: { net: true } }, async function httpCookieConcatenation() {
   const text = await resp.text();
   assertEquals(text, "ok");
   await promise;
+});
+
+// https://github.com/denoland/deno/issues/11651
+unitTest({ perms: { net: true } }, async function httpServerPanic() {
+  const listener = Deno.listen({ port: 4501 });
+  const client = await Deno.connect({ port: 4501 });
+  const conn = await listener.accept();
+  const httpConn = Deno.serveHttp(conn);
+
+  // This message is incomplete on purpose, we'll forcefully close client connection
+  // after it's flushed to cause connection to error out on the server side.
+  const encoder = new TextEncoder();
+  await client.write(encoder.encode("GET / HTTP/1.1"));
+
+  httpConn.nextRequest();
+  await client.write(encoder.encode("\r\n\r\n"));
+  httpConn.close();
+
+  client.close();
+  listener.close();
 });

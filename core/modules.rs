@@ -906,7 +906,7 @@ mod tests {
     let a_id_fut = runtime.load_module(&spec, None);
     let a_id = futures::executor::block_on(a_id_fut).expect("Failed to load");
 
-    runtime.mod_evaluate(a_id);
+    let _ = runtime.mod_evaluate(a_id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
     let l = loads.lock();
     assert_eq!(
@@ -1076,7 +1076,7 @@ mod tests {
     runtime.instantiate_module(mod_a).unwrap();
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 0);
 
-    runtime.mod_evaluate(mod_a);
+    let _ = runtime.mod_evaluate(mod_a);
     assert_eq!(dispatch_count.load(Ordering::Relaxed), 1);
   }
 
@@ -1366,7 +1366,7 @@ mod tests {
       let result = runtime.load_module(&spec, None).await;
       assert!(result.is_ok());
       let circular1_id = result.unwrap();
-      runtime.mod_evaluate(circular1_id);
+      let _ = runtime.mod_evaluate(circular1_id);
       runtime.run_event_loop(false).await.unwrap();
 
       let l = loads.lock();
@@ -1439,7 +1439,7 @@ mod tests {
       println!(">> result {:?}", result);
       assert!(result.is_ok());
       let redirect1_id = result.unwrap();
-      runtime.mod_evaluate(redirect1_id);
+      let _ = runtime.mod_evaluate(redirect1_id);
       runtime.run_event_loop(false).await.unwrap();
       let l = loads.lock();
       assert_eq!(
@@ -1588,7 +1588,7 @@ mod tests {
     let main_id =
       futures::executor::block_on(main_id_fut).expect("Failed to load");
 
-    runtime.mod_evaluate(main_id);
+    let _ = runtime.mod_evaluate(main_id);
     futures::executor::block_on(runtime.run_event_loop(false)).unwrap();
 
     let l = loads.lock();

@@ -106,10 +106,13 @@ delete Object.prototype.__proto__;
       );
       options = { transfer };
     } else {
-      options = webidl.converters.PostMessageOptions(transferOrOptions, {
-        prefix,
-        context: "Argument 2",
-      });
+      options = webidl.converters.StructuredSerializeOptions(
+        transferOrOptions,
+        {
+          prefix,
+          context: "Argument 2",
+        },
+      );
     }
     const { transfer } = options;
     const data = serializeJsMessageData(message, transfer);
@@ -267,6 +270,18 @@ delete Object.prototype.__proto__;
       },
     );
     core.registerErrorBuilder(
+      "DOMExceptionNetworkError",
+      function DOMExceptionNetworkError(msg) {
+        return new domException.DOMException(msg, "NetworkError");
+      },
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionAbortError",
+      function DOMExceptionAbortError(msg) {
+        return new domException.DOMException(msg, "AbortError");
+      },
+    );
+    core.registerErrorBuilder(
       "DOMExceptionInvalidCharacterError",
       function DOMExceptionInvalidCharacterError(msg) {
         return new domException.DOMException(msg, "InvalidCharacterError");
@@ -292,6 +307,8 @@ delete Object.prototype.__proto__;
 
   const navigator = webidl.createBranded(Navigator);
 
+  let numCpus;
+
   ObjectDefineProperties(Navigator.prototype, {
     gpu: {
       configurable: true,
@@ -299,6 +316,14 @@ delete Object.prototype.__proto__;
       get() {
         webidl.assertBranded(this, Navigator);
         return webgpu.gpu;
+      },
+    },
+    hardwareConcurrency: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, Navigator);
+        return numCpus;
       },
     },
   });
@@ -322,6 +347,14 @@ delete Object.prototype.__proto__;
       get() {
         webidl.assertBranded(this, WorkerNavigator);
         return webgpu.gpu;
+      },
+    },
+    hardwareConcurrency: {
+      configurable: true,
+      enumerable: true,
+      get() {
+        webidl.assertBranded(this, Navigator);
+        return numCpus;
       },
     },
   });
@@ -366,7 +399,6 @@ delete Object.prototype.__proto__;
     URL: util.nonEnumerable(url.URL),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
-    BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
     MessageChannel: util.nonEnumerable(messagePort.MessageChannel),
     MessagePort: util.nonEnumerable(messagePort.MessagePort),
     Worker: util.nonEnumerable(worker.Worker),
@@ -400,6 +432,12 @@ delete Object.prototype.__proto__;
     performance: util.writable(performance.performance),
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
+    structuredClone: util.writable(messagePort.structuredClone),
+  };
+
+  const unstableWindowOrWorkerGlobalScope = {
+    WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
+    BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
 
     GPU: util.nonEnumerable(webgpu.GPU),
     GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
@@ -508,6 +546,9 @@ delete Object.prototype.__proto__;
     util.log("bootstrapMainRuntime");
     hasBootstrapped = true;
     ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
+    if (runtimeOptions.unstableFlag) {
+      ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
+    }
     ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
     ObjectSetPrototypeOf(globalThis, Window.prototype);
 
@@ -536,12 +577,13 @@ delete Object.prototype.__proto__;
       pid,
       ppid,
       unstableFlag,
+      cpuCount,
     } = runtimeOptions;
 
     if (locationHref != null) {
       location.setLocationHref(locationHref);
     }
-
+    numCpus = cpuCount;
     registerErrors();
 
     const internalSymbol = Symbol("Deno.internal");
@@ -595,6 +637,9 @@ delete Object.prototype.__proto__;
     util.log("bootstrapWorkerRuntime");
     hasBootstrapped = true;
     ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
+    if (runtimeOptions.unstableFlag) {
+      ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
+    }
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, { name: util.readOnly(name) });
     if (runtimeOptions.enableTestingFeaturesFlag) {
@@ -618,10 +663,17 @@ delete Object.prototype.__proto__;
       runtimeOptions,
       internalName ?? name,
     );
-    const { unstableFlag, pid, noColor, args, location: locationHref } =
-      runtimeOptions;
+    const {
+      unstableFlag,
+      pid,
+      noColor,
+      args,
+      location: locationHref,
+      cpuCount,
+    } = runtimeOptions;
 
     location.setLocationHref(locationHref);
+    numCpus = cpuCount;
     registerErrors();
 
     pollForMessages();

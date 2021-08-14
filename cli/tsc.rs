@@ -510,9 +510,9 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     .map(|(s, mt)| match s.scheme() {
       "data" | "blob" => {
         let specifier_str = if s.scheme() == "data" {
-          hash_data_url(&s, &mt)
+          hash_data_url(s, mt)
         } else {
-          hash_blob_url(&s, &mt)
+          hash_blob_url(s, mt)
         };
         data_url_map.insert(specifier_str.clone(), s.clone());
         specifier_str
@@ -596,8 +596,6 @@ mod tests {
   use crate::module_graph::tests::MockSpecifierHandler;
   use crate::module_graph::GraphBuilder;
   use deno_core::parking_lot::Mutex;
-  use std::env;
-  use std::path::PathBuf;
 
   async fn setup(
     maybe_specifier: Option<ModuleSpecifier>,
@@ -607,8 +605,7 @@ mod tests {
     let specifier = maybe_specifier
       .unwrap_or_else(|| resolve_url_or_path("file:///main.ts").unwrap());
     let hash_data = maybe_hash_data.unwrap_or_else(|| vec![b"".to_vec()]);
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/tsc2");
+    let fixtures = test_util::testdata_path().join("tsc2");
     let handler = Arc::new(Mutex::new(MockSpecifierHandler {
       fixtures,
       ..MockSpecifierHandler::default()
@@ -633,14 +630,13 @@ mod tests {
     specifier: &ModuleSpecifier,
   ) -> Result<Response, AnyError> {
     let hash_data = vec![b"something".to_vec()];
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/tsc2");
+    let fixtures = test_util::testdata_path().join("tsc2");
     let handler = Arc::new(Mutex::new(MockSpecifierHandler {
       fixtures,
       ..Default::default()
     }));
     let mut builder = GraphBuilder::new(handler.clone(), None, None);
-    builder.add(&specifier, false).await?;
+    builder.add(specifier, false).await?;
     let graph = Arc::new(Mutex::new(builder.get_graph()));
     let config = TsConfig::new(json!({
       "allowJs": true,

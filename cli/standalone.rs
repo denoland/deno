@@ -8,6 +8,7 @@ use crate::ops;
 use crate::program_state::ProgramState;
 use crate::version;
 use data_url::DataUrl;
+use deno_core::error::anyhow;
 use deno_core::error::type_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
@@ -29,11 +30,14 @@ use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
+use deno_tls::create_default_root_cert_store;
 use log::Level;
 use std::cell::RefCell;
 use std::convert::TryInto;
 use std::env::current_exe;
 use std::fs::File;
+use std::io::BufReader;
+use std::io::Cursor;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
@@ -51,7 +55,9 @@ pub struct Metadata {
   pub location: Option<Url>,
   pub v8_flags: Vec<String>,
   pub log_level: Option<Level>,
+  pub ca_stores: Option<Vec<String>>,
   pub ca_data: Option<Vec<u8>>,
+  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
 }
 
 pub const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
@@ -142,7 +148,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _referrer: &str,
     _is_main: bool,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if let Ok(module_specifier) = resolve_url(&specifier) {
+    if let Ok(module_specifier) = resolve_url(specifier) {
       if get_source_from_data_url(&module_specifier).is_ok()
         || specifier == SPECIFIER
       {
@@ -195,12 +201,13 @@ fn metadata_to_flags(metadata: &Metadata) -> Flags {
     allow_env: permissions.allow_env,
     allow_hrtime: permissions.allow_hrtime,
     allow_net: permissions.allow_net,
-    allow_plugin: permissions.allow_plugin,
+    allow_ffi: permissions.allow_ffi,
     allow_read: permissions.allow_read,
     allow_run: permissions.allow_run,
     allow_write: permissions.allow_write,
     v8_flags: metadata.v8_flags.clone(),
     log_level: metadata.log_level,
+    ca_stores: metadata.ca_stores.clone(),
     ..Default::default()
   }
 }
@@ -227,6 +234,19 @@ pub async fn run(
       .collect::<Vec<_>>(),
   );
 
+  let mut root_cert_store = program_state
+    .root_cert_store
+    .clone()
+    .unwrap_or_else(create_default_root_cert_store);
+
+  if let Some(cert) = metadata.ca_data {
+    let reader = &mut BufReader::new(Cursor::new(cert));
+    // This function does not return specific errors, if it fails give a generic message.
+    if let Err(_err) = root_cert_store.add_pem_file(reader) {
+      return Err(anyhow!("Unable to add pem file to certificate store"));
+    }
+  }
+
   let options = WorkerOptions {
     apply_source_maps: false,
     args: metadata.argv,
@@ -234,7 +254,9 @@ pub async fn run(
     user_agent: version::get_user_agent(),
     unstable: metadata.unstable,
     enable_testing_features: false,
-    ca_data: metadata.ca_data,
+    unsafely_ignore_certificate_errors: metadata
+      .unsafely_ignore_certificate_errors,
+    root_cert_store: Some(root_cert_store),
     seed: metadata.seed,
     js_error_create_fn: None,
     create_web_worker_cb,
@@ -250,6 +272,7 @@ pub async fn run(
     blob_store,
     broadcast_channel,
     shared_array_buffer_store: None,
+    cpu_count: num_cpus::get(),
   };
   let mut worker =
     MainWorker::from_options(main_module.clone(), permissions, &options);

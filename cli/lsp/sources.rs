@@ -9,6 +9,7 @@ use crate::config_file::ConfigFile;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
+use crate::flags::Flags;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
 use crate::import_map::ImportMap;
@@ -36,8 +37,15 @@ pub async fn cache(
   specifier: &ModuleSpecifier,
   maybe_import_map: &Option<ImportMap>,
   maybe_config_file: &Option<ConfigFile>,
+  maybe_cache_path: &Option<PathBuf>,
 ) -> Result<(), AnyError> {
-  let program_state = Arc::new(ProgramState::build(Default::default()).await?);
+  let program_state = Arc::new(
+    ProgramState::build(Flags {
+      cache_path: maybe_cache_path.clone(),
+      ..Default::default()
+    })
+    .await?,
+  );
   let handler = Arc::new(Mutex::new(FetchHandler::new(
     &program_state,
     Permissions::allow_all(),
@@ -353,7 +361,7 @@ impl Inner {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
-    let metadata = self.get_metadata(&specifier)?;
+    let metadata = self.get_metadata(specifier)?;
     metadata.maybe_warning
   }
 
@@ -391,7 +399,7 @@ impl Inner {
         map_content_type(specifier, maybe_content_type);
       let source = get_source_from_bytes(bytes, maybe_charset).ok()?;
       let maybe_types = headers.get("x-typescript-types").map(|s| {
-        analysis::resolve_import(s, &specifier, &self.maybe_import_map)
+        analysis::resolve_import(s, specifier, &self.maybe_import_map)
       });
       let maybe_warning = headers.get("x-deno-warning").cloned();
       (source, media_type, maybe_types, maybe_warning)
@@ -424,10 +432,10 @@ impl Inner {
   fn get_path(&mut self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
     if specifier.scheme() == "file" {
       specifier.to_file_path().ok()
-    } else if let Some(path) = self.remotes.get(&specifier) {
+    } else if let Some(path) = self.remotes.get(specifier) {
       Some(path.clone())
     } else {
-      let path = self.http_cache.get_cache_filename(&specifier)?;
+      let path = self.http_cache.get_cache_filename(specifier)?;
       if path.is_file() {
         self.remotes.insert(specifier.clone(), path.clone());
         Some(path)
@@ -567,7 +575,6 @@ mod tests {
   use deno_core::resolve_path;
   use deno_core::resolve_url;
   use deno_core::serde_json::json;
-  use std::env;
   use tempfile::TempDir;
 
   fn setup() -> (Sources, PathBuf) {
@@ -580,8 +587,7 @@ mod tests {
   #[test]
   fn test_sources_get_script_version() {
     let (sources, _) = setup();
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let tests = c.join("tests");
+    let tests = test_util::testdata_path();
     let specifier =
       resolve_path(&tests.join("001_hello.js").to_string_lossy()).unwrap();
     let actual = sources.get_script_version(&specifier);
@@ -591,8 +597,7 @@ mod tests {
   #[test]
   fn test_sources_get_text() {
     let (sources, _) = setup();
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let tests = c.join("tests");
+    let tests = test_util::testdata_path();
     let specifier =
       resolve_path(&tests.join("001_hello.js").to_string_lossy()).unwrap();
     let actual = sources.get_source(&specifier);

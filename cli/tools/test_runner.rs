@@ -1,11 +1,10 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ast;
+use crate::ast::Location;
 use crate::colors;
 use crate::create_main_worker;
 use crate::file_fetcher::File;
-use crate::fs_util::collect_files;
-use crate::fs_util::normalize_path;
 use crate::media_type::MediaType;
 use crate::module_graph;
 use crate::program_state::ProgramState;
@@ -19,7 +18,6 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
 use deno_core::serde_json::json;
-use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use rand::rngs::SmallRng;
@@ -27,7 +25,6 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
-use std::path::Path;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
@@ -197,71 +194,7 @@ fn create_reporter(concurrent: bool) -> Box<dyn TestReporter + Send> {
   Box::new(PrettyTestReporter::new(concurrent))
 }
 
-pub(crate) fn is_supported(p: &Path) -> bool {
-  use std::path::Component;
-  if let Some(Component::Normal(basename_os_str)) = p.components().next_back() {
-    let basename = basename_os_str.to_string_lossy();
-    basename.ends_with("_test.ts")
-      || basename.ends_with("_test.tsx")
-      || basename.ends_with("_test.js")
-      || basename.ends_with("_test.mjs")
-      || basename.ends_with("_test.jsx")
-      || basename.ends_with(".test.ts")
-      || basename.ends_with(".test.tsx")
-      || basename.ends_with(".test.js")
-      || basename.ends_with(".test.mjs")
-      || basename.ends_with(".test.jsx")
-      || basename == "test.ts"
-      || basename == "test.tsx"
-      || basename == "test.js"
-      || basename == "test.mjs"
-      || basename == "test.jsx"
-  } else {
-    false
-  }
-}
-
-pub fn is_remote_url(module_url: &str) -> bool {
-  let lower = module_url.to_lowercase();
-  lower.starts_with("http://") || lower.starts_with("https://")
-}
-
-pub fn collect_test_module_specifiers<P>(
-  include: Vec<String>,
-  root_path: &Path,
-  predicate: P,
-) -> Result<Vec<Url>, AnyError>
-where
-  P: Fn(&Path) -> bool,
-{
-  let (include_paths, include_urls): (Vec<String>, Vec<String>) =
-    include.into_iter().partition(|n| !is_remote_url(n));
-  let mut prepared = vec![];
-
-  for path in include_paths {
-    let p = normalize_path(&root_path.join(path));
-    if p.is_dir() {
-      let test_files = collect_files(&[p], &[], &predicate).unwrap();
-      let test_files_as_urls = test_files
-        .iter()
-        .map(|f| Url::from_file_path(f).unwrap())
-        .collect::<Vec<Url>>();
-      prepared.extend(test_files_as_urls);
-    } else {
-      let url = Url::from_file_path(p).unwrap();
-      prepared.push(url);
-    }
-  }
-
-  for remote_url in include_urls {
-    let url = Url::parse(&remote_url)?;
-    prepared.push(url);
-  }
-
-  Ok(prepared)
-}
-
-pub async fn run_test_file(
+pub async fn test_specifier(
   program_state: Arc<ProgramState>,
   main_module: ModuleSpecifier,
   permissions: Permissions,
@@ -270,21 +203,32 @@ pub async fn run_test_file(
   shuffle: Option<u64>,
   channel: Sender<TestEvent>,
 ) -> Result<(), AnyError> {
+  let mut fetch_permissions = Permissions::allow_all();
+
+  let main_file = program_state
+    .file_fetcher
+    .fetch(&main_module, &mut fetch_permissions)
+    .await?;
+
   let test_module =
     deno_core::resolve_path(&format!("{}$deno$test.js", Uuid::new_v4()))?;
-  let test_source = format!(
-    r#"
-      import "{}";
-      await new Promise(resolve => setTimeout(resolve, 0));
-      await Deno[Deno.internal].runTests({});
-  "#,
-    main_module,
+
+  let mut test_source = String::new();
+  if main_file.media_type != MediaType::Unknown {
+    test_source.push_str(&format!("import \"{}\";\n", main_module));
+  }
+
+  test_source
+    .push_str("await new Promise(resolve => setTimeout(resolve, 0));\n");
+
+  test_source.push_str(&format!(
+    "await Deno[Deno.internal].runTests({});\n",
     json!({
-        "disableLog": quiet,
-        "filter": filter,
-        "shuffle": shuffle,
-    })
-  );
+      "disableLog": quiet,
+      "filter": filter,
+      "shuffle": shuffle,
+    }),
+  ));
 
   let test_file = File {
     local: test_module.to_file_path().unwrap(),
@@ -346,6 +290,173 @@ pub async fn run_test_file(
   Ok(())
 }
 
+fn extract_files_from_regex_blocks(
+  location: &Location,
+  source: &str,
+  media_type: &MediaType,
+  blocks_regex: &Regex,
+  lines_regex: &Regex,
+) -> Result<Vec<File>, AnyError> {
+  let files = blocks_regex
+    .captures_iter(source)
+    .filter_map(|block| {
+      let maybe_attributes: Option<Vec<_>> = block
+        .get(1)
+        .map(|attributes| attributes.as_str().split(' ').collect());
+
+      let file_media_type = if let Some(attributes) = maybe_attributes {
+        if attributes.contains(&"ignore") {
+          return None;
+        }
+
+        match attributes.get(0) {
+          Some(&"js") => MediaType::JavaScript,
+          Some(&"jsx") => MediaType::Jsx,
+          Some(&"ts") => MediaType::TypeScript,
+          Some(&"tsx") => MediaType::Tsx,
+          Some(&"") => *media_type,
+          _ => MediaType::Unknown,
+        }
+      } else {
+        *media_type
+      };
+
+      if file_media_type == MediaType::Unknown {
+        return None;
+      }
+
+      let line_offset = source[0..block.get(0).unwrap().start()]
+        .chars()
+        .filter(|c| *c == '\n')
+        .count();
+
+      let line_count = block.get(0).unwrap().as_str().split('\n').count();
+
+      let body = block.get(2).unwrap();
+      let text = body.as_str();
+
+      // TODO(caspervonb) generate an inline source map
+      let mut file_source = String::new();
+      for line in lines_regex.captures_iter(text) {
+        let text = line.get(1).unwrap();
+        file_source.push_str(&format!("{}\n", text.as_str()));
+      }
+
+      file_source.push_str("export {};");
+
+      let file_specifier = deno_core::resolve_url_or_path(&format!(
+        "{}${}-{}{}",
+        location.specifier,
+        location.line + line_offset,
+        location.line + line_offset + line_count,
+        file_media_type.as_ts_extension(),
+      ))
+      .unwrap();
+
+      Some(File {
+        local: file_specifier.to_file_path().unwrap(),
+        maybe_types: None,
+        media_type: file_media_type,
+        source: file_source,
+        specifier: file_specifier,
+      })
+    })
+    .collect();
+
+  Ok(files)
+}
+
+fn extract_files_from_source_comments(
+  specifier: &ModuleSpecifier,
+  source: &str,
+  media_type: &MediaType,
+) -> Result<Vec<File>, AnyError> {
+  let parsed_module = ast::parse(specifier.as_str(), source, media_type)?;
+  let comments = parsed_module.get_comments();
+  let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
+  let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
+
+  let files = comments
+    .iter()
+    .filter(|comment| {
+      if comment.kind != CommentKind::Block || !comment.text.starts_with('*') {
+        return false;
+      }
+
+      true
+    })
+    .flat_map(|comment| {
+      let location = parsed_module.get_location(comment.span.lo);
+
+      extract_files_from_regex_blocks(
+        &location,
+        &comment.text,
+        media_type,
+        &blocks_regex,
+        &lines_regex,
+      )
+    })
+    .flatten()
+    .collect();
+
+  Ok(files)
+}
+
+fn extract_files_from_fenced_blocks(
+  specifier: &ModuleSpecifier,
+  source: &str,
+  media_type: &MediaType,
+) -> Result<Vec<File>, AnyError> {
+  let location = Location {
+    specifier: specifier.to_string(),
+    line: 1,
+    col: 0,
+  };
+
+  let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
+  let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
+
+  extract_files_from_regex_blocks(
+    &location,
+    source,
+    media_type,
+    &blocks_regex,
+    &lines_regex,
+  )
+}
+
+async fn fetch_inline_files(
+  program_state: Arc<ProgramState>,
+  specifiers: Vec<ModuleSpecifier>,
+) -> Result<Vec<File>, AnyError> {
+  let mut files = Vec::new();
+  for specifier in specifiers {
+    let mut fetch_permissions = Permissions::allow_all();
+    let file = program_state
+      .file_fetcher
+      .fetch(&specifier, &mut fetch_permissions)
+      .await?;
+
+    let inline_files = if file.media_type == MediaType::Unknown {
+      extract_files_from_fenced_blocks(
+        &file.specifier,
+        &file.source,
+        &file.media_type,
+      )
+    } else {
+      extract_files_from_source_comments(
+        &file.specifier,
+        &file.source,
+        &file.media_type,
+      )
+    };
+
+    files.extend(inline_files?);
+  }
+
+  Ok(files)
+}
+
 /// Runs tests.
 ///
 #[allow(clippy::too_many_arguments)]
@@ -378,76 +489,16 @@ pub async fn run_tests(
   };
 
   if !doc_modules.is_empty() {
-    let mut test_programs = Vec::new();
+    let files = fetch_inline_files(program_state.clone(), doc_modules).await?;
+    let specifiers = files.iter().map(|file| file.specifier.clone()).collect();
 
-    let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
-    let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
-
-    for specifier in &doc_modules {
-      let mut fetch_permissions = Permissions::allow_all();
-      let file = program_state
-        .file_fetcher
-        .fetch(&specifier, &mut fetch_permissions)
-        .await?;
-
-      let parsed_module =
-        ast::parse(&file.specifier.as_str(), &file.source, &file.media_type)?;
-
-      let mut comments = parsed_module.get_comments();
-      comments.sort_by_key(|comment| {
-        let location = parsed_module.get_location(&comment.span);
-        location.line
-      });
-
-      for comment in comments {
-        if comment.kind != CommentKind::Block || !comment.text.starts_with('*')
-        {
-          continue;
-        }
-
-        for block in blocks_regex.captures_iter(&comment.text) {
-          let body = block.get(2).unwrap();
-          let text = body.as_str();
-
-          // TODO(caspervonb) generate an inline source map
-          let mut source = String::new();
-          for line in lines_regex.captures_iter(&text) {
-            let text = line.get(1).unwrap();
-            source.push_str(&format!("{}\n", text.as_str()));
-          }
-
-          source.push_str("export {};");
-
-          let element = block.get(0).unwrap();
-          let span = comment
-            .span
-            .from_inner_byte_pos(element.start(), element.end());
-          let location = parsed_module.get_location(&span);
-
-          let specifier = deno_core::resolve_url_or_path(&format!(
-            "{}${}-{}",
-            location.filename,
-            location.line,
-            location.line + element.as_str().split('\n').count(),
-          ))?;
-
-          let file = File {
-            local: specifier.to_file_path().unwrap(),
-            maybe_types: None,
-            media_type: MediaType::TypeScript, // media_type.clone(),
-            source: source.clone(),
-            specifier: specifier.clone(),
-          };
-
-          program_state.file_fetcher.insert_cached(file.clone());
-          test_programs.push(file.specifier.clone());
-        }
-      }
+    for file in files {
+      program_state.file_fetcher.insert_cached(file);
     }
 
     program_state
       .prepare_module_graph(
-        test_programs.clone(),
+        specifiers,
         lib.clone(),
         Permissions::allow_all(),
         permissions.clone(),
@@ -456,9 +507,30 @@ pub async fn run_tests(
       .await?;
   }
 
+  let prepare_roots = {
+    let mut files = Vec::new();
+    let mut fetch_permissions = Permissions::allow_all();
+    for specifier in &test_modules {
+      let file = program_state
+        .file_fetcher
+        .fetch(specifier, &mut fetch_permissions)
+        .await?;
+
+      files.push(file);
+    }
+
+    let prepare_roots = files
+      .iter()
+      .filter(|file| file.media_type != MediaType::Unknown)
+      .map(|file| file.specifier.clone())
+      .collect();
+
+    prepare_roots
+  };
+
   program_state
     .prepare_module_graph(
-      test_modules.clone(),
+      prepare_roots,
       lib.clone(),
       Permissions::allow_all(),
       permissions.clone(),
@@ -481,7 +553,7 @@ pub async fn run_tests(
 
     tokio::task::spawn_blocking(move || {
       let join_handle = std::thread::spawn(move || {
-        let future = run_test_file(
+        let future = test_specifier(
           program_state,
           main_module,
           permissions,
@@ -596,103 +668,4 @@ pub async fn run_tests(
   }
 
   Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn test_collect_test_module_specifiers() {
-    let test_data_path = test_util::root_path().join("cli/tests/subdir");
-    let mut matched_urls = collect_test_module_specifiers(
-      vec![
-        "https://example.com/colors_test.ts".to_string(),
-        "./mod1.ts".to_string(),
-        "./mod3.js".to_string(),
-        "subdir2/mod2.ts".to_string(),
-        "http://example.com/printf_test.ts".to_string(),
-      ],
-      &test_data_path,
-      is_supported,
-    )
-    .unwrap();
-    let test_data_url =
-      Url::from_file_path(test_data_path).unwrap().to_string();
-
-    let expected: Vec<Url> = vec![
-      format!("{}/mod1.ts", test_data_url),
-      format!("{}/mod3.js", test_data_url),
-      format!("{}/subdir2/mod2.ts", test_data_url),
-      "http://example.com/printf_test.ts".to_string(),
-      "https://example.com/colors_test.ts".to_string(),
-    ]
-    .into_iter()
-    .map(|f| Url::parse(&f).unwrap())
-    .collect();
-    matched_urls.sort();
-    assert_eq!(matched_urls, expected);
-  }
-
-  #[test]
-  fn test_is_supported() {
-    assert!(is_supported(Path::new("tests/subdir/foo_test.ts")));
-    assert!(is_supported(Path::new("tests/subdir/foo_test.tsx")));
-    assert!(is_supported(Path::new("tests/subdir/foo_test.js")));
-    assert!(is_supported(Path::new("tests/subdir/foo_test.jsx")));
-    assert!(is_supported(Path::new("bar/foo.test.ts")));
-    assert!(is_supported(Path::new("bar/foo.test.tsx")));
-    assert!(is_supported(Path::new("bar/foo.test.js")));
-    assert!(is_supported(Path::new("bar/foo.test.jsx")));
-    assert!(is_supported(Path::new("foo/bar/test.js")));
-    assert!(is_supported(Path::new("foo/bar/test.jsx")));
-    assert!(is_supported(Path::new("foo/bar/test.ts")));
-    assert!(is_supported(Path::new("foo/bar/test.tsx")));
-    assert!(!is_supported(Path::new("README.md")));
-    assert!(!is_supported(Path::new("lib/typescript.d.ts")));
-    assert!(!is_supported(Path::new("notatest.js")));
-    assert!(!is_supported(Path::new("NotAtest.ts")));
-  }
-
-  #[test]
-  fn supports_dirs() {
-    // TODO(caspervonb) generate some fixtures in a temporary directory instead, there's no need
-    // for this to rely on external fixtures.
-    let root = test_util::root_path()
-      .join("test_util")
-      .join("std")
-      .join("http");
-    println!("root {:?}", root);
-    let mut matched_urls = collect_test_module_specifiers(
-      vec![".".to_string()],
-      &root,
-      is_supported,
-    )
-    .unwrap();
-    matched_urls.sort();
-    let root_url = Url::from_file_path(root).unwrap().to_string();
-    println!("root_url {}", root_url);
-    let expected: Vec<Url> = vec![
-      format!("{}/_io_test.ts", root_url),
-      format!("{}/cookie_test.ts", root_url),
-      format!("{}/file_server_test.ts", root_url),
-      format!("{}/racing_server_test.ts", root_url),
-      format!("{}/server_test.ts", root_url),
-      format!("{}/test.ts", root_url),
-    ]
-    .into_iter()
-    .map(|f| Url::parse(&f).unwrap())
-    .collect();
-    assert_eq!(matched_urls, expected);
-  }
-
-  #[test]
-  fn test_is_remote_url() {
-    assert!(is_remote_url("https://deno.land/std/http/file_server.ts"));
-    assert!(is_remote_url("http://deno.land/std/http/file_server.ts"));
-    assert!(is_remote_url("HTTP://deno.land/std/http/file_server.ts"));
-    assert!(is_remote_url("HTTp://deno.land/std/http/file_server.ts"));
-    assert!(!is_remote_url("file:///dev/deno_std/http/file_server.ts"));
-    assert!(!is_remote_url("./dev/deno_std/http/file_server.ts"));
-  }
 }

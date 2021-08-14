@@ -7,7 +7,6 @@ use crate::ops;
 use crate::permissions::Permissions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::error::AnyError;
-use deno_core::futures::stream::StreamExt;
 use deno_core::futures::Future;
 use deno_core::located_script_name;
 use deno_core::serde_json;
@@ -23,6 +22,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_tls::rustls::RootCertStore;
 use deno_web::BlobStore;
 use log::debug;
 use std::env;
@@ -51,7 +51,8 @@ pub struct WorkerOptions {
   pub debug_flag: bool,
   pub unstable: bool,
   pub enable_testing_features: bool,
-  pub ca_data: Option<Vec<u8>>,
+  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  pub root_cert_store: Option<RootCertStore>,
   pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
@@ -73,6 +74,7 @@ pub struct WorkerOptions {
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+  pub cpu_count: usize,
 }
 
 impl MainWorker {
@@ -104,12 +106,15 @@ impl MainWorker {
       deno_web::init(options.blob_store.clone(), options.location.clone()),
       deno_fetch::init::<Permissions>(
         options.user_agent.clone(),
-        options.ca_data.clone(),
+        options.root_cert_store.clone(),
         None,
+        None,
+        options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
-        options.ca_data.clone(),
+        options.root_cert_store.clone(),
+        options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_webstorage::init(options.origin_storage_dir.clone()),
       deno_crypto::init(options.seed),
@@ -119,6 +124,8 @@ impl MainWorker {
       ),
       deno_webgpu::init(options.unstable),
       deno_timers::init::<Permissions>(),
+      // ffi
+      deno_ffi::init::<Permissions>(options.unstable),
       // Metrics
       metrics::init(),
       // Runtime ops
@@ -128,10 +135,14 @@ impl MainWorker {
       ops::fs::init(),
       ops::io::init(),
       ops::io::init_stdio(),
-      deno_net::init::<Permissions>(options.ca_data.clone(), options.unstable),
+      deno_tls::init(),
+      deno_net::init::<Permissions>(
+        options.root_cert_store.clone(),
+        options.unstable,
+        options.unsafely_ignore_certificate_errors.clone(),
+      ),
       ops::os::init(),
       ops::permissions::init(),
-      ops::plugin::init(),
       ops::process::init(),
       ops::signal::init(),
       ops::tty::init(),
@@ -182,6 +193,7 @@ impl MainWorker {
       "unstableFlag": options.unstable,
       "v8Version": deno_core::v8_version(),
       "location": options.location,
+      "cpuCount": options.cpu_count,
     });
 
     let script = format!(
@@ -220,14 +232,14 @@ impl MainWorker {
     self.wait_for_inspector_session();
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
-      maybe_result = receiver.next() => {
+      maybe_result = &mut receiver => {
         debug!("received module evaluate {:#?}", maybe_result);
         maybe_result.expect("Module evaluation result not provided.")
       }
 
       event_loop_result = self.run_event_loop(false) => {
         event_loop_result?;
-        let maybe_result = receiver.next().await;
+        let maybe_result = receiver.await;
         maybe_result.expect("Module evaluation result not provided.")
       }
     }
@@ -298,7 +310,8 @@ mod tests {
       debug_flag: false,
       unstable: false,
       enable_testing_features: false,
-      ca_data: None,
+      unsafely_ignore_certificate_errors: None,
+      root_cert_store: None,
       seed: None,
       js_error_create_fn: None,
       create_web_worker_cb: Arc::new(|_| unreachable!()),
@@ -314,6 +327,7 @@ mod tests {
       blob_store: BlobStore::default(),
       broadcast_channel: InMemoryBroadcastChannel::default(),
       shared_array_buffer_store: None,
+      cpu_count: 1,
     };
 
     MainWorker::from_options(main_module, permissions, &options)
@@ -321,10 +335,7 @@ mod tests {
 
   #[tokio::test]
   async fn execute_mod_esm_imports_a() {
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
-      .join("cli/tests/esm_imports_a.js");
+    let p = test_util::testdata_path().join("esm_imports_a.js");
     let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let mut worker = create_test_worker();
     let result = worker.execute_module(&module_specifier).await;
@@ -367,10 +378,7 @@ mod tests {
     // This assumes cwd is project root (an assumption made throughout the
     // tests).
     let mut worker = create_test_worker();
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
-      .join("cli/tests/001_hello.js");
+    let p = test_util::testdata_path().join("001_hello.js");
     let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let result = worker.execute_module(&module_specifier).await;
     assert!(result.is_ok());

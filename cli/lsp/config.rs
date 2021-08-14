@@ -24,10 +24,11 @@ pub const SETTINGS_SECTION: &str = "deno";
 
 #[derive(Debug, Clone, Default)]
 pub struct ClientCapabilities {
+  pub code_action_disabled_support: bool,
+  pub line_folding_only: bool,
   pub status_notification: bool,
   pub workspace_configuration: bool,
   pub workspace_did_change_watched_files: bool,
-  pub line_folding_only: bool,
 }
 
 fn is_true() -> bool {
@@ -147,6 +148,10 @@ pub struct WorkspaceSettings {
   /// A flag that indicates if Deno is enabled for the workspace.
   #[serde(default)]
   pub enable: bool,
+
+  /// An option that points to a path string of the path to utilise as the
+  /// cache/DENO_DIR for the language server.
+  pub cache: Option<String>,
 
   /// An option that points to a path string of the config file to apply to
   /// code within the workspace.
@@ -391,6 +396,11 @@ impl Config {
         .as_ref()
         .and_then(|it| it.line_folding_only)
         .unwrap_or(false);
+      self.client_capabilities.code_action_disabled_support = text_document
+        .code_action
+        .as_ref()
+        .and_then(|it| it.disabled_support)
+        .unwrap_or(false);
     }
   }
 
@@ -475,6 +485,7 @@ mod tests {
       config.get_workspace_settings(),
       WorkspaceSettings {
         enable: false,
+        cache: None,
         config: None,
         import_map: None,
         code_lens: CodeLensSettings {

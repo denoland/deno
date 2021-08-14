@@ -29,6 +29,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_tls::rustls::RootCertStore;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
 use deno_web::MessagePort;
@@ -264,7 +265,8 @@ pub struct WebWorkerOptions {
   pub debug_flag: bool,
   pub unstable: bool,
   pub enable_testing_features: bool,
-  pub ca_data: Option<Vec<u8>>,
+  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  pub root_cert_store: Option<RootCertStore>,
   pub user_agent: String,
   pub seed: Option<u64>,
   pub module_loader: Rc<dyn ModuleLoader>,
@@ -284,6 +286,7 @@ pub struct WebWorkerOptions {
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+  pub cpu_count: usize,
 }
 
 impl WebWorker {
@@ -316,12 +319,15 @@ impl WebWorker {
       deno_web::init(options.blob_store.clone(), Some(main_module.clone())),
       deno_fetch::init::<Permissions>(
         options.user_agent.clone(),
-        options.ca_data.clone(),
+        options.root_cert_store.clone(),
         None,
+        None,
+        options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
-        options.ca_data.clone(),
+        options.root_cert_store.clone(),
+        options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_broadcast_channel::init(
         options.broadcast_channel.clone(),
@@ -330,6 +336,8 @@ impl WebWorker {
       deno_crypto::init(options.seed),
       deno_webgpu::init(options.unstable),
       deno_timers::init::<Permissions>(),
+      // ffi
+      deno_ffi::init::<Permissions>(options.unstable),
       // Metrics
       metrics::init(),
       // Permissions ext (worker specific state)
@@ -349,13 +357,14 @@ impl WebWorker {
       vec![
         ops::fs_events::init(),
         ops::fs::init(),
+        deno_tls::init(),
         deno_net::init::<Permissions>(
-          options.ca_data.clone(),
+          options.root_cert_store.clone(),
           options.unstable,
+          options.unsafely_ignore_certificate_errors.clone(),
         ),
         ops::os::init(),
         ops::permissions::init(),
-        ops::plugin::init(),
         ops::process::init(),
         ops::signal::init(),
         ops::tty::init(),
@@ -431,6 +440,7 @@ impl WebWorker {
       "enableTestingFeaturesFlag": options.enable_testing_features,
       "v8Version": deno_core::v8_version(),
       "location": self.main_module,
+      "cpuCount": options.cpu_count,
     });
 
     let runtime_options_str =
@@ -474,7 +484,7 @@ impl WebWorker {
 
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
-      maybe_result = receiver.next() => {
+      maybe_result = &mut receiver => {
         debug!("received worker module evaluate {:#?}", maybe_result);
         // If `None` is returned it means that runtime was destroyed before
         // evaluation was complete. This can happen in Web Worker when `self.close()`
@@ -487,7 +497,7 @@ impl WebWorker {
            return Ok(());
         }
         event_loop_result?;
-        let maybe_result = receiver.next().await;
+        let maybe_result = receiver.await;
         maybe_result.unwrap_or(Ok(()))
       }
     }
