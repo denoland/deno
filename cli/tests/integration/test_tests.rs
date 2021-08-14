@@ -49,6 +49,12 @@ itest!(fail {
   output: "test/fail.out",
 });
 
+itest!(collect {
+  args: "test --ignore=test/collect/ignore test/collect",
+  exit_code: 0,
+  output: "test/collect.out",
+});
+
 itest!(doc {
   args: "test --doc --allow-all test/doc.ts",
   exit_code: 1,

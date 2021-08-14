@@ -997,6 +997,7 @@ async fn coverage_command(
 async fn test_command(
   flags: Flags,
   include: Option<Vec<String>>,
+  ignore: Vec<PathBuf>,
   no_run: bool,
   doc: bool,
   fail_fast: Option<usize>,
@@ -1041,11 +1042,13 @@ async fn test_command(
       let test_modules_result = if doc {
         fs_util::collect_specifiers(
           include.clone(),
+          &ignore,
           fs_util::is_supported_test_ext,
         )
       } else {
         fs_util::collect_specifiers(
           include.clone(),
+          &ignore,
           fs_util::is_supported_test_path,
         )
       };
@@ -1172,6 +1175,7 @@ async fn test_command(
     let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
       let filter = filter.clone();
       let include = include.clone();
+      let ignore = ignore.clone();
       let lib = lib.clone();
       let permissions = permissions.clone();
       let program_state = program_state.clone();
@@ -1180,6 +1184,7 @@ async fn test_command(
         let doc_modules = if doc {
           fs_util::collect_specifiers(
             include.clone(),
+            &ignore,
             fs_util::is_supported_test_ext,
           )?
         } else {
@@ -1194,6 +1199,7 @@ async fn test_command(
 
         let test_modules = fs_util::collect_specifiers(
           include.clone(),
+          &ignore,
           fs_util::is_supported_test_path,
         )?;
 
@@ -1228,6 +1234,7 @@ async fn test_command(
     let doc_modules = if doc {
       fs_util::collect_specifiers(
         include.clone(),
+        &ignore,
         fs_util::is_supported_test_ext,
       )?
     } else {
@@ -1236,6 +1243,7 @@ async fn test_command(
 
     let test_modules = fs_util::collect_specifiers(
       include.clone(),
+      &ignore,
       fs_util::is_supported_test_path,
     )?;
 
@@ -1350,6 +1358,7 @@ fn get_subcommand(
       no_run,
       doc,
       fail_fast,
+      ignore,
       quiet,
       include,
       allow_none,
@@ -1359,6 +1368,7 @@ fn get_subcommand(
     } => test_command(
       flags,
       include,
+      ignore,
       no_run,
       doc,
       fail_fast,

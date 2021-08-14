@@ -98,6 +98,7 @@ pub enum DenoSubcommand {
     script: String,
   },
   Test {
+    ignore: Vec<PathBuf>,
     doc: bool,
     no_run: bool,
     fail_fast: Option<usize>,
@@ -1025,6 +1026,14 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
   runtime_args(SubCommand::with_name("test"), true, true)
     .setting(AppSettings::TrailingVarArg)
     .arg(
+      Arg::with_name("ignore")
+        .long("ignore")
+        .takes_value(true)
+        .use_delimiter(true)
+        .require_equals(true)
+        .help("Ignore files"),
+    )
+    .arg(
       Arg::with_name("no-run")
         .long("no-run")
         .help("Cache test modules, but don't run tests")
@@ -1775,6 +1784,11 @@ fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
 
+  let ignore = match matches.values_of("ignore") {
+    Some(f) => f.map(PathBuf::from).collect(),
+    None => vec![],
+  };
+
   let no_run = matches.is_present("no-run");
   let doc = matches.is_present("doc");
   let allow_none = matches.is_present("allow-none");
@@ -1845,6 +1859,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     fail_fast,
     quiet,
     include,
+    ignore,
     filter,
     shuffle,
     allow_none,
@@ -3574,6 +3589,7 @@ mod tests {
           allow_none: true,
           quiet: false,
           include: Some(svec!["dir1/", "dir2/"]),
+          ignore: vec![],
           shuffle: None,
           concurrent_jobs: 1,
         },
@@ -3643,6 +3659,7 @@ mod tests {
           quiet: false,
           shuffle: None,
           include: None,
+          ignore: vec![],
           concurrent_jobs: 1,
         },
         ..Flags::default()
@@ -3669,6 +3686,7 @@ mod tests {
           quiet: false,
           shuffle: None,
           include: None,
+          ignore: vec![],
           concurrent_jobs: 1,
         },
         enable_testing_features: true,
@@ -3692,6 +3710,7 @@ mod tests {
           quiet: false,
           shuffle: Some(1),
           include: None,
+          ignore: vec![],
           concurrent_jobs: 1,
         },
         watch: false,
@@ -3715,6 +3734,7 @@ mod tests {
           quiet: false,
           shuffle: None,
           include: None,
+          ignore: vec![],
           concurrent_jobs: 1,
         },
         watch: true,
