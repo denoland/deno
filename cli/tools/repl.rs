@@ -290,9 +290,13 @@ impl Highlighter for EditorHelper {
   fn highlight_candidate<'c>(
     &self,
     candidate: &'c str,
-    _completion: rustyline::CompletionType,
+    completion: rustyline::CompletionType,
   ) -> Cow<'c, str> {
-    self.highlight(candidate, 0)
+    if completion == CompletionType::List {
+      candidate.into()
+    } else {
+      self.highlight(candidate, 0)
+    }
   }
 
   fn highlight_char(&self, line: &str, _: usize) -> bool {
