@@ -887,17 +887,17 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     })
   };
 
-  /// The ModuleExecutor provides module execution with safe dispatching of life-cycle events by tracking the
+  /// The FileWatcherModuleExecutor provides module execution with safe dispatching of life-cycle events by tracking the
   /// state of any pending events and emitting accordingly on drop in the case of a future
   /// cancellation.
-  struct ModuleExecutor {
+  struct FileWatcherModuleExecutor {
     worker: MainWorker,
     pending_unload: bool,
   }
 
-  impl ModuleExecutor {
-    pub fn new(worker: MainWorker) -> ModuleExecutor {
-      ModuleExecutor {
+  impl FileWatcherModuleExecutor {
+    pub fn new(worker: MainWorker) -> FileWatcherModuleExecutor {
+      FileWatcherModuleExecutor {
         worker,
         pending_unload: false,
       }
@@ -932,7 +932,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     }
   }
 
-  impl Drop for ModuleExecutor {
+  impl Drop for FileWatcherModuleExecutor {
     fn drop(&mut self) {
       if self.pending_unload {
         self
@@ -953,7 +953,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       async move {
         // We make use an module executor guard to ensure that unload is always fired when an
         // operation is called.
-        let mut executor = ModuleExecutor::new(create_main_worker(
+        let mut executor = FileWatcherModuleExecutor::new(create_main_worker(
           &program_state,
           main_module.clone(),
           permissions,
