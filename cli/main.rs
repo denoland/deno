@@ -951,6 +951,8 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       let flags = flags.clone();
       let permissions = Permissions::from_options(&flags.into());
       async move {
+        // We make use an module executor guard to ensure that unload is always fired when an
+        // operation is called.
         let mut executor = ModuleExecutor::new(create_main_worker(
           &program_state,
           main_module.clone(),
