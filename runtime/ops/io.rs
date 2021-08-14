@@ -3,7 +3,7 @@
 use deno_core::error::null_opbuf;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
-use deno_core::error::{bad_resource_id, not_supported};
+use deno_core::error::not_supported;
 use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::AsyncMutFuture;

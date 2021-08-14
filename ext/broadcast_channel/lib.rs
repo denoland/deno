@@ -5,7 +5,6 @@ mod in_memory_broadcast_channel;
 pub use in_memory_broadcast_channel::InMemoryBroadcastChannel;
 
 use async_trait::async_trait;
-use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op_async;

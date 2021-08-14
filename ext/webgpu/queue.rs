@@ -2,7 +2,6 @@
 
 use std::num::NonZeroU32;
 
-use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::OpState;

@@ -3,7 +3,6 @@
 mod blob;
 mod message_port;
 
-use deno_core::error::bad_resource_id;
 use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;

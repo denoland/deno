@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::error::{bad_resource_id, not_supported};
+use deno_core::error::not_supported;
 use deno_core::include_js_files;
 use deno_core::op_async;
 use deno_core::op_sync;

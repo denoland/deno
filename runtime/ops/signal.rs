@@ -8,8 +8,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 #[cfg(unix)]
-use deno_core::error::bad_resource_id;
-#[cfg(unix)]
 use deno_core::AsyncRefCell;
 #[cfg(unix)]
 use deno_core::CancelFuture;

@@ -3,7 +3,7 @@
 use crate::ops_tls as tls;
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
-use deno_core::error::{bad_resource_id, not_supported};
+use deno_core::error::not_supported;
 use deno_core::op_async;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
