@@ -95,6 +95,52 @@ unitTest(async function testSignVerify() {
   }
 });
 
+// TODO(@littledivy): Remove this when we enable WPT for encrypt_decrypt
+unitTest(async function testEncryptDecrypt() {
+  const subtle = window.crypto.subtle;
+  assert(subtle);
+  for (
+    const hash of [
+      "SHA-1",
+      "SHA-256",
+      "SHA-384",
+      "SHA-512",
+    ]
+  ) {
+    const keyPair = await subtle.generateKey(
+      {
+        name: "RSA-OAEP",
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([1, 0, 1]),
+        hash,
+      },
+      true,
+      ["encrypt", "decrypt"],
+    );
+
+    const data = new Uint8Array([1, 2, 3]);
+    const encryptAlgorithm = { name: "RSA-OAEP" };
+    const encypted = await subtle.encrypt(
+      encryptAlgorithm,
+      keyPair.publicKey,
+      data,
+    );
+
+    assert(encypted);
+    assert(encypted.byteLength > 0);
+    assert(encypted instanceof ArrayBuffer);
+
+    const decrypted = await subtle.decrypt(
+      encryptAlgorithm,
+      keyPair.privateKey,
+      encypted,
+    );
+    assert(decrypted);
+    assert(decrypted instanceof ArrayBuffer);
+    assertEquals(new Uint8Array(decrypted), data);
+  }
+});
+
 unitTest(async function testGenerateRSAKey() {
   const subtle = window.crypto.subtle;
   assert(subtle);
