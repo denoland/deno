@@ -301,27 +301,25 @@ pub fn format_diagnostic(
     }
   }
 
-  if let Some(hint) = maybe_hint {
-    format!(
-      "{}\n{}\n    at {}\n\n    {} {}\n    {} for further information visit https://lint.deno.land/#{}",
-      message_line,
-      lines.join("\n"),
-      formatted_location,
-      colors::cyan("hint:"),
-      hint,
-      colors::cyan("help:"),
-      diagnostic_code,
-    )
+  let hint = if let Some(hint) = maybe_hint {
+    format!("    {} {}\n", colors::cyan("hint:"), hint)
   } else {
-    format!(
-      "{}\n{}\n    at {}\n\n    {} for further information visit https://lint.deno.land/#{}",
-      message_line,
-      lines.join("\n"),
-      formatted_location,
-      colors::cyan("help:"),
-      diagnostic_code,
-    )
-  }
+    "".to_string()
+  };
+  let help = format!(
+    "    {} for further information visit https://lint.deno.land/#{}",
+    colors::cyan("help:"),
+    diagnostic_code
+  );
+
+  format!(
+    "{message_line}\n{snippets}\n    at {formatted_location}\n\n{hint}{help}",
+    message_line = message_line,
+    snippets = lines.join("\n"),
+    formatted_location = formatted_location,
+    hint = hint,
+    help = help
+  )
 }
 
 #[derive(Serialize)]
