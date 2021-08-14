@@ -293,7 +293,7 @@ fn req_headers(
   // mangled by the `Headers` object in JS. What we do is take all cookie
   // headers and concat them into a single cookie header, seperated by
   // semicolons.
-  let cookie_sep = &b"; "[..];
+  let cookie_sep = "; ".as_bytes();
   let mut cookies = vec![];
 
   let mut headers = Vec::with_capacity(req.headers().len());
