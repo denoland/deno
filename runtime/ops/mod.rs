@@ -94,7 +94,7 @@ impl TestingFeatureChecker {
   pub fn check_testing_features(&self, feature_name: &str) {
     if !self.enable_testing_features {
       eprintln!(
-        "Testing feature '{}'. The --enable-testing-features-do-not-use must be provided.",
+        "Testing feature '{}'. The --enable-testing-features-do-not-use flag must be provided.",
         feature_name
       );
       std::process::exit(70);
