@@ -1,0 +1,26 @@
+{
+  "name": "Rust",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "runArgs": ["--cap-add=SYS_PTRACE", "--security-opt", "seccomp=unconfined"],
+
+  "settings": {
+    "lldb.executable": "/usr/bin/lldb",
+    // VS Code don't watch files under ./target
+    "files.watcherExclude": {
+      "**/target/**": true
+    }
+  },
+
+  "extensions": [
+    "matklad.rust-analyzer",
+    "bungcip.better-toml",
+    "vadimcn.vscode-lldb",
+    "mutantdino.resourcemonitor"
+  ],
+
+  "postCreateCommand": "git submodule update --init",
+
+  "remoteUser": "vscode"
+}

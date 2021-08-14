@@ -268,18 +268,22 @@ async fn op_http_request_next(
 
       let is_websocket_request = req
         .headers()
-        .get(hyper::header::CONNECTION)
-        .and_then(|v| {
-          v.to_str().ok().map(|s| "Upgrade".eq_ignore_ascii_case(s))
+        .get_all(hyper::header::CONNECTION)
+        .iter()
+        .any(|v| {
+          v.to_str()
+            .map(|s| s.to_lowercase().contains("upgrade"))
+            .unwrap_or(false)
         })
-        .unwrap_or(false)
         && req
           .headers()
-          .get(hyper::header::UPGRADE)
-          .and_then(|v| {
-            v.to_str().ok().map(|s| "websocket".eq_ignore_ascii_case(s))
-          })
-          .unwrap_or(false);
+          .get_all(hyper::header::UPGRADE)
+          .iter()
+          .any(|v| {
+            v.to_str()
+              .map(|s| s.to_lowercase().contains("websocket"))
+              .unwrap_or(false)
+          });
 
       let has_body = if let Some(exact_size) = req.size_hint().exact() {
         exact_size > 0

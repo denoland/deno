@@ -684,6 +684,41 @@ fn websocketstream() {
   assert!(status.success());
 }
 
+#[test]
+fn websocket_server_multi_field_connection_header() {
+  let script = util::testdata_path()
+    .join("websocket_server_multi_field_connection_header_test.ts");
+  let root_ca = util::testdata_path().join("tls/RootCA.pem");
+  let mut child = util::deno_cmd()
+    .arg("run")
+    .arg("--unstable")
+    .arg("--allow-net")
+    .arg("--cert")
+    .arg(root_ca)
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut buffer = [0; 5];
+  let read = stdout.read(&mut buffer).unwrap();
+  assert_eq!(read, 5);
+  let msg = std::str::from_utf8(&buffer).unwrap();
+  assert_eq!(msg, "READY");
+
+  let req = http::request::Builder::new()
+    .header(http::header::CONNECTION, "keep-alive, Upgrade")
+    .uri("ws://localhost:4319")
+    .body(())
+    .unwrap();
+  assert!(
+    deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
+      .is_ok()
+  );
+  assert!(child.wait().unwrap().success());
+}
+
 #[cfg(not(windows))]
 #[test]
 fn set_raw_should_not_panic_on_no_tty() {
