@@ -18,6 +18,12 @@ The following block should be given a ts extension on extraction:
 console.log("ts");
 ```
 
+The following example contains the ignore attribute and will be ignored:
+
+```ts ignore
+const value: Invalid = "ignored";
+```
+
 The following example will trigger the type-checker to fail:
 
 ```ts
