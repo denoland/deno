@@ -887,6 +887,9 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     })
   };
 
+  /// The ModuleExecutor provides module execution with safe dispatching of life-cycle events by tracking the
+  /// state of any pending events and emitting accordingly on drop in the case of a future
+  /// cancellation.
   struct ModuleExecutor {
     worker: MainWorker,
     pending_unload: bool,
@@ -900,6 +903,8 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       }
     }
 
+    /// Execute the given main module emitting load and unload events before and after execution
+    /// respectively.
     pub async fn execute(
       &mut self,
       main_module: &ModuleSpecifier,
