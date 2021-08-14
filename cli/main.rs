@@ -916,13 +916,17 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
       )?;
       self.pending_unload = true;
 
-      self.worker.run_event_loop(false).await?;
+      let result = self.worker.run_event_loop(false).await;
+      self.pending_unload = false;
+
+      if let Err(err) = result {
+          return Err(err);
+      }
 
       self.worker.execute_script(
         &located_script_name!(),
         "window.dispatchEvent(new Event('unload'))",
       )?;
-      self.pending_unload = false;
 
       Ok(())
     }
