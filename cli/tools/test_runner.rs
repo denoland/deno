@@ -25,7 +25,6 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
-use std::path::Path;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
@@ -195,30 +194,6 @@ fn create_reporter(concurrent: bool) -> Box<dyn TestReporter + Send> {
   Box::new(PrettyTestReporter::new(concurrent))
 }
 
-pub(crate) fn is_supported(p: &Path) -> bool {
-  use std::path::Component;
-  if let Some(Component::Normal(basename_os_str)) = p.components().next_back() {
-    let basename = basename_os_str.to_string_lossy();
-    basename.ends_with("_test.ts")
-      || basename.ends_with("_test.tsx")
-      || basename.ends_with("_test.js")
-      || basename.ends_with("_test.mjs")
-      || basename.ends_with("_test.jsx")
-      || basename.ends_with(".test.ts")
-      || basename.ends_with(".test.tsx")
-      || basename.ends_with(".test.js")
-      || basename.ends_with(".test.mjs")
-      || basename.ends_with(".test.jsx")
-      || basename == "test.ts"
-      || basename == "test.tsx"
-      || basename == "test.js"
-      || basename == "test.mjs"
-      || basename == "test.jsx"
-  } else {
-    false
-  }
-}
-
 pub async fn test_specifier(
   program_state: Arc<ProgramState>,
   main_module: ModuleSpecifier,
@@ -325,17 +300,21 @@ fn extract_files_from_regex_blocks(
   let files = blocks_regex
     .captures_iter(source)
     .filter_map(|block| {
-      let maybe_attributes = block
+      let maybe_attributes: Option<Vec<_>> = block
         .get(1)
-        .map(|attributes| attributes.as_str().split(' '));
+        .map(|attributes| attributes.as_str().split(' ').collect());
 
-      let file_media_type = if let Some(mut attributes) = maybe_attributes {
-        match attributes.next() {
-          Some("js") => MediaType::JavaScript,
-          Some("jsx") => MediaType::Jsx,
-          Some("ts") => MediaType::TypeScript,
-          Some("tsx") => MediaType::Tsx,
-          Some("") => *media_type,
+      let file_media_type = if let Some(attributes) = maybe_attributes {
+        if attributes.contains(&"ignore") {
+          return None;
+        }
+
+        match attributes.get(0) {
+          Some(&"js") => MediaType::JavaScript,
+          Some(&"jsx") => MediaType::Jsx,
+          Some(&"ts") => MediaType::TypeScript,
+          Some(&"tsx") => MediaType::Tsx,
+          Some(&"") => *media_type,
           _ => MediaType::Unknown,
         }
       } else {
@@ -690,29 +669,4 @@ pub async fn run_tests(
   }
 
   Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn test_is_supported() {
-    assert!(is_supported(Path::new("tests/subdir/foo_test.ts")));
-    assert!(is_supported(Path::new("tests/subdir/foo_test.tsx")));
-    assert!(is_supported(Path::new("tests/subdir/foo_test.js")));
-    assert!(is_supported(Path::new("tests/subdir/foo_test.jsx")));
-    assert!(is_supported(Path::new("bar/foo.test.ts")));
-    assert!(is_supported(Path::new("bar/foo.test.tsx")));
-    assert!(is_supported(Path::new("bar/foo.test.js")));
-    assert!(is_supported(Path::new("bar/foo.test.jsx")));
-    assert!(is_supported(Path::new("foo/bar/test.js")));
-    assert!(is_supported(Path::new("foo/bar/test.jsx")));
-    assert!(is_supported(Path::new("foo/bar/test.ts")));
-    assert!(is_supported(Path::new("foo/bar/test.tsx")));
-    assert!(!is_supported(Path::new("README.md")));
-    assert!(!is_supported(Path::new("lib/typescript.d.ts")));
-    assert!(!is_supported(Path::new("notatest.js")));
-    assert!(!is_supported(Path::new("NotAtest.ts")));
-  }
 }

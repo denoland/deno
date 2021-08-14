@@ -1028,9 +1028,9 @@ async fn test_command(
   };
 
   let collect_predicate = if doc {
-    fs_util::is_supported_ext_test
+    fs_util::is_supported_test_ext
   } else {
-    tools::test_runner::is_supported
+    fs_util::is_supported_test_path
   };
 
   if flags.watch {
