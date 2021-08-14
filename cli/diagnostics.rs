@@ -25,7 +25,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "EmitOptions",
   "EmitResult",
   "HttpClient",
-  "HttpConn",
   "LinuxSignal",
   "Location",
   "MXRecord",
@@ -33,14 +32,12 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "Metrics",
   "OpMetrics",
   "RecordType",
-  "RequestEvent",
   "ResolveDnsOptions",
   "SRVRecord",
   "SetRawOptions",
   "Signal",
   "SignalStream",
   "StartTlsOptions",
-  "SystemCpuInfo",
   "SystemMemoryInfo",
   "UnixConnectOptions",
   "UnixListenOptions",
@@ -57,18 +54,16 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "listen",
   "listenDatagram",
   "loadavg",
-  "openPlugin",
+  "dlopen",
   "osRelease",
   "ppid",
   "resolveDns",
-  "serveHttp",
   "setRaw",
   "shutdown",
   "signal",
   "signals",
   "sleepSync",
   "startTls",
-  "systemCpuInfo",
   "systemMemoryInfo",
   "umask",
   "utime",
@@ -191,7 +186,7 @@ impl DiagnosticMessageChain {
   pub fn format_message(&self, level: usize) -> String {
     let mut s = String::new();
 
-    s.push_str(&std::iter::repeat(" ").take(level * 2).collect::<String>());
+    s.push_str(&" ".repeat(level * 2));
     s.push_str(&self.message_text);
     if let Some(next) = &self.next {
       s.push('\n');

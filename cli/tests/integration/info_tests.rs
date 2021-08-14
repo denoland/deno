@@ -7,12 +7,12 @@ use test_util as util;
 #[test]
 fn info_with_compiled_source() {
   let _g = util::http_server();
-  let module_path = "http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts";
+  let module_path = "http://127.0.0.1:4545/048_media_types_jsx.ts";
   let t = TempDir::new().expect("tempdir fail");
 
   let mut deno = util::deno_cmd()
     .env("DENO_DIR", t.path())
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("cache")
     .arg(&module_path)
     .spawn()
@@ -23,7 +23,7 @@ fn info_with_compiled_source() {
   let output = util::deno_cmd()
     .env("DENO_DIR", t.path())
     .env("NO_COLOR", "1")
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("info")
     .arg(&module_path)
     .output()
@@ -37,7 +37,7 @@ fn info_with_compiled_source() {
 }
 
 itest!(_022_info_flag_script {
-  args: "info http://127.0.0.1:4545/cli/tests/019_media_types.ts",
+  args: "info http://127.0.0.1:4545/019_media_types.ts",
   output: "022_info_flag_script.out",
   http_server: true,
 });
@@ -68,7 +68,7 @@ itest!(info_json_location {
 });
 
 itest!(_049_info_flag_script_jsx {
-  args: "info http://127.0.0.1:4545/cli/tests/048_media_types_jsx.ts",
+  args: "info http://127.0.0.1:4545/048_media_types_jsx.ts",
   output: "049_info_flag_script_jsx.out",
   http_server: true,
 });

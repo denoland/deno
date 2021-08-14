@@ -8,6 +8,7 @@
     Deno: { core },
     __bootstrap: { webUtil: { illegalConstructorKey } },
   } = window;
+  const { pathFromURL } = window.__bootstrap.util;
   const {
     ArrayPrototypeIncludes,
     Map,
@@ -27,14 +28,14 @@
    * @property {PermissionStatus} status
    */
 
-  /** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "run" | "plugin" | "hrtime">} */
+  /** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "run" | "ffi" | "hrtime">} */
   const permissionNames = [
     "read",
     "write",
     "net",
     "env",
     "run",
-    "plugin",
+    "ffi",
     "hrtime",
   ];
 
@@ -161,6 +162,13 @@
           ),
         );
       }
+
+      if (desc.name === "read" || desc.name === "write") {
+        desc.path = pathFromURL(desc.path);
+      } else if (desc.name === "run") {
+        desc.command = pathFromURL(desc.command);
+      }
+
       const state = opQuery(desc);
       return PromiseResolve(cache(desc, state));
     }
@@ -173,6 +181,13 @@
           ),
         );
       }
+
+      if (desc.name === "read" || desc.name === "write") {
+        desc.path = pathFromURL(desc.path);
+      } else if (desc.name === "run") {
+        desc.command = pathFromURL(desc.command);
+      }
+
       const state = opRevoke(desc);
       return PromiseResolve(cache(desc, state));
     }
@@ -185,6 +200,13 @@
           ),
         );
       }
+
+      if (desc.name === "read" || desc.name === "write") {
+        desc.path = pathFromURL(desc.path);
+      } else if (desc.name === "run") {
+        desc.command = pathFromURL(desc.command);
+      }
+
       const state = opRequest(desc);
       return PromiseResolve(cache(desc, state));
     }

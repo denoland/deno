@@ -1,0 +1,8 @@
+[WILDCARD]Error: constructor
+    at new A ([WILDCARD]/error_020_stack_constructor.ts:[WILDCARD])
+    at [WILDCARD]/error_020_stack_constructor.ts:[WILDCARD]
+error: Uncaught Error: constructor
+    throw new Error("constructor");
+          ^
+    at new A ([WILDCARD]/error_020_stack_constructor.ts:[WILDCARD])
+    at [WILDCARD]/error_020_stack_constructor.ts:[WILDCARD]

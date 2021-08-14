@@ -43,3 +43,9 @@ itest!(deno_doc_types_header_direct {
   output: "doc/types_header.out",
   http_server: true,
 });
+
+itest!(deno_doc_invalid_url {
+  args: "doc https://raw.githubusercontent.com%2Fdyedgreen%2Fdeno-sqlite%2Frework_api%2Fmod.ts",
+  output: "doc/invalid_url.out",
+  exit_code: 1,
+});

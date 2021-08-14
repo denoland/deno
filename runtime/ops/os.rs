@@ -25,7 +25,6 @@ pub fn init() -> Extension {
       ("op_loadavg", op_sync(op_loadavg)),
       ("op_os_release", op_sync(op_os_release)),
       ("op_system_memory_info", op_sync(op_system_memory_info)),
-      ("op_system_cpu_info", op_sync(op_system_cpu_info)),
     ])
     .build()
 }
@@ -179,24 +178,4 @@ fn op_system_memory_info(
     })),
     Err(_) => Ok(None),
   }
-}
-
-#[derive(Serialize)]
-struct CpuInfo {
-  cores: Option<u32>,
-  speed: Option<u64>,
-}
-
-fn op_system_cpu_info(
-  state: &mut OpState,
-  _args: (),
-  _: (),
-) -> Result<CpuInfo, AnyError> {
-  super::check_unstable(state, "Deno.systemCpuInfo");
-  state.borrow_mut::<Permissions>().env.check_all()?;
-
-  let cores = sys_info::cpu_num().ok();
-  let speed = sys_info::cpu_speed().ok();
-
-  Ok(CpuInfo { cores, speed })
 }

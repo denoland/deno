@@ -100,6 +100,7 @@
   function run({
     cmd,
     cwd = undefined,
+    clearEnv = false,
     env = {},
     stdout = "inherit",
     stderr = "inherit",
@@ -111,6 +112,7 @@
     const res = opRun({
       cmd: ArrayPrototypeMap(cmd, String),
       cwd,
+      clearEnv,
       env: ObjectEntries(env),
       stdin: isRid(stdin) ? "" : stdin,
       stdout: isRid(stdout) ? "" : stdout,

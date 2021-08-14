@@ -66,27 +66,62 @@ declare interface PerformanceMeasureOptions {
 
 declare namespace Deno {
   /** A set of error constructors that are raised by Deno APIs. */
-  export const errors: {
-    NotFound: ErrorConstructor;
-    PermissionDenied: ErrorConstructor;
-    ConnectionRefused: ErrorConstructor;
-    ConnectionReset: ErrorConstructor;
-    ConnectionAborted: ErrorConstructor;
-    NotConnected: ErrorConstructor;
-    AddrInUse: ErrorConstructor;
-    AddrNotAvailable: ErrorConstructor;
-    BrokenPipe: ErrorConstructor;
-    AlreadyExists: ErrorConstructor;
-    InvalidData: ErrorConstructor;
-    TimedOut: ErrorConstructor;
-    Interrupted: ErrorConstructor;
-    WriteZero: ErrorConstructor;
-    UnexpectedEof: ErrorConstructor;
-    BadResource: ErrorConstructor;
-    Http: ErrorConstructor;
-    Busy: ErrorConstructor;
-    NotSupported: ErrorConstructor;
-  };
+  export namespace errors {
+    export class NotFound extends Error {
+      name: "NotFound";
+    }
+    export class PermissionDenied extends Error {
+      name: "PermissionDenied";
+    }
+    export class ConnectionRefused extends Error {
+      name: "ConnectionRefused";
+    }
+    export class ConnectionReset extends Error {
+      name: "ConnectionReset";
+    }
+    export class ConnectionAborted extends Error {
+      name: "ConnectionAborted";
+    }
+    export class NotConnected extends Error {
+      name: "NotConnected";
+    }
+    export class AddrInUse extends Error {
+      name: "AddrInUse";
+    }
+    export class AddrNotAvailable extends Error {
+      name: "AddrNotAvailable";
+    }
+    export class BrokenPipe extends Error {
+      name: "BrokenPipe";
+    }
+    export class AlreadyExists extends Error {
+      name: "AlreadyExists";
+    }
+    export class InvalidData extends Error {
+      name: "InvalidData";
+    }
+    export class TimedOut extends Error {
+      name: "TimedOut";
+    }
+    export class Interrupted extends Error {
+      name: "Interrupted";
+    }
+    export class WriteZero extends Error {
+      name: "WriteZero";
+    }
+    export class UnexpectedEof extends Error {
+      name: "UnexpectedEof";
+    }
+    export class BadResource extends Error {
+      name: "BadResource";
+    }
+    export class Http extends Error {
+      name: "Http";
+    }
+    export class Busy extends Error {
+      name: "Busy";
+    }
+  }
 
   /** The current process id of the runtime. */
   export const pid: number;
@@ -1679,6 +1714,12 @@ declare namespace Deno {
     create?: boolean;
     /** Permissions always applied to file. */
     mode?: number;
+    /**
+     * An abort signal to allow cancellation of the file write operation.
+     * If the signal becomes aborted the writeFile operation will be stopped
+     * and the promise returned will be rejected with an AbortError.
+     */
+    signal?: AbortSignal;
   }
 
   /** Synchronously write `data` to the given `path`, by default creating a new
@@ -1999,6 +2040,10 @@ declare namespace Deno {
    * Subprocess uses same working directory as parent process unless `opt.cwd`
    * is specified.
    *
+   * Environmental variables from parent process can be cleared using `opt.clearEnv`.
+   * Doesn't guarantee that only `opt.env` variables are present,
+   * as the OS may set environmental variables for processes.
+   *
    * Environmental variables for subprocess can be specified using `opt.env`
    * mapping.
    *
@@ -2086,7 +2131,7 @@ declare namespace Deno {
     | "write"
     | "net"
     | "env"
-    | "plugin"
+    | "ffi"
     | "hrtime";
 
   /** The current status of the permission. */
@@ -2094,17 +2139,17 @@ declare namespace Deno {
 
   export interface RunPermissionDescriptor {
     name: "run";
-    command?: string;
+    command?: string | URL;
   }
 
   export interface ReadPermissionDescriptor {
     name: "read";
-    path?: string;
+    path?: string | URL;
   }
 
   export interface WritePermissionDescriptor {
     name: "write";
-    path?: string;
+    path?: string | URL;
   }
 
   export interface NetPermissionDescriptor {
@@ -2122,8 +2167,8 @@ declare namespace Deno {
     variable?: string;
   }
 
-  export interface PluginPermissionDescriptor {
-    name: "plugin";
+  export interface FFIPermissionDescriptor {
+    name: "ffi";
   }
 
   export interface HrtimePermissionDescriptor {
@@ -2138,7 +2183,7 @@ declare namespace Deno {
     | WritePermissionDescriptor
     | NetPermissionDescriptor
     | EnvPermissionDescriptor
-    | PluginPermissionDescriptor
+    | FFIPermissionDescriptor
     | HrtimePermissionDescriptor;
 
   export interface PermissionStatusEventMap {
@@ -2379,4 +2424,33 @@ declare namespace Deno {
    * ```
    */
   export function fstat(rid: number): Promise<FileInfo>;
+
+  export interface RequestEvent {
+    readonly request: Request;
+    respondWith(r: Response | Promise<Response>): Promise<void>;
+  }
+
+  export interface HttpConn extends AsyncIterable<RequestEvent> {
+    readonly rid: number;
+
+    nextRequest(): Promise<RequestEvent | null>;
+    close(): void;
+  }
+
+  /**
+   * Services HTTP requests given a TCP or TLS socket.
+   *
+   * ```ts
+   * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
+   * const httpConn = Deno.serveHttp(conn);
+   * const e = await httpConn.nextRequest();
+   * if (e) {
+   *   e.respondWith(new Response("Hello World"));
+   * }
+   * ```
+   *
+   * If `httpConn.nextRequest()` encounters an error or returns `null`
+   * then the underlying HttpConn resource is closed automatically.
+   */
+  export function serveHttp(conn: Conn): HttpConn;
 }

@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assert, unitTest } from "./test_util.ts";
 
-unitTest(async function metrics(): Promise<void> {
+unitTest(async function metrics() {
   // Write to stdout to ensure a "data" message gets sent instead of just
   // control messages.
   const dataMsg = new Uint8Array([13, 13, 13]); // "\r\r\r",
@@ -41,7 +41,7 @@ unitTest(async function metrics(): Promise<void> {
 
 unitTest(
   { perms: { write: true } },
-  function metricsUpdatedIfNoResponseSync(): void {
+  function metricsUpdatedIfNoResponseSync() {
     const filename = Deno.makeTempDirSync() + "/test.txt";
 
     const data = new Uint8Array([41, 42, 43]);
@@ -55,7 +55,7 @@ unitTest(
 
 unitTest(
   { perms: { write: true } },
-  async function metricsUpdatedIfNoResponseAsync(): Promise<void> {
+  async function metricsUpdatedIfNoResponseAsync() {
     const filename = Deno.makeTempDirSync() + "/test.txt";
 
     const data = new Uint8Array([41, 42, 43]);
@@ -69,7 +69,7 @@ unitTest(
 );
 
 // Test that ops from extensions have metrics (via OpMiddleware)
-unitTest(function metricsForOpCrates(): void {
+unitTest(function metricsForOpCrates() {
   const _ = new URL("https://deno.land");
 
   const m1 = Deno.metrics().ops["op_url_parse"];

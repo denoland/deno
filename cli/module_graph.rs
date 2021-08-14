@@ -348,8 +348,8 @@ impl Module {
 
     // parse out any triple slash references
     for comment in parsed_module.get_leading_comments().iter() {
-      if let Some((ts_reference, _)) = parse_ts_reference(&comment) {
-        let location = parsed_module.get_location(&comment.span);
+      if let Some((ts_reference, _)) = parse_ts_reference(comment) {
+        let location = parsed_module.get_location(comment.span.lo);
         match ts_reference {
           TypeScriptReference::Path(import) => {
             let specifier =
@@ -386,12 +386,7 @@ impl Module {
     for desc in dependencies.iter().filter(|desc| {
       desc.kind != swc_ecmascript::dep_graph::DependencyKind::Require
     }) {
-      let loc = parsed_module.source_map.lookup_char_pos(desc.span.lo);
-      let location = Location {
-        filename: self.specifier.to_string(),
-        col: loc.col_display,
-        line: loc.line,
-      };
+      let location = parsed_module.get_location(desc.span.lo);
 
       // In situations where there is a potential issue with resolving the
       // import specifier, that ends up being a module resolution error for a
@@ -421,7 +416,7 @@ impl Module {
       // Parse out any `@deno-types` pragmas and modify dependency
       let maybe_type = if !desc.leading_comments.is_empty() {
         let comment = desc.leading_comments.last().unwrap();
-        if let Some((deno_types, _)) = parse_deno_types(&comment).as_ref() {
+        if let Some((deno_types, _)) = parse_deno_types(comment).as_ref() {
           Some(self.resolve_import(deno_types, Some(location.clone()))?)
         } else {
           None
@@ -468,7 +463,7 @@ impl Module {
     let referrer_scheme = self.specifier.scheme();
     let specifier_scheme = specifier.scheme();
     let location = maybe_location.unwrap_or(Location {
-      filename: self.specifier.to_string(),
+      specifier: self.specifier.to_string(),
       line: 0,
       col: 0,
     });
@@ -923,7 +918,7 @@ impl Graph {
             // to ESM, which we don't really want unless someone has enabled the
             // check_js option.
             if !check_js
-              && graph.get_media_type(&specifier) == Some(MediaType::JavaScript)
+              && graph.get_media_type(specifier) == Some(MediaType::JavaScript)
             {
               debug!("skipping emit for {}", specifier);
               continue;
@@ -1931,7 +1926,7 @@ impl GraphBuilder {
     maybe_referrer: &Option<Location>,
     is_dynamic: bool,
   ) {
-    if !self.graph.modules.contains_key(&specifier) {
+    if !self.graph.modules.contains_key(specifier) {
       self
         .graph
         .modules
@@ -2074,7 +2069,6 @@ pub mod tests {
   use crate::specifier_handler::MemoryHandler;
   use deno_core::futures::future;
   use deno_core::parking_lot::Mutex;
-  use std::env;
   use std::fs;
   use std::path::PathBuf;
 
@@ -2195,8 +2189,7 @@ pub mod tests {
   async fn setup(
     specifier: ModuleSpecifier,
   ) -> (Graph, Arc<Mutex<MockSpecifierHandler>>) {
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/module_graph");
+    let fixtures = test_util::testdata_path().join("module_graph");
     let handler = Arc::new(Mutex::new(MockSpecifierHandler {
       fixtures,
       ..MockSpecifierHandler::default()
@@ -2231,21 +2224,21 @@ pub mod tests {
   #[test]
   fn test_get_version() {
     let doc_a = "console.log(42);";
-    let version_a = get_version(&doc_a, "1.2.3", b"");
+    let version_a = get_version(doc_a, "1.2.3", b"");
     let doc_b = "console.log(42);";
-    let version_b = get_version(&doc_b, "1.2.3", b"");
+    let version_b = get_version(doc_b, "1.2.3", b"");
     assert_eq!(version_a, version_b);
 
-    let version_c = get_version(&doc_a, "1.2.3", b"options");
+    let version_c = get_version(doc_a, "1.2.3", b"options");
     assert_ne!(version_a, version_c);
 
-    let version_d = get_version(&doc_b, "1.2.3", b"options");
+    let version_d = get_version(doc_b, "1.2.3", b"options");
     assert_eq!(version_c, version_d);
 
-    let version_e = get_version(&doc_a, "1.2.4", b"");
+    let version_e = get_version(doc_a, "1.2.4", b"");
     assert_ne!(version_a, version_e);
 
-    let version_f = get_version(&doc_b, "1.2.4", b"");
+    let version_f = get_version(doc_b, "1.2.4", b"");
     assert_eq!(version_e, version_f);
   }
 
@@ -2319,8 +2312,7 @@ pub mod tests {
       ("file:///tests/fixture14.ts", "fixture14.out"),
       ("file:///tests/fixture15.ts", "fixture15.out"),
     ];
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/bundle");
+    let fixtures = test_util::testdata_path().join("bundle");
 
     for (specifier, expected_str) in tests {
       let specifier = resolve_url_or_path(specifier).unwrap();
@@ -2479,8 +2471,10 @@ pub mod tests {
     let specifier = resolve_url_or_path("file:///tests/checkwithconfig.ts")
       .expect("could not resolve module");
     let (graph, handler) = setup(specifier.clone()).await;
-    let config_file =
-      ConfigFile::read("tests/module_graph/tsconfig_01.json").unwrap();
+    let config_file = ConfigFile::read(
+      test_util::testdata_path().join("module_graph/tsconfig_01.json"),
+    )
+    .unwrap();
     let result_info = graph
       .check(CheckOptions {
         debug: false,
@@ -2501,8 +2495,10 @@ pub mod tests {
 
     // let's do it all over again to ensure that the versions are determinstic
     let (graph, handler) = setup(specifier).await;
-    let config_file =
-      ConfigFile::read("tests/module_graph/tsconfig_01.json").unwrap();
+    let config_file = ConfigFile::read(
+      test_util::testdata_path().join("module_graph/tsconfig_01.json"),
+    )
+    .unwrap();
     let result_info = graph
       .check(CheckOptions {
         debug: false,
@@ -2656,8 +2652,7 @@ pub mod tests {
   async fn test_graph_import_json() {
     let specifier = resolve_url_or_path("file:///tests/importjson.ts")
       .expect("could not resolve module");
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/module_graph");
+    let fixtures = test_util::testdata_path().join("module_graph");
     let handler = Arc::new(Mutex::new(MockSpecifierHandler {
       fixtures,
       ..MockSpecifierHandler::default()
@@ -2731,8 +2726,10 @@ pub mod tests {
     let specifier = resolve_url_or_path("https://deno.land/x/transpile.tsx")
       .expect("could not resolve module");
     let (mut graph, handler) = setup(specifier).await;
-    let config_file =
-      ConfigFile::read("tests/module_graph/tsconfig.json").unwrap();
+    let config_file = ConfigFile::read(
+      test_util::testdata_path().join("module_graph/tsconfig.json"),
+    )
+    .unwrap();
     let result_info = graph
       .transpile(TranspileOptions {
         debug: false,
@@ -2761,8 +2758,7 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_import_map_remote_to_local() {
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/module_graph");
+    let fixtures = test_util::testdata_path().join("module_graph");
     let maybe_import_map = Some(
       ImportMap::from_json(
         "file:///tests/importmap.json",
@@ -2788,8 +2784,7 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_with_lockfile() {
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/module_graph");
+    let fixtures = test_util::testdata_path().join("module_graph");
     let lockfile_path = fixtures.join("lockfile.json");
     let lockfile =
       Lockfile::new(lockfile_path, false).expect("could not load lockfile");

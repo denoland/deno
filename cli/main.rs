@@ -109,7 +109,11 @@ fn create_web_worker_callback(
         .log_level
         .map_or(false, |l| l == log::Level::Debug),
       unstable: program_state.flags.unstable,
-      ca_data: program_state.ca_data.clone(),
+      unsafely_ignore_certificate_errors: program_state
+        .flags
+        .unsafely_ignore_certificate_errors
+        .clone(),
+      root_cert_store: program_state.root_cert_store.clone(),
       user_agent: version::get_user_agent(),
       seed: program_state.flags.seed,
       module_loader,
@@ -126,6 +130,7 @@ fn create_web_worker_callback(
       shared_array_buffer_store: Some(
         program_state.shared_array_buffer_store.clone(),
       ),
+      cpu_count: num_cpus::get(),
     };
 
     let (mut worker, external_handle) = WebWorker::from_options(
@@ -188,7 +193,11 @@ pub fn create_main_worker(
       .log_level
       .map_or(false, |l| l == log::Level::Debug),
     unstable: program_state.flags.unstable,
-    ca_data: program_state.ca_data.clone(),
+    unsafely_ignore_certificate_errors: program_state
+      .flags
+      .unsafely_ignore_certificate_errors
+      .clone(),
+    root_cert_store: program_state.root_cert_store.clone(),
     user_agent: version::get_user_agent(),
     seed: program_state.flags.seed,
     js_error_create_fn: Some(js_error_create_fn),
@@ -215,6 +224,7 @@ pub fn create_main_worker(
     shared_array_buffer_store: Some(
       program_state.shared_array_buffer_store.clone(),
     ),
+    cpu_count: num_cpus::get(),
   };
 
   let mut worker = MainWorker::from_options(main_module, permissions, &options);
@@ -772,7 +782,10 @@ async fn format_command(
   Ok(())
 }
 
-async fn run_repl(flags: Flags) -> Result<(), AnyError> {
+async fn run_repl(
+  flags: Flags,
+  maybe_eval: Option<String>,
+) -> Result<(), AnyError> {
   let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
   let permissions = Permissions::from_options(&flags.clone().into());
   let program_state = ProgramState::build(flags).await?;
@@ -780,7 +793,7 @@ async fn run_repl(flags: Flags) -> Result<(), AnyError> {
     create_main_worker(&program_state, main_module.clone(), permissions, false);
   worker.run_event_loop(false).await?;
 
-  tools::repl::run(&program_state, worker).await
+  tools::repl::run(&program_state, worker, maybe_eval).await
 }
 
 async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
@@ -1006,7 +1019,6 @@ async fn test_command(
   let program_state = ProgramState::build(flags.clone()).await?;
 
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let cwd = std::env::current_dir().expect("No current directory");
 
   let permissions = Permissions::from_options(&flags.clone().into());
   let lib = if flags.unstable {
@@ -1027,16 +1039,14 @@ async fn test_command(
     // TODO(caspervonb) clean this up.
     let resolver = |changed: Option<Vec<PathBuf>>| {
       let test_modules_result = if doc {
-        test_runner::collect_test_module_specifiers(
+        fs_util::collect_specifiers(
           include.clone(),
-          &cwd,
-          fs_util::is_supported_ext,
+          fs_util::is_supported_test_ext,
         )
       } else {
-        test_runner::collect_test_module_specifiers(
+        fs_util::collect_specifiers(
           include.clone(),
-          &cwd,
-          tools::test_runner::is_supported,
+          fs_util::is_supported_test_path,
         )
       };
 
@@ -1086,7 +1096,7 @@ async fn test_command(
                   output.insert(specifier);
 
                   get_dependencies(
-                    &graph,
+                    graph,
                     graph.get_specifier(specifier)?,
                     output,
                   )?;
@@ -1097,7 +1107,7 @@ async fn test_command(
                   output.insert(specifier);
 
                   get_dependencies(
-                    &graph,
+                    graph,
                     graph.get_specifier(specifier)?,
                     output,
                   )?;
@@ -1160,7 +1170,6 @@ async fn test_command(
     };
 
     let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
-      let cwd = cwd.clone();
       let filter = filter.clone();
       let include = include.clone();
       let lib = lib.clone();
@@ -1169,10 +1178,9 @@ async fn test_command(
 
       async move {
         let doc_modules = if doc {
-          test_runner::collect_test_module_specifiers(
+          fs_util::collect_specifiers(
             include.clone(),
-            &cwd,
-            fs_util::is_supported_ext,
+            fs_util::is_supported_test_ext,
           )?
         } else {
           Vec::new()
@@ -1184,10 +1192,9 @@ async fn test_command(
           .cloned()
           .collect();
 
-        let test_modules = test_runner::collect_test_module_specifiers(
+        let test_modules = fs_util::collect_specifiers(
           include.clone(),
-          &cwd,
-          tools::test_runner::is_supported,
+          fs_util::is_supported_test_path,
         )?;
 
         let test_modules_to_reload = test_modules
@@ -1219,19 +1226,17 @@ async fn test_command(
     file_watcher::watch_func(resolver, operation, "Test").await?;
   } else {
     let doc_modules = if doc {
-      test_runner::collect_test_module_specifiers(
+      fs_util::collect_specifiers(
         include.clone(),
-        &cwd,
-        fs_util::is_supported_ext,
+        fs_util::is_supported_test_ext,
       )?
     } else {
       Vec::new()
     };
 
-    let test_modules = test_runner::collect_test_module_specifiers(
+    let test_modules = fs_util::collect_specifiers(
       include.clone(),
-      &cwd,
-      tools::test_runner::is_supported,
+      fs_util::is_supported_test_path,
     )?;
 
     test_runner::run_tests(
@@ -1339,7 +1344,7 @@ fn get_subcommand(
       ignore,
       json,
     } => lint_command(flags, files, rules, ignore, json).boxed_local(),
-    DenoSubcommand::Repl => run_repl(flags).boxed_local(),
+    DenoSubcommand::Repl { eval } => run_repl(flags, eval).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {
       no_run,

@@ -55,6 +55,18 @@ itest!(doc {
   output: "test/doc.out",
 });
 
+itest!(markdown {
+  args: "test --doc --allow-all test/markdown.md",
+  exit_code: 1,
+  output: "test/markdown.out",
+});
+
+itest!(text {
+  args: "test --doc --allow-all test/text.md",
+  exit_code: 0,
+  output: "test/text.out",
+});
+
 itest!(quiet {
   args: "test --quiet test/quiet.ts",
   exit_code: 0,
@@ -125,6 +137,12 @@ itest!(unhandled_rejection {
   args: "test test/unhandled_rejection.ts",
   exit_code: 1,
   output: "test/unhandled_rejection.out",
+});
+
+itest!(filter {
+  args: "test --filter=foo test/filter",
+  exit_code: 0,
+  output: "test/filter.out",
 });
 
 itest!(shuffle {

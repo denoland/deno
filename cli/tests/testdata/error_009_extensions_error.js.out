@@ -1,0 +1,6 @@
+[WILDCARD]error: Uncaught TypeError: Failed to construct 'Event': 1 argument required, but only 0 present.
+new Event();
+^
+    at [WILDCARD]
+    at new Event (deno:ext/web/[WILDCARD])
+    at [WILDCARD]

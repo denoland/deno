@@ -26,6 +26,8 @@ use v8::HandleScope;
 use v8::Local;
 use v8::MapFnTo;
 use v8::SharedArrayBuffer;
+use v8::ValueDeserializerHelper;
+use v8::ValueSerializerHelper;
 
 lazy_static::lazy_static! {
   pub static ref EXTERNAL_REFERENCES: v8::ExternalReferences =
@@ -690,7 +692,7 @@ fn decode(
   // - https://encoding.spec.whatwg.org/#dom-textdecoder-decode
   // - https://github.com/denoland/deno/issues/6649
   // - https://github.com/v8/v8/blob/d68fb4733e39525f9ff0a9222107c02c28096e2a/include/v8.h#L3277-L3278
-  match v8::String::new_from_utf8(scope, &buf, v8::NewStringType::Normal) {
+  match v8::String::new_from_utf8(scope, buf, v8::NewStringType::Normal) {
     Some(text) => rv.set(text.into()),
     None => {
       let msg = v8::String::new(scope, "string too long").unwrap();
@@ -827,6 +829,7 @@ fn serialize(
   let serialize_deserialize = Box::new(SerializeDeserialize { host_objects });
   let mut value_serializer =
     v8::ValueSerializer::new(scope, serialize_deserialize);
+  value_serializer.write_header();
   match value_serializer.write_value(scope.get_current_context(), value) {
     Some(true) => {
       let vector = value_serializer.release();
@@ -884,6 +887,15 @@ fn deserialize(
   let serialize_deserialize = Box::new(SerializeDeserialize { host_objects });
   let mut value_deserializer =
     v8::ValueDeserializer::new(scope, serialize_deserialize, &zero_copy);
+  let parsed_header = value_deserializer
+    .read_header(scope.get_current_context())
+    .unwrap_or_default();
+  if !parsed_header {
+    let msg = v8::String::new(scope, "could not deserialize value").unwrap();
+    let exception = v8::Exception::range_error(scope, msg);
+    scope.throw_exception(exception);
+    return;
+  }
   let value = value_deserializer.read_value(scope.get_current_context());
 
   match value {

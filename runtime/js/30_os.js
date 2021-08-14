@@ -24,15 +24,6 @@
     return core.opSync("op_system_memory_info");
   }
 
-  function systemCpuInfo() {
-    const { cores, speed } = core.opSync("op_system_cpu_info");
-    // Map nulls to undefined for compatibility
-    return {
-      cores: cores ?? undefined,
-      speed: speed ?? undefined,
-    };
-  }
-
   // This is an internal only method used by the test harness to override the
   // behavior of exit when the exit sanitizer is enabled.
   let exitHandler = null;
@@ -89,7 +80,6 @@
     exit,
     osRelease,
     systemMemoryInfo,
-    systemCpuInfo,
     hostname,
     loadavg,
   };

@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 /// FLAGS
 
-import { parse } from "https://deno.land/std@0.84.0/flags/mod.ts";
+import { parse } from "../../test_util/std/flags/mod.ts";
 import { join, resolve, ROOT_PATH } from "../util.js";
 
 export const {

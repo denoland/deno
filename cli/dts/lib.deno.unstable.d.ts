@@ -107,59 +107,44 @@ declare namespace Deno {
     swapFree: number;
   }
 
-  /** **Unstable** new API. yet to be vetted.
-   *
-   * Returns the total number of logical cpus in the system along with
-   * the speed measured in MHz. If either the syscall to get the core
-   * count or speed of the cpu is unsuccessful the value of the it
-   * is undefined.
-   *
-   * ```ts
-   * console.log(Deno.systemCpuInfo());
-   * ```
-   *
-   * Requires `allow-env` permission.
-   *
-   */
-  export function systemCpuInfo(): SystemCpuInfo;
+  /** All possible types for interfacing with foreign functions */
+  export type NativeType =
+    | "void"
+    | "u8"
+    | "i8"
+    | "u16"
+    | "i16"
+    | "u32"
+    | "i32"
+    | "u64"
+    | "i64"
+    | "usize"
+    | "isize"
+    | "f32"
+    | "f64";
 
-  export interface SystemCpuInfo {
-    /** Total number of logical cpus in the system */
-    cores: number | undefined;
-    /** The speed of the cpu measured in MHz */
-    speed: number | undefined;
+  /** A foreign function as defined by its parameter and result types */
+  export interface ForeignFunction {
+    parameters: NativeType[];
+    result: NativeType;
   }
 
-  /** **UNSTABLE**: new API, yet to be vetted.
+  /** A dynamic library resource */
+  export interface DynamicLibrary<S extends Record<string, ForeignFunction>> {
+    /** All of the registered symbols along with functions for calling them */
+    symbols: { [K in keyof S]: (...args: unknown[]) => unknown };
+
+    close(): void;
+  }
+
+  /** **UNSTABLE**: new API
    *
-   * Open and initialize a plugin.
-   *
-   * ```ts
-   * import { assert } from "https://deno.land/std/testing/asserts.ts";
-   * const rid = Deno.openPlugin("./path/to/some/plugin.so");
-   *
-   * // The Deno.core namespace is needed to interact with plugins, but this is
-   * // internal so we use ts-ignore to skip type checking these calls.
-   * // @ts-ignore
-   * const { op_test_sync, op_test_async } = Deno.core.ops();
-   *
-   * assert(op_test_sync);
-   * assert(op_test_async);
-   *
-   * // @ts-ignore
-   * const result = Deno.core.opSync("op_test_sync");
-   *
-   * // @ts-ignore
-   * const result = await Deno.core.opAsync("op_test_sync");
-   * ```
-   *
-   * Requires `allow-plugin` permission.
-   *
-   * The plugin system is not stable and will change in the future, hence the
-   * lack of docs. For now take a look at the example
-   * https://github.com/denoland/deno/tree/main/test_plugin
+   * Opens a dynamic library and registers symbols
    */
-  export function openPlugin(filename: string): number;
+  export function dlopen<S extends Record<string, ForeignFunction>>(
+    filename: string,
+    symbols: S,
+  ): DynamicLibrary<S>;
 
   /** The log category for a diagnostic message. */
   export enum DiagnosticCategory {
@@ -814,6 +799,14 @@ declare namespace Deno {
     mtime: number | Date,
   ): Promise<void>;
 
+  export function run<
+    T extends RunOptions & {
+      clearEnv?: boolean;
+    } = RunOptions & {
+      clearEnv?: boolean;
+    },
+  >(opt: T): Process<T>;
+
   /** **UNSTABLE**: The `signo` argument may change to require the Deno.Signal
    * enum.
    *
@@ -974,7 +967,7 @@ declare namespace Deno {
       *
       * Defaults to "inherit".
       */
-      env?: "inherit" | boolean;
+      env?: "inherit" | boolean | string[];
 
       /** Specifies if the `hrtime` permission should be requested or revoked.
       * If set to `"inherit"`, the current `hrtime` permission will be inherited.
@@ -1058,14 +1051,14 @@ declare namespace Deno {
       */
       net?: "inherit" | boolean | string[];
 
-      /** Specifies if the `plugin` permission should be requested or revoked.
-      * If set to `"inherit"`, the current `plugin` permission will be inherited.
-      * If set to `true`, the global `plugin` permission will be requested.
-      * If set to `false`, the global `plugin` permission will be revoked.
+      /** Specifies if the `ffi` permission should be requested or revoked.
+      * If set to `"inherit"`, the current `ffi` permission will be inherited.
+      * If set to `true`, the global `ffi` permission will be requested.
+      * If set to `false`, the global `ffi` permission will be revoked.
       *
       * Defaults to "inherit".
       */
-      plugin?: "inherit" | boolean;
+      ffi?: "inherit" | boolean;
 
       /** Specifies if the `read` permission should be requested or revoked.
       * If set to `"inherit"`, the current `read` permission will be inherited.
@@ -1085,7 +1078,7 @@ declare namespace Deno {
       *
       * Defaults to "inherit".
       */
-      run?: "inherit" | boolean;
+      run?: "inherit" | boolean | Array<string | URL>;
 
       /** Specifies if the `write` permission should be requested or revoked.
       * If set to `"inherit"`, the current `write` permission will be inherited.
@@ -1099,24 +1092,6 @@ declare namespace Deno {
       write?: "inherit" | boolean | Array<string | URL>;
     };
   }
-
-  /** **UNSTABLE**: new API, yet to be vetted.
-   *
-   * Services HTTP requests given a TCP or TLS socket.
-   *
-   * ```ts
-   * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
-   * const httpConn = Deno.serveHttp(conn);
-   * const e = await httpConn.nextRequest();
-   * if (e) {
-   *   e.respondWith(new Response("Hello World"));
-   * }
-   * ```
-   *
-   * If `httpConn.nextRequest()` encounters an error or returns `null`
-   * then the underlying HttpConn resource is closed automatically.
-   */
-  export function serveHttp(conn: Conn): HttpConn;
 }
 
 declare function fetch(
@@ -1162,7 +1137,7 @@ declare interface WorkerOptions {
     namespace?: boolean;
     /** Set to `"none"` to disable all the permissions in the worker. */
     permissions?: "inherit" | "none" | {
-      env?: "inherit" | boolean;
+      env?: "inherit" | boolean | string[];
       hrtime?: "inherit" | boolean;
       /** The format of the net access list must be `hostname[:port]`
        * in order to be resolved.
@@ -1170,10 +1145,35 @@ declare interface WorkerOptions {
        * For example: `["https://deno.land", "localhost:8080"]`.
        */
       net?: "inherit" | boolean | string[];
-      plugin?: "inherit" | boolean;
+      ffi?: "inherit" | boolean;
       read?: "inherit" | boolean | Array<string | URL>;
-      run?: "inherit" | boolean;
+      run?: "inherit" | boolean | Array<string | URL>;
       write?: "inherit" | boolean | Array<string | URL>;
     };
   };
+}
+
+declare interface WebSocketStreamOptions {
+  protocols?: string[];
+  signal?: AbortSignal;
+}
+
+declare interface WebSocketConnection {
+  readable: ReadableStream<string | Uint8Array>;
+  writable: WritableStream<string | Uint8Array>;
+  extensions: string;
+  protocol: string;
+}
+
+declare interface WebSocketCloseInfo {
+  code?: number;
+  reason?: string;
+}
+
+declare class WebSocketStream {
+  constructor(url: string, options?: WebSocketStreamOptions);
+  url: string;
+  connection: Promise<WebSocketConnection>;
+  closed: Promise<WebSocketCloseInfo>;
+  close(closeInfo?: WebSocketCloseInfo): void;
 }
