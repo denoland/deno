@@ -90,9 +90,7 @@ impl MainWorker {
       .state(move |state| {
         state.put::<Permissions>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
-        state.put(ops::TestingFeatureChecker {
-          enable_testing_features,
-        });
+        state.put(ops::TestingFeaturesEnabled(enable_testing_features));
         Ok(())
       })
       .build();

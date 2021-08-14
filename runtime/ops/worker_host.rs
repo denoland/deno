@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::ops::TestingFeaturesEnabled;
 use crate::permissions::resolve_read_allowlist;
 use crate::permissions::resolve_write_allowlist;
 use crate::permissions::EnvDescriptor;
@@ -484,7 +485,14 @@ fn op_create_worker(
   }
   let worker_type = args.worker_type;
   if let WebWorkerType::Classic = worker_type {
-    super::check_testing_features(state, "Worker.classic");
+    if let TestingFeaturesEnabled(false) = state.borrow() {
+      return Err(
+        deno_webstorage::DomExceptionNotSupportedError::new(
+          "Classic workers are not supported.",
+        )
+        .into(),
+      );
+    }
   }
   let parent_permissions = state.borrow::<Permissions>().clone();
   let worker_permissions = if let Some(permissions) = args.permissions {
