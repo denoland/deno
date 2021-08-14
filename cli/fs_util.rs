@@ -181,16 +181,19 @@ pub fn collect_specifiers<P>(
 where
   P: Fn(&Path) -> bool,
 {
-  let (include_urls, include_paths): (Vec<String>, Vec<String>) =
-    include.into_iter().partition(|url| {
-      let url = url.to_lowercase();
-      url.starts_with("http://") || url.starts_with("https://")
-    });
-
   let mut prepared = vec![];
 
   let root_path = std::env::current_dir()?;
-  for path in include_paths {
+  for path in include {
+    let lowercase_path = path.to_lowercase();
+    if lowercase_path.starts_with("http://")
+      || lowercase_path.starts_with("https://")
+    {
+      let url = ModuleSpecifier::parse(&path)?;
+      prepared.push(url);
+      continue;
+    }
+
     let p = normalize_path(&root_path.join(path));
     if p.is_dir() {
       let test_files = collect_files(&[p], &[], &predicate).unwrap();
@@ -205,11 +208,6 @@ where
       let url = ModuleSpecifier::from_file_path(p).unwrap();
       prepared.push(url);
     }
-  }
-
-  for remote_url in include_urls {
-    let url = ModuleSpecifier::parse(&remote_url)?;
-    prepared.push(url);
   }
 
   Ok(prepared)
@@ -433,6 +431,7 @@ mod tests {
     .unwrap()
     .to_string();
     let expected: Vec<ModuleSpecifier> = [
+      "http://localhost:8080",
       &format!("{}/a.ts", root_dir_url),
       &format!("{}/b.js", root_dir_url),
       &format!("{}/c.tsx", root_dir_url),
@@ -441,7 +440,6 @@ mod tests {
       &format!("{}/child/f.mjsx", root_dir_url),
       &format!("{}/d.jsx", root_dir_url),
       &format!("{}/ignore/g.d.ts", root_dir_url),
-      "http://localhost:8080",
       "https://localhost:8080",
     ]
     .iter()
