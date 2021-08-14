@@ -112,10 +112,36 @@ pub fn is_supported_ext_fmt(path: &Path) -> bool {
     false
   }
 }
-/// Checks if the path has extension Deno supports.
-/// This function is similar to is_supported_ext but adds additional extensions
-/// supported by `deno test`.
-pub fn is_supported_ext_test(path: &Path) -> bool {
+
+/// Checks if the path has a basename and extension Deno supports for tests.
+pub fn is_supported_test_path(path: &Path) -> bool {
+  use std::path::Component;
+  if let Some(Component::Normal(basename_os_str)) =
+    path.components().next_back()
+  {
+    let basename = basename_os_str.to_string_lossy();
+    basename.ends_with("_test.ts")
+      || basename.ends_with("_test.tsx")
+      || basename.ends_with("_test.js")
+      || basename.ends_with("_test.mjs")
+      || basename.ends_with("_test.jsx")
+      || basename.ends_with(".test.ts")
+      || basename.ends_with(".test.tsx")
+      || basename.ends_with(".test.js")
+      || basename.ends_with(".test.mjs")
+      || basename.ends_with(".test.jsx")
+      || basename == "test.ts"
+      || basename == "test.tsx"
+      || basename == "test.js"
+      || basename == "test.mjs"
+      || basename == "test.jsx"
+  } else {
+    false
+  }
+}
+
+/// Checks if the path has an extension Deno supports for tests.
+pub fn is_supported_test_ext(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
     matches!(ext.as_str(), "ts" | "tsx" | "js" | "jsx" | "mjs" | "md")
   } else {
@@ -308,6 +334,56 @@ mod tests {
     assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
     assert!(is_supported_ext_fmt(Path::new("foo.json")));
     assert!(is_supported_ext_fmt(Path::new("foo.JsON")));
+  }
+
+  #[test]
+  fn test_is_supported_test_ext() {
+    assert!(!is_supported_test_ext(Path::new("tests/subdir/redirects")));
+    assert!(is_supported_test_ext(Path::new("README.md")));
+    assert!(is_supported_test_ext(Path::new("readme.MD")));
+    assert!(is_supported_test_ext(Path::new("lib/typescript.d.ts")));
+    assert!(is_supported_test_ext(Path::new("testdata/001_hello.js")));
+    assert!(is_supported_test_ext(Path::new("testdata/002_hello.ts")));
+    assert!(is_supported_test_ext(Path::new("foo.jsx")));
+    assert!(is_supported_test_ext(Path::new("foo.tsx")));
+    assert!(is_supported_test_ext(Path::new("foo.TS")));
+    assert!(is_supported_test_ext(Path::new("foo.TSX")));
+    assert!(is_supported_test_ext(Path::new("foo.JS")));
+    assert!(is_supported_test_ext(Path::new("foo.JSX")));
+    assert!(is_supported_test_ext(Path::new("foo.mjs")));
+    assert!(!is_supported_test_ext(Path::new("foo.mjsx")));
+    assert!(!is_supported_test_ext(Path::new("foo.jsonc")));
+    assert!(!is_supported_test_ext(Path::new("foo.JSONC")));
+    assert!(!is_supported_test_ext(Path::new("foo.json")));
+    assert!(!is_supported_test_ext(Path::new("foo.JsON")));
+  }
+
+  #[test]
+  fn test_is_supported_test_path() {
+    assert!(is_supported_test_path(Path::new(
+      "tests/subdir/foo_test.ts"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "tests/subdir/foo_test.tsx"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "tests/subdir/foo_test.js"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "tests/subdir/foo_test.jsx"
+    )));
+    assert!(is_supported_test_path(Path::new("bar/foo.test.ts")));
+    assert!(is_supported_test_path(Path::new("bar/foo.test.tsx")));
+    assert!(is_supported_test_path(Path::new("bar/foo.test.js")));
+    assert!(is_supported_test_path(Path::new("bar/foo.test.jsx")));
+    assert!(is_supported_test_path(Path::new("foo/bar/test.js")));
+    assert!(is_supported_test_path(Path::new("foo/bar/test.jsx")));
+    assert!(is_supported_test_path(Path::new("foo/bar/test.ts")));
+    assert!(is_supported_test_path(Path::new("foo/bar/test.tsx")));
+    assert!(!is_supported_test_path(Path::new("README.md")));
+    assert!(!is_supported_test_path(Path::new("lib/typescript.d.ts")));
+    assert!(!is_supported_test_path(Path::new("notatest.js")));
+    assert!(!is_supported_test_path(Path::new("NotAtest.ts")));
   }
 
   #[test]
