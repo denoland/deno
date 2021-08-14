@@ -88,6 +88,7 @@
   };
 
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
+  // 18.4.4
   function normalizeAlgorithm(algorithm, op) {
     if (typeof algorithm == "string") {
       return normalizeAlgorithm({ name: algorithm }, op);
@@ -125,18 +126,22 @@
       return { name: algName };
     }
 
+    // 6.
     const normalizedAlgorithm = webidl.converters[desiredType](algorithm, {
       prefix: "Failed to normalize algorithm",
       context: "passed algorithm",
     });
+    // 7.
     normalizedAlgorithm.name = algName;
 
+    // 9.
     const dict = simpleAlgorithmDictionaries[desiredType];
+    // 10.
     for (const member in dict) {
       const idlType = dict[member];
       const idlValue = normalizedAlgorithm[member];
-
-      if (idlType === "BufferSource") {
+      // 3.
+      if (idlType === "BufferSource" && idlValue) {
         normalizedAlgorithm[member] = new Uint8Array(
           TypedArrayPrototypeSlice(
             (ArrayBufferIsView(idlValue) ? idlValue.buffer : idlValue),
@@ -463,6 +468,18 @@
         context: "Argument 5",
       });
 
+      // 2.
+      if (ArrayBufferIsView(keyData)) {
+        keyData = new Uint8Array(
+          keyData.buffer,
+          keyData.byteOffset,
+          keyData.byteLength,
+        );
+      } else {
+        keyData = new Uint8Array(keyData);
+      }
+      keyData = TypedArrayPrototypeSlice(keyData);
+
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "importKey");
 
       if (
@@ -472,6 +489,14 @@
         ) !== undefined
       ) {
         throw new DOMException("Invalid key usages", "SyntaxError");
+      }
+
+      // https://github.com/denoland/deno/pull/9614#issuecomment-866049433
+      if (!extractable) {
+        throw new DOMException(
+          "Non-extractable keys are not supported",
+          "SecurityError",
+        );
       }
 
       switch (normalizedAlgorithm.name) {

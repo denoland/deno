@@ -15,6 +15,8 @@
   const { defineEventHandler } = window.__bootstrap.event;
   const { DOMException } = window.__bootstrap.domException;
   const {
+    ArrayPrototypeIncludes,
+    ArrayPrototypePush,
     ObjectSetPrototypeOf,
     Symbol,
     SymbolFor,
@@ -117,7 +119,7 @@
         );
       }
       const { transfer } = options;
-      if (transfer.includes(this)) {
+      if (ArrayPrototypeIncludes(transfer, this)) {
         throw new DOMException("Can not tranfer self", "DataCloneError");
       }
       const data = serializeJsMessageData(message, transfer);
@@ -196,7 +198,7 @@
       switch (transferable.kind) {
         case "messagePort": {
           const port = createMessagePort(transferable.data);
-          transferables.push(port);
+          ArrayPrototypePush(transferables, port);
           break;
         }
         default:
@@ -238,7 +240,10 @@
           );
         }
         transferable[_id] = null;
-        serializedTransferables.push({ kind: "messagePort", data: id });
+        ArrayPrototypePush(serializedTransferables, {
+          kind: "messagePort",
+          data: id,
+        });
       } else {
         throw new DOMException("Value not transferable", "DataCloneError");
       }

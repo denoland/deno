@@ -1018,7 +1018,6 @@ async fn test_command(
   let program_state = ProgramState::build(flags.clone()).await?;
 
   let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let cwd = std::env::current_dir().expect("No current directory");
 
   let permissions = Permissions::from_options(&flags.clone().into());
   let lib = if flags.unstable {
@@ -1039,16 +1038,14 @@ async fn test_command(
     // TODO(caspervonb) clean this up.
     let resolver = |changed: Option<Vec<PathBuf>>| {
       let test_modules_result = if doc {
-        tools::test::collect_test_module_specifiers(
+        fs_util::collect_specifiers(
           include.clone(),
-          &cwd,
-          fs_util::is_supported_ext_test,
+          fs_util::is_supported_test_ext,
         )
       } else {
-        tools::test::collect_test_module_specifiers(
+        fs_util::collect_specifiers(
           include.clone(),
-          &cwd,
-          tools::test::is_supported,
+          fs_util::is_supported_test_path,
         )
       };
 
@@ -1172,7 +1169,6 @@ async fn test_command(
     };
 
     let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
-      let cwd = cwd.clone();
       let filter = filter.clone();
       let include = include.clone();
       let lib = lib.clone();
@@ -1181,10 +1177,9 @@ async fn test_command(
 
       async move {
         let doc_modules = if doc {
-          tools::test::collect_test_module_specifiers(
+          fs_util::collect_specifiers(
             include.clone(),
-            &cwd,
-            fs_util::is_supported_ext_test,
+            fs_util::is_supported_test_ext,
           )?
         } else {
           Vec::new()
@@ -1196,10 +1191,9 @@ async fn test_command(
           .cloned()
           .collect();
 
-        let test_modules = tools::test::collect_test_module_specifiers(
+        let test_modules = fs_util::collect_specifiers(
           include.clone(),
-          &cwd,
-          tools::test::is_supported,
+          fs_util::is_supported_test_path,
         )?;
 
         let test_modules_to_reload = test_modules
@@ -1231,19 +1225,17 @@ async fn test_command(
     file_watcher::watch_func(resolver, operation, "Test").await?;
   } else {
     let doc_modules = if doc {
-      tools::test::collect_test_module_specifiers(
+      fs_util::collect_specifiers(
         include.clone(),
-        &cwd,
-        fs_util::is_supported_ext_test,
+        fs_util::is_supported_test_ext,
       )?
     } else {
       Vec::new()
     };
 
-    let test_modules = tools::test::collect_test_module_specifiers(
+    let test_modules = fs_util::collect_specifiers(
       include.clone(),
-      &cwd,
-      tools::test::is_supported,
+      fs_util::is_supported_test_path,
     )?;
 
     tools::test::run_tests(

@@ -3,6 +3,7 @@
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 pub use deno_core::normalize_path;
+use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
 use std::env::current_dir;
 use std::fs::OpenOptions;
@@ -111,10 +112,36 @@ pub fn is_supported_ext_fmt(path: &Path) -> bool {
     false
   }
 }
-/// Checks if the path has extension Deno supports.
-/// This function is similar to is_supported_ext but adds additional extensions
-/// supported by `deno test`.
-pub fn is_supported_ext_test(path: &Path) -> bool {
+
+/// Checks if the path has a basename and extension Deno supports for tests.
+pub fn is_supported_test_path(path: &Path) -> bool {
+  use std::path::Component;
+  if let Some(Component::Normal(basename_os_str)) =
+    path.components().next_back()
+  {
+    let basename = basename_os_str.to_string_lossy();
+    basename.ends_with("_test.ts")
+      || basename.ends_with("_test.tsx")
+      || basename.ends_with("_test.js")
+      || basename.ends_with("_test.mjs")
+      || basename.ends_with("_test.jsx")
+      || basename.ends_with(".test.ts")
+      || basename.ends_with(".test.tsx")
+      || basename.ends_with(".test.js")
+      || basename.ends_with(".test.mjs")
+      || basename.ends_with(".test.jsx")
+      || basename == "test.ts"
+      || basename == "test.tsx"
+      || basename == "test.js"
+      || basename == "test.mjs"
+      || basename == "test.jsx"
+  } else {
+    false
+  }
+}
+
+/// Checks if the path has an extension Deno supports for tests.
+pub fn is_supported_test_ext(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
     matches!(ext.as_str(), "ts" | "tsx" | "js" | "jsx" | "mjs" | "md")
   } else {
@@ -169,6 +196,47 @@ where
   }
 
   Ok(target_files)
+}
+
+/// Collects module specifiers that satisfy the given predicate as a file path, by recursively walking `include`.
+/// Specifiers that start with http and https are left intact.
+pub fn collect_specifiers<P>(
+  include: Vec<String>,
+  predicate: P,
+) -> Result<Vec<ModuleSpecifier>, AnyError>
+where
+  P: Fn(&Path) -> bool,
+{
+  let mut prepared = vec![];
+
+  let root_path = std::env::current_dir()?;
+  for path in include {
+    let lowercase_path = path.to_lowercase();
+    if lowercase_path.starts_with("http://")
+      || lowercase_path.starts_with("https://")
+    {
+      let url = ModuleSpecifier::parse(&path)?;
+      prepared.push(url);
+      continue;
+    }
+
+    let p = normalize_path(&root_path.join(path));
+    if p.is_dir() {
+      let test_files = collect_files(&[p], &[], &predicate).unwrap();
+      let mut test_files_as_urls = test_files
+        .iter()
+        .map(|f| ModuleSpecifier::from_file_path(f).unwrap())
+        .collect::<Vec<ModuleSpecifier>>();
+
+      test_files_as_urls.sort();
+      prepared.extend(test_files_as_urls);
+    } else {
+      let url = ModuleSpecifier::from_file_path(p).unwrap();
+      prepared.push(url);
+    }
+  }
+
+  Ok(prepared)
 }
 
 // Asynchronously removes a directory and all its descendants, but does not error
@@ -269,6 +337,56 @@ mod tests {
   }
 
   #[test]
+  fn test_is_supported_test_ext() {
+    assert!(!is_supported_test_ext(Path::new("tests/subdir/redirects")));
+    assert!(is_supported_test_ext(Path::new("README.md")));
+    assert!(is_supported_test_ext(Path::new("readme.MD")));
+    assert!(is_supported_test_ext(Path::new("lib/typescript.d.ts")));
+    assert!(is_supported_test_ext(Path::new("testdata/001_hello.js")));
+    assert!(is_supported_test_ext(Path::new("testdata/002_hello.ts")));
+    assert!(is_supported_test_ext(Path::new("foo.jsx")));
+    assert!(is_supported_test_ext(Path::new("foo.tsx")));
+    assert!(is_supported_test_ext(Path::new("foo.TS")));
+    assert!(is_supported_test_ext(Path::new("foo.TSX")));
+    assert!(is_supported_test_ext(Path::new("foo.JS")));
+    assert!(is_supported_test_ext(Path::new("foo.JSX")));
+    assert!(is_supported_test_ext(Path::new("foo.mjs")));
+    assert!(!is_supported_test_ext(Path::new("foo.mjsx")));
+    assert!(!is_supported_test_ext(Path::new("foo.jsonc")));
+    assert!(!is_supported_test_ext(Path::new("foo.JSONC")));
+    assert!(!is_supported_test_ext(Path::new("foo.json")));
+    assert!(!is_supported_test_ext(Path::new("foo.JsON")));
+  }
+
+  #[test]
+  fn test_is_supported_test_path() {
+    assert!(is_supported_test_path(Path::new(
+      "tests/subdir/foo_test.ts"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "tests/subdir/foo_test.tsx"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "tests/subdir/foo_test.js"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "tests/subdir/foo_test.jsx"
+    )));
+    assert!(is_supported_test_path(Path::new("bar/foo.test.ts")));
+    assert!(is_supported_test_path(Path::new("bar/foo.test.tsx")));
+    assert!(is_supported_test_path(Path::new("bar/foo.test.js")));
+    assert!(is_supported_test_path(Path::new("bar/foo.test.jsx")));
+    assert!(is_supported_test_path(Path::new("foo/bar/test.js")));
+    assert!(is_supported_test_path(Path::new("foo/bar/test.jsx")));
+    assert!(is_supported_test_path(Path::new("foo/bar/test.ts")));
+    assert!(is_supported_test_path(Path::new("foo/bar/test.tsx")));
+    assert!(!is_supported_test_path(Path::new("README.md")));
+    assert!(!is_supported_test_path(Path::new("lib/typescript.d.ts")));
+    assert!(!is_supported_test_path(Path::new("notatest.js")));
+    assert!(!is_supported_test_path(Path::new("NotAtest.ts")));
+  }
+
+  #[test]
   fn test_collect_files() {
     fn create_files(dir_path: &Path, files: &[&str]) {
       std::fs::create_dir(dir_path).expect("Failed to create directory");
@@ -327,5 +445,83 @@ mod tests {
       assert!(result.iter().any(|r| r.ends_with(e)));
     }
     assert_eq!(result.len(), expected.len());
+  }
+
+  #[test]
+  fn test_collect_specifiers() {
+    fn create_files(dir_path: &Path, files: &[&str]) {
+      std::fs::create_dir(dir_path).expect("Failed to create directory");
+      for f in files {
+        let path = dir_path.join(f);
+        std::fs::write(path, "").expect("Failed to create file");
+      }
+    }
+
+    // dir.ts
+    // ├── a.ts
+    // ├── b.js
+    // ├── child
+    // │   ├── e.mjs
+    // │   ├── f.mjsx
+    // │   ├── .foo.TS
+    // │   └── README.md
+    // ├── c.tsx
+    // ├── d.jsx
+    // └── ignore
+    //     ├── g.d.ts
+    //     └── .gitignore
+
+    let t = TempDir::new().expect("tempdir fail");
+
+    let root_dir_path = t.path().join("dir.ts");
+    let root_dir_files = ["a.ts", "b.js", "c.tsx", "d.jsx"];
+    create_files(&root_dir_path, &root_dir_files);
+
+    let child_dir_path = root_dir_path.join("child");
+    let child_dir_files = ["e.mjs", "f.mjsx", ".foo.TS", "README.md"];
+    create_files(&child_dir_path, &child_dir_files);
+
+    let ignore_dir_path = root_dir_path.join("ignore");
+    let ignore_dir_files = ["g.d.ts", ".gitignore"];
+    create_files(&ignore_dir_path, &ignore_dir_files);
+
+    let result = collect_specifiers(
+      vec![
+        "http://localhost:8080".to_string(),
+        root_dir_path.to_str().unwrap().to_string(),
+        "https://localhost:8080".to_string(),
+      ],
+      |path| {
+        // exclude dotfiles
+        path
+          .file_name()
+          .and_then(|f| f.to_str())
+          .map_or(false, |f| !f.starts_with('.'))
+      },
+    )
+    .unwrap();
+
+    let root_dir_url = ModuleSpecifier::from_file_path(
+      canonicalize_path(&root_dir_path).unwrap(),
+    )
+    .unwrap()
+    .to_string();
+    let expected: Vec<ModuleSpecifier> = [
+      "http://localhost:8080",
+      &format!("{}/a.ts", root_dir_url),
+      &format!("{}/b.js", root_dir_url),
+      &format!("{}/c.tsx", root_dir_url),
+      &format!("{}/child/README.md", root_dir_url),
+      &format!("{}/child/e.mjs", root_dir_url),
+      &format!("{}/child/f.mjsx", root_dir_url),
+      &format!("{}/d.jsx", root_dir_url),
+      &format!("{}/ignore/g.d.ts", root_dir_url),
+      "https://localhost:8080",
+    ]
+    .iter()
+    .map(|f| ModuleSpecifier::parse(f).unwrap())
+    .collect::<Vec<ModuleSpecifier>>();
+
+    assert_eq!(result, expected);
   }
 }
