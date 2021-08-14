@@ -103,7 +103,7 @@ pub fn init<P: FetchPermissions + 'static>(
         request_builder_hook,
         unsafely_ignore_certificate_errors: unsafely_ignore_certificate_errors
           .clone(),
-        cert_chain:  cert_chain.clone(),
+        cert_chain: cert_chain.clone(),
         private_key: private_key.clone(),
       });
       Ok(())
@@ -544,14 +544,15 @@ where
     permissions.check_net_url(&url)?;
   }
 
-  if args.cert_chain.is_some() {
-    let permissions = state.borrow_mut::<FP>();
-    //permissions.check_unstable(state, "CreateHttpClientOptions.certChain");
-  }
-  if args.private_key.is_some() {
-    let permissions = state.borrow_mut::<FP>();
-    //permissions.check_unstable(state, "CreateHttpClientOptions.privateKey");
-  }
+  /* TODO: Hide behind --unstable
+    if args.cert_chain.is_some() {
+      let permissions = state.borrow_mut::<FP>();
+      permissions.check_unstable(state, "CreateHttpClientOptions.certChain");
+    }
+    if args.private_key.is_some() {
+      let permissions = state.borrow_mut::<FP>();
+      permissions.check_unstable(state, "CreateHttpClientOptions.privateKey");
+  }*/
 
   let defaults = state.borrow::<HttpClientDefaults>();
   let cert_data =
@@ -564,7 +565,7 @@ where
     args.proxy,
     defaults.unsafely_ignore_certificate_errors.clone(),
     args.cert_chain.clone(),
-    args.private_key.clone(),
+    args.private_key,
   )
   .unwrap();
 

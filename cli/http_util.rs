@@ -144,8 +144,16 @@ mod tests {
   use std::fs::read;
 
   fn create_test_client(ca_data: Option<Vec<u8>>) -> Client {
-    create_http_client("test_client".to_string(), None, ca_data, None, None, None, None)
-      .unwrap()
+    create_http_client(
+      "test_client".to_string(),
+      None,
+      ca_data,
+      None,
+      None,
+      None,
+      None,
+    )
+    .unwrap()
   }
 
   #[tokio::test]

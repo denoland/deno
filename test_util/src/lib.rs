@@ -900,7 +900,8 @@ async fn wrap_main_https_server() {
 }
 
 async fn wrap_client_auth_https_server() {
-  let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], HTTPS_CLIENT_AUTH_PORT));
+  let main_server_https_addr =
+    SocketAddr::from(([127, 0, 0, 1], HTTPS_CLIENT_AUTH_PORT));
   let cert_file = "tls/localhost.crt";
   let key_file = "tls/localhost.key";
   let ca_cert_file = "tls/RootCA.pem";

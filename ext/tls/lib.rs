@@ -227,8 +227,10 @@ pub fn create_http_client(
   )?;
 
   if cert_chain.is_some() || private_key.is_some() {
-    let cert_chain = cert_chain.ok_or_else(|| type_error("No certificate chain provided"))?;
-    let private_key = private_key.ok_or_else(|| type_error("No private key provided"))?;
+    let cert_chain =
+      cert_chain.ok_or_else(|| type_error("No certificate chain provided"))?;
+    let private_key =
+      private_key.ok_or_else(|| type_error("No private key provided"))?;
 
     // The `remove` is safe because load_private_keys checks that there is at least one key.
     let private_key = load_private_keys(private_key.as_bytes())?.remove(0);
@@ -238,7 +240,6 @@ pub fn create_http_client(
       private_key,
     )?;
   }
-
 
   let mut headers = HeaderMap::new();
   headers.insert(USER_AGENT, user_agent.parse().unwrap());
