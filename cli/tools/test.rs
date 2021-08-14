@@ -333,14 +333,10 @@ where
     "window.dispatchEvent(new Event('load'))",
   )?;
 
-  let registry = {
-    worker.execute_module(&test_module).await?;
-    let registry = worker
+  worker.execute_module(&test_module).await?;
+  let registry = worker
       .js_runtime
       .execute_script("deno:test_module", TEST_REGISTRY)?;
-
-    registry
-  };
 
   // TODO(caspervonb): capture stdout/stderr to memory instead of overriding at the javascript
   // layer.
@@ -383,7 +379,7 @@ where
 
   let filtered_out = {
     let regex = if let Some(filter) = filter {
-      if filter.starts_with("/") && filter.ends_with("/") {
+      if filter.starts_with('/') && filter.ends_with('/') {
         Regex::new(&filter[1..filter.len()])?
       } else {
         Regex::new(&regex::escape(&filter))?
