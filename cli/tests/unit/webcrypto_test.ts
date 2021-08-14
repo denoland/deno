@@ -25,7 +25,7 @@ unitTest(async function testImportArrayBufferKey() {
 unitTest(async function testSignVerify() {
   const subtle = window.crypto.subtle;
   assert(subtle);
-  for (const algorithm of ["RSA-PSS", "RSASSA-PKCS1-v1_5", "RSA-OAEP"]) {
+  for (const algorithm of ["RSA-PSS", "RSASSA-PKCS1-v1_5"]) {
     for (
       const hash of [
         "SHA-1",
@@ -34,9 +34,6 @@ unitTest(async function testSignVerify() {
         "SHA-512",
       ]
     ) {
-      const keyUsages: KeyUsage[] = algorithm == "RSA-OAEP"
-        ? ["encrypt", "decrypt"]
-        : ["sign", "verify"];
       const keyPair = await subtle.generateKey(
         {
           name: algorithm,
@@ -45,52 +42,31 @@ unitTest(async function testSignVerify() {
           hash,
         },
         true,
-        keyUsages,
+        ["sign", "verify"],
       );
 
       const data = new Uint8Array([1, 2, 3]);
-      if (algorithm == "RSA-OAEP") {
-        const encryptAlgorithm = { name: algorithm };
-        const encypted = await subtle.encrypt(
-          encryptAlgorithm,
-          keyPair.publicKey,
-          data,
-        );
 
-        assert(encypted);
-        assert(encypted.byteLength > 0);
-        assert(encypted instanceof ArrayBuffer);
+      const signAlgorithm = { name: algorithm, saltLength: 32 };
 
-        const decrypted = await subtle.decrypt(
-          encryptAlgorithm,
-          keyPair.privateKey,
-          encypted,
-        );
-        assert(decrypted);
-        assert(decrypted instanceof ArrayBuffer);
-        assertEquals(new Uint8Array(decrypted), data);
-      } else {
-        const signAlgorithm = { name: algorithm, saltLength: 32 };
+      const signature = await subtle.sign(
+        signAlgorithm,
+        keyPair.privateKey,
+        data,
+      );
 
-        const signature = await subtle.sign(
-          signAlgorithm,
-          keyPair.privateKey,
-          data,
-        );
+      assert(signature);
+      assert(signature.byteLength > 0);
+      assert(signature.byteLength % 8 == 0);
+      assert(signature instanceof ArrayBuffer);
 
-        assert(signature);
-        assert(signature.byteLength > 0);
-        assert(signature.byteLength % 8 == 0);
-        assert(signature instanceof ArrayBuffer);
-
-        const verified = await subtle.verify(
-          signAlgorithm,
-          keyPair.publicKey,
-          signature,
-          data,
-        );
-        assert(verified);
-      }
+      const verified = await subtle.verify(
+        signAlgorithm,
+        keyPair.publicKey,
+        signature,
+        data,
+      );
+      assert(verified);
     }
   }
 });
