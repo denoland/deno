@@ -144,7 +144,6 @@ fn op_close(
     .resource_table
     .close(rid)
     .map(|_| ())
-    .ok_or_else(bad_resource_id)
 }
 
 async fn op_accept(
@@ -157,8 +156,7 @@ async fn op_accept(
   let listener = state
     .borrow()
     .resource_table
-    .get::<TcpListener>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<TcpListener>(rid)?;
   let stream = listener.accept().await?;
   let rid = state.borrow_mut().resource_table.add(stream);
   Ok(rid)
@@ -175,8 +173,7 @@ async fn op_read(
   let stream = state
     .borrow()
     .resource_table
-    .get::<TcpStream>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<TcpStream>(rid)?;
   let nread = stream.read(&mut buf).await?;
   Ok(nread)
 }
@@ -192,8 +189,7 @@ async fn op_write(
   let stream = state
     .borrow()
     .resource_table
-    .get::<TcpStream>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<TcpStream>(rid)?;
   let nwritten = stream.write(&buf).await?;
   Ok(nwritten)
 }

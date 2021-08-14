@@ -336,8 +336,7 @@ impl StdFileResource {
     // First we look up the rid in the resource table.
     let resource = state
       .resource_table
-      .get::<StdFileResource>(rid)
-      .ok_or_else(bad_resource_id)?;
+      .get::<StdFileResource>(rid)?;
 
     // Sync write only works for FsFile. It doesn't make sense to do this
     // for non-blocking sockets. So we error out if not FsFile.
@@ -411,8 +410,7 @@ async fn op_read_async(
   let resource = state
     .borrow()
     .resource_table
-    .get_any(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get_any(rid)?;
   let nread = if let Some(s) = resource.downcast_rc::<ChildStdoutResource>() {
     s.read(buf).await?
   } else if let Some(s) = resource.downcast_rc::<ChildStderrResource>() {
@@ -455,8 +453,7 @@ async fn op_write_async(
   let resource = state
     .borrow()
     .resource_table
-    .get_any(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get_any(rid)?;
   let nwritten = if let Some(s) = resource.downcast_rc::<ChildStdinResource>() {
     s.write(buf).await?
   } else if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
@@ -481,8 +478,7 @@ async fn op_shutdown(
   let resource = state
     .borrow()
     .resource_table
-    .get_any(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get_any(rid)?;
   if let Some(s) = resource.downcast_rc::<ChildStdinResource>() {
     s.shutdown().await?;
   } else if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {

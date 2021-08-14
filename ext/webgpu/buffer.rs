@@ -50,8 +50,7 @@ pub fn op_webgpu_create_buffer(
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGpuDevice>(args.device_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::WebGpuDevice>(args.device_rid)?;
   let device = device_resource.0;
 
   let descriptor = wgpu_core::resource::BufferDescriptor {
@@ -92,13 +91,11 @@ pub async fn op_webgpu_buffer_get_map_async(
     let instance = state_.borrow::<super::Instance>();
     let buffer_resource = state_
       .resource_table
-      .get::<WebGpuBuffer>(args.buffer_rid)
-      .ok_or_else(bad_resource_id)?;
+      .get::<WebGpuBuffer>(args.buffer_rid)?;
     let buffer = buffer_resource.0;
     let device_resource = state_
       .resource_table
-      .get::<super::WebGpuDevice>(args.device_rid)
-      .ok_or_else(bad_resource_id)?;
+      .get::<super::WebGpuDevice>(args.device_rid)?;
     device = device_resource.0;
 
     let boxed_sender = Box::new(sender);
@@ -182,8 +179,7 @@ pub fn op_webgpu_buffer_get_mapped_range(
   let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
     .resource_table
-    .get::<WebGpuBuffer>(args.buffer_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuBuffer>(args.buffer_rid)?;
   let buffer = buffer_resource.0;
 
   let (slice_pointer, range_size) =
@@ -220,13 +216,11 @@ pub fn op_webgpu_buffer_unmap(
 ) -> Result<WebGpuResult, AnyError> {
   let mapped_resource = state
     .resource_table
-    .take::<WebGpuBufferMapped>(args.mapped_rid)
-    .ok_or_else(bad_resource_id)?;
+    .take::<WebGpuBufferMapped>(args.mapped_rid)?;
   let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
     .resource_table
-    .get::<WebGpuBuffer>(args.buffer_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuBuffer>(args.buffer_rid)?;
   let buffer = buffer_resource.0;
 
   let slice_pointer = mapped_resource.0;

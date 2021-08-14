@@ -242,8 +242,7 @@ fn op_encoding_decode(
 
   let resource = state
     .resource_table
-    .get::<TextDecoderResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<TextDecoderResource>(rid)?;
 
   let mut decoder = resource.decoder.borrow_mut();
   let fatal = resource.fatal;

@@ -49,8 +49,7 @@ pub fn op_close(
   let rid = rid.ok_or_else(|| type_error("missing or invalid `rid`"))?;
   state
     .resource_table
-    .close(rid)
-    .ok_or_else(bad_resource_id)?;
+    .close(rid)?;
 
   Ok(())
 }

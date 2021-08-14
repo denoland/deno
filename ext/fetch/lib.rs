@@ -165,8 +165,7 @@ where
   let client = if let Some(rid) = args.client_rid {
     let r = state
       .resource_table
-      .get::<HttpClientResource>(rid)
-      .ok_or_else(bad_resource_id)?;
+      .get::<HttpClientResource>(rid)?;
     r.client.clone()
   } else {
     let client = state.borrow::<reqwest::Client>();
@@ -345,8 +344,7 @@ pub async fn op_fetch_send(
   let request = state
     .borrow_mut()
     .resource_table
-    .take::<FetchRequestResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .take::<FetchRequestResource>(rid)?;
 
   let request = Rc::try_unwrap(request)
     .ok()
@@ -402,8 +400,7 @@ pub async fn op_fetch_request_write(
   let resource = state
     .borrow()
     .resource_table
-    .get::<FetchRequestBodyResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<FetchRequestBodyResource>(rid)?;
   let body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   body.send(Ok(buf)).or_cancel(cancel).await?.map_err(|_| {
@@ -423,8 +420,7 @@ pub async fn op_fetch_response_read(
   let resource = state
     .borrow()
     .resource_table
-    .get::<FetchResponseBodyResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<FetchResponseBodyResource>(rid)?;
   let mut reader = RcRef::map(&resource, |r| &r.reader).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let mut buf = data.clone();

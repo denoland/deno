@@ -398,8 +398,7 @@ pub async fn op_webgpu_request_device(
   let mut state = state.borrow_mut();
   let adapter_resource = state
     .resource_table
-    .get::<WebGpuAdapter>(args.adapter_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuAdapter>(args.adapter_rid)?;
   let adapter = adapter_resource.0;
   let instance = state.borrow::<Instance>();
 
@@ -535,8 +534,7 @@ pub fn op_webgpu_create_query_set(
 ) -> Result<WebGpuResult, AnyError> {
   let device_resource = state
     .resource_table
-    .get::<WebGpuDevice>(args.device_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuDevice>(args.device_rid)?;
   let device = device_resource.0;
   let instance = &state.borrow::<Instance>();
 

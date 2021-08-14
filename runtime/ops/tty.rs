@@ -91,8 +91,7 @@ fn op_set_raw(
 
     let resource = state
       .resource_table
-      .get::<StdFileResource>(rid)
-      .ok_or_else(bad_resource_id)?;
+      .get::<StdFileResource>(rid)?;
 
     if cbreak {
       return Err(not_supported());
@@ -158,8 +157,7 @@ fn op_set_raw(
 
     let resource = state
       .resource_table
-      .get::<StdFileResource>(rid)
-      .ok_or_else(bad_resource_id)?;
+      .get::<StdFileResource>(rid)?;
 
     if resource.fs_file.is_none() {
       return Err(not_supported());

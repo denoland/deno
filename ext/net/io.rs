@@ -172,8 +172,7 @@ async fn op_read_async(
   let resource = state
     .borrow()
     .resource_table
-    .get_any(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get_any(rid)?;
   let nread = if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
     s.read(buf).await?
   } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
@@ -195,8 +194,7 @@ async fn op_write_async(
   let resource = state
     .borrow()
     .resource_table
-    .get_any(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get_any(rid)?;
   let nwritten = if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
     s.write(buf).await?
   } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
@@ -217,8 +215,7 @@ async fn op_shutdown(
   let resource = state
     .borrow()
     .resource_table
-    .get_any(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get_any(rid)?;
   if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
     s.shutdown().await?;
   } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {

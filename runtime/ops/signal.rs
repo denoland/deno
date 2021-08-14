@@ -81,8 +81,7 @@ async fn op_signal_poll(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<SignalStreamResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<SignalStreamResource>(rid)?;
   let cancel = RcRef::map(&resource, |r| &r.cancel);
   let mut signal = RcRef::map(&resource, |r| &r.signal).borrow_mut().await;
 
@@ -101,8 +100,7 @@ pub fn op_signal_unbind(
   super::check_unstable(state, "Deno.signal");
   state
     .resource_table
-    .close(rid)
-    .ok_or_else(bad_resource_id)?;
+    .close(rid)?;
   Ok(())
 }
 
