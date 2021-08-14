@@ -441,7 +441,7 @@ async fn op_http_response(
 
   poll_fn(|cx| match conn_resource.poll(cx) {
     Poll::Ready(x) => {
-      state.borrow_mut().resource_table.close(conn_rid);
+      state.borrow_mut().resource_table.close(conn_rid).ok();
       Poll::Ready(x)
     }
     Poll::Pending => Poll::Ready(Ok(())),

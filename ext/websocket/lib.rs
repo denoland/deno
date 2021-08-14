@@ -287,7 +287,7 @@ where
     })?;
 
   if let Some(cancel_rid) = args.cancel_handle {
-    state.borrow_mut().resource_table.close(cancel_rid);
+    state.borrow_mut().resource_table.close(cancel_rid).ok();
   }
 
   let (ws_tx, ws_rx) = stream.split();
