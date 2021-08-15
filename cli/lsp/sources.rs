@@ -575,7 +575,6 @@ mod tests {
   use deno_core::resolve_path;
   use deno_core::resolve_url;
   use deno_core::serde_json::json;
-  use std::env;
   use tempfile::TempDir;
 
   fn setup() -> (Sources, PathBuf) {
@@ -588,8 +587,7 @@ mod tests {
   #[test]
   fn test_sources_get_script_version() {
     let (sources, _) = setup();
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let tests = c.join("tests");
+    let tests = test_util::testdata_path();
     let specifier =
       resolve_path(&tests.join("001_hello.js").to_string_lossy()).unwrap();
     let actual = sources.get_script_version(&specifier);
@@ -599,8 +597,7 @@ mod tests {
   #[test]
   fn test_sources_get_text() {
     let (sources, _) = setup();
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let tests = c.join("tests");
+    let tests = test_util::testdata_path();
     let specifier =
       resolve_path(&tests.join("001_hello.js").to_string_lossy()).unwrap();
     let actual = sources.get_source(&specifier);

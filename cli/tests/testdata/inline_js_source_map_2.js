@@ -1,0 +1,4 @@
+"use strict";
+1 + 1;
+throw new Error("Hello world!");
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiIiwic291cmNlUm9vdCI6IiIsInNvdXJjZXMiOlsiaHR0cDovL2xvY2FsaG9zdDo0NTQ1L2lubGluZV9qc19zb3VyY2VfbWFwXzIudHMiXSwibmFtZXMiOltdLCJtYXBwaW5ncyI6IjtBQUFBLENBQUMsR0FBQyxDQUFDLENBQUM7QUFLSixNQUFNLElBQUksS0FBSyxDQUFDLGNBQStCLENBQUMsQ0FBQyJ9
