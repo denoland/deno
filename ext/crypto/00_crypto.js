@@ -147,8 +147,8 @@
       const idlValue = normalizedAlgorithm[member];
       // 3.
       if (idlType === "BufferSource" && idlValue) {
-        normalizedAlgorithm[member] = new Uint8Array(
-          TypedArrayPrototypeSlice(
+        normalizedAlgorithm[member] = TypedArrayPrototypeSlice(
+          new Uint8Array(
             (ArrayBufferIsView(idlValue) ? idlValue.buffer : idlValue),
             idlValue.byteOffset ?? 0,
             idlValue.byteLength,
@@ -684,8 +684,13 @@
       switch (normalizedAlgorithm.name) {
         case "PBKDF2": {
           // 1.
-          if (length == null || length % 8 !== 0) {
+          if (length == null || length == 0 || length % 8 !== 0) {
             throw new DOMException("Invalid length", "OperationError");
+          }
+
+          // TODO(@littledivy): Add this step to spec. WPT has tests for it.
+          if(normalizedAlgorithm.iterations == 0) {
+            throw new DOMException("iterations must not be zero", "OperationError");
           }
 
           const handle = baseKey[_handle];
@@ -707,7 +712,8 @@
           const buf = await core.opAsync("op_crypto_derive_bits", {
             key: keyData,
             algorithm: "PBKDF2",
-            hash: normalizedAlgorithm.hash,
+            hash: normalizedAlgorithm.hash.name,
+            iterations: normalizedAlgorithm.iterations,
             length,
           }, normalizedAlgorithm.salt);
 
