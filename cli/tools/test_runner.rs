@@ -16,7 +16,6 @@ use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
-use deno_core::located_script_name;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
@@ -221,6 +220,8 @@ pub async fn test_specifier(
   test_source
     .push_str("await new Promise(resolve => setTimeout(resolve, 0));\n");
 
+  test_source.push_str("window.dispatchEvent(new Event('load'));\n");
+
   test_source.push_str(&format!(
     "await Deno[Deno.internal].runTests({});\n",
     json!({
@@ -229,6 +230,8 @@ pub async fn test_specifier(
       "shuffle": shuffle,
     }),
   ));
+
+  test_source.push_str("window.dispatchEvent(new Event('unload'));\n");
 
   let test_file = File {
     local: test_module.to_file_path().unwrap(),
@@ -266,20 +269,11 @@ pub async fn test_specifier(
     None
   };
 
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('load'))",
-  )?;
-
   worker.execute_module(&test_module).await?;
 
   worker
     .run_event_loop(maybe_coverage_collector.is_none())
     .await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('unload'))",
-  )?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     worker
