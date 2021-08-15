@@ -569,7 +569,14 @@ pub async fn op_crypto_encrypt_key(
         },
       };
 
-      Ok(public_key.encrypt(&mut rng, padding, data)?.into())
+      Ok(
+        public_key
+          .encrypt(&mut rng, padding, data)
+          .map_err(|e| {
+            custom_error("DOMExceptionOperationError", e.to_string())
+          })?
+          .into(),
+      )
     }
     _ => Err(type_error("Unsupported algorithm".to_string())),
   }
@@ -624,7 +631,14 @@ pub async fn op_crypto_decrypt_key(
         },
       };
 
-      Ok(private_key.decrypt(padding, data)?.into())
+      Ok(
+        private_key
+          .decrypt(padding, data)
+          .map_err(|e| {
+            custom_error("DOMExceptionOperationError", e.to_string())
+          })?
+          .into(),
+      )
     }
     _ => Err(type_error("Unsupported algorithm".to_string())),
   }
