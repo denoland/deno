@@ -751,3 +751,51 @@ unitTest({ perms: { net: true } }, async function httpServerPanic() {
   client.close();
   listener.close();
 });
+
+unitTest(
+  { perms: { net: true } },
+  async function httpServerIncompleteMessage() {
+    const listener = Deno.listen({ port: 4501 });
+
+    const errors: Error[] = [];
+    const onRequest = deferred();
+    const postRespondWith = deferred();
+
+    const promise = (async () => {
+      for await (const conn of listener) {
+        (async () => {
+          for await (const { respondWith } of Deno.serveHttp(conn)) {
+            onRequest.resolve();
+
+            await delay(0);
+
+            await respondWith(new Response("test-response"))
+              .catch((error: Error) => errors.push(error));
+
+            postRespondWith.resolve();
+            break;
+          }
+        })();
+        break;
+      }
+    })();
+
+    const conn = await Deno.connect({ port: 4501 });
+    await conn.write(new TextEncoder().encode(
+      `GET / HTTP/1.0\r\n\r\n`,
+    ));
+
+    await onRequest;
+    conn.close();
+
+    await postRespondWith;
+    await promise;
+
+    assertEquals(errors.length, 1);
+    assertEquals(errors[0].name, "Http");
+    assertEquals(
+      errors[0].message,
+      "connection closed before message completed",
+    );
+  },
+);
