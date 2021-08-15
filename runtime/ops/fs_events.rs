@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::permissions::Permissions;
-use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
@@ -135,11 +134,7 @@ async fn op_fs_events_poll(
   rid: ResourceId,
   _: (),
 ) -> Result<Option<FsEvent>, AnyError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<FsEventsResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+  let resource = state.borrow().resource_table.get::<FsEventsResource>(rid)?;
   let mut receiver = RcRef::map(&resource, |r| &r.receiver).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let maybe_result = receiver.recv().or_cancel(cancel).await?;

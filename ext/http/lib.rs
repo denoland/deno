@@ -175,8 +175,7 @@ async fn op_http_request_next(
   let conn_resource = state
     .borrow()
     .resource_table
-    .get::<ConnResource>(conn_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<ConnResource>(conn_rid)?;
 
   let cancel = RcRef::map(conn_resource.clone(), |r| &r.cancel);
 
@@ -283,7 +282,7 @@ fn req_url(
     Cow::Owned(addr.to_string())
   };
   let path = req.uri().path_and_query().map_or("/", |p| p.as_str());
-  Ok(format!("{}://{}{}", scheme, host, path))
+  Ok([scheme, "://", &host, path].concat())
 }
 
 fn req_headers(
@@ -395,8 +394,7 @@ async fn op_http_response(
   let response_sender = state
     .borrow_mut()
     .resource_table
-    .take::<ResponseSenderResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .take::<ResponseSenderResource>(rid)?;
   let response_sender = Rc::try_unwrap(response_sender)
     .ok()
     .expect("multiple op_http_respond ongoing");
@@ -406,8 +404,7 @@ async fn op_http_response(
   let conn_resource = state
     .borrow()
     .resource_table
-    .get::<ConnResource>(conn_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<ConnResource>(conn_rid)?;
 
   let mut builder = Response::builder().status(status);
 
@@ -444,7 +441,7 @@ async fn op_http_response(
 
   poll_fn(|cx| match conn_resource.poll(cx) {
     Poll::Ready(x) => {
-      state.borrow_mut().resource_table.close(conn_rid);
+      state.borrow_mut().resource_table.close(conn_rid).ok();
       Poll::Ready(x)
     }
     Poll::Pending => Poll::Ready(Ok(())),
@@ -465,14 +462,12 @@ async fn op_http_response_close(
   let resource = state
     .borrow_mut()
     .resource_table
-    .take::<ResponseBodyResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .take::<ResponseBodyResource>(rid)?;
 
   let conn_resource = state
     .borrow()
     .resource_table
-    .get::<ConnResource>(resource.conn_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<ConnResource>(resource.conn_rid)?;
   drop(resource);
 
   let r = poll_fn(|cx| match conn_resource.poll(cx) {
@@ -494,14 +489,12 @@ async fn op_http_request_read(
   let resource = state
     .borrow()
     .resource_table
-    .get::<RequestResource>(rid as u32)
-    .ok_or_else(bad_resource_id)?;
+    .get::<RequestResource>(rid as u32)?;
 
   let conn_resource = state
     .borrow()
     .resource_table
-    .get::<ConnResource>(resource.conn_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<ConnResource>(resource.conn_rid)?;
 
   let mut inner = RcRef::map(resource.clone(), |r| &r.inner)
     .borrow_mut()
@@ -547,14 +540,12 @@ async fn op_http_response_write(
   let resource = state
     .borrow()
     .resource_table
-    .get::<ResponseBodyResource>(rid as u32)
-    .ok_or_else(bad_resource_id)?;
+    .get::<ResponseBodyResource>(rid as u32)?;
 
   let conn_resource = state
     .borrow()
     .resource_table
-    .get::<ConnResource>(resource.conn_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<ConnResource>(resource.conn_rid)?;
 
   let mut body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
 
@@ -598,8 +589,7 @@ async fn op_http_upgrade_websocket(
   let req_resource = state
     .borrow_mut()
     .resource_table
-    .take::<RequestResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .take::<RequestResource>(rid)?;
 
   let mut inner = RcRef::map(&req_resource, |r| &r.inner).borrow_mut().await;
 
