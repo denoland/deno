@@ -535,7 +535,7 @@
 
               const key = constructKey(
                 "secret",
-                true,
+                extractable,
                 usageIntersection(keyUsages, recognisedUsages),
                 algorithm,
                 handle,
