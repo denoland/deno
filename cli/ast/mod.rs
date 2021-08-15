@@ -474,9 +474,10 @@ pub fn transpile_module(
   globals: &Globals,
   cm: Rc<SourceMap>,
 ) -> Result<(Rc<SourceFile>, Module), AnyError> {
+  let source = strip_bom(source);
   let source_file = cm.new_source_file(
     FileName::Custom(specifier.to_string()),
-    source.to_string(), // swc will strip the BOM
+    source.to_string(),
   );
   let input = StringInput::from(&*source_file);
   let (comments, module) =
