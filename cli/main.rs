@@ -1041,12 +1041,12 @@ async fn test_command(
       let test_modules_result = if doc {
         fs_util::collect_specifiers(
           include.clone(),
-          fs_util::is_supported_ext_test,
+          fs_util::is_supported_test_ext,
         )
       } else {
         fs_util::collect_specifiers(
           include.clone(),
-          tools::test_runner::is_supported,
+          fs_util::is_supported_test_path,
         )
       };
 
@@ -1180,7 +1180,7 @@ async fn test_command(
         let doc_modules = if doc {
           fs_util::collect_specifiers(
             include.clone(),
-            fs_util::is_supported_ext_test,
+            fs_util::is_supported_test_ext,
           )?
         } else {
           Vec::new()
@@ -1194,7 +1194,7 @@ async fn test_command(
 
         let test_modules = fs_util::collect_specifiers(
           include.clone(),
-          tools::test_runner::is_supported,
+          fs_util::is_supported_test_path,
         )?;
 
         let test_modules_to_reload = test_modules
@@ -1228,7 +1228,7 @@ async fn test_command(
     let doc_modules = if doc {
       fs_util::collect_specifiers(
         include.clone(),
-        fs_util::is_supported_ext_test,
+        fs_util::is_supported_test_ext,
       )?
     } else {
       Vec::new()
@@ -1236,7 +1236,7 @@ async fn test_command(
 
     let test_modules = fs_util::collect_specifiers(
       include.clone(),
-      tools::test_runner::is_supported,
+      fs_util::is_supported_test_path,
     )?;
 
     test_runner::run_tests(
