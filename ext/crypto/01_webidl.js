@@ -22,7 +22,7 @@
   webidl.converters["BufferSource or JsonWebKey"] = (V, opts) => {
     // Union for (BufferSource or JsonWebKey)
     if (ArrayBufferIsView(V) || V instanceof ArrayBuffer) {
-      webidl.converters.BufferSource(V, opts);
+      return webidl.converters.BufferSource(V, opts);
     }
     return webidl.converters.JsonWebKey(V, opts);
   };

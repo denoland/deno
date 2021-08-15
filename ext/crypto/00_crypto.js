@@ -470,7 +470,7 @@
 
       // 2.
       if (format !== "jwk") {
-        if (!ArrayBufferIsView(keyData) && !(keyData instanceof ArrayBuffer)) {
+        if (ArrayBufferIsView(keyData) || (keyData instanceof ArrayBuffer)) {
           if (ArrayBufferIsView(keyData)) {
             keyData = new Uint8Array(
               keyData.buffer,
@@ -480,10 +480,10 @@
           } else {
             keyData = new Uint8Array(keyData);
           }
+          keyData = TypedArrayPrototypeSlice(keyData);
         } else {
           throw new TypeError("keyData is a JsonWebKey");
         }
-        keyData = TypedArrayPrototypeSlice(keyData);
       } else {
         if (ArrayBufferIsView(keyData) || (keyData instanceof ArrayBuffer)) {
           throw new TypeError("keyData is not a JsonWebKey");
@@ -500,14 +500,6 @@
         ) !== undefined
       ) {
         throw new DOMException("Invalid key usages", "SyntaxError");
-      }
-
-      // https://github.com/denoland/deno/pull/9614#issuecomment-866049433
-      if (!extractable) {
-        throw new DOMException(
-          "Non-extractable keys are not supported",
-          "SecurityError",
-        );
       }
 
       // 3.
