@@ -799,3 +799,99 @@ unitTest(
     );
   },
 );
+
+unitTest(
+  { perms: { net: true } },
+  async function httpServerIncompleteMessageConcurrentRequests() {
+    const listener = Deno.listen({ port: 4501 });
+
+    let i = 0;
+    const errors: Error[] = [];
+
+    const onRequestList = [
+      deferred(),
+      deferred(),
+      deferred(),
+      deferred(),
+      deferred(),
+      deferred(),
+      deferred(),
+      deferred(),
+      deferred(),
+      deferred(),
+    ];
+    const postRespondWithList = [
+      deferred(),
+      deferred(),
+      deferred(),
+      deferred(),
+      deferred(),
+      deferred(),
+      deferred(),
+      deferred(),
+      deferred(),
+      deferred(),
+    ];
+
+    const promise = (async () => {
+      for await (const conn of listener) {
+        const index = i;
+        (async () => {
+          for await (const { respondWith } of Deno.serveHttp(conn)) {
+            onRequestList[index].resolve();
+
+            await delay(0);
+
+            await respondWith(new Response("test-response"))
+              .catch((error: Error) => errors.push(error));
+
+            postRespondWithList[index].resolve();
+            break;
+          }
+        })();
+
+        i += 1;
+        if (i >= 10) {
+          break;
+        }
+      }
+    })();
+
+    async function clientRequest(index: number) {
+      const conn = await Deno.connect({ port: 4501 });
+      await conn.write(new TextEncoder().encode(
+        `GET / HTTP/1.0\r\n\r\n`,
+      ));
+
+      await onRequestList[index];
+      conn.close();
+
+      await postRespondWithList[index];
+    }
+
+    await Promise.all([
+      clientRequest(0),
+      clientRequest(1),
+      clientRequest(2),
+      clientRequest(3),
+      clientRequest(4),
+      clientRequest(5),
+      clientRequest(6),
+      clientRequest(7),
+      clientRequest(8),
+      clientRequest(9),
+    ]);
+
+    await promise;
+
+    assertEquals(errors.length, 10);
+
+    for (const error of errors) {
+      assertEquals(error.name, "Http");
+      assertEquals(
+        error.message,
+        "connection closed before message completed",
+      );
+    }
+  },
+);
