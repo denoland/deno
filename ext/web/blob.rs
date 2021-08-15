@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use crate::Location;
 
-pub type PartMap = HashMap<Uuid, Arc<Box<dyn BlobPart + Send + Sync>>>;
+pub type PartMap = HashMap<Uuid, Arc<dyn BlobPart + Send + Sync>>;
 
 #[derive(Clone, Default, Debug)]
 pub struct BlobStore {
@@ -24,17 +24,14 @@ pub struct BlobStore {
 }
 
 impl BlobStore {
-  pub fn insert_part(&self, part: Box<dyn BlobPart + Send + Sync>) -> Uuid {
+  pub fn insert_part(&self, part: Arc<dyn BlobPart + Send + Sync>) -> Uuid {
     let id = Uuid::new_v4();
     let mut parts = self.parts.lock();
-    parts.insert(id, Arc::new(part));
+    parts.insert(id, part);
     id
   }
 
-  pub fn get_part(
-    &self,
-    id: &Uuid,
-  ) -> Option<Arc<Box<dyn BlobPart + Send + Sync>>> {
+  pub fn get_part(&self, id: &Uuid) -> Option<Arc<dyn BlobPart + Send + Sync>> {
     let parts = self.parts.lock();
     let part = parts.get(id);
     part.cloned()
@@ -43,7 +40,7 @@ impl BlobStore {
   pub fn remove_part(
     &self,
     id: &Uuid,
-  ) -> Option<Arc<Box<dyn BlobPart + Send + Sync>>> {
+  ) -> Option<Arc<dyn BlobPart + Send + Sync>> {
     let mut parts = self.parts.lock();
     parts.remove(id)
   }
@@ -86,7 +83,7 @@ impl BlobStore {
 pub struct Blob {
   pub media_type: String,
 
-  pub parts: Vec<Arc<Box<dyn BlobPart + Send + Sync>>>,
+  pub parts: Vec<Arc<dyn BlobPart + Send + Sync>>,
 }
 
 impl Blob {
@@ -143,7 +140,7 @@ impl BlobPart for InMemoryBlobPart {
 
 #[derive(Debug)]
 pub struct SlicedBlobPart {
-  part: Arc<Box<dyn BlobPart + Send + Sync>>,
+  part: Arc<dyn BlobPart + Send + Sync>,
   start: usize,
   len: usize,
 }
@@ -167,7 +164,7 @@ pub fn op_blob_create_part(
 ) -> Result<Uuid, AnyError> {
   let blob_store = state.borrow::<BlobStore>();
   let part = InMemoryBlobPart(data.to_vec());
-  let id = blob_store.insert_part(Box::new(part));
+  let id = blob_store.insert_part(Arc::new(part));
   Ok(id)
 }
 
@@ -198,7 +195,7 @@ pub fn op_blob_slice_part(
   }
 
   let sliced_part = SlicedBlobPart { part, start, len };
-  let id = blob_store.insert_part(Box::new(sliced_part));
+  let id = blob_store.insert_part(Arc::new(sliced_part));
 
   Ok(id)
 }
