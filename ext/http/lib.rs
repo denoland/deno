@@ -283,7 +283,7 @@ fn req_url(
     Cow::Owned(addr.to_string())
   };
   let path = req.uri().path_and_query().map_or("/", |p| p.as_str());
-  Ok(format!("{}://{}{}", scheme, host, path))
+  Ok([scheme, "://", &host, path].concat())
 }
 
 fn req_headers(
