@@ -689,8 +689,11 @@
           }
 
           // TODO(@littledivy): Add this step to spec. WPT has tests for it.
-          if(normalizedAlgorithm.iterations == 0) {
-            throw new DOMException("iterations must not be zero", "OperationError");
+          if (normalizedAlgorithm.iterations == 0) {
+            throw new DOMException(
+              "iterations must not be zero",
+              "OperationError",
+            );
           }
 
           const handle = baseKey[_handle];
