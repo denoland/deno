@@ -87,6 +87,15 @@
     },
   };
 
+  // Decodes the unpadded base64 to the octet sequence containing key value `k` defined in RFC7518 Section 6.4
+  function decodeSymmetricKey(key) {
+    return new Uint8Array(
+      atob(key.replace(/\-/g, "+").replace(/\_/g, "/")).split("").map((c) =>
+        c.charCodeAt(0)
+      ),
+    );
+  }
+
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
   // 18.4.4
   function normalizeAlgorithm(algorithm, op) {
@@ -542,7 +551,7 @@
               }
 
               // 4.
-              data = new TextEncoder().encode(jwk.k);
+              data = decodeSymmetricKey(jwk.k);
               // 5.
               hash = normalizedAlgorithm.hash;
               // 6.
