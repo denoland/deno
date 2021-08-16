@@ -503,9 +503,10 @@
         // The spec is ambiguous here, see
         // https://github.com/WebAssembly/spec/issues/1138. The WPT tests
         // expect the raw value of the Content-Type attribute lowercased.
+        const contentType = res.headers.get("Content-Type");
         if (
-          StringPrototypeToLowerCase(res.headers.get("Content-Type")) !==
-            "application/wasm"
+          typeof contentType !== "string" ||
+          StringPrototypeToLowerCase(contentType) !== "application/wasm"
         ) {
           throw new TypeError("Invalid WebAssembly content type.");
         }
