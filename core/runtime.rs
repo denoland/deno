@@ -406,7 +406,7 @@ impl JsRuntime {
     s.clone()
   }
 
-  pub(crate) fn module_map(isolate: &v8::Isolate) -> Rc<RefCell<ModuleMap>> {
+  pub fn module_map(isolate: &v8::Isolate) -> Rc<RefCell<ModuleMap>> {
     let module_map = isolate.get_slot::<Rc<RefCell<ModuleMap>>>().unwrap();
     module_map.clone()
   }
