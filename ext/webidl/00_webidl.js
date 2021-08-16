@@ -73,7 +73,7 @@
     Uint8ClampedArray,
     WeakSet,
     WeakSetPrototypeAdd,
-    WeakMapPrototypeHas,
+    WeakSetPrototypeHas,
   } = window.__bootstrap.primordials;
 
   function makeException(ErrorType, message, opts = {}) {
