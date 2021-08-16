@@ -217,8 +217,7 @@ pub fn create_http_client(
   ca_data: Option<Vec<u8>>,
   proxy: Option<Proxy>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  cert_chain: Option<String>,
-  private_key: Option<String>,
+  client_cert_chain_and_key: Option<(String, String)>,
 ) -> Result<Client, AnyError> {
   let mut tls_config = create_client_config(
     root_cert_store,
