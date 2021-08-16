@@ -913,7 +913,7 @@
   }
 
   function assertBranded(self, prototype) {
-    if (!(self instanceof prototype) || !WeakSetPrototypeHas(branded, self)) {
+    if (!(self instanceof prototype) || WeakSetPrototypeHas(branded, self)) {
       throw new TypeError("Illegal invocation");
     }
   }
