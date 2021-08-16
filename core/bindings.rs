@@ -611,13 +611,14 @@ fn wasm_streaming_feed(
     let state = state_rc.borrow();
     // If message_type is not Bytes, we'll be consuming the WasmStreaming
     // instance, so let's also remove it from the resource table.
-    let wasm_streaming: Option<Rc<WasmStreamingResource>> = match message_type {
-      MessageType::Bytes => state.op_state.borrow().resource_table.get(rid),
-      _ => state.op_state.borrow_mut().resource_table.take(rid),
-    };
+    let wasm_streaming: Result<Rc<WasmStreamingResource>, AnyError> =
+      match message_type {
+        MessageType::Bytes => state.op_state.borrow().resource_table.get(rid),
+        _ => state.op_state.borrow_mut().resource_table.take(rid),
+      };
     match wasm_streaming {
-      Some(wasm_streaming) => wasm_streaming,
-      None => return throw_type_error(scope, "Invalid resource ID."),
+      Ok(wasm_streaming) => wasm_streaming,
+      Err(e) => return throw_type_error(scope, e.to_string()),
     }
   };
 

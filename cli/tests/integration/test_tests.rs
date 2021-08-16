@@ -55,6 +55,12 @@ itest!(collect {
   output: "test/collect.out",
 });
 
+itest!(load_unload {
+  args: "test test/load_unload.ts",
+  exit_code: 0,
+  output: "test/load_unload.out",
+});
+
 itest!(doc {
   args: "test --doc --allow-all test/doc.ts",
   exit_code: 1,

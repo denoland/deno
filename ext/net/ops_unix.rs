@@ -87,7 +87,7 @@ pub(crate) async fn accept_unix(
     .borrow()
     .resource_table
     .get::<UnixListenerResource>(rid)
-    .ok_or_else(|| bad_resource("Listener has been closed"))?;
+    .map_err(|_| bad_resource("Listener has been closed"))?;
   let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
     .ok_or_else(|| custom_error("Busy", "Listener already in use"))?;
@@ -124,7 +124,7 @@ pub(crate) async fn receive_unix_packet(
     .borrow()
     .resource_table
     .get::<UnixDatagramResource>(rid)
-    .ok_or_else(|| bad_resource("Socket has been closed"))?;
+    .map_err(|_| bad_resource("Socket has been closed"))?;
   let socket = RcRef::map(&resource, |r| &r.socket)
     .try_borrow_mut()
     .ok_or_else(|| custom_error("Busy", "Socket already in use"))?;
