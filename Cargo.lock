@@ -940,7 +940,6 @@ dependencies = [
 name = "deno_websocket"
 version = "0.19.0"
 dependencies = [
- "base64 0.13.0",
  "deno_core",
  "deno_tls",
  "http",
@@ -949,9 +948,6 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite",
- "uuid",
- "webpki",
- "webpki-roots",
 ]
 
 [[package]]
