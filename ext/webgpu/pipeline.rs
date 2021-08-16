@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::ResourceId;
 use deno_core::{OpState, Resource};
@@ -173,24 +172,20 @@ pub fn op_webgpu_create_compute_pipeline(
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGpuDevice>(args.device_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::WebGpuDevice>(args.device_rid)?;
   let device = device_resource.0;
 
   let pipeline_layout = if let Some(rid) = args.layout {
-    let id = state
-      .resource_table
-      .get::<WebGpuPipelineLayout>(rid)
-      .ok_or_else(bad_resource_id)?;
+    let id = state.resource_table.get::<WebGpuPipelineLayout>(rid)?;
     Some(id.0)
   } else {
     None
   };
 
-  let compute_shader_module_resource = state
-    .resource_table
-    .get::<super::shader::WebGpuShaderModule>(args.compute.module)
-    .ok_or_else(bad_resource_id)?;
+  let compute_shader_module_resource =
+    state
+      .resource_table
+      .get::<super::shader::WebGpuShaderModule>(args.compute.module)?;
 
   let descriptor = wgpu_core::pipeline::ComputePipelineDescriptor {
     label: args.label.map(Cow::from),
@@ -246,8 +241,7 @@ pub fn op_webgpu_compute_pipeline_get_bind_group_layout(
   let instance = state.borrow::<super::Instance>();
   let compute_pipeline_resource = state
     .resource_table
-    .get::<WebGpuComputePipeline>(args.compute_pipeline_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuComputePipeline>(args.compute_pipeline_rid)?;
   let compute_pipeline = compute_pipeline_resource.0;
 
   let (bind_group_layout, maybe_err) = gfx_select!(compute_pipeline => instance.compute_pipeline_get_bind_group_layout(compute_pipeline, args.index, std::marker::PhantomData));
@@ -464,24 +458,21 @@ pub fn op_webgpu_create_render_pipeline(
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGpuDevice>(args.device_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::WebGpuDevice>(args.device_rid)?;
   let device = device_resource.0;
 
   let layout = if let Some(rid) = args.layout {
-    let pipeline_layout_resource = state
-      .resource_table
-      .get::<WebGpuPipelineLayout>(rid)
-      .ok_or_else(bad_resource_id)?;
+    let pipeline_layout_resource =
+      state.resource_table.get::<WebGpuPipelineLayout>(rid)?;
     Some(pipeline_layout_resource.0)
   } else {
     None
   };
 
-  let vertex_shader_module_resource = state
-    .resource_table
-    .get::<super::shader::WebGpuShaderModule>(args.vertex.module)
-    .ok_or_else(bad_resource_id)?;
+  let vertex_shader_module_resource =
+    state
+      .resource_table
+      .get::<super::shader::WebGpuShaderModule>(args.vertex.module)?;
 
   let descriptor = wgpu_core::pipeline::RenderPipelineDescriptor {
     label: args.label.map(Cow::from),
@@ -601,7 +592,6 @@ pub fn op_webgpu_create_render_pipeline(
       let fragment_shader_module_resource = state
         .resource_table
         .get::<super::shader::WebGpuShaderModule>(fragment.module)
-        .ok_or_else(bad_resource_id)
         .unwrap();
 
       wgpu_core::pipeline::FragmentState {
@@ -666,8 +656,7 @@ pub fn op_webgpu_render_pipeline_get_bind_group_layout(
   let instance = state.borrow::<super::Instance>();
   let render_pipeline_resource = state
     .resource_table
-    .get::<WebGpuRenderPipeline>(args.render_pipeline_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuRenderPipeline>(args.render_pipeline_rid)?;
   let render_pipeline = render_pipeline_resource.0;
 
   let (bind_group_layout, maybe_err) = gfx_select!(render_pipeline => instance.render_pipeline_get_bind_group_layout(render_pipeline, args.index, std::marker::PhantomData));

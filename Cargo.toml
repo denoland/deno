@@ -39,6 +39,11 @@ incremental = true
 lto = true
 opt-level = 'z' # Optimize for size
 
+# Key generation is too slow on `debug`
+# 
+[profile.dev.package.num-bigint-dig]
+opt-level = 3
+
 # Optimize these packages for performance.
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.bench.package.rand]
@@ -60,6 +65,8 @@ opt-level = 3
 [profile.bench.package.deno_http]
 opt-level = 3
 [profile.bench.package.deno_net]
+opt-level = 3
+[profile.bench.package.num-bigint-dig]
 opt-level = 3
 [profile.bench.package.rusty_v8]
 opt-level = 3
@@ -88,6 +95,8 @@ opt-level = 3
 [profile.release.package.deno_http]
 opt-level = 3
 [profile.release.package.deno_net]
+opt-level = 3
+[profile.release.package.num-bigint-dig]
 opt-level = 3
 [profile.release.package.rusty_v8]
 opt-level = 3

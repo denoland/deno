@@ -1090,9 +1090,10 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .long("coverage")
         .require_equals(true)
         .takes_value(true)
+        .value_name("DIR")
         .conflicts_with("inspect")
         .conflicts_with("inspect-brk")
-        .help("UNSTABLE: Collect coverage profile data"),
+        .help("UNSTABLE: Collect coverage profile data into DIR"),
     )
     .arg(
       Arg::with_name("jobs")
