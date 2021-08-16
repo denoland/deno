@@ -661,7 +661,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "bencher",
  "deno_core",
