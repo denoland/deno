@@ -303,6 +303,8 @@ impl DevToolsSession {
   }
 
   fn dispatch(&self, msg: CdpMessage) -> Result<(), AnyError> {
+    // Check if the messages uses one of built-in V8 domains and if
+    // so leave the work to V8Inspector
     if msg.can_dispatch_to_v8() {
       return self.dispatch_to_v8(msg);
     }
