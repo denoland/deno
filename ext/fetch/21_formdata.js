@@ -84,7 +84,7 @@
       if (form !== undefined) {
         webidl.illegalConstructor();
       }
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
     }
 
     /**

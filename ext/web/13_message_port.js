@@ -31,7 +31,7 @@
     #port2;
 
     constructor() {
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
       const [port1Id, port2Id] = opCreateEntangledMessagePort();
       const port1 = createMessagePort(port1Id);
       const port2 = createMessagePort(port2Id);
@@ -72,7 +72,7 @@
   function createMessagePort(id) {
     const port = core.createHostObject();
     ObjectSetPrototypeOf(port, MessagePort.prototype);
-    port[webidl.brand] = webidl.brand;
+    webidl.brandSelf(port);
     setEventTargetData(port);
     port[_id] = id;
     return port;

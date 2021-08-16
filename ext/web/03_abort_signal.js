@@ -61,7 +61,7 @@
         throw new TypeError("Illegal constructor.");
       }
       super();
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
     }
 
     get aborted() {

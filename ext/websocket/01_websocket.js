@@ -193,7 +193,7 @@
 
     constructor(url, protocols = []) {
       super();
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
       const prefix = "Failed to construct 'WebSocket'";
       webidl.requiredArguments(arguments.length, 1, {
         prefix,

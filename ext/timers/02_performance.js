@@ -157,7 +157,7 @@
       if (key !== illegalConstructorKey) {
         webidl.illegalConstructor();
       }
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
 
       this[_name] = name;
       this[_entryType] = entryType;
@@ -226,7 +226,7 @@
       const { detail = null, startTime = now() } = options;
 
       super(name, "mark", startTime, 0, illegalConstructorKey);
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
       if (startTime < 0) {
         throw new TypeError("startTime cannot be negative");
       }
@@ -287,7 +287,7 @@
       }
 
       super(name, "measure", startTime, duration, key);
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
       this[_detail] = structuredClone(detail);
     }
 

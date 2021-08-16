@@ -3003,7 +3003,7 @@
         prefix,
         context: "Argument 1",
       });
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
       this[_globalObject] = window;
       this[_highWaterMark] = init.highWaterMark;
     }
@@ -3059,7 +3059,7 @@
         prefix,
         context: "Argument 1",
       });
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
       this[_globalObject] = window;
       this[_highWaterMark] = init.highWaterMark;
     }
@@ -3138,7 +3138,7 @@
         prefix,
         context: "Argument 2",
       });
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
       if (underlyingSource === undefined) {
         underlyingSource = null;
       }
@@ -3377,7 +3377,7 @@
         prefix,
         context: "Argument 1",
       });
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
       setUpReadableStreamDefaultReader(this, stream);
     }
 
@@ -3790,7 +3790,7 @@
         prefix,
         context: "Argument 2",
       });
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
       if (transformer === undefined) {
         transformer = null;
       }
@@ -3978,7 +3978,7 @@
         prefix,
         context: "Argument 2",
       });
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
       if (underlyingSink === undefined) {
         underlyingSink = null;
       }
@@ -4092,7 +4092,7 @@
         prefix,
         context: "Argument 1",
       });
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
       setUpWritableStreamDefaultWriter(this, stream);
     }
 

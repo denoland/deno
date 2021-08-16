@@ -173,9 +173,8 @@
   }
 
   class GPU {
-    [webidl.brand] = webidl.brand;
-
     constructor() {
+      webidl.brandSelf(this);
       webidl.illegalConstructor();
     }
 

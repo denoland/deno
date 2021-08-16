@@ -265,7 +265,7 @@
 
     constructor() {
       super();
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
     }
 
     /** @returns {number} */

@@ -43,7 +43,7 @@
           init,
           { prefix, context: "Argument 1" },
         );
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
 
       if (typeof init === "string") {
         // Overload: USVString
@@ -276,7 +276,7 @@
           context: "Argument 2",
         });
       }
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
 
       const parts = core.opSync("op_url_parse", { href: url, baseHref: base });
       this[_url] = parts;

@@ -190,7 +190,7 @@
         prefix,
       });
 
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
 
       const { parts, size } = processBlobParts(
         blobParts,

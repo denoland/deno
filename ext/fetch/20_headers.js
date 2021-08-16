@@ -252,7 +252,7 @@
         });
       }
 
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
       this[_guard] = "none";
       if (init !== undefined) {
         fillHeaders(this, init);

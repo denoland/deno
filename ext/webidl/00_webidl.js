@@ -887,11 +887,11 @@
     }
   }
 
-  const brand = Symbol("[[webidl.brand]]");
+  const branded = new WeakSet();
 
   function createInterfaceConverter(name, prototype) {
     return (V, opts) => {
-      if (!(V instanceof prototype) || V[brand] !== brand) {
+      if (!(V instanceof prototype) || !branded.has(V)) {
         throw makeException(TypeError, `is not of type ${name}.`, opts);
       }
       return V;
@@ -901,12 +901,16 @@
   // TODO(lucacasonato): have the user pass in the prototype, and not the type.
   function createBranded(Type) {
     const t = ObjectCreate(Type.prototype);
-    t[brand] = brand;
+    branded.add(t);
     return t;
   }
 
+  function brandSelf(self) {
+    branded.add(self);
+  }
+
   function assertBranded(self, prototype) {
-    if (!(self instanceof prototype) || self[brand] !== brand) {
+    if (!(self instanceof prototype) || !branded.has(self)) {
       throw new TypeError("Illegal invocation");
     }
   }
@@ -1069,7 +1073,7 @@
     createPromiseConverter,
     invokeCallbackFunction,
     createInterfaceConverter,
-    brand,
+    brandSelf,
     createBranded,
     assertBranded,
     illegalConstructor,

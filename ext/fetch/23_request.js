@@ -221,7 +221,7 @@
         context: "Argument 2",
       });
 
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
 
       /** @type {InnerRequest} */
       let request;

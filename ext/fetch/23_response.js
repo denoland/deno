@@ -273,7 +273,7 @@
         throw new TypeError("Status text is not valid.");
       }
 
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
       const response = newInnerResponse(init.status, init.statusText);
       this[_response] = response;
       this[_headers] = headersFromHeaderList(response.headerList, "response");

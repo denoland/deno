@@ -132,7 +132,7 @@
         context: "Argument 1",
       });
 
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
 
       ArrayPrototypePush(channels, this);
 

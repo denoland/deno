@@ -56,7 +56,7 @@
       this.#encoding = encoding;
       this.#fatal = options.fatal;
       this.#ignoreBOM = options.ignoreBOM;
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
     }
 
     /** @returns {string} */
@@ -137,7 +137,7 @@
 
   class TextEncoder {
     constructor() {
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
     }
 
     /** @returns {string} */
@@ -242,7 +242,7 @@
           }
         },
       });
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
     }
 
     /** @returns {string} */
@@ -327,7 +327,7 @@
           }
         },
       });
-      this[webidl.brand] = webidl.brand;
+      webidl.brandSelf(this);
     }
 
     /** @returns {string} */
