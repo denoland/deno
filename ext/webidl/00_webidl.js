@@ -894,7 +894,7 @@
 
   function createInterfaceConverter(name, prototype) {
     return (V, opts) => {
-      if (!(V instanceof prototype) || WeakSetPrototypeHas(branded, V)) {
+      if (!(V instanceof prototype) || !WeakSetPrototypeHas(branded, V)) {
         throw makeException(TypeError, `is not of type ${name}.`, opts);
       }
       return V;
@@ -913,7 +913,7 @@
   }
 
   function assertBranded(self, prototype) {
-    if (!(self instanceof prototype) || WeakSetPrototypeHas(branded, self)) {
+    if (!(self instanceof prototype) || !WeakSetPrototypeHas(branded, self)) {
       throw new TypeError("Illegal invocation");
     }
   }

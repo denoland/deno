@@ -166,6 +166,8 @@
         })
       }`;
     };
+    
+    webidl.brandSelf(proxy);
 
     return proxy;
   }
