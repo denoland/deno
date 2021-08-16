@@ -9,7 +9,6 @@ pub use webpki_roots;
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::Extension;
@@ -217,8 +216,7 @@ pub fn create_http_client(
   ca_data: Option<Vec<u8>>,
   proxy: Option<Proxy>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  cert_chain: Option<String>,
-  private_key: Option<String>,
+  client_cert_chain_and_key: Option<(String, String)>,
 ) -> Result<Client, AnyError> {
   let mut tls_config = create_client_config(
     root_cert_store,
@@ -226,12 +224,7 @@ pub fn create_http_client(
     unsafely_ignore_certificate_errors,
   )?;
 
-  if cert_chain.is_some() || private_key.is_some() {
-    let cert_chain =
-      cert_chain.ok_or_else(|| type_error("No certificate chain provided"))?;
-    let private_key =
-      private_key.ok_or_else(|| type_error("No private key provided"))?;
-
+  if let Some((cert_chain, private_key)) = client_cert_chain_and_key {
     // The `remove` is safe because load_private_keys checks that there is at least one key.
     let private_key = load_private_keys(private_key.as_bytes())?.remove(0);
 

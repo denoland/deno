@@ -61,8 +61,7 @@ pub fn init<P: FetchPermissions + 'static>(
   proxy: Option<Proxy>,
   request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  cert_chain: Option<String>,
-  private_key: Option<String>,
+  client_cert_chain_and_key: Option<(String, String)>,
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -91,8 +90,7 @@ pub fn init<P: FetchPermissions + 'static>(
           None,
           proxy.clone(),
           unsafely_ignore_certificate_errors.clone(),
-          cert_chain.clone(),
-          private_key.clone(),
+          client_cert_chain_and_key.clone(),
         )
         .unwrap()
       });
@@ -103,8 +101,7 @@ pub fn init<P: FetchPermissions + 'static>(
         request_builder_hook,
         unsafely_ignore_certificate_errors: unsafely_ignore_certificate_errors
           .clone(),
-        cert_chain: cert_chain.clone(),
-        private_key: private_key.clone(),
+        client_cert_chain_and_key: client_cert_chain_and_key.clone(),
       });
       Ok(())
     })
@@ -117,8 +114,7 @@ pub struct HttpClientDefaults {
   pub proxy: Option<Proxy>,
   pub request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub cert_chain: Option<String>,
-  pub private_key: Option<String>,
+  pub client_cert_chain_and_key: Option<(String, String)>,
 }
 
 pub trait FetchPermissions {
@@ -544,15 +540,20 @@ where
     permissions.check_net_url(&url)?;
   }
 
-  /* TODO: Hide behind --unstable
-    if args.cert_chain.is_some() {
-      let permissions = state.borrow_mut::<FP>();
-      permissions.check_unstable(state, "CreateHttpClientOptions.certChain");
+  let client_cert_chain_and_key = {
+    if args.cert_chain.is_some() || args.private_key.is_some() {
+      let cert_chain = args
+        .cert_chain
+        .ok_or_else(|| type_error("No certificate chain provided"))?;
+      let private_key = args
+        .private_key
+        .ok_or_else(|| type_error("No private key provided"))?;
+
+      Some((cert_chain, private_key))
+    } else {
+      None
     }
-    if args.private_key.is_some() {
-      let permissions = state.borrow_mut::<FP>();
-      permissions.check_unstable(state, "CreateHttpClientOptions.privateKey");
-  }*/
+  };
 
   let defaults = state.borrow::<HttpClientDefaults>();
   let cert_data =
@@ -564,8 +565,7 @@ where
     cert_data,
     args.proxy,
     defaults.unsafely_ignore_certificate_errors.clone(),
-    args.cert_chain.clone(),
-    args.private_key,
+    client_cert_chain_and_key,
   )?;
 
   let rid = state.resource_table.add(HttpClientResource::new(client));

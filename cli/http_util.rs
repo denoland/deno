@@ -151,7 +151,6 @@ mod tests {
       None,
       None,
       None,
-      None,
     )
     .unwrap()
   }
@@ -349,7 +348,6 @@ mod tests {
       None,
       None,
       None,
-      None,
     )
     .unwrap();
     let result = fetch_once(FetchOnceArgs {
@@ -377,7 +375,6 @@ mod tests {
     let client = create_http_client(
       version::get_user_agent(),
       None, // This will load mozilla certs by default
-      None,
       None,
       None,
       None,
@@ -411,7 +408,6 @@ mod tests {
     let client = create_http_client(
       version::get_user_agent(),
       Some(deno_tls::rustls::RootCertStore::empty()), // no certs loaded at all
-      None,
       None,
       None,
       None,
@@ -455,7 +451,6 @@ mod tests {
       None,
       None,
       None,
-      None,
     )
     .unwrap();
     let result = fetch_once(FetchOnceArgs {
@@ -494,7 +489,6 @@ mod tests {
         )
         .unwrap(),
       ),
-      None,
       None,
       None,
       None,
@@ -549,7 +543,6 @@ mod tests {
         )
         .unwrap(),
       ),
-      None,
       None,
       None,
       None,
