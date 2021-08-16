@@ -757,6 +757,8 @@ unitTest(
   { perms: { net: true } },
   async function httpServerIncompleteMessage() {
     const listener = Deno.listen({ port: 4501 });
+    const def1 = deferred();
+    const def2 = deferred();
 
     const client = await Deno.connect({ port: 4501 });
     await client.write(new TextEncoder().encode(
@@ -770,24 +772,46 @@ unitTest(
 
     const { readable, writable } = new TransformStream<Uint8Array>();
     const writer = writable.getWriter();
-    writer.write(
-      new TextEncoder().encode(
-        "written to the writable side of a TransformStream",
-      ),
-    );
-    writer.close();
-    const res = new Response(readable);
+
+    async function writeResponse() {
+      await writer.write(
+        new TextEncoder().encode(
+          "written to the writable side of a TransformStream",
+        ),
+      );
+      await writer.close();
+    }
 
     const errors: Error[] = [];
-    respondWith(res).catch((error: Error) => errors.push(error));
+
+    writeResponse()
+      .catch((error: Error) => {
+        errors.push(error);
+      })
+      .then(() => def1.resolve());
+
+    const res = new Response(readable);
+
+    respondWith(res)
+      .catch((error: Error) => errors.push(error))
+      .then(() => def2.resolve());
 
     client.close();
 
-    assertEquals(errors.length, 1);
-    assertEquals(errors[0].name, "Http");
-    assertEquals(
-      errors[0].message,
-      "connection closed before message completed",
-    );
+    await Promise.all([
+      def1,
+      def2,
+    ]);
+
+    listener.close();
+
+    assertEquals(errors.length, 2);
+    for (const error of errors) {
+      assertEquals(error.name, "Http");
+      assertEquals(
+        error.message,
+        "connection closed before message completed",
+      );
+    }
   },
 );
