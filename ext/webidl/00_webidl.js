@@ -71,6 +71,9 @@
     Uint32Array,
     Uint8Array,
     Uint8ClampedArray,
+    WeakSet,
+    WeakSetPrototypeAdd,
+    WeakMapPrototypeHas,
   } = window.__bootstrap.primordials;
 
   function makeException(ErrorType, message, opts = {}) {
@@ -891,7 +894,7 @@
 
   function createInterfaceConverter(name, prototype) {
     return (V, opts) => {
-      if (!(V instanceof prototype) || !branded.has(V)) {
+      if (!(V instanceof prototype) || !WeakSetPrototypeHas(branded, V)) {
         throw makeException(TypeError, `is not of type ${name}.`, opts);
       }
       return V;
@@ -901,16 +904,16 @@
   // TODO(lucacasonato): have the user pass in the prototype, and not the type.
   function createBranded(Type) {
     const t = ObjectCreate(Type.prototype);
-    branded.add(t);
+    WeakSetPrototypeAdd(branded, t);
     return t;
   }
 
   function brandSelf(self) {
-    branded.add(self);
+    WeakSetPrototypeAdd(branded, self);
   }
 
   function assertBranded(self, prototype) {
-    if (!(self instanceof prototype) || !branded.has(self)) {
+    if (!(self instanceof prototype) || !WeakSetPrototypeHas(branded, self)) {
       throw new TypeError("Illegal invocation");
     }
   }
