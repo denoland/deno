@@ -253,6 +253,7 @@ pub async fn run(
     debug_flag: metadata.log_level.map_or(false, |l| l == log::Level::Debug),
     user_agent: version::get_user_agent(),
     unstable: metadata.unstable,
+    enable_testing_features: false,
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
     root_cert_store: Some(root_cert_store),

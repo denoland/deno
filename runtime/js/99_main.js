@@ -8,6 +8,7 @@ delete Object.prototype.__proto__;
 ((window) => {
   const core = Deno.core;
   const {
+    ArrayPrototypeMap,
     Error,
     FunctionPrototypeCall,
     FunctionPrototypeBind,
@@ -160,6 +161,44 @@ delete Object.prototype.__proto__;
             e.message,
           );
         }
+      }
+    }
+  }
+
+  let loadedMainWorkerScript = false;
+
+  function importScripts(...urls) {
+    if (core.opSync("op_worker_get_type") === "module") {
+      throw new TypeError("Can't import scripts in a module worker.");
+    }
+
+    const baseUrl = location.getLocationHref();
+    const parsedUrls = ArrayPrototypeMap(urls, (scriptUrl) => {
+      try {
+        return new url.URL(scriptUrl, baseUrl ?? undefined).href;
+      } catch {
+        throw new domException.DOMException(
+          "Failed to parse URL.",
+          "SyntaxError",
+        );
+      }
+    });
+
+    // A classic worker's main script has looser MIME type checks than any
+    // imported scripts, so we use `loadedMainWorkerScript` to distinguish them.
+    // TODO(andreubotella) Refactor worker creation so the main script isn't
+    // loaded with `importScripts()`.
+    const scripts = core.opSync(
+      "op_worker_sync_fetch",
+      parsedUrls,
+      !loadedMainWorkerScript,
+    );
+    loadedMainWorkerScript = true;
+
+    for (const { url, script } of scripts) {
+      const err = core.evalContext(script, url)[1];
+      if (err !== null) {
+        throw err.thrown;
       }
     }
   }
@@ -597,6 +636,13 @@ delete Object.prototype.__proto__;
     }
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, { name: util.readOnly(name) });
+    if (runtimeOptions.enableTestingFeaturesFlag) {
+      ObjectDefineProperty(
+        globalThis,
+        "importScripts",
+        util.writable(importScripts),
+      );
+    }
     ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
     const consoleFromDeno = globalThis.console;

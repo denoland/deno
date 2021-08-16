@@ -16611,5 +16611,200 @@
         "constructor.any.html?wss": true
       }
     }
+  },
+  "workers": {
+    "Worker-base64.any.worker.html": true,
+    "Worker-call.worker.html": true,
+    "Worker-constructor-proto.any.worker.html": true,
+    "Worker-custom-event.any.worker.html": true,
+    "Worker-formdata.any.worker.html": [
+      "Test FormData interface object"
+    ],
+    "Worker-location.sub.any.worker.html": [
+      "Test WorkerLocation properties."
+    ],
+    "Worker-replace-event-handler.any.worker.html": true,
+    "Worker-replace-global-constructor.any.worker.html": true,
+    "Worker-replace-self.any.worker.html": true,
+    "WorkerGlobalScope_requestAnimationFrame.tentative.worker.html": [
+      "WorkerGlobalScope_requestAnimationFrame"
+    ],
+    "WorkerLocation-origin.sub.window.html": [
+      "workerLocation.origin must use ASCII code points"
+    ],
+    "WorkerNavigator-hardware-concurrency.any.worker.html": [
+      "Test worker navigator hardware concurrency."
+    ],
+    "WorkerNavigator.any.worker.html": [
+      "Testing Navigator properties on workers."
+    ],
+    "constructors": {
+      "Worker": {
+        "DedicatedWorkerGlobalScope-members.worker.html": [
+          "existence of onoffline",
+          "existence of ononline"
+        ],
+        "expected-self-properties.worker.html": [
+          "existence of XMLHttpRequest",
+          "existence of EventSource",
+          "existence of SharedWorker"
+        ],
+        "unexpected-self-properties.worker.html": true
+      }
+    },
+    "dedicated-worker-from-blob-url.window.html": [
+      "Creating a dedicated worker from a blob URL works immediately before revoking."
+    ],
+    "dedicated-worker-in-data-url-context.window.html": [
+      "Create a dedicated worker in a data url frame",
+      "Create a dedicated worker in a data url dedicated worker",
+      "Create a data url dedicated worker in a data url frame"
+    ],
+    "examples": {
+      "general.any.worker.html": true,
+      "general.worker.html": true
+    },
+    "importscripts_mime.any.worker.html": [
+      "importScripts() requires scripty MIME types: text/ecmascript is allowed."
+    ],
+    "interfaces": {
+      "DedicatedWorkerGlobalScope": {
+        "EventTarget.worker.html": true,
+        "onmessage.worker.html": [
+          "Setting onmessage to 1",
+          "Setting onmessage to 1 (again)"
+        ],
+        "postMessage": {
+          "return-value.worker.html": true
+        }
+      },
+      "WorkerGlobalScope": {
+        "location": {
+          "returns-same-object.any.worker.html": true
+        },
+        "self.any.worker.html": true
+      },
+      "WorkerUtils": {
+        "importScripts": {
+          "001.worker.html": true,
+          "002.worker.html": true,
+          "catch.sub.any.worker.html": [
+            "Cross-origin syntax error",
+            "Cross-origin throw",
+            "Redirect-to-cross-origin syntax error",
+            "Redirect-to-Cross-origin throw"
+          ],
+          "report-error-cross-origin.sub.any.worker.html": false,
+          "report-error-redirect-to-cross-origin.sub.any.worker.html": false,
+          "report-error-same-origin.sub.any.worker.html": false,
+          "report-error-setTimeout-cross-origin.sub.any.worker.html": false,
+          "report-error-setTimeout-redirect-to-cross-origin.sub.any.worker.html": false,
+          "report-error-setTimeout-same-origin.sub.any.worker.html": false
+        }
+      }
+    },
+    "modules": {
+      "dedicated-worker-import-blob-url.any.html": true,
+      "dedicated-worker-import-blob-url.any.worker.html": true,
+      "dedicated-worker-import-data-url.any.html": true,
+      "dedicated-worker-import-data-url.any.worker.html": true,
+      "dedicated-worker-import.any.html": true,
+      "dedicated-worker-import.any.worker.html": true,
+      "shared-worker-import-blob-url.window.html": [
+        "Static import.",
+        "Static import (cross-origin).",
+        "Static import (redirect).",
+        "Nested static import.",
+        "Static import and then dynamic import.",
+        "Dynamic import.",
+        "Nested dynamic import.",
+        "Dynamic import and then static import.",
+        "eval(import())."
+      ],
+      "shared-worker-import-data-url.window.html": [
+        "Static import.",
+        "Static import (cross-origin).",
+        "Static import (redirect).",
+        "Nested static import.",
+        "Static import and then dynamic import.",
+        "Dynamic import.",
+        "Nested dynamic import.",
+        "Dynamic import and then static import.",
+        "eval(import())."
+      ],
+      "shared-worker-import.window.html": [
+        "Static import.",
+        "Static import (cross-origin).",
+        "Static import (redirect).",
+        "Nested static import.",
+        "Static import and then dynamic import.",
+        "Dynamic import.",
+        "Nested dynamic import.",
+        "Dynamic import and then static import.",
+        "eval(import())."
+      ]
+    },
+    "nested_worker.worker.html": true,
+    "nested_worker_close_self.worker.html": true,
+    "nested_worker_importScripts.worker.html": true,
+    "nested_worker_sync_xhr.worker.html": [
+      "Nested worker that issues a sync XHR"
+    ],
+    "semantics": {
+      "encodings": {
+        "004.worker.html": true
+      },
+      "interface-objects": {
+        "001.worker.html": [
+          "The SharedWorker interface object should be exposed.",
+          "The ImageData interface object should be exposed.",
+          "The ImageBitmap interface object should be exposed.",
+          "The CanvasGradient interface object should be exposed.",
+          "The CanvasPattern interface object should be exposed.",
+          "The CanvasPath interface object should be exposed.",
+          "The TextMetrics interface object should be exposed.",
+          "The Path2D interface object should be exposed.",
+          "The PromiseRejectionEvent interface object should be exposed.",
+          "The EventSource interface object should be exposed.",
+          "The XMLHttpRequestEventTarget interface object should be exposed.",
+          "The XMLHttpRequestUpload interface object should be exposed.",
+          "The XMLHttpRequest interface object should be exposed.",
+          "The FileList interface object should be exposed.",
+          "The FileReaderSync interface object should be exposed.",
+          "The IDBRequest interface object should be exposed.",
+          "The IDBOpenDBRequest interface object should be exposed.",
+          "The IDBVersionChangeEvent interface object should be exposed.",
+          "The IDBFactory interface object should be exposed.",
+          "The IDBDatabase interface object should be exposed.",
+          "The IDBObjectStore interface object should be exposed.",
+          "The IDBIndex interface object should be exposed.",
+          "The IDBKeyRange interface object should be exposed.",
+          "The IDBCursor interface object should be exposed.",
+          "The IDBCursorWithValue interface object should be exposed.",
+          "The IDBTransaction interface object should be exposed."
+        ],
+        "002.worker.html": true
+      },
+      "multiple-workers": {
+        "exposure.any.html": [
+          "SharedWorker exposure"
+        ],
+        "exposure.any.worker.html": true
+      }
+    },
+    "shared-worker-from-blob-url.window.html": [
+      "Creating a shared worker from a blob URL works.",
+      "Creating a shared worker from a blob URL works immediately before revoking.",
+      "Connecting to a shared worker on a revoked blob URL works."
+    ],
+    "shared-worker-in-data-url-context.window.html": [
+      "Create a shared worker in a data url frame",
+      "Create a data url shared worker in a data url frame"
+    ],
+    "worker-performance.worker.html": [
+      "Resource timing seems to work in workers",
+      "performance.clearResourceTimings in workers",
+      "performance.setResourceTimingBufferSize in workers"
+    ]
   }
 }

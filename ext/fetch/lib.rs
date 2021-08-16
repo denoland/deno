@@ -52,7 +52,9 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::io::StreamReader;
 
-pub use reqwest; // Re-export reqwest
+// Re-export reqwest and data_url
+pub use data_url;
+pub use reqwest;
 
 pub fn init<P: FetchPermissions + 'static>(
   user_agent: String,
