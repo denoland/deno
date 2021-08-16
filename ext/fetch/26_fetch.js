@@ -523,15 +523,15 @@
           while (true) {
             const { value: chunk, done } = await reader.read();
             if (done) break;
-            Deno.core.wasmStreamingFeed(rid, "bytes", chunk);
+            core.wasmStreamingFeed(rid, "bytes", chunk);
           }
         }
 
         // 2.7.
-        Deno.core.wasmStreamingFeed(rid, "finish");
+        core.wasmStreamingFeed(rid, "finish");
       } catch (err) {
         // 2.8 and 3
-        Deno.core.wasmStreamingFeed(rid, "abort", err);
+        core.wasmStreamingFeed(rid, "abort", err);
       }
     })();
   }
