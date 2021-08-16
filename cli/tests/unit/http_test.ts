@@ -752,44 +752,36 @@ unitTest({ perms: { net: true } }, async function httpServerPanic() {
   listener.close();
 });
 
+// https://github.com/denoland/deno/issues/11595
 unitTest(
   { perms: { net: true } },
   async function httpServerIncompleteMessage() {
     const listener = Deno.listen({ port: 4501 });
 
-    const errors: Error[] = [];
-    const onRequest = deferred();
-    const postRespondWith = deferred();
-
-    const promise = (async () => {
-      for await (const conn of listener) {
-        (async () => {
-          for await (const { respondWith } of Deno.serveHttp(conn)) {
-            onRequest.resolve();
-
-            await delay(0);
-
-            await respondWith(new Response("test-response"))
-              .catch((error: Error) => errors.push(error));
-
-            postRespondWith.resolve();
-            break;
-          }
-        })();
-        break;
-      }
-    })();
-
-    const conn = await Deno.connect({ port: 4501 });
-    await conn.write(new TextEncoder().encode(
+    const client = await Deno.connect({ port: 4501 });
+    await client.write(new TextEncoder().encode(
       `GET / HTTP/1.0\r\n\r\n`,
     ));
 
-    await onRequest;
-    conn.close();
+    const conn = await listener.accept();
+    const httpConn = Deno.serveHttp(conn);
+    const ev = await httpConn.nextRequest();
+    const { respondWith } = ev!;
 
-    await postRespondWith;
-    await promise;
+    const { readable, writable } = new TransformStream<Uint8Array>();
+    const writer = writable.getWriter();
+    writer.write(
+      new TextEncoder().encode(
+        "written to the writable side of a TransformStream",
+      ),
+    );
+    writer.close();
+    const res = new Response(readable);
+
+    const errors: Error[] = [];
+    respondWith(res).catch((error: Error) => errors.push(error));
+
+    client.close();
 
     assertEquals(errors.length, 1);
     assertEquals(errors[0].name, "Http");
@@ -797,166 +789,5 @@ unitTest(
       errors[0].message,
       "connection closed before message completed",
     );
-  },
-);
-
-unitTest(
-  { perms: { net: true } },
-  async function httpServerIncompleteMessage2() {
-    const listener = Deno.listen({ port: 4501 });
-
-    const errors: Error[] = [];
-    const onRequest = deferred();
-    const postRespondWith = deferred();
-
-    async function computeResponse(): Promise<Response> {
-      await delay(200);
-      const { readable, writable } = new TransformStream<Uint8Array>();
-      const writer = writable.getWriter();
-      try {
-        writer.write(
-          new TextEncoder().encode(
-            "written to the writable side of a TransformStream",
-          ),
-        );
-      } catch (e) {
-        console.log(`Error in writer.write`, e);
-      }
-      writer.close();
-      return new Response(readable);
-    }
-
-    const promise = (async () => {
-      for await (const conn of listener) {
-        (async () => {
-          for await (const { respondWith } of Deno.serveHttp(conn)) {
-            onRequest.resolve();
-
-            const res = await computeResponse();
-
-            await respondWith(res)
-              .catch((error: Error) => errors.push(error));
-
-            postRespondWith.resolve();
-            break;
-          }
-        })();
-        break;
-      }
-    })();
-
-    const conn = await Deno.connect({ port: 4501 });
-    await conn.write(new TextEncoder().encode(
-      `GET / HTTP/1.0\r\n\r\n`,
-    ));
-
-    await onRequest;
-    conn.close();
-
-    await postRespondWith;
-    await promise;
-
-    assertEquals(errors.length, 1);
-    assertEquals(errors[0].name, "Http");
-    assertEquals(
-      errors[0].message,
-      "connection closed before message completed",
-    );
-  },
-);
-
-unitTest(
-  { perms: { net: true } },
-  async function httpServerIncompleteMessageConcurrentRequests() {
-    const listener = Deno.listen({ port: 4501 });
-
-    let i = 0;
-    const errors: Error[] = [];
-
-    const onRequestList = [
-      deferred(),
-      deferred(),
-      deferred(),
-      deferred(),
-      deferred(),
-      deferred(),
-      deferred(),
-      deferred(),
-      deferred(),
-      deferred(),
-    ];
-    const postRespondWithList = [
-      deferred(),
-      deferred(),
-      deferred(),
-      deferred(),
-      deferred(),
-      deferred(),
-      deferred(),
-      deferred(),
-      deferred(),
-      deferred(),
-    ];
-
-    const promise = (async () => {
-      for await (const conn of listener) {
-        const index = i;
-        (async () => {
-          for await (const { respondWith } of Deno.serveHttp(conn)) {
-            onRequestList[index].resolve();
-
-            await delay(0);
-
-            await respondWith(new Response("test-response"))
-              .catch((error: Error) => errors.push(error));
-
-            postRespondWithList[index].resolve();
-            break;
-          }
-        })();
-
-        i += 1;
-        if (i >= 10) {
-          break;
-        }
-      }
-    })();
-
-    async function clientRequest(index: number) {
-      const conn = await Deno.connect({ port: 4501 });
-      await conn.write(new TextEncoder().encode(
-        `GET / HTTP/1.0\r\n\r\n`,
-      ));
-
-      await onRequestList[index];
-      conn.close();
-
-      await postRespondWithList[index];
-    }
-
-    await Promise.all([
-      clientRequest(0),
-      clientRequest(1),
-      clientRequest(2),
-      clientRequest(3),
-      clientRequest(4),
-      clientRequest(5),
-      clientRequest(6),
-      clientRequest(7),
-      clientRequest(8),
-      clientRequest(9),
-    ]);
-
-    await promise;
-
-    assertEquals(errors.length, 10);
-
-    for (const error of errors) {
-      assertEquals(error.name, "Http");
-      assertEquals(
-        error.message,
-        "connection closed before message completed",
-      );
-    }
   },
 );
