@@ -802,6 +802,71 @@ unitTest(
 
 unitTest(
   { perms: { net: true } },
+  async function httpServerIncompleteMessage2() {
+    const listener = Deno.listen({ port: 4501 });
+
+    const errors: Error[] = [];
+    const onRequest = deferred();
+    const postRespondWith = deferred();
+
+    async function computeResponse(): Promise<Response> {
+      await delay(200);
+      const { readable, writable } = new TransformStream<Uint8Array>();
+      const writer = writable.getWriter();
+      try {
+        writer.write(
+          new TextEncoder().encode(
+            "written to the writable side of a TransformStream",
+          ),
+        );
+      } catch (e) {
+        console.log(`Error in writer.write`, e);
+      }
+      writer.close();
+      return new Response(readable);
+    }
+
+    const promise = (async () => {
+      for await (const conn of listener) {
+        (async () => {
+          for await (const { respondWith } of Deno.serveHttp(conn)) {
+            onRequest.resolve();
+
+            const res = await computeResponse();
+
+            await respondWith(res)
+              .catch((error: Error) => errors.push(error));
+
+            postRespondWith.resolve();
+            break;
+          }
+        })();
+        break;
+      }
+    })();
+
+    const conn = await Deno.connect({ port: 4501 });
+    await conn.write(new TextEncoder().encode(
+      `GET / HTTP/1.0\r\n\r\n`,
+    ));
+
+    await onRequest;
+    conn.close();
+
+    await postRespondWith;
+    await promise;
+
+    assertEquals(errors.length, 1);
+    assertEquals(errors[0].name, "Http");
+    assertEquals(
+      errors[0].message,
+      "connection closed before message completed",
+    );
+  },
+);
+
+unitTest(
+  { perms: { net: true } },
   async function httpServerIncompleteMessageConcurrentRequests() {
     const listener = Deno.listen({ port: 4501 });
 
