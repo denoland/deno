@@ -181,7 +181,7 @@ where
   let url = Url::parse(&args.url)?;
 
   let dev_tools_agent = state.dev_tools_agent.clone();
-  let start_time = state.start_time.clone();
+  let start_time = state.start_time;
   let id = Uuid::new_v4();
 
   // Check scheme before asking for net permission
@@ -469,7 +469,7 @@ pub async fn op_fetch_send(
   }
 
   let dev_tools_agent = state.borrow().dev_tools_agent.clone();
-  let start_time = state.borrow().start_time.clone();
+  let start_time = state.borrow().start_time;
 
   if dev_tools_agent.has_subscribers_for_domain("Network") {
     let content_type = res
@@ -477,7 +477,7 @@ pub async fn op_fetch_send(
       .get(http::header::CONTENT_TYPE)
       .map(|val| val.to_str().ok())
       .flatten()
-      .unwrap_or_else(|| "");
+      .unwrap_or("");
     let mime_type: mime::Mime = content_type
       .parse()
       .unwrap_or(mime::APPLICATION_OCTET_STREAM);

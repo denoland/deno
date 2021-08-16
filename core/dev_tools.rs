@@ -17,9 +17,9 @@ use crate::futures::channel::mpsc::UnboundedSender;
 use crate::futures::try_join;
 use crate::futures::StreamExt;
 use crate::inspector::InspectorSessionProxy;
+use rusty_v8 as v8;
 use serde::Deserialize;
 use serde::Serialize;
-use serde_json;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -57,7 +57,7 @@ impl DevToolsAgent {
       }
     }
     eprintln!("has_subscribers_for_domain {} false", domain);
-    return false;
+    false
   }
 
   /// Send an event to all connected DevTools sessions.
@@ -140,21 +140,12 @@ impl CdpMessage {
   pub fn can_dispatch_to_v8(&self) -> bool {
     self
       .method()
-      .map(|s| v8_inspector_can_dispatch_method(s))
+      .map(|m| {
+        let string_view = v8::inspector::StringView::from(m.as_bytes());
+        v8::inspector::V8InspectorSession::can_dispatch_method(string_view)
+      })
       .unwrap_or(false)
   }
-}
-
-// TODO(lucacasonato): replace with `V8InspectorSession::canDispatchMethod` once
-// that has rusty_v8 bindings.
-fn v8_inspector_can_dispatch_method(method: &str) -> bool {
-  // See https://source.chromium.org/chromium/chromium/src/+/main:v8/src/inspector/v8-inspector-session-impl.cc;l=66;drc=87132919a42f0ddedee557145ee3d8336a8320c7
-  return method.starts_with("Runtime.")
-    || method.starts_with("Debugger.")
-    || method.starts_with("Profiler.")
-    || method.starts_with("HeapProfiler.")
-    || method.starts_with("Console.")
-    || method.starts_with("Schema.");
 }
 
 // This is a temporary solution to dispatching until we have a dynamic
@@ -277,24 +268,16 @@ impl DevToolsSession {
     let session_ = session.clone();
 
     let incoming = async move {
-      loop {
-        if let Some(data) = transport_inbound_rx.next().await {
-          let msg: CdpMessage = serde_json::from_slice(&data)?;
-          session_.dispatch(msg)?;
-        } else {
-          break;
-        }
+      while let Some(data) = transport_inbound_rx.next().await {
+        let msg: CdpMessage = serde_json::from_slice(&data)?;
+        session_.dispatch(msg)?;
       }
       Ok::<_, AnyError>(())
     };
 
     let from_v8 = async move {
-      loop {
-        if let Some((_, msg)) = v8_outbound_rx.next().await {
-          if let Err(_) = transport_outbound_tx.unbounded_send(msg) {
-            break;
-          }
-        } else {
+      while let Some((_, msg)) = v8_outbound_rx.next().await {
+        if transport_outbound_tx.unbounded_send(msg).is_err() {
           break;
         }
       }

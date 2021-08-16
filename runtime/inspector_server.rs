@@ -321,7 +321,7 @@ fn create_websocket_proxy(
     let (websocket_tx, websocket_rx) = websocket.split();
 
     let outbound_pump = transport_rx
-      .map(|data| tungstenite::Message::Text(data))
+      .map(tungstenite::Message::Text)
       .map(Ok)
       .forward(websocket_tx)
       .map_err(|_| ());

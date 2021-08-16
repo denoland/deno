@@ -238,7 +238,7 @@ where
   let root_cert_store = state.borrow().borrow::<WsRootStore>().0.clone();
   let user_agent = state.borrow().borrow::<WsUserAgent>().0.clone();
   let dev_tools_agent = state.borrow().dev_tools_agent.clone();
-  let start_time = state.borrow().start_time.clone();
+  let start_time = state.borrow().start_time;
 
   let id = Uuid::new_v4();
   let uri: Uri = args.url.parse()?;
@@ -468,7 +468,7 @@ pub async fn op_ws_send(
 
   let event = if dev_tools_agent.has_subscribers_for_domain("Network") {
     if let Some(id) = resource.id {
-      let start_time = state.borrow().start_time.clone();
+      let start_time = state.borrow().start_time;
       let (opcode, payload_data) = match &msg {
         Message::Text(str) => (1, Cow::Borrowed(str)),
         Message::Binary(buf) => (2, Cow::Owned(base64::encode(buf))),
@@ -532,7 +532,7 @@ pub async fn op_ws_close(
 
   if let Some(id) = resource.id {
     let dev_tools_agent = state.borrow().dev_tools_agent.clone();
-    let start_time = state.borrow().start_time.clone();
+    let start_time = state.borrow().start_time;
     dev_tools_agent.notify_subscribers(
       "Network.webSocketClosed",
       json!({
@@ -568,7 +568,7 @@ pub async fn op_ws_next_event(
     .get::<WsStreamResource>(rid)?;
 
   let dev_tools_agent = state.borrow().dev_tools_agent.clone();
-  let start_time = state.borrow().start_time.clone();
+  let start_time = state.borrow().start_time;
 
   let cancel = RcRef::map(&resource, |r| &r.cancel);
   let val = resource.next_message(cancel).await?;
