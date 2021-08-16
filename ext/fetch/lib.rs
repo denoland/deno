@@ -566,8 +566,7 @@ where
     defaults.unsafely_ignore_certificate_errors.clone(),
     args.cert_chain.clone(),
     args.private_key,
-  )
-  .unwrap();
+  )?;
 
   let rid = state.resource_table.add(HttpClientResource::new(client));
   Ok(rid)

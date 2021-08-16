@@ -235,10 +235,12 @@ pub fn create_http_client(
     // The `remove` is safe because load_private_keys checks that there is at least one key.
     let private_key = load_private_keys(private_key.as_bytes())?.remove(0);
 
-    tls_config.set_single_client_cert(
-      load_certs(&mut cert_chain.as_bytes())?,
-      private_key,
-    )?;
+    tls_config
+      .set_single_client_cert(
+        load_certs(&mut cert_chain.as_bytes())?,
+        private_key,
+      )
+      .expect("invalid client key or certificate");
   }
 
   let mut headers = HeaderMap::new();
