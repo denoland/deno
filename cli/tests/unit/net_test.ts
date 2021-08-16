@@ -545,6 +545,8 @@ unitTest(
 
 unitTest(
   {
+    // https://github.com/denoland/deno/issues/11580
+    ignore: Deno.build.os === "darwin" && isCI,
     perms: { net: true },
   },
   async function netHangsOnClose() {
