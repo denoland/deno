@@ -113,8 +113,10 @@ declare namespace Deno {
    * See: https://no-color.org/ */
   export const noColor: boolean;
 
+  export type TestFunction = (t: TestContext) => void | Promise<void>;
+
   export interface TestDefinition {
-    fn: () => void | Promise<void>;
+    fn: TestFunction;
     name: string;
     ignore?: boolean;
     /** If at least one test has `only` set to true, only run tests that have
@@ -185,6 +187,31 @@ declare namespace Deno {
    * ```
    * */
   export function test(name: string, fn: () => void | Promise<void>): void;
+
+  export interface TestStep {
+    fn: TestFunction;
+    name: string;
+    ignore?: boolean;
+    /** Check that the number of async completed ops after the test step is the same
+     * as number of dispatched ops. Defaults to true.*/
+    sanitizeOps?: boolean;
+    /** Ensure the test sep does not "leak" resources - ie. the resource table
+     * after the test has exactly the same contents as before the test. Defaults
+     * to true. */
+    sanitizeResources?: boolean;
+
+    /** Ensure the test step does not prematurely cause the process to exit,
+     * for example via a call to `Deno.exit`. Defaults to true. */
+    sanitizeExit?: boolean;
+  }
+
+  export interface TestContext {
+    /** Execute a test step returning the error that occured if any.
+     * The status of the step will be reported to the current test reporter.
+     */
+    step(t: TestStep): Error | Promise<Error>;
+    step(name: string, fn: TestFunction): Error | Promise<Error>;
+  }
 
   /** Exit the Deno process with optional exit code. If no exit code is supplied
    * then Deno will exit with return code of 0.

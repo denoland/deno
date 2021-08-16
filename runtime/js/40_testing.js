@@ -29,10 +29,10 @@
   // ops. Note that "unref" ops are ignored since in nature that are
   // optional.
   function assertOps(fn) {
-    return async function asyncOpSanitizer() {
+    return async function asyncOpSanitizer(t) {
       const pre = metrics();
       try {
-        await fn();
+        await fn(t);
       } finally {
         // Defer until next event loop turn - that way timeouts and intervals
         // cleared can actually be removed from resource table, otherwise
@@ -67,9 +67,9 @@ finishing test case.`,
   function assertResources(
     fn,
   ) {
-    return async function resourceSanitizer() {
+    return async function resourceSanitizer(t) {
       const pre = core.resources();
-      await fn();
+      await fn(t);
       const post = core.resources();
 
       const preStr = JSONStringify(pre, null, 2);
@@ -87,7 +87,7 @@ finishing test case.`;
   // Wrap test function in additional assertion that makes sure
   // that the test case does not accidentally exit prematurely.
   function assertExit(fn) {
-    return async function exitSanitizer() {
+    return async function exitSanitizer(t) {
       setExitHandler((exitCode) => {
         assert(
           false,
@@ -96,7 +96,7 @@ finishing test case.`;
       });
 
       try {
-        await fn();
+        await fn(t);
       } catch (err) {
         throw err;
       } finally {
@@ -117,11 +117,11 @@ finishing test case.`;
       core.opSync("op_restore_test_permissions", token);
     }
 
-    return async function applyPermissions() {
+    return async function applyPermissions(t) {
       const token = pledgePermissions(permissions);
 
       try {
-        await fn();
+        await fn(t);
       } finally {
         restorePermissions(token);
       }
@@ -136,7 +136,7 @@ finishing test case.`;
     t,
     fn,
   ) {
-    let testDef;
+    let test;
     const defaults = {
       ignore: false,
       only: false,
@@ -153,7 +153,7 @@ finishing test case.`;
       if (!t) {
         throw new TypeError("The test name can't be empty");
       }
-      testDef = { fn: fn, name: t, ...defaults };
+      test = { fn: fn, name: t, ...defaults };
     } else {
       if (!t.fn) {
         throw new TypeError("Missing test function");
@@ -161,29 +161,79 @@ finishing test case.`;
       if (!t.name) {
         throw new TypeError("The test name can't be empty");
       }
-      testDef = { ...defaults, ...t };
+      test = { ...defaults, ...t };
     }
 
-    if (testDef.sanitizeOps) {
-      testDef.fn = assertOps(testDef.fn);
+    if (test.sanitizeOps) {
+      test.fn = assertOps(test.fn);
     }
 
-    if (testDef.sanitizeResources) {
-      testDef.fn = assertResources(testDef.fn);
+    if (test.sanitizeResources) {
+      test.fn = assertResources(test.fn);
     }
 
-    if (testDef.sanitizeExit) {
-      testDef.fn = assertExit(testDef.fn);
+    if (test.sanitizeExit) {
+      test.fn = assertExit(test.fn);
     }
 
-    if (testDef.permissions) {
-      testDef.fn = withPermissions(
-        testDef.fn,
-        parsePermissions(testDef.permissions),
+    if (test.permissions) {
+      test.fn = withPermissions(
+        test.fn,
+        parsePermissions(test.permissions),
       );
     }
 
-    ArrayPrototypePush(tests, testDef);
+    ArrayPrototypePush(tests, test);
+  }
+
+  function createTestStep(t, fn) {
+    let test;
+    const defaults = {
+      ignore: false,
+      sanitizeOps: true,
+      sanitizeResources: true,
+      sanitizeExit: true,
+      permissions: null,
+    };
+
+    if (typeof t === "string") {
+      if (!fn || typeof fn != "function") {
+        throw new TypeError("Missing test function");
+      }
+      if (!t) {
+        throw new TypeError("The test name can't be empty");
+      }
+      test = { fn: fn, name: t, ...defaults };
+    } else {
+      if (!t.fn) {
+        throw new TypeError("Missing test function");
+      }
+      if (!t.name) {
+        throw new TypeError("The test name can't be empty");
+      }
+      test = { ...defaults, ...t };
+    }
+
+    if (test.sanitizeOps) {
+      test.fn = assertOps(test.fn);
+    }
+
+    if (test.sanitizeResources) {
+      test.fn = assertResources(test.fn);
+    }
+
+    if (test.sanitizeExit) {
+      test.fn = assertExit(test.fn);
+    }
+
+    if (test.permissions) {
+      test.fn = withPermissions(
+        test.fn,
+        parsePermissions(test.permissions),
+      );
+    }
+
+    return test;
   }
 
   function createTestFilter(filter) {
@@ -206,17 +256,63 @@ finishing test case.`;
     };
   }
 
-  async function runTest({ ignore, fn }) {
+  function serializeResult(result) {
+    if (result.failed) {
+      return { "failed": inspectArgs([result.failed]) };
+    }
+
+    return result;
+  }
+
+  async function runTest({ name, ignore, fn }, path = []) {
     if (ignore) {
       return "ignored";
     }
 
+    const failures = [];
+    const context = {
+      async step(t, fn) {
+        const test = createTestStep(t, fn);
+        const step = {
+          path: path.concat(name),
+          name: test.name,
+        };
+
+        dispatchTestEvent({
+          stepWait: step,
+        });
+
+        const earlier = DateNow();
+        const result = await runTest(test, path.concat(name));
+        const elapsed = DateNow() - earlier;
+
+        dispatchTestEvent({
+          stepResult: [
+            step,
+            serializeResult(result),
+            elapsed,
+          ],
+        });
+
+        if (result.failed) {
+          failures.push(result.failed);
+          return true;
+        }
+
+        return false;
+      },
+    };
+
     try {
-      await fn();
-      return "ok";
-    } catch (error) {
-      return { "failed": inspectArgs([error]) };
+      await fn(context);
+      if (failures.length > 0) {
+        return { failed: new AggregateError(failures) };
+      }
+    } catch (failed) {
+      return { failed };
     }
+
+    return "ok";
   }
 
   function getTestOrigin() {
@@ -270,7 +366,6 @@ finishing test case.`;
         [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
       }
     }
-
     for (const test of filtered) {
       const description = {
         origin,
@@ -283,7 +378,9 @@ finishing test case.`;
       const result = await runTest(test);
       const elapsed = DateNow() - earlier;
 
-      dispatchTestEvent({ result: [description, result, elapsed] });
+      dispatchTestEvent({
+        result: [description, serializeResult(result), elapsed],
+      });
     }
 
     if (disableLog) {

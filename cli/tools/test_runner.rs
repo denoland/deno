@@ -42,6 +42,13 @@ pub struct TestDescription {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TestStep {
+  pub path: Vec<String>,
+  pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum TestResult {
   Ok,
   Ignored,
@@ -62,6 +69,8 @@ pub struct TestPlan {
 pub enum TestEvent {
   Plan(TestPlan),
   Wait(TestDescription),
+  StepWait(TestStep),
+  StepResult(TestStep, TestResult, u64),
   Result(TestDescription, TestResult, u64),
 }
 
@@ -101,6 +110,13 @@ impl TestSummary {
 trait TestReporter {
   fn report_plan(&mut self, plan: &TestPlan);
   fn report_wait(&mut self, description: &TestDescription);
+  fn report_step_wait(&mut self, step: &TestStep);
+  fn report_step_result(
+    &mut self,
+    step: &TestStep,
+    result: &TestResult,
+    elapsed: u64,
+  );
   fn report_result(
     &mut self,
     description: &TestDescription,
@@ -112,11 +128,15 @@ trait TestReporter {
 
 struct PrettyTestReporter {
   concurrent: bool,
+  depth: usize,
 }
 
 impl PrettyTestReporter {
   fn new(concurrent: bool) -> PrettyTestReporter {
-    PrettyTestReporter { concurrent }
+    PrettyTestReporter {
+      concurrent,
+      depth: 0,
+    }
   }
 }
 
@@ -124,12 +144,54 @@ impl TestReporter for PrettyTestReporter {
   fn report_plan(&mut self, plan: &TestPlan) {
     let inflection = if plan.total == 1 { "test" } else { "tests" };
     println!("running {} {} from {}", plan.total, inflection, plan.origin);
+
+    self.depth = 0;
   }
 
   fn report_wait(&mut self, description: &TestDescription) {
     if !self.concurrent {
       print!("test {} ...", description.name);
     }
+
+    self.depth = 0;
+  }
+
+  fn report_step_wait(&mut self, step: &TestStep) {
+    let depth = step.path.len();
+
+    if !self.concurrent {
+      print!("\n{}{} ... ", "\t".repeat(depth), step.name);
+    }
+
+    self.depth = depth;
+  }
+
+  fn report_step_result(
+    &mut self,
+    step: &TestStep,
+    result: &TestResult,
+    elapsed: u64,
+  ) {
+    let depth = step.path.len();
+    let status = match result {
+      TestResult::Ok => colors::green("ok").to_string(),
+      TestResult::Ignored => colors::yellow("ignored").to_string(),
+      TestResult::Failed(_) => colors::red("FAILED").to_string(),
+    };
+
+    if !self.concurrent {
+      if self.depth > depth {
+        print!("\n{}", "\t".repeat(step.path.len()));
+      }
+
+      print!(
+        "{} {}",
+        status,
+        colors::gray(format!("({}ms)", elapsed)).to_string()
+      );
+    }
+
+    self.depth = depth;
   }
 
   fn report_result(
@@ -138,8 +200,12 @@ impl TestReporter for PrettyTestReporter {
     result: &TestResult,
     elapsed: u64,
   ) {
+    if self.depth > 0 {
+      println!();
+    }
+
     if self.concurrent {
-      print!("test {} ...", description.name);
+      print!("test {} ... ", description.name);
     }
 
     let status = match result {
@@ -149,10 +215,12 @@ impl TestReporter for PrettyTestReporter {
     };
 
     println!(
-      " {} {}",
+      "{} {}",
       status,
       colors::gray(format!("({}ms)", elapsed)).to_string()
     );
+
+    self.depth = 0;
   }
 
   fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
@@ -186,6 +254,8 @@ impl TestReporter for PrettyTestReporter {
       summary.filtered_out,
       colors::gray(format!("({}ms)", elapsed.as_millis())),
     );
+
+    self.depth = 0;
   }
 }
 
@@ -590,6 +660,14 @@ pub async fn run_tests(
 
           TestEvent::Wait(description) => {
             reporter.report_wait(&description);
+          }
+
+          TestEvent::StepWait(step) => {
+            reporter.report_step_wait(&step);
+          }
+
+          TestEvent::StepResult(step, result, elapsed) => {
+            reporter.report_step_result(&step, &result, elapsed);
           }
 
           TestEvent::Result(description, result, elapsed) => {
