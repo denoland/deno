@@ -440,7 +440,7 @@ async fn op_http_response(
   // of the channel.
   if response_sender.sender.send(res).is_err() {
     if let Some(rid) = maybe_response_body_rid {
-      state
+      let _ = state
         .borrow_mut()
         .resource_table
         .take::<ResponseBodyResource>(rid);
@@ -459,7 +459,7 @@ async fn op_http_response(
 
   if let Err(e) = result {
     if let Some(rid) = maybe_response_body_rid {
-      state
+      let _ = state
         .borrow_mut()
         .resource_table
         .take::<ResponseBodyResource>(rid);
