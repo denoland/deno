@@ -21,6 +21,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::InspectorSessionProxy;
+use deno_core::JsRuntime;
 use deno_websocket::tokio_tungstenite::tungstenite;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -64,13 +65,19 @@ impl InspectorServer {
     }
   }
 
+  // TODO(bartlomieju): rename to "register_devtools_agent"?
   pub fn register_inspector(
     &self,
-    session_sender: UnboundedSender<InspectorSessionProxy>,
-    deregister_rx: oneshot::Receiver<()>,
     module_url: String,
-    dev_tools_agent: DevToolsAgent,
+    js_runtime: &mut JsRuntime,
   ) {
+    let dev_tools_agent =
+      js_runtime.op_state().borrow().dev_tools_agent.clone();
+    let inspector = js_runtime.inspector();
+    let session_sender = inspector.get_session_sender();
+    let deregister_rx = inspector.add_deregister_handler();
+
+    // TODO(bartlomieju): simplify
     let info = InspectorInfo::new(
       self.host,
       session_sender,
@@ -168,6 +175,9 @@ fn handle_ws_request(
           tx: v8_outbound_tx,
         };
 
+        // TODO(bartlomieju): dispatcher_fut should behave like `JsRuntimeInspector`
+        // and be polled by the runtime during tick of event loop, instead of being polled
+        // here
         let (transport_rx, transport_tx, dispatcher_fut) =
           DevToolsSession::start(
             dev_tools_agent,
@@ -179,6 +189,8 @@ fn handle_ws_request(
         let fut = future::try_join(pump, dispatcher_fut);
 
         eprintln!("Debugger session started.");
+        // TODO(bartlomieju): this could be generalized in the `DevToolsAgent`
+        // struct
         let _ = new_session_tx.unbounded_send(inspector_session_proxy);
         if let Err(err) = fut.await {
           eprintln!("Debugger session failed: {}", err);
@@ -320,41 +332,41 @@ async fn server(
 /// 'futures' crate, therefore they can't participate in Tokio's cooperative
 /// task yielding.
 ///
-/// A tuple is returned, where the first element is a duplex channel that can
-/// be used to send/receive messages on the websocket, and the second element
-/// is a future that does the forwarding.
-fn create_websocket_proxy(
+/// Poll this function to pump messages between the WebSocket and the provided channel
+/// pair.
+async fn create_websocket_proxy(
   websocket: deno_websocket::tokio_tungstenite::WebSocketStream<
     hyper::upgrade::Upgraded,
   >,
+  // TODO(bartlomieju): these are actully "DevToolsAgent" channels
+  // so they are named poorly ATM, "transport" is better term to describe
+  // Websocket
   transport_tx: UnboundedSender<Vec<u8>>,
   transport_rx: UnboundedReceiver<String>,
-) -> impl Future<Output = Result<(), AnyError>> + Send {
+) -> Result<(), AnyError> {
   // The pump future takes care of forwarding messages between the websocket
   // and channels. It resolves to () when either side disconnects, ignoring any
   // errors.
-  async move {
-    let (websocket_tx, websocket_rx) = websocket.split();
+  let (websocket_tx, websocket_rx) = websocket.split();
 
-    let outbound_pump = transport_rx
-      .map(tungstenite::Message::Text)
-      .map(Ok)
-      .forward(websocket_tx)
-      .map_err(|_| ());
+  let outbound_pump = transport_rx
+    .map(tungstenite::Message::Text)
+    .map(Ok)
+    .forward(websocket_tx)
+    .map_err(|_| ());
 
-    let inbound_pump = websocket_rx
-      .map(|result| {
-        // TODO(lucacsonato): this unwrap is not safe. Panics: Protocol(ResetWithoutClosingHandshake)
-        let result = result.map(|msg| msg.into_data()).unwrap();
-        transport_tx.unbounded_send(result)
-      })
-      .map_err(|_| ())
-      .try_collect::<()>();
+  let inbound_pump = websocket_rx
+    .map(|result| {
+      // TODO(lucacsonato): this unwrap is not safe. Panics: Protocol(ResetWithoutClosingHandshake)
+      let result = result.map(|msg| msg.into_data()).unwrap();
+      transport_tx.unbounded_send(result)
+    })
+    .map_err(|_| ())
+    .try_collect::<()>();
 
-    let _ = future::try_join(outbound_pump, inbound_pump).await;
+  let _ = future::try_join(outbound_pump, inbound_pump).await;
 
-    Ok::<(), AnyError>(())
-  }
+  Ok::<(), AnyError>(())
 }
 
 /// Inspector information that is sent from the isolate thread to the server
