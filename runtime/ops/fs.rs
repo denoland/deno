@@ -48,6 +48,8 @@ pub fn init() -> Extension {
       ("op_fsync_async", op_async(op_fsync_async)),
       ("op_fstat_sync", op_sync(op_fstat_sync)),
       ("op_fstat_async", op_async(op_fstat_async)),
+      ("op_flock_sync", op_sync(op_flock_sync)),
+      ("op_funlock_sync", op_sync(op_funlock_sync)),
       ("op_umask", op_sync(op_umask)),
       ("op_chdir", op_sync(op_chdir)),
       ("op_mkdir_sync", op_sync(op_mkdir_sync)),
@@ -344,6 +346,41 @@ async fn op_fstat_async(
 
   let metadata = (*fs_file).0.as_mut().unwrap().metadata().await?;
   Ok(get_stat(metadata))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FlockArgs {
+  rid: ResourceId,
+  exclusive: Option<bool>,
+}
+
+fn op_flock_sync(state: &mut OpState, args: FlockArgs, _: ()) -> Result<(), AnyError> {
+  use fs3::FileExt;
+  super::check_unstable(state, "Deno.flockSync");
+  StdFileResource::with(state, args.rid, |r| match r {
+    Ok(std_file) => {
+      if args.exclusive.unwrap_or(false) {
+        std_file.lock_exclusive()?;
+      } else {
+        std_file.lock_shared()?;
+      }
+      Ok(())
+    },
+    Err(_) => Err(type_error("cannot lock this type of resource".to_string())),
+  })
+}
+
+fn op_funlock_sync(state: &mut OpState, rid: ResourceId, _:()) -> Result<(), AnyError> {
+  use fs3::FileExt;
+  super::check_unstable(state, "Deno.funlockSync");
+  StdFileResource::with(state, rid, |r| match r {
+    Ok(std_file) => {
+      std_file.unlock()?;
+      Ok(())
+    },
+    Err(_) => Err(type_error("cannot lock this type of resource".to_string())),
+  })
 }
 
 fn op_umask(

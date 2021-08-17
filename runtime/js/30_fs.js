@@ -385,6 +385,14 @@
     await core.opAsync("op_fsync_async", rid);
   }
 
+  function flockSync(rid, exclusive) {
+    core.opSync("op_flock_sync", { rid, exclusive: exclusive === true });
+  }
+
+  function funlockSync(rid) {
+    core.opSync("op_funlock_sync", rid);
+  }
+
   window.__bootstrap.fs = {
     cwd,
     chdir,
@@ -433,5 +441,7 @@
     fdatasyncSync,
     fsync,
     fsyncSync,
+    flockSync,
+    funlockSync,
   };
 })(this);

@@ -94,6 +94,8 @@
     fsync: __bootstrap.fs.fsync,
     fdatasyncSync: __bootstrap.fs.fdatasyncSync,
     fdatasync: __bootstrap.fs.fdatasync,
+    flockSync: __bootstrap.fs.flockSync,
+    funlockSync: __bootstrap.fs.funlockSync,
     symlink: __bootstrap.fs.symlink,
     symlinkSync: __bootstrap.fs.symlinkSync,
     link: __bootstrap.fs.link,
