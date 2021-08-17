@@ -61,6 +61,7 @@ use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::v8_set_flags;
+use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::permissions::Permissions;
@@ -169,7 +170,7 @@ pub fn create_main_worker(
   program_state: &Arc<ProgramState>,
   main_module: ModuleSpecifier,
   permissions: Permissions,
-  enable_testing: bool,
+  maybe_op_init: Option<&dyn Fn(&mut JsRuntime)>,
 ) -> MainWorker {
   let module_loader = CliModuleLoader::new(program_state.clone());
 
@@ -245,8 +246,8 @@ pub fn create_main_worker(
     ops::errors::init(js_runtime);
     ops::runtime_compiler::init(js_runtime);
 
-    if enable_testing {
-      ops::testing::init(js_runtime);
+    if let Some(op_init) = maybe_op_init {
+      op_init(js_runtime);
     }
 
     js_runtime.sync_ops_cache();
@@ -483,7 +484,7 @@ async fn install_command(
   let program_state = ProgramState::build(preload_flags).await?;
   let main_module = resolve_url_or_path(&module_url)?;
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, false);
+    create_main_worker(&program_state, main_module.clone(), permissions, None);
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module).await?;
   tools::installer::install(flags, &module_url, args, name, root, force)
@@ -547,7 +548,7 @@ async fn eval_command(
   let permissions = Permissions::from_options(&flags.clone().into());
   let program_state = ProgramState::build(flags).await?;
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, false);
+    create_main_worker(&program_state, main_module.clone(), permissions, None);
   // Create a dummy source file.
   let source_code = if print {
     format!("console.log({})", code)
@@ -793,7 +794,7 @@ async fn run_repl(
   let permissions = Permissions::from_options(&flags.clone().into());
   let program_state = ProgramState::build(flags).await?;
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, false);
+    create_main_worker(&program_state, main_module.clone(), permissions, None);
   worker.run_event_loop(false).await?;
 
   tools::repl::run(&program_state, worker, maybe_eval).await
@@ -807,7 +808,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
     &program_state.clone(),
     main_module.clone(),
     permissions,
-    false,
+    None,
   );
 
   let mut source = Vec::new();
@@ -900,7 +901,7 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
           &program_state,
           main_module.clone(),
           permissions,
-          false,
+          None,
         );
         debug!("main_module {}", main_module);
         worker.execute_module(&main_module).await?;
@@ -934,7 +935,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   let program_state = ProgramState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, false);
+    create_main_worker(&program_state, main_module.clone(), permissions, None);
 
   let mut maybe_coverage_collector =
     if let Some(ref coverage_dir) = program_state.coverage_dir {
