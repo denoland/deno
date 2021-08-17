@@ -28,8 +28,6 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-const BOM_CHAR: char = '\u{FEFF}';
-
 /// Format JavaScript/TypeScript files.
 pub async fn format(
   args: Vec<PathBuf>,
@@ -350,12 +348,11 @@ fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
   let file_bytes = fs::read(&file_path)?;
   let charset = text_encoding::detect_charset(&file_bytes);
   let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)?;
-  let had_bom = file_text.starts_with(BOM_CHAR);
+  let had_bom = file_text.starts_with(text_encoding::BOM_CHAR);
   let text = if had_bom {
-    // remove the BOM
-    String::from(&file_text[BOM_CHAR.len_utf8()..])
+    text_encoding::strip_bom(&file_text).to_string()
   } else {
-    String::from(file_text)
+    file_text.to_string()
   };
 
   Ok(FileContents { text, had_bom })
@@ -367,7 +364,7 @@ fn write_file_contents(
 ) -> Result<(), AnyError> {
   let file_text = if file_contents.had_bom {
     // add back the BOM
-    format!("{}{}", BOM_CHAR, file_contents.text)
+    format!("{}{}", text_encoding::BOM_CHAR, file_contents.text)
   } else {
     file_contents.text
   };

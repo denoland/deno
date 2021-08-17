@@ -540,7 +540,7 @@
 
               const key = constructKey(
                 "secret",
-                true,
+                extractable,
                 usageIntersection(keyUsages, recognisedUsages),
                 algorithm,
                 handle,
@@ -869,14 +869,6 @@
       const usages = keyUsages;
 
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "generateKey");
-
-      // https://github.com/denoland/deno/pull/9614#issuecomment-866049433
-      if (!extractable) {
-        throw new DOMException(
-          "Non-extractable keys are not supported",
-          "SecurityError",
-        );
-      }
 
       const result = await generateKey(
         normalizedAlgorithm,

@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
 use deno_core::ResourceId;
 use deno_core::{OpState, Resource};
@@ -84,8 +83,7 @@ pub fn op_webgpu_create_bind_group_layout(
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGpuDevice>(args.device_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::WebGpuDevice>(args.device_rid)?;
   let device = device_resource.0;
 
   let mut entries = vec![];
@@ -217,17 +215,14 @@ pub fn op_webgpu_create_pipeline_layout(
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGpuDevice>(args.device_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::WebGpuDevice>(args.device_rid)?;
   let device = device_resource.0;
 
   let mut bind_group_layouts = vec![];
 
   for rid in &args.bind_group_layouts {
-    let bind_group_layout = state
-      .resource_table
-      .get::<WebGpuBindGroupLayout>(*rid)
-      .ok_or_else(bad_resource_id)?;
+    let bind_group_layout =
+      state.resource_table.get::<WebGpuBindGroupLayout>(*rid)?;
     bind_group_layouts.push(bind_group_layout.0);
   }
 
@@ -271,8 +266,7 @@ pub fn op_webgpu_create_bind_group(
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGpuDevice>(args.device_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::WebGpuDevice>(args.device_rid)?;
   let device = device_resource.0;
 
   let mut entries = vec![];
@@ -282,26 +276,26 @@ pub fn op_webgpu_create_bind_group(
       binding: entry.binding,
       resource: match entry.kind.as_str() {
         "GPUSampler" => {
-          let sampler_resource = state
-            .resource_table
-            .get::<super::sampler::WebGpuSampler>(entry.resource)
-            .ok_or_else(bad_resource_id)?;
+          let sampler_resource =
+            state
+              .resource_table
+              .get::<super::sampler::WebGpuSampler>(entry.resource)?;
           wgpu_core::binding_model::BindingResource::Sampler(sampler_resource.0)
         }
         "GPUTextureView" => {
-          let texture_view_resource = state
-            .resource_table
-            .get::<super::texture::WebGpuTextureView>(entry.resource)
-            .ok_or_else(bad_resource_id)?;
+          let texture_view_resource =
+            state
+              .resource_table
+              .get::<super::texture::WebGpuTextureView>(entry.resource)?;
           wgpu_core::binding_model::BindingResource::TextureView(
             texture_view_resource.0,
           )
         }
         "GPUBufferBinding" => {
-          let buffer_resource = state
-            .resource_table
-            .get::<super::buffer::WebGpuBuffer>(entry.resource)
-            .ok_or_else(bad_resource_id)?;
+          let buffer_resource =
+            state
+              .resource_table
+              .get::<super::buffer::WebGpuBuffer>(entry.resource)?;
           wgpu_core::binding_model::BindingResource::Buffer(
             wgpu_core::binding_model::BufferBinding {
               buffer_id: buffer_resource.0,
@@ -318,8 +312,7 @@ pub fn op_webgpu_create_bind_group(
 
   let bind_group_layout = state
     .resource_table
-    .get::<WebGpuBindGroupLayout>(args.layout)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuBindGroupLayout>(args.layout)?;
 
   let descriptor = wgpu_core::binding_model::BindGroupDescriptor {
     label: args.label.map(Cow::from),

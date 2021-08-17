@@ -1788,3 +1788,8 @@ itest!(tls_connecttls {
   args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem tls_connecttls.js",
   output: "tls.out",
 });
+
+itest!(byte_order_mark {
+  args: "run --no-check byte_order_mark.ts",
+  output: "byte_order_mark.out",
+});

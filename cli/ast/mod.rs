@@ -2,6 +2,7 @@
 
 use crate::config_file;
 use crate::media_type::MediaType;
+use crate::text_encoding::strip_bom;
 
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
@@ -392,10 +393,15 @@ pub fn parse(
   source: &str,
   media_type: &MediaType,
 ) -> Result<ParsedModule, AnyError> {
+  let source = strip_bom(source);
   let info = SourceFileInfo::new(specifier, source);
   let input =
     StringInput::new(source, BytePos(0), BytePos(source.len() as u32));
-  let (comments, module) = parse_string_input(&info, input, media_type)?;
+  let (comments, module) =
+    parse_string_input(input, media_type).map_err(|err| Diagnostic {
+      location: info.get_location(err.span().lo),
+      message: err.into_kind().msg().to_string(),
+    })?;
 
   Ok(ParsedModule {
     info: Arc::new(info),
@@ -468,13 +474,17 @@ pub fn transpile_module(
   globals: &Globals,
   cm: Rc<SourceMap>,
 ) -> Result<(Rc<SourceFile>, Module), AnyError> {
-  let info = SourceFileInfo::new(specifier, source);
+  let source = strip_bom(source);
   let source_file = cm.new_source_file(
     FileName::Custom(specifier.to_string()),
     source.to_string(),
   );
   let input = StringInput::from(&*source_file);
-  let (comments, module) = parse_string_input(&info, input, media_type)?;
+  let (comments, module) =
+    parse_string_input(input, media_type).map_err(|err| Diagnostic {
+      location: cm.lookup_char_pos(err.span().lo).into(),
+      message: err.into_kind().msg().to_string(),
+    })?;
 
   let jsx_pass = react::react(
     cm,
@@ -511,19 +521,17 @@ pub fn transpile_module(
 }
 
 fn parse_string_input(
-  info: &SourceFileInfo,
   input: StringInput,
   media_type: &MediaType,
-) -> Result<(SingleThreadedComments, Module), AnyError> {
+) -> Result<
+  (SingleThreadedComments, Module),
+  swc_ecmascript::parser::error::Error,
+> {
   let syntax = get_syntax(media_type);
   let comments = SingleThreadedComments::default();
   let lexer = Lexer::new(syntax, TARGET, input, Some(&comments));
   let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
-
-  let module = parser.parse_module().map_err(|err| Diagnostic {
-    location: info.get_location(err.span().lo),
-    message: err.into_kind().msg().to_string(),
-  })?;
+  let module = parser.parse_module()?;
 
   Ok((comments, module))
 }
