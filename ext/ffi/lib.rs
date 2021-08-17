@@ -329,8 +329,7 @@ fn op_ffi_call(
 ) -> Result<Value, AnyError> {
   let resource = state
     .resource_table
-    .get::<DynamicLibraryResource>(args.rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<DynamicLibraryResource>(args.rid)?;
 
   let symbol = resource
     .symbols

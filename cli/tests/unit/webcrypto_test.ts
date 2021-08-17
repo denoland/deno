@@ -160,7 +160,7 @@ unitTest(async function testSignRSASSAKey() {
   assert(signature);
 });
 
-unitTest(async function subtleCryptoHmacImport() {
+unitTest(async function subtleCryptoHmacImportExport() {
   // deno-fmt-ignore
   const rawKey = new Uint8Array([
     1, 2, 3, 4, 5, 6, 7, 8,
@@ -189,4 +189,7 @@ unitTest(async function subtleCryptoHmacImport() {
     new Uint8Array(actual),
     expected,
   );
+
+  const exportedKey = await crypto.subtle.exportKey("raw", key);
+  assertEquals(new Uint8Array(exportedKey), rawKey);
 });

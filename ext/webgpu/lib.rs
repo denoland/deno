@@ -1,7 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::not_supported;
 use deno_core::error::AnyError;
-use deno_core::error::{bad_resource_id, not_supported};
 use deno_core::include_js_files;
 use deno_core::op_async;
 use deno_core::op_sync;
@@ -398,8 +398,7 @@ pub async fn op_webgpu_request_device(
   let mut state = state.borrow_mut();
   let adapter_resource = state
     .resource_table
-    .get::<WebGpuAdapter>(args.adapter_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuAdapter>(args.adapter_rid)?;
   let adapter = adapter_resource.0;
   let instance = state.borrow::<Instance>();
 
@@ -533,10 +532,8 @@ pub fn op_webgpu_create_query_set(
   args: CreateQuerySetArgs,
   _: (),
 ) -> Result<WebGpuResult, AnyError> {
-  let device_resource = state
-    .resource_table
-    .get::<WebGpuDevice>(args.device_rid)
-    .ok_or_else(bad_resource_id)?;
+  let device_resource =
+    state.resource_table.get::<WebGpuDevice>(args.device_rid)?;
   let device = device_resource.0;
   let instance = &state.borrow::<Instance>();
 

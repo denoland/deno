@@ -7,7 +7,6 @@
     ArrayIsArray,
     ArrayPrototypeMap,
     Error,
-    Uint8Array,
     StringPrototypeStartsWith,
     String,
     SymbolIterator,
@@ -28,6 +27,7 @@
     useDenoNamespace,
     permissions,
     name,
+    workerType,
   ) {
     return core.opSync("op_create_worker", {
       hasSourceCode,
@@ -36,6 +36,7 @@
       sourceCode,
       specifier,
       useDenoNamespace,
+      workerType,
     });
   }
 
@@ -183,25 +184,27 @@
         }
       }
 
-      if (type !== "module") {
-        throw new Error(
-          'Not yet implemented: only "module" type workers are supported',
-        );
-      }
-
-      this.#name = name;
-      const hasSourceCode = false;
-      const sourceCode = core.decode(new Uint8Array());
+      const workerType = webidl.converters["WorkerType"](type);
 
       if (
         StringPrototypeStartsWith(specifier, "./") ||
         StringPrototypeStartsWith(specifier, "../") ||
-        StringPrototypeStartsWith(specifier, "/") || type == "classic"
+        StringPrototypeStartsWith(specifier, "/") || workerType === "classic"
       ) {
         const baseUrl = getLocationHref();
         if (baseUrl != null) {
           specifier = new URL(specifier, baseUrl).href;
         }
+      }
+
+      this.#name = name;
+      let hasSourceCode, sourceCode;
+      if (workerType === "classic") {
+        hasSourceCode = true;
+        sourceCode = `importScripts("#");`;
+      } else {
+        hasSourceCode = false;
+        sourceCode = "";
       }
 
       const id = createWorker(
@@ -213,6 +216,7 @@
           ? null
           : parsePermissions(workerDenoAttributes.permissions),
         options?.name,
+        workerType,
       );
       this.#id = id;
       this.#pollControl();
@@ -343,6 +347,11 @@
   defineEventHandler(Worker.prototype, "error");
   defineEventHandler(Worker.prototype, "message");
   defineEventHandler(Worker.prototype, "messageerror");
+
+  webidl.converters["WorkerType"] = webidl.createEnumConverter("WorkerType", [
+    "classic",
+    "module",
+  ]);
 
   window.__bootstrap.worker = {
     parsePermissions,

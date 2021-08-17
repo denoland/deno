@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::ResourceId;
@@ -35,8 +34,7 @@ pub fn op_webgpu_create_shader_module(
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGpuDevice>(args.device_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::WebGpuDevice>(args.device_rid)?;
   let device = device_resource.0;
 
   let source = match args.code {

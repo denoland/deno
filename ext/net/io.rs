@@ -1,9 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::ops_tls as tls;
+use deno_core::error::not_supported;
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
-use deno_core::error::{bad_resource_id, not_supported};
 use deno_core::op_async;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -169,11 +169,7 @@ async fn op_read_async(
   buf: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
   let buf = &mut buf.ok_or_else(null_opbuf)?;
-  let resource = state
-    .borrow()
-    .resource_table
-    .get_any(rid)
-    .ok_or_else(bad_resource_id)?;
+  let resource = state.borrow().resource_table.get_any(rid)?;
   let nread = if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
     s.read(buf).await?
   } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
@@ -192,11 +188,7 @@ async fn op_write_async(
   buf: Option<ZeroCopyBuf>,
 ) -> Result<u32, AnyError> {
   let buf = &buf.ok_or_else(null_opbuf)?;
-  let resource = state
-    .borrow()
-    .resource_table
-    .get_any(rid)
-    .ok_or_else(bad_resource_id)?;
+  let resource = state.borrow().resource_table.get_any(rid)?;
   let nwritten = if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
     s.write(buf).await?
   } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {
@@ -214,11 +206,7 @@ async fn op_shutdown(
   rid: ResourceId,
   _: (),
 ) -> Result<(), AnyError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get_any(rid)
-    .ok_or_else(bad_resource_id)?;
+  let resource = state.borrow().resource_table.get_any(rid)?;
   if let Some(s) = resource.downcast_rc::<TcpStreamResource>() {
     s.shutdown().await?;
   } else if let Some(s) = resource.downcast_rc::<TlsStreamResource>() {

@@ -212,8 +212,7 @@ async fn op_run_status(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<ChildResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<ChildResource>(rid)?;
   let mut child = resource.borrow_mut().await;
   let run_status = child.wait().await?;
   let code = run_status.code();

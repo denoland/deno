@@ -116,6 +116,7 @@ export async function runSingleTest(
         "run",
         "-A",
         "--unstable",
+        "--enable-testing-features-do-not-use",
         "--location",
         url.toString(),
         "--cert",

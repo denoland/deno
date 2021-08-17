@@ -84,3 +84,5 @@ pub fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
   let state = state.borrow();
   state.borrow::<UnstableChecker>().check_unstable(api_name)
 }
+
+pub struct TestingFeaturesEnabled(pub bool);

@@ -16,8 +16,8 @@ cut.**
 
 ## Updating the main repo
 
-1. Create a PR that bumps versions of all crates in `ext` and `runtime`
-   directories.
+1. Create a PR that bumps versions of all crates in `bench_util`, `core`, `ext`,
+   `runtime` directories.
 
 To determine if you should bump a crate a minor version instead of a patch
 version, check if you can answer any of the following questions with yes:
@@ -45,22 +45,27 @@ between the crates, it must be done in specific order:
 - `deno_core` - all crates depend on `deno_core` so it must always be published
   first
 - `bench_util`
-- crates in `ext/` directory
-  - `deno_net`, `deno_websocket` and `deno_fetch` depend on `deno_tls`, so the
-    latter must be bumped and released first
-  - `deno_fetch`, `deno_crypto`, `deno_timers` and `deno_webstorage` depend on
-    `deno_web`, so the latter must be bumped and released first
-  - `deno_url` depends on `deno_webidl`, so the latter must be bumped and
-    released first
-  - `deno_timers` depends on `deno_url`, so the latter must be bumped and
-    released first
-  - `deno_http` depends on `deno_websocket`, so the latter must be bumped and
-    released first
+- crates in `ext/` directory, publish in the following order:
+  - broadcast_channel
+  - console
+  - ffi
+  - tls
+  - web
+  - webgpu
+  - webidl
+  - websocket
+  - webstorage
+  - crypto
+  - fetch
+  - http
+  - net
+  - url
+  - timers
 - `runtime` - this crate depends on `deno_core` and all crates in `ext/`
   directory
 
 If there are any problems when you publish, that require you to change the code,
-then after applying the fixes they should be commited and pushed to the PR.
+then after applying the fixes they should be committed and pushed to the PR.
 
 4. Once all crates are published merge the PR.
 

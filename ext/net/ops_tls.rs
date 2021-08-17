@@ -11,7 +11,6 @@ use crate::DefaultTlsOptions;
 use crate::NetPermissions;
 use crate::UnsafelyIgnoreCertificateErrors;
 use deno_core::error::bad_resource;
-use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::invalid_hostname;
@@ -717,8 +716,7 @@ where
   let resource_rc = state
     .borrow_mut()
     .resource_table
-    .take::<TcpStreamResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .take::<TcpStreamResource>(rid)?;
   let resource = Rc::try_unwrap(resource_rc)
     .expect("Only a single use of this resource should happen");
   let (read_half, write_half) = resource.into_inner();
@@ -1019,7 +1017,7 @@ async fn op_accept_tls(
     .borrow()
     .resource_table
     .get::<TlsListenerResource>(rid)
-    .ok_or_else(|| bad_resource("Listener has been closed"))?;
+    .map_err(|_| bad_resource("Listener has been closed"))?;
 
   let cancel_handle = RcRef::map(&resource, |r| &r.cancel_handle);
   let tcp_listener = RcRef::map(&resource, |r| &r.tcp_listener)
