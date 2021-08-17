@@ -14576,116 +14576,22 @@
         "Success: generateKey({name: Ecdsa, namedCurve: P-521}, true, [sign, verify, sign, sign, verify])"
       ],
       "successes_RSA-OAEP.https.any.html": true,
-      "successes_RSA-OAEP.https.any.html?1-10": [
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [decrypt, encrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [wrapKey, decrypt, encrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey, decrypt, encrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, decrypt, encrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey, encrypt])"
-      ],
-      "successes_RSA-OAEP.https.any.html?101-110": [
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [encrypt, decrypt, wrapKey, unwrapKey, decrypt, unwrapKey, encrypt, decrypt, wrapKey, unwrapKey])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [decrypt, encrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [wrapKey, decrypt, encrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey, decrypt, encrypt])"
-      ],
-      "successes_RSA-OAEP.https.any.html?11-20": [
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, encrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [decrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [wrapKey, decrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey, decrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, decrypt])"
-      ],
-      "successes_RSA-OAEP.https.any.html?111-120": [
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, decrypt, encrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey, encrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, encrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [decrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [wrapKey, decrypt])"
-      ],
-      "successes_RSA-OAEP.https.any.html?121-130": [
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey, decrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, decrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [encrypt, decrypt, wrapKey, unwrapKey, decrypt, unwrapKey, encrypt, decrypt, wrapKey, unwrapKey])"
-      ],
-      "successes_RSA-OAEP.https.any.html?131-140": [
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [decrypt, encrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [wrapKey, decrypt, encrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey, decrypt, encrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, decrypt, encrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey, encrypt])"
-      ],
-      "successes_RSA-OAEP.https.any.html?141-150": [
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, encrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [decrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [wrapKey, decrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey, decrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, decrypt])"
-      ],
-      "successes_RSA-OAEP.https.any.html?151-last": [
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: Rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [encrypt, decrypt, wrapKey, unwrapKey, decrypt, unwrapKey, encrypt, decrypt, wrapKey, unwrapKey])"
-      ],
-      "successes_RSA-OAEP.https.any.html?21-30": [
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [encrypt, decrypt, wrapKey, unwrapKey, decrypt, unwrapKey, encrypt, decrypt, wrapKey, unwrapKey])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [decrypt, encrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [wrapKey, decrypt, encrypt])"
-      ],
-      "successes_RSA-OAEP.https.any.html?31-40": [
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey, decrypt, encrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, decrypt, encrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey, encrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, encrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [decrypt])"
-      ],
-      "successes_RSA-OAEP.https.any.html?41-50": [
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [wrapKey, decrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey, decrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, decrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey])"
-      ],
-      "successes_RSA-OAEP.https.any.html?51-60": [
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [encrypt, decrypt, wrapKey, unwrapKey, decrypt, unwrapKey, encrypt, decrypt, wrapKey, unwrapKey])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [decrypt, encrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [wrapKey, decrypt, encrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey, decrypt, encrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, decrypt, encrypt])"
-      ],
-      "successes_RSA-OAEP.https.any.html?61-70": [
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey, encrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, encrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [decrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [wrapKey, decrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey, decrypt])"
-      ],
-      "successes_RSA-OAEP.https.any.html?71-80": [
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, decrypt])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [encrypt, decrypt, wrapKey, unwrapKey, decrypt, unwrapKey, encrypt, decrypt, wrapKey, unwrapKey])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [decrypt, encrypt])"
-      ],
-      "successes_RSA-OAEP.https.any.html?81-90": [
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [wrapKey, decrypt, encrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey, decrypt, encrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, decrypt, encrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey, encrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, encrypt])"
-      ],
-      "successes_RSA-OAEP.https.any.html?91-100": [
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [decrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [wrapKey, decrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey, decrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, decrypt])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: rsa-oaep, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [unwrapKey, wrapKey])"
-      ],
+      "successes_RSA-OAEP.https.any.html?1-10": true,
+      "successes_RSA-OAEP.https.any.html?101-110": true,
+      "successes_RSA-OAEP.https.any.html?11-20": true,
+      "successes_RSA-OAEP.https.any.html?111-120": true,
+      "successes_RSA-OAEP.https.any.html?121-130": true,
+      "successes_RSA-OAEP.https.any.html?131-140": true,
+      "successes_RSA-OAEP.https.any.html?141-150": true,
+      "successes_RSA-OAEP.https.any.html?151-last": true,
+      "successes_RSA-OAEP.https.any.html?21-30": true,
+      "successes_RSA-OAEP.https.any.html?31-40": true,
+      "successes_RSA-OAEP.https.any.html?41-50": true,
+      "successes_RSA-OAEP.https.any.html?51-60": true,
+      "successes_RSA-OAEP.https.any.html?61-70": true,
+      "successes_RSA-OAEP.https.any.html?71-80": true,
+      "successes_RSA-OAEP.https.any.html?81-90": true,
+      "successes_RSA-OAEP.https.any.html?91-100": true,
       "successes_RSA-PSS.https.any.html?1-10": true,
       "successes_RSA-PSS.https.any.html?11-20": true,
       "successes_RSA-PSS.https.any.html?21-30": true,
