@@ -49,7 +49,9 @@ pub fn init() -> Extension {
       ("op_fstat_sync", op_sync(op_fstat_sync)),
       ("op_fstat_async", op_async(op_fstat_async)),
       ("op_flock_sync", op_sync(op_flock_sync)),
+      ("op_flock_async", op_async(op_flock_async)),
       ("op_funlock_sync", op_sync(op_funlock_sync)),
+      ("op_funlock_async", op_async(op_funlock_async)),
       ("op_umask", op_sync(op_umask)),
       ("op_chdir", op_sync(op_chdir)),
       ("op_mkdir_sync", op_sync(op_mkdir_sync)),
@@ -375,6 +377,44 @@ fn op_flock_sync(
   })
 }
 
+async fn op_flock_async(
+  state: Rc<RefCell<OpState>>,
+  args: FlockArgs,
+  _: (),
+) -> Result<(), AnyError> {
+  use fs3::FileExt;
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<StdFileResource>(args.rid)?;
+
+  if resource.fs_file.is_none() {
+    return Err(bad_resource_id());
+  }
+
+  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+    .borrow_mut()
+    .await;
+
+  let std_file = (*fs_file)
+    .0
+    .as_mut()
+    .unwrap()
+    .try_clone()
+    .await?
+    .into_std()
+    .await;
+  tokio::task::spawn_blocking(move || -> Result<(), AnyError> {
+    if args.exclusive.unwrap_or(false) {
+      std_file.lock_exclusive()?;
+    } else {
+      std_file.lock_shared()?;
+    }
+    Ok(())
+  })
+  .await?
+}
+
 fn op_funlock_sync(
   state: &mut OpState,
   rid: ResourceId,
@@ -389,6 +429,40 @@ fn op_funlock_sync(
     }
     Err(_) => Err(type_error("cannot lock this type of resource".to_string())),
   })
+}
+
+async fn op_funlock_async(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  _: (),
+) -> Result<(), AnyError> {
+  use fs3::FileExt;
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<StdFileResource>(rid)?;
+
+  if resource.fs_file.is_none() {
+    return Err(bad_resource_id());
+  }
+
+  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+    .borrow_mut()
+    .await;
+
+  let std_file = (*fs_file)
+    .0
+    .as_mut()
+    .unwrap()
+    .try_clone()
+    .await?
+    .into_std()
+    .await;
+  tokio::task::spawn_blocking(move || -> Result<(), AnyError> {
+    std_file.unlock()?;
+    Ok(())
+  })
+  .await?
 }
 
 fn op_umask(

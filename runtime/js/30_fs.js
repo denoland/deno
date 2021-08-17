@@ -389,8 +389,16 @@
     core.opSync("op_flock_sync", { rid, exclusive: exclusive === true });
   }
 
+  async function flock(rid, exclusive) {
+    await core.opAsync("op_flock_async", { rid, exclusive: exclusive === true });
+  }
+
   function funlockSync(rid) {
     core.opSync("op_funlock_sync", rid);
+  }
+
+  async function funlock(rid) {
+    await core.opAsync("op_funlock_async", rid);
   }
 
   window.__bootstrap.fs = {
@@ -441,7 +449,9 @@
     fdatasyncSync,
     fsync,
     fsyncSync,
+    flock,
     flockSync,
+    funlock,
     funlockSync,
   };
 })(this);
