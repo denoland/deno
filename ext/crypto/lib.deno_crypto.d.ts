@@ -28,6 +28,12 @@ type KeyUsage =
 
 type NamedCurve = string;
 
+interface RsaOtherPrimesInfo {
+  d?: string;
+  r?: string;
+  t?: string;
+}
+
 interface JsonWebKey {
   alg?: string;
   crv?: string;
