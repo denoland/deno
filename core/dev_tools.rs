@@ -16,7 +16,6 @@ use crate::futures::channel::mpsc::UnboundedReceiver;
 use crate::futures::channel::mpsc::UnboundedSender;
 use crate::futures::try_join;
 use crate::futures::StreamExt;
-use crate::inspector::InspectorSessionProxy;
 use rusty_v8 as v8;
 use serde::Deserialize;
 use serde::Serialize;
@@ -237,27 +236,21 @@ impl DevToolsSession {
   /// example via websockets), a InspectorSessionProxy that faciliates
   /// communication with the V8 inspector, and a future that needs to be
   /// polled to drive the session forward.
+  // TODO(bartlomieju): simplify setting up channels
+  // TODO(bartlomieju): separate channel to V8 inspector might be not needed
   pub fn start(
     agent: DevToolsAgent,
+    v8_inbound_tx: UnboundedSender<Result<Vec<u8>, AnyError>>,
+    mut v8_outbound_rx: UnboundedReceiver<(Option<i32>, String)>,
   ) -> (
     UnboundedReceiver<String>,
     UnboundedSender<Vec<u8>>,
-    InspectorSessionProxy,
     impl Future<Output = Result<(), AnyError>> + Send,
   ) {
     let (transport_inbound_tx, mut transport_inbound_rx) =
       futures::channel::mpsc::unbounded::<Vec<u8>>();
     let (transport_outbound_tx, transport_outbound_rx) =
       futures::channel::mpsc::unbounded::<String>();
-
-    let (v8_inbound_tx, v8_inbound_rx) = futures::channel::mpsc::unbounded();
-    let (v8_outbound_tx, mut v8_outbound_rx) =
-      futures::channel::mpsc::unbounded();
-
-    let session_proxy = InspectorSessionProxy {
-      rx: v8_inbound_rx,
-      tx: v8_outbound_tx,
-    };
 
     let session = DevToolsSession {
       transport_tx: transport_outbound_tx.clone(),
@@ -294,12 +287,7 @@ impl DevToolsSession {
       sessions.push(session);
     }
 
-    (
-      transport_outbound_rx,
-      transport_inbound_tx,
-      session_proxy,
-      fut,
-    )
+    (transport_outbound_rx, transport_inbound_tx, fut)
   }
 
   fn dispatch(&self, msg: CdpMessage) -> Result<(), AnyError> {

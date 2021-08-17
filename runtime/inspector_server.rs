@@ -5,6 +5,7 @@ use deno_core::DevToolsAgent;
 use deno_core::DevToolsSession;
 // Alias for the future `!` type.
 use deno_core::error::AnyError;
+use deno_core::futures;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::channel::mpsc::UnboundedSender;
@@ -156,10 +157,30 @@ fn handle_ws_request(
             None,
           )
           .await;
-        let (proxy, pump) = create_websocket_proxy(websocket, dev_tools_agent);
+
+        let (v8_inbound_tx, v8_inbound_rx) =
+          futures::channel::mpsc::unbounded();
+        let (v8_outbound_tx, v8_outbound_rx) =
+          futures::channel::mpsc::unbounded();
+
+        let inspector_session_proxy = InspectorSessionProxy {
+          rx: v8_inbound_rx,
+          tx: v8_outbound_tx,
+        };
+
+        let (transport_rx, transport_tx, dispatcher_fut) =
+          DevToolsSession::start(
+            dev_tools_agent,
+            v8_inbound_tx,
+            v8_outbound_rx,
+          );
+        let pump =
+          create_websocket_proxy(websocket, transport_tx, transport_rx);
+        let fut = future::try_join(pump, dispatcher_fut);
+
         eprintln!("Debugger session started.");
-        let _ = new_session_tx.unbounded_send(proxy);
-        if let Err(err) = pump.await {
+        let _ = new_session_tx.unbounded_send(inspector_session_proxy);
+        if let Err(err) = fut.await {
           eprintln!("Debugger session failed: {}", err);
         }
       });
@@ -306,18 +327,13 @@ fn create_websocket_proxy(
   websocket: deno_websocket::tokio_tungstenite::WebSocketStream<
     hyper::upgrade::Upgraded,
   >,
-  dev_tools_agent: DevToolsAgent,
-) -> (
-  InspectorSessionProxy,
-  impl Future<Output = Result<((), ()), AnyError>> + Send,
-) {
-  let (transport_rx, transport_tx, proxy, dispatcher_fut) =
-    DevToolsSession::start(dev_tools_agent);
-
+  transport_tx: UnboundedSender<Vec<u8>>,
+  transport_rx: UnboundedReceiver<String>,
+) -> impl Future<Output = Result<(), AnyError>> + Send {
   // The pump future takes care of forwarding messages between the websocket
   // and channels. It resolves to () when either side disconnects, ignoring any
   // errors.
-  let pump = async move {
+  async move {
     let (websocket_tx, websocket_rx) = websocket.split();
 
     let outbound_pump = transport_rx
@@ -338,11 +354,7 @@ fn create_websocket_proxy(
     let _ = future::try_join(outbound_pump, inbound_pump).await;
 
     Ok::<(), AnyError>(())
-  };
-
-  let fut = future::try_join(pump, dispatcher_fut);
-
-  (proxy, fut)
+  }
 }
 
 /// Inspector information that is sent from the isolate thread to the server
