@@ -109,6 +109,7 @@ fn create_web_worker_callback(
         .log_level
         .map_or(false, |l| l == log::Level::Debug),
       unstable: program_state.flags.unstable,
+      enable_testing_features: program_state.flags.enable_testing_features,
       unsafely_ignore_certificate_errors: program_state
         .flags
         .unsafely_ignore_certificate_errors
@@ -120,6 +121,7 @@ fn create_web_worker_callback(
       create_web_worker_cb,
       js_error_create_fn: Some(js_error_create_fn),
       use_deno_namespace: args.use_deno_namespace,
+      worker_type: args.worker_type,
       maybe_inspector_server,
       runtime_version: version::deno(),
       ts_version: version::TYPESCRIPT.to_string(),
@@ -193,6 +195,7 @@ pub fn create_main_worker(
       .log_level
       .map_or(false, |l| l == log::Level::Debug),
     unstable: program_state.flags.unstable,
+    enable_testing_features: program_state.flags.enable_testing_features,
     unsafely_ignore_certificate_errors: program_state
       .flags
       .unsafely_ignore_certificate_errors

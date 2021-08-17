@@ -10,6 +10,13 @@ import {
   unitTest,
 } from "./test_util.ts";
 
+let isCI: boolean;
+try {
+  isCI = Deno.env.get("CI") !== undefined;
+} catch {
+  isCI = true;
+}
+
 unitTest({ perms: { net: true } }, function netTcpListenClose() {
   const listener = Deno.listen({ hostname: "127.0.0.1", port: 3500 });
   assert(listener.addr.transport === "tcp");
@@ -545,6 +552,8 @@ unitTest(
 
 unitTest(
   {
+    // https://github.com/denoland/deno/issues/11580
+    ignore: Deno.build.os === "darwin" && isCI,
     perms: { net: true },
   },
   async function netHangsOnClose() {

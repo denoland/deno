@@ -436,17 +436,33 @@ async fn op_http_response(
   // The only failure mode is the receiver already having dropped its end
   // of the channel.
   if response_sender.sender.send(res).is_err() {
+    if let Some(rid) = maybe_response_body_rid {
+      let _ = state
+        .borrow_mut()
+        .resource_table
+        .take::<ResponseBodyResource>(rid);
+    }
     return Err(type_error("internal communication error"));
   }
 
-  poll_fn(|cx| match conn_resource.poll(cx) {
+  let result = poll_fn(|cx| match conn_resource.poll(cx) {
     Poll::Ready(x) => {
       state.borrow_mut().resource_table.close(conn_rid).ok();
       Poll::Ready(x)
     }
     Poll::Pending => Poll::Ready(Ok(())),
   })
-  .await?;
+  .await;
+
+  if let Err(e) = result {
+    if let Some(rid) = maybe_response_body_rid {
+      let _ = state
+        .borrow_mut()
+        .resource_table
+        .take::<ResponseBodyResource>(rid);
+    }
+    return Err(e);
+  }
 
   if maybe_response_body_rid.is_none() {
     conn_resource.deno_service.waker.wake();
