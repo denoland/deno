@@ -7,7 +7,7 @@
 /** Deno provides extra properties on `import.meta`.  These are included here
  * to ensure that these are still available when using the Deno namespace in
  * conjunction with other type libs, like `dom`. */
- declare interface ImportMeta {
+declare interface ImportMeta {
   /** A string representation of the fully qualified module URL. */
   url: string;
 
@@ -787,7 +787,6 @@ declare namespace Deno {
    */
   export function fdatasync(rid: number): Promise<void>;
 
-  
   /** **UNSTABLE**: New API should be tested first.
    *
    * Acquire an advisory file-system lock for the provided file. `exclusive`
@@ -796,7 +795,7 @@ declare namespace Deno {
   export function flockSync(rid: number, exclusive?: boolean): Promise<void>;
 
   /** **UNSTABLE**: New API should be tested first.
-   * 
+   *
    * Release an advisory file-system lock for the provided file.
    */
   export function funlockSync(rid: number): Promise<void>;
