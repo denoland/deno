@@ -2912,11 +2912,11 @@ mod tests {
       documents.open(specifier.clone(), *version, language_id.clone(), source);
       let media_type = MediaType::from(&specifier);
       if let Ok(parsed_module) =
-        analysis::parse_module(&specifier, source, &media_type)
+        analysis::parse_module(&specifier, source.to_string(), media_type)
       {
         let (deps, _) = analysis::analyze_dependencies(
           &specifier,
-          &media_type,
+          media_type,
           &parsed_module,
           &None,
         );

@@ -423,7 +423,7 @@ mod tests {
       let parsed_module = documents.get(&specifier).unwrap().module().unwrap().unwrap();
       let (deps, _) = analysis::analyze_dependencies(
         &specifier,
-        &media_type,
+        media_type,
         &parsed_module,
         &None,
       );

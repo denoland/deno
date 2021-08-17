@@ -5,9 +5,9 @@ use super::text::LineIndex;
 use super::tsc;
 
 use crate::ast::ParsedModule;
-use crate::ast::parse;
 use crate::media_type::MediaType;
 
+use deno_core::LazyInit;
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -17,10 +17,11 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Range;
 use std::str::FromStr;
+use std::sync::Arc;
 
 /// A representation of the language id sent from the LSP client, which is used
 /// to determine how the document is handled within the language server.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub enum LanguageId {
   JavaScript,
   Jsx,
@@ -83,20 +84,25 @@ impl IndexValid {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct DocumentSource {
   text: String,
-  maybe_parsed_module: Option<Result<ParsedModule, String>>,
+  maybe_parsed_module: Option<LazyInit<Result<ParsedModule, String>>>,
 }
 
 impl DocumentSource {
-  pub fn new(specifier: &ModuleSpecifier, text: String, language_id: &LanguageId) -> Self {
+  pub fn new(specifier: &ModuleSpecifier, text: String, language_id: LanguageId) -> Self {
     let maybe_parsed_module = if language_id.is_js_or_ts() {
-      Some(parse(
-        specifier.as_str(),
-        &text,
-        &MediaType::from(language_id),
-      ).map_err(|e| e.to_string()))
+      Some({
+        let text = text.clone();
+        let specifier = specifier.clone();
+        let media_type = MediaType::from(&language_id);
+        LazyInit::new(Box::new(move || analysis::parse_module(
+            &specifier,
+            text,
+            media_type,
+          ).map_err(|e| e.to_string())))
+      })
     } else {
       None
     };
@@ -110,7 +116,7 @@ impl DocumentSource {
 
 #[derive(Debug, Clone)]
 pub struct DocumentData {
-  source: DocumentSource,
+  source: Arc<DocumentSource>,
   dependencies: Option<HashMap<String, analysis::Dependency>>,
   dependency_ranges: Option<analysis::DependencyRanges>,
   pub(crate) language_id: LanguageId,
@@ -129,7 +135,7 @@ impl DocumentData {
   ) -> Self {
     let line_index = LineIndex::new(&source_text);
     Self {
-      source: DocumentSource::new(&specifier, source_text, &language_id),
+      source: Arc::new(DocumentSource::new(&specifier, source_text, language_id)),
       dependencies: None,
       dependency_ranges: None,
       language_id,
@@ -165,7 +171,7 @@ impl DocumentData {
     } else {
       LineIndex::new(&content)
     };
-    self.source = DocumentSource::new(&self.specifier, content, &self.language_id);
+    self.source = Arc::new(DocumentSource::new(&self.specifier, content, self.language_id));
     self.maybe_navigation_tree = None;
     Ok(())
   }
@@ -180,7 +186,7 @@ impl DocumentData {
 
   pub fn module(&self) -> Option<Result<&ParsedModule, AnyError>> {
     self.source.maybe_parsed_module.as_ref()
-      .map(|parsed_module_result| parsed_module_result.as_ref().map_err(|err_text| anyhow!("{}", err_text)))
+      .map(|parsed_module_result| parsed_module_result.get().as_ref().map_err(|err_text| anyhow!("{}", err_text)))
   }
 
   pub fn content_line(&self, line: usize) -> String {
@@ -243,7 +249,7 @@ impl DocumentCache {
     specifier: &ModuleSpecifier,
     version: i32,
     content_changes: Vec<lsp::TextDocumentContentChangeEvent>,
-  ) -> Result<&str, AnyError> {
+  ) -> Result<(), AnyError> {
     if !self.contains_key(specifier) {
       return Err(custom_error(
         "NotFound",
@@ -257,7 +263,7 @@ impl DocumentCache {
     let doc = self.docs.get_mut(specifier).unwrap();
     doc.apply_content_changes(content_changes)?;
     doc.version = Some(version);
-    Ok(doc.content())
+    Ok(())
   }
 
   pub fn close(&mut self, specifier: &ModuleSpecifier) {
@@ -300,13 +306,6 @@ impl DocumentCache {
       .get(specifier)
       .map(|doc| doc.dependencies.clone())
       .flatten()
-  }
-
-  pub fn get_language_id(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<LanguageId> {
-    self.docs.get(specifier).map(|doc| doc.language_id.clone())
   }
 
   pub fn get_navigation_tree(

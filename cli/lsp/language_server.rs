@@ -58,7 +58,6 @@ use crate::deno_dir;
 use crate::fs_util;
 use crate::import_map::ImportMap;
 use crate::logger;
-use crate::media_type::MediaType;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_module;
 
@@ -167,16 +166,13 @@ impl Inner {
   /// sets the dependencies property on the document.
   fn analyze_dependencies(
     &mut self,
-    specifier: &ModuleSpecifier,
-    media_type: &MediaType,
-    source: &str,
+    specifier: &ModuleSpecifier
   ) {
-    if let Ok(parsed_module) =
-      analysis::parse_module(specifier, source, media_type)
+    if let Some(Ok(parsed_module)) = self.documents.get(specifier).map(|d| d.module()).flatten()
     {
       let (mut deps, _) = analysis::analyze_dependencies(
         specifier,
-        media_type,
+        parsed_module.media_type(),
         &parsed_module,
         &self.maybe_import_map,
       );
@@ -202,18 +198,14 @@ impl Inner {
   /// Analyzes all dependencies for all documents that have been opened in the
   /// editor and sets the dependencies property on the documents.
   fn analyze_dependencies_all(&mut self) {
-    let docs = self
+    let specifiers = self
       .documents
       .docs
-      .iter()
-      .map(|(s, doc)| {
-        let source = doc.content();
-        let media_type = MediaType::from(&doc.language_id);
-        (s.clone(), source.to_owned(), media_type)
-      })
+      .keys()
+      .map(ToOwned::to_owned)
       .collect::<Vec<_>>();
-    for (specifier, source, media_type) in docs {
-      self.analyze_dependencies(&specifier, &media_type, &source);
+    for specifier in specifiers {
+      self.analyze_dependencies(&specifier);
     }
   }
 
@@ -291,17 +283,6 @@ impl Inner {
       self.documents.content(specifier).map(ToOwned::to_owned)
     } else {
       self.sources.get_source(specifier)
-    }
-  }
-
-  pub(crate) fn get_media_type(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<MediaType> {
-    if specifier.scheme() == "asset" || self.documents.contains_key(specifier) {
-      Some(MediaType::from(specifier))
-    } else {
-      self.sources.get_media_type(specifier)
     }
   }
 
@@ -779,7 +760,6 @@ impl Inner {
         LanguageId::TypeScript
       }
     };
-    let media_type = MediaType::from(&language_id);
     self.documents.open(
       specifier.clone(),
       params.text_document.version,
@@ -788,11 +768,7 @@ impl Inner {
     );
 
     if self.documents.is_diagnosable(&specifier) {
-      self.analyze_dependencies(
-        &specifier,
-        &media_type,
-        &params.text_document.text,
-      );
+      self.analyze_dependencies(&specifier);
       self
         .diagnostics_server
         .invalidate(self.documents.dependents(&specifier))
@@ -812,13 +788,9 @@ impl Inner {
       params.text_document.version,
       params.content_changes,
     ) {
-      Ok(source) => {
-        let source = source.to_owned();
+      Ok(()) => {
         if self.documents.is_diagnosable(&specifier) {
-          let media_type = MediaType::from(
-            &self.documents.get_language_id(&specifier).unwrap(),
-          );
-          self.analyze_dependencies(&specifier, &media_type, &source);
+          self.analyze_dependencies(&specifier);
           self
             .diagnostics_server
             .invalidate(self.documents.dependents(&specifier))
@@ -1429,8 +1401,19 @@ impl Inner {
     }
 
     let mark = self.performance.mark("code_lens", Some(&params));
+    let navigation_tree = self.get_navigation_tree(&specifier).await.map_err(|err| {
+        error!("Error getting code lenses for \"{}\": {}", specifier, err);
+        LspError::internal_error()
+    })?;
+    let parsed_module = self.documents.get(&specifier).map(|d| d.module()).flatten().map(|m| m.ok()).flatten();
+    let line_index = self
+      .get_line_index_sync(&specifier)
+      .ok_or_else(|| {
+        error!("Error getting code lenses for \"{}\": Missing line index", specifier);
+        LspError::internal_error()
+      })?;
     let code_lenses =
-      code_lens::collect(&specifier, self).await.map_err(|err| {
+      code_lens::collect(&specifier, parsed_module, &self.config, &line_index, &navigation_tree).await.map_err(|err| {
         error!("Error getting code lenses for \"{}\": {}", specifier, err);
         LspError::internal_error()
       })?;
@@ -2599,11 +2582,7 @@ impl Inner {
     // now that we have dependencies loaded, we need to re-analyze them and
     // invalidate some diagnostics
     if self.documents.contains_key(&referrer) {
-      if let Some(source) = self.documents.content(&referrer).map(ToOwned::to_owned) {
-        let media_type =
-          MediaType::from(&self.documents.get_language_id(&referrer).unwrap());
-        self.analyze_dependencies(&referrer, &media_type, &source);
-      }
+      self.analyze_dependencies(&referrer);
       self.diagnostics_server.invalidate(vec![referrer]).await;
     }
 

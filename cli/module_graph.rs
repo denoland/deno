@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use crate::ast;
+use crate::ast::ParseParams;
 use crate::ast::parse;
 use crate::ast::transpile_module;
 use crate::ast::BundleHook;
@@ -344,7 +345,12 @@ impl Module {
   /// source of the module.
   pub fn parse(&mut self) -> Result<ParsedModule, AnyError> {
     let parsed_module =
-      parse(self.specifier.as_str(), &self.source, &self.media_type)?;
+      parse(ParseParams {
+        specifier: self.specifier.as_str().to_string(),
+        source: self.source.clone(),
+        media_type: self.media_type,
+        capture_tokens: false,
+      })?;
 
     // parse out any triple slash references
     for comment in parsed_module.get_leading_comments().iter() {

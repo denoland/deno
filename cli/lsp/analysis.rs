@@ -283,17 +283,22 @@ pub fn resolve_import(
 
 pub fn parse_module(
   specifier: &ModuleSpecifier,
-  source: &str,
-  media_type: &MediaType,
+  source: String,
+  media_type: MediaType,
 ) -> Result<ast::ParsedModule, AnyError> {
-  ast::parse(&specifier.to_string(), source, media_type)
+  ast::parse(ast::ParseParams {
+    specifier: specifier.as_str().to_string(),
+    source,
+    media_type,
+    capture_tokens: true,
+  })
 }
 
 // TODO(@kitsonk) a lot of this logic is duplicated in module_graph.rs in
 // Module::parse() and should be refactored out to a common function.
 pub fn analyze_dependencies(
   specifier: &ModuleSpecifier,
-  media_type: &MediaType,
+  media_type: MediaType,
   parsed_module: &ast::ParsedModule,
   maybe_import_map: &Option<ImportMap>,
 ) -> (HashMap<String, Dependency>, Option<ResolvedDependency>) {
@@ -324,8 +329,8 @@ pub fn analyze_dependencies(
         TypeScriptReference::Types(import) => {
           let resolved_import =
             resolve_import(&import, specifier, maybe_import_map);
-          if media_type == &MediaType::JavaScript
-            || media_type == &MediaType::Jsx
+          if media_type == MediaType::JavaScript
+            || media_type == MediaType::Jsx
           {
             maybe_type = Some(resolved_import.clone());
           }
@@ -1172,7 +1177,7 @@ mod tests {
         byte_pos: 23,
       },
       end: deno_lint::diagnostic::Position {
-        line_index: 2,
+        line_index: 1,
         column_index: 0,
         byte_pos: 33,
       },
@@ -1197,7 +1202,7 @@ mod tests {
   fn test_get_lint_references() {
     let specifier = resolve_url("file:///a.ts").expect("bad specifier");
     let source = "const foo = 42;";
-    let parsed_module = crate::ast::parse(&specifier.to_string(), source, &MediaType::TypeScript).unwrap();
+    let parsed_module = parse_module(&specifier, source.to_string(), MediaType::TypeScript).unwrap();
     let actual = get_lint_references(&parsed_module).unwrap();
 
     assert_eq!(
@@ -1242,10 +1247,10 @@ mod tests {
     import React from "https://cdn.skypack.dev/react";
     "#;
     let parsed_module =
-      parse_module(&specifier, source, &MediaType::TypeScript).unwrap();
+      parse_module(&specifier, source.to_string(), MediaType::TypeScript).unwrap();
     let (actual, maybe_type) = analyze_dependencies(
       &specifier,
-      &MediaType::TypeScript,
+      MediaType::TypeScript,
       &parsed_module,
       &None,
     );
@@ -1333,7 +1338,7 @@ mod tests {
     let source =
       "import * as a from \"./b.ts\";\nexport * as a from \"./c.ts\";\n";
     let media_type = MediaType::TypeScript;
-    let parsed_module = parse_module(&specifier, source, &media_type).unwrap();
+    let parsed_module = parse_module(&specifier, source.to_string(), media_type).unwrap();
     let result = analyze_dependency_ranges(&parsed_module);
     assert!(result.is_ok());
     let actual = result.unwrap();

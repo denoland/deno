@@ -3,6 +3,7 @@
 use crate::config_file;
 use crate::media_type::MediaType;
 use crate::text_encoding::strip_bom;
+use crate::text_encoding::strip_bom_mut;
 
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
@@ -406,6 +407,13 @@ impl ParsedModule {
   }
 }
 
+pub struct ParseParams {
+  pub specifier: String,
+  pub source: String,
+  pub media_type: MediaType,
+  pub capture_tokens: bool,
+}
+
 /// For a given specifier, source, and media type, parse the text of the
 /// module and return a representation which can be further processed.
 ///
@@ -418,27 +426,25 @@ impl ParsedModule {
 // NOTE(bartlomieju): `specifier` has `&str` type instead of
 // `&ModuleSpecifier` because runtime compiler APIs don't
 // require valid module specifiers
-pub fn parse(
-  specifier: &str,
-  source: &str,
-  media_type: &MediaType,
-) -> Result<ParsedModule, AnyError> {
-  let source = strip_bom(source);
-  let info = SourceFileTextInfo::new(BytePos(0), source.to_string());
+pub fn parse(mut params: ParseParams) -> Result<ParsedModule, AnyError> {
+  strip_bom_mut(&mut params.source);
+  let info = SourceFileTextInfo::new(BytePos(0), params.source);
+  let source_span = info.span();
+  let specifier = params.specifier;
   let input =
-    StringInput::new(source, BytePos(0), BytePos(source.len() as u32));
-  let (comments, module) = parse_string_input(input, media_type).map_err(|err| Diagnostic {
-    location: Location::from_line_and_column(specifier.to_string(), info.line_and_column_index(err.span().lo)),
+    StringInput::new(info.text(), source_span.lo(), source_span.hi());
+  let (comments, module, tokens) = parse_string_input(input, &params.media_type, params.capture_tokens).map_err(|err| Diagnostic {
+    location: Location::from_line_and_column(specifier.clone(), info.line_and_column_index(err.span().lo)),
     message: err.into_kind().msg().to_string(),
   })?;
 
   Ok(ParsedModule {
-    specifier: specifier.to_string(),
-    media_type: media_type.to_owned(),
+    specifier,
+    media_type: params.media_type.to_owned(),
     info: Arc::new(info),
     comments: MultiThreadedComments::from_single_threaded(comments),
     module,
-    tokens: None, // todo
+    tokens,
   })
 }
 
@@ -512,8 +518,8 @@ pub fn transpile_module(
     source.to_string(),
   );
   let input = StringInput::from(&*source_file);
-  let (comments, module) =
-    parse_string_input(input, media_type).map_err(|err| Diagnostic {
+  let (comments, module, _) =
+    parse_string_input(input, media_type, false).map_err(|err| Diagnostic {
       location: cm.lookup_char_pos(err.span().lo).into(),
       message: err.into_kind().msg().to_string(),
     })?;
@@ -555,17 +561,28 @@ pub fn transpile_module(
 fn parse_string_input(
   input: StringInput,
   media_type: &MediaType,
+  capture_tokens: bool,
 ) -> Result<
-  (SingleThreadedComments, Module),
+  (SingleThreadedComments, Module, Option<Vec<TokenAndSpan>>),
   swc_ecmascript::parser::error::Error,
 > {
   let syntax = get_syntax(media_type);
   let comments = SingleThreadedComments::default();
   let lexer = Lexer::new(syntax, TARGET, input, Some(&comments));
-  let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
-  let module = parser.parse_module()?;
 
-  Ok((comments, module))
+  if capture_tokens {
+    let lexer = swc_ecmascript::parser::Capturing::new(lexer);
+    let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
+    let module = parser.parse_module()?;
+    let tokens = parser.input().take();
+
+    Ok((comments, module, Some(tokens)))
+  } else {
+    let mut parser = swc_ecmascript::parser::Parser::new_from(lexer);
+    let module = parser.parse_module()?;
+
+    Ok((comments, module, None))
+  }
 }
 
 #[cfg(test)]
@@ -580,7 +597,12 @@ mod tests {
     let specifier = resolve_url_or_path("https://deno.land/x/mod.js").unwrap();
     let source = "import * as bar from './test.ts';\nconst foo = await import('./foo.ts');";
     let parsed_module =
-      parse(specifier.as_str(), source, &MediaType::JavaScript)
+      parse(ParseParams {
+        specifier: specifier.as_str().to_string(),
+        source: source.to_string(),
+        media_type: MediaType::JavaScript,
+        capture_tokens: false,
+      })
         .expect("could not parse module");
     let actual = parsed_module.analyze_dependencies();
     assert_eq!(
@@ -637,7 +659,12 @@ mod tests {
       }
     }
     "#;
-    let module = parse(specifier.as_str(), source, &MediaType::TypeScript)
+    let module = parse(ParseParams {
+        specifier: specifier.as_str().to_string(),
+        source: source.to_string(),
+        media_type: MediaType::TypeScript,
+        capture_tokens: false,
+      })
       .expect("could not parse module");
     let (code, maybe_map) = module
       .transpile(&EmitOptions::default())
@@ -660,7 +687,12 @@ mod tests {
       }
     }
     "#;
-    let module = parse(specifier.as_str(), source, &MediaType::Tsx)
+    let module = parse(ParseParams {
+        specifier: specifier.as_str().to_string(),
+        source: source.to_string(),
+        media_type: MediaType::Tsx,
+        capture_tokens: false,
+      })
       .expect("could not parse module");
     let (code, _) = module
       .transpile(&EmitOptions::default())
@@ -690,7 +722,12 @@ mod tests {
       }
     }
     "#;
-    let module = parse(specifier.as_str(), source, &MediaType::TypeScript)
+    let module = parse(ParseParams {
+        specifier: specifier.as_str().to_string(),
+        source: source.to_string(),
+        media_type: MediaType::TypeScript,
+        capture_tokens: false,
+      })
       .expect("could not parse module");
     let (code, _) = module
       .transpile(&EmitOptions::default())

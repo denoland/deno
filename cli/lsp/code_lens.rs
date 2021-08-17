@@ -1,11 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use super::analysis;
+use super::config::Config;
+use super::config::WorkspaceSettings;
 use super::language_server;
+use super::text::LineIndex;
 use super::tsc;
+use super::tsc::NavigationTree;
 use crate::ast::ParsedModule;
 
-use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
@@ -370,31 +372,24 @@ pub(crate) async fn resolve_code_lens(
 
 pub(crate) async fn collect(
   specifier: &ModuleSpecifier,
-  language_server: &mut language_server::Inner,
+  parsed_module: Option<&ParsedModule>,
+  config: &Config,
+  line_index: &LineIndex,
+  navigation_tree: &NavigationTree,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
-  let mut code_lenses = collect_test(specifier, language_server)?;
-  code_lenses.extend(collect_tsc(specifier, language_server).await?);
+  let mut code_lenses = collect_test(specifier, parsed_module, config)?;
+  code_lenses.extend(collect_tsc(specifier, &config.get_workspace_settings(), line_index, navigation_tree).await?);
 
   Ok(code_lenses)
 }
 
 fn collect_test(
   specifier: &ModuleSpecifier,
-  language_server: &mut language_server::Inner,
+  parsed_module: Option<&ParsedModule>,
+  config: &Config,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
-  if language_server.config.specifier_code_lens_test(specifier) {
-    let source = language_server
-      .get_text_content(specifier)
-      .ok_or_else(|| anyhow!("Missing text content: {}", specifier))?;
-    let media_type = language_server
-      .get_media_type(specifier)
-      .ok_or_else(|| anyhow!("Missing media type: {}", specifier))?;
-    // we swallow parsed errors, as they are meaningless here.
-    // TODO(@kitsonk) consider caching previous code_lens results to return if
-    // there is a parse error to avoid issues of lenses popping in and out
-    if let Ok(parsed_module) =
-      analysis::parse_module(specifier, &source, &media_type)
-    {
+  if config.specifier_code_lens_test(specifier) {
+    if let Some(parsed_module) = parsed_module {
       let mut collector =
         DenoTestCollector::new(specifier.clone(), &parsed_module);
       parsed_module.module.visit_with(
@@ -412,13 +407,10 @@ fn collect_test(
 /// Return tsc navigation tree code lenses.
 async fn collect_tsc(
   specifier: &ModuleSpecifier,
-  language_server: &mut language_server::Inner,
+  workspace_settings: &WorkspaceSettings,
+  line_index: &LineIndex,
+  navigation_tree: &NavigationTree,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
-  let workspace_settings = language_server.config.get_workspace_settings();
-  let line_index = language_server
-    .get_line_index_sync(specifier)
-    .ok_or_else(|| anyhow!("Missing line index."))?;
-  let navigation_tree = language_server.get_navigation_tree(specifier).await?;
   let code_lenses = Rc::new(RefCell::new(Vec::new()));
   navigation_tree.walk(&|i, mp| {
     let mut code_lenses = code_lenses.borrow_mut();
@@ -520,7 +512,7 @@ mod tests {
       Deno.test("test b", function anotherTest() {});
     "#;
     let parsed_module =
-      analysis::parse_module(&specifier, source, &MediaType::TypeScript)
+      crate::lsp::analysis::parse_module(&specifier, source.to_string(), MediaType::TypeScript)
         .unwrap();
     let mut collector = DenoTestCollector::new(specifier, &parsed_module);
     parsed_module.module.visit_with(

@@ -7,7 +7,6 @@ use super::sources::Sources;
 use super::tsc;
 
 use crate::diagnostics;
-use crate::media_type::MediaType;
 use crate::tokio_util::create_basic_runtime;
 
 use analysis::ResolvedDependency;
@@ -329,17 +328,21 @@ async fn generate_lint_diagnostics(
           .get_version(specifier, &DiagnosticSource::DenoLint);
         if version != current_version {
           let module = documents.get(specifier).map(|d| d.module()).flatten();
-          if let Some(Ok(module)) = module {
+          let diagnostics = match module {
+            Some(Ok(module)) => {
               if let Ok(references) = analysis::get_lint_references(module) {
-                let diagnostics =
-                  references.into_iter().map(|r| r.to_diagnostic()).collect();
-                diagnostics_vec.push((specifier.clone(), version, diagnostics));
+                references.into_iter().map(|r| r.to_diagnostic()).collect::<Vec<_>>()
               } else {
-                diagnostics_vec.push((specifier.clone(), version, Vec::new()));
+                Vec::new()
               }
-          } else if module.is_none() {
+            },
+            Some(Err(_)) => Vec::new(),
+            None => {
               error!("Missing file contents for: {}", specifier);
-          }
+              Vec::new()
+            }
+          };
+          diagnostics_vec.push((specifier.clone(), version, diagnostics));
         }
       }
     }

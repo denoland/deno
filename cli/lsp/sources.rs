@@ -148,14 +148,14 @@ impl Default for Metadata {
 impl Metadata {
   fn new(
     specifier: &ModuleSpecifier,
-    source: &str,
+    source: String,
     version: &str,
-    media_type: &MediaType,
+    media_type: MediaType,
     maybe_warning: Option<String>,
     maybe_import_map: &Option<ImportMap>,
   ) -> Self {
     let (dependencies, maybe_types) = if let Ok(parsed_module) =
-      analysis::parse_module(specifier, source, media_type)
+      analysis::parse_module(specifier, source.clone(), media_type)
     {
       let (deps, maybe_types) = analysis::analyze_dependencies(
         specifier,
@@ -167,7 +167,7 @@ impl Metadata {
     } else {
       (None, None)
     };
-    let line_index = LineIndex::new(source);
+    let line_index = LineIndex::new(&source);
 
     Self {
       dependencies,
@@ -177,7 +177,7 @@ impl Metadata {
       maybe_types,
       maybe_warning,
       media_type: media_type.to_owned(),
-      source: source.to_string(),
+      source,
       specifier: specifier.clone(),
       version: version.to_string(),
     }
@@ -185,11 +185,11 @@ impl Metadata {
 
   fn refresh(&mut self, maybe_import_map: &Option<ImportMap>) {
     let (dependencies, maybe_types) = if let Ok(parsed_module) =
-      analysis::parse_module(&self.specifier, &self.source, &self.media_type)
+      analysis::parse_module(&self.specifier, self.source.clone(), self.media_type)
     {
       let (deps, maybe_types) = analysis::analyze_dependencies(
         &self.specifier,
-        &self.media_type,
+        self.media_type,
         &parsed_module,
         maybe_import_map,
       );
@@ -406,9 +406,9 @@ impl Inner {
     };
     let mut metadata = Metadata::new(
       specifier,
-      &source,
+      source,
       &version,
-      &media_type,
+      media_type,
       maybe_warning,
       &self.maybe_import_map,
     );
