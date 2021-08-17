@@ -27,6 +27,7 @@ type KeyUsage =
   | "wrapKey";
 
 type NamedCurve = string;
+type BigInteger = Uint8Array;
 
 interface HmacKeyGenParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
