@@ -191,5 +191,5 @@ unitTest(async function subtleCryptoHmacImportExport() {
   );
 
   const exportedKey = await crypto.subtle.exportKey("raw", key);
-  assertEquals(exportedKey, rawKey);
+  assertEquals(new Uint8Array(exportedKey), rawKey);
 });
