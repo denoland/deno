@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::bad_resource_id;
 use deno_core::error::invalid_hostname;
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
@@ -272,8 +271,7 @@ where
       let r = state
         .borrow_mut()
         .resource_table
-        .get::<WsCancelResource>(cancel_rid)
-        .ok_or_else(bad_resource_id)?;
+        .get::<WsCancelResource>(cancel_rid)?;
       client
         .or_cancel(r.0.to_owned())
         .await
@@ -289,7 +287,7 @@ where
     })?;
 
   if let Some(cancel_rid) = args.cancel_handle {
-    state.borrow_mut().resource_table.close(cancel_rid);
+    state.borrow_mut().resource_table.close(cancel_rid).ok();
   }
 
   let (ws_tx, ws_rx) = stream.split();
@@ -343,8 +341,7 @@ pub async fn op_ws_send(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<WsStreamResource>(args.rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WsStreamResource>(args.rid)?;
   resource.send(msg).await?;
   Ok(())
 }
@@ -374,8 +371,7 @@ pub async fn op_ws_close(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<WsStreamResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WsStreamResource>(rid)?;
   resource.send(msg).await?;
   Ok(())
 }
@@ -400,8 +396,7 @@ pub async fn op_ws_next_event(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<WsStreamResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WsStreamResource>(rid)?;
 
   let cancel = RcRef::map(&resource, |r| &r.cancel);
   let val = resource.next_message(cancel).await?;

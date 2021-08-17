@@ -48,6 +48,19 @@ unitTest(
   },
 );
 
+unitTest(
+  async function wasmInstantiateStreamingNoContentType() {
+    await assertThrowsAsync(
+      async () => {
+        const response = Promise.resolve(new Response(simpleWasm));
+        await WebAssembly.instantiateStreaming(response);
+      },
+      TypeError,
+      "Invalid WebAssembly content type.",
+    );
+  },
+);
+
 unitTest(async function wasmInstantiateStreaming() {
   let isomorphic = "";
   for (const byte of simpleWasm) {
