@@ -278,16 +278,12 @@ finishing test case.`;
           name: test.name,
         };
 
-        dispatchTestEvent({
-          stepWait: step,
-        });
-
         const earlier = DateNow();
         const result = await runTest(test, path.concat(name));
         const elapsed = DateNow() - earlier;
 
         dispatchTestEvent({
-          stepResult: [
+          step: [
             step,
             serializeResult(result),
             elapsed,
