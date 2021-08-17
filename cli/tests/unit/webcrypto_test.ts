@@ -106,7 +106,7 @@ unitTest(async function testGenerateHMACKey() {
   assert(key.usages.includes("sign"));
 });
 
-unitTest(async function testSignECDSA() {
+unitTest(async function testECDSASignVerify() {
   const key = await window.crypto.subtle.generateKey(
     {
       name: "ECDSA",
@@ -125,6 +125,15 @@ unitTest(async function testSignECDSA() {
   );
 
   assert(signature);
+  assert(signature instanceof ArrayBuffer);
+
+  const verified = await window.crypto.subtle.verify(
+    { hash: { name: "SHA-384" }, name: "ECDSA", namedCurve: "P-384" },
+    key.publicKey,
+    signature,
+    encoded,
+  );
+  assert(verified);
 });
 
 // https://github.com/denoland/deno/issues/11313
