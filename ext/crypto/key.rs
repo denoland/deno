@@ -4,6 +4,7 @@ use ring::agreement::Algorithm as RingAlgorithm;
 use ring::digest;
 use ring::hmac::Algorithm as HmacAlgorithm;
 use ring::signature::EcdsaSigningAlgorithm;
+use ring::signature::EcdsaVerificationAlgorithm;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -53,6 +54,15 @@ impl From<CryptoNamedCurve> for &EcdsaSigningAlgorithm {
       CryptoNamedCurve::P384 => {
         &ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING
       }
+    }
+  }
+}
+
+impl From<CryptoNamedCurve> for &EcdsaVerificationAlgorithm {
+  fn from(curve: CryptoNamedCurve) -> &'static EcdsaVerificationAlgorithm {
+    match curve {
+      CryptoNamedCurve::P256 => &ring::signature::ECDSA_P256_SHA256_FIXED,
+      CryptoNamedCurve::P384 => &ring::signature::ECDSA_P384_SHA384_FIXED,
     }
   }
 }
