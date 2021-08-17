@@ -27,7 +27,6 @@ type KeyUsage =
   | "wrapKey";
 
 type NamedCurve = string;
-type BigInteger = Uint8Array;
 
 interface HmacKeyGenParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
@@ -75,7 +74,7 @@ interface RsaHashedKeyAlgorithm extends RsaKeyAlgorithm {
 
 interface RsaKeyAlgorithm extends KeyAlgorithm {
   modulusLength: number;
-  publicExponent: BigInteger;
+  publicExponent: Uint8Array;
 }
 
 /** The CryptoKey dictionary of the Web Crypto API represents a cryptographic key. */
