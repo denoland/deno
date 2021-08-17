@@ -186,7 +186,7 @@ declare namespace Deno {
    * });
    * ```
    * */
-  export function test(name: string, fn: () => void | Promise<void>): void;
+  export function test(name: string, fn: TestFunction): void;
 
   export interface TestStep {
     fn: TestFunction;
