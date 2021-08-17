@@ -49,6 +49,12 @@ itest!(fail {
   output: "test/fail.out",
 });
 
+itest!(step {
+  args: "test test/step.ts",
+  exit_code: 1,
+  output: "test/step.out",
+});
+
 itest!(load_unload {
   args: "test test/load_unload.ts",
   exit_code: 0,
