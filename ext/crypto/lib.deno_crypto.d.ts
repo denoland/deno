@@ -37,6 +37,7 @@ interface JsonWebKey {
   e?: string;
   ext?: boolean;
   k?: string;
+  // deno-lint-ignore camelcase
   key_ops?: string[];
   kty?: string;
   n?: string;
