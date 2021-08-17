@@ -355,7 +355,11 @@ pub struct FlockArgs {
   exclusive: Option<bool>,
 }
 
-fn op_flock_sync(state: &mut OpState, args: FlockArgs, _: ()) -> Result<(), AnyError> {
+fn op_flock_sync(
+  state: &mut OpState,
+  args: FlockArgs,
+  _: (),
+) -> Result<(), AnyError> {
   use fs3::FileExt;
   super::check_unstable(state, "Deno.flockSync");
   StdFileResource::with(state, args.rid, |r| match r {
@@ -366,19 +370,23 @@ fn op_flock_sync(state: &mut OpState, args: FlockArgs, _: ()) -> Result<(), AnyE
         std_file.lock_shared()?;
       }
       Ok(())
-    },
+    }
     Err(_) => Err(type_error("cannot lock this type of resource".to_string())),
   })
 }
 
-fn op_funlock_sync(state: &mut OpState, rid: ResourceId, _:()) -> Result<(), AnyError> {
+fn op_funlock_sync(
+  state: &mut OpState,
+  rid: ResourceId,
+  _: (),
+) -> Result<(), AnyError> {
   use fs3::FileExt;
   super::check_unstable(state, "Deno.funlockSync");
   StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => {
       std_file.unlock()?;
       Ok(())
-    },
+    }
     Err(_) => Err(type_error("cannot lock this type of resource".to_string())),
   })
 }
