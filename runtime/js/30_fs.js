@@ -386,14 +386,11 @@
   }
 
   function flockSync(rid, exclusive) {
-    core.opSync("op_flock_sync", { rid, exclusive: exclusive === true });
+    core.opSync("op_flock_sync", rid, exclusive === true);
   }
 
   async function flock(rid, exclusive) {
-    await core.opAsync("op_flock_async", {
-      rid,
-      exclusive: exclusive === true,
-    });
+    await core.opAsync("op_flock_async", rid, exclusive === true);
   }
 
   function funlockSync(rid) {

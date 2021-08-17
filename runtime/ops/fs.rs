@@ -350,23 +350,17 @@ async fn op_fstat_async(
   Ok(get_stat(metadata))
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FlockArgs {
-  rid: ResourceId,
-  exclusive: Option<bool>,
-}
-
 fn op_flock_sync(
   state: &mut OpState,
-  args: FlockArgs,
-  _: (),
+  rid: ResourceId,
+  exclusive: bool,
 ) -> Result<(), AnyError> {
   use fs3::FileExt;
   super::check_unstable(state, "Deno.flockSync");
-  StdFileResource::with(state, args.rid, |r| match r {
+
+  StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => {
-      if args.exclusive.unwrap_or(false) {
+      if exclusive {
         std_file.lock_exclusive()?;
       } else {
         std_file.lock_shared()?;
@@ -379,14 +373,16 @@ fn op_flock_sync(
 
 async fn op_flock_async(
   state: Rc<RefCell<OpState>>,
-  args: FlockArgs,
-  _: (),
+  rid: ResourceId,
+  exclusive: bool,
 ) -> Result<(), AnyError> {
   use fs3::FileExt;
+  super::check_unstable2(&state, "Deno.flock");
+
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<StdFileResource>(args.rid)?;
+    .get::<StdFileResource>(rid)?;
 
   if resource.fs_file.is_none() {
     return Err(bad_resource_id());
@@ -405,7 +401,7 @@ async fn op_flock_async(
     .into_std()
     .await;
   tokio::task::spawn_blocking(move || -> Result<(), AnyError> {
-    if args.exclusive.unwrap_or(false) {
+    if exclusive {
       std_file.lock_exclusive()?;
     } else {
       std_file.lock_shared()?;
@@ -422,6 +418,7 @@ fn op_funlock_sync(
 ) -> Result<(), AnyError> {
   use fs3::FileExt;
   super::check_unstable(state, "Deno.funlockSync");
+
   StdFileResource::with(state, rid, |r| match r {
     Ok(std_file) => {
       std_file.unlock()?;
@@ -437,6 +434,8 @@ async fn op_funlock_async(
   _: (),
 ) -> Result<(), AnyError> {
   use fs3::FileExt;
+  super::check_unstable2(&state, "Deno.funlock");
+
   let resource = state
     .borrow_mut()
     .resource_table
