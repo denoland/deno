@@ -170,7 +170,7 @@ const jwk: JsonWebKey = {
   kty: "oct",
   // unpadded base64 for rawKey.
   k: "AQIDBAUGBwgJCgsMDQ4PEA",
-  alg: "H256",
+  alg: "HS256",
 };
 
 unitTest(async function subtleCryptoHmacImportExport() {
