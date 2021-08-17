@@ -151,8 +151,8 @@
       const idlValue = normalizedAlgorithm[member];
       // 3.
       if (idlType === "BufferSource" && idlValue) {
-        normalizedAlgorithm[member] = new Uint8Array(
-          TypedArrayPrototypeSlice(
+        normalizedAlgorithm[member] = TypedArrayPrototypeSlice(
+          new Uint8Array(
             (ArrayBufferIsView(idlValue) ? idlValue.buffer : idlValue),
             idlValue.byteOffset ?? 0,
             idlValue.byteLength,
@@ -720,16 +720,17 @@
 
       const handle = key[_handle];
       // 2.
-      const bits = WeakMapPrototypeGet(KEY_STORE, handle);
+      const innerKey = WeakMapPrototypeGet(KEY_STORE, handle);
 
       switch (key[_algorithm].name) {
         case "HMAC": {
-          if (bits == null) {
+          if (innerKey == null) {
             throw new DOMException("Key is not available", "OperationError");
           }
           switch (format) {
             // 3.
             case "raw": {
+              const bits = innerKey.data;
               for (let _i = 7 & (8 - bits.length % 8); _i > 0; _i--) {
                 bits.push(0);
               }
@@ -891,14 +892,6 @@
       const usages = keyUsages;
 
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "generateKey");
-
-      // https://github.com/denoland/deno/pull/9614#issuecomment-866049433
-      if (!extractable) {
-        throw new DOMException(
-          "Non-extractable keys are not supported",
-          "SecurityError",
-        );
-      }
 
       const result = await generateKey(
         normalizedAlgorithm,

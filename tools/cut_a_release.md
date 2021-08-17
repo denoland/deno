@@ -16,8 +16,8 @@ cut.**
 
 ## Updating the main repo
 
-1. Create a PR that bumps versions of all crates in `ext` and `runtime`
-   directories.
+1. Create a PR that bumps versions of all crates in `bench_util`, `core`, `ext`,
+   `runtime` directories.
 
 To determine if you should bump a crate a minor version instead of a patch
 version, check if you can answer any of the following questions with yes:

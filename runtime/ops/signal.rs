@@ -8,8 +8,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 #[cfg(unix)]
-use deno_core::error::bad_resource_id;
-#[cfg(unix)]
 use deno_core::AsyncRefCell;
 #[cfg(unix)]
 use deno_core::CancelFuture;
@@ -81,8 +79,7 @@ async fn op_signal_poll(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<SignalStreamResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<SignalStreamResource>(rid)?;
   let cancel = RcRef::map(&resource, |r| &r.cancel);
   let mut signal = RcRef::map(&resource, |r| &r.signal).borrow_mut().await;
 
@@ -99,10 +96,7 @@ pub fn op_signal_unbind(
   _: (),
 ) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.signal");
-  state
-    .resource_table
-    .close(rid)
-    .ok_or_else(bad_resource_id)?;
+  state.resource_table.close(rid)?;
   Ok(())
 }
 

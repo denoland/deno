@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::ResourceId;
@@ -47,8 +46,7 @@ pub fn op_webgpu_create_render_bundle_encoder(
 ) -> Result<WebGpuResult, AnyError> {
   let device_resource = state
     .resource_table
-    .get::<super::WebGpuDevice>(args.device_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::WebGpuDevice>(args.device_rid)?;
   let device = device_resource.0;
 
   let mut color_formats = vec![];
@@ -98,10 +96,10 @@ pub fn op_webgpu_render_bundle_encoder_finish(
   args: RenderBundleEncoderFinishArgs,
   _: (),
 ) -> Result<WebGpuResult, AnyError> {
-  let render_bundle_encoder_resource = state
-    .resource_table
-    .take::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
-    .ok_or_else(bad_resource_id)?;
+  let render_bundle_encoder_resource =
+    state
+      .resource_table
+      .take::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)?;
   let render_bundle_encoder = Rc::try_unwrap(render_bundle_encoder_resource)
     .ok()
     .expect("unwrapping render_bundle_encoder_resource should succeed")
@@ -134,14 +132,14 @@ pub fn op_webgpu_render_bundle_encoder_set_bind_group(
   args: RenderBundleEncoderSetBindGroupArgs,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<WebGpuResult, AnyError> {
-  let bind_group_resource = state
-    .resource_table
-    .get::<super::binding::WebGpuBindGroup>(args.bind_group)
-    .ok_or_else(bad_resource_id)?;
-  let render_bundle_encoder_resource = state
-    .resource_table
-    .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
-    .ok_or_else(bad_resource_id)?;
+  let bind_group_resource =
+    state
+      .resource_table
+      .get::<super::binding::WebGpuBindGroup>(args.bind_group)?;
+  let render_bundle_encoder_resource =
+    state
+      .resource_table
+      .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)?;
 
   // I know this might look like it can be easily deduplicated, but it can not
   // be due to the lifetime of the args.dynamic_offsets_data slice. Because we
@@ -190,10 +188,10 @@ pub fn op_webgpu_render_bundle_encoder_push_debug_group(
   args: RenderBundleEncoderPushDebugGroupArgs,
   _: (),
 ) -> Result<WebGpuResult, AnyError> {
-  let render_bundle_encoder_resource = state
-    .resource_table
-    .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
-    .ok_or_else(bad_resource_id)?;
+  let render_bundle_encoder_resource =
+    state
+      .resource_table
+      .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)?;
 
   unsafe {
     let label = std::ffi::CString::new(args.group_label).unwrap();
@@ -217,10 +215,10 @@ pub fn op_webgpu_render_bundle_encoder_pop_debug_group(
   args: RenderBundleEncoderPopDebugGroupArgs,
   _: (),
 ) -> Result<WebGpuResult, AnyError> {
-  let render_bundle_encoder_resource = state
-    .resource_table
-    .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
-    .ok_or_else(bad_resource_id)?;
+  let render_bundle_encoder_resource =
+    state
+      .resource_table
+      .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)?;
 
   wgpu_core::command::bundle_ffi::wgpu_render_bundle_pop_debug_group(
     &mut render_bundle_encoder_resource.0.borrow_mut(),
@@ -241,10 +239,10 @@ pub fn op_webgpu_render_bundle_encoder_insert_debug_marker(
   args: RenderBundleEncoderInsertDebugMarkerArgs,
   _: (),
 ) -> Result<WebGpuResult, AnyError> {
-  let render_bundle_encoder_resource = state
-    .resource_table
-    .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
-    .ok_or_else(bad_resource_id)?;
+  let render_bundle_encoder_resource =
+    state
+      .resource_table
+      .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)?;
 
   unsafe {
     let label = std::ffi::CString::new(args.marker_label).unwrap();
@@ -269,14 +267,14 @@ pub fn op_webgpu_render_bundle_encoder_set_pipeline(
   args: RenderBundleEncoderSetPipelineArgs,
   _: (),
 ) -> Result<WebGpuResult, AnyError> {
-  let render_pipeline_resource = state
-    .resource_table
-    .get::<super::pipeline::WebGpuRenderPipeline>(args.pipeline)
-    .ok_or_else(bad_resource_id)?;
-  let render_bundle_encoder_resource = state
-    .resource_table
-    .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
-    .ok_or_else(bad_resource_id)?;
+  let render_pipeline_resource =
+    state
+      .resource_table
+      .get::<super::pipeline::WebGpuRenderPipeline>(args.pipeline)?;
+  let render_bundle_encoder_resource =
+    state
+      .resource_table
+      .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)?;
 
   wgpu_core::command::bundle_ffi::wgpu_render_bundle_set_pipeline(
     &mut render_bundle_encoder_resource.0.borrow_mut(),
@@ -303,12 +301,11 @@ pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
 ) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGpuBuffer>(args.buffer)
-    .ok_or_else(bad_resource_id)?;
-  let render_bundle_encoder_resource = state
-    .resource_table
-    .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::buffer::WebGpuBuffer>(args.buffer)?;
+  let render_bundle_encoder_resource =
+    state
+      .resource_table
+      .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)?;
 
   render_bundle_encoder_resource
     .0
@@ -340,12 +337,11 @@ pub fn op_webgpu_render_bundle_encoder_set_vertex_buffer(
 ) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGpuBuffer>(args.buffer)
-    .ok_or_else(bad_resource_id)?;
-  let render_bundle_encoder_resource = state
-    .resource_table
-    .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::buffer::WebGpuBuffer>(args.buffer)?;
+  let render_bundle_encoder_resource =
+    state
+      .resource_table
+      .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)?;
 
   wgpu_core::command::bundle_ffi::wgpu_render_bundle_set_vertex_buffer(
     &mut render_bundle_encoder_resource.0.borrow_mut(),
@@ -373,10 +369,10 @@ pub fn op_webgpu_render_bundle_encoder_draw(
   args: RenderBundleEncoderDrawArgs,
   _: (),
 ) -> Result<WebGpuResult, AnyError> {
-  let render_bundle_encoder_resource = state
-    .resource_table
-    .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
-    .ok_or_else(bad_resource_id)?;
+  let render_bundle_encoder_resource =
+    state
+      .resource_table
+      .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)?;
 
   wgpu_core::command::bundle_ffi::wgpu_render_bundle_draw(
     &mut render_bundle_encoder_resource.0.borrow_mut(),
@@ -405,10 +401,10 @@ pub fn op_webgpu_render_bundle_encoder_draw_indexed(
   args: RenderBundleEncoderDrawIndexedArgs,
   _: (),
 ) -> Result<WebGpuResult, AnyError> {
-  let render_bundle_encoder_resource = state
-    .resource_table
-    .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
-    .ok_or_else(bad_resource_id)?;
+  let render_bundle_encoder_resource =
+    state
+      .resource_table
+      .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)?;
 
   wgpu_core::command::bundle_ffi::wgpu_render_bundle_draw_indexed(
     &mut render_bundle_encoder_resource.0.borrow_mut(),
@@ -437,12 +433,11 @@ pub fn op_webgpu_render_bundle_encoder_draw_indirect(
 ) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGpuBuffer>(args.indirect_buffer)
-    .ok_or_else(bad_resource_id)?;
-  let render_bundle_encoder_resource = state
-    .resource_table
-    .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::buffer::WebGpuBuffer>(args.indirect_buffer)?;
+  let render_bundle_encoder_resource =
+    state
+      .resource_table
+      .get::<WebGpuRenderBundleEncoder>(args.render_bundle_encoder_rid)?;
 
   wgpu_core::command::bundle_ffi::wgpu_render_bundle_draw_indirect(
     &mut render_bundle_encoder_resource.0.borrow_mut(),
