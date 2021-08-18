@@ -50,6 +50,7 @@ pub struct WorkerOptions {
   pub args: Vec<String>,
   pub debug_flag: bool,
   pub unstable: bool,
+  pub enable_testing_features: bool,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
   pub user_agent: String,
@@ -84,10 +85,12 @@ impl MainWorker {
   ) -> Self {
     // Permissions: many ops depend on this
     let unstable = options.unstable;
+    let enable_testing_features = options.enable_testing_features;
     let perm_ext = Extension::builder()
       .state(move |state| {
         state.put::<Permissions>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
+        state.put(ops::TestingFeaturesEnabled(enable_testing_features));
         Ok(())
       })
       .build();
@@ -304,6 +307,7 @@ mod tests {
       args: vec![],
       debug_flag: false,
       unstable: false,
+      enable_testing_features: false,
       unsafely_ignore_certificate_errors: None,
       root_cert_store: None,
       seed: None,

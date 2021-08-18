@@ -107,6 +107,7 @@ interface SubtleCrypto {
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
+  exportKey(format: "raw", key: CryptoKey): Promise<ArrayBuffer>;
   sign(
     algorithm: AlgorithmIdentifier | RsaPssParams | EcdsaParams,
     key: CryptoKey,

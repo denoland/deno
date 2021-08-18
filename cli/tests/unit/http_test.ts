@@ -751,3 +751,67 @@ unitTest({ perms: { net: true } }, async function httpServerPanic() {
   client.close();
   listener.close();
 });
+
+// https://github.com/denoland/deno/issues/11595
+unitTest(
+  { perms: { net: true } },
+  async function httpServerIncompleteMessage() {
+    const listener = Deno.listen({ port: 4501 });
+    const def1 = deferred();
+    const def2 = deferred();
+
+    const client = await Deno.connect({ port: 4501 });
+    await client.write(new TextEncoder().encode(
+      `GET / HTTP/1.0\r\n\r\n`,
+    ));
+
+    const conn = await listener.accept();
+    const httpConn = Deno.serveHttp(conn);
+    const ev = await httpConn.nextRequest();
+    const { respondWith } = ev!;
+
+    const { readable, writable } = new TransformStream<Uint8Array>();
+    const writer = writable.getWriter();
+
+    async function writeResponse() {
+      await writer.write(
+        new TextEncoder().encode(
+          "written to the writable side of a TransformStream",
+        ),
+      );
+      await writer.close();
+    }
+
+    const errors: Error[] = [];
+
+    writeResponse()
+      .catch((error: Error) => {
+        errors.push(error);
+      })
+      .then(() => def1.resolve());
+
+    const res = new Response(readable);
+
+    respondWith(res)
+      .catch((error: Error) => errors.push(error))
+      .then(() => def2.resolve());
+
+    client.close();
+
+    await Promise.all([
+      def1,
+      def2,
+    ]);
+
+    listener.close();
+
+    assertEquals(errors.length, 2);
+    for (const error of errors) {
+      assertEquals(error.name, "Http");
+      assertEquals(
+        error.message,
+        "connection closed before message completed",
+      );
+    }
+  },
+);

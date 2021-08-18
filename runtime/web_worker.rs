@@ -11,7 +11,6 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
-use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
 use deno_core::located_script_name;
 use deno_core::serde::Deserialize;
@@ -43,6 +42,13 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WebWorkerType {
+  Classic,
+  Module,
+}
 
 #[derive(
   Debug, Default, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize,
@@ -110,6 +116,7 @@ pub struct WebWorkerInternalHandle {
   pub cancel: Rc<CancelHandle>,
   terminated: Arc<AtomicBool>,
   isolate_handle: v8::IsolateHandle,
+  pub worker_type: WebWorkerType,
 }
 
 impl WebWorkerInternalHandle {
@@ -215,6 +222,7 @@ impl WebWorkerHandle {
 
 fn create_handles(
   isolate_handle: v8::IsolateHandle,
+  worker_type: WebWorkerType,
 ) -> (WebWorkerInternalHandle, SendableWebWorkerHandle) {
   let (parent_port, worker_port) = create_entangled_message_port();
   let (ctrl_tx, ctrl_rx) = mpsc::channel::<WorkerControlEvent>(1);
@@ -225,6 +233,7 @@ fn create_handles(
     terminated: terminated.clone(),
     isolate_handle: isolate_handle.clone(),
     cancel: CancelHandle::new_rc(),
+    worker_type,
   };
   let external_handle = SendableWebWorkerHandle {
     receiver: ctrl_rx,
@@ -245,6 +254,7 @@ pub struct WebWorker {
   pub name: String,
   internal_handle: WebWorkerInternalHandle,
   pub use_deno_namespace: bool,
+  pub worker_type: WebWorkerType,
   pub main_module: ModuleSpecifier,
 }
 
@@ -253,6 +263,7 @@ pub struct WebWorkerOptions {
   pub args: Vec<String>,
   pub debug_flag: bool,
   pub unstable: bool,
+  pub enable_testing_features: bool,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
   pub user_agent: String,
@@ -261,6 +272,7 @@ pub struct WebWorkerOptions {
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
   pub use_deno_namespace: bool,
+  pub worker_type: WebWorkerType,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub apply_source_maps: bool,
   /// Sets `Deno.version.deno` in JS runtime.
@@ -286,10 +298,12 @@ impl WebWorker {
   ) -> (Self, SendableWebWorkerHandle) {
     // Permissions: many ops depend on this
     let unstable = options.unstable;
+    let enable_testing_features = options.enable_testing_features;
     let perm_ext = Extension::builder()
       .state(move |state| {
         state.put::<Permissions>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
+        state.put(ops::TestingFeaturesEnabled(enable_testing_features));
         Ok(())
       })
       .build();
@@ -386,7 +400,8 @@ impl WebWorker {
 
     let (internal_handle, external_handle) = {
       let handle = js_runtime.v8_isolate().thread_safe_handle();
-      let (internal_handle, external_handle) = create_handles(handle);
+      let (internal_handle, external_handle) =
+        create_handles(handle, options.worker_type);
       let op_state = js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
       op_state.put(internal_handle.clone());
@@ -400,6 +415,7 @@ impl WebWorker {
         name,
         internal_handle,
         use_deno_namespace: options.use_deno_namespace,
+        worker_type: options.worker_type,
         main_module,
       },
       external_handle,
@@ -418,6 +434,7 @@ impl WebWorker {
       "target": env!("TARGET"),
       "tsVersion": options.ts_version,
       "unstableFlag": options.unstable,
+      "enableTestingFeaturesFlag": options.enable_testing_features,
       "v8Version": deno_core::v8_version(),
       "location": self.main_module,
       "cpuCount": options.cpu_count,
@@ -550,36 +567,38 @@ pub fn run_web_worker(
   // TODO(bartlomieju): run following block using "select!"
   // with terminate
 
-  // Execute provided source code immediately
-  let result = if let Some(source_code) = maybe_source_code {
-    worker.execute_script(&located_script_name!(), &source_code)
-  } else {
-    // TODO(bartlomieju): add "type": "classic", ie. ability to load
-    // script instead of module
-    let load_future = worker.execute_module(&specifier).boxed_local();
+  let fut = async move {
+    // Execute provided source code immediately
+    let result = if let Some(source_code) = maybe_source_code {
+      worker.execute_script(&located_script_name!(), &source_code)
+    } else {
+      // TODO(bartlomieju): add "type": "classic", ie. ability to load
+      // script instead of module
+      worker.execute_module(&specifier).await
+    };
 
-    rt.block_on(load_future)
+    let internal_handle = worker.internal_handle.clone();
+
+    // If sender is closed it means that worker has already been closed from
+    // within using "globalThis.close()"
+    if internal_handle.is_terminated() {
+      return Ok(());
+    }
+
+    if let Err(e) = result {
+      print_worker_error(e.to_string(), &name);
+      internal_handle
+        .post_event(WorkerControlEvent::TerminalError(e))
+        .expect("Failed to post message to host");
+
+      // Failure to execute script is a terminal error, bye, bye.
+      return Ok(());
+    }
+
+    let result = worker.run_event_loop(true).await;
+    debug!("Worker thread shuts down {}", &name);
+    result
   };
 
-  let internal_handle = worker.internal_handle.clone();
-
-  // If sender is closed it means that worker has already been closed from
-  // within using "globalThis.close()"
-  if internal_handle.is_terminated() {
-    return Ok(());
-  }
-
-  if let Err(e) = result {
-    print_worker_error(e.to_string(), &name);
-    internal_handle
-      .post_event(WorkerControlEvent::TerminalError(e))
-      .expect("Failed to post message to host");
-
-    // Failure to execute script is a terminal error, bye, bye.
-    return Ok(());
-  }
-
-  let result = rt.block_on(worker.run_event_loop(true));
-  debug!("Worker thread shuts down {}", &name);
-  result
+  rt.block_on(fut)
 }

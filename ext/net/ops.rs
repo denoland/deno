@@ -107,7 +107,7 @@ async fn accept_tcp(
     .borrow()
     .resource_table
     .get::<TcpListenerResource>(rid)
-    .ok_or_else(|| bad_resource("Listener has been closed"))?;
+    .map_err(|_| bad_resource("Listener has been closed"))?;
   let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
     .ok_or_else(|| custom_error("Busy", "Another accept task is ongoing"))?;
@@ -178,7 +178,7 @@ async fn receive_udp(
     .borrow_mut()
     .resource_table
     .get::<UdpSocketResource>(rid)
-    .ok_or_else(|| bad_resource("Socket has been closed"))?;
+    .map_err(|_| bad_resource("Socket has been closed"))?;
   let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
   let cancel_handle = RcRef::map(&resource, |r| &r.cancel);
   let (size, remote_addr) = socket
@@ -246,7 +246,7 @@ where
         .borrow_mut()
         .resource_table
         .get::<UdpSocketResource>(rid)
-        .ok_or_else(|| bad_resource("Socket has been closed"))?;
+        .map_err(|_| bad_resource("Socket has been closed"))?;
       let socket = RcRef::map(&resource, |r| &r.socket).borrow().await;
       let byte_length = socket.send_to(&zero_copy, &addr).await?;
       Ok(byte_length)
@@ -266,9 +266,7 @@ where
         .borrow()
         .resource_table
         .get::<net_unix::UnixDatagramResource>(rid)
-        .ok_or_else(|| {
-          custom_error("NotConnected", "Socket has been closed")
-        })?;
+        .map_err(|_| custom_error("NotConnected", "Socket has been closed"))?;
       let socket = RcRef::map(&resource, |r| &r.socket)
         .try_borrow_mut()
         .ok_or_else(|| custom_error("Busy", "Socket already in use"))?;

@@ -14511,25 +14511,10 @@
         "Empty usages: generateKey({name: ECDH, namedCurve: P-521}, true, [])"
       ],
       "failures_ECDSA.https.any.html": [
-        "Bad algorithm property: generateKey({name: ECDSA, namedCurve: P-512}, false, [sign])",
-        "Bad algorithm property: generateKey({name: ECDSA, namedCurve: P-512}, false, [verify, sign])",
-        "Bad algorithm property: generateKey({name: ECDSA, namedCurve: P-512}, false, [])",
-        "Bad algorithm property: generateKey({name: ECDSA, namedCurve: P-512}, false, [sign, verify, sign, sign, verify])",
-        "Bad algorithm property: generateKey({name: ECDSA, namedCurve: Curve25519}, false, [sign])",
-        "Bad algorithm property: generateKey({name: ECDSA, namedCurve: Curve25519}, false, [verify, sign])",
-        "Bad algorithm property: generateKey({name: ECDSA, namedCurve: Curve25519}, false, [])",
-        "Bad algorithm property: generateKey({name: ECDSA, namedCurve: Curve25519}, false, [sign, verify, sign, sign, verify])",
-        "Empty usages: generateKey({name: ECDSA, namedCurve: P-256}, false, [])",
-        "Empty usages: generateKey({name: ECDSA, namedCurve: P-384}, false, [])",
         "Empty usages: generateKey({name: ECDSA, namedCurve: P-521}, false, [])",
         "Empty usages: generateKey({name: ECDSA, namedCurve: P-521}, true, [])"
       ],
-      "failures_HMAC.https.any.html": [
-        "Empty usages: generateKey({hash: SHA-1, length: 160, name: HMAC}, false, [])",
-        "Empty usages: generateKey({hash: SHA-256, length: 256, name: HMAC}, false, [])",
-        "Empty usages: generateKey({hash: SHA-384, length: 384, name: HMAC}, false, [])",
-        "Empty usages: generateKey({hash: SHA-512, length: 512, name: HMAC}, false, [])"
-      ],
+      "failures_HMAC.https.any.html": true,
       "failures_RSA-OAEP.https.any.html": [
         "Bad usages: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, true, [sign])",
         "Bad usages: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, true, [decrypt, encrypt, sign])",
@@ -14704,116 +14689,27 @@
         "Empty usages: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [])",
         "Empty usages: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-OAEP, publicExponent: {0: 1, 1: 0, 2: 1}}, true, [])"
       ],
-      "failures_RSA-PSS.https.any.html": [
-        "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSA-PSS, publicExponent: {0: 1}}, false, [sign])",
-        "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSA-PSS, publicExponent: {0: 1}}, false, [verify, sign])",
-        "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSA-PSS, publicExponent: {0: 1}}, false, [])",
-        "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSA-PSS, publicExponent: {0: 1}}, false, [sign, verify, sign, sign, verify])",
-        "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 0}}, false, [sign])",
-        "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 0}}, false, [verify, sign])",
-        "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 0}}, false, [])",
-        "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 0}}, false, [sign, verify, sign, sign, verify])",
-        "Empty usages: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [])",
-        "Empty usages: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [])"
-      ],
-      "failures_RSASSA-PKCS1-v1_5.https.any.html": [
-        "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1}}, false, [sign])",
-        "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1}}, false, [verify, sign])",
-        "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1}}, false, [])",
-        "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1}}, false, [sign, verify, sign, sign, verify])",
-        "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1, 1: 0, 2: 0}}, false, [sign])",
-        "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1, 1: 0, 2: 0}}, false, [verify, sign])",
-        "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1, 1: 0, 2: 0}}, false, [])",
-        "Bad algorithm property: generateKey({hash: SHA-256, modulusLength: 1024, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1, 1: 0, 2: 0}}, false, [sign, verify, sign, sign, verify])",
-        "Empty usages: generateKey({hash: SHA-1, modulusLength: 2048, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [])",
-        "Empty usages: generateKey({hash: SHA-256, modulusLength: 2048, name: RSASSA-PKCS1-v1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [])"
-      ],
+      "failures_RSA-PSS.https.any.html": true,
+      "failures_RSASSA-PKCS1-v1_5.https.any.html": true,
       "successes_AES-CBC.https.any.html": false,
       "successes_AES-CTR.https.any.html": false,
       "successes_AES-GCM.https.any.html": false,
       "successes_AES-KW.https.any.html": false,
-      "successes_HMAC.https.any.html": [
-        "Success: generateKey({hash: SHA-1, length: 160, name: HMAC}, false, [sign])",
-        "Success: generateKey({hash: SHA-1, length: 160, name: HMAC}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-1, length: 160, name: HMAC}, false, [verify])",
-        "Success: generateKey({hash: SHA-1, length: 160, name: HMAC}, false, [sign, verify, sign, verify])",
-        "Success: generateKey({hash: SHA-256, length: 256, name: HMAC}, false, [sign])",
-        "Success: generateKey({hash: SHA-256, length: 256, name: HMAC}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-256, length: 256, name: HMAC}, false, [verify])",
-        "Success: generateKey({hash: SHA-256, length: 256, name: HMAC}, false, [sign, verify, sign, verify])",
-        "Success: generateKey({hash: SHA-384, length: 384, name: HMAC}, false, [sign])",
-        "Success: generateKey({hash: SHA-384, length: 384, name: HMAC}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-384, length: 384, name: HMAC}, false, [verify])",
-        "Success: generateKey({hash: SHA-384, length: 384, name: HMAC}, false, [sign, verify, sign, verify])",
-        "Success: generateKey({hash: SHA-512, length: 512, name: HMAC}, false, [sign])",
-        "Success: generateKey({hash: SHA-512, length: 512, name: HMAC}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-512, length: 512, name: HMAC}, false, [verify])",
-        "Success: generateKey({hash: SHA-512, length: 512, name: HMAC}, false, [sign, verify, sign, verify])",
-        "Success: generateKey({hash: SHA-1, length: 160, name: hmac}, false, [sign])",
-        "Success: generateKey({hash: SHA-1, length: 160, name: hmac}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-1, length: 160, name: hmac}, false, [verify])",
-        "Success: generateKey({hash: SHA-1, length: 160, name: hmac}, false, [sign, verify, sign, verify])",
-        "Success: generateKey({hash: SHA-256, length: 256, name: hmac}, false, [sign])",
-        "Success: generateKey({hash: SHA-256, length: 256, name: hmac}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-256, length: 256, name: hmac}, false, [verify])",
-        "Success: generateKey({hash: SHA-256, length: 256, name: hmac}, false, [sign, verify, sign, verify])",
-        "Success: generateKey({hash: SHA-384, length: 384, name: hmac}, false, [sign])",
-        "Success: generateKey({hash: SHA-384, length: 384, name: hmac}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-384, length: 384, name: hmac}, false, [verify])",
-        "Success: generateKey({hash: SHA-384, length: 384, name: hmac}, false, [sign, verify, sign, verify])",
-        "Success: generateKey({hash: SHA-512, length: 512, name: hmac}, false, [sign])",
-        "Success: generateKey({hash: SHA-512, length: 512, name: hmac}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-512, length: 512, name: hmac}, false, [verify])",
-        "Success: generateKey({hash: SHA-512, length: 512, name: hmac}, false, [sign, verify, sign, verify])",
-        "Success: generateKey({hash: SHA-1, length: 160, name: Hmac}, false, [sign])",
-        "Success: generateKey({hash: SHA-1, length: 160, name: Hmac}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-1, length: 160, name: Hmac}, false, [verify])",
-        "Success: generateKey({hash: SHA-1, length: 160, name: Hmac}, false, [sign, verify, sign, verify])",
-        "Success: generateKey({hash: SHA-256, length: 256, name: Hmac}, false, [sign])",
-        "Success: generateKey({hash: SHA-256, length: 256, name: Hmac}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-256, length: 256, name: Hmac}, false, [verify])",
-        "Success: generateKey({hash: SHA-256, length: 256, name: Hmac}, false, [sign, verify, sign, verify])",
-        "Success: generateKey({hash: SHA-384, length: 384, name: Hmac}, false, [sign])",
-        "Success: generateKey({hash: SHA-384, length: 384, name: Hmac}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-384, length: 384, name: Hmac}, false, [verify])",
-        "Success: generateKey({hash: SHA-384, length: 384, name: Hmac}, false, [sign, verify, sign, verify])",
-        "Success: generateKey({hash: SHA-512, length: 512, name: Hmac}, false, [sign])",
-        "Success: generateKey({hash: SHA-512, length: 512, name: Hmac}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-512, length: 512, name: Hmac}, false, [verify])",
-        "Success: generateKey({hash: SHA-512, length: 512, name: Hmac}, false, [sign, verify, sign, verify])"
-      ],
+      "successes_HMAC.https.any.html": true,
       "successes_ECDH.https.any.html": false,
       "successes_ECDSA.https.any.html": [
-        "Success: generateKey({name: ECDSA, namedCurve: P-256}, false, [sign])",
-        "Success: generateKey({name: ECDSA, namedCurve: P-256}, false, [verify, sign])",
-        "Success: generateKey({name: ECDSA, namedCurve: P-256}, false, [sign, verify, sign, sign, verify])",
-        "Success: generateKey({name: ECDSA, namedCurve: P-384}, false, [sign])",
-        "Success: generateKey({name: ECDSA, namedCurve: P-384}, false, [verify, sign])",
-        "Success: generateKey({name: ECDSA, namedCurve: P-384}, false, [sign, verify, sign, sign, verify])",
         "Success: generateKey({name: ECDSA, namedCurve: P-521}, false, [sign])",
         "Success: generateKey({name: ECDSA, namedCurve: P-521}, true, [sign])",
         "Success: generateKey({name: ECDSA, namedCurve: P-521}, false, [verify, sign])",
         "Success: generateKey({name: ECDSA, namedCurve: P-521}, true, [verify, sign])",
         "Success: generateKey({name: ECDSA, namedCurve: P-521}, false, [sign, verify, sign, sign, verify])",
         "Success: generateKey({name: ECDSA, namedCurve: P-521}, true, [sign, verify, sign, sign, verify])",
-        "Success: generateKey({name: ecdsa, namedCurve: P-256}, false, [sign])",
-        "Success: generateKey({name: ecdsa, namedCurve: P-256}, false, [verify, sign])",
-        "Success: generateKey({name: ecdsa, namedCurve: P-256}, false, [sign, verify, sign, sign, verify])",
-        "Success: generateKey({name: ecdsa, namedCurve: P-384}, false, [sign])",
-        "Success: generateKey({name: ecdsa, namedCurve: P-384}, false, [verify, sign])",
-        "Success: generateKey({name: ecdsa, namedCurve: P-384}, false, [sign, verify, sign, sign, verify])",
         "Success: generateKey({name: ecdsa, namedCurve: P-521}, false, [sign])",
         "Success: generateKey({name: ecdsa, namedCurve: P-521}, true, [sign])",
         "Success: generateKey({name: ecdsa, namedCurve: P-521}, false, [verify, sign])",
         "Success: generateKey({name: ecdsa, namedCurve: P-521}, true, [verify, sign])",
         "Success: generateKey({name: ecdsa, namedCurve: P-521}, false, [sign, verify, sign, sign, verify])",
         "Success: generateKey({name: ecdsa, namedCurve: P-521}, true, [sign, verify, sign, sign, verify])",
-        "Success: generateKey({name: Ecdsa, namedCurve: P-256}, false, [sign])",
-        "Success: generateKey({name: Ecdsa, namedCurve: P-256}, false, [verify, sign])",
-        "Success: generateKey({name: Ecdsa, namedCurve: P-256}, false, [sign, verify, sign, sign, verify])",
-        "Success: generateKey({name: Ecdsa, namedCurve: P-384}, false, [sign])",
-        "Success: generateKey({name: Ecdsa, namedCurve: P-384}, false, [verify, sign])",
-        "Success: generateKey({name: Ecdsa, namedCurve: P-384}, false, [sign, verify, sign, sign, verify])",
         "Success: generateKey({name: Ecdsa, namedCurve: P-521}, false, [sign])",
         "Success: generateKey({name: Ecdsa, namedCurve: P-521}, true, [sign])",
         "Success: generateKey({name: Ecdsa, namedCurve: P-521}, false, [verify, sign])",
@@ -14838,58 +14734,14 @@
       "successes_RSA-OAEP.https.any.html?71-80": false,
       "successes_RSA-OAEP.https.any.html?81-90": false,
       "successes_RSA-OAEP.https.any.html?91-100": false,
-      "successes_RSA-PSS.https.any.html?1-10": [
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign, verify, sign, sign, verify])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [verify, sign])"
-      ],
-      "successes_RSA-PSS.https.any.html?11-20": [
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: RSA-PSS, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign, verify, sign, sign, verify])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: rsa-pss, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: rsa-pss, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: rsa-pss, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign, verify, sign, sign, verify])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: rsa-pss, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign])"
-      ],
-      "successes_RSA-PSS.https.any.html?21-30": [
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: rsa-pss, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: rsa-pss, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign, verify, sign, sign, verify])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: Rsa-pss, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: Rsa-pss, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: Rsa-pss, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign, verify, sign, sign, verify])"
-      ],
-      "successes_RSA-PSS.https.any.html?31-last": [
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: Rsa-pss, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: Rsa-pss, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: Rsa-pss, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign, verify, sign, sign, verify])"
-      ],
-      "successes_RSASSA-PKCS1-v1_5.https.any.html?1-10": [
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: RSASSA-PKCS1-V1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: RSASSA-PKCS1-V1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: RSASSA-PKCS1-V1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign, verify, sign, sign, verify])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: RSASSA-PKCS1-V1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: RSASSA-PKCS1-V1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [verify, sign])"
-      ],
-      "successes_RSASSA-PKCS1-v1_5.https.any.html?11-20": [
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: RSASSA-PKCS1-V1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign, verify, sign, sign, verify])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: rsassa-pkcs1-v1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: rsassa-pkcs1-v1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: rsassa-pkcs1-v1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign, verify, sign, sign, verify])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: rsassa-pkcs1-v1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign])"
-      ],
-      "successes_RSASSA-PKCS1-v1_5.https.any.html?21-30": [
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: rsassa-pkcs1-v1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: rsassa-pkcs1-v1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign, verify, sign, sign, verify])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: Rsassa-pkcs1-v1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: Rsassa-pkcs1-v1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-1, modulusLength: 2048, name: Rsassa-pkcs1-v1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign, verify, sign, sign, verify])"
-      ],
-      "successes_RSASSA-PKCS1-v1_5.https.any.html?31-last": [
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: Rsassa-pkcs1-v1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: Rsassa-pkcs1-v1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [verify, sign])",
-        "Success: generateKey({hash: SHA-256, modulusLength: 2048, name: Rsassa-pkcs1-v1_5, publicExponent: {0: 1, 1: 0, 2: 1}}, false, [sign, verify, sign, sign, verify])"
-      ]
+      "successes_RSA-PSS.https.any.html?1-10": true,
+      "successes_RSA-PSS.https.any.html?11-20": true,
+      "successes_RSA-PSS.https.any.html?21-30": true,
+      "successes_RSA-PSS.https.any.html?31-last": true,
+      "successes_RSASSA-PKCS1-v1_5.https.any.html?1-10": true,
+      "successes_RSASSA-PKCS1-v1_5.https.any.html?11-20": true,
+      "successes_RSASSA-PKCS1-v1_5.https.any.html?21-30": true,
+      "successes_RSASSA-PKCS1-v1_5.https.any.html?31-last": true
     },
     "historical.any.html": false,
     "idlharness.https.any.html": [
@@ -15126,30 +14978,6 @@
     "randomUUID.https.any.html": true,
     "sign_verify": {
       "ecdsa.https.any.html": [
-        "generate wrong key step: ECDSA P-256 with SHA-1 signing with wrong algorithm name",
-        "generate wrong key step: ECDSA P-256 with SHA-256 signing with wrong algorithm name",
-        "generate wrong key step: ECDSA P-256 with SHA-384 signing with wrong algorithm name",
-        "generate wrong key step: ECDSA P-256 with SHA-512 signing with wrong algorithm name",
-        "generate wrong key step: ECDSA P-384 with SHA-1 signing with wrong algorithm name",
-        "generate wrong key step: ECDSA P-384 with SHA-256 signing with wrong algorithm name",
-        "generate wrong key step: ECDSA P-384 with SHA-384 signing with wrong algorithm name",
-        "generate wrong key step: ECDSA P-384 with SHA-512 signing with wrong algorithm name",
-        "generate wrong key step: ECDSA P-521 with SHA-1 signing with wrong algorithm name",
-        "generate wrong key step: ECDSA P-521 with SHA-256 signing with wrong algorithm name",
-        "generate wrong key step: ECDSA P-521 with SHA-384 signing with wrong algorithm name",
-        "generate wrong key step: ECDSA P-521 with SHA-512 signing with wrong algorithm name",
-        "generate wrong key step: ECDSA P-256 with SHA-1 verifying with wrong algorithm name",
-        "generate wrong key step: ECDSA P-256 with SHA-256 verifying with wrong algorithm name",
-        "generate wrong key step: ECDSA P-256 with SHA-384 verifying with wrong algorithm name",
-        "generate wrong key step: ECDSA P-256 with SHA-512 verifying with wrong algorithm name",
-        "generate wrong key step: ECDSA P-384 with SHA-1 verifying with wrong algorithm name",
-        "generate wrong key step: ECDSA P-384 with SHA-256 verifying with wrong algorithm name",
-        "generate wrong key step: ECDSA P-384 with SHA-384 verifying with wrong algorithm name",
-        "generate wrong key step: ECDSA P-384 with SHA-512 verifying with wrong algorithm name",
-        "generate wrong key step: ECDSA P-521 with SHA-1 verifying with wrong algorithm name",
-        "generate wrong key step: ECDSA P-521 with SHA-256 verifying with wrong algorithm name",
-        "generate wrong key step: ECDSA P-521 with SHA-384 verifying with wrong algorithm name",
-        "generate wrong key step: ECDSA P-521 with SHA-512 verifying with wrong algorithm name",
         "importVectorKeys step: ECDSA P-256 with SHA-1 verification",
         "importVectorKeys step: ECDSA P-256 with SHA-256 verification",
         "importVectorKeys step: ECDSA P-256 with SHA-384 verification",
@@ -15293,7 +15121,31 @@
         "importVectorKeys step: ECDSA P-521 with SHA-1 verification failure due to altered plaintext",
         "importVectorKeys step: ECDSA P-521 with SHA-256 verification failure due to altered plaintext",
         "importVectorKeys step: ECDSA P-521 with SHA-384 verification failure due to altered plaintext",
-        "importVectorKeys step: ECDSA P-521 with SHA-512 verification failure due to altered plaintext"
+        "importVectorKeys step: ECDSA P-521 with SHA-512 verification failure due to altered plaintext",
+        "importVectorKeys step: ECDSA P-256 with SHA-1 signing with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-256 with SHA-256 signing with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-256 with SHA-384 signing with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-256 with SHA-512 signing with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-384 with SHA-1 signing with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-384 with SHA-256 signing with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-384 with SHA-384 signing with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-384 with SHA-512 signing with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-521 with SHA-1 signing with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-521 with SHA-256 signing with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-521 with SHA-384 signing with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-521 with SHA-512 signing with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-256 with SHA-1 verifying with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-256 with SHA-256 verifying with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-256 with SHA-384 verifying with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-256 with SHA-512 verifying with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-384 with SHA-1 verifying with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-384 with SHA-256 verifying with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-384 with SHA-384 verifying with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-384 with SHA-512 verifying with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-521 with SHA-1 verifying with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-521 with SHA-256 verifying with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-521 with SHA-384 verifying with wrong algorithm name",
+        "importVectorKeys step: ECDSA P-521 with SHA-512 verifying with wrong algorithm name"
       ],
       "hmac.https.any.html": [
         "generate wrong key step: HMAC with SHA-1 signing with wrong algorithm name",
@@ -15303,7 +15155,39 @@
         "generate wrong key step: HMAC with SHA-1 verifying with wrong algorithm name",
         "generate wrong key step: HMAC with SHA-256 verifying with wrong algorithm name",
         "generate wrong key step: HMAC with SHA-384 verifying with wrong algorithm name",
-        "generate wrong key step: HMAC with SHA-512 verifying with wrong algorithm name"
+        "generate wrong key step: HMAC with SHA-512 verifying with wrong algorithm name",
+        "importVectorKeys step: HMAC with SHA-1 verification",
+        "importVectorKeys step: HMAC with SHA-256 verification",
+        "importVectorKeys step: HMAC with SHA-384 verification",
+        "importVectorKeys step: HMAC with SHA-512 verification",
+        "importVectorKeys step: HMAC with SHA-1 verification with altered signature after call",
+        "importVectorKeys step: HMAC with SHA-256 verification with altered signature after call",
+        "importVectorKeys step: HMAC with SHA-384 verification with altered signature after call",
+        "importVectorKeys step: HMAC with SHA-512 verification with altered signature after call",
+        "importVectorKeys step: HMAC with SHA-1 with altered plaintext",
+        "importVectorKeys step: HMAC with SHA-256 with altered plaintext",
+        "importVectorKeys step: HMAC with SHA-384 with altered plaintext",
+        "importVectorKeys step: HMAC with SHA-512 with altered plaintext",
+        "importVectorKeys step: HMAC with SHA-1 no verify usage",
+        "importVectorKeys step: HMAC with SHA-256 no verify usage",
+        "importVectorKeys step: HMAC with SHA-384 no verify usage",
+        "importVectorKeys step: HMAC with SHA-512 no verify usage",
+        "importVectorKeys step: HMAC with SHA-1 round trip",
+        "importVectorKeys step: HMAC with SHA-256 round trip",
+        "importVectorKeys step: HMAC with SHA-384 round trip",
+        "importVectorKeys step: HMAC with SHA-512 round trip",
+        "importVectorKeys step: HMAC with SHA-1 verification failure due to wrong plaintext",
+        "importVectorKeys step: HMAC with SHA-256 verification failure due to wrong plaintext",
+        "importVectorKeys step: HMAC with SHA-384 verification failure due to wrong plaintext",
+        "importVectorKeys step: HMAC with SHA-512 verification failure due to wrong plaintext",
+        "importVectorKeys step: HMAC with SHA-1 verification failure due to wrong signature",
+        "importVectorKeys step: HMAC with SHA-256 verification failure due to wrong signature",
+        "importVectorKeys step: HMAC with SHA-384 verification failure due to wrong signature",
+        "importVectorKeys step: HMAC with SHA-512 verification failure due to wrong signature",
+        "importVectorKeys step: HMAC with SHA-1 verification failure due to short signature",
+        "importVectorKeys step: HMAC with SHA-256 verification failure due to short signature",
+        "importVectorKeys step: HMAC with SHA-384 verification failure due to short signature",
+        "importVectorKeys step: HMAC with SHA-512 verification failure due to short signature"
       ],
       "rsa_pkcs.https.any.html": [
         "importVectorKeys step: RSASSA-PKCS1-v1_5 with SHA-1 verification",
@@ -16077,7 +15961,11 @@
       "Parsing: <http://foo.09> against <about:blank>",
       "Parsing: <http://foo.09.> against <about:blank>",
       "Parsing: <http://foo.0x4> against <about:blank>",
-      "Parsing: <http://foo.0x4.> against <about:blank>"
+      "Parsing: <http://foo.0x4.> against <about:blank>",
+      "Parsing: <http://0999999999999999999/> against <about:blank>",
+      "Parsing: <http://foo.0x> against <about:blank>",
+      "Parsing: <http://foo.0XFfFfFfFfFfFfFfFfFfAcE123> against <about:blank>",
+      "Parsing: <http://💩.123/> against <about:blank>"
     ],
     "url-origin.any.html": true,
     "url-searchparams.any.html": true,
@@ -16774,5 +16662,194 @@
         "constructor.any.html?wss": true
       }
     }
+  },
+  "workers": {
+    "Worker-base64.any.worker.html": true,
+    "Worker-call.worker.html": true,
+    "Worker-constructor-proto.any.worker.html": true,
+    "Worker-custom-event.any.worker.html": true,
+    "Worker-formdata.any.worker.html": [
+      "Test FormData interface object"
+    ],
+    "Worker-location.sub.any.worker.html": [
+      "Test WorkerLocation properties."
+    ],
+    "Worker-replace-event-handler.any.worker.html": true,
+    "Worker-replace-global-constructor.any.worker.html": true,
+    "Worker-replace-self.any.worker.html": true,
+    "WorkerGlobalScope_requestAnimationFrame.tentative.worker.html": [
+      "WorkerGlobalScope_requestAnimationFrame"
+    ],
+    "WorkerLocation-origin.sub.window.html": [
+      "workerLocation.origin must use ASCII code points"
+    ],
+    "WorkerNavigator-hardware-concurrency.any.worker.html": [
+      "Test worker navigator hardware concurrency."
+    ],
+    "WorkerNavigator.any.worker.html": [
+      "Testing Navigator properties on workers."
+    ],
+    "constructors": {
+      "Worker": {
+        "DedicatedWorkerGlobalScope-members.worker.html": [
+          "existence of onoffline",
+          "existence of ononline"
+        ],
+        "expected-self-properties.worker.html": [
+          "existence of XMLHttpRequest",
+          "existence of EventSource",
+          "existence of SharedWorker"
+        ],
+        "unexpected-self-properties.worker.html": true
+      }
+    },
+    "dedicated-worker-from-blob-url.window.html": [
+      "Creating a dedicated worker from a blob URL works immediately before revoking."
+    ],
+    "dedicated-worker-in-data-url-context.window.html": [
+      "Create a dedicated worker in a data url frame",
+      "Create a dedicated worker in a data url dedicated worker",
+      "Create a data url dedicated worker in a data url frame"
+    ],
+    "examples": {
+      "general.any.worker.html": true,
+      "general.worker.html": true
+    },
+    "importscripts_mime.any.worker.html": [
+      "importScripts() requires scripty MIME types: text/ecmascript is allowed."
+    ],
+    "interfaces": {
+      "DedicatedWorkerGlobalScope": {
+        "EventTarget.worker.html": true,
+        "onmessage.worker.html": [
+          "Setting onmessage to 1",
+          "Setting onmessage to 1 (again)"
+        ],
+        "postMessage": {
+          "return-value.worker.html": true
+        }
+      },
+      "WorkerGlobalScope": {
+        "location": {
+          "returns-same-object.any.worker.html": true
+        },
+        "self.any.worker.html": true
+      },
+      "WorkerUtils": {
+        "importScripts": {
+          "001.worker.html": true,
+          "002.worker.html": true,
+          "catch.sub.any.worker.html": [
+            "Cross-origin syntax error",
+            "Cross-origin throw",
+            "Redirect-to-cross-origin syntax error",
+            "Redirect-to-Cross-origin throw"
+          ]
+        }
+      }
+    },
+    "modules": {
+      "dedicated-worker-import-blob-url.any.html": true,
+      "dedicated-worker-import-blob-url.any.worker.html": true,
+      "dedicated-worker-import-data-url.any.html": true,
+      "dedicated-worker-import-data-url.any.worker.html": true,
+      "dedicated-worker-import.any.html": true,
+      "dedicated-worker-import.any.worker.html": true,
+      "shared-worker-import-blob-url.window.html": [
+        "Static import.",
+        "Static import (cross-origin).",
+        "Static import (redirect).",
+        "Nested static import.",
+        "Static import and then dynamic import.",
+        "Dynamic import.",
+        "Nested dynamic import.",
+        "Dynamic import and then static import.",
+        "eval(import())."
+      ],
+      "shared-worker-import-data-url.window.html": [
+        "Static import.",
+        "Static import (cross-origin).",
+        "Static import (redirect).",
+        "Nested static import.",
+        "Static import and then dynamic import.",
+        "Dynamic import.",
+        "Nested dynamic import.",
+        "Dynamic import and then static import.",
+        "eval(import())."
+      ],
+      "shared-worker-import.window.html": [
+        "Static import.",
+        "Static import (cross-origin).",
+        "Static import (redirect).",
+        "Nested static import.",
+        "Static import and then dynamic import.",
+        "Dynamic import.",
+        "Nested dynamic import.",
+        "Dynamic import and then static import.",
+        "eval(import())."
+      ]
+    },
+    "nested_worker.worker.html": true,
+    "nested_worker_close_self.worker.html": true,
+    "nested_worker_importScripts.worker.html": true,
+    "nested_worker_sync_xhr.worker.html": [
+      "Nested worker that issues a sync XHR"
+    ],
+    "semantics": {
+      "encodings": {
+        "004.worker.html": true
+      },
+      "interface-objects": {
+        "001.worker.html": [
+          "The SharedWorker interface object should be exposed.",
+          "The ImageData interface object should be exposed.",
+          "The ImageBitmap interface object should be exposed.",
+          "The CanvasGradient interface object should be exposed.",
+          "The CanvasPattern interface object should be exposed.",
+          "The CanvasPath interface object should be exposed.",
+          "The TextMetrics interface object should be exposed.",
+          "The Path2D interface object should be exposed.",
+          "The PromiseRejectionEvent interface object should be exposed.",
+          "The EventSource interface object should be exposed.",
+          "The XMLHttpRequestEventTarget interface object should be exposed.",
+          "The XMLHttpRequestUpload interface object should be exposed.",
+          "The XMLHttpRequest interface object should be exposed.",
+          "The FileList interface object should be exposed.",
+          "The FileReaderSync interface object should be exposed.",
+          "The IDBRequest interface object should be exposed.",
+          "The IDBOpenDBRequest interface object should be exposed.",
+          "The IDBVersionChangeEvent interface object should be exposed.",
+          "The IDBFactory interface object should be exposed.",
+          "The IDBDatabase interface object should be exposed.",
+          "The IDBObjectStore interface object should be exposed.",
+          "The IDBIndex interface object should be exposed.",
+          "The IDBKeyRange interface object should be exposed.",
+          "The IDBCursor interface object should be exposed.",
+          "The IDBCursorWithValue interface object should be exposed.",
+          "The IDBTransaction interface object should be exposed."
+        ],
+        "002.worker.html": true
+      },
+      "multiple-workers": {
+        "exposure.any.html": [
+          "SharedWorker exposure"
+        ],
+        "exposure.any.worker.html": true
+      }
+    },
+    "shared-worker-from-blob-url.window.html": [
+      "Creating a shared worker from a blob URL works.",
+      "Creating a shared worker from a blob URL works immediately before revoking.",
+      "Connecting to a shared worker on a revoked blob URL works."
+    ],
+    "shared-worker-in-data-url-context.window.html": [
+      "Create a shared worker in a data url frame",
+      "Create a data url shared worker in a data url frame"
+    ],
+    "worker-performance.worker.html": [
+      "Resource timing seems to work in workers",
+      "performance.clearResourceTimings in workers",
+      "performance.setResourceTimingBufferSize in workers"
+    ]
   }
 }

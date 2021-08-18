@@ -2,7 +2,6 @@
 
 use std::num::NonZeroU32;
 
-use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::OpState;
@@ -27,19 +26,17 @@ pub fn op_webgpu_queue_submit(
   _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
-  let queue_resource = state
-    .resource_table
-    .get::<WebGpuQueue>(args.queue_rid)
-    .ok_or_else(bad_resource_id)?;
+  let queue_resource =
+    state.resource_table.get::<WebGpuQueue>(args.queue_rid)?;
   let queue = queue_resource.0;
 
   let mut ids = vec![];
 
   for rid in args.command_buffers {
-    let buffer_resource = state
-      .resource_table
-      .get::<super::command_encoder::WebGpuCommandBuffer>(rid)
-      .ok_or_else(bad_resource_id)?;
+    let buffer_resource =
+      state
+        .resource_table
+        .get::<super::command_encoder::WebGpuCommandBuffer>(rid)?;
     ids.push(buffer_resource.0);
   }
 
@@ -76,13 +73,10 @@ pub fn op_webgpu_write_buffer(
   let instance = state.borrow::<super::Instance>();
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGpuBuffer>(args.buffer)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::buffer::WebGpuBuffer>(args.buffer)?;
   let buffer = buffer_resource.0;
-  let queue_resource = state
-    .resource_table
-    .get::<WebGpuQueue>(args.queue_rid)
-    .ok_or_else(bad_resource_id)?;
+  let queue_resource =
+    state.resource_table.get::<WebGpuQueue>(args.queue_rid)?;
   let queue = queue_resource.0;
 
   let data = match args.size {
@@ -118,12 +112,9 @@ pub fn op_webgpu_write_texture(
   let instance = state.borrow::<super::Instance>();
   let texture_resource = state
     .resource_table
-    .get::<super::texture::WebGpuTexture>(args.destination.texture)
-    .ok_or_else(bad_resource_id)?;
-  let queue_resource = state
-    .resource_table
-    .get::<WebGpuQueue>(args.queue_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::texture::WebGpuTexture>(args.destination.texture)?;
+  let queue_resource =
+    state.resource_table.get::<WebGpuQueue>(args.queue_rid)?;
   let queue = queue_resource.0;
 
   let destination = wgpu_core::command::ImageCopyTexture {
