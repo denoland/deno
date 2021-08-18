@@ -10,9 +10,9 @@ use crate::media_type::MediaType;
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::LazyInit;
 use deno_core::ModuleSpecifier;
 use lspower::lsp;
+use once_cell::sync::OnceCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Range;
@@ -30,18 +30,6 @@ pub enum LanguageId {
   Json,
   JsonC,
   Markdown,
-}
-
-impl LanguageId {
-  pub fn is_js_or_ts(&self) -> bool {
-    matches!(
-      *self,
-      LanguageId::JavaScript
-        | LanguageId::Jsx
-        | LanguageId::TypeScript
-        | LanguageId::Tsx
-    )
-  }
 }
 
 impl FromStr for LanguageId {
@@ -92,33 +80,46 @@ impl IndexValid {
 
 #[derive(Debug)]
 struct DocumentSource {
+  specifier: ModuleSpecifier,
+  media_type: MediaType,
   text: String,
-  maybe_parsed_module: Option<LazyInit<Result<ParsedModule, String>>>,
+  parsed_module: OnceCell<Result<ParsedModule, String>>,
 }
 
 impl DocumentSource {
   pub fn new(
     specifier: &ModuleSpecifier,
+    media_type: MediaType,
     text: String,
-    language_id: LanguageId,
   ) -> Self {
-    let maybe_parsed_module = if language_id.is_js_or_ts() {
-      Some({
-        let text = text.clone();
-        let specifier = specifier.clone();
-        let media_type = MediaType::from(&language_id);
-        LazyInit::new(move || {
-          analysis::parse_module(&specifier, text, media_type)
-            .map_err(|e| e.to_string())
-        })
-      })
+    Self {
+      specifier: specifier.clone(),
+      media_type,
+      text,
+      parsed_module: OnceCell::new(),
+    }
+  }
+
+  pub fn parsed_module(&self) -> Option<&Result<ParsedModule, String>> {
+    let is_parsable = matches!(
+      self.media_type,
+      MediaType::JavaScript
+        | MediaType::Jsx
+        | MediaType::TypeScript
+        | MediaType::Tsx
+        | MediaType::Dts,
+    );
+    if is_parsable {
+      Some(self.parsed_module.get_or_init(|| {
+        analysis::parse_module(
+          &self.specifier,
+          self.text.clone(),
+          self.media_type,
+        )
+        .map_err(|e| e.to_string())
+      }))
     } else {
       None
-    };
-
-    Self {
-      text,
-      maybe_parsed_module,
     }
   }
 }
@@ -146,8 +147,8 @@ impl DocumentData {
     Self {
       source: Arc::new(DocumentSource::new(
         &specifier,
+        MediaType::from(&language_id),
         source_text,
-        language_id,
       )),
       dependencies: None,
       dependency_ranges: None,
@@ -186,8 +187,8 @@ impl DocumentData {
     };
     self.source = Arc::new(DocumentSource::new(
       &self.specifier,
+      MediaType::from(&self.language_id),
       content,
-      self.language_id,
     ));
     self.maybe_navigation_tree = None;
     Ok(())
@@ -202,20 +203,15 @@ impl DocumentData {
   }
 
   pub fn module(&self) -> Option<Result<&ParsedModule, AnyError>> {
-    self
-      .source
-      .maybe_parsed_module
-      .as_ref()
-      .map(|parsed_module_result| {
-        parsed_module_result
-          .get()
-          .as_ref()
-          .map_err(|err_text| anyhow!("{}", err_text))
-      })
+    self.source.parsed_module().map(|parsed_module_result| {
+      parsed_module_result
+        .as_ref()
+        .map_err(|err_text| anyhow!("{}", err_text))
+    })
   }
 
   pub fn content_line(&self, line: usize) -> String {
-    // todo: get the line from the SourceFileInfo
+    // todo(dsherret): get the line from the SourceFileInfo
     let lines = self.source.text.lines().into_iter().collect::<Vec<&str>>();
     lines[line].to_string()
   }

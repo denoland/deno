@@ -609,6 +609,7 @@ dependencies = [
  "nix",
  "notify",
  "num_cpus",
+ "once_cell",
  "os_pipe",
  "percent-encoding",
  "pin-project",
