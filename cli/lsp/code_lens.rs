@@ -378,7 +378,15 @@ pub(crate) async fn collect(
   navigation_tree: &NavigationTree,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
   let mut code_lenses = collect_test(specifier, parsed_module, config)?;
-  code_lenses.extend(collect_tsc(specifier, &config.get_workspace_settings(), line_index, navigation_tree).await?);
+  code_lenses.extend(
+    collect_tsc(
+      specifier,
+      &config.get_workspace_settings(),
+      line_index,
+      navigation_tree,
+    )
+    .await?,
+  );
 
   Ok(code_lenses)
 }
@@ -511,9 +519,12 @@ mod tests {
 
       Deno.test("test b", function anotherTest() {});
     "#;
-    let parsed_module =
-      crate::lsp::analysis::parse_module(&specifier, source.to_string(), MediaType::TypeScript)
-        .unwrap();
+    let parsed_module = crate::lsp::analysis::parse_module(
+      &specifier,
+      source.to_string(),
+      MediaType::TypeScript,
+    )
+    .unwrap();
     let mut collector = DenoTestCollector::new(specifier, &parsed_module);
     parsed_module.module.visit_with(
       &ast::Invalid {

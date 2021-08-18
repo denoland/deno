@@ -210,11 +210,7 @@ impl LineIndex {
 
 /// Compare two strings and return a vector of text edit records which are
 /// supported by the Language Server Protocol.
-pub fn get_edits(
-  a: &str,
-  b: &str,
-  line_index: &LineIndex,
-) -> Vec<TextEdit> {
+pub fn get_edits(a: &str, b: &str, line_index: &LineIndex) -> Vec<TextEdit> {
   if a == b {
     return vec![];
   }

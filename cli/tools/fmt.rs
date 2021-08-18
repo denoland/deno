@@ -63,15 +63,13 @@ pub async fn format(
       }
     }
   };
-  let operation = |paths: Vec<PathBuf>| {
-    async move {
-      if check {
-        check_source_files(paths).await?;
-      } else {
-        format_source_files(paths).await?;
-      }
-      Ok(())
+  let operation = |paths: Vec<PathBuf>| async move {
+    if check {
+      check_source_files(paths).await?;
+    } else {
+      format_source_files(paths).await?;
     }
+    Ok(())
   };
 
   if watch {
@@ -148,26 +146,36 @@ fn format_json(file_text: &str) -> Result<String, String> {
 }
 
 /// Formats a single TS, TSX, JS, JSX, JSONC, JSON, or MD file.
-pub fn format_file(file_path: &Path, file_text: &str) -> Result<String, String> {
+pub fn format_file(
+  file_path: &Path,
+  file_text: &str,
+) -> Result<String, String> {
   let ext = get_extension(file_path).unwrap_or_else(String::new);
   if ext == "md" {
     format_markdown(file_text)
   } else if matches!(ext.as_str(), "json" | "jsonc") {
     format_json(file_text)
   } else {
-    dprint_plugin_typescript::format_text(file_path, file_text, &TYPESCRIPT_CONFIG)
-      .map_err(|e| e.to_string())
+    dprint_plugin_typescript::format_text(
+      file_path,
+      file_text,
+      &TYPESCRIPT_CONFIG,
+    )
+    .map_err(|e| e.to_string())
   }
 }
 
 pub fn format_parsed_module(parsed_module: &ParsedModule) -> String {
-  dprint_plugin_typescript::format_parsed_file(&dprint_plugin_typescript::SourceFileInfo {
-    info: parsed_module.source_file(),
-    leading_comments: parsed_module.comments.leading_map(),
-    trailing_comments: parsed_module.comments.trailing_map(),
-    module: &parsed_module.module,
-    tokens: parsed_module.tokens(),
-  }, &TYPESCRIPT_CONFIG)
+  dprint_plugin_typescript::format_parsed_file(
+    &dprint_plugin_typescript::SourceFileInfo {
+      info: parsed_module.source_file(),
+      leading_comments: parsed_module.comments.leading_map(),
+      trailing_comments: parsed_module.comments.trailing_map(),
+      module: &parsed_module.module,
+      tokens: parsed_module.tokens(),
+    },
+    &TYPESCRIPT_CONFIG,
+  )
 }
 
 async fn check_source_files(paths: Vec<PathBuf>) -> Result<(), AnyError> {

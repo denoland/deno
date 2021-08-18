@@ -283,7 +283,9 @@ pub fn format_diagnostic(
       lines.push(format!(
         "{}{}",
         " ".repeat(range.start.column_index),
-        colors::red(&"^".repeat(range.end.column_index - range.start.column_index))
+        colors::red(
+          &"^".repeat(range.end.column_index - range.start.column_index)
+        )
       ));
     } else {
       let line_len = source_lines[i].len();
@@ -294,7 +296,8 @@ pub fn format_diagnostic(
           colors::red(&"^".repeat(line_len - range.start.column_index))
         ));
       } else if range.end.line_index == i {
-        lines.push(colors::red(&"^".repeat(range.end.column_index)).to_string());
+        lines
+          .push(colors::red(&"^".repeat(range.end.column_index)).to_string());
       } else if line_len != 0 {
         lines.push(colors::red(&"^".repeat(line_len)).to_string());
       }
@@ -363,9 +366,12 @@ fn sort_diagnostics(diagnostics: &mut Vec<LintDiagnostic>) {
     let file_order = a.filename.cmp(&b.filename);
     match file_order {
       Ordering::Equal => {
-        let line_order = a.range.start.line_index.cmp(&b.range.start.line_index);
+        let line_order =
+          a.range.start.line_index.cmp(&b.range.start.line_index);
         match line_order {
-          Ordering::Equal => a.range.start.column_index.cmp(&b.range.start.column_index),
+          Ordering::Equal => {
+            a.range.start.column_index.cmp(&b.range.start.column_index)
+          }
           _ => line_order,
         }
       }

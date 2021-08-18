@@ -164,11 +164,9 @@ impl Inner {
 
   /// Analyzes dependencies of a document that has been opened in the editor and
   /// sets the dependencies property on the document.
-  fn analyze_dependencies(
-    &mut self,
-    specifier: &ModuleSpecifier
-  ) {
-    if let Some(Ok(parsed_module)) = self.documents.get(specifier).map(|d| d.module()).flatten()
+  fn analyze_dependencies(&mut self, specifier: &ModuleSpecifier) {
+    if let Some(Ok(parsed_module)) =
+      self.documents.get(specifier).map(|d| d.module()).flatten()
     {
       let (mut deps, _) = analysis::analyze_dependencies(
         specifier,
@@ -983,14 +981,11 @@ impl Inner {
       return Ok(None);
     }
     let mark = self.performance.mark("formatting", Some(&params));
-    let document_data = self
-      .documents
-      .get(&specifier)
-      .ok_or_else(|| {
-        LspError::invalid_params(
-          "The specified file could not be found in memory.",
-        )
-      })?;
+    let document_data = self.documents.get(&specifier).ok_or_else(|| {
+      LspError::invalid_params(
+        "The specified file could not be found in memory.",
+      )
+    })?;
     let file_path =
       if let Ok(file_path) = params.text_document.uri.to_file_path() {
         file_path
@@ -1000,9 +995,7 @@ impl Inner {
     let file_text = document_data.content();
 
     let format_result = match document_data.module() {
-      Some(Ok(parsed_module)) => {
-        Ok(format_parsed_module(parsed_module))
-      },
+      Some(Ok(parsed_module)) => Ok(format_parsed_module(parsed_module)),
       Some(Err(err)) => Err(err),
       None => format_file(&file_path, &file_text).map_err(|e| anyhow!("{}", e)),
     };
@@ -1401,22 +1394,37 @@ impl Inner {
     }
 
     let mark = self.performance.mark("code_lens", Some(&params));
-    let navigation_tree = self.get_navigation_tree(&specifier).await.map_err(|err| {
+    let navigation_tree =
+      self.get_navigation_tree(&specifier).await.map_err(|err| {
         error!("Error getting code lenses for \"{}\": {}", specifier, err);
         LspError::internal_error()
+      })?;
+    let parsed_module = self
+      .documents
+      .get(&specifier)
+      .map(|d| d.module())
+      .flatten()
+      .map(|m| m.ok())
+      .flatten();
+    let line_index = self.get_line_index_sync(&specifier).ok_or_else(|| {
+      error!(
+        "Error getting code lenses for \"{}\": Missing line index",
+        specifier
+      );
+      LspError::internal_error()
     })?;
-    let parsed_module = self.documents.get(&specifier).map(|d| d.module()).flatten().map(|m| m.ok()).flatten();
-    let line_index = self
-      .get_line_index_sync(&specifier)
-      .ok_or_else(|| {
-        error!("Error getting code lenses for \"{}\": Missing line index", specifier);
-        LspError::internal_error()
-      })?;
-    let code_lenses =
-      code_lens::collect(&specifier, parsed_module, &self.config, &line_index, &navigation_tree).await.map_err(|err| {
-        error!("Error getting code lenses for \"{}\": {}", specifier, err);
-        LspError::internal_error()
-      })?;
+    let code_lenses = code_lens::collect(
+      &specifier,
+      parsed_module,
+      &self.config,
+      &line_index,
+      &navigation_tree,
+    )
+    .await
+    .map_err(|err| {
+      error!("Error getting code lenses for \"{}\": {}", specifier, err);
+      LspError::internal_error()
+    })?;
     self.performance.measure(mark);
 
     Ok(Some(code_lenses))

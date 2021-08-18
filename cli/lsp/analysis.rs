@@ -131,19 +131,20 @@ fn as_lsp_range(range: &deno_lint::diagnostic::Range) -> Range {
   }
 }
 
-pub fn get_lint_references(parsed_module: &ParsedModule) -> Result<Vec<Reference>, AnyError> {
+pub fn get_lint_references(
+  parsed_module: &ParsedModule,
+) -> Result<Vec<Reference>, AnyError> {
   let syntax = ast::get_syntax(&parsed_module.media_type());
   let lint_rules = rules::get_recommended_rules();
   let linter = create_linter(syntax, lint_rules);
-  let lint_diagnostics =
-    linter.lint_with_ast(
-      parsed_module.specifier().to_string(),
-      parsed_module.source_file(),
-      (&parsed_module.module).into(),
-      parsed_module.comments.leading_map(),
-      parsed_module.comments.trailing_map(),
-      parsed_module.tokens(),
-    );
+  let lint_diagnostics = linter.lint_with_ast(
+    parsed_module.specifier().to_string(),
+    parsed_module.source_file(),
+    (&parsed_module.module).into(),
+    parsed_module.comments.leading_map(),
+    parsed_module.comments.trailing_map(),
+    parsed_module.tokens(),
+  );
 
   Ok(
     lint_diagnostics
@@ -329,8 +330,7 @@ pub fn analyze_dependencies(
         TypeScriptReference::Types(import) => {
           let resolved_import =
             resolve_import(&import, specifier, maybe_import_map);
-          if media_type == MediaType::JavaScript
-            || media_type == MediaType::Jsx
+          if media_type == MediaType::JavaScript || media_type == MediaType::Jsx
           {
             maybe_type = Some(resolved_import.clone());
           }
@@ -699,7 +699,8 @@ impl CodeActionCollection {
       })
       .unwrap();
 
-    let line_content = document.map(|d| d.content_line(diagnostic.range.start.line as usize));
+    let line_content =
+      document.map(|d| d.content_line(diagnostic.range.start.line as usize));
 
     let mut changes = HashMap::new();
     changes.insert(
@@ -1202,7 +1203,9 @@ mod tests {
   fn test_get_lint_references() {
     let specifier = resolve_url("file:///a.ts").expect("bad specifier");
     let source = "const foo = 42;";
-    let parsed_module = parse_module(&specifier, source.to_string(), MediaType::TypeScript).unwrap();
+    let parsed_module =
+      parse_module(&specifier, source.to_string(), MediaType::TypeScript)
+        .unwrap();
     let actual = get_lint_references(&parsed_module).unwrap();
 
     assert_eq!(
@@ -1247,7 +1250,8 @@ mod tests {
     import React from "https://cdn.skypack.dev/react";
     "#;
     let parsed_module =
-      parse_module(&specifier, source.to_string(), MediaType::TypeScript).unwrap();
+      parse_module(&specifier, source.to_string(), MediaType::TypeScript)
+        .unwrap();
     let (actual, maybe_type) = analyze_dependencies(
       &specifier,
       MediaType::TypeScript,
@@ -1338,7 +1342,8 @@ mod tests {
     let source =
       "import * as a from \"./b.ts\";\nexport * as a from \"./c.ts\";\n";
     let media_type = MediaType::TypeScript;
-    let parsed_module = parse_module(&specifier, source.to_string(), media_type).unwrap();
+    let parsed_module =
+      parse_module(&specifier, source.to_string(), media_type).unwrap();
     let result = analyze_dependency_ranges(&parsed_module);
     assert!(result.is_ok());
     let actual = result.unwrap();

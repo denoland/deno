@@ -7,10 +7,10 @@ use super::tsc;
 use crate::ast::ParsedModule;
 use crate::media_type::MediaType;
 
-use deno_core::LazyInit;
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::LazyInit;
 use deno_core::ModuleSpecifier;
 use lspower::lsp;
 use std::collections::HashMap;
@@ -34,7 +34,13 @@ pub enum LanguageId {
 
 impl LanguageId {
   pub fn is_js_or_ts(&self) -> bool {
-    matches!(*self, LanguageId::JavaScript | LanguageId::Jsx | LanguageId::TypeScript | LanguageId::Tsx)
+    matches!(
+      *self,
+      LanguageId::JavaScript
+        | LanguageId::Jsx
+        | LanguageId::TypeScript
+        | LanguageId::Tsx
+    )
   }
 }
 
@@ -91,17 +97,20 @@ struct DocumentSource {
 }
 
 impl DocumentSource {
-  pub fn new(specifier: &ModuleSpecifier, text: String, language_id: LanguageId) -> Self {
+  pub fn new(
+    specifier: &ModuleSpecifier,
+    text: String,
+    language_id: LanguageId,
+  ) -> Self {
     let maybe_parsed_module = if language_id.is_js_or_ts() {
       Some({
         let text = text.clone();
         let specifier = specifier.clone();
         let media_type = MediaType::from(&language_id);
-        LazyInit::new(Box::new(move || analysis::parse_module(
-            &specifier,
-            text,
-            media_type,
-          ).map_err(|e| e.to_string())))
+        LazyInit::new(move || {
+          analysis::parse_module(&specifier, text, media_type)
+            .map_err(|e| e.to_string())
+        })
       })
     } else {
       None
@@ -135,7 +144,11 @@ impl DocumentData {
   ) -> Self {
     let line_index = LineIndex::new(&source_text);
     Self {
-      source: Arc::new(DocumentSource::new(&specifier, source_text, language_id)),
+      source: Arc::new(DocumentSource::new(
+        &specifier,
+        source_text,
+        language_id,
+      )),
       dependencies: None,
       dependency_ranges: None,
       language_id,
@@ -171,7 +184,11 @@ impl DocumentData {
     } else {
       LineIndex::new(&content)
     };
-    self.source = Arc::new(DocumentSource::new(&self.specifier, content, self.language_id));
+    self.source = Arc::new(DocumentSource::new(
+      &self.specifier,
+      content,
+      self.language_id,
+    ));
     self.maybe_navigation_tree = None;
     Ok(())
   }
@@ -185,8 +202,16 @@ impl DocumentData {
   }
 
   pub fn module(&self) -> Option<Result<&ParsedModule, AnyError>> {
-    self.source.maybe_parsed_module.as_ref()
-      .map(|parsed_module_result| parsed_module_result.get().as_ref().map_err(|err_text| anyhow!("{}", err_text)))
+    self
+      .source
+      .maybe_parsed_module
+      .as_ref()
+      .map(|parsed_module_result| {
+        parsed_module_result
+          .get()
+          .as_ref()
+          .map_err(|err_text| anyhow!("{}", err_text))
+      })
   }
 
   pub fn content_line(&self, line: usize) -> String {
@@ -279,10 +304,7 @@ impl DocumentCache {
     self.docs.get(specifier)
   }
 
-  pub fn content(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<&str> {
+  pub fn content(&self, specifier: &ModuleSpecifier) -> Option<&str> {
     self.docs.get(specifier).map(|d| d.content())
   }
 

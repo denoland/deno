@@ -185,8 +185,11 @@ impl Metadata {
 
   fn refresh(&mut self, maybe_import_map: &Option<ImportMap>) {
     let (dependencies, maybe_types) = if let Ok(parsed_module) =
-      analysis::parse_module(&self.specifier, self.source.clone(), self.media_type)
-    {
+      analysis::parse_module(
+        &self.specifier,
+        self.source.clone(),
+        self.media_type,
+      ) {
       let (deps, maybe_types) = analysis::analyze_dependencies(
         &self.specifier,
         self.media_type,

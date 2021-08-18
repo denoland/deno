@@ -9,13 +9,12 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
-use swc_ast_view::SourceFile;
-use swc_ecmascript::parser::token::TokenAndSpan;
 use std::error::Error;
 use std::fmt;
 use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
+use swc_ast_view::SourceFile;
 use swc_ast_view::SourceFileTextInfo;
 use swc_common::chain;
 use swc_common::comments::Comment;
@@ -36,6 +35,7 @@ use swc_ecmascript::dep_graph::analyze_dependencies;
 use swc_ecmascript::dep_graph::DependencyDescriptor;
 use swc_ecmascript::parser::lexer::Lexer;
 use swc_ecmascript::parser::token::Token;
+use swc_ecmascript::parser::token::TokenAndSpan;
 use swc_ecmascript::parser::EsConfig;
 use swc_ecmascript::parser::JscTarget;
 use swc_ecmascript::parser::StringInput;
@@ -67,7 +67,10 @@ pub struct Location {
 }
 
 impl Location {
-  fn from_line_and_column(specifier: String, line_and_column: swc_ast_view::LineAndColumnIndex) -> Self {
+  fn from_line_and_column(
+    specifier: String,
+    line_and_column: swc_ast_view::LineAndColumnIndex,
+  ) -> Self {
     Location {
       specifier,
       line: line_and_column.line_index + 1,
@@ -297,7 +300,10 @@ impl ParsedModule {
 
   /// Gets the module's tokens.
   pub fn tokens(&self) -> &[TokenAndSpan] {
-    self.tokens.as_ref().expect("Tokens not found because they were not captured during parsing.")
+    self
+      .tokens
+      .as_ref()
+      .expect("Tokens not found because they were not captured during parsing.")
   }
 
   /// Return a vector of dependencies for the module.
@@ -431,12 +437,16 @@ pub fn parse(mut params: ParseParams) -> Result<ParsedModule, AnyError> {
   let info = SourceFileTextInfo::new(BytePos(0), params.source);
   let source_span = info.span();
   let specifier = params.specifier;
-  let input =
-    StringInput::new(info.text(), source_span.lo(), source_span.hi());
-  let (comments, module, tokens) = parse_string_input(input, &params.media_type, params.capture_tokens).map_err(|err| Diagnostic {
-    location: Location::from_line_and_column(specifier.clone(), info.line_and_column_index(err.span().lo)),
-    message: err.into_kind().msg().to_string(),
-  })?;
+  let input = StringInput::new(info.text(), source_span.lo(), source_span.hi());
+  let (comments, module, tokens) =
+    parse_string_input(input, &params.media_type, params.capture_tokens)
+      .map_err(|err| Diagnostic {
+        location: Location::from_line_and_column(
+          specifier.clone(),
+          info.line_and_column_index(err.span().lo),
+        ),
+        message: err.into_kind().msg().to_string(),
+      })?;
 
   Ok(ParsedModule {
     specifier,
@@ -518,8 +528,8 @@ pub fn transpile_module(
     source.to_string(),
   );
   let input = StringInput::from(&*source_file);
-  let (comments, module, _) =
-    parse_string_input(input, media_type, false).map_err(|err| Diagnostic {
+  let (comments, module, _) = parse_string_input(input, media_type, false)
+    .map_err(|err| Diagnostic {
       location: cm.lookup_char_pos(err.span().lo).into(),
       message: err.into_kind().msg().to_string(),
     })?;
@@ -596,14 +606,13 @@ mod tests {
   fn test_parsed_module_analyze_dependencies() {
     let specifier = resolve_url_or_path("https://deno.land/x/mod.js").unwrap();
     let source = "import * as bar from './test.ts';\nconst foo = await import('./foo.ts');";
-    let parsed_module =
-      parse(ParseParams {
-        specifier: specifier.as_str().to_string(),
-        source: source.to_string(),
-        media_type: MediaType::JavaScript,
-        capture_tokens: false,
-      })
-        .expect("could not parse module");
+    let parsed_module = parse(ParseParams {
+      specifier: specifier.as_str().to_string(),
+      source: source.to_string(),
+      media_type: MediaType::JavaScript,
+      capture_tokens: false,
+    })
+    .expect("could not parse module");
     let actual = parsed_module.analyze_dependencies();
     assert_eq!(
       actual,
@@ -660,12 +669,12 @@ mod tests {
     }
     "#;
     let module = parse(ParseParams {
-        specifier: specifier.as_str().to_string(),
-        source: source.to_string(),
-        media_type: MediaType::TypeScript,
-        capture_tokens: false,
-      })
-      .expect("could not parse module");
+      specifier: specifier.as_str().to_string(),
+      source: source.to_string(),
+      media_type: MediaType::TypeScript,
+      capture_tokens: false,
+    })
+    .expect("could not parse module");
     let (code, maybe_map) = module
       .transpile(&EmitOptions::default())
       .expect("could not strip types");
@@ -688,12 +697,12 @@ mod tests {
     }
     "#;
     let module = parse(ParseParams {
-        specifier: specifier.as_str().to_string(),
-        source: source.to_string(),
-        media_type: MediaType::Tsx,
-        capture_tokens: false,
-      })
-      .expect("could not parse module");
+      specifier: specifier.as_str().to_string(),
+      source: source.to_string(),
+      media_type: MediaType::Tsx,
+      capture_tokens: false,
+    })
+    .expect("could not parse module");
     let (code, _) = module
       .transpile(&EmitOptions::default())
       .expect("could not strip types");
@@ -723,12 +732,12 @@ mod tests {
     }
     "#;
     let module = parse(ParseParams {
-        specifier: specifier.as_str().to_string(),
-        source: source.to_string(),
-        media_type: MediaType::TypeScript,
-        capture_tokens: false,
-      })
-      .expect("could not parse module");
+      specifier: specifier.as_str().to_string(),
+      source: source.to_string(),
+      media_type: MediaType::TypeScript,
+      capture_tokens: false,
+    })
+    .expect("could not parse module");
     let (code, _) = module
       .transpile(&EmitOptions::default())
       .expect("could not strip types");

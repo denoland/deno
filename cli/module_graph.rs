@@ -1,10 +1,10 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use crate::ast;
-use crate::ast::ParseParams;
 use crate::ast::parse;
 use crate::ast::transpile_module;
 use crate::ast::BundleHook;
 use crate::ast::Location;
+use crate::ast::ParseParams;
 use crate::ast::ParsedModule;
 use crate::checksum;
 use crate::colors;
@@ -344,13 +344,12 @@ impl Module {
   /// Parse a module, populating the structure with data retrieved from the
   /// source of the module.
   pub fn parse(&mut self) -> Result<ParsedModule, AnyError> {
-    let parsed_module =
-      parse(ParseParams {
-        specifier: self.specifier.as_str().to_string(),
-        source: self.source.clone(),
-        media_type: self.media_type,
-        capture_tokens: false,
-      })?;
+    let parsed_module = parse(ParseParams {
+      specifier: self.specifier.as_str().to_string(),
+      source: self.source.clone(),
+      media_type: self.media_type,
+      capture_tokens: false,
+    })?;
 
     // parse out any triple slash references
     for comment in parsed_module.get_leading_comments().iter() {

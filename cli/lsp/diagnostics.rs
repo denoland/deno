@@ -331,11 +331,14 @@ async fn generate_lint_diagnostics(
           let diagnostics = match module {
             Some(Ok(module)) => {
               if let Ok(references) = analysis::get_lint_references(module) {
-                references.into_iter().map(|r| r.to_diagnostic()).collect::<Vec<_>>()
+                references
+                  .into_iter()
+                  .map(|r| r.to_diagnostic())
+                  .collect::<Vec<_>>()
               } else {
                 Vec::new()
               }
-            },
+            }
             Some(Err(_)) => Vec::new(),
             None => {
               error!("Missing file contents for: {}", specifier);
