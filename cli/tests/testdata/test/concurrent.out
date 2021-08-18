@@ -1,0 +1,15 @@
+Check [WILDCARD]/test/concurrent.ts
+running 10 tests from [WILDCARD]/test/concurrent.ts
+test counter 1 ... ok ([WILDCARD])
+test counter 2 ... ok ([WILDCARD])
+test counter 3 ... ok ([WILDCARD])
+test counter 4 ... ok ([WILDCARD])
+test counter 5 ... ok ([WILDCARD])
+test counter 6 ... ok ([WILDCARD])
+test counter 7 ... ok ([WILDCARD])
+test counter 8 ... ok ([WILDCARD])
+test counter 9 ... ok ([WILDCARD])
+test counter 10 ... ok ([WILDCARD])
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+

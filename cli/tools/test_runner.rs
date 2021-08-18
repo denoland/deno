@@ -40,6 +40,7 @@ use uuid::Uuid;
 pub struct TestDescription {
   pub origin: String,
   pub name: String,
+  pub concurrent: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -129,7 +130,7 @@ impl TestReporter for PrettyTestReporter {
   }
 
   fn report_wait(&mut self, description: &TestDescription) {
-    if !self.concurrent {
+    if !self.concurrent && !description.concurrent {
       print!("test {} ...", description.name);
     }
   }
@@ -140,7 +141,7 @@ impl TestReporter for PrettyTestReporter {
     result: &TestResult,
     elapsed: u64,
   ) {
-    if self.concurrent {
+    if self.concurrent || description.concurrent {
       print!("test {} ...", description.name);
     }
 

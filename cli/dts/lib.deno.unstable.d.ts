@@ -953,6 +953,14 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New option, yet to be vetted. */
   export interface TestDefinition {
+    /**
+     * Marks the test case as safe to run concurrently with other tests.
+     *
+     * The test *may* run concurrently with other tests that share compatible
+     * sanitizer and permission options.
+     */
+    concurrent?: boolean;
+
     /** Specifies the permissions that should be used to run the test.
      * Set this to "inherit" to keep the calling thread's permissions.
      * Set this to "none" to revoke all permissions.

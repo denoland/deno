@@ -12,15 +12,18 @@
     ArrayPrototypeFilter,
     ArrayPrototypePush,
     DateNow,
+    JSONParse,
     JSONStringify,
     Promise,
-    TypeError,
-    StringPrototypeStartsWith,
+    PromiseAll,
+    RegExp,
+    RegExpPrototypeTest,
+    Set,
     StringPrototypeEndsWith,
     StringPrototypeIncludes,
     StringPrototypeSlice,
-    RegExp,
-    RegExpPrototypeTest,
+    StringPrototypeStartsWith,
+    TypeError,
   } = window.__bootstrap.primordials;
 
   // Wrap test function in additional assertion that makes sure
@@ -105,19 +108,35 @@ finishing test case.`;
     };
   }
 
+  function withSanitizers(fn, options) {
+    if (options.sanitizeOps) {
+      fn = assertOps(fn);
+    }
+
+    if (options.sanitizeResources) {
+      fn = assertResources(fn);
+    }
+
+    if (options.sanitizeExit) {
+      fn = assertExit(fn);
+    }
+
+    return fn;
+  }
+
+  function pledgePermissions(permissions) {
+    return core.opSync(
+      "op_pledge_test_permissions",
+      parsePermissions(permissions),
+    );
+  }
+
+  function restorePermissions(token) {
+    core.opSync("op_restore_test_permissions", token);
+  }
+
   function withPermissions(fn, permissions) {
-    function pledgePermissions(permissions) {
-      return core.opSync(
-        "op_pledge_test_permissions",
-        parsePermissions(permissions),
-      );
-    }
-
-    function restorePermissions(token) {
-      core.opSync("op_restore_test_permissions", token);
-    }
-
-    return async function applyPermissions() {
+    return async function assertPermissions() {
       const token = pledgePermissions(permissions);
 
       try {
@@ -144,6 +163,7 @@ finishing test case.`;
       sanitizeResources: true,
       sanitizeExit: true,
       permissions: null,
+      concurrent: false,
     };
 
     if (typeof t === "string") {
@@ -162,25 +182,6 @@ finishing test case.`;
         throw new TypeError("The test name can't be empty");
       }
       testDef = { ...defaults, ...t };
-    }
-
-    if (testDef.sanitizeOps) {
-      testDef.fn = assertOps(testDef.fn);
-    }
-
-    if (testDef.sanitizeResources) {
-      testDef.fn = assertResources(testDef.fn);
-    }
-
-    if (testDef.sanitizeExit) {
-      testDef.fn = assertExit(testDef.fn);
-    }
-
-    if (testDef.permissions) {
-      testDef.fn = withPermissions(
-        testDef.fn,
-        parsePermissions(testDef.permissions),
-      );
     }
 
     ArrayPrototypePush(tests, testDef);
@@ -206,25 +207,84 @@ finishing test case.`;
     };
   }
 
-  async function runTest({ ignore, fn }) {
-    if (ignore) {
-      return "ignored";
-    }
-
-    try {
-      await fn();
-      return "ok";
-    } catch (error) {
-      return { "failed": inspectArgs([error]) };
-    }
-  }
-
   function getTestOrigin() {
     return core.opSync("op_get_test_origin");
   }
 
-  function dispatchTestEvent(event) {
-    return core.opSync("op_dispatch_test_event", event);
+  function reportTestPlan(plan) {
+    core.opSync("op_dispatch_test_event", {
+      plan,
+    });
+  }
+
+  function reportTestWait(test) {
+    core.opSync("op_dispatch_test_event", {
+      wait: test,
+    });
+  }
+
+  function reportTestResult(test, result, elapsed) {
+    core.opSync("op_dispatch_test_event", {
+      result: [test, result, elapsed],
+    });
+  }
+
+  // Execute a single test capturing the result as expected by the reporter
+  // (see Rust code).
+  async function executeTest(test) {
+    if (test.ignore) {
+      return "ignored";
+    }
+
+    try {
+      await test.fn();
+    } catch (error) {
+      return { "failed": inspectArgs([error]) };
+    }
+
+    return "ok";
+  }
+
+  // Run a single test reporting the result.
+  async function runTest(test) {
+    reportTestWait(test);
+
+    const earlier = DateNow();
+    const result = await executeTest(test);
+    const elapsed = DateNow() - earlier;
+
+    reportTestResult(test, result, elapsed);
+  }
+
+  // Run a set of tests sequentially.
+  // Sanitizers and permissions are applied to each test individually.
+  async function runTestsSequentially(tests) {
+    for (const test of tests) {
+      test.fn = withSanitizers(test.fn, test);
+      if (test.permissions) {
+        test.fn = withPermissions(test.fn, test.permissions);
+      }
+
+      await runTest(test);
+    }
+  }
+
+  // Run a set of tests concurrently.
+  // Sanitizers and permissions are applied to an enclosing function that is
+  // shared between all tests.
+  async function runTestsConcurrently(tests, options) {
+    let fn = function concurrentGroup() {
+      return PromiseAll(
+        tests.map((test) => runTest(test)),
+      );
+    };
+
+    fn = withSanitizers(fn, options);
+    if (options.permissions) {
+      fn = withPermissions(fn, options.permissions);
+    }
+
+    await fn();
   }
 
   async function runTests({
@@ -233,6 +293,10 @@ finishing test case.`;
     shuffle = null,
   } = {}) {
     const origin = getTestOrigin();
+    for (const test of tests) {
+      test.origin = origin;
+    }
+
     const originalConsole = globalThis.console;
     if (disableLog) {
       globalThis.console = new Console(() => {});
@@ -244,13 +308,11 @@ finishing test case.`;
       createTestFilter(filter),
     );
 
-    dispatchTestEvent({
-      plan: {
-        origin,
-        total: filtered.length,
-        filteredOut: tests.length - filtered.length,
-        usedOnly: only.length > 0,
-      },
+    reportTestPlan({
+      origin,
+      total: filtered.length,
+      filteredOut: tests.length - filtered.length,
+      usedOnly: only.length > 0,
     });
 
     if (shuffle !== null) {
@@ -271,19 +333,33 @@ finishing test case.`;
       }
     }
 
-    for (const test of filtered) {
-      const description = {
-        origin,
-        name: test.name,
-      };
-      const earlier = DateNow();
+    // First we run the non-concurrent tests in their original order,
+    // sequentially.
+    await runTestsSequentially(
+      ArrayPrototypeFilter(filtered, (test) => !test.concurrent || test.ignore),
+    );
 
-      dispatchTestEvent({ wait: description });
+    // Then we run the concurrent tests in partitions with matching options.
+    const concurrent = ArrayPrototypeFilter(
+      filtered,
+      (test) => test.concurrent && !test.ignore,
+    );
 
-      const result = await runTest(test);
-      const elapsed = DateNow() - earlier;
+    const stringify = (test) => {
+      return JSONStringify({
+        permissions: test.permissions,
+        sanitizeExit: test.sanitizeExit,
+        sanitizeOps: test.sanitizeOps,
+        sanitizeResources: test.sanitizeResources,
+      });
+    };
 
-      dispatchTestEvent({ result: [description, result, elapsed] });
+    const partitions = new Set(concurrent.map((test) => stringify(test)));
+
+    for (const partition of partitions) {
+      const tests = concurrent.filter((test) => stringify(test) === partition);
+      const options = JSONParse(partition);
+      await runTestsConcurrently(tests, options);
     }
 
     if (disableLog) {

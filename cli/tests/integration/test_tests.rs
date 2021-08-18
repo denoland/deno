@@ -43,6 +43,18 @@ itest!(ignore_permissions {
   output: "test/ignore_permissions.out",
 });
 
+itest!(concurrent {
+  args: "test --unstable test/concurrent.ts",
+  exit_code: 0,
+  output: "test/concurrent.out",
+});
+
+itest!(concurrent_permissions {
+  args: "test --unstable --allow-all test/concurrent_permissions.ts",
+  exit_code: 0,
+  output: "test/concurrent_permissions.out",
+});
+
 itest!(fail {
   args: "test test/fail.ts",
   exit_code: 1,
