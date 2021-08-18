@@ -29,6 +29,22 @@
   const _list = Symbol("list");
   const _urlObject = Symbol("url object");
 
+  // WARNING: must match rust code's UrlSetter::*
+  const SET_HASH = 1;
+  const SET_HOST = 2;
+  const SET_HOSTNAME = 3;
+  const SET_PASSWORD = 4;
+  const SET_PATHNAME = 5;
+  const SET_PORT = 6;
+  const SET_PROTOCOL = 7;
+  const SET_SEARCH = 8;
+  const SET_USERNAME = 9;
+
+  // Helper function
+  function opUrlReparse(href, setter, value) {
+    return core.opSync("op_url_reparse", href, [setter, value]);
+  }
+
   class URLSearchParams {
     [_list];
     [_urlObject] = null;
@@ -78,11 +94,7 @@
       if (url === null) {
         return;
       }
-      const parts = core.opSync("op_url_parse", {
-        href: url.href,
-        setSearch: this.toString(),
-      });
-      url[_url] = parts;
+      url[_url] = opUrlReparse(url.href, SET_SEARCH, this.toString());
     }
 
     /**
@@ -277,9 +289,7 @@
         });
       }
       this[webidl.brand] = webidl.brand;
-
-      const parts = core.opSync("op_url_parse", { href: url, baseHref: base });
-      this[_url] = parts;
+      this[_url] = core.opSync("op_url_parse", url, base);
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
@@ -326,10 +336,7 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = core.opSync("op_url_parse", {
-          href: this[_url].href,
-          setHash: value,
-        });
+        this[_url] = opUrlReparse(this[_url].href, SET_HASH, value);
       } catch {
         /* pass */
       }
@@ -351,10 +358,7 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = core.opSync("op_url_parse", {
-          href: this[_url].href,
-          setHost: value,
-        });
+        this[_url] = opUrlReparse(this[_url].href, SET_HOST, value);
       } catch {
         /* pass */
       }
@@ -376,10 +380,7 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = core.opSync("op_url_parse", {
-          href: this[_url].href,
-          setHostname: value,
-        });
+        this[_url] = opUrlReparse(this[_url].href, SET_HOSTNAME, value);
       } catch {
         /* pass */
       }
@@ -400,9 +401,7 @@
         prefix,
         context: "Argument 1",
       });
-      this[_url] = core.opSync("op_url_parse", {
-        href: value,
-      });
+      this[_url] = core.opSync("op_url_parse", value);
       this.#updateSearchParams();
     }
 
@@ -428,10 +427,7 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = core.opSync("op_url_parse", {
-          href: this[_url].href,
-          setPassword: value,
-        });
+        this[_url] = opUrlReparse(this[_url].href, SET_PASSWORD, value);
       } catch {
         /* pass */
       }
@@ -453,10 +449,7 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = core.opSync("op_url_parse", {
-          href: this[_url].href,
-          setPathname: value,
-        });
+        this[_url] = opUrlReparse(this[_url].href, SET_PATHNAME, value);
       } catch {
         /* pass */
       }
@@ -478,10 +471,7 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = core.opSync("op_url_parse", {
-          href: this[_url].href,
-          setPort: value,
-        });
+        this[_url] = opUrlReparse(this[_url].href, SET_PORT, value);
       } catch {
         /* pass */
       }
@@ -503,10 +493,7 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = core.opSync("op_url_parse", {
-          href: this[_url].href,
-          setProtocol: value,
-        });
+        this[_url] = opUrlReparse(this[_url].href, SET_PROTOCOL, value);
       } catch {
         /* pass */
       }
@@ -528,10 +515,7 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = core.opSync("op_url_parse", {
-          href: this[_url].href,
-          setSearch: value,
-        });
+        this[_url] = opUrlReparse(this[_url].href, SET_SEARCH, value);
         this.#updateSearchParams();
       } catch {
         /* pass */
@@ -554,10 +538,7 @@
         context: "Argument 1",
       });
       try {
-        this[_url] = core.opSync("op_url_parse", {
-          href: this[_url].href,
-          setUsername: value,
-        });
+        this[_url] = opUrlReparse(this[_url].href, SET_USERNAME, value);
       } catch {
         /* pass */
       }
