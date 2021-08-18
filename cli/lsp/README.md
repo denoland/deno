@@ -164,14 +164,14 @@ client:
 ## Language IDs
 
 The language server supports diagnostics and formatting for the following
-language IDs:
+[text document language IDs](https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocumentItem):
 
 - `"javascript"`
 - `"javascriptreact"`
-- `"jsx"` _non standard_
+- `"jsx"` _non standard, same as `javascriptreact`_
 - `"typescript"`
 - `"typescriptreact"`
-- `"tsx"` _non standard_
+- `"tsx"` _non standard, same as `typescriptreact`_
 
 The language server supports only formatting for the following language IDs:
 
