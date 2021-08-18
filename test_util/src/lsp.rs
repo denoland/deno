@@ -98,8 +98,7 @@ pub struct LspClient {
   request_id: u64,
   start: Instant,
   writer: io::BufWriter<ChildStdin>,
-  #[allow(dead_code)]
-  temp_deno_dir: TempDir, // directory will be deleted on drop
+  _temp_deno_dir: TempDir, // directory will be deleted on drop
 }
 
 impl Drop for LspClient {
@@ -160,9 +159,9 @@ where
 
 impl LspClient {
   pub fn new(deno_exe: &Path) -> Result<Self> {
-    let temp_deno_dir = new_deno_dir();
+    let deno_dir = new_deno_dir();
     let mut child = Command::new(deno_exe)
-      .env("DENO_DIR", temp_deno_dir.path())
+      .env("DENO_DIR", deno_dir.path())
       .arg("lsp")
       .stdin(Stdio::piped())
       .stdout(Stdio::piped())
@@ -182,7 +181,7 @@ impl LspClient {
       request_id: 1,
       start: Instant::now(),
       writer,
-      temp_deno_dir,
+      _temp_deno_dir: deno_dir,
     })
   }
 
