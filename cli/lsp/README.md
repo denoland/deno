@@ -22,6 +22,7 @@ There are several settings that the language server supports for a workspace:
 - `deno.cache`
 - `deno.config`
 - `deno.importMap`
+- `deno.internalDebug`
 - `deno.codeLens.implementations`
 - `deno.codeLens.references`
 - `deno.codeLens.referencesAllFunctions`
@@ -159,3 +160,21 @@ client:
     suggestions: boolean;
   }
   ```
+
+## Language IDs
+
+The language server supports diagnostics and formatting for the following
+language IDs:
+
+- `"javascript"`
+- `"javascriptreact"`
+- `"jsx"` _non standard_
+- `"typescript"`
+- `"typescriptreact"`
+- `"tsx"` _non standard_
+
+The language server supports only formatting for the following language IDs:
+
+- `"json"`
+- `"jsonc"`
+- `"markdown"`
