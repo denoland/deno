@@ -9,6 +9,10 @@ Deno.test({
   fn() {},
 });
 
+Deno.test("only", () => {}, {
+  only: true,
+});
+
 Deno.test({
   name: "after",
   fn() {},

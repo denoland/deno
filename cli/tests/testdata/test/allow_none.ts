@@ -11,13 +11,11 @@ const permissions: Deno.PermissionName[] = [
 ];
 
 for (const name of permissions) {
-  Deno.test({
-    name,
+  Deno.test(name, function () {
+    unreachable();
+  }, {
     permissions: {
       [name]: true,
-    },
-    fn() {
-      unreachable();
     },
   });
 }
