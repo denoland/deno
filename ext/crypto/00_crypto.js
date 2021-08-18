@@ -491,14 +491,6 @@
         throw new DOMException("Invalid key usages", "SyntaxError");
       }
 
-      // https://github.com/denoland/deno/pull/9614#issuecomment-866049433
-      if (!extractable) {
-        throw new DOMException(
-          "Non-extractable keys are not supported",
-          "SecurityError",
-        );
-      }
-
       switch (normalizedAlgorithm.name) {
         // https://w3c.github.io/webcrypto/#hmac-operations
         case "HMAC": {
@@ -543,7 +535,7 @@
 
               const key = constructKey(
                 "secret",
-                true,
+                extractable,
                 usageIntersection(keyUsages, recognisedUsages),
                 algorithm,
                 handle,
@@ -585,16 +577,17 @@
 
       const handle = key[_handle];
       // 2.
-      const bits = WeakMapPrototypeGet(KEY_STORE, handle);
+      const innerKey = WeakMapPrototypeGet(KEY_STORE, handle);
 
       switch (key[_algorithm].name) {
         case "HMAC": {
-          if (bits == null) {
+          if (innerKey == null) {
             throw new DOMException("Key is not available", "OperationError");
           }
           switch (format) {
             // 3.
             case "raw": {
+              const bits = innerKey.data;
               for (let _i = 7 & (8 - bits.length % 8); _i > 0; _i--) {
                 bits.push(0);
               }
@@ -756,14 +749,6 @@
       const usages = keyUsages;
 
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "generateKey");
-
-      // https://github.com/denoland/deno/pull/9614#issuecomment-866049433
-      if (!extractable) {
-        throw new DOMException(
-          "Non-extractable keys are not supported",
-          "SecurityError",
-        );
-      }
 
       const result = await generateKey(
         normalizedAlgorithm,

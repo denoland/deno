@@ -6,6 +6,36 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.13.1 / 2021.08.16
+
+- fix: Blob#slice arguments should be optional (#11665)
+- fix: correct spelling of certificate in `--unsafely-ignore-certificate-errors`
+  warning message (#11634)
+- fix: don't statically type name on Deno.errors (#11715)
+- fix: parse error when transpiling code with BOM (#11688)
+- fix(cli): allow specifiers of unknown media types with test command (#11652)
+- fix(cli): explicitly scan for ignore attribute in inline tests (#11647)
+- fix(cli): retain input order of remote specifiers (#11700)
+- fix(cli/lint): don't use gray in diagnostics output for visibility (#11702)
+- fix(cli/tools/repl): don't highlight candidate when completion is list
+  (#11697)
+- fix(ext/crypto): enable non-extractable keys (#11705)
+- fix(ext/crypto): fix copying buffersource (#11714)
+- fix(ext/crypto): handle idlValue not being present (#11685)
+- fix(ext/crypto): importKey() SecurityError on non-extractable keys (#11662)
+- fix(ext/crypto): take a copy of keyData bytes (#11666)
+- fix(ext/fetch): better error if no content-type
+- fix(ext/fetch): don't use global Deno object
+- fix(ext/http): remove unwrap() when HTTP conn errors (#11674)
+- fix(ext/web): use Array primordials in MessagePort (#11680)
+- fix(http/ws): support multiple options in connection header (#11675)
+- fix(lint): add links to help at lint.deno.land (#11667)
+- fix(test): dispatch load event before tests are run (#11708)
+- fix(test): sort file module specifiers (#11656)
+- perf: improve localStorage throughput (#11709)
+- perf(ext/http): faster req_url string assembly (#11711)
+- perf(wpt/crypto): optimize num-bigint-dig for debug builds (#11681)
+
 ### 1.13.0 / 2021.08.10
 
 - BREAKING(unstable): Rename Deno.WebSocketUpgrade::websocket to socket (#11542)

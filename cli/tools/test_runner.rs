@@ -8,6 +8,7 @@ use crate::file_fetcher::File;
 use crate::located_script_name;
 use crate::media_type::MediaType;
 use crate::module_graph;
+use crate::ops;
 use crate::program_state::ProgramState;
 use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
@@ -20,6 +21,7 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
 use deno_core::v8;
+use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use rand::rngs::SmallRng;
@@ -247,16 +249,21 @@ pub async fn test_specifier(
 
   program_state.file_fetcher.insert_cached(test_file);
 
-  let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, true);
+  let init_ops = |js_runtime: &mut JsRuntime| {
+    ops::testing::init(js_runtime);
 
-  {
-    let js_runtime = &mut worker.js_runtime;
     js_runtime
       .op_state()
       .borrow_mut()
       .put::<Sender<TestEvent>>(channel.clone());
-  }
+  };
+
+  let mut worker = create_main_worker(
+    &program_state,
+    main_module.clone(),
+    permissions,
+    Some(&init_ops),
+  );
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
     program_state.coverage_dir
