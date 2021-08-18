@@ -11,7 +11,6 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
-use deno_core::futures::future::FutureExt;
 use deno_core::futures::stream::StreamExt;
 use deno_core::located_script_name;
 use deno_core::serde::Deserialize;
@@ -568,36 +567,38 @@ pub fn run_web_worker(
   // TODO(bartlomieju): run following block using "select!"
   // with terminate
 
-  // Execute provided source code immediately
-  let result = if let Some(source_code) = maybe_source_code {
-    worker.execute_script(&located_script_name!(), &source_code)
-  } else {
-    // TODO(bartlomieju): add "type": "classic", ie. ability to load
-    // script instead of module
-    let load_future = worker.execute_module(&specifier).boxed_local();
+  let fut = async move {
+    // Execute provided source code immediately
+    let result = if let Some(source_code) = maybe_source_code {
+      worker.execute_script(&located_script_name!(), &source_code)
+    } else {
+      // TODO(bartlomieju): add "type": "classic", ie. ability to load
+      // script instead of module
+      worker.execute_module(&specifier).await
+    };
 
-    rt.block_on(load_future)
+    let internal_handle = worker.internal_handle.clone();
+
+    // If sender is closed it means that worker has already been closed from
+    // within using "globalThis.close()"
+    if internal_handle.is_terminated() {
+      return Ok(());
+    }
+
+    if let Err(e) = result {
+      print_worker_error(e.to_string(), &name);
+      internal_handle
+        .post_event(WorkerControlEvent::TerminalError(e))
+        .expect("Failed to post message to host");
+
+      // Failure to execute script is a terminal error, bye, bye.
+      return Ok(());
+    }
+
+    let result = worker.run_event_loop(true).await;
+    debug!("Worker thread shuts down {}", &name);
+    result
   };
 
-  let internal_handle = worker.internal_handle.clone();
-
-  // If sender is closed it means that worker has already been closed from
-  // within using "globalThis.close()"
-  if internal_handle.is_terminated() {
-    return Ok(());
-  }
-
-  if let Err(e) = result {
-    print_worker_error(e.to_string(), &name);
-    internal_handle
-      .post_event(WorkerControlEvent::TerminalError(e))
-      .expect("Failed to post message to host");
-
-    // Failure to execute script is a terminal error, bye, bye.
-    return Ok(());
-  }
-
-  let result = rt.block_on(worker.run_event_loop(true));
-  debug!("Worker thread shuts down {}", &name);
-  result
+  rt.block_on(fut)
 }
