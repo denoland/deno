@@ -40,9 +40,41 @@
   const SET_SEARCH = 8;
   const SET_USERNAME = 9;
 
-  // Helper function
+  // Helper functions
   function opUrlReparse(href, setter, value) {
-    return core.opSync("op_url_reparse", href, [setter, value]);
+    return _urlParts(core.opSync("op_url_reparse", href, [setter, value]));
+  }
+  function opUrlParse(href, maybeBase) {
+    return _urlParts(core.opSync("op_url_parse", href, maybeBase));
+  }
+  function _urlParts(internalParts) {
+    // WARNING: must match UrlParts serialization rust's url_result()
+    const {
+      0: href,
+      1: hash,
+      2: host,
+      3: hostname,
+      4: origin,
+      5: password,
+      6: pathname,
+      7: port,
+      8: protocol,
+      9: search,
+      10: username,
+    } = internalParts.split("\n");
+    return {
+      href,
+      hash,
+      host,
+      hostname,
+      origin,
+      password,
+      pathname,
+      port,
+      protocol,
+      search,
+      username,
+    };
   }
 
   class URLSearchParams {
@@ -289,7 +321,7 @@
         });
       }
       this[webidl.brand] = webidl.brand;
-      this[_url] = core.opSync("op_url_parse", url, base);
+      this[_url] = opUrlParse(url, base);
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
@@ -401,7 +433,7 @@
         prefix,
         context: "Argument 1",
       });
-      this[_url] = core.opSync("op_url_parse", value);
+      this[_url] = opUrlParse(value);
       this.#updateSearchParams();
     }
 
