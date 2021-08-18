@@ -17,12 +17,12 @@ unitTest(
       first: boolean,
       second: boolean,
     ): Promise<boolean> => {
-      const firstPs = run(first, 400);
-      await new Promise((res) => setTimeout(res, 100));
+      const firstPs = run(first, 1000);
+      await new Promise((res) => setTimeout(res, 250));
       const start = performance.now();
       const secondPs = run(second, 0);
       await secondPs.status();
-      const didBlock = (performance.now() - start) > 200;
+      const didBlock = (performance.now() - start) > 500;
       firstPs.close();
       secondPs.close();
       return didBlock;
@@ -67,12 +67,12 @@ unitTest(
       first: boolean,
       second: boolean,
     ): Promise<boolean> => {
-      const firstPs = run(first, 400);
-      await new Promise((res) => setTimeout(res, 100));
+      const firstPs = run(first, 1000);
+      await new Promise((res) => setTimeout(res, 250));
       const start = performance.now();
       const secondPs = run(second, 0);
       await secondPs.status();
-      const didBlock = (performance.now() - start) > 200;
+      const didBlock = (performance.now() - start) > 500;
       firstPs.close();
       secondPs.close();
       return didBlock;
