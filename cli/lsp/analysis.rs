@@ -141,9 +141,9 @@ pub fn get_lint_references(
   let lint_diagnostics = linter.lint_with_ast(
     parsed_module.specifier().to_string(),
     parsed_module.text().info(),
-    (&parsed_module.module).into(),
-    parsed_module.comments.leading_map(),
-    parsed_module.comments.trailing_map(),
+    parsed_module.module().into(),
+    parsed_module.comments().leading_map(),
+    parsed_module.comments().trailing_map(),
     parsed_module.tokens(),
   );
 

@@ -374,11 +374,11 @@ fn extract_files_from_source_comments(
 ) -> Result<Vec<File>, AnyError> {
   let parsed_module = ast::parse(ast::ParseParams {
     specifier: specifier.as_str().to_string(),
-    text: source.to_string().into(),
+    text: source.into(),
     media_type: media_type.to_owned(),
     capture_tokens: false,
   })?;
-  let comments = parsed_module.comments.get_vec();
+  let comments = parsed_module.comments().get_vec();
   let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
 

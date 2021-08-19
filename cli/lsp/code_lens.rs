@@ -400,7 +400,7 @@ fn collect_test(
     if let Some(parsed_module) = parsed_module {
       let mut collector =
         DenoTestCollector::new(specifier.clone(), &parsed_module);
-      parsed_module.module.visit_with(
+      parsed_module.module().visit_with(
         &ast::Invalid {
           span: swc_common::DUMMY_SP,
         },
@@ -526,7 +526,7 @@ mod tests {
     )
     .unwrap();
     let mut collector = DenoTestCollector::new(specifier, &parsed_module);
-    parsed_module.module.visit_with(
+    parsed_module.module().visit_with(
       &ast::Invalid {
         span: swc_common::DUMMY_SP,
       },

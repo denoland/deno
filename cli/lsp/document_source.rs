@@ -17,7 +17,7 @@ struct DocumentSourceInner {
   line_index: LineIndex,
 }
 
-/// Immutable information about a document that can be cheaply cloned.
+/// Immutable information about a document.
 #[derive(Debug, Clone)]
 pub struct DocumentSource {
   inner: Arc<DocumentSourceInner>,

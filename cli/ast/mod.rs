@@ -265,8 +265,8 @@ pub struct ParsedModule {
   specifier: String,
   media_type: MediaType,
   text: SourceFileText,
-  pub comments: MultiThreadedComments,
-  pub module: Module,
+  comments: MultiThreadedComments,
+  module: Module,
   tokens: Option<Vec<TokenAndSpan>>,
 }
 
@@ -293,6 +293,16 @@ impl ParsedModule {
   /// Gets the module's source file text.
   pub fn text(&self) -> &SourceFileText {
     &self.text
+  }
+
+  /// Gets the module's parsed module.
+  pub fn module(&self) -> &ParsedModule {
+    &self.parsed_module
+  }
+
+  /// Gets the module's comments.
+  pub fn comments(&self) -> &MultiThreadedComments {
+    &self.comments
   }
 
   /// Gets the module's tokens.
@@ -334,7 +344,7 @@ impl ParsedModule {
     let program = Program::Module(self.module);
     let source_map = Rc::new(SourceMap::default());
     let file_name = FileName::Custom(self.specifier.clone());
-    source_map.new_source_file(file_name, self.text.as_str().to_string());
+    source_map.new_source_file(file_name, self.text.to_string());
     let comments = self.comments.as_single_threaded(); // needs to be mutable
 
     let jsx_pass = react::react(

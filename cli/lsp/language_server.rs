@@ -1010,7 +1010,7 @@ impl Inner {
         Some(Ok(parsed_module)) => Ok(format_parsed_module(parsed_module)),
         Some(Err(err)) => Err(err.to_owned()),
         None => {
-          // it's not a typescript file, so attempt to format its contents
+          // it's not a js/ts file, so attempt to format its contents
           format_file(&file_path, source.text().as_str())
         }
       };

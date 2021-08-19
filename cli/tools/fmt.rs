@@ -169,9 +169,9 @@ pub fn format_parsed_module(parsed_module: &ParsedModule) -> String {
   dprint_plugin_typescript::format_parsed_file(
     &dprint_plugin_typescript::SourceFileInfo {
       info: parsed_module.text().info(),
-      leading_comments: parsed_module.comments.leading_map(),
-      trailing_comments: parsed_module.comments.trailing_map(),
-      module: &parsed_module.module,
+      leading_comments: parsed_module.comments().leading_map(),
+      trailing_comments: parsed_module.comments().trailing_map(),
+      module: parsed_module.module(),
       tokens: parsed_module.tokens(),
     },
     &TYPESCRIPT_CONFIG,
