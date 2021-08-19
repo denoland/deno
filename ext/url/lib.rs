@@ -11,7 +11,6 @@ use deno_core::url::quirks;
 use deno_core::url::Url;
 use deno_core::Extension;
 use deno_core::ZeroCopyBuf;
-use serde::Serialize;
 use std::panic::catch_unwind;
 use std::path::PathBuf;
 
@@ -36,20 +35,23 @@ pub fn init() -> Extension {
     .build()
 }
 
-#[derive(Serialize)]
-pub struct UrlParts {
-  href: String,
-  hash: String,
-  host: String,
-  hostname: String,
-  origin: String,
-  password: String,
-  pathname: String,
-  port: String,
-  protocol: String,
-  search: String,
-  username: String,
-}
+// UrlParts is a \n joined string of the following parts:
+// #[derive(Serialize)]
+// pub struct UrlParts {
+//   href: String,
+//   hash: String,
+//   host: String,
+//   hostname: String,
+//   origin: String,
+//   password: String,
+//   pathname: String,
+//   port: String,
+//   protocol: String,
+//   search: String,
+//   username: String,
+// }
+// TODO: implement cleaner & faster serialization
+type UrlParts = String;
 
 /// Parse `UrlParseArgs::href` with an optional `UrlParseArgs::base_href`, or an
 /// optional part to "set" after parsing. Return `UrlParts`.
@@ -137,19 +139,22 @@ fn url_result(
     ))
   })?;
 
-  Ok(UrlParts {
-    href: quirks::href(&url).to_string(),
-    hash: quirks::hash(&url).to_string(),
-    host: quirks::host(&url).to_string(),
-    hostname: quirks::hostname(&url).to_string(),
-    origin: quirks::origin(&url),
-    password: quirks::password(&url).to_string(),
-    pathname: quirks::pathname(&url).to_string(),
-    port: quirks::port(&url).to_string(),
-    protocol: quirks::protocol(&url).to_string(),
-    search: quirks::search(&url).to_string(),
-    username: username.to_string(),
-  })
+  Ok(
+    [
+      quirks::href(&url),
+      quirks::hash(&url),
+      quirks::host(&url),
+      quirks::hostname(&url),
+      &quirks::origin(&url),
+      quirks::password(&url),
+      quirks::pathname(&url),
+      quirks::port(&url),
+      quirks::protocol(&url),
+      quirks::search(&url),
+      username,
+    ]
+    .join("\n"),
+  )
 }
 
 pub fn op_url_parse_search_params(
