@@ -433,7 +433,7 @@ fn get_rules_from_config(
         .collect::<HashMap<_, _>>();
       for inc in include {
         if let Some(rule) = rules_per_code.remove(inc.as_str()) {
-          filtered_rules.insert(&inc, rule);
+          filtered_rules.insert(inc, rule);
         }
       }
     }
