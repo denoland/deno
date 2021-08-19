@@ -84,7 +84,7 @@ semver-parser = "0.10.2"
 serde = { version = "1.0.126", features = ["derive"] }
 shell-escape = "0.1.5"
 sourcemap = "6.0.1"
-swc_ast_view = { version = "0.29.1", package = "dprint-swc-ecma-ast-view" }
+swc_ast_view = { version = "0.29.4", package = "dprint-swc-ecma-ast-view" }
 swc_bundler = "0.50.0"
 swc_common = { version = "0.11.4", features = ["sourcemap"] }
 swc_ecmascript = { version = "0.52.1", features = ["codegen", "dep_graph", "parser", "proposal", "react", "transforms", "typescript", "visit"] }

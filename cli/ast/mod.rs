@@ -3,7 +3,6 @@
 use crate::config_file;
 use crate::media_type::MediaType;
 use crate::text_encoding::strip_bom;
-use crate::text_encoding::strip_bom_mut;
 
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
@@ -13,9 +12,6 @@ use std::error::Error;
 use std::fmt;
 use std::ops::Range;
 use std::rc::Rc;
-use std::sync::Arc;
-use swc_ast_view::SourceFile;
-use swc_ast_view::SourceFileTextInfo;
 use swc_common::chain;
 use swc_common::comments::Comment;
 use swc_common::comments::CommentKind;
@@ -53,9 +49,11 @@ use swc_ecmascript::visit::FoldWith;
 mod bundle_hook;
 mod comments;
 mod transforms;
+mod source_file_text;
 
 pub use bundle_hook::BundleHook;
 use comments::MultiThreadedComments;
+pub use source_file_text::SourceFileText;
 
 static TARGET: JscTarget = JscTarget::Es2020;
 
@@ -266,7 +264,7 @@ fn strip_config_from_emit_options(
 pub struct ParsedModule {
   specifier: String,
   media_type: MediaType,
-  info: Arc<SourceFileTextInfo>,
+  text: SourceFileText,
   pub comments: MultiThreadedComments,
   pub module: Module,
   tokens: Option<Vec<TokenAndSpan>>,
@@ -292,10 +290,9 @@ impl ParsedModule {
     self.media_type
   }
 
-  /// Gets the module's source file.
-  pub fn source_file(&self) -> &SourceFileTextInfo {
-    let source_file: &SourceFileTextInfo = &self.info;
-    source_file
+  /// Gets the module's source file text.
+  pub fn text(&self) -> &SourceFileText {
+    &self.text
   }
 
   /// Gets the module's tokens.
@@ -322,7 +319,7 @@ impl ParsedModule {
 
   /// Get a location for a given position within the module.
   pub fn get_location(&self, pos: BytePos) -> Location {
-    let loc = self.info.line_and_column_index(pos);
+    let loc = self.text.line_and_column_index(pos);
     Location::from_line_and_column(self.specifier.clone(), loc)
   }
 
@@ -337,7 +334,7 @@ impl ParsedModule {
     let program = Program::Module(self.module);
     let source_map = Rc::new(SourceMap::default());
     let file_name = FileName::Custom(self.specifier.clone());
-    source_map.new_source_file(file_name, self.info.text().to_string());
+    source_map.new_source_file(file_name, self.text.as_str().to_string());
     let comments = self.comments.as_single_threaded(); // needs to be mutable
 
     let jsx_pass = react::react(
@@ -415,7 +412,7 @@ impl ParsedModule {
 
 pub struct ParseParams {
   pub specifier: String,
-  pub source: String,
+  pub text: SourceFileText,
   pub media_type: MediaType,
   pub capture_tokens: bool,
 }
@@ -432,18 +429,17 @@ pub struct ParseParams {
 // NOTE(bartlomieju): `specifier` has `&str` type instead of
 // `&ModuleSpecifier` because runtime compiler APIs don't
 // require valid module specifiers
-pub fn parse(mut params: ParseParams) -> Result<ParsedModule, AnyError> {
-  strip_bom_mut(&mut params.source);
-  let info = SourceFileTextInfo::new(BytePos(0), params.source);
-  let source_span = info.span();
+pub fn parse(params: ParseParams) -> Result<ParsedModule, AnyError> {
+  let text = params.text;
+  let source_span = text.span();
   let specifier = params.specifier;
-  let input = StringInput::new(info.text(), source_span.lo(), source_span.hi());
+  let input = StringInput::new(text.as_str(), source_span.lo(), source_span.hi());
   let (comments, module, tokens) =
     parse_string_input(input, &params.media_type, params.capture_tokens)
       .map_err(|err| Diagnostic {
         location: Location::from_line_and_column(
           specifier.clone(),
-          info.line_and_column_index(err.span().lo),
+          text.line_and_column_index(err.span().lo),
         ),
         message: err.into_kind().msg().to_string(),
       })?;
@@ -451,7 +447,7 @@ pub fn parse(mut params: ParseParams) -> Result<ParsedModule, AnyError> {
   Ok(ParsedModule {
     specifier,
     media_type: params.media_type.to_owned(),
-    info: Arc::new(info),
+    text,
     comments: MultiThreadedComments::from_single_threaded(comments),
     module,
     tokens,
@@ -608,7 +604,7 @@ mod tests {
     let source = "import * as bar from './test.ts';\nconst foo = await import('./foo.ts');";
     let parsed_module = parse(ParseParams {
       specifier: specifier.as_str().to_string(),
-      source: source.to_string(),
+      text: source.into(),
       media_type: MediaType::JavaScript,
       capture_tokens: false,
     })
@@ -670,7 +666,7 @@ mod tests {
     "#;
     let module = parse(ParseParams {
       specifier: specifier.as_str().to_string(),
-      source: source.to_string(),
+      text: source.into(),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
     })
@@ -698,7 +694,7 @@ mod tests {
     "#;
     let module = parse(ParseParams {
       specifier: specifier.as_str().to_string(),
-      source: source.to_string(),
+      text: source.into(),
       media_type: MediaType::Tsx,
       capture_tokens: false,
     })
@@ -733,7 +729,7 @@ mod tests {
     "#;
     let module = parse(ParseParams {
       specifier: specifier.as_str().to_string(),
-      source: source.to_string(),
+      text: source.into(),
       media_type: MediaType::TypeScript,
       capture_tokens: false,
     })

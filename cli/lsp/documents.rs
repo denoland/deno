@@ -5,6 +5,7 @@ use super::text::LineIndex;
 use super::tsc;
 
 use crate::ast::ParsedModule;
+use crate::ast::SourceFileText;
 use crate::media_type::MediaType;
 
 use deno_core::error::anyhow;
@@ -82,7 +83,7 @@ impl IndexValid {
 struct DocumentSource {
   specifier: ModuleSpecifier,
   media_type: MediaType,
-  text: String,
+  text: SourceFileText,
   parsed_module: OnceCell<Result<ParsedModule, String>>,
 }
 
@@ -95,7 +96,7 @@ impl DocumentSource {
     Self {
       specifier: specifier.clone(),
       media_type,
-      text,
+      text: text.into(),
       parsed_module: OnceCell::new(),
     }
   }
@@ -164,7 +165,7 @@ impl DocumentData {
     &mut self,
     content_changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<(), AnyError> {
-    let mut content = self.source.text.clone();
+    let mut content = self.source.text.as_str().to_string();
     let mut line_index = self.line_index.clone();
     let mut index_valid = IndexValid::All;
     for change in content_changes {
@@ -195,7 +196,7 @@ impl DocumentData {
   }
 
   pub fn content(&self) -> &str {
-    &self.source.text
+    &self.source.text.as_str()
   }
 
   pub fn line_index(&self) -> &LineIndex {
@@ -210,10 +211,8 @@ impl DocumentData {
     })
   }
 
-  pub fn content_line(&self, line: usize) -> String {
-    // todo(dsherret): get the line from the SourceFileInfo
-    let lines = self.source.text.lines().into_iter().collect::<Vec<&str>>();
-    lines[line].to_string()
+  pub fn content_line(&self, line_index: usize) -> &str {
+    self.source.text.line_text(line_index)
   }
 
   /// Determines if a position within the document is within a dependency range
@@ -395,11 +394,11 @@ impl DocumentCache {
     specifier: ModuleSpecifier,
     version: i32,
     language_id: LanguageId,
-    source: &str,
+    source: String,
   ) {
     self.docs.insert(
       specifier.clone(),
-      DocumentData::new(specifier, version, language_id, source.to_string()),
+      DocumentData::new(specifier, version, language_id, source),
     );
   }
 
@@ -497,7 +496,7 @@ mod tests {
       specifier.clone(),
       1,
       LanguageId::TypeScript,
-      "console.log(\"Hello Deno\");\n",
+      "console.log(\"Hello Deno\");\n".to_string(),
     );
     assert!(document_cache.contains_key(&specifier));
     assert!(!document_cache.contains_key(&missing_specifier));
@@ -511,7 +510,7 @@ mod tests {
       specifier.clone(),
       1,
       LanguageId::TypeScript,
-      "console.log(\"Hello deno\");\n",
+      "console.log(\"Hello deno\");\n".to_string(),
     );
     document_cache
       .change(
@@ -547,7 +546,7 @@ mod tests {
       specifier.clone(),
       1,
       LanguageId::TypeScript,
-      "console.log(\"Hello 🦕\");\n",
+      "console.log(\"Hello 🦕\");\n".to_string(),
     );
     document_cache
       .change(
@@ -584,7 +583,7 @@ mod tests {
       specifier.clone(),
       1,
       LanguageId::TypeScript,
-      "console.log(\"hello world\");\n",
+      "console.log(\"hello world\");\n".to_string(),
     );
     assert!(document_cache.is_diagnosable(&specifier));
     let specifier =

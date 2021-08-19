@@ -384,7 +384,7 @@ fn op_load(state: &mut State, args: Value) -> Result<Value, AnyError> {
     } else {
       specifier
     };
-    let maybe_source = graph.get_source(&specifier);
+    let maybe_source = graph.get_source(&specifier).map(ToOwned::to_owned);
     media_type = if let Some(media_type) = graph.get_media_type(&specifier) {
       media_type
     } else {

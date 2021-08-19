@@ -5,6 +5,7 @@ use super::tsc;
 
 use crate::ast;
 use crate::ast::ParsedModule;
+use crate::ast::SourceFileText;
 use crate::import_map::ImportMap;
 use crate::lsp::documents::DocumentData;
 use crate::media_type::MediaType;
@@ -139,7 +140,7 @@ pub fn get_lint_references(
   let linter = create_linter(syntax, lint_rules);
   let lint_diagnostics = linter.lint_with_ast(
     parsed_module.specifier().to_string(),
-    parsed_module.source_file(),
+    parsed_module.text().info(),
     (&parsed_module.module).into(),
     parsed_module.comments.leading_map(),
     parsed_module.comments.trailing_map(),
@@ -284,12 +285,12 @@ pub fn resolve_import(
 
 pub fn parse_module(
   specifier: &ModuleSpecifier,
-  source: String,
+  text: SourceFileText,
   media_type: MediaType,
 ) -> Result<ast::ParsedModule, AnyError> {
   ast::parse(ast::ParseParams {
     specifier: specifier.as_str().to_string(),
-    source,
+    text,
     media_type,
     capture_tokens: true,
   })
@@ -700,7 +701,7 @@ impl CodeActionCollection {
       .unwrap();
 
     let line_content =
-      document.map(|d| d.content_line(diagnostic.range.start.line as usize));
+      document.map(|d| d.content_line(diagnostic.range.start.line as usize).to_string());
 
     let mut changes = HashMap::new();
     changes.insert(
@@ -1204,7 +1205,7 @@ mod tests {
     let specifier = resolve_url("file:///a.ts").expect("bad specifier");
     let source = "const foo = 42;";
     let parsed_module =
-      parse_module(&specifier, source.to_string(), MediaType::TypeScript)
+      parse_module(&specifier, source.into(), MediaType::TypeScript)
         .unwrap();
     let actual = get_lint_references(&parsed_module).unwrap();
 
@@ -1250,7 +1251,7 @@ mod tests {
     import React from "https://cdn.skypack.dev/react";
     "#;
     let parsed_module =
-      parse_module(&specifier, source.to_string(), MediaType::TypeScript)
+      parse_module(&specifier, source.into(), MediaType::TypeScript)
         .unwrap();
     let (actual, maybe_type) = analyze_dependencies(
       &specifier,
@@ -1343,7 +1344,7 @@ mod tests {
       "import * as a from \"./b.ts\";\nexport * as a from \"./c.ts\";\n";
     let media_type = MediaType::TypeScript;
     let parsed_module =
-      parse_module(&specifier, source.to_string(), media_type).unwrap();
+      parse_module(&specifier, source.into(), media_type).unwrap();
     let result = analyze_dependency_ranges(&parsed_module);
     assert!(result.is_ok());
     let actual = result.unwrap();

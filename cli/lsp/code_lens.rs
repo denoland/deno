@@ -521,7 +521,7 @@ mod tests {
     "#;
     let parsed_module = crate::lsp::analysis::parse_module(
       &specifier,
-      source.to_string(),
+      source.into(),
       MediaType::TypeScript,
     )
     .unwrap();

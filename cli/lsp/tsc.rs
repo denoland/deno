@@ -2909,11 +2909,9 @@ mod tests {
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      documents.open(specifier.clone(), *version, language_id.clone(), source);
+      documents.open(specifier.clone(), *version, language_id.clone(), source.to_string());
       let media_type = MediaType::from(&specifier);
-      if let Ok(parsed_module) =
-        analysis::parse_module(&specifier, source.to_string(), media_type)
-      {
+      if let Some(Ok(parsed_module)) = documents.get(&specifier).unwrap().module() {
         let (deps, _) = analysis::analyze_dependencies(
           &specifier,
           media_type,

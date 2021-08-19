@@ -762,7 +762,7 @@ impl Inner {
       specifier.clone(),
       params.text_document.version,
       language_id,
-      &params.text_document.text,
+      params.text_document.text,
     );
 
     if self.documents.is_diagnosable(&specifier) {

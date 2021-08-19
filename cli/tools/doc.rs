@@ -69,7 +69,7 @@ impl DocFileLoader for module_graph::Graph {
   ) -> Pin<Box<dyn Future<Output = DocResult>>> {
     let specifier =
       resolve_url_or_path(specifier).expect("Expected valid specifier");
-    let source = self.get_source(&specifier).expect("Unknown dependency");
+    let source = self.get_source(&specifier).expect("Unknown dependency").to_string();
     let media_type =
       self.get_media_type(&specifier).expect("Unknown media type");
     let syntax = ast::get_syntax(&media_type);

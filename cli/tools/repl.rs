@@ -651,7 +651,7 @@ impl ReplSession {
   ) -> Result<Value, AnyError> {
     let parsed_module = crate::ast::parse(crate::ast::ParseParams {
       specifier: "repl.ts".to_string(),
-      source: expression.to_string(),
+      text: expression.to_string().into(),
       media_type: crate::MediaType::TypeScript,
       capture_tokens: false,
     })?;

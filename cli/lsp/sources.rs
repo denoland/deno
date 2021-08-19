@@ -5,6 +5,7 @@ use super::text::LineIndex;
 use super::tsc;
 use super::urls::INVALID_SPECIFIER;
 
+use crate::ast::SourceFileText;
 use crate::config_file::ConfigFile;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
@@ -123,7 +124,7 @@ struct Metadata {
   maybe_types: Option<analysis::ResolvedDependency>,
   maybe_warning: Option<String>,
   media_type: MediaType,
-  source: String,
+  text: SourceFileText,
   specifier: ModuleSpecifier,
   version: String,
 }
@@ -138,7 +139,7 @@ impl Default for Metadata {
       maybe_types: None,
       maybe_warning: None,
       media_type: MediaType::default(),
-      source: String::default(),
+      text: String::default().into(),
       specifier: INVALID_SPECIFIER.clone(),
       version: String::default(),
     }
@@ -154,8 +155,9 @@ impl Metadata {
     maybe_warning: Option<String>,
     maybe_import_map: &Option<ImportMap>,
   ) -> Self {
+    let source_text = SourceFileText::new(source);
     let (dependencies, maybe_types) = if let Ok(parsed_module) =
-      analysis::parse_module(specifier, source.clone(), media_type)
+      analysis::parse_module(specifier, source_text.clone(), media_type)
     {
       let (deps, maybe_types) = analysis::analyze_dependencies(
         specifier,
@@ -167,17 +169,17 @@ impl Metadata {
     } else {
       (None, None)
     };
-    let line_index = LineIndex::new(&source);
+    let line_index = LineIndex::new(&source_text.as_str());
 
     Self {
       dependencies,
-      length_utf16: source.encode_utf16().count(),
+      length_utf16: source_text.as_str().encode_utf16().count(),
       line_index,
       maybe_navigation_tree: None,
       maybe_types,
       maybe_warning,
       media_type: media_type.to_owned(),
-      source,
+      text: source_text,
       specifier: specifier.clone(),
       version: version.to_string(),
     }
@@ -187,7 +189,7 @@ impl Metadata {
     let (dependencies, maybe_types) = if let Ok(parsed_module) =
       analysis::parse_module(
         &self.specifier,
-        self.source.clone(),
+        self.text.clone(),
         self.media_type,
       ) {
       let (deps, maybe_types) = analysis::analyze_dependencies(
@@ -462,7 +464,7 @@ impl Inner {
     let specifier =
       resolve_specifier(specifier, &mut self.redirects, &self.http_cache)?;
     let metadata = self.get_metadata(&specifier)?;
-    Some(metadata.source)
+    Some(metadata.text.to_string())
   }
 
   fn resolution_result(

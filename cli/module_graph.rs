@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use crate::ast;
+use crate::ast::SourceFileText;
 use crate::ast::parse;
 use crate::ast::transpile_module;
 use crate::ast::BundleHook;
@@ -262,7 +263,7 @@ pub struct Module {
   maybe_version: Option<String>,
   media_type: MediaType,
   specifier: ModuleSpecifier,
-  source: String,
+  text: SourceFileText,
   source_path: PathBuf,
 }
 
@@ -279,7 +280,7 @@ impl Default for Module {
       maybe_version: None,
       media_type: MediaType::Unknown,
       specifier: deno_core::resolve_url("file:///example.js").unwrap(),
-      source: "".to_string(),
+      text: "".into(),
       source_path: PathBuf::new(),
     }
   }
@@ -306,7 +307,7 @@ impl Module {
       specifier: cached_module.specifier,
       maybe_import_map,
       media_type,
-      source: cached_module.source,
+      text: cached_module.source.into(),
       source_path: cached_module.source_path,
       maybe_emit: cached_module.maybe_emit,
       maybe_emit_path: cached_module.maybe_emit_path,
@@ -335,7 +336,7 @@ impl Module {
   /// version.
   pub fn is_emit_valid(&self, config: &[u8]) -> bool {
     if let Some(version) = self.maybe_version.clone() {
-      version == get_version(&self.source, &version::deno(), config)
+      version == get_version(self.text.as_str(), &version::deno(), config)
     } else {
       false
     }
@@ -346,7 +347,7 @@ impl Module {
   pub fn parse(&mut self) -> Result<ParsedModule, AnyError> {
     let parsed_module = parse(ParseParams {
       specifier: self.specifier.as_str().to_string(),
-      source: self.source.clone(),
+      text: self.text.clone(),
       media_type: self.media_type,
       capture_tokens: false,
     })?;
@@ -501,11 +502,11 @@ impl Module {
   /// Calculate the hashed version of the module and update the `maybe_version`.
   pub fn set_version(&mut self, config: &[u8]) {
     self.maybe_version =
-      Some(get_version(&self.source, &version::deno(), config))
+      Some(get_version(self.text.as_str(), &version::deno(), config))
   }
 
   pub fn size(&self) -> usize {
-    self.source.as_bytes().len()
+    self.text.as_str().len()
   }
 }
 
@@ -741,7 +742,7 @@ fn to_module_result(
       } else {
         match module.media_type {
           MediaType::JavaScript | MediaType::Unknown => Ok(ModuleSource {
-            code: module.source.clone(),
+            code: module.text.to_string(),
             module_url_found: module.specifier.to_string(),
             module_url_specified: specifier.to_string(),
           }),
@@ -1130,7 +1131,7 @@ impl Graph {
                 || module.media_type == MediaType::TypeScript)
               {
                 emitted_files
-                  .insert(module.specifier.to_string(), module.source.clone());
+                  .insert(module.specifier.to_string(), module.text.to_string());
               }
               let parsed_module = module.parse()?;
               let (code, maybe_map) = parsed_module.transpile(&emit_options)?;
@@ -1422,9 +1423,9 @@ impl Graph {
 
   /// Get the source for a given module specifier.  If the module is not part
   /// of the graph, the result will be `None`.
-  pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<String> {
+  pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<&str> {
     if let ModuleSlot::Module(module) = self.get_module(specifier) {
-      Some(module.source.clone())
+      Some(module.text.as_str())
     } else {
       None
     }
@@ -1483,7 +1484,7 @@ impl Graph {
             size: Some(module.size()),
             media_type: Some(module.media_type),
             local: Some(module.source_path.clone()),
-            checksum: Some(checksum::gen(&[module.source.as_bytes()])),
+            checksum: Some(checksum::gen(&[module.text.as_str().as_bytes()])),
             emit,
             map,
             ..Default::default()
@@ -1548,7 +1549,7 @@ impl Graph {
       for (ms, module_slot) in self.modules.iter() {
         if let ModuleSlot::Module(module) = module_slot {
           let specifier = module.specifier.to_string();
-          let valid = lockfile.check_or_insert(&specifier, &module.source);
+          let valid = lockfile.check_or_insert(&specifier, module.text.as_str());
           if !valid {
             eprintln!(
               "{}",
@@ -2249,37 +2250,37 @@ pub mod tests {
 
   #[test]
   fn test_module_emit_valid() {
-    let source = "console.log(42);".to_string();
+    let source = "console.log(42);";
     let maybe_version = Some(get_version(&source, &version::deno(), b""));
     let module = Module {
       maybe_version,
-      source,
+      text: source.into(),
       ..Module::default()
     };
     assert!(module.is_emit_valid(b""));
 
-    let source = "console.log(42);".to_string();
+    let source = "console.log(42);";
     let old_source = "console.log(43);";
     let maybe_version = Some(get_version(old_source, &version::deno(), b""));
     let module = Module {
       maybe_version,
-      source,
+      text: source.into(),
       ..Module::default()
     };
     assert!(!module.is_emit_valid(b""));
 
-    let source = "console.log(42);".to_string();
+    let source = "console.log(42);";
     let maybe_version = Some(get_version(&source, "0.0.0", b""));
     let module = Module {
       maybe_version,
-      source,
+      text: source.into(),
       ..Module::default()
     };
     assert!(!module.is_emit_valid(b""));
 
-    let source = "console.log(42);".to_string();
+    let source = "console.log(42);";
     let module = Module {
-      source,
+      text: source.into(),
       ..Module::default()
     };
     assert!(!module.is_emit_valid(b""));
@@ -2287,10 +2288,10 @@ pub mod tests {
 
   #[test]
   fn test_module_set_version() {
-    let source = "console.log(42);".to_string();
+    let source = "console.log(42);";
     let expected = Some(get_version(&source, &version::deno(), b""));
     let mut module = Module {
-      source,
+      text: source.into(),
       ..Module::default()
     };
     assert!(module.maybe_version.is_none());
