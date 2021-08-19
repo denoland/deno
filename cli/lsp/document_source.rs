@@ -1,6 +1,6 @@
-use std::sync::Arc;
 use deno_core::ModuleSpecifier;
 use once_cell::sync::OnceCell;
+use std::sync::Arc;
 
 use crate::ast::{ParsedModule, SourceFileText};
 use crate::lsp::analysis;

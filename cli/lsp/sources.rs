@@ -140,7 +140,11 @@ impl Default for Metadata {
       maybe_types: None,
       maybe_warning: None,
       media_type: MediaType::default(),
-      source: DocumentSource::new(&INVALID_SPECIFIER, MediaType::default(), String::default()),
+      source: DocumentSource::new(
+        &INVALID_SPECIFIER,
+        MediaType::default(),
+        String::default(),
+      ),
       specifier: INVALID_SPECIFIER.clone(),
       version: String::default(),
     }
@@ -157,18 +161,18 @@ impl Metadata {
     maybe_import_map: &Option<ImportMap>,
   ) -> Self {
     let document_source = DocumentSource::new(specifier, media_type, source);
-    let (dependencies, maybe_types) = if let Some(Ok(parsed_module)) = document_source.module()
-    {
-      let (deps, maybe_types) = analysis::analyze_dependencies(
-        specifier,
-        media_type,
-        &parsed_module,
-        maybe_import_map,
-      );
-      (Some(deps), maybe_types)
-    } else {
-      (None, None)
-    };
+    let (dependencies, maybe_types) =
+      if let Some(Ok(parsed_module)) = document_source.module() {
+        let (deps, maybe_types) = analysis::analyze_dependencies(
+          specifier,
+          media_type,
+          &parsed_module,
+          maybe_import_map,
+        );
+        (Some(deps), maybe_types)
+      } else {
+        (None, None)
+      };
     let line_index = LineIndex::new(&document_source.text().as_str());
 
     Self {
@@ -186,17 +190,18 @@ impl Metadata {
   }
 
   fn refresh(&mut self, maybe_import_map: &Option<ImportMap>) {
-    let (dependencies, maybe_types) = if let Some(Ok(parsed_module)) = self.source.module() {
-      let (deps, maybe_types) = analysis::analyze_dependencies(
-        &self.specifier,
-        self.media_type,
-        &parsed_module,
-        maybe_import_map,
-      );
-      (Some(deps), maybe_types)
-    } else {
-      (None, None)
-    };
+    let (dependencies, maybe_types) =
+      if let Some(Ok(parsed_module)) = self.source.module() {
+        let (deps, maybe_types) = analysis::analyze_dependencies(
+          &self.specifier,
+          self.media_type,
+          &parsed_module,
+          maybe_import_map,
+        );
+        (Some(deps), maybe_types)
+      } else {
+        (None, None)
+      };
     self.dependencies = dependencies;
     self.maybe_types = maybe_types;
   }

@@ -995,14 +995,15 @@ impl Inner {
     let file_text = document_data.content();
 
     // formatting may be CPU intensive, so transition this task to be blocking
-    let format_result = tokio::task::block_in_place(|| match document_data.module() {
-      Some(Ok(parsed_module)) => Ok(format_parsed_module(parsed_module)),
-      Some(Err(err)) => Err(err),
-      None => {
-        // it's not a typescript file, so attempt to format its contents
-        format_file(&file_path, &file_text).map_err(|e| anyhow!("{}", e))
-      },
-    });
+    let format_result =
+      tokio::task::block_in_place(|| match document_data.module() {
+        Some(Ok(parsed_module)) => Ok(format_parsed_module(parsed_module)),
+        Some(Err(err)) => Err(err),
+        None => {
+          // it's not a typescript file, so attempt to format its contents
+          format_file(&file_path, &file_text).map_err(|e| anyhow!("{}", e))
+        }
+      });
 
     // TODO(lucacasonato): handle error properly
     let text_edits = match format_result {

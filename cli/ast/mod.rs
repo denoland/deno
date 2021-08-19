@@ -48,8 +48,8 @@ use swc_ecmascript::visit::FoldWith;
 
 mod bundle_hook;
 mod comments;
-mod transforms;
 mod source_file_text;
+mod transforms;
 
 pub use bundle_hook::BundleHook;
 use comments::MultiThreadedComments;
@@ -433,7 +433,8 @@ pub fn parse(params: ParseParams) -> Result<ParsedModule, AnyError> {
   let text = params.text;
   let source_span = text.span();
   let specifier = params.specifier;
-  let input = StringInput::new(text.as_str(), source_span.lo(), source_span.hi());
+  let input =
+    StringInput::new(text.as_str(), source_span.lo(), source_span.hi());
   let (comments, module, tokens) =
     parse_string_input(input, &params.media_type, params.capture_tokens)
       .map_err(|err| Diagnostic {

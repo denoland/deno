@@ -1,12 +1,12 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use crate::ast;
-use crate::ast::SourceFileText;
 use crate::ast::parse;
 use crate::ast::transpile_module;
 use crate::ast::BundleHook;
 use crate::ast::Location;
 use crate::ast::ParseParams;
 use crate::ast::ParsedModule;
+use crate::ast::SourceFileText;
 use crate::checksum;
 use crate::colors;
 use crate::config_file::CompilerOptions;
@@ -1130,8 +1130,10 @@ impl Graph {
                 || module.media_type == MediaType::Tsx
                 || module.media_type == MediaType::TypeScript)
               {
-                emitted_files
-                  .insert(module.specifier.to_string(), module.text.to_string());
+                emitted_files.insert(
+                  module.specifier.to_string(),
+                  module.text.to_string(),
+                );
               }
               let parsed_module = module.parse()?;
               let (code, maybe_map) = parsed_module.transpile(&emit_options)?;
@@ -1549,7 +1551,8 @@ impl Graph {
       for (ms, module_slot) in self.modules.iter() {
         if let ModuleSlot::Module(module) = module_slot {
           let specifier = module.specifier.to_string();
-          let valid = lockfile.check_or_insert(&specifier, module.text.as_str());
+          let valid =
+            lockfile.check_or_insert(&specifier, module.text.as_str());
           if !valid {
             eprintln!(
               "{}",

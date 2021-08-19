@@ -700,8 +700,10 @@ impl CodeActionCollection {
       })
       .unwrap();
 
-    let line_content =
-      document.map(|d| d.content_line(diagnostic.range.start.line as usize).to_string());
+    let line_content = document.map(|d| {
+      d.content_line(diagnostic.range.start.line as usize)
+        .to_string()
+    });
 
     let mut changes = HashMap::new();
     changes.insert(
@@ -1205,8 +1207,7 @@ mod tests {
     let specifier = resolve_url("file:///a.ts").expect("bad specifier");
     let source = "const foo = 42;";
     let parsed_module =
-      parse_module(&specifier, source.into(), MediaType::TypeScript)
-        .unwrap();
+      parse_module(&specifier, source.into(), MediaType::TypeScript).unwrap();
     let actual = get_lint_references(&parsed_module).unwrap();
 
     assert_eq!(
@@ -1251,8 +1252,7 @@ mod tests {
     import React from "https://cdn.skypack.dev/react";
     "#;
     let parsed_module =
-      parse_module(&specifier, source.into(), MediaType::TypeScript)
-        .unwrap();
+      parse_module(&specifier, source.into(), MediaType::TypeScript).unwrap();
     let (actual, maybe_type) = analyze_dependencies(
       &specifier,
       MediaType::TypeScript,
