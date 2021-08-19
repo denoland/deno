@@ -1045,7 +1045,7 @@ async fn test_command(
   )
   .await?;
 
-  return Ok(());
+  Ok(())
 }
 
 fn init_v8_flags(v8_flags: &[String]) {

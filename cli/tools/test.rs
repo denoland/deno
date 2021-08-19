@@ -214,6 +214,7 @@ fn create_reporter(concurrent: bool) -> Box<dyn TestReporter + Send> {
   Box::new(PrettyTestReporter::new(concurrent))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn test_specifier(
   program_state: Arc<ProgramState>,
   permissions: Permissions,
@@ -537,6 +538,7 @@ async fn check_specifiers(
   Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn test_specifiers(
   program_state: Arc<ProgramState>,
   permissions: Permissions,
@@ -696,7 +698,7 @@ fn collect_specifiers_with_test_mode(
     collect_specifiers(include.clone(), is_supported_test_path)?;
 
   if include_inline {
-    return collect_specifiers(include.clone(), is_supported_test_ext).map(
+    return collect_specifiers(include, is_supported_test_ext).map(
       |specifiers| {
         specifiers
           .into_iter()
@@ -732,7 +734,7 @@ async fn fetch_specifiers_with_test_mode(
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = program_state
       .file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(specifier, &mut Permissions::allow_all())
       .await?;
 
     if file.media_type != MediaType::Unknown {
@@ -745,6 +747,7 @@ async fn fetch_specifiers_with_test_mode(
   Ok(specifiers_with_mode)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_tests(
   flags: Flags,
   include: Option<Vec<String>>,
@@ -803,6 +806,7 @@ pub async fn run_tests(
   Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_tests_with_watch(
   flags: Flags,
   include: Option<Vec<String>>,
@@ -973,7 +977,7 @@ pub async fn run_tests_with_watch(
       )
       .await?
       .iter()
-      .filter(|(specifier, _)| modules_to_reload.contains(&specifier))
+      .filter(|(specifier, _)| modules_to_reload.contains(specifier))
       .cloned()
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
