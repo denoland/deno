@@ -237,6 +237,14 @@
     return core.opSync("op_base64_decode", data);
   }
 
+  /**
+   * @param {() => void} task
+   * @returns {Promise<void>}
+   */
+  function queueTask(task) {
+    return core.opAsync("op_queue_task").then(task);
+  }
+
   window.__bootstrap.infra = {
     collectSequenceOfCodepoints,
     ASCII_DIGIT,
@@ -260,5 +268,6 @@
     collectHttpQuotedString,
     forgivingBase64Encode,
     forgivingBase64Decode,
+    queueTask,
   };
 })(globalThis);

@@ -42,6 +42,7 @@ declare namespace globalThis {
       };
       forgivingBase64Encode(data: Uint8Array): string;
       forgivingBase64Decode(data: string): Uint8Array;
+      queueTask(task: () => void): Promise<void>;
     };
 
     declare var domException: {
