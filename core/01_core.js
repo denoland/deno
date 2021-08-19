@@ -88,7 +88,7 @@
     opsCache = ObjectFreeze(ObjectFromEntries(opcall(0)));
   }
 
-  function handleAsyncMsgFromRust() {
+  function opresolve() {
     for (let i = 0; i < arguments.length; i += 2) {
       const promiseId = arguments[i];
       const res = arguments[i + 1];
@@ -179,7 +179,7 @@
     resources,
     registerErrorBuilder,
     registerErrorClass,
-    handleAsyncMsgFromRust,
+    opresolve,
     syncOpsCache,
     BadResource,
     Interrupted,
