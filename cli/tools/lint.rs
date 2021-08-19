@@ -54,24 +54,37 @@ pub async fn lint_files(
   }
 
   // Combine ignored files from config file and CLI flag.
-  let mut ignore = ignore;
+  let mut include_files = args;
+  let mut exclude_files = ignore;
+
   if let Some(lint_config) = maybe_lint_config.as_ref() {
-    let ignores_from_config_file = lint_config
-      .ignore
+    let include_files_from_config_file = lint_config
+      .files
+      .include
       .iter()
       .map(PathBuf::from)
       .collect::<Vec<PathBuf>>();
-    ignore.extend(ignores_from_config_file);
+    include_files.extend(include_files_from_config_file);
+
+    let exclude_files_from_config_file = lint_config
+      .files
+      .exclude
+      .iter()
+      .map(PathBuf::from)
+      .collect::<Vec<PathBuf>>();
+    exclude_files.extend(exclude_files_from_config_file);
   }
 
   let target_files =
-    collect_files(&args, &ignore, is_supported_ext).and_then(|files| {
-      if files.is_empty() {
-        Err(generic_error("No target files found."))
-      } else {
-        Ok(files)
-      }
-    })?;
+    collect_files(&include_files, &exclude_files, is_supported_ext).and_then(
+      |files| {
+        if files.is_empty() {
+          Err(generic_error("No target files found."))
+        } else {
+          Ok(files)
+        }
+      },
+    )?;
   debug!("Found {} files", target_files.len());
   let target_files_len = target_files.len();
 

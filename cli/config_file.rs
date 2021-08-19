@@ -276,9 +276,16 @@ pub struct LintRulesConfig {
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
+pub struct LintFilesConfig {
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct LintConfig {
   pub rules: LintRulesConfig,
-  pub ignore: Vec<String>,
+  pub files: LintFilesConfig,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -425,7 +432,10 @@ mod tests {
         "strict": true
       },
       "lint": {
-        "ignore": ["testdata/"],
+        "files": {
+          "include": ["src/"],
+          "exclude": ["src/testdata/"]
+        },
         "rules": {
           "tags": ["recommended"],
           "include": ["ban-untagged-todo"]
@@ -452,7 +462,8 @@ mod tests {
       .as_lint_config()
       .expect("error parsing lint object")
       .expect("lint object should be defined");
-    assert_eq!(lint_config.ignore, vec!["testdata/"]);
+    assert_eq!(lint_config.files.include, vec!["src/"]);
+    assert_eq!(lint_config.files.exclude, vec!["src/testdata/"]);
     assert_eq!(
       lint_config.rules.include,
       Some(vec!["ban-untagged-todo".to_string()])
