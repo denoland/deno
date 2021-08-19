@@ -951,6 +951,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .long("rules")
         .help("List available rules"),
     )
+    .arg(config_arg())
     .arg(
       Arg::with_name("ignore")
         .long("ignore")
@@ -1720,6 +1721,7 @@ fn lsp_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
 }
 
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  config_arg_parse(flags, matches);
   let files = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
@@ -2499,6 +2501,28 @@ mod tests {
           json: true,
           ignore: vec![],
         },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "lint",
+      "--config",
+      "Deno.jsonc",
+      "--json",
+      "script_1.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint {
+          files: vec![PathBuf::from("script_1.ts")],
+          rules: false,
+          json: true,
+          ignore: vec![],
+        },
+        config_path: Some("Deno.jsonc".to_string()),
         ..Flags::default()
       }
     );

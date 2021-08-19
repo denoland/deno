@@ -8,6 +8,7 @@
 //! the same functions as ops available in JS runtime.
 use crate::ast;
 use crate::colors;
+use crate::config_file::LintConfig;
 use crate::fmt_errors;
 use crate::fs_util::{collect_files, is_supported_ext};
 use crate::media_type::MediaType;
@@ -22,6 +23,7 @@ use deno_lint::rules::LintRule;
 use log::debug;
 use log::info;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::fs;
 use std::io::{stdin, Read};
 use std::path::PathBuf;
@@ -42,12 +44,13 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
 }
 
 pub async fn lint_files(
+  maybe_lint_config: Option<LintConfig>,
   args: Vec<PathBuf>,
   ignore: Vec<PathBuf>,
   json: bool,
 ) -> Result<(), AnyError> {
   if args.len() == 1 && args[0].to_string_lossy() == "-" {
-    return lint_stdin(json);
+    return lint_stdin(json, maybe_lint_config.as_ref());
   }
   let target_files =
     collect_files(&args, &ignore, is_supported_ext).and_then(|files| {
@@ -73,7 +76,7 @@ pub async fn lint_files(
     let reporter_lock = reporter_lock.clone();
     let has_error = has_error.clone();
     move |file_path| {
-      let r = lint_file(file_path.clone());
+      let r = lint_file(file_path.clone(), maybe_lint_config.as_ref());
       let mut reporter = reporter_lock.lock().unwrap();
 
       match r {
@@ -144,13 +147,14 @@ pub fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
 
 fn lint_file(
   file_path: PathBuf,
+  maybe_lint_config: Option<&LintConfig>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
   let source_code = fs::read_to_string(&file_path)?;
   let media_type = MediaType::from(&file_path);
   let syntax = ast::get_syntax(&media_type);
 
-  let lint_rules = rules::get_recommended_rules();
+  let lint_rules = get_rules_from_config(maybe_lint_config);
   let linter = create_linter(syntax, lint_rules);
 
   let (_, file_diagnostics) = linter.lint(file_name, source_code.clone())?;
@@ -161,7 +165,10 @@ fn lint_file(
 /// Lint stdin and write result to stdout.
 /// Treats input as TypeScript.
 /// Compatible with `--json` flag.
-fn lint_stdin(json: bool) -> Result<(), AnyError> {
+fn lint_stdin(
+  json: bool,
+  maybe_lint_config: Option<&LintConfig>,
+) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
     return Err(generic_error("Failed to read from stdin"));
@@ -173,7 +180,7 @@ fn lint_stdin(json: bool) -> Result<(), AnyError> {
     LintReporterKind::Pretty
   };
   let mut reporter = create_reporter(reporter_kind);
-  let lint_rules = rules::get_recommended_rules();
+  let lint_rules = get_rules_from_config(maybe_lint_config);
   let syntax = ast::get_syntax(&MediaType::TypeScript);
   let linter = create_linter(syntax, lint_rules);
   let mut has_error = false;
@@ -372,4 +379,52 @@ fn sort_diagnostics(diagnostics: &mut Vec<LintDiagnostic>) {
       _ => file_order,
     }
   });
+}
+
+fn get_rules_from_config(
+  maybe_lint_config: Option<&LintConfig>,
+) -> Vec<Box<dyn LintRule>> {
+  if let Some(lint_config) = maybe_lint_config {
+    let mut filtered_rules = HashMap::new();
+
+    if let Some(tags) = &lint_config.rules.tags {
+      for config_tag in tags {
+        filtered_rules.extend(rules::get_all_rules().into_iter().filter_map(
+          |rule| {
+            let code = rule.code();
+            if rule.tags().contains(&config_tag.as_str()) {
+              Some((code, rule))
+            } else {
+              None
+            }
+          },
+        ));
+      }
+    }
+
+    if let Some(exclude) = &lint_config.rules.exclude {
+      for exc in exclude {
+        filtered_rules.remove(exc.as_str());
+      }
+    }
+
+    if let Some(include) = &lint_config.rules.include {
+      let mut rules_per_code = rules::get_all_rules()
+        .into_iter()
+        .map(|rule| (rule.code(), rule))
+        .collect::<HashMap<_, _>>();
+      for inc in include {
+        if let Some(rule) = rules_per_code.remove(inc.as_str()) {
+          filtered_rules.insert(&inc, rule);
+        }
+      }
+    }
+
+    filtered_rules
+      .into_iter()
+      .map(|(_code, rule)| rule)
+      .collect()
+  } else {
+    rules::get_recommended_rules()
+  }
 }

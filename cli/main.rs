@@ -495,7 +495,7 @@ async fn lsp_command() -> Result<(), AnyError> {
 }
 
 async fn lint_command(
-  _flags: Flags,
+  flags: Flags,
   files: Vec<PathBuf>,
   list_rules: bool,
   ignore: Vec<PathBuf>,
@@ -506,7 +506,15 @@ async fn lint_command(
     return Ok(());
   }
 
-  tools::lint::lint_files(files, ignore, json).await
+  let program_state = ProgramState::build(flags.clone()).await?;
+  let maybe_lint_config =
+    if let Some(config_file) = &program_state.maybe_config_file {
+      config_file.as_lint_config()?
+    } else {
+      None
+    };
+
+  tools::lint::lint_files(maybe_lint_config, files, ignore, json).await
 }
 
 async fn cache_command(

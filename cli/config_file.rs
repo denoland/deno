@@ -266,10 +266,26 @@ impl Serialize for TsConfig {
   }
 }
 
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct LintRulesConfig {
+  pub tags: Option<Vec<String>>,
+  pub include: Option<Vec<String>>,
+  pub exclude: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct LintConfig {
+  pub rules: LintRulesConfig,
+  pub ignore: Vec<String>,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
+  pub lint: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -340,6 +356,16 @@ impl ConfigFile {
       Ok((json!({}), None))
     }
   }
+
+  pub fn as_lint_config(&self) -> Result<Option<LintConfig>, AnyError> {
+    if let Some(config) = self.json.lint.clone() {
+      let lint_config: LintConfig =
+        serde_json::from_value(config).context("lint should be an object")?;
+      Ok(Some(lint_config))
+    } else {
+      Ok(None)
+    }
+  }
 }
 
 #[cfg(test)]
@@ -397,6 +423,13 @@ mod tests {
         "build": true,
         // comments are allowed
         "strict": true
+      },
+      "lint": {
+        "ignore": ["testdata/"],
+        "rules": {
+          "tags": ["recommended"],
+          "include": ["ban-untagged-todo"]
+        }
       }
     }"#;
     let config_path = PathBuf::from("/deno/tsconfig.json");
@@ -414,6 +447,21 @@ mod tests {
         maybe_path: Some(config_path),
       }),
     );
+
+    let lint_config = config_file
+      .as_lint_config()
+      .expect("error parsing lint object")
+      .expect("lint object should be defined");
+    assert_eq!(lint_config.ignore, vec!["testdata/"]);
+    assert_eq!(
+      lint_config.rules.include,
+      Some(vec!["ban-untagged-todo".to_string()])
+    );
+    assert_eq!(
+      lint_config.rules.tags,
+      Some(vec!["recommended".to_string()])
+    );
+    assert!(lint_config.rules.exclude.is_none());
   }
 
   #[test]
