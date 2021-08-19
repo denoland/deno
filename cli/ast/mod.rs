@@ -8,6 +8,8 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
+use serde::Deserialize;
+use serde::Serialize;
 use std::error::Error;
 use std::fmt;
 use std::ops::Range;
@@ -58,7 +60,7 @@ use source_file_info::SourceFileInfo;
 
 static TARGET: JscTarget = JscTarget::Es2020;
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Location {
   pub specifier: String,
   pub line: usize,

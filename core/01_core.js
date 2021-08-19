@@ -29,6 +29,7 @@
   const errorMap = {};
   // Builtin v8 / JS errors
   registerErrorClass("Error", Error);
+  registerErrorClass("AggregateError", AggregateError);
   registerErrorClass("RangeError", RangeError);
   registerErrorClass("ReferenceError", ReferenceError);
   registerErrorClass("SyntaxError", SyntaxError);

@@ -28,6 +28,7 @@ use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
+use deno_core::resolve_url_or_path;
 use deno_core::serde_json::json;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
@@ -38,6 +39,7 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
+use serde::Serialize;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
@@ -59,6 +61,79 @@ enum TestMode {
   Executable,
   /// Test as both documentation and an executable module.
   Both,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TestProgram {
+  pub content_type: String,
+  pub location: Location,
+  pub source: String,
+  pub no_check: bool,
+  pub no_run: bool,
+}
+
+impl TestProgram {
+  pub fn from_media_type_and_info(
+    location: Location,
+    source: String,
+    media_type: MediaType,
+    maybe_info: Option<String>,
+  ) -> TestProgram {
+    let mut content_type = match media_type {
+      MediaType::JavaScript => "text/javascript",
+      MediaType::Jsx => "text/jsx",
+      MediaType::TypeScript => "text/typescript",
+      MediaType::Tsx => "text/tsx",
+      _ => "text/plain",
+    };
+
+    let mut no_check = false;
+    let mut no_run = false;
+
+    if let Some(info) = maybe_info {
+      for word in info.split('\n') {
+        match word {
+          "js" => content_type = "text/javascript",
+          "jsx" => content_type = "text/jsx",
+          "ts" => content_type = "text/typescript",
+          "tsx" => content_type = "text/tsx",
+          "ignore" => content_type = "text/plain",
+          "no_check" => no_check = true,
+          "no_run" => no_run = true,
+          _ => {}
+        }
+      }
+    }
+
+    TestProgram {
+      content_type: content_type.to_string(),
+      location,
+      source,
+      no_check,
+      no_run,
+    }
+  }
+
+  pub fn to_file(&self) -> File {
+    let mut specifier = resolve_url_or_path(&self.location.specifier).unwrap();
+    let media_type =
+      MediaType::from_content_type(&specifier, &self.content_type);
+    specifier.set_path(&format!(
+      "{}${}-{}{}",
+      specifier.path(),
+      self.location.line,
+      self.location.line + self.source.split('\n').count(),
+      media_type.as_ts_extension(),
+    ));
+
+    File {
+      local: specifier.to_file_path().unwrap(),
+      media_type,
+      maybe_types: None,
+      source: self.source.clone(),
+      specifier,
+    }
+  }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -236,6 +311,32 @@ async fn test_specifier(
     deno_core::resolve_path(&format!("{}$deno$test.js", Uuid::new_v4()))?;
 
   let mut test_source = String::new();
+  if mode != TestMode::Executable {
+    let inline_programs = fetch_inline_test_programs(
+      program_state.clone(),
+      vec![specifier.clone()],
+    )
+    .await?;
+
+    for program in inline_programs {
+      let name = format!(
+        "{}#{}-{}",
+        program.location.specifier,
+        program.location.line,
+        program.location.line + program.source.split('\n').count()
+      );
+      test_source.push_str(&format!(
+        r#"
+        Deno.test("{}", function() {{
+          return Deno[Deno.internal].runTestProgram({});
+        }});
+        "#,
+        name,
+        json!(program)
+      ));
+    }
+  }
+
   if mode != TestMode::Documentation {
     test_source.push_str(&format!("import \"{}\";\n", specifier));
   }
@@ -312,87 +413,65 @@ async fn test_specifier(
   Ok(())
 }
 
-fn extract_files_from_regex_blocks(
+fn extract_test_programs_from_regex_blocks(
   location: &Location,
   source: &str,
   media_type: &MediaType,
   blocks_regex: &Regex,
   lines_regex: &Regex,
-) -> Result<Vec<File>, AnyError> {
+) -> Result<Vec<TestProgram>, AnyError> {
   let files = blocks_regex
     .captures_iter(source)
     .filter_map(|block| {
-      let maybe_attributes: Option<Vec<_>> = block
-        .get(1)
-        .map(|attributes| attributes.as_str().split(' ').collect());
+      let location = {
+        let line_count = source[0..block.get(0).unwrap().start()]
+          .chars()
+          .filter(|c| *c == '\n')
+          .count();
 
-      let file_media_type = if let Some(attributes) = maybe_attributes {
-        if attributes.contains(&"ignore") {
-          return None;
+        Location {
+          specifier: location.specifier.clone(),
+          line: location.line + line_count,
+          col: location.col,
         }
-
-        match attributes.get(0) {
-          Some(&"js") => MediaType::JavaScript,
-          Some(&"jsx") => MediaType::Jsx,
-          Some(&"ts") => MediaType::TypeScript,
-          Some(&"tsx") => MediaType::Tsx,
-          Some(&"") => *media_type,
-          _ => MediaType::Unknown,
-        }
-      } else {
-        *media_type
       };
 
-      if file_media_type == MediaType::Unknown {
-        return None;
-      }
-
-      let line_offset = source[0..block.get(0).unwrap().start()]
-        .chars()
-        .filter(|c| *c == '\n')
-        .count();
-
-      let line_count = block.get(0).unwrap().as_str().split('\n').count();
-
-      let body = block.get(2).unwrap();
-      let text = body.as_str();
-
       // TODO(caspervonb) generate an inline source map
-      let mut file_source = String::new();
-      for line in lines_regex.captures_iter(text) {
-        let text = line.get(1).unwrap();
-        file_source.push_str(&format!("{}\n", text.as_str()));
+      let source = {
+        let mut source = String::new();
+        for line in lines_regex.captures_iter(block.get(2).unwrap().as_str()) {
+          source.push_str(&format!("{}\n", line.get(1).unwrap().as_str()));
+        }
+
+        source.push_str("export {};");
+        source
+      };
+
+      let maybe_info = block.get(1).map(|m| m.as_str().to_string());
+
+      let program = TestProgram::from_media_type_and_info(
+        location,
+        source,
+        *media_type,
+        maybe_info,
+      );
+
+      if program.content_type != "text/plain" {
+        Some(program)
+      } else {
+        None
       }
-
-      file_source.push_str("export {};");
-
-      let file_specifier = deno_core::resolve_url_or_path(&format!(
-        "{}${}-{}{}",
-        location.specifier,
-        location.line + line_offset,
-        location.line + line_offset + line_count,
-        file_media_type.as_ts_extension(),
-      ))
-      .unwrap();
-
-      Some(File {
-        local: file_specifier.to_file_path().unwrap(),
-        maybe_types: None,
-        media_type: file_media_type,
-        source: file_source,
-        specifier: file_specifier,
-      })
     })
     .collect();
 
   Ok(files)
 }
 
-fn extract_files_from_source_comments(
+fn extract_test_programs_from_source_comments(
   specifier: &ModuleSpecifier,
   source: &str,
   media_type: &MediaType,
-) -> Result<Vec<File>, AnyError> {
+) -> Result<Vec<TestProgram>, AnyError> {
   let parsed_module = ast::parse(specifier.as_str(), source, media_type)?;
   let comments = parsed_module.get_comments();
   let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
@@ -410,7 +489,7 @@ fn extract_files_from_source_comments(
     .flat_map(|comment| {
       let location = parsed_module.get_location(comment.span.lo);
 
-      extract_files_from_regex_blocks(
+      extract_test_programs_from_regex_blocks(
         &location,
         &comment.text,
         media_type,
@@ -424,11 +503,11 @@ fn extract_files_from_source_comments(
   Ok(files)
 }
 
-fn extract_files_from_fenced_blocks(
+fn extract_test_programs_from_fenced_blocks(
   specifier: &ModuleSpecifier,
   source: &str,
   media_type: &MediaType,
-) -> Result<Vec<File>, AnyError> {
+) -> Result<Vec<TestProgram>, AnyError> {
   let location = Location {
     specifier: specifier.to_string(),
     line: 1,
@@ -438,7 +517,7 @@ fn extract_files_from_fenced_blocks(
   let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\# ?)?(.*)")?;
 
-  extract_files_from_regex_blocks(
+  extract_test_programs_from_regex_blocks(
     &location,
     source,
     media_type,
@@ -447,11 +526,11 @@ fn extract_files_from_fenced_blocks(
   )
 }
 
-async fn fetch_inline_files(
+async fn fetch_inline_test_programs(
   program_state: Arc<ProgramState>,
   specifiers: Vec<ModuleSpecifier>,
-) -> Result<Vec<File>, AnyError> {
-  let mut files = Vec::new();
+) -> Result<Vec<TestProgram>, AnyError> {
+  let mut programs = Vec::new();
   for specifier in specifiers {
     let mut fetch_permissions = Permissions::allow_all();
     let file = program_state
@@ -459,24 +538,24 @@ async fn fetch_inline_files(
       .fetch(&specifier, &mut fetch_permissions)
       .await?;
 
-    let inline_files = if file.media_type == MediaType::Unknown {
-      extract_files_from_fenced_blocks(
+    let inline_programs = if file.media_type == MediaType::Unknown {
+      extract_test_programs_from_fenced_blocks(
         &file.specifier,
         &file.source,
         &file.media_type,
       )
     } else {
-      extract_files_from_source_comments(
+      extract_test_programs_from_source_comments(
         &file.specifier,
         &file.source,
         &file.media_type,
       )
-    };
+    }?;
 
-    files.extend(inline_files?);
+    programs.extend(inline_programs);
   }
 
-  Ok(files)
+  Ok(programs)
 }
 
 /// Type check a collection of module and document specifiers.
@@ -486,7 +565,7 @@ async fn check_specifiers(
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
   lib: TypeLib,
 ) -> Result<(), AnyError> {
-  let inline_files = fetch_inline_files(
+  let inline_programs = fetch_inline_test_programs(
     program_state.clone(),
     specifiers
       .iter()
@@ -500,6 +579,11 @@ async fn check_specifiers(
       .collect(),
   )
   .await?;
+
+  let inline_files: Vec<File> = inline_programs
+    .iter()
+    .map(|program| program.to_file())
+    .collect();
 
   if !inline_files.is_empty() {
     let specifiers = inline_files
@@ -797,15 +881,15 @@ pub async fn run_tests(
     TypeLib::DenoWindow
   };
 
-  check_specifiers(
-    program_state.clone(),
-    permissions.clone(),
-    specifiers_with_mode.clone(),
-    lib,
-  )
-  .await?;
-
   if no_run {
+    check_specifiers(
+      program_state.clone(),
+      permissions.clone(),
+      specifiers_with_mode.clone(),
+      lib,
+    )
+    .await?;
+
     return Ok(());
   }
 
@@ -997,15 +1081,15 @@ pub async fn run_tests_with_watch(
       .cloned()
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
-      check_specifiers(
-        program_state.clone(),
-        permissions.clone(),
-        specifiers_with_mode.clone(),
-        lib,
-      )
-      .await?;
-
       if no_run {
+        check_specifiers(
+          program_state.clone(),
+          permissions.clone(),
+          specifiers_with_mode.clone(),
+          lib,
+        )
+        .await?;
+
         return Ok(());
       }
 

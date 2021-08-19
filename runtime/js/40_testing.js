@@ -9,18 +9,19 @@
   const { metrics } = window.__bootstrap.metrics;
   const { assert } = window.__bootstrap.util;
   const {
+    AggregateError,
     ArrayPrototypeFilter,
     ArrayPrototypePush,
     DateNow,
     JSONStringify,
     Promise,
-    TypeError,
-    StringPrototypeStartsWith,
+    RegExp,
+    RegExpPrototypeTest,
     StringPrototypeEndsWith,
     StringPrototypeIncludes,
     StringPrototypeSlice,
-    RegExp,
-    RegExpPrototypeTest,
+    StringPrototypeStartsWith,
+    TypeError,
   } = window.__bootstrap.primordials;
 
   // Wrap test function in additional assertion that makes sure
@@ -215,7 +216,13 @@ finishing test case.`;
       await fn();
       return "ok";
     } catch (error) {
-      return { "failed": inspectArgs([error]) };
+      if (error instanceof AggregateError) {
+        return {
+          failed: error.errors.map((error) => inspectArgs([error])).join(""),
+        };
+      }
+
+      return { failed: inspectArgs([error]) };
     }
   }
 
@@ -291,9 +298,14 @@ finishing test case.`;
     }
   }
 
+  function runTestProgram(program) {
+    return core.opAsync("op_run_test_program", program);
+  }
+
   window.__bootstrap.internals = {
     ...window.__bootstrap.internals ?? {},
     runTests,
+    runTestProgram,
   };
 
   window.__bootstrap.testing = {

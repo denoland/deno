@@ -10,6 +10,7 @@
 //!   exceptions.
 
 use crate::ast::Diagnostic;
+use crate::diagnostics::Diagnostics;
 use crate::import_map::ImportMapError;
 use deno_core::error::AnyError;
 
@@ -21,6 +22,10 @@ fn get_diagnostic_class(_: &Diagnostic) -> &'static str {
   "SyntaxError"
 }
 
+fn get_diagnostics_class(_: &Diagnostics) -> &'static str {
+  "AggregateError"
+}
+
 pub(crate) fn get_error_class_name(e: &AnyError) -> &'static str {
   deno_runtime::errors::get_error_class_name(e)
     .or_else(|| {
@@ -28,6 +33,7 @@ pub(crate) fn get_error_class_name(e: &AnyError) -> &'static str {
         .map(get_import_map_error_class)
     })
     .or_else(|| e.downcast_ref::<Diagnostic>().map(get_diagnostic_class))
+    .or_else(|| e.downcast_ref::<Diagnostics>().map(get_diagnostics_class))
     .unwrap_or_else(|| {
       panic!(
         "Error '{}' contains boxed error of unknown type:{}",

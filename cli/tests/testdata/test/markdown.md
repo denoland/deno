@@ -29,3 +29,23 @@ The following example will trigger the type-checker to fail:
 ```ts
 const a: string = 42;
 ```
+
+The following example is invalid but will not trigger the type-checker to fail
+because of the `no_check` attribute:
+
+```ts no_check
+const a: string = 42;
+```
+
+The following example will throw an error causing it to fail:
+
+```ts
+throw new Error("Oh no, it broke!");
+```
+
+The following example will throw but will not fail because of the `no_run`
+attribute:
+
+```ts no_run
+throw new Error("Oh no, it broke!");
+```
