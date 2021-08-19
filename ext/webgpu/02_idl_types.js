@@ -94,7 +94,7 @@
       converter: webidl.converters["GPUPowerPreference"],
     },
     {
-      key: "forceSoftware",
+      key: "forceFallbackAdapter",
       converter: webidl.converters.boolean,
       defaultValue: false,
     },
@@ -681,7 +681,6 @@
   webidl.converters["GPUStorageTextureAccess"] = webidl.createEnumConverter(
     "GPUStorageTextureAccess",
     [
-      "read-only",
       "write-only",
     ],
   );
@@ -691,7 +690,7 @@
     {
       key: "access",
       converter: webidl.converters["GPUStorageTextureAccess"],
-      required: true,
+      defaultValue: "write-only",
     },
     {
       key: "format",
@@ -861,19 +860,7 @@
   const dictMembersGPUShaderModuleDescriptor = [
     {
       key: "code",
-      converter: (V, opts) => {
-        if (V instanceof Uint32Array) {
-          return webidl.converters["Uint32Array"](V, opts);
-        }
-        if (typeof V === "string") {
-          return webidl.converters["DOMString"](V, opts);
-        }
-        throw webidl.makeException(
-          TypeError,
-          "can not be converted to Uint32Array or DOMString.",
-          opts,
-        );
-      },
+      converter: webidl.converters["DOMString"],
       required: true,
     },
     { key: "sourceMap", converter: webidl.converters["object"] },
@@ -977,9 +964,9 @@
     GPURenderPipeline,
   );
 
-  // ENUM: GPUInputStepMode
-  webidl.converters["GPUInputStepMode"] = webidl.createEnumConverter(
-    "GPUInputStepMode",
+  // ENUM: GPUVertexStepMode
+  webidl.converters["GPUVertexStepMode"] = webidl.createEnumConverter(
+    "GPUVertexStepMode",
     [
       "vertex",
       "instance",
@@ -1055,7 +1042,7 @@
     },
     {
       key: "stepMode",
-      converter: webidl.converters["GPUInputStepMode"],
+      converter: webidl.converters["GPUVertexStepMode"],
       defaultValue: "vertex",
     },
     {
@@ -1811,8 +1798,8 @@
     GPURenderBundleEncoder,
   );
 
-  // DICTIONARY: GPURenderBundleEncoderDescriptor
-  const dictMembersGPURenderBundleEncoderDescriptor = [
+  // DICTIONARY: GPURenderPassLayout
+  const dictMembersGPURenderPassLayout = [
     {
       key: "colorFormats",
       converter: webidl.createSequenceConverter(
@@ -1830,10 +1817,31 @@
       defaultValue: 1,
     },
   ];
+  webidl.converters["GPURenderPassLayout"] = webidl
+    .createDictionaryConverter(
+      "GPURenderPassLayout",
+      dictMembersGPUObjectDescriptorBase,
+      dictMembersGPURenderPassLayout,
+    );
+
+  // DICTIONARY: GPURenderBundleEncoderDescriptor
+  const dictMembersGPURenderBundleEncoderDescriptor = [
+    {
+      key: "depthReadOnly",
+      converter: webidl.converters.boolean,
+      defaultValue: false,
+    },
+    {
+      key: "stencilReadOnly",
+      converter: webidl.converters.boolean,
+      defaultValue: false,
+    },
+  ];
   webidl.converters["GPURenderBundleEncoderDescriptor"] = webidl
     .createDictionaryConverter(
       "GPURenderBundleEncoderDescriptor",
       dictMembersGPUObjectDescriptorBase,
+      dictMembersGPURenderPassLayout,
       dictMembersGPURenderBundleEncoderDescriptor,
     );
 
