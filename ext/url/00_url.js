@@ -313,9 +313,9 @@
      */
     constructor(url, base = undefined) {
       const prefix = "Failed to construct 'URL'";
-      url = webidl.converters.USVString(url, { prefix, context: "Argument 1" });
+      url = webidl.converters.DOMString(url, { prefix, context: "Argument 1" });
       if (base !== undefined) {
-        base = webidl.converters.USVString(base, {
+        base = webidl.converters.DOMString(base, {
           prefix,
           context: "Argument 2",
         });
@@ -363,7 +363,7 @@
       webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'hash' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      value = webidl.converters.USVString(value, {
+      value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
@@ -385,7 +385,7 @@
       webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'host' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      value = webidl.converters.USVString(value, {
+      value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
@@ -407,7 +407,7 @@
       webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'hostname' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      value = webidl.converters.USVString(value, {
+      value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
@@ -429,7 +429,7 @@
       webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'href' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      value = webidl.converters.USVString(value, {
+      value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
@@ -454,7 +454,7 @@
       webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'password' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      value = webidl.converters.USVString(value, {
+      value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
@@ -476,7 +476,7 @@
       webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'pathname' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      value = webidl.converters.USVString(value, {
+      value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
@@ -498,7 +498,7 @@
       webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'port' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      value = webidl.converters.USVString(value, {
+      value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
@@ -520,7 +520,7 @@
       webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'protocol' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      value = webidl.converters.USVString(value, {
+      value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
@@ -542,7 +542,7 @@
       webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'search' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      value = webidl.converters.USVString(value, {
+      value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
@@ -565,7 +565,7 @@
       webidl.assertBranded(this, URL);
       const prefix = "Failed to set 'username' on 'URL'";
       webidl.requiredArguments(arguments.length, 1, { prefix });
-      value = webidl.converters.USVString(value, {
+      value = webidl.converters.DOMString(value, {
         prefix,
         context: "Argument 1",
       });
