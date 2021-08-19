@@ -3,8 +3,9 @@ use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
 use crate::ast::{ParsedModule, SourceFileText};
-use crate::lsp::analysis;
 use crate::media_type::MediaType;
+use super::analysis;
+use super::text::LineIndex;
 
 #[derive(Debug)]
 struct DocumentSourceInner {
@@ -12,9 +13,10 @@ struct DocumentSourceInner {
   media_type: MediaType,
   text: SourceFileText,
   parsed_module: OnceCell<Result<ParsedModule, String>>,
+  line_index: LineIndex,
 }
 
-/// Immutable information about a document.
+/// Immutable information about a document that can be cheaply cloned.
 #[derive(Debug, Clone)]
 pub struct DocumentSource {
   inner: Arc<DocumentSourceInner>,
@@ -25,6 +27,7 @@ impl DocumentSource {
     specifier: &ModuleSpecifier,
     media_type: MediaType,
     text: String,
+    line_index: LineIndex,
   ) -> Self {
     Self {
       inner: Arc::new(DocumentSourceInner {
@@ -32,12 +35,17 @@ impl DocumentSource {
         media_type,
         text: text.into(),
         parsed_module: OnceCell::new(),
+        line_index,
       }),
     }
   }
 
   pub fn text(&self) -> &SourceFileText {
     &self.inner.text
+  }
+
+  pub fn line_index(&self) -> &LineIndex {
+    &self.inner.line_index
   }
 
   pub fn module(&self) -> Option<&Result<ParsedModule, String>> {

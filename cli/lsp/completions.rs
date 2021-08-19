@@ -428,7 +428,9 @@ mod tests {
       let parsed_module = documents
         .get(&specifier)
         .unwrap()
+        .source()
         .module()
+        .map(|r| r.as_ref())
         .unwrap()
         .unwrap();
       let (deps, _) = analysis::analyze_dependencies(

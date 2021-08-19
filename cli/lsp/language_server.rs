@@ -166,7 +166,7 @@ impl Inner {
   /// sets the dependencies property on the document.
   fn analyze_dependencies(&mut self, specifier: &ModuleSpecifier) {
     if let Some(Ok(parsed_module)) =
-      self.documents.get(specifier).map(|d| d.module()).flatten()
+      self.documents.get(specifier).map(|d| d.source().module()).flatten()
     {
       let (mut deps, _) = analysis::analyze_dependencies(
         specifier,
@@ -992,30 +992,30 @@ impl Inner {
       } else {
         PathBuf::from(params.text_document.uri.path())
       };
-    let file_text = document_data.content();
 
-    // formatting may be CPU intensive, so transition this task to be blocking
-    let format_result =
-      tokio::task::block_in_place(|| match document_data.module() {
+    let source = document_data.source().clone();
+    let text_edits = tokio::task::spawn_blocking(move || {
+      let format_result = match source.module() {
         Some(Ok(parsed_module)) => Ok(format_parsed_module(parsed_module)),
-        Some(Err(err)) => Err(err),
+        Some(Err(err)) => Err(err.to_owned()),
         None => {
           // it's not a typescript file, so attempt to format its contents
-          format_file(&file_path, &file_text).map_err(|e| anyhow!("{}", e))
+          format_file(&file_path, source.text().as_str())
         }
-      });
+      };
 
-    // TODO(lucacasonato): handle error properly
-    let text_edits = match format_result {
-      Ok(new_text) => {
-        let line_index = document_data.line_index();
-        Some(text::get_edits(&file_text, &new_text, line_index))
+      match format_result {
+        Ok(new_text) => {
+          let line_index = source.line_index();
+          Some(text::get_edits(&source.text().as_str(), &new_text, line_index))
+        }
+        Err(err) => {
+          // TODO(lucacasonato): handle error properly
+          warn!("Format error: {}", err);
+          None
+        }
       }
-      Err(err) => {
-        warn!("Format error: {}", err);
-        None
-      }
-    };
+    }).await.unwrap();
 
     self.performance.measure(mark);
     if let Some(text_edits) = text_edits {
@@ -1407,9 +1407,9 @@ impl Inner {
     let parsed_module = self
       .documents
       .get(&specifier)
-      .map(|d| d.module())
+      .map(|d| d.source().module())
       .flatten()
-      .map(|m| m.ok())
+      .map(|m| m.as_ref().ok())
       .flatten();
     let line_index = self.get_line_index_sync(&specifier).ok_or_else(|| {
       error!(

@@ -6,7 +6,6 @@ use super::text::LineIndex;
 use super::tsc;
 use super::urls::INVALID_SPECIFIER;
 
-use crate::ast::SourceFileText;
 use crate::config_file::ConfigFile;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
@@ -120,7 +119,6 @@ fn resolve_specifier(
 struct Metadata {
   dependencies: Option<HashMap<String, analysis::Dependency>>,
   length_utf16: usize,
-  line_index: LineIndex,
   maybe_navigation_tree: Option<tsc::NavigationTree>,
   maybe_types: Option<analysis::ResolvedDependency>,
   maybe_warning: Option<String>,
@@ -135,7 +133,6 @@ impl Default for Metadata {
     Self {
       dependencies: None,
       length_utf16: 0,
-      line_index: LineIndex::default(),
       maybe_navigation_tree: None,
       maybe_types: None,
       maybe_warning: None,
@@ -144,6 +141,7 @@ impl Default for Metadata {
         &INVALID_SPECIFIER,
         MediaType::default(),
         String::default(),
+        LineIndex::default(),
       ),
       specifier: INVALID_SPECIFIER.clone(),
       version: String::default(),
@@ -160,7 +158,8 @@ impl Metadata {
     maybe_warning: Option<String>,
     maybe_import_map: &Option<ImportMap>,
   ) -> Self {
-    let document_source = DocumentSource::new(specifier, media_type, source);
+    let line_index = LineIndex::new(&source);
+    let document_source = DocumentSource::new(specifier, media_type, source, line_index);
     let (dependencies, maybe_types) =
       if let Some(Ok(parsed_module)) = document_source.module() {
         let (deps, maybe_types) = analysis::analyze_dependencies(
@@ -173,12 +172,10 @@ impl Metadata {
       } else {
         (None, None)
       };
-    let line_index = LineIndex::new(&document_source.text().as_str());
 
     Self {
       dependencies,
       length_utf16: document_source.text().as_str().encode_utf16().count(),
-      line_index,
       maybe_navigation_tree: None,
       maybe_types,
       maybe_warning,
@@ -349,7 +346,7 @@ impl Inner {
     let specifier =
       resolve_specifier(specifier, &mut self.redirects, &self.http_cache)?;
     let metadata = self.get_metadata(&specifier)?;
-    Some(metadata.line_index)
+    Some(metadata.source.line_index().clone())
   }
 
   fn get_maybe_types(

@@ -5,7 +5,6 @@ use super::document_source::DocumentSource;
 use super::text::LineIndex;
 use super::tsc;
 
-use crate::ast::ParsedModule;
 use crate::media_type::MediaType;
 
 use deno_core::error::anyhow;
@@ -17,7 +16,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Range;
 use std::str::FromStr;
-use std::sync::Arc;
 
 /// A representation of the language id sent from the LSP client, which is used
 /// to determine how the document is handled within the language server.
@@ -84,7 +82,6 @@ pub struct DocumentData {
   dependencies: Option<HashMap<String, analysis::Dependency>>,
   dependency_ranges: Option<analysis::DependencyRanges>,
   pub(crate) language_id: LanguageId,
-  line_index: LineIndex,
   maybe_navigation_tree: Option<tsc::NavigationTree>,
   specifier: ModuleSpecifier,
   version: Option<i32>,
@@ -103,11 +100,11 @@ impl DocumentData {
         &specifier,
         MediaType::from(&language_id),
         source_text,
+        line_index,
       ),
       dependencies: None,
       dependency_ranges: None,
       language_id,
-      line_index,
       maybe_navigation_tree: None,
       specifier,
       version: Some(version),
@@ -119,7 +116,7 @@ impl DocumentData {
     content_changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<(), AnyError> {
     let mut content = self.source.text().as_str().to_string();
-    let mut line_index = self.line_index.clone();
+    let mut line_index = self.source.line_index().clone();
     let mut index_valid = IndexValid::All;
     for change in content_changes {
       if let Some(range) = change.range {
@@ -134,7 +131,7 @@ impl DocumentData {
         index_valid = IndexValid::UpTo(0);
       }
     }
-    self.line_index = if index_valid == IndexValid::All {
+    let line_index = if index_valid == IndexValid::All {
       line_index
     } else {
       LineIndex::new(&content)
@@ -143,29 +140,14 @@ impl DocumentData {
       &self.specifier,
       MediaType::from(&self.language_id),
       content,
+      line_index,
     );
     self.maybe_navigation_tree = None;
     Ok(())
   }
 
-  pub fn content(&self) -> &str {
-    &self.source.text().as_str()
-  }
-
-  pub fn line_index(&self) -> &LineIndex {
-    &self.line_index
-  }
-
-  pub fn module(&self) -> Option<Result<&ParsedModule, AnyError>> {
-    self.source.module().map(|parsed_module_result| {
-      parsed_module_result
-        .as_ref()
-        .map_err(|err_text| anyhow!("{}", err_text))
-    })
-  }
-
-  pub fn content_line(&self, line_index: usize) -> &str {
-    self.source.text().line_text(line_index)
+  pub fn source(&self) -> &DocumentSource {
+    &self.source
   }
 
   /// Determines if a position within the document is within a dependency range
@@ -253,7 +235,7 @@ impl DocumentCache {
   }
 
   pub fn content(&self, specifier: &ModuleSpecifier) -> Option<&str> {
-    self.docs.get(specifier).map(|d| d.content())
+    self.docs.get(specifier).map(|d| d.source().text().as_str())
   }
 
   // For a given specifier, get all open documents which directly or indirectly
@@ -339,7 +321,7 @@ impl DocumentCache {
 
   pub fn line_index(&self, specifier: &ModuleSpecifier) -> Option<LineIndex> {
     let doc = self.docs.get(specifier)?;
-    Some(doc.line_index.clone())
+    Some(doc.source().line_index().clone())
   }
 
   pub fn open(

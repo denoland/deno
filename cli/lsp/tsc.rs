@@ -2917,7 +2917,7 @@ mod tests {
       );
       let media_type = MediaType::from(&specifier);
       if let Some(Ok(parsed_module)) =
-        documents.get(&specifier).unwrap().module()
+        documents.get(&specifier).unwrap().source().module()
       {
         let (deps, _) = analysis::analyze_dependencies(
           &specifier,
