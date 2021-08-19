@@ -2,7 +2,8 @@ use deno_core::ModuleSpecifier;
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
-use crate::ast::{ParsedModule, SourceFileText};
+use crate::ast::ParsedModule;
+use crate::ast::SourceFileText;
 use crate::media_type::MediaType;
 use super::analysis;
 use super::text::LineIndex;
@@ -58,6 +59,7 @@ impl DocumentSource {
         | MediaType::Dts,
     );
     if is_parsable {
+      // lazily parse the module
       Some(self.inner.parsed_module.get_or_init(|| {
         analysis::parse_module(
           &self.inner.specifier,
