@@ -159,7 +159,8 @@ impl Metadata {
     maybe_import_map: &Option<ImportMap>,
   ) -> Self {
     let line_index = LineIndex::new(&source);
-    let document_source = DocumentSource::new(specifier, media_type, source, line_index);
+    let document_source =
+      DocumentSource::new(specifier, media_type, source, line_index);
     let (dependencies, maybe_types) =
       if let Some(Ok(parsed_module)) = document_source.module() {
         let (deps, maybe_types) = analysis::analyze_dependencies(

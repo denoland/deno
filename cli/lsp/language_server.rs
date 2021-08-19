@@ -165,8 +165,11 @@ impl Inner {
   /// Analyzes dependencies of a document that has been opened in the editor and
   /// sets the dependencies property on the document.
   fn analyze_dependencies(&mut self, specifier: &ModuleSpecifier) {
-    if let Some(Ok(parsed_module)) =
-      self.documents.get(specifier).map(|d| d.source().module()).flatten()
+    if let Some(Ok(parsed_module)) = self
+      .documents
+      .get(specifier)
+      .map(|d| d.source().module())
+      .flatten()
     {
       let (mut deps, _) = analysis::analyze_dependencies(
         specifier,
@@ -1007,7 +1010,11 @@ impl Inner {
       match format_result {
         Ok(new_text) => {
           let line_index = source.line_index();
-          Some(text::get_edits(&source.text().as_str(), &new_text, line_index))
+          Some(text::get_edits(
+            &source.text().as_str(),
+            &new_text,
+            line_index,
+          ))
         }
         Err(err) => {
           // TODO(lucacasonato): handle error properly
@@ -1015,7 +1022,9 @@ impl Inner {
           None
         }
       }
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 
     self.performance.measure(mark);
     if let Some(text_edits) = text_edits {

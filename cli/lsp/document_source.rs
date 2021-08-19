@@ -2,11 +2,11 @@ use deno_core::ModuleSpecifier;
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
+use super::analysis;
+use super::text::LineIndex;
 use crate::ast::ParsedModule;
 use crate::ast::SourceFileText;
 use crate::media_type::MediaType;
-use super::analysis;
-use super::text::LineIndex;
 
 #[derive(Debug)]
 struct DocumentSourceInner {

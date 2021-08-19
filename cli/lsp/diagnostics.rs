@@ -327,7 +327,10 @@ async fn generate_lint_diagnostics(
           .await
           .get_version(specifier, &DiagnosticSource::DenoLint);
         if version != current_version {
-          let module = documents.get(specifier).map(|d| d.source().module()).flatten();
+          let module = documents
+            .get(specifier)
+            .map(|d| d.source().module())
+            .flatten();
           let diagnostics = match module {
             Some(Ok(module)) => {
               if let Ok(references) = analysis::get_lint_references(module) {

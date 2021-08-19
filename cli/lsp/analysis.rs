@@ -701,7 +701,9 @@ impl CodeActionCollection {
       .unwrap();
 
     let line_content = document.map(|d| {
-      d.source().text().line_text(diagnostic.range.start.line as usize)
+      d.source()
+        .text()
+        .line_text(diagnostic.range.start.line as usize)
         .to_string()
     });
 
