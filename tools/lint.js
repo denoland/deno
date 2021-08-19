@@ -51,6 +51,9 @@ async function dlint() {
   }
 }
 
+// `prefer-primordials` has to apply only to files related to bootstrapping,
+// which is different from other lint rules. This is why this dedicated function
+// is needed.
 async function dlintPreferPrimordials() {
   const execPath = getPrebuiltToolPath("dlint");
   console.log("prefer-primordials");
