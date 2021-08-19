@@ -754,13 +754,21 @@ impl Inner {
       // already managed by the language service
       return;
     }
-    let language_id = match params.text_document.language_id.parse() {
-      Ok(language_id) => language_id,
-      Err(err) => {
-        error!("{}", err);
-        LanguageId::TypeScript
-      }
-    };
+    let language_id =
+      params
+        .text_document
+        .language_id
+        .parse()
+        .unwrap_or_else(|err| {
+          error!("{}", err);
+          LanguageId::Unknown
+        });
+    if language_id == LanguageId::Unknown {
+      warn!(
+        "Unsupported language id \"{}\" received for document \"{}\".",
+        params.text_document.language_id, params.text_document.uri
+      );
+    }
     self.documents.open(
       specifier.clone(),
       params.text_document.version,
