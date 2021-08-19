@@ -22,6 +22,7 @@ delete Object.prototype.__proto__;
     SymbolFor,
     SymbolIterator,
     PromisePrototypeThen,
+    TypeError,
   } = window.__bootstrap.primordials;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
@@ -228,6 +229,7 @@ delete Object.prototype.__proto__;
     } else {
       prepareStackTrace = core.createPrepareStackTrace();
     }
+    // deno-lint-ignore prefer-primordials
     Error.prepareStackTrace = prepareStackTrace;
   }
 
