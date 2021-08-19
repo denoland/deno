@@ -239,7 +239,8 @@ impl LintReporter for PrettyLintReporter {
       d.hint.as_ref(),
       &fmt_errors::format_location(&JsStackFrame::from_location(
         Some(d.filename.clone()),
-        Some(d.range.start.line_index as i64 + 1), // line number
+        Some(d.range.start.line_index as i64 + 1), // 1-indexed
+        // todo(#11111): make 1-indexed as well
         Some(d.range.start.column_index as i64),
       )),
     );

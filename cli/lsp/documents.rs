@@ -1,11 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis;
+use super::document_source::DocumentSource;
 use super::text::LineIndex;
 use super::tsc;
 
 use crate::ast::ParsedModule;
-use crate::ast::SourceFileText;
 use crate::media_type::MediaType;
 
 use deno_core::error::anyhow;
@@ -13,7 +13,6 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use lspower::lsp;
-use once_cell::sync::OnceCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Range;
@@ -79,55 +78,9 @@ impl IndexValid {
   }
 }
 
-#[derive(Debug)]
-struct DocumentSource {
-  specifier: ModuleSpecifier,
-  media_type: MediaType,
-  text: SourceFileText,
-  parsed_module: OnceCell<Result<ParsedModule, String>>,
-}
-
-impl DocumentSource {
-  pub fn new(
-    specifier: &ModuleSpecifier,
-    media_type: MediaType,
-    text: String,
-  ) -> Self {
-    Self {
-      specifier: specifier.clone(),
-      media_type,
-      text: text.into(),
-      parsed_module: OnceCell::new(),
-    }
-  }
-
-  pub fn parsed_module(&self) -> Option<&Result<ParsedModule, String>> {
-    let is_parsable = matches!(
-      self.media_type,
-      MediaType::JavaScript
-        | MediaType::Jsx
-        | MediaType::TypeScript
-        | MediaType::Tsx
-        | MediaType::Dts,
-    );
-    if is_parsable {
-      Some(self.parsed_module.get_or_init(|| {
-        analysis::parse_module(
-          &self.specifier,
-          self.text.clone(),
-          self.media_type,
-        )
-        .map_err(|e| e.to_string())
-      }))
-    } else {
-      None
-    }
-  }
-}
-
 #[derive(Debug, Clone)]
 pub struct DocumentData {
-  source: Arc<DocumentSource>,
+  source: DocumentSource,
   dependencies: Option<HashMap<String, analysis::Dependency>>,
   dependency_ranges: Option<analysis::DependencyRanges>,
   pub(crate) language_id: LanguageId,
@@ -146,11 +99,11 @@ impl DocumentData {
   ) -> Self {
     let line_index = LineIndex::new(&source_text);
     Self {
-      source: Arc::new(DocumentSource::new(
+      source: DocumentSource::new(
         &specifier,
         MediaType::from(&language_id),
         source_text,
-      )),
+      ),
       dependencies: None,
       dependency_ranges: None,
       language_id,
@@ -165,7 +118,7 @@ impl DocumentData {
     &mut self,
     content_changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<(), AnyError> {
-    let mut content = self.source.text.as_str().to_string();
+    let mut content = self.source.text().as_str().to_string();
     let mut line_index = self.line_index.clone();
     let mut index_valid = IndexValid::All;
     for change in content_changes {
@@ -186,17 +139,17 @@ impl DocumentData {
     } else {
       LineIndex::new(&content)
     };
-    self.source = Arc::new(DocumentSource::new(
+    self.source = DocumentSource::new(
       &self.specifier,
       MediaType::from(&self.language_id),
       content,
-    ));
+    );
     self.maybe_navigation_tree = None;
     Ok(())
   }
 
   pub fn content(&self) -> &str {
-    &self.source.text.as_str()
+    &self.source.text().as_str()
   }
 
   pub fn line_index(&self) -> &LineIndex {
@@ -204,7 +157,7 @@ impl DocumentData {
   }
 
   pub fn module(&self) -> Option<Result<&ParsedModule, AnyError>> {
-    self.source.parsed_module().map(|parsed_module_result| {
+    self.source.module().map(|parsed_module_result| {
       parsed_module_result
         .as_ref()
         .map_err(|err_text| anyhow!("{}", err_text))
@@ -212,7 +165,7 @@ impl DocumentData {
   }
 
   pub fn content_line(&self, line_index: usize) -> &str {
-    self.source.text.line_text(line_index)
+    self.source.text().line_text(line_index)
   }
 
   /// Determines if a position within the document is within a dependency range

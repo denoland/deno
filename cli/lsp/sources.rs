@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis;
+use super::document_source::DocumentSource;
 use super::text::LineIndex;
 use super::tsc;
 use super::urls::INVALID_SPECIFIER;
@@ -124,7 +125,7 @@ struct Metadata {
   maybe_types: Option<analysis::ResolvedDependency>,
   maybe_warning: Option<String>,
   media_type: MediaType,
-  text: SourceFileText,
+  source: DocumentSource,
   specifier: ModuleSpecifier,
   version: String,
 }
@@ -139,7 +140,7 @@ impl Default for Metadata {
       maybe_types: None,
       maybe_warning: None,
       media_type: MediaType::default(),
-      text: String::default().into(),
+      source: DocumentSource::new(&INVALID_SPECIFIER, MediaType::default(), String::default()),
       specifier: INVALID_SPECIFIER.clone(),
       version: String::default(),
     }
@@ -155,9 +156,8 @@ impl Metadata {
     maybe_warning: Option<String>,
     maybe_import_map: &Option<ImportMap>,
   ) -> Self {
-    let source_text = SourceFileText::new(source);
-    let (dependencies, maybe_types) = if let Ok(parsed_module) =
-      analysis::parse_module(specifier, source_text.clone(), media_type)
+    let document_source = DocumentSource::new(specifier, media_type, source);
+    let (dependencies, maybe_types) = if let Some(Ok(parsed_module)) = document_source.module()
     {
       let (deps, maybe_types) = analysis::analyze_dependencies(
         specifier,
@@ -169,29 +169,24 @@ impl Metadata {
     } else {
       (None, None)
     };
-    let line_index = LineIndex::new(&source_text.as_str());
+    let line_index = LineIndex::new(&document_source.text().as_str());
 
     Self {
       dependencies,
-      length_utf16: source_text.as_str().encode_utf16().count(),
+      length_utf16: document_source.text().as_str().encode_utf16().count(),
       line_index,
       maybe_navigation_tree: None,
       maybe_types,
       maybe_warning,
       media_type: media_type.to_owned(),
-      text: source_text,
+      source: document_source,
       specifier: specifier.clone(),
       version: version.to_string(),
     }
   }
 
   fn refresh(&mut self, maybe_import_map: &Option<ImportMap>) {
-    let (dependencies, maybe_types) = if let Ok(parsed_module) =
-      analysis::parse_module(
-        &self.specifier,
-        self.text.clone(),
-        self.media_type,
-      ) {
+    let (dependencies, maybe_types) = if let Some(Ok(parsed_module)) = self.source.module() {
       let (deps, maybe_types) = analysis::analyze_dependencies(
         &self.specifier,
         self.media_type,
@@ -464,7 +459,7 @@ impl Inner {
     let specifier =
       resolve_specifier(specifier, &mut self.redirects, &self.http_cache)?;
     let metadata = self.get_metadata(&specifier)?;
-    Some(metadata.text.to_string())
+    Some(metadata.source.text().to_string())
   }
 
   fn resolution_result(
