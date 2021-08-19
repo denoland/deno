@@ -13,7 +13,7 @@ use crate::fmt_errors;
 use crate::fs_util::{collect_files, is_supported_ext};
 use crate::media_type::MediaType;
 use crate::tools::fmt::run_parallelized;
-use deno_core::error::{generic_error, AnyError, JsStackFrame};
+use deno_core::error::{anyhow, generic_error, AnyError, JsStackFrame};
 use deno_core::serde_json;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::Linter;
@@ -52,6 +52,18 @@ pub async fn lint_files(
   if args.len() == 1 && args[0].to_string_lossy() == "-" {
     return lint_stdin(json, maybe_lint_config.as_ref());
   }
+
+  // Combine ignored files from config file and CLI flag.
+  let mut ignore = ignore;
+  if let Some(lint_config) = maybe_lint_config.as_ref() {
+    let ignores_from_config_file = lint_config
+      .ignore
+      .iter()
+      .map(PathBuf::from)
+      .collect::<Vec<PathBuf>>();
+    ignore.extend(ignores_from_config_file);
+  }
+
   let target_files =
     collect_files(&args, &ignore, is_supported_ext).and_then(|files| {
       if files.is_empty() {
@@ -71,6 +83,11 @@ pub async fn lint_files(
     LintReporterKind::Pretty
   };
   let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
+
+  // Try to get configured rules.
+  // TODO(bartlomieju): this is done multiple times for each file because
+  // Vec<Box<dyn LintRule>> is not clonable, this should be optimized.
+  get_rules_from_config(maybe_lint_config.as_ref())?;
 
   run_parallelized(target_files, {
     let reporter_lock = reporter_lock.clone();
@@ -154,7 +171,8 @@ fn lint_file(
   let media_type = MediaType::from(&file_path);
   let syntax = ast::get_syntax(&media_type);
 
-  let lint_rules = get_rules_from_config(maybe_lint_config);
+  // Obtaining rules from config is infallible at this point.
+  let lint_rules = get_rules_from_config(maybe_lint_config).unwrap();
   let linter = create_linter(syntax, lint_rules);
 
   let (_, file_diagnostics) = linter.lint(file_name, source_code.clone())?;
@@ -180,7 +198,7 @@ fn lint_stdin(
     LintReporterKind::Pretty
   };
   let mut reporter = create_reporter(reporter_kind);
-  let lint_rules = get_rules_from_config(maybe_lint_config);
+  let lint_rules = get_rules_from_config(maybe_lint_config)?;
   let syntax = ast::get_syntax(&MediaType::TypeScript);
   let linter = create_linter(syntax, lint_rules);
   let mut has_error = false;
@@ -383,8 +401,8 @@ fn sort_diagnostics(diagnostics: &mut Vec<LintDiagnostic>) {
 
 fn get_rules_from_config(
   maybe_lint_config: Option<&LintConfig>,
-) -> Vec<Box<dyn LintRule>> {
-  if let Some(lint_config) = maybe_lint_config {
+) -> Result<Vec<Box<dyn LintRule>>, AnyError> {
+  let configured_rules = if let Some(lint_config) = maybe_lint_config {
     let mut filtered_rules = HashMap::new();
 
     if let Some(tags) = &lint_config.rules.tags {
@@ -426,5 +444,11 @@ fn get_rules_from_config(
       .collect()
   } else {
     rules::get_recommended_rules()
+  };
+
+  if configured_rules.is_empty() {
+    anyhow!("No rules have been configured");
   }
+
+  Ok(configured_rules)
 }
