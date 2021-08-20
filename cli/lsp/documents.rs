@@ -6,7 +6,6 @@ use super::tsc;
 
 use crate::media_type::MediaType;
 
-use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::error::Context;
@@ -28,21 +27,24 @@ pub enum LanguageId {
   Json,
   JsonC,
   Markdown,
+  Unknown,
 }
 
 impl FromStr for LanguageId {
   type Err = AnyError;
 
-  fn from_str(s: &str) -> Result<Self, AnyError> {
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
     match s {
       "javascript" => Ok(Self::JavaScript),
       "javascriptreact" => Ok(Self::Jsx),
+      "jsx" => Ok(Self::Jsx),
       "typescript" => Ok(Self::TypeScript),
       "typescriptreact" => Ok(Self::Tsx),
+      "tsx" => Ok(Self::Tsx),
       "json" => Ok(Self::Json),
       "jsonc" => Ok(Self::JsonC),
       "markdown" => Ok(Self::Markdown),
-      _ => Err(anyhow!("Unsupported language id: {}", s)),
+      _ => Ok(Self::Unknown),
     }
   }
 }
@@ -57,6 +59,7 @@ impl<'a> From<&'a LanguageId> for MediaType {
       LanguageId::Markdown => MediaType::Unknown,
       LanguageId::Tsx => MediaType::Tsx,
       LanguageId::TypeScript => MediaType::TypeScript,
+      LanguageId::Unknown => MediaType::Unknown,
     }
   }
 }
@@ -449,6 +452,35 @@ mod tests {
   use lspower::lsp;
 
   #[test]
+  fn test_language_id() {
+    assert_eq!(
+      "javascript".parse::<LanguageId>().unwrap(),
+      LanguageId::JavaScript
+    );
+    assert_eq!(
+      "javascriptreact".parse::<LanguageId>().unwrap(),
+      LanguageId::Jsx
+    );
+    assert_eq!("jsx".parse::<LanguageId>().unwrap(), LanguageId::Jsx);
+    assert_eq!(
+      "typescript".parse::<LanguageId>().unwrap(),
+      LanguageId::TypeScript
+    );
+    assert_eq!(
+      "typescriptreact".parse::<LanguageId>().unwrap(),
+      LanguageId::Tsx
+    );
+    assert_eq!("tsx".parse::<LanguageId>().unwrap(), LanguageId::Tsx);
+    assert_eq!("json".parse::<LanguageId>().unwrap(), LanguageId::Json);
+    assert_eq!("jsonc".parse::<LanguageId>().unwrap(), LanguageId::JsonC);
+    assert_eq!(
+      "markdown".parse::<LanguageId>().unwrap(),
+      LanguageId::Markdown
+    );
+    assert_eq!("rust".parse::<LanguageId>().unwrap(), LanguageId::Unknown);
+  }
+
+  #[test]
   fn test_document_cache_contains() {
     let mut document_cache = DocumentCache::default();
     let specifier = resolve_url("file:///a/b.ts").unwrap();
@@ -543,10 +575,18 @@ mod tests {
     document_cache.open(
       specifier.clone(),
       1,
-      LanguageId::TypeScript,
+      "typescript".parse().unwrap(),
       "console.log(\"hello world\");\n",
     );
     assert!(document_cache.is_diagnosable(&specifier));
+    let specifier = resolve_url("file:///a/file.rs").unwrap();
+    document_cache.open(
+      specifier.clone(),
+      1,
+      "rust".parse().unwrap(),
+      "pub mod a;",
+    );
+    assert!(!document_cache.is_diagnosable(&specifier));
     let specifier =
       resolve_url("asset:///lib.es2015.symbol.wellknown.d.ts").unwrap();
     assert!(document_cache.is_diagnosable(&specifier));

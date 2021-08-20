@@ -21,6 +21,7 @@ use std::process::Command;
 use std::process::Stdio;
 use std::time::Duration;
 use std::time::Instant;
+use tempfile::TempDir;
 
 lazy_static! {
   static ref CONTENT_TYPE_REG: Regex =
@@ -97,6 +98,7 @@ pub struct LspClient {
   request_id: u64,
   start: Instant,
   writer: io::BufWriter<ChildStdin>,
+  _temp_deno_dir: TempDir, // directory will be deleted on drop
 }
 
 impl Drop for LspClient {
@@ -179,6 +181,7 @@ impl LspClient {
       request_id: 1,
       start: Instant::now(),
       writer,
+      _temp_deno_dir: deno_dir,
     })
   }
 
