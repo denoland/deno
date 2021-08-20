@@ -102,6 +102,7 @@ pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
     .js(include_js_files!(
       prefix "deno:ext/ffi",
       "00_ffi.js",
+      "01_webidl.js",
     ))
     .ops(vec![
       ("op_ffi_load", op_sync(op_ffi_load::<P>)),

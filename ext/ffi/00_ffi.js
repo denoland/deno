@@ -2,6 +2,7 @@
 "use strict";
 
 ((window) => {
+  const webidl = window.__bootstrap.webidl;
   const core = window.Deno.core;
 
   class DynamicLibrary {
@@ -23,6 +24,17 @@
   }
 
   function dlopen(path, symbols) {
+    const prefix = "Failed to execute 'dlopen'";
+    webidl.requiredArguments(arguments.length, 2, { prefix });
+    path = webidl.converters.USVString(path, {
+      prefix,
+      context: "Argument 1",
+    });
+    symbols = webidl.converters.DLSymbols(symbols, {
+      prefix,
+      context: "Argument 2",
+    });
+
     return new DynamicLibrary(path, symbols);
   }
 
