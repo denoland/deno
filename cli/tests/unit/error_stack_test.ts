@@ -41,7 +41,7 @@ unitTest(function errorStackMessageLine() {
   assertMatch(e6.stack!, /^null: null\n/);
 });
 
-unitTest(function captureStackTrace() {
+unitTest({ ignore: true }, function captureStackTrace() {
   function foo() {
     const error = new Error();
     const stack1 = error.stack!;
