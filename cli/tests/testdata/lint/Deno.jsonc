@@ -1,12 +1,12 @@
 {
-    "lint": {
-        "files": {
-          "include": ["src/"],
-          "exclude": ["src/testdata/"]
-        },
-        "rules": {
-          "tags": ["recommended"],
-          "include": ["ban-untagged-todo"]
-        }
-      }
+  "lint": {
+    "files": {
+      "include": ["src/"],
+      "exclude": ["src/testdata/"]
+    },
+    "rules": {
+      "tags": ["recommended"],
+      "include": ["ban-untagged-todo"]
+    }
+  }
 }

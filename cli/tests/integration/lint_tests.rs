@@ -43,13 +43,14 @@ itest!(json {
     });
 
 itest!(ignore {
-  args: "lint --ignore=lint/file1.js,lint/malformed.js lint/",
+  args:
+    "lint --ignore=lint/file1.js,lint/malformed.js,lint/lint_with_config/ lint/",
   output: "lint/expected_ignore.out",
   exit_code: 1,
 });
 
 itest!(glob {
-  args: "lint --ignore=lint/malformed.js lint/",
+  args: "lint --ignore=lint/malformed.js,lint/lint_with_config/ lint/",
   output: "lint/expected_glob.out",
   exit_code: 1,
 });
