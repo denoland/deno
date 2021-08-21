@@ -136,7 +136,12 @@ async fn op_run_test_program(
     "window.dispatchEvent(new Event('load'))",
   )?;
 
-  worker.execute_module(&specifier).await?;
+  // TODO(DO NOT MERGE): Actually downcasting this turned out to be a headache.
+  // When an error is thrown in the isolate this is appearantly not a JsError nor
+  // PrettyJsError.
+  if let Err(_err) = worker.execute_module(&specifier).await {
+      return Err(generic_error("TODO: test program execution failed"));
+  }
 
   worker.execute_script(
     &located_script_name!(),
