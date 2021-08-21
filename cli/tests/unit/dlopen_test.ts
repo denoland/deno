@@ -1,23 +1,25 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file no-explicit-any
-
 import { assertThrows, unitTest } from "./test_util.ts";
 
 unitTest(function dlopenInvalidArguments() {
   const filename = "/usr/lib/libc.so.6";
   assertThrows(() => {
-    Deno.dlopen(filename, { malloc: null } as any);
+    // @ts-expect-error: ForeignFunction cannot be null
+    Deno.dlopen(filename, { malloc: null });
   }, TypeError);
   assertThrows(() => {
     Deno.dlopen(filename, {
+      // @ts-expect-error: invalid NativeType
       malloc: { parameters: ["a"], result: "b" },
-    } as any);
+    });
   }, TypeError);
   assertThrows(() => {
-    Deno.dlopen(filename, null as any);
+    // @ts-expect-error: DynamicLibrary symbols cannot be null
+    Deno.dlopen(filename, null);
   }, TypeError);
   assertThrows(() => {
-    (Deno.dlopen as any)(filename);
+    // @ts-expect-error: require 2 arguments
+    Deno.dlopen(filename);
   }, TypeError);
 });
