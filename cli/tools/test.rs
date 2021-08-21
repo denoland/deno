@@ -47,10 +47,14 @@ use std::time::Instant;
 use swc_common::comments::CommentKind;
 use uuid::Uuid;
 
+/// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, PartialEq)]
 enum TestMode {
+  /// Test as a document with inline code blocks.
   Inline,
+  /// Test as an executable module.
   Module,
+  /// Test as both a document and a module, testing both the inline code blocks and execute
   Both,
 }
 
@@ -214,6 +218,7 @@ fn create_reporter(concurrent: bool) -> Box<dyn TestReporter + Send> {
   Box::new(PrettyTestReporter::new(concurrent))
 }
 
+/// Test a single specifier as a module, document containing inline code blocks or both.
 #[allow(clippy::too_many_arguments)]
 async fn test_specifier(
   program_state: Arc<ProgramState>,
@@ -472,6 +477,7 @@ async fn fetch_inline_files(
   Ok(files)
 }
 
+/// Type check a collection of module and document specifiers.
 async fn check_specifiers(
   program_state: Arc<ProgramState>,
   permissions: Permissions,
@@ -538,6 +544,7 @@ async fn check_specifiers(
   Ok(())
 }
 
+/// Test a collection of specifiers concurrently.
 #[allow(clippy::too_many_arguments)]
 async fn test_specifiers(
   program_state: Arc<ProgramState>,
@@ -690,6 +697,13 @@ async fn test_specifiers(
   Ok(())
 }
 
+/// Collects specifiers marking them with the appropriate test mode while maintaining the natural
+/// input order.
+///
+/// - Specifiers matching the `is_supported_test_ext` predicate are marked as
+/// `TestMode::Inline`.
+/// - Specifiers matching the `is_supported_test_path` are marked as `TestMode::Module`.
+/// - Specifiers matching both predicates are marked as `TestMode::Both`
 fn collect_specifiers_with_test_mode(
   include: Vec<String>,
   include_inline: bool,
@@ -724,6 +738,11 @@ fn collect_specifiers_with_test_mode(
   Ok(specifiers_with_mode)
 }
 
+/// Collects module and document specifiers with test modes via `collect_specifiers_with_test_mode`
+/// which are then pre-fetched and adjusted based on the media type.
+///
+/// Specifiers that do not have a known media type that can be executed as a module are marked as
+/// `TestMode::Inline`.
 async fn fetch_specifiers_with_test_mode(
   program_state: Arc<ProgramState>,
   include: Vec<String>,
