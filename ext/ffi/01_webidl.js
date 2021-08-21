@@ -26,7 +26,7 @@
   ]);
 
   webidl.converters["sequence<NativeType>"] = webidl.createSequenceConverter(
-    webidl.converters.NativeType
+    webidl.converters.NativeType,
   );
 
   webidl.converters.ForeignFunction = webidl.createDictionaryConverter(
@@ -42,11 +42,11 @@
         converter: webidl.converters.NativeType,
         required: true,
       },
-    ]
+    ],
   );
 
   webidl.converters.DLSymbols = webidl.createRecordConverter(
     webidl.converters.USVString,
-    webidl.converters.ForeignFunction
+    webidl.converters.ForeignFunction,
   );
 })(this);
