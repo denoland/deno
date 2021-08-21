@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 mod ast;
+use std::num::NonZeroUsize;
 mod auth_tokens;
 mod checksum;
 mod colors;
@@ -1008,7 +1009,7 @@ async fn test_command(
   allow_none: bool,
   filter: Option<String>,
   shuffle: Option<u64>,
-  concurrent_jobs: usize,
+  concurrent_jobs: NonZeroUsize,
 ) -> Result<(), AnyError> {
   if let Some(ref coverage_dir) = flags.coverage_dir {
     std::fs::create_dir_all(&coverage_dir)?;
