@@ -50,11 +50,12 @@ use uuid::Uuid;
 /// The test mode is used to determine how a specifier is to be tested.
 #[derive(Debug, Clone, PartialEq)]
 enum TestMode {
-  /// Test as a document with inline code blocks.
-  Inline,
-  /// Test as an executable module.
-  Module,
-  /// Test as both a document and a module, testing both the inline code blocks and execute
+  /// Test as documentation, type-checking fenced code blocks.
+  Documentation,
+  /// Test as an executable module, loading the module into the isolate and running each test it
+  /// defines.
+  Executable,
+  /// Test as both documentation and an executable module.
   Both,
 }
 
@@ -234,7 +235,7 @@ async fn test_specifier(
     deno_core::resolve_path(&format!("{}$deno$test.js", Uuid::new_v4()))?;
 
   let mut test_source = String::new();
-  if mode != TestMode::Inline {
+  if mode != TestMode::Documentation {
     test_source.push_str(&format!("import \"{}\";\n", specifier));
   }
 
@@ -489,7 +490,7 @@ async fn check_specifiers(
     specifiers
       .iter()
       .filter_map(|(specifier, mode)| {
-        if *mode != TestMode::Module {
+        if *mode != TestMode::Executable {
           Some(specifier.clone())
         } else {
           None
@@ -523,7 +524,7 @@ async fn check_specifiers(
   let module_specifiers = specifiers
     .iter()
     .filter_map(|(specifier, mode)| {
-      if *mode != TestMode::Inline {
+      if *mode != TestMode::Documentation {
         Some(specifier.clone())
       } else {
         None
@@ -701,8 +702,8 @@ async fn test_specifiers(
 /// input order.
 ///
 /// - Specifiers matching the `is_supported_test_ext` predicate are marked as
-/// `TestMode::Inline`.
-/// - Specifiers matching the `is_supported_test_path` are marked as `TestMode::Module`.
+/// `TestMode::Documentation`.
+/// - Specifiers matching the `is_supported_test_path` are marked as `TestMode::Executable`.
 /// - Specifiers matching both predicates are marked as `TestMode::Both`
 fn collect_specifiers_with_test_mode(
   include: Vec<String>,
@@ -720,7 +721,7 @@ fn collect_specifiers_with_test_mode(
             let mode = if module_specifiers.contains(&specifier) {
               TestMode::Both
             } else {
-              TestMode::Inline
+              TestMode::Documentation
             };
 
             (specifier, mode)
@@ -732,7 +733,7 @@ fn collect_specifiers_with_test_mode(
 
   let specifiers_with_mode = module_specifiers
     .into_iter()
-    .map(|specifier| (specifier, TestMode::Module))
+    .map(|specifier| (specifier, TestMode::Executable))
     .collect();
 
   Ok(specifiers_with_mode)
@@ -742,7 +743,7 @@ fn collect_specifiers_with_test_mode(
 /// which are then pre-fetched and adjusted based on the media type.
 ///
 /// Specifiers that do not have a known media type that can be executed as a module are marked as
-/// `TestMode::Inline`.
+/// `TestMode::Documentation`.
 async fn fetch_specifiers_with_test_mode(
   program_state: Arc<ProgramState>,
   include: Vec<String>,
@@ -759,7 +760,7 @@ async fn fetch_specifiers_with_test_mode(
     if file.media_type != MediaType::Unknown {
       *mode = TestMode::Both
     } else {
-      *mode = TestMode::Inline
+      *mode = TestMode::Documentation
     }
   }
 
