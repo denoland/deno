@@ -23,6 +23,7 @@
     ArrayPrototypeIncludes,
     ArrayPrototypePush,
     ArrayPrototypeSome,
+    ObjectKeys,
     Promise,
     StringPrototypeIncludes,
     StringPrototypeToLowerCase,
@@ -115,7 +116,7 @@
 
     /** @returns {void} */
     close() {
-      for (const rid of Object.keys(this.managedResources)) {
+      for (const rid of ObjectKeys(this.managedResources)) {
         try {
           core.close(rid);
         } catch (_e) {
