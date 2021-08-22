@@ -6,6 +6,7 @@ use clap::Arg;
 use clap::ArgMatches;
 use clap::ArgSettings;
 use clap::SubCommand;
+use std::num::NonZeroUsize;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::url::Url;
@@ -100,7 +101,7 @@ pub enum DenoSubcommand {
   Test {
     doc: bool,
     no_run: bool,
-    fail_fast: Option<usize>,
+    fail_fast: Option<NonZeroUsize>,
     quiet: bool,
     allow_none: bool,
     include: Option<Vec<String>>,
@@ -1046,16 +1047,9 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .takes_value(true)
         .require_equals(true)
         .value_name("N")
-        .validator(|val: String| match val.parse::<usize>() {
-          Ok(val) => {
-            if val == 0 {
-              return Err(
-                "fail-fast should be an number greater than 0".to_string(),
-              );
-            }
-            Ok(())
-          }
-          Err(_) => Err("fail-fast should be a number".to_string()),
+        .validator(|val: String| match val.parse::<NonZeroUsize>() {
+          Ok(_) => Ok(()),
+          Err(_) => Err("fail-fast should be a non zero integer".to_string()),
         }),
     )
     .arg(
@@ -1785,7 +1779,7 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     if let Some(value) = matches.value_of("fail-fast") {
       Some(value.parse().unwrap())
     } else {
-      Some(1)
+      Some(NonZeroUsize::new(1).unwrap())
     }
   } else {
     None
@@ -3637,7 +3631,7 @@ mod tests {
         subcommand: DenoSubcommand::Test {
           no_run: false,
           doc: false,
-          fail_fast: Some(3),
+          fail_fast: Some(NonZeroUsize::new(3).unwrap()),
           filter: None,
           allow_none: false,
           quiet: false,
