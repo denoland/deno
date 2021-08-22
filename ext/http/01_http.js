@@ -38,6 +38,11 @@
 
   class HttpConn {
     #rid = 0;
+    // This object holds resource ids of resources
+    // that were created during lifecycle of this request.
+    // When the connection is closed these resources should be closed
+    // as well.
+    managedResources = {};
 
     constructor(rid) {
       this.#rid = rid;
@@ -85,7 +90,8 @@
       /** @type {ReadableStream<Uint8Array> | undefined} */
       let body = null;
       if (typeof requestRid === "number") {
-        body = createRequestBodyStream(requestRid);
+        this.managedResources[requestRid] = true;
+        body = createRequestBodyStream(this, requestRid);
       }
 
       const innerRequest = newInnerRequest(
@@ -97,6 +103,7 @@
       const signal = abortSignal.newSignal();
       const request = fromInnerRequest(innerRequest, signal, "immutable");
 
+      this.managedResources[responseSenderRid] = true;
       const respondWith = createRespondWith(
         this,
         responseSenderRid,
@@ -108,6 +115,11 @@
 
     /** @returns {void} */
     close() {
+      for (const rid of Object.keys(this.managedResources)) {
+        try {
+          core.close(rid);
+        } catch (_e) {}
+      }
       core.close(this.#rid);
     }
 
@@ -178,6 +190,7 @@
         respBody = new Uint8Array(0);
       }
 
+      delete httpConn.managedResources[responseSenderRid];
       let responseBodyRid;
       try {
         responseBodyRid = await core.opAsync("op_http_response", [
@@ -200,6 +213,7 @@
       // If `respond` returns a responseBodyRid, we should stream the body
       // to that resource.
       if (responseBodyRid !== null) {
+        httpConn.managedResources[responseBodyRid] = true;
         try {
           if (respBody === null || !(respBody instanceof ReadableStream)) {
             throw new TypeError("Unreachable");
@@ -231,6 +245,7 @@
         } finally {
           // Once all chunks are sent, and the request body is closed, we can
           // close the response body.
+          delete httpConn.managedResources[responseBodyRid];
           try {
             await core.opAsync("op_http_response_close", responseBodyRid);
           } catch { /* pass */ }
@@ -280,7 +295,7 @@
     };
   }
 
-  function createRequestBodyStream(requestRid) {
+  function createRequestBodyStream(httpConn, requestRid) {
     return new ReadableStream({
       type: "bytes",
       async pull(controller) {
@@ -298,6 +313,7 @@
           } else {
             // We have reached the end of the body, so we close the stream.
             controller.close();
+            delete httpConn.managedResources[requestRid];
             core.close(requestRid);
           }
         } catch (err) {
@@ -305,10 +321,12 @@
           // error.
           controller.error(err);
           controller.close();
+          delete httpConn.managedResources[requestRid];
           core.close(requestRid);
         }
       },
       cancel() {
+        delete httpConn.managedResources[requestRid];
         core.close(requestRid);
       },
     });
