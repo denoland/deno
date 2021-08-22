@@ -1,7 +1,53 @@
-Check [WILDCARD]/test/markdown.md$11-14.js
-Check [WILDCARD]/test/markdown.md$17-20.ts
-Check [WILDCARD]/test/markdown.md$29-32.ts
-error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
-const a: string = 42;
-      ^
-    at [WILDCARD]/test/markdown.md$29-32.ts:1:7
+running 7 tests from [WILDCARD]/test/markdown.md
+test [WILDCARD]/test/markdown.md#11-14 ... ok ([WILDCARD])
+test [WILDCARD]/test/markdown.md#15-18 ... FAILED ([WILDCARD])
+test [WILDCARD]/test/markdown.md#19-22 ... FAILED ([WILDCARD])
+test [WILDCARD]/test/markdown.md#23-26 ... FAILED ([WILDCARD])
+test [WILDCARD]/test/markdown.md#48-51 ... ok ([WILDCARD])
+test [WILDCARD]/test/markdown.md#54-57 ... ok ([WILDCARD])
+test [WILDCARD]/test/markdown.md#60-63 ... ok ([WILDCARD])
+
+failures:
+
+[WILDCARD]/test/markdown.md#15-18
+Error: TODO: test program execution failed
+    at deno:core/01_core.js:107:46
+    at unwrapOpResult (deno:core/01_core.js:127:13)
+    at async asyncOpSanitizer (deno:runtime/js/40_testing.js:36:9)
+    at async resourceSanitizer (deno:runtime/js/40_testing.js:73:7)
+    at async exitSanitizer (deno:runtime/js/40_testing.js:100:9)
+    at async runTest (deno:runtime/js/40_testing.js:216:7)
+    at async Object.runTests (deno:runtime/js/40_testing.js:290:22)
+    at async file:///home/caspervonb/deno/9a6959aa-e2ac-4dbf-b5ad-fe43c7936adf$deno$test.js:31:1
+
+[WILDCARD]/test/markdown.md#19-22
+Error: TODO: test program execution failed
+    at deno:core/01_core.js:107:46
+    at unwrapOpResult (deno:core/01_core.js:127:13)
+    at async asyncOpSanitizer (deno:runtime/js/40_testing.js:36:9)
+    at async resourceSanitizer (deno:runtime/js/40_testing.js:73:7)
+    at async exitSanitizer (deno:runtime/js/40_testing.js:100:9)
+    at async runTest (deno:runtime/js/40_testing.js:216:7)
+    at async Object.runTests (deno:runtime/js/40_testing.js:290:22)
+    at async file:///home/caspervonb/deno/9a6959aa-e2ac-4dbf-b5ad-fe43c7936adf$deno$test.js:31:1
+
+[WILDCARD]/test/markdown.md#23-26
+Error: TODO: test program execution failed
+    at deno:core/01_core.js:107:46
+    at unwrapOpResult (deno:core/01_core.js:127:13)
+    at async asyncOpSanitizer (deno:runtime/js/40_testing.js:36:9)
+    at async resourceSanitizer (deno:runtime/js/40_testing.js:73:7)
+    at async exitSanitizer (deno:runtime/js/40_testing.js:100:9)
+    at async runTest (deno:runtime/js/40_testing.js:216:7)
+    at async Object.runTests (deno:runtime/js/40_testing.js:290:22)
+    at async file:///home/caspervonb/deno/9a6959aa-e2ac-4dbf-b5ad-fe43c7936adf$deno$test.js:31:1
+
+failures:
+
+	[WILDCARD]/test/markdown.md#15-18
+	[WILDCARD]/test/markdown.md#19-22
+	[WILDCARD]/test/markdown.md#23-26
+
+test result: FAILED. 4 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
+
+error: Test failed
