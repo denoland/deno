@@ -146,10 +146,6 @@ declare interface Crypto {
   randomUUID(): string;
 }
 
-interface Algorithm {
-  name: string;
-}
-
 declare var SubtleCrypto: {
   prototype: SubtleCrypto;
   new (): SubtleCrypto;
