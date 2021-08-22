@@ -3630,6 +3630,31 @@ mod tests {
   }
 
   #[test]
+  fn test_with_concurrent_jobs() {
+    let r = flags_from_vec(svec!["deno", "test", "--jobs=4"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: None,
+          allow_none: false,
+          quiet: false,
+          shuffle: None,
+          include: None,
+          concurrent_jobs: NonZeroUsize::new(4).unwrap(),
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "test", "--jobs=0"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
   fn test_with_fail_fast() {
     let r = flags_from_vec(svec!["deno", "test", "--fail-fast=3"]);
     assert_eq!(
