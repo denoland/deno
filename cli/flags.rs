@@ -3642,6 +3642,9 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec!["deno", "test", "--fail-fast=0"]);
+    assert!(r.is_err());
   }
 
   #[test]
