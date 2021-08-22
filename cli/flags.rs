@@ -101,7 +101,6 @@ pub enum DenoSubcommand {
     doc: bool,
     no_run: bool,
     fail_fast: Option<usize>,
-    quiet: bool,
     allow_none: bool,
     include: Option<Vec<String>>,
     filter: Option<String>,
@@ -1778,7 +1777,6 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   let no_run = matches.is_present("no-run");
   let doc = matches.is_present("doc");
   let allow_none = matches.is_present("allow-none");
-  let quiet = matches.is_present("quiet");
   let filter = matches.value_of("filter").map(String::from);
 
   let fail_fast = if matches.is_present("fail-fast") {
@@ -1843,7 +1841,6 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     no_run,
     doc,
     fail_fast,
-    quiet,
     include,
     filter,
     shuffle,
@@ -3572,7 +3569,6 @@ mod tests {
           fail_fast: None,
           filter: Some("- foo".to_string()),
           allow_none: true,
-          quiet: false,
           include: Some(svec!["dir1/", "dir2/"]),
           shuffle: None,
           concurrent_jobs: 1,
@@ -3640,7 +3636,6 @@ mod tests {
           fail_fast: Some(3),
           filter: None,
           allow_none: false,
-          quiet: false,
           shuffle: None,
           include: None,
           concurrent_jobs: 1,
@@ -3666,7 +3661,6 @@ mod tests {
           fail_fast: None,
           filter: None,
           allow_none: false,
-          quiet: false,
           shuffle: None,
           include: None,
           concurrent_jobs: 1,
@@ -3689,7 +3683,6 @@ mod tests {
           fail_fast: None,
           filter: None,
           allow_none: false,
-          quiet: false,
           shuffle: Some(1),
           include: None,
           concurrent_jobs: 1,
@@ -3712,7 +3705,6 @@ mod tests {
           fail_fast: None,
           filter: None,
           allow_none: false,
-          quiet: false,
           shuffle: None,
           include: None,
           concurrent_jobs: 1,

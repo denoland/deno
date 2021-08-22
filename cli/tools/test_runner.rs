@@ -21,6 +21,7 @@ use deno_core::serde_json::json;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
+use log::Level;
 use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
@@ -199,7 +200,6 @@ pub async fn test_specifier(
   program_state: Arc<ProgramState>,
   main_module: ModuleSpecifier,
   permissions: Permissions,
-  quiet: bool,
   filter: Option<String>,
   shuffle: Option<u64>,
   channel: Sender<TestEvent>,
@@ -227,7 +227,7 @@ pub async fn test_specifier(
   test_source.push_str(&format!(
     "await Deno[Deno.internal].runTests({});\n",
     json!({
-      "disableLog": quiet,
+      "disableLog": program_state.flags.log_level == Some(Level::Error),
       "filter": filter,
       "shuffle": shuffle,
     }),
@@ -469,7 +469,6 @@ pub async fn run_tests(
   test_modules: Vec<ModuleSpecifier>,
   no_run: bool,
   fail_fast: Option<usize>,
-  quiet: bool,
   allow_none: bool,
   filter: Option<String>,
   shuffle: Option<u64>,
@@ -558,7 +557,6 @@ pub async fn run_tests(
           program_state,
           main_module,
           permissions,
-          quiet,
           filter,
           shuffle,
           sender,
