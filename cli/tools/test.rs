@@ -881,15 +881,15 @@ pub async fn run_tests(
     TypeLib::DenoWindow
   };
 
-  if no_run {
-    check_specifiers(
-      program_state.clone(),
-      permissions.clone(),
-      specifiers_with_mode.clone(),
-      lib,
-    )
-    .await?;
+  check_specifiers(
+    program_state.clone(),
+    permissions.clone(),
+    specifiers_with_mode.clone(),
+    lib,
+  )
+  .await?;
 
+  if no_run {
     return Ok(());
   }
 
@@ -1081,15 +1081,15 @@ pub async fn run_tests_with_watch(
       .cloned()
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
-      if no_run {
-        check_specifiers(
-          program_state.clone(),
-          permissions.clone(),
-          specifiers_with_mode.clone(),
-          lib,
-        )
-        .await?;
+      check_specifiers(
+        program_state.clone(),
+        permissions.clone(),
+        specifiers_with_mode.clone(),
+        lib,
+      )
+      .await?;
 
+      if no_run {
         return Ok(());
       }
 
