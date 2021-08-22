@@ -558,52 +558,56 @@ async fn fetch_inline_test_programs(
   Ok(programs)
 }
 
-/// Type check a collection of module and document specifiers.
-async fn check_specifiers(
+/// Type check a collection of executable specifiers and maybe the programs contained
+/// within the fenced code blocks of the documntation specifiers.
+async fn check_specifiers_and_maybe_programs(
   program_state: Arc<ProgramState>,
   permissions: Permissions,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
   lib: TypeLib,
+  check_programs: bool,
 ) -> Result<(), AnyError> {
-  let inline_programs = fetch_inline_test_programs(
-    program_state.clone(),
-    specifiers
-      .iter()
-      .filter_map(|(specifier, mode)| {
-        if *mode != TestMode::Executable {
-          Some(specifier.clone())
-        } else {
-          None
-        }
-      })
-      .collect(),
-  )
-  .await?;
+  if check_programs {
+    let inline_programs = fetch_inline_test_programs(
+      program_state.clone(),
+      specifiers
+        .iter()
+        .filter_map(|(specifier, mode)| {
+          if *mode != TestMode::Executable {
+            Some(specifier.clone())
+          } else {
+            None
+          }
+        })
+        .collect(),
+    )
+    .await?;
 
-  let inline_files: Vec<File> = inline_programs
-    .iter()
-    .map(|program| program.to_file())
-    .collect();
-
-  if !inline_files.is_empty() {
-    let specifiers = inline_files
+    let inline_files: Vec<File> = inline_programs
       .iter()
-      .map(|file| file.specifier.clone())
+      .map(|program| program.to_file())
       .collect();
 
-    for file in inline_files {
-      program_state.file_fetcher.insert_cached(file);
-    }
+    if !inline_files.is_empty() {
+      let specifiers = inline_files
+        .iter()
+        .map(|file| file.specifier.clone())
+        .collect();
 
-    program_state
-      .prepare_module_graph(
-        specifiers,
-        lib.clone(),
-        Permissions::allow_all(),
-        permissions.clone(),
-        program_state.maybe_import_map.clone(),
-      )
-      .await?;
+      for file in inline_files {
+        program_state.file_fetcher.insert_cached(file);
+      }
+
+      program_state
+        .prepare_module_graph(
+          specifiers,
+          lib.clone(),
+          Permissions::allow_all(),
+          permissions.clone(),
+          program_state.maybe_import_map.clone(),
+        )
+        .await?;
+    }
   }
 
   let module_specifiers = specifiers
@@ -881,11 +885,12 @@ pub async fn run_tests(
     TypeLib::DenoWindow
   };
 
-  check_specifiers(
+  check_specifiers_and_maybe_programs(
     program_state.clone(),
     permissions.clone(),
     specifiers_with_mode.clone(),
     lib,
+    no_run,
   )
   .await?;
 
@@ -1081,11 +1086,12 @@ pub async fn run_tests_with_watch(
       .cloned()
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
-      check_specifiers(
+      check_specifiers_and_maybe_programs(
         program_state.clone(),
         permissions.clone(),
         specifiers_with_mode.clone(),
         lib,
+        no_run,
       )
       .await?;
 
