@@ -22,6 +22,7 @@
     PromisePrototypeCatch,
     Uint8Array,
     TypeError,
+    Error,
   } = window.__bootstrap.primordials;
 
   webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
