@@ -118,7 +118,9 @@
       for (const rid of Object.keys(this.managedResources)) {
         try {
           core.close(rid);
-        } catch (_e) {}
+        } catch (_e) {
+          // pass, might have already been closed
+        }
       }
       core.close(this.#rid);
     }
