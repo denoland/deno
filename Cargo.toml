@@ -74,6 +74,10 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.serde]
 opt-level = 3
+[profile.bench.package.deno_url]
+opt-level = 3
+[profile.bench.package.url]
+opt-level = 3
 
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release.package.rand]
@@ -103,4 +107,8 @@ opt-level = 3
 [profile.release.package.serde_v8]
 opt-level = 3
 [profile.release.package.serde]
+opt-level = 3
+[profile.release.package.deno_url]
+opt-level = 3
+[profile.release.package.url]
 opt-level = 3
