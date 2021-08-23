@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 mod ast;
-use std::num::NonZeroUsize;
 mod auth_tokens;
 mod checksum;
 mod colors;
