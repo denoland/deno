@@ -27,6 +27,7 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
@@ -468,11 +469,11 @@ pub async fn run_tests(
   doc_modules: Vec<ModuleSpecifier>,
   test_modules: Vec<ModuleSpecifier>,
   no_run: bool,
-  fail_fast: Option<usize>,
+  fail_fast: Option<NonZeroUsize>,
   allow_none: bool,
   filter: Option<String>,
   shuffle: Option<u64>,
-  concurrent_jobs: usize,
+  concurrent_jobs: NonZeroUsize,
 ) -> Result<(), AnyError> {
   if !allow_none && doc_modules.is_empty() && test_modules.is_empty() {
     return Err(generic_error("No test modules found"));
@@ -570,10 +571,10 @@ pub async fn run_tests(
   });
 
   let join_stream = stream::iter(join_handles)
-    .buffer_unordered(concurrent_jobs)
+    .buffer_unordered(concurrent_jobs.get())
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
-  let mut reporter = create_reporter(concurrent_jobs > 1);
+  let mut reporter = create_reporter(concurrent_jobs.get() > 1);
   let handler = {
     tokio::task::spawn_blocking(move || {
       let earlier = Instant::now();
@@ -618,7 +619,7 @@ pub async fn run_tests(
         }
 
         if let Some(x) = fail_fast {
-          if summary.failed >= x {
+          if summary.failed >= x.get() {
             break;
           }
         }
