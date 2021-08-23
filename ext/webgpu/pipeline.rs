@@ -9,6 +9,8 @@ use std::borrow::Cow;
 
 use super::error::{WebGpuError, WebGpuResult};
 
+const MAX_BIND_GROUPS: usize = 8;
+
 pub(crate) struct WebGpuPipelineLayout(
   pub(crate) wgpu_core::id::PipelineLayoutId,
 );
@@ -200,7 +202,7 @@ pub fn op_webgpu_create_compute_pipeline(
     Some(_) => None,
     None => Some(wgpu_core::device::ImplicitPipelineIds {
       root_id: std::marker::PhantomData,
-      group_ids: &[std::marker::PhantomData; wgpu_core::MAX_BIND_GROUPS],
+      group_ids: &[std::marker::PhantomData; MAX_BIND_GROUPS],
     }),
   };
 
@@ -623,7 +625,7 @@ pub fn op_webgpu_create_render_pipeline(
     Some(_) => None,
     None => Some(wgpu_core::device::ImplicitPipelineIds {
       root_id: std::marker::PhantomData,
-      group_ids: &[std::marker::PhantomData; wgpu_core::MAX_BIND_GROUPS],
+      group_ids: &[std::marker::PhantomData; MAX_BIND_GROUPS],
     }),
   };
 
