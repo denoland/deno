@@ -13,6 +13,7 @@ use deno_runtime::permissions::PermissionsOptions;
 use log::debug;
 use log::Level;
 use std::net::SocketAddr;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -106,7 +107,7 @@ pub enum DenoSubcommand {
     include: Option<Vec<String>>,
     filter: Option<String>,
     shuffle: Option<u64>,
-    concurrent_jobs: usize,
+    concurrent_jobs: NonZeroUsize,
   },
   Types,
   Upgrade {
@@ -1103,9 +1104,9 @@ fn test_subcommand<'a, 'b>() -> App<'a, 'b> {
         .min_values(0)
         .max_values(1)
         .takes_value(true)
-        .validator(|val: String| match val.parse::<usize>() {
+        .validator(|val: String| match val.parse::<NonZeroUsize>() {
           Ok(_) => Ok(()),
-          Err(_) => Err("jobs should be a number".to_string()),
+          Err(_) => Err("jobs should be a non zero unsigned integer".to_string()),
         }),
     )
     .arg(
@@ -1820,10 +1821,10 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
       value.parse().unwrap()
     } else {
       // TODO(caspervonb) drop the dependency on num_cpus when https://doc.rust-lang.org/std/thread/fn.available_concurrency.html becomes stable.
-      num_cpus::get()
+      NonZeroUsize::new(num_cpus::get()).unwrap()
     }
   } else {
-    1
+    NonZeroUsize::new(1).unwrap()
   };
 
   let include = if matches.is_present("files") {
@@ -3575,7 +3576,7 @@ mod tests {
           quiet: false,
           include: Some(svec!["dir1/", "dir2/"]),
           shuffle: None,
-          concurrent_jobs: 1,
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         },
         unstable: true,
         coverage_dir: Some("cov".to_string()),
@@ -3629,6 +3630,31 @@ mod tests {
   }
 
   #[test]
+  fn test_with_concurrent_jobs() {
+    let r = flags_from_vec(svec!["deno", "test", "--jobs=4"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: None,
+          allow_none: false,
+          quiet: false,
+          shuffle: None,
+          include: None,
+          concurrent_jobs: NonZeroUsize::new(4).unwrap(),
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "test", "--jobs=0"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
   fn test_with_fail_fast() {
     let r = flags_from_vec(svec!["deno", "test", "--fail-fast=3"]);
     assert_eq!(
@@ -3643,7 +3669,7 @@ mod tests {
           quiet: false,
           shuffle: None,
           include: None,
-          concurrent_jobs: 1,
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         },
         ..Flags::default()
       }
@@ -3669,7 +3695,7 @@ mod tests {
           quiet: false,
           shuffle: None,
           include: None,
-          concurrent_jobs: 1,
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         },
         enable_testing_features: true,
         ..Flags::default()
@@ -3692,7 +3718,7 @@ mod tests {
           quiet: false,
           shuffle: Some(1),
           include: None,
-          concurrent_jobs: 1,
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         },
         watch: false,
         ..Flags::default()
@@ -3715,7 +3741,7 @@ mod tests {
           quiet: false,
           shuffle: None,
           include: None,
-          concurrent_jobs: 1,
+          concurrent_jobs: NonZeroUsize::new(1).unwrap(),
         },
         watch: true,
         ..Flags::default()
