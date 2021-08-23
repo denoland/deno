@@ -76,6 +76,7 @@ use std::env;
 use std::io::Read;
 use std::io::Write;
 use std::iter::once;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -1003,12 +1004,12 @@ async fn test_command(
   include: Option<Vec<String>>,
   no_run: bool,
   doc: bool,
-  fail_fast: Option<usize>,
+  fail_fast: Option<NonZeroUsize>,
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
   shuffle: Option<u64>,
-  concurrent_jobs: usize,
+  concurrent_jobs: NonZeroUsize,
 ) -> Result<(), AnyError> {
   if let Some(ref coverage_dir) = flags.coverage_dir {
     std::fs::create_dir_all(&coverage_dir)?;
