@@ -71,6 +71,7 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use log::debug;
 use log::info;
+use log::warn;
 use std::collections::HashSet;
 use std::env;
 use std::io::Read;
@@ -403,7 +404,7 @@ async fn compile_command(
     module_specifier.to_string()
   );
   let bundle_str =
-    bundle_module_graph(module_graph, program_state.clone(), flags, debug)?;
+    bundle_module_graph(module_graph, program_state.clone(), debug)?;
 
   info!(
     "{} {}",
@@ -613,7 +614,11 @@ async fn create_module_graph_and_maybe_check(
     .await?;
   let module_graph = builder.get_graph();
 
-  if program_state.flags.check || !program_state.flags.no_check {
+  if !program_state.flags.check && !program_state.flags.no_check {
+    warn!("{}: type checking is no longer the default behavior, use the --check flag to type check.", colors::yellow("warning"));
+  }
+
+  if program_state.flags.check {
     // TODO(@kitsonk) support bundling for workers
     let lib = if program_state.flags.unstable {
       module_graph::TypeLib::UnstableDenoWindow
@@ -645,7 +650,6 @@ async fn create_module_graph_and_maybe_check(
 fn bundle_module_graph(
   module_graph: module_graph::Graph,
   program_state: Arc<ProgramState>,
-  flags: Flags,
   debug: bool,
 ) -> Result<String, AnyError> {
   let (bundle, stats, maybe_ignored_options) =
@@ -653,11 +657,8 @@ fn bundle_module_graph(
       debug,
       maybe_config_file: program_state.maybe_config_file.clone(),
     })?;
-  match maybe_ignored_options {
-    Some(ignored_options) if flags.no_check => {
-      eprintln!("{}", ignored_options);
-    }
-    _ => {}
+  if let Some(ignored_options) = maybe_ignored_options {
+    eprintln!("{}", ignored_options);
   }
   debug!("{}", stats);
   Ok(bundle)
@@ -718,13 +719,11 @@ async fn bundle_command(
     Arc<ProgramState>,
     module_graph::Graph,
   )| {
-    let flags = flags.clone();
     let out_file = out_file.clone();
     async move {
       info!("{} {}", colors::green("Bundle"), module_graph.info()?.root);
 
-      let output =
-        bundle_module_graph(module_graph, program_state, flags, debug)?;
+      let output = bundle_module_graph(module_graph, program_state, debug)?;
 
       debug!(">>>>> bundle END");
 

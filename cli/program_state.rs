@@ -59,6 +59,9 @@ pub struct ProgramState {
   pub maybe_import_map: Option<ImportMap>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub root_cert_store: Option<RootCertStore>,
+  /// A flag indicating if the user has been warned about the change in type
+  /// checking default behavior.
+  warn_check: Arc<Mutex<bool>>,
   pub blob_store: BlobStore,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub shared_array_buffer_store: SharedArrayBufferStore,
@@ -211,6 +214,7 @@ impl ProgramState {
       maybe_import_map,
       maybe_inspector_server,
       root_cert_store: Some(root_cert_store.clone()),
+      warn_check: Arc::new(Mutex::new(false)),
       blob_store,
       broadcast_channel,
       shared_array_buffer_store,
@@ -250,19 +254,7 @@ impl ProgramState {
       modules.keys().cloned().collect::<HashSet<_>>()
     };
 
-    let result_modules = if self.flags.no_check {
-      let result_info = graph.transpile(TranspileOptions {
-        debug,
-        maybe_config_file,
-        reload: self.flags.reload,
-        reload_exclusions,
-      })?;
-      debug!("{}", result_info.stats);
-      if let Some(ignored_options) = result_info.maybe_ignored_options {
-        warn!("{}", ignored_options);
-      }
-      result_info.loadable_modules
-    } else {
+    let result_modules = if self.flags.check {
       let result_info = graph.check(CheckOptions {
         debug,
         emit: true,
@@ -278,6 +270,23 @@ impl ProgramState {
       }
       if !result_info.diagnostics.is_empty() {
         return Err(anyhow!(result_info.diagnostics));
+      }
+      result_info.loadable_modules
+    } else {
+      let mut warn_check = self.warn_check.lock();
+      if warn_check.eq(&false) && !self.flags.no_check {
+        *warn_check = true;
+        warn!("{}: type checking is no longer the default behavior, use the --check flag to type check.", colors::yellow("warning"));
+      }
+      let result_info = graph.transpile(TranspileOptions {
+        debug,
+        maybe_config_file,
+        reload: self.flags.reload,
+        reload_exclusions,
+      })?;
+      debug!("{}", result_info.stats);
+      if let Some(ignored_options) = result_info.maybe_ignored_options {
+        warn!("{}", ignored_options);
       }
       result_info.loadable_modules
     };
@@ -324,19 +333,7 @@ impl ProgramState {
       modules.keys().cloned().collect::<HashSet<_>>()
     };
 
-    let result_modules = if self.flags.no_check {
-      let result_info = graph.transpile(TranspileOptions {
-        debug,
-        maybe_config_file,
-        reload: self.flags.reload,
-        reload_exclusions,
-      })?;
-      debug!("{}", result_info.stats);
-      if let Some(ignored_options) = result_info.maybe_ignored_options {
-        warn!("{}", ignored_options);
-      }
-      result_info.loadable_modules
-    } else {
+    let result_modules = if self.flags.check {
       let result_info = graph.check(CheckOptions {
         debug,
         emit: true,
@@ -352,6 +349,23 @@ impl ProgramState {
       }
       if !result_info.diagnostics.is_empty() {
         return Err(anyhow!(result_info.diagnostics));
+      }
+      result_info.loadable_modules
+    } else {
+      let mut warn_check = self.warn_check.lock();
+      if warn_check.eq(&false) && !self.flags.no_check {
+        *warn_check = true;
+        warn!("{}: type checking is no longer the default behavior, use the --check flag to type check.", colors::yellow("warning"));
+      }
+      let result_info = graph.transpile(TranspileOptions {
+        debug,
+        maybe_config_file,
+        reload: self.flags.reload,
+        reload_exclusions,
+      })?;
+      debug!("{}", result_info.stats);
+      if let Some(ignored_options) = result_info.maybe_ignored_options {
+        warn!("{}", ignored_options);
       }
       result_info.loadable_modules
     };

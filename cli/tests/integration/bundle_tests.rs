@@ -14,6 +14,7 @@ fn bundle_exports() {
   let mut deno = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("bundle")
+    .arg("--check")
     .arg(mod1)
     .arg(&bundle)
     .spawn()
