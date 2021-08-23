@@ -77,6 +77,7 @@ use std::env;
 use std::io::Read;
 use std::io::Write;
 use std::iter::once;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -1004,7 +1005,7 @@ async fn test_command(
   include: Option<Vec<String>>,
   no_run: bool,
   doc: bool,
-  fail_fast: Option<usize>,
+  fail_fast: Option<NonZeroUsize>,
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,

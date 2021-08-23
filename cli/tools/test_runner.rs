@@ -469,7 +469,7 @@ pub async fn run_tests(
   doc_modules: Vec<ModuleSpecifier>,
   test_modules: Vec<ModuleSpecifier>,
   no_run: bool,
-  fail_fast: Option<usize>,
+  fail_fast: Option<NonZeroUsize>,
   quiet: bool,
   allow_none: bool,
   filter: Option<String>,
@@ -621,7 +621,7 @@ pub async fn run_tests(
         }
 
         if let Some(x) = fail_fast {
-          if summary.failed >= x {
+          if summary.failed >= x.get() {
             break;
           }
         }
