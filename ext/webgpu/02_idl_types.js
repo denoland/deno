@@ -39,11 +39,7 @@
     GPUOutOfMemoryError,
     GPUValidationError,
   } = window.__bootstrap.webgpu;
-  const {
-    SymbolIterator,
-    TypeError,
-    Uint32Array,
-  } = window.__bootstrap.primordials;
+  const { SymbolIterator, TypeError } = window.__bootstrap.primordials;
 
   // This needs to be initalized after all of the base classes are implmented,
   // otherwise their converters might not be available yet.
