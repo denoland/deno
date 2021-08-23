@@ -23,8 +23,11 @@
     ArrayPrototypeIncludes,
     ArrayPrototypePush,
     ArrayPrototypeSome,
-    ObjectKeys,
     Promise,
+    Set,
+    SetPrototypeAdd,
+    SetPrototypeDelete,
+    SetPrototypeValues,
     StringPrototypeIncludes,
     StringPrototypeToLowerCase,
     StringPrototypeSplit,
@@ -39,11 +42,11 @@
 
   class HttpConn {
     #rid = 0;
-    // This object holds resource ids of resources
+    // This set holds resource ids of resources
     // that were created during lifecycle of this request.
     // When the connection is closed these resources should be closed
     // as well.
-    managedResources = {};
+    managedResources = new Set();
 
     constructor(rid) {
       this.#rid = rid;
@@ -91,7 +94,7 @@
       /** @type {ReadableStream<Uint8Array> | undefined} */
       let body = null;
       if (typeof requestRid === "number") {
-        this.managedResources[requestRid] = true;
+        SetPrototypeAdd(this.managedResources, requestRid);
         body = createRequestBodyStream(this, requestRid);
       }
 
@@ -104,7 +107,7 @@
       const signal = abortSignal.newSignal();
       const request = fromInnerRequest(innerRequest, signal, "immutable");
 
-      this.managedResources[responseSenderRid] = true;
+      SetPrototypeAdd(this.managedResources, responseSenderRid);
       const respondWith = createRespondWith(
         this,
         responseSenderRid,
@@ -116,7 +119,7 @@
 
     /** @returns {void} */
     close() {
-      for (const rid of ObjectKeys(this.managedResources)) {
+      for (const rid of SetPrototypeValues(this.managedResources)) {
         try {
           core.close(rid);
         } catch (_e) {
@@ -193,7 +196,7 @@
         respBody = new Uint8Array(0);
       }
 
-      delete httpConn.managedResources[responseSenderRid];
+      SetPrototypeDelete(httpConn.managedResources, responseSenderRid);
       let responseBodyRid;
       try {
         responseBodyRid = await core.opAsync("op_http_response", [
@@ -216,7 +219,7 @@
       // If `respond` returns a responseBodyRid, we should stream the body
       // to that resource.
       if (responseBodyRid !== null) {
-        httpConn.managedResources[responseBodyRid] = true;
+        SetPrototypeAdd(httpConn.managedResources, responseBodyRid);
         try {
           if (respBody === null || !(respBody instanceof ReadableStream)) {
             throw new TypeError("Unreachable");
@@ -248,7 +251,7 @@
         } finally {
           // Once all chunks are sent, and the request body is closed, we can
           // close the response body.
-          delete httpConn.managedResources[responseBodyRid];
+          SetPrototypeDelete(httpConn.managedResources, responseBodyRid);
           try {
             await core.opAsync("op_http_response_close", responseBodyRid);
           } catch { /* pass */ }
@@ -316,7 +319,7 @@
           } else {
             // We have reached the end of the body, so we close the stream.
             controller.close();
-            delete httpConn.managedResources[requestRid];
+            SetPrototypeDelete(httpConn.managedResources, requestRid);
             core.close(requestRid);
           }
         } catch (err) {
@@ -324,12 +327,12 @@
           // error.
           controller.error(err);
           controller.close();
-          delete httpConn.managedResources[requestRid];
+          SetPrototypeDelete(httpConn.managedResources, requestRid);
           core.close(requestRid);
         }
       },
       cancel() {
-        delete httpConn.managedResources[requestRid];
+        SetPrototypeDelete(httpConn.managedResources, requestRid);
         core.close(requestRid);
       },
     });
