@@ -225,6 +225,7 @@ pub fn compile_to_runtime_flags(
     lock_write: false,
     lock: None,
     log_level: flags.log_level,
+    check: false,
     no_check: false,
     unsafely_ignore_certificate_errors: flags
       .unsafely_ignore_certificate_errors,

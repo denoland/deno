@@ -216,6 +216,10 @@ pub fn install(
     }
   }
 
+  if flags.check {
+    executable_args.push("--check".to_string());
+  }
+
   if flags.no_check {
     executable_args.push("--no-check".to_string());
   }
@@ -636,7 +640,7 @@ mod tests {
       Flags {
         allow_net: Some(vec![]),
         allow_read: Some(vec![]),
-        no_check: true,
+        check: true,
         log_level: Some(Level::Error),
         ..Flags::default()
       },
@@ -656,9 +660,9 @@ mod tests {
     assert!(file_path.exists());
     let content = fs::read_to_string(file_path).unwrap();
     if cfg!(windows) {
-      assert!(content.contains(r#""run" "--allow-read" "--allow-net" "--quiet" "--no-check" "http://localhost:4545/echo_server.ts" "--foobar""#));
+      assert!(content.contains(r#""run" "--allow-read" "--allow-net" "--quiet" "--check" "http://localhost:4545/echo_server.ts" "--foobar""#));
     } else {
-      assert!(content.contains(r#"run --allow-read --allow-net --quiet --no-check 'http://localhost:4545/echo_server.ts' --foobar"#));
+      assert!(content.contains(r#"run --allow-read --allow-net --quiet --check 'http://localhost:4545/echo_server.ts' --foobar"#));
     }
   }
 

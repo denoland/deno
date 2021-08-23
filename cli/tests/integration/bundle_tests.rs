@@ -363,6 +363,12 @@ itest!(bundle_jsx {
   output: "bundle_jsx.out",
 });
 
+itest!(bundle_check {
+  args: "bundle --check bundle_check.ts",
+  output: "bundle_check.ts.out",
+  exit_code: 1,
+});
+
 itest!(error_027_bundle_with_bare_import {
   args: "bundle error_027_bundle_with_bare_import.ts",
   output: "error_027_bundle_with_bare_import.ts.out",

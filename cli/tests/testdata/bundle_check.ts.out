@@ -1,0 +1,5 @@
+[WILDCARD]
+error: TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+export const a: number = "a";
+             ^
+    at [WILDCARD]bundle_check.ts:1:14

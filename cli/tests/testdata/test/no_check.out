@@ -1,3 +1,4 @@
+warning: The flag --no-check is deprecated and will be removed in the future.
 
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out ([WILDCARD])
 

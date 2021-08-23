@@ -613,7 +613,7 @@ async fn create_module_graph_and_maybe_check(
     .await?;
   let module_graph = builder.get_graph();
 
-  if !program_state.flags.no_check {
+  if program_state.flags.check || !program_state.flags.no_check {
     // TODO(@kitsonk) support bundling for workers
     let lib = if program_state.flags.unstable {
       module_graph::TypeLib::UnstableDenoWindow
