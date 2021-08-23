@@ -6,6 +6,22 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.13.2 / 2021.08.23
+
+- fix(cli/flags): require a non zero usize for concurrent jobs (#11802)
+- fix(ext/crypto): exportKey() for HMAC (#11737)
+- fix(ext/crypto): remove duplicate Algorithm interface definition (#11807)
+- fix(ext/ffi): don't panic on invalid enum values (#11815)
+- fix(ext/http): resource leak on HttpConn.close() (#11805)
+- fix(lsp): better handling of languageId (#11755)
+- fix(runtime): event loop panics in classic workers (#11756)
+- fix(ext/fetch): Headers constructor error message (#11778)
+- perf(ext/url): cleanup and optimize url parsing op args (#11763)
+- perf(ext/url): optimize UrlParts op serialization (#11765)
+- perf(ext/url): use DOMString instead of USVString as webidl converter for URL
+  parsing (#11775)
+- perf(url): build with opt-level 3 (#11779)
+
 ### 1.13.1 / 2021.08.16
 
 - fix: Blob#slice arguments should be optional (#11665)
