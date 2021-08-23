@@ -403,12 +403,6 @@ declare type GPUTextureSampleType =
   | "sint"
   | "uint";
 
-declare interface GPUTextureBindingLayout {
-  sampleType?: GPUTextureSampleType;
-  viewDimension?: GPUTextureViewDimension;
-  multisampled?: boolean;
-}
-
 declare type GPUStorageTextureAccess = "write-only";
 
 declare interface GPUStorageTextureBindingLayout {

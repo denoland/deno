@@ -1585,6 +1585,7 @@
             origin: destination.origin
               ? normalizeGPUOrigin3D(destination.origin)
               : undefined,
+            aspect: destination.aspect,
           },
           dataLayout,
           size: normalizeGPUExtent3D(size),
@@ -2916,6 +2917,7 @@
             origin: destination.origin
               ? normalizeGPUOrigin3D(destination.origin)
               : undefined,
+            aspect: destination.aspect,
           },
           copySize: normalizeGPUExtent3D(copySize),
         },
@@ -2978,6 +2980,7 @@
             origin: source.origin
               ? normalizeGPUOrigin3D(source.origin)
               : undefined,
+            aspect: source.aspect,
           },
           destination: {
             ...destination,
@@ -3044,6 +3047,7 @@
             origin: source.origin
               ? normalizeGPUOrigin3D(source.origin)
               : undefined,
+            aspect: source.aspect,
           },
           destination: {
             texture: destinationTextureRid,
@@ -3051,6 +3055,7 @@
             origin: destination.origin
               ? normalizeGPUOrigin3D(destination.origin)
               : undefined,
+            aspect: source.aspect,
           },
           copySize: normalizeGPUExtent3D(copySize),
         },
