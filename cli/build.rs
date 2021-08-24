@@ -133,9 +133,7 @@ fn create_compiler_snapshot(
     "esnext.error",
     "esnext.intl",
     "esnext.object",
-    "esnext.promise",
     "esnext.string",
-    "esnext.weakref",
   ];
 
   let path_dts = cwd.join("dts");
