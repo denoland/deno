@@ -650,18 +650,27 @@ impl JsRuntime {
 
   /// Waits for the given value to resolve while polling the event loop.
   ///
+  /// This future resolves when the value is resolved or the event loop is runs to completion.
   pub async fn resolve_value(
     &mut self,
     global: v8::Global<v8::Value>,
   ) -> Result<v8::Global<v8::Value>, AnyError> {
     poll_fn(|cx| {
-      self.poll_event_loop(cx, false);
+      let state = self.poll_event_loop(cx, false);
+
       let mut scope = self.handle_scope();
       let local = v8::Local::<v8::Value>::new(&mut scope, &global);
 
       if let Ok(promise) = v8::Local::<v8::Promise>::try_from(local) {
         match promise.state() {
-          v8::PromiseState::Pending => Poll::Pending,
+          v8::PromiseState::Pending => match state {
+            Poll::Ready(Ok(_)) => {
+              let msg = "Promise resolution is still pending but the event loop has already resolved.";
+              Poll::Ready(Err(generic_error(msg)))
+            },
+            Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
+            Poll::Pending => Poll::Pending,
+          },
           v8::PromiseState::Fulfilled => {
             let value = promise.result(&mut scope);
             let value_handle = v8::Global::new(&mut scope, value);
