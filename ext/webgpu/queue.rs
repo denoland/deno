@@ -128,6 +128,12 @@ pub fn op_webgpu_write_texture(
         y: origin.y.unwrap_or(0),
         z: origin.z.unwrap_or(0),
       }),
+    aspect: match args.destination.aspect.as_str() {
+      "all" => wgpu_types::TextureAspect::All,
+      "stencil-only" => wgpu_types::TextureAspect::StencilOnly,
+      "depth-only" => wgpu_types::TextureAspect::DepthOnly,
+      _ => unreachable!(),
+    },
   };
   let data_layout = wgpu_types::ImageDataLayout {
     offset: args.data_layout.offset.unwrap_or(0),

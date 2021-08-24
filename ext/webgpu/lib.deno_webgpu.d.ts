@@ -37,8 +37,11 @@ declare class GPUSupportedLimits {
   maxVertexBufferArrayStride?: number;
   maxInterStageShaderComponents?: number;
   maxComputeWorkgroupStorageSize?: number;
-  maxComputeWorkgroupInvocations?: number;
-  maxComputePerDimensionDispatchSize?: number;
+  maxComputeInvocationsPerWorkgroup?: number;
+  maxComputeWorkgroupSizeX?: number;
+  maxComputeWorkgroupSizeY?: number;
+  maxComputeWorkgroupSizeZ?: number;
+  maxComputeWorkgroupsPerDimension?: number;
 }
 
 declare class GPUSupportedFeatures {
@@ -69,7 +72,7 @@ declare class GPU {
 
 declare interface GPURequestAdapterOptions {
   powerPreference?: GPUPowerPreference;
-  forceSoftware?: boolean;
+  forceFallbackAdapter?: boolean;
 }
 
 declare type GPUPowerPreference = "low-power" | "high-performance";
@@ -78,7 +81,7 @@ declare class GPUAdapter {
   readonly name: string;
   readonly features: GPUSupportedFeatures;
   readonly limits: GPUSupportedLimits;
-  readonly isSoftware: boolean;
+  readonly isFallbackAdapter: boolean;
 
   requestDevice(descriptor?: GPUDeviceDescriptor): Promise<GPUDevice>;
 }
@@ -226,8 +229,8 @@ declare type GPUTextureUsageFlags = number;
 declare class GPUTextureUsage {
   static COPY_SRC: 0x01;
   static COPY_DST: 0x02;
-  static SAMPLED: 0x04;
-  static STORAGE: 0x08;
+  static TEXTURE_BINDING: 0x04;
+  static STORAGE_BINDING: 0x08;
   static RENDER_ATTACHMENT: 0x10;
 }
 
@@ -400,13 +403,7 @@ declare type GPUTextureSampleType =
   | "sint"
   | "uint";
 
-declare interface GPUTextureBindingLayout {
-  sampleType?: GPUTextureSampleType;
-  viewDimension?: GPUTextureViewDimension;
-  multisampled?: boolean;
-}
-
-declare type GPUStorageTextureAccess = "read-only" | "write-only";
+declare type GPUStorageTextureAccess = "write-only";
 
 declare interface GPUStorageTextureBindingLayout {
   access: GPUStorageTextureAccess;
@@ -467,7 +464,7 @@ declare class GPUShaderModule implements GPUObjectBase {
 }
 
 declare interface GPUShaderModuleDescriptor extends GPUObjectDescriptorBase {
-  code: string | Uint32Array;
+  code: string;
   sourceMap?: any;
 }
 
@@ -655,7 +652,7 @@ declare type GPUVertexFormat =
   | "sint32x2"
   | "sint32x3"
   | "sint32x4";
-declare type GPUInputStepMode = "vertex" | "instance";
+declare type GPUVertexStepMode = "vertex" | "instance";
 
 declare interface GPUVertexState extends GPUProgrammableStage {
   buffers?: (GPUVertexBufferLayout | null)[];
@@ -663,7 +660,7 @@ declare interface GPUVertexState extends GPUProgrammableStage {
 
 declare interface GPUVertexBufferLayout {
   arrayStride: number;
-  stepMode?: GPUInputStepMode;
+  stepMode?: GPUVertexStepMode;
   attributes: GPUVertexAttribute[];
 }
 
@@ -1022,11 +1019,15 @@ declare class GPURenderBundleEncoder
   finish(descriptor?: GPURenderBundleDescriptor): GPURenderBundle;
 }
 
-declare interface GPURenderBundleEncoderDescriptor
-  extends GPUObjectDescriptorBase {
+declare interface GPURenderPassLayout extends GPUObjectDescriptorBase {
   colorFormats: GPUTextureFormat[];
   depthStencilFormat?: GPUTextureFormat;
   sampleCount?: number;
+}
+
+declare interface GPURenderBundleEncoderDescriptor extends GPURenderPassLayout {
+  depthReadOnly?: boolean;
+  stencilReadOnly?: boolean;
 }
 
 declare class GPUQueue implements GPUObjectBase {

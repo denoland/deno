@@ -215,7 +215,7 @@
    * @property {number} rid
    * @property {GPUSupportedFeatures} features
    * @property {GPUSupportedLimits} limits
-   * @property {boolean} isSoftware
+   * @property {boolean} isFallbackAdapter
    */
 
   /**
@@ -257,8 +257,8 @@
       return this[_adapter].limits;
     }
     /** @returns {boolean} */
-    get isSoftware() {
-      return this[_adapter].isSoftware;
+    get isFallbackAdapter() {
+      return this[_adapter].isFallbackAdapter;
     }
 
     constructor() {
@@ -353,8 +353,11 @@
    * @property {number} maxVertexBufferArrayStride
    * @property {number} maxInterStageShaderComponents
    * @property {number} maxComputeWorkgroupStorageSize
-   * @property {number} maxComputeWorkgroupInvocations
-   * @property {number} maxComputePerDimensionDispatchSize
+   * @property {number} maxComputeInvocationsPerWorkgroup
+   * @property {number} maxComputeWorkgroupSizeX
+   * @property {number} maxComputeWorkgroupSizeY
+   * @property {number} maxComputeWorkgroupSizeZ
+   * @property {number} maxComputeWorkgroupsPerDimension
    */
 
   class GPUSupportedLimits {
@@ -448,13 +451,25 @@
       webidl.assertBranded(this, GPUSupportedLimits);
       return this[_limits].maxComputeWorkgroupStorageSize;
     }
-    get maxComputeWorkgroupInvocations() {
+    get maxComputeInvocationsPerWorkgroup() {
       webidl.assertBranded(this, GPUSupportedLimits);
-      return this[_limits].maxComputeWorkgroupInvocations;
+      return this[_limits].maxComputeInvocationsPerWorkgroup;
     }
-    get maxComputePerDimensionDispatchSize() {
+    get maxComputeWorkgroupSizeX() {
       webidl.assertBranded(this, GPUSupportedLimits);
-      return this[_limits].maxComputePerDimensionDispatchSize;
+      return this[_limits].maxComputeWorkgroupSizeX;
+    }
+    get maxComputeWorkgroupSizeY() {
+      webidl.assertBranded(this, GPUSupportedLimits);
+      return this[_limits].maxComputeWorkgroupSizeY;
+    }
+    get maxComputeWorkgroupSizeZ() {
+      webidl.assertBranded(this, GPUSupportedLimits);
+      return this[_limits].maxComputeWorkgroupSizeZ;
+    }
+    get maxComputeWorkgroupsPerDimension() {
+      webidl.assertBranded(this, GPUSupportedLimits);
+      return this[_limits].maxComputeWorkgroupsPerDimension;
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
@@ -1090,14 +1105,9 @@
         {
           deviceRid: device.rid,
           label: descriptor.label,
-          code: (typeof descriptor.code === "string")
-            ? descriptor.code
-            : undefined,
+          code: descriptor.code,
           sourceMap: descriptor.sourceMap,
         },
-        ...(descriptor.code instanceof Uint32Array
-          ? [new Uint8Array(descriptor.code.buffer)]
-          : []),
       );
       device.pushError(err);
 
@@ -1575,6 +1585,7 @@
             origin: destination.origin
               ? normalizeGPUOrigin3D(destination.origin)
               : undefined,
+            aspect: destination.aspect,
           },
           dataLayout,
           size: normalizeGPUExtent3D(size),
@@ -2071,10 +2082,10 @@
     static get COPY_DST() {
       return 0x02;
     }
-    static get SAMPLED() {
+    static get TEXTURE_BINDING() {
       return 0x04;
     }
-    static get STORAGE() {
+    static get STORAGE_BINDING() {
       return 0x08;
     }
     static get RENDER_ATTACHMENT() {
@@ -2906,6 +2917,7 @@
             origin: destination.origin
               ? normalizeGPUOrigin3D(destination.origin)
               : undefined,
+            aspect: destination.aspect,
           },
           copySize: normalizeGPUExtent3D(copySize),
         },
@@ -2968,6 +2980,7 @@
             origin: source.origin
               ? normalizeGPUOrigin3D(source.origin)
               : undefined,
+            aspect: source.aspect,
           },
           destination: {
             ...destination,
@@ -3034,6 +3047,7 @@
             origin: source.origin
               ? normalizeGPUOrigin3D(source.origin)
               : undefined,
+            aspect: source.aspect,
           },
           destination: {
             texture: destinationTextureRid,
@@ -3041,6 +3055,7 @@
             origin: destination.origin
               ? normalizeGPUOrigin3D(destination.origin)
               : undefined,
+            aspect: source.aspect,
           },
           copySize: normalizeGPUExtent3D(copySize),
         },

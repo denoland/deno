@@ -37,6 +37,8 @@ pub struct CreateRenderBundleEncoderArgs {
   color_formats: Vec<String>,
   depth_stencil_format: Option<String>,
   sample_count: Option<u32>,
+  depth_read_only: bool,
+  stencil_read_only: bool,
 }
 
 pub fn op_webgpu_create_render_bundle_encoder(
@@ -58,11 +60,17 @@ pub fn op_webgpu_create_render_bundle_encoder(
   let descriptor = wgpu_core::command::RenderBundleEncoderDescriptor {
     label: args.label.map(Cow::from),
     color_formats: Cow::from(color_formats),
-    depth_stencil_format: args
-      .depth_stencil_format
-      .map(|s| serialize_texture_format(&s))
-      .transpose()?,
     sample_count: args.sample_count.unwrap_or(1),
+    depth_stencil: if let Some(depth_stencil_format) = args.depth_stencil_format
+    {
+      Some(wgpu_types::RenderBundleDepthStencil {
+        format: serialize_texture_format(&depth_stencil_format)?,
+        depth_read_only: args.depth_read_only,
+        stencil_read_only: args.stencil_read_only,
+      })
+    } else {
+      None
+    },
   };
 
   let res =

@@ -577,16 +577,17 @@
 
       const handle = key[_handle];
       // 2.
-      const bits = WeakMapPrototypeGet(KEY_STORE, handle);
+      const innerKey = WeakMapPrototypeGet(KEY_STORE, handle);
 
       switch (key[_algorithm].name) {
         case "HMAC": {
-          if (bits == null) {
+          if (innerKey == null) {
             throw new DOMException("Key is not available", "OperationError");
           }
           switch (format) {
             // 3.
             case "raw": {
+              const bits = innerKey.data;
               for (let _i = 7 & (8 - bits.length % 8); _i > 0; _i--) {
                 bits.push(0);
               }

@@ -75,12 +75,13 @@ impl DynamicLibraryResource {
   ) -> Result<(), AnyError> {
     let fn_ptr = unsafe { self.lib.symbol::<*const c_void>(&symbol) }?;
     let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
-    let parameter_types =
-      foreign_fn.parameters.into_iter().map(NativeType::from);
-    let result_type = NativeType::from(foreign_fn.result);
     let cif = libffi::middle::Cif::new(
-      parameter_types.clone().map(libffi::middle::Type::from),
-      result_type.into(),
+      foreign_fn
+        .parameters
+        .clone()
+        .into_iter()
+        .map(libffi::middle::Type::from),
+      foreign_fn.result.into(),
     );
 
     self.symbols.insert(
@@ -88,8 +89,8 @@ impl DynamicLibraryResource {
       Symbol {
         cif,
         ptr,
-        parameter_types: parameter_types.collect(),
-        result_type,
+        parameter_types: foreign_fn.parameters,
+        result_type: foreign_fn.result,
       },
     );
 
@@ -149,27 +150,6 @@ impl From<NativeType> for libffi::middle::Type {
       NativeType::ISize => libffi::middle::Type::isize(),
       NativeType::F32 => libffi::middle::Type::f32(),
       NativeType::F64 => libffi::middle::Type::f64(),
-    }
-  }
-}
-
-impl From<String> for NativeType {
-  fn from(string: String) -> Self {
-    match string.as_str() {
-      "void" => NativeType::Void,
-      "u8" => NativeType::U8,
-      "i8" => NativeType::I8,
-      "u16" => NativeType::U16,
-      "i16" => NativeType::I16,
-      "u32" => NativeType::U32,
-      "i32" => NativeType::I32,
-      "u64" => NativeType::U64,
-      "i64" => NativeType::I64,
-      "usize" => NativeType::USize,
-      "isize" => NativeType::ISize,
-      "f32" => NativeType::F32,
-      "f64" => NativeType::F64,
-      _ => unimplemented!(),
     }
   }
 }
@@ -279,8 +259,8 @@ fn value_as_f64(value: Value) -> f64 {
 
 #[derive(Deserialize, Debug)]
 struct ForeignFunction {
-  parameters: Vec<String>,
-  result: String,
+  parameters: Vec<NativeType>,
+  result: NativeType,
 }
 
 #[derive(Deserialize, Debug)]
