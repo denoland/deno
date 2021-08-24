@@ -133,7 +133,7 @@ fn op_run(
   #[cfg(unix)]
   if let Some(uid) = run_args.uid {
     super::check_unstable(state, "Deno.run.uid");
-    c.gid(uid);
+    c.uid(uid);
   }
 
   // TODO: make this work with other resources, eg. sockets
