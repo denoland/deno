@@ -142,7 +142,7 @@ declare namespace Deno {
    * Opens a dynamic library and registers symbols
    */
   export function dlopen<S extends Record<string, ForeignFunction>>(
-    filename: string,
+    filename: string | URL,
     symbols: S,
   ): DynamicLibrary<S>;
 
