@@ -54,6 +54,10 @@ interface RsaPssParams extends Algorithm {
   saltLength: number;
 }
 
+interface RsaOaepParams extends Algorithm {
+  label?: Uint8Array;
+}
+
 interface HmacImportParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
   length?: number;
@@ -139,6 +143,16 @@ interface SubtleCrypto {
   ): Promise<boolean>;
   digest(
     algorithm: AlgorithmIdentifier,
+    data: BufferSource,
+  ): Promise<ArrayBuffer>;
+  encrypt(
+    algorithm: AlgorithmIdentifier | RsaOaepParams,
+    key: CryptoKey,
+    data: BufferSource,
+  ): Promise<ArrayBuffer>;
+  decrypt(
+    algorithm: AlgorithmIdentifier | RsaOaepParams,
+    key: CryptoKey,
     data: BufferSource,
   ): Promise<ArrayBuffer>;
 }
