@@ -1704,6 +1704,15 @@ pub mod tests {
       "Uncaught Error: fail",
       err.downcast::<JsError>().unwrap().message
     );
+
+    let value_global = runtime
+      .execute_script("a.js", "new Promise(resolve => {})")
+      .unwrap();
+    let error_string = runtime.resolve_value(value_global).await.unwrap_err().to_string();
+    assert_eq!(
+      "Promise resolution is still pending but the event loop has already resolved.",
+      error_string,
+    );
   }
 
   #[test]
