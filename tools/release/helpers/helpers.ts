@@ -63,3 +63,30 @@ export async function runCommand(params: {
 
   return new TextDecoder().decode(stdout);
 }
+
+export async function withRetries<TReturn>(params: {
+  action: () => Promise<TReturn>;
+  retryCount: number;
+  retryDelaySeconds: number;
+}) {
+  for (let i = 0; i < params.retryCount; i++) {
+    if (i > 0) {
+      console.log(
+        `Failed. Trying again in ${params.retryDelaySeconds} seconds...`,
+      );
+      await delay(params.retryDelaySeconds * 1000);
+      console.log(`Attempt ${i + 1}/${params.retryCount}...`);
+    }
+    try {
+      return await params.action();
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  throw new Error(`Failed after ${params.retryCount} attempts.`);
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

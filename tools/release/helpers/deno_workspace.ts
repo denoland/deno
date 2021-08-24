@@ -9,6 +9,7 @@ import {
   publishCrate,
 } from "./cargo.ts";
 import { getCratesIoMetadata } from "./crates_io.ts";
+import { withRetries } from "./helpers.ts";
 
 export class DenoWorkspace {
   #workspaceCrates: readonly DenoWorkspaceCrate[];
@@ -134,8 +135,18 @@ export class DenoWorkspaceCrate {
     }
 
     console.log(`Publishing ${this.name} ${this.version}...`);
-    await publishCrate(this.directoryPath);
-    return true;
+
+    // Sometimes a publish may fail due to local caching issues.
+    // Usually it will fix itself after retrying so try a few
+    // times before failing hard.
+    return await withRetries({
+      action: async () => {
+        await publishCrate(this.directoryPath);
+        return true;
+      },
+      retryCount: 3,
+      retryDelaySeconds: 10,
+    });
   }
 
   increment(part: "major" | "minor" | "patch") {
@@ -185,12 +196,15 @@ export class DenoWorkspaceCrate {
       throw new Error("Cannot update manifest while updating manifest.");
     }
     this.#isUpdatingManifest = true;
-    const originalText = await Deno.readTextFile(this.#pkg.manifest_path);
-    const newText = action(originalText);
-    if (originalText === newText) {
-      throw new Error(`The file didn't change: ${this.manifestPath}`);
+    try {
+      const originalText = await Deno.readTextFile(this.#pkg.manifest_path);
+      const newText = action(originalText);
+      if (originalText === newText) {
+        throw new Error(`The file didn't change: ${this.manifestPath}`);
+      }
+      await Deno.writeTextFile(this.manifestPath, newText);
+    } finally {
+      this.#isUpdatingManifest = false;
     }
-    await Deno.writeTextFile(this.manifestPath, newText);
-    this.#isUpdatingManifest = false;
   }
 }
