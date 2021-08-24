@@ -55,7 +55,7 @@ pub fn op_webgpu_create_buffer(
   let descriptor = wgpu_core::resource::BufferDescriptor {
     label: args.label.map(Cow::from),
     size: args.size,
-    usage: wgpu_types::BufferUsage::from_bits(args.usage)
+    usage: wgpu_types::BufferUsages::from_bits(args.usage)
       .ok_or_else(|| type_error("usage is not valid"))?,
     mapped_at_creation: args.mapped_at_creation.unwrap_or(false),
   };

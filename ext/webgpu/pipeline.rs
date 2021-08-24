@@ -9,6 +9,8 @@ use std::borrow::Cow;
 
 use super::error::{WebGpuError, WebGpuResult};
 
+const MAX_BIND_GROUPS: usize = 8;
+
 pub(crate) struct WebGpuPipelineLayout(
   pub(crate) wgpu_core::id::PipelineLayoutId,
 );
@@ -200,7 +202,7 @@ pub fn op_webgpu_create_compute_pipeline(
     Some(_) => None,
     None => Some(wgpu_core::device::ImplicitPipelineIds {
       root_id: std::marker::PhantomData,
-      group_ids: &[std::marker::PhantomData; wgpu_core::MAX_BIND_GROUPS],
+      group_ids: &[std::marker::PhantomData; MAX_BIND_GROUPS],
     }),
   };
 
@@ -489,11 +491,11 @@ pub fn op_webgpu_create_render_pipeline(
             array_stride: buffer.array_stride,
             step_mode: match buffer.step_mode {
               Some(step_mode) => match step_mode.as_str() {
-                "vertex" => wgpu_types::InputStepMode::Vertex,
-                "instance" => wgpu_types::InputStepMode::Instance,
+                "vertex" => wgpu_types::VertexStepMode::Vertex,
+                "instance" => wgpu_types::VertexStepMode::Instance,
                 _ => unreachable!(),
               },
-              None => wgpu_types::InputStepMode::Vertex,
+              None => wgpu_types::VertexStepMode::Vertex,
             },
             attributes: Cow::from(
               buffer
@@ -610,7 +612,7 @@ pub fn op_webgpu_create_render_pipeline(
               write_mask: target
                 .write_mask
                 .map_or(Default::default(), |mask| {
-                  wgpu_types::ColorWrite::from_bits(mask).unwrap()
+                  wgpu_types::ColorWrites::from_bits(mask).unwrap()
                 }),
             })
             .collect::<Vec<wgpu_types::ColorTargetState>>(),
@@ -623,7 +625,7 @@ pub fn op_webgpu_create_render_pipeline(
     Some(_) => None,
     None => Some(wgpu_core::device::ImplicitPipelineIds {
       root_id: std::marker::PhantomData,
-      group_ids: &[std::marker::PhantomData; wgpu_core::MAX_BIND_GROUPS],
+      group_ids: &[std::marker::PhantomData; MAX_BIND_GROUPS],
     }),
   };
 

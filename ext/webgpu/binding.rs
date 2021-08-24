@@ -91,7 +91,8 @@ pub fn op_webgpu_create_bind_group_layout(
   for entry in &args.entries {
     entries.push(wgpu_types::BindGroupLayoutEntry {
       binding: entry.binding,
-      visibility: wgpu_types::ShaderStage::from_bits(entry.visibility).unwrap(),
+      visibility: wgpu_types::ShaderStages::from_bits(entry.visibility)
+        .unwrap(),
       ty: if let Some(buffer) = &entry.buffer {
         wgpu_types::BindingType::Buffer {
           ty: match &buffer.kind {
@@ -166,7 +167,6 @@ pub fn op_webgpu_create_bind_group_layout(
       } else if let Some(storage_texture) = &entry.storage_texture {
         wgpu_types::BindingType::StorageTexture {
           access: match storage_texture.access.as_str() {
-            "read-only" => wgpu_types::StorageTextureAccess::ReadOnly,
             "write-only" => wgpu_types::StorageTextureAccess::WriteOnly,
             _ => unreachable!(),
           },
