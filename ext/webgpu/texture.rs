@@ -171,7 +171,7 @@ pub fn op_webgpu_create_texture(
       None => wgpu_types::TextureDimension::D2,
     },
     format: serialize_texture_format(&args.format)?,
-    usage: wgpu_types::TextureUsage::from_bits(args.usage).unwrap(),
+    usage: wgpu_types::TextureUsages::from_bits(args.usage).unwrap(),
   };
 
   gfx_put!(device => instance.device_create_texture(
