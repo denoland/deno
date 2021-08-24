@@ -1,0 +1,7 @@
+target/
+
+.dockerignore
+docker-bake.hcl
+Dockerfile
+
+deno
