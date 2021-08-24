@@ -283,6 +283,7 @@ pub struct LintFilesConfig {
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct LintConfig {
   pub rules: LintRulesConfig,
   pub files: LintFilesConfig,
@@ -366,8 +367,8 @@ impl ConfigFile {
 
   pub fn as_lint_config(&self) -> Result<Option<LintConfig>, AnyError> {
     if let Some(config) = self.json.lint.clone() {
-      let lint_config: LintConfig =
-        serde_json::from_value(config).context("lint should be an object")?;
+      let lint_config: LintConfig = serde_json::from_value(config)
+        .context("Failed to parse \"lint\" configuration")?;
       Ok(Some(lint_config))
     } else {
       Ok(None)

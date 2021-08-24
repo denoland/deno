@@ -53,26 +53,30 @@ pub async fn lint_files(
     return lint_stdin(json, maybe_lint_config.as_ref());
   }
 
-  // Combine ignored files from config file and CLI flag.
+  // Collect included and ignored files. CLI flags take precendence
+  // over config file, ie. if there's `files.ignore` in config file
+  // and `--ignore` CLI flag, only the flag value is taken into account.
   let mut include_files = args;
   let mut exclude_files = ignore;
 
   if let Some(lint_config) = maybe_lint_config.as_ref() {
-    let include_files_from_config_file = lint_config
-      .files
-      .include
-      .iter()
-      .map(PathBuf::from)
-      .collect::<Vec<PathBuf>>();
-    include_files.extend(include_files_from_config_file);
+    if include_files.is_empty() {
+      include_files = lint_config
+        .files
+        .include
+        .iter()
+        .map(PathBuf::from)
+        .collect::<Vec<PathBuf>>();
+    }
 
-    let exclude_files_from_config_file = lint_config
-      .files
-      .exclude
-      .iter()
-      .map(PathBuf::from)
-      .collect::<Vec<PathBuf>>();
-    exclude_files.extend(exclude_files_from_config_file);
+    if exclude_files.is_empty() {
+      exclude_files = lint_config
+        .files
+        .exclude
+        .iter()
+        .map(PathBuf::from)
+        .collect::<Vec<PathBuf>>();
+    }
   }
 
   let target_files =

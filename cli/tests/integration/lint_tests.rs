@@ -82,8 +82,21 @@ itest!(rules_quiet {
   exit_code: 0,
 });
 
-itest!(lint_config {
+itest!(lint_with_config {
   args: "lint --config lint/Deno.jsonc lint/lint_with_config/",
   output: "lint/lint_with_config.out",
+  exit_code: 1,
+});
+
+// Check if CLI flags take precedence
+itest!(lint_with_config_and_flags {
+  args: "lint --config lint/Deno.jsonc --ignore=lint/lint_with_config/a.ts",
+  output: "lint/lint_with_config_and_flags.out",
+  exit_code: 1,
+});
+
+itest!(lint_with_malformed_config {
+  args: "lint --config lint/Deno.malformed.jsonc",
+  output: "lint/lint_with_malformed_config.out",
   exit_code: 1,
 });
