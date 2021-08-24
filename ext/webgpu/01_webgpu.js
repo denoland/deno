@@ -2646,9 +2646,9 @@
           depthStencilAttachment.depthLoadOp =
             descriptor.depthStencilAttachment.depthLoadValue;
         } else {
-          depthStencilAttachment.depthLoadOp = "clear";
-          depthStencilAttachment.depthLoadValue =
-            descriptor.depthStencilAttachment.depthLoadValue;
+          depthStencilAttachment.depthLoadOp = {
+            clear: descriptor.depthStencilAttachment.depthLoadValue,
+          };
         }
 
         if (
@@ -2656,11 +2656,10 @@
         ) {
           depthStencilAttachment.stencilLoadOp =
             descriptor.depthStencilAttachment.stencilLoadValue;
-          depthStencilAttachment.stencilLoadValue = undefined;
         } else {
-          depthStencilAttachment.stencilLoadOp = "clear";
-          depthStencilAttachment.stencilLoadValue =
-            descriptor.depthStencilAttachment.stencilLoadValue;
+          depthStencilAttachment.stencilLoadOp = {
+            clear: descriptor.depthStencilAttachment.stencilLoadValue,
+          };
         }
       }
       const colorAttachments = ArrayPrototypeMap(
@@ -2717,10 +2716,9 @@
           if (typeof colorAttachment.loadValue === "string") {
             attachment.loadOp = colorAttachment.loadValue;
           } else {
-            attachment.loadOp = "clear";
-            attachment.loadValue = normalizeGPUColor(
-              colorAttachment.loadValue,
-            );
+            attachment.loadOp = {
+              clear: normalizeGPUColor(colorAttachment.loadValue),
+            };
           }
 
           return attachment;
@@ -3674,29 +3672,19 @@
         resourceContext: "Argument 2",
         selfContext: "this",
       });
-      if (dynamicOffsetsData instanceof Uint32Array) {
-        core.opSync(
-          "op_webgpu_render_pass_set_bind_group",
-          {
-            renderPassRid,
-            index,
-            bindGroup: bindGroupRid,
-            dynamicOffsetsDataStart,
-            dynamicOffsetsDataLength,
-          },
-          dynamicOffsetsData,
-        );
-      } else {
-        dynamicOffsetsData ??= [];
-        core.opSync("op_webgpu_render_pass_set_bind_group", {
-          renderPassRid,
-          index,
-          bindGroup: bindGroupRid,
-          dynamicOffsetsData,
-          dynamicOffsetsDataStart: 0,
-          dynamicOffsetsDataLength: dynamicOffsetsData.length,
-        });
+      if (!(dynamicOffsetsData instanceof Uint32Array)) {
+        dynamicOffsetsData = new Uint32Array(dynamicOffsetsData ?? []);
+        dynamicOffsetsDataStart = 0;
+        dynamicOffsetsDataLength = dynamicOffsetsData.length;
       }
+      core.opSync("op_webgpu_render_pass_set_bind_group", {
+        renderPassRid,
+        index,
+        bindGroup: bindGroupRid,
+        dynamicOffsetsData,
+        dynamicOffsetsDataStart,
+        dynamicOffsetsDataLength,
+      });
     }
 
     /**
@@ -4410,29 +4398,19 @@
         resourceContext: "Argument 2",
         selfContext: "this",
       });
-      if (dynamicOffsetsData instanceof Uint32Array) {
-        core.opSync(
-          "op_webgpu_compute_pass_set_bind_group",
-          {
-            computePassRid,
-            index,
-            bindGroup: bindGroupRid,
-            dynamicOffsetsDataStart,
-            dynamicOffsetsDataLength,
-          },
-          dynamicOffsetsData,
-        );
-      } else {
-        dynamicOffsetsData ??= [];
-        core.opSync("op_webgpu_compute_pass_set_bind_group", {
-          computePassRid,
-          index,
-          bindGroup: bindGroupRid,
-          dynamicOffsetsData,
-          dynamicOffsetsDataStart: 0,
-          dynamicOffsetsDataLength: dynamicOffsetsData.length,
-        });
+      if (!(dynamicOffsetsData instanceof Uint32Array)) {
+        dynamicOffsetsData = new Uint32Array(dynamicOffsetsData ?? []);
+        dynamicOffsetsDataStart = 0;
+        dynamicOffsetsDataLength = dynamicOffsetsData.length;
       }
+      core.opSync("op_webgpu_compute_pass_set_bind_group", {
+        computePassRid,
+        index,
+        bindGroup: bindGroupRid,
+        dynamicOffsetsData,
+        dynamicOffsetsDataStart,
+        dynamicOffsetsDataLength,
+      });
     }
 
     /**
@@ -4659,29 +4637,19 @@
         resourceContext: "Argument 2",
         selfContext: "this",
       });
-      if (dynamicOffsetsData instanceof Uint32Array) {
-        core.opSync(
-          "op_webgpu_render_bundle_encoder_set_bind_group",
-          {
-            renderBundleEncoderRid,
-            index,
-            bindGroup: bindGroupRid,
-            dynamicOffsetsDataStart,
-            dynamicOffsetsDataLength,
-          },
-          dynamicOffsetsData,
-        );
-      } else {
-        dynamicOffsetsData ??= [];
-        core.opSync("op_webgpu_render_bundle_encoder_set_bind_group", {
-          renderBundleEncoderRid,
-          index,
-          bindGroup: bindGroupRid,
-          dynamicOffsetsData,
-          dynamicOffsetsDataStart: 0,
-          dynamicOffsetsDataLength: dynamicOffsetsData.length,
-        });
+      if (!(dynamicOffsetsData instanceof Uint32Array)) {
+        dynamicOffsetsData = new Uint32Array(dynamicOffsetsData ?? []);
+        dynamicOffsetsDataStart = 0;
+        dynamicOffsetsDataLength = dynamicOffsetsData.length;
       }
+      core.opSync("op_webgpu_render_bundle_encoder_set_bind_group", {
+        renderBundleEncoderRid,
+        index,
+        bindGroup: bindGroupRid,
+        dynamicOffsetsData,
+        dynamicOffsetsDataStart,
+        dynamicOffsetsDataLength,
+      });
     }
 
     /**
