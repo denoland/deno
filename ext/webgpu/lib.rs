@@ -28,15 +28,13 @@ mod macros {
     ($id:expr => $global:ident.$method:ident( $($param:expr),* )) => {
       match $id.backend() {
         #[cfg(not(target_os = "macos"))]
-        wgpu_types::Backend::Vulkan => $global.$method::<wgpu_core::backend::Vulkan>( $($param),* ),
+        wgpu_types::Backend::Vulkan => $global.$method::<wgpu_core::api::Vulkan>( $($param),* ),
         #[cfg(target_os = "macos")]
-        wgpu_types::Backend::Metal => $global.$method::<wgpu_core::backend::Metal>( $($param),* ),
+        wgpu_types::Backend::Metal => $global.$method::<wgpu_core::api::Metal>( $($param),* ),
         #[cfg(windows)]
-        wgpu_types::Backend::Dx12 => $global.$method::<wgpu_core::backend::Dx12>( $($param),* ),
-        #[cfg(windows)]
-        wgpu_types::Backend::Dx11 => $global.$method::<wgpu_core::backend::Dx11>( $($param),* ),
+        wgpu_types::Backend::Dx12 => $global.$method::<wgpu_core::api::Dx12>( $($param),* ),
         #[cfg(all(unix, not(target_os = "macos")))]
-        wgpu_types::Backend::Gl => $global.$method::<wgpu_core::backend::Gl>( $($param),+ ),
+        wgpu_types::Backend::Gl => $global.$method::<wgpu_core::api::Gles>( $($param),+ ),
         other => panic!("Unexpected backend {:?}", other),
       }
     };
@@ -75,7 +73,6 @@ pub struct Unstable(pub bool);
 
 fn check_unstable(state: &OpState, api_name: &str) {
   let unstable = state.borrow::<Unstable>();
-
   if !unstable.0 {
     eprintln!(
       "Unstable API '{}'. The --unstable flag must be provided.",
@@ -151,18 +148,20 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
   if features.contains(wgpu_types::Features::MAPPABLE_PRIMARY_BUFFERS) {
     return_features.push("mappable-primary-buffers");
   }
-  if features.contains(wgpu_types::Features::SAMPLED_TEXTURE_BINDING_ARRAY) {
-    return_features.push("sampled-texture-binding-array");
+  if features.contains(wgpu_types::Features::TEXTURE_BINDING_ARRAY) {
+    return_features.push("texture-binding-array");
   }
-  if features
-    .contains(wgpu_types::Features::SAMPLED_TEXTURE_ARRAY_DYNAMIC_INDEXING)
-  {
-    return_features.push("sampled-texture-array-dynamic-indexing");
+  if features.contains(wgpu_types::Features::BUFFER_BINDING_ARRAY) {
+    return_features.push("buffer-binding-array");
   }
-  if features
-    .contains(wgpu_types::Features::SAMPLED_TEXTURE_ARRAY_NON_UNIFORM_INDEXING)
-  {
-    return_features.push("sampled-texture-array-non-uniform-indexing");
+  if features.contains(wgpu_types::Features::STORAGE_RESOURCE_BINDING_ARRAY) {
+    return_features.push("storage-resource-binding-array");
+  }
+  if features.contains(wgpu_types::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING) {
+    return_features.push("sampled-texture-and-storage-buffer-array-non-uniform-indexing");
+  }
+  if features.contains(wgpu_types::Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING) {
+    return_features.push("uniform-buffer-and-storage-buffer-texture-non-uniform-indexing");
   }
   if features.contains(wgpu_types::Features::UNSIZED_BINDING_ARRAY) {
     return_features.push("unsized-binding-array");
@@ -198,6 +197,21 @@ fn deserialize_features(features: &wgpu_types::Features) -> Vec<&'static str> {
   }
   if features.contains(wgpu_types::Features::VERTEX_ATTRIBUTE_64BIT) {
     return_features.push("vertex-attribute-64bit");
+  }
+  if features.contains(wgpu_types::Features::CONSERVATIVE_RASTERIZATION) {
+    return_features.push("conservative-rasterization");
+  }
+  if features.contains(wgpu_types::Features::VERTEX_WRITABLE_STORAGE) {
+    return_features.push("vertex-writable-storage");
+  }
+  if features.contains(wgpu_types::Features::CLEAR_COMMANDS) {
+    return_features.push("clear-commands");
+  }
+  if features.contains(wgpu_types::Features::SPIRV_SHADER_PASSTHROUGH) {
+    return_features.push("spirv-shader-passthrough");
+  }
+  if features.contains(wgpu_types::Features::SHADER_PRIMITIVE_INDEX) {
+    return_features.push("shader-primitive-index");
   }
 
   return_features
@@ -239,7 +253,7 @@ pub async fn op_webgpu_request_adapter(
     state.put(wgpu_core::hub::Global::new(
       "webgpu",
       wgpu_core::hub::IdentityManagerFactory,
-      wgpu_types::BackendBit::PRIMARY,
+      wgpu_types::Backends::PRIMARY,
     ));
     state.borrow::<Instance>()
   };
@@ -253,13 +267,13 @@ pub async fn op_webgpu_request_adapter(
       },
       None => Default::default(),
     },
-    // TODO(lucacasonato): respect forceSoftware
+    // TODO(lucacasonato): respect forceFallbackAdapter
     compatible_surface: None, // windowless
   };
   let res = instance.request_adapter(
     &descriptor,
     wgpu_core::instance::AdapterInputs::Mask(
-      wgpu_types::BackendBit::PRIMARY,
+      wgpu_types::Backends::PRIMARY,
       |_| std::marker::PhantomData,
     ),
   );
@@ -305,8 +319,8 @@ struct GpuLimits {
   max_storage_buffers_per_shader_stage: Option<u32>,
   max_storage_textures_per_shader_stage: Option<u32>,
   max_uniform_buffers_per_shader_stage: Option<u32>,
-  max_uniform_buffer_binding_size: Option<u32>,
-  max_storage_buffer_binding_size: Option<u32>,
+  max_uniform_buffer_binding_size: Option<u32>, // TODO(@crowlkats): u64
+  max_storage_buffer_binding_size: Option<u32>, // TODO(@crowlkats): u64
   // min_uniform_buffer_offset_alignment: Option<u32>,
   // min_storage_buffer_offset_alignment: Option<u32>,
   max_vertex_buffers: Option<u32>,
@@ -314,8 +328,11 @@ struct GpuLimits {
   max_vertex_buffer_array_stride: Option<u32>,
   // max_inter_stage_shader_components: Option<u32>,
   // max_compute_workgroup_storage_size: Option<u32>,
-  // max_compute_workgroup_invocations: Option<u32>,
-  // max_compute_per_dimension_dispatch_size: Option<u32>,
+  // max_compute_invocations_per_workgroup: Option<u32>,
+  // max_compute_workgroup_size_x: Option<u32>,
+  // max_compute_workgroup_size_y: Option<u32>,
+  // max_compute_workgroup_size_z: Option<u32>,
+  // max_compute_workgroups_per_dimension: Option<u32>,
 }
 
 impl From<GpuLimits> for wgpu_types::Limits {
@@ -370,12 +387,21 @@ impl From<GpuLimits> for wgpu_types::Limits {
       // max_compute_workgroup_storage_size: limits
       //   .max_compute_workgroup_storage_size
       //   .unwrap_or(default),
-      // max_compute_workgroup_invocations: limits
-      //   .max_compute_workgroup_invocations
-      //   .unwrap_or(default),
-      // max_compute_per_dimension_dispatch_size: limits
-      //   .max_compute_per_dimension_dispatch_size
-      //   .unwrap_or(default),
+      // max_compute_invocations_per_workgroup: limits
+      //    .max_compute_invocations_per_workgroup
+      //    .unwrap_or(default),
+      // max_compute_workgroup_size_x: limits
+      //    .max_compute_workgroup_size_x
+      //    .unwrap_or(default),
+      // max_compute_workgroup_size_y: limits
+      //    .max_compute_workgroup_size_y
+      //    .unwrap_or(default),
+      // max_compute_workgroup_size_z: limits
+      //    .max_compute_workgroup_size_z
+      //    .unwrap_or(default),
+      // max_compute_workgroups_per_dimension: limits
+      //    .max_compute_workgroups_per_dimension
+      //    .unwrap_or(default),
       max_push_constant_size: 0,
     }
   }
@@ -422,24 +448,26 @@ pub async fn op_webgpu_request_device(
     if passed_features.contains(&"mappable-primary-buffers".to_string()) {
       features.set(wgpu_types::Features::MAPPABLE_PRIMARY_BUFFERS, true);
     }
-    if passed_features.contains(&"sampled-texture-binding-array".to_string()) {
-      features.set(wgpu_types::Features::SAMPLED_TEXTURE_BINDING_ARRAY, true);
+    if passed_features.contains(&"texture-binding-array".to_string()) {
+      features.set(wgpu_types::Features::TEXTURE_BINDING_ARRAY, true);
     }
-    if passed_features
-      .contains(&"sampled-texture-array-dynamic-indexing".to_string())
-    {
-      features.set(
-        wgpu_types::Features::SAMPLED_TEXTURE_ARRAY_DYNAMIC_INDEXING,
-        true,
-      );
+    if passed_features.contains(&"buffer-binding-array".to_string()) {
+      features.set(wgpu_types::Features::BUFFER_BINDING_ARRAY, true);
     }
-    if passed_features
-      .contains(&"sampled-texture-array-non-uniform-indexing".to_string())
-    {
-      features.set(
-        wgpu_types::Features::SAMPLED_TEXTURE_ARRAY_NON_UNIFORM_INDEXING,
-        true,
-      );
+    if passed_features.contains(&"storage-resource-binding-array".to_string()) {
+      features.set(wgpu_types::Features::STORAGE_RESOURCE_BINDING_ARRAY, true);
+    }
+    if passed_features.contains(
+      &"sampled-texture-and-storage-buffer-array-non-uniform-indexing"
+        .to_string(),
+    ) {
+      features.set(wgpu_types::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING, true);
+    }
+    if passed_features.contains(
+      &"uniform-buffer-and-storage-buffer-texture-non-uniform-indexing"
+        .to_string(),
+    ) {
+      features.set(wgpu_types::Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING, true);
     }
     if passed_features.contains(&"unsized-binding-array".to_string()) {
       features.set(wgpu_types::Features::UNSIZED_BINDING_ARRAY, true);
@@ -478,6 +506,21 @@ pub async fn op_webgpu_request_device(
     }
     if passed_features.contains(&"vertex-attribute-64bit".to_string()) {
       features.set(wgpu_types::Features::VERTEX_ATTRIBUTE_64BIT, true);
+    }
+    if passed_features.contains(&"conservative-rasterization".to_string()) {
+      features.set(wgpu_types::Features::CONSERVATIVE_RASTERIZATION, true);
+    }
+    if passed_features.contains(&"vertex-writable-storage".to_string()) {
+      features.set(wgpu_types::Features::VERTEX_WRITABLE_STORAGE, true);
+    }
+    if passed_features.contains(&"clear-commands".to_string()) {
+      features.set(wgpu_types::Features::CLEAR_COMMANDS, true);
+    }
+    if passed_features.contains(&"spirv-shader-passthrough".to_string()) {
+      features.set(wgpu_types::Features::SPIRV_SHADER_PASSTHROUGH, true);
+    }
+    if passed_features.contains(&"shader-primitive-index".to_string()) {
+      features.set(wgpu_types::Features::SHADER_PRIMITIVE_INDEX, true);
     }
   }
 
@@ -520,7 +563,7 @@ pub async fn op_webgpu_request_device(
 #[serde(rename_all = "camelCase")]
 pub struct CreateQuerySetArgs {
   device_rid: ResourceId,
-  _label: Option<String>, // not yet implemented
+  label: Option<String>,
   #[serde(rename = "type")]
   kind: String,
   count: u32,
@@ -538,6 +581,7 @@ pub fn op_webgpu_create_query_set(
   let instance = &state.borrow::<Instance>();
 
   let descriptor = wgpu_types::QuerySetDescriptor {
+    label: args.label.map(Cow::from),
     ty: match args.kind.as_str() {
       "pipeline-statistics" => {
         let mut pipeline_statistics_names =

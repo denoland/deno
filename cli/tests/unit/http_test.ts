@@ -815,3 +815,27 @@ unitTest(
     }
   },
 );
+
+// https://github.com/denoland/deno/issues/11743
+unitTest(
+  { perms: { net: true } },
+  async function httpServerDoesntLeakResources() {
+    const listener = Deno.listen({ port: 4505 });
+    const [conn, clientConn] = await Promise.all([
+      listener.accept(),
+      Deno.connect({ port: 4505 }),
+    ]);
+    const httpConn = Deno.serveHttp(conn);
+
+    await Promise.all([
+      httpConn.nextRequest(),
+      clientConn.write(new TextEncoder().encode(
+        `GET / HTTP/1.1\r\nHost: 127.0.0.1:4505\r\n\r\n`,
+      )),
+    ]);
+
+    httpConn.close();
+    listener.close();
+    clientConn.close();
+  },
+);

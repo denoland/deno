@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_url"
-version = "0.15.0"
+version = "0.16.0"
 authors = ["the Deno authors"]
 edition = "2018"
 license = "MIT"
@@ -14,15 +14,15 @@ description = "URL API implementation for Deno"
 path = "lib.rs"
 
 [dependencies]
-deno_core = { version = "0.97.0", path = "../../core" }
+deno_core = { version = "0.98.0", path = "../../core" }
 idna = "0.2.3"
 percent-encoding = "2.1.0"
 serde = { version = "1.0.126", features = ["derive"] }
 serde_repr = "0.1.7"
 
 [dev-dependencies]
-deno_bench_util = { version = "0.9.0", path = "../../bench_util" }
-deno_webidl = { version = "0.15.0", path = "../webidl" }
+deno_bench_util = { version = "0.10.0", path = "../../bench_util" }
+deno_webidl = { version = "0.16.0", path = "../webidl" }
 
 [[bench]]
 name = "url_ops"
