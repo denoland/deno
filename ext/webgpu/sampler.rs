@@ -97,9 +97,7 @@ pub fn op_webgpu_create_sampler(
     min_filter: serialize_filter_mode(args.min_filter),
     mipmap_filter: serialize_filter_mode(args.mipmap_filter),
     lod_min_clamp: args.lod_min_clamp.unwrap_or(0.0),
-    lod_max_clamp: args.lod_max_clamp.unwrap_or(
-      wgpu_core::resource::SamplerDescriptor::default().lod_max_clamp,
-    ),
+    lod_max_clamp: args.lod_max_clamp.unwrap_or(32.0),
     compare: args
       .compare
       .as_ref()

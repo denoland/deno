@@ -1,6 +1,7 @@
 # Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 [workspace]
+resolver = "2"
 members = [
   "bench_util",
   "cli",
@@ -40,7 +41,7 @@ lto = true
 opt-level = 'z' # Optimize for size
 
 # Key generation is too slow on `debug`
-# 
+#
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
 

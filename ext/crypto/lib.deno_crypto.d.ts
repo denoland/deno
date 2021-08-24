@@ -59,6 +59,24 @@ interface HmacImportParams extends Algorithm {
   length?: number;
 }
 
+interface EcKeyAlgorithm extends KeyAlgorithm {
+  namedCurve: NamedCurve;
+}
+
+interface HmacKeyAlgorithm extends KeyAlgorithm {
+  hash: KeyAlgorithm;
+  length: number;
+}
+
+interface RsaHashedKeyAlgorithm extends RsaKeyAlgorithm {
+  hash: KeyAlgorithm;
+}
+
+interface RsaKeyAlgorithm extends KeyAlgorithm {
+  modulusLength: number;
+  publicExponent: Uint8Array;
+}
+
 /** The CryptoKey dictionary of the Web Crypto API represents a cryptographic key. */
 interface CryptoKey {
   readonly algorithm: KeyAlgorithm;

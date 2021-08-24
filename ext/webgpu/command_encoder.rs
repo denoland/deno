@@ -31,7 +31,7 @@ impl Resource for WebGpuCommandBuffer {
 fn serialize_store_op(store_op: String) -> wgpu_core::command::StoreOp {
   match store_op.as_str() {
     "store" => wgpu_core::command::StoreOp::Store,
-    "discard" => wgpu_core::command::StoreOp::Clear,
+    "discard" => wgpu_core::command::StoreOp::Discard,
     _ => unreachable!(),
   }
 }
@@ -323,7 +323,7 @@ pub struct GpuImageCopyTexture {
   pub texture: u32,
   pub mip_level: Option<u32>,
   pub origin: Option<GpuOrigin3D>,
-  pub _aspect: Option<String>, // not yet implemented
+  pub aspect: String,
 }
 
 #[derive(Deserialize)]
@@ -373,6 +373,12 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
         y: origin.y.unwrap_or(0),
         z: origin.z.unwrap_or(0),
       }),
+    aspect: match args.destination.aspect.as_str() {
+      "all" => wgpu_types::TextureAspect::All,
+      "stencil-only" => wgpu_types::TextureAspect::StencilOnly,
+      "depth-only" => wgpu_types::TextureAspect::DepthOnly,
+      _ => unreachable!(),
+    },
   };
   gfx_ok!(command_encoder => instance.command_encoder_copy_buffer_to_texture(
     command_encoder,
@@ -424,6 +430,12 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
         z: origin.z.unwrap_or(0),
       }
     }),
+    aspect: match args.source.aspect.as_str() {
+      "all" => wgpu_types::TextureAspect::All,
+      "stencil-only" => wgpu_types::TextureAspect::StencilOnly,
+      "depth-only" => wgpu_types::TextureAspect::DepthOnly,
+      _ => unreachable!(),
+    },
   };
   let destination = wgpu_core::command::ImageCopyBuffer {
     buffer: destination_buffer_resource.0,
@@ -487,6 +499,12 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
         z: origin.z.unwrap_or(0),
       }
     }),
+    aspect: match args.source.aspect.as_str() {
+      "all" => wgpu_types::TextureAspect::All,
+      "stencil-only" => wgpu_types::TextureAspect::StencilOnly,
+      "depth-only" => wgpu_types::TextureAspect::DepthOnly,
+      _ => unreachable!(),
+    },
   };
   let destination = wgpu_core::command::ImageCopyTexture {
     texture: destination_texture_resource.0,
@@ -499,6 +517,12 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
         y: origin.y.unwrap_or(0),
         z: origin.z.unwrap_or(0),
       }),
+    aspect: match args.destination.aspect.as_str() {
+      "all" => wgpu_types::TextureAspect::All,
+      "stencil-only" => wgpu_types::TextureAspect::StencilOnly,
+      "depth-only" => wgpu_types::TextureAspect::DepthOnly,
+      _ => unreachable!(),
+    },
   };
   gfx_ok!(command_encoder => instance.command_encoder_copy_texture_to_texture(
     command_encoder,

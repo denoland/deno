@@ -16,21 +16,8 @@ cut.**
 
 ## Updating the main repo
 
-1. Create a PR that bumps versions of all crates in `bench_util`, `core`, `ext`,
-   `runtime` directories.
-
-To determine if you should bump a crate a minor version instead of a patch
-version, check if you can answer any of the following questions with yes:
-
-- Did any of the crates direct dependencies have a semver breaking change? For
-  example did we update swc_ecmascript from 0.56.0 to 0.57.0, or did we update
-  rusty_v8?
-- Did the external interface of the crate change (ops or changes to
-  `window.__bootstrap` in JS code)?
-
-When in doubt always do a minor bump instead of a patch. In essentially every
-release all crates will need a minor bump. Patch bumps are the exception, not
-the norm.
+1. Create a PR that does a minor version bump of all crates in `bench_util`,
+   `core`, `ext`, `runtime` directories.
 
 2. Make sure CI pipeline passes.
 
