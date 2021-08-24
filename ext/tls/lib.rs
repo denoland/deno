@@ -162,7 +162,7 @@ pub fn create_client_config(
   Ok(tls_config)
 }
 
-fn load_certs(reader: &mut dyn BufRead) -> Result<Vec<Certificate>, AnyError> {
+pub fn load_certs(reader: &mut dyn BufRead) -> Result<Vec<Certificate>, AnyError> {
   let certs = certs(reader)
     .map_err(|_| custom_error("InvalidData", "Unable to decode certificate"))?;
 
@@ -194,7 +194,7 @@ fn load_pkcs8_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   Ok(keys)
 }
 
-fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
+pub fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   let mut keys = load_rsa_keys(bytes)?;
 
   if keys.is_empty() {
