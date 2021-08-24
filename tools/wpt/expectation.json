@@ -16339,7 +16339,6 @@
       "FileList interface: existence and properties of interface prototype object's @@unscopables property",
       "FileList interface: operation item(unsigned long)",
       "FileList interface: attribute length",
-      "FileReader interface: operation readAsText(Blob, optional DOMString)",
       "FileReader interface: attribute onloadstart",
       "FileReader interface: attribute onprogress",
       "FileReader interface: attribute onload",
