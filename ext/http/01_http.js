@@ -342,7 +342,7 @@
 
   function upgradeWebSocket(request, options = {}) {
     const upgrade = request.headers.get("upgrade");
-    if (!upgrade || upgrade.toLowerCase() !== "websocket") {
+    if (!upgrade || StringPrototypeToLowerCase(upgrade) !== "websocket") {
       throw new TypeError(
         "Invalid Header: 'upgrade' header must be 'websocket'",
       );

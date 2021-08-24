@@ -6,6 +6,7 @@ import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
 import {
   assert,
   assertEquals,
+  assertThrows,
   assertThrowsAsync,
   deferred,
   delay,
@@ -703,6 +704,51 @@ unitTest(function httpUpgradeWebSocketMultipleConnectionOptions() {
   });
   const { response } = Deno.upgradeWebSocket(request);
   assertEquals(response.status, 101);
+});
+
+unitTest(function httpUpgradeWebSocketCaseInsensitiveUpgradeHeader() {
+  const request = new Request("https://deno.land/", {
+    headers: {
+      connection: "upgrade",
+      upgrade: "WebSocket",
+      "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+    },
+  });
+  const { response } = Deno.upgradeWebSocket(request);
+  assertEquals(response.status, 101);
+});
+
+unitTest(function httpUpgradeWebSocketInvalidUpgradeHeader() {
+  assertThrows(
+    () => {
+      const request = new Request("https://deno.land/", {
+        headers: {
+          connection: "upgrade",
+          upgrade: "invalid",
+          "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+        },
+      });
+      Deno.upgradeWebSocket(request);
+    },
+    TypeError,
+    "Invalid Header: 'upgrade' header must be 'websocket'",
+  );
+});
+
+unitTest(function httpUpgradeWebSocketWithoutUpgradeHeader() {
+  assertThrows(
+    () => {
+      const request = new Request("https://deno.land/", {
+        headers: {
+          connection: "upgrade",
+          "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+        },
+      });
+      Deno.upgradeWebSocket(request);
+    },
+    TypeError,
+    "Invalid Header: 'upgrade' header must be 'websocket'",
+  );
 });
 
 unitTest({ perms: { net: true } }, async function httpCookieConcatenation() {
