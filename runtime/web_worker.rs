@@ -181,7 +181,7 @@ impl From<SendableWebWorkerHandle> for WebWorkerHandle {
 /// This is the handle to the web worker that the parent thread uses to
 /// communicate with the worker. It is created from a `SendableWebWorkerHandle`
 /// which is sent to the parent thread from the worker thread where it is
-/// created. The reason for this seperation is that the handle first needs to be
+/// created. The reason for this separation is that the handle first needs to be
 /// `Send` when transferring between threads, and then must be `Clone` when it
 /// has arrived on the parent thread. It can not be both at once without large
 /// amounts of Arc<Mutex> and other fun stuff.

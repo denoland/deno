@@ -32,12 +32,14 @@ use deno_core::serde_json::json;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
+use log::Level;
 use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
 use std::collections::HashSet;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
@@ -226,7 +228,6 @@ async fn test_specifier(
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mode: TestMode,
-  quiet: bool,
   filter: Option<String>,
   shuffle: Option<u64>,
   channel: Sender<TestEvent>,
@@ -247,7 +248,7 @@ async fn test_specifier(
   test_source.push_str(&format!(
     "await Deno[Deno.internal].runTests({});\n",
     json!({
-      "disableLog": quiet,
+      "disableLog": program_state.flags.log_level == Some(Level::Error),
       "filter": filter,
       "shuffle": shuffle,
     }),
@@ -551,11 +552,10 @@ async fn test_specifiers(
   program_state: Arc<ProgramState>,
   permissions: Permissions,
   specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
-  fail_fast: Option<usize>,
-  quiet: bool,
+  fail_fast: Option<NonZeroUsize>,
   filter: Option<String>,
   shuffle: Option<u64>,
-  concurrent_jobs: usize,
+  concurrent_jobs: NonZeroUsize,
 ) -> Result<(), AnyError> {
   let specifiers_with_mode = if let Some(seed) = shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
@@ -585,7 +585,6 @@ async fn test_specifiers(
             permissions,
             specifier,
             mode,
-            quiet,
             filter,
             shuffle,
             sender,
@@ -599,10 +598,10 @@ async fn test_specifiers(
     });
 
   let join_stream = stream::iter(join_handles)
-    .buffer_unordered(concurrent_jobs)
+    .buffer_unordered(concurrent_jobs.get())
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
-  let mut reporter = create_reporter(concurrent_jobs > 1);
+  let mut reporter = create_reporter(concurrent_jobs.get() > 1);
   let handler = {
     tokio::task::spawn_blocking(move || {
       let earlier = Instant::now();
@@ -647,7 +646,7 @@ async fn test_specifiers(
         }
 
         if let Some(x) = fail_fast {
-          if summary.failed >= x {
+          if summary.failed >= x.get() {
             break;
           }
         }
@@ -773,12 +772,11 @@ pub async fn run_tests(
   include: Option<Vec<String>>,
   doc: bool,
   no_run: bool,
-  fail_fast: Option<usize>,
-  quiet: bool,
+  fail_fast: Option<NonZeroUsize>,
   allow_none: bool,
   filter: Option<String>,
   shuffle: Option<u64>,
-  concurrent_jobs: usize,
+  concurrent_jobs: NonZeroUsize,
 ) -> Result<(), AnyError> {
   let program_state = ProgramState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
@@ -816,7 +814,6 @@ pub async fn run_tests(
     permissions,
     specifiers_with_mode,
     fail_fast,
-    quiet,
     filter,
     shuffle,
     concurrent_jobs,
@@ -832,11 +829,10 @@ pub async fn run_tests_with_watch(
   include: Option<Vec<String>>,
   doc: bool,
   no_run: bool,
-  fail_fast: Option<usize>,
-  quiet: bool,
+  fail_fast: Option<NonZeroUsize>,
   filter: Option<String>,
   shuffle: Option<u64>,
-  concurrent_jobs: usize,
+  concurrent_jobs: NonZeroUsize,
 ) -> Result<(), AnyError> {
   let program_state = ProgramState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
@@ -1018,7 +1014,6 @@ pub async fn run_tests_with_watch(
         permissions.clone(),
         specifiers_with_mode,
         fail_fast,
-        quiet,
         filter.clone(),
         shuffle,
         concurrent_jobs,
