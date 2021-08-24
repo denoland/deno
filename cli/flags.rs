@@ -3648,6 +3648,7 @@ mod tests {
           allow_none: false,
           shuffle: None,
           include: None,
+          ignore: vec![],
           concurrent_jobs: NonZeroUsize::new(4).unwrap(),
         },
         ..Flags::default()
