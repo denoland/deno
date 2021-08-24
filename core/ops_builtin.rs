@@ -1,4 +1,3 @@
-use crate::error::bad_resource_id;
 use crate::error::type_error;
 use crate::error::AnyError;
 use crate::include_js_files;
@@ -47,10 +46,7 @@ pub fn op_close(
 ) -> Result<(), AnyError> {
   // TODO(@AaronO): drop Option after improving type-strictness balance in serde_v8
   let rid = rid.ok_or_else(|| type_error("missing or invalid `rid`"))?;
-  state
-    .resource_table
-    .close(rid)
-    .ok_or_else(bad_resource_id)?;
+  state.resource_table.close(rid)?;
 
   Ok(())
 }

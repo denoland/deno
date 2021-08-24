@@ -1,5 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+// NOTE to all: use **cached** prepared statements when interfacing with SQLite.
+
 use deno_core::error::AnyError;
 use deno_core::include_js_files;
 use deno_core::op_sync;
@@ -64,11 +66,25 @@ fn get_webstorage(
       })?;
       std::fs::create_dir_all(&path.0)?;
       let conn = Connection::open(path.0.join("local_storage"))?;
-      conn.execute(
-        "CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)",
-        params![],
-      )?;
+      // Enable write-ahead-logging and tweak some other stuff.
+      let initial_pragmas = "
+        -- enable write-ahead-logging mode
+        PRAGMA journal_mode=WAL;
+        PRAGMA synchronous=NORMAL;
+        PRAGMA temp_store=memory;
+        PRAGMA page_size=4096;
+        PRAGMA mmap_size=6000000;
+        PRAGMA optimize;
+      ";
 
+      conn.execute_batch(initial_pragmas)?;
+      conn.set_prepared_statement_cache_capacity(128);
+      {
+        let mut stmt = conn.prepare_cached(
+          "CREATE TABLE IF NOT EXISTS data (key VARCHAR UNIQUE, value VARCHAR)",
+        )?;
+        stmt.execute(params![])?;
+      }
       state.put(LocalStorage(conn));
     }
 
@@ -76,11 +92,12 @@ fn get_webstorage(
   } else {
     if state.try_borrow::<SessionStorage>().is_none() {
       let conn = Connection::open_in_memory()?;
-      conn.execute(
-        "CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)",
-        params![],
-      )?;
-
+      {
+        let mut stmt = conn.prepare_cached(
+          "CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)",
+        )?;
+        stmt.execute(params![])?;
+      }
       state.put(SessionStorage(conn));
     }
 
@@ -97,8 +114,7 @@ pub fn op_webstorage_length(
 ) -> Result<u32, AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt = conn.prepare("SELECT COUNT(*) FROM data")?;
-
+  let mut stmt = conn.prepare_cached("SELECT COUNT(*) FROM data")?;
   let length: u32 = stmt.query_row(params![], |row| row.get(0))?;
 
   Ok(length)
@@ -111,7 +127,8 @@ pub fn op_webstorage_key(
 ) -> Result<Option<String>, AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt = conn.prepare("SELECT key FROM data LIMIT 1 OFFSET ?")?;
+  let mut stmt =
+    conn.prepare_cached("SELECT key FROM data LIMIT 1 OFFSET ?")?;
 
   let key: Option<String> = stmt
     .query_row(params![index], |row| row.get(0))
@@ -134,8 +151,8 @@ pub fn op_webstorage_set(
 ) -> Result<(), AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt =
-    conn.prepare("SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'")?;
+  let mut stmt = conn
+    .prepare_cached("SELECT SUM(pgsize) FROM dbstat WHERE name = 'data'")?;
   let size: u32 = stmt.query_row(params![], |row| row.get(0))?;
 
   if size >= MAX_STORAGE_BYTES {
@@ -147,10 +164,9 @@ pub fn op_webstorage_set(
     );
   }
 
-  conn.execute(
-    "INSERT OR REPLACE INTO data (key, value) VALUES (?, ?)",
-    params![args.key_name, args.key_value],
-  )?;
+  let mut stmt = conn
+    .prepare_cached("INSERT OR REPLACE INTO data (key, value) VALUES (?, ?)")?;
+  stmt.execute(params![args.key_name, args.key_value])?;
 
   Ok(())
 }
@@ -162,8 +178,7 @@ pub fn op_webstorage_get(
 ) -> Result<Option<String>, AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt = conn.prepare("SELECT value FROM data WHERE key = ?")?;
-
+  let mut stmt = conn.prepare_cached("SELECT value FROM data WHERE key = ?")?;
   let val = stmt
     .query_row(params![key_name], |row| row.get(0))
     .optional()?;
@@ -178,7 +193,8 @@ pub fn op_webstorage_remove(
 ) -> Result<(), AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
-  conn.execute("DELETE FROM data WHERE key = ?", params![key_name])?;
+  let mut stmt = conn.prepare_cached("DELETE FROM data WHERE key = ?")?;
+  stmt.execute(params![key_name])?;
 
   Ok(())
 }
@@ -190,11 +206,8 @@ pub fn op_webstorage_clear(
 ) -> Result<(), AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
-  conn.execute("DROP TABLE data", params![])?;
-  conn.execute(
-    "CREATE TABLE data (key VARCHAR UNIQUE, value VARCHAR)",
-    params![],
-  )?;
+  let mut stmt = conn.prepare_cached("DELETE FROM data")?;
+  stmt.execute(params![])?;
 
   Ok(())
 }
@@ -206,8 +219,7 @@ pub fn op_webstorage_iterate_keys(
 ) -> Result<Vec<String>, AnyError> {
   let conn = get_webstorage(state, persistent)?;
 
-  let mut stmt = conn.prepare("SELECT key FROM data")?;
-
+  let mut stmt = conn.prepare_cached("SELECT key FROM data")?;
   let keys = stmt
     .query_map(params![], |row| row.get::<_, String>(0))?
     .map(|r| r.unwrap())

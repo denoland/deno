@@ -3,7 +3,6 @@
 mod blob;
 mod message_port;
 
-use deno_core::error::bad_resource_id;
 use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -240,10 +239,7 @@ fn op_encoding_decode(
 ) -> Result<String, AnyError> {
   let DecodeOptions { rid, stream } = options;
 
-  let resource = state
-    .resource_table
-    .get::<TextDecoderResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+  let resource = state.resource_table.get::<TextDecoderResource>(rid)?;
 
   let mut decoder = resource.decoder.borrow_mut();
   let fatal = resource.fatal;
