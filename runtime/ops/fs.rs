@@ -230,8 +230,7 @@ async fn op_seek_async(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<StdFileResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<StdFileResource>(rid)?;
 
   if resource.fs_file.is_none() {
     return Err(bad_resource_id());
@@ -265,8 +264,7 @@ async fn op_fdatasync_async(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<StdFileResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<StdFileResource>(rid)?;
 
   if resource.fs_file.is_none() {
     return Err(bad_resource_id());
@@ -300,8 +298,7 @@ async fn op_fsync_async(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<StdFileResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<StdFileResource>(rid)?;
 
   if resource.fs_file.is_none() {
     return Err(bad_resource_id());
@@ -335,8 +332,7 @@ async fn op_fstat_async(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<StdFileResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<StdFileResource>(rid)?;
 
   if resource.fs_file.is_none() {
     return Err(bad_resource_id());
@@ -1298,8 +1294,7 @@ async fn op_ftruncate_async(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<StdFileResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<StdFileResource>(rid)?;
 
   if resource.fs_file.is_none() {
     return Err(bad_resource_id());
@@ -1580,8 +1575,7 @@ async fn op_futime_async(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<StdFileResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<StdFileResource>(rid)?;
 
   if resource.fs_file.is_none() {
     return Err(bad_resource_id());

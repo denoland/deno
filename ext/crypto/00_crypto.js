@@ -88,6 +88,7 @@
   };
 
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
+  // 18.4.4
   function normalizeAlgorithm(algorithm, op) {
     if (typeof algorithm == "string") {
       return normalizeAlgorithm({ name: algorithm }, op);
@@ -125,20 +126,24 @@
       return { name: algName };
     }
 
+    // 6.
     const normalizedAlgorithm = webidl.converters[desiredType](algorithm, {
       prefix: "Failed to normalize algorithm",
       context: "passed algorithm",
     });
+    // 7.
     normalizedAlgorithm.name = algName;
 
+    // 9.
     const dict = simpleAlgorithmDictionaries[desiredType];
+    // 10.
     for (const member in dict) {
       const idlType = dict[member];
       const idlValue = normalizedAlgorithm[member];
-
-      if (idlType === "BufferSource") {
-        normalizedAlgorithm[member] = new Uint8Array(
-          TypedArrayPrototypeSlice(
+      // 3.
+      if (idlType === "BufferSource" && idlValue) {
+        normalizedAlgorithm[member] = TypedArrayPrototypeSlice(
+          new Uint8Array(
             (ArrayBufferIsView(idlValue) ? idlValue.buffer : idlValue),
             idlValue.byteOffset ?? 0,
             idlValue.byteLength,
@@ -463,6 +468,18 @@
         context: "Argument 5",
       });
 
+      // 2.
+      if (ArrayBufferIsView(keyData)) {
+        keyData = new Uint8Array(
+          keyData.buffer,
+          keyData.byteOffset,
+          keyData.byteLength,
+        );
+      } else {
+        keyData = new Uint8Array(keyData);
+      }
+      keyData = TypedArrayPrototypeSlice(keyData);
+
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "importKey");
 
       if (
@@ -518,7 +535,7 @@
 
               const key = constructKey(
                 "secret",
-                true,
+                extractable,
                 usageIntersection(keyUsages, recognisedUsages),
                 algorithm,
                 handle,
@@ -560,16 +577,17 @@
 
       const handle = key[_handle];
       // 2.
-      const bits = WeakMapPrototypeGet(KEY_STORE, handle);
+      const innerKey = WeakMapPrototypeGet(KEY_STORE, handle);
 
       switch (key[_algorithm].name) {
         case "HMAC": {
-          if (bits == null) {
+          if (innerKey == null) {
             throw new DOMException("Key is not available", "OperationError");
           }
           switch (format) {
             // 3.
             case "raw": {
+              const bits = innerKey.data;
               for (let _i = 7 & (8 - bits.length % 8); _i > 0; _i--) {
                 bits.push(0);
               }
@@ -731,14 +749,6 @@
       const usages = keyUsages;
 
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "generateKey");
-
-      // https://github.com/denoland/deno/pull/9614#issuecomment-866049433
-      if (!extractable) {
-        throw new DOMException(
-          "Non-extractable keys are not supported",
-          "SecurityError",
-        );
-      }
 
       const result = await generateKey(
         normalizedAlgorithm,

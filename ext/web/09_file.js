@@ -220,7 +220,7 @@
      * @param {string} [contentType]
      * @returns {Blob}
      */
-    slice(start, end, contentType) {
+    slice(start = undefined, end = undefined, contentType = undefined) {
       webidl.assertBranded(this, Blob);
       const prefix = "Failed to execute 'slice' on 'Blob'";
       if (start !== undefined) {

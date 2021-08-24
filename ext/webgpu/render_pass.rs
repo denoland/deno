@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::bad_resource_id;
 use deno_core::error::null_opbuf;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -41,8 +40,7 @@ pub fn op_webgpu_render_pass_set_viewport(
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuRenderPass>(args.render_pass_rid)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_set_viewport(
     &mut render_pass_resource.0.borrow_mut(),
@@ -74,8 +72,7 @@ pub fn op_webgpu_render_pass_set_scissor_rect(
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuRenderPass>(args.render_pass_rid)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_set_scissor_rect(
     &mut render_pass_resource.0.borrow_mut(),
@@ -111,8 +108,7 @@ pub fn op_webgpu_render_pass_set_blend_constant(
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuRenderPass>(args.render_pass_rid)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_set_blend_constant(
     &mut render_pass_resource.0.borrow_mut(),
@@ -141,8 +137,7 @@ pub fn op_webgpu_render_pass_set_stencil_reference(
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuRenderPass>(args.render_pass_rid)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_set_stencil_reference(
     &mut render_pass_resource.0.borrow_mut(),
@@ -167,12 +162,10 @@ pub fn op_webgpu_render_pass_begin_pipeline_statistics_query(
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuRenderPass>(args.render_pass_rid)?;
   let query_set_resource = state
     .resource_table
-    .get::<super::WebGpuQuerySet>(args.query_set)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::WebGpuQuerySet>(args.query_set)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_begin_pipeline_statistics_query(
     &mut render_pass_resource.0.borrow_mut(),
@@ -196,8 +189,7 @@ pub fn op_webgpu_render_pass_end_pipeline_statistics_query(
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuRenderPass>(args.render_pass_rid)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_end_pipeline_statistics_query(
     &mut render_pass_resource.0.borrow_mut(),
@@ -221,12 +213,10 @@ pub fn op_webgpu_render_pass_write_timestamp(
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuRenderPass>(args.render_pass_rid)?;
   let query_set_resource = state
     .resource_table
-    .get::<super::WebGpuQuerySet>(args.query_set)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::WebGpuQuerySet>(args.query_set)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_write_timestamp(
     &mut render_pass_resource.0.borrow_mut(),
@@ -252,17 +242,16 @@ pub fn op_webgpu_render_pass_execute_bundles(
   let mut render_bundle_ids = vec![];
 
   for rid in &args.bundles {
-    let render_bundle_resource = state
-      .resource_table
-      .get::<super::bundle::WebGpuRenderBundle>(*rid)
-      .ok_or_else(bad_resource_id)?;
+    let render_bundle_resource =
+      state
+        .resource_table
+        .get::<super::bundle::WebGpuRenderBundle>(*rid)?;
     render_bundle_ids.push(render_bundle_resource.0);
   }
 
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuRenderPass>(args.render_pass_rid)?;
 
   unsafe {
     wgpu_core::command::render_ffi::wgpu_render_pass_execute_bundles(
@@ -290,14 +279,12 @@ pub fn op_webgpu_render_pass_end_pass(
   let command_encoder_resource = state
     .resource_table
     .get::<super::command_encoder::WebGpuCommandEncoder>(
-      args.command_encoder_rid,
-    )
-    .ok_or_else(bad_resource_id)?;
+    args.command_encoder_rid,
+  )?;
   let command_encoder = command_encoder_resource.0;
   let render_pass_resource = state
     .resource_table
-    .take::<WebGpuRenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
+    .take::<WebGpuRenderPass>(args.render_pass_rid)?;
   let render_pass = &render_pass_resource.0.borrow();
   let instance = state.borrow::<super::Instance>();
 
@@ -320,14 +307,13 @@ pub fn op_webgpu_render_pass_set_bind_group(
   args: RenderPassSetBindGroupArgs,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<WebGpuResult, AnyError> {
-  let bind_group_resource = state
-    .resource_table
-    .get::<super::binding::WebGpuBindGroup>(args.bind_group)
-    .ok_or_else(bad_resource_id)?;
+  let bind_group_resource =
+    state
+      .resource_table
+      .get::<super::binding::WebGpuBindGroup>(args.bind_group)?;
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuRenderPass>(args.render_pass_rid)?;
 
   // I know this might look like it can be easily deduplicated, but it can not
   // be due to the lifetime of the args.dynamic_offsets_data slice. Because we
@@ -378,8 +364,7 @@ pub fn op_webgpu_render_pass_push_debug_group(
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuRenderPass>(args.render_pass_rid)?;
 
   unsafe {
     let label = std::ffi::CString::new(args.group_label).unwrap();
@@ -406,8 +391,7 @@ pub fn op_webgpu_render_pass_pop_debug_group(
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuRenderPass>(args.render_pass_rid)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_pop_debug_group(
     &mut render_pass_resource.0.borrow_mut(),
@@ -430,8 +414,7 @@ pub fn op_webgpu_render_pass_insert_debug_marker(
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuRenderPass>(args.render_pass_rid)?;
 
   unsafe {
     let label = std::ffi::CString::new(args.marker_label).unwrap();
@@ -457,14 +440,13 @@ pub fn op_webgpu_render_pass_set_pipeline(
   args: RenderPassSetPipelineArgs,
   _: (),
 ) -> Result<WebGpuResult, AnyError> {
-  let render_pipeline_resource = state
-    .resource_table
-    .get::<super::pipeline::WebGpuRenderPipeline>(args.pipeline)
-    .ok_or_else(bad_resource_id)?;
+  let render_pipeline_resource =
+    state
+      .resource_table
+      .get::<super::pipeline::WebGpuRenderPipeline>(args.pipeline)?;
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuRenderPass>(args.render_pass_rid)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_set_pipeline(
     &mut render_pass_resource.0.borrow_mut(),
@@ -491,12 +473,10 @@ pub fn op_webgpu_render_pass_set_index_buffer(
 ) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGpuBuffer>(args.buffer)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::buffer::WebGpuBuffer>(args.buffer)?;
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuRenderPass>(args.render_pass_rid)?;
 
   let size = if let Some(size) = args.size {
     Some(
@@ -534,12 +514,10 @@ pub fn op_webgpu_render_pass_set_vertex_buffer(
 ) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGpuBuffer>(args.buffer)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::buffer::WebGpuBuffer>(args.buffer)?;
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuRenderPass>(args.render_pass_rid)?;
 
   let size = if let Some(size) = args.size {
     Some(
@@ -578,8 +556,7 @@ pub fn op_webgpu_render_pass_draw(
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuRenderPass>(args.render_pass_rid)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_draw(
     &mut render_pass_resource.0.borrow_mut(),
@@ -610,8 +587,7 @@ pub fn op_webgpu_render_pass_draw_indexed(
 ) -> Result<WebGpuResult, AnyError> {
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuRenderPass>(args.render_pass_rid)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_draw_indexed(
     &mut render_pass_resource.0.borrow_mut(),
@@ -640,12 +616,10 @@ pub fn op_webgpu_render_pass_draw_indirect(
 ) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGpuBuffer>(args.indirect_buffer)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::buffer::WebGpuBuffer>(args.indirect_buffer)?;
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuRenderPass>(args.render_pass_rid)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_draw_indirect(
     &mut render_pass_resource.0.borrow_mut(),
@@ -671,12 +645,10 @@ pub fn op_webgpu_render_pass_draw_indexed_indirect(
 ) -> Result<WebGpuResult, AnyError> {
   let buffer_resource = state
     .resource_table
-    .get::<super::buffer::WebGpuBuffer>(args.indirect_buffer)
-    .ok_or_else(bad_resource_id)?;
+    .get::<super::buffer::WebGpuBuffer>(args.indirect_buffer)?;
   let render_pass_resource = state
     .resource_table
-    .get::<WebGpuRenderPass>(args.render_pass_rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<WebGpuRenderPass>(args.render_pass_rid)?;
 
   wgpu_core::command::render_ffi::wgpu_render_pass_draw_indexed_indirect(
     &mut render_pass_resource.0.borrow_mut(),

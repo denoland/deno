@@ -38,19 +38,7 @@ async function dlint() {
     return;
   }
 
-  const MAX_COMMAND_LEN = 30000;
-  const preCommand = [execPath, "run"];
-  const chunks = [[]];
-  let cmdLen = preCommand.join(" ").length;
-  for (const f of sourceFiles) {
-    if (cmdLen + f.length > MAX_COMMAND_LEN) {
-      chunks.push([f]);
-      cmdLen = preCommand.join(" ").length;
-    } else {
-      chunks[chunks.length - 1].push(f);
-      cmdLen = preCommand.join(" ").length;
-    }
-  }
+  const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
   for (const chunk of chunks) {
     const p = Deno.run({
       cmd: [execPath, "run", "--config=" + configFile, ...chunk],
@@ -61,6 +49,53 @@ async function dlint() {
     }
     p.close();
   }
+}
+
+// `prefer-primordials` has to apply only to files related to bootstrapping,
+// which is different from other lint rules. This is why this dedicated function
+// is needed.
+async function dlintPreferPrimordials() {
+  const execPath = getPrebuiltToolPath("dlint");
+  console.log("prefer-primordials");
+
+  const sourceFiles = await getSources(ROOT_PATH, [
+    "runtime/**/*.js",
+    "ext/**/*.js",
+    "core/**/*.js",
+    ":!:core/examples/**",
+  ]);
+
+  if (!sourceFiles.length) {
+    return;
+  }
+
+  const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
+  for (const chunk of chunks) {
+    const p = Deno.run({
+      cmd: [execPath, "run", "--rule", "prefer-primordials", ...chunk],
+    });
+    const { success } = await p.status();
+    if (!success) {
+      throw new Error("prefer-primordials failed");
+    }
+    p.close();
+  }
+}
+
+function splitToChunks(paths, initCmdLen) {
+  let cmdLen = initCmdLen;
+  const MAX_COMMAND_LEN = 30000;
+  const chunks = [[]];
+  for (const p of paths) {
+    if (cmdLen + p.length > MAX_COMMAND_LEN) {
+      chunks.push([p]);
+      cmdLen = initCmdLen;
+    } else {
+      chunks[chunks.length - 1].push(p);
+      cmdLen += p.length;
+    }
+  }
+  return chunks;
 }
 
 async function clippy() {
@@ -90,6 +125,7 @@ async function main() {
 
   if (Deno.args.includes("--js")) {
     await dlint();
+    await dlintPreferPrimordials();
     didLint = true;
   }
 
@@ -100,6 +136,7 @@ async function main() {
 
   if (!didLint) {
     await dlint();
+    await dlintPreferPrimordials();
     await clippy();
   }
 }
