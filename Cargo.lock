@@ -828,6 +828,7 @@ dependencies = [
  "dlopen",
  "encoding_rs",
  "filetime",
+ "fs3",
  "fwdansi",
  "http",
  "hyper",
@@ -1292,6 +1293,17 @@ dependencies = [
  "proc-macro2 1.0.27",
  "swc_macros_common",
  "syn 1.0.65",
+]
+
+[[package]]
+name = "fs3"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb17cf6ed704f72485332f6ab65257460c4f9f3083934cf402bf9f5b3b600a90"
+dependencies = [
+ "libc",
+ "rustc_version 0.2.3",
+ "winapi 0.3.9",
 ]
 
 [[package]]
