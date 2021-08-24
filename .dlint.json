@@ -4,6 +4,8 @@
     "include": [
       "ban-untagged-todo"
     ],
-    "exclude": []
+    "exclude": [
+      "no-invalid-triple-slash-reference"
+    ]
   }
 }

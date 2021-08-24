@@ -112,10 +112,36 @@ pub fn is_supported_ext_fmt(path: &Path) -> bool {
     false
   }
 }
-/// Checks if the path has extension Deno supports.
-/// This function is similar to is_supported_ext but adds additional extensions
-/// supported by `deno test`.
-pub fn is_supported_ext_test(path: &Path) -> bool {
+
+/// Checks if the path has a basename and extension Deno supports for tests.
+pub fn is_supported_test_path(path: &Path) -> bool {
+  use std::path::Component;
+  if let Some(Component::Normal(basename_os_str)) =
+    path.components().next_back()
+  {
+    let basename = basename_os_str.to_string_lossy();
+    basename.ends_with("_test.ts")
+      || basename.ends_with("_test.tsx")
+      || basename.ends_with("_test.js")
+      || basename.ends_with("_test.mjs")
+      || basename.ends_with("_test.jsx")
+      || basename.ends_with(".test.ts")
+      || basename.ends_with(".test.tsx")
+      || basename.ends_with(".test.js")
+      || basename.ends_with(".test.mjs")
+      || basename.ends_with(".test.jsx")
+      || basename == "test.ts"
+      || basename == "test.tsx"
+      || basename == "test.js"
+      || basename == "test.mjs"
+      || basename == "test.jsx"
+  } else {
+    false
+  }
+}
+
+/// Checks if the path has an extension Deno supports for tests.
+pub fn is_supported_test_ext(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
     matches!(ext.as_str(), "ts" | "tsx" | "js" | "jsx" | "mjs" | "md")
   } else {
@@ -176,24 +202,28 @@ where
 /// Specifiers that start with http and https are left intact.
 pub fn collect_specifiers<P>(
   include: Vec<String>,
+  ignore: &[PathBuf],
   predicate: P,
 ) -> Result<Vec<ModuleSpecifier>, AnyError>
 where
   P: Fn(&Path) -> bool,
 {
-  let (include_urls, include_paths): (Vec<String>, Vec<String>) =
-    include.into_iter().partition(|url| {
-      let url = url.to_lowercase();
-      url.starts_with("http://") || url.starts_with("https://")
-    });
-
   let mut prepared = vec![];
 
   let root_path = std::env::current_dir()?;
-  for path in include_paths {
+  for path in include {
+    let lowercase_path = path.to_lowercase();
+    if lowercase_path.starts_with("http://")
+      || lowercase_path.starts_with("https://")
+    {
+      let url = ModuleSpecifier::parse(&path)?;
+      prepared.push(url);
+      continue;
+    }
+
     let p = normalize_path(&root_path.join(path));
     if p.is_dir() {
-      let test_files = collect_files(&[p], &[], &predicate).unwrap();
+      let test_files = collect_files(&[p], ignore, &predicate).unwrap();
       let mut test_files_as_urls = test_files
         .iter()
         .map(|f| ModuleSpecifier::from_file_path(f).unwrap())
@@ -205,11 +235,6 @@ where
       let url = ModuleSpecifier::from_file_path(p).unwrap();
       prepared.push(url);
     }
-  }
-
-  for remote_url in include_urls {
-    let url = ModuleSpecifier::parse(&remote_url)?;
-    prepared.push(url);
   }
 
   Ok(prepared)
@@ -310,6 +335,56 @@ mod tests {
     assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
     assert!(is_supported_ext_fmt(Path::new("foo.json")));
     assert!(is_supported_ext_fmt(Path::new("foo.JsON")));
+  }
+
+  #[test]
+  fn test_is_supported_test_ext() {
+    assert!(!is_supported_test_ext(Path::new("tests/subdir/redirects")));
+    assert!(is_supported_test_ext(Path::new("README.md")));
+    assert!(is_supported_test_ext(Path::new("readme.MD")));
+    assert!(is_supported_test_ext(Path::new("lib/typescript.d.ts")));
+    assert!(is_supported_test_ext(Path::new("testdata/001_hello.js")));
+    assert!(is_supported_test_ext(Path::new("testdata/002_hello.ts")));
+    assert!(is_supported_test_ext(Path::new("foo.jsx")));
+    assert!(is_supported_test_ext(Path::new("foo.tsx")));
+    assert!(is_supported_test_ext(Path::new("foo.TS")));
+    assert!(is_supported_test_ext(Path::new("foo.TSX")));
+    assert!(is_supported_test_ext(Path::new("foo.JS")));
+    assert!(is_supported_test_ext(Path::new("foo.JSX")));
+    assert!(is_supported_test_ext(Path::new("foo.mjs")));
+    assert!(!is_supported_test_ext(Path::new("foo.mjsx")));
+    assert!(!is_supported_test_ext(Path::new("foo.jsonc")));
+    assert!(!is_supported_test_ext(Path::new("foo.JSONC")));
+    assert!(!is_supported_test_ext(Path::new("foo.json")));
+    assert!(!is_supported_test_ext(Path::new("foo.JsON")));
+  }
+
+  #[test]
+  fn test_is_supported_test_path() {
+    assert!(is_supported_test_path(Path::new(
+      "tests/subdir/foo_test.ts"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "tests/subdir/foo_test.tsx"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "tests/subdir/foo_test.js"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "tests/subdir/foo_test.jsx"
+    )));
+    assert!(is_supported_test_path(Path::new("bar/foo.test.ts")));
+    assert!(is_supported_test_path(Path::new("bar/foo.test.tsx")));
+    assert!(is_supported_test_path(Path::new("bar/foo.test.js")));
+    assert!(is_supported_test_path(Path::new("bar/foo.test.jsx")));
+    assert!(is_supported_test_path(Path::new("foo/bar/test.js")));
+    assert!(is_supported_test_path(Path::new("foo/bar/test.jsx")));
+    assert!(is_supported_test_path(Path::new("foo/bar/test.ts")));
+    assert!(is_supported_test_path(Path::new("foo/bar/test.tsx")));
+    assert!(!is_supported_test_path(Path::new("README.md")));
+    assert!(!is_supported_test_path(Path::new("lib/typescript.d.ts")));
+    assert!(!is_supported_test_path(Path::new("notatest.js")));
+    assert!(!is_supported_test_path(Path::new("NotAtest.ts")));
   }
 
   #[test]
@@ -417,6 +492,7 @@ mod tests {
         root_dir_path.to_str().unwrap().to_string(),
         "https://localhost:8080".to_string(),
       ],
+      &[ignore_dir_path],
       |path| {
         // exclude dotfiles
         path
@@ -433,6 +509,7 @@ mod tests {
     .unwrap()
     .to_string();
     let expected: Vec<ModuleSpecifier> = [
+      "http://localhost:8080",
       &format!("{}/a.ts", root_dir_url),
       &format!("{}/b.js", root_dir_url),
       &format!("{}/c.tsx", root_dir_url),
@@ -440,8 +517,6 @@ mod tests {
       &format!("{}/child/e.mjs", root_dir_url),
       &format!("{}/child/f.mjsx", root_dir_url),
       &format!("{}/d.jsx", root_dir_url),
-      &format!("{}/ignore/g.d.ts", root_dir_url),
-      "http://localhost:8080",
       "https://localhost:8080",
     ]
     .iter()
