@@ -856,51 +856,23 @@
         context: "Argument 3",
       });
 
+      // 2.
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "deriveBits");
-      switch (normalizedAlgorithm.name) {
-        case "PBKDF2": {
-          // 1.
-          if (length == null || length == 0 || length % 8 !== 0) {
-            throw new DOMException("Invalid length", "OperationError");
-          }
-
-          // TODO(@littledivy): Add this step to spec. WPT has tests for it.
-          if (normalizedAlgorithm.iterations == 0) {
-            throw new DOMException(
-              "iterations must not be zero",
-              "OperationError",
-            );
-          }
-
-          const handle = baseKey[_handle];
-          const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
-
-          if (ArrayBufferIsView(normalizedAlgorithm.salt)) {
-            normalizedAlgorithm.salt = new Uint8Array(
-              normalizedAlgorithm.salt.buffer,
-              normalizedAlgorithm.salt.byteOffset,
-              normalizedAlgorithm.salt.byteLength,
-            );
-          } else {
-            normalizedAlgorithm.salt = new Uint8Array(normalizedAlgorithm.salt);
-          }
-          normalizedAlgorithm.salt = TypedArrayPrototypeSlice(
-            normalizedAlgorithm.salt,
-          );
-
-          const buf = await core.opAsync("op_crypto_derive_bits", {
-            key: keyData,
-            algorithm: "PBKDF2",
-            hash: normalizedAlgorithm.hash.name,
-            iterations: normalizedAlgorithm.iterations,
-            length,
-          }, normalizedAlgorithm.salt);
-
-          return buf.buffer;
-        }
-        default:
-          throw new DOMException("Not implemented", "NotSupportedError");
+      // 4-6.
+      const result = await deriveBits(normalizedAlgorithm, baseKey, length);
+      // 7.
+      if (normalizedAlgorithm.name !== baseKey[_algorithm].name) {
+        throw new DOMException("InvalidAccessError", "Invalid algorithm name");
       }
+      // 8.
+      if (!ArrayPrototypeIncludes(baseKey[_usages], "deriveBits")) {
+        throw new DOMException(
+          "InvalidAccessError",
+          "baseKey usages does not contain `deriveBits`",
+        );
+      }
+      // 9-10.
+      return result;
     }
 
     /**
@@ -1303,6 +1275,52 @@
         // 14.
         return key;
       }
+    }
+  }
+
+  async function deriveBits(normalizedAlgorithm, baseKey, length) {
+    switch (normalizedAlgorithm.name) {
+      case "PBKDF2": {
+        // 1.
+        if (length == null || length == 0 || length % 8 !== 0) {
+          throw new DOMException("Invalid length", "OperationError");
+        }
+
+        if (normalizedAlgorithm.iterations == 0) {
+          throw new DOMException(
+            "iterations must not be zero",
+            "OperationError",
+          );
+        }
+
+        const handle = baseKey[_handle];
+        const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
+
+        if (ArrayBufferIsView(normalizedAlgorithm.salt)) {
+          normalizedAlgorithm.salt = new Uint8Array(
+            normalizedAlgorithm.salt.buffer,
+            normalizedAlgorithm.salt.byteOffset,
+            normalizedAlgorithm.salt.byteLength,
+          );
+        } else {
+          normalizedAlgorithm.salt = new Uint8Array(normalizedAlgorithm.salt);
+        }
+        normalizedAlgorithm.salt = TypedArrayPrototypeSlice(
+          normalizedAlgorithm.salt,
+        );
+
+        const buf = await core.opAsync("op_crypto_derive_bits", {
+          key: keyData,
+          algorithm: "PBKDF2",
+          hash: normalizedAlgorithm.hash.name,
+          iterations: normalizedAlgorithm.iterations,
+          length,
+        }, normalizedAlgorithm.salt);
+
+        return buf.buffer;
+      }
+      default:
+        throw new DOMException("Not implemented", "NotSupportedError");
     }
   }
 
