@@ -678,6 +678,7 @@ name = "deno_core"
 version = "0.98.0"
 dependencies = [
  "anyhow",
+ "base64 0.13.0",
  "futures",
  "indexmap",
  "lazy_static",
@@ -691,6 +692,7 @@ dependencies = [
  "serde_v8",
  "tokio",
  "url",
+ "uuid",
 ]
 
 [[package]]

@@ -2,6 +2,7 @@
 mod async_cancel;
 mod async_cell;
 mod bindings;
+mod dev_tools;
 pub mod error;
 mod extensions;
 mod flags;
