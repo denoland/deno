@@ -100,3 +100,9 @@ itest!(lint_with_malformed_config {
   output: "lint/lint_with_malformed_config.out",
   exit_code: 1,
 });
+
+itest!(lint_with_malformed_config2 {
+  args: "lint --config lint/Deno.malformed2.jsonc",
+  output: "lint/lint_with_malformed_config2.out",
+  exit_code: 1,
+});

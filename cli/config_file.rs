@@ -267,7 +267,7 @@ impl Serialize for TsConfig {
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct LintRulesConfig {
   pub tags: Option<Vec<String>>,
   pub include: Option<Vec<String>>,
@@ -275,15 +275,14 @@ pub struct LintRulesConfig {
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct LintFilesConfig {
   pub include: Vec<String>,
   pub exclude: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
-#[serde(default)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct LintConfig {
   pub rules: LintRulesConfig,
   pub files: LintFilesConfig,
