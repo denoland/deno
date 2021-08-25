@@ -23,6 +23,7 @@
     DatePrototypeGetTime,
     MathMax,
     MathMin,
+    ObjectDefineProperty,
     RegExpPrototypeTest,
     StringPrototypeCharAt,
     StringPrototypeToLowerCase,
@@ -358,10 +359,6 @@
       return bytes.buffer;
     }
 
-    get [SymbolToStringTag]() {
-      return "Blob";
-    }
-
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,
@@ -373,6 +370,8 @@
       }));
     }
   }
+
+  ObjectDefineProperty(Blob.prototype, SymbolToStringTag, { value: "Blob" });
 
   webidl.configurePrototype(Blob);
 
