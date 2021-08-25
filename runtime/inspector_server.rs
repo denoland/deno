@@ -309,7 +309,7 @@ async fn server(
 }
 
 /// The pump future takes care of forwarding messages between the websocket
-/// and channels. It resolves to () when either side disconnects, ignoring any
+/// and channels. It resolves when either side disconnects, ignoring any
 /// errors.
 ///
 /// The future proxies messages sent and received on a warp WebSocket

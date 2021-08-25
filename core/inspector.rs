@@ -87,11 +87,11 @@ pub struct JsRuntimeInspector {
 
 impl Drop for JsRuntimeInspector {
   fn drop(&mut self) {
-    // Since the  waker is cloneable, it might outlive the inspector itself.
+    // Since the waker is cloneable, it might outlive the inspector itself.
     // Set the poll state to 'dropped' so it doesn't attempt to request an
     // interrupt from the isolate.
     self.waker.update(|w| w.poll_state = PollState::Dropped);
-    // TODO(bartlomieju): this comment is out of date
+
     // V8 automatically deletes all sessions when an `V8Inspector` instance is
     // deleted, however InspectorSession also has a drop handler that cleans
     // up after itself. To avoid a double free, make sure the inspector is
@@ -132,9 +132,11 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
   }
 }
 
-/// `JsRuntimeInspector` implements a Future so that it can poll for new incoming
-/// connections and messages from the WebSocket server. The Worker that owns
-/// this `JsRuntimeInspector` will call this function from `Worker::poll()`.
+/// Polling `JsRuntimeInspector` allows inspector to accept new incoming
+/// connections and "pump" messages in different sessions.
+///
+/// It should be polled on tick of event loop, ie. in `JsRuntime::poll_event_loop`
+/// function.
 impl Future for JsRuntimeInspector {
   type Output = ();
   fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
@@ -499,8 +501,7 @@ impl task::ArcWake for InspectorWaker {
 struct InspectorSession {
   v8_channel: v8::inspector::ChannelBase,
   v8_session: Rc<RefCell<v8::UniqueRef<v8::inspector::V8InspectorSession>>>,
-  proxy_tx: SessionProxySender,
-  pump_messages_from_proxy_handler: Pin<Box<dyn Future<Output = ()> + 'static>>,
+  proxy: InspectorSessionProxy,
 }
 
 impl InspectorSession {
@@ -522,15 +523,10 @@ impl InspectorSession {
         v8::inspector::StringView::empty(),
       )));
 
-      let (proxy_tx, proxy_rx) = session_proxy.split();
-      let pump_messages_from_proxy_handler =
-        Self::pump_messages_from_proxy(v8_session.clone(), proxy_rx);
-
       Self {
         v8_channel,
         v8_session,
-        proxy_tx,
-        pump_messages_from_proxy_handler,
+        proxy: session_proxy,
       }
     })
   }
@@ -544,34 +540,13 @@ impl InspectorSession {
     v8_session_ptr.dispatch_protocol_message(msg);
   }
 
-  // TODO(bartlomieju): this function should be reworked into `impl Future`
-  // or `impl Stream`
-  /// Returns a future that receives messages from the proxy and dispatches
-  /// them to the V8 session.
-  fn pump_messages_from_proxy(
-    v8_session_rc: Rc<
-      RefCell<v8::UniqueRef<v8::inspector::V8InspectorSession>>,
-    >,
-    mut proxy_rx: SessionProxyReceiver,
-  ) -> Pin<Box<dyn Future<Output = ()> + 'static>> {
-    async move {
-      while let Some(msg) = proxy_rx.next().await {
-        let msg = v8::inspector::StringView::from(msg.as_slice());
-        let mut v8_session = v8_session_rc.borrow_mut();
-        let v8_session_ptr = v8_session.as_mut();
-        v8_session_ptr.dispatch_protocol_message(msg);
-      }
-    }
-    .boxed_local()
-  }
-
   fn send_message(
     &self,
     maybe_call_id: Option<i32>,
     msg: v8::UniquePtr<v8::inspector::StringBuffer>,
   ) {
     let msg = msg.unwrap().string().to_string();
-    let _ = self.proxy_tx.unbounded_send((maybe_call_id, msg));
+    let _ = self.proxy.tx.unbounded_send((maybe_call_id, msg));
   }
 
   pub fn break_on_next_statement(&mut self) {
@@ -612,10 +587,23 @@ impl v8::inspector::ChannelImpl for InspectorSession {
   fn flush_protocol_notifications(&mut self) {}
 }
 
+/// This is a "pump" future takes care of receiving messages and dispatching
+/// them to the inspector. It resolves when receiver closes.
 impl Future for InspectorSession {
   type Output = ();
   fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    self.pump_messages_from_proxy_handler.poll_unpin(cx)
+    while let Poll::Ready(maybe_msg) = self.proxy.rx.poll_next_unpin(cx) {
+      if let Some(msg) = maybe_msg {
+        let msg = v8::inspector::StringView::from(msg.as_slice());
+        let mut v8_session = self.v8_session.borrow_mut();
+        let v8_session_ptr = v8_session.as_mut();
+        v8_session_ptr.dispatch_protocol_message(msg);
+      } else {
+        return Poll::Ready(());
+      }
+    }
+
+    Poll::Pending
   }
 }
 
