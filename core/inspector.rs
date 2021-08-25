@@ -82,7 +82,6 @@ pub struct JsRuntimeInspector {
   sessions: RefCell<SessionContainer>,
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
-  deregister_tx: Option<oneshot::Sender<()>>,
 }
 
 impl Drop for JsRuntimeInspector {
@@ -97,13 +96,6 @@ impl Drop for JsRuntimeInspector {
     // up after itself. To avoid a double free, make sure the inspector is
     // dropped last.
     take(&mut *self.sessions.borrow_mut());
-
-    // Notify counterparty that this instance is being destroyed. Ignoring
-    // result because counterparty waiting for the signal might have already
-    // dropped the other end of channel.
-    if let Some(deregister_tx) = self.deregister_tx.take() {
-      let _ = deregister_tx.send(());
-    }
   }
 }
 
@@ -172,7 +164,6 @@ impl JsRuntimeInspector {
       new_session_tx,
       flags,
       waker,
-      deregister_tx: None,
     });
     self_.v8_inspector = Rc::new(RefCell::new(
       v8::inspector::V8Inspector::create(scope, &mut *self_).into(),
@@ -329,19 +320,6 @@ impl JsRuntimeInspector {
   /// complete the handshake.
   pub fn get_session_sender(&self) -> UnboundedSender<InspectorSessionProxy> {
     self.new_session_tx.clone()
-  }
-
-  /// Create a channel that notifies the frontend when inspector is dropped.
-  ///
-  /// NOTE: Only a single handler is currently available.
-  pub fn add_deregister_handler(&mut self) -> oneshot::Receiver<()> {
-    let (tx, rx) = oneshot::channel::<()>();
-    let prev = self.deregister_tx.replace(tx);
-    assert!(
-      prev.is_none(),
-      "Only a single deregister handler is allowed"
-    );
-    rx
   }
 
   /// Create a local inspector session that can be used on

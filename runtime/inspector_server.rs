@@ -16,7 +16,7 @@ use deno_core::futures::task::Poll;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::InspectorSessionProxy;
+use deno_core::DevtoolsSessionProxy;
 use deno_core::JsRuntime;
 use deno_websocket::tokio_tungstenite::tungstenite;
 use std::cell::RefCell;
@@ -61,14 +61,15 @@ impl InspectorServer {
     }
   }
 
+  // TODO(bartlomieju): rename to `register_devtools`?
   pub fn register_inspector(
     &self,
     module_url: String,
     js_runtime: &mut JsRuntime,
   ) {
-    let inspector = js_runtime.inspector();
-    let session_sender = inspector.get_session_sender();
-    let deregister_rx = inspector.add_deregister_handler();
+    let dev_tools_agent = js_runtime.dev_tools();
+    let session_sender = dev_tools_agent.get_session_sender();
+    let deregister_rx = dev_tools_agent.add_deregister_handler();
     // TODO(bartlomieju): simplify
     let info =
       InspectorInfo::new(self.host, session_sender, deregister_rx, module_url);
@@ -177,7 +178,7 @@ fn handle_ws_request(
     // The 'inbound' channel carries messages received from the websocket.
     let (inbound_tx, inbound_rx) = mpsc::unbounded();
 
-    let inspector_session_proxy = InspectorSessionProxy {
+    let inspector_session_proxy = DevtoolsSessionProxy {
       tx: outbound_tx,
       rx: inbound_rx,
     };
@@ -325,12 +326,12 @@ async fn pump_websocket_messages(
     hyper::upgrade::Upgraded,
   >,
   inbound_tx: UnboundedSender<Vec<u8>>,
-  outbound_rx: UnboundedReceiver<(Option<i32>, String)>,
+  outbound_rx: UnboundedReceiver<String>,
 ) {
   let (websocket_tx, websocket_rx) = websocket.split();
 
   let outbound_pump = outbound_rx
-    .map(|(_maybe_call_id, msg)| tungstenite::Message::text(msg))
+    .map(tungstenite::Message::text)
     .map(Ok)
     .forward(websocket_tx)
     .map_err(|_| ());
@@ -345,6 +346,7 @@ async fn pump_websocket_messages(
       .try_collect::<()>()
       .await;
 
+    // TODO(bartlomieju): change to "Devtools session ended"?
     match result {
       Ok(_) => eprintln!("Debugger session ended"),
       Err(err) => eprintln!("Debugger session ended: {}.", err),
@@ -361,7 +363,7 @@ pub struct InspectorInfo {
   pub host: SocketAddr,
   pub uuid: Uuid,
   pub thread_name: Option<String>,
-  pub new_session_tx: UnboundedSender<InspectorSessionProxy>,
+  pub new_session_tx: UnboundedSender<DevtoolsSessionProxy>,
   pub deregister_rx: oneshot::Receiver<()>,
   pub url: String,
 }
@@ -369,7 +371,7 @@ pub struct InspectorInfo {
 impl InspectorInfo {
   pub fn new(
     host: SocketAddr,
-    new_session_tx: mpsc::UnboundedSender<InspectorSessionProxy>,
+    new_session_tx: mpsc::UnboundedSender<DevtoolsSessionProxy>,
     deregister_rx: oneshot::Receiver<()>,
     url: String,
   ) -> Self {

@@ -4,8 +4,7 @@
 //! DevTools commands (for example Network.enable). The module additionally
 //! faciliates sending events over the DevTools protocol back to the client.
 
-#![allow(unused)]
-
+use crate::futures::channel::mpsc;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -13,15 +12,14 @@ use std::future::Future;
 use std::rc::Rc;
 
 use crate::error::AnyError;
-use crate::futures;
 use crate::futures::channel::mpsc::UnboundedReceiver;
 use crate::futures::channel::mpsc::UnboundedSender;
+use crate::futures::channel::oneshot;
 use crate::futures::task::Context;
 use crate::futures::task::Poll;
-use crate::futures::try_join;
+use crate::futures::FutureExt;
 use crate::futures::StreamExt;
 use crate::inspector::InspectorSessionProxy;
-use crate::inspector::SessionProxySender;
 use rusty_v8 as v8;
 use serde::Deserialize;
 use serde::Serialize;
@@ -36,7 +34,7 @@ pub type DevtoolsSessionProxyReceiver = UnboundedReceiver<Vec<u8>>;
 
 /// Encapsulates an UnboundedSender/UnboundedReceiver pair that together form
 /// a duplex channel for sending/receiving messages.
-pub struct DevtoolsInspectorSessionProxy {
+pub struct DevtoolsSessionProxy {
   pub tx: DevtoolsSessionProxySender,
   pub rx: DevtoolsSessionProxyReceiver,
 }
@@ -49,15 +47,22 @@ pub struct DevtoolsInspectorSessionProxy {
 ///  - Keeping a list of all the active DevTools sessions
 ///  - Providing a way for ops to dispatch events to these sessions
 ///  - Providing a way for ops to share data with the CDP request handlers
-#[derive(Clone, Default)]
 pub struct DevToolsAgent {
   pub sessions: Rc<RefCell<Vec<DevToolsSession>>>,
+  state: Rc<RefCell<DevToolsAgentState>>,
+  v8_session_tx: UnboundedSender<InspectorSessionProxy>,
+  new_session_rx: UnboundedReceiver<DevtoolsSessionProxy>,
+  new_session_tx: UnboundedSender<DevtoolsSessionProxy>,
+  deregister_tx: Option<oneshot::Sender<()>>,
+}
 
-  // TODO(lucacasonato): add a GothamState
+#[derive(Default)]
+pub struct DevToolsAgentState {
+  // TODO(bartlomieju): this struct should be a GothamState
 
   // This is temporary. Instead `DevToolsAgent` should get its own GothamState
   // where stuff like this can be stored.
-  pub request_bodies: Rc<RefCell<HashMap<Uuid, Vec<u8>>>>,
+  pub request_bodies: HashMap<Uuid, Vec<u8>>,
 }
 
 fn domain_from_method(method: &str) -> Option<&str> {
@@ -72,17 +77,98 @@ fn domain_from_method(method: &str) -> Option<&str> {
 impl Future for DevToolsAgent {
   type Output = ();
   fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
+    let _ = self.poll_incoming_sessions(cx);
     self.poll_sessions(cx)
   }
 }
 
+impl Drop for DevToolsAgent {
+  fn drop(&mut self) {
+    // Notify counterparty that this instance is being destroyed. Ignoring
+    // result because counterparty waiting for the signal might have already
+    // dropped the other end of channel.
+    if let Some(deregister_tx) = self.deregister_tx.take() {
+      let _ = deregister_tx.send(());
+    }
+  }
+}
 impl DevToolsAgent {
+  pub fn new(v8_session_tx: UnboundedSender<InspectorSessionProxy>) -> Self {
+    let (new_session_tx, new_session_rx) =
+      mpsc::unbounded::<DevtoolsSessionProxy>();
+
+    Self {
+      sessions: Rc::new(RefCell::new(vec![])),
+      state: Rc::new(RefCell::new(DevToolsAgentState::default())),
+      v8_session_tx,
+      new_session_tx,
+      new_session_rx,
+      deregister_tx: None,
+    }
+  }
+
+  fn start_session(&self, proxy: DevtoolsSessionProxy) -> DevToolsSession {
+    // The 'outbound' channel carries messages sent to the session.
+    let (v8_outbound_tx, v8_outbound_rx) = mpsc::unbounded();
+
+    // The 'inbound' channel carries messages received from the session.
+    let (v8_inbound_tx, v8_inbound_rx) = mpsc::unbounded();
+
+    let v8_proxy = InspectorSessionProxy {
+      tx: v8_outbound_tx,
+      rx: v8_inbound_rx,
+    };
+
+    let devtools_session = DevToolsSession {
+      state: self.state.clone(),
+      proxy_tx: proxy.tx,
+      proxy_rx: proxy.rx,
+      v8_proxy_tx: v8_inbound_tx,
+      v8_proxy_rx: v8_outbound_rx,
+      enabled_domains: Rc::new(RefCell::new(HashSet::new())),
+    };
+
+    let _ = self.v8_session_tx.unbounded_send(v8_proxy);
+
+    devtools_session
+  }
+
+  /// Obtain a sender for proxy channels.
+  pub fn get_session_sender(&self) -> UnboundedSender<DevtoolsSessionProxy> {
+    self.new_session_tx.clone()
+  }
+
+  /// Create a channel that notifies the frontend when inspector is dropped.
+  ///
+  /// NOTE: Only a single handler is currently available.
+  pub fn add_deregister_handler(&mut self) -> oneshot::Receiver<()> {
+    let (tx, rx) = oneshot::channel::<()>();
+    let prev = self.deregister_tx.replace(tx);
+    assert!(
+      prev.is_none(),
+      "Only a single deregister handler is allowed"
+    );
+    rx
+  }
+
+  // TODO(bartlomieju): shouldn't return Poll::Pending everytime...
+  fn poll_incoming_sessions(&mut self, cx: &mut Context) -> Poll<()> {
+    while let Poll::Ready(Some(proxy)) = self.new_session_rx.poll_next_unpin(cx)
+    {
+      let session = self.start_session(proxy);
+      self.sessions.borrow_mut().push(session);
+    }
+    Poll::Pending
+  }
+
+  // TODO(bartlomieju): shouldn't return Poll::Pending everytime...
+  // TODO(bartlomieju): this is naive, need something like futuresunordered
   fn poll_sessions(&mut self, cx: &mut Context) -> Poll<()> {
-    // let sessions = self.sessions.borrow();
-    // for session in &*sessions {
-    //     session.poll(cx);
-    // }
-    todo!()
+    let mut sessions = self.sessions.borrow_mut();
+    for session in sessions.iter_mut() {
+      let _ = session.poll_unpin(cx);
+    }
+    Poll::Pending
   }
 
   /// Check if any session has the given domain enabled.
@@ -210,13 +296,12 @@ fn handle_message(
       struct Params {
         request_id: Uuid,
       }
-      // TODO:
-      //   let params: Params = serde_json::from_value(params).unwrap();
-      //   let request_bodies = session.agent.request_bodies.borrow();
-      //   let body = request_bodies.get(&params.request_id).unwrap();
+      let params: Params = serde_json::from_value(params).unwrap();
+      let state = session.state.borrow();
+      let body = state.request_bodies.get(&params.request_id).unwrap();
       Ok(json!({
         "base64Encoded": true,
-        // "body": base64::encode(body)
+        "body": base64::encode(body)
       }))
     }
     _ => {
@@ -242,9 +327,7 @@ pub struct DevToolsSession {
   proxy_rx: DevtoolsSessionProxyReceiver,
   v8_proxy_tx: UnboundedSender<Vec<u8>>,
   v8_proxy_rx: UnboundedReceiver<(Option<i32>, String)>,
-
-  //   /// The agent this session is associated with.
-  //   pub agent: DevToolsAgent,
+  state: Rc<RefCell<DevToolsAgentState>>,
 
   // TODO(bartlomieju): does it need to be Rc?
   /// The domains that are enabled for this session.
@@ -296,50 +379,6 @@ impl DevToolsSession {
     let domains = self.enabled_domains.borrow();
     domains.contains(domain)
   }
-
-  // impl DevToolsSession {
-  //   /// Start a new DevTools session.
-  //   ///
-  //   /// Returns a tuple of channels that represent the external transport (for
-  //   /// example via websockets), a InspectorSessionProxy that faciliates
-  //   /// communication with the V8 inspector, and a future that needs to be
-  //   /// polled to drive the session forward.
-  //   // TODO(bartlomieju): simplify setting up channels
-  //   // TODO(bartlomieju): separate channel to V8 inspector might be not needed
-  //   pub fn start(
-  //     agent: DevToolsAgent,
-  //     v8_inbound_tx: UnboundedSender<Result<Vec<u8>, AnyError>>,
-  //     mut v8_outbound_rx: UnboundedReceiver<(Option<i32>, String)>,
-  //   ) -> (
-  //     UnboundedReceiver<String>,
-  //     UnboundedSender<Vec<u8>>,
-  //     impl Future<Output = Result<(), AnyError>> + Send,
-  //   ) {
-  //     let (transport_inbound_tx, mut transport_inbound_rx) =
-  //       futures::channel::mpsc::unbounded::<Vec<u8>>();
-  //     let (transport_outbound_tx, transport_outbound_rx) =
-  //       futures::channel::mpsc::unbounded::<String>();
-
-  //     let session = DevToolsSession {
-  //       transport_tx: transport_outbound_tx.clone(),
-  //       v8_tx: v8_inbound_tx,
-  //       agent: agent.clone(),
-  //       enabled_domains: Default::default(),
-  //     };
-  //     let session_ = session.clone();
-
-  //     let fut = async move {
-  //       try_join!(incoming, from_v8)?;
-  //       Ok(())
-  //     };
-
-  //     {
-  //       let mut sessions = agent.sessions.lock().unwrap();
-  //       sessions.push(session);
-  //     }
-
-  //     (transport_outbound_rx, transport_inbound_tx, fut)
-  //   }
 
   fn dispatch(&self, msg: CdpMessage) -> Result<(), AnyError> {
     // Check if the messages uses one of built-in V8 domains and if

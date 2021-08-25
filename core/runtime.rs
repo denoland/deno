@@ -3,6 +3,7 @@
 use rusty_v8 as v8;
 
 use crate::bindings;
+use crate::dev_tools::DevToolsAgent;
 use crate::error::attach_handle_to_error;
 use crate::error::generic_error;
 use crate::error::AnyError;
@@ -81,6 +82,7 @@ pub struct JsRuntime {
   // This is an Option<Box<JsRuntimeInspector> instead of just Box<JsRuntimeInspector>
   // to workaround a safety issue. See JsRuntime::drop.
   inspector: Option<Box<JsRuntimeInspector>>,
+  dev_tools_agent: DevToolsAgent,
   snapshot_creator: Option<v8::SnapshotCreator>,
   has_snapshotted: bool,
   allocations: IsolateAllocations,
@@ -306,6 +308,8 @@ impl JsRuntime {
     let inspector =
       JsRuntimeInspector::new(&mut isolate, global_context.clone());
 
+    let dev_tools_agent = DevToolsAgent::new(inspector.get_session_sender());
+
     let loader = options
       .module_loader
       .unwrap_or_else(|| Rc::new(NoopModuleLoader));
@@ -350,6 +354,7 @@ impl JsRuntime {
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
       inspector: Some(inspector),
+      dev_tools_agent,
       snapshot_creator: maybe_snapshot_creator,
       has_snapshotted: false,
       allocations: IsolateAllocations::default(),
@@ -382,6 +387,10 @@ impl JsRuntime {
 
   pub fn inspector(&mut self) -> &mut Box<JsRuntimeInspector> {
     self.inspector.as_mut().unwrap()
+  }
+
+  pub fn dev_tools(&mut self) -> &mut DevToolsAgent {
+    &mut self.dev_tools_agent
   }
 
   pub fn handle_scope(&mut self) -> v8::HandleScope {
@@ -669,7 +678,8 @@ impl JsRuntime {
     cx: &mut Context,
     wait_for_inspector: bool,
   ) -> Poll<Result<(), AnyError>> {
-    // We always poll the inspector first
+    // We always poll dev tools and the inspector first
+    let _ = self.dev_tools_agent.poll_unpin(cx);
     let _ = self.inspector().poll_unpin(cx);
 
     let state_rc = Self::state(self.v8_isolate());
