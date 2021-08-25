@@ -1,9 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::null_opbuf;
 use deno_core::error::AnyError;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -22,14 +20,14 @@ impl Resource for WebGpuShaderModule {
 pub struct CreateShaderModuleArgs {
   device_rid: ResourceId,
   label: Option<String>,
-  code: Option<String>,
+  code: String,
   _source_map: Option<()>, // not yet implemented
 }
 
 pub fn op_webgpu_create_shader_module(
   state: &mut OpState,
   args: CreateShaderModuleArgs,
-  zero_copy: Option<ZeroCopyBuf>,
+  _: (),
 ) -> Result<WebGpuResult, AnyError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
@@ -37,26 +35,11 @@ pub fn op_webgpu_create_shader_module(
     .get::<super::WebGpuDevice>(args.device_rid)?;
   let device = device_resource.0;
 
-  let source = match args.code {
-    Some(code) => {
-      wgpu_core::pipeline::ShaderModuleSource::Wgsl(Cow::from(code))
-    }
-    None => wgpu_core::pipeline::ShaderModuleSource::SpirV(Cow::from(unsafe {
-      match &zero_copy {
-        Some(zero_copy) => {
-          let (prefix, data, suffix) = zero_copy.align_to::<u32>();
-          assert!(prefix.is_empty());
-          assert!(suffix.is_empty());
-          data
-        }
-        None => return Err(null_opbuf()),
-      }
-    })),
-  };
+  let source =
+    wgpu_core::pipeline::ShaderModuleSource::Wgsl(Cow::from(args.code));
 
   let descriptor = wgpu_core::pipeline::ShaderModuleDescriptor {
     label: args.label.map(Cow::from),
-    flags: wgpu_types::ShaderFlags::all(),
   };
 
   gfx_put!(device => instance.device_create_shader_module(

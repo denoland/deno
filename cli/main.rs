@@ -61,6 +61,7 @@ use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::v8_set_flags;
+use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::permissions::Permissions;
@@ -75,6 +76,7 @@ use std::env;
 use std::io::Read;
 use std::io::Write;
 use std::iter::once;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -169,7 +171,7 @@ pub fn create_main_worker(
   program_state: &Arc<ProgramState>,
   main_module: ModuleSpecifier,
   permissions: Permissions,
-  enable_testing: bool,
+  maybe_op_init: Option<&dyn Fn(&mut JsRuntime)>,
 ) -> MainWorker {
   let module_loader = CliModuleLoader::new(program_state.clone());
 
@@ -245,8 +247,8 @@ pub fn create_main_worker(
     ops::errors::init(js_runtime);
     ops::runtime_compiler::init(js_runtime);
 
-    if enable_testing {
-      ops::testing::init(js_runtime);
+    if let Some(op_init) = maybe_op_init {
+      op_init(js_runtime);
     }
 
     js_runtime.sync_ops_cache();
@@ -483,7 +485,7 @@ async fn install_command(
   let program_state = ProgramState::build(preload_flags).await?;
   let main_module = resolve_url_or_path(&module_url)?;
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, false);
+    create_main_worker(&program_state, main_module.clone(), permissions, None);
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module).await?;
   tools::installer::install(flags, &module_url, args, name, root, force)
@@ -547,7 +549,7 @@ async fn eval_command(
   let permissions = Permissions::from_options(&flags.clone().into());
   let program_state = ProgramState::build(flags).await?;
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, false);
+    create_main_worker(&program_state, main_module.clone(), permissions, None);
   // Create a dummy source file.
   let source_code = if print {
     format!("console.log({})", code)
@@ -793,7 +795,7 @@ async fn run_repl(
   let permissions = Permissions::from_options(&flags.clone().into());
   let program_state = ProgramState::build(flags).await?;
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, false);
+    create_main_worker(&program_state, main_module.clone(), permissions, None);
   worker.run_event_loop(false).await?;
 
   tools::repl::run(&program_state, worker, maybe_eval).await
@@ -807,7 +809,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
     &program_state.clone(),
     main_module.clone(),
     permissions,
-    false,
+    None,
   );
 
   let mut source = Vec::new();
@@ -890,29 +892,81 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     })
   };
 
+  /// The FileWatcherModuleExecutor provides module execution with safe dispatching of life-cycle events by tracking the
+  /// state of any pending events and emitting accordingly on drop in the case of a future
+  /// cancellation.
+  struct FileWatcherModuleExecutor {
+    worker: MainWorker,
+    pending_unload: bool,
+  }
+
+  impl FileWatcherModuleExecutor {
+    pub fn new(worker: MainWorker) -> FileWatcherModuleExecutor {
+      FileWatcherModuleExecutor {
+        worker,
+        pending_unload: false,
+      }
+    }
+
+    /// Execute the given main module emitting load and unload events before and after execution
+    /// respectively.
+    pub async fn execute(
+      &mut self,
+      main_module: &ModuleSpecifier,
+    ) -> Result<(), AnyError> {
+      self.worker.execute_module(main_module).await?;
+      self.worker.execute_script(
+        &located_script_name!(),
+        "window.dispatchEvent(new Event('load'))",
+      )?;
+      self.pending_unload = true;
+
+      let result = self.worker.run_event_loop(false).await;
+      self.pending_unload = false;
+
+      if let Err(err) = result {
+        return Err(err);
+      }
+
+      self.worker.execute_script(
+        &located_script_name!(),
+        "window.dispatchEvent(new Event('unload'))",
+      )?;
+
+      Ok(())
+    }
+  }
+
+  impl Drop for FileWatcherModuleExecutor {
+    fn drop(&mut self) {
+      if self.pending_unload {
+        self
+          .worker
+          .execute_script(
+            &located_script_name!(),
+            "window.dispatchEvent(new Event('unload'))",
+          )
+          .unwrap();
+      }
+    }
+  }
+
   let operation =
     |(program_state, main_module): (Arc<ProgramState>, ModuleSpecifier)| {
       let flags = flags.clone();
       let permissions = Permissions::from_options(&flags.into());
       async move {
-        let main_module = main_module.clone();
-        let mut worker = create_main_worker(
+        // We make use an module executor guard to ensure that unload is always fired when an
+        // operation is called.
+        let mut executor = FileWatcherModuleExecutor::new(create_main_worker(
           &program_state,
           main_module.clone(),
           permissions,
-          false,
-        );
-        debug!("main_module {}", main_module);
-        worker.execute_module(&main_module).await?;
-        worker.execute_script(
-          &located_script_name!(),
-          "window.dispatchEvent(new Event('load'))",
-        )?;
-        worker.run_event_loop(false).await?;
-        worker.execute_script(
-          &located_script_name!(),
-          "window.dispatchEvent(new Event('unload'))",
-        )?;
+          None,
+        ));
+
+        executor.execute(&main_module).await?;
+
         Ok(())
       }
     };
@@ -934,7 +988,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   let program_state = ProgramState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, false);
+    create_main_worker(&program_state, main_module.clone(), permissions, None);
 
   let mut maybe_coverage_collector =
     if let Some(ref coverage_dir) = program_state.coverage_dir {
@@ -1000,14 +1054,14 @@ async fn coverage_command(
 async fn test_command(
   flags: Flags,
   include: Option<Vec<String>>,
+  ignore: Vec<PathBuf>,
   no_run: bool,
   doc: bool,
-  fail_fast: Option<usize>,
-  quiet: bool,
+  fail_fast: Option<NonZeroUsize>,
   allow_none: bool,
   filter: Option<String>,
   shuffle: Option<u64>,
-  concurrent_jobs: usize,
+  concurrent_jobs: NonZeroUsize,
 ) -> Result<(), AnyError> {
   if let Some(ref coverage_dir) = flags.coverage_dir {
     std::fs::create_dir_all(&coverage_dir)?;
@@ -1044,11 +1098,13 @@ async fn test_command(
       let test_modules_result = if doc {
         fs_util::collect_specifiers(
           include.clone(),
+          &ignore,
           fs_util::is_supported_test_ext,
         )
       } else {
         fs_util::collect_specifiers(
           include.clone(),
+          &ignore,
           fs_util::is_supported_test_path,
         )
       };
@@ -1175,6 +1231,7 @@ async fn test_command(
     let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
       let filter = filter.clone();
       let include = include.clone();
+      let ignore = ignore.clone();
       let lib = lib.clone();
       let permissions = permissions.clone();
       let program_state = program_state.clone();
@@ -1183,6 +1240,7 @@ async fn test_command(
         let doc_modules = if doc {
           fs_util::collect_specifiers(
             include.clone(),
+            &ignore,
             fs_util::is_supported_test_ext,
           )?
         } else {
@@ -1197,6 +1255,7 @@ async fn test_command(
 
         let test_modules = fs_util::collect_specifiers(
           include.clone(),
+          &ignore,
           fs_util::is_supported_test_path,
         )?;
 
@@ -1214,7 +1273,6 @@ async fn test_command(
           test_modules_to_reload,
           no_run,
           fail_fast,
-          quiet,
           true,
           filter.clone(),
           shuffle,
@@ -1231,6 +1289,7 @@ async fn test_command(
     let doc_modules = if doc {
       fs_util::collect_specifiers(
         include.clone(),
+        &ignore,
         fs_util::is_supported_test_ext,
       )?
     } else {
@@ -1239,6 +1298,7 @@ async fn test_command(
 
     let test_modules = fs_util::collect_specifiers(
       include.clone(),
+      &ignore,
       fs_util::is_supported_test_path,
     )?;
 
@@ -1250,7 +1310,6 @@ async fn test_command(
       test_modules,
       no_run,
       fail_fast,
-      quiet,
       allow_none,
       filter,
       shuffle,
@@ -1353,7 +1412,7 @@ fn get_subcommand(
       no_run,
       doc,
       fail_fast,
-      quiet,
+      ignore,
       include,
       allow_none,
       filter,
@@ -1362,10 +1421,10 @@ fn get_subcommand(
     } => test_command(
       flags,
       include,
+      ignore,
       no_run,
       doc,
       fail_fast,
-      quiet,
       allow_none,
       filter,
       shuffle,

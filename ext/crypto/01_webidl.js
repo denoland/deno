@@ -138,6 +138,17 @@
   webidl.converters.RsaPssParams = webidl
     .createDictionaryConverter("RsaPssParams", dictRsaPssParams);
 
+  const dictRsaOaepParams = [
+    ...dictAlgorithm,
+    {
+      key: "label",
+      converter: webidl.converters["BufferSource"],
+    },
+  ];
+
+  webidl.converters.RsaOaepParams = webidl
+    .createDictionaryConverter("RsaOaepParams", dictRsaOaepParams);
+
   const dictEcdsaParams = [
     ...dictAlgorithm,
     {

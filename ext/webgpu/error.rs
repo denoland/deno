@@ -8,7 +8,6 @@ use wgpu_core::binding_model::CreateBindGroupError;
 use wgpu_core::binding_model::CreateBindGroupLayoutError;
 use wgpu_core::binding_model::CreatePipelineLayoutError;
 use wgpu_core::binding_model::GetBindGroupLayoutError;
-use wgpu_core::command::CommandAllocatorError;
 use wgpu_core::command::CommandEncoderError;
 use wgpu_core::command::ComputePassError;
 use wgpu_core::command::CopyError;
@@ -142,14 +141,6 @@ impl From<RenderBundleError> for WebGpuError {
 impl From<CreateRenderBundleError> for WebGpuError {
   fn from(err: CreateRenderBundleError) -> Self {
     WebGpuError::Validation(err.to_string())
-  }
-}
-
-impl From<CommandAllocatorError> for WebGpuError {
-  fn from(err: CommandAllocatorError) -> Self {
-    match err {
-      CommandAllocatorError::Device(err) => err.into(),
-    }
   }
 }
 

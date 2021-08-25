@@ -48,6 +48,10 @@ pub fn init() -> Extension {
       ("op_fsync_async", op_async(op_fsync_async)),
       ("op_fstat_sync", op_sync(op_fstat_sync)),
       ("op_fstat_async", op_async(op_fstat_async)),
+      ("op_flock_sync", op_sync(op_flock_sync)),
+      ("op_flock_async", op_async(op_flock_async)),
+      ("op_funlock_sync", op_sync(op_funlock_sync)),
+      ("op_funlock_async", op_async(op_funlock_async)),
       ("op_umask", op_sync(op_umask)),
       ("op_chdir", op_sync(op_chdir)),
       ("op_mkdir_sync", op_sync(op_mkdir_sync)),
@@ -344,6 +348,120 @@ async fn op_fstat_async(
 
   let metadata = (*fs_file).0.as_mut().unwrap().metadata().await?;
   Ok(get_stat(metadata))
+}
+
+fn op_flock_sync(
+  state: &mut OpState,
+  rid: ResourceId,
+  exclusive: bool,
+) -> Result<(), AnyError> {
+  use fs3::FileExt;
+  super::check_unstable(state, "Deno.flockSync");
+
+  StdFileResource::with(state, rid, |r| match r {
+    Ok(std_file) => {
+      if exclusive {
+        std_file.lock_exclusive()?;
+      } else {
+        std_file.lock_shared()?;
+      }
+      Ok(())
+    }
+    Err(_) => Err(type_error("cannot lock this type of resource".to_string())),
+  })
+}
+
+async fn op_flock_async(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  exclusive: bool,
+) -> Result<(), AnyError> {
+  use fs3::FileExt;
+  super::check_unstable2(&state, "Deno.flock");
+
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<StdFileResource>(rid)?;
+
+  if resource.fs_file.is_none() {
+    return Err(bad_resource_id());
+  }
+
+  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+    .borrow_mut()
+    .await;
+
+  let std_file = (*fs_file)
+    .0
+    .as_mut()
+    .unwrap()
+    .try_clone()
+    .await?
+    .into_std()
+    .await;
+  tokio::task::spawn_blocking(move || -> Result<(), AnyError> {
+    if exclusive {
+      std_file.lock_exclusive()?;
+    } else {
+      std_file.lock_shared()?;
+    }
+    Ok(())
+  })
+  .await?
+}
+
+fn op_funlock_sync(
+  state: &mut OpState,
+  rid: ResourceId,
+  _: (),
+) -> Result<(), AnyError> {
+  use fs3::FileExt;
+  super::check_unstable(state, "Deno.funlockSync");
+
+  StdFileResource::with(state, rid, |r| match r {
+    Ok(std_file) => {
+      std_file.unlock()?;
+      Ok(())
+    }
+    Err(_) => Err(type_error("cannot lock this type of resource".to_string())),
+  })
+}
+
+async fn op_funlock_async(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  _: (),
+) -> Result<(), AnyError> {
+  use fs3::FileExt;
+  super::check_unstable2(&state, "Deno.funlock");
+
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<StdFileResource>(rid)?;
+
+  if resource.fs_file.is_none() {
+    return Err(bad_resource_id());
+  }
+
+  let mut fs_file = RcRef::map(&resource, |r| r.fs_file.as_ref().unwrap())
+    .borrow_mut()
+    .await;
+
+  let std_file = (*fs_file)
+    .0
+    .as_mut()
+    .unwrap()
+    .try_clone()
+    .await?
+    .into_std()
+    .await;
+  tokio::task::spawn_blocking(move || -> Result<(), AnyError> {
+    std_file.unlock()?;
+    Ok(())
+  })
+  .await?
 }
 
 fn op_umask(
