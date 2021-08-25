@@ -16744,13 +16744,7 @@
             "Cross-origin throw",
             "Redirect-to-cross-origin syntax error",
             "Redirect-to-Cross-origin throw"
-          ],
-          "report-error-cross-origin.sub.any.worker.html": false,
-          "report-error-redirect-to-cross-origin.sub.any.worker.html": false,
-          "report-error-same-origin.sub.any.worker.html": false,
-          "report-error-setTimeout-cross-origin.sub.any.worker.html": false,
-          "report-error-setTimeout-redirect-to-cross-origin.sub.any.worker.html": false,
-          "report-error-setTimeout-same-origin.sub.any.worker.html": false
+          ]
         }
       }
     },

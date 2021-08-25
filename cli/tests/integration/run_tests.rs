@@ -1109,6 +1109,13 @@ itest!(import_file_with_colon {
   output: "import_file_with_colon.ts.out",
   http_server: true,
 });
+
+itest!(classic_workers_event_loop {
+  args:
+    "run --enable-testing-features-do-not-use classic_workers_event_loop.js",
+  output: "classic_workers_event_loop.js.out",
+});
+
 // FIXME(bartlomieju): disabled, because this test is very flaky on CI
 // itest!(local_sources_not_cached_in_memory {
 //   args: "run --allow-read --allow-write no_mem_cache.js",
