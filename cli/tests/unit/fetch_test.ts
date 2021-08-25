@@ -1211,3 +1211,83 @@ unitTest(
     assertEquals(res.body, null);
   },
 );
+
+unitTest(
+  { perms: { read: true, net: true } },
+  async function fetchClientCertWrongPrivateKey(): Promise<void> {
+    await assertThrowsAsync(async () => {
+      const client = Deno.createHttpClient({
+        certChain: "bad data",
+        privateKey: await Deno.readTextFile(
+          "cli/tests/testdata/tls/localhost.key",
+        ),
+      });
+      await fetch("https://localhost:5552/fixture.json", {
+        client,
+      });
+    }, Deno.errors.InvalidData);
+  },
+);
+
+unitTest(
+  { perms: { read: true, net: true } },
+  async function fetchClientCertBadPrivateKey(): Promise<void> {
+    await assertThrowsAsync(async () => {
+      const client = Deno.createHttpClient({
+        certChain: await Deno.readTextFile(
+          "cli/tests/testdata/tls/localhost.crt",
+        ),
+        privateKey: "bad data",
+      });
+      await fetch("https://localhost:5552/fixture.json", {
+        client,
+      });
+    }, Deno.errors.InvalidData);
+  },
+);
+
+unitTest(
+  { perms: { read: true, net: true } },
+  async function fetchClientCertNotPrivateKey(): Promise<void> {
+    await assertThrowsAsync(async () => {
+      const client = Deno.createHttpClient({
+        certChain: await Deno.readTextFile(
+          "cli/tests/testdata/tls/localhost.crt",
+        ),
+        privateKey: "",
+      });
+      await fetch("https://localhost:5552/fixture.json", {
+        client,
+      });
+    }, Deno.errors.InvalidData);
+  },
+);
+
+unitTest(
+  { perms: { read: true, net: true } },
+  async function fetchCustomClientPrivateKey(): Promise<
+    void
+  > {
+    const data = "Hello World";
+    const client = Deno.createHttpClient({
+      certChain: await Deno.readTextFile(
+        "cli/tests/testdata/tls/localhost.crt",
+      ),
+      privateKey: await Deno.readTextFile(
+        "cli/tests/testdata/tls/localhost.key",
+      ),
+      caData: await Deno.readTextFile("cli/tests/testdata/tls/RootCA.crt"),
+    });
+    const response = await fetch("https://localhost:5552/echo_server", {
+      client,
+      method: "POST",
+      body: new TextEncoder().encode(data),
+    });
+    assertEquals(
+      response.headers.get("user-agent"),
+      `Deno/${Deno.version.deno}`,
+    );
+    await response.text();
+    client.close();
+  },
+);

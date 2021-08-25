@@ -320,6 +320,7 @@ impl WebWorker {
         None,
         None,
         options.unsafely_ignore_certificate_errors.clone(),
+        None,
       ),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
