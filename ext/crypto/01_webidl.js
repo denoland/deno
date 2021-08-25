@@ -9,7 +9,7 @@
 ((window) => {
   const webidl = window.__bootstrap.webidl;
   const { CryptoKey } = window.__bootstrap.crypto;
-  const { ArrayBufferIsView } = window.__bootstrap.primordials;
+  const { ArrayBufferIsView, ArrayBuffer } = window.__bootstrap.primordials;
 
   webidl.converters.AlgorithmIdentifier = (V, opts) => {
     // Union for (object or DOMString)

@@ -15,10 +15,15 @@
 
   const {
     ArrayPrototypeFind,
-    ArrayBufferIsView,
+    ArrayPrototypeEvery,
     ArrayPrototypeIncludes,
+    ArrayPrototypeMap,
+    ArrayBufferIsView,
     BigInt64Array,
     StringPrototypeToUpperCase,
+    StringPrototypeReplace,
+    StringPrototypeSplit,
+    StringPrototypeCharCodeAt,
     Symbol,
     SymbolFor,
     SymbolToStringTag,
@@ -98,8 +103,18 @@
   // Decodes the unpadded base64 to the octet sequence containing key value `k` defined in RFC7518 Section 6.4
   function decodeSymmetricKey(key) {
     return new Uint8Array(
-      atob(key.replace(/\-/g, "+").replace(/\_/g, "/")).split("").map((c) =>
-        c.charCodeAt(0)
+      ArrayPrototypeMap(
+        StringPrototypeSplit(
+          atob(
+            StringPrototypeReplace(
+              StringPrototypeReplace(key, /\-/g, "+"),
+              /\_/g,
+              "/",
+            ),
+          ),
+          "",
+        ),
+        (c) => StringPrototypeCharCodeAt(c, 0),
       ),
     );
   }
@@ -676,23 +691,22 @@
 
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "importKey");
 
-      // 2.
-      if (
-        ArrayPrototypeFind(
-          keyUsages,
-          (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
-        ) !== undefined
-      ) {
-        throw new DOMException("Invalid key usages", "SyntaxError");
-      }
-
-      // 3.
-      let hash;
-
-      let data;
-      // 4. https://w3c.github.io/webcrypto/#hmac-operations
       switch (normalizedAlgorithm.name) {
         case "HMAC": {
+          // 2.
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+
+          // 3.
+          let hash;
+          let data;
+          // 4. https://w3c.github.io/webcrypto/#hmac-operations
           switch (format) {
             case "raw": {
               data = keyData;
@@ -710,13 +724,6 @@
                 );
               }
 
-              // 3. Section 6.4 of RFC7518
-              if (!jwk.alg) {
-                throw new DOMException(
-                  "`alg` member of JsonWebKey must be present",
-                  "DataError",
-                );
-              }
               // Section 6.4.1 of RFC7518
               if (!jwk.k) {
                 throw new DOMException(
@@ -732,7 +739,7 @@
               // 6.
               switch (hash.name) {
                 case "SHA-1": {
-                  if (jwk.alg !== "HS1") {
+                  if (jwk.alg !== undefined && jwk.alg !== "HS1") {
                     throw new DOMException(
                       "`alg` member of JsonWebKey must be `HS1`",
                       "DataError",
@@ -741,7 +748,7 @@
                   break;
                 }
                 case "SHA-256": {
-                  if (jwk.alg !== "HS256") {
+                  if (jwk.alg !== undefined && jwk.alg !== "HS256") {
                     throw new DOMException(
                       "`alg` member of JsonWebKey must be `HS256`",
                       "DataError",
@@ -750,7 +757,7 @@
                   break;
                 }
                 case "SHA-384": {
-                  if (jwk.alg !== "HS384") {
+                  if (jwk.alg !== undefined && jwk.alg !== "HS384") {
                     throw new DOMException(
                       "`alg` member of JsonWebKey must be `HS384`",
                       "DataError",
@@ -759,7 +766,7 @@
                   break;
                 }
                 case "SHA-512": {
-                  if (jwk.alg !== "HS512") {
+                  if (jwk.alg !== undefined && jwk.alg !== "HS512") {
                     throw new DOMException(
                       "`alg` member of JsonWebKey must be `HS512`",
                       "DataError",
@@ -795,8 +802,9 @@
                 }
 
                 if (
-                  !jwk.key_ops.every((u) =>
-                    ArrayPrototypeIncludes(keyUsages, u)
+                  !ArrayPrototypeEvery(
+                    jwk.key_ops,
+                    (u) => ArrayPrototypeIncludes(keyUsages, u),
                   )
                 ) {
                   throw new DOMException(
@@ -826,7 +834,7 @@
           if (length === 0) {
             throw new DOMException("Key length is zero", "DataError");
           }
-          if (normalizeAlgorithm.length) {
+          if (normalizeAlgorithm.length !== undefined) {
             // 7.
             if (
               normalizedAlgorithm.length > length ||
