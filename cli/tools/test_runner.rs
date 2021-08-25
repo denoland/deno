@@ -14,13 +14,11 @@ use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
-use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
@@ -30,13 +28,11 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
-use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
-use std::task::Poll;
 use std::time::Duration;
 use std::time::Instant;
 use swc_common::comments::CommentKind;
@@ -225,21 +221,6 @@ pub async fn test_specifier(
     test_source.push_str(&format!("import \"{}\";\n", main_module));
   }
 
-  test_source.push_str(&format!(
-    r#"
-    await new Promise(resolve => setTimeout(resolve, 0));
-    window.dispatchEvent(new Event("load"));
-    Deno[Deno.internal].result = Deno[Deno.internal].runTests({}).then(() => {{
-      window.dispatchEvent(new Event("unload"));
-    }});
-    "#,
-    json!({
-      "disableLog": program_state.flags.log_level == Some(Level::Error),
-      "filter": filter,
-      "shuffle": shuffle,
-    }),
-  ));
-
   let test_file = File {
     local: test_module.to_file_path().unwrap(),
     maybe_types: None,
@@ -283,36 +264,29 @@ pub async fn test_specifier(
 
   worker.execute_module(&test_module).await?;
 
-  let result_promise = {
-    let result_global = worker
-      .js_runtime
-      .execute_script(&located_script_name!(), "Deno[Deno.internal].result")?;
+  worker.js_runtime.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('load'));",
+  )?;
 
-    let mut scope = worker.js_runtime.handle_scope();
-    let result_value = v8::Local::<v8::Value>::new(&mut scope, result_global);
-    let result_promise =
-      v8::Local::<v8::Promise>::try_from(result_value).unwrap();
+  let test_result = worker.js_runtime.execute_script(
+    &located_script_name!(),
+    &format!(
+      r#"Deno[Deno.internal].runTests({})"#,
+      json!({
+        "disableLog": program_state.flags.log_level == Some(Level::Error),
+        "filter": filter,
+        "shuffle": shuffle,
+      }),
+    ),
+  )?;
 
-    v8::Global::<v8::Promise>::new(&mut scope, result_promise)
-  };
+  worker.js_runtime.resolve_value(test_result).await?;
 
-  future::poll_fn(|cx| {
-    let _ = worker.poll_event_loop(cx, maybe_coverage_collector.is_some());
-
-    let mut scope = worker.js_runtime.handle_scope();
-    let result_promise = result_promise.get(&mut scope);
-
-    match result_promise.state() {
-      v8::PromiseState::Pending => Poll::Pending,
-      v8::PromiseState::Fulfilled => Poll::Ready(Ok(())),
-      v8::PromiseState::Rejected => {
-        let exception = result_promise.result(&mut scope);
-        let js_error = JsError::from_v8_exception(&mut scope, exception);
-        Poll::Ready(Err(js_error))
-      }
-    }
-  })
-  .await?;
+  worker.js_runtime.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('unload'));",
+  )?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     worker
