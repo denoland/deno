@@ -542,6 +542,10 @@ pub async fn op_crypto_derive_bits(
   let algorithm = args.algorithm;
   match algorithm {
     Algorithm::Pbkdf2 => {
+      // The caller must validate these cases.
+      assert!(args.length > 0);
+      assert!(args.length % 8 == 0);
+
       let algorithm = match args.hash.ok_or_else(not_supported)? {
         CryptoHash::Sha1 => pbkdf2::PBKDF2_HMAC_SHA1,
         CryptoHash::Sha256 => pbkdf2::PBKDF2_HMAC_SHA256,
