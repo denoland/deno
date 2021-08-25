@@ -816,7 +816,7 @@
               }
 
               // 9.
-              if (jwk.ext == false && extractable == true) {
+              if (jwk.ext === false && extractable == true) {
                 throw new DOMException(
                   "`ext` member of JsonWebKey is invalid",
                   "DataError",
