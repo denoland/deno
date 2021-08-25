@@ -18,6 +18,7 @@
     ArrayPrototypeEvery,
     ArrayPrototypeIncludes,
     ArrayPrototypeMap,
+    ArrayBuffer,
     ArrayBufferIsView,
     BigInt64Array,
     StringPrototypeToUpperCase,
