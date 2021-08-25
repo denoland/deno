@@ -16195,8 +16195,7 @@
           "Blob paired surrogates (invalid utf-8)",
           "Blob empty",
           "Blob NUL",
-          "File basic",
-          "ArrayBuffer"
+          "File basic"
         ]
       }
     }
@@ -16252,7 +16251,7 @@
     "message-channels": {
       "basics.any.html": true,
       "close.any.html": true,
-      "dictionary-transferrable.any.html": false,
+      "dictionary-transferrable.any.html": true,
       "implied-start.any.html": true,
       "no-start.any.html": true,
       "user-activation.tentative.any.html": false,
