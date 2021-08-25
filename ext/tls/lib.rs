@@ -162,7 +162,9 @@ pub fn create_client_config(
   Ok(tls_config)
 }
 
-pub fn load_certs(reader: &mut dyn BufRead) -> Result<Vec<Certificate>, AnyError> {
+pub fn load_certs(
+  reader: &mut dyn BufRead,
+) -> Result<Vec<Certificate>, AnyError> {
   let certs = certs(reader)
     .map_err(|_| custom_error("InvalidData", "Unable to decode certificate"))?;
 
