@@ -1,72 +1,72 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 import { assert, unitTest } from "./test_util.ts";
 
-unitTest(function globalThisExists(): void {
+unitTest(function globalThisExists() {
   assert(globalThis != null);
 });
 
-unitTest(function noInternalGlobals(): void {
+unitTest(function noInternalGlobals() {
   // globalThis.__bootstrap should not be there.
   for (const key of Object.keys(globalThis)) {
     assert(!key.startsWith("_"));
   }
 });
 
-unitTest(function windowExists(): void {
+unitTest(function windowExists() {
   assert(window != null);
 });
 
-unitTest(function selfExists(): void {
+unitTest(function selfExists() {
   assert(self != null);
 });
 
-unitTest(function windowWindowExists(): void {
+unitTest(function windowWindowExists() {
   assert(window.window === window);
 });
 
-unitTest(function windowSelfExists(): void {
+unitTest(function windowSelfExists() {
   assert(window.self === window);
 });
 
-unitTest(function globalThisEqualsWindow(): void {
+unitTest(function globalThisEqualsWindow() {
   assert(globalThis === window);
 });
 
-unitTest(function globalThisEqualsSelf(): void {
+unitTest(function globalThisEqualsSelf() {
   assert(globalThis === self);
 });
 
-unitTest(function globalThisInstanceofWindow(): void {
+unitTest(function globalThisInstanceofWindow() {
   assert(globalThis instanceof Window);
 });
 
-unitTest(function globalThisConstructorLength(): void {
+unitTest(function globalThisConstructorLength() {
   assert(globalThis.constructor.length === 0);
 });
 
-unitTest(function globalThisInstanceofEventTarget(): void {
+unitTest(function globalThisInstanceofEventTarget() {
   assert(globalThis instanceof EventTarget);
 });
 
-unitTest(function navigatorInstanceofNavigator(): void {
+unitTest(function navigatorInstanceofNavigator() {
   // TODO(nayeemrmn): Add `Navigator` to deno_lint globals.
   // deno-lint-ignore no-undef
   assert(navigator instanceof Navigator);
 });
 
-unitTest(function DenoNamespaceExists(): void {
+unitTest(function DenoNamespaceExists() {
   assert(Deno != null);
 });
 
-unitTest(function DenoNamespaceEqualsWindowDeno(): void {
+unitTest(function DenoNamespaceEqualsWindowDeno() {
   assert(Deno === window.Deno);
 });
 
-unitTest(function DenoNamespaceIsNotFrozen(): void {
+unitTest(function DenoNamespaceIsNotFrozen() {
   assert(!Object.isFrozen(Deno));
 });
 
-unitTest(function webAssemblyExists(): void {
+unitTest(function webAssemblyExists() {
   assert(typeof WebAssembly.compile === "function");
 });
 
@@ -84,7 +84,7 @@ unitTest(function DenoNamespaceConfigurable() {
   assert(!desc.writable);
 });
 
-unitTest(function DenoCoreNamespaceIsImmutable(): void {
+unitTest(function DenoCoreNamespaceIsImmutable() {
   const { print } = Deno.core;
   try {
     Deno.core.print = 1;
@@ -100,18 +100,18 @@ unitTest(function DenoCoreNamespaceIsImmutable(): void {
   assert(print === Deno.core.print);
 });
 
-unitTest(async function windowQueueMicrotask(): Promise<void> {
+unitTest(async function windowQueueMicrotask() {
   let resolve1: () => void | undefined;
   let resolve2: () => void | undefined;
   let microtaskDone = false;
-  const p1 = new Promise<void>((res): void => {
-    resolve1 = (): void => {
+  const p1 = new Promise<void>((res) => {
+    resolve1 = () => {
       microtaskDone = true;
       res();
     };
   });
-  const p2 = new Promise<void>((res): void => {
-    resolve2 = (): void => {
+  const p2 = new Promise<void>((res) => {
+    resolve2 = () => {
       assert(microtaskDone);
       res();
     };

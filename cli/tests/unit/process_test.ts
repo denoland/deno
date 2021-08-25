@@ -7,7 +7,7 @@ import {
   unitTest,
 } from "./test_util.ts";
 
-unitTest({ perms: { read: true } }, function runPermissions(): void {
+unitTest({ perms: { read: true } }, function runPermissions() {
   assertThrows(() => {
     Deno.run({ cmd: [Deno.execPath(), "eval", "console.log('hello world')"] });
   }, Deno.errors.PermissionDenied);
@@ -15,7 +15,7 @@ unitTest({ perms: { read: true } }, function runPermissions(): void {
 
 unitTest(
   { perms: { run: true, read: true } },
-  async function runSuccess(): Promise<void> {
+  async function runSuccess() {
     const p = Deno.run({
       cmd: [Deno.execPath(), "eval", "console.log('hello world')"],
       stdout: "piped",
@@ -32,7 +32,7 @@ unitTest(
 
 unitTest(
   { perms: { run: true, read: true } },
-  async function runUrl(): Promise<void> {
+  async function runUrl() {
     const p = Deno.run({
       cmd: [
         new URL(`file:///${Deno.execPath()}`),
@@ -73,7 +73,7 @@ unitTest(
 
 unitTest(
   { perms: { run: true, read: true } },
-  function runInvalidStdio(): void {
+  function runInvalidStdio() {
     assertThrows(() =>
       Deno.run({
         cmd: [Deno.execPath(), "eval", "console.log('hello world')"],
@@ -100,7 +100,7 @@ unitTest(
 
 unitTest(
   { perms: { run: true, read: true } },
-  async function runCommandFailedWithCode(): Promise<void> {
+  async function runCommandFailedWithCode() {
     const p = Deno.run({
       cmd: [Deno.execPath(), "eval", "Deno.exit(41 + 1)"],
     });
@@ -118,7 +118,7 @@ unitTest(
     ignore: Deno.build.os === "windows",
     perms: { run: true, read: true },
   },
-  async function runCommandFailedWithSignal(): Promise<void> {
+  async function runCommandFailedWithSignal() {
     const p = Deno.run({
       cmd: [Deno.execPath(), "eval", "--unstable", "Deno.kill(Deno.pid, 9)"],
     });
@@ -130,7 +130,7 @@ unitTest(
   },
 );
 
-unitTest({ perms: { run: true } }, function runNotFound(): void {
+unitTest({ perms: { run: true } }, function runNotFound() {
   let error;
   try {
     Deno.run({ cmd: ["this file hopefully doesn't exist"] });
@@ -143,7 +143,7 @@ unitTest({ perms: { run: true } }, function runNotFound(): void {
 
 unitTest(
   { perms: { write: true, run: true, read: true } },
-  async function runWithCwdIsAsync(): Promise<void> {
+  async function runWithCwdIsAsync() {
     const enc = new TextEncoder();
     const cwd = await Deno.makeTempDir({ prefix: "deno_command_test" });
 
@@ -287,7 +287,7 @@ unitTest(
 
 unitTest(
   { perms: { run: true, read: true } },
-  async function runOutput(): Promise<void> {
+  async function runOutput() {
     const p = Deno.run({
       cmd: [
         Deno.execPath(),
@@ -325,7 +325,7 @@ unitTest(
 
 unitTest(
   { perms: { run: true, write: true, read: true } },
-  async function runRedirectStdoutStderr(): Promise<void> {
+  async function runRedirectStdoutStderr() {
     const tempDir = await Deno.makeTempDir();
     const fileName = tempDir + "/redirected_stdio.txt";
     const file = await Deno.open(fileName, {
@@ -358,7 +358,7 @@ unitTest(
 
 unitTest(
   { perms: { run: true, write: true, read: true } },
-  async function runRedirectStdin(): Promise<void> {
+  async function runRedirectStdin() {
     const tempDir = await Deno.makeTempDir();
     const fileName = tempDir + "/redirected_stdio.txt";
     const encoder = new TextEncoder();
@@ -383,7 +383,7 @@ unitTest(
 
 unitTest(
   { perms: { run: true, read: true } },
-  async function runEnv(): Promise<void> {
+  async function runEnv() {
     const p = Deno.run({
       cmd: [
         Deno.execPath(),
@@ -405,7 +405,7 @@ unitTest(
 
 unitTest(
   { perms: { run: true, read: true } },
-  async function runClose(): Promise<void> {
+  async function runClose() {
     const p = Deno.run({
       cmd: [
         Deno.execPath(),
@@ -428,7 +428,7 @@ unitTest(
 
 unitTest(
   { perms: { run: true, read: true } },
-  async function runKillAfterStatus(): Promise<void> {
+  async function runKillAfterStatus() {
     const p = Deno.run({
       cmd: [Deno.execPath(), "eval", 'console.log("hello")'],
     });
@@ -454,7 +454,7 @@ unitTest(
   },
 );
 
-unitTest(function signalNumbers(): void {
+unitTest(function signalNumbers() {
   if (Deno.build.os === "darwin") {
     assertEquals(Deno.Signal.SIGSTOP, 17);
   } else if (Deno.build.os === "linux") {
@@ -462,7 +462,7 @@ unitTest(function signalNumbers(): void {
   }
 });
 
-unitTest(function killPermissions(): void {
+unitTest(function killPermissions() {
   assertThrows(() => {
     // Unlike the other test cases, we don't have permission to spawn a
     // subprocess we can safely kill. Instead we send SIGCONT to the current
@@ -474,7 +474,7 @@ unitTest(function killPermissions(): void {
 
 unitTest(
   { perms: { run: true, read: true } },
-  async function killSuccess(): Promise<void> {
+  async function killSuccess() {
     const p = Deno.run({
       cmd: [Deno.execPath(), "eval", "setTimeout(() => {}, 10000)"],
     });
@@ -497,7 +497,7 @@ unitTest(
   },
 );
 
-unitTest({ perms: { run: true, read: true } }, function killFailed(): void {
+unitTest({ perms: { run: true, read: true } }, function killFailed() {
   const p = Deno.run({
     cmd: [Deno.execPath(), "eval", "setTimeout(() => {}, 10000)"],
   });

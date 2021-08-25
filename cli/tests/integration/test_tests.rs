@@ -49,16 +49,34 @@ itest!(fail {
   output: "test/fail.out",
 });
 
+itest!(collect {
+  args: "test --ignore=test/collect/ignore test/collect",
+  exit_code: 0,
+  output: "test/collect.out",
+});
+
+itest!(load_unload {
+  args: "test test/load_unload.ts",
+  exit_code: 0,
+  output: "test/load_unload.out",
+});
+
 itest!(doc {
   args: "test --doc --allow-all test/doc.ts",
   exit_code: 1,
   output: "test/doc.out",
 });
 
-itest!(doc_markdown {
-  args: "test --doc --allow-all test/doc_markdown",
+itest!(markdown {
+  args: "test --doc --allow-all test/markdown.md",
   exit_code: 1,
-  output: "test/doc_markdown.out",
+  output: "test/markdown.out",
+});
+
+itest!(text {
+  args: "test --doc --allow-all test/text.md",
+  exit_code: 0,
+  output: "test/text.out",
 });
 
 itest!(quiet {
@@ -131,6 +149,12 @@ itest!(unhandled_rejection {
   args: "test test/unhandled_rejection.ts",
   exit_code: 1,
   output: "test/unhandled_rejection.out",
+});
+
+itest!(filter {
+  args: "test --filter=foo test/filter",
+  exit_code: 0,
+  output: "test/filter.out",
 });
 
 itest!(shuffle {

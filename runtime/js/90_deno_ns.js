@@ -110,7 +110,6 @@
     Signal: __bootstrap.signals.Signal,
     SignalStream: __bootstrap.signals.SignalStream,
     emit: __bootstrap.compilerApi.emit,
-    openPlugin: __bootstrap.plugins.openPlugin,
     kill: __bootstrap.process.kill,
     setRaw: __bootstrap.tty.setRaw,
     consoleSize: __bootstrap.tty.consoleSize,
@@ -136,5 +135,10 @@
     HttpClient: __bootstrap.fetch.HttpClient,
     createHttpClient: __bootstrap.fetch.createHttpClient,
     http: __bootstrap.http,
+    dlopen: __bootstrap.ffi.dlopen,
+    flock: __bootstrap.fs.flock,
+    flockSync: __bootstrap.fs.flockSync,
+    funlock: __bootstrap.fs.funlock,
+    funlockSync: __bootstrap.fs.funlockSync,
   };
 })(this);

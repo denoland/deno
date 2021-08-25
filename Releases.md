@@ -6,6 +6,89 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.13.2 / 2021.08.23
+
+- fix(cli/flags): require a non zero usize for concurrent jobs (#11802)
+- fix(ext/crypto): exportKey() for HMAC (#11737)
+- fix(ext/crypto): remove duplicate Algorithm interface definition (#11807)
+- fix(ext/ffi): don't panic on invalid enum values (#11815)
+- fix(ext/http): resource leak on HttpConn.close() (#11805)
+- fix(lsp): better handling of languageId (#11755)
+- fix(runtime): event loop panics in classic workers (#11756)
+- fix(ext/fetch): Headers constructor error message (#11778)
+- perf(ext/url): cleanup and optimize url parsing op args (#11763)
+- perf(ext/url): optimize UrlParts op serialization (#11765)
+- perf(ext/url): use DOMString instead of USVString as webidl converter for URL
+  parsing (#11775)
+- perf(url): build with opt-level 3 (#11779)
+
+### 1.13.1 / 2021.08.16
+
+- fix: Blob#slice arguments should be optional (#11665)
+- fix: correct spelling of certificate in `--unsafely-ignore-certificate-errors`
+  warning message (#11634)
+- fix: don't statically type name on Deno.errors (#11715)
+- fix: parse error when transpiling code with BOM (#11688)
+- fix(cli): allow specifiers of unknown media types with test command (#11652)
+- fix(cli): explicitly scan for ignore attribute in inline tests (#11647)
+- fix(cli): retain input order of remote specifiers (#11700)
+- fix(cli/lint): don't use gray in diagnostics output for visibility (#11702)
+- fix(cli/tools/repl): don't highlight candidate when completion is list
+  (#11697)
+- fix(ext/crypto): enable non-extractable keys (#11705)
+- fix(ext/crypto): fix copying buffersource (#11714)
+- fix(ext/crypto): handle idlValue not being present (#11685)
+- fix(ext/crypto): importKey() SecurityError on non-extractable keys (#11662)
+- fix(ext/crypto): take a copy of keyData bytes (#11666)
+- fix(ext/fetch): better error if no content-type
+- fix(ext/fetch): don't use global Deno object
+- fix(ext/http): remove unwrap() when HTTP conn errors (#11674)
+- fix(ext/web): use Array primordials in MessagePort (#11680)
+- fix(http/ws): support multiple options in connection header (#11675)
+- fix(lint): add links to help at lint.deno.land (#11667)
+- fix(test): dispatch load event before tests are run (#11708)
+- fix(test): sort file module specifiers (#11656)
+- perf: improve localStorage throughput (#11709)
+- perf(ext/http): faster req_url string assembly (#11711)
+- perf(wpt/crypto): optimize num-bigint-dig for debug builds (#11681)
+
+### 1.13.0 / 2021.08.10
+
+- BREAKING(unstable): Rename Deno.WebSocketUpgrade::websocket to socket (#11542)
+- feat: Add --unsafely-treat-insecure-origin-as-secure flag to disable SSL
+  verification (#11324)
+- feat: add experimental WebSocketStream API (#10365)
+- feat: FFI API replacing native plugins (#11152)
+- feat: stabilize Deno.serveHttp() (#11544)
+- feat: support AbortSignal in writeFile (#11568)
+- feat: support client certificates for connectTls (#11598)
+- feat: type check codeblocks in Markdown file with "deno test --doc" (#11421)
+- feat(extensions/crypto): implement importKey and exportKey for raw HMAC keys
+  (#11367)
+- feat(extensions/crypto): implement verify() for HMAC (#11387)
+- feat(extensions/tls): Optionally support loading native certs (#11491)
+- feat(extensions/web): add structuredClone function (#11572)
+- feat(fmt): format top-level JSX elements/fragments with parens when multi-line
+  (#11582)
+- feat(lsp): ability to set DENO_DIR via settings (#11527)
+- feat(lsp): implement refactoring code actions (#11555)
+- feat(lsp): support clients which do not support disabled code actions (#11612)
+- feat(repl): add --eval flag for evaluating code when the repl starts (#11590)
+- feat(repl): support exports in the REPL (#11592)
+- feat(runtime): allow URL for permissions (#11578)
+- feat(runtime): implement navigator.hardwareConcurrency (#11448)
+- feat(unstable): clean environmental variables for subprocess (#11571)
+- fix: support windows file specifiers with import maps (#11551)
+- fix: Type `Deno.errors.*` as subclasses of `Error` (#10702)
+- fix(doc): panic on invalid url (#11536)
+- fix(extensions/fetch): Add Origin header to outgoing requests for fetch
+  (#11557)
+- fix(extensions/websocket): allow any close code for server (#11614)
+- fix(lsp): do not output to stderr before exiting the process (#11562)
+
+Release notes for std version 0.104.0:
+https://github.com/denoland/deno_std/releases/tag/0.104.0
+
 ### 1.12.2 / 2021.07.26
 
 - feat(lsp, unstable): add workspace config to status page (#11459)
