@@ -62,10 +62,13 @@ impl InspectorServer {
 
   pub fn register_inspector(
     &self,
-    session_sender: UnboundedSender<InspectorSessionProxy>,
-    deregister_rx: oneshot::Receiver<()>,
     module_url: String,
+    js_runtime: &mut JsRuntime,
   ) {
+    let inspector = js_runtime.inspector();
+    let session_sender = inspector.get_session_sender();
+    let deregister_rx = inspector.add_deregister_handler();
+    // TODO(bartlomieju): simplify
     let info =
       InspectorInfo::new(self.host, session_sender, deregister_rx, module_url);
     self.register_inspector_tx.unbounded_send(info).unwrap();
@@ -319,14 +322,23 @@ fn create_websocket_proxy(
       .forward(websocket_tx)
       .map_err(|_| ());
 
-    let inbound_pump = websocket_rx
-      .map(|result| {
-        let result = result.map(|msg| msg.into_data()).map_err(AnyError::from);
-        inbound_tx.unbounded_send(result)
-      })
-      .map_err(|_| ())
-      .try_collect::<()>();
+    let inbound_pump = async move {
+      let result = websocket_rx
+        .map_ok(|msg| msg.into_data())
+        .map_err(AnyError::from)
+        .map_ok(|msg| {
+          let _ = inbound_tx.unbounded_send(msg);
+        })
+        .try_collect::<()>()
+        .await;
 
+      match result {
+        Ok(_) => eprintln!("Debugger session ended"),
+        Err(err) => eprintln!("Debugger session ended: {}.", err),
+      };
+
+      Ok(())
+    };
     let _ = future::try_join(outbound_pump, inbound_pump).await;
   };
 

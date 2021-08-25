@@ -41,9 +41,7 @@ use std::thread;
 /// If first argument is `None` then it's a notification, otherwise
 /// it's a message.
 pub type SessionProxySender = UnboundedSender<(Option<i32>, String)>;
-// TODO(bartlomieju): does it even need to send a Result?
-// It seems `Vec<u8>` would be enough
-pub type SessionProxyReceiver = UnboundedReceiver<Result<Vec<u8>, AnyError>>;
+pub type SessionProxyReceiver = UnboundedReceiver<Vec<u8>>;
 
 /// Encapsulates an UnboundedSender/UnboundedReceiver pair that together form
 /// a duplex channel for sending/receiving messages in V8 session.
@@ -502,7 +500,7 @@ struct InspectorSession {
   v8_channel: v8::inspector::ChannelBase,
   v8_session: Rc<RefCell<v8::UniqueRef<v8::inspector::V8InspectorSession>>>,
   proxy_tx: SessionProxySender,
-  proxy_rx_handler: Pin<Box<dyn Future<Output = ()> + 'static>>,
+  pump_messages_from_proxy_handler: Pin<Box<dyn Future<Output = ()> + 'static>>,
 }
 
 impl InspectorSession {
@@ -525,14 +523,14 @@ impl InspectorSession {
       )));
 
       let (proxy_tx, proxy_rx) = session_proxy.split();
-      let proxy_rx_handler =
-        Self::receive_from_proxy(v8_session.clone(), proxy_rx);
+      let pump_messages_from_proxy_handler =
+        Self::pump_messages_from_proxy(v8_session.clone(), proxy_rx);
 
       Self {
         v8_channel,
         v8_session,
         proxy_tx,
-        proxy_rx_handler,
+        pump_messages_from_proxy_handler,
       }
     })
   }
@@ -550,31 +548,19 @@ impl InspectorSession {
   // or `impl Stream`
   /// Returns a future that receives messages from the proxy and dispatches
   /// them to the V8 session.
-  fn receive_from_proxy(
+  fn pump_messages_from_proxy(
     v8_session_rc: Rc<
       RefCell<v8::UniqueRef<v8::inspector::V8InspectorSession>>,
     >,
-    proxy_rx: SessionProxyReceiver,
+    mut proxy_rx: SessionProxyReceiver,
   ) -> Pin<Box<dyn Future<Output = ()> + 'static>> {
     async move {
-      let result = proxy_rx
-        .map_ok(move |msg| {
-          let msg = v8::inspector::StringView::from(msg.as_slice());
-          let mut v8_session = v8_session_rc.borrow_mut();
-          let v8_session_ptr = v8_session.as_mut();
-          v8_session_ptr.dispatch_protocol_message(msg);
-        })
-        .try_collect::<()>()
-        .await;
-
-      // TODO(bartlomieju): ideally these prints should be moved
-      // to `server.rs` as they are unwanted in context of REPL/coverage collection
-      // but right now they do not pose a huge problem. Investigate how to
-      // move them to `server.rs`.
-      match result {
-        Ok(_) => eprintln!("Debugger session ended."),
-        Err(err) => eprintln!("Debugger session ended: {}.", err),
-      };
+      while let Some(msg) = proxy_rx.next().await {
+        let msg = v8::inspector::StringView::from(msg.as_slice());
+        let mut v8_session = v8_session_rc.borrow_mut();
+        let v8_session_ptr = v8_session.as_mut();
+        v8_session_ptr.dispatch_protocol_message(msg);
+      }
     }
     .boxed_local()
   }
@@ -629,14 +615,14 @@ impl v8::inspector::ChannelImpl for InspectorSession {
 impl Future for InspectorSession {
   type Output = ();
   fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-    self.proxy_rx_handler.poll_unpin(cx)
+    self.pump_messages_from_proxy_handler.poll_unpin(cx)
   }
 }
 
 /// A local inspector session that can be used to send and receive protocol messages directly on
 /// the same thread as an isolate.
 pub struct LocalInspectorSession {
-  v8_session_tx: UnboundedSender<Result<Vec<u8>, AnyError>>,
+  v8_session_tx: UnboundedSender<Vec<u8>>,
   v8_session_rx: UnboundedReceiver<(Option<i32>, String)>,
   response_tx_map: HashMap<i32, oneshot::Sender<serde_json::Value>>,
   next_message_id: i32,
@@ -645,7 +631,7 @@ pub struct LocalInspectorSession {
 
 impl LocalInspectorSession {
   pub fn new(
-    v8_session_tx: UnboundedSender<Result<Vec<u8>, AnyError>>,
+    v8_session_tx: UnboundedSender<Vec<u8>>,
     v8_session_rx: UnboundedReceiver<(Option<i32>, String)>,
   ) -> Self {
     let response_tx_map = HashMap::new();
@@ -687,7 +673,7 @@ impl LocalInspectorSession {
     let raw_message = serde_json::to_string(&message).unwrap();
     self
       .v8_session_tx
-      .unbounded_send(Ok(raw_message.as_bytes().to_vec()))
+      .unbounded_send(raw_message.as_bytes().to_vec())
       .unwrap();
 
     loop {
