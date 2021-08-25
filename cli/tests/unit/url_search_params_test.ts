@@ -102,8 +102,7 @@ unitTest(function urlSearchParamsInitRecord() {
 unitTest(function urlSearchParamsInit() {
   const params1 = new URLSearchParams("a=b");
   assertEquals(params1.toString(), "a=b");
-  // deno-lint-ignore no-explicit-any
-  const params2 = new URLSearchParams(params1 as any);
+  const params2 = new URLSearchParams(params1);
   assertEquals(params2.toString(), "a=b");
 });
 

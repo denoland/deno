@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::ops::TestingFeaturesEnabled;
 use crate::permissions::resolve_read_allowlist;
 use crate::permissions::resolve_write_allowlist;
 use crate::permissions::EnvDescriptor;
@@ -16,6 +17,7 @@ use crate::web_worker::run_web_worker;
 use crate::web_worker::SendableWebWorkerHandle;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
+use crate::web_worker::WebWorkerType;
 use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
 use deno_core::error::custom_error;
@@ -48,6 +50,7 @@ pub struct CreateWebWorkerArgs {
   pub permissions: Permissions,
   pub main_module: ModuleSpecifier,
   pub use_deno_namespace: bool,
+  pub worker_type: WebWorkerType,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
@@ -460,6 +463,7 @@ pub struct CreateWorkerArgs {
   source_code: String,
   specifier: String,
   use_deno_namespace: bool,
+  worker_type: WebWorkerType,
 }
 
 /// Create worker as the host
@@ -478,6 +482,17 @@ fn op_create_worker(
   let use_deno_namespace = args.use_deno_namespace;
   if use_deno_namespace {
     super::check_unstable(state, "Worker.deno.namespace");
+  }
+  let worker_type = args.worker_type;
+  if let WebWorkerType::Classic = worker_type {
+    if let TestingFeaturesEnabled(false) = state.borrow() {
+      return Err(
+        deno_webstorage::DomExceptionNotSupportedError::new(
+          "Classic workers are not supported.",
+        )
+        .into(),
+      );
+    }
   }
   let parent_permissions = state.borrow::<Permissions>().clone();
   let worker_permissions = if let Some(permissions) = args.permissions {
@@ -518,6 +533,7 @@ fn op_create_worker(
         permissions: worker_permissions,
         main_module: module_specifier.clone(),
         use_deno_namespace,
+        worker_type,
       });
 
     // Send thread safe handle from newly created worker to host thread

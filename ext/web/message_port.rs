@@ -2,7 +2,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::ZeroCopyBuf;
@@ -141,7 +140,7 @@ fn deserialize_js_transferables(
         let resource = state
           .resource_table
           .take::<MessagePortResource>(id)
-          .ok_or_else(|| type_error("Invalid message port transfer"))?;
+          .map_err(|_| type_error("Invalid message port transfer"))?;
         resource.cancel.cancel();
         let resource = Rc::try_unwrap(resource)
           .map_err(|_| type_error("Message port is not ready for transfer"))?;
@@ -192,10 +191,7 @@ pub fn op_message_port_post_message(
     }
   }
 
-  let resource = state
-    .resource_table
-    .get::<MessagePortResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+  let resource = state.resource_table.get::<MessagePortResource>(rid)?;
 
   resource.port.send(state, data)
 }
@@ -208,8 +204,8 @@ pub async fn op_message_port_recv_message(
   let resource = {
     let state = state.borrow();
     match state.resource_table.get::<MessagePortResource>(rid) {
-      Some(resource) => resource,
-      None => return Ok(None),
+      Ok(resource) => resource,
+      Err(_) => return Ok(None),
     }
   };
   let cancel = RcRef::map(resource.clone(), |r| &r.cancel);

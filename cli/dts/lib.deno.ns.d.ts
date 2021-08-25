@@ -67,60 +67,24 @@ declare interface PerformanceMeasureOptions {
 declare namespace Deno {
   /** A set of error constructors that are raised by Deno APIs. */
   export namespace errors {
-    export class NotFound extends Error {
-      name: "NotFound";
-    }
-    export class PermissionDenied extends Error {
-      name: "PermissionDenied";
-    }
-    export class ConnectionRefused extends Error {
-      name: "ConnectionRefused";
-    }
-    export class ConnectionReset extends Error {
-      name: "ConnectionReset";
-    }
-    export class ConnectionAborted extends Error {
-      name: "ConnectionAborted";
-    }
-    export class NotConnected extends Error {
-      name: "NotConnected";
-    }
-    export class AddrInUse extends Error {
-      name: "AddrInUse";
-    }
-    export class AddrNotAvailable extends Error {
-      name: "AddrNotAvailable";
-    }
-    export class BrokenPipe extends Error {
-      name: "BrokenPipe";
-    }
-    export class AlreadyExists extends Error {
-      name: "AlreadyExists";
-    }
-    export class InvalidData extends Error {
-      name: "InvalidData";
-    }
-    export class TimedOut extends Error {
-      name: "TimedOut";
-    }
-    export class Interrupted extends Error {
-      name: "Interrupted";
-    }
-    export class WriteZero extends Error {
-      name: "WriteZero";
-    }
-    export class UnexpectedEof extends Error {
-      name: "UnexpectedEof";
-    }
-    export class BadResource extends Error {
-      name: "BadResource";
-    }
-    export class Http extends Error {
-      name: "Http";
-    }
-    export class Busy extends Error {
-      name: "Busy";
-    }
+    export class NotFound extends Error {}
+    export class PermissionDenied extends Error {}
+    export class ConnectionRefused extends Error {}
+    export class ConnectionReset extends Error {}
+    export class ConnectionAborted extends Error {}
+    export class NotConnected extends Error {}
+    export class AddrInUse extends Error {}
+    export class AddrNotAvailable extends Error {}
+    export class BrokenPipe extends Error {}
+    export class AlreadyExists extends Error {}
+    export class InvalidData extends Error {}
+    export class TimedOut extends Error {}
+    export class Interrupted extends Error {}
+    export class WriteZero extends Error {}
+    export class UnexpectedEof extends Error {}
+    export class BadResource extends Error {}
+    export class Http extends Error {}
+    export class Busy extends Error {}
   }
 
   /** The current process id of the runtime. */
@@ -822,6 +786,32 @@ declare namespace Deno {
    * ```
    */
   export function fdatasync(rid: number): Promise<void>;
+
+  /** **UNSTABLE**: New API should be tested first.
+   *
+   * Acquire an advisory file-system lock for the provided file. `exclusive`
+   * defaults to `false`.
+   */
+  export function flock(rid: number, exclusive?: boolean): Promise<void>;
+
+  /** **UNSTABLE**: New API should be tested first.
+   *
+   * Acquire an advisory file-system lock for the provided file. `exclusive`
+   * defaults to `false`.
+   */
+  export function flockSync(rid: number, exclusive?: boolean): void;
+
+  /** **UNSTABLE**: New API should be tested first.
+   *
+   * Release an advisory file-system lock for the provided file.
+   */
+  export function funlock(rid: number): Promise<void>;
+
+  /** **UNSTABLE**: New API should be tested first.
+   *
+   * Release an advisory file-system lock for the provided file.
+   */
+  export function funlockSync(rid: number): void;
 
   /** Close the given resource ID (rid) which has been previously opened, such
    * as via opening or creating a file.  Closing a file when you are finished
@@ -2167,7 +2157,7 @@ declare namespace Deno {
     variable?: string;
   }
 
-  export interface FFIPermissionDescriptor {
+  export interface FfiPermissionDescriptor {
     name: "ffi";
   }
 
@@ -2183,7 +2173,7 @@ declare namespace Deno {
     | WritePermissionDescriptor
     | NetPermissionDescriptor
     | EnvPermissionDescriptor
-    | FFIPermissionDescriptor
+    | FfiPermissionDescriptor
     | HrtimePermissionDescriptor;
 
   export interface PermissionStatusEventMap {

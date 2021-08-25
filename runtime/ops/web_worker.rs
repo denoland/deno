@@ -1,6 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+mod sync_fetch;
+
 use crate::web_worker::WebWorkerInternalHandle;
+use crate::web_worker::WebWorkerType;
 use crate::web_worker::WorkerControlEvent;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -12,6 +15,8 @@ use deno_core::OpState;
 use deno_web::JsMessageData;
 use std::cell::RefCell;
 use std::rc::Rc;
+
+use self::sync_fetch::op_worker_sync_fetch;
 
 pub fn init() -> Extension {
   Extension::builder()
@@ -25,6 +30,8 @@ pub fn init() -> Extension {
         "op_worker_unhandled_error",
         op_sync(op_worker_unhandled_error),
       ),
+      ("op_worker_get_type", op_sync(op_worker_get_type)),
+      ("op_worker_sync_fetch", op_sync(op_worker_sync_fetch)),
     ])
     .build()
 }
@@ -78,4 +85,13 @@ fn op_worker_unhandled_error(
     .post_event(WorkerControlEvent::Error(generic_error(message)))
     .expect("Failed to propagate error event to parent worker");
   Ok(())
+}
+
+fn op_worker_get_type(
+  state: &mut OpState,
+  _: (),
+  _: (),
+) -> Result<WebWorkerType, AnyError> {
+  let handle = state.borrow::<WebWorkerInternalHandle>().clone();
+  Ok(handle.worker_type)
 }

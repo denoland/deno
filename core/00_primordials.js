@@ -206,8 +206,7 @@
     "Date",
     "Error",
     "EvalError",
-    // TODO(lucacasonato): not present in snapshots. Why?
-    // "FinalizationRegistry",
+    "FinalizationRegistry",
     "Float32Array",
     "Float64Array",
     "Function",
@@ -231,8 +230,7 @@
     "Uint8Array",
     "Uint8ClampedArray",
     "WeakMap",
-    // TODO(lucacasonato): not present in snapshots. Why?
-    // "WeakRef",
+    "WeakRef",
     "WeakSet",
   ].forEach((name) => {
     const original = globalThis[name];
@@ -410,25 +408,23 @@
     },
   );
 
-  // TODO(lucacasonato): not present in snapshots. Why?
-  // primordials.SafeFinalizationRegistry = makeSafe(
-  //   FinalizationRegistry,
-  //   class SafeFinalizationRegistry extends FinalizationRegistry {
-  //     constructor(cleanupCallback) {
-  //       super(cleanupCallback);
-  //     }
-  //   },
-  // );
+  primordials.SafeFinalizationRegistry = makeSafe(
+    FinalizationRegistry,
+    class SafeFinalizationRegistry extends FinalizationRegistry {
+      constructor(cleanupCallback) {
+        super(cleanupCallback);
+      }
+    },
+  );
 
-  // TODO(lucacasonato): not present in snapshots. Why?
-  // primordials.SafeWeakRef = makeSafe(
-  //   WeakRef,
-  //   class SafeWeakRef extends WeakRef {
-  //     constructor(target) {
-  //       super(target);
-  //     }
-  //   },
-  // );
+  primordials.SafeWeakRef = makeSafe(
+    WeakRef,
+    class SafeWeakRef extends WeakRef {
+      constructor(target) {
+        super(target);
+      }
+    },
+  );
 
   const SafePromise = makeSafe(
     Promise,

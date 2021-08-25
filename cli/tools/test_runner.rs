@@ -7,6 +7,7 @@ use crate::create_main_worker;
 use crate::file_fetcher::File;
 use crate::media_type::MediaType;
 use crate::module_graph;
+use crate::ops;
 use crate::program_state::ProgramState;
 use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
@@ -16,16 +17,17 @@ use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
-use deno_core::located_script_name;
 use deno_core::serde_json::json;
+use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
+use log::Level;
 use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
-use std::path::Path;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
@@ -195,35 +197,10 @@ fn create_reporter(concurrent: bool) -> Box<dyn TestReporter + Send> {
   Box::new(PrettyTestReporter::new(concurrent))
 }
 
-pub(crate) fn is_supported(p: &Path) -> bool {
-  use std::path::Component;
-  if let Some(Component::Normal(basename_os_str)) = p.components().next_back() {
-    let basename = basename_os_str.to_string_lossy();
-    basename.ends_with("_test.ts")
-      || basename.ends_with("_test.tsx")
-      || basename.ends_with("_test.js")
-      || basename.ends_with("_test.mjs")
-      || basename.ends_with("_test.jsx")
-      || basename.ends_with(".test.ts")
-      || basename.ends_with(".test.tsx")
-      || basename.ends_with(".test.js")
-      || basename.ends_with(".test.mjs")
-      || basename.ends_with(".test.jsx")
-      || basename == "test.ts"
-      || basename == "test.tsx"
-      || basename == "test.js"
-      || basename == "test.mjs"
-      || basename == "test.jsx"
-  } else {
-    false
-  }
-}
-
 pub async fn test_specifier(
   program_state: Arc<ProgramState>,
   main_module: ModuleSpecifier,
   permissions: Permissions,
-  quiet: bool,
   filter: Option<String>,
   shuffle: Option<u64>,
   channel: Sender<TestEvent>,
@@ -246,14 +223,18 @@ pub async fn test_specifier(
   test_source
     .push_str("await new Promise(resolve => setTimeout(resolve, 0));\n");
 
+  test_source.push_str("window.dispatchEvent(new Event('load'));\n");
+
   test_source.push_str(&format!(
     "await Deno[Deno.internal].runTests({});\n",
     json!({
-      "disableLog": quiet,
+      "disableLog": program_state.flags.log_level == Some(Level::Error),
       "filter": filter,
       "shuffle": shuffle,
     }),
   ));
+
+  test_source.push_str("window.dispatchEvent(new Event('unload'));\n");
 
   let test_file = File {
     local: test_module.to_file_path().unwrap(),
@@ -265,16 +246,21 @@ pub async fn test_specifier(
 
   program_state.file_fetcher.insert_cached(test_file);
 
-  let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, true);
+  let init_ops = |js_runtime: &mut JsRuntime| {
+    ops::testing::init(js_runtime);
 
-  {
-    let js_runtime = &mut worker.js_runtime;
     js_runtime
       .op_state()
       .borrow_mut()
       .put::<Sender<TestEvent>>(channel.clone());
-  }
+  };
+
+  let mut worker = create_main_worker(
+    &program_state,
+    main_module.clone(),
+    permissions,
+    Some(&init_ops),
+  );
 
   let mut maybe_coverage_collector = if let Some(ref coverage_dir) =
     program_state.coverage_dir
@@ -291,20 +277,11 @@ pub async fn test_specifier(
     None
   };
 
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('load'))",
-  )?;
-
   worker.execute_module(&test_module).await?;
 
   worker
     .run_event_loop(maybe_coverage_collector.is_none())
     .await?;
-  worker.execute_script(
-    &located_script_name!(),
-    "window.dispatchEvent(new Event('unload'))",
-  )?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     worker
@@ -325,17 +302,21 @@ fn extract_files_from_regex_blocks(
   let files = blocks_regex
     .captures_iter(source)
     .filter_map(|block| {
-      let maybe_attributes = block
+      let maybe_attributes: Option<Vec<_>> = block
         .get(1)
-        .map(|attributes| attributes.as_str().split(' '));
+        .map(|attributes| attributes.as_str().split(' ').collect());
 
-      let file_media_type = if let Some(mut attributes) = maybe_attributes {
-        match attributes.next() {
-          Some("js") => MediaType::JavaScript,
-          Some("jsx") => MediaType::Jsx,
-          Some("ts") => MediaType::TypeScript,
-          Some("tsx") => MediaType::Tsx,
-          Some("") => *media_type,
+      let file_media_type = if let Some(attributes) = maybe_attributes {
+        if attributes.contains(&"ignore") {
+          return None;
+        }
+
+        match attributes.get(0) {
+          Some(&"js") => MediaType::JavaScript,
+          Some(&"jsx") => MediaType::Jsx,
+          Some(&"ts") => MediaType::TypeScript,
+          Some(&"tsx") => MediaType::Tsx,
+          Some(&"") => *media_type,
           _ => MediaType::Unknown,
         }
       } else {
@@ -488,12 +469,11 @@ pub async fn run_tests(
   doc_modules: Vec<ModuleSpecifier>,
   test_modules: Vec<ModuleSpecifier>,
   no_run: bool,
-  fail_fast: Option<usize>,
-  quiet: bool,
+  fail_fast: Option<NonZeroUsize>,
   allow_none: bool,
   filter: Option<String>,
   shuffle: Option<u64>,
-  concurrent_jobs: usize,
+  concurrent_jobs: NonZeroUsize,
 ) -> Result<(), AnyError> {
   if !allow_none && doc_modules.is_empty() && test_modules.is_empty() {
     return Err(generic_error("No test modules found"));
@@ -578,7 +558,6 @@ pub async fn run_tests(
           program_state,
           main_module,
           permissions,
-          quiet,
           filter,
           shuffle,
           sender,
@@ -592,10 +571,10 @@ pub async fn run_tests(
   });
 
   let join_stream = stream::iter(join_handles)
-    .buffer_unordered(concurrent_jobs)
+    .buffer_unordered(concurrent_jobs.get())
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
-  let mut reporter = create_reporter(concurrent_jobs > 1);
+  let mut reporter = create_reporter(concurrent_jobs.get() > 1);
   let handler = {
     tokio::task::spawn_blocking(move || {
       let earlier = Instant::now();
@@ -640,7 +619,7 @@ pub async fn run_tests(
         }
 
         if let Some(x) = fail_fast {
-          if summary.failed >= x {
+          if summary.failed >= x.get() {
             break;
           }
         }
@@ -689,29 +668,4 @@ pub async fn run_tests(
   }
 
   Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn test_is_supported() {
-    assert!(is_supported(Path::new("tests/subdir/foo_test.ts")));
-    assert!(is_supported(Path::new("tests/subdir/foo_test.tsx")));
-    assert!(is_supported(Path::new("tests/subdir/foo_test.js")));
-    assert!(is_supported(Path::new("tests/subdir/foo_test.jsx")));
-    assert!(is_supported(Path::new("bar/foo.test.ts")));
-    assert!(is_supported(Path::new("bar/foo.test.tsx")));
-    assert!(is_supported(Path::new("bar/foo.test.js")));
-    assert!(is_supported(Path::new("bar/foo.test.jsx")));
-    assert!(is_supported(Path::new("foo/bar/test.js")));
-    assert!(is_supported(Path::new("foo/bar/test.jsx")));
-    assert!(is_supported(Path::new("foo/bar/test.ts")));
-    assert!(is_supported(Path::new("foo/bar/test.tsx")));
-    assert!(!is_supported(Path::new("README.md")));
-    assert!(!is_supported(Path::new("lib/typescript.d.ts")));
-    assert!(!is_supported(Path::new("notatest.js")));
-    assert!(!is_supported(Path::new("NotAtest.ts")));
-  }
 }
