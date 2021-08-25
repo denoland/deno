@@ -136,5 +136,9 @@
     createHttpClient: __bootstrap.fetch.createHttpClient,
     http: __bootstrap.http,
     dlopen: __bootstrap.ffi.dlopen,
+    flock: __bootstrap.fs.flock,
+    flockSync: __bootstrap.fs.flockSync,
+    funlock: __bootstrap.fs.funlock,
+    funlockSync: __bootstrap.fs.funlockSync,
   };
 })(this);

@@ -706,13 +706,14 @@ async fn test_specifiers(
 /// - Specifiers matching both predicates are marked as `TestMode::Both`
 fn collect_specifiers_with_test_mode(
   include: Vec<String>,
+  ignore: Vec<PathBuf>,
   include_inline: bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
   let module_specifiers =
-    collect_specifiers(include.clone(), is_supported_test_path)?;
+    collect_specifiers(include.clone(), &ignore, is_supported_test_path)?;
 
   if include_inline {
-    return collect_specifiers(include, is_supported_test_ext).map(
+    return collect_specifiers(include, &ignore, is_supported_test_ext).map(
       |specifiers| {
         specifiers
           .into_iter()
@@ -746,10 +747,11 @@ fn collect_specifiers_with_test_mode(
 async fn fetch_specifiers_with_test_mode(
   program_state: Arc<ProgramState>,
   include: Vec<String>,
+  ignore: Vec<PathBuf>,
   include_inline: bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
   let mut specifiers_with_mode =
-    collect_specifiers_with_test_mode(include, include_inline)?;
+    collect_specifiers_with_test_mode(include, ignore, include_inline)?;
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = program_state
       .file_fetcher
@@ -770,6 +772,7 @@ async fn fetch_specifiers_with_test_mode(
 pub async fn run_tests(
   flags: Flags,
   include: Option<Vec<String>>,
+  ignore: Vec<PathBuf>,
   doc: bool,
   no_run: bool,
   fail_fast: Option<NonZeroUsize>,
@@ -783,6 +786,7 @@ pub async fn run_tests(
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     program_state.clone(),
     include.unwrap_or_else(|| vec![".".to_string()]),
+    ignore.clone(),
     doc,
   )
   .await?;
@@ -827,6 +831,7 @@ pub async fn run_tests(
 pub async fn run_tests_with_watch(
   flags: Flags,
   include: Option<Vec<String>>,
+  ignore: Vec<PathBuf>,
   doc: bool,
   no_run: bool,
   fail_fast: Option<NonZeroUsize>,
@@ -860,12 +865,13 @@ pub async fn run_tests_with_watch(
     let program_state = program_state.clone();
     let files_changed = changed.is_some();
     let include = include.clone();
+    let ignore = ignore.clone();
 
     async move {
       let test_modules = if doc {
-        collect_specifiers(include.clone(), is_supported_test_ext)
+        collect_specifiers(include.clone(), &ignore, is_supported_test_ext)
       } else {
-        collect_specifiers(include.clone(), is_supported_test_path)
+        collect_specifiers(include.clone(), &ignore, is_supported_test_path)
       }?;
 
       let mut paths_to_watch = paths_to_watch_clone;
@@ -981,6 +987,7 @@ pub async fn run_tests_with_watch(
   let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
     let filter = filter.clone();
     let include = include.clone();
+    let ignore = ignore.clone();
     let lib = lib.clone();
     let permissions = permissions.clone();
     let program_state = program_state.clone();
@@ -989,6 +996,7 @@ pub async fn run_tests_with_watch(
       let specifiers_with_mode = fetch_specifiers_with_test_mode(
         program_state.clone(),
         include.clone(),
+        ignore.clone(),
         doc,
       )
       .await?

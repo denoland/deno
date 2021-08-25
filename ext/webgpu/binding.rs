@@ -5,6 +5,9 @@ use deno_core::ResourceId;
 use deno_core::{OpState, Resource};
 use serde::Deserialize;
 use std::borrow::Cow;
+use std::convert::{TryFrom, TryInto};
+
+use crate::texture::{GpuTextureFormat, GpuTextureViewDimension};
 
 use super::error::WebGpuResult;
 
@@ -27,33 +30,122 @@ impl Resource for WebGpuBindGroup {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GpuBufferBindingLayout {
-  #[serde(rename = "type")]
-  kind: Option<String>,
-  has_dynamic_offset: Option<bool>,
-  min_binding_size: Option<u64>,
+  r#type: GpuBufferBindingType,
+  has_dynamic_offset: bool,
+  min_binding_size: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum GpuBufferBindingType {
+  Uniform,
+  Storage,
+  ReadOnlyStorage,
+}
+
+impl From<GpuBufferBindingType> for wgpu_types::BufferBindingType {
+  fn from(binding_type: GpuBufferBindingType) -> Self {
+    match binding_type {
+      GpuBufferBindingType::Uniform => wgpu_types::BufferBindingType::Uniform,
+      GpuBufferBindingType::Storage => {
+        wgpu_types::BufferBindingType::Storage { read_only: false }
+      }
+      GpuBufferBindingType::ReadOnlyStorage => {
+        wgpu_types::BufferBindingType::Storage { read_only: true }
+      }
+    }
+  }
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GpuSamplerBindingLayout {
-  #[serde(rename = "type")]
-  kind: Option<String>,
+  r#type: GpuSamplerBindingType,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum GpuSamplerBindingType {
+  Filtering,
+  NonFiltering,
+  Comparison,
+}
+
+impl From<GpuSamplerBindingType> for wgpu_types::BindingType {
+  fn from(binding_type: GpuSamplerBindingType) -> Self {
+    match binding_type {
+      GpuSamplerBindingType::Filtering => wgpu_types::BindingType::Sampler {
+        filtering: true,
+        comparison: false,
+      },
+      GpuSamplerBindingType::NonFiltering => wgpu_types::BindingType::Sampler {
+        filtering: false,
+        comparison: false,
+      },
+      GpuSamplerBindingType::Comparison => wgpu_types::BindingType::Sampler {
+        filtering: true,
+        comparison: true,
+      },
+    }
+  }
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GpuTextureBindingLayout {
-  sample_type: Option<String>,
-  view_dimension: Option<String>,
-  multisampled: Option<bool>,
+  sample_type: GpuTextureSampleType,
+  view_dimension: GpuTextureViewDimension,
+  multisampled: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum GpuTextureSampleType {
+  Float,
+  UnfilterableFloat,
+  Depth,
+  Sint,
+  Uint,
+}
+
+impl From<GpuTextureSampleType> for wgpu_types::TextureSampleType {
+  fn from(sample_type: GpuTextureSampleType) -> Self {
+    match sample_type {
+      GpuTextureSampleType::Float => {
+        wgpu_types::TextureSampleType::Float { filterable: true }
+      }
+      GpuTextureSampleType::UnfilterableFloat => {
+        wgpu_types::TextureSampleType::Float { filterable: false }
+      }
+      GpuTextureSampleType::Depth => wgpu_types::TextureSampleType::Depth,
+      GpuTextureSampleType::Sint => wgpu_types::TextureSampleType::Sint,
+      GpuTextureSampleType::Uint => wgpu_types::TextureSampleType::Uint,
+    }
+  }
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GpuStorageTextureBindingLayout {
-  access: String,
-  format: String,
-  view_dimension: Option<String>,
+  access: GpuStorageTextureAccess,
+  format: GpuTextureFormat,
+  view_dimension: GpuTextureViewDimension,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum GpuStorageTextureAccess {
+  WriteOnly,
+}
+
+impl From<GpuStorageTextureAccess> for wgpu_types::StorageTextureAccess {
+  fn from(access: GpuStorageTextureAccess) -> Self {
+    match access {
+      GpuStorageTextureAccess::WriteOnly => {
+        wgpu_types::StorageTextureAccess::WriteOnly
+      }
+    }
+  }
 }
 
 #[derive(Deserialize)]
@@ -61,10 +153,47 @@ struct GpuStorageTextureBindingLayout {
 struct GpuBindGroupLayoutEntry {
   binding: u32,
   visibility: u32,
-  buffer: Option<GpuBufferBindingLayout>,
-  sampler: Option<GpuSamplerBindingLayout>,
-  texture: Option<GpuTextureBindingLayout>,
-  storage_texture: Option<GpuStorageTextureBindingLayout>,
+  #[serde(flatten)]
+  binding_type: GpuBindingType,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum GpuBindingType {
+  Buffer(GpuBufferBindingLayout),
+  Sampler(GpuSamplerBindingLayout),
+  Texture(GpuTextureBindingLayout),
+  StorageTexture(GpuStorageTextureBindingLayout),
+}
+
+impl TryFrom<GpuBindingType> for wgpu_types::BindingType {
+  type Error = AnyError;
+
+  fn try_from(
+    binding_type: GpuBindingType,
+  ) -> Result<wgpu_types::BindingType, Self::Error> {
+    let binding_type = match binding_type {
+      GpuBindingType::Buffer(buffer) => wgpu_types::BindingType::Buffer {
+        ty: buffer.r#type.into(),
+        has_dynamic_offset: buffer.has_dynamic_offset,
+        min_binding_size: std::num::NonZeroU64::new(buffer.min_binding_size),
+      },
+      GpuBindingType::Sampler(sampler) => sampler.r#type.into(),
+      GpuBindingType::Texture(texture) => wgpu_types::BindingType::Texture {
+        sample_type: texture.sample_type.into(),
+        view_dimension: texture.view_dimension.into(),
+        multisampled: texture.multisampled,
+      },
+      GpuBindingType::StorageTexture(storage_texture) => {
+        wgpu_types::BindingType::StorageTexture {
+          access: storage_texture.access.into(),
+          format: storage_texture.format.try_into()?,
+          view_dimension: storage_texture.view_dimension.into(),
+        }
+      }
+    };
+    Ok(binding_type)
+  }
 }
 
 #[derive(Deserialize)]
@@ -88,101 +217,12 @@ pub fn op_webgpu_create_bind_group_layout(
 
   let mut entries = vec![];
 
-  for entry in &args.entries {
+  for entry in args.entries {
     entries.push(wgpu_types::BindGroupLayoutEntry {
       binding: entry.binding,
-      visibility: wgpu_types::ShaderStage::from_bits(entry.visibility).unwrap(),
-      ty: if let Some(buffer) = &entry.buffer {
-        wgpu_types::BindingType::Buffer {
-          ty: match &buffer.kind {
-            Some(kind) => match kind.as_str() {
-              "uniform" => wgpu_types::BufferBindingType::Uniform,
-              "storage" => {
-                wgpu_types::BufferBindingType::Storage { read_only: false }
-              }
-              "read-only-storage" => {
-                wgpu_types::BufferBindingType::Storage { read_only: true }
-              }
-              _ => unreachable!(),
-            },
-            None => wgpu_types::BufferBindingType::Uniform,
-          },
-          has_dynamic_offset: buffer.has_dynamic_offset.unwrap_or(false),
-          min_binding_size: if let Some(min_binding_size) =
-            buffer.min_binding_size
-          {
-            std::num::NonZeroU64::new(min_binding_size)
-          } else {
-            None
-          },
-        }
-      } else if let Some(sampler) = &entry.sampler {
-        match &sampler.kind {
-          Some(kind) => match kind.as_str() {
-            "filtering" => wgpu_types::BindingType::Sampler {
-              filtering: true,
-              comparison: false,
-            },
-            "non-filtering" => wgpu_types::BindingType::Sampler {
-              filtering: false,
-              comparison: false,
-            },
-            "comparison" => wgpu_types::BindingType::Sampler {
-              filtering: true,
-              comparison: true,
-            },
-            _ => unreachable!(),
-          },
-          None => wgpu_types::BindingType::Sampler {
-            filtering: true,
-            comparison: false,
-          },
-        }
-      } else if let Some(texture) = &entry.texture {
-        wgpu_types::BindingType::Texture {
-          sample_type: match &texture.sample_type {
-            Some(sample_type) => match sample_type.as_str() {
-              "float" => {
-                wgpu_types::TextureSampleType::Float { filterable: true }
-              }
-              "unfilterable-float" => {
-                wgpu_types::TextureSampleType::Float { filterable: false }
-              }
-              "depth" => wgpu_types::TextureSampleType::Depth,
-              "sint" => wgpu_types::TextureSampleType::Sint,
-              "uint" => wgpu_types::TextureSampleType::Uint,
-              _ => unreachable!(),
-            },
-            None => wgpu_types::TextureSampleType::Float { filterable: true },
-          },
-          view_dimension: match &texture.view_dimension {
-            Some(view_dimension) => {
-              super::texture::serialize_dimension(view_dimension)
-            }
-            None => wgpu_types::TextureViewDimension::D2,
-          },
-          multisampled: texture.multisampled.unwrap_or(false),
-        }
-      } else if let Some(storage_texture) = &entry.storage_texture {
-        wgpu_types::BindingType::StorageTexture {
-          access: match storage_texture.access.as_str() {
-            "read-only" => wgpu_types::StorageTextureAccess::ReadOnly,
-            "write-only" => wgpu_types::StorageTextureAccess::WriteOnly,
-            _ => unreachable!(),
-          },
-          format: super::texture::serialize_texture_format(
-            &storage_texture.format,
-          )?,
-          view_dimension: match &storage_texture.view_dimension {
-            Some(view_dimension) => {
-              super::texture::serialize_dimension(view_dimension)
-            }
-            None => wgpu_types::TextureViewDimension::D2,
-          },
-        }
-      } else {
-        unreachable!()
-      },
+      visibility: wgpu_types::ShaderStages::from_bits(entry.visibility)
+        .unwrap(),
+      ty: entry.binding_type.try_into()?,
       count: None, // native-only
     });
   }
@@ -244,7 +284,7 @@ pub fn op_webgpu_create_pipeline_layout(
 struct GpuBindGroupEntry {
   binding: u32,
   kind: String,
-  resource: u32,
+  resource: ResourceId,
   offset: Option<u64>,
   size: Option<u64>,
 }
@@ -254,7 +294,7 @@ struct GpuBindGroupEntry {
 pub struct CreateBindGroupArgs {
   device_rid: ResourceId,
   label: Option<String>,
-  layout: u32,
+  layout: ResourceId,
   entries: Vec<GpuBindGroupEntry>,
 }
 

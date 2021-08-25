@@ -202,6 +202,7 @@ where
 /// Specifiers that start with http and https are left intact.
 pub fn collect_specifiers<P>(
   include: Vec<String>,
+  ignore: &[PathBuf],
   predicate: P,
 ) -> Result<Vec<ModuleSpecifier>, AnyError>
 where
@@ -222,7 +223,7 @@ where
 
     let p = normalize_path(&root_path.join(path));
     if p.is_dir() {
-      let test_files = collect_files(&[p], &[], &predicate).unwrap();
+      let test_files = collect_files(&[p], ignore, &predicate).unwrap();
       let mut test_files_as_urls = test_files
         .iter()
         .map(|f| ModuleSpecifier::from_file_path(f).unwrap())
@@ -491,6 +492,7 @@ mod tests {
         root_dir_path.to_str().unwrap().to_string(),
         "https://localhost:8080".to_string(),
       ],
+      &[ignore_dir_path],
       |path| {
         // exclude dotfiles
         path
@@ -515,7 +517,6 @@ mod tests {
       &format!("{}/child/e.mjs", root_dir_url),
       &format!("{}/child/f.mjsx", root_dir_url),
       &format!("{}/d.jsx", root_dir_url),
-      &format!("{}/ignore/g.d.ts", root_dir_url),
       "https://localhost:8080",
     ]
     .iter()
