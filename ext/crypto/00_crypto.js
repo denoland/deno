@@ -12,6 +12,7 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
+  const { atob } = window.__bootstrap.base64;
 
   const {
     ArrayPrototypeFind,
