@@ -88,6 +88,9 @@ declare namespace globalThis {
       declare type Transferable = {
         kind: "messagePort";
         data: number;
+      } | {
+        kind: "arrayBuffer";
+        data: number;
       };
       declare interface MessageData {
         data: Uint8Array;

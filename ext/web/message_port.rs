@@ -16,6 +16,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 enum Transferable {
   MessagePort(MessagePort),
+  ArrayBuffer(u32),
 }
 
 type MessagePortMessage = (Vec<u8>, Vec<Transferable>);
@@ -127,6 +128,7 @@ pub fn op_message_port_create_entangled(
 pub enum JsTransferable {
   #[serde(rename_all = "camelCase")]
   MessagePort(ResourceId),
+  ArrayBuffer(u32),
 }
 
 fn deserialize_js_transferables(
@@ -145,6 +147,9 @@ fn deserialize_js_transferables(
         let resource = Rc::try_unwrap(resource)
           .map_err(|_| type_error("Message port is not ready for transfer"))?;
         transferables.push(Transferable::MessagePort(resource.port));
+      }
+      JsTransferable::ArrayBuffer(id) => {
+        transferables.push(Transferable::ArrayBuffer(id));
       }
     }
   }
@@ -165,6 +170,9 @@ fn serialize_transferables(
         });
         js_transferables.push(JsTransferable::MessagePort(rid));
       }
+      Transferable::ArrayBuffer(id) => {
+        js_transferables.push(JsTransferable::ArrayBuffer(id));
+      }
     }
   }
   js_transferables
@@ -182,11 +190,9 @@ pub fn op_message_port_post_message(
   data: JsMessageData,
 ) -> Result<(), AnyError> {
   for js_transferable in &data.transferables {
-    match js_transferable {
-      JsTransferable::MessagePort(id) => {
-        if *id == rid {
-          return Err(type_error("Can not transfer self message port"));
-        }
+    if let JsTransferable::MessagePort(id) = js_transferable {
+      if *id == rid {
+        return Err(type_error("Can not transfer self message port"));
       }
     }
   }

@@ -362,6 +362,7 @@
 
     const entries = [];
     let iter;
+    let valueIsTypedArray = false;
 
     switch (options.typeName) {
       case "Map":
@@ -376,6 +377,7 @@
       default:
         if (isTypedArray(value)) {
           iter = ArrayPrototypeEntries(value);
+          valueIsTypedArray = true;
         } else {
           throw new TypeError("unreachable");
         }
@@ -385,7 +387,24 @@
     const next = () => {
       return iter.next();
     };
-    for (const el of iter) {
+    while (true) {
+      let el;
+      try {
+        const res = iter.next();
+        if (res.done) {
+          break;
+        }
+        el = res.value;
+      } catch (err) {
+        if (valueIsTypedArray) {
+          // TypedArray.prototype.entries doesn't throw, unless the ArrayBuffer
+          // is detached. We don't want to show the exception in that case, so
+          // we catch it here and pretend the ArrayBuffer has no entries (like
+          // Chrome DevTools does).
+          break;
+        }
+        throw err;
+      }
       if (entriesLength < inspectOptions.iterableLimit) {
         ArrayPrototypePush(
           entries,
