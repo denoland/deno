@@ -650,7 +650,8 @@ impl JsRuntime {
 
   /// Waits for the given value to resolve while polling the event loop.
   ///
-  /// This future resolves when the value is resolved or the event loop is runs to completion.
+  /// This future resolves when either the value is resolved or the event loop runs to
+  /// completion.
   pub async fn resolve_value(
     &mut self,
     global: v8::Global<v8::Value>,
