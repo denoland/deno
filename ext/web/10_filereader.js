@@ -355,7 +355,7 @@
      * @param {Blob} blob
      * @param {string} [encoding]
     */
-    readAsText(blob, encoding) {
+    readAsText(blob, encoding = undefined) {
       webidl.assertBranded(this, FileReader);
       const prefix = "Failed to execute 'readAsBinaryString' on 'FileReader'";
       webidl.requiredArguments(arguments.length, 1, { prefix });

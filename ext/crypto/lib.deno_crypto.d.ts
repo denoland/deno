@@ -82,9 +82,31 @@ interface RsaPssParams extends Algorithm {
   saltLength: number;
 }
 
+interface RsaOaepParams extends Algorithm {
+  label?: Uint8Array;
+}
+
 interface HmacImportParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
   length?: number;
+}
+
+interface EcKeyAlgorithm extends KeyAlgorithm {
+  namedCurve: NamedCurve;
+}
+
+interface HmacKeyAlgorithm extends KeyAlgorithm {
+  hash: KeyAlgorithm;
+  length: number;
+}
+
+interface RsaHashedKeyAlgorithm extends RsaKeyAlgorithm {
+  hash: KeyAlgorithm;
+}
+
+interface RsaKeyAlgorithm extends KeyAlgorithm {
+  modulusLength: number;
+  publicExponent: Uint8Array;
 }
 
 /** The CryptoKey dictionary of the Web Crypto API represents a cryptographic key. */
@@ -158,6 +180,16 @@ interface SubtleCrypto {
     algorithm: AlgorithmIdentifier,
     data: BufferSource,
   ): Promise<ArrayBuffer>;
+  encrypt(
+    algorithm: AlgorithmIdentifier | RsaOaepParams,
+    key: CryptoKey,
+    data: BufferSource,
+  ): Promise<ArrayBuffer>;
+  decrypt(
+    algorithm: AlgorithmIdentifier | RsaOaepParams,
+    key: CryptoKey,
+    data: BufferSource,
+  ): Promise<ArrayBuffer>;
 }
 
 declare interface Crypto {
@@ -179,10 +211,6 @@ declare interface Crypto {
     array: T,
   ): T;
   randomUUID(): string;
-}
-
-interface Algorithm {
-  name: string;
 }
 
 declare var SubtleCrypto: {

@@ -49,6 +49,12 @@ itest!(fail {
   output: "test/fail.out",
 });
 
+itest!(collect {
+  args: "test --ignore=test/collect/ignore test/collect",
+  exit_code: 0,
+  output: "test/collect.out",
+});
+
 itest!(load_unload {
   args: "test test/load_unload.ts",
   exit_code: 0,

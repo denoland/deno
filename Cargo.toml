@@ -1,6 +1,7 @@
 # Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 [workspace]
+resolver = "2"
 members = [
   "bench_util",
   "cli",
@@ -40,7 +41,7 @@ lto = true
 opt-level = 'z' # Optimize for size
 
 # Key generation is too slow on `debug`
-# 
+#
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
 
@@ -74,6 +75,10 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.serde]
 opt-level = 3
+[profile.bench.package.deno_url]
+opt-level = 3
+[profile.bench.package.url]
+opt-level = 3
 
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release.package.rand]
@@ -103,4 +108,8 @@ opt-level = 3
 [profile.release.package.serde_v8]
 opt-level = 3
 [profile.release.package.serde]
+opt-level = 3
+[profile.release.package.deno_url]
+opt-level = 3
+[profile.release.package.url]
 opt-level = 3

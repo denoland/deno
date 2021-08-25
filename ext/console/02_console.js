@@ -191,19 +191,28 @@
     return width;
   }
 
-  function renderRow(row, columnWidths) {
+  function renderRow(row, columnWidths, columnRightAlign) {
     let out = tableChars.left;
     for (let i = 0; i < row.length; i++) {
       const cell = row[i];
       const len = getStringWidth(cell);
-      const needed = columnWidths[i] - len;
-      out += `${cell}${StringPrototypeRepeat(" ", needed)}`;
+      const padding = StringPrototypeRepeat(" ", columnWidths[i] - len);
+      if (columnRightAlign?.[i]) {
+        out += `${padding}${cell}`;
+      } else {
+        out += `${cell}${padding}`;
+      }
       if (i !== row.length - 1) {
         out += tableChars.middle;
       }
     }
     out += tableChars.right;
     return out;
+  }
+
+  function canRightAlign(value) {
+    const isNumber = !isNaN(value);
+    return isNumber;
   }
 
   function cliTable(head, columns) {
@@ -214,6 +223,7 @@
       (n, a) => MathMax(n, a.length),
       0,
     );
+    const columnRightAlign = new Array(columnWidths.length).fill(true);
 
     for (let i = 0; i < head.length; i++) {
       const column = columns[i];
@@ -225,6 +235,7 @@
         const width = columnWidths[i] || 0;
         const counted = getStringWidth(value);
         columnWidths[i] = MathMax(width, counted);
+        columnRightAlign[i] &= canRightAlign(value);
       }
     }
 
@@ -244,7 +255,7 @@
       `${tableChars.rightMiddle}\n`;
 
     for (const row of rows) {
-      result += `${renderRow(row, columnWidths)}\n`;
+      result += `${renderRow(row, columnWidths, columnRightAlign)}\n`;
     }
 
     result +=

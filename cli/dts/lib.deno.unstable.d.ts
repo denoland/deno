@@ -142,7 +142,7 @@ declare namespace Deno {
    * Opens a dynamic library and registers symbols
    */
   export function dlopen<S extends Record<string, ForeignFunction>>(
-    filename: string,
+    filename: string | URL,
     symbols: S,
   ): DynamicLibrary<S>;
 
@@ -155,7 +155,7 @@ declare namespace Deno {
   }
 
   export interface DiagnosticMessageChain {
-    message: string;
+    messageText: string;
     category: DiagnosticCategory;
     code: number;
     next?: DiagnosticMessageChain[];
