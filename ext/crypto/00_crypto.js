@@ -713,7 +713,7 @@
           // 3.
           let hash;
           let data;
-          
+
           // 4. https://w3c.github.io/webcrypto/#hmac-operations
           switch (format) {
             case "raw": {
