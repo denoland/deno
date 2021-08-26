@@ -2445,10 +2445,14 @@ declare namespace Deno {
    * Alternatively, you can also use the Async Iterator approach:
    *
    * ```ts
-   * for await (const conn of Deno.listen({ port: 80 })) {
+   * async function handleHttp(conn: Deno.Conn) {
    *   for await (const e of Deno.serveHttp(conn)) {
    *     e.respondWith(new Response("Hello World"));
    *   }
+   * }
+   *
+   * for await (const conn of Deno.listen({ port: 80 })) {
+   *   handleHttp(conn);
    * }
    * ```
    */
