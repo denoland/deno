@@ -546,8 +546,7 @@ async fn check_specifiers(
   Ok(())
 }
 
-/// Test a collection of specifiers concurrently.
-#[allow(clippy::too_many_arguments)]
+/// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
   program_state: Arc<ProgramState>,
   permissions: Permissions,
