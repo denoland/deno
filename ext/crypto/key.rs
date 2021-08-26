@@ -114,4 +114,6 @@ pub enum Algorithm {
   AesKw,
   #[serde(rename = "HMAC")]
   Hmac,
+  #[serde(rename = "PBKDF2")]
+  Pbkdf2,
 }

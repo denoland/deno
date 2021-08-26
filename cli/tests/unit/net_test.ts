@@ -394,8 +394,6 @@ unitTest(
 unitTest(
   { perms: { net: true } },
   async function netTcpListenIteratorBreakClosesResource() {
-    const promise = deferred();
-
     async function iterate(listener: Deno.Listener) {
       let i = 0;
 
@@ -407,13 +405,11 @@ unitTest(
           break;
         }
       }
-
-      promise.resolve();
     }
 
     const addr = { hostname: "127.0.0.1", port: 8888 };
     const listener = Deno.listen(addr);
-    iterate(listener);
+    const iteratePromise = iterate(listener);
 
     await delay(100);
     const conn1 = await Deno.connect(addr);
@@ -421,7 +417,7 @@ unitTest(
     const conn2 = await Deno.connect(addr);
     conn2.close();
 
-    await promise;
+    await iteratePromise;
   },
 );
 
