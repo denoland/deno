@@ -389,10 +389,6 @@
       );
     }
 
-    get [SymbolToStringTag]() {
-      return "Request";
-    }
-
     [SymbolFor("Deno.customInspect")](inspect) {
       return inspect(consoleInternal.createFilteredInspectProxy({
         object: this,

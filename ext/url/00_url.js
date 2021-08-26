@@ -291,10 +291,6 @@
       webidl.assertBranded(this, URLSearchParams);
       return core.opSync("op_url_stringify_search_params", this[_list]);
     }
-
-    get [SymbolToStringTag]() {
-      return "URLSearchParams";
-    }
   }
 
   webidl.mixinPairIterable("URLSearchParams", URLSearchParams, _list, 0, 1);
@@ -595,10 +591,6 @@
     toJSON() {
       webidl.assertBranded(this, URL);
       return this[_url].href;
-    }
-
-    get [SymbolToStringTag]() {
-      return "URL";
     }
   }
 

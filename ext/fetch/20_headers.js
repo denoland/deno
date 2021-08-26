@@ -411,10 +411,6 @@
       }
       return `Headers ${inspect(headers)}`;
     }
-
-    get [SymbolToStringTag]() {
-      return "Headers";
-    }
   }
 
   webidl.mixinPairIterable("Headers", Headers, _iterableHeaders, 0, 1);

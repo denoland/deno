@@ -59,10 +59,6 @@
         inspect({ port1: this.port1, port2: this.port2 })
       }`;
     }
-
-    get [SymbolToStringTag]() {
-      return "MessageChannel";
-    }
   }
 
   webidl.configurePrototype(MessageChannel);
@@ -173,10 +169,6 @@
         core.close(this[_id]);
         this[_id] = null;
       }
-    }
-
-    get [SymbolToStringTag]() {
-      return "MessagePort";
     }
   }
 

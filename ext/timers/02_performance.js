@@ -552,10 +552,6 @@
         keys: [],
       }));
     }
-
-    get [SymbolToStringTag]() {
-      return "Performance";
-    }
   }
   webidl.configurePrototype(Performance);
 

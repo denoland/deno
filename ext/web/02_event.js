@@ -997,10 +997,6 @@
       return dispatch(self, event);
     }
 
-    get [SymbolToStringTag]() {
-      return "EventTarget";
-    }
-
     getParent(_event) {
       return null;
     }
@@ -1059,10 +1055,6 @@
       this.#lineno = lineno;
       this.#colno = colno;
       this.#error = error;
-    }
-
-    get [SymbolToStringTag]() {
-      return "ErrorEvent";
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
@@ -1183,10 +1175,6 @@
 
     get detail() {
       return this.#detail;
-    }
-
-    get [SymbolToStringTag]() {
-      return "CustomEvent";
     }
 
     [SymbolFor("Deno.privateCustomInspect")](inspect) {
