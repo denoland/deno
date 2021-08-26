@@ -21,10 +21,6 @@
       }
       super();
     }
-
-    get [SymbolToStringTag]() {
-      return "Window";
-    }
   }
 
   class WorkerGlobalScope extends EventTarget {
@@ -34,10 +30,6 @@
       }
       super();
     }
-
-    get [SymbolToStringTag]() {
-      return "WorkerGlobalScope";
-    }
   }
 
   class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
@@ -46,10 +38,6 @@
         throw new TypeError("Illegal constructor.");
       }
       super();
-    }
-
-    get [SymbolToStringTag]() {
-      return "DedicatedWorkerGlobalScope";
     }
   }
 

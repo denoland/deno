@@ -108,10 +108,6 @@
       return this.#code;
     }
 
-    get [SymbolToStringTag]() {
-      return "DOMException";
-    }
-
     [SymbolFor("Deno.customInspect")](inspect) {
       if (this instanceof DOMException) {
         return `DOMException: ${this.#message}`;

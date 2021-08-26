@@ -216,10 +216,6 @@
       return this[_algorithm];
     }
 
-    get [SymbolToStringTag]() {
-      return "CryptoKey";
-    }
-
     [SymbolFor("Deno.customInspect")](inspect) {
       return `${this.constructor.name} ${
         inspect({
@@ -945,9 +941,6 @@
       return result;
     }
 
-    get [SymbolToStringTag]() {
-      return "SubtleCrypto";
-    }
   }
 
   async function generateKey(normalizedAlgorithm, extractable, usages) {
@@ -1235,10 +1228,6 @@
     get subtle() {
       webidl.assertBranded(this, Crypto);
       return subtle;
-    }
-
-    get [SymbolToStringTag]() {
-      return "Crypto";
     }
 
     [SymbolFor("Deno.customInspect")](inspect) {

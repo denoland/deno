@@ -1051,15 +1051,14 @@
           enumerable: true,
           configurable: true,
         });
-      } else if (key === SymbolToStringTag) {
-        ObjectDefineProperty(prototype.prototype, key, {
-          value: descriptor.get(),
-          enumerable: false,
-          configurable: true,
-          writable: false
-        });
       }
     }
+    ObjectDefineProperty(prototype.prototype, SymbolToStringTag, {
+      value: prototype.name,
+      enumerable: false,
+      configurable: true,
+      writable: false
+    });
   }
 
   window.__bootstrap ??= {};
