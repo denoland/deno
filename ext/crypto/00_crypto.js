@@ -63,6 +63,7 @@
     RsaPssParams: {},
     EcdsaParams: { hash: "HashAlgorithmIdentifier" },
     HmacImportParams: { hash: "HashAlgorithmIdentifier" },
+    Pbkdf2Params: { hash: "HashAlgorithmIdentifier", salt: "BufferSource" },
     RsaOaepParams: { label: "BufferSource" },
   };
 
@@ -93,6 +94,10 @@
     },
     "importKey": {
       "HMAC": "HmacImportParams",
+      "PBKDF2": null,
+    },
+    "deriveBits": {
+      "PBKDF2": "Pbkdf2Params",
     },
     "encrypt": {
       "RSA-OAEP": "RsaOaepParams",
@@ -708,6 +713,7 @@
           // 3.
           let hash;
           let data;
+          
           // 4. https://w3c.github.io/webcrypto/#hmac-operations
           switch (format) {
             case "raw": {
@@ -879,6 +885,52 @@
         // TODO(@littledivy): RSASSA-PKCS1-v1_5
         // TODO(@littledivy): RSA-PSS
         // TODO(@littledivy): ECDSA
+        case "PBKDF2": {
+          // 1.
+          if (format !== "raw") {
+            throw new DOMException("Format not supported", "NotSupportedError");
+          }
+
+          // 2.
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+
+          // 3.
+          if (extractable !== false) {
+            throw new DOMException(
+              "Key must not be extractable",
+              "SyntaxError",
+            );
+          }
+
+          // 4.
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, {
+            type: "raw",
+            data: keyData,
+          });
+
+          // 5-9.
+          const algorithm = {
+            name: "PBKDF2",
+          };
+          const key = constructKey(
+            "secret",
+            false,
+            usageIntersection(keyUsages, recognisedUsages),
+            algorithm,
+            handle,
+          );
+
+          // 10.
+          return key;
+        }
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
       }
@@ -933,6 +985,48 @@
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
       }
+    }
+
+    /**
+    * @param {AlgorithmIdentifier} algorithm
+    * @param {CryptoKey} baseKey
+    * @param {number} length
+    * @returns {Promise<ArrayBuffer>}
+    */
+    async deriveBits(algorithm, baseKey, length) {
+      webidl.assertBranded(this, SubtleCrypto);
+      const prefix = "Failed to execute 'deriveBits' on 'SubtleCrypto'";
+      webidl.requiredArguments(arguments.length, 3, { prefix });
+      algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+        prefix,
+        context: "Argument 1",
+      });
+      baseKey = webidl.converters.CryptoKey(baseKey, {
+        prefix,
+        context: "Argument 2",
+      });
+      length = webidl.converters["unsigned long"](length, {
+        prefix,
+        context: "Argument 3",
+      });
+
+      // 2.
+      const normalizedAlgorithm = normalizeAlgorithm(algorithm, "deriveBits");
+      // 4-6.
+      const result = await deriveBits(normalizedAlgorithm, baseKey, length);
+      // 7.
+      if (normalizedAlgorithm.name !== baseKey[_algorithm].name) {
+        throw new DOMException("InvalidAccessError", "Invalid algorithm name");
+      }
+      // 8.
+      if (!ArrayPrototypeIncludes(baseKey[_usages], "deriveBits")) {
+        throw new DOMException(
+          "InvalidAccessError",
+          "baseKey usages does not contain `deriveBits`",
+        );
+      }
+      // 9-10.
+      return result;
     }
 
     /**
@@ -1335,6 +1429,52 @@
         // 14.
         return key;
       }
+    }
+  }
+
+  async function deriveBits(normalizedAlgorithm, baseKey, length) {
+    switch (normalizedAlgorithm.name) {
+      case "PBKDF2": {
+        // 1.
+        if (length == null || length == 0 || length % 8 !== 0) {
+          throw new DOMException("Invalid length", "OperationError");
+        }
+
+        if (normalizedAlgorithm.iterations == 0) {
+          throw new DOMException(
+            "iterations must not be zero",
+            "OperationError",
+          );
+        }
+
+        const handle = baseKey[_handle];
+        const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
+
+        if (ArrayBufferIsView(normalizedAlgorithm.salt)) {
+          normalizedAlgorithm.salt = new Uint8Array(
+            normalizedAlgorithm.salt.buffer,
+            normalizedAlgorithm.salt.byteOffset,
+            normalizedAlgorithm.salt.byteLength,
+          );
+        } else {
+          normalizedAlgorithm.salt = new Uint8Array(normalizedAlgorithm.salt);
+        }
+        normalizedAlgorithm.salt = TypedArrayPrototypeSlice(
+          normalizedAlgorithm.salt,
+        );
+
+        const buf = await core.opAsync("op_crypto_derive_bits", {
+          key: keyData,
+          algorithm: "PBKDF2",
+          hash: normalizedAlgorithm.hash.name,
+          iterations: normalizedAlgorithm.iterations,
+          length,
+        }, normalizedAlgorithm.salt);
+
+        return buf.buffer;
+      }
+      default:
+        throw new DOMException("Not implemented", "NotSupportedError");
     }
   }
 

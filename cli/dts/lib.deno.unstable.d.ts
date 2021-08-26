@@ -859,6 +859,8 @@ declare namespace Deno {
      */
     caData?: string;
     proxy?: Proxy;
+    certChain?: string;
+    privateKey?: string;
   }
 
   export interface Proxy {
