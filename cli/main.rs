@@ -44,8 +44,6 @@ use crate::flags::DenoSubcommand;
 use crate::flags::Flags;
 use crate::fmt_errors::PrettyJsError;
 use crate::media_type::MediaType;
-use crate::module_graph::GraphBuilder;
-use crate::module_graph::Module;
 use crate::module_loader::CliModuleLoader;
 use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
@@ -71,7 +69,6 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use log::debug;
 use log::info;
-use std::collections::HashSet;
 use std::env;
 use std::io::Read;
 use std::io::Write;
@@ -81,7 +78,6 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
-use tools::test_runner;
 
 fn create_web_worker_callback(
   program_state: Arc<ProgramState>,
@@ -1071,252 +1067,36 @@ async fn test_command(
     );
   }
 
-  // TODO(caspervonb) move this chunk into tools::test_runner.
-
-  let program_state = ProgramState::build(flags.clone()).await?;
-
-  let include = include.unwrap_or_else(|| vec![".".to_string()]);
-
-  let permissions = Permissions::from_options(&flags.clone().into());
-  let lib = if flags.unstable {
-    module_graph::TypeLib::UnstableDenoWindow
-  } else {
-    module_graph::TypeLib::DenoWindow
-  };
-
   if flags.watch {
-    let handler = Arc::new(Mutex::new(FetchHandler::new(
-      &program_state,
-      Permissions::allow_all(),
-      Permissions::allow_all(),
-    )?));
-
-    let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
-
-    // TODO(caspervonb) clean this up.
-    let resolver = |changed: Option<Vec<PathBuf>>| {
-      let test_modules_result = if doc {
-        fs_util::collect_specifiers(
-          include.clone(),
-          &ignore,
-          fs_util::is_supported_test_ext,
-        )
-      } else {
-        fs_util::collect_specifiers(
-          include.clone(),
-          &ignore,
-          fs_util::is_supported_test_path,
-        )
-      };
-
-      let paths_to_watch = paths_to_watch.clone();
-      let paths_to_watch_clone = paths_to_watch.clone();
-
-      let handler = handler.clone();
-      let program_state = program_state.clone();
-      let files_changed = changed.is_some();
-      async move {
-        let test_modules = test_modules_result?;
-
-        let mut paths_to_watch = paths_to_watch_clone;
-        let mut modules_to_reload = if files_changed {
-          Vec::new()
-        } else {
-          test_modules
-            .iter()
-            .filter_map(|url| deno_core::resolve_url(url.as_str()).ok())
-            .collect()
-        };
-
-        let mut builder = GraphBuilder::new(
-          handler,
-          program_state.maybe_import_map.clone(),
-          program_state.lockfile.clone(),
-        );
-        for specifier in test_modules.iter() {
-          builder.add(specifier, false).await?;
-        }
-        builder
-          .analyze_config_file(&program_state.maybe_config_file)
-          .await?;
-        let graph = builder.get_graph();
-
-        for specifier in test_modules {
-          fn get_dependencies<'a>(
-            graph: &'a module_graph::Graph,
-            module: &'a Module,
-            // This needs to be accessible to skip getting dependencies if they're already there,
-            // otherwise this will cause a stack overflow with circular dependencies
-            output: &mut HashSet<&'a ModuleSpecifier>,
-          ) -> Result<(), AnyError> {
-            for dep in module.dependencies.values() {
-              if let Some(specifier) = &dep.maybe_code {
-                if !output.contains(specifier) {
-                  output.insert(specifier);
-
-                  get_dependencies(
-                    graph,
-                    graph.get_specifier(specifier)?,
-                    output,
-                  )?;
-                }
-              }
-              if let Some(specifier) = &dep.maybe_type {
-                if !output.contains(specifier) {
-                  output.insert(specifier);
-
-                  get_dependencies(
-                    graph,
-                    graph.get_specifier(specifier)?,
-                    output,
-                  )?;
-                }
-              }
-            }
-
-            Ok(())
-          }
-
-          // This test module and all it's dependencies
-          let mut modules = HashSet::new();
-          modules.insert(&specifier);
-          get_dependencies(
-            &graph,
-            graph.get_specifier(&specifier)?,
-            &mut modules,
-          )?;
-
-          paths_to_watch.extend(
-            modules
-              .iter()
-              .filter_map(|specifier| specifier.to_file_path().ok()),
-          );
-
-          if let Some(changed) = &changed {
-            for path in changed.iter().filter_map(|path| {
-              deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
-            }) {
-              if modules.contains(&&path) {
-                modules_to_reload.push(specifier);
-                break;
-              }
-            }
-          }
-        }
-
-        Ok((paths_to_watch, modules_to_reload))
-      }
-      .map(move |result| {
-        if files_changed
-          && matches!(result, Ok((_, ref modules)) if modules.is_empty())
-        {
-          ResolutionResult::Ignore
-        } else {
-          match result {
-            Ok((paths_to_watch, modules_to_reload)) => {
-              ResolutionResult::Restart {
-                paths_to_watch,
-                result: Ok(modules_to_reload),
-              }
-            }
-            Err(e) => ResolutionResult::Restart {
-              paths_to_watch,
-              result: Err(e),
-            },
-          }
-        }
-      })
-    };
-
-    let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
-      let filter = filter.clone();
-      let include = include.clone();
-      let ignore = ignore.clone();
-      let lib = lib.clone();
-      let permissions = permissions.clone();
-      let program_state = program_state.clone();
-
-      async move {
-        let doc_modules = if doc {
-          fs_util::collect_specifiers(
-            include.clone(),
-            &ignore,
-            fs_util::is_supported_test_ext,
-          )?
-        } else {
-          Vec::new()
-        };
-
-        let doc_modules_to_reload = doc_modules
-          .iter()
-          .filter(|specifier| modules_to_reload.contains(specifier))
-          .cloned()
-          .collect();
-
-        let test_modules = fs_util::collect_specifiers(
-          include.clone(),
-          &ignore,
-          fs_util::is_supported_test_path,
-        )?;
-
-        let test_modules_to_reload = test_modules
-          .iter()
-          .filter(|specifier| modules_to_reload.contains(specifier))
-          .cloned()
-          .collect();
-
-        test_runner::run_tests(
-          program_state.clone(),
-          permissions.clone(),
-          lib.clone(),
-          doc_modules_to_reload,
-          test_modules_to_reload,
-          no_run,
-          fail_fast,
-          true,
-          filter.clone(),
-          shuffle,
-          concurrent_jobs,
-        )
-        .await?;
-
-        Ok(())
-      }
-    };
-
-    file_watcher::watch_func(resolver, operation, "Test").await?;
-  } else {
-    let doc_modules = if doc {
-      fs_util::collect_specifiers(
-        include.clone(),
-        &ignore,
-        fs_util::is_supported_test_ext,
-      )?
-    } else {
-      Vec::new()
-    };
-
-    let test_modules = fs_util::collect_specifiers(
-      include.clone(),
-      &ignore,
-      fs_util::is_supported_test_path,
-    )?;
-
-    test_runner::run_tests(
-      program_state.clone(),
-      permissions,
-      lib,
-      doc_modules,
-      test_modules,
+    tools::test::run_tests_with_watch(
+      flags,
+      include,
+      ignore,
+      doc,
       no_run,
       fail_fast,
-      allow_none,
       filter,
       shuffle,
       concurrent_jobs,
     )
     .await?;
+
+    return Ok(());
   }
+
+  tools::test::run_tests(
+    flags,
+    include,
+    ignore,
+    doc,
+    no_run,
+    fail_fast,
+    allow_none,
+    filter,
+    shuffle,
+    concurrent_jobs,
+  )
+  .await?;
 
   Ok(())
 }
