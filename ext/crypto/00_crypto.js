@@ -836,8 +836,8 @@
           if (length === 0) {
             throw new DOMException("Key length is zero", "DataError");
           }
-          if (normalizeAlgorithm.length !== undefined) {
-            // 7.
+          // 7.
+          if (normalizedAlgorithm.length !== undefined) {
             if (
               normalizedAlgorithm.length > length ||
               normalizedAlgorithm.length <= (length - 8)
@@ -847,7 +847,7 @@
                 "DataError",
               );
             }
-            length = normalizeAlgorithm.length;
+            length = normalizedAlgorithm.length;
           }
 
           if (keyUsages.length == 0) {
