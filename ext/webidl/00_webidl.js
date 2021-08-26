@@ -1053,7 +1053,7 @@
         });
       } else if (key === SymbolToStringTag) {
         ObjectDefineProperty(prototype.prototype, key, {
-          value: "Blob",
+          value: descriptor.get(),
           enumerable: false,
           configurable: true,
           writable: false
