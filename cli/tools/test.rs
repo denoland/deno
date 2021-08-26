@@ -221,8 +221,8 @@ fn create_reporter(concurrent: bool) -> Box<dyn TestReporter + Send> {
   Box::new(PrettyTestReporter::new(concurrent))
 }
 
-/// Test a single specifier as a module, document containing inline code blocks or both.
-#[allow(clippy::too_many_arguments)]
+/// Test a single specifier as documentation containing test programs, an executable test module or
+/// both.
 async fn test_specifier(
   program_state: Arc<ProgramState>,
   permissions: Permissions,
