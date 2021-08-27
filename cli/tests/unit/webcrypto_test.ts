@@ -211,12 +211,53 @@ unitTest(async function testECDSASignVerify() {
   assert(signature instanceof ArrayBuffer);
 
   const verified = await window.crypto.subtle.verify(
-    { hash: { name: "SHA-384" }, name: "ECDSA", namedCurve: "P-384" },
+    { hash: { name: "SHA-384" }, name: "ECDSA" },
     key.publicKey,
     signature,
     encoded,
   );
   assert(verified);
+});
+
+// Tests the "bad paths" as a temporary replacement for sign_verify/ecdsa WPT.
+unitTest(async function testECDSASignVerifyFail() {
+  const key = await window.crypto.subtle.generateKey(
+    {
+      name: "ECDSA",
+      namedCurve: "P-384",
+    },
+    true,
+    ["sign", "verify"],
+  );
+
+  const encoded = new Uint8Array([1]);
+  // Signing with a public key (InvalidAccessError)
+  await assertThrowsAsync(async () => {
+    await window.crypto.subtle.sign(
+      { name: "ECDSA", hash: "SHA-384" },
+      key.publicKey,
+      new Uint8Array([1]),
+    );
+    throw new TypeError("unreachable");
+  }, DOMException);
+
+  // Do a valid sign for later verifying.
+  const signature = await window.crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-384" },
+    key.privateKey,
+    encoded,
+  );
+
+  // Verifying with a private key (InvalidAccessError)
+  await assertThrowsAsync(async () => {
+    await window.crypto.subtle.verify(
+      { hash: { name: "SHA-384" }, name: "ECDSA" },
+      key.privateKey,
+      signature,
+      encoded,
+    );
+    throw new TypeError("unreachable");
+  }, DOMException);
 });
 
 // https://github.com/denoland/deno/issues/11313
