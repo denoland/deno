@@ -109,21 +109,19 @@
 
   // Decodes the unpadded base64 to the octet sequence containing key value `k` defined in RFC7518 Section 6.4
   function decodeSymmetricKey(key) {
-    return new Uint8Array(
-      ArrayPrototypeMap(
-        StringPrototypeSplit(
-          atob(
-            StringPrototypeReplace(
-              StringPrototypeReplace(key, /\-/g, "+"),
-              /\_/g,
-              "/",
-            ),
-          ),
-          "",
-        ),
-        (c) => StringPrototypeCharCodeAt(c, 0),
-      ),
+    // Decode from base64url without `=` padding.
+    const base64 = StringPrototypeReplace(
+      StringPrototypeReplace(key, /\-/g, "+"),
+      /\_/g,
+      "/",
     );
+    const decodedKey = atob(base64);
+    const keyLength = decodedKey.length;
+    const keyBytes = new Uint8Array(keyLength);
+    for (let i = 0; i < keyLength; i++) {
+      keyBytes[i] = StringPrototypeCharCodeAt(decodedKey, i);
+    }
+    return keyBytes;
   }
 
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
