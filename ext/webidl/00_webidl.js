@@ -1057,7 +1057,7 @@
       value: prototype.name,
       enumerable: false,
       configurable: true,
-      writable: false
+      writable: false,
     });
   }
 

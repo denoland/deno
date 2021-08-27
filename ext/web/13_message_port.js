@@ -22,7 +22,6 @@
     ObjectSetPrototypeOf,
     Symbol,
     SymbolFor,
-    SymbolToStringTag,
     TypeError,
     WeakSet,
     WeakSetPrototypeAdd,

@@ -26,7 +26,6 @@
     MapPrototypeSet,
     MathRandom,
     Symbol,
-    SymbolToStringTag,
     StringFromCharCode,
     StringPrototypeTrim,
     StringPrototypeSlice,
@@ -72,7 +71,6 @@
    */
 
   class FormData {
-
     /** @type {FormDataEntry[]} */
     [entryList] = [];
 

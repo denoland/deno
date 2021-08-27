@@ -38,7 +38,6 @@
     RegExpPrototypeTest,
     Symbol,
     SymbolFor,
-    SymbolToStringTag,
     TypeError,
   } = window.__bootstrap.primordials;
 

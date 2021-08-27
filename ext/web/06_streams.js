@@ -31,7 +31,6 @@
     Symbol,
     SymbolAsyncIterator,
     SymbolFor,
-    SymbolToStringTag,
     TypeError,
     Uint8Array,
     WeakMap,

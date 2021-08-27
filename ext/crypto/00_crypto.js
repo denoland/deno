@@ -21,7 +21,6 @@
     StringPrototypeToUpperCase,
     Symbol,
     SymbolFor,
-    SymbolToStringTag,
     WeakMap,
     WeakMapPrototypeGet,
     WeakMapPrototypeSet,

@@ -20,7 +20,6 @@
     PromiseResolve,
     StringPrototypeCharCodeAt,
     StringPrototypeSlice,
-    SymbolToStringTag,
     TypedArrayPrototypeSubarray,
     TypedArrayPrototypeSlice,
     Uint8Array,

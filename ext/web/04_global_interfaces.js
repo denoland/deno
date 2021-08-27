@@ -8,7 +8,6 @@
   const { EventTarget } = window;
   const {
     Symbol,
-    SymbolToStringTag,
     TypeError,
   } = window.__bootstrap.primordials;
 

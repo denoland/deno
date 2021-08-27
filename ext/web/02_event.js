@@ -32,7 +32,6 @@
     ReflectDefineProperty,
     Symbol,
     SymbolFor,
-    SymbolToStringTag,
     TypeError,
     WeakMap,
     WeakMapPrototypeGet,

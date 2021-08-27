@@ -31,7 +31,6 @@
     queueMicrotask,
     StringFromCodePoint,
     Symbol,
-    SymbolToStringTag,
     TypedArrayPrototypeSet,
     TypeError,
     Uint8Array,
@@ -43,7 +42,6 @@
   const aborted = Symbol("[[aborted]]");
 
   class FileReader extends EventTarget {
-
     /** @type {"empty" | "loading" | "done"} */
     [state] = "empty";
     /** @type {null | string | ArrayBuffer} */

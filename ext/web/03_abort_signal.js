@@ -14,7 +14,6 @@
     SetPrototypeClear,
     SetPrototypeDelete,
     Symbol,
-    SymbolToStringTag,
     TypeError,
   } = window.__bootstrap.primordials;
 

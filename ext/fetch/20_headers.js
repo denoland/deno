@@ -36,7 +36,6 @@
     Symbol,
     SymbolFor,
     SymbolIterator,
-    SymbolToStringTag,
     StringPrototypeReplaceAll,
     StringPrototypeIncludes,
     TypeError,

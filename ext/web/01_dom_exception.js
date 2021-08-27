@@ -16,7 +16,6 @@
     ObjectEntries,
     ObjectSetPrototypeOf,
     SymbolFor,
-    SymbolToStringTag,
   } = window.__bootstrap.primordials;
   const webidl = window.__bootstrap.webidl;
   const consoleInternal = window.__bootstrap.console;

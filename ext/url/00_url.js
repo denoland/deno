@@ -22,7 +22,6 @@
     Symbol,
     SymbolFor,
     SymbolIterator,
-    SymbolToStringTag,
     TypeError,
   } = window.__bootstrap.primordials;
 

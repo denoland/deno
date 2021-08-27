@@ -30,7 +30,6 @@
     Symbol,
     SymbolFor,
     TypedArrayPrototypeSet,
-    SymbolToStringTag,
     TypeError,
     Uint8Array,
   } = window.__bootstrap.primordials;
