@@ -14,7 +14,7 @@ unitTest(function signalCallsOnabort() {
   const controller = new AbortController();
   const { signal } = controller;
   let called = false;
-  signal.onabort = (evt): void => {
+  signal.onabort = (evt) => {
     assert(evt);
     assertEquals(evt.type, "abort");
     called = true;
@@ -41,7 +41,7 @@ unitTest(function onlyAbortsOnce() {
   const { signal } = controller;
   let called = 0;
   signal.addEventListener("abort", () => called++);
-  signal.onabort = (): void => {
+  signal.onabort = () => {
     called++;
   };
   controller.abort();

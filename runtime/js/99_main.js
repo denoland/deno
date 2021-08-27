@@ -8,6 +8,7 @@ delete Object.prototype.__proto__;
 ((window) => {
   const core = Deno.core;
   const {
+    ArrayPrototypeMap,
     Error,
     FunctionPrototypeCall,
     FunctionPrototypeBind,
@@ -21,6 +22,7 @@ delete Object.prototype.__proto__;
     SymbolFor,
     SymbolIterator,
     PromisePrototypeThen,
+    TypeError,
   } = window.__bootstrap.primordials;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
@@ -105,10 +107,13 @@ delete Object.prototype.__proto__;
       );
       options = { transfer };
     } else {
-      options = webidl.converters.PostMessageOptions(transferOrOptions, {
-        prefix,
-        context: "Argument 2",
-      });
+      options = webidl.converters.StructuredSerializeOptions(
+        transferOrOptions,
+        {
+          prefix,
+          context: "Argument 2",
+        },
+      );
     }
     const { transfer } = options;
     const data = serializeJsMessageData(message, transfer);
@@ -130,12 +135,12 @@ delete Object.prototype.__proto__;
       if (data === null) break;
       const v = deserializeJsMessageData(data);
       const message = v[0];
-      const transfer = v[1];
+      const transferables = v[1];
 
       const msgEvent = new MessageEvent("message", {
         cancelable: false,
         data: message,
-        ports: transfer,
+        ports: transferables.filter((t) => t instanceof MessagePort),
       });
 
       try {
@@ -157,6 +162,44 @@ delete Object.prototype.__proto__;
             e.message,
           );
         }
+      }
+    }
+  }
+
+  let loadedMainWorkerScript = false;
+
+  function importScripts(...urls) {
+    if (core.opSync("op_worker_get_type") === "module") {
+      throw new TypeError("Can't import scripts in a module worker.");
+    }
+
+    const baseUrl = location.getLocationHref();
+    const parsedUrls = ArrayPrototypeMap(urls, (scriptUrl) => {
+      try {
+        return new url.URL(scriptUrl, baseUrl ?? undefined).href;
+      } catch {
+        throw new domException.DOMException(
+          "Failed to parse URL.",
+          "SyntaxError",
+        );
+      }
+    });
+
+    // A classic worker's main script has looser MIME type checks than any
+    // imported scripts, so we use `loadedMainWorkerScript` to distinguish them.
+    // TODO(andreubotella) Refactor worker creation so the main script isn't
+    // loaded with `importScripts()`.
+    const scripts = core.opSync(
+      "op_worker_sync_fetch",
+      parsedUrls,
+      !loadedMainWorkerScript,
+    );
+    loadedMainWorkerScript = true;
+
+    for (const { url, script } of scripts) {
+      const err = core.evalContext(script, url)[1];
+      if (err !== null) {
+        throw err.thrown;
       }
     }
   }
@@ -186,6 +229,7 @@ delete Object.prototype.__proto__;
     } else {
       prepareStackTrace = core.createPrepareStackTrace();
     }
+    // deno-lint-ignore prefer-primordials
     Error.prepareStackTrace = prepareStackTrace;
   }
 
@@ -225,6 +269,18 @@ delete Object.prototype.__proto__;
       "DOMExceptionNotSupportedError",
       function DOMExceptionNotSupportedError(msg) {
         return new domException.DOMException(msg, "NotSupported");
+      },
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionNetworkError",
+      function DOMExceptionNetworkError(msg) {
+        return new domException.DOMException(msg, "NetworkError");
+      },
+    );
+    core.registerErrorBuilder(
+      "DOMExceptionAbortError",
+      function DOMExceptionAbortError(msg) {
+        return new domException.DOMException(msg, "AbortError");
       },
     );
     core.registerErrorBuilder(
@@ -339,7 +395,6 @@ delete Object.prototype.__proto__;
     URL: util.nonEnumerable(url.URL),
     URLSearchParams: util.nonEnumerable(url.URLSearchParams),
     WebSocket: util.nonEnumerable(webSocket.WebSocket),
-    BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
     MessageChannel: util.nonEnumerable(messagePort.MessageChannel),
     MessagePort: util.nonEnumerable(messagePort.MessagePort),
     Worker: util.nonEnumerable(worker.Worker),
@@ -373,6 +428,12 @@ delete Object.prototype.__proto__;
     performance: util.writable(performance.performance),
     setInterval: util.writable(timers.setInterval),
     setTimeout: util.writable(timers.setTimeout),
+    structuredClone: util.writable(messagePort.structuredClone),
+  };
+
+  const unstableWindowOrWorkerGlobalScope = {
+    WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
+    BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
 
     GPU: util.nonEnumerable(webgpu.GPU),
     GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
@@ -481,6 +542,9 @@ delete Object.prototype.__proto__;
     util.log("bootstrapMainRuntime");
     hasBootstrapped = true;
     ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
+    if (runtimeOptions.unstableFlag) {
+      ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
+    }
     ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
     ObjectSetPrototypeOf(globalThis, Window.prototype);
 
@@ -569,8 +633,18 @@ delete Object.prototype.__proto__;
     util.log("bootstrapWorkerRuntime");
     hasBootstrapped = true;
     ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
+    if (runtimeOptions.unstableFlag) {
+      ObjectDefineProperties(globalThis, unstableWindowOrWorkerGlobalScope);
+    }
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, { name: util.readOnly(name) });
+    if (runtimeOptions.enableTestingFeaturesFlag) {
+      ObjectDefineProperty(
+        globalThis,
+        "importScripts",
+        util.writable(importScripts),
+      );
+    }
     ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
     const consoleFromDeno = globalThis.console;

@@ -461,13 +461,12 @@ impl JsRuntime {
     Ok(())
   }
 
-  /// Grabs a reference to core.js' handleAsyncMsgFromRust
+  /// Grabs a reference to core.js' opresolve
   fn init_recv_cb(&mut self) {
     let scope = &mut self.handle_scope();
 
-    // Get Deno.core.handleAsyncMsgFromRust
-    let code =
-      v8::String::new(scope, "Deno.core.handleAsyncMsgFromRust").unwrap();
+    // Get Deno.core.opresolve
+    let code = v8::String::new(scope, "Deno.core.opresolve").unwrap();
     let script = v8::Script::compile(scope, code, None).unwrap();
     let v8_value = script.run(scope).unwrap();
 

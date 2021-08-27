@@ -16,6 +16,7 @@ mod lsp_custom;
 mod parent_process_checker;
 mod path_to_regex;
 mod performance;
+mod refactor;
 mod registries;
 mod semantic_tokens;
 mod sources;

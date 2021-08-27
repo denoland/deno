@@ -1,0 +1,58 @@
+{
+  "title": "Extract to interface",
+  "kind": "refactor.extract.interface",
+  "edit": {
+    "documentChanges": [
+      {
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "version": 1
+        },
+        "edits": [
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 0
+              },
+              "end": {
+                "line": 0,
+                "character": 0
+              }
+            },
+            "newText": "interface NewType {\n  a?: number;\n  b?: string;\n}\n\n"
+          },
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 7
+              },
+              "end": {
+                "line": 0,
+                "character": 33
+              }
+            },
+            "newText": "NewType"
+          }
+        ]
+      }
+    ]
+  },
+  "isPreferred": true,
+  "data": {
+    "specifier": "file:///a/file.ts",
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 7
+      },
+      "end": {
+        "line": 0,
+        "character": 33
+      }
+    },
+    "refactorName": "Extract type",
+    "actionName": "Extract to interface"
+  }
+}

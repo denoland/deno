@@ -1,8 +1,10 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use crate::ops::TestingFeaturesEnabled;
 use crate::permissions::resolve_read_allowlist;
 use crate::permissions::resolve_write_allowlist;
 use crate::permissions::EnvDescriptor;
+use crate::permissions::FfiDescriptor;
 use crate::permissions::NetDescriptor;
 use crate::permissions::PermissionState;
 use crate::permissions::Permissions;
@@ -15,6 +17,7 @@ use crate::web_worker::run_web_worker;
 use crate::web_worker::SendableWebWorkerHandle;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
+use crate::web_worker::WebWorkerType;
 use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
 use deno_core::error::custom_error;
@@ -47,6 +50,7 @@ pub struct CreateWebWorkerArgs {
   pub permissions: Permissions,
   pub main_module: ModuleSpecifier,
   pub use_deno_namespace: bool,
+  pub worker_type: WebWorkerType,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
@@ -218,6 +222,26 @@ fn merge_run_permission(
   Ok(main)
 }
 
+fn merge_ffi_permission(
+  mut main: UnaryPermission<FfiDescriptor>,
+  worker: Option<UnaryPermission<FfiDescriptor>>,
+) -> Result<UnaryPermission<FfiDescriptor>, AnyError> {
+  if let Some(worker) = worker {
+    if (worker.global_state < main.global_state)
+      || !worker.granted_list.iter().all(|x| main.check(&x.0).is_ok())
+    {
+      return Err(custom_error(
+        "PermissionDenied",
+        "Can't escalate parent thread permissions",
+      ));
+    } else {
+      main.global_state = worker.global_state;
+      main.granted_list = worker.granted_list;
+    }
+  }
+  Ok(main)
+}
+
 pub fn create_worker_permissions(
   main_perms: Permissions,
   worker_perms: PermissionsArg,
@@ -226,7 +250,7 @@ pub fn create_worker_permissions(
     env: merge_env_permission(main_perms.env, worker_perms.env)?,
     hrtime: merge_boolean_permission(main_perms.hrtime, worker_perms.hrtime)?,
     net: merge_net_permission(main_perms.net, worker_perms.net)?,
-    plugin: merge_boolean_permission(main_perms.plugin, worker_perms.plugin)?,
+    ffi: merge_ffi_permission(main_perms.ffi, worker_perms.ffi)?,
     read: merge_read_permission(main_perms.read, worker_perms.read)?,
     run: merge_run_permission(main_perms.run, worker_perms.run)?,
     write: merge_write_permission(main_perms.write, worker_perms.write)?,
@@ -241,8 +265,8 @@ pub struct PermissionsArg {
   hrtime: Option<PermissionState>,
   #[serde(default, deserialize_with = "as_unary_net_permission")]
   net: Option<UnaryPermission<NetDescriptor>>,
-  #[serde(default, deserialize_with = "as_permission_state")]
-  plugin: Option<PermissionState>,
+  #[serde(default, deserialize_with = "as_unary_ffi_permission")]
+  ffi: Option<UnaryPermission<FfiDescriptor>>,
   #[serde(default, deserialize_with = "as_unary_read_permission")]
   read: Option<UnaryPermission<ReadDescriptor>>,
   #[serde(default, deserialize_with = "as_unary_run_permission")]
@@ -414,6 +438,22 @@ where
   }))
 }
 
+fn as_unary_ffi_permission<'de, D>(
+  deserializer: D,
+) -> Result<Option<UnaryPermission<FfiDescriptor>>, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  let value: UnaryPermissionBase =
+    deserializer.deserialize_any(ParseBooleanOrStringVec)?;
+
+  Ok(Some(UnaryPermission::<FfiDescriptor> {
+    global_state: value.global_state,
+    granted_list: value.paths.into_iter().map(FfiDescriptor).collect(),
+    ..Default::default()
+  }))
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateWorkerArgs {
@@ -423,6 +463,7 @@ pub struct CreateWorkerArgs {
   source_code: String,
   specifier: String,
   use_deno_namespace: bool,
+  worker_type: WebWorkerType,
 }
 
 /// Create worker as the host
@@ -441,6 +482,17 @@ fn op_create_worker(
   let use_deno_namespace = args.use_deno_namespace;
   if use_deno_namespace {
     super::check_unstable(state, "Worker.deno.namespace");
+  }
+  let worker_type = args.worker_type;
+  if let WebWorkerType::Classic = worker_type {
+    if let TestingFeaturesEnabled(false) = state.borrow() {
+      return Err(
+        deno_webstorage::DomExceptionNotSupportedError::new(
+          "Classic workers are not supported.",
+        )
+        .into(),
+      );
+    }
   }
   let parent_permissions = state.borrow::<Permissions>().clone();
   let worker_permissions = if let Some(permissions) = args.permissions {
@@ -481,6 +533,7 @@ fn op_create_worker(
         permissions: worker_permissions,
         main_module: module_specifier.clone(),
         use_deno_namespace,
+        worker_type,
       });
 
     // Send thread safe handle from newly created worker to host thread

@@ -24,10 +24,11 @@ pub const SETTINGS_SECTION: &str = "deno";
 
 #[derive(Debug, Clone, Default)]
 pub struct ClientCapabilities {
+  pub code_action_disabled_support: bool,
+  pub line_folding_only: bool,
   pub status_notification: bool,
   pub workspace_configuration: bool,
   pub workspace_did_change_watched_files: bool,
-  pub line_folding_only: bool,
 }
 
 fn is_true() -> bool {
@@ -394,6 +395,11 @@ impl Config {
         .folding_range
         .as_ref()
         .and_then(|it| it.line_folding_only)
+        .unwrap_or(false);
+      self.client_capabilities.code_action_disabled_support = text_document
+        .code_action
+        .as_ref()
+        .and_then(|it| it.disabled_support)
         .unwrap_or(false);
     }
   }

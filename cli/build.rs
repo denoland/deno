@@ -130,10 +130,10 @@ fn create_compiler_snapshot(
     "es2021.string",
     "es2021.weakref",
     "esnext",
+    "esnext.error",
     "esnext.intl",
-    "esnext.promise",
+    "esnext.object",
     "esnext.string",
-    "esnext.weakref",
   ];
 
   let path_dts = cwd.join("dts");

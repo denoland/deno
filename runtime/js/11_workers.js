@@ -7,7 +7,6 @@
     ArrayIsArray,
     ArrayPrototypeMap,
     Error,
-    Uint8Array,
     StringPrototypeStartsWith,
     String,
     SymbolIterator,
@@ -28,6 +27,7 @@
     useDenoNamespace,
     permissions,
     name,
+    workerType,
   ) {
     return core.opSync("op_create_worker", {
       hasSourceCode,
@@ -36,6 +36,7 @@
       sourceCode,
       specifier,
       useDenoNamespace,
+      workerType,
     });
   }
 
@@ -93,7 +94,17 @@
     } else if (ArrayIsArray(value)) {
       value = ArrayPrototypeMap(value, (route) => {
         if (route instanceof URL) {
-          route = pathFromURL(route);
+          if (permission === "net") {
+            throw new Error(
+              `Expected 'string' for net permission, received 'URL'`,
+            );
+          } else if (permission === "env") {
+            throw new Error(
+              `Expected 'string' for env permission, received 'URL'`,
+            );
+          } else {
+            route = pathFromURL(route);
+          }
         }
         return route;
       });
@@ -109,7 +120,7 @@
     env = "inherit",
     hrtime = "inherit",
     net = "inherit",
-    plugin = "inherit",
+    ffi = "inherit",
     read = "inherit",
     run = "inherit",
     write = "inherit",
@@ -118,7 +129,7 @@
       env: parseUnitPermission(env, "env"),
       hrtime: parseUnitPermission(hrtime, "hrtime"),
       net: parseArrayPermission(net, "net"),
-      plugin: parseUnitPermission(plugin, "plugin"),
+      ffi: parseUnitPermission(ffi, "ffi"),
       read: parseArrayPermission(read, "read"),
       run: parseUnitPermission(run, "run"),
       write: parseArrayPermission(write, "write"),
@@ -165,7 +176,7 @@
             env: false,
             hrtime: false,
             net: false,
-            plugin: false,
+            ffi: false,
             read: false,
             run: false,
             write: false,
@@ -173,25 +184,27 @@
         }
       }
 
-      if (type !== "module") {
-        throw new Error(
-          'Not yet implemented: only "module" type workers are supported',
-        );
-      }
-
-      this.#name = name;
-      const hasSourceCode = false;
-      const sourceCode = core.decode(new Uint8Array());
+      const workerType = webidl.converters["WorkerType"](type);
 
       if (
         StringPrototypeStartsWith(specifier, "./") ||
         StringPrototypeStartsWith(specifier, "../") ||
-        StringPrototypeStartsWith(specifier, "/") || type == "classic"
+        StringPrototypeStartsWith(specifier, "/") || workerType === "classic"
       ) {
         const baseUrl = getLocationHref();
         if (baseUrl != null) {
           specifier = new URL(specifier, baseUrl).href;
         }
+      }
+
+      this.#name = name;
+      let hasSourceCode, sourceCode;
+      if (workerType === "classic") {
+        hasSourceCode = true;
+        sourceCode = `importScripts("#");`;
+      } else {
+        hasSourceCode = false;
+        sourceCode = "";
       }
 
       const id = createWorker(
@@ -203,6 +216,7 @@
           ? null
           : parsePermissions(workerDenoAttributes.permissions),
         options?.name,
+        workerType,
       );
       this.#id = id;
       this.#pollControl();
@@ -270,11 +284,11 @@
       while (!this.terminated) {
         const data = await hostRecvMessage(this.#id);
         if (data === null) break;
-        let message, transfer;
+        let message, transferables;
         try {
           const v = deserializeJsMessageData(data);
           message = v[0];
-          transfer = v[1];
+          transferables = v[1];
         } catch (err) {
           const event = new MessageEvent("messageerror", {
             cancelable: false,
@@ -286,7 +300,7 @@
         const event = new MessageEvent("message", {
           cancelable: false,
           data: message,
-          ports: transfer,
+          ports: transferables.filter((t) => t instanceof MessagePort),
         });
         this.dispatchEvent(event);
       }
@@ -308,10 +322,13 @@
         );
         options = { transfer };
       } else {
-        options = webidl.converters.PostMessageOptions(transferOrOptions, {
-          prefix,
-          context: "Argument 2",
-        });
+        options = webidl.converters.StructuredSerializeOptions(
+          transferOrOptions,
+          {
+            prefix,
+            context: "Argument 2",
+          },
+        );
       }
       const { transfer } = options;
       const data = serializeJsMessageData(message, transfer);
@@ -330,6 +347,11 @@
   defineEventHandler(Worker.prototype, "error");
   defineEventHandler(Worker.prototype, "message");
   defineEventHandler(Worker.prototype, "messageerror");
+
+  webidl.converters["WorkerType"] = webidl.createEnumConverter("WorkerType", [
+    "classic",
+    "module",
+  ]);
 
   window.__bootstrap.worker = {
     parsePermissions,
