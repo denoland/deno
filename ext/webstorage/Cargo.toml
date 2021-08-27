@@ -17,4 +17,4 @@ path = "lib.rs"
 deno_core = { version = "0.98.0", path = "../../core" }
 deno_web = { version = "0.47.0", path = "../web" }
 rusqlite = { version = "0.25.3", features = ["unlock_notify", "bundled"] }
-serde = { version = "1.0.126", features = ["derive"] }
+serde = { version = "1.0.129", features = ["derive"] }
