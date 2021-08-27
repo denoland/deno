@@ -325,7 +325,7 @@ fn op_command_child_status(
     .resource_table
     .get::<ChildResource>(rid)
     .ok_or_else(bad_resource_id)?;
-  let mut child = resource.borrow_mut().await; // TODO: fix
+  let mut child = RcRef::map(resource, |r| &r.0).try_borrow_mut().unwrap();
   let status = child.try_wait()?.map(|status| status.into());
 
   Ok(status)
