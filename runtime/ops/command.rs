@@ -81,7 +81,10 @@ fn create_command(
   command_args: CommandArgs,
 ) -> Result<Command, AnyError> {
   super::check_unstable(state, "Deno.Command");
-  state.borrow_mut::<Permissions>().run.check(&command_args.cmd)?;
+  state
+    .borrow_mut::<Permissions>()
+    .run
+    .check(&command_args.cmd)?;
 
   let mut command = Command::new(&command_args.cmd);
   command.args(&command_args.args);
