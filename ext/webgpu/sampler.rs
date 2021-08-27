@@ -15,46 +15,67 @@ impl Resource for WebGpuSampler {
   }
 }
 
-fn serialize_address_mode(
-  address_mode: Option<String>,
-) -> wgpu_types::AddressMode {
-  match address_mode {
-    Some(address_mode) => match address_mode.as_str() {
-      "clamp-to-edge" => wgpu_types::AddressMode::ClampToEdge,
-      "repeat" => wgpu_types::AddressMode::Repeat,
-      "mirror-repeat" => wgpu_types::AddressMode::MirrorRepeat,
-      _ => unreachable!(),
-    },
-    None => wgpu_types::AddressMode::ClampToEdge,
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum GpuAddressMode {
+  ClampToEdge,
+  Repeat,
+  MirrorRepeat,
+}
+
+impl From<GpuAddressMode> for wgpu_types::AddressMode {
+  fn from(value: GpuAddressMode) -> wgpu_types::AddressMode {
+    match value {
+      GpuAddressMode::ClampToEdge => wgpu_types::AddressMode::ClampToEdge,
+      GpuAddressMode::Repeat => wgpu_types::AddressMode::Repeat,
+      GpuAddressMode::MirrorRepeat => wgpu_types::AddressMode::MirrorRepeat,
+    }
   }
 }
 
-fn serialize_filter_mode(
-  filter_mode: Option<String>,
-) -> wgpu_types::FilterMode {
-  match filter_mode {
-    Some(filter_mode) => match filter_mode.as_str() {
-      "nearest" => wgpu_types::FilterMode::Nearest,
-      "linear" => wgpu_types::FilterMode::Linear,
-      _ => unreachable!(),
-    },
-    None => wgpu_types::FilterMode::Nearest,
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum GpuFilterMode {
+  Nearest,
+  Linear,
+}
+
+impl From<GpuFilterMode> for wgpu_types::FilterMode {
+  fn from(value: GpuFilterMode) -> wgpu_types::FilterMode {
+    match value {
+      GpuFilterMode::Nearest => wgpu_types::FilterMode::Nearest,
+      GpuFilterMode::Linear => wgpu_types::FilterMode::Linear,
+    }
   }
 }
 
-pub fn serialize_compare_function(
-  compare: &str,
-) -> wgpu_types::CompareFunction {
-  match compare {
-    "never" => wgpu_types::CompareFunction::Never,
-    "less" => wgpu_types::CompareFunction::Less,
-    "equal" => wgpu_types::CompareFunction::Equal,
-    "less-equal" => wgpu_types::CompareFunction::LessEqual,
-    "greater" => wgpu_types::CompareFunction::Greater,
-    "not-equal" => wgpu_types::CompareFunction::NotEqual,
-    "greater-equal" => wgpu_types::CompareFunction::GreaterEqual,
-    "always" => wgpu_types::CompareFunction::Always,
-    _ => unreachable!(),
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum GpuCompareFunction {
+  Never,
+  Less,
+  Equal,
+  LessEqual,
+  Greater,
+  NotEqual,
+  GreaterEqual,
+  Always,
+}
+
+impl From<GpuCompareFunction> for wgpu_types::CompareFunction {
+  fn from(value: GpuCompareFunction) -> wgpu_types::CompareFunction {
+    match value {
+      GpuCompareFunction::Never => wgpu_types::CompareFunction::Never,
+      GpuCompareFunction::Less => wgpu_types::CompareFunction::Less,
+      GpuCompareFunction::Equal => wgpu_types::CompareFunction::Equal,
+      GpuCompareFunction::LessEqual => wgpu_types::CompareFunction::LessEqual,
+      GpuCompareFunction::Greater => wgpu_types::CompareFunction::Greater,
+      GpuCompareFunction::NotEqual => wgpu_types::CompareFunction::NotEqual,
+      GpuCompareFunction::GreaterEqual => {
+        wgpu_types::CompareFunction::GreaterEqual
+      }
+      GpuCompareFunction::Always => wgpu_types::CompareFunction::Always,
+    }
   }
 }
 
@@ -63,16 +84,16 @@ pub fn serialize_compare_function(
 pub struct CreateSamplerArgs {
   device_rid: ResourceId,
   label: Option<String>,
-  address_mode_u: Option<String>,
-  address_mode_v: Option<String>,
-  address_mode_w: Option<String>,
-  mag_filter: Option<String>,
-  min_filter: Option<String>,
-  mipmap_filter: Option<String>,
-  lod_min_clamp: Option<f32>,
-  lod_max_clamp: Option<f32>,
-  compare: Option<String>,
-  max_anisotropy: Option<u8>,
+  address_mode_u: GpuAddressMode,
+  address_mode_v: GpuAddressMode,
+  address_mode_w: GpuAddressMode,
+  mag_filter: GpuFilterMode,
+  min_filter: GpuFilterMode,
+  mipmap_filter: GpuFilterMode,
+  lod_min_clamp: f32,
+  lod_max_clamp: f32,
+  compare: Option<GpuCompareFunction>,
+  max_anisotropy: u8,
 }
 
 pub fn op_webgpu_create_sampler(
@@ -89,24 +110,17 @@ pub fn op_webgpu_create_sampler(
   let descriptor = wgpu_core::resource::SamplerDescriptor {
     label: args.label.map(Cow::from),
     address_modes: [
-      serialize_address_mode(args.address_mode_u),
-      serialize_address_mode(args.address_mode_v),
-      serialize_address_mode(args.address_mode_w),
+      args.address_mode_u.into(),
+      args.address_mode_v.into(),
+      args.address_mode_w.into(),
     ],
-    mag_filter: serialize_filter_mode(args.mag_filter),
-    min_filter: serialize_filter_mode(args.min_filter),
-    mipmap_filter: serialize_filter_mode(args.mipmap_filter),
-    lod_min_clamp: args.lod_min_clamp.unwrap_or(0.0),
-    lod_max_clamp: args.lod_max_clamp.unwrap_or(
-      wgpu_core::resource::SamplerDescriptor::default().lod_max_clamp,
-    ),
-    compare: args
-      .compare
-      .as_ref()
-      .map(|compare| serialize_compare_function(compare)),
-    anisotropy_clamp: std::num::NonZeroU8::new(
-      args.max_anisotropy.unwrap_or(0),
-    ),
+    mag_filter: args.mag_filter.into(),
+    min_filter: args.min_filter.into(),
+    mipmap_filter: args.mipmap_filter.into(),
+    lod_min_clamp: args.lod_min_clamp,
+    lod_max_clamp: args.lod_max_clamp,
+    compare: args.compare.map(Into::into),
+    anisotropy_clamp: std::num::NonZeroU8::new(args.max_anisotropy),
     border_color: None, // native-only
   };
 

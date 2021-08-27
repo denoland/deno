@@ -341,7 +341,8 @@
   const _ws = Symbol("[[associated_ws]]");
 
   function upgradeWebSocket(request, options = {}) {
-    if (request.headers.get("upgrade") !== "websocket") {
+    const upgrade = request.headers.get("upgrade");
+    if (!upgrade || StringPrototypeToLowerCase(upgrade) !== "websocket") {
       throw new TypeError(
         "Invalid Header: 'upgrade' header must be 'websocket'",
       );

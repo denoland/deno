@@ -322,6 +322,81 @@ fn run_watch() {
   drop(t);
 }
 
+#[test]
+fn run_watch_load_unload_events() {
+  let t = TempDir::new().expect("tempdir fail");
+  let file_to_watch = t.path().join("file_to_watch.js");
+  std::fs::write(
+    &file_to_watch,
+    r#"
+      setInterval(() => {}, 0);
+      window.addEventListener("load", () => {
+        console.log("load");
+      });
+
+      window.addEventListener("unload", () => {
+        console.log("unload");
+      });
+    "#,
+  )
+  .expect("error writing file");
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--unstable")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn script");
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines =
+    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  // Wait for the first load event to fire
+  assert!(stdout_lines.next().unwrap().contains("load"));
+
+  // Change content of the file, this time without an interval to keep it alive.
+  std::fs::write(
+    &file_to_watch,
+    r#"
+      window.addEventListener("load", () => {
+        console.log("load");
+      });
+
+      window.addEventListener("unload", () => {
+        console.log("unload");
+      });
+    "#,
+  )
+  .expect("error writing file");
+
+  // Events from the file watcher is "debounced", so we need to wait for the next execution to start
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  // Wait for the restart
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+
+  // Confirm that the unload event was dispatched from the first run
+  assert!(stdout_lines.next().unwrap().contains("unload"));
+
+  // Followed by the load event of the second run
+  assert!(stdout_lines.next().unwrap().contains("load"));
+
+  // Which is then unloaded as there is nothing keeping it alive.
+  assert!(stdout_lines.next().unwrap().contains("unload"));
+
+  child.kill().unwrap();
+  drop(t);
+}
+
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[test]
 fn run_watch_not_exit() {
