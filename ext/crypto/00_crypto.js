@@ -676,7 +676,7 @@
 
       // 2.
       if (format !== "jwk") {
-        if (ArrayBufferIsView(keyData) || (keyData instanceof ArrayBuffer)) {
+        if (ArrayBufferIsView(keyData) || keyData instanceof ArrayBuffer) {
           if (ArrayBufferIsView(keyData)) {
             keyData = new Uint8Array(
               keyData.buffer,
@@ -691,7 +691,7 @@
           throw new TypeError("keyData is a JsonWebKey");
         }
       } else {
-        if (ArrayBufferIsView(keyData) || (keyData instanceof ArrayBuffer)) {
+        if (ArrayBufferIsView(keyData) || keyData instanceof ArrayBuffer) {
           throw new TypeError("keyData is not a JsonWebKey");
         }
       }
