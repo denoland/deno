@@ -1086,7 +1086,7 @@ declare namespace Deno {
   }
 
   interface CommandOptions {
-    cmd: [string | URL, ...string[]];
+    args?: string[];
     cwd?: string;
     env?: Record<string, string>;
     clearEnv?: boolean;
@@ -1097,7 +1097,7 @@ declare namespace Deno {
   }
 
   class Command<T extends CommandOptions = CommandOptions> {
-    constructor(options: T);
+    constructor(command: string | URL, options?: T);
 
     spawn(): Child<T>;
     status(): Promise<ProcessStatus>;
@@ -1113,7 +1113,7 @@ declare namespace Deno {
       : null;
 
     readonly pid: number;
-    readonly status?: ProcessStatus;
+    readonly status: ProcessStatus | null;
 
     wait(): Promise<ProcessStatus>;
     output(): Promise<CommandOutput>;

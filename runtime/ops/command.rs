@@ -66,7 +66,8 @@ fn subprocess_stdio_map(s: &str) -> Result<std::process::Stdio, AnyError> {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandArgs {
-  cmd: Vec<String>,
+  cmd: String,
+  args: Vec<String>,
   cwd: Option<String>,
   clear_env: bool,
   env: Vec<(String, String)>,
@@ -79,12 +80,11 @@ fn create_command(
   state: &mut OpState,
   command_args: CommandArgs,
 ) -> Result<Command, AnyError> {
-  let args = command_args.cmd;
   super::check_unstable(state, "Deno.Command");
-  state.borrow_mut::<Permissions>().run.check(&args[0])?;
+  state.borrow_mut::<Permissions>().run.check(&command_args.cmd)?;
 
-  let mut command = Command::new(&args[0]);
-  command.args(&args[1..]);
+  let mut command = Command::new(&command_args.cmd);
+  command.args(&command_args.args);
 
   if let Some(cwd) = command_args.cwd {
     command.current_dir(cwd);

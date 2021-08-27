@@ -13,20 +13,18 @@
   class Command {
     #args;
 
-    constructor({
-      cmd,
+    constructor(command, {
+      args = [],
       cwd = undefined,
       clearEnv = false,
       env = {},
       stdout = "inherit",
       stderr = "inherit",
       stdin = "inherit",
-    }) {
-      assert(cmd.length > 0, "No command was passed.");
-      cmd[0] = pathFromURL(cmd[0]);
-
+    } = {}) {
       this.#args = {
-        cmd: ArrayPrototypeMap(cmd, String),
+        cmd: pathFromURL(command),
+        args: ArrayPrototypeMap(args, String),
         cwd,
         clearEnv,
         env: ObjectEntries(env),
