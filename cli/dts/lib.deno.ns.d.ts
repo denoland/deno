@@ -2441,6 +2441,20 @@ declare namespace Deno {
    *
    * If `httpConn.nextRequest()` encounters an error or returns `null`
    * then the underlying HttpConn resource is closed automatically.
+   *
+   * Alternatively, you can also use the Async Iterator approach:
+   *
+   * ```ts
+   * async function handleHttp(conn: Deno.Conn) {
+   *   for await (const e of Deno.serveHttp(conn)) {
+   *     e.respondWith(new Response("Hello World"));
+   *   }
+   * }
+   *
+   * for await (const conn of Deno.listen({ port: 80 })) {
+   *   handleHttp(conn);
+   * }
+   * ```
    */
   export function serveHttp(conn: Conn): HttpConn;
 }
