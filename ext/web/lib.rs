@@ -101,6 +101,7 @@ pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
         "op_message_port_recv_message",
         op_async(op_message_port_recv_message),
       ),
+      ("op_queue_task", op_async(op_queue_task)),
     ])
     .state(move |state| {
       state.put(blob_store.clone());
@@ -331,8 +332,12 @@ fn op_encoding_encode_into(
   })
 }
 
-pub async fn op_queue_task(
-  state: Rc<RefCell<deno_core::OpState>>,
+// This op does what the HTML spec describes as "queing a task". It behaves the
+// same way as `setTimeout(0)` in that it will not resolve immediately, but only
+// after the microtask queue has been emptied. `setTimeout(0)` can not be used
+// because it really means `setTimeout(4)`.
+async fn op_queue_task(
+  _state: Rc<RefCell<OpState>>,
   _: (),
   _: (),
 ) -> Result<(), AnyError> {
