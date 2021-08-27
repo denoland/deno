@@ -25,6 +25,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fmt;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::usize;
 
 use crate::blob::op_blob_create_object_url;
@@ -328,6 +329,14 @@ fn op_encoding_encode_into(
     read: input[..boundary].encode_utf16().count(),
     written: boundary,
   })
+}
+
+pub async fn op_queue_task(
+  state: Rc<RefCell<deno_core::OpState>>,
+  _: (),
+  _: (),
+) -> Result<(), AnyError> {
+  Ok(())
 }
 
 pub fn get_declaration() -> PathBuf {
