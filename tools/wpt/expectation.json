@@ -14969,9 +14969,7 @@
           "If the implementation has a stack property on normal errors, it also does on DOMExceptions"
         ]
       },
-      "class-string-interface.any.html": [
-        "@@toStringTag exists on the prototype with the appropriate descriptor"
-      ],
+      "class-string-interface.any.html": true,
       "class-string-iterator-prototype-object.any.html": true,
       "global-immutable-prototype.any.html": [
         "Setting to a different prototype"
