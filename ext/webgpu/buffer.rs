@@ -38,7 +38,7 @@ pub struct CreateBufferArgs {
   label: Option<String>,
   size: u64,
   usage: u32,
-  mapped_at_creation: Option<bool>,
+  mapped_at_creation: bool,
 }
 
 pub fn op_webgpu_create_buffer(
@@ -55,9 +55,9 @@ pub fn op_webgpu_create_buffer(
   let descriptor = wgpu_core::resource::BufferDescriptor {
     label: args.label.map(Cow::from),
     size: args.size,
-    usage: wgpu_types::BufferUsage::from_bits(args.usage)
+    usage: wgpu_types::BufferUsages::from_bits(args.usage)
       .ok_or_else(|| type_error("usage is not valid"))?,
-    mapped_at_creation: args.mapped_at_creation.unwrap_or(false),
+    mapped_at_creation: args.mapped_at_creation,
   };
 
   gfx_put!(device => instance.device_create_buffer(

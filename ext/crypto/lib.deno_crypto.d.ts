@@ -28,6 +28,34 @@ type KeyUsage =
 
 type NamedCurve = string;
 
+interface RsaOtherPrimesInfo {
+  d?: string;
+  r?: string;
+  t?: string;
+}
+
+interface JsonWebKey {
+  alg?: string;
+  crv?: string;
+  d?: string;
+  dp?: string;
+  dq?: string;
+  e?: string;
+  ext?: boolean;
+  k?: string;
+  // deno-lint-ignore camelcase
+  key_ops?: string[];
+  kty?: string;
+  n?: string;
+  oth?: RsaOtherPrimesInfo[];
+  p?: string;
+  q?: string;
+  qi?: string;
+  use?: string;
+  x?: string;
+  y?: string;
+}
+
 interface HmacKeyGenParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
   length?: number;
@@ -54,9 +82,31 @@ interface RsaPssParams extends Algorithm {
   saltLength: number;
 }
 
+interface RsaOaepParams extends Algorithm {
+  label?: Uint8Array;
+}
+
 interface HmacImportParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
   length?: number;
+}
+
+interface EcKeyAlgorithm extends KeyAlgorithm {
+  namedCurve: NamedCurve;
+}
+
+interface HmacKeyAlgorithm extends KeyAlgorithm {
+  hash: KeyAlgorithm;
+  length: number;
+}
+
+interface RsaHashedKeyAlgorithm extends RsaKeyAlgorithm {
+  hash: KeyAlgorithm;
+}
+
+interface RsaKeyAlgorithm extends KeyAlgorithm {
+  modulusLength: number;
+  publicExponent: Uint8Array;
 }
 
 /** The CryptoKey dictionary of the Web Crypto API represents a cryptographic key. */
@@ -101,12 +151,20 @@ interface SubtleCrypto {
     keyUsages: KeyUsage[],
   ): Promise<CryptoKeyPair | CryptoKey>;
   importKey(
+    format: "jwk",
+    keyData: JsonWebKey,
+    algorithm: AlgorithmIdentifier | HmacImportParams,
+    extractable: boolean,
+    keyUsages: KeyUsage[],
+  ): Promise<CryptoKey>;
+  importKey(
     format: "raw",
     keyData: BufferSource,
     algorithm: AlgorithmIdentifier | HmacImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
+  exportKey(format: "raw", key: CryptoKey): Promise<ArrayBuffer>;
   sign(
     algorithm: AlgorithmIdentifier | RsaPssParams | EcdsaParams,
     key: CryptoKey,
@@ -120,6 +178,16 @@ interface SubtleCrypto {
   ): Promise<boolean>;
   digest(
     algorithm: AlgorithmIdentifier,
+    data: BufferSource,
+  ): Promise<ArrayBuffer>;
+  encrypt(
+    algorithm: AlgorithmIdentifier | RsaOaepParams,
+    key: CryptoKey,
+    data: BufferSource,
+  ): Promise<ArrayBuffer>;
+  decrypt(
+    algorithm: AlgorithmIdentifier | RsaOaepParams,
+    key: CryptoKey,
     data: BufferSource,
   ): Promise<ArrayBuffer>;
 }
@@ -143,10 +211,6 @@ declare interface Crypto {
     array: T,
   ): T;
   randomUUID(): string;
-}
-
-interface Algorithm {
-  name: string;
 }
 
 declare var SubtleCrypto: {
