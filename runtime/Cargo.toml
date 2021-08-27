@@ -65,6 +65,7 @@ atty = "0.2.14"
 dlopen = "0.1.8"
 encoding_rs = "0.8.28"
 filetime = "0.2.14"
+fs3 = "0.5.0"
 http = "0.2.4"
 hyper = { version = "0.14.10", features = ["server", "stream", "http1", "http2", "runtime"] }
 # TODO(lucacasonato): unlock when https://github.com/tkaitchuck/aHash/issues/95 is resolved

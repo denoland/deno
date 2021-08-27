@@ -135,12 +135,12 @@ delete Object.prototype.__proto__;
       if (data === null) break;
       const v = deserializeJsMessageData(data);
       const message = v[0];
-      const transfer = v[1];
+      const transferables = v[1];
 
       const msgEvent = new MessageEvent("message", {
         cancelable: false,
         data: message,
-        ports: transfer,
+        ports: transferables.filter((t) => t instanceof MessagePort),
       });
 
       try {

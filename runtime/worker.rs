@@ -108,6 +108,7 @@ impl MainWorker {
         None,
         None,
         options.unsafely_ignore_certificate_errors.clone(),
+        None,
       ),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
@@ -161,14 +162,7 @@ impl MainWorker {
     });
 
     if let Some(server) = options.maybe_inspector_server.clone() {
-      let inspector = js_runtime.inspector();
-      let session_sender = inspector.get_session_sender();
-      let deregister_rx = inspector.add_deregister_handler();
-      server.register_inspector(
-        session_sender,
-        deregister_rx,
-        main_module.to_string(),
-      );
+      server.register_inspector(main_module.to_string(), &mut js_runtime);
     }
 
     Self {

@@ -138,6 +138,17 @@
   webidl.converters.RsaPssParams = webidl
     .createDictionaryConverter("RsaPssParams", dictRsaPssParams);
 
+  const dictRsaOaepParams = [
+    ...dictAlgorithm,
+    {
+      key: "label",
+      converter: webidl.converters["BufferSource"],
+    },
+  ];
+
+  webidl.converters.RsaOaepParams = webidl
+    .createDictionaryConverter("RsaOaepParams", dictRsaOaepParams);
+
   const dictEcdsaParams = [
     ...dictAlgorithm,
     {
@@ -166,6 +177,29 @@
 
   webidl.converters.HmacImportParams = webidl
     .createDictionaryConverter("HmacImportParams", dictHmacImportParams);
+
+  const dictPbkdf2Params = [
+    ...dictAlgorithm,
+    {
+      key: "hash",
+      converter: webidl.converters.HashAlgorithmIdentifier,
+      required: true,
+    },
+    {
+      key: "iterations",
+      converter: (V, opts) =>
+        webidl.converters["unsigned long"](V, { ...opts, enforceRange: true }),
+      required: true,
+    },
+    {
+      key: "salt",
+      converter: webidl.converters["BufferSource"],
+      required: true,
+    },
+  ];
+
+  webidl.converters.Pbkdf2Params = webidl
+    .createDictionaryConverter("Pbkdf2Params", dictPbkdf2Params);
 
   webidl.converters.CryptoKey = webidl.createInterfaceConverter(
     "CryptoKey",

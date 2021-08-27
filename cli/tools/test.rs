@@ -296,8 +296,8 @@ fn create_reporter(concurrent: bool) -> Box<dyn TestReporter + Send> {
   Box::new(PrettyTestReporter::new(concurrent))
 }
 
-/// Test a single specifier as a module, document containing inline code blocks or both.
-#[allow(clippy::too_many_arguments)]
+/// Test a single specifier as documentation containing test programs, an executable test module or
+/// both.
 async fn test_specifier(
   program_state: Arc<ProgramState>,
   permissions: Permissions,
@@ -310,6 +310,7 @@ async fn test_specifier(
   let test_specifier =
     deno_core::resolve_path(&format!("{}$deno$test.js", Uuid::new_v4()))?;
 
+  let mut test_source = String::new();
   let mut test_source = String::new();
   if mode != TestMode::Executable {
     let inline_programs = fetch_inline_test_programs(
@@ -327,10 +328,10 @@ async fn test_specifier(
       );
       test_source.push_str(&format!(
         r#"
-        Deno.test("{}", function() {{
-          return Deno[Deno.internal].runTestProgram({});
-        }});
-        "#,
+         Deno.test("{}", function() {{
+           return Deno[Deno.internal].runTestProgram({});
+         }});
+         "#,
         name,
         json!(program)
       ));
@@ -558,58 +559,12 @@ async fn fetch_inline_test_programs(
   Ok(programs)
 }
 
-/// Type check a collection of executable specifiers and maybe the programs contained
-/// within the fenced code blocks of the documntation specifiers.
-async fn check_specifiers_and_maybe_programs(
+async fn prepare_specifiers(
   program_state: Arc<ProgramState>,
   permissions: Permissions,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
   lib: TypeLib,
-  check_programs: bool,
 ) -> Result<(), AnyError> {
-  if check_programs {
-    let inline_programs = fetch_inline_test_programs(
-      program_state.clone(),
-      specifiers
-        .iter()
-        .filter_map(|(specifier, mode)| {
-          if *mode != TestMode::Executable {
-            Some(specifier.clone())
-          } else {
-            None
-          }
-        })
-        .collect(),
-    )
-    .await?;
-
-    let inline_files: Vec<File> = inline_programs
-      .iter()
-      .map(|program| program.to_file())
-      .collect();
-
-    if !inline_files.is_empty() {
-      let specifiers = inline_files
-        .iter()
-        .map(|file| file.specifier.clone())
-        .collect();
-
-      for file in inline_files {
-        program_state.file_fetcher.insert_cached(file);
-      }
-
-      program_state
-        .prepare_module_graph(
-          specifiers,
-          lib.clone(),
-          Permissions::allow_all(),
-          permissions.clone(),
-          program_state.maybe_import_map.clone(),
-        )
-        .await?;
-    }
-  }
-
   let module_specifiers = specifiers
     .iter()
     .filter_map(|(specifier, mode)| {
@@ -634,8 +589,7 @@ async fn check_specifiers_and_maybe_programs(
   Ok(())
 }
 
-/// Test a collection of specifiers concurrently.
-#[allow(clippy::too_many_arguments)]
+/// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
   program_state: Arc<ProgramState>,
   permissions: Permissions,
@@ -794,13 +748,14 @@ async fn test_specifiers(
 /// - Specifiers matching both predicates are marked as `TestMode::Both`
 fn collect_specifiers_with_test_mode(
   include: Vec<String>,
+  ignore: Vec<PathBuf>,
   include_inline: bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
   let module_specifiers =
-    collect_specifiers(include.clone(), is_supported_test_path)?;
+    collect_specifiers(include.clone(), &ignore, is_supported_test_path)?;
 
   if include_inline {
-    return collect_specifiers(include, is_supported_test_ext).map(
+    return collect_specifiers(include, &ignore, is_supported_test_ext).map(
       |specifiers| {
         specifiers
           .into_iter()
@@ -834,10 +789,11 @@ fn collect_specifiers_with_test_mode(
 async fn fetch_specifiers_with_test_mode(
   program_state: Arc<ProgramState>,
   include: Vec<String>,
+  ignore: Vec<PathBuf>,
   include_inline: bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
   let mut specifiers_with_mode =
-    collect_specifiers_with_test_mode(include, include_inline)?;
+    collect_specifiers_with_test_mode(include, ignore, include_inline)?;
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = program_state
       .file_fetcher
@@ -858,6 +814,7 @@ async fn fetch_specifiers_with_test_mode(
 pub async fn run_tests(
   flags: Flags,
   include: Option<Vec<String>>,
+  ignore: Vec<PathBuf>,
   doc: bool,
   no_run: bool,
   fail_fast: Option<NonZeroUsize>,
@@ -871,6 +828,7 @@ pub async fn run_tests(
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     program_state.clone(),
     include.unwrap_or_else(|| vec![".".to_string()]),
+    ignore.clone(),
     doc,
   )
   .await?;
@@ -885,12 +843,11 @@ pub async fn run_tests(
     TypeLib::DenoWindow
   };
 
-  check_specifiers_and_maybe_programs(
+  prepare_specifiers(
     program_state.clone(),
     permissions.clone(),
     specifiers_with_mode.clone(),
     lib,
-    no_run,
   )
   .await?;
 
@@ -916,6 +873,7 @@ pub async fn run_tests(
 pub async fn run_tests_with_watch(
   flags: Flags,
   include: Option<Vec<String>>,
+  ignore: Vec<PathBuf>,
   doc: bool,
   no_run: bool,
   fail_fast: Option<NonZeroUsize>,
@@ -949,12 +907,13 @@ pub async fn run_tests_with_watch(
     let program_state = program_state.clone();
     let files_changed = changed.is_some();
     let include = include.clone();
+    let ignore = ignore.clone();
 
     async move {
       let test_modules = if doc {
-        collect_specifiers(include.clone(), is_supported_test_ext)
+        collect_specifiers(include.clone(), &ignore, is_supported_test_ext)
       } else {
-        collect_specifiers(include.clone(), is_supported_test_path)
+        collect_specifiers(include.clone(), &ignore, is_supported_test_path)
       }?;
 
       let mut paths_to_watch = paths_to_watch_clone;
@@ -1070,6 +1029,7 @@ pub async fn run_tests_with_watch(
   let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
     let filter = filter.clone();
     let include = include.clone();
+    let ignore = ignore.clone();
     let lib = lib.clone();
     let permissions = permissions.clone();
     let program_state = program_state.clone();
@@ -1078,6 +1038,7 @@ pub async fn run_tests_with_watch(
       let specifiers_with_mode = fetch_specifiers_with_test_mode(
         program_state.clone(),
         include.clone(),
+        ignore.clone(),
         doc,
       )
       .await?
@@ -1086,12 +1047,11 @@ pub async fn run_tests_with_watch(
       .cloned()
       .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
-      check_specifiers_and_maybe_programs(
+      prepare_specifiers(
         program_state.clone(),
         permissions.clone(),
         specifiers_with_mode.clone(),
         lib,
-        no_run,
       )
       .await?;
 

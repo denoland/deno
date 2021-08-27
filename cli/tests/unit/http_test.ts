@@ -6,6 +6,7 @@ import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
 import {
   assert,
   assertEquals,
+  assertThrows,
   assertThrowsAsync,
   deferred,
   delay,
@@ -705,6 +706,51 @@ unitTest(function httpUpgradeWebSocketMultipleConnectionOptions() {
   assertEquals(response.status, 101);
 });
 
+unitTest(function httpUpgradeWebSocketCaseInsensitiveUpgradeHeader() {
+  const request = new Request("https://deno.land/", {
+    headers: {
+      connection: "upgrade",
+      upgrade: "WebSocket",
+      "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+    },
+  });
+  const { response } = Deno.upgradeWebSocket(request);
+  assertEquals(response.status, 101);
+});
+
+unitTest(function httpUpgradeWebSocketInvalidUpgradeHeader() {
+  assertThrows(
+    () => {
+      const request = new Request("https://deno.land/", {
+        headers: {
+          connection: "upgrade",
+          upgrade: "invalid",
+          "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+        },
+      });
+      Deno.upgradeWebSocket(request);
+    },
+    TypeError,
+    "Invalid Header: 'upgrade' header must be 'websocket'",
+  );
+});
+
+unitTest(function httpUpgradeWebSocketWithoutUpgradeHeader() {
+  assertThrows(
+    () => {
+      const request = new Request("https://deno.land/", {
+        headers: {
+          connection: "upgrade",
+          "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+        },
+      });
+      Deno.upgradeWebSocket(request);
+    },
+    TypeError,
+    "Invalid Header: 'upgrade' header must be 'websocket'",
+  );
+});
+
 unitTest({ perms: { net: true } }, async function httpCookieConcatenation() {
   const promise = (async () => {
     const listener = Deno.listen({ port: 4501 });
@@ -757,8 +803,6 @@ unitTest(
   { perms: { net: true } },
   async function httpServerIncompleteMessage() {
     const listener = Deno.listen({ port: 4501 });
-    const def1 = deferred();
-    const def2 = deferred();
 
     const client = await Deno.connect({ port: 4501 });
     await client.write(new TextEncoder().encode(
@@ -784,23 +828,21 @@ unitTest(
 
     const errors: Error[] = [];
 
-    writeResponse()
+    const writePromise = writeResponse()
       .catch((error: Error) => {
         errors.push(error);
-      })
-      .then(() => def1.resolve());
+      });
 
     const res = new Response(readable);
 
-    respondWith(res)
-      .catch((error: Error) => errors.push(error))
-      .then(() => def2.resolve());
+    const respondPromise = respondWith(res)
+      .catch((error: Error) => errors.push(error));
 
     client.close();
 
     await Promise.all([
-      def1,
-      def2,
+      writePromise,
+      respondPromise,
     ]);
 
     listener.close();

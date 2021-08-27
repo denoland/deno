@@ -3304,7 +3304,28 @@ mod tests {
     );
     assert!(result.is_ok());
     let response = result.unwrap();
-    assert_eq!(response, json!({}));
+    assert_eq!(
+      response,
+      json!({
+        "file:///a.ts": [
+          {
+            "start": {
+              "line": 0,
+              "character": 35,
+            },
+            "end": {
+              "line": 0,
+              "character": 35
+            },
+            "fileName": "file:///a.ts",
+            "messageText": "Identifier expected.",
+            "sourceLine": "const url = new URL(\"b.js\", import.",
+            "category": 1,
+            "code": 1003,
+          }
+        ]
+      })
+    );
   }
 
   #[test]

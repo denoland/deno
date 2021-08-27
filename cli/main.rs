@@ -888,29 +888,81 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     })
   };
 
+  /// The FileWatcherModuleExecutor provides module execution with safe dispatching of life-cycle events by tracking the
+  /// state of any pending events and emitting accordingly on drop in the case of a future
+  /// cancellation.
+  struct FileWatcherModuleExecutor {
+    worker: MainWorker,
+    pending_unload: bool,
+  }
+
+  impl FileWatcherModuleExecutor {
+    pub fn new(worker: MainWorker) -> FileWatcherModuleExecutor {
+      FileWatcherModuleExecutor {
+        worker,
+        pending_unload: false,
+      }
+    }
+
+    /// Execute the given main module emitting load and unload events before and after execution
+    /// respectively.
+    pub async fn execute(
+      &mut self,
+      main_module: &ModuleSpecifier,
+    ) -> Result<(), AnyError> {
+      self.worker.execute_module(main_module).await?;
+      self.worker.execute_script(
+        &located_script_name!(),
+        "window.dispatchEvent(new Event('load'))",
+      )?;
+      self.pending_unload = true;
+
+      let result = self.worker.run_event_loop(false).await;
+      self.pending_unload = false;
+
+      if let Err(err) = result {
+        return Err(err);
+      }
+
+      self.worker.execute_script(
+        &located_script_name!(),
+        "window.dispatchEvent(new Event('unload'))",
+      )?;
+
+      Ok(())
+    }
+  }
+
+  impl Drop for FileWatcherModuleExecutor {
+    fn drop(&mut self) {
+      if self.pending_unload {
+        self
+          .worker
+          .execute_script(
+            &located_script_name!(),
+            "window.dispatchEvent(new Event('unload'))",
+          )
+          .unwrap();
+      }
+    }
+  }
+
   let operation =
     |(program_state, main_module): (Arc<ProgramState>, ModuleSpecifier)| {
       let flags = flags.clone();
       let permissions = Permissions::from_options(&flags.into());
       async move {
-        let main_module = main_module.clone();
-        let mut worker = create_main_worker(
+        // We make use an module executor guard to ensure that unload is always fired when an
+        // operation is called.
+        let mut executor = FileWatcherModuleExecutor::new(create_main_worker(
           &program_state,
           main_module.clone(),
           permissions,
           None,
-        );
-        debug!("main_module {}", main_module);
-        worker.execute_module(&main_module).await?;
-        worker.execute_script(
-          &located_script_name!(),
-          "window.dispatchEvent(new Event('load'))",
-        )?;
-        worker.run_event_loop(false).await?;
-        worker.execute_script(
-          &located_script_name!(),
-          "window.dispatchEvent(new Event('unload'))",
-        )?;
+        ));
+
+        executor.execute(&main_module).await?;
+
         Ok(())
       }
     };
@@ -998,6 +1050,7 @@ async fn coverage_command(
 async fn test_command(
   flags: Flags,
   include: Option<Vec<String>>,
+  ignore: Vec<PathBuf>,
   no_run: bool,
   doc: bool,
   fail_fast: Option<NonZeroUsize>,
@@ -1018,6 +1071,7 @@ async fn test_command(
     tools::test::run_tests_with_watch(
       flags,
       include,
+      ignore,
       doc,
       no_run,
       fail_fast,
@@ -1033,6 +1087,7 @@ async fn test_command(
   tools::test::run_tests(
     flags,
     include,
+    ignore,
     doc,
     no_run,
     fail_fast,
@@ -1137,6 +1192,7 @@ fn get_subcommand(
       no_run,
       doc,
       fail_fast,
+      ignore,
       include,
       allow_none,
       filter,
@@ -1145,6 +1201,7 @@ fn get_subcommand(
     } => test_command(
       flags,
       include,
+      ignore,
       no_run,
       doc,
       fail_fast,

@@ -59,6 +59,7 @@ const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
 const AUTH_REDIRECT_PORT: u16 = 4551;
 const TLS_CLIENT_AUTH_PORT: u16 = 4552;
 const HTTPS_PORT: u16 = 5545;
+const HTTPS_CLIENT_AUTH_PORT: u16 = 5552;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
 const WS_CLOSE_PORT: u16 = 4244;
@@ -898,6 +899,62 @@ async fn wrap_main_https_server() {
   }
 }
 
+async fn wrap_client_auth_https_server() {
+  let main_server_https_addr =
+    SocketAddr::from(([127, 0, 0, 1], HTTPS_CLIENT_AUTH_PORT));
+  let cert_file = "tls/localhost.crt";
+  let key_file = "tls/localhost.key";
+  let ca_cert_file = "tls/RootCA.pem";
+  let tls_config = get_tls_config(cert_file, key_file, ca_cert_file)
+    .await
+    .unwrap();
+  loop {
+    let tcp = TcpListener::bind(&main_server_https_addr)
+      .await
+      .expect("Cannot bind TCP");
+    println!("ready: https_client_auth on :{:?}", HTTPS_CLIENT_AUTH_PORT); // Eye catcher for HttpServerCount
+    let tls_acceptor = TlsAcceptor::from(tls_config.clone());
+    // Prepare a long-running future stream to accept and serve cients.
+    let incoming_tls_stream = async_stream::stream! {
+      loop {
+          let (socket, _) = tcp.accept().await?;
+
+          match tls_acceptor.accept(socket).await {
+            Ok(mut tls_stream) => {
+              let (_, tls_session) = tls_stream.get_mut();
+              // We only need to check for the presence of client certificates
+              // here. Rusttls ensures that they are valid and signed by the CA.
+              match tls_session.get_peer_certificates() {
+                Some(_certs) => { yield Ok(tls_stream); },
+                None => { eprintln!("https_client_auth: no valid client certificate"); },
+              };
+            }
+
+            Err(e) => {
+              eprintln!("https-client-auth accept error: {:?}", e);
+              yield Err(e);
+            }
+          }
+
+      }
+    }
+    .boxed();
+
+    let main_server_https_svc = make_service_fn(|_| async {
+      Ok::<_, Infallible>(service_fn(main_server))
+    });
+    let main_server_https = Server::builder(HyperAcceptor {
+      acceptor: incoming_tls_stream,
+    })
+    .serve(main_server_https_svc);
+
+    //continue to prevent TLS error stopping the server
+    if main_server_https.await.is_err() {
+      continue;
+    }
+  }
+}
+
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not
 // comparing apples to apples if we use the default multi-threaded scheduler.
@@ -922,7 +979,7 @@ pub async fn run_all_servers() {
   let ws_close_server_fut = run_ws_close_server(&ws_close_addr);
 
   let tls_client_auth_server_fut = run_tls_client_auth_server();
-
+  let client_auth_server_https_fut = wrap_client_auth_https_server();
   let main_server_fut = wrap_main_server();
   let main_server_https_fut = wrap_main_https_server();
 
@@ -940,6 +997,7 @@ pub async fn run_all_servers() {
       abs_redirect_server_fut,
       main_server_fut,
       main_server_https_fut,
+      client_auth_server_https_fut,
     )
   }
   .boxed();
