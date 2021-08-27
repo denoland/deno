@@ -10,7 +10,10 @@ const {
   response,
   socket,
 } = Deno.upgradeWebSocket(request);
-socket.onerror = () => Deno.exit(1);
+socket.onerror = (e) => {
+  console.error(e);
+  Deno.exit(1);
+};
 socket.onopen = () => socket.close();
 socket.onclose = () => promise.resolve();
 await respondWith(response);
