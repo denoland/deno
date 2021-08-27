@@ -32,6 +32,7 @@
     ReflectDefineProperty,
     Symbol,
     SymbolFor,
+    SymbolToStringTag,
     TypeError,
     WeakMap,
     WeakMapPrototypeGet,
@@ -397,6 +398,9 @@
     get timeStamp() {
       return this[_attributes].timeStamp;
     }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "Event";
   }
 
   function defineEnumerableProps(
@@ -999,6 +1003,9 @@
     getParent(_event) {
       return null;
     }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "EventTarget";
   }
 
   defineEnumerableProps(EventTarget, [
@@ -1070,6 +1077,9 @@
         ],
       }));
     }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "ErrorEvent";
   }
 
   defineEnumerableProps(ErrorEvent, [
@@ -1158,6 +1168,9 @@
         ],
       }));
     }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "CloseEvent";
   }
 
   class CustomEvent extends Event {
@@ -1186,6 +1199,9 @@
         ],
       }));
     }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "CustomEvent";
   }
 
   ReflectDefineProperty(CustomEvent.prototype, "detail", {
@@ -1215,6 +1231,9 @@
         ],
       }));
     }
+
+    // TODO(lucacasonato): remove when this interface is spec aligned
+    [SymbolToStringTag] = "ProgressEvent";
   }
 
   const _eventHandlers = Symbol("eventHandlers");
