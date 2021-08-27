@@ -28,6 +28,34 @@ type KeyUsage =
 
 type NamedCurve = string;
 
+interface RsaOtherPrimesInfo {
+  d?: string;
+  r?: string;
+  t?: string;
+}
+
+interface JsonWebKey {
+  alg?: string;
+  crv?: string;
+  d?: string;
+  dp?: string;
+  dq?: string;
+  e?: string;
+  ext?: boolean;
+  k?: string;
+  // deno-lint-ignore camelcase
+  key_ops?: string[];
+  kty?: string;
+  n?: string;
+  oth?: RsaOtherPrimesInfo[];
+  p?: string;
+  q?: string;
+  qi?: string;
+  use?: string;
+  x?: string;
+  y?: string;
+}
+
 interface HmacKeyGenParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
   length?: number;
@@ -122,6 +150,13 @@ interface SubtleCrypto {
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKeyPair | CryptoKey>;
+  importKey(
+    format: "jwk",
+    keyData: JsonWebKey,
+    algorithm: AlgorithmIdentifier | HmacImportParams,
+    extractable: boolean,
+    keyUsages: KeyUsage[],
+  ): Promise<CryptoKey>;
   importKey(
     format: "raw",
     keyData: BufferSource,

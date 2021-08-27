@@ -12,13 +12,18 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
+  const { atob } = window.__bootstrap.base64;
 
   const {
     ArrayPrototypeFind,
-    ArrayBufferIsView,
+    ArrayPrototypeEvery,
     ArrayPrototypeIncludes,
+    ArrayBuffer,
+    ArrayBufferIsView,
     BigInt64Array,
     StringPrototypeToUpperCase,
+    StringPrototypeReplace,
+    StringPrototypeCharCodeAt,
     Symbol,
     SymbolFor,
     SymbolToStringTag,
@@ -99,6 +104,23 @@
       "RSA-OAEP": "RsaOaepParams",
     },
   };
+
+  // Decodes the unpadded base64 to the octet sequence containing key value `k` defined in RFC7518 Section 6.4
+  function decodeSymmetricKey(key) {
+    // Decode from base64url without `=` padding.
+    const base64 = StringPrototypeReplace(
+      StringPrototypeReplace(key, /\-/g, "+"),
+      /\_/g,
+      "/",
+    );
+    const decodedKey = atob(base64);
+    const keyLength = decodedKey.length;
+    const keyBytes = new Uint8Array(keyLength);
+    for (let i = 0; i < keyLength; i++) {
+      keyBytes[i] = StringPrototypeCharCodeAt(decodedKey, i);
+    }
+    return keyBytes;
+  }
 
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
   // 18.4.4
@@ -631,7 +653,7 @@
         prefix,
         context: "Argument 1",
       });
-      keyData = webidl.converters.BufferSource(keyData, {
+      keyData = webidl.converters["BufferSource or JsonWebKey"](keyData, {
         prefix,
         context: "Argument 2",
       });
@@ -649,22 +671,32 @@
       });
 
       // 2.
-      if (ArrayBufferIsView(keyData)) {
-        keyData = new Uint8Array(
-          keyData.buffer,
-          keyData.byteOffset,
-          keyData.byteLength,
-        );
+      if (format !== "jwk") {
+        if (ArrayBufferIsView(keyData) || keyData instanceof ArrayBuffer) {
+          if (ArrayBufferIsView(keyData)) {
+            keyData = new Uint8Array(
+              keyData.buffer,
+              keyData.byteOffset,
+              keyData.byteLength,
+            );
+          } else {
+            keyData = new Uint8Array(keyData);
+          }
+          keyData = TypedArrayPrototypeSlice(keyData);
+        } else {
+          throw new TypeError("keyData is a JsonWebKey");
+        }
       } else {
-        keyData = new Uint8Array(keyData);
+        if (ArrayBufferIsView(keyData) || keyData instanceof ArrayBuffer) {
+          throw new TypeError("keyData is not a JsonWebKey");
+        }
       }
-      keyData = TypedArrayPrototypeSlice(keyData);
 
       const normalizedAlgorithm = normalizeAlgorithm(algorithm, "importKey");
 
       switch (normalizedAlgorithm.name) {
-        // https://w3c.github.io/webcrypto/#hmac-operations
         case "HMAC": {
+          // 2.
           if (
             ArrayPrototypeFind(
               keyUsages,
@@ -674,59 +706,177 @@
             throw new DOMException("Invalid key usages", "SyntaxError");
           }
 
+          // 3.
+          let hash;
+          let data;
+
+          // 4. https://w3c.github.io/webcrypto/#hmac-operations
           switch (format) {
             case "raw": {
-              const hash = normalizedAlgorithm.hash;
-              // 5.
-              let length = keyData.byteLength * 8;
-              // 6.
-              if (length === 0) {
-                throw new DOMException("Key length is zero", "DataError");
+              data = keyData;
+              hash = normalizedAlgorithm.hash;
+              break;
+            }
+            case "jwk": {
+              // TODO(@littledivy): Why does the spec validate JWK twice?
+              const jwk = keyData;
+              // 2.
+              if (jwk.kty !== "oct") {
+                throw new DOMException(
+                  "`kty` member of JsonWebKey must be `oct`",
+                  "DataError",
+                );
               }
-              if (normalizeAlgorithm.length) {
-                // 7.
+
+              // Section 6.4.1 of RFC7518
+              if (!jwk.k) {
+                throw new DOMException(
+                  "`k` member of JsonWebKey must be present",
+                  "DataError",
+                );
+              }
+
+              // 4.
+              data = decodeSymmetricKey(jwk.k);
+              // 5.
+              hash = normalizedAlgorithm.hash;
+              // 6.
+              switch (hash.name) {
+                case "SHA-1": {
+                  if (jwk.alg !== undefined && jwk.alg !== "HS1") {
+                    throw new DOMException(
+                      "`alg` member of JsonWebKey must be `HS1`",
+                      "DataError",
+                    );
+                  }
+                  break;
+                }
+                case "SHA-256": {
+                  if (jwk.alg !== undefined && jwk.alg !== "HS256") {
+                    throw new DOMException(
+                      "`alg` member of JsonWebKey must be `HS256`",
+                      "DataError",
+                    );
+                  }
+                  break;
+                }
+                case "SHA-384": {
+                  if (jwk.alg !== undefined && jwk.alg !== "HS384") {
+                    throw new DOMException(
+                      "`alg` member of JsonWebKey must be `HS384`",
+                      "DataError",
+                    );
+                  }
+                  break;
+                }
+                case "SHA-512": {
+                  if (jwk.alg !== undefined && jwk.alg !== "HS512") {
+                    throw new DOMException(
+                      "`alg` member of JsonWebKey must be `HS512`",
+                      "DataError",
+                    );
+                  }
+                  break;
+                }
+                default:
+                  throw new TypeError("unreachable");
+              }
+
+              // 7.
+              if (keyUsages.length > 0 && jwk.use && jwk.use !== "sign") {
+                throw new DOMException(
+                  "`use` member of JsonWebKey must be `sign`",
+                  "DataError",
+                );
+              }
+
+              // 8.
+              // Section 4.3 of RFC7517
+              if (jwk.key_ops) {
                 if (
-                  normalizedAlgorithm.length > length ||
-                  normalizedAlgorithm.length <= (length - 8)
+                  ArrayPrototypeFind(
+                    jwk.key_ops,
+                    (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+                  ) !== undefined
                 ) {
                   throw new DOMException(
-                    "Key length is invalid",
+                    "`key_ops` member of JsonWebKey is invalid",
                     "DataError",
                   );
                 }
-                length = normalizeAlgorithm.length;
+
+                if (
+                  !ArrayPrototypeEvery(
+                    jwk.key_ops,
+                    (u) => ArrayPrototypeIncludes(keyUsages, u),
+                  )
+                ) {
+                  throw new DOMException(
+                    "`key_ops` member of JsonWebKey is invalid",
+                    "DataError",
+                  );
+                }
               }
 
-              if (keyUsages.length == 0) {
-                throw new DOMException("Key usage is empty", "SyntaxError");
+              // 9.
+              if (jwk.ext === false && extractable == true) {
+                throw new DOMException(
+                  "`ext` member of JsonWebKey is invalid",
+                  "DataError",
+                );
               }
 
-              const handle = {};
-              WeakMapPrototypeSet(KEY_STORE, handle, {
-                type: "raw",
-                data: keyData,
-              });
-
-              const algorithm = {
-                name: "HMAC",
-                length,
-                hash,
-              };
-
-              const key = constructKey(
-                "secret",
-                extractable,
-                usageIntersection(keyUsages, recognisedUsages),
-                algorithm,
-                handle,
-              );
-
-              return key;
+              break;
             }
-            // TODO(@littledivy): jwk
             default:
               throw new DOMException("Not implemented", "NotSupportedError");
           }
+
+          // 5.
+          let length = data.byteLength * 8;
+          // 6.
+          if (length === 0) {
+            throw new DOMException("Key length is zero", "DataError");
+          }
+          // 7.
+          if (normalizedAlgorithm.length !== undefined) {
+            if (
+              normalizedAlgorithm.length > length ||
+              normalizedAlgorithm.length <= (length - 8)
+            ) {
+              throw new DOMException(
+                "Key length is invalid",
+                "DataError",
+              );
+            }
+            length = normalizedAlgorithm.length;
+          }
+
+          if (keyUsages.length == 0) {
+            throw new DOMException("Key usage is empty", "SyntaxError");
+          }
+
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, {
+            type: "raw",
+            data,
+          });
+
+          const algorithm = {
+            name: "HMAC",
+            length,
+            hash,
+          };
+
+          const key = constructKey(
+            "secret",
+            extractable,
+            usageIntersection(keyUsages, recognisedUsages),
+            algorithm,
+            handle,
+          );
+
+          return key;
         }
         // TODO(@littledivy): RSASSA-PKCS1-v1_5
         // TODO(@littledivy): RSA-PSS
