@@ -255,7 +255,7 @@ const jwk: JsonWebKey = {
   k: "AQIDBAUGBwgJCgsMDQ4PEA",
   alg: "HS256",
   ext: true,
-  key_ops: ["sign"],
+  "key_ops": ["sign"],
 };
 
 unitTest(async function subtleCryptoHmacImportExport() {
