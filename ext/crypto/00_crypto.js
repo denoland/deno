@@ -61,7 +61,11 @@
     RsaPssParams: {},
     EcdsaParams: { hash: "HashAlgorithmIdentifier" },
     HmacImportParams: { hash: "HashAlgorithmIdentifier" },
-    HkdfParams: { hash: "HashAlgorithmIdentifier", salt: "BufferSource", info: "BufferSource" },
+    HkdfParams: {
+      hash: "HashAlgorithmIdentifier",
+      salt: "BufferSource",
+      info: "BufferSource",
+    },
     Pbkdf2Params: { hash: "HashAlgorithmIdentifier", salt: "BufferSource" },
     RsaOaepParams: { label: "BufferSource" },
   };
