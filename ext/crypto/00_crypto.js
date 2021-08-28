@@ -979,7 +979,7 @@
             }
             case "jwk": {
               // 1-3.
-              let jwk = {
+              const jwk = {
                 kty: "oct",
                 k: unpaddedBase64(innerKey.data),
               };
@@ -1014,10 +1014,11 @@
               // 9.
               return jwk;
             }
-            // TODO(@littledivy): jwk
             default:
               throw new DOMException("Not implemented", "NotSupportedError");
           }
+          // TODO(@littledivy): Redundant break but deno_lint complains without it
+          break;
         }
         // TODO(@littledivy): RSASSA-PKCS1-v1_5
         // TODO(@littledivy): RSA-PSS
