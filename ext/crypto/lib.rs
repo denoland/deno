@@ -580,7 +580,7 @@ pub async fn op_crypto_derive_bits(
       // L
       let length = args.length / 8;
 
-      let salt = hkdf::Salt::new(algorithm, &salt);
+      let salt = hkdf::Salt::new(algorithm, salt);
       let prk = salt.extract(&secret);
       let info = &[&*info];
       let okm = prk.expand(info, HkdfOutput(length))?;
