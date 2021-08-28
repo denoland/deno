@@ -25,7 +25,7 @@ type KeyUsage =
   | "unwrapKey"
   | "verify"
   | "wrapKey";
-
+type KeyFormat = "jwk" | "pkcs8" | "raw" | "spki";
 type NamedCurve = string;
 
 interface RsaOtherPrimesInfo {
@@ -164,7 +164,11 @@ interface SubtleCrypto {
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
-  exportKey(format: "raw", key: CryptoKey): Promise<ArrayBuffer>;
+  exportKey(format: "jwk", key: CryptoKey): Promise<JsonWebKey>;
+  exportKey(
+    format: Exclude<KeyFormat, "jwk">,
+    key: CryptoKey,
+  ): Promise<ArrayBuffer>;
   sign(
     algorithm: AlgorithmIdentifier | RsaPssParams | EcdsaParams,
     key: CryptoKey,
