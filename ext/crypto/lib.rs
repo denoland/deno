@@ -79,6 +79,7 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       ("op_crypto_derive_bits", op_async(op_crypto_derive_bits)),
       ("op_crypto_encrypt_key", op_async(op_crypto_encrypt_key)),
       ("op_crypto_decrypt_key", op_async(op_crypto_decrypt_key)),
+      ("op_crypto_import_key", op_async(op_crypto_import_key)),
       ("op_crypto_subtle_digest", op_async(op_crypto_subtle_digest)),
       ("op_crypto_random_uuid", op_sync(op_crypto_random_uuid)),
     ])
@@ -685,6 +686,53 @@ pub async fn op_crypto_decrypt_key(
           })?
           .into(),
       )
+    }
+    _ => Err(type_error("Unsupported algorithm".to_string())),
+  }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportKeyArg {
+  algorithm: Algorithm,
+  named_curve: Option<CryptoNamedCurve>,
+}
+
+pub async fn op_crypto_import_key(
+  _state: Rc<RefCell<OpState>>,
+  args: ImportKeyArg,
+  zero_copy: Option<ZeroCopyBuf>,
+) -> Result<ZeroCopyBuf, AnyError> {
+  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
+  let data = &*zero_copy;
+  let algorithm = args.algorithm;
+
+  match algorithm {
+    Algorithm::Ecdsa => {
+      let curve = args.named_curve.ok_or_else(|| {
+        type_error("Missing argument named_curve".to_string())
+      })?;
+
+      match curve {
+        CryptoNamedCurve::P256 => {
+          // 1-2.
+          let point = p256::EncodedPoint::from_bytes(data)?;
+          // 3.
+          if point.is_identity() {
+            return Err(type_error("Invalid key data".to_string()));
+          }
+        }
+        CryptoNamedCurve::P384 => {
+          // 1-2.
+          let point = p384::EncodedPoint::from_bytes(data)?;
+          // 3.
+          if point.is_identity() {
+            return Err(type_error("Invalid key data".to_string()));
+          }
+        }
+      };
+
+      Ok(zero_copy)
     }
     _ => Err(type_error("Unsupported algorithm".to_string())),
   }

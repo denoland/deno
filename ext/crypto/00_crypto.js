@@ -887,7 +887,65 @@
         }
         // TODO(@littledivy): RSASSA-PKCS1-v1_5
         // TODO(@littledivy): RSA-PSS
-        // TODO(@littledivy): ECDSA
+        case "ECDSA": {
+          switch (format) {
+            case "raw": {
+              // 1.
+              if (
+                !ArrayPrototypeIncludes(
+                  supportedNamedCurves,
+                  normalizedAlgorithm.namedCurve,
+                )
+              ) {
+                throw new DOMException(
+                  "Invalid namedCurve",
+                  "DataError",
+                );
+              }
+
+              // 2.
+              if (
+                ArrayPrototypeFind(
+                  keyUsages,
+                  (u) => !ArrayPrototypeIncludes(["verify"], u),
+                ) !== undefined
+              ) {
+                throw new DOMException("Invalid key usages", "SyntaxError");
+              }
+
+              // 3.
+              const Q = await core.opAsync("op_crypto_import_key", {
+                algorithm: "ECDSA",
+                namedCurve: normalizedAlgorithm.namedCurve,
+              }, keyData);
+
+              const handle = {};
+              WeakMapPrototypeSet(KEY_STORE, handle, {
+                type: "raw",
+                data: Q,
+              });
+
+              // 4-5.
+              const algorithm = {
+                name: "ECDSA",
+                namedCurve: normalizedAlgorithm.namedCurve,
+              };
+
+              // 6-8.
+              const key = constructKey(
+                "public",
+                extractable,
+                usageIntersection(keyUsages, recognisedUsages),
+                algorithm,
+                handle,
+              );
+
+              return key;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
         case "PBKDF2": {
           // 1.
           if (format !== "raw") {

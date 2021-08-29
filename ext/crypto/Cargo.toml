@@ -26,3 +26,6 @@ sha-1 = "0.9.7"
 sha2 = "0.9.5"
 tokio = { version = "1.8.1", features = ["full"] }
 uuid = { version = "0.8.2", features = ["v4"] }
+elliptic-curve = "0.10.6"
+p384 = "0.8.0"
+p256 = "0.9.0"
