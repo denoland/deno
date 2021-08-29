@@ -47,12 +47,6 @@ impl Resource for ChildResource {
   }
 }
 
-impl ChildResource {
-  fn borrow_mut(self: Rc<Self>) -> AsyncMutFuture<tokio::process::Child> {
-    RcRef::map(self, |r| &r.0).borrow_mut()
-  }
-}
-
 fn subprocess_stdio_map(s: &str) -> Result<std::process::Stdio, AnyError> {
   match s {
     "inherit" => Ok(std::process::Stdio::inherit()),
@@ -245,7 +239,7 @@ async fn op_command_child_wait(
     .borrow_mut()
     .resource_table
     .take::<ChildResource>(rid)?;
-  let mut child = resource.borrow_mut().await;
+  let mut child= RcRef::map(resource, |r| &r.0).borrow_mut().await;
   Ok(child.wait().await?.into())
 }
 
