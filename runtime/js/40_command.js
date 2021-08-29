@@ -18,31 +18,32 @@
       cwd = undefined,
       clearEnv = false,
       env = {},
-      stdout = "inherit",
-      stderr = "inherit",
-      stdin = "inherit",
     } = {}) {
       this.#args = {
         cmd: pathFromURL(command),
         args: ArrayPrototypeMap(args, String),
-        cwd,
+        cwd: pathFromURL(cwd),
         clearEnv,
         env: ObjectEntries(env),
-        stdin,
-        stdout,
-        stderr,
       };
     }
 
-    spawn() {
-      const child = core.opSync("op_command_spawn", this.#args);
+    spawn(options = {}) {
+      const child = core.opSync("op_command_spawn", {
+        ...this.#args,
+        ...options,
+      });
 
       return new Child(illegalConstructorKey, child);
     }
 
-    async status() {
-      return await core.opAsync("op_command_status", this.#args);
+    async status(options = {}) {
+      return await core.opAsync("op_command_status", {
+        ...this.#args,
+        ...options,
+      });
     }
+
     async output() {
       return await core.opAsync("op_command_output", this.#args);
     }

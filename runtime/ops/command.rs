@@ -70,9 +70,9 @@ pub struct CommandArgs {
   cwd: Option<String>,
   clear_env: bool,
   env: Vec<(String, String)>,
-  stdin: String,
-  stdout: String,
-  stderr: String,
+  stdin: Option<String>,
+  stdout: Option<String>,
+  stderr: Option<String>,
 }
 
 fn create_command(
@@ -97,9 +97,15 @@ fn create_command(
   }
   command.envs(command_args.env);
 
-  command.stdin(subprocess_stdio_map(&command_args.stdin)?);
-  command.stdout(subprocess_stdio_map(&command_args.stdout)?);
-  command.stderr(subprocess_stdio_map(&command_args.stderr)?);
+  if let Some(stdin) = &command_args.stdin {
+    command.stdin(subprocess_stdio_map(stdin)?);
+  }
+  if let Some(stdout) = &command_args.stdout {
+    command.stdout(subprocess_stdio_map(stdout)?);
+  }
+  if let Some(stderr) = &command_args.stderr {
+    command.stderr(subprocess_stdio_map(stderr)?);
+  }
 
   // We want to kill child when it's closed
   command.kill_on_drop(true);
@@ -163,23 +169,13 @@ async fn op_command_output(
   command_args: CommandArgs,
   _: (),
 ) -> Result<CommandOutput, AnyError> {
-  let stdout = command_args.stdout.clone();
-  let stderr = command_args.stderr.clone();
   let mut command = create_command(&mut state.borrow_mut(), command_args)?;
   let output = command.output().await?;
 
   Ok(CommandOutput {
     status: output.status.into(),
-    stdout: if &stdout == "piped" {
-      Some(output.stdout.into())
-    } else {
-      None
-    },
-    stderr: if &stderr == "piped" {
-      Some(output.stderr.into())
-    } else {
-      None
-    },
+    stdout: Some(output.stdout.into()),
+    stderr: Some(output.stderr.into()),
   })
 }
 
@@ -228,6 +224,16 @@ fn op_command_spawn(
     stdout_rid,
     stderr_rid,
   })
+}
+
+fn op_command_child_status(
+  state: &mut OpState,
+  rid: ResourceId,
+  _: (),
+) -> Result<Option<CommandStatus>, AnyError> {
+  let resource = state.resource_table.get::<ChildResource>(rid)?;
+  let mut child = RcRef::map(resource, |r| &r.0).try_borrow_mut().unwrap();
+  Ok(child.try_wait()?.map(|status| status.into()))
 }
 
 async fn op_command_child_wait(
@@ -293,14 +299,4 @@ async fn op_command_child_output(
       None
     },
   })
-}
-
-fn op_command_child_status(
-  state: &mut OpState,
-  rid: ResourceId,
-  _: (),
-) -> Result<Option<CommandStatus>, AnyError> {
-  let resource = state.resource_table.get::<ChildResource>(rid)?;
-  let mut child = RcRef::map(resource, |r| &r.0).try_borrow_mut().unwrap();
-  Ok(child.try_wait()?.map(|status| status.into()))
 }
