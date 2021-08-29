@@ -185,9 +185,11 @@ pub async fn op_crypto_generate_key(
     | Algorithm::AesGcm
     | Algorithm::AesKw => {
       let length = args.length.ok_or_else(not_supported)?;
-      let mut key_data = vec![0u8; length];
+      const MAX_KEY_SIZE: usize = 256 / 8;
+      let mut key_data = [0; MAX_KEY_SIZE];
+      let key_data = &mut key_data[..length];
       let rng = RingRand::SystemRandom::new();
-      rng.fill(&mut key_data).map_err(|_| {
+      rng.fill(key_data).map_err(|_| {
         custom_error("DOMExceptionOperationError", "Key generation failed")
       })?;
       key_data
