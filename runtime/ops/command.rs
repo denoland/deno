@@ -4,7 +4,6 @@ use super::io::ChildStderrResource;
 use super::io::ChildStdinResource;
 use super::io::ChildStdoutResource;
 use crate::permissions::Permissions;
-use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op_sync;
@@ -256,8 +255,7 @@ async fn op_command_child_wait(
   let resource = state
     .borrow_mut()
     .resource_table
-    .take::<ChildResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .take::<ChildResource>(rid)?;
   let mut child = resource.borrow_mut().await;
   let status = child.wait().await?;
 
@@ -280,8 +278,7 @@ async fn op_command_child_output(
   let resource = state
     .borrow_mut()
     .resource_table
-    .take::<ChildResource>(args.rid)
-    .ok_or_else(bad_resource_id)?;
+    .take::<ChildResource>(args.rid)?;
   let resource = Rc::try_unwrap(resource).ok().unwrap();
   let mut child = resource.0.into_inner();
 
@@ -289,16 +286,14 @@ async fn op_command_child_output(
     let stdout = state
       .borrow_mut()
       .resource_table
-      .take::<ChildStdoutResource>(stdout_rid)
-      .ok_or_else(bad_resource_id)?;
+      .take::<ChildStdoutResource>(stdout_rid)?;
     child.stdout = Some(Rc::try_unwrap(stdout).unwrap().into_inner());
   }
   if let Some(stderr_rid) = args.stderr_rid {
     let stderr = state
       .borrow_mut()
       .resource_table
-      .take::<ChildStderrResource>(stderr_rid)
-      .ok_or_else(bad_resource_id)?;
+      .take::<ChildStderrResource>(stderr_rid)?;
     child.stderr = Some(Rc::try_unwrap(stderr).unwrap().into_inner());
   }
 
@@ -326,8 +321,7 @@ fn op_command_child_status(
 ) -> Result<Option<CommandStatus>, AnyError> {
   let resource = state
     .resource_table
-    .get::<ChildResource>(rid)
-    .ok_or_else(bad_resource_id)?;
+    .get::<ChildResource>(rid)?;
   let mut child = RcRef::map(resource, |r| &r.0).try_borrow_mut().unwrap();
   let status = child.try_wait()?.map(|status| status.into());
 
