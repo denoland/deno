@@ -1509,7 +1509,7 @@
 
   async function generateKeyAES(normalizedAlgorithm, extractable, usages) {
     // 2.
-    if (![128, 192, 256].includes(normalizedAlgorithm.length)) {
+    if (!ArrayPrototypeIncludes([128, 192, 256], normalizedAlgorithm.length)) {
       throw new DOMException("Invalid key length", "OperationError");
     }
 
