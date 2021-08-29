@@ -1523,7 +1523,7 @@
       }
       case "HKDF": {
         // 1.
-        if (length == null || length == 0 || length % 8 !== 0) {
+        if (length === null || length === 0 || length % 8 !== 0) {
           throw new DOMException("Invalid length", "OperationError");
         }
 
