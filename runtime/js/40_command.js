@@ -3,15 +3,15 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { assert, pathFromURL } = window.__bootstrap.util;
+  const { pathFromURL } = window.__bootstrap.util;
   const { read } = window.__bootstrap.io;
   const { writeAll } = window.__bootstrap.buffer;
   const { illegalConstructorKey } = window.__bootstrap.webUtil;
-  const { ArrayPrototypeMap, ObjectEntries, String } =
+  const { ArrayPrototypeMap, ObjectEntries, String, TypeError, Uint8Array } =
     window.__bootstrap.primordials;
 
   class Command {
-    #args;
+    #options;
 
     constructor(command, {
       args = [],
@@ -19,7 +19,7 @@
       clearEnv = false,
       env = {},
     } = {}) {
-      this.#args = {
+      this.#options = {
         cmd: pathFromURL(command),
         args: ArrayPrototypeMap(args, String),
         cwd: pathFromURL(cwd),
@@ -30,7 +30,7 @@
 
     spawn(options = {}) {
       const child = core.opSync("op_command_spawn", {
-        ...this.#args,
+        ...this.#options,
         ...options,
       });
 
@@ -39,13 +39,13 @@
 
     async status(options = {}) {
       return await core.opAsync("op_command_status", {
-        ...this.#args,
+        ...this.#options,
         ...options,
       });
     }
 
     async output() {
-      return await core.opAsync("op_command_output", this.#args);
+      return await core.opAsync("op_command_output", this.#options);
     }
   }
 
@@ -104,7 +104,7 @@
         // TODO(crowlkats): BYOB Stream
         this.#stdout = new ReadableStream({
           async pull(controller) {
-            const buf = new Uint8Array(1024); // TODO(crowlkats): different number? wouldnt bee needed with byob stream
+            const buf = new Uint8Array(16384);
             const res = await read(stdoutRid, buf);
             if (res === null) {
               core.close(stdoutRid);
@@ -124,7 +124,7 @@
         // TODO(crowlkats): BYOB Stream
         this.#stderr = new ReadableStream({
           async pull(controller) {
-            const buf = new Uint8Array(1024); // TODO(crowlkats): different number? wouldnt bee needed with byob stream
+            const buf = new Uint8Array(16384);
             const res = await read(stderrRid, buf);
             if (res === null) {
               core.close(stderrRid);

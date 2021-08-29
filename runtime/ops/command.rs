@@ -6,25 +6,25 @@ use super::io::ChildStdoutResource;
 use crate::permissions::Permissions;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::op_async;
 use deno_core::op_sync;
-use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::{op_async, ZeroCopyBuf};
+use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::process::ExitStatus;
 use std::rc::Rc;
 use tokio::process::Command;
 
 #[cfg(unix)]
 use std::os::unix::prelude::ExitStatusExt;
-use std::process::ExitStatus;
 
 pub fn init() -> Extension {
   Extension::builder()
@@ -101,6 +101,8 @@ fn create_command(
     command.stderr(subprocess_stdio_map(stderr)?);
   }
 
+  // TODO(@crowlkats): allow detaching processes.
+  //  currently deno will orphan a process when exiting with an error or Deno.exit()
   // We want to kill child when it's closed
   command.kill_on_drop(true);
 
@@ -239,7 +241,7 @@ async fn op_command_child_wait(
     .borrow_mut()
     .resource_table
     .take::<ChildResource>(rid)?;
-  let mut child= RcRef::map(resource, |r| &r.0).borrow_mut().await;
+  let mut child = RcRef::map(resource, |r| &r.0).borrow_mut().await;
   Ok(child.wait().await?.into())
 }
 

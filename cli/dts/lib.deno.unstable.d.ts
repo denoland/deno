@@ -1102,7 +1102,7 @@ declare namespace Deno {
     env?: Record<string, string>;
   }
 
-  interface ProcessIOOptions {
+  interface ProcessIoOptions {
     stdin?: "piped" | "inherit" | "null";
     stdout?: "piped" | "inherit" | "null";
     stderr?: "piped" | "inherit" | "null";
@@ -1111,7 +1111,7 @@ declare namespace Deno {
   class Command {
     constructor(command: string | URL, options?: CommandOptions);
 
-    spawn<T extends ProcessIOOptions = ProcessIOOptions>(options?: T): Child<T>;
+    spawn<T extends ProcessIoOptions = ProcessIoOptions>(options?: T): Child<T>;
     status(options?: {
       stdout?: "inherit" | "null";
       stderr?: "inherit" | "null";
@@ -1119,7 +1119,7 @@ declare namespace Deno {
     output(): Promise<CommandOutput<{ stdin: "piped"; stderr: "piped" }>>;
   }
 
-  class Child<T extends ProcessIOOptions = ProcessIOOptions> {
+  class Child<T extends ProcessIoOptions = ProcessIoOptions> {
     readonly stdin: T["stdin"] extends "piped" ? WritableStream<Uint8Array>
       : null;
     readonly stdout: T["stdout"] extends "piped" ? ReadableStream<Uint8Array>
@@ -1135,7 +1135,7 @@ declare namespace Deno {
     kill(signo: number): void;
   }
 
-  interface CommandOutput<T extends ProcessIOOptions = ProcessIOOptions> {
+  interface CommandOutput<T extends ProcessIoOptions = ProcessIoOptions> {
     status: ProcessStatus;
     stdout: T["stdin"] extends "piped" ? Uint8Array : null;
     stderr: T["stderr"] extends "piped" ? Uint8Array : null;
