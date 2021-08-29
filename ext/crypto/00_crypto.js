@@ -12,7 +12,7 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
-  const { atob } = window.__bootstrap.base64;
+  const { atob, btoa } = window.__bootstrap.base64;
 
   const {
     ArrayPrototypeFind,
@@ -120,6 +120,13 @@
       keyBytes[i] = StringPrototypeCharCodeAt(decodedKey, i);
     }
     return keyBytes;
+  }
+
+  function unpaddedBase64(bytes) {
+    const binaryString = core.decode(bytes);
+    const base64String = btoa(binaryString);
+
+    return StringPrototypeReplace(base64String, /=/g, "");
   }
 
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
@@ -970,10 +977,48 @@
               // 4-5.
               return bits.buffer;
             }
-            // TODO(@littledivy): jwk
+            case "jwk": {
+              // 1-3.
+              const jwk = {
+                kty: "oct",
+                k: unpaddedBase64(innerKey.data),
+              };
+              // 4.
+              const algorithm = key[_algorithm];
+              // 5.
+              const hash = algorithm.hash;
+              // 6.
+              switch (hash.name) {
+                case "SHA-1":
+                  jwk.alg = "HS1";
+                  break;
+                case "SHA-256":
+                  jwk.alg = "HS256";
+                  break;
+                case "SHA-384":
+                  jwk.alg = "HS384";
+                  break;
+                case "SHA-512":
+                  jwk.alg = "HS512";
+                  break;
+                default:
+                  throw new DOMException(
+                    "Hash algorithm not supported",
+                    "NotSupportedError",
+                  );
+              }
+              // 7.
+              jwk.key_ops = key.usages;
+              // 8.
+              jwk.ext = key[_extractable];
+              // 9.
+              return jwk;
+            }
             default:
               throw new DOMException("Not implemented", "NotSupportedError");
           }
+          // TODO(@littledivy): Redundant break but deno_lint complains without it
+          break;
         }
         // TODO(@littledivy): RSASSA-PKCS1-v1_5
         // TODO(@littledivy): RSA-PSS

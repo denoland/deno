@@ -254,6 +254,8 @@ const jwk: JsonWebKey = {
   // unpadded base64 for rawKey.
   k: "AQIDBAUGBwgJCgsMDQ4PEA",
   alg: "HS256",
+  ext: true,
+  "key_ops": ["sign"],
 };
 
 unitTest(async function subtleCryptoHmacImportExport() {
@@ -297,7 +299,10 @@ unitTest(async function subtleCryptoHmacImportExport() {
     new Uint8Array(actual2),
     expected,
   );
-  // TODO(@littledivy): Add a test for exporting JWK key when supported.
-  const exportedKey = await crypto.subtle.exportKey("raw", key1);
-  assertEquals(new Uint8Array(exportedKey), rawKey);
+
+  const exportedKey1 = await crypto.subtle.exportKey("raw", key1);
+  assertEquals(new Uint8Array(exportedKey1), rawKey);
+
+  const exportedKey2 = await crypto.subtle.exportKey("jwk", key2);
+  assertEquals(exportedKey2, jwk);
 });
