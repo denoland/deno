@@ -1098,8 +1098,8 @@ declare namespace Deno {
   interface CommandOptions {
     args?: string[];
     cwd?: string;
-    env?: Record<string, string>;
     clearEnv?: boolean;
+    env?: Record<string, string>;
 
     stdin?: "piped" | "inherit" | "null";
     stdout?: "piped" | "inherit" | "null";

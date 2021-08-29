@@ -147,9 +147,7 @@ async fn op_command_status(
   _: (),
 ) -> Result<CommandStatus, AnyError> {
   let mut command = create_command(&mut state.borrow_mut(), command_args)?;
-  let status = command.status().await?;
-
-  Ok(status.into())
+  Ok(command.status().await?.into())
 }
 
 #[derive(Serialize)]
@@ -204,35 +202,20 @@ fn op_command_spawn(
   let mut child = command.spawn()?;
   let pid = child.id().expect("Process ID should be set.");
 
-  let stdin_rid = match child.stdin.take() {
-    Some(child_stdin) => {
-      let rid = state
-        .resource_table
-        .add(ChildStdinResource::from(child_stdin));
-      Some(rid)
-    }
-    None => None,
-  };
+  let stdin_rid = child
+    .stdin
+    .take()
+    .map(|stdin| state.resource_table.add(ChildStdinResource::from(stdin)));
 
-  let stdout_rid = match child.stdout.take() {
-    Some(child_stdout) => {
-      let rid = state
-        .resource_table
-        .add(ChildStdoutResource::from(child_stdout));
-      Some(rid)
-    }
-    None => None,
-  };
+  let stdout_rid = child
+    .stdout
+    .take()
+    .map(|stdout| state.resource_table.add(ChildStdoutResource::from(stdout)));
 
-  let stderr_rid = match child.stderr.take() {
-    Some(child_stderr) => {
-      let rid = state
-        .resource_table
-        .add(ChildStderrResource::from(child_stderr));
-      Some(rid)
-    }
-    None => None,
-  };
+  let stderr_rid = child
+    .stderr
+    .take()
+    .map(|stderr| state.resource_table.add(ChildStderrResource::from(stderr)));
 
   let child_rid = state
     .resource_table
@@ -257,9 +240,7 @@ async fn op_command_child_wait(
     .resource_table
     .take::<ChildResource>(rid)?;
   let mut child = resource.borrow_mut().await;
-  let status = child.wait().await?;
-
-  Ok(status.into())
+  Ok(child.wait().await?.into())
 }
 
 #[derive(Deserialize)]
@@ -319,11 +300,7 @@ fn op_command_child_status(
   rid: ResourceId,
   _: (),
 ) -> Result<Option<CommandStatus>, AnyError> {
-  let resource = state
-    .resource_table
-    .get::<ChildResource>(rid)?;
+  let resource = state.resource_table.get::<ChildResource>(rid)?;
   let mut child = RcRef::map(resource, |r| &r.0).try_borrow_mut().unwrap();
-  let status = child.try_wait()?.map(|status| status.into());
-
-  Ok(status)
+  Ok(child.try_wait()?.map(|status| status.into()))
 }
