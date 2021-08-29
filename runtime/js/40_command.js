@@ -145,15 +145,19 @@
     }
 
     async wait() {
-      return await core.opAsync("op_command_child_wait", this.#rid);
+      const res = await core.opAsync("op_command_child_wait", this.#rid);
+      await this.stdin?.close();
+      return res;
     }
 
     async output() {
-      return await core.opAsync("op_command_child_output", {
+      const res = await core.opAsync("op_command_child_output", {
         rid: this.#rid,
         stdoutRid: this.#stdoutRid,
         stderrRid: this.#stderrRid,
       });
+      await this.stdin?.close();
+      return res;
     }
 
     kill(signal) {
