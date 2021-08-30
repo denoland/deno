@@ -45,10 +45,6 @@ use tokio::io::AsyncWrite;
 use tokio::sync::oneshot;
 use tokio_util::io::StreamReader;
 
-pub fn get_unstable_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_http.unstable.d.ts")
-}
-
 pub fn init() -> Extension {
   Extension::builder()
     .js(include_js_files!(

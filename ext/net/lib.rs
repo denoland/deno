@@ -85,10 +85,6 @@ pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_net.d.ts")
 }
 
-pub fn get_unstable_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_net.unstable.d.ts")
-}
-
 #[derive(Clone)]
 pub struct DefaultTlsOptions {
   pub root_cert_store: Option<RootCertStore>,
