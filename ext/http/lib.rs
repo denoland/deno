@@ -34,7 +34,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::future::Future;
 use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Context;
