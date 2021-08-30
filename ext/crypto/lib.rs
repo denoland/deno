@@ -541,11 +541,11 @@ pub async fn op_crypto_derive_bits(
   args: DeriveKeyArg,
   zero_copy: Option<ZeroCopyBuf>,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
-  let salt = &*zero_copy;
   let algorithm = args.algorithm;
   match algorithm {
     Algorithm::Pbkdf2 => {
+      let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
+      let salt = &*zero_copy;
       // The caller must validate these cases.
       assert!(args.length > 0);
       assert!(args.length % 8 == 0);
@@ -568,7 +568,7 @@ pub async fn op_crypto_derive_bits(
     Algorithm::Ecdh => {
       let named_curve = args
         .named_curve
-        .ok_or_else(|| type_error("Missing argument namedCurve".to_string()))?
+        .ok_or_else(|| type_error("Missing argument namedCurve".to_string()))?;
       
       let public_key = args
         .public_key
@@ -576,10 +576,15 @@ pub async fn op_crypto_derive_bits(
       
       match named_curve {
         CryptoNamedCurve::P256 => {
+          let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)?;
+          let public_key = p256::SecretKey::from_pkcs8_der(&public_key)?.public_key();
           
-        }
-        CryptoNamedCurve::P384 => {
+          let shared_secret = p256::elliptic_curve::ecdh::diffie_hellman(
+            secret_key.to_secret_scalar(),
+            public_key.as_affine()
+          );
 
+          Ok(shared_secret.as_bytes().to_vec().into())
         }
         _ => return Err(type_error("Unsupported namedCurve".to_string())),
       }
