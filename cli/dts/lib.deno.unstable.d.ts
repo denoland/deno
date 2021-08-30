@@ -1124,7 +1124,7 @@ declare namespace Deno {
    *     socket.close();
    *   };
    *   socket.onclose = () => console.log("WebSocket has been closed.");
-   *   socket.onerror = (e) => console.error("WebSocket error:", e.message);
+   *   socket.onerror = (e) => console.error("WebSocket error:", e);
    *   e.respondWith(response);
    * }
    * ```
