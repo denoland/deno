@@ -757,9 +757,7 @@ async fn fetch_specifiers_with_test_mode(
       .fetch(specifier, &mut Permissions::allow_all())
       .await?;
 
-    if file.media_type != MediaType::Unknown {
-      *mode = TestMode::Both
-    } else {
+    if file.media_type == MediaType::Unknown {
       *mode = TestMode::Documentation
     }
   }
