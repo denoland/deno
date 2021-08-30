@@ -93,7 +93,7 @@
           async write(chunk) {
             await writeAll(stdinRid, chunk);
           },
-          abort() {
+          close() {
             core.close(stdinRid);
           },
         });
