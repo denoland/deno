@@ -67,6 +67,12 @@ itest!(doc {
   output: "test/doc.out",
 });
 
+itest!(doc_only {
+  args: "test --doc --allow-all test/doc_only",
+  exit_code: 0,
+  output: "test/doc_only.out",
+});
+
 itest!(markdown {
   args: "test --doc --allow-all test/markdown.md",
   exit_code: 1,
