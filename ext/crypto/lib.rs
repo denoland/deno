@@ -561,6 +561,9 @@ pub async fn op_crypto_derive_bits(
       pbkdf2::derive(algorithm, iterations, salt, &secret, &mut out);
       Ok(out.into())
     }
+    Algorithm::Ecdh => {
+      
+    }
     _ => Err(type_error("Unsupported algorithm".to_string())),
   }
 }
