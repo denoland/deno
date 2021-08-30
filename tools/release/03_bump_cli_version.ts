@@ -14,6 +14,9 @@ const originalVersion = cliCrate.version;
 // increment the version
 await cliCrate.increment(getVersionIncrement());
 
+// update Cargo.lock
+await workspace.build();
+
 // output the Releases.md markdown text
 console.log(
   "You may use the following as a template for updating Releases.md:\n",

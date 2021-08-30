@@ -7,3 +7,6 @@ const workspace = await DenoWorkspace.load();
 for (const crate of workspace.getDependencyCrates()) {
   await crate.increment("minor");
 }
+
+// update Cargo.lock and ensure it still builds
+await workspace.build();

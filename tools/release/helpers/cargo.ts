@@ -46,3 +46,17 @@ export async function publishCrate(directory: string) {
     throw new Error("Failed");
   }
 }
+
+export async function build(directory: string) {
+  const p = Deno.run({
+    cwd: directory,
+    cmd: ["cargo", "build", "-vv"],
+    stderr: "inherit",
+    stdout: "inherit",
+  });
+
+  const status = await p.status();
+  if (!status.success) {
+    throw new Error("Failed");
+  }
+}
