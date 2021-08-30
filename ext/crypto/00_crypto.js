@@ -651,7 +651,6 @@
      * @param {KeyUsages[]} keyUsages
      * @returns {Promise<any>}
      */
-    // deno-lint-ignore require-await
     async importKey(format, keyData, algorithm, extractable, keyUsages) {
       webidl.assertBranded(this, SubtleCrypto);
       const prefix = "Failed to execute 'importKey' on 'SubtleCrypto'";
