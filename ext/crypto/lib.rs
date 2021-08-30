@@ -33,7 +33,6 @@ use ring::rand as RingRand;
 use ring::rand::SecureRandom;
 use ring::signature::EcdsaKeyPair;
 use ring::signature::EcdsaSigningAlgorithm;
-use ring::agreement;
 use rsa::padding::PaddingScheme;
 use rsa::pkcs8::FromPrivateKey;
 use rsa::pkcs8::ToPrivateKey;
@@ -569,23 +568,26 @@ pub async fn op_crypto_derive_bits(
       let named_curve = args
         .named_curve
         .ok_or_else(|| type_error("Missing argument namedCurve".to_string()))?;
-      
+
       let public_key = args
         .public_key
         .ok_or_else(|| type_error("Missing argument publicKey".to_string()))?;
-      
+
       match named_curve {
         CryptoNamedCurve::P256 => {
           let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)?;
-          let public_key = p256::SecretKey::from_pkcs8_der(&public_key)?.public_key();
-          
+          let public_key =
+            p256::SecretKey::from_pkcs8_der(&public_key)?.public_key();
+
           let shared_secret = p256::elliptic_curve::ecdh::diffie_hellman(
             secret_key.to_secret_scalar(),
-            public_key.as_affine()
+            public_key.as_affine(),
           );
 
           Ok(shared_secret.as_bytes().to_vec().into())
         }
+        // TODO(@littledivy): support for P384
+        // https://github.com/RustCrypto/elliptic-curves/issues/240
         _ => return Err(type_error("Unsupported namedCurve".to_string())),
       }
     }

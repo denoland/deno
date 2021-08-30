@@ -1533,7 +1533,9 @@
           );
         }
         // 5.
-        if (publicKey[_algorithm].namedCurve !== baseKey[_algorithm].namedCurve) {
+        if (
+          publicKey[_algorithm].namedCurve !== baseKey[_algorithm].namedCurve
+        ) {
           throw new DOMException(
             "namedCurve mismatch",
             "InvalidAccessError",
@@ -1558,10 +1560,10 @@
             namedCurve: publicKey[_algorithm].namedCurve,
             length,
           });
-  
+
           return buf.buffer;
         } else {
-          throw new DOMException("Not implemented", "NotSupportedError");  
+          throw new DOMException("Not implemented", "NotSupportedError");
         }
       }
       default:
