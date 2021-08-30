@@ -109,7 +109,7 @@
               core.close(stdoutRid);
               controller.close();
             } else {
-              controller.enqueue(buf);
+              controller.enqueue(buf.subarray(0, res));
             }
           },
           cancel() {
@@ -129,7 +129,7 @@
               core.close(stderrRid);
               controller.close();
             } else {
-              controller.enqueue(buf);
+              controller.enqueue(buf.subarray(0, res));
             }
           },
           cancel() {
