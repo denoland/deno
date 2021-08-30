@@ -83,6 +83,10 @@ export class DenoWorkspace {
   build() {
     return cargo.build(DenoWorkspace.rootDirPath);
   }
+
+  updateLockFile() {
+    return cargo.check(DenoWorkspace.rootDirPath);
+  }
 }
 
 export class DenoWorkspaceCrate {
@@ -152,6 +156,10 @@ export class DenoWorkspaceCrate {
 
   build() {
     return cargo.build(this.directoryPath);
+  }
+
+  updateLockFile() {
+    return cargo.check(this.directoryPath);
   }
 
   increment(part: "major" | "minor" | "patch") {
