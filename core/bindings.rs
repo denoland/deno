@@ -813,8 +813,10 @@ fn serialize(
       }
     };
 
-  let options =
-    options.unwrap_or(SerializeDeserializeOptions { host_objects: None });
+  let options = options.unwrap_or(SerializeDeserializeOptions {
+    host_objects: None,
+    transfered_array_buffers: None,
+  });
 
   let host_objects = match options.host_objects {
     Some(value) => match v8::Local::<v8::Array>::try_from(value.v8_value) {
@@ -827,10 +829,61 @@ fn serialize(
     None => None,
   };
 
+  let transfered_array_buffers = match options.transfered_array_buffers {
+    Some(value) => match v8::Local::<v8::Array>::try_from(value.v8_value) {
+      Ok(transfered_array_buffers) => Some(transfered_array_buffers),
+      Err(_) => {
+        throw_type_error(scope, "transfered_array_buffers not an array");
+        return;
+      }
+    },
+    None => None,
+  };
+
   let serialize_deserialize = Box::new(SerializeDeserialize { host_objects });
   let mut value_serializer =
     v8::ValueSerializer::new(scope, serialize_deserialize);
+
   value_serializer.write_header();
+
+  if let Some(transfered_array_buffers) = transfered_array_buffers {
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow_mut();
+    for i in 0..transfered_array_buffers.length() {
+      let i = v8::Number::new(scope, i as f64).into();
+      let buf = transfered_array_buffers.get(scope, i).unwrap();
+      let buf = match v8::Local::<v8::ArrayBuffer>::try_from(buf) {
+        Ok(buf) => buf,
+        Err(_) => {
+          throw_type_error(
+            scope,
+            "item in transfered_array_buffers not an ArrayBuffer",
+          );
+          return;
+        }
+      };
+      if let Some(shared_array_buffer_store) = &state.shared_array_buffer_store
+      {
+        // TODO(lucacasonato): we need to check here that the buffer is not
+        // already detached. We can not do that because V8 does not provide
+        // a way to check if a buffer is already detached.
+        if !buf.is_detachable() {
+          throw_type_error(
+            scope,
+            "item in transfered_array_buffers is not transferable",
+          );
+          return;
+        }
+        let backing_store = buf.get_backing_store();
+        buf.detach();
+        let id = shared_array_buffer_store.insert(backing_store);
+        value_serializer.transfer_array_buffer(id, buf);
+        let id = v8::Number::new(scope, id as f64).into();
+        transfered_array_buffers.set(scope, i, id);
+      }
+    }
+  }
+
   match value_serializer.write_value(scope.get_current_context(), value) {
     Some(true) => {
       let vector = value_serializer.release();
@@ -843,10 +896,11 @@ fn serialize(
   }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SerializeDeserializeOptions<'a> {
   host_objects: Option<serde_v8::Value<'a>>,
+  transfered_array_buffers: Option<serde_v8::Value<'a>>,
 }
 
 fn deserialize(
@@ -871,8 +925,10 @@ fn deserialize(
       }
     };
 
-  let options =
-    options.unwrap_or(SerializeDeserializeOptions { host_objects: None });
+  let options = options.unwrap_or(SerializeDeserializeOptions {
+    host_objects: None,
+    transfered_array_buffers: None,
+  });
 
   let host_objects = match options.host_objects {
     Some(value) => match v8::Local::<v8::Array>::try_from(value.v8_value) {
@@ -885,9 +941,21 @@ fn deserialize(
     None => None,
   };
 
+  let transfered_array_buffers = match options.transfered_array_buffers {
+    Some(value) => match v8::Local::<v8::Array>::try_from(value.v8_value) {
+      Ok(transfered_array_buffers) => Some(transfered_array_buffers),
+      Err(_) => {
+        throw_type_error(scope, "transfered_array_buffers not an array");
+        return;
+      }
+    },
+    None => None,
+  };
+
   let serialize_deserialize = Box::new(SerializeDeserialize { host_objects });
   let mut value_deserializer =
     v8::ValueDeserializer::new(scope, serialize_deserialize, &zero_copy);
+
   let parsed_header = value_deserializer
     .read_header(scope.get_current_context())
     .unwrap_or_default();
@@ -897,6 +965,40 @@ fn deserialize(
     scope.throw_exception(exception);
     return;
   }
+
+  if let Some(transfered_array_buffers) = transfered_array_buffers {
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow_mut();
+    if let Some(shared_array_buffer_store) = &state.shared_array_buffer_store {
+      for i in 0..transfered_array_buffers.length() {
+        let i = v8::Number::new(scope, i as f64).into();
+        let id_val = transfered_array_buffers.get(scope, i).unwrap();
+        let id = match id_val.number_value(scope) {
+          Some(id) => id as u32,
+          None => {
+            throw_type_error(
+              scope,
+              "item in transfered_array_buffers not number",
+            );
+            return;
+          }
+        };
+        if let Some(backing_store) = shared_array_buffer_store.take(id) {
+          let array_buffer =
+            v8::ArrayBuffer::with_backing_store(scope, &backing_store);
+          value_deserializer.transfer_array_buffer(id, array_buffer);
+          transfered_array_buffers.set(scope, id_val, array_buffer.into());
+        } else {
+          throw_type_error(
+            scope,
+            "transfered array buffer not present in shared_array_buffer_store",
+          );
+          return;
+        }
+      }
+    }
+  }
+
   let value = value_deserializer.read_value(scope.get_current_context());
 
   match value {
