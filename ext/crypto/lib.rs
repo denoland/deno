@@ -588,7 +588,7 @@ pub async fn op_crypto_derive_bits(
         }
         // TODO(@littledivy): support for P384
         // https://github.com/RustCrypto/elliptic-curves/issues/240
-        _ => return Err(type_error("Unsupported namedCurve".to_string())),
+        _ => Err(type_error("Unsupported namedCurve".to_string())),
       }
     }
     _ => Err(type_error("Unsupported algorithm".to_string())),
