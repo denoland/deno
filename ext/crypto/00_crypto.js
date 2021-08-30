@@ -1555,6 +1555,7 @@
             key: baseKeyData,
             publicKey: publicKeyData,
             algorithm: "ECDH",
+            namedCurve: publicKey[_algorithm].namedCurve,
             length,
           });
   

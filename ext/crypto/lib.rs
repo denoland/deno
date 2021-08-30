@@ -33,6 +33,7 @@ use ring::rand as RingRand;
 use ring::rand::SecureRandom;
 use ring::signature::EcdsaKeyPair;
 use ring::signature::EcdsaSigningAlgorithm;
+use ring::agreement;
 use rsa::padding::PaddingScheme;
 use rsa::pkcs8::FromPrivateKey;
 use rsa::pkcs8::ToPrivateKey;
@@ -530,6 +531,9 @@ pub struct DeriveKeyArg {
   hash: Option<CryptoHash>,
   length: usize,
   iterations: Option<u32>,
+  // ECDH
+  public_key: Option<ZeroCopyBuf>,
+  named_curve: Option<CryptoNamedCurve>,
 }
 
 pub async fn op_crypto_derive_bits(
@@ -562,7 +566,23 @@ pub async fn op_crypto_derive_bits(
       Ok(out.into())
     }
     Algorithm::Ecdh => {
+      let named_curve = args
+        .named_curve
+        .ok_or_else(|| type_error("Missing argument namedCurve".to_string()))?
       
+      let public_key = args
+        .public_key
+        .ok_or_else(|| type_error("Missing argument publicKey".to_string()))?;
+      
+      match named_curve {
+        CryptoNamedCurve::P256 => {
+          
+        }
+        CryptoNamedCurve::P384 => {
+
+        }
+        _ => return Err(type_error("Unsupported namedCurve".to_string())),
+      }
     }
     _ => Err(type_error("Unsupported algorithm".to_string())),
   }
