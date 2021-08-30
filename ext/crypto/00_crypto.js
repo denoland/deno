@@ -96,6 +96,7 @@
     },
     "deriveBits": {
       "PBKDF2": "Pbkdf2Params",
+      "ECDH": "EcdhKeyDeriveParams",
     },
     "encrypt": {
       "RSA-OAEP": "RsaOaepParams",
