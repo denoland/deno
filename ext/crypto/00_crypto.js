@@ -944,7 +944,6 @@
     * @param {CryptoKey} key
     * @returns {Promise<any>}
     */
-    // deno-lint-ignore require-await
     async exportKey(format, key) {
       webidl.assertBranded(this, SubtleCrypto);
       const prefix = "Failed to execute 'exportKey' on 'SubtleCrypto'";
@@ -1020,8 +1019,35 @@
           // TODO(@littledivy): Redundant break but deno_lint complains without it
           break;
         }
-        // TODO(@littledivy): RSASSA-PKCS1-v1_5
-        // TODO(@littledivy): RSA-PSS
+        case "RSASSA-PKCS1-v1_5":
+        case "RSA-PSS": {
+          switch (format) {
+            case "pkcs8": {
+              // 1.
+              if (key[_type] !== "private") {
+                throw new DOMException(
+                  "Key is not a private key",
+                  "InvalidAccessError",
+                );
+              }
+
+              // 2.
+              const data = await core.opAsync(
+                "op_crypto_export_key",
+                {
+                  key: innerKey.data,
+                  format: "pkcs8",
+                  algorithm: key[_algorithm].name,
+                },
+              );
+
+              // 3.
+              return data.buffer;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
         // TODO(@littledivy): ECDSA
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
@@ -1263,7 +1289,8 @@
         );
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, {
-          type: "pkcs8",
+          // PKCS#1 for RSA
+          type: "raw",
           data: keyData,
         });
 
@@ -1323,7 +1350,8 @@
         );
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, {
-          type: "pkcs8",
+          // PKCS#1 for RSA
+          type: "raw",
           data: keyData,
         });
 
