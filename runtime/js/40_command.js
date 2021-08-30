@@ -4,8 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
   const { pathFromURL } = window.__bootstrap.util;
-  const { read } = window.__bootstrap.io;
-  const { writeAll } = window.__bootstrap.buffer;
+  const { read, write } = window.__bootstrap.io;
   const { illegalConstructorKey } = window.__bootstrap.webUtil;
   const { ArrayPrototypeMap, ObjectEntries, String, TypeError, Uint8Array } =
     window.__bootstrap.primordials;
@@ -91,7 +90,7 @@
       if (stdinRid !== undefined) {
         this.#stdin = new WritableStream({
           async write(chunk) {
-            await writeAll(stdinRid, chunk);
+            await write(stdinRid, chunk);
           },
           close() {
             core.close(stdinRid);
