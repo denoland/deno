@@ -14,7 +14,7 @@ use std::rc::Rc;
 /// A helper function that returns a sync NOP OpFn
 ///
 /// It's mainly intended for embedders who want to disable ops, see ./examples/disable_ops.rs
-pub fn noop_sync() -> Box<OpFn> {
+pub fn void_op_sync() -> Box<OpFn> {
   // TODO(@AaronO): use this simpler implementation after changing serde_v8 to allow all values
   // to deserialize to the unit type instead of failing with `ExpectedNull`
   // op_sync(|_, _: (), _: ()| Ok(()))
@@ -27,7 +27,7 @@ pub fn noop_sync() -> Box<OpFn> {
 /// A helper function that returns an async NOP OpFn
 ///
 /// It's mainly intended for embedders who want to disable ops, see ./examples/disable_ops.rs
-pub fn noop_async() -> Box<OpFn> {
+pub fn void_op_async() -> Box<OpFn> {
   // TODO(@AaronO): use this simpler implementation after changing serde_v8 to allow all values
   // to deserialize to the unit type instead of failing with `ExpectedNull`
   // op_async(|_, _: (), _: ()| futures::future::ok(()))
