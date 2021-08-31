@@ -489,6 +489,7 @@ async fn lsp_command() -> Result<(), AnyError> {
   lsp::start().await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn lint_command(
   flags: Flags,
   files: Vec<PathBuf>,
