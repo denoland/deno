@@ -77,6 +77,10 @@
       "RSA-PSS": "RsaHashedKeyGenParams",
       "RSA-OAEP": "RsaHashedKeyGenParams",
       "ECDSA": "EcKeyGenParams",
+      "AES-CTR": "AesKeyGenParams",
+      "AES-CBC": "AesKeyGenParams",
+      "AES-GCM": "AesKeyGenParams",
+      "AES-KW": "AesKeyGenParams",
       "HMAC": "HmacKeyGenParams",
     },
     "sign": {
@@ -1415,10 +1419,40 @@
         return { publicKey, privateKey };
       }
       // TODO(lucacasonato): ECDH
-      // TODO(lucacasonato): AES-CTR
-      // TODO(lucacasonato): AES-CBC
-      // TODO(lucacasonato): AES-GCM
-      // TODO(lucacasonato): AES-KW
+      case "AES-CTR":
+      case "AES-CBC":
+      case "AES-GCM": {
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            usages,
+            (u) =>
+              !ArrayPrototypeIncludes([
+                "encrypt",
+                "decrypt",
+                "wrapKey",
+                "unwrapKey",
+              ], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        return generateKeyAES(normalizedAlgorithm, extractable, usages);
+      }
+      case "AES-KW": {
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            usages,
+            (u) => !ArrayPrototypeIncludes(["wrapKey", "unwrapKey"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        return generateKeyAES(normalizedAlgorithm, extractable, usages);
+      }
       case "HMAC": {
         // 1.
         if (
@@ -1471,6 +1505,42 @@
         return key;
       }
     }
+  }
+
+  async function generateKeyAES(normalizedAlgorithm, extractable, usages) {
+    // 2.
+    if (!ArrayPrototypeIncludes([128, 192, 256], normalizedAlgorithm.length)) {
+      throw new DOMException("Invalid key length", "OperationError");
+    }
+
+    // 3.
+    const keyData = await core.opAsync("op_crypto_generate_key", {
+      name: normalizedAlgorithm.name,
+      length: normalizedAlgorithm.length,
+    });
+    const handle = {};
+    WeakMapPrototypeSet(KEY_STORE, handle, {
+      type: "raw",
+      data: keyData,
+    });
+
+    // 6-8.
+    const algorithm = {
+      name: normalizedAlgorithm.name,
+      length: normalizedAlgorithm.length,
+    };
+
+    // 9-11.
+    const key = constructKey(
+      "secret",
+      extractable,
+      usages,
+      algorithm,
+      handle,
+    );
+
+    // 12.
+    return key;
   }
 
   async function deriveBits(normalizedAlgorithm, baseKey, length) {
