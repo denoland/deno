@@ -529,6 +529,8 @@ pub struct ExportKeyArg {
   key: KeyData,
   algorithm: Algorithm,
   format: KeyFormat,
+  // RSA-PSS
+  hash: Option<CryptoHash>,
 }
 
 pub async fn op_crypto_export_key(
@@ -561,6 +563,87 @@ pub async fn op_crypto_export_key(
               // rsaEncryption(1)
               oid: rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
               parameters: None,
+            },
+            private_key,
+          };
+
+          Ok(pk_info.to_der().as_ref().to_vec().into())
+        }
+        // TODO(@littledivy): spki
+        // TODO(@littledivy): jwk
+        _ => unreachable!(),
+      }
+    }
+    Algorithm::RsaPss => {
+      match args.format {
+        KeyFormat::Pkcs8 => {
+          let hash = args
+            .hash
+            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
+
+          // private_key is a PKCS#1 DER-encoded private key
+          let private_key = &args.key.data;
+
+          let (oid, salt_length) = {
+            let (oid_str, salt_length) = match hash {
+              // id-sha1
+              CryptoHash::Sha1 => ("1.3.14.3.2.26", 20),
+              // id-sha256
+              CryptoHash::Sha256 => ("2.16.840.1.101.3.4.2.1", 32),
+              // id-sha384
+              CryptoHash::Sha384 => ("2.16.840.1.101.3.4.2.2", 48),
+              // id-sha512
+              CryptoHash::Sha512 => ("2.16.840.1.101.3.4.2.3", 64),
+            };
+
+            (asn1::ObjectIdentifier::from_string(oid_str), salt_length)
+          };
+
+          let parameters = asn1::write(|w| {
+            w.write_element(&asn1::SequenceWriter::new(&|w| {
+              // hashAlgorithm
+              w.write_element(&asn1::Explicit::<_, 0>::new(
+                asn1::SequenceWriter::new(&|w| {
+                  w.write_element(&oid);
+                }),
+              ));
+
+              // maskGenAlgorithm
+              w.write_element(&asn1::Explicit::<_, 1>::new(
+                asn1::SequenceWriter::new(&|w| {
+                  // id-mgf1
+                  let id_mgf1 =
+                    asn1::ObjectIdentifier::from_string("1.2.840.113549.1.1.8");
+                  w.write_element(&id_mgf1);
+                  w.write_element(&asn1::SequenceWriter::new(&|w| {
+                    w.write_element(&oid);
+                    w.write_element(&());
+                  }));
+                }),
+              ));
+
+              // saltLength
+              w.write_element(&asn1::Explicit::<_, 2>::new(salt_length));
+            }));
+          });
+
+          // version is 0 when publickey is None
+
+          let pk_info = rsa::pkcs8::PrivateKeyInfo {
+            attributes: None,
+            public_key: None,
+            algorithm: rsa::pkcs8::AlgorithmIdentifier {
+              // id-RSASSA-PSS
+              oid: rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.10"),
+              parameters: Some(
+                rsa::pkcs8::der::asn1::Any::new(
+                  rsa::pkcs8::der::Tag::Sequence,
+                  &parameters,
+                )
+                .map_err(|e| {
+                  custom_error("DOMExceptionOperationError", e.to_string())
+                })?,
+              ),
             },
             private_key,
           };
