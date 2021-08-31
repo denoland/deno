@@ -36,6 +36,7 @@ use ring::signature::EcdsaSigningAlgorithm;
 use rsa::padding::PaddingScheme;
 use rsa::pkcs1::FromRsaPrivateKey;
 use rsa::pkcs1::ToRsaPrivateKey;
+use rsa::pkcs8::der::asn1;
 use rsa::BigUint;
 use rsa::PublicKey;
 use rsa::RsaPrivateKey;
@@ -562,7 +563,9 @@ pub async fn op_crypto_export_key(
             algorithm: rsa::pkcs8::AlgorithmIdentifier {
               // rsaEncryption(1)
               oid: rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
-              parameters: None,
+              // parameters field should not be ommited (None).
+              // It MUST have ASN.1 type NULL as per defined in RFC 3279 Section 2.3.1
+              parameters: Some(asn1::Any::from(asn1::Null)),
             },
             private_key,
           };
@@ -597,7 +600,9 @@ pub async fn op_crypto_export_key(
 
               // parameters are set to NULL opposed to what spec wants (see above)
               oid: rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
-              parameters: None,
+              // parameters field should not be ommited (None).
+              // It MUST have ASN.1 type NULL as per defined in RFC 3279 Section 2.3.1
+              parameters: Some(asn1::Any::from(asn1::Null)),
             },
             private_key,
           };
