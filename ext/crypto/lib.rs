@@ -596,7 +596,7 @@ pub async fn op_crypto_export_key(
               // Node, Chromium and Firefox also use rsaEncryption (1.2.840.113549.1.1.1) and do not support id-RSASSA-PSS.
 
               // parameters are set to NULL opposed to what spec wants (see above)
-              oid: rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.10"),
+              oid: rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
               parameters: None,
             },
             private_key,
