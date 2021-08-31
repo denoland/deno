@@ -1,0 +1,28 @@
+# Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_fetch"
+version = "0.39.0"
+authors = ["the Deno authors"]
+edition = "2018"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/denoland/deno"
+description = "Fetch API implementation for Deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+bytes = "1.0.1"
+data-url = "0.1.0"
+deno_core = { version = "0.98.0", path = "../../core" }
+deno_tls = { version = "0.3.0", path = "../tls" }
+deno_web = { version = "0.47.0", path = "../web" }
+http = "0.2.4"
+lazy_static = "1.4.0"
+reqwest = { version = "0.11.4", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
+serde = { version = "1.0.126", features = ["derive"] }
+tokio = { version = "1.8.1", features = ["full"] }
+tokio-stream = "0.1.7"
+tokio-util = "0.6.7"

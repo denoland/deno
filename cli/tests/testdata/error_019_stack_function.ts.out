@@ -1,0 +1,8 @@
+[WILDCARD]Error: function
+    at foo ([WILDCARD]/error_019_stack_function.ts:[WILDCARD])
+    at [WILDCARD]/error_019_stack_function.ts:[WILDCARD]
+error: Uncaught Error: function
+  throw new Error("function");
+        ^
+    at foo ([WILDCARD]/error_019_stack_function.ts:[WILDCARD])
+    at [WILDCARD]/error_019_stack_function.ts:[WILDCARD]

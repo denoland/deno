@@ -831,6 +831,8 @@ impl Graph {
       "target": "esnext",
       "tsBuildInfoFile": "deno:///.tsbuildinfo",
       "useDefineForClassFields": true,
+      // TODO(@kitsonk) remove for Deno 1.15
+      "useUnknownInCatchVariables": false,
     }));
     if options.emit {
       config.merge(&json!({
@@ -991,6 +993,8 @@ impl Graph {
       "strict": true,
       "target": "esnext",
       "useDefineForClassFields": true,
+      // TODO(@kitsonk) remove for Deno 1.15
+      "useUnknownInCatchVariables": false,
     }));
     let opts = match options.bundle_type {
       BundleType::Module | BundleType::Classic => json!({
@@ -2069,7 +2073,6 @@ pub mod tests {
   use crate::specifier_handler::MemoryHandler;
   use deno_core::futures::future;
   use deno_core::parking_lot::Mutex;
-  use std::env;
   use std::fs;
   use std::path::PathBuf;
 
@@ -2190,8 +2193,7 @@ pub mod tests {
   async fn setup(
     specifier: ModuleSpecifier,
   ) -> (Graph, Arc<Mutex<MockSpecifierHandler>>) {
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/module_graph");
+    let fixtures = test_util::testdata_path().join("module_graph");
     let handler = Arc::new(Mutex::new(MockSpecifierHandler {
       fixtures,
       ..MockSpecifierHandler::default()
@@ -2314,8 +2316,7 @@ pub mod tests {
       ("file:///tests/fixture14.ts", "fixture14.out"),
       ("file:///tests/fixture15.ts", "fixture15.out"),
     ];
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/bundle");
+    let fixtures = test_util::testdata_path().join("bundle");
 
     for (specifier, expected_str) in tests {
       let specifier = resolve_url_or_path(specifier).unwrap();
@@ -2474,8 +2475,10 @@ pub mod tests {
     let specifier = resolve_url_or_path("file:///tests/checkwithconfig.ts")
       .expect("could not resolve module");
     let (graph, handler) = setup(specifier.clone()).await;
-    let config_file =
-      ConfigFile::read("tests/module_graph/tsconfig_01.json").unwrap();
+    let config_file = ConfigFile::read(
+      test_util::testdata_path().join("module_graph/tsconfig_01.json"),
+    )
+    .unwrap();
     let result_info = graph
       .check(CheckOptions {
         debug: false,
@@ -2496,8 +2499,10 @@ pub mod tests {
 
     // let's do it all over again to ensure that the versions are determinstic
     let (graph, handler) = setup(specifier).await;
-    let config_file =
-      ConfigFile::read("tests/module_graph/tsconfig_01.json").unwrap();
+    let config_file = ConfigFile::read(
+      test_util::testdata_path().join("module_graph/tsconfig_01.json"),
+    )
+    .unwrap();
     let result_info = graph
       .check(CheckOptions {
         debug: false,
@@ -2651,8 +2656,7 @@ pub mod tests {
   async fn test_graph_import_json() {
     let specifier = resolve_url_or_path("file:///tests/importjson.ts")
       .expect("could not resolve module");
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/module_graph");
+    let fixtures = test_util::testdata_path().join("module_graph");
     let handler = Arc::new(Mutex::new(MockSpecifierHandler {
       fixtures,
       ..MockSpecifierHandler::default()
@@ -2726,8 +2730,10 @@ pub mod tests {
     let specifier = resolve_url_or_path("https://deno.land/x/transpile.tsx")
       .expect("could not resolve module");
     let (mut graph, handler) = setup(specifier).await;
-    let config_file =
-      ConfigFile::read("tests/module_graph/tsconfig.json").unwrap();
+    let config_file = ConfigFile::read(
+      test_util::testdata_path().join("module_graph/tsconfig.json"),
+    )
+    .unwrap();
     let result_info = graph
       .transpile(TranspileOptions {
         debug: false,
@@ -2756,8 +2762,7 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_import_map_remote_to_local() {
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/module_graph");
+    let fixtures = test_util::testdata_path().join("module_graph");
     let maybe_import_map = Some(
       ImportMap::from_json(
         "file:///tests/importmap.json",
@@ -2783,8 +2788,7 @@ pub mod tests {
 
   #[tokio::test]
   async fn test_graph_with_lockfile() {
-    let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let fixtures = c.join("tests/module_graph");
+    let fixtures = test_util::testdata_path().join("module_graph");
     let lockfile_path = fixtures.join("lockfile.json");
     let lockfile =
       Lockfile::new(lockfile_path, false).expect("could not load lockfile");

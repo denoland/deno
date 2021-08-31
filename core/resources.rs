@@ -6,6 +6,8 @@
 // resources. Resources may or may not correspond to a real operating system
 // file descriptor (hence the different name).
 
+use crate::error::bad_resource_id;
+use crate::error::AnyError;
 use std::any::type_name;
 use std::any::Any;
 use std::any::TypeId;
@@ -105,32 +107,43 @@ impl ResourceTable {
   /// Returns a reference counted pointer to the resource of type `T` with the
   /// given `rid`. If `rid` is not present or has a type different than `T`,
   /// this function returns `None`.
-  pub fn get<T: Resource>(&self, rid: ResourceId) -> Option<Rc<T>> {
+  pub fn get<T: Resource>(&self, rid: ResourceId) -> Result<Rc<T>, AnyError> {
     self
       .index
       .get(&rid)
       .and_then(|rc| rc.downcast_rc::<T>())
       .map(Clone::clone)
+      .ok_or_else(bad_resource_id)
   }
 
-  pub fn get_any(&self, rid: ResourceId) -> Option<Rc<dyn Resource>> {
-    self.index.get(&rid).map(Clone::clone)
+  pub fn get_any(&self, rid: ResourceId) -> Result<Rc<dyn Resource>, AnyError> {
+    self
+      .index
+      .get(&rid)
+      .map(Clone::clone)
+      .ok_or_else(bad_resource_id)
   }
 
   /// Removes a resource of type `T` from the resource table and returns it.
   /// If a resource with the given `rid` exists but its type does not match `T`,
   /// it is not removed from the resource table. Note that the resource's
   /// `close()` method is *not* called.
-  pub fn take<T: Resource>(&mut self, rid: ResourceId) -> Option<Rc<T>> {
+  pub fn take<T: Resource>(
+    &mut self,
+    rid: ResourceId,
+  ) -> Result<Rc<T>, AnyError> {
     let resource = self.get::<T>(rid)?;
     self.index.remove(&rid);
-    Some(resource)
+    Ok(resource)
   }
 
   /// Removes a resource from the resource table and returns it. Note that the
   /// resource's `close()` method is *not* called.
-  pub fn take_any(&mut self, rid: ResourceId) -> Option<Rc<dyn Resource>> {
-    self.index.remove(&rid)
+  pub fn take_any(
+    &mut self,
+    rid: ResourceId,
+  ) -> Result<Rc<dyn Resource>, AnyError> {
+    self.index.remove(&rid).ok_or_else(bad_resource_id)
   }
 
   /// Removes the resource with the given `rid` from the resource table. If the
@@ -139,8 +152,12 @@ impl ResourceTable {
   /// counted, therefore pending ops are not automatically cancelled. A resource
   /// may implement the `close()` method to perform clean-ups such as canceling
   /// ops.
-  pub fn close(&mut self, rid: ResourceId) -> Option<()> {
-    self.index.remove(&rid).map(|resource| resource.close())
+  pub fn close(&mut self, rid: ResourceId) -> Result<(), AnyError> {
+    self
+      .index
+      .remove(&rid)
+      .ok_or_else(bad_resource_id)
+      .map(|resource| resource.close())
   }
 
   /// Returns an iterator that yields a `(id, name)` pair for every resource

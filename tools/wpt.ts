@@ -647,7 +647,8 @@ function discoverTestsToRun(
           const url = new URL(path, "http://web-platform.test:8000");
           if (
             !url.pathname.endsWith(".any.html") &&
-            !url.pathname.endsWith(".window.html")
+            !url.pathname.endsWith(".window.html") &&
+            !url.pathname.endsWith(".worker.html")
           ) {
             continue;
           }

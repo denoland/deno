@@ -10,6 +10,13 @@ import {
   unitTest,
 } from "./test_util.ts";
 
+let isCI: boolean;
+try {
+  isCI = Deno.env.get("CI") !== undefined;
+} catch {
+  isCI = true;
+}
+
 unitTest({ perms: { net: true } }, function netTcpListenClose() {
   const listener = Deno.listen({ hostname: "127.0.0.1", port: 3500 });
   assert(listener.addr.transport === "tcp");
@@ -387,8 +394,6 @@ unitTest(
 unitTest(
   { perms: { net: true } },
   async function netTcpListenIteratorBreakClosesResource() {
-    const promise = deferred();
-
     async function iterate(listener: Deno.Listener) {
       let i = 0;
 
@@ -400,13 +405,11 @@ unitTest(
           break;
         }
       }
-
-      promise.resolve();
     }
 
     const addr = { hostname: "127.0.0.1", port: 8888 };
     const listener = Deno.listen(addr);
-    iterate(listener);
+    const iteratePromise = iterate(listener);
 
     await delay(100);
     const conn1 = await Deno.connect(addr);
@@ -414,7 +417,7 @@ unitTest(
     const conn2 = await Deno.connect(addr);
     conn2.close();
 
-    await promise;
+    await iteratePromise;
   },
 );
 
@@ -545,6 +548,8 @@ unitTest(
 
 unitTest(
   {
+    // https://github.com/denoland/deno/issues/11580
+    ignore: Deno.build.os === "darwin" && isCI,
     perms: { net: true },
   },
   async function netHangsOnClose() {

@@ -48,6 +48,19 @@ unitTest(
   },
 );
 
+unitTest(
+  async function wasmInstantiateStreamingNoContentType() {
+    await assertThrowsAsync(
+      async () => {
+        const response = Promise.resolve(new Response(simpleWasm));
+        await WebAssembly.instantiateStreaming(response);
+      },
+      TypeError,
+      "Invalid WebAssembly content type.",
+    );
+  },
+);
+
 unitTest(async function wasmInstantiateStreaming() {
   let isomorphic = "";
   for (const byte of simpleWasm) {
@@ -74,7 +87,7 @@ unitTest(
     // deno-dom's WASM file is a real-world non-trivial case that gave us
     // trouble when implementing this.
     await WebAssembly.instantiateStreaming(fetch(
-      "http://localhost:4545/cli/tests/deno_dom_0.1.3-alpha2.wasm",
+      "http://localhost:4545/deno_dom_0.1.3-alpha2.wasm",
     ));
   },
 );

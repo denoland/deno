@@ -1,0 +1,424 @@
+// Copyright 2021 the Deno authors. All rights reserved. MIT license.
+
+use deno_core::error::bad_resource_id;
+use deno_core::error::AnyError;
+use deno_core::include_js_files;
+use deno_core::op_sync;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
+use deno_core::Extension;
+use deno_core::OpState;
+use deno_core::Resource;
+use deno_core::ResourceId;
+use deno_core::ZeroCopyBuf;
+use dlopen::raw::Library;
+use libffi::middle::Arg;
+use serde::Deserialize;
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::convert::TryFrom;
+use std::ffi::c_void;
+use std::ffi::CStr;
+use std::ffi::CString;
+use std::os::raw::c_char;
+use std::rc::Rc;
+
+pub struct Unstable(pub bool);
+
+fn check_unstable(state: &OpState, api_name: &str) {
+  let unstable = state.borrow::<Unstable>();
+
+  if !unstable.0 {
+    eprintln!(
+      "Unstable API '{}'. The --unstable flag must be provided.",
+      api_name
+    );
+    std::process::exit(70);
+  }
+}
+
+pub trait FfiPermissions {
+  fn check(&mut self, path: &str) -> Result<(), AnyError>;
+}
+
+pub struct NoFfiPermissions;
+
+impl FfiPermissions for NoFfiPermissions {
+  fn check(&mut self, _path: &str) -> Result<(), AnyError> {
+    Ok(())
+  }
+}
+
+struct Symbol {
+  cif: libffi::middle::Cif,
+  ptr: libffi::middle::CodePtr,
+  parameter_types: Vec<NativeType>,
+  result_type: NativeType,
+  result_length: Option<usize>,
+}
+
+struct DynamicLibraryResource {
+  lib: Library,
+  symbols: HashMap<String, Symbol>,
+}
+
+impl Resource for DynamicLibraryResource {
+  fn name(&self) -> Cow<str> {
+    "dynamicLibrary".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    drop(self)
+  }
+}
+
+impl DynamicLibraryResource {
+  fn register(
+    &mut self,
+    symbol: String,
+    foreign_fn: ForeignFunction,
+  ) -> Result<(), AnyError> {
+    let fn_ptr = unsafe { self.lib.symbol::<*const c_void>(&symbol) }?;
+    let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
+    let cif = libffi::middle::Cif::new(
+      foreign_fn
+        .parameters
+        .clone()
+        .into_iter()
+        .map(libffi::middle::Type::from),
+      foreign_fn.result.into(),
+    );
+
+    self.symbols.insert(
+      symbol,
+      Symbol {
+        cif,
+        ptr,
+        parameter_types: parameter_types.collect(),
+        result_type,
+        result_length: foreign_fn.result_length,
+      },
+    );
+
+    Ok(())
+  }
+}
+
+pub fn init<P: FfiPermissions + 'static>(unstable: bool) -> Extension {
+  Extension::builder()
+    .js(include_js_files!(
+      prefix "deno:ext/ffi",
+      "00_ffi.js",
+    ))
+    .ops(vec![
+      ("op_ffi_load", op_sync(op_ffi_load::<P>)),
+      ("op_ffi_call", op_sync(op_ffi_call)),
+    ])
+    .state(move |state| {
+      // Stolen from deno_webgpu, is there a better option?
+      state.put(Unstable(unstable));
+      Ok(())
+    })
+    .build()
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum NativeType {
+  Void,
+  U8,
+  I8,
+  U16,
+  I16,
+  U32,
+  I32,
+  U64,
+  I64,
+  USize,
+  ISize,
+  F32,
+  F64,
+  String,
+  Buffer,
+}
+
+impl From<NativeType> for libffi::middle::Type {
+  fn from(native_type: NativeType) -> Self {
+    match native_type {
+      NativeType::Void => libffi::middle::Type::void(),
+      NativeType::U8 => libffi::middle::Type::u8(),
+      NativeType::I8 => libffi::middle::Type::i8(),
+      NativeType::U16 => libffi::middle::Type::u16(),
+      NativeType::I16 => libffi::middle::Type::i16(),
+      NativeType::U32 => libffi::middle::Type::u32(),
+      NativeType::I32 => libffi::middle::Type::i32(),
+      NativeType::U64 => libffi::middle::Type::u64(),
+      NativeType::I64 => libffi::middle::Type::i64(),
+      NativeType::USize => libffi::middle::Type::usize(),
+      NativeType::ISize => libffi::middle::Type::isize(),
+      NativeType::F32 => libffi::middle::Type::f32(),
+      NativeType::F64 => libffi::middle::Type::f64(),
+      NativeType::String => libffi::middle::Type::pointer(),
+      NativeType::Buffer => libffi::middle::Type::pointer(),
+    }
+  }
+}
+
+impl From<String> for NativeType {
+  fn from(string: String) -> Self {
+    match string.as_str() {
+      "void" => NativeType::Void,
+      "u8" => NativeType::U8,
+      "i8" => NativeType::I8,
+      "u16" => NativeType::U16,
+      "i16" => NativeType::I16,
+      "u32" => NativeType::U32,
+      "i32" => NativeType::I32,
+      "u64" => NativeType::U64,
+      "i64" => NativeType::I64,
+      "usize" => NativeType::USize,
+      "isize" => NativeType::ISize,
+      "f32" => NativeType::F32,
+      "f64" => NativeType::F64,
+      "string" => NativeType::String,
+      "buffer" => NativeType::Buffer,
+      _ => unimplemented!(),
+    }
+  }
+}
+
+enum NativeValue {
+  Void,
+  U8(u8),
+  I8(i8),
+  U16(u16),
+  I16(i16),
+  U32(u32),
+  I32(i32),
+  U64(u64),
+  I64(i64),
+  USize(usize),
+  ISize(isize),
+  F32(f32),
+  F64(f64),
+  String(*const i8),
+  Buffer(*const u8),
+}
+
+impl NativeValue {
+  fn from_value(native_type: NativeType, value: Value) -> Self {
+    match native_type {
+      NativeType::Void => Self::Void,
+      NativeType::U8 => Self::U8(value_as_uint::<u8>(value)),
+      NativeType::I8 => Self::I8(value_as_int::<i8>(value)),
+      NativeType::U16 => Self::U16(value_as_uint::<u16>(value)),
+      NativeType::I16 => Self::I16(value_as_int::<i16>(value)),
+      NativeType::U32 => Self::U32(value_as_uint::<u32>(value)),
+      NativeType::I32 => Self::I32(value_as_int::<i32>(value)),
+      NativeType::U64 => Self::U64(value_as_uint::<u64>(value)),
+      NativeType::I64 => Self::I64(value_as_int::<i64>(value)),
+      NativeType::USize => Self::USize(value_as_uint::<usize>(value)),
+      NativeType::ISize => Self::ISize(value_as_int::<isize>(value)),
+      NativeType::F32 => Self::F32(value_as_f32(value)),
+      NativeType::F64 => Self::F64(value_as_f64(value)),
+      NativeType::String => Self::String(
+        CString::new(
+          value
+            .as_str()
+            .expect("Expected ffi arg value to be a string"),
+        )
+        .unwrap()
+        .into_raw(),
+      ),
+      NativeType::Buffer => unreachable!(),
+    }
+  }
+
+  fn as_arg(&self) -> Arg {
+    match self {
+      Self::Void => Arg::new(&()),
+      Self::U8(value) => Arg::new(value),
+      Self::I8(value) => Arg::new(value),
+      Self::U16(value) => Arg::new(value),
+      Self::I16(value) => Arg::new(value),
+      Self::U32(value) => Arg::new(value),
+      Self::I32(value) => Arg::new(value),
+      Self::U64(value) => Arg::new(value),
+      Self::I64(value) => Arg::new(value),
+      Self::USize(value) => Arg::new(value),
+      Self::ISize(value) => Arg::new(value),
+      Self::F32(value) => Arg::new(value),
+      Self::F64(value) => Arg::new(value),
+      Self::String(value) => Arg::new(value),
+      Self::Buffer(value) => Arg::new(value),
+    }
+  }
+}
+
+fn value_as_uint<T: TryFrom<u64>>(value: Value) -> T {
+  value
+    .as_u64()
+    .and_then(|v| T::try_from(v).ok())
+    .expect("Expected ffi arg value to be an unsigned integer")
+}
+
+fn value_as_int<T: TryFrom<i64>>(value: Value) -> T {
+  value
+    .as_i64()
+    .and_then(|v| T::try_from(v).ok())
+    .expect("Expected ffi arg value to be a signed integer")
+}
+
+fn value_as_f32(value: Value) -> f32 {
+  value_as_f64(value) as f32
+}
+
+fn value_as_f64(value: Value) -> f64 {
+  value
+    .as_f64()
+    .expect("Expected ffi arg value to be a float")
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct ForeignFunction {
+  parameters: Vec<String>,
+  result: String,
+  result_length: Option<usize>,
+}
+
+#[derive(Deserialize, Debug)]
+struct FfiLoadArgs {
+  path: String,
+  symbols: HashMap<String, ForeignFunction>,
+}
+
+fn op_ffi_load<FP>(
+  state: &mut deno_core::OpState,
+  args: FfiLoadArgs,
+  _: (),
+) -> Result<ResourceId, AnyError>
+where
+  FP: FfiPermissions + 'static,
+{
+  check_unstable(state, "Deno.dlopen");
+  let permissions = state.borrow_mut::<FP>();
+  permissions.check(&args.path)?;
+
+  let lib = Library::open(args.path)?;
+  let mut resource = DynamicLibraryResource {
+    lib,
+    symbols: HashMap::new(),
+  };
+
+  for (symbol, foreign_fn) in args.symbols {
+    resource.register(symbol, foreign_fn)?;
+  }
+
+  Ok(state.resource_table.add(resource))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FfiCallArgs {
+  rid: ResourceId,
+  symbol: String,
+  parameters: Vec<Value>,
+  buffers: Vec<ZeroCopyBuf>,
+}
+
+fn op_ffi_call(
+  state: &mut deno_core::OpState,
+  args: FfiCallArgs,
+  _: (),
+) -> Result<Value, AnyError> {
+  let resource = state
+    .resource_table
+    .get::<DynamicLibraryResource>(args.rid)?;
+
+  let symbol = resource
+    .symbols
+    .get(&args.symbol)
+    .ok_or_else(bad_resource_id)?;
+
+  let buffers: Vec<&[u8]> =
+    args.buffers.iter().map(|buffer| &buffer[..]).collect();
+
+  let native_values = symbol
+    .parameter_types
+    .iter()
+    .zip(args.parameters.into_iter())
+    .map(|(&native_type, value)| {
+      if let NativeType::Buffer = native_type {
+        let idx: usize = value_as_uint(value);
+        let ptr = buffers[idx].as_ptr();
+        NativeValue::Buffer(ptr)
+      } else {
+        NativeValue::from_value(native_type, value)
+      }
+    })
+    .collect::<Vec<_>>();
+
+  let call_args = native_values
+    .iter()
+    .map(|native_value| native_value.as_arg())
+    .collect::<Vec<_>>();
+
+  Ok(match symbol.result_type {
+    NativeType::Void => {
+      json!(unsafe { symbol.cif.call::<()>(symbol.ptr, &call_args) })
+    }
+    NativeType::U8 => {
+      json!(unsafe { symbol.cif.call::<u8>(symbol.ptr, &call_args) })
+    }
+    NativeType::I8 => {
+      json!(unsafe { symbol.cif.call::<i8>(symbol.ptr, &call_args) })
+    }
+    NativeType::U16 => {
+      json!(unsafe { symbol.cif.call::<u16>(symbol.ptr, &call_args) })
+    }
+    NativeType::I16 => {
+      json!(unsafe { symbol.cif.call::<i16>(symbol.ptr, &call_args) })
+    }
+    NativeType::U32 => {
+      json!(unsafe { symbol.cif.call::<u32>(symbol.ptr, &call_args) })
+    }
+    NativeType::I32 => {
+      json!(unsafe { symbol.cif.call::<i32>(symbol.ptr, &call_args) })
+    }
+    NativeType::U64 => {
+      json!(unsafe { symbol.cif.call::<u64>(symbol.ptr, &call_args) })
+    }
+    NativeType::I64 => {
+      json!(unsafe { symbol.cif.call::<i64>(symbol.ptr, &call_args) })
+    }
+    NativeType::USize => {
+      json!(unsafe { symbol.cif.call::<usize>(symbol.ptr, &call_args) })
+    }
+    NativeType::ISize => {
+      json!(unsafe { symbol.cif.call::<isize>(symbol.ptr, &call_args) })
+    }
+    NativeType::F32 => {
+      json!(unsafe { symbol.cif.call::<f32>(symbol.ptr, &call_args) })
+    }
+    NativeType::F64 => {
+      json!(unsafe { symbol.cif.call::<f64>(symbol.ptr, &call_args) })
+    }
+    NativeType::String => {
+      json!(unsafe {
+        let ptr = symbol.cif.call::<*const c_char>(symbol.ptr, &call_args);
+        let cstr = CStr::from_ptr(ptr);
+        cstr.to_str().unwrap()
+      })
+    }
+    NativeType::Buffer => {
+      let ptr = unsafe { symbol.cif.call::<*const u8>(symbol.ptr, &call_args) };
+      if let Some(len) = symbol.result_length {
+        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+        json!(slice)
+      } else {
+        json!(ptr as usize)
+      }
+    }
+  })
+}

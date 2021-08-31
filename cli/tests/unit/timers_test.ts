@@ -86,11 +86,10 @@ unitTest(async function timeoutEvalNoScopeLeak() {
 unitTest(async function timeoutArgs() {
   const promise = deferred();
   const arg = 1;
+  let capturedArgs: unknown[] = [];
   setTimeout(
-    (a, b, c) => {
-      assertEquals(a, arg);
-      assertEquals(b, arg.toString());
-      assertEquals(c, [arg]);
+    function () {
+      capturedArgs = [...arguments];
       promise.resolve();
     },
     10,
@@ -99,6 +98,11 @@ unitTest(async function timeoutArgs() {
     [arg],
   );
   await promise;
+  assertEquals(capturedArgs, [
+    arg,
+    arg.toString(),
+    [arg],
+  ]);
 });
 
 unitTest(async function timeoutCancelSuccess() {
@@ -214,14 +218,16 @@ unitTest(async function fireCallbackImmediatelyWhenDelayOverMaxValue() {
 
 unitTest(async function timeoutCallbackThis() {
   const promise = deferred();
+  let capturedThis: unknown;
   const obj = {
     foo() {
-      assertEquals(this, window);
+      capturedThis = this;
       promise.resolve();
     },
   };
   setTimeout(obj.foo, 1);
   await promise;
+  assertEquals(capturedThis, window);
 });
 
 unitTest(async function timeoutBindThis() {
