@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use flaky_test::flaky_test;
 use std::io::BufRead;
 use tempfile::TempDir;
 use test_util as util;
@@ -50,15 +51,15 @@ fn wait_for_process_failed(
 #[test]
 fn fmt_watch_test() {
   let t = TempDir::new().expect("tempdir fail");
-  let fixed = util::root_path().join("cli/tests/badly_formatted_fixed.js");
+  let fixed = util::testdata_path().join("badly_formatted_fixed.js");
   let badly_formatted_original =
-    util::root_path().join("cli/tests/badly_formatted.mjs");
+    util::testdata_path().join("badly_formatted.mjs");
   let badly_formatted = t.path().join("badly_formatted.js");
   std::fs::copy(&badly_formatted_original, &badly_formatted)
     .expect("Failed to copy file");
 
   let mut child = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("fmt")
     .arg(&badly_formatted)
     .arg("--watch")
@@ -109,7 +110,7 @@ fn bundle_js_watch() {
   let t = TempDir::new().expect("tempdir fail");
   let bundle = t.path().join("mod6.bundle.js");
   let mut deno = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("bundle")
     .arg(&file_to_watch)
     .arg(&bundle)
@@ -173,7 +174,7 @@ fn bundle_watch_not_exit() {
   let target_file = t.path().join("target.js");
 
   let mut deno = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("bundle")
     .arg(&file_to_watch)
     .arg(&target_file)
@@ -216,7 +217,7 @@ fn bundle_watch_not_exit() {
   drop(t);
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn run_watch() {
   let t = TempDir::new().expect("tempdir fail");
   let file_to_watch = t.path().join("file_to_watch.js");
@@ -224,7 +225,7 @@ fn run_watch() {
     .expect("error writing file");
 
   let mut child = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg("--watch")
     .arg("--unstable")
@@ -321,6 +322,81 @@ fn run_watch() {
   drop(t);
 }
 
+#[test]
+fn run_watch_load_unload_events() {
+  let t = TempDir::new().expect("tempdir fail");
+  let file_to_watch = t.path().join("file_to_watch.js");
+  std::fs::write(
+    &file_to_watch,
+    r#"
+      setInterval(() => {}, 0);
+      window.addEventListener("load", () => {
+        console.log("load");
+      });
+
+      window.addEventListener("unload", () => {
+        console.log("unload");
+      });
+    "#,
+  )
+  .expect("error writing file");
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--unstable")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn script");
+
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut stdout_lines =
+    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+  let stderr = child.stderr.as_mut().unwrap();
+  let mut stderr_lines =
+    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+  // Wait for the first load event to fire
+  assert!(stdout_lines.next().unwrap().contains("load"));
+
+  // Change content of the file, this time without an interval to keep it alive.
+  std::fs::write(
+    &file_to_watch,
+    r#"
+      window.addEventListener("load", () => {
+        console.log("load");
+      });
+
+      window.addEventListener("unload", () => {
+        console.log("unload");
+      });
+    "#,
+  )
+  .expect("error writing file");
+
+  // Events from the file watcher is "debounced", so we need to wait for the next execution to start
+  std::thread::sleep(std::time::Duration::from_secs(1));
+
+  // Wait for the restart
+  assert!(stderr_lines.next().unwrap().contains("Restarting"));
+
+  // Confirm that the unload event was dispatched from the first run
+  assert!(stdout_lines.next().unwrap().contains("unload"));
+
+  // Followed by the load event of the second run
+  assert!(stdout_lines.next().unwrap().contains("load"));
+
+  // Which is then unloaded as there is nothing keeping it alive.
+  assert!(stdout_lines.next().unwrap().contains("unload"));
+
+  child.kill().unwrap();
+  drop(t);
+}
+
 /// Confirm that the watcher continues to work even if module resolution fails at the *first* attempt
 #[test]
 fn run_watch_not_exit() {
@@ -330,7 +406,7 @@ fn run_watch_not_exit() {
     .expect("error writing file");
 
   let mut child = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg("--watch")
     .arg("--unstable")
@@ -377,14 +453,14 @@ fn run_watch_with_import_map_and_relative_paths() {
     let absolute_path = directory.path().join(filename);
     std::fs::write(&absolute_path, filecontent).expect("error writing file");
     let relative_path = absolute_path
-      .strip_prefix(util::root_path())
+      .strip_prefix(util::testdata_path())
       .expect("unable to create relative temporary file")
       .to_owned();
     assert!(relative_path.is_relative());
     relative_path
   }
   let temp_directory =
-    TempDir::new_in(util::root_path()).expect("tempdir fail");
+    TempDir::new_in(util::testdata_path()).expect("tempdir fail");
   let file_to_watch = create_relative_tmp_file(
     &temp_directory,
     "file_to_watch.js",
@@ -397,7 +473,7 @@ fn run_watch_with_import_map_and_relative_paths() {
   );
 
   let mut child = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("run")
     .arg("--unstable")
     .arg("--watch")
@@ -427,9 +503,7 @@ fn run_watch_with_import_map_and_relative_paths() {
   temp_directory.close().unwrap();
 }
 
-// TODO(bartlomieju): flaky (https://github.com/denoland/deno/issues/10552)
-#[ignore]
-#[test]
+#[flaky_test]
 fn test_watch() {
   macro_rules! assert_contains {
         ($string:expr, $($test:expr),+) => {
@@ -443,7 +517,7 @@ fn test_watch() {
   let t = TempDir::new().expect("tempdir fail");
 
   let mut child = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("test")
     .arg("--watch")
     .arg("--unstable")
@@ -462,9 +536,10 @@ fn test_watch() {
   let mut stderr_lines =
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
+  assert_eq!(stdout_lines.next().unwrap(), "");
   assert_contains!(
     stdout_lines.next().unwrap(),
-    "No matching test modules found"
+    "0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"
   );
   wait_for_process_finished("Test", &mut stderr_lines);
 
@@ -487,6 +562,7 @@ fn test_watch() {
   )
   .expect("error writing file");
 
+  assert_eq!(stdout_lines.next().unwrap(), "");
   assert_contains!(stdout_lines.next().unwrap(), "running 1 test");
   assert_contains!(stdout_lines.next().unwrap(), "foo", "bar");
   assert_contains!(stdout_lines.next().unwrap(), "running 1 test");
@@ -596,9 +672,7 @@ fn test_watch() {
   drop(t);
 }
 
-// TODO(bartlomieju): flaky (https://github.com/denoland/deno/issues/10552)
-#[ignore]
-#[test]
+#[flaky_test]
 fn test_watch_doc() {
   macro_rules! assert_contains {
         ($string:expr, $($test:expr),+) => {
@@ -612,7 +686,7 @@ fn test_watch_doc() {
   let t = TempDir::new().expect("tempdir fail");
 
   let mut child = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("test")
     .arg("--watch")
     .arg("--doc")
@@ -631,11 +705,11 @@ fn test_watch_doc() {
   let mut stderr_lines =
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
 
+  assert_eq!(stdout_lines.next().unwrap(), "");
   assert_contains!(
     stdout_lines.next().unwrap(),
-    "No matching test modules found"
+    "0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"
   );
-
   wait_for_process_finished("Test", &mut stderr_lines);
 
   let foo_file = t.path().join("foo.ts");

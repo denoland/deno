@@ -22,7 +22,7 @@ unitTest({
   assert(device);
 
   const shaderCode = await Deno.readTextFile(
-    "cli/tests/webgpu_computepass_shader.wgsl",
+    "cli/tests/testdata/webgpu_computepass_shader.wgsl",
   );
 
   const shaderModule = device.createShaderModule({
@@ -111,7 +111,7 @@ unitTest({
   assert(device);
 
   const shaderCode = await Deno.readTextFile(
-    "cli/tests/webgpu_hellotriangle_shader.wgsl",
+    "cli/tests/testdata/webgpu_hellotriangle_shader.wgsl",
   );
 
   const shaderModule = device.createShaderModule({
@@ -194,7 +194,10 @@ unitTest({
   await outputBuffer.mapAsync(1);
   const data = new Uint8Array(outputBuffer.getMappedRange());
 
-  assertEquals(data, await Deno.readFile("cli/tests/webgpu_hellotriangle.out"));
+  assertEquals(
+    data,
+    await Deno.readFile("cli/tests/testdata/webgpu_hellotriangle.out"),
+  );
 
   outputBuffer.unmap();
 

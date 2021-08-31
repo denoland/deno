@@ -1,6 +1,0 @@
-Proxy server listening on [WILDCARD]
-Proxy request to: http://localhost:4545/test_util/std/examples/colors.ts
-Proxy request to: http://localhost:4545/test_util/std/examples/colors.ts
-Proxy request to: http://localhost:4545/test_util/std/fmt/colors.ts
-Proxy request to: http://localhost:4545/test_util/std/examples/colors.ts
-proxy-authorization: Basic dXNlcm5hbWU6cGFzc3dvcmQ=

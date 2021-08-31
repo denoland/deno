@@ -44,8 +44,6 @@ use crate::flags::DenoSubcommand;
 use crate::flags::Flags;
 use crate::fmt_errors::PrettyJsError;
 use crate::media_type::MediaType;
-use crate::module_graph::GraphBuilder;
-use crate::module_graph::Module;
 use crate::module_loader::CliModuleLoader;
 use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
@@ -61,6 +59,7 @@ use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::v8_set_flags;
+use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::permissions::Permissions;
@@ -70,16 +69,15 @@ use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use log::debug;
 use log::info;
-use std::collections::HashSet;
 use std::env;
 use std::io::Read;
 use std::io::Write;
 use std::iter::once;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
-use tools::test_runner;
 
 fn create_web_worker_callback(
   program_state: Arc<ProgramState>,
@@ -109,6 +107,7 @@ fn create_web_worker_callback(
         .log_level
         .map_or(false, |l| l == log::Level::Debug),
       unstable: program_state.flags.unstable,
+      enable_testing_features: program_state.flags.enable_testing_features,
       unsafely_ignore_certificate_errors: program_state
         .flags
         .unsafely_ignore_certificate_errors
@@ -120,6 +119,7 @@ fn create_web_worker_callback(
       create_web_worker_cb,
       js_error_create_fn: Some(js_error_create_fn),
       use_deno_namespace: args.use_deno_namespace,
+      worker_type: args.worker_type,
       maybe_inspector_server,
       runtime_version: version::deno(),
       ts_version: version::TYPESCRIPT.to_string(),
@@ -167,7 +167,7 @@ pub fn create_main_worker(
   program_state: &Arc<ProgramState>,
   main_module: ModuleSpecifier,
   permissions: Permissions,
-  enable_testing: bool,
+  maybe_op_init: Option<&dyn Fn(&mut JsRuntime)>,
 ) -> MainWorker {
   let module_loader = CliModuleLoader::new(program_state.clone());
 
@@ -193,6 +193,7 @@ pub fn create_main_worker(
       .log_level
       .map_or(false, |l| l == log::Level::Debug),
     unstable: program_state.flags.unstable,
+    enable_testing_features: program_state.flags.enable_testing_features,
     unsafely_ignore_certificate_errors: program_state
       .flags
       .unsafely_ignore_certificate_errors
@@ -242,8 +243,8 @@ pub fn create_main_worker(
     ops::errors::init(js_runtime);
     ops::runtime_compiler::init(js_runtime);
 
-    if enable_testing {
-      ops::testing::init(js_runtime);
+    if let Some(op_init) = maybe_op_init {
+      op_init(js_runtime);
     }
 
     js_runtime.sync_ops_cache();
@@ -357,8 +358,6 @@ pub fn get_types(unstable: bool) -> String {
 
   if unstable {
     types.push(crate::tsc::UNSTABLE_NS_LIB);
-    types.push(crate::tsc::DENO_NET_UNSTABLE_LIB);
-    types.push(crate::tsc::DENO_HTTP_UNSTABLE_LIB);
   }
 
   types.join("\n")
@@ -480,7 +479,7 @@ async fn install_command(
   let program_state = ProgramState::build(preload_flags).await?;
   let main_module = resolve_url_or_path(&module_url)?;
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, false);
+    create_main_worker(&program_state, main_module.clone(), permissions, None);
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module).await?;
   tools::installer::install(flags, &module_url, args, name, root, force)
@@ -544,7 +543,7 @@ async fn eval_command(
   let permissions = Permissions::from_options(&flags.clone().into());
   let program_state = ProgramState::build(flags).await?;
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, false);
+    create_main_worker(&program_state, main_module.clone(), permissions, None);
   // Create a dummy source file.
   let source_code = if print {
     format!("console.log({})", code)
@@ -790,7 +789,7 @@ async fn run_repl(
   let permissions = Permissions::from_options(&flags.clone().into());
   let program_state = ProgramState::build(flags).await?;
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, false);
+    create_main_worker(&program_state, main_module.clone(), permissions, None);
   worker.run_event_loop(false).await?;
 
   tools::repl::run(&program_state, worker, maybe_eval).await
@@ -804,7 +803,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
     &program_state.clone(),
     main_module.clone(),
     permissions,
-    false,
+    None,
   );
 
   let mut source = Vec::new();
@@ -887,29 +886,81 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
     })
   };
 
+  /// The FileWatcherModuleExecutor provides module execution with safe dispatching of life-cycle events by tracking the
+  /// state of any pending events and emitting accordingly on drop in the case of a future
+  /// cancellation.
+  struct FileWatcherModuleExecutor {
+    worker: MainWorker,
+    pending_unload: bool,
+  }
+
+  impl FileWatcherModuleExecutor {
+    pub fn new(worker: MainWorker) -> FileWatcherModuleExecutor {
+      FileWatcherModuleExecutor {
+        worker,
+        pending_unload: false,
+      }
+    }
+
+    /// Execute the given main module emitting load and unload events before and after execution
+    /// respectively.
+    pub async fn execute(
+      &mut self,
+      main_module: &ModuleSpecifier,
+    ) -> Result<(), AnyError> {
+      self.worker.execute_module(main_module).await?;
+      self.worker.execute_script(
+        &located_script_name!(),
+        "window.dispatchEvent(new Event('load'))",
+      )?;
+      self.pending_unload = true;
+
+      let result = self.worker.run_event_loop(false).await;
+      self.pending_unload = false;
+
+      if let Err(err) = result {
+        return Err(err);
+      }
+
+      self.worker.execute_script(
+        &located_script_name!(),
+        "window.dispatchEvent(new Event('unload'))",
+      )?;
+
+      Ok(())
+    }
+  }
+
+  impl Drop for FileWatcherModuleExecutor {
+    fn drop(&mut self) {
+      if self.pending_unload {
+        self
+          .worker
+          .execute_script(
+            &located_script_name!(),
+            "window.dispatchEvent(new Event('unload'))",
+          )
+          .unwrap();
+      }
+    }
+  }
+
   let operation =
     |(program_state, main_module): (Arc<ProgramState>, ModuleSpecifier)| {
       let flags = flags.clone();
       let permissions = Permissions::from_options(&flags.into());
       async move {
-        let main_module = main_module.clone();
-        let mut worker = create_main_worker(
+        // We make use an module executor guard to ensure that unload is always fired when an
+        // operation is called.
+        let mut executor = FileWatcherModuleExecutor::new(create_main_worker(
           &program_state,
           main_module.clone(),
           permissions,
-          false,
-        );
-        debug!("main_module {}", main_module);
-        worker.execute_module(&main_module).await?;
-        worker.execute_script(
-          &located_script_name!(),
-          "window.dispatchEvent(new Event('load'))",
-        )?;
-        worker.run_event_loop(false).await?;
-        worker.execute_script(
-          &located_script_name!(),
-          "window.dispatchEvent(new Event('unload'))",
-        )?;
+          None,
+        ));
+
+        executor.execute(&main_module).await?;
+
         Ok(())
       }
     };
@@ -931,7 +982,7 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
   let program_state = ProgramState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let mut worker =
-    create_main_worker(&program_state, main_module.clone(), permissions, false);
+    create_main_worker(&program_state, main_module.clone(), permissions, None);
 
   let mut maybe_coverage_collector =
     if let Some(ref coverage_dir) = program_state.coverage_dir {
@@ -997,14 +1048,14 @@ async fn coverage_command(
 async fn test_command(
   flags: Flags,
   include: Option<Vec<String>>,
+  ignore: Vec<PathBuf>,
   no_run: bool,
   doc: bool,
-  fail_fast: Option<usize>,
-  quiet: bool,
+  fail_fast: Option<NonZeroUsize>,
   allow_none: bool,
   filter: Option<String>,
   shuffle: Option<u64>,
-  concurrent_jobs: usize,
+  concurrent_jobs: NonZeroUsize,
 ) -> Result<(), AnyError> {
   if let Some(ref coverage_dir) = flags.coverage_dir {
     std::fs::create_dir_all(&coverage_dir)?;
@@ -1014,255 +1065,36 @@ async fn test_command(
     );
   }
 
-  // TODO(caspervonb) move this chunk into tools::test_runner.
-
-  let program_state = ProgramState::build(flags.clone()).await?;
-
-  let include = include.unwrap_or_else(|| vec![".".to_string()]);
-  let cwd = std::env::current_dir().expect("No current directory");
-
-  let permissions = Permissions::from_options(&flags.clone().into());
-  let lib = if flags.unstable {
-    module_graph::TypeLib::UnstableDenoWindow
-  } else {
-    module_graph::TypeLib::DenoWindow
-  };
-
   if flags.watch {
-    let handler = Arc::new(Mutex::new(FetchHandler::new(
-      &program_state,
-      Permissions::allow_all(),
-      Permissions::allow_all(),
-    )?));
-
-    let paths_to_watch: Vec<_> = include.iter().map(PathBuf::from).collect();
-
-    // TODO(caspervonb) clean this up.
-    let resolver = |changed: Option<Vec<PathBuf>>| {
-      let test_modules_result = if doc {
-        test_runner::collect_test_module_specifiers(
-          include.clone(),
-          &cwd,
-          fs_util::is_supported_ext_test,
-        )
-      } else {
-        test_runner::collect_test_module_specifiers(
-          include.clone(),
-          &cwd,
-          tools::test_runner::is_supported,
-        )
-      };
-
-      let paths_to_watch = paths_to_watch.clone();
-      let paths_to_watch_clone = paths_to_watch.clone();
-
-      let handler = handler.clone();
-      let program_state = program_state.clone();
-      let files_changed = changed.is_some();
-      async move {
-        let test_modules = test_modules_result?;
-
-        let mut paths_to_watch = paths_to_watch_clone;
-        let mut modules_to_reload = if files_changed {
-          Vec::new()
-        } else {
-          test_modules
-            .iter()
-            .filter_map(|url| deno_core::resolve_url(url.as_str()).ok())
-            .collect()
-        };
-
-        let mut builder = GraphBuilder::new(
-          handler,
-          program_state.maybe_import_map.clone(),
-          program_state.lockfile.clone(),
-        );
-        for specifier in test_modules.iter() {
-          builder.add(specifier, false).await?;
-        }
-        builder
-          .analyze_config_file(&program_state.maybe_config_file)
-          .await?;
-        let graph = builder.get_graph();
-
-        for specifier in test_modules {
-          fn get_dependencies<'a>(
-            graph: &'a module_graph::Graph,
-            module: &'a Module,
-            // This needs to be accessible to skip getting dependencies if they're already there,
-            // otherwise this will cause a stack overflow with circular dependencies
-            output: &mut HashSet<&'a ModuleSpecifier>,
-          ) -> Result<(), AnyError> {
-            for dep in module.dependencies.values() {
-              if let Some(specifier) = &dep.maybe_code {
-                if !output.contains(specifier) {
-                  output.insert(specifier);
-
-                  get_dependencies(
-                    graph,
-                    graph.get_specifier(specifier)?,
-                    output,
-                  )?;
-                }
-              }
-              if let Some(specifier) = &dep.maybe_type {
-                if !output.contains(specifier) {
-                  output.insert(specifier);
-
-                  get_dependencies(
-                    graph,
-                    graph.get_specifier(specifier)?,
-                    output,
-                  )?;
-                }
-              }
-            }
-
-            Ok(())
-          }
-
-          // This test module and all it's dependencies
-          let mut modules = HashSet::new();
-          modules.insert(&specifier);
-          get_dependencies(
-            &graph,
-            graph.get_specifier(&specifier)?,
-            &mut modules,
-          )?;
-
-          paths_to_watch.extend(
-            modules
-              .iter()
-              .filter_map(|specifier| specifier.to_file_path().ok()),
-          );
-
-          if let Some(changed) = &changed {
-            for path in changed.iter().filter_map(|path| {
-              deno_core::resolve_url_or_path(&path.to_string_lossy()).ok()
-            }) {
-              if modules.contains(&&path) {
-                modules_to_reload.push(specifier);
-                break;
-              }
-            }
-          }
-        }
-
-        Ok((paths_to_watch, modules_to_reload))
-      }
-      .map(move |result| {
-        if files_changed
-          && matches!(result, Ok((_, ref modules)) if modules.is_empty())
-        {
-          ResolutionResult::Ignore
-        } else {
-          match result {
-            Ok((paths_to_watch, modules_to_reload)) => {
-              ResolutionResult::Restart {
-                paths_to_watch,
-                result: Ok(modules_to_reload),
-              }
-            }
-            Err(e) => ResolutionResult::Restart {
-              paths_to_watch,
-              result: Err(e),
-            },
-          }
-        }
-      })
-    };
-
-    let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
-      let cwd = cwd.clone();
-      let filter = filter.clone();
-      let include = include.clone();
-      let lib = lib.clone();
-      let permissions = permissions.clone();
-      let program_state = program_state.clone();
-
-      async move {
-        let doc_modules = if doc {
-          test_runner::collect_test_module_specifiers(
-            include.clone(),
-            &cwd,
-            fs_util::is_supported_ext_test,
-          )?
-        } else {
-          Vec::new()
-        };
-
-        let doc_modules_to_reload = doc_modules
-          .iter()
-          .filter(|specifier| modules_to_reload.contains(specifier))
-          .cloned()
-          .collect();
-
-        let test_modules = test_runner::collect_test_module_specifiers(
-          include.clone(),
-          &cwd,
-          tools::test_runner::is_supported,
-        )?;
-
-        let test_modules_to_reload = test_modules
-          .iter()
-          .filter(|specifier| modules_to_reload.contains(specifier))
-          .cloned()
-          .collect();
-
-        test_runner::run_tests(
-          program_state.clone(),
-          permissions.clone(),
-          lib.clone(),
-          doc_modules_to_reload,
-          test_modules_to_reload,
-          no_run,
-          fail_fast,
-          quiet,
-          true,
-          filter.clone(),
-          shuffle,
-          concurrent_jobs,
-        )
-        .await?;
-
-        Ok(())
-      }
-    };
-
-    file_watcher::watch_func(resolver, operation, "Test").await?;
-  } else {
-    let doc_modules = if doc {
-      test_runner::collect_test_module_specifiers(
-        include.clone(),
-        &cwd,
-        fs_util::is_supported_ext_test,
-      )?
-    } else {
-      Vec::new()
-    };
-
-    let test_modules = test_runner::collect_test_module_specifiers(
-      include.clone(),
-      &cwd,
-      tools::test_runner::is_supported,
-    )?;
-
-    test_runner::run_tests(
-      program_state.clone(),
-      permissions,
-      lib,
-      doc_modules,
-      test_modules,
+    tools::test::run_tests_with_watch(
+      flags,
+      include,
+      ignore,
+      doc,
       no_run,
       fail_fast,
-      quiet,
-      allow_none,
       filter,
       shuffle,
       concurrent_jobs,
     )
     .await?;
+
+    return Ok(());
   }
+
+  tools::test::run_tests(
+    flags,
+    include,
+    ignore,
+    doc,
+    no_run,
+    fail_fast,
+    allow_none,
+    filter,
+    shuffle,
+    concurrent_jobs,
+  )
+  .await?;
 
   Ok(())
 }
@@ -1358,7 +1190,7 @@ fn get_subcommand(
       no_run,
       doc,
       fail_fast,
-      quiet,
+      ignore,
       include,
       allow_none,
       filter,
@@ -1367,10 +1199,10 @@ fn get_subcommand(
     } => test_command(
       flags,
       include,
+      ignore,
       no_run,
       doc,
       fail_fast,
-      quiet,
       allow_none,
       filter,
       shuffle,

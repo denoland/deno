@@ -16,65 +16,40 @@ cut.**
 
 ## Updating the main repo
 
-1. Create a PR that bumps versions of all crates in `extensions` and `runtime`
-   directories.
+1. Run `./tools/release/01_bump_dependency_crate_versions.ts` to increase the
+   minor versions of all crates in the `bench_util`, `core`, `ext`, and
+   `runtime` directories.
 
-To determine if you should bump a crate a minor version instead of a patch
-version, check if you can answer any of the following questions with yes:
+2. Create a PR for this change.
 
-- Did any of the crates direct dependencies have a semver breaking change? For
-  example did we update swc_ecmascript from 0.56.0 to 0.57.0, or did we update
-  rusty_v8?
-- Did the external interface of the crate change (ops or changes to
-  `window.__bootstrap` in JS code)?
+3. Make sure CI pipeline passes (DO NOT merge yet).
 
-When in doubt always do a minor bump instead of a patch. In essentially every
-release all crates will need a minor bump. Patch bumps are the exception, not
-the norm.
-
-2. Make sure CI pipeline passes.
-
-3. Publish all bumped crates to `crates.io`
+4. Run `./tools/release/02_publish_dependency_crates.ts` to publish these bumped
+   crates to `crates.io`
 
 **Make sure that `cargo` is logged on with a user that has permissions to
 publish those crates.**
 
-This is done by running `cargo publish` in each crate, because of dependencies
-between the crates, it must be done in specific order:
-
-- `deno_core` - all crates depend on `deno_core` so it must always be published
-  first
-- `bench_util`
-- crates in `extensions/` directory
-  - `deno_net`, `deno_websocket` and `deno_fetch` depend on `deno_tls`, so the
-    latter must be bumped and released first
-  - `deno_fetch`, `deno_crypto`, `deno_timers` and `deno_webstorage` depend on
-    `deno_web`, so the latter must be bumped and released first
-  - `deno_url` depends on `deno_webidl`, so the latter must be bumped and
-    released first
-  - `deno_timers` depends on `deno_url`, so the latter must be bumped and
-    released first
-  - `deno_http` depends on `deno_websocket`, so the latter must be bumped and
-    released first
-- `runtime` - this crate depends on `deno_core` and all crates in `extensions/`
-  directory
-
 If there are any problems when you publish, that require you to change the code,
-then after applying the fixes they should be commited and pushed to the PR.
+then after applying the fixes they should be committed and pushed to the PR.
 
 4. Once all crates are published merge the PR.
 
-5. Create a PR that bumps `cli` crate version and updates `Releases.md`.
+5. Run `./tools/release/03_bump_cli_version.ts` to bump the CLI version.
 
-6. Make sure CI pipeline passes.
+6. Use the output of the above command to update `Releases.md`
 
-7. Publish `cli` crate to `crates.io`
+7. Create a PR for these changes.
 
-8. Merge the PR.
+8. Make sure CI pipeline passes.
 
-9. Create a tag with the version number (with `v` prefix).
+9. Publish `cli` crate to `crates.io`
 
-10. Wait for CI pipeline on the created tag branch to pass.
+10. Merge the PR.
+
+11. Create a tag with the version number (with `v` prefix).
+
+12. Wait for CI pipeline on the created tag branch to pass.
 
 The CI pipeline will create a release draft on GitHub
 (https://github.com/denoland/deno/releases).

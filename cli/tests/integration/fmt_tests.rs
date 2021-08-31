@@ -7,33 +7,32 @@ use test_util as util;
 #[test]
 fn fmt_test() {
   let t = TempDir::new().expect("tempdir fail");
-  let fixed_js = util::root_path().join("cli/tests/badly_formatted_fixed.js");
+  let fixed_js = util::testdata_path().join("badly_formatted_fixed.js");
   let badly_formatted_original_js =
-    util::root_path().join("cli/tests/badly_formatted.mjs");
+    util::testdata_path().join("badly_formatted.mjs");
   let badly_formatted_js = t.path().join("badly_formatted.js");
   let badly_formatted_js_str = badly_formatted_js.to_str().unwrap();
   std::fs::copy(&badly_formatted_original_js, &badly_formatted_js)
     .expect("Failed to copy file");
 
-  let fixed_md = util::root_path().join("cli/tests/badly_formatted_fixed.md");
+  let fixed_md = util::testdata_path().join("badly_formatted_fixed.md");
   let badly_formatted_original_md =
-    util::root_path().join("cli/tests/badly_formatted.md");
+    util::testdata_path().join("badly_formatted.md");
   let badly_formatted_md = t.path().join("badly_formatted.md");
   let badly_formatted_md_str = badly_formatted_md.to_str().unwrap();
   std::fs::copy(&badly_formatted_original_md, &badly_formatted_md)
     .expect("Failed to copy file");
 
-  let fixed_json =
-    util::root_path().join("cli/tests/badly_formatted_fixed.json");
+  let fixed_json = util::testdata_path().join("badly_formatted_fixed.json");
   let badly_formatted_original_json =
-    util::root_path().join("cli/tests/badly_formatted.json");
+    util::testdata_path().join("badly_formatted.json");
   let badly_formatted_json = t.path().join("badly_formatted.json");
   let badly_formatted_json_str = badly_formatted_json.to_str().unwrap();
   std::fs::copy(&badly_formatted_original_json, &badly_formatted_json)
     .expect("Failed to copy file");
   // First, check formatting by ignoring the badly formatted file.
   let status = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("fmt")
     .arg(format!(
       "--ignore={},{},{}",
@@ -52,7 +51,7 @@ fn fmt_test() {
 
   // Check without ignore.
   let status = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("fmt")
     .arg("--check")
     .arg(badly_formatted_js_str)
@@ -66,7 +65,7 @@ fn fmt_test() {
 
   // Format the source file.
   let status = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("fmt")
     .arg(badly_formatted_js_str)
     .arg(badly_formatted_md_str)
@@ -91,7 +90,7 @@ fn fmt_test() {
 fn fmt_stdin_error() {
   use std::io::Write;
   let mut deno = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .arg("fmt")
     .arg("-")
     .stdin(std::process::Stdio::piped())
@@ -112,7 +111,7 @@ fn fmt_stdin_error() {
 #[test]
 fn fmt_ignore_unexplicit_files() {
   let output = util::deno_cmd()
-    .current_dir(util::root_path())
+    .current_dir(util::testdata_path())
     .env("NO_COLOR", "1")
     .arg("fmt")
     .arg("--check")

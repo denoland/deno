@@ -20,7 +20,7 @@ fn op_http_start(
   tcp_stream_rid: ResourceId,
   _: (),
 ) -> Result<ResourceId, AnyError> {
-  if let Some(resource_rc) = state
+  if let Ok(resource_rc) = state
     .resource_table
     .take::<TcpStreamResource>(tcp_stream_rid)
   {
@@ -32,7 +32,7 @@ fn op_http_start(
     return deno_http::start_http(state, tcp_stream, addr, "http");
   }
 
-  if let Some(resource_rc) = state
+  if let Ok(resource_rc) = state
     .resource_table
     .take::<TlsStreamResource>(tcp_stream_rid)
   {

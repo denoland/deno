@@ -50,6 +50,7 @@ pub struct WorkerOptions {
   pub args: Vec<String>,
   pub debug_flag: bool,
   pub unstable: bool,
+  pub enable_testing_features: bool,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store: Option<RootCertStore>,
   pub user_agent: String,
@@ -84,10 +85,12 @@ impl MainWorker {
   ) -> Self {
     // Permissions: many ops depend on this
     let unstable = options.unstable;
+    let enable_testing_features = options.enable_testing_features;
     let perm_ext = Extension::builder()
       .state(move |state| {
         state.put::<Permissions>(permissions.clone());
         state.put(ops::UnstableChecker { unstable });
+        state.put(ops::TestingFeaturesEnabled(enable_testing_features));
         Ok(())
       })
       .build();
@@ -105,6 +108,7 @@ impl MainWorker {
         None,
         None,
         options.unsafely_ignore_certificate_errors.clone(),
+        None,
       ),
       deno_websocket::init::<Permissions>(
         options.user_agent.clone(),
@@ -158,14 +162,7 @@ impl MainWorker {
     });
 
     if let Some(server) = options.maybe_inspector_server.clone() {
-      let inspector = js_runtime.inspector();
-      let session_sender = inspector.get_session_sender();
-      let deregister_rx = inspector.add_deregister_handler();
-      server.register_inspector(
-        session_sender,
-        deregister_rx,
-        main_module.to_string(),
-      );
+      server.register_inspector(main_module.to_string(), &mut js_runtime);
     }
 
     Self {
@@ -304,6 +301,7 @@ mod tests {
       args: vec![],
       debug_flag: false,
       unstable: false,
+      enable_testing_features: false,
       unsafely_ignore_certificate_errors: None,
       root_cert_store: None,
       seed: None,
@@ -329,10 +327,7 @@ mod tests {
 
   #[tokio::test]
   async fn execute_mod_esm_imports_a() {
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
-      .join("cli/tests/esm_imports_a.js");
+    let p = test_util::testdata_path().join("esm_imports_a.js");
     let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let mut worker = create_test_worker();
     let result = worker.execute_module(&module_specifier).await;
@@ -375,10 +370,7 @@ mod tests {
     // This assumes cwd is project root (an assumption made throughout the
     // tests).
     let mut worker = create_test_worker();
-    let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-      .parent()
-      .unwrap()
-      .join("cli/tests/001_hello.js");
+    let p = test_util::testdata_path().join("001_hello.js");
     let module_specifier = resolve_url_or_path(&p.to_string_lossy()).unwrap();
     let result = worker.execute_module(&module_specifier).await;
     assert!(result.is_ok());
