@@ -15,7 +15,13 @@ jobs:
         include:
           - os: macos-10.15
             job: test
+            profile: release
+          - os: macos-10.15
+            job: test
             profile: debug
+          - os: windows-2019
+            job: test
+            profile: release
           - os: windows-2019
             job: test
             profile: debug
