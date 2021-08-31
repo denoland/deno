@@ -12,6 +12,7 @@ use deno_core::op_async;
 use deno_core::op_sync;
 use deno_core::url;
 use deno_core::AsyncRefCell;
+use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::Extension;
@@ -23,7 +24,11 @@ use deno_core::ZeroCopyBuf;
 use deno_tls::create_client_config;
 use deno_tls::webpki::DNSNameRef;
 
-use http::{Method, Request, Uri};
+use http::header::HeaderName;
+use http::HeaderValue;
+use http::Method;
+use http::Request;
+use http::Uri;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -195,6 +200,7 @@ pub struct CreateArgs {
   url: String,
   protocols: String,
   cancel_handle: Option<ResourceId>,
+  headers: Option<Vec<(ByteString, ByteString)>>,
 }
 
 #[derive(Serialize)]
@@ -236,6 +242,27 @@ where
 
   if !args.protocols.is_empty() {
     request = request.header("Sec-WebSocket-Protocol", args.protocols);
+  }
+
+  if let Some(headers) = args.headers {
+    for (key, value) in headers {
+      let name = HeaderName::from_bytes(&key).unwrap();
+      let v = HeaderValue::from_bytes(&value).unwrap();
+
+      if !matches!(
+      name,
+      http::header::HOST
+        | http::header::SEC_WEBSOCKET_ACCEPT
+        | http::header::SEC_WEBSOCKET_EXTENSIONS
+        | http::header::SEC_WEBSOCKET_KEY
+        | http::header::SEC_WEBSOCKET_PROTOCOL
+        | http::header::SEC_WEBSOCKET_VERSION
+        | http::header::UPGRADE
+        | http::header::CONNECTION
+    ) {
+        request = request.header(name, v);
+      }
+    }
   }
 
   let request = request.body(())?;

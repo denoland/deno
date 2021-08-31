@@ -39,6 +39,10 @@
         key: "signal",
         converter: webidl.converters.AbortSignal,
       },
+      {
+        key: "headers",
+        converter: webidl.converters.HeadersInit,
+      },
     ],
   );
   webidl.converters.WebSocketCloseInfo = webidl.createDictionaryConverter(
@@ -156,6 +160,7 @@
               ? ArrayPrototypeJoin(options.protocols, ", ")
               : "",
             cancelHandle: cancelRid,
+            headers: options.headers,
           }),
           (create) => {
             options.signal?.[remove](abort);
