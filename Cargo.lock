@@ -2877,9 +2877,9 @@ dependencies = [
 
 [[package]]
 name = "rusty_v8"
-version = "0.26.0"
+version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ced8bcb4fdc4820792030377a71cedbde5b49b340c2174ee0ea368ef244bf8f1"
+checksum = "81fc062fb861b82fa7ac4e1a009da873279a10180d2133574e4219d870038c1c"
 dependencies = [
  "bitflags",
  "fslock",
@@ -3026,18 +3026,18 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.126"
+version = "1.0.130"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec7505abeacaec74ae4778d9d9328fe5a5d04253220a85c4ee022239fc996d03"
+checksum = "f12d06de37cf59146fbdecab66aa99f9fe4f78722e3607577a5375d66bd0c913"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.126"
+version = "1.0.130"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "963a7dbc9895aeac7ac90e74f34a5d5261828f79df35cbed41e10189d3804d43"
+checksum = "d7bc1a1ab1961464eae040d96713baa5a724a8152c1222492465b54322ec508b"
 dependencies = [
  "proc-macro2 1.0.27",
  "quote 1.0.9",
@@ -3081,9 +3081,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.9.3"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5ce7662cda194ff443bddf146c952e83075889590838cd41df768fba7d152d0"
+checksum = "ae88e9b49b6d2d7c7eae9fd270111e3728ab40b421d57cf58051ce84f9fe560f"
 dependencies = [
  "rusty_v8",
  "serde",
