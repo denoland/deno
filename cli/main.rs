@@ -493,6 +493,9 @@ async fn lint_command(
   flags: Flags,
   files: Vec<PathBuf>,
   list_rules: bool,
+  rules_tags: Option<Vec<String>>,
+  rules_include: Option<Vec<String>>,
+  rules_exclude: Option<Vec<String>>,
   ignore: Vec<PathBuf>,
   json: bool,
 ) -> Result<(), AnyError> {
@@ -509,7 +512,16 @@ async fn lint_command(
       None
     };
 
-  tools::lint::lint_files(maybe_lint_config, files, ignore, json).await
+  tools::lint::lint_files(
+    maybe_lint_config,
+    rules_tags,
+    rules_include,
+    rules_exclude,
+    files,
+    ignore,
+    json,
+  )
+  .await
 }
 
 async fn cache_command(
@@ -1189,9 +1201,22 @@ fn get_subcommand(
     DenoSubcommand::Lint {
       files,
       rules,
+      rules_tags,
+      rules_include,
+      rules_exclude,
       ignore,
       json,
-    } => lint_command(flags, files, rules, ignore, json).boxed_local(),
+    } => lint_command(
+      flags,
+      files,
+      rules,
+      rules_tags,
+      rules_include,
+      rules_exclude,
+      ignore,
+      json,
+    )
+    .boxed_local(),
     DenoSubcommand::Repl { eval } => run_repl(flags, eval).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {

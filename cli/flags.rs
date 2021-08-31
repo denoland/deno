@@ -90,6 +90,9 @@ pub enum DenoSubcommand {
     files: Vec<PathBuf>,
     ignore: Vec<PathBuf>,
     rules: bool,
+    rules_tags: Option<Vec<String>>,
+    rules_include: Option<Vec<String>>,
+    rules_exclude: Option<Vec<String>>,
     json: bool,
   },
   Repl {
@@ -952,6 +955,34 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .long("rules")
         .help("List available rules"),
     )
+    .arg(
+      Arg::with_name("rules-tags")
+        .long("rules-tags")
+        .require_equals(true)
+        .takes_value(true)
+        .use_delimiter(true)
+        .empty_values(true)
+        .conflicts_with("rules")
+        .help("Use set of rules with a tag"),
+    )
+    .arg(
+      Arg::with_name("rules-include")
+        .long("rules-include")
+        .require_equals(true)
+        .takes_value(true)
+        .use_delimiter(true)
+        .conflicts_with("rules")
+        .help("Include lint rules"),
+    )
+    .arg(
+      Arg::with_name("rules-exclude")
+        .long("rules-exclude")
+        .require_equals(true)
+        .takes_value(true)
+        .use_delimiter(true)
+        .conflicts_with("rules")
+        .help("Exclude lint rules"),
+    )
     .arg(config_arg())
     .arg(
       Arg::with_name("ignore")
@@ -1733,10 +1764,25 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None => vec![],
   };
   let rules = matches.is_present("rules");
+  let rules_tags = match matches.values_of("rules-tags") {
+    Some(f) => Some(f.map(String::from).collect()),
+    None => None,
+  };
+  let rules_include = match matches.values_of("rules-include") {
+    Some(f) => Some(f.map(String::from).collect()),
+    None => None,
+  };
+  let rules_exclude = match matches.values_of("rules-exclude") {
+    Some(f) => Some(f.map(String::from).collect()),
+    None => None,
+  };
   let json = matches.is_present("json");
   flags.subcommand = DenoSubcommand::Lint {
     files,
     rules,
+    rules_tags,
+    rules_include,
+    rules_exclude,
     ignore,
     json,
   };
@@ -2458,6 +2504,9 @@ mod tests {
             PathBuf::from("script_2.ts")
           ],
           rules: false,
+          rules_tags: None,
+          rules_include: None,
+          rules_exclude: None,
           json: false,
           ignore: vec![],
         },
@@ -2473,6 +2522,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec![],
           rules: false,
+          rules_tags: None,
+          rules_include: None,
+          rules_exclude: None,
           json: false,
           ignore: vec![
             PathBuf::from("script_1.ts"),
@@ -2490,6 +2542,32 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec![],
           rules: true,
+          rules_tags: None,
+          rules_include: None,
+          rules_exclude: None,
+          json: false,
+          ignore: vec![],
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "lint",
+      "--rules-tags=",
+      "--rules-include=ban-untagged-todo,no-undef",
+      "--rules-exclude=no-const-assign"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint {
+          files: vec![],
+          rules: false,
+          rules_tags: Some(vec![]),
+          rules_include: Some(svec!["ban-untagged-todo", "no-undef"]),
+          rules_exclude: Some(svec!["no-const-assign"]),
           json: false,
           ignore: vec![],
         },
@@ -2504,6 +2582,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec![PathBuf::from("script_1.ts")],
           rules: false,
+          rules_tags: None,
+          rules_include: None,
+          rules_exclude: None,
           json: true,
           ignore: vec![],
         },
@@ -2525,6 +2606,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec![PathBuf::from("script_1.ts")],
           rules: false,
+          rules_tags: None,
+          rules_include: None,
+          rules_exclude: None,
           json: true,
           ignore: vec![],
         },
