@@ -80,3 +80,27 @@ Deno.test("echo uint8array", async () => {
   ws.close();
   await ws.closed;
 });
+
+Deno.test("headers", async () => {
+  const promise = (async () => {
+    const listener = Deno.listen({ port: 4501 });
+    for await (const conn of listener) {
+      const httpConn = Deno.serveHttp(conn);
+      const { request, respondWith } = (await httpConn.nextRequest())!;
+      assertEquals(request.headers.get("x-some-header"), "foo");
+      const {
+        response,
+        socket,
+      } = Deno.upgradeWebSocket(request);
+      socket.onopen = () => socket.close();
+      await respondWith(response);
+      break;
+    }
+  })();
+
+  const ws = new WebSocketStream("ws://localhost:4501", {
+    headers: [["x-some-header", "foo"]],
+  });
+  await ws.closed;
+  await promise;
+});

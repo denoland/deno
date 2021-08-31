@@ -249,17 +249,18 @@ where
       let name = HeaderName::from_bytes(&key).unwrap();
       let v = HeaderValue::from_bytes(&value).unwrap();
 
-      if !matches!(
-      name,
-      http::header::HOST
-        | http::header::SEC_WEBSOCKET_ACCEPT
-        | http::header::SEC_WEBSOCKET_EXTENSIONS
-        | http::header::SEC_WEBSOCKET_KEY
-        | http::header::SEC_WEBSOCKET_PROTOCOL
-        | http::header::SEC_WEBSOCKET_VERSION
-        | http::header::UPGRADE
-        | http::header::CONNECTION
-    ) {
+      let is_diallowed_header = matches!(
+        name,
+        http::header::HOST
+          | http::header::SEC_WEBSOCKET_ACCEPT
+          | http::header::SEC_WEBSOCKET_EXTENSIONS
+          | http::header::SEC_WEBSOCKET_KEY
+          | http::header::SEC_WEBSOCKET_PROTOCOL
+          | http::header::SEC_WEBSOCKET_VERSION
+          | http::header::UPGRADE
+          | http::header::CONNECTION
+      );
+      if !is_diallowed_header {
         request = request.header(name, v);
       }
     }
