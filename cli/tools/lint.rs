@@ -45,9 +45,9 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
 
 pub async fn lint_files(
   maybe_lint_config: Option<LintConfig>,
-  rules_tags: Option<Vec<String>>,
-  rules_include: Option<Vec<String>>,
-  rules_exclude: Option<Vec<String>>,
+  rules_tags: Vec<String>,
+  rules_include: Vec<String>,
+  rules_exclude: Vec<String>,
   args: Vec<PathBuf>,
   ignore: Vec<PathBuf>,
   json: bool,
@@ -204,9 +204,9 @@ pub fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
 fn lint_file(
   file_path: PathBuf,
   maybe_lint_config: Option<&LintConfig>,
-  rules_tags: Option<Vec<String>>,
-  rules_include: Option<Vec<String>>,
-  rules_exclude: Option<Vec<String>>,
+  rules_tags: Vec<String>,
+  rules_include: Vec<String>,
+  rules_exclude: Vec<String>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
   let source_code = fs::read_to_string(&file_path)?;
@@ -234,9 +234,9 @@ fn lint_file(
 fn lint_stdin(
   json: bool,
   maybe_lint_config: Option<&LintConfig>,
-  rules_tags: Option<Vec<String>>,
-  rules_include: Option<Vec<String>>,
-  rules_exclude: Option<Vec<String>>,
+  rules_tags: Vec<String>,
+  rules_include: Vec<String>,
+  rules_exclude: Vec<String>,
 ) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
@@ -457,9 +457,9 @@ fn sort_diagnostics(diagnostics: &mut Vec<LintDiagnostic>) {
 
 fn get_configured_rules(
   maybe_lint_config: Option<&LintConfig>,
-  rules_tags: Option<Vec<String>>,
-  rules_include: Option<Vec<String>>,
-  rules_exclude: Option<Vec<String>>,
+  rules_tags: Vec<String>,
+  rules_include: Vec<String>,
+  rules_exclude: Vec<String>,
 ) -> Result<Vec<Box<dyn LintRule>>, AnyError> {
   let configured_rules = if let Some(lint_config) = maybe_lint_config {
     let mut filtered_rules = HashMap::new();

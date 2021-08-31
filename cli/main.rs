@@ -493,9 +493,9 @@ async fn lint_command(
   flags: Flags,
   files: Vec<PathBuf>,
   list_rules: bool,
-  rules_tags: Option<Vec<String>>,
-  rules_include: Option<Vec<String>>,
-  rules_exclude: Option<Vec<String>>,
+  rules_tags: Vec<String>,
+  rules_include: Vec<String>,
+  rules_exclude: Vec<String>,
   ignore: Vec<PathBuf>,
   json: bool,
 ) -> Result<(), AnyError> {

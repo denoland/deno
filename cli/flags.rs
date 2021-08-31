@@ -90,9 +90,9 @@ pub enum DenoSubcommand {
     files: Vec<PathBuf>,
     ignore: Vec<PathBuf>,
     rules: bool,
-    rules_tags: Option<Vec<String>>,
-    rules_include: Option<Vec<String>>,
-    rules_exclude: Option<Vec<String>>,
+    rules_tags: Vec<String>,
+    rules_include: Vec<String>,
+    rules_exclude: Vec<String>,
     json: bool,
   },
   Repl {
@@ -1765,16 +1765,16 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
   let rules = matches.is_present("rules");
   let rules_tags = match matches.values_of("rules-tags") {
-    Some(f) => Some(f.map(String::from).collect()),
-    None => None,
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
   };
   let rules_include = match matches.values_of("rules-include") {
-    Some(f) => Some(f.map(String::from).collect()),
-    None => None,
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
   };
   let rules_exclude = match matches.values_of("rules-exclude") {
-    Some(f) => Some(f.map(String::from).collect()),
-    None => None,
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
   };
   let json = matches.is_present("json");
   flags.subcommand = DenoSubcommand::Lint {
@@ -2504,9 +2504,9 @@ mod tests {
             PathBuf::from("script_2.ts")
           ],
           rules: false,
-          rules_tags: None,
-          rules_include: None,
-          rules_exclude: None,
+          rules_tags: vec![],
+          rules_include: vec![],
+          rules_exclude: vec![],
           json: false,
           ignore: vec![],
         },
@@ -2522,9 +2522,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec![],
           rules: false,
-          rules_tags: None,
-          rules_include: None,
-          rules_exclude: None,
+          rules_tags: vec![],
+          rules_include: vec![],
+          rules_exclude: vec![],
           json: false,
           ignore: vec![
             PathBuf::from("script_1.ts"),
@@ -2542,9 +2542,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec![],
           rules: true,
-          rules_tags: None,
-          rules_include: None,
-          rules_exclude: None,
+          rules_tags: vec![],
+          rules_include: vec![],
+          rules_exclude: vec![],
           json: false,
           ignore: vec![],
         },
@@ -2565,9 +2565,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec![],
           rules: false,
-          rules_tags: Some(vec![]),
-          rules_include: Some(svec!["ban-untagged-todo", "no-undef"]),
-          rules_exclude: Some(svec!["no-const-assign"]),
+          rules_tags: svec![""],
+          rules_include: svec!["ban-untagged-todo", "no-undef"],
+          rules_exclude: svec!["no-const-assign"],
           json: false,
           ignore: vec![],
         },
@@ -2582,9 +2582,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec![PathBuf::from("script_1.ts")],
           rules: false,
-          rules_tags: None,
-          rules_include: None,
-          rules_exclude: None,
+          rules_tags: vec![],
+          rules_include: vec![],
+          rules_exclude: vec![],
           json: true,
           ignore: vec![],
         },
@@ -2606,9 +2606,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec![PathBuf::from("script_1.ts")],
           rules: false,
-          rules_tags: None,
-          rules_include: None,
-          rules_exclude: None,
+          rules_tags: vec![],
+          rules_include: vec![],
+          rules_exclude: vec![],
           json: true,
           ignore: vec![],
         },
