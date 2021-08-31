@@ -16,7 +16,7 @@ jobs:
           - os: macos-10.15
             job: test
             profile: release
-          - os: windows-2019
+          - os: ${{ github.repository == 'denoland/deno' && 'windows-latest-xl' || 'windows-latest' }}
             job: test
             profile: release
           - os: ${{ github.repository == 'denoland/deno' && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
