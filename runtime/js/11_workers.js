@@ -284,11 +284,11 @@
       while (!this.terminated) {
         const data = await hostRecvMessage(this.#id);
         if (data === null) break;
-        let message, transfer;
+        let message, transferables;
         try {
           const v = deserializeJsMessageData(data);
           message = v[0];
-          transfer = v[1];
+          transferables = v[1];
         } catch (err) {
           const event = new MessageEvent("messageerror", {
             cancelable: false,
@@ -300,7 +300,7 @@
         const event = new MessageEvent("message", {
           cancelable: false,
           data: message,
-          ports: transfer,
+          ports: transferables.filter((t) => t instanceof MessagePort),
         });
         this.dispatchEvent(event);
       }

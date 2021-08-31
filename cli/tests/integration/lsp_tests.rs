@@ -2430,7 +2430,7 @@ fn lsp_completions_optional() {
         {
           "label": "b?",
           "kind": 5,
-          "sortText": "1",
+          "sortText": "11",
           "filterText": "b",
           "insertText": "b",
           "data": {

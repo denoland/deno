@@ -11,12 +11,14 @@ import {
 unitTest({ perms: { hrtime: false } }, async function performanceNow() {
   const resolvable = deferred();
   const start = performance.now();
+  let totalTime = 0;
   setTimeout(() => {
     const end = performance.now();
-    assert(end - start >= 10);
+    totalTime = end - start;
     resolvable.resolve();
   }, 10);
   await resolvable;
+  assert(totalTime >= 10);
 });
 
 unitTest(function performanceMark() {

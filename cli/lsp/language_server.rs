@@ -581,6 +581,8 @@ impl Inner {
       "strict": true,
       "target": "esnext",
       "useDefineForClassFields": true,
+      // TODO(@kitsonk) remove for Deno 1.15
+      "useUnknownInCatchVariables": false,
     }));
     let (maybe_config, maybe_root_uri) = {
       let config = &self.config;

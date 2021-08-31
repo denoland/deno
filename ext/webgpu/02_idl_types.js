@@ -950,6 +950,7 @@
   webidl.converters["GPUComputePipelineDescriptor"] = webidl
     .createDictionaryConverter(
       "GPUComputePipelineDescriptor",
+      dictMembersGPUObjectDescriptorBase,
       dictMembersGPUPipelineDescriptorBase,
       dictMembersGPUComputePipelineDescriptor,
     );
@@ -1422,6 +1423,7 @@
   webidl.converters["GPURenderPipelineDescriptor"] = webidl
     .createDictionaryConverter(
       "GPURenderPipelineDescriptor",
+      dictMembersGPUObjectDescriptorBase,
       dictMembersGPUPipelineDescriptorBase,
       dictMembersGPURenderPipelineDescriptor,
     );
