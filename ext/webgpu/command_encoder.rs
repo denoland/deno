@@ -8,6 +8,8 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::num::NonZeroU32;
 
+use crate::texture::GpuTextureAspect;
+
 use super::error::WebGpuResult;
 
 pub(crate) struct WebGpuCommandEncoder(
@@ -25,14 +27,6 @@ pub(crate) struct WebGpuCommandBuffer(
 impl Resource for WebGpuCommandBuffer {
   fn name(&self) -> Cow<str> {
     "webGPUCommandBuffer".into()
-  }
-}
-
-fn serialize_store_op(store_op: String) -> wgpu_core::command::StoreOp {
-  match store_op.as_str() {
-    "store" => wgpu_core::command::StoreOp::Store,
-    "discard" => wgpu_core::command::StoreOp::Clear,
-    _ => unreachable!(),
   }
 }
 
@@ -69,25 +63,45 @@ pub fn op_webgpu_create_command_encoder(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GpuRenderPassColorAttachment {
-  view: u32,
-  resolve_target: Option<u32>,
-  load_op: String,
-  load_value: Option<super::render_pass::GpuColor>,
-  store_op: Option<String>,
+  view: ResourceId,
+  resolve_target: Option<ResourceId>,
+  load_op: GpuLoadOp<super::render_pass::GpuColor>,
+  store_op: GpuStoreOp,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum GpuLoadOp<T> {
+  Load,
+  Clear(T),
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum GpuStoreOp {
+  Store,
+  Discard,
+}
+
+impl From<GpuStoreOp> for wgpu_core::command::StoreOp {
+  fn from(value: GpuStoreOp) -> wgpu_core::command::StoreOp {
+    match value {
+      GpuStoreOp::Store => wgpu_core::command::StoreOp::Store,
+      GpuStoreOp::Discard => wgpu_core::command::StoreOp::Discard,
+    }
+  }
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GpuRenderPassDepthStencilAttachment {
-  view: u32,
-  depth_load_op: String,
-  depth_load_value: Option<f32>,
-  depth_store_op: String,
-  depth_read_only: Option<bool>,
-  stencil_load_op: String,
-  stencil_load_value: Option<u32>,
-  stencil_store_op: String,
-  stencil_read_only: Option<bool>,
+  view: ResourceId,
+  depth_load_op: GpuLoadOp<f32>,
+  depth_store_op: GpuStoreOp,
+  depth_read_only: bool,
+  stencil_load_op: GpuLoadOp<u32>,
+  stencil_store_op: GpuStoreOp,
+  stencil_read_only: bool,
 }
 
 #[derive(Deserialize)]
@@ -117,43 +131,37 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
         .resource_table
         .get::<super::texture::WebGpuTextureView>(color_attachment.view)?;
 
+    let resolve_target = color_attachment
+      .resolve_target
+      .map(|rid| {
+        state
+          .resource_table
+          .get::<super::texture::WebGpuTextureView>(rid)
+      })
+      .transpose()?
+      .map(|texture| texture.0);
+
     let attachment = wgpu_core::command::RenderPassColorAttachment {
       view: texture_view_resource.0,
-      resolve_target: color_attachment
-        .resolve_target
-        .map(|rid| {
-          state
-            .resource_table
-            .get::<super::texture::WebGpuTextureView>(rid)
-        })
-        .transpose()?
-        .map(|texture| texture.0),
-      channel: match color_attachment.load_op.as_str() {
-        "load" => wgpu_core::command::PassChannel {
+      resolve_target,
+      channel: match color_attachment.load_op {
+        GpuLoadOp::Load => wgpu_core::command::PassChannel {
           load_op: wgpu_core::command::LoadOp::Load,
-          store_op: color_attachment
-            .store_op
-            .map_or(wgpu_core::command::StoreOp::Store, serialize_store_op),
+          store_op: color_attachment.store_op.into(),
           clear_value: Default::default(),
           read_only: false,
         },
-        "clear" => {
-          let color = color_attachment.load_value.unwrap();
-          wgpu_core::command::PassChannel {
-            load_op: wgpu_core::command::LoadOp::Clear,
-            store_op: color_attachment
-              .store_op
-              .map_or(wgpu_core::command::StoreOp::Store, serialize_store_op),
-            clear_value: wgpu_types::Color {
-              r: color.r,
-              g: color.g,
-              b: color.b,
-              a: color.a,
-            },
-            read_only: false,
-          }
-        }
-        _ => unreachable!(),
+        GpuLoadOp::Clear(color) => wgpu_core::command::PassChannel {
+          load_op: wgpu_core::command::LoadOp::Clear,
+          store_op: color_attachment.store_op.into(),
+          clear_value: wgpu_types::Color {
+            r: color.r,
+            g: color.g,
+            b: color.b,
+            a: color.a,
+          },
+          read_only: false,
+        },
       },
     };
 
@@ -171,35 +179,33 @@ pub fn op_webgpu_command_encoder_begin_render_pass(
     depth_stencil_attachment =
       Some(wgpu_core::command::RenderPassDepthStencilAttachment {
         view: texture_view_resource.0,
-        depth: match attachment.depth_load_op.as_str() {
-          "load" => wgpu_core::command::PassChannel {
+        depth: match attachment.depth_load_op {
+          GpuLoadOp::Load => wgpu_core::command::PassChannel {
             load_op: wgpu_core::command::LoadOp::Load,
-            store_op: serialize_store_op(attachment.depth_store_op),
+            store_op: attachment.depth_store_op.into(),
             clear_value: 0.0,
-            read_only: attachment.depth_read_only.unwrap_or(false),
+            read_only: attachment.depth_read_only,
           },
-          "clear" => wgpu_core::command::PassChannel {
+          GpuLoadOp::Clear(value) => wgpu_core::command::PassChannel {
             load_op: wgpu_core::command::LoadOp::Clear,
-            store_op: serialize_store_op(attachment.depth_store_op),
-            clear_value: attachment.depth_load_value.unwrap(),
-            read_only: attachment.depth_read_only.unwrap_or(false),
+            store_op: attachment.depth_store_op.into(),
+            clear_value: value,
+            read_only: attachment.depth_read_only,
           },
-          _ => unreachable!(),
         },
-        stencil: match attachment.stencil_load_op.as_str() {
-          "load" => wgpu_core::command::PassChannel {
+        stencil: match attachment.stencil_load_op {
+          GpuLoadOp::Load => wgpu_core::command::PassChannel {
             load_op: wgpu_core::command::LoadOp::Load,
-            store_op: serialize_store_op(attachment.stencil_store_op),
+            store_op: attachment.stencil_store_op.into(),
             clear_value: 0,
-            read_only: attachment.stencil_read_only.unwrap_or(false),
+            read_only: attachment.stencil_read_only,
           },
-          "clear" => wgpu_core::command::PassChannel {
+          GpuLoadOp::Clear(value) => wgpu_core::command::PassChannel {
             load_op: wgpu_core::command::LoadOp::Clear,
-            store_op: serialize_store_op(attachment.stencil_store_op),
-            clear_value: attachment.stencil_load_value.unwrap(),
-            read_only: attachment.stencil_read_only.unwrap_or(false),
+            store_op: attachment.stencil_store_op.into(),
+            clear_value: value,
+            read_only: attachment.stencil_read_only,
           },
-          _ => unreachable!(),
         },
       });
   }
@@ -262,9 +268,9 @@ pub fn op_webgpu_command_encoder_begin_compute_pass(
 #[serde(rename_all = "camelCase")]
 pub struct CommandEncoderCopyBufferToBufferArgs {
   command_encoder_rid: ResourceId,
-  source: u32,
+  source: ResourceId,
   source_offset: u64,
-  destination: u32,
+  destination: ResourceId,
   destination_offset: u64,
   size: u64,
 }
@@ -303,8 +309,8 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_buffer(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GpuImageCopyBuffer {
-  buffer: u32,
-  offset: Option<u64>,
+  buffer: ResourceId,
+  offset: u64,
   bytes_per_row: Option<u32>,
   rows_per_image: Option<u32>,
 }
@@ -312,18 +318,28 @@ pub struct GpuImageCopyBuffer {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GpuOrigin3D {
-  pub x: Option<u32>,
-  pub y: Option<u32>,
-  pub z: Option<u32>,
+  pub x: u32,
+  pub y: u32,
+  pub z: u32,
+}
+
+impl From<GpuOrigin3D> for wgpu_types::Origin3d {
+  fn from(origin: GpuOrigin3D) -> wgpu_types::Origin3d {
+    wgpu_types::Origin3d {
+      x: origin.x,
+      y: origin.y,
+      z: origin.z,
+    }
+  }
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GpuImageCopyTexture {
-  pub texture: u32,
-  pub mip_level: Option<u32>,
-  pub origin: Option<GpuOrigin3D>,
-  pub _aspect: Option<String>, // not yet implemented
+  pub texture: ResourceId,
+  pub mip_level: u32,
+  pub origin: GpuOrigin3D,
+  pub aspect: GpuTextureAspect,
 }
 
 #[derive(Deserialize)]
@@ -357,32 +373,22 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
   let source = wgpu_core::command::ImageCopyBuffer {
     buffer: source_buffer_resource.0,
     layout: wgpu_types::ImageDataLayout {
-      offset: args.source.offset.unwrap_or(0),
+      offset: args.source.offset,
       bytes_per_row: NonZeroU32::new(args.source.bytes_per_row.unwrap_or(0)),
       rows_per_image: NonZeroU32::new(args.source.rows_per_image.unwrap_or(0)),
     },
   };
   let destination = wgpu_core::command::ImageCopyTexture {
     texture: destination_texture_resource.0,
-    mip_level: args.destination.mip_level.unwrap_or(0),
-    origin: args
-      .destination
-      .origin
-      .map_or(Default::default(), |origin| wgpu_types::Origin3d {
-        x: origin.x.unwrap_or(0),
-        y: origin.y.unwrap_or(0),
-        z: origin.z.unwrap_or(0),
-      }),
+    mip_level: args.destination.mip_level,
+    origin: args.destination.origin.into(),
+    aspect: args.destination.aspect.into(),
   };
   gfx_ok!(command_encoder => instance.command_encoder_copy_buffer_to_texture(
     command_encoder,
     &source,
     &destination,
-    &wgpu_types::Extent3d {
-      width: args.copy_size.width.unwrap_or(1),
-      height: args.copy_size.height.unwrap_or(1),
-      depth_or_array_layers: args.copy_size.depth_or_array_layers.unwrap_or(1),
-    }
+    &args.copy_size.into()
   ))
 }
 
@@ -416,19 +422,14 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
 
   let source = wgpu_core::command::ImageCopyTexture {
     texture: source_texture_resource.0,
-    mip_level: args.source.mip_level.unwrap_or(0),
-    origin: args.source.origin.map_or(Default::default(), |origin| {
-      wgpu_types::Origin3d {
-        x: origin.x.unwrap_or(0),
-        y: origin.y.unwrap_or(0),
-        z: origin.z.unwrap_or(0),
-      }
-    }),
+    mip_level: args.source.mip_level,
+    origin: args.source.origin.into(),
+    aspect: args.source.aspect.into(),
   };
   let destination = wgpu_core::command::ImageCopyBuffer {
     buffer: destination_buffer_resource.0,
     layout: wgpu_types::ImageDataLayout {
-      offset: args.destination.offset.unwrap_or(0),
+      offset: args.destination.offset,
       bytes_per_row: NonZeroU32::new(
         args.destination.bytes_per_row.unwrap_or(0),
       ),
@@ -441,11 +442,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
     command_encoder,
     &source,
     &destination,
-    &wgpu_types::Extent3d {
-      width: args.copy_size.width.unwrap_or(1),
-      height: args.copy_size.height.unwrap_or(1),
-      depth_or_array_layers: args.copy_size.depth_or_array_layers.unwrap_or(1),
-    }
+    &args.copy_size.into()
   ))
 }
 
@@ -479,36 +476,21 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
 
   let source = wgpu_core::command::ImageCopyTexture {
     texture: source_texture_resource.0,
-    mip_level: args.source.mip_level.unwrap_or(0),
-    origin: args.source.origin.map_or(Default::default(), |origin| {
-      wgpu_types::Origin3d {
-        x: origin.x.unwrap_or(0),
-        y: origin.y.unwrap_or(0),
-        z: origin.z.unwrap_or(0),
-      }
-    }),
+    mip_level: args.source.mip_level,
+    origin: args.source.origin.into(),
+    aspect: args.source.aspect.into(),
   };
   let destination = wgpu_core::command::ImageCopyTexture {
     texture: destination_texture_resource.0,
-    mip_level: args.destination.mip_level.unwrap_or(0),
-    origin: args
-      .destination
-      .origin
-      .map_or(Default::default(), |origin| wgpu_types::Origin3d {
-        x: origin.x.unwrap_or(0),
-        y: origin.y.unwrap_or(0),
-        z: origin.z.unwrap_or(0),
-      }),
+    mip_level: args.destination.mip_level,
+    origin: args.destination.origin.into(),
+    aspect: args.destination.aspect.into(),
   };
   gfx_ok!(command_encoder => instance.command_encoder_copy_texture_to_texture(
     command_encoder,
     &source,
     &destination,
-    &wgpu_types::Extent3d {
-      width: args.copy_size.width.unwrap_or(1),
-      height: args.copy_size.height.unwrap_or(1),
-      depth_or_array_layers: args.copy_size.depth_or_array_layers.unwrap_or(1),
-    }
+    &args.copy_size.into()
   ))
 }
 
@@ -582,7 +564,7 @@ pub fn op_webgpu_command_encoder_insert_debug_marker(
 #[serde(rename_all = "camelCase")]
 pub struct CommandEncoderWriteTimestampArgs {
   command_encoder_rid: ResourceId,
-  query_set: u32,
+  query_set: ResourceId,
   query_index: u32,
 }
 
@@ -611,10 +593,10 @@ pub fn op_webgpu_command_encoder_write_timestamp(
 #[serde(rename_all = "camelCase")]
 pub struct CommandEncoderResolveQuerySetArgs {
   command_encoder_rid: ResourceId,
-  query_set: u32,
+  query_set: ResourceId,
   first_query: u32,
   query_count: u32,
-  destination: u32,
+  destination: ResourceId,
   destination_offset: u64,
 }
 

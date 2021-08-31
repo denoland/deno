@@ -837,6 +837,8 @@ impl Graph {
       "target": "esnext",
       "tsBuildInfoFile": "deno:///.tsbuildinfo",
       "useDefineForClassFields": true,
+      // TODO(@kitsonk) remove for Deno 1.15
+      "useUnknownInCatchVariables": false,
     }));
     if options.emit {
       config.merge(&json!({
@@ -997,6 +999,8 @@ impl Graph {
       "strict": true,
       "target": "esnext",
       "useDefineForClassFields": true,
+      // TODO(@kitsonk) remove for Deno 1.15
+      "useUnknownInCatchVariables": false,
     }));
     let opts = match options.bundle_type {
       BundleType::Module | BundleType::Classic => json!({

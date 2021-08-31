@@ -701,11 +701,11 @@
           imvType === "string" || imvType === "bigint" ||
           imvType === "undefined"
         ) {
-          defaultValues[member.key] = idlMemberValue;
+          defaultValues[member.key] = member.converter(idlMemberValue, {});
         } else {
           ObjectDefineProperty(defaultValues, member.key, {
             get() {
-              return member.defaultValue;
+              return member.converter(idlMemberValue, member.defaultValue);
             },
             enumerable: true,
           });

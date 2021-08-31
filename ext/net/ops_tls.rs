@@ -37,9 +37,8 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_tls::create_client_config;
-use deno_tls::rustls::internal::pemfile::certs;
-use deno_tls::rustls::internal::pemfile::pkcs8_private_keys;
-use deno_tls::rustls::internal::pemfile::rsa_private_keys;
+use deno_tls::load_certs;
+use deno_tls::load_private_keys;
 use deno_tls::rustls::Certificate;
 use deno_tls::rustls::ClientConfig;
 use deno_tls::rustls::ClientSession;
@@ -58,7 +57,6 @@ use std::cell::RefCell;
 use std::convert::From;
 use std::fs::File;
 use std::io;
-use std::io::BufRead;
 use std::io::BufReader;
 use std::io::ErrorKind;
 use std::ops::Deref;
@@ -862,56 +860,10 @@ where
   })
 }
 
-fn load_certs(reader: &mut dyn BufRead) -> Result<Vec<Certificate>, AnyError> {
-  let certs = certs(reader)
-    .map_err(|_| custom_error("InvalidData", "Unable to decode certificate"))?;
-
-  if certs.is_empty() {
-    let e = custom_error("InvalidData", "No certificates found in cert file");
-    return Err(e);
-  }
-
-  Ok(certs)
-}
-
 fn load_certs_from_file(path: &str) -> Result<Vec<Certificate>, AnyError> {
   let cert_file = File::open(path)?;
   let reader = &mut BufReader::new(cert_file);
   load_certs(reader)
-}
-
-fn key_decode_err() -> AnyError {
-  custom_error("InvalidData", "Unable to decode key")
-}
-
-fn key_not_found_err() -> AnyError {
-  custom_error("InvalidData", "No keys found in key file")
-}
-
-/// Starts with -----BEGIN RSA PRIVATE KEY-----
-fn load_rsa_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
-  let keys = rsa_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
-  Ok(keys)
-}
-
-/// Starts with -----BEGIN PRIVATE KEY-----
-fn load_pkcs8_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
-  let keys = pkcs8_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
-  Ok(keys)
-}
-
-fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
-  let mut keys = load_rsa_keys(bytes)?;
-
-  if keys.is_empty() {
-    keys = load_pkcs8_keys(bytes)?;
-  }
-
-  if keys.is_empty() {
-    return Err(key_not_found_err());
-  }
-
-  Ok(keys)
 }
 
 fn load_private_keys_from_file(
