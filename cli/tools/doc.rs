@@ -5,6 +5,7 @@ use crate::colors;
 use crate::file_fetcher::File;
 use crate::flags::Flags;
 use crate::get_types;
+use crate::import_map::ImportMap;
 use crate::media_type::MediaType;
 use crate::program_state::ProgramState;
 use crate::write_json_to_stdout;
@@ -18,6 +19,7 @@ use deno_graph::create_graph;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
+use deno_graph::source::Resolver;
 use deno_graph::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use std::path::PathBuf;
@@ -32,6 +34,30 @@ impl Loader for StubDocLoader {
     _is_dynamic: bool,
   ) -> LoadFuture {
     Box::pin(future::ready((specifier.clone(), Ok(None))))
+  }
+}
+
+#[derive(Debug)]
+struct DocResolver {
+  import_map: Option<ImportMap>,
+}
+
+impl Resolver for DocResolver {
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &ModuleSpecifier,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    if let Some(import_map) = &self.import_map {
+      return import_map
+        .resolve(specifier, referrer.as_str())
+        .map_err(AnyError::from);
+    }
+
+    let module_specifier =
+      deno_core::resolve_import(specifier, referrer.as_str())?;
+
+    Ok(module_specifier)
   }
 }
 
@@ -115,8 +141,17 @@ pub async fn print_docs(
     let mut loader = DocLoader {
       program_state: program_state.clone(),
     };
-    let graph =
-      create_graph(root_specifier.clone(), &mut loader, None, None, None).await;
+    let resolver = DocResolver {
+      import_map: program_state.maybe_import_map.clone(),
+    };
+    let graph = create_graph(
+      root_specifier.clone(),
+      &mut loader,
+      Some(&resolver),
+      None,
+      None,
+    )
+    .await;
     let doc_parser = doc::DocParser::new(graph, private);
     doc_parser.parse_with_reexports(&root_specifier)
   };
