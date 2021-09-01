@@ -12,6 +12,7 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
+use serde::Serialize;
 
 use std::cell::RefCell;
 use std::convert::TryInto;
@@ -34,10 +35,10 @@ use ring::rand::SecureRandom;
 use ring::signature::EcdsaKeyPair;
 use ring::signature::EcdsaSigningAlgorithm;
 use rsa::padding::PaddingScheme;
-use rsa::pkcs8::FromPrivateKey;
-use rsa::pkcs8::ToPrivateKey;
 use rsa::pkcs1::der::Decodable;
 use rsa::pkcs1::der::Encodable;
+use rsa::pkcs8::FromPrivateKey;
+use rsa::pkcs8::ToPrivateKey;
 use rsa::BigUint;
 use rsa::PublicKey;
 use rsa::RsaPrivateKey;
@@ -63,11 +64,16 @@ lazy_static! {
   static ref PUB_EXPONENT_2: BigUint = BigUint::from_u64(65537).unwrap();
 }
 
-const RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier = rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.1"); 
-const SHA1_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier = rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.5");
-const SHA256_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier = rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.11");
-const SHA384_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier = rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.12");
-const SHA512_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier = rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.13");
+const RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier =
+  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.1");
+const SHA1_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier =
+  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.5");
+const SHA256_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier =
+  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.11");
+const SHA384_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier =
+  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.12");
+const SHA512_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier =
+  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.13");
 
 pub fn init(maybe_seed: Option<u64>) -> Extension {
   Extension::builder()
@@ -85,6 +91,7 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       ("op_crypto_sign_key", op_async(op_crypto_sign_key)),
       ("op_crypto_verify_key", op_async(op_crypto_verify_key)),
       ("op_crypto_derive_bits", op_async(op_crypto_derive_bits)),
+      ("op_crypto_import_key", op_async(op_crypto_import_key)),
       ("op_crypto_encrypt_key", op_async(op_crypto_encrypt_key)),
       ("op_crypto_decrypt_key", op_async(op_crypto_decrypt_key)),
       ("op_crypto_subtle_digest", op_async(op_crypto_subtle_digest)),
@@ -657,7 +664,7 @@ pub struct ImportKeyArg {
   hash: Option<CryptoHash>,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportKeyResult {
   data: ZeroCopyBuf,
@@ -684,9 +691,10 @@ pub async fn op_crypto_import_key(
             .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
 
           // 2-3.
-          let pk_info = rsa::pkcs8::PrivateKeyInfo::from_der(data).map_err(|e| {
-            custom_error("DOMExceptionOperationError", e.to_string())
-          })?;
+          let pk_info =
+            rsa::pkcs8::PrivateKeyInfo::from_der(data).map_err(|e| {
+              custom_error("DOMExceptionOperationError", e.to_string())
+            })?;
 
           // 4-5.
           let alg = pk_info.algorithm.oid;
@@ -696,21 +704,13 @@ pub async fn op_crypto_import_key(
             // rsaEncryption
             RSA_ENCRYPTION_OID => None,
             // sha1WithRSAEncryption
-            SHA1_RSA_ENCRYPTION_OID => {
-              Some(CryptoHash::Sha1)
-            }
+            SHA1_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha1),
             // sha256WithRSAEncryption
-            SHA256_RSA_ENCRYPTION_OID => {
-              Some(CryptoHash::Sha256)
-            }
+            SHA256_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha256),
             // sha384WithRSAEncryption
-            SHA384_RSA_ENCRYPTION_OID => {
-              Some(CryptoHash::Sha384)
-            }
+            SHA384_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha384),
             // sha512WithRSAEncryption
-            SHA512_RSA_ENCRYPTION_OID => {
-              Some(CryptoHash::Sha512)
-            }
+            SHA512_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha512),
             _ => return Err(type_error("Unsupported algorithm".to_string())),
           };
 
@@ -724,23 +724,27 @@ pub async fn op_crypto_import_key(
 
           // 8-9.
           let private_key =
-            rsa::pkcs1::RsaPrivateKey::from_der(pk_info.private_key).map_err(|e| {
-              custom_error("DOMExceptionOperationError", e.to_string())
-            })?;
-          
+            rsa::pkcs1::RsaPrivateKey::from_der(pk_info.private_key).map_err(
+              |e| custom_error("DOMExceptionOperationError", e.to_string()),
+            )?;
+
           let bytes_consumed = private_key.encoded_len().map_err(|e| {
             // TODO(@littledivy): DataError
             custom_error("DOMExceptionOperationError", e.to_string())
           })?;
 
-          if bytes_consumed != rsa::pkcs1::der::Length::new(pk_info.private_key.len() as u16) {
+          if bytes_consumed
+            != rsa::pkcs1::der::Length::new(pk_info.private_key.len() as u16)
+          {
             // TODO(@littledivy): DataError
             return Err(type_error("Some bytes were not consumed".to_string()));
           }
 
           Ok(ImportKeyResult {
             data: pk_info.private_key.to_vec().into(),
-            public_exponent: Some(private_key.public_exponent.as_bytes().to_vec().into()),
+            public_exponent: Some(
+              private_key.public_exponent.as_bytes().to_vec().into(),
+            ),
             modulus_length: Some(private_key.modulus.as_bytes().len() * 8),
           })
         }

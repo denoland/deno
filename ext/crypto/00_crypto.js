@@ -63,6 +63,7 @@
     HmacImportParams: { hash: "HashAlgorithmIdentifier" },
     Pbkdf2Params: { hash: "HashAlgorithmIdentifier", salt: "BufferSource" },
     RsaOaepParams: { label: "BufferSource" },
+    RsaHashedImportParams: { hash: "HashAlgorithmIdentifier" },
   };
 
   const supportedAlgorithms = {
@@ -95,6 +96,7 @@
       "HMAC": null,
     },
     "importKey": {
+      "RSASSA-PKCS1-v1_5": "RsaHashedImportParams",
       "HMAC": "HmacImportParams",
       "PBKDF2": null,
     },
@@ -890,8 +892,8 @@
           return key;
         }
         case "RSASSA-PKCS1-v1_5": {
-         switch (format) {
-           case "pkcs8": {
+          switch (format) {
+            case "pkcs8": {
               // 1.
               if (
                 ArrayPrototypeFind(
@@ -907,17 +909,18 @@
               }
 
               // 2-9.
-              const { modulusLength, publicExponent, data } = await core.opAsync(
-                "op_crypto_import_key",
-                {
-                  name: "RSASSA-PKCS1-v1_5",
-                  format: "pkcs8",
-                  // Needed to perform step 7 without normalization.
-                  hash: normalizedAlgorithm.hash.name,
-                },
-                keyData,
-              );
-              
+              const { modulusLength, publicExponent, data } = await core
+                .opAsync(
+                  "op_crypto_import_key",
+                  {
+                    algorithm: "RSASSA-PKCS1-v1_5",
+                    format: "pkcs8",
+                    // Needed to perform step 7 without normalization.
+                    hash: normalizedAlgorithm.hash.name,
+                  },
+                  keyData,
+                );
+
               const handle = {};
               WeakMapPrototypeSet(KEY_STORE, handle, {
                 // PKCS#1 for RSA
@@ -941,9 +944,9 @@
               );
 
               return key;
-           }
-           default:
-             throw new DOMException("Not implemented", "NotSupportedError"); 
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
           }
         }
         // TODO(@littledivy): RSA-PSS
