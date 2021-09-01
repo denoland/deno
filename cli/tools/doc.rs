@@ -16,8 +16,12 @@ use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
+use deno_graph::create_graph;
+use deno_graph::source::LoadFuture;
+use deno_graph::ModuleSpecifier;
+use deno_graph::source::LoadResponse;
+use deno_graph::source::Loader;
 use deno_doc as doc;
-use deno_doc::parser::DocFileLoader;
 use deno_runtime::permissions::Permissions;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -26,56 +30,62 @@ use swc_ecmascript::parser::Syntax;
 
 type DocResult = Result<(Syntax, String), doc::DocError>;
 
-/// When parsing lib.deno.d.ts, only `DocParser::parse_source` is used,
-/// which never even references the loader, so this is just a stub for that scenario.
-///
-/// TODO(Liamolucko): Refactor `deno_doc` so this isn't necessary.
 struct StubDocLoader;
 
-impl DocFileLoader for StubDocLoader {
-  fn resolve(
-    &self,
-    _specifier: &str,
-    _referrer: &str,
-  ) -> Result<String, doc::DocError> {
-    unreachable!()
-  }
-
-  fn load_source_code(
-    &self,
-    _specifier: &str,
-  ) -> Pin<Box<dyn Future<Output = DocResult>>> {
-    unreachable!()
+impl Loader for StubDocLoader {
+  fn load(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    _is_dynamic: bool,
+  ) -> LoadFuture {
+    unreachable!();
   }
 }
 
-impl DocFileLoader for module_graph::Graph {
-  fn resolve(
-    &self,
-    specifier: &str,
-    referrer: &str,
-  ) -> Result<String, doc::DocError> {
-    let referrer =
-      resolve_url_or_path(referrer).expect("Expected valid specifier");
-    match self.resolve(specifier, &referrer, true) {
-      Ok(specifier) => Ok(specifier.to_string()),
-      Err(e) => Err(doc::DocError::Resolve(e.to_string())),
-    }
-  }
+// impl DocFileLoader for StubDocLoader {
+//   fn resolve(
+//     &self,
+//     _specifier: &str,
+//     _referrer: &str,
+//   ) -> Result<String, doc::DocError> {
+//     unreachable!()
+//   }
 
-  fn load_source_code(
-    &self,
-    specifier: &str,
-  ) -> Pin<Box<dyn Future<Output = DocResult>>> {
-    let specifier =
-      resolve_url_or_path(specifier).expect("Expected valid specifier");
-    let source = self.get_source(&specifier).expect("Unknown dependency");
-    let media_type =
-      self.get_media_type(&specifier).expect("Unknown media type");
-    let syntax = ast::get_syntax(&media_type);
-    async move { Ok((syntax, source)) }.boxed_local()
-  }
-}
+//   fn load_source_code(
+//     &self,
+//     _specifier: &str,
+//   ) -> Pin<Box<dyn Future<Output = DocResult>>> {
+//     unreachable!()
+//   }
+// }
+
+// impl DocFileLoader for module_graph::Graph {
+//   fn resolve(
+//     &self,
+//     specifier: &str,
+//     referrer: &str,
+//   ) -> Result<String, doc::DocError> {
+//     let referrer =
+//       resolve_url_or_path(referrer).expect("Expected valid specifier");
+//     match self.resolve(specifier, &referrer, true) {
+//       Ok(specifier) => Ok(specifier.to_string()),
+//       Err(e) => Err(doc::DocError::Resolve(e.to_string())),
+//     }
+//   }
+
+//   fn load_source_code(
+//     &self,
+//     specifier: &str,
+//   ) -> Pin<Box<dyn Future<Output = DocResult>>> {
+//     let specifier =
+//       resolve_url_or_path(specifier).expect("Expected valid specifier");
+//     let source = self.get_source(&specifier).expect("Unknown dependency");
+//     let media_type =
+//       self.get_media_type(&specifier).expect("Unknown media type");
+//     let syntax = ast::get_syntax(&media_type);
+//     async move { Ok((syntax, source)) }.boxed_local()
+//   }
+// }
 
 pub async fn print_docs(
   flags: Flags,
@@ -88,12 +98,13 @@ pub async fn print_docs(
   let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
 
   let parse_result = if source_file == "--builtin" {
-    let loader = Box::new(StubDocLoader);
-    let doc_parser = doc::DocParser::new(loader, private);
-
+    let mut loader = StubDocLoader;
+    let source_file_specifier = ModuleSpecifier::parse("deno://lib.deno.d.ts").unwrap();
+    let graph = create_graph(source_file_specifier.clone(), &mut loader, None, None, None).await;
+    let doc_parser = doc::DocParser::new(graph, private);
     let syntax = ast::get_syntax(&MediaType::Dts);
     doc_parser.parse_source(
-      "lib.deno.d.ts",
+      &source_file_specifier,
       syntax,
       get_types(flags.unstable).as_str(),
     )
