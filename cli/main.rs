@@ -40,8 +40,23 @@ mod version;
 
 use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
+use crate::flags::BundleFlags;
+use crate::flags::CacheFlags;
+use crate::flags::CompileFlags;
+use crate::flags::CompletionsFlags;
+use crate::flags::CoverageFlags;
 use crate::flags::DenoSubcommand;
+use crate::flags::DocFlags;
+use crate::flags::EvalFlags;
 use crate::flags::Flags;
+use crate::flags::FmtFlags;
+use crate::flags::InfoFlags;
+use crate::flags::InstallFlags;
+use crate::flags::LintFlags;
+use crate::flags::ReplFlags;
+use crate::flags::RunFlags;
+use crate::flags::TestFlags;
+use crate::flags::UpgradeFlags;
 use crate::fmt_errors::PrettyJsError;
 use crate::media_type::MediaType;
 use crate::module_loader::CliModuleLoader;
@@ -1127,66 +1142,70 @@ fn get_subcommand(
   flags: Flags,
 ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
   match flags.clone().subcommand {
-    DenoSubcommand::Bundle {
+    DenoSubcommand::Bundle(BundleFlags {
       source_file,
       out_file,
-    } => bundle_command(flags, source_file, out_file).boxed_local(),
-    DenoSubcommand::Doc {
+    }) => bundle_command(flags, source_file, out_file).boxed_local(),
+    DenoSubcommand::Doc(DocFlags {
       source_file,
       json,
       filter,
       private,
-    } => doc_command(flags, source_file, json, filter, private).boxed_local(),
-    DenoSubcommand::Eval { print, code, ext } => {
+    }) => doc_command(flags, source_file, json, filter, private).boxed_local(),
+    DenoSubcommand::Eval(EvalFlags { print, code, ext }) => {
       eval_command(flags, code, ext, print).boxed_local()
     }
-    DenoSubcommand::Cache { files } => {
+    DenoSubcommand::Cache(CacheFlags { files }) => {
       cache_command(flags, files).boxed_local()
     }
-    DenoSubcommand::Compile {
+    DenoSubcommand::Compile(CompileFlags {
       source_file,
       output,
       args,
       target,
-    } => {
+    }) => {
       compile_command(flags, source_file, output, args, target).boxed_local()
     }
-    DenoSubcommand::Coverage {
+    DenoSubcommand::Coverage(CoverageFlags {
       files,
       ignore,
       include,
       exclude,
       lcov,
-    } => coverage_command(flags, files, ignore, include, exclude, lcov)
+    }) => coverage_command(flags, files, ignore, include, exclude, lcov)
       .boxed_local(),
-    DenoSubcommand::Fmt {
+    DenoSubcommand::Fmt(FmtFlags {
       check,
       files,
       ignore,
       ext,
-    } => format_command(flags, files, ignore, check, ext).boxed_local(),
-    DenoSubcommand::Info { file, json } => {
+    }) => format_command(flags, files, ignore, check, ext).boxed_local(),
+    DenoSubcommand::Info(InfoFlags { file, json }) => {
       info_command(flags, file, json).boxed_local()
     }
-    DenoSubcommand::Install {
+    DenoSubcommand::Install(InstallFlags {
       module_url,
       args,
       name,
       root,
       force,
-    } => {
+    }) => {
       install_command(flags, module_url, args, name, root, force).boxed_local()
     }
     DenoSubcommand::Lsp => lsp_command().boxed_local(),
-    DenoSubcommand::Lint {
+    DenoSubcommand::Lint(LintFlags {
       files,
       rules,
       ignore,
       json,
-    } => lint_command(flags, files, rules, ignore, json).boxed_local(),
-    DenoSubcommand::Repl { eval } => run_repl(flags, eval).boxed_local(),
-    DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
-    DenoSubcommand::Test {
+    }) => lint_command(flags, files, rules, ignore, json).boxed_local(),
+    DenoSubcommand::Repl(ReplFlags { eval }) => {
+      run_repl(flags, eval).boxed_local()
+    }
+    DenoSubcommand::Run(RunFlags { script }) => {
+      run_command(flags, script).boxed_local()
+    }
+    DenoSubcommand::Test(TestFlags {
       no_run,
       doc,
       fail_fast,
@@ -1196,7 +1215,7 @@ fn get_subcommand(
       filter,
       shuffle,
       concurrent_jobs,
-    } => test_command(
+    }) => test_command(
       flags,
       include,
       ignore,
@@ -1209,7 +1228,7 @@ fn get_subcommand(
       concurrent_jobs,
     )
     .boxed_local(),
-    DenoSubcommand::Completions { buf } => {
+    DenoSubcommand::Completions(CompletionsFlags { buf }) => {
       if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
         eprintln!("{}", e);
         std::process::exit(1);
@@ -1224,14 +1243,14 @@ fn get_subcommand(
       }
       std::process::exit(0);
     }
-    DenoSubcommand::Upgrade {
+    DenoSubcommand::Upgrade(UpgradeFlags {
       force,
       dry_run,
       canary,
       version,
       output,
       ca_file,
-    } => tools::upgrade::upgrade_command(
+    }) => tools::upgrade::upgrade_command(
       dry_run, force, canary, version, output, ca_file,
     )
     .boxed_local(),
