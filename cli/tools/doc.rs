@@ -55,8 +55,8 @@ impl Loader for DocLoader {
         .map(|file| {
           Some(LoadResponse {
             specifier: specifier.clone(),
-            maybe_headers: None,
             content: Arc::new(file.source),
+            maybe_headers: file.maybe_headers,
           })
         });
       (specifier.clone(), result)
@@ -106,6 +106,7 @@ pub async fn print_docs(
       media_type: MediaType::TypeScript,
       source: format!("export * from \"{}\";", module_specifier),
       specifier: root_specifier.clone(),
+      maybe_headers: None,
     };
 
     // Save our fake file into file fetcher cache.
