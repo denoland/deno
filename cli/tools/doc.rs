@@ -58,8 +58,7 @@ impl Loader for DocLoader {
             maybe_headers: None,
             content: Arc::new(file.source),
           })
-        })
-        .map_err(|err| err.into());
+        });
       (specifier.clone(), result)
     }
     .boxed_local()

@@ -278,8 +278,13 @@ pub fn format_diagnostic(
 ) -> String {
   let mut lines = vec![];
 
-  for i in range.start.line_index..=range.end.line_index {
-    lines.push(source_lines[i].to_string());
+  for (i, line) in source_lines
+    .iter()
+    .enumerate()
+    .take(range.end.line_index + 1)
+    .skip(range.start.line_index)
+  {
+    lines.push(line.to_string());
     if range.start.line_index == range.end.line_index {
       lines.push(format!(
         "{}{}",
@@ -289,7 +294,7 @@ pub fn format_diagnostic(
         )
       ));
     } else {
-      let line_len = source_lines[i].len();
+      let line_len = line.len();
       if range.start.line_index == i {
         lines.push(format!(
           "{}{}",
