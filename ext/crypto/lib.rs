@@ -614,6 +614,43 @@ pub async fn op_crypto_export_key(
         _ => unreachable!(),
       }
     }
+    Algorithm::RsaOaep => {
+      match args.format {
+        KeyFormat::Pkcs8 => {
+          // Intentionally unused but required. Not encoded into PKCS#8 (see below).
+          let _hash = args
+            .hash
+            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
+
+          // private_key is a PKCS#1 DER-encoded private key
+          let private_key = &args.key.data;
+
+          // version is 0 when publickey is None
+
+          let pk_info = rsa::pkcs8::PrivateKeyInfo {
+            attributes: None,
+            public_key: None,
+            algorithm: rsa::pkcs8::AlgorithmIdentifier {
+              // Spec wants the OID to be id-RSAES-OAEP (1.2.840.113549.1.1.10) but ring and RSA crate do not support it.
+              // Instead, we use rsaEncryption (1.2.840.113549.1.1.1) as specified in RFC 3447.
+              // Chromium and Firefox also use rsaEncryption (1.2.840.113549.1.1.1) and do not support id-RSAES-OAEP.
+
+              // parameters are set to NULL opposed to what spec wants (see above)
+              oid: rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.1"),
+              // parameters field should not be ommited (None).
+              // It MUST have ASN.1 type NULL as per defined in RFC 3279 Section 2.3.1
+              parameters: Some(asn1::Any::from(asn1::Null)),
+            },
+            private_key,
+          };
+
+          Ok(pk_info.to_der().as_ref().to_vec().into())
+        }
+        // TODO(@littledivy): spki
+        // TODO(@littledivy): jwk
+        _ => unreachable!(),
+      }
+    }
     _ => Err(type_error("Unsupported algorithm".to_string())),
   }
 }
