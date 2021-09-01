@@ -295,9 +295,9 @@ impl ParsedModule {
     &self.text
   }
 
-  /// Gets the module's parsed module.
-  pub fn module(&self) -> &ParsedModule {
-    &self.parsed_module
+  /// Gets the module's swc module.
+  pub fn module(&self) -> &Module {
+    &self.module
   }
 
   /// Gets the module's comments.

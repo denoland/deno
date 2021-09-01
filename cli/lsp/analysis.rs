@@ -1106,7 +1106,7 @@ pub fn analyze_dependency_ranges(
 ) -> Result<DependencyRanges, AnyError> {
   let mut collector = DependencyRangeCollector::new(parsed_module);
   parsed_module
-    .module
+    .module()
     .visit_with(&swc_ast::Invalid { span: DUMMY_SP }, &mut collector);
   Ok(collector.take())
 }

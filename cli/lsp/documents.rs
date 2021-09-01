@@ -558,7 +558,7 @@ mod tests {
       specifier.clone(),
       1,
       "rust".parse().unwrap(),
-      "pub mod a;",
+      "pub mod a;".to_string(),
     );
     assert!(!document_cache.is_diagnosable(&specifier));
     let specifier =
