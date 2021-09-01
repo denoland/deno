@@ -105,27 +105,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "asn1"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9c13a3c9cd71e1799fc16511efe36d0281b60bce3b32b4b211156a7b1925bfd"
-dependencies = [
- "asn1_derive",
- "chrono",
-]
-
-[[package]]
-name = "asn1_derive"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62fc4b7f90b9540f1719f333e3ed85100ea072035d690000d7c01252ecdff096"
-dependencies = [
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.65",
-]
-
-[[package]]
 name = "ast_node"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -718,7 +697,6 @@ dependencies = [
 name = "deno_crypto"
 version = "0.30.0"
 dependencies = [
- "asn1",
  "deno_core",
  "deno_web",
  "lazy_static",
