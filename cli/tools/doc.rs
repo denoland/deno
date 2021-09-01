@@ -6,29 +6,22 @@ use crate::file_fetcher::File;
 use crate::flags::Flags;
 use crate::get_types;
 use crate::media_type::MediaType;
-use crate::module_graph;
 use crate::program_state::ProgramState;
-use crate::specifier_handler::FetchHandler;
 use crate::write_json_to_stdout;
 use crate::write_to_stdout_ignore_sigpipe;
 use deno_core::error::AnyError;
+use deno_core::futures::future;
 use deno_core::futures::future::FutureExt;
-use deno_core::futures::Future;
-use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
+use deno_doc as doc;
 use deno_graph::create_graph;
 use deno_graph::source::LoadFuture;
-use deno_graph::ModuleSpecifier;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
-use deno_doc as doc;
+use deno_graph::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::sync::Arc;
-use swc_ecmascript::parser::Syntax;
-
-type DocResult = Result<(Syntax, String), doc::DocError>;
 
 struct StubDocLoader;
 
@@ -38,54 +31,40 @@ impl Loader for StubDocLoader {
     specifier: &ModuleSpecifier,
     _is_dynamic: bool,
   ) -> LoadFuture {
-    unreachable!();
+    Box::pin(future::ready((specifier.clone(), Ok(None))))
   }
 }
 
-// impl DocFileLoader for StubDocLoader {
-//   fn resolve(
-//     &self,
-//     _specifier: &str,
-//     _referrer: &str,
-//   ) -> Result<String, doc::DocError> {
-//     unreachable!()
-//   }
+struct DocLoader {
+  program_state: Arc<ProgramState>,
+}
 
-//   fn load_source_code(
-//     &self,
-//     _specifier: &str,
-//   ) -> Pin<Box<dyn Future<Output = DocResult>>> {
-//     unreachable!()
-//   }
-// }
-
-// impl DocFileLoader for module_graph::Graph {
-//   fn resolve(
-//     &self,
-//     specifier: &str,
-//     referrer: &str,
-//   ) -> Result<String, doc::DocError> {
-//     let referrer =
-//       resolve_url_or_path(referrer).expect("Expected valid specifier");
-//     match self.resolve(specifier, &referrer, true) {
-//       Ok(specifier) => Ok(specifier.to_string()),
-//       Err(e) => Err(doc::DocError::Resolve(e.to_string())),
-//     }
-//   }
-
-//   fn load_source_code(
-//     &self,
-//     specifier: &str,
-//   ) -> Pin<Box<dyn Future<Output = DocResult>>> {
-//     let specifier =
-//       resolve_url_or_path(specifier).expect("Expected valid specifier");
-//     let source = self.get_source(&specifier).expect("Unknown dependency");
-//     let media_type =
-//       self.get_media_type(&specifier).expect("Unknown media type");
-//     let syntax = ast::get_syntax(&media_type);
-//     async move { Ok((syntax, source)) }.boxed_local()
-//   }
-// }
+impl Loader for DocLoader {
+  fn load(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    _is_dynamic: bool,
+  ) -> LoadFuture {
+    let specifier = specifier.clone();
+    let program_state = self.program_state.clone();
+    async move {
+      let result = program_state
+        .file_fetcher
+        .fetch(&specifier, &mut Permissions::allow_all())
+        .await
+        .map(|file| {
+          Some(LoadResponse {
+            specifier: specifier.clone(),
+            maybe_headers: None,
+            content: Arc::new(file.source),
+          })
+        })
+        .map_err(|err| err.into());
+      (specifier.clone(), result)
+    }
+    .boxed_local()
+  }
+}
 
 pub async fn print_docs(
   flags: Flags,
@@ -99,8 +78,16 @@ pub async fn print_docs(
 
   let parse_result = if source_file == "--builtin" {
     let mut loader = StubDocLoader;
-    let source_file_specifier = ModuleSpecifier::parse("deno://lib.deno.d.ts").unwrap();
-    let graph = create_graph(source_file_specifier.clone(), &mut loader, None, None, None).await;
+    let source_file_specifier =
+      ModuleSpecifier::parse("deno://lib.deno.d.ts").unwrap();
+    let graph = create_graph(
+      source_file_specifier.clone(),
+      &mut loader,
+      None,
+      None,
+      None,
+    )
+    .await;
     let doc_parser = doc::DocParser::new(graph, private);
     let syntax = ast::get_syntax(&MediaType::Dts);
     doc_parser.parse_source(
@@ -125,26 +112,13 @@ pub async fn print_docs(
     // Save our fake file into file fetcher cache.
     program_state.file_fetcher.insert_cached(root);
 
-    let handler = Arc::new(Mutex::new(FetchHandler::new(
-      &program_state,
-      Permissions::allow_all(),
-      Permissions::allow_all(),
-    )?));
-    let mut builder = module_graph::GraphBuilder::new(
-      handler,
-      program_state.maybe_import_map.clone(),
-      program_state.lockfile.clone(),
-    );
-    builder.add(&root_specifier, false).await?;
-    builder
-      .analyze_config_file(&program_state.maybe_config_file)
-      .await?;
-    let graph = builder.get_graph();
-
-    let doc_parser = doc::DocParser::new(Box::new(graph), private);
-    doc_parser
-      .parse_with_reexports(root_specifier.as_str())
-      .await
+    let mut loader = DocLoader {
+      program_state: program_state.clone(),
+    };
+    let graph =
+      create_graph(root_specifier.clone(), &mut loader, None, None, None).await;
+    let doc_parser = doc::DocParser::new(graph, private);
+    doc_parser.parse_with_reexports(&root_specifier)
   };
 
   let mut doc_nodes = match parse_result {
