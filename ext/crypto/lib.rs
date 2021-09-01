@@ -36,6 +36,8 @@ use ring::signature::EcdsaSigningAlgorithm;
 use rsa::padding::PaddingScheme;
 use rsa::pkcs8::FromPrivateKey;
 use rsa::pkcs8::ToPrivateKey;
+use rsa::pkcs1::der::Decodable;
+use rsa::pkcs1::der::Encodable;
 use rsa::BigUint;
 use rsa::PublicKey;
 use rsa::RsaPrivateKey;
@@ -60,6 +62,12 @@ lazy_static! {
   static ref PUB_EXPONENT_1: BigUint = BigUint::from_u64(3).unwrap();
   static ref PUB_EXPONENT_2: BigUint = BigUint::from_u64(65537).unwrap();
 }
+
+const RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier = rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.1"); 
+const SHA1_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier = rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.5");
+const SHA256_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier = rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.11");
+const SHA384_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier = rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.12");
+const SHA512_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier = rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.13");
 
 pub fn init(maybe_seed: Option<u64>) -> Extension {
   Extension::builder()
@@ -635,6 +643,111 @@ pub async fn op_crypto_encrypt_key(
           })?
           .into(),
       )
+    }
+    _ => Err(type_error("Unsupported algorithm".to_string())),
+  }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportKeyArg {
+  algorithm: Algorithm,
+  format: KeyFormat,
+  // RSASSA-PKCS1-v1_5
+  hash: Option<CryptoHash>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportKeyResult {
+  data: ZeroCopyBuf,
+  // RSASSA-PKCS1-v1_5
+  public_exponent: Option<ZeroCopyBuf>,
+  modulus_length: Option<usize>,
+}
+
+pub async fn op_crypto_import_key(
+  _state: Rc<RefCell<OpState>>,
+  args: ImportKeyArg,
+  zero_copy: Option<ZeroCopyBuf>,
+) -> Result<ImportKeyResult, AnyError> {
+  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
+  let data = &*zero_copy;
+  let algorithm = args.algorithm;
+
+  match algorithm {
+    Algorithm::RsassaPkcs1v15 => {
+      match args.format {
+        KeyFormat::Pkcs8 => {
+          let hash = args
+            .hash
+            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
+
+          // 2-3.
+          let pk_info = rsa::pkcs8::PrivateKeyInfo::from_der(data).map_err(|e| {
+            custom_error("DOMExceptionOperationError", e.to_string())
+          })?;
+
+          // 4-5.
+          let alg = pk_info.algorithm.oid;
+
+          // 6.
+          let pk_hash = match alg {
+            // rsaEncryption
+            RSA_ENCRYPTION_OID => None,
+            // sha1WithRSAEncryption
+            SHA1_RSA_ENCRYPTION_OID => {
+              Some(CryptoHash::Sha1)
+            }
+            // sha256WithRSAEncryption
+            SHA256_RSA_ENCRYPTION_OID => {
+              Some(CryptoHash::Sha256)
+            }
+            // sha384WithRSAEncryption
+            SHA384_RSA_ENCRYPTION_OID => {
+              Some(CryptoHash::Sha384)
+            }
+            // sha512WithRSAEncryption
+            SHA512_RSA_ENCRYPTION_OID => {
+              Some(CryptoHash::Sha512)
+            }
+            _ => return Err(type_error("Unsupported algorithm".to_string())),
+          };
+
+          // 7.
+          if let Some(pk_hash) = pk_hash {
+            if pk_hash != hash {
+              // TODO(@littledivy): DataError
+              return Err(type_error("Hash mismatch".to_string()));
+            }
+          }
+
+          // 8-9.
+          let private_key =
+            rsa::pkcs1::RsaPrivateKey::from_der(pk_info.private_key).map_err(|e| {
+              custom_error("DOMExceptionOperationError", e.to_string())
+            })?;
+          
+          let bytes_consumed = private_key.encoded_len().map_err(|e| {
+            // TODO(@littledivy): DataError
+            custom_error("DOMExceptionOperationError", e.to_string())
+          })?;
+
+          if bytes_consumed != rsa::pkcs1::der::Length::new(pk_info.private_key.len() as u16) {
+            // TODO(@littledivy): DataError
+            return Err(type_error("Some bytes were not consumed".to_string()));
+          }
+
+          Ok(ImportKeyResult {
+            data: pk_info.private_key.to_vec().into(),
+            public_exponent: Some(private_key.public_exponent.as_bytes().to_vec().into()),
+            modulus_length: Some(private_key.modulus.as_bytes().len() * 8),
+          })
+        }
+        // TODO(@littledivy): spki
+        // TODO(@littledivy): jwk
+        _ => Err(type_error("Unsupported format".to_string())),
+      }
     }
     _ => Err(type_error("Unsupported algorithm".to_string())),
   }
