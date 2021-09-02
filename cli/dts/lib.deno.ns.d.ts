@@ -54,7 +54,7 @@ declare interface PerformanceMeasureOptions {
   detail?: any;
 
   /** Timestamp to be used as the start time or string to be used as start
-   * mark.*/
+   * mark. */
   start?: string | number;
 
   /** Duration between the start and end times. */
@@ -121,7 +121,7 @@ declare namespace Deno {
      * `only` set to true and fail the test suite. */
     only?: boolean;
     /** Check that the number of async completed ops after the test is the same
-     * as number of dispatched ops. Defaults to true.*/
+     * as number of dispatched ops. Defaults to true. */
     sanitizeOps?: boolean;
     /** Ensure the test case does not "leak" resources - ie. the resource table
      * after the test has exactly the same contents as before the test. Defaults
@@ -183,7 +183,7 @@ declare namespace Deno {
    *   assertEquals(decoder.decode(data), "Hello world");
    * });
    * ```
-   * */
+   */
   export function test(name: string, fn: () => void | Promise<void>): void;
 
   /** Exit the Deno process with optional exit code. If no exit code is supplied
@@ -295,7 +295,6 @@ declare namespace Deno {
   export function linkSync(oldpath: string, newpath: string): void;
 
   /**
-   *
    * Creates `newpath` as a hard link to `oldpath`.
    *
    * ```ts
@@ -866,7 +865,7 @@ declare namespace Deno {
      * any write calls on it will overwrite its contents, by default without
      * truncating it. */
     write?: boolean;
-    /**Sets the option for the append mode. This option, when `true`, means that
+    /** Sets the option for the append mode. This option, when `true`, means that
      * writes will append to a file instead of overwriting previous contents.
      * Note that setting `{ write: true, append: true }` has the same effect as
      * setting only `{ append: true }`. */
@@ -901,7 +900,6 @@ declare namespace Deno {
   }
 
   /**
-   *
    *  Check if a given resource id (`rid`) is a TTY.
    *
    * ```ts
@@ -1536,7 +1534,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission for the target path.
    * Also requires `allow-read` permission for the CWD if the target path is
-   * relative.*/
+   * relative. */
   export function realPathSync(path: string | URL): string;
 
   /** Resolves to the absolute normalized path, with symbolic links resolved.
@@ -1552,7 +1550,7 @@ declare namespace Deno {
    *
    * Requires `allow-read` permission for the target path.
    * Also requires `allow-read` permission for the CWD if the target path is
-   * relative.*/
+   * relative. */
   export function realPath(path: string | URL): Promise<string>;
 
   export interface DirEntry {
@@ -1914,7 +1912,7 @@ declare namespace Deno {
    *    console.log(">>>> event", event);
    *    // { kind: "create", paths: [ "/foo.txt" ] }
    * }
-   *```
+   * ```
    *
    * Requires `allow-read` permission.
    *
@@ -1968,7 +1966,7 @@ declare namespace Deno {
      * ]);
      * p.close();
      * ```
-     **/
+     */
     status(): Promise<ProcessStatus>;
     /** Buffer the stdout until EOF and return it as `Uint8Array`.
      *
