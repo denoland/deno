@@ -13,6 +13,7 @@ use crate::diff::diff;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
 use crate::fs_util::{collect_files, get_extension, is_supported_ext_fmt};
+use crate::media_type::MediaType;
 use crate::text_encoding;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -168,6 +169,7 @@ pub fn format_file(
 pub fn format_parsed_module(parsed_module: &ParsedModule) -> String {
   dprint_plugin_typescript::format_parsed_file(
     &dprint_plugin_typescript::SourceFileInfo {
+      is_jsx: matches!(parsed_module.media_type(), MediaType::Jsx | MediaType::Tsx),
       info: parsed_module.text().info(),
       leading_comments: parsed_module.comments().leading_map(),
       trailing_comments: parsed_module.comments().trailing_map(),

@@ -73,6 +73,7 @@ log = { version = "0.4.14", features = ["serde"] }
 lspower = "1.1.0"
 notify = "5.0.0-pre.10"
 num_cpus = "1.13.0"
+once_cell = "1.8.0"
 percent-encoding = "2.1.0"
 pin-project = "1.0.7"
 rand = { version = "0.8.4", features = ["small_rng"] }
@@ -84,6 +85,7 @@ semver-parser = "0.10.2"
 serde = { version = "1.0.126", features = ["derive"] }
 shell-escape = "0.1.5"
 sourcemap = "6.0.1"
+swc_ast_view = { version = "0.33.1", package = "dprint-swc-ecma-ast-view" }
 swc_bundler = "0.56.0"
 swc_common = { version = "0.11.9", features = ["sourcemap"] }
 swc_ecmascript = { version = "0.60.0", features = ["codegen", "dep_graph", "parser", "proposal", "react", "transforms", "typescript", "visit"] }
