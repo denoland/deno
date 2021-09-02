@@ -2850,7 +2850,7 @@
   /**
    * @template W
    * @param {WritableStream<W>} stream
-   * */
+   */
   function writableStreamMarkFirstWriteRequestInFlight(stream) {
     assert(stream[_inFlightWriteRequest] === undefined);
     assert(stream[_writeRequests].length);
@@ -3765,7 +3765,6 @@
     [_writable];
 
     /**
-     *
      * @param {Transformer<I, O>} transformer
      * @param {QueuingStrategy<I>} writableStrategy
      * @param {QueuingStrategy<O>} readableStrategy

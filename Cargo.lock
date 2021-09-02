@@ -1034,9 +1034,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-core"
-version = "0.44.0"
+version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58e8b33392ddbb25277c26d9af64f84d1dd661d3a98aeead9abb114854550ad2"
+checksum = "c5f145afa493cba0217d2c52e256e7626730b8ed97c9db4e20e0db8c242458ca"
 dependencies = [
  "bumpalo",
  "fnv",
@@ -1045,9 +1045,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-json"
-version = "0.12.3"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2af0c28f3fa7dcc4bfa0f6d88bd55e2cf13e3137e2038952a356a3a78698991"
+checksum = "4a32a4eef2c639055370f16a359f0278025058e63193f0ad2340f30bf7ca8361"
 dependencies = [
  "dprint-core",
  "jsonc-parser",
@@ -1056,9 +1056,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-markdown"
-version = "0.9.6"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fdd7aeda8d9feccc49f178bf246fff6746afee584870c49ee4c4bd890cfb5da8"
+checksum = "48b364aed2db4ccf8747dc1d9c7eb52a5e981a705c7aadfddd297fc4c3310772"
 dependencies = [
  "dprint-core",
  "pulldown-cmark",
@@ -1068,9 +1068,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.53.0"
+version = "0.54.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63674b5e577e3244436463aa8ab59947aba0a3d5b4de6d181c6bd7a3e190b336"
+checksum = "2249bbc5f46daecd4de4157cec4c4a118724024a213bea8a53ac693047959291"
 dependencies = [
  "dprint-core",
  "dprint-swc-ecma-ast-view",
