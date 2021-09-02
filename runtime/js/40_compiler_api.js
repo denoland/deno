@@ -76,7 +76,7 @@
   function emitBundle(rootSpecifier, options = {}) {
     util.log(`Deno.emit`, { rootSpecifier });
     if (!rootSpecifier) {
-      return Promise.reject(
+      return PromiseReject(
         new TypeError("A root specifier must be supplied."),
       );
     }
