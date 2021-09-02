@@ -120,12 +120,12 @@ impl Reference {
 fn as_lsp_range(range: &deno_lint::diagnostic::Range) -> Range {
   Range {
     start: Position {
-      line: (range.start.line - 1) as u32,
-      character: range.start.col as u32,
+      line: range.start.line_index as u32,
+      character: range.start.column_index as u32,
     },
     end: Position {
-      line: (range.end.line - 1) as u32,
-      character: range.end.col as u32,
+      line: range.end.line_index as u32,
+      character: range.end.column_index as u32,
     },
   }
 }
@@ -1172,13 +1172,13 @@ mod tests {
   fn test_as_lsp_range() {
     let fixture = deno_lint::diagnostic::Range {
       start: deno_lint::diagnostic::Position {
-        line: 1,
-        col: 2,
+        line_index: 0,
+        column_index: 2,
         byte_pos: 23,
       },
       end: deno_lint::diagnostic::Position {
-        line: 2,
-        col: 0,
+        line_index: 1,
+        column_index: 0,
         byte_pos: 33,
       },
     };

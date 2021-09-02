@@ -358,8 +358,6 @@ pub fn get_types(unstable: bool) -> String {
 
   if unstable {
     types.push(crate::tsc::UNSTABLE_NS_LIB);
-    types.push(crate::tsc::DENO_NET_UNSTABLE_LIB);
-    types.push(crate::tsc::DENO_HTTP_UNSTABLE_LIB);
   }
 
   types.join("\n")
@@ -568,6 +566,7 @@ async fn eval_command(
     },
     source: String::from_utf8(source_code)?,
     specifier: main_module.clone(),
+    maybe_headers: None,
   };
 
   // Save our fake file into file fetcher cache
@@ -817,6 +816,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
     media_type: MediaType::TypeScript,
     source: String::from_utf8(source)?,
     specifier: main_module.clone(),
+    maybe_headers: None,
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler

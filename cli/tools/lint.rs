@@ -239,8 +239,9 @@ impl LintReporter for PrettyLintReporter {
       d.hint.as_ref(),
       &fmt_errors::format_location(&JsStackFrame::from_location(
         Some(d.filename.clone()),
-        Some(d.range.start.line as i64),
-        Some(d.range.start.col as i64),
+        Some(d.range.start.line_index as i64 + 1), // 1-indexed
+        // todo(#11111): make 1-indexed as well
+        Some(d.range.start.column_index as i64),
       )),
     );
 
@@ -277,24 +278,32 @@ pub fn format_diagnostic(
 ) -> String {
   let mut lines = vec![];
 
-  for i in range.start.line..=range.end.line {
-    lines.push(source_lines[i - 1].to_string());
-    if range.start.line == range.end.line {
+  for (i, line) in source_lines
+    .iter()
+    .enumerate()
+    .take(range.end.line_index + 1)
+    .skip(range.start.line_index)
+  {
+    lines.push(line.to_string());
+    if range.start.line_index == range.end.line_index {
       lines.push(format!(
         "{}{}",
-        " ".repeat(range.start.col),
-        colors::red(&"^".repeat(range.end.col - range.start.col))
+        " ".repeat(range.start.column_index),
+        colors::red(
+          &"^".repeat(range.end.column_index - range.start.column_index)
+        )
       ));
     } else {
-      let line_len = source_lines[i - 1].len();
-      if range.start.line == i {
+      let line_len = line.len();
+      if range.start.line_index == i {
         lines.push(format!(
           "{}{}",
-          " ".repeat(range.start.col),
-          colors::red(&"^".repeat(line_len - range.start.col))
+          " ".repeat(range.start.column_index),
+          colors::red(&"^".repeat(line_len - range.start.column_index))
         ));
-      } else if range.end.line == i {
-        lines.push(colors::red(&"^".repeat(range.end.col)).to_string());
+      } else if range.end.line_index == i {
+        lines
+          .push(colors::red(&"^".repeat(range.end.column_index)).to_string());
       } else if line_len != 0 {
         lines.push(colors::red(&"^".repeat(line_len)).to_string());
       }
@@ -363,9 +372,12 @@ fn sort_diagnostics(diagnostics: &mut Vec<LintDiagnostic>) {
     let file_order = a.filename.cmp(&b.filename);
     match file_order {
       Ordering::Equal => {
-        let line_order = a.range.start.line.cmp(&b.range.start.line);
+        let line_order =
+          a.range.start.line_index.cmp(&b.range.start.line_index);
         match line_order {
-          Ordering::Equal => a.range.start.col.cmp(&b.range.start.col),
+          Ordering::Equal => {
+            a.range.start.column_index.cmp(&b.range.start.column_index)
+          }
           _ => line_order,
         }
       }
