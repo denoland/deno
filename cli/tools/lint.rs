@@ -23,7 +23,6 @@ use deno_lint::rules::LintRule;
 use log::debug;
 use log::info;
 use serde::Serialize;
-use std::collections::HashMap;
 use std::fs;
 use std::io::{stdin, Read};
 use std::path::PathBuf;
@@ -510,43 +509,11 @@ fn get_configured_rules(
     config_file_tags.unwrap_or_else(Vec::new)
   };
 
-  let mut filtered_rules = HashMap::new();
-
-  for config_tag in &configured_tags {
-    filtered_rules.extend(rules::get_all_rules().into_iter().filter_map(
-      |rule| {
-        let code = rule.code();
-        if rule.tags().contains(&config_tag.as_str()) {
-          Some((code, rule))
-        } else {
-          None
-        }
-      },
-    ));
-  }
-
-  if let Some(exclude) = &maybe_configured_exclude {
-    for exc in exclude {
-      filtered_rules.remove(exc.as_str());
-    }
-  }
-
-  if let Some(include) = &maybe_configured_include {
-    let mut rules_per_code = rules::get_all_rules()
-      .into_iter()
-      .map(|rule| (rule.code(), rule))
-      .collect::<HashMap<_, _>>();
-    for inc in include {
-      if let Some(rule) = rules_per_code.remove(inc.as_str()) {
-        filtered_rules.insert(inc, rule);
-      }
-    }
-  }
-
-  let configured_rules: Vec<Box<dyn LintRule>> = filtered_rules
-    .into_iter()
-    .map(|(_code, rule)| rule)
-    .collect();
+  let configured_rules = rules::get_filtered_rules(
+    Some(configured_tags),
+    maybe_configured_exclude,
+    maybe_configured_include,
+  );
 
   if configured_rules.is_empty() {
     anyhow!("No rules have been configured");
