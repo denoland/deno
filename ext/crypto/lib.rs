@@ -692,7 +692,7 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
 
   fn try_from(
     any: rsa::pkcs8::der::asn1::Any<'a>,
-  ) -> rsa::pkcs8::der::Result<PrivateKeyParameters> {
+  ) -> rsa::pkcs8::der::Result<PssPrivateKeyParameters> {
     any.sequence(|decoder| {
       let hash_algorithm = decoder.decode()?;
       let mask_gen_algorithm = decoder.decode()?;
@@ -727,7 +727,7 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
 
   fn try_from(
     any: rsa::pkcs8::der::asn1::Any<'a>,
-  ) -> rsa::pkcs8::der::Result<PrivateKeyParameters> {
+  ) -> rsa::pkcs8::der::Result<OaepPrivateKeyParameters> {
     any.sequence(|decoder| {
       let hash_algorithm = decoder.decode()?;
       let mask_gen_algorithm = decoder.decode()?;
