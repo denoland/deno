@@ -14,6 +14,7 @@
     DateNow,
     JSONStringify,
     Promise,
+    ObjectAssign,
     TypeError,
     StringPrototypeStartsWith,
     StringPrototypeEndsWith,
@@ -128,63 +129,80 @@ finishing test case.`;
     };
   }
 
-  const tests = [];
+  function createTestHarness(state) {
+    function register(
+      t,
+      fn,
+    ) {
+      let testDef;
+      const defaults = {
+        ignore: false,
+        only: false,
+        sanitizeOps: true,
+        sanitizeResources: true,
+        sanitizeExit: true,
+        permissions: null,
+      };
 
-  // Main test function provided by Deno, as you can see it merely
-  // creates a new object with "name" and "fn" fields.
-  function test(
-    t,
-    fn,
-  ) {
-    let testDef;
-    const defaults = {
-      ignore: false,
-      only: false,
-      sanitizeOps: true,
-      sanitizeResources: true,
-      sanitizeExit: true,
-      permissions: null,
-    };
-
-    if (typeof t === "string") {
-      if (!fn || typeof fn != "function") {
-        throw new TypeError("Missing test function");
+      if (typeof t === "string") {
+        if (!fn || typeof fn != "function") {
+          throw new TypeError("Missing test function");
+        }
+        if (!t) {
+          throw new TypeError("The test name can't be empty");
+        }
+        testDef = { fn: fn, name: t, ...defaults };
+      } else {
+        if (!t.fn) {
+          throw new TypeError("Missing test function");
+        }
+        if (!t.name) {
+          throw new TypeError("The test name can't be empty");
+        }
+        testDef = { ...defaults, ...t };
       }
-      if (!t) {
-        throw new TypeError("The test name can't be empty");
+
+      if (testDef.sanitizeOps) {
+        testDef.fn = assertOps(testDef.fn);
       }
-      testDef = { fn: fn, name: t, ...defaults };
-    } else {
-      if (!t.fn) {
-        throw new TypeError("Missing test function");
+
+      if (testDef.sanitizeResources) {
+        testDef.fn = assertResources(testDef.fn);
       }
-      if (!t.name) {
-        throw new TypeError("The test name can't be empty");
+
+      if (testDef.sanitizeExit) {
+        testDef.fn = assertExit(testDef.fn);
       }
-      testDef = { ...defaults, ...t };
+
+      if (testDef.permissions) {
+        testDef.fn = withPermissions(
+          testDef.fn,
+          parsePermissions(testDef.permissions),
+        );
+      }
+
+      ArrayPrototypePush(state.registry, testDef);
     }
 
-    if (testDef.sanitizeOps) {
-      testDef.fn = assertOps(testDef.fn);
-    }
+    const harness = ObjectAssign(register, {
+      before(fn) {
+        state.before.push(fn);
+      },
+      after(fn) {
+        state.after.push(fn);
+      },
+    });
 
-    if (testDef.sanitizeResources) {
-      testDef.fn = assertResources(testDef.fn);
-    }
-
-    if (testDef.sanitizeExit) {
-      testDef.fn = assertExit(testDef.fn);
-    }
-
-    if (testDef.permissions) {
-      testDef.fn = withPermissions(
-        testDef.fn,
-        parsePermissions(testDef.permissions),
-      );
-    }
-
-    ArrayPrototypePush(tests, testDef);
+    return harness;
   }
+
+  const state = {
+    before: [],
+    after: [],
+    registry: [],
+  };
+
+  const test = createTestHarness(state);
 
   function createTestFilter(filter) {
     return (def) => {
@@ -238,9 +256,9 @@ finishing test case.`;
       globalThis.console = new Console(() => {});
     }
 
-    const only = ArrayPrototypeFilter(tests, (test) => test.only);
+    const only = ArrayPrototypeFilter(state.registry, (test) => test.only);
     const filtered = ArrayPrototypeFilter(
-      (only.length > 0 ? only : tests),
+      (only.length > 0 ? only : state.registry),
       createTestFilter(filter),
     );
 
@@ -248,7 +266,7 @@ finishing test case.`;
       plan: {
         origin,
         total: filtered.length,
-        filteredOut: tests.length - filtered.length,
+        filteredOut: state.registry.length - filtered.length,
         usedOnly: only.length > 0,
       },
     });
@@ -271,6 +289,10 @@ finishing test case.`;
       }
     }
 
+    for (const fn of state.before) {
+      await fn();
+    }
+
     for (const test of filtered) {
       const description = {
         origin,
@@ -284,6 +306,10 @@ finishing test case.`;
       const elapsed = DateNow() - earlier;
 
       dispatchTestEvent({ result: [description, result, elapsed] });
+    }
+
+    for (const fn of state.after) {
+      await fn();
     }
 
     if (disableLog) {

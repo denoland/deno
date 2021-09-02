@@ -55,6 +55,12 @@ itest!(collect {
   output: "test/collect.out",
 });
 
+itest!(before_after {
+  args: "test --unstable test/before_after.ts",
+  exit_code: 0,
+  output: "test/before_after.out",
+});
+
 itest!(load_unload {
   args: "test test/load_unload.ts",
   exit_code: 0,

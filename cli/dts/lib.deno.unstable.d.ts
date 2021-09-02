@@ -951,6 +951,37 @@ declare namespace Deno {
     bytesReceived: number;
   }
 
+  /** **UNSTABLE**: New functionality, yet to be vetted. */
+  export interface TestHarness {
+    /** Registers a hook which will be run before any tests are executed.
+     * `fn` can be async if required.
+     * ```
+     * Deno.test.before(function() {
+     *   console.log("This ran before any tests");
+     * });
+     *
+     * Deno.test("example test", function() {
+     *   console.log("This is the test");
+     * });
+     * ```
+     */
+    before(fn: () => void | Promise<void>): void;
+
+    /** Registers a hook which will be run after all tests have been executed.
+     * `fn` can be async if required.
+     * ```
+     * Deno.test.after(function() {
+     *   console.log("This ran after all tests");
+     * });
+     *
+     * Deno.test("example test", function() {
+     *   console.log("This is the test");
+     * });
+     * ```
+     */
+    after(fn: () => void | Promise<void>): void;
+  }
+
   /** **UNSTABLE**: New option, yet to be vetted. */
   export interface TestDefinition {
     /** Specifies the permissions that should be used to run the test.
