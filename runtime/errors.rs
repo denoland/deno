@@ -146,7 +146,7 @@ fn get_nix_error_class(error: &nix::Error) -> &'static str {
     nix::Error::EPERM => "PermissionDenied",
     nix::Error::ESRCH => "NotFound",
     nix::Error::UnknownErrno => "Error",
-    nix::Error::ENOTSUP => unreachable!(),
+    &nix::Error::ENOTSUP => unreachable!(),
     _ => "Error",
   }
 }
