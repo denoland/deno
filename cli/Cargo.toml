@@ -44,8 +44,9 @@ winres = "0.1.11"
 
 [dependencies]
 deno_core = { version = "0.98.0", path = "../core" }
-deno_doc = "0.10.0"
-deno_lint = "0.12.0"
+deno_doc = "0.12.1"
+deno_graph = "0.3.1"
+deno_lint = { version = "0.14.0", features = ["docs"] }
 deno_runtime = { version = "0.24.0", path = "../runtime" }
 deno_tls = { version = "0.3.0", path = "../ext/tls" }
 
@@ -56,8 +57,8 @@ clap = "2.33.3"
 data-url = "0.1.0"
 dissimilar = "1.0.2"
 dprint-plugin-json = "0.12.3"
-dprint-plugin-markdown = "0.9.4"
-dprint-plugin-typescript = "0.50.2"
+dprint-plugin-markdown = "0.9.6"
+dprint-plugin-typescript = "0.53.0"
 encoding_rs = "0.8.28"
 env_logger = "0.8.4"
 fancy-regex = "0.5.0"
@@ -83,9 +84,9 @@ semver-parser = "0.10.2"
 serde = { version = "1.0.126", features = ["derive"] }
 shell-escape = "0.1.5"
 sourcemap = "6.0.1"
-swc_bundler = "0.50.0"
-swc_common = { version = "0.11.4", features = ["sourcemap"] }
-swc_ecmascript = { version = "0.52.1", features = ["codegen", "dep_graph", "parser", "proposal", "react", "transforms", "typescript", "visit"] }
+swc_bundler = "0.56.0"
+swc_common = { version = "0.11.9", features = ["sourcemap"] }
+swc_ecmascript = { version = "0.60.0", features = ["codegen", "dep_graph", "parser", "proposal", "react", "transforms", "typescript", "visit"] }
 tempfile = "3.2.0"
 termcolor = "1.1.2"
 text-size = "1.1.0"
