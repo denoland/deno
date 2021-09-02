@@ -44,8 +44,8 @@ winres = "0.1.11"
 
 [dependencies]
 deno_core = { version = "0.98.0", path = "../core" }
-deno_doc = "0.12.0"
-deno_graph = "0.3.0"
+deno_doc = "0.12.1"
+deno_graph = "0.3.1"
 deno_lint = { version = "0.14.0", features = ["docs"] }
 deno_runtime = { version = "0.24.0", path = "../runtime" }
 deno_tls = { version = "0.3.0", path = "../ext/tls" }
