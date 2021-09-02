@@ -35,7 +35,7 @@ deno_webgpu = { version = "0.17.0", path = "../ext/webgpu" }
 deno_webidl = { version = "0.16.0", path = "../ext/webidl" }
 deno_websocket = { version = "0.21.0", path = "../ext/websocket" }
 deno_webstorage = { version = "0.11.0", path = "../ext/webstorage" }
-regex = "1.4.3" # Locked in deno_doc
+regex = "1.5.4"
 serde = { version = "1.0.129", features = ["derive"] }
 
 [target.'cfg(windows)'.build-dependencies]
@@ -76,7 +76,7 @@ num_cpus = "1.13.0"
 percent-encoding = "2.1.0"
 pin-project = "1.0.8"
 rand = { version = "0.8.4", features = ["small_rng"] }
-regex = "1.4.3" # Locked in deno_doc
+regex = "1.5.4"
 ring = "0.16.20"
 rustyline = { version = "9.0.0", default-features = false }
 rustyline-derive = "0.5.0"
