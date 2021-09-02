@@ -15,6 +15,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use std::cell::RefCell;
+use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::num::NonZeroU32;
 use std::rc::Rc;
@@ -74,6 +75,18 @@ const SHA384_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.12");
 const SHA512_RSA_ENCRYPTION_OID: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.13");
+const RSASSA_PSS_OID: rsa::pkcs8::ObjectIdentifier =
+  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.10");
+const ID_SHA1_OID: rsa::pkcs8::ObjectIdentifier =
+  rsa::pkcs8::ObjectIdentifier::new("1.3.14.3.2.26");
+const ID_SHA256_OID: rsa::pkcs8::ObjectIdentifier =
+  rsa::pkcs8::ObjectIdentifier::new("2.16.840.1.101.3.4.2.1");
+const ID_SHA384_OID: rsa::pkcs8::ObjectIdentifier =
+  rsa::pkcs8::ObjectIdentifier::new("2.16.840.1.101.3.4.2.2");
+const ID_SHA512_OID: rsa::pkcs8::ObjectIdentifier =
+  rsa::pkcs8::ObjectIdentifier::new("2.16.840.1.101.3.4.2.3");
+const ID_MFG1: rsa::pkcs8::ObjectIdentifier =
+  rsa::pkcs8::ObjectIdentifier::new("1.2.840.113549.1.1.8");
 
 pub fn init(maybe_seed: Option<u64>) -> Extension {
   Extension::builder()
@@ -655,6 +668,40 @@ pub async fn op_crypto_encrypt_key(
   }
 }
 
+// The parameters field associated with OID id-RSASSA-PSS
+// Defined in RFC 3447, section A.2.3
+//
+// RSASSA-PSS-params ::= SEQUENCE {
+//   hashAlgorithm      [0] HashAlgorithm    DEFAULT sha1,
+//   maskGenAlgorithm   [1] MaskGenAlgorithm DEFAULT mgf1SHA1,
+//   saltLength         [2] INTEGER          DEFAULT 20,
+//   trailerField       [3] TrailerField     DEFAULT trailerFieldBC
+// }
+pub struct PrivateKeyParameters<'a> {
+  pub hash_algorithm: rsa::pkcs8::AlgorithmIdentifier<'a>,
+  pub mask_gen_algorithm: rsa::pkcs8::AlgorithmIdentifier<'a>,
+  pub salt_length: u32,
+}
+
+impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>> for PrivateKeyParameters<'a> {
+  type Error = rsa::pkcs8::der::Error;
+
+  fn try_from(
+    any: rsa::pkcs8::der::asn1::Any<'a>,
+  ) -> rsa::pkcs8::der::Result<PrivateKeyParameters> {
+    any.sequence(|decoder| {
+      let hash_algorithm = decoder.decode()?;
+      let mask_gen_algorithm = decoder.decode()?;
+      let salt_length = decoder.decode()?;
+      Ok(Self {
+        hash_algorithm,
+        mask_gen_algorithm,
+        salt_length,
+      })
+    })
+  }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportKeyArg {
@@ -711,6 +758,106 @@ pub async fn op_crypto_import_key(
             SHA384_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha384),
             // sha512WithRSAEncryption
             SHA512_RSA_ENCRYPTION_OID => Some(CryptoHash::Sha512),
+            _ => return Err(type_error("Unsupported algorithm".to_string())),
+          };
+
+          // 7.
+          if let Some(pk_hash) = pk_hash {
+            if pk_hash != hash {
+              // TODO(@littledivy): DataError
+              return Err(type_error("Hash mismatch".to_string()));
+            }
+          }
+
+          // 8-9.
+          let private_key =
+            rsa::pkcs1::RsaPrivateKey::from_der(pk_info.private_key).map_err(
+              |e| custom_error("DOMExceptionOperationError", e.to_string()),
+            )?;
+
+          let bytes_consumed = private_key.encoded_len().map_err(|e| {
+            // TODO(@littledivy): DataError
+            custom_error("DOMExceptionOperationError", e.to_string())
+          })?;
+
+          if bytes_consumed
+            != rsa::pkcs1::der::Length::new(pk_info.private_key.len() as u16)
+          {
+            // TODO(@littledivy): DataError
+            return Err(type_error("Some bytes were not consumed".to_string()));
+          }
+
+          Ok(ImportKeyResult {
+            data: pk_info.private_key.to_vec().into(),
+            public_exponent: Some(
+              private_key.public_exponent.as_bytes().to_vec().into(),
+            ),
+            modulus_length: Some(private_key.modulus.as_bytes().len() * 8),
+          })
+        }
+        // TODO(@littledivy): spki
+        // TODO(@littledivy): jwk
+        _ => Err(type_error("Unsupported format".to_string())),
+      }
+    }
+    Algorithm::RsaPss => {
+      match args.format {
+        KeyFormat::Pkcs8 => {
+          let hash = args
+            .hash
+            .ok_or_else(|| type_error("Missing argument hash".to_string()))?;
+
+          // 2-3.
+          let pk_info =
+            rsa::pkcs8::PrivateKeyInfo::from_der(data).map_err(|e| {
+              custom_error("DOMExceptionOperationError", e.to_string())
+            })?;
+
+          // 4-5.
+          let alg = pk_info.algorithm.oid;
+
+          // 6.
+          let pk_hash = match alg {
+            // rsaEncryption
+            RSA_ENCRYPTION_OID => None,
+            // id-RSASSA-PSS
+            RSASSA_PSS_OID => {
+              // TODO(@littledivy): NotSupported error
+              let params = PrivateKeyParameters::try_from(
+                pk_info.algorithm.parameters.ok_or_else(|| {
+                  type_error("Malformed parameters".to_string())
+                })?,
+              )
+              .map_err(|_| type_error("Malformed parameters".to_string()))?;
+
+              let hash_alg = params.hash_algorithm;
+              let hash = match hash_alg.oid {
+                // id-sha1
+                ID_SHA1_OID => Some(CryptoHash::Sha1),
+                // id-sha256
+                ID_SHA256_OID => Some(CryptoHash::Sha256),
+                // id-sha384
+                ID_SHA384_OID => Some(CryptoHash::Sha384),
+                // id-sha256
+                ID_SHA512_OID => Some(CryptoHash::Sha512),
+                // TODO(@littledivy): DataError
+                _ => {
+                  return Err(type_error(
+                    "Unsupported hash algorithm".to_string(),
+                  ))
+                }
+              };
+
+              if params.mask_gen_algorithm.oid != ID_MFG1 {
+                // TODO(@littledivy): NotSupportedError
+                return Err(type_error(
+                  "Unsupported hash algorithm".to_string(),
+                ));
+              }
+
+              hash
+            }
+            // TODO(@littledivy): DataError
             _ => return Err(type_error("Unsupported algorithm".to_string())),
           };
 
