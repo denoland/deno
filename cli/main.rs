@@ -508,7 +508,7 @@ async fn lint_command(
   let program_state = ProgramState::build(flags.clone()).await?;
   let maybe_lint_config =
     if let Some(config_file) = &program_state.maybe_config_file {
-      config_file.as_lint_config()?
+      config_file.to_lint_config()?
     } else {
       None
     };

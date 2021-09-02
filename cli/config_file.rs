@@ -234,7 +234,7 @@ impl TsConfig {
     maybe_config_file: Option<&ConfigFile>,
   ) -> Result<Option<IgnoredCompilerOptions>, AnyError> {
     if let Some(config_file) = maybe_config_file {
-      let (value, maybe_ignored_options) = config_file.as_compiler_options()?;
+      let (value, maybe_ignored_options) = config_file.to_compiler_options()?;
       self.merge(&value);
       Ok(maybe_ignored_options)
     } else {
@@ -351,7 +351,7 @@ impl ConfigFile {
 
   /// Parse `compilerOptions` and return a serde `Value`.
   /// The result also contains any options that were ignored.
-  pub fn as_compiler_options(
+  pub fn to_compiler_options(
     &self,
   ) -> Result<(Value, Option<IgnoredCompilerOptions>), AnyError> {
     if let Some(compiler_options) = self.json.compiler_options.clone() {
@@ -364,7 +364,7 @@ impl ConfigFile {
     }
   }
 
-  pub fn as_lint_config(&self) -> Result<Option<LintConfig>, AnyError> {
+  pub fn to_lint_config(&self) -> Result<Option<LintConfig>, AnyError> {
     if let Some(config) = self.json.lint.clone() {
       let lint_config: LintConfig = serde_json::from_value(config)
         .context("Failed to parse \"lint\" configuration")?;
@@ -445,7 +445,7 @@ mod tests {
     let config_path = PathBuf::from("/deno/tsconfig.json");
     let config_file = ConfigFile::new(config_text, &config_path).unwrap();
     let (options_value, ignored) =
-      config_file.as_compiler_options().expect("error parsing");
+      config_file.to_compiler_options().expect("error parsing");
     assert!(options_value.is_object());
     let options = options_value.as_object().unwrap();
     assert!(options.contains_key("strict"));
@@ -459,7 +459,7 @@ mod tests {
     );
 
     let lint_config = config_file
-      .as_lint_config()
+      .to_lint_config()
       .expect("error parsing lint object")
       .expect("lint object should be defined");
     assert_eq!(lint_config.files.include, vec!["src/"]);
@@ -481,7 +481,7 @@ mod tests {
     let config_path = PathBuf::from("/deno/tsconfig.json");
     let config_file = ConfigFile::new(config_text, &config_path).unwrap();
     let (options_value, _) =
-      config_file.as_compiler_options().expect("error parsing");
+      config_file.to_compiler_options().expect("error parsing");
     assert!(options_value.is_object());
   }
 
@@ -491,7 +491,7 @@ mod tests {
     let config_path = PathBuf::from("/deno/tsconfig.json");
     let config_file = ConfigFile::new(config_text, &config_path).unwrap();
     let (options_value, _) =
-      config_file.as_compiler_options().expect("error parsing");
+      config_file.to_compiler_options().expect("error parsing");
     assert!(options_value.is_object());
   }
 
