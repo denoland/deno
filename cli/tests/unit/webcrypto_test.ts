@@ -306,3 +306,15 @@ unitTest(async function subtleCryptoHmacImportExport() {
   const exportedKey2 = await crypto.subtle.exportKey("jwk", key2);
   assertEquals(exportedKey2, jwk);
 });
+
+// 2048-bits publicExponent=65537
+const pkcs8TestVectors = [
+  // rsaEncryption
+  "cli/tests/testdata/webcrypto/id_rsaEncryption.pem",
+  // id-RSASSA-PSS
+  "cli/tests/testdata/webcrypto/id_rsassaPss.pem",
+];
+
+unitTest(async function importRsaPkcs8() {
+  // TODO
+});
