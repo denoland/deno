@@ -62,6 +62,7 @@ pub fn init<P: FetchPermissions + 'static>(
   proxy: Option<Proxy>,
   request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  client_cert_chain_and_key: Option<(String, String)>,
 ) -> Extension {
   Extension::builder()
     .js(include_js_files!(
@@ -90,6 +91,7 @@ pub fn init<P: FetchPermissions + 'static>(
           None,
           proxy.clone(),
           unsafely_ignore_certificate_errors.clone(),
+          client_cert_chain_and_key.clone(),
         )
         .unwrap()
       });
@@ -100,6 +102,7 @@ pub fn init<P: FetchPermissions + 'static>(
         request_builder_hook,
         unsafely_ignore_certificate_errors: unsafely_ignore_certificate_errors
           .clone(),
+        client_cert_chain_and_key: client_cert_chain_and_key.clone(),
       });
       Ok(())
     })
@@ -112,6 +115,7 @@ pub struct HttpClientDefaults {
   pub proxy: Option<Proxy>,
   pub request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  pub client_cert_chain_and_key: Option<(String, String)>,
 }
 
 pub trait FetchPermissions {
@@ -508,6 +512,8 @@ pub struct CreateHttpClientOptions {
   ca_file: Option<String>,
   ca_data: Option<ByteString>,
   proxy: Option<Proxy>,
+  cert_chain: Option<String>,
+  private_key: Option<String>,
 }
 
 pub fn op_create_http_client<FP>(
@@ -529,6 +535,21 @@ where
     permissions.check_net_url(&url)?;
   }
 
+  let client_cert_chain_and_key = {
+    if args.cert_chain.is_some() || args.private_key.is_some() {
+      let cert_chain = args
+        .cert_chain
+        .ok_or_else(|| type_error("No certificate chain provided"))?;
+      let private_key = args
+        .private_key
+        .ok_or_else(|| type_error("No private key provided"))?;
+
+      Some((cert_chain, private_key))
+    } else {
+      None
+    }
+  };
+
   let defaults = state.borrow::<HttpClientDefaults>();
   let cert_data =
     get_cert_data(args.ca_file.as_deref(), args.ca_data.as_deref())?;
@@ -539,8 +560,8 @@ where
     cert_data,
     args.proxy,
     defaults.unsafely_ignore_certificate_errors.clone(),
-  )
-  .unwrap();
+    client_cert_chain_and_key,
+  )?;
 
   let rid = state.resource_table.add(HttpClientResource::new(client));
   Ok(rid)

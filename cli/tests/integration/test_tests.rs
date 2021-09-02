@@ -61,6 +61,12 @@ itest!(fail {
   output: "test/fail.out",
 });
 
+itest!(collect {
+  args: "test --ignore=test/collect/ignore test/collect",
+  exit_code: 0,
+  output: "test/collect.out",
+});
+
 itest!(load_unload {
   args: "test test/load_unload.ts",
   exit_code: 0,
@@ -71,6 +77,12 @@ itest!(doc {
   args: "test --doc --allow-all test/doc.ts",
   exit_code: 1,
   output: "test/doc.out",
+});
+
+itest!(doc_only {
+  args: "test --doc --allow-all test/doc_only",
+  exit_code: 0,
+  output: "test/doc_only.out",
 });
 
 itest!(markdown {

@@ -244,7 +244,7 @@
 
     /** @param {HeadersInit} [init] */
     constructor(init = undefined) {
-      const prefix = "Failed to construct 'Event'";
+      const prefix = "Failed to construct 'Headers'";
       if (init !== undefined) {
         init = webidl.converters["HeadersInit"](init, {
           prefix,

@@ -22,6 +22,7 @@ delete Object.prototype.__proto__;
     SymbolFor,
     SymbolIterator,
     PromisePrototypeThen,
+    TypeError,
   } = window.__bootstrap.primordials;
   const util = window.__bootstrap.util;
   const eventTarget = window.__bootstrap.eventTarget;
@@ -134,12 +135,12 @@ delete Object.prototype.__proto__;
       if (data === null) break;
       const v = deserializeJsMessageData(data);
       const message = v[0];
-      const transfer = v[1];
+      const transferables = v[1];
 
       const msgEvent = new MessageEvent("message", {
         cancelable: false,
         data: message,
-        ports: transfer,
+        ports: transferables.filter((t) => t instanceof MessagePort),
       });
 
       try {
@@ -228,6 +229,7 @@ delete Object.prototype.__proto__;
     } else {
       prepareStackTrace = core.createPrepareStackTrace();
     }
+    // deno-lint-ignore prefer-primordials
     Error.prepareStackTrace = prepareStackTrace;
   }
 
@@ -693,8 +695,7 @@ delete Object.prototype.__proto__;
       });
       // Setup `Deno` global - we're actually overriding already
       // existing global `Deno` with `Deno` namespace from "./deno.ts".
-      util.immutableDefine(globalThis, "Deno", finalDenoNs);
-      ObjectFreeze(globalThis.Deno);
+      ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
       ObjectFreeze(globalThis.Deno.core);
       signals.setSignals();
     } else {
