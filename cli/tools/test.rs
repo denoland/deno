@@ -262,6 +262,7 @@ async fn test_specifier(
     media_type: MediaType::JavaScript,
     source: test_source.clone(),
     specifier: test_specifier.clone(),
+    maybe_headers: None,
   };
 
   program_state.file_fetcher.insert_cached(test_file);
@@ -381,6 +382,7 @@ fn extract_files_from_regex_blocks(
         media_type: file_media_type,
         source: file_source,
         specifier: file_specifier,
+        maybe_headers: None,
       })
     })
     .collect();
@@ -757,9 +759,7 @@ async fn fetch_specifiers_with_test_mode(
       .fetch(specifier, &mut Permissions::allow_all())
       .await?;
 
-    if file.media_type != MediaType::Unknown {
-      *mode = TestMode::Both
-    } else {
+    if file.media_type == MediaType::Unknown {
       *mode = TestMode::Documentation
     }
   }
