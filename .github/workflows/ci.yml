@@ -53,6 +53,7 @@ jobs:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full
       RUSTC_FORCE_INCREMENTAL: 1
+      RUSTFLAGS: "-C debuginfo=false"
 
     steps:
       - name: Configure git
