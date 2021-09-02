@@ -320,7 +320,9 @@ fn is_instance_of_error<'s>(
     if prototype.strict_equals(error_prototype) {
       return true;
     }
-    maybe_prototype = prototype.to_object(scope).unwrap().get_prototype(scope);
+    maybe_prototype = prototype
+      .to_object(scope)
+      .and_then(|o| o.get_prototype(scope));
   }
   false
 }
