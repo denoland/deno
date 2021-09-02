@@ -955,7 +955,8 @@ declare namespace Deno {
   export interface TestHarness {
     /** Registers a hook which will be run before any tests are executed.
      * `fn` can be async if required.
-     * ```
+     *
+     * ```ts
      * Deno.test.before(function() {
      *   console.log("This ran before any tests");
      * });
@@ -969,7 +970,8 @@ declare namespace Deno {
 
     /** Registers a hook which will be run after all tests have been executed.
      * `fn` can be async if required.
-     * ```
+     *
+     * ```ts
      * Deno.test.after(function() {
      *   console.log("This ran after all tests");
      * });
