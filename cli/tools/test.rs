@@ -262,6 +262,7 @@ async fn test_specifier(
     media_type: MediaType::JavaScript,
     source: test_source.clone(),
     specifier: test_specifier.clone(),
+    maybe_headers: None,
   };
 
   program_state.file_fetcher.insert_cached(test_file);
@@ -381,6 +382,7 @@ fn extract_files_from_regex_blocks(
         media_type: file_media_type,
         source: file_source,
         specifier: file_specifier,
+        maybe_headers: None,
       })
     })
     .collect();
