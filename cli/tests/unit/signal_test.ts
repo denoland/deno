@@ -13,7 +13,7 @@ unitTest(
   function signalsNotImplemented() {
     assertThrows(
       () => {
-        Deno.signal(1);
+        Deno.signal("SIGINT");
       },
       Error,
       "not implemented",

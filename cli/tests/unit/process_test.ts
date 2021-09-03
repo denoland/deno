@@ -503,7 +503,7 @@ unitTest({ perms: { run: true, read: true } }, function killFailed() {
   assert(!p.stdout);
 
   assertThrows(() => {
-    Deno.kill(p.pid, 12345);
+    Deno.kill(p.pid, "foobar");
   }, TypeError);
 
   p.close();
