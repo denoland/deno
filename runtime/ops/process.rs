@@ -198,7 +198,7 @@ fn op_run(
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct RunStatus {
+struct ProcessStatus {
   got_signal: bool,
   exit_code: i32,
   exit_signal: i32,
@@ -208,7 +208,7 @@ async fn op_run_status(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   _: (),
-) -> Result<RunStatus, AnyError> {
+) -> Result<ProcessStatus, AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -227,7 +227,7 @@ async fn op_run_status(
     .expect("Should have either an exit code or a signal.");
   let got_signal = signal.is_some();
 
-  Ok(RunStatus {
+  Ok(ProcessStatus {
     got_signal,
     exit_code: code.unwrap_or(-1),
     exit_signal: signal.unwrap_or(-1),

@@ -120,11 +120,11 @@ unitTest(
   },
   async function runCommandFailedWithSignal() {
     const p = Deno.run({
-      cmd: [Deno.execPath(), "eval", "--unstable", "Deno.kill(Deno.pid, 9)"],
+      cmd: [Deno.execPath(), "eval", "--unstable", "Deno.kill(Deno.pid, 'SIGKILL')"],
     });
     const status = await p.status();
     assertEquals(status.success, false);
-    // assertEquals(status.code, 128 + 9);
+    assertEquals(status.code, 128 + 9);
     assertEquals(status.signal, 9);
     p.close();
   },
@@ -480,7 +480,7 @@ unitTest(
     } catch {
       // TODO(nayeemrmn): On Windows sometimes the following values are given
       // instead. Investigate and remove this catch when fixed.
-      // assertEquals(status.code, 1);
+      assertEquals(status.code, 130);
       assertEquals(status.signal, undefined);
     }
     p.close();
