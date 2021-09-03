@@ -613,7 +613,7 @@ declare namespace Deno {
    *
    * NOTE: This functionality is not yet implemented on Windows.
    */
-  export function signal(signo: number): SignalStream;
+  export function signal(signo: string): SignalStream;
 
   /** **UNSTABLE**: new API, yet to be vetted. */
   export const signals: {
