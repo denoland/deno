@@ -7,7 +7,6 @@
   const { errors } = window.__bootstrap.errors;
   const {
     Error,
-    ObjectAssign,
     Promise,
     PromisePrototypeThen,
     PromiseResolve,
