@@ -120,7 +120,12 @@ unitTest(
   },
   async function runCommandFailedWithSignal() {
     const p = Deno.run({
-      cmd: [Deno.execPath(), "eval", "--unstable", "Deno.kill(Deno.pid, 'SIGKILL')"],
+      cmd: [
+        Deno.execPath(),
+        "eval",
+        "--unstable",
+        "Deno.kill(Deno.pid, 'SIGKILL')",
+      ],
     });
     const status = await p.status();
     assertEquals(status.success, false);
