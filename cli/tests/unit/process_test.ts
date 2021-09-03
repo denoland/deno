@@ -481,7 +481,7 @@ unitTest(
       // TODO(nayeemrmn): On Windows sometimes the following values are given
       // instead. Investigate and remove this catch when fixed.
       assertEquals(status.code, 130);
-      assertEquals(status.signal, undefined);
+      assertEquals(status.signal, 2);
     }
     p.close();
   },
