@@ -6,7 +6,7 @@ use log::error;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AuthTokenType {
+pub enum AuthTokenData {
   Bearer(String),
   Basic { username: String, password: String },
 }
@@ -14,14 +14,14 @@ pub enum AuthTokenType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthToken {
   host: String,
-  token: AuthTokenType,
+  token: AuthTokenData,
 }
 
 impl fmt::Display for AuthToken {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match &self.token {
-      AuthTokenType::Bearer(token) => write!(f, "Bearer {}", token),
-      AuthTokenType::Basic { username, password } => {
+      AuthTokenData::Bearer(token) => write!(f, "Bearer {}", token),
+      AuthTokenData::Basic { username, password } => {
         let credentials = format!("{}:{}", username, password);
         write!(f, "Basic {}", base64::encode(credentials))
       }
@@ -54,12 +54,12 @@ impl AuthTokens {
             let password = pair[0].to_string();
             tokens.push(AuthToken {
               host,
-              token: AuthTokenType::Basic { username, password },
+              token: AuthTokenData::Basic { username, password },
             })
           } else {
             tokens.push(AuthToken {
               host,
-              token: AuthTokenType::Bearer(token.to_string()),
+              token: AuthTokenData::Bearer(token.to_string()),
             });
           }
         } else {
