@@ -90,6 +90,9 @@ pub enum DenoSubcommand {
     files: Vec<PathBuf>,
     ignore: Vec<PathBuf>,
     rules: bool,
+    rules_tags: Vec<String>,
+    rules_include: Vec<String>,
+    rules_exclude: Vec<String>,
     json: bool,
   },
   Repl {
@@ -953,6 +956,35 @@ Ignore linting a file by adding an ignore comment at the top of the file:
         .help("List available rules"),
     )
     .arg(
+      Arg::with_name("rules-tags")
+        .long("rules-tags")
+        .require_equals(true)
+        .takes_value(true)
+        .use_delimiter(true)
+        .empty_values(true)
+        .conflicts_with("rules")
+        .help("Use set of rules with a tag"),
+    )
+    .arg(
+      Arg::with_name("rules-include")
+        .long("rules-include")
+        .require_equals(true)
+        .takes_value(true)
+        .use_delimiter(true)
+        .conflicts_with("rules")
+        .help("Include lint rules"),
+    )
+    .arg(
+      Arg::with_name("rules-exclude")
+        .long("rules-exclude")
+        .require_equals(true)
+        .takes_value(true)
+        .use_delimiter(true)
+        .conflicts_with("rules")
+        .help("Exclude lint rules"),
+    )
+    .arg(config_arg())
+    .arg(
       Arg::with_name("ignore")
         .long("ignore")
         .takes_value(true)
@@ -1722,6 +1754,7 @@ fn lsp_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
 }
 
 fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  config_arg_parse(flags, matches);
   let files = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
     None => vec![],
@@ -1731,10 +1764,25 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None => vec![],
   };
   let rules = matches.is_present("rules");
+  let rules_tags = match matches.values_of("rules-tags") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
+  let rules_include = match matches.values_of("rules-include") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
+  let rules_exclude = match matches.values_of("rules-exclude") {
+    Some(f) => f.map(String::from).collect(),
+    None => vec![],
+  };
   let json = matches.is_present("json");
   flags.subcommand = DenoSubcommand::Lint {
     files,
     rules,
+    rules_tags,
+    rules_include,
+    rules_exclude,
     ignore,
     json,
   };
@@ -2456,6 +2504,9 @@ mod tests {
             PathBuf::from("script_2.ts")
           ],
           rules: false,
+          rules_tags: vec![],
+          rules_include: vec![],
+          rules_exclude: vec![],
           json: false,
           ignore: vec![],
         },
@@ -2471,6 +2522,9 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec![],
           rules: false,
+          rules_tags: vec![],
+          rules_include: vec![],
+          rules_exclude: vec![],
           json: false,
           ignore: vec![
             PathBuf::from("script_1.ts"),
@@ -2488,6 +2542,32 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec![],
           rules: true,
+          rules_tags: vec![],
+          rules_include: vec![],
+          rules_exclude: vec![],
+          json: false,
+          ignore: vec![],
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "lint",
+      "--rules-tags=",
+      "--rules-include=ban-untagged-todo,no-undef",
+      "--rules-exclude=no-const-assign"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint {
+          files: vec![],
+          rules: false,
+          rules_tags: svec![""],
+          rules_include: svec!["ban-untagged-todo", "no-undef"],
+          rules_exclude: svec!["no-const-assign"],
           json: false,
           ignore: vec![],
         },
@@ -2502,9 +2582,37 @@ mod tests {
         subcommand: DenoSubcommand::Lint {
           files: vec![PathBuf::from("script_1.ts")],
           rules: false,
+          rules_tags: vec![],
+          rules_include: vec![],
+          rules_exclude: vec![],
           json: true,
           ignore: vec![],
         },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "lint",
+      "--config",
+      "Deno.jsonc",
+      "--json",
+      "script_1.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint {
+          files: vec![PathBuf::from("script_1.ts")],
+          rules: false,
+          rules_tags: vec![],
+          rules_include: vec![],
+          rules_exclude: vec![],
+          json: true,
+          ignore: vec![],
+        },
+        config_path: Some("Deno.jsonc".to_string()),
         ..Flags::default()
       }
     );

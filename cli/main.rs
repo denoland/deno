@@ -489,10 +489,14 @@ async fn lsp_command() -> Result<(), AnyError> {
   lsp::start().await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn lint_command(
-  _flags: Flags,
+  flags: Flags,
   files: Vec<PathBuf>,
   list_rules: bool,
+  rules_tags: Vec<String>,
+  rules_include: Vec<String>,
+  rules_exclude: Vec<String>,
   ignore: Vec<PathBuf>,
   json: bool,
 ) -> Result<(), AnyError> {
@@ -501,7 +505,24 @@ async fn lint_command(
     return Ok(());
   }
 
-  tools::lint::lint_files(files, ignore, json).await
+  let program_state = ProgramState::build(flags.clone()).await?;
+  let maybe_lint_config =
+    if let Some(config_file) = &program_state.maybe_config_file {
+      config_file.to_lint_config()?
+    } else {
+      None
+    };
+
+  tools::lint::lint_files(
+    maybe_lint_config,
+    rules_tags,
+    rules_include,
+    rules_exclude,
+    files,
+    ignore,
+    json,
+  )
+  .await
 }
 
 async fn cache_command(
@@ -1183,9 +1204,22 @@ fn get_subcommand(
     DenoSubcommand::Lint {
       files,
       rules,
+      rules_tags,
+      rules_include,
+      rules_exclude,
       ignore,
       json,
-    } => lint_command(flags, files, rules, ignore, json).boxed_local(),
+    } => lint_command(
+      flags,
+      files,
+      rules,
+      rules_tags,
+      rules_include,
+      rules_exclude,
+      ignore,
+      json,
+    )
+    .boxed_local(),
     DenoSubcommand::Repl { eval } => run_repl(flags, eval).boxed_local(),
     DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
     DenoSubcommand::Test {

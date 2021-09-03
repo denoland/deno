@@ -944,10 +944,10 @@
     }
 
     /**
-    * @param {string} format
-    * @param {CryptoKey} key
-    * @returns {Promise<any>}
-    */
+     * @param {string} format
+     * @param {CryptoKey} key
+     * @returns {Promise<any>}
+     */
     // deno-lint-ignore require-await
     async exportKey(format, key) {
       webidl.assertBranded(this, SubtleCrypto);
@@ -1033,11 +1033,11 @@
     }
 
     /**
-    * @param {AlgorithmIdentifier} algorithm
-    * @param {CryptoKey} baseKey
-    * @param {number} length
-    * @returns {Promise<ArrayBuffer>}
-    */
+     * @param {AlgorithmIdentifier} algorithm
+     * @param {CryptoKey} baseKey
+     * @param {number} length
+     * @returns {Promise<ArrayBuffer>}
+     */
     async deriveBits(algorithm, baseKey, length) {
       webidl.assertBranded(this, SubtleCrypto);
       const prefix = "Failed to execute 'deriveBits' on 'SubtleCrypto'";
