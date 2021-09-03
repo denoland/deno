@@ -106,12 +106,12 @@ unitTest(
     const t = setInterval(() => {}, 1000);
 
     let c = 0;
-    const sig = Deno.signal(Deno.Signal.SIGUSR1);
+    const sig = Deno.signal("SIGUSR1");
     setTimeout(async () => {
       await delay(20);
       for (const _ of Array(3)) {
         // Sends SIGUSR1 3 times.
-        Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
+        Deno.kill(Deno.pid, "SIGUSR1");
         await delay(20);
       }
       sig.dispose();
@@ -154,9 +154,9 @@ unitTest(
     // This prevents the program from exiting.
     const t = setInterval(() => {}, 1000);
 
-    const sig = Deno.signal(Deno.Signal.SIGUSR1);
+    const sig = Deno.signal("SIGUSR1");
     setTimeout(() => {
-      Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
+      Deno.kill(Deno.pid, "SIGUSR1");
       resolvable.resolve();
     }, 20);
     await sig;
@@ -176,7 +176,7 @@ unitTest(
     const t = setInterval(() => {}, 1000);
 
     let called = false;
-    const sig = Deno.signal(Deno.Signal.SIGUSR1);
+    const sig = Deno.signal("SIGUSR1");
     sig.then(() => {
       called = true;
     });

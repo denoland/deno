@@ -436,7 +436,7 @@ unitTest(
 
     let error = null;
     try {
-      p.kill(Deno.Signal.SIGTERM);
+      p.kill("SIGTERM");
     } catch (e) {
       error = e;
     }
@@ -456,9 +456,9 @@ unitTest(
 
 unitTest(function signalNumbers() {
   if (Deno.build.os === "darwin") {
-    assertEquals(Deno.Signal.SIGSTOP, 17);
+    assertEquals("SIGSTOP", 17);
   } else if (Deno.build.os === "linux") {
-    assertEquals(Deno.Signal.SIGSTOP, 19);
+    assertEquals("SIGSTOP", 19);
   }
 });
 
@@ -468,7 +468,7 @@ unitTest(function killPermissions() {
     // subprocess we can safely kill. Instead we send SIGCONT to the current
     // process - assuming that Deno does not have a special handler set for it
     // and will just continue even if a signal is erroneously sent.
-    Deno.kill(Deno.pid, Deno.Signal.SIGCONT);
+    Deno.kill(Deno.pid, "SIGCONT");
   }, Deno.errors.PermissionDenied);
 });
 
@@ -479,14 +479,12 @@ unitTest(
       cmd: [Deno.execPath(), "eval", "setTimeout(() => {}, 10000)"],
     });
 
-    assertEquals(Deno.Signal.SIGINT, 2);
-    Deno.kill(p.pid, Deno.Signal.SIGINT);
+    Deno.kill(p.pid, "SIGINT");
     const status = await p.status();
 
     assertEquals(status.success, false);
     try {
-      assertEquals(status.code, 128 + Deno.Signal.SIGINT);
-      assertEquals(status.signal, Deno.Signal.SIGINT);
+      assertEquals(status.signal, "SIGINT");
     } catch {
       // TODO(nayeemrmn): On Windows sometimes the following values are given
       // instead. Investigate and remove this catch when fixed.
