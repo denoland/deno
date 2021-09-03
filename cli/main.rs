@@ -1033,7 +1033,7 @@ async fn coverage_command(
     return Err(generic_error("No matching coverage profiles found"));
   }
 
-  tools::coverage::cover_files(
+  tools::coverage::cover_scripts(
     flags.clone(),
     files,
     ignore,
