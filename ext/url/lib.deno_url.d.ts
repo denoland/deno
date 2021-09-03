@@ -88,7 +88,6 @@ declare class URLSearchParams {
    *   console.log(value, key, parent);
    * });
    * ```
-   *
    */
   forEach(
     callbackfn: (value: string, key: string, parent: this) => void,

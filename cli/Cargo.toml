@@ -35,8 +35,8 @@ deno_webgpu = { version = "0.17.0", path = "../ext/webgpu" }
 deno_webidl = { version = "0.16.0", path = "../ext/webidl" }
 deno_websocket = { version = "0.21.0", path = "../ext/websocket" }
 deno_webstorage = { version = "0.11.0", path = "../ext/webstorage" }
-regex = "1.4.3"
-serde = { version = "1.0.125", features = ["derive"] }
+regex = "1.5.4"
+serde = { version = "1.0.129", features = ["derive"] }
 
 [target.'cfg(windows)'.build-dependencies]
 winapi = "0.3.9"
@@ -56,32 +56,32 @@ byteorder = "1.4.3"
 clap = "2.33.3"
 data-url = "0.1.0"
 dissimilar = "1.0.2"
-dprint-plugin-json = "0.12.3"
-dprint-plugin-markdown = "0.9.6"
-dprint-plugin-typescript = "0.53.0"
+dprint-plugin-json = "0.13.0"
+dprint-plugin-markdown = "0.10.0"
+dprint-plugin-typescript = "0.54.0"
 encoding_rs = "0.8.28"
 env_logger = "0.8.4"
-fancy-regex = "0.5.0"
+fancy-regex = "0.7.1"
 filetime = "0.2.14"
 http = "0.2.4"
 # TODO(lucacasonato): unlock when https://github.com/tkaitchuck/aHash/issues/95 is resolved
 indexmap = { version = "=1.6.2", features = ["serde"] }
 jsonc-parser = { version = "0.17.0", features = ["serde"] }
 lazy_static = "1.4.0"
-libc = "0.2.98"
+libc = "0.2.101"
 log = { version = "0.4.14", features = ["serde"] }
 lspower = "1.1.0"
-notify = "5.0.0-pre.10"
+notify = "5.0.0-pre.12"
 num_cpus = "1.13.0"
 percent-encoding = "2.1.0"
-pin-project = "1.0.7"
+pin-project = "1.0.8"
 rand = { version = "0.8.4", features = ["small_rng"] }
-regex = "1.4.3"
+regex = "1.5.4"
 ring = "0.16.20"
-rustyline = { version = "8.2.0", default-features = false }
-rustyline-derive = "0.4.0"
+rustyline = { version = "9.0.0", default-features = false }
+rustyline-derive = "0.5.0"
 semver-parser = "0.10.2"
-serde = { version = "1.0.126", features = ["derive"] }
+serde = { version = "1.0.129", features = ["derive"] }
 shell-escape = "0.1.5"
 sourcemap = "6.0.1"
 swc_bundler = "0.56.0"
@@ -90,7 +90,7 @@ swc_ecmascript = { version = "0.60.0", features = ["codegen", "dep_graph", "pars
 tempfile = "3.2.0"
 termcolor = "1.1.2"
 text-size = "1.1.0"
-tokio = { version = "1.8.1", features = ["full"] }
+tokio = { version = "1.10.1", features = ["full"] }
 tokio-rustls = "0.22.0"
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
 walkdir = "2.3.2"
@@ -111,7 +111,7 @@ trust-dns-server = "0.20.3"
 
 [target.'cfg(unix)'.dev-dependencies]
 exec = "0.3.1" # Used in test_raw_tty
-nix = "0.20.0"
+nix = "0.22.1"
 
 [package.metadata.winres]
 # This section defines the metadata that appears in the deno.exe PE header.
