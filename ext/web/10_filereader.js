@@ -368,6 +368,54 @@
       // alias for readAsArrayBuffer
       this.#readOperation(blob, { kind: "Text", encoding });
     }
+
+    get onerror() {
+      return FunctionPrototypeCall(makeEventHandlerGetter("error"), this);
+    }
+
+    set onerror(value) {
+      FunctionPrototypeCall(makeEventHandlerSetter("error"), this, value);
+    }
+
+    get onloadstart() {
+      return FunctionPrototypeCall(makeEventHandlerGetter("loadstart"), this);
+    }
+
+    set onloadstart(value) {
+      FunctionPrototypeCall(makeEventHandlerSetter("loadstart"), this, value);
+    }
+
+    get onload() {
+      return FunctionPrototypeCall(makeEventHandlerGetter("load"), this);
+    }
+
+    set onload(value) {
+      FunctionPrototypeCall(makeEventHandlerSetter("load"), this, value);
+    }
+
+    get onloadend() {
+      return FunctionPrototypeCall(makeEventHandlerGetter("loadend"), this);
+    }
+
+    set onloadend(value) {
+      FunctionPrototypeCall(makeEventHandlerSetter("loadend"), this, value);
+    }
+
+    get onprogress() {
+      return FunctionPrototypeCall(makeEventHandlerGetter("progress"), this);
+    }
+
+    set onprogress(value) {
+      FunctionPrototypeCall(makeEventHandlerSetter("progress"), this, value);
+    }
+
+    get onabort() {
+      return FunctionPrototypeCall(makeEventHandlerGetter("abort"), this);
+    }
+
+    set onabort(value) {
+      FunctionPrototypeCall(makeEventHandlerSetter("abort"), this, value);
+    }
   }
 
   webidl.configurePrototype(FileReader);
@@ -421,39 +469,30 @@
     wrappedHandler.handler = handler;
     return wrappedHandler;
   }
-  // TODO(benjamingr) reuse when we can reuse code between web crates
-  function defineEventHandler(emitter, name) {
-    // HTML specification section 8.1.5.1
-    ObjectDefineProperty(emitter, `on${name}`, {
-      get() {
-        const maybeMap = this[handlerSymbol];
-        if (!maybeMap) return null;
+  function makeEventHandlerGetter(name) {
+    return function () {
+      webidl.assertBranded(this, FileReader);
+      const maybeMap = this[handlerSymbol];
+      if (!maybeMap) return null;
 
-        return MapPrototypeGet(maybeMap, name)?.handler ?? null;
-      },
-      set(value) {
-        if (!this[handlerSymbol]) {
-          this[handlerSymbol] = new Map();
-        }
-        let handlerWrapper = MapPrototypeGet(this[handlerSymbol], name);
-        if (handlerWrapper) {
-          handlerWrapper.handler = value;
-        } else {
-          handlerWrapper = makeWrappedHandler(value);
-          this.addEventListener(name, handlerWrapper);
-        }
-        MapPrototypeSet(this[handlerSymbol], name, handlerWrapper);
-      },
-      configurable: true,
-      enumerable: true,
-    });
+      return MapPrototypeGet(maybeMap, name)?.handler ?? null;
+    };
   }
-  defineEventHandler(FileReader.prototype, "error");
-  defineEventHandler(FileReader.prototype, "loadstart");
-  defineEventHandler(FileReader.prototype, "load");
-  defineEventHandler(FileReader.prototype, "loadend");
-  defineEventHandler(FileReader.prototype, "progress");
-  defineEventHandler(FileReader.prototype, "abort");
+  function makeEventHandlerSetter(name) {
+    return function (value) {
+      if (!this[handlerSymbol]) {
+        this[handlerSymbol] = new Map();
+      }
+      let handlerWrapper = MapPrototypeGet(this[handlerSymbol], name);
+      if (handlerWrapper) {
+        handlerWrapper.handler = value;
+      } else {
+        handlerWrapper = makeWrappedHandler(value);
+        this.addEventListener(name, handlerWrapper);
+      }
+      MapPrototypeSet(this[handlerSymbol], name, handlerWrapper);
+    };
+  }
 
   window.__bootstrap.fileReader = {
     FileReader,
