@@ -1,0 +1,18 @@
+(ban-untagged-todo) TODO should be tagged with (@username) or (#issue)
+// TODO: this file should be ignored
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    at [WILDCARD]b.ts:1:0
+
+    hint: Add a user tag or issue reference to the TODO comment, e.g. TODO(@djones), TODO(djones), TODO(#123)
+    help: for further information visit https://lint.deno.land/#ban-untagged-todo
+
+(no-unused-vars) `subtract` is never used
+function subtract(a: number, b: number): number {
+         ^^^^^^^^
+    at [WILDCARD]b.ts:2:9
+
+    hint: If this is intentional, prefix it with an underscore like `_subtract`
+    help: for further information visit https://lint.deno.land/#no-unused-vars
+
+Found 2 problems
+Checked 1 file

@@ -75,7 +75,7 @@
   /**
    * @param {string} permission
    * @return {(boolean | string[])}
-   * */
+   */
   function parseArrayPermission(
     value,
     permission,

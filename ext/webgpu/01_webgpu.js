@@ -219,10 +219,10 @@
    */
 
   /**
-    * @param {string} name
-    * @param {InnerGPUAdapter} inner
-    * @returns {GPUAdapter}
-    */
+   * @param {string} name
+   * @param {InnerGPUAdapter} inner
+   * @returns {GPUAdapter}
+   */
   function createGPUAdapter(name, inner) {
     /** @type {GPUAdapter} */
     const adapter = webidl.createBranded(GPUAdapter);
@@ -544,7 +544,6 @@
   const _message = Symbol("[[message]]");
 
   /**
-   *
    * @param {string | undefined} reason
    * @param {string} message
    * @returns {GPUDeviceLostInfo}
@@ -2269,8 +2268,8 @@
 
   /**
    * @param {string | null} label
-    * @param {InnerGPUDevice} device
-  * @param {number} rid
+   * @param {InnerGPUDevice} device
+   * @param {number} rid
    * @returns {GPUBindGroup}
    */
   function createGPUBindGroup(label, device, rid) {
@@ -2312,8 +2311,8 @@
 
   /**
    * @param {string | null} label
-    * @param {InnerGPUDevice} device
-  * @param {number} rid
+   * @param {InnerGPUDevice} device
+   * @param {number} rid
    * @returns {GPUShaderModule}
    */
   function createGPUShaderModule(label, device, rid) {
@@ -3377,7 +3376,6 @@
     }
 
     /**
-     *
      * @param {number} x
      * @param {number} y
      * @param {number} width

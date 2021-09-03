@@ -509,8 +509,9 @@ async fn lsp_command() -> Result<(), AnyError> {
   lsp::start().await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn lint_command(
-  _flags: Flags,
+  flags: Flags,
   lint_flags: LintFlags,
 ) -> Result<(), AnyError> {
   if lint_flags.rules {
@@ -518,8 +519,24 @@ async fn lint_command(
     return Ok(());
   }
 
-  tools::lint::lint_files(lint_flags.files, lint_flags.ignore, lint_flags.json)
-    .await
+  let program_state = ProgramState::build(flags.clone()).await?;
+  let maybe_lint_config =
+    if let Some(config_file) = &program_state.maybe_config_file {
+      config_file.to_lint_config()?
+    } else {
+      None
+    };
+
+  tools::lint::lint_files(
+    maybe_lint_config,
+    lint_flags.rules_tags,
+    lint_flags.rules_include,
+    lint_flags.rules_exclude,
+    lint_flags.files,
+    lint_flags.ignore,
+    lint_flags.json,
+  )
+  .await
 }
 
 async fn cache_command(
@@ -582,6 +599,7 @@ async fn eval_command(
     },
     source: String::from_utf8(source_code)?,
     specifier: main_module.clone(),
+    maybe_headers: None,
   };
 
   // Save our fake file into file fetcher cache
@@ -834,6 +852,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
     media_type: MediaType::TypeScript,
     source: String::from_utf8(source)?,
     specifier: main_module.clone(),
+    maybe_headers: None,
   };
   // Save our fake file into file fetcher cache
   // to allow module access by TS compiler
