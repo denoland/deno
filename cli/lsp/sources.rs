@@ -176,7 +176,11 @@ impl Metadata {
 
     Self {
       dependencies,
-      length_utf16: document_source.text().as_str().encode_utf16().count(),
+      length_utf16: document_source
+        .text_info()
+        .text_str()
+        .encode_utf16()
+        .count(),
       maybe_navigation_tree: None,
       maybe_types,
       maybe_warning,
@@ -268,7 +272,7 @@ impl Sources {
     self.0.lock().get_script_version(specifier)
   }
 
-  pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<String> {
+  pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<Arc<String>> {
     self.0.lock().get_source(specifier)
   }
 
@@ -458,11 +462,11 @@ impl Inner {
     Some(metadata.version)
   }
 
-  fn get_source(&mut self, specifier: &ModuleSpecifier) -> Option<String> {
+  fn get_source(&mut self, specifier: &ModuleSpecifier) -> Option<Arc<String>> {
     let specifier =
       resolve_specifier(specifier, &mut self.redirects, &self.http_cache)?;
     let metadata = self.get_metadata(&specifier)?;
-    Some(metadata.source.text().to_string())
+    Some(metadata.source.text_info().text())
   }
 
   fn resolution_result(
@@ -605,7 +609,7 @@ mod tests {
       resolve_path(&tests.join("001_hello.js").to_string_lossy()).unwrap();
     let actual = sources.get_source(&specifier);
     assert!(actual.is_some());
-    let actual = actual.unwrap();
+    let actual = actual.unwrap().to_string();
     assert_eq!(actual, "console.log(\"Hello World\");\n");
   }
 

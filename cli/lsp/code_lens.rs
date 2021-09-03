@@ -6,8 +6,13 @@ use super::language_server;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::NavigationTree;
-use crate::ast::ParsedModule;
 
+use deno_ast::swc::ast;
+use deno_ast::swc::common::Span;
+use deno_ast::swc::visit::Node;
+use deno_ast::swc::visit::Visit;
+use deno_ast::swc::visit::VisitWith;
+use deno_ast::ParsedSource;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
@@ -20,11 +25,6 @@ use regex::Regex;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
-use swc_common::Span;
-use swc_ecmascript::ast;
-use swc_ecmascript::visit::Node;
-use swc_ecmascript::visit::Visit;
-use swc_ecmascript::visit::VisitWith;
 
 lazy_static::lazy_static! {
   static ref ABSTRACT_MODIFIER: Regex = Regex::new(r"\babstract\b").unwrap();
@@ -46,24 +46,24 @@ pub struct CodeLensData {
   pub specifier: ModuleSpecifier,
 }
 
-fn span_to_range(span: &Span, parsed_module: &ParsedModule) -> lsp::Range {
-  let start = parsed_module.get_location(span.lo);
-  let end = parsed_module.get_location(span.hi);
+fn span_to_range(span: &Span, parsed_source: &ParsedSource) -> lsp::Range {
+  let start = parsed_source.source().line_and_column_index(span.lo);
+  let end = parsed_source.source().line_and_column_index(span.hi);
   lsp::Range {
     start: lsp::Position {
-      line: (start.line - 1) as u32,
-      character: start.col as u32,
+      line: start.line_index as u32,
+      character: start.column_index as u32,
     },
     end: lsp::Position {
-      line: (end.line - 1) as u32,
-      character: end.col as u32,
+      line: end.line_index as u32,
+      character: end.column_index as u32,
     },
   }
 }
 
 struct DenoTestCollector<'a> {
   code_lenses: Vec<lsp::CodeLens>,
-  parsed_module: &'a ParsedModule,
+  parsed_source: &'a ParsedSource,
   specifier: ModuleSpecifier,
   test_vars: HashSet<String>,
 }
@@ -71,18 +71,18 @@ struct DenoTestCollector<'a> {
 impl<'a> DenoTestCollector<'a> {
   pub fn new(
     specifier: ModuleSpecifier,
-    parsed_module: &'a ParsedModule,
+    parsed_source: &'a ParsedSource,
   ) -> Self {
     Self {
       code_lenses: Vec::new(),
-      parsed_module,
+      parsed_source,
       specifier,
       test_vars: HashSet::new(),
     }
   }
 
   fn add_code_lens<N: AsRef<str>>(&mut self, name: N, span: &Span) {
-    let range = span_to_range(span, self.parsed_module);
+    let range = span_to_range(span, self.parsed_source);
     self.code_lenses.push(lsp::CodeLens {
       range,
       command: Some(lsp::Command {
@@ -372,12 +372,12 @@ pub(crate) async fn resolve_code_lens(
 
 pub(crate) async fn collect(
   specifier: &ModuleSpecifier,
-  parsed_module: Option<&ParsedModule>,
+  parsed_source: Option<&ParsedSource>,
   config: &Config,
   line_index: &LineIndex,
   navigation_tree: &NavigationTree,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
-  let mut code_lenses = collect_test(specifier, parsed_module, config)?;
+  let mut code_lenses = collect_test(specifier, parsed_source, config)?;
   code_lenses.extend(
     collect_tsc(
       specifier,
@@ -393,16 +393,16 @@ pub(crate) async fn collect(
 
 fn collect_test(
   specifier: &ModuleSpecifier,
-  parsed_module: Option<&ParsedModule>,
+  parsed_source: Option<&ParsedSource>,
   config: &Config,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
   if config.specifier_code_lens_test(specifier) {
-    if let Some(parsed_module) = parsed_module {
+    if let Some(parsed_source) = parsed_source {
       let mut collector =
-        DenoTestCollector::new(specifier.clone(), &parsed_module);
-      parsed_module.module().visit_with(
+        DenoTestCollector::new(specifier.clone(), &parsed_source);
+      parsed_source.module().visit_with(
         &ast::Invalid {
-          span: swc_common::DUMMY_SP,
+          span: deno_ast::swc::common::DUMMY_SP,
         },
         &mut collector,
       );
@@ -505,6 +505,8 @@ async fn collect_tsc(
 
 #[cfg(test)]
 mod tests {
+  use deno_ast::SourceTextInfo;
+
   use super::*;
   use crate::media_type::MediaType;
 
@@ -521,14 +523,14 @@ mod tests {
     "#;
     let parsed_module = crate::lsp::analysis::parse_module(
       &specifier,
-      source.into(),
+      SourceTextInfo::from_string(source.to_string()),
       MediaType::TypeScript,
     )
     .unwrap();
     let mut collector = DenoTestCollector::new(specifier, &parsed_module);
     parsed_module.module().visit_with(
       &ast::Invalid {
-        span: swc_common::DUMMY_SP,
+        span: deno_ast::swc::common::DUMMY_SP,
       },
       &mut collector,
     );

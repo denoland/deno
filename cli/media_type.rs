@@ -83,6 +83,61 @@ impl<'a> From<&'a ModuleSpecifier> for MediaType {
   }
 }
 
+// todo(dsherret): these are temporary until we use the media type in deno_graph
+impl From<MediaType> for deno_ast::MediaType {
+  fn from(media_type: MediaType) -> Self {
+    use deno_ast::MediaType::*;
+    match media_type {
+      MediaType::JavaScript => JavaScript,
+      MediaType::Jsx => Jsx,
+      MediaType::TypeScript => TypeScript,
+      MediaType::Dts => Dts,
+      MediaType::Tsx => Tsx,
+      MediaType::Json => Json,
+      MediaType::Wasm => Wasm,
+      MediaType::TsBuildInfo => TsBuildInfo,
+      MediaType::SourceMap => SourceMap,
+      MediaType::Unknown => Unknown,
+    }
+  }
+}
+
+impl From<deno_ast::MediaType> for MediaType {
+  fn from(media_type: deno_ast::MediaType) -> Self {
+    use MediaType::*;
+    match media_type {
+      deno_ast::MediaType::JavaScript => JavaScript,
+      deno_ast::MediaType::Jsx => Jsx,
+      deno_ast::MediaType::TypeScript => TypeScript,
+      deno_ast::MediaType::Dts => Dts,
+      deno_ast::MediaType::Tsx => Tsx,
+      deno_ast::MediaType::Json => Json,
+      deno_ast::MediaType::Wasm => Wasm,
+      deno_ast::MediaType::TsBuildInfo => TsBuildInfo,
+      deno_ast::MediaType::SourceMap => SourceMap,
+      deno_ast::MediaType::Unknown => Unknown,
+    }
+  }
+}
+
+impl From<MediaType> for deno_graph::MediaType {
+  fn from(media_type: MediaType) -> Self {
+    use deno_graph::MediaType::*;
+    match media_type {
+      MediaType::JavaScript => JavaScript,
+      MediaType::Jsx => Jsx,
+      MediaType::TypeScript => TypeScript,
+      MediaType::Dts => Dts,
+      MediaType::Tsx => Tsx,
+      MediaType::Json => Json,
+      MediaType::Wasm => Wasm,
+      MediaType::TsBuildInfo => TsBuildInfo,
+      MediaType::SourceMap => SourceMap,
+      MediaType::Unknown => Unknown,
+    }
+  }
+}
+
 impl Default for MediaType {
   fn default() -> Self {
     MediaType::Unknown

@@ -4,8 +4,7 @@ use super::language_server;
 use super::tsc;
 
 use crate::ast;
-use crate::ast::ParsedModule;
-use crate::ast::SourceFileText;
+use crate::ast::Location;
 use crate::import_map::ImportMap;
 use crate::lsp::documents::DocumentData;
 use crate::media_type::MediaType;
@@ -14,6 +13,13 @@ use crate::module_graph::parse_ts_reference;
 use crate::module_graph::TypeScriptReference;
 use crate::tools::lint::create_linter;
 
+use deno_ast::swc::ast as swc_ast;
+use deno_ast::swc::common::DUMMY_SP;
+use deno_ast::swc::visit::Node;
+use deno_ast::swc::visit::Visit;
+use deno_ast::swc::visit::VisitWith;
+use deno_ast::Diagnostic;
+use deno_ast::SourceTextInfo;
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -31,11 +37,6 @@ use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
-use swc_common::DUMMY_SP;
-use swc_ecmascript::ast as swc_ast;
-use swc_ecmascript::visit::Node;
-use swc_ecmascript::visit::Visit;
-use swc_ecmascript::visit::VisitWith;
 
 lazy_static::lazy_static! {
   /// Diagnostic error codes which actually are the same, and so when grouping
@@ -133,19 +134,12 @@ fn as_lsp_range(range: &deno_lint::diagnostic::Range) -> Range {
 }
 
 pub fn get_lint_references(
-  parsed_module: &ParsedModule,
+  parsed_source: &deno_ast::ParsedSource,
 ) -> Result<Vec<Reference>, AnyError> {
-  let syntax = ast::get_syntax(&parsed_module.media_type());
+  let syntax = deno_ast::get_syntax(parsed_source.media_type());
   let lint_rules = rules::get_recommended_rules();
   let linter = create_linter(syntax, lint_rules);
-  let lint_diagnostics = linter.lint_with_ast(
-    parsed_module.specifier().to_string(),
-    parsed_module.text().info(),
-    parsed_module.module().into(),
-    parsed_module.comments().leading_map(),
-    parsed_module.comments().trailing_map(),
-    parsed_module.tokens(),
-  );
+  let lint_diagnostics = linter.lint_with_ast(parsed_source);
 
   Ok(
     lint_diagnostics
@@ -285,14 +279,16 @@ pub fn resolve_import(
 
 pub fn parse_module(
   specifier: &ModuleSpecifier,
-  text: SourceFileText,
+  source: SourceTextInfo,
   media_type: MediaType,
-) -> Result<ast::ParsedModule, AnyError> {
-  ast::parse(ast::ParseParams {
+) -> Result<deno_ast::ParsedSource, Diagnostic> {
+  deno_ast::parse_module(deno_ast::ParseParams {
     specifier: specifier.as_str().to_string(),
-    text,
-    media_type,
+    source,
+    media_type: media_type.into(),
+    // capture the tokens for linting and formatting
     capture_tokens: true,
+    maybe_syntax: None,
   })
 }
 
@@ -301,16 +297,16 @@ pub fn parse_module(
 pub fn analyze_dependencies(
   specifier: &ModuleSpecifier,
   media_type: MediaType,
-  parsed_module: &ast::ParsedModule,
+  parsed_source: &deno_ast::ParsedSource,
   maybe_import_map: &Option<ImportMap>,
 ) -> (HashMap<String, Dependency>, Option<ResolvedDependency>) {
   let mut maybe_type = None;
   let mut dependencies = HashMap::<String, Dependency>::new();
 
   // Parse leading comments for supported triple slash references.
-  for comment in parsed_module.get_leading_comments().iter() {
+  for comment in parsed_source.get_leading_comments().iter() {
     if let Some((ts_reference, span)) = parse_ts_reference(comment) {
-      let loc = parsed_module.get_location(span.lo);
+      let loc = parsed_source.source().line_and_column_index(span.lo);
       match ts_reference {
         TypeScriptReference::Path(import) => {
           let dep = dependencies.entry(import.clone()).or_default();
@@ -319,12 +315,12 @@ pub fn analyze_dependencies(
           dep.maybe_code = Some(resolved_import);
           dep.maybe_code_specifier_range = Some(Range {
             start: Position {
-              line: (loc.line - 1) as u32,
-              character: loc.col as u32,
+              line: loc.line_index as u32,
+              character: loc.column_index as u32,
             },
             end: Position {
-              line: (loc.line - 1) as u32,
-              character: (loc.col + import.chars().count() + 2) as u32,
+              line: loc.line_index as u32,
+              character: (loc.column_index + import.chars().count() + 2) as u32,
             },
           });
         }
@@ -339,12 +335,12 @@ pub fn analyze_dependencies(
           dep.maybe_type = Some(resolved_import);
           dep.maybe_type_specifier_range = Some(Range {
             start: Position {
-              line: (loc.line - 1) as u32,
-              character: loc.col as u32,
+              line: loc.line_index as u32,
+              character: loc.column_index as u32,
             },
             end: Position {
-              line: (loc.line - 1) as u32,
-              character: (loc.col + import.chars().count() + 2) as u32,
+              line: loc.line_index as u32,
+              character: (loc.column_index + import.chars().count() + 2) as u32,
             },
           });
         }
@@ -353,9 +349,9 @@ pub fn analyze_dependencies(
   }
 
   // Parse ES and type only imports
-  let descriptors = parsed_module.analyze_dependencies();
+  let descriptors = deno_graph::analyze_dependencies(parsed_source);
   for desc in descriptors.into_iter().filter(|desc| {
-    desc.kind != swc_ecmascript::dep_graph::DependencyKind::Require
+    desc.kind != deno_ast::swc::dep_graph::DependencyKind::Require
   }) {
     let resolved_import =
       resolve_import(&desc.specifier, specifier, maybe_import_map);
@@ -367,7 +363,7 @@ pub fn analyze_dependencies(
           (
             resolve_import(deno_types, specifier, maybe_import_map),
             deno_types.clone(),
-            parsed_module.get_location(span.lo)
+            parsed_source.source().line_and_column_index(span.lo)
           )
         })
       } else {
@@ -376,16 +372,20 @@ pub fn analyze_dependencies(
 
     let dep = dependencies.entry(desc.specifier.to_string()).or_default();
     dep.is_dynamic = desc.is_dynamic;
-    let start = parsed_module.get_location(desc.specifier_span.lo);
-    let end = parsed_module.get_location(desc.specifier_span.hi);
+    let start = parsed_source
+      .source()
+      .line_and_column_index(desc.specifier_span.lo);
+    let end = parsed_source
+      .source()
+      .line_and_column_index(desc.specifier_span.hi);
     let range = Range {
       start: Position {
-        line: (start.line - 1) as u32,
-        character: start.col as u32,
+        line: start.line_index as u32,
+        character: start.column_index as u32,
       },
       end: Position {
-        line: (end.line - 1) as u32,
-        character: end.col as u32,
+        line: end.line_index as u32,
+        character: end.column_index as u32,
       },
     };
     dep.maybe_code_specifier_range = Some(range);
@@ -396,12 +396,15 @@ pub fn analyze_dependencies(
       {
         dep.maybe_type_specifier_range = Some(Range {
           start: Position {
-            line: (loc.line - 1) as u32,
-            character: (loc.col + 1) as u32,
+            line: loc.line_index as u32,
+            // +1 to skip quote
+            character: (loc.column_index + 1) as u32,
           },
           end: Position {
-            line: (loc.line - 1) as u32,
-            character: (loc.col + 1 + specifier.chars().count()) as u32,
+            line: loc.line_index as u32,
+            // +1 to skip quote
+            character: (loc.column_index + 1 + specifier.chars().count())
+              as u32,
           },
         });
         dep.maybe_type = Some(resolved_dependency);
@@ -702,7 +705,7 @@ impl CodeActionCollection {
 
     let line_content = document.map(|d| {
       d.source()
-        .text()
+        .text_info()
         .line_text(diagnostic.range.start.line as usize)
         .to_string()
     });
@@ -1027,14 +1030,14 @@ impl DependencyRanges {
 
 struct DependencyRangeCollector<'a> {
   import_ranges: DependencyRanges,
-  parsed_module: &'a ast::ParsedModule,
+  parsed_source: &'a deno_ast::ParsedSource,
 }
 
 impl<'a> DependencyRangeCollector<'a> {
-  pub fn new(parsed_module: &'a ast::ParsedModule) -> Self {
+  pub fn new(parsed_source: &'a deno_ast::ParsedSource) -> Self {
     Self {
       import_ranges: DependencyRanges::default(),
-      parsed_module,
+      parsed_source,
     }
   }
 
@@ -1049,8 +1052,8 @@ impl<'a> Visit for DependencyRangeCollector<'a> {
     node: &swc_ast::ImportDecl,
     _parent: &dyn Node,
   ) {
-    let start = self.parsed_module.get_location(node.src.span.lo);
-    let end = self.parsed_module.get_location(node.src.span.hi);
+    let start = Location::from_pos(self.parsed_source, node.src.span.lo);
+    let end = Location::from_pos(self.parsed_source, node.src.span.hi);
     self.import_ranges.0.push(DependencyRange {
       range: narrow_range(get_range_from_location(&start, &end)),
       specifier: node.src.value.to_string(),
@@ -1063,8 +1066,8 @@ impl<'a> Visit for DependencyRangeCollector<'a> {
     _parent: &dyn Node,
   ) {
     if let Some(src) = &node.src {
-      let start = self.parsed_module.get_location(src.span.lo);
-      let end = self.parsed_module.get_location(src.span.hi);
+      let start = Location::from_pos(self.parsed_source, src.span.lo);
+      let end = Location::from_pos(self.parsed_source, src.span.hi);
       self.import_ranges.0.push(DependencyRange {
         range: narrow_range(get_range_from_location(&start, &end)),
         specifier: src.value.to_string(),
@@ -1077,8 +1080,8 @@ impl<'a> Visit for DependencyRangeCollector<'a> {
     node: &swc_ast::ExportAll,
     _parent: &dyn Node,
   ) {
-    let start = self.parsed_module.get_location(node.src.span.lo);
-    let end = self.parsed_module.get_location(node.src.span.hi);
+    let start = Location::from_pos(self.parsed_source, node.src.span.lo);
+    let end = Location::from_pos(self.parsed_source, node.src.span.hi);
     self.import_ranges.0.push(DependencyRange {
       range: narrow_range(get_range_from_location(&start, &end)),
       specifier: node.src.value.to_string(),
@@ -1090,8 +1093,8 @@ impl<'a> Visit for DependencyRangeCollector<'a> {
     node: &swc_ast::TsImportType,
     _parent: &dyn Node,
   ) {
-    let start = self.parsed_module.get_location(node.arg.span.lo);
-    let end = self.parsed_module.get_location(node.arg.span.hi);
+    let start = Location::from_pos(self.parsed_source, node.arg.span.lo);
+    let end = Location::from_pos(self.parsed_source, node.arg.span.hi);
     self.import_ranges.0.push(DependencyRange {
       range: narrow_range(get_range_from_location(&start, &end)),
       specifier: node.arg.value.to_string(),
@@ -1102,10 +1105,10 @@ impl<'a> Visit for DependencyRangeCollector<'a> {
 /// Analyze a document for import ranges, which then can be used to identify if
 /// a particular position within the document as inside an import range.
 pub fn analyze_dependency_ranges(
-  parsed_module: &ast::ParsedModule,
+  parsed_source: &deno_ast::ParsedSource,
 ) -> Result<DependencyRanges, AnyError> {
-  let mut collector = DependencyRangeCollector::new(parsed_module);
-  parsed_module
+  let mut collector = DependencyRangeCollector::new(parsed_source);
+  parsed_source
     .module()
     .visit_with(&swc_ast::Invalid { span: DUMMY_SP }, &mut collector);
   Ok(collector.take())
@@ -1208,8 +1211,12 @@ mod tests {
   fn test_get_lint_references() {
     let specifier = resolve_url("file:///a.ts").expect("bad specifier");
     let source = "const foo = 42;";
-    let parsed_module =
-      parse_module(&specifier, source.into(), MediaType::TypeScript).unwrap();
+    let parsed_module = parse_module(
+      &specifier,
+      SourceTextInfo::from_string(source.to_string()),
+      MediaType::TypeScript,
+    )
+    .unwrap();
     let actual = get_lint_references(&parsed_module).unwrap();
 
     assert_eq!(
@@ -1253,8 +1260,12 @@ mod tests {
     // @deno-types="https://deno.land/x/types/react/index.d.ts";
     import React from "https://cdn.skypack.dev/react";
     "#;
-    let parsed_module =
-      parse_module(&specifier, source.into(), MediaType::TypeScript).unwrap();
+    let parsed_module = parse_module(
+      &specifier,
+      SourceTextInfo::from_string(source.to_string()),
+      MediaType::TypeScript,
+    )
+    .unwrap();
     let (actual, maybe_type) = analyze_dependencies(
       &specifier,
       MediaType::TypeScript,
@@ -1345,8 +1356,12 @@ mod tests {
     let source =
       "import * as a from \"./b.ts\";\nexport * as a from \"./c.ts\";\n";
     let media_type = MediaType::TypeScript;
-    let parsed_module =
-      parse_module(&specifier, source.into(), media_type).unwrap();
+    let parsed_module = parse_module(
+      &specifier,
+      SourceTextInfo::from_string(source.to_string()),
+      media_type,
+    )
+    .unwrap();
     let result = analyze_dependency_ranges(&parsed_module);
     assert!(result.is_ok());
     let actual = result.unwrap();

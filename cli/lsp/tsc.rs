@@ -45,6 +45,7 @@ use lspower::lsp;
 use regex::Captures;
 use regex::Regex;
 use std::collections::HashSet;
+use std::sync::Arc;
 use std::thread;
 use std::{borrow::Cow, cmp};
 use std::{collections::HashMap, path::Path};
@@ -111,7 +112,7 @@ impl TsServer {
 /// from static assets built into Rust, or static assets built into tsc.
 #[derive(Debug, Clone)]
 pub struct AssetDocument {
-  pub text: String,
+  pub text: Arc<String>,
   pub length: usize,
   pub line_index: LineIndex,
   pub maybe_navigation_tree: Option<NavigationTree>,
@@ -121,7 +122,7 @@ impl AssetDocument {
   pub fn new<T: AsRef<str>>(text: T) -> Self {
     let text = text.as_ref();
     Self {
-      text: text.to_string(),
+      text: Arc::new(text.to_string()),
       length: text.encode_utf16().count(),
       line_index: LineIndex::new(text),
       maybe_navigation_tree: None,
@@ -2058,7 +2059,6 @@ fn cache_snapshot(
         .state_snapshot
         .documents
         .content(specifier)
-        .map(ToOwned::to_owned)
         .ok_or_else(|| {
           anyhow!("Specifier unexpectedly doesn't have content: {}", specifier)
         })?
@@ -2069,7 +2069,7 @@ fn cache_snapshot(
     };
     state
       .snapshots
-      .insert((specifier.clone(), version.into()), content);
+      .insert((specifier.clone(), version.into()), content.to_string());
   }
   Ok(())
 }
@@ -2236,14 +2236,13 @@ fn op_get_text(
   let specifier = state.normalize_specifier(args.specifier)?;
   let content =
     if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
-      content.text.clone()
+      content.text.as_str()
     } else {
       cache_snapshot(state, &specifier, args.version.clone())?;
       state
         .snapshots
         .get(&(specifier, args.version.into()))
         .unwrap()
-        .clone()
     };
   state.state_snapshot.performance.measure(mark);
   Ok(text::slice(&content, args.start..args.end).to_string())
@@ -2260,7 +2259,7 @@ fn op_load(
   let specifier = state.normalize_specifier(args.specifier)?;
   let result = state.state_snapshot.sources.get_source(&specifier);
   state.state_snapshot.performance.measure(mark);
-  Ok(result)
+  Ok(result.map(|t| t.to_string()))
 }
 
 fn op_resolve(

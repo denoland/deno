@@ -1,19 +1,20 @@
+use deno_ast::Diagnostic;
+use deno_ast::ParsedSource;
+use deno_ast::SourceTextInfo;
 use deno_core::ModuleSpecifier;
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
 use super::analysis;
 use super::text::LineIndex;
-use crate::ast::ParsedModule;
-use crate::ast::SourceFileText;
 use crate::media_type::MediaType;
 
 #[derive(Debug)]
 struct DocumentSourceInner {
   specifier: ModuleSpecifier,
   media_type: MediaType,
-  text: SourceFileText,
-  parsed_module: OnceCell<Result<ParsedModule, String>>,
+  text_info: SourceTextInfo,
+  parsed_module: OnceCell<Result<ParsedSource, Diagnostic>>,
   line_index: LineIndex,
 }
 
@@ -34,22 +35,22 @@ impl DocumentSource {
       inner: Arc::new(DocumentSourceInner {
         specifier: specifier.clone(),
         media_type,
-        text: text.into(),
+        text_info: SourceTextInfo::from_string(text),
         parsed_module: OnceCell::new(),
         line_index,
       }),
     }
   }
 
-  pub fn text(&self) -> &SourceFileText {
-    &self.inner.text
+  pub fn text_info(&self) -> &SourceTextInfo {
+    &self.inner.text_info
   }
 
   pub fn line_index(&self) -> &LineIndex {
     &self.inner.line_index
   }
 
-  pub fn module(&self) -> Option<&Result<ParsedModule, String>> {
+  pub fn module(&self) -> Option<&Result<ParsedSource, Diagnostic>> {
     let is_parsable = matches!(
       self.inner.media_type,
       MediaType::JavaScript
@@ -63,10 +64,9 @@ impl DocumentSource {
       Some(self.inner.parsed_module.get_or_init(|| {
         analysis::parse_module(
           &self.inner.specifier,
-          self.inner.text.clone(),
+          self.inner.text_info.clone(),
           self.inner.media_type,
         )
-        .map_err(|e| e.to_string())
       }))
     } else {
       None

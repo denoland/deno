@@ -7,14 +7,13 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
-use crate::ast::ParsedModule;
 use crate::colors;
 use crate::diff::diff;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
 use crate::fs_util::{collect_files, get_extension, is_supported_ext_fmt};
-use crate::media_type::MediaType;
 use crate::text_encoding;
+use deno_ast::ParsedSource;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
@@ -166,15 +165,18 @@ pub fn format_file(
   }
 }
 
-pub fn format_parsed_module(parsed_module: &ParsedModule) -> String {
+pub fn format_parsed_module(parsed_source: &ParsedSource) -> String {
   dprint_plugin_typescript::format_parsed_file(
     &dprint_plugin_typescript::SourceFileInfo {
-      is_jsx: matches!(parsed_module.media_type(), MediaType::Jsx | MediaType::Tsx),
-      info: parsed_module.text().info(),
-      leading_comments: parsed_module.comments().leading_map(),
-      trailing_comments: parsed_module.comments().trailing_map(),
-      module: parsed_module.module(),
-      tokens: parsed_module.tokens(),
+      is_jsx: matches!(
+        parsed_source.media_type(),
+        deno_ast::MediaType::Jsx | deno_ast::MediaType::Tsx
+      ),
+      info: parsed_source.source(),
+      leading_comments: parsed_source.comments().leading_map(),
+      trailing_comments: parsed_source.comments().trailing_map(),
+      module: parsed_source.module(),
+      tokens: parsed_source.tokens(),
     },
     &TYPESCRIPT_CONFIG,
   )

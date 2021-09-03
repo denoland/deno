@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Range;
 use std::str::FromStr;
+use std::sync::Arc;
 
 /// A representation of the language id sent from the LSP client, which is used
 /// to determine how the document is handled within the language server.
@@ -118,7 +119,7 @@ impl DocumentData {
     &mut self,
     content_changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<(), AnyError> {
-    let mut content = self.source.text().as_str().to_string();
+    let mut content = self.source.text_info().text_str().to_string();
     let mut line_index = self.source.line_index().clone();
     let mut index_valid = IndexValid::All;
     for change in content_changes {
@@ -237,8 +238,11 @@ impl DocumentCache {
     self.docs.get(specifier)
   }
 
-  pub fn content(&self, specifier: &ModuleSpecifier) -> Option<&str> {
-    self.docs.get(specifier).map(|d| d.source().text().as_str())
+  pub fn content(&self, specifier: &ModuleSpecifier) -> Option<Arc<String>> {
+    self
+      .docs
+      .get(specifier)
+      .map(|d| d.source().text_info().text())
   }
 
   // For a given specifier, get all open documents which directly or indirectly
@@ -501,7 +505,8 @@ mod tests {
       .expect("failed to make changes");
     let actual = document_cache
       .content(&specifier)
-      .expect("failed to get content");
+      .expect("failed to get content")
+      .to_string();
     assert_eq!(actual, "console.log(\"Hello Deno\");\n");
   }
 
@@ -537,7 +542,8 @@ mod tests {
       .expect("failed to make changes");
     let actual = document_cache
       .content(&specifier)
-      .expect("failed to get content");
+      .expect("failed to get content")
+      .to_string();
     assert_eq!(actual, "console.log(\"Hello Deno\");\n");
   }
 

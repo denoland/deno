@@ -54,13 +54,6 @@ pub fn strip_bom(text: &str) -> &str {
   }
 }
 
-/// Strips the byte order mark if it exists from the provided text in place.
-pub fn strip_bom_mut(text: &mut String) {
-  if text.starts_with(BOM_CHAR) {
-    text.drain(..BOM_CHAR.len_utf8());
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;

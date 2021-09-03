@@ -173,7 +173,7 @@ impl Inner {
     {
       let (mut deps, _) = analysis::analyze_dependencies(
         specifier,
-        parsed_module.media_type(),
+        parsed_module.media_type().into(),
         &parsed_module,
         &self.maybe_import_map,
       );
@@ -274,14 +274,14 @@ impl Inner {
   pub(crate) fn get_text_content(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Option<String> {
+  ) -> Option<Arc<String>> {
     if specifier.scheme() == "asset" {
       self
         .assets
         .get(specifier)
         .map(|o| o.clone().map(|a| a.text))?
     } else if self.documents.contains_key(specifier) {
-      self.documents.content(specifier).map(ToOwned::to_owned)
+      self.documents.content(specifier)
     } else {
       self.sources.get_source(specifier)
     }
@@ -1010,10 +1010,10 @@ impl Inner {
     let text_edits = tokio::task::spawn_blocking(move || {
       let format_result = match source.module() {
         Some(Ok(parsed_module)) => Ok(format_parsed_module(parsed_module)),
-        Some(Err(err)) => Err(err.to_owned()),
+        Some(Err(err)) => Err(err.to_string()),
         None => {
           // it's not a js/ts file, so attempt to format its contents
-          format_file(&file_path, source.text().as_str())
+          format_file(&file_path, source.text_info().text_str())
         }
       };
 
@@ -1021,7 +1021,7 @@ impl Inner {
         Ok(new_text) => {
           let line_index = source.line_index();
           Some(text::get_edits(
-            &source.text().as_str(),
+            source.text_info().text_str(),
             &new_text,
             line_index,
           ))
@@ -2732,7 +2732,7 @@ impl Inner {
             .await
             .map_err(|_| LspError::internal_error())?
           {
-            Some(asset.text)
+            Some(asset.text.to_string())
           } else {
             error!("Missing asset: {}", specifier);
             None
@@ -2740,7 +2740,7 @@ impl Inner {
         }
         _ => {
           if let Some(source) = self.sources.get_source(&specifier) {
-            Some(source)
+            Some(source.to_string())
           } else {
             error!("The cached source was not found: {}", specifier);
             None
