@@ -288,13 +288,14 @@ pub fn kill(pid: i32, signal: i32) -> Result<(), AnyError> {
 #[derive(Deserialize)]
 struct KillArgs {
   pid: i32,
-  signo: i32,
+  signo: String,
 }
 
 fn op_kill(state: &mut OpState, args: KillArgs, _: ()) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.kill");
   state.borrow_mut::<Permissions>().run.check_all()?;
 
-  kill(args.pid, args.signo)?;
+  let signo = super::signal::signal_str_to_int_unwrap(&args.signo)?;
+  kill(args.pid, signo)?;
   Ok(())
 }

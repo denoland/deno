@@ -454,14 +454,6 @@ unitTest(
   },
 );
 
-unitTest(function signalNumbers() {
-  if (Deno.build.os === "darwin") {
-    assertEquals("SIGSTOP", 17);
-  } else if (Deno.build.os === "linux") {
-    assertEquals("SIGSTOP", 19);
-  }
-});
-
 unitTest(function killPermissions() {
   assertThrows(() => {
     // Unlike the other test cases, we don't have permission to spawn a

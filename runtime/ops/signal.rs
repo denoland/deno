@@ -130,6 +130,16 @@ fn signal_str_to_int(s: &str) -> Option<libc::c_int> {
   }
 }
 
+#[cfg(target_os = "windows")]
+fn signal_str_to_int(s: &str) -> Option<libc::c_int> {
+  unimplemented!()
+}
+
+pub fn signal_str_to_int_unwrap(s: &str) -> Result<libc::c_int, AnyError> {
+  signal_str_to_int(s)
+    .ok_or_else(|| type_error(format!("Invalid signal : {}", s)))
+}
+
 #[cfg(unix)]
 fn op_signal_bind(
   state: &mut OpState,
@@ -137,16 +147,13 @@ fn op_signal_bind(
   _: (),
 ) -> Result<ResourceId, AnyError> {
   super::check_unstable(state, "Deno.signal");
-  if let Some(signo) = signal_str_to_int(&sig) {
-    let resource = SignalStreamResource {
-      signal: AsyncRefCell::new(signal(SignalKind::from_raw(signo)).unwrap()),
-      cancel: Default::default(),
-    };
-    let rid = state.resource_table.add(resource);
-    Ok(rid)
-  } else {
-    Err(type_error(format!("Invalid signal : {}", sig)))
-  }
+  let signo = signal_str_to_int_unwrap(&sig)?;
+  let resource = SignalStreamResource {
+    signal: AsyncRefCell::new(signal(SignalKind::from_raw(signo)).unwrap()),
+    cancel: Default::default(),
+  };
+  let rid = state.resource_table.add(resource);
+  Ok(rid)
 }
 
 #[cfg(unix)]
