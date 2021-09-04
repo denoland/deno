@@ -6,8 +6,8 @@ import { TextProtoReader } from "../../../test_util/std/textproto/mod.ts";
 import {
   assert,
   assertEquals,
-  assertThrows,
   assertRejects,
+  assertThrows,
   deferred,
   delay,
   fail,
@@ -299,7 +299,7 @@ unitTest(
           );
         },
         Deno.errors.Http,
-        cancelReason!
+        cancelReason!,
       );
       assert(cancelReason!);
       httpConn.close();
