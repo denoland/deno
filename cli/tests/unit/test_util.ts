@@ -16,6 +16,7 @@ export {
   assertStringIncludes,
   assertThrows,
   assertThrowsAsync,
+  assertRejects,
   fail,
   unimplemented,
   unreachable,

@@ -7,7 +7,7 @@ import {
   assert,
   assertEquals,
   assertThrows,
-  assertThrowsAsync,
+  assertRejects,
   deferred,
   delay,
   fail,
@@ -187,7 +187,7 @@ unitTest({ perms: { net: true } }, async function httpServerInvalidMethod() {
   const client = await Deno.connect({ port: 4501 });
   const httpConn = Deno.serveHttp(await listener.accept());
   await client.write(new Uint8Array([1, 2, 3]));
-  await assertThrowsAsync(
+  await assertRejects(
     async () => {
       await httpConn.nextRequest();
     },
@@ -268,7 +268,7 @@ unitTest(
 );
 
 unitTest(
-  { perms: { net: true } },
+  { only: true, perms: { net: true } },
   async function httpServerCancelBodyOnResponseFailure() {
     const promise = (async () => {
       const listener = Deno.listen({ port: 4501 });
@@ -277,8 +277,8 @@ unitTest(
       const event = await httpConn.nextRequest();
       assert(event);
       const { respondWith } = event;
-      let cancelReason = null;
-      const responseError = await assertThrowsAsync(
+      let cancelReason: string;
+      await assertRejects(
         async () => {
           let interval = 0;
           await respondWith(
@@ -299,8 +299,9 @@ unitTest(
           );
         },
         Deno.errors.Http,
+        cancelReason!
       );
-      assertEquals(cancelReason, responseError);
+      assert(cancelReason!);
       httpConn.close();
       listener.close();
     })();
@@ -323,7 +324,7 @@ unitTest(
       // Start polling for the next request before awaiting response.
       const nextRequestPromise = httpConn.nextRequest();
       const { respondWith } = event;
-      await assertThrowsAsync(
+      await assertRejects(
         async () => {
           let interval = 0;
           await respondWith(
