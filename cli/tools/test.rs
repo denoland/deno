@@ -71,6 +71,13 @@ pub struct TestDescription {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub enum TestOutput {
+  // TODO(caspervonb): add stdout and stderr redirection.
+  Console(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum TestResult {
   Ok,
   Ignored,
@@ -91,6 +98,7 @@ pub struct TestPlan {
 pub enum TestEvent {
   Plan(TestPlan),
   Wait(TestDescription),
+  Output(TestOutput),
   Result(TestDescription, TestResult, u64),
 }
 
@@ -130,6 +138,7 @@ impl TestSummary {
 trait TestReporter {
   fn report_plan(&mut self, plan: &TestPlan);
   fn report_wait(&mut self, description: &TestDescription);
+  fn report_output(&mut self, output: &TestOutput);
   fn report_result(
     &mut self,
     description: &TestDescription,
@@ -141,11 +150,15 @@ trait TestReporter {
 
 struct PrettyTestReporter {
   concurrent: bool,
+  echo_output: bool,
 }
 
 impl PrettyTestReporter {
-  fn new(concurrent: bool) -> PrettyTestReporter {
-    PrettyTestReporter { concurrent }
+  fn new(concurrent: bool, echo_output: bool) -> PrettyTestReporter {
+    PrettyTestReporter {
+      concurrent,
+      echo_output,
+    }
   }
 }
 
@@ -158,6 +171,14 @@ impl TestReporter for PrettyTestReporter {
   fn report_wait(&mut self, description: &TestDescription) {
     if !self.concurrent {
       print!("test {} ...", description.name);
+    }
+  }
+
+  fn report_output(&mut self, output: &TestOutput) {
+    if self.echo_output {
+      match output {
+        TestOutput::Console(line) => println!("{}", line),
+      }
     }
   }
 
@@ -218,8 +239,11 @@ impl TestReporter for PrettyTestReporter {
   }
 }
 
-fn create_reporter(concurrent: bool) -> Box<dyn TestReporter + Send> {
-  Box::new(PrettyTestReporter::new(concurrent))
+fn create_reporter(
+  concurrent: bool,
+  echo_output: bool,
+) -> Box<dyn TestReporter + Send> {
+  Box::new(PrettyTestReporter::new(concurrent, echo_output))
 }
 
 /// Test a single specifier as documentation containing test programs, an executable test module or
@@ -247,6 +271,7 @@ async fn test_specifier(
     media_type: MediaType::JavaScript,
     source: test_source.clone(),
     specifier: test_specifier.clone(),
+    maybe_headers: None,
   };
 
   program_state.file_fetcher.insert_cached(test_file);
@@ -294,7 +319,6 @@ async fn test_specifier(
     &format!(
       r#"Deno[Deno.internal].runTests({})"#,
       json!({
-        "disableLog": program_state.flags.log_level == Some(Level::Error),
         "filter": filter,
         "shuffle": shuffle,
       }),
@@ -386,6 +410,7 @@ fn extract_files_from_regex_blocks(
         media_type: file_media_type,
         source: file_source,
         specifier: file_specifier,
+        maybe_headers: None,
       })
     })
     .collect();
@@ -561,6 +586,7 @@ async fn test_specifiers(
   shuffle: Option<u64>,
   concurrent_jobs: NonZeroUsize,
 ) -> Result<(), AnyError> {
+  let log_level = program_state.flags.log_level;
   let specifiers_with_mode = if let Some(seed) = shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut specifiers_with_mode = specifiers_with_mode.clone();
@@ -605,7 +631,9 @@ async fn test_specifiers(
     .buffer_unordered(concurrent_jobs.get())
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
-  let mut reporter = create_reporter(concurrent_jobs.get() > 1);
+  let mut reporter =
+    create_reporter(concurrent_jobs.get() > 1, log_level != Some(Level::Error));
+
   let handler = {
     tokio::task::spawn_blocking(move || {
       let earlier = Instant::now();
@@ -627,6 +655,10 @@ async fn test_specifiers(
 
           TestEvent::Wait(description) => {
             reporter.report_wait(&description);
+          }
+
+          TestEvent::Output(output) => {
+            reporter.report_output(&output);
           }
 
           TestEvent::Result(description, result, elapsed) => {
@@ -762,9 +794,7 @@ async fn fetch_specifiers_with_test_mode(
       .fetch(specifier, &mut Permissions::allow_all())
       .await?;
 
-    if file.media_type != MediaType::Unknown {
-      *mode = TestMode::Both
-    } else {
+    if file.media_type == MediaType::Unknown {
       *mode = TestMode::Documentation
     }
   }

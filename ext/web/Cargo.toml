@@ -14,12 +14,12 @@ description = "Collection of Web APIs"
 path = "lib.rs"
 
 [dependencies]
-async-trait = "0.1.50"
+async-trait = "0.1.51"
 base64 = "0.13.0"
 deno_core = { version = "0.98.0", path = "../../core" }
 encoding_rs = "0.8.28"
-serde = "1.0"
-tokio = { version = "1.8.1", features = ["full"] }
+serde = "1.0.129"
+tokio = { version = "1.10.1", features = ["full"] }
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
 
 [dev-dependencies]

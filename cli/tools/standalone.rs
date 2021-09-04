@@ -3,6 +3,7 @@
 use crate::deno_dir::DenoDir;
 use crate::flags::DenoSubcommand;
 use crate::flags::Flags;
+use crate::flags::RunFlags;
 use deno_core::error::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -199,9 +200,9 @@ pub fn compile_to_runtime_flags(
   // change to `Flags` should be reflected here.
   Ok(Flags {
     argv: baked_args,
-    subcommand: DenoSubcommand::Run {
+    subcommand: DenoSubcommand::Run(RunFlags {
       script: "placeholder".to_string(),
-    },
+    }),
     allow_env: flags.allow_env,
     allow_hrtime: flags.allow_hrtime,
     allow_net: flags.allow_net,

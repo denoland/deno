@@ -695,8 +695,7 @@ delete Object.prototype.__proto__;
       });
       // Setup `Deno` global - we're actually overriding already
       // existing global `Deno` with `Deno` namespace from "./deno.ts".
-      util.immutableDefine(globalThis, "Deno", finalDenoNs);
-      ObjectFreeze(globalThis.Deno);
+      ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
       ObjectFreeze(globalThis.Deno.core);
       signals.setSignals();
     } else {

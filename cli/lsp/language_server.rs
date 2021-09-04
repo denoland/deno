@@ -392,7 +392,7 @@ impl Inner {
           ConfigFile::read(path)?
         };
         let (value, maybe_ignored_options) =
-          config_file.as_compiler_options()?;
+          config_file.to_compiler_options()?;
         tsconfig.merge(&value);
         self.maybe_config_file = Some(config_file);
         self.maybe_config_uri = Some(config_url);
