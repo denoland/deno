@@ -38,7 +38,6 @@
     #rid = null;
 
     /**
-     *
      * @param {string} label
      * @param {TextDecoderOptions} options
      */
@@ -198,7 +197,6 @@
     #transform;
 
     /**
-     *
      * @param {string} label
      * @param {TextDecoderOptions} options
      */

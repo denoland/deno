@@ -56,6 +56,8 @@ pub struct File {
   /// The _final_ specifier for the file.  The requested specifier and the final
   /// specifier maybe different for remote files that have been redirected.
   pub specifier: ModuleSpecifier,
+
+  pub maybe_headers: Option<HashMap<String, String>>,
 }
 
 /// Simple struct implementing in-process caching to prevent multiple
@@ -137,6 +139,7 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
     media_type,
     source,
     specifier: specifier.clone(),
+    maybe_headers: None,
   })
 }
 
@@ -274,6 +277,7 @@ impl FileFetcher {
       media_type,
       source,
       specifier: specifier.clone(),
+      maybe_headers: Some(headers.clone()),
     })
   }
 
@@ -365,6 +369,7 @@ impl FileFetcher {
       media_type,
       source,
       specifier: specifier.clone(),
+      maybe_headers: None,
     })
   }
 
@@ -426,6 +431,7 @@ impl FileFetcher {
       media_type,
       source,
       specifier: specifier.clone(),
+      maybe_headers: None,
     })
   }
   /// Asynchronously fetch remote source file specified by the URL following
@@ -894,6 +900,7 @@ mod tests {
       media_type: MediaType::TypeScript,
       source: "some source code".to_string(),
       specifier: specifier.clone(),
+      maybe_headers: None,
     };
     file_fetcher.insert_cached(file.clone());
 
