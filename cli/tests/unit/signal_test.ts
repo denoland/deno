@@ -83,7 +83,7 @@ unitTest(
     );
     assertThrows(
       () => {
-        Deno.signal("SIGURS2");
+        Deno.signal("SIGUSR2");
       },
       Error,
       "not implemented",
@@ -227,7 +227,7 @@ unitTest(
     s = Deno.signal("SIGUSR1");
     assert(s instanceof Deno.SignalStream);
     s.dispose();
-    s = Deno.signal("SIGURS2");
+    s = Deno.signal("SIGUSR2");
     assert(s instanceof Deno.SignalStream);
     s.dispose();
     s = Deno.signal("SIGWINCH");
