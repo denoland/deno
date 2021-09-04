@@ -647,6 +647,48 @@ impl JsRuntime {
     scope.perform_microtask_checkpoint();
   }
 
+  /// Waits for the given value to resolve while polling the event loop.
+  ///
+  /// This future resolves when either the value is resolved or the event loop runs to
+  /// completion.
+  pub async fn resolve_value(
+    &mut self,
+    global: v8::Global<v8::Value>,
+  ) -> Result<v8::Global<v8::Value>, AnyError> {
+    poll_fn(|cx| {
+      let state = self.poll_event_loop(cx, false);
+
+      let mut scope = self.handle_scope();
+      let local = v8::Local::<v8::Value>::new(&mut scope, &global);
+
+      if let Ok(promise) = v8::Local::<v8::Promise>::try_from(local) {
+        match promise.state() {
+          v8::PromiseState::Pending => match state {
+            Poll::Ready(Ok(_)) => {
+              let msg = "Promise resolution is still pending but the event loop has already resolved.";
+              Poll::Ready(Err(generic_error(msg)))
+            },
+            Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
+            Poll::Pending => Poll::Pending,
+          },
+          v8::PromiseState::Fulfilled => {
+            let value = promise.result(&mut scope);
+            let value_handle = v8::Global::new(&mut scope, value);
+            Poll::Ready(Ok(value_handle))
+          }
+          v8::PromiseState::Rejected => {
+            let exception = promise.result(&mut scope);
+            Poll::Ready(exception_to_err_result(&mut scope, exception, false))
+          }
+        }
+      } else {
+        let value_handle = v8::Global::new(&mut scope, local);
+        Poll::Ready(Ok(value_handle))
+      }
+    })
+    .await
+  }
+
   /// Runs event loop to completion
   ///
   /// This future resolves when:
@@ -1626,6 +1668,55 @@ pub mod tests {
         "foobar"
       );
     }
+  }
+
+  #[tokio::test]
+  async fn test_resolve_value() {
+    let mut runtime = JsRuntime::new(Default::default());
+    let value_global = runtime
+      .execute_script("a.js", "Promise.resolve(1 + 2)")
+      .unwrap();
+    let result_global = runtime.resolve_value(value_global).await.unwrap();
+    {
+      let scope = &mut runtime.handle_scope();
+      let value = result_global.get(scope);
+      assert_eq!(value.integer_value(scope).unwrap(), 3);
+    }
+
+    let value_global = runtime
+      .execute_script(
+        "a.js",
+        "Promise.resolve(new Promise(resolve => resolve(2 + 2)))",
+      )
+      .unwrap();
+    let result_global = runtime.resolve_value(value_global).await.unwrap();
+    {
+      let scope = &mut runtime.handle_scope();
+      let value = result_global.get(scope);
+      assert_eq!(value.integer_value(scope).unwrap(), 4);
+    }
+
+    let value_global = runtime
+      .execute_script("a.js", "Promise.reject(new Error('fail'))")
+      .unwrap();
+    let err = runtime.resolve_value(value_global).await.unwrap_err();
+    assert_eq!(
+      "Uncaught Error: fail",
+      err.downcast::<JsError>().unwrap().message
+    );
+
+    let value_global = runtime
+      .execute_script("a.js", "new Promise(resolve => {})")
+      .unwrap();
+    let error_string = runtime
+      .resolve_value(value_global)
+      .await
+      .unwrap_err()
+      .to_string();
+    assert_eq!(
+      "Promise resolution is still pending but the event loop has already resolved.",
+      error_string,
+    );
   }
 
   #[test]

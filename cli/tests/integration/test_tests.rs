@@ -61,6 +61,12 @@ itest!(load_unload {
   output: "test/load_unload.out",
 });
 
+itest!(interval {
+  args: "test test/interval.ts",
+  exit_code: 0,
+  output: "test/interval.out",
+});
+
 itest!(doc {
   args: "test --doc --allow-all test/doc.ts",
   exit_code: 1,
