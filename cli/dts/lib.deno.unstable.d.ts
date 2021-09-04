@@ -562,13 +562,48 @@ declare namespace Deno {
    */
   export function applySourceMap(location: Location): Location;
 
+  export type Signal =
+    | "SIGABRT"
+    | "SIGALRM"
+    | "SIGBUS"
+    | "SIGCHLD"
+    | "SIGCONT"
+    | "SIGEMT"
+    | "SIGFPE"
+    | "SIGHUP"
+    | "SIGILL"
+    | "SIGINFO"
+    | "SIGINT"
+    | "SIGIO"
+    | "SIGKILL"
+    | "SIGPIPE"
+    | "SIGPROF"
+    | "SIGPWR"
+    | "SIGQUIT"
+    | "SIGSEGV"
+    | "SIGSTKFLT"
+    | "SIGSTOP"
+    | "SIGSYS"
+    | "SIGTERM"
+    | "SIGTRAP"
+    | "SIGTSTP"
+    | "SIGTTIN"
+    | "SIGTTOU"
+    | "SIGURG"
+    | "SIGUSR1"
+    | "SIGUSR2"
+    | "SIGVTALRM"
+    | "SIGWINCH"
+    | "SIGXCPU"
+    | "SIGXFSZ";
+
   /** **UNSTABLE**: new API, yet to be vetted.
    *
    * Represents the stream of signals, implements both `AsyncIterator` and
    * `PromiseLike`. */
   export class SignalStream
     implements AsyncIterableIterator<void>, PromiseLike<void> {
-    constructor(signal: string);
+    constructor(signal: Signal);
     then<T, S>(
       f: (v: void) => T | Promise<T>,
       g?: (v: void) => S | Promise<S>,
@@ -613,7 +648,7 @@ declare namespace Deno {
    *
    * NOTE: This functionality is not yet implemented on Windows.
    */
-  export function signal(signo: string): SignalStream;
+  export function signal(sig: Signal): SignalStream;
 
   export type SetRawOptions = {
     cbreak: boolean;
@@ -696,7 +731,7 @@ declare namespace Deno {
    *      Deno.kill(p.pid, "SIGINT");
    *
    * Requires `allow-run` permission. */
-  export function kill(pid: number, signo: string): void;
+  export function kill(pid: number, signo: Signal): void;
 
   /**  **UNSTABLE**: New API, yet to be vetted.  Additional consideration is still
    * necessary around the permissions required.
