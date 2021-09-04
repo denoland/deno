@@ -268,7 +268,7 @@ unitTest(
 );
 
 unitTest(
-  { only: true, perms: { net: true } },
+  { perms: { net: true } },
   async function httpServerCancelBodyOnResponseFailure() {
     const promise = (async () => {
       const listener = Deno.listen({ port: 4501 });
@@ -711,7 +711,7 @@ unitTest(function httpUpgradeWebSocketCaseInsensitiveUpgradeHeader() {
   const request = new Request("https://deno.land/", {
     headers: {
       connection: "upgrade",
-      upgrade: "WebSocket",
+      upgrade: "websocket",
       "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
     },
   });
