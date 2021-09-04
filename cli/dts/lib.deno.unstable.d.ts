@@ -615,54 +615,6 @@ declare namespace Deno {
    */
   export function signal(signo: string): SignalStream;
 
-  /** **UNSTABLE**: new API, yet to be vetted. */
-  export const signals: {
-    /** Returns the stream of SIGALRM signals.
-     *
-     * This method is the shorthand for `Deno.signal("SIGALRM")`. */
-    alarm: () => SignalStream;
-    /** Returns the stream of SIGCHLD signals.
-     *
-     * This method is the shorthand for `Deno.signal("SIGCHLD")`. */
-    child: () => SignalStream;
-    /** Returns the stream of SIGHUP signals.
-     *
-     * This method is the shorthand for `Deno.signal("SIGHUP")`. */
-    hungup: () => SignalStream;
-    /** Returns the stream of SIGINT signals.
-     *
-     * This method is the shorthand for `Deno.signal("SIGINT")`. */
-    interrupt: () => SignalStream;
-    /** Returns the stream of SIGIO signals.
-     *
-     * This method is the shorthand for `Deno.signal("SIGIO")`. */
-    io: () => SignalStream;
-    /** Returns the stream of SIGPIPE signals.
-     *
-     * This method is the shorthand for `Deno.signal("SIGPIPE")`. */
-    pipe: () => SignalStream;
-    /** Returns the stream of SIGQUIT signals.
-     *
-     * This method is the shorthand for `Deno.signal("SIGQUIT")`. */
-    quit: () => SignalStream;
-    /** Returns the stream of SIGTERM signals.
-     *
-     * This method is the shorthand for `Deno.signal("SIGTERM")`. */
-    terminate: () => SignalStream;
-    /** Returns the stream of SIGUSR1 signals.
-     *
-     * This method is the shorthand for `Deno.signal("SIGUSR1")`. */
-    userDefined1: () => SignalStream;
-    /** Returns the stream of SIGUSR2 signals.
-     *
-     * This method is the shorthand for `Deno.signal("SIGUSR2")`. */
-    userDefined2: () => SignalStream;
-    /** Returns the stream of SIGWINCH signals.
-     *
-     * This method is the shorthand for `Deno.signal("SIGWINCH")`. */
-    windowChange: () => SignalStream;
-  };
-
   export type SetRawOptions = {
     cbreak: boolean;
   };

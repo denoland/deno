@@ -32,42 +32,6 @@
     return new SignalStream(signo);
   }
 
-  const signals = {
-    alarm() {
-      return signal("SIGALRM");
-    },
-    child() {
-      return signal("SIGCHLD");
-    },
-    hungup() {
-      return signal("SIGHUP");
-    },
-    interrupt() {
-      return signal("SIGINT");
-    },
-    io() {
-      return signal("SIGIO");
-    },
-    pipe() {
-      return signal("SIGPIPE");
-    },
-    quit() {
-      return signal("SIGQUIT");
-    },
-    terminate() {
-      return signal("SIGTERM");
-    },
-    userDefined1() {
-      return signal("SIGUSR1");
-    },
-    userDefined2() {
-      return signal("SIGUSR2");
-    },
-    windowChange() {
-      return signal("SIGWINCH");
-    },
-  };
-
   class SignalStream {
     #disposed = false;
     #pollingPromise = PromiseResolve(false);
@@ -132,7 +96,6 @@
 
   window.__bootstrap.signals = {
     signal,
-    signals,
     SignalStream,
   };
 })(this);
