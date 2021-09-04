@@ -228,15 +228,19 @@ finishing test case.`;
   }
 
   async function runTests({
-    disableLog = false,
     filter = null,
     shuffle = null,
   } = {}) {
     const origin = getTestOrigin();
     const originalConsole = globalThis.console;
-    if (disableLog) {
-      globalThis.console = new Console(() => {});
-    }
+
+    globalThis.console = new Console((line) => {
+      dispatchTestEvent({
+        output: {
+          console: line,
+        },
+      });
+    });
 
     const only = ArrayPrototypeFilter(tests, (test) => test.only);
     const filtered = ArrayPrototypeFilter(
@@ -286,9 +290,7 @@ finishing test case.`;
       dispatchTestEvent({ result: [description, result, elapsed] });
     }
 
-    if (disableLog) {
-      globalThis.console = originalConsole;
-    }
+    globalThis.console = originalConsole;
   }
 
   window.__bootstrap.internals = {
