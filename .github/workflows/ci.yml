@@ -591,3 +591,28 @@ jobs:
         run: |
           echo ${{ github.sha }} > canary-latest.txt
           gsutil cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
+
+  nightly-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: hecrj/setup-rust-action@v1
+        with:
+          rust-version: nightly
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release --locked --verbose --all-targets
+        # env:
+          # RUSTFLAGS: '-Zinstrument-coverage'
+          # LLVM_PROFILE_FILE: '%p-%m.profraw'
+      - name: Install grcov
+        run: |
+          rustup component add llvm-tools-preview
+          curl -L https://github.com/mozilla/grcov/releases/latest/download/grcov-linux-x86_64.tar.bz2 | tar jxf -
+      - name: Run grcov
+        run: |
+          ./grcov . --source-dir . --binary-path ./target/debug/ --output-type lcov --output-path ./lcov.info --branch --ignore-not-existing
+      - name: Upload to Codecov
+        run: |
+          bash <(curl -s https://codecov.io/bash) -f ./lcov.info
