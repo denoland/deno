@@ -89,7 +89,7 @@ jobs:
       - name: Install Deno
         if: matrix.job == 'lint'
         run: |
-          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.11.3
+          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.13.2
           echo "$HOME/.deno/bin" >> $GITHUB_PATH
 
       - name: Install Python
