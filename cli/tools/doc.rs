@@ -80,7 +80,7 @@ impl Loader for DocLoader {
         .map(|file| {
           Some(LoadResponse {
             specifier: specifier.clone(),
-            content: Arc::new(file.source),
+            content: file.source.clone(),
             maybe_headers: file.maybe_headers,
           })
         });
@@ -116,7 +116,7 @@ pub async fn print_docs(
     let doc_parser = doc::DocParser::new(graph, private, &source_parser);
     doc_parser.parse_source(
       &source_file_specifier,
-      MediaType::Dts.into(),
+      MediaType::Dts,
       Arc::new(get_types(flags.unstable)),
     )
   } else {
@@ -129,7 +129,7 @@ pub async fn print_docs(
       local: PathBuf::from("./$deno$doc.ts"),
       maybe_types: None,
       media_type: MediaType::TypeScript,
-      source: format!("export * from \"{}\";", module_specifier),
+      source: Arc::new(format!("export * from \"{}\";", module_specifier)),
       specifier: root_specifier.clone(),
       maybe_headers: None,
     };

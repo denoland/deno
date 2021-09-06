@@ -173,8 +173,8 @@ impl Inner {
     {
       let (mut deps, _) = analysis::analyze_dependencies(
         specifier,
-        parsed_module.media_type().into(),
-        &parsed_module,
+        parsed_module.media_type(),
+        parsed_module,
         &self.maybe_import_map,
       );
       for (_, dep) in deps.iter_mut() {
@@ -185,7 +185,7 @@ impl Inner {
           }
         }
       }
-      let dep_ranges = analysis::analyze_dependency_ranges(&parsed_module).ok();
+      let dep_ranges = analysis::analyze_dependency_ranges(parsed_module).ok();
       if let Err(err) =
         self
           .documents
@@ -775,7 +775,7 @@ impl Inner {
       specifier.clone(),
       params.text_document.version,
       language_id,
-      params.text_document.text,
+      Arc::new(params.text_document.text),
     );
 
     if self.documents.is_diagnosable(&specifier) {

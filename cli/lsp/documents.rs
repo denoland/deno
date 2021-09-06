@@ -95,7 +95,7 @@ impl DocumentData {
     specifier: ModuleSpecifier,
     version: i32,
     language_id: LanguageId,
-    source_text: String,
+    source_text: Arc<String>,
   ) -> Self {
     let line_index = LineIndex::new(&source_text);
     Self {
@@ -142,7 +142,7 @@ impl DocumentData {
     self.source = DocumentSource::new(
       &self.specifier,
       MediaType::from(&self.language_id),
-      content,
+      Arc::new(content),
       line_index,
     );
     self.maybe_navigation_tree = None;
@@ -337,7 +337,7 @@ impl DocumentCache {
     specifier: ModuleSpecifier,
     version: i32,
     language_id: LanguageId,
-    source: String,
+    source: Arc<String>,
   ) {
     self.docs.insert(
       specifier.clone(),
@@ -468,7 +468,7 @@ mod tests {
       specifier.clone(),
       1,
       LanguageId::TypeScript,
-      "console.log(\"Hello Deno\");\n".to_string(),
+      Arc::new("console.log(\"Hello Deno\");\n".to_string()),
     );
     assert!(document_cache.contains_key(&specifier));
     assert!(!document_cache.contains_key(&missing_specifier));
@@ -482,7 +482,7 @@ mod tests {
       specifier.clone(),
       1,
       LanguageId::TypeScript,
-      "console.log(\"Hello deno\");\n".to_string(),
+      Arc::new("console.log(\"Hello deno\");\n".to_string()),
     );
     document_cache
       .change(
@@ -519,7 +519,7 @@ mod tests {
       specifier.clone(),
       1,
       LanguageId::TypeScript,
-      "console.log(\"Hello 🦕\");\n".to_string(),
+      Arc::new("console.log(\"Hello 🦕\");\n".to_string()),
     );
     document_cache
       .change(
@@ -557,7 +557,7 @@ mod tests {
       specifier.clone(),
       1,
       "typescript".parse().unwrap(),
-      "console.log(\"hello world\");\n".to_string(),
+      Arc::new("console.log(\"hello world\");\n".to_string()),
     );
     assert!(document_cache.is_diagnosable(&specifier));
     let specifier = resolve_url("file:///a/file.rs").unwrap();
@@ -565,7 +565,7 @@ mod tests {
       specifier.clone(),
       1,
       "rust".parse().unwrap(),
-      "pub mod a;".to_string(),
+      Arc::new("pub mod a;".to_string()),
     );
     assert!(!document_cache.is_diagnosable(&specifier));
     let specifier =

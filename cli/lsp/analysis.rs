@@ -285,7 +285,7 @@ pub fn parse_module(
   deno_ast::parse_module(deno_ast::ParseParams {
     specifier: specifier.as_str().to_string(),
     source,
-    media_type: media_type.into(),
+    media_type,
     // capture the tokens for linting and formatting
     capture_tokens: true,
     maybe_syntax: None,

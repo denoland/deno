@@ -140,7 +140,7 @@ impl Default for Metadata {
       source: DocumentSource::new(
         &INVALID_SPECIFIER,
         MediaType::default(),
-        String::default(),
+        Arc::new(String::default()),
         LineIndex::default(),
       ),
       specifier: INVALID_SPECIFIER.clone(),
@@ -152,7 +152,7 @@ impl Default for Metadata {
 impl Metadata {
   fn new(
     specifier: &ModuleSpecifier,
-    source: String,
+    source: Arc<String>,
     version: &str,
     media_type: MediaType,
     maybe_warning: Option<String>,
@@ -166,7 +166,7 @@ impl Metadata {
         let (deps, maybe_types) = analysis::analyze_dependencies(
           specifier,
           media_type,
-          &parsed_module,
+          parsed_module,
           maybe_import_map,
         );
         (Some(deps), maybe_types)
@@ -197,7 +197,7 @@ impl Metadata {
         let (deps, maybe_types) = analysis::analyze_dependencies(
           &self.specifier,
           self.media_type,
-          &parsed_module,
+          parsed_module,
           maybe_import_map,
         );
         (Some(deps), maybe_types)
@@ -413,7 +413,7 @@ impl Inner {
     };
     let mut metadata = Metadata::new(
       specifier,
-      source,
+      Arc::new(source),
       &version,
       media_type,
       maybe_warning,

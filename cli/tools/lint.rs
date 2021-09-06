@@ -209,7 +209,7 @@ fn lint_file(
   let file_name = file_path.to_string_lossy().to_string();
   let source_code = fs::read_to_string(&file_path)?;
   let media_type = MediaType::from(&file_path);
-  let syntax = deno_ast::get_syntax(media_type.into());
+  let syntax = deno_ast::get_syntax(media_type);
 
   // Obtaining rules from config is infallible at this point.
   let lint_rules = get_configured_rules(
@@ -253,7 +253,7 @@ fn lint_stdin(
     rules_include,
     rules_exclude,
   )?;
-  let syntax = deno_ast::get_syntax(MediaType::TypeScript.into());
+  let syntax = deno_ast::get_syntax(MediaType::TypeScript);
   let linter = create_linter(syntax, lint_rules);
   let mut has_error = false;
   let pseudo_file_name = "_stdin.ts";

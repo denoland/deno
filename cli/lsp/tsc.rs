@@ -2245,7 +2245,7 @@ fn op_get_text(
         .unwrap()
     };
   state.state_snapshot.performance.measure(mark);
-  Ok(text::slice(&content, args.start..args.end).to_string())
+  Ok(text::slice(content, args.start..args.end).to_string())
 }
 
 fn op_load(
@@ -2912,7 +2912,7 @@ mod tests {
         specifier.clone(),
         *version,
         language_id.clone(),
-        source.to_string(),
+        Arc::new(source.to_string()),
       );
       let media_type = MediaType::from(&specifier);
       if let Some(Ok(parsed_module)) =

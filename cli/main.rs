@@ -596,7 +596,7 @@ async fn eval_command(
     } else {
       MediaType::Jsx
     },
-    source: String::from_utf8(source_code)?,
+    source: Arc::new(String::from_utf8(source_code)?),
     specifier: main_module.clone(),
     maybe_headers: None,
   };
@@ -849,7 +849,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
     local: main_module.clone().to_file_path().unwrap(),
     maybe_types: None,
     media_type: MediaType::TypeScript,
-    source: String::from_utf8(source)?,
+    source: Arc::new(String::from_utf8(source)?),
     specifier: main_module.clone(),
     maybe_headers: None,
   };

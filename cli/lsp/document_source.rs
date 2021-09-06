@@ -1,3 +1,4 @@
+use deno_ast::swc::common::BytePos;
 use deno_ast::Diagnostic;
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
@@ -28,14 +29,14 @@ impl DocumentSource {
   pub fn new(
     specifier: &ModuleSpecifier,
     media_type: MediaType,
-    text: String,
+    text: Arc<String>,
     line_index: LineIndex,
   ) -> Self {
     Self {
       inner: Arc::new(DocumentSourceInner {
         specifier: specifier.clone(),
         media_type,
-        text_info: SourceTextInfo::from_string(text),
+        text_info: SourceTextInfo::new(BytePos(0), text),
         parsed_module: OnceCell::new(),
         line_index,
       }),

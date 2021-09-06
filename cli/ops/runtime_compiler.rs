@@ -47,7 +47,7 @@ struct EmitArgs {
   import_map: Option<Value>,
   import_map_path: Option<String>,
   root_specifier: String,
-  sources: Option<HashMap<String, String>>,
+  sources: Option<HashMap<String, Arc<String>>>,
 }
 
 async fn op_emit(

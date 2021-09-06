@@ -307,7 +307,7 @@ impl Module {
       specifier: cached_module.specifier,
       maybe_import_map,
       media_type,
-      text_info: SourceTextInfo::from_string(cached_module.source),
+      text_info: SourceTextInfo::new(BytePos(0), cached_module.source),
       source_path: cached_module.source_path,
       maybe_emit: cached_module.maybe_emit,
       maybe_emit_path: cached_module.maybe_emit_path,
@@ -349,7 +349,7 @@ impl Module {
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
       specifier: self.specifier.as_str().to_string(),
       source: self.text_info.clone(),
-      media_type: self.media_type.into(),
+      media_type: self.media_type,
       capture_tokens: false,
       maybe_syntax: None,
     })?;
@@ -2134,8 +2134,10 @@ pub mod tests {
         .replace("/", "-");
       let source_path = self.fixtures.join(specifier_text);
       let media_type = MediaType::from(&source_path);
-      let source = fs::read_to_string(&source_path)
-        .map_err(|err| (specifier.clone(), err.into()))?;
+      let source = Arc::new(
+        fs::read_to_string(&source_path)
+          .map_err(|err| (specifier.clone(), err.into()))?,
+      );
       let is_remote = specifier.scheme() != "file";
 
       Ok(CachedModule {
@@ -2231,9 +2233,9 @@ pub mod tests {
     specifier: ModuleSpecifier,
     sources: HashMap<&str, &str>,
   ) -> Graph {
-    let sources: HashMap<String, String> = sources
+    let sources: HashMap<String, Arc<String>> = sources
       .iter()
-      .map(|(k, v)| (k.to_string(), v.to_string()))
+      .map(|(k, v)| (k.to_string(), Arc::new(v.to_string())))
       .collect();
     let handler = Arc::new(Mutex::new(MemoryHandler::new(sources)));
     let mut builder = GraphBuilder::new(handler.clone(), None, None);

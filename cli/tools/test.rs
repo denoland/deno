@@ -268,7 +268,7 @@ async fn test_specifier(
     local: test_specifier.to_file_path().unwrap(),
     maybe_types: None,
     media_type: MediaType::JavaScript,
-    source: test_source.clone(),
+    source: Arc::new(test_source),
     specifier: test_specifier.clone(),
     maybe_headers: None,
   };
@@ -343,7 +343,7 @@ async fn test_specifier(
 fn extract_files_from_regex_blocks(
   location: &Location,
   source: &str,
-  media_type: &MediaType,
+  media_type: MediaType,
   blocks_regex: &Regex,
   lines_regex: &Regex,
 ) -> Result<Vec<File>, AnyError> {
@@ -364,11 +364,11 @@ fn extract_files_from_regex_blocks(
           Some(&"jsx") => MediaType::Jsx,
           Some(&"ts") => MediaType::TypeScript,
           Some(&"tsx") => MediaType::Tsx,
-          Some(&"") => *media_type,
+          Some(&"") => media_type,
           _ => MediaType::Unknown,
         }
       } else {
-        *media_type
+        media_type
       };
 
       if file_media_type == MediaType::Unknown {
@@ -407,7 +407,7 @@ fn extract_files_from_regex_blocks(
         local: file_specifier.to_file_path().unwrap(),
         maybe_types: None,
         media_type: file_media_type,
-        source: file_source,
+        source: Arc::new(file_source),
         specifier: file_specifier,
         maybe_headers: None,
       })
@@ -419,13 +419,16 @@ fn extract_files_from_regex_blocks(
 
 fn extract_files_from_source_comments(
   specifier: &ModuleSpecifier,
-  source: &str,
-  media_type: &MediaType,
+  source: Arc<String>,
+  media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
   let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
     specifier: specifier.as_str().to_string(),
-    source: deno_ast::SourceTextInfo::from_string(source.to_string()),
-    media_type: media_type.to_owned().into(),
+    source: deno_ast::SourceTextInfo::new(
+      deno_ast::swc::common::BytePos(0),
+      source,
+    ),
+    media_type,
     capture_tokens: false,
     maybe_syntax: None,
   })?;
@@ -462,7 +465,7 @@ fn extract_files_from_source_comments(
 fn extract_files_from_fenced_blocks(
   specifier: &ModuleSpecifier,
   source: &str,
-  media_type: &MediaType,
+  media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
   let location = Location {
     specifier: specifier.to_string(),
@@ -498,13 +501,13 @@ async fn fetch_inline_files(
       extract_files_from_fenced_blocks(
         &file.specifier,
         &file.source,
-        &file.media_type,
+        file.media_type,
       )
     } else {
       extract_files_from_source_comments(
         &file.specifier,
-        &file.source,
-        &file.media_type,
+        file.source.clone(),
+        file.media_type,
       )
     };
 

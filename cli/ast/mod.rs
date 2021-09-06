@@ -298,7 +298,7 @@ pub fn transpile_module(
   );
   let input = StringInput::from(&*source_file);
   let comments = SingleThreadedComments::default();
-  let syntax = get_syntax(media_type.into());
+  let syntax = get_syntax(media_type);
   let lexer = Lexer::new(syntax, deno_ast::TARGET, input, Some(&comments));
   let mut parser = deno_ast::swc::parser::Parser::new_from(lexer);
   let module = parser.parse_module().map_err(|err| {

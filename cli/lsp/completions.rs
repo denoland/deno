@@ -407,6 +407,7 @@ mod tests {
   use deno_core::resolve_url;
   use std::collections::HashMap;
   use std::path::Path;
+  use std::sync::Arc;
   use tempfile::TempDir;
 
   fn mock_state_snapshot(
@@ -422,7 +423,7 @@ mod tests {
         specifier.clone(),
         *version,
         language_id.clone(),
-        source.to_string(),
+        Arc::new(source.to_string()),
       );
       let media_type = MediaType::from(&specifier);
       let parsed_module = documents
