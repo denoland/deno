@@ -80,13 +80,12 @@ impl DynamicLibraryResource {
   ) -> Result<(), AnyError> {
     let fn_ptr = unsafe { self.lib.symbol::<*const c_void>(&symbol) }?;
     let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
+    let parameter_types =
+      foreign_fn.parameters.into_iter().map(NativeType::from);
+    let result_type = NativeType::from(foreign_fn.result);
     let cif = libffi::middle::Cif::new(
-      foreign_fn
-        .parameters
-        .clone()
-        .into_iter()
-        .map(libffi::middle::Type::from),
-      foreign_fn.result.into(),
+      parameter_types.clone().map(libffi::middle::Type::from),
+      result_type.into(),
     );
 
     self.symbols.insert(
