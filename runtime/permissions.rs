@@ -1195,7 +1195,11 @@ fn clear_stdin() {
 
 #[cfg(not(unix))]
 fn clear_stdin() {
-  // TODO(ry) How to do this on windows?
+  let stdin =
+    winapi::um::processenv::GetStdHandle(winapi::um::winbase::STD_INPUT_HANDLE);
+  let flags =
+    winapi::um::winbase::PURGE_TXCLEAR | winapi::um::winbase::PURGE_RXCLEAR;
+  winapi::um::commapi::PurgeComm(stdin, flags);
 }
 
 /// Shows the permission prompt and returns the answer according to the user input.
