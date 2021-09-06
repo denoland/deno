@@ -7,15 +7,15 @@ pub extern "C" fn print_something() {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn print_string(ptr: *const c_char) {
-  let cstr = CStr::from_ptr(ptr);
+pub extern "C" fn print_string(ptr: *const c_char) {
+  let cstr = unsafe { CStr::from_ptr(ptr) };
   let name = cstr.to_str().unwrap();
   println!("{}", name);
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn print_buffer(ptr: *const u8, len: usize) {
-  let buf = std::slice::from_raw_parts(ptr, len);
+pub extern "C" fn print_buffer(ptr: *const u8, len: usize) {
+  let buf = unsafe { std::slice::from_raw_parts(ptr, len) };
   println!("{:?}", buf);
 }
 

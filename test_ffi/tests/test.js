@@ -29,7 +29,7 @@ const dylib = Deno.dlopen(libPath, {
 dylib.symbols.print_something();
 dylib.symbols.print_string("hello from deno!");
 const buffer = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
-dylib.symbols.print_buffer(buffer, buffer.length);;
+dylib.symbols.print_buffer(buffer, buffer.length);
 console.log(dylib.symbols.return_string());
 console.log("[" + dylib.symbols.return_buffer().join(", ") + "]");
 console.log(dylib.symbols.add_u32(123, 456));
