@@ -1187,21 +1187,6 @@ fn resolved_and_display_path(path: &Path) -> (PathBuf, PathBuf) {
   (resolved_path, display_path)
 }
 
-#[cfg(unix)]
-fn clear_stdin() {
-  let r = unsafe { libc::tcflush(0, libc::TCIOFLUSH) };
-  assert_eq!(r, 0);
-}
-
-#[cfg(not(unix))]
-fn clear_stdin() {
-  let stdin =
-    winapi::um::processenv::GetStdHandle(winapi::um::winbase::STD_INPUT_HANDLE);
-  let flags =
-    winapi::um::winbase::PURGE_TXCLEAR | winapi::um::winbase::PURGE_RXCLEAR;
-  winapi::um::commapi::PurgeComm(stdin, flags);
-}
-
 /// Shows the permission prompt and returns the answer according to the user input.
 /// This loops until the user gives the proper input.
 #[cfg(not(test))]
@@ -1209,6 +1194,22 @@ fn permission_prompt(message: &str) -> bool {
   if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
     return false;
   };
+
+  #[cfg(unix)]
+  fn clear_stdin() {
+    let r = unsafe { libc::tcflush(0, libc::TCIOFLUSH) };
+    assert_eq!(r, 0);
+  }
+
+  #[cfg(not(unix))]
+  fn clear_stdin() {
+    let stdin = winapi::um::processenv::GetStdHandle(
+      winapi::um::winbase::STD_INPUT_HANDLE,
+    );
+    let flags =
+      winapi::um::winbase::PURGE_TXCLEAR | winapi::um::winbase::PURGE_RXCLEAR;
+    winapi::um::commapi::PurgeComm(stdin, flags);
+  }
 
   // For security reasons we must consume everything in stdin so that previously
   // buffered data cannot effect the prompt.
