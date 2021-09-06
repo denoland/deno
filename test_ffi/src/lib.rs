@@ -1,4 +1,4 @@
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 
 #[no_mangle]
@@ -17,6 +17,17 @@ pub unsafe extern "C" fn print_string(ptr: *const c_char) {
 pub unsafe extern "C" fn print_buffer(ptr: *const u8, len: usize) {
   let buf = std::slice::from_raw_parts(ptr, len);
   println!("{:?}", buf);
+}
+
+#[no_mangle]
+pub extern "C" fn return_string() -> *const c_char {
+  let cstring = CString::new("Hello from test ffi!").unwrap();
+  cstring.into_raw()
+}
+
+#[no_mangle]
+pub extern "C" fn return_buffer() -> *const u8 {
+  [1, 2, 3, 4, 5, 6, 7, 8].as_ptr()
 }
 
 #[no_mangle]

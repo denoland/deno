@@ -40,6 +40,8 @@ fn basic() {
     something\n\
     hello from deno!\n\
     [1, 2, 3, 4, 5, 6, 7, 8]\n\
+    Hello from test ffi!\n\
+    [1, 2, 3, 4, 5, 6, 7, 8]\n\
     579\n\
     579\n\
     579\n\
