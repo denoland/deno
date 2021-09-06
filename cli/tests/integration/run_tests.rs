@@ -1805,3 +1805,34 @@ itest!(byte_order_mark {
   args: "run --no-check byte_order_mark.ts",
   output: "byte_order_mark.out",
 });
+
+#[cfg(unix)]
+#[test]
+fn issue9750() {
+  use util::pty::fork::*;
+  let deno_exe = util::deno_exe_path();
+  let fork = Fork::from_ptmx().unwrap();
+  if let Ok(mut master) = fork.is_parent() {
+    use std::io::Read;
+    use std::io::Write;
+
+    master.write_all(b"yy\n").unwrap();
+
+    let mut output = String::new();
+    master.read_to_string(&mut output).unwrap();
+    assert!(!output.contains("secret"));
+    println!("out: {}", output);
+
+    fork.wait().unwrap();
+  } else {
+    std::env::set_var("SECRET", "secret");
+    std::env::set_current_dir(util::testdata_path()).unwrap();
+    let err = exec::Command::new(deno_exe)
+      .arg("run")
+      .arg("--prompt")
+      .arg("issue9750.js")
+      .exec();
+    println!("err {}", err);
+    unreachable!()
+  }
+}
