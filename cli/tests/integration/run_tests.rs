@@ -1805,3 +1805,10 @@ itest!(byte_order_mark {
   args: "run --no-check byte_order_mark.ts",
   output: "byte_order_mark.out",
 });
+
+// Regression test for https://github.com/denoland/deno/issues/11451.
+itest!(dom_exception_formatting {
+  args: "run dom_exception_formatting.ts",
+  output: "dom_exception_formatting.ts.out",
+  exit_code: 1,
+});
