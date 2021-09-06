@@ -1,6 +1,4 @@
 {
-  "$schema": "https://dprint.dev/schemas/v0.json",
-  "projectType": "openSource",
   "incremental": true,
   "typescript": {
     "deno": true
