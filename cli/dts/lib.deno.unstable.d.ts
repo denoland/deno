@@ -562,77 +562,40 @@ declare namespace Deno {
    */
   export function applySourceMap(location: Location): Location;
 
-  enum LinuxSignal {
-    SIGHUP = 1,
-    SIGINT = 2,
-    SIGQUIT = 3,
-    SIGILL = 4,
-    SIGTRAP = 5,
-    SIGABRT = 6,
-    SIGBUS = 7,
-    SIGFPE = 8,
-    SIGKILL = 9,
-    SIGUSR1 = 10,
-    SIGSEGV = 11,
-    SIGUSR2 = 12,
-    SIGPIPE = 13,
-    SIGALRM = 14,
-    SIGTERM = 15,
-    SIGSTKFLT = 16,
-    SIGCHLD = 17,
-    SIGCONT = 18,
-    SIGSTOP = 19,
-    SIGTSTP = 20,
-    SIGTTIN = 21,
-    SIGTTOU = 22,
-    SIGURG = 23,
-    SIGXCPU = 24,
-    SIGXFSZ = 25,
-    SIGVTALRM = 26,
-    SIGPROF = 27,
-    SIGWINCH = 28,
-    SIGIO = 29,
-    SIGPWR = 30,
-    SIGSYS = 31,
-  }
-  enum MacOSSignal {
-    SIGHUP = 1,
-    SIGINT = 2,
-    SIGQUIT = 3,
-    SIGILL = 4,
-    SIGTRAP = 5,
-    SIGABRT = 6,
-    SIGEMT = 7,
-    SIGFPE = 8,
-    SIGKILL = 9,
-    SIGBUS = 10,
-    SIGSEGV = 11,
-    SIGSYS = 12,
-    SIGPIPE = 13,
-    SIGALRM = 14,
-    SIGTERM = 15,
-    SIGURG = 16,
-    SIGSTOP = 17,
-    SIGTSTP = 18,
-    SIGCONT = 19,
-    SIGCHLD = 20,
-    SIGTTIN = 21,
-    SIGTTOU = 22,
-    SIGIO = 23,
-    SIGXCPU = 24,
-    SIGXFSZ = 25,
-    SIGVTALRM = 26,
-    SIGPROF = 27,
-    SIGWINCH = 28,
-    SIGINFO = 29,
-    SIGUSR1 = 30,
-    SIGUSR2 = 31,
-  }
-
-  /** **UNSTABLE**: Further changes required to make platform independent.
-   *
-   * Signals numbers. This is platform dependent. */
-  export const Signal: typeof MacOSSignal | typeof LinuxSignal;
+  export type Signal =
+    | "SIGABRT"
+    | "SIGALRM"
+    | "SIGBUS"
+    | "SIGCHLD"
+    | "SIGCONT"
+    | "SIGEMT"
+    | "SIGFPE"
+    | "SIGHUP"
+    | "SIGILL"
+    | "SIGINFO"
+    | "SIGINT"
+    | "SIGIO"
+    | "SIGKILL"
+    | "SIGPIPE"
+    | "SIGPROF"
+    | "SIGPWR"
+    | "SIGQUIT"
+    | "SIGSEGV"
+    | "SIGSTKFLT"
+    | "SIGSTOP"
+    | "SIGSYS"
+    | "SIGTERM"
+    | "SIGTRAP"
+    | "SIGTSTP"
+    | "SIGTTIN"
+    | "SIGTTOU"
+    | "SIGURG"
+    | "SIGUSR1"
+    | "SIGUSR2"
+    | "SIGVTALRM"
+    | "SIGWINCH"
+    | "SIGXCPU"
+    | "SIGXFSZ";
 
   /** **UNSTABLE**: new API, yet to be vetted.
    *
@@ -640,7 +603,7 @@ declare namespace Deno {
    * `PromiseLike`. */
   export class SignalStream
     implements AsyncIterableIterator<void>, PromiseLike<void> {
-    constructor(signal: typeof Deno.Signal);
+    constructor(signal: Signal);
     then<T, S>(
       f: (v: void) => T | Promise<T>,
       g?: (v: void) => S | Promise<S>,
@@ -656,7 +619,7 @@ declare namespace Deno {
    * iterator.
    *
    * ```ts
-   * for await (const _ of Deno.signal(Deno.Signal.SIGTERM)) {
+   * for await (const _ of Deno.signal("SIGTERM")) {
    *   console.log("got SIGTERM!");
    * }
    * ```
@@ -665,7 +628,7 @@ declare namespace Deno {
    * first one.
    *
    * ```ts
-   * await Deno.signal(Deno.Signal.SIGTERM);
+   * await Deno.signal("SIGTERM");
    * console.log("SIGTERM received!")
    * ```
    *
@@ -673,7 +636,7 @@ declare namespace Deno {
    * of the signal stream object.
    *
    * ```ts
-   * const sig = Deno.signal(Deno.Signal.SIGTERM);
+   * const sig = Deno.signal("SIGTERM");
    * setTimeout(() => { sig.dispose(); }, 5000);
    * for await (const _ of sig) {
    *   console.log("SIGTERM!")
@@ -685,55 +648,7 @@ declare namespace Deno {
    *
    * NOTE: This functionality is not yet implemented on Windows.
    */
-  export function signal(signo: number): SignalStream;
-
-  /** **UNSTABLE**: new API, yet to be vetted. */
-  export const signals: {
-    /** Returns the stream of SIGALRM signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGALRM)`. */
-    alarm: () => SignalStream;
-    /** Returns the stream of SIGCHLD signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGCHLD)`. */
-    child: () => SignalStream;
-    /** Returns the stream of SIGHUP signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGHUP)`. */
-    hungup: () => SignalStream;
-    /** Returns the stream of SIGINT signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGINT)`. */
-    interrupt: () => SignalStream;
-    /** Returns the stream of SIGIO signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGIO)`. */
-    io: () => SignalStream;
-    /** Returns the stream of SIGPIPE signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGPIPE)`. */
-    pipe: () => SignalStream;
-    /** Returns the stream of SIGQUIT signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGQUIT)`. */
-    quit: () => SignalStream;
-    /** Returns the stream of SIGTERM signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGTERM)`. */
-    terminate: () => SignalStream;
-    /** Returns the stream of SIGUSR1 signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGUSR1)`. */
-    userDefined1: () => SignalStream;
-    /** Returns the stream of SIGUSR2 signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGUSR2)`. */
-    userDefined2: () => SignalStream;
-    /** Returns the stream of SIGWINCH signals.
-     *
-     * This method is the shorthand for `Deno.signal(Deno.Signal.SIGWINCH)`. */
-    windowChange: () => SignalStream;
-  };
+  export function signal(sig: Signal): SignalStream;
 
   export type SetRawOptions = {
     cbreak: boolean;
@@ -803,11 +718,8 @@ declare namespace Deno {
     },
   >(opt: T): Process<T>;
 
-  /** **UNSTABLE**: The `signo` argument may change to require the Deno.Signal
-   * enum.
-   *
-   * Send a signal to process under given `pid`. This functionality currently
-   * only works on Linux and Mac OS.
+  /** **UNSTABLE**: Send a signal to process under given `pid`. This
+   * functionality only works on Linux and Mac OS.
    *
    * If `pid` is negative, the signal will be sent to the process group
    * identified by `pid`.
@@ -816,10 +728,10 @@ declare namespace Deno {
    *        cmd: ["sleep", "10000"]
    *      });
    *
-   *      Deno.kill(p.pid, Deno.Signal.SIGINT);
+   *      Deno.kill(p.pid, "SIGINT");
    *
    * Requires `allow-run` permission. */
-  export function kill(pid: number, signo: number): void;
+  export function kill(pid: number, signo: Signal): void;
 
   /**  **UNSTABLE**: New API, yet to be vetted.  Additional consideration is still
    * necessary around the permissions required.

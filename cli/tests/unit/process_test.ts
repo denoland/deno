@@ -120,7 +120,12 @@ unitTest(
   },
   async function runCommandFailedWithSignal() {
     const p = Deno.run({
-      cmd: [Deno.execPath(), "eval", "--unstable", "Deno.kill(Deno.pid, 9)"],
+      cmd: [
+        Deno.execPath(),
+        "eval",
+        "--unstable",
+        "Deno.kill(Deno.pid, 'SIGKILL')",
+      ],
     });
     const status = await p.status();
     assertEquals(status.success, false);
@@ -436,7 +441,7 @@ unitTest(
 
     let error = null;
     try {
-      p.kill(Deno.Signal.SIGTERM);
+      p.kill("SIGTERM");
     } catch (e) {
       error = e;
     }
@@ -454,21 +459,13 @@ unitTest(
   },
 );
 
-unitTest(function signalNumbers() {
-  if (Deno.build.os === "darwin") {
-    assertEquals(Deno.Signal.SIGSTOP, 17);
-  } else if (Deno.build.os === "linux") {
-    assertEquals(Deno.Signal.SIGSTOP, 19);
-  }
-});
-
 unitTest(function killPermissions() {
   assertThrows(() => {
     // Unlike the other test cases, we don't have permission to spawn a
     // subprocess we can safely kill. Instead we send SIGCONT to the current
     // process - assuming that Deno does not have a special handler set for it
     // and will just continue even if a signal is erroneously sent.
-    Deno.kill(Deno.pid, Deno.Signal.SIGCONT);
+    Deno.kill(Deno.pid, "SIGCONT");
   }, Deno.errors.PermissionDenied);
 });
 
@@ -479,19 +476,17 @@ unitTest(
       cmd: [Deno.execPath(), "eval", "setTimeout(() => {}, 10000)"],
     });
 
-    assertEquals(Deno.Signal.SIGINT, 2);
-    Deno.kill(p.pid, Deno.Signal.SIGINT);
+    Deno.kill(p.pid, "SIGINT");
     const status = await p.status();
 
     assertEquals(status.success, false);
     try {
-      assertEquals(status.code, 128 + Deno.Signal.SIGINT);
-      assertEquals(status.signal, Deno.Signal.SIGINT);
+      assertEquals(status.signal, "SIGINT");
     } catch {
       // TODO(nayeemrmn): On Windows sometimes the following values are given
       // instead. Investigate and remove this catch when fixed.
-      assertEquals(status.code, 1);
-      assertEquals(status.signal, undefined);
+      assertEquals(status.code, 130);
+      assertEquals(status.signal, 2);
     }
     p.close();
   },
@@ -505,7 +500,8 @@ unitTest({ perms: { run: true, read: true } }, function killFailed() {
   assert(!p.stdout);
 
   assertThrows(() => {
-    Deno.kill(p.pid, 12345);
+    // @ts-expect-error testing runtime error of bad signal
+    Deno.kill(p.pid, "foobar");
   }, TypeError);
 
   p.close();
