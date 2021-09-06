@@ -1813,15 +1813,32 @@ fn issue9750() {
   let deno_exe = util::deno_exe_path();
   let fork = Fork::from_ptmx().unwrap();
   if let Ok(mut master) = fork.is_parent() {
-    use std::io::Read;
     use std::io::Write;
 
-    master.write_all(b"yy\n").unwrap();
+    fn read_str(master: &mut Master) -> String {
+      use std::io::Read;
+      let mut buf = [0; 128];
+      let _n = master.read(&mut buf).unwrap();
+      let buf_str = std::str::from_utf8(&buf).unwrap();
+      assert!(!buf_str.contains("secret"));
+      println!("buf_str {}", buf_str);
+      buf_str.to_string()
+    }
 
-    let mut output = String::new();
-    master.read_to_string(&mut output).unwrap();
-    assert!(!output.contains("secret"));
-    println!("out: {}", output);
+    assert!(read_str(&mut master).contains("Enter 'yy':"));
+
+    master.write_all(b"yy\n").unwrap();
+    assert!(read_str(&mut master).contains("yy"));
+
+    assert!(read_str(&mut master).contains("Allow"));
+
+    master.write_all(b"n\n").unwrap();
+    assert!(read_str(&mut master).contains("n"));
+
+    assert!(read_str(&mut master).contains("Allow"));
+
+    master.write_all(b"n\n").unwrap();
+    assert!(read_str(&mut master).contains("n"));
 
     fork.wait().unwrap();
   } else {
