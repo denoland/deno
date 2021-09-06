@@ -1,4 +1,5 @@
 use deno_ast::Diagnostic;
+use deno_ast::MediaType;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
 use deno_core::ModuleSpecifier;
@@ -7,7 +8,6 @@ use std::sync::Arc;
 
 use super::analysis;
 use super::text::LineIndex;
-use crate::media_type::MediaType;
 
 #[derive(Debug)]
 struct DocumentSourceInner {

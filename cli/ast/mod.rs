@@ -1,7 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::config_file;
-use crate::media_type::MediaType;
 use crate::text_encoding::strip_bom;
 
 use deno_ast::get_syntax;
@@ -28,6 +27,7 @@ use deno_ast::swc::transforms::typescript;
 use deno_ast::swc::visit::FoldWith;
 use deno_ast::Diagnostic;
 use deno_ast::LineAndColumnDisplay;
+use deno_ast::MediaType;
 use deno_ast::ParsedSource;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;

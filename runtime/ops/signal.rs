@@ -131,7 +131,7 @@ fn signal_str_to_int(s: &str) -> Option<libc::c_int> {
 }
 
 #[cfg(target_os = "windows")]
-fn signal_str_to_int(s: &str) -> Option<libc::c_int> {
+fn signal_str_to_int(_s: &str) -> Option<libc::c_int> {
   unimplemented!()
 }
 

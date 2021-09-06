@@ -403,7 +403,7 @@ mod tests {
   use crate::lsp::documents::DocumentCache;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::sources::Sources;
-  use crate::media_type::MediaType;
+  use deno_ast::MediaType;
   use deno_core::resolve_url;
   use std::collections::HashMap;
   use std::path::Path;

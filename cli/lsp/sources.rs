@@ -14,12 +14,12 @@ use crate::flags::Flags;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
 use crate::import_map::ImportMap;
-use crate::media_type::MediaType;
 use crate::module_graph::GraphBuilder;
 use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
 use crate::text_encoding;
 
+use deno_ast::MediaType;
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;

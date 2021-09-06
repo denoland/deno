@@ -3,10 +3,9 @@
 use crate::ast::Location;
 use crate::disk_cache::DiskCache;
 use crate::file_fetcher::FileFetcher;
-use crate::media_type::MediaType;
 use crate::program_state::ProgramState;
-use deno_runtime::permissions::Permissions;
 
+use deno_ast::MediaType;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
@@ -16,6 +15,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
+use deno_runtime::permissions::Permissions;
 use log::debug;
 use std::collections::HashMap;
 use std::fmt;

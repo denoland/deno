@@ -505,10 +505,10 @@ async fn collect_tsc(
 
 #[cfg(test)]
 mod tests {
+  use deno_ast::MediaType;
   use deno_ast::SourceTextInfo;
 
   use super::*;
-  use crate::media_type::MediaType;
 
   #[test]
   fn test_deno_test_collector() {

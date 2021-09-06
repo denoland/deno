@@ -2,10 +2,10 @@
 
 use crate::config_file::TsConfig;
 use crate::diagnostics::Diagnostics;
-use crate::media_type::MediaType;
 use crate::module_graph::Graph;
 use crate::module_graph::Stats;
 
+use deno_ast::MediaType;
 use deno_core::error::anyhow;
 use deno_core::error::bail;
 use deno_core::error::AnyError;

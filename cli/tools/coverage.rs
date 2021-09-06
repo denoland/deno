@@ -3,11 +3,11 @@
 use crate::colors;
 use crate::flags::Flags;
 use crate::fs_util::collect_files;
-use crate::media_type::MediaType;
 use crate::module_graph::TypeLib;
 use crate::program_state::ProgramState;
 use crate::source_maps::SourceMapGetter;
 use deno_ast::swc::common::Span;
+use deno_ast::MediaType;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;

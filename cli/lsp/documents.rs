@@ -5,8 +5,7 @@ use super::document_source::DocumentSource;
 use super::text::LineIndex;
 use super::tsc;
 
-use crate::media_type::MediaType;
-
+use deno_ast::MediaType;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
