@@ -2911,7 +2911,7 @@ mod tests {
       documents.open(
         specifier.clone(),
         *version,
-        language_id.clone(),
+        *language_id,
         Arc::new(source.to_string()),
       );
       let media_type = MediaType::from(&specifier);
@@ -2921,11 +2921,11 @@ mod tests {
         let (deps, _) = analysis::analyze_dependencies(
           &specifier,
           media_type,
-          &parsed_module,
+          parsed_module,
           &None,
         );
         let dep_ranges =
-          analysis::analyze_dependency_ranges(&parsed_module).ok();
+          analysis::analyze_dependency_ranges(parsed_module).ok();
         documents
           .set_dependencies(&specifier, Some(deps), dep_ranges)
           .unwrap();

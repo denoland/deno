@@ -2271,7 +2271,7 @@ pub mod tests {
   #[test]
   fn test_module_emit_valid() {
     let source = "console.log(42);";
-    let maybe_version = Some(get_version(&source, &version::deno(), b""));
+    let maybe_version = Some(get_version(source, &version::deno(), b""));
     let module = Module {
       maybe_version,
       text_info: SourceTextInfo::from_string(source.to_string()),
@@ -2290,7 +2290,7 @@ pub mod tests {
     assert!(!module.is_emit_valid(b""));
 
     let source = "console.log(42);";
-    let maybe_version = Some(get_version(&source, "0.0.0", b""));
+    let maybe_version = Some(get_version(source, "0.0.0", b""));
     let module = Module {
       maybe_version,
       text_info: SourceTextInfo::from_string(source.to_string()),
@@ -2309,7 +2309,7 @@ pub mod tests {
   #[test]
   fn test_module_set_version() {
     let source = "console.log(42);";
-    let expected = Some(get_version(&source, &version::deno(), b""));
+    let expected = Some(get_version(source, &version::deno(), b""));
     let mut module = Module {
       text_info: SourceTextInfo::from_string(source.to_string()),
       ..Module::default()

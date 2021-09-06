@@ -45,7 +45,7 @@ pub fn convert_to_utf8<'a>(
   }
 }
 
-/// Strips the byte order mark if it exists from the provided text.
+/// Strips the byte order mark from the provided text if it exists.
 pub fn strip_bom(text: &str) -> &str {
   if text.starts_with(BOM_CHAR) {
     &text[BOM_CHAR.len_utf8()..]
