@@ -111,9 +111,7 @@ pub async fn lint_files(
   // Try to get configured rules. CLI flags take precendence
   // over config file, ie. if there's `rules.include` in config file
   // and `--rules-include` CLI flag, only the flag value is taken into account.
-  // TODO(bartlomieju): this is done multiple times for each file because
-  // Vec<Box<dyn LintRule>> is not clonable, this should be optimized.
-  get_configured_rules(
+  let lint_rules = get_configured_rules(
     maybe_lint_config.as_ref(),
     rules_tags.clone(),
     rules_include.clone(),
@@ -126,10 +124,7 @@ pub async fn lint_files(
     move |file_path| {
       let r = lint_file(
         file_path.clone(),
-        maybe_lint_config.as_ref(),
-        rules_tags.clone(),
-        rules_include.clone(),
-        rules_exclude.clone(),
+        lint_rules.clone(),
       );
       let mut reporter = reporter_lock.lock().unwrap();
 
@@ -182,7 +177,7 @@ pub fn print_rules_list(json: bool) {
     // The rules should still be printed even if `--quiet` option is enabled,
     // so use `println!` here instead of `info!`.
     println!("Available rules:");
-    for rule in lint_rules {
+    for rule in lint_rules.into_iter() {
       println!(" - {}", rule.code());
       println!("   help: https://lint.deno.land/#{}", rule.code());
       println!();
@@ -190,7 +185,7 @@ pub fn print_rules_list(json: bool) {
   }
 }
 
-pub fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
+pub fn create_linter(syntax: Syntax, rules: Arc<Vec<Box<dyn LintRule>>>) -> Linter {
   LinterBuilder::default()
     .ignore_file_directive("deno-lint-ignore-file")
     .ignore_diagnostic_directive("deno-lint-ignore")
@@ -201,24 +196,13 @@ pub fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
 
 fn lint_file(
   file_path: PathBuf,
-  maybe_lint_config: Option<&LintConfig>,
-  rules_tags: Vec<String>,
-  rules_include: Vec<String>,
-  rules_exclude: Vec<String>,
+  lint_rules: Arc<Vec<Box<dyn LintRule>>>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
   let source_code = fs::read_to_string(&file_path)?;
   let media_type = MediaType::from(&file_path);
   let syntax = deno_ast::get_syntax(media_type);
 
-  // Obtaining rules from config is infallible at this point.
-  let lint_rules = get_configured_rules(
-    maybe_lint_config,
-    rules_tags,
-    rules_include,
-    rules_exclude,
-  )
-  .unwrap();
   let linter = create_linter(syntax, lint_rules);
 
   let (_, file_diagnostics) = linter.lint(file_name, source_code.clone())?;
@@ -470,7 +454,7 @@ fn get_configured_rules(
   rules_tags: Vec<String>,
   rules_include: Vec<String>,
   rules_exclude: Vec<String>,
-) -> Result<Vec<Box<dyn LintRule>>, AnyError> {
+) -> Result<Arc<Vec<Box<dyn LintRule>>>, AnyError> {
   if maybe_lint_config.is_none()
     && rules_tags.is_empty()
     && rules_include.is_empty()
