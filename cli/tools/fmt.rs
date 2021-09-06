@@ -87,7 +87,7 @@ pub async fn format(
   Ok(())
 }
 
-/// Formats markdown (using https://github.com/dprint/dprint-plugin-markdown) and its code blocks
+/// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks
 /// (ts/tsx, js/jsx).
 fn format_markdown(file_text: &str) -> Result<String, String> {
   dprint_plugin_markdown::format_text(
@@ -138,8 +138,8 @@ fn format_markdown(file_text: &str) -> Result<String, String> {
 }
 
 /// Formats JSON and JSONC using the rules provided by .deno()
-/// of configuration builder of https://github.com/dprint/dprint-plugin-json.
-/// See https://git.io/Jt4ht for configuration.
+/// of configuration builder of <https://github.com/dprint/dprint-plugin-json>.
+/// See <https://git.io/Jt4ht> for configuration.
 fn format_json(file_text: &str) -> Result<String, String> {
   dprint_plugin_json::format_text(file_text, &JSON_CONFIG)
     .map_err(|e| e.to_string())

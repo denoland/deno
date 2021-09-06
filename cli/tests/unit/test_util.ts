@@ -12,6 +12,7 @@ export {
   assertEquals,
   assertMatch,
   assertNotEquals,
+  assertRejects,
   assertStrictEquals,
   assertStringIncludes,
   assertThrows,

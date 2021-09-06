@@ -29,7 +29,7 @@ pub fn detect_charset(bytes: &'_ [u8]) -> &'static str {
 ///
 /// Supports all encodings supported by the encoding_rs crate, which includes
 /// all encodings specified in the WHATWG Encoding Standard, and only those
-/// encodings (see: https://encoding.spec.whatwg.org/).
+/// encodings (see: <https://encoding.spec.whatwg.org/>).
 pub fn convert_to_utf8<'a>(
   bytes: &'a [u8],
   charset: &'_ str,

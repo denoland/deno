@@ -40,8 +40,23 @@ mod version;
 
 use crate::file_fetcher::File;
 use crate::file_watcher::ResolutionResult;
+use crate::flags::BundleFlags;
+use crate::flags::CacheFlags;
+use crate::flags::CompileFlags;
+use crate::flags::CompletionsFlags;
+use crate::flags::CoverageFlags;
 use crate::flags::DenoSubcommand;
+use crate::flags::DocFlags;
+use crate::flags::EvalFlags;
 use crate::flags::Flags;
+use crate::flags::FmtFlags;
+use crate::flags::InfoFlags;
+use crate::flags::InstallFlags;
+use crate::flags::LintFlags;
+use crate::flags::ReplFlags;
+use crate::flags::RunFlags;
+use crate::flags::TestFlags;
+use crate::flags::UpgradeFlags;
 use crate::fmt_errors::PrettyJsError;
 use crate::media_type::MediaType;
 use crate::module_loader::CliModuleLoader;
@@ -73,7 +88,6 @@ use std::env;
 use std::io::Read;
 use std::io::Write;
 use std::iter::once;
-use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -365,21 +379,20 @@ pub fn get_types(unstable: bool) -> String {
 
 async fn compile_command(
   flags: Flags,
-  source_file: String,
-  output: Option<PathBuf>,
-  args: Vec<String>,
-  target: Option<String>,
+  compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
   let debug = flags.log_level == Some(log::Level::Debug);
 
-  let run_flags =
-    tools::standalone::compile_to_runtime_flags(flags.clone(), args)?;
+  let run_flags = tools::standalone::compile_to_runtime_flags(
+    flags.clone(),
+    compile_flags.args,
+  )?;
 
-  let module_specifier = resolve_url_or_path(&source_file)?;
+  let module_specifier = resolve_url_or_path(&compile_flags.source_file)?;
   let program_state = ProgramState::build(flags.clone()).await?;
   let deno_dir = &program_state.dir;
 
-  let output = output.or_else(|| {
+  let output = compile_flags.output.or_else(|| {
     infer_name_from_url(&module_specifier).map(PathBuf::from)
   }).ok_or_else(|| generic_error(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
@@ -408,7 +421,8 @@ async fn compile_command(
 
   // Select base binary based on target
   let original_binary =
-    tools::standalone::get_base_binary(deno_dir, target.clone()).await?;
+    tools::standalone::get_base_binary(deno_dir, compile_flags.target.clone())
+      .await?;
 
   let final_bin = tools::standalone::create_standalone_binary(
     original_binary,
@@ -418,20 +432,23 @@ async fn compile_command(
 
   info!("{} {}", colors::green("Emit"), output.display());
 
-  tools::standalone::write_standalone_binary(output.clone(), target, final_bin)
-    .await?;
+  tools::standalone::write_standalone_binary(
+    output.clone(),
+    compile_flags.target,
+    final_bin,
+  )
+  .await?;
 
   Ok(())
 }
 
 async fn info_command(
   flags: Flags,
-  maybe_specifier: Option<String>,
-  json: bool,
+  info_flags: InfoFlags,
 ) -> Result<(), AnyError> {
   let location = flags.location.clone();
   let program_state = ProgramState::build(flags).await?;
-  if let Some(specifier) = maybe_specifier {
+  if let Some(specifier) = info_flags.file {
     let specifier = resolve_url_or_path(&specifier)?;
     let handler = Arc::new(Mutex::new(specifier_handler::FetchHandler::new(
       &program_state,
@@ -452,7 +469,7 @@ async fn info_command(
     let graph = builder.get_graph();
     let info = graph.info()?;
 
-    if json {
+    if info_flags.json {
       write_json_to_stdout(&json!(info))
     } else {
       write_to_stdout_ignore_sigpipe(info.to_string().as_bytes())
@@ -460,29 +477,32 @@ async fn info_command(
     }
   } else {
     // If it was just "deno info" print location of caches and exit
-    print_cache_info(&program_state, json, location)
+    print_cache_info(&program_state, info_flags.json, location)
   }
 }
 
 async fn install_command(
   flags: Flags,
-  module_url: String,
-  args: Vec<String>,
-  name: Option<String>,
-  root: Option<PathBuf>,
-  force: bool,
+  install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
   let mut preload_flags = flags.clone();
   preload_flags.inspect = None;
   preload_flags.inspect_brk = None;
   let permissions = Permissions::from_options(&preload_flags.clone().into());
   let program_state = ProgramState::build(preload_flags).await?;
-  let main_module = resolve_url_or_path(&module_url)?;
+  let main_module = resolve_url_or_path(&install_flags.module_url)?;
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions, None);
   // First, fetch and compile the module; this step ensures that the module exists.
   worker.preload_module(&main_module).await?;
-  tools::installer::install(flags, &module_url, args, name, root, force)
+  tools::installer::install(
+    flags,
+    &install_flags.module_url,
+    install_flags.args,
+    install_flags.name,
+    install_flags.root,
+    install_flags.force,
+  )
 }
 
 async fn lsp_command() -> Result<(), AnyError> {
@@ -492,16 +512,10 @@ async fn lsp_command() -> Result<(), AnyError> {
 #[allow(clippy::too_many_arguments)]
 async fn lint_command(
   flags: Flags,
-  files: Vec<PathBuf>,
-  list_rules: bool,
-  rules_tags: Vec<String>,
-  rules_include: Vec<String>,
-  rules_exclude: Vec<String>,
-  ignore: Vec<PathBuf>,
-  json: bool,
+  lint_flags: LintFlags,
 ) -> Result<(), AnyError> {
-  if list_rules {
-    tools::lint::print_rules_list(json);
+  if lint_flags.rules {
+    tools::lint::print_rules_list(lint_flags.json);
     return Ok(());
   }
 
@@ -515,19 +529,19 @@ async fn lint_command(
 
   tools::lint::lint_files(
     maybe_lint_config,
-    rules_tags,
-    rules_include,
-    rules_exclude,
-    files,
-    ignore,
-    json,
+    lint_flags.rules_tags,
+    lint_flags.rules_include,
+    lint_flags.rules_exclude,
+    lint_flags.files,
+    lint_flags.ignore,
+    lint_flags.json,
   )
   .await
 }
 
 async fn cache_command(
   flags: Flags,
-  files: Vec<String>,
+  cache_flags: CacheFlags,
 ) -> Result<(), AnyError> {
   let lib = if flags.unstable {
     module_graph::TypeLib::UnstableDenoWindow
@@ -536,7 +550,7 @@ async fn cache_command(
   };
   let program_state = ProgramState::build(flags).await?;
 
-  for file in files {
+  for file in cache_flags.files {
     let specifier = resolve_url_or_path(&file)?;
     program_state
       .prepare_module_load(
@@ -555,9 +569,7 @@ async fn cache_command(
 
 async fn eval_command(
   flags: Flags,
-  code: String,
-  ext: String,
-  print: bool,
+  eval_flags: EvalFlags,
 ) -> Result<(), AnyError> {
   // Force TypeScript compile.
   let main_module = resolve_url_or_path("./$deno$eval.ts").unwrap();
@@ -566,21 +578,21 @@ async fn eval_command(
   let mut worker =
     create_main_worker(&program_state, main_module.clone(), permissions, None);
   // Create a dummy source file.
-  let source_code = if print {
-    format!("console.log({})", code)
+  let source_code = if eval_flags.print {
+    format!("console.log({})", eval_flags.code)
   } else {
-    code
+    eval_flags.code
   }
   .into_bytes();
 
   let file = File {
     local: main_module.clone().to_file_path().unwrap(),
     maybe_types: None,
-    media_type: if ext.as_str() == "ts" {
+    media_type: if eval_flags.ext.as_str() == "ts" {
       MediaType::TypeScript
-    } else if ext.as_str() == "tsx" {
+    } else if eval_flags.ext.as_str() == "tsx" {
       MediaType::Tsx
-    } else if ext.as_str() == "js" {
+    } else if eval_flags.ext.as_str() == "js" {
       MediaType::JavaScript
     } else {
       MediaType::Jsx
@@ -682,15 +694,14 @@ fn bundle_module_graph(
 
 async fn bundle_command(
   flags: Flags,
-  source_file: String,
-  out_file: Option<PathBuf>,
+  bundle_flags: BundleFlags,
 ) -> Result<(), AnyError> {
   let debug = flags.log_level == Some(log::Level::Debug);
 
   let resolver = |_| {
     let flags = flags.clone();
-    let source_file1 = source_file.clone();
-    let source_file2 = source_file.clone();
+    let source_file1 = bundle_flags.source_file.clone();
+    let source_file2 = bundle_flags.source_file.clone();
     async move {
       let module_specifier = resolve_url_or_path(&source_file1)?;
 
@@ -736,7 +747,7 @@ async fn bundle_command(
     module_graph::Graph,
   )| {
     let flags = flags.clone();
-    let out_file = out_file.clone();
+    let out_file = bundle_flags.out_file.clone();
     async move {
       info!("{} {}", colors::green("Bundle"), module_graph.info()?.root);
 
@@ -780,33 +791,37 @@ async fn bundle_command(
 
 async fn doc_command(
   flags: Flags,
-  source_file: Option<String>,
-  json: bool,
-  maybe_filter: Option<String>,
-  private: bool,
+  doc_flags: DocFlags,
 ) -> Result<(), AnyError> {
-  tools::doc::print_docs(flags, source_file, json, maybe_filter, private).await
+  tools::doc::print_docs(
+    flags,
+    doc_flags.source_file,
+    doc_flags.json,
+    doc_flags.filter,
+    doc_flags.private,
+  )
+  .await
 }
 
 async fn format_command(
   flags: Flags,
-  args: Vec<PathBuf>,
-  ignore: Vec<PathBuf>,
-  check: bool,
-  ext: String,
+  fmt_flags: FmtFlags,
 ) -> Result<(), AnyError> {
-  if args.len() == 1 && args[0].to_string_lossy() == "-" {
-    return tools::fmt::format_stdin(check, ext);
+  if fmt_flags.files.len() == 1 && fmt_flags.files[0].to_string_lossy() == "-" {
+    return tools::fmt::format_stdin(fmt_flags.check, fmt_flags.ext);
   }
 
-  tools::fmt::format(args, ignore, check, flags.watch).await?;
+  tools::fmt::format(
+    fmt_flags.files,
+    fmt_flags.ignore,
+    fmt_flags.check,
+    flags.watch,
+  )
+  .await?;
   Ok(())
 }
 
-async fn run_repl(
-  flags: Flags,
-  maybe_eval: Option<String>,
-) -> Result<(), AnyError> {
+async fn run_repl(flags: Flags, repl_flags: ReplFlags) -> Result<(), AnyError> {
   let main_module = resolve_url_or_path("./$deno$repl.ts").unwrap();
   let permissions = Permissions::from_options(&flags.clone().into());
   let program_state = ProgramState::build(flags).await?;
@@ -814,7 +829,7 @@ async fn run_repl(
     create_main_worker(&program_state, main_module.clone(), permissions, None);
   worker.run_event_loop(false).await?;
 
-  tools::repl::run(&program_state, worker, maybe_eval).await
+  tools::repl::run(&program_state, worker, repl_flags.eval).await
 }
 
 async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
@@ -991,17 +1006,20 @@ async fn run_with_watch(flags: Flags, script: String) -> Result<(), AnyError> {
   file_watcher::watch_func(resolver, operation, "Process").await
 }
 
-async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
+async fn run_command(
+  flags: Flags,
+  run_flags: RunFlags,
+) -> Result<(), AnyError> {
   // Read script content from stdin
-  if script == "-" {
+  if run_flags.script == "-" {
     return run_from_stdin(flags).await;
   }
 
   if flags.watch {
-    return run_with_watch(flags, script).await;
+    return run_with_watch(flags, run_flags.script).await;
   }
 
-  let main_module = resolve_url_or_path(&script)?;
+  let main_module = resolve_url_or_path(&run_flags.script)?;
   let program_state = ProgramState::build(flags.clone()).await?;
   let permissions = Permissions::from_options(&flags.clone().into());
   let mut worker =
@@ -1046,39 +1064,26 @@ async fn run_command(flags: Flags, script: String) -> Result<(), AnyError> {
 
 async fn coverage_command(
   flags: Flags,
-  files: Vec<PathBuf>,
-  ignore: Vec<PathBuf>,
-  include: Vec<String>,
-  exclude: Vec<String>,
-  lcov: bool,
+  coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {
-  if files.is_empty() {
+  if coverage_flags.files.is_empty() {
     return Err(generic_error("No matching coverage profiles found"));
   }
 
   tools::coverage::cover_files(
     flags.clone(),
-    files,
-    ignore,
-    include,
-    exclude,
-    lcov,
+    coverage_flags.files,
+    coverage_flags.ignore,
+    coverage_flags.include,
+    coverage_flags.exclude,
+    coverage_flags.lcov,
   )
   .await
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn test_command(
   flags: Flags,
-  include: Option<Vec<String>>,
-  ignore: Vec<PathBuf>,
-  no_run: bool,
-  doc: bool,
-  fail_fast: Option<NonZeroUsize>,
-  allow_none: bool,
-  filter: Option<String>,
-  shuffle: Option<u64>,
-  concurrent_jobs: NonZeroUsize,
+  test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   if let Some(ref coverage_dir) = flags.coverage_dir {
     std::fs::create_dir_all(&coverage_dir)?;
@@ -1091,14 +1096,14 @@ async fn test_command(
   if flags.watch {
     tools::test::run_tests_with_watch(
       flags,
-      include,
-      ignore,
-      doc,
-      no_run,
-      fail_fast,
-      filter,
-      shuffle,
-      concurrent_jobs,
+      test_flags.include,
+      test_flags.ignore,
+      test_flags.doc,
+      test_flags.no_run,
+      test_flags.fail_fast,
+      test_flags.filter,
+      test_flags.shuffle,
+      test_flags.concurrent_jobs,
     )
     .await?;
 
@@ -1107,15 +1112,15 @@ async fn test_command(
 
   tools::test::run_tests(
     flags,
-    include,
-    ignore,
-    doc,
-    no_run,
-    fail_fast,
-    allow_none,
-    filter,
-    shuffle,
-    concurrent_jobs,
+    test_flags.include,
+    test_flags.ignore,
+    test_flags.doc,
+    test_flags.no_run,
+    test_flags.fail_fast,
+    test_flags.allow_none,
+    test_flags.filter,
+    test_flags.shuffle,
+    test_flags.concurrent_jobs,
   )
   .await?;
 
@@ -1150,102 +1155,47 @@ fn get_subcommand(
   flags: Flags,
 ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
   match flags.clone().subcommand {
-    DenoSubcommand::Bundle {
-      source_file,
-      out_file,
-    } => bundle_command(flags, source_file, out_file).boxed_local(),
-    DenoSubcommand::Doc {
-      source_file,
-      json,
-      filter,
-      private,
-    } => doc_command(flags, source_file, json, filter, private).boxed_local(),
-    DenoSubcommand::Eval { print, code, ext } => {
-      eval_command(flags, code, ext, print).boxed_local()
+    DenoSubcommand::Bundle(bundle_flags) => {
+      bundle_command(flags, bundle_flags).boxed_local()
     }
-    DenoSubcommand::Cache { files } => {
-      cache_command(flags, files).boxed_local()
+    DenoSubcommand::Doc(doc_flags) => {
+      doc_command(flags, doc_flags).boxed_local()
     }
-    DenoSubcommand::Compile {
-      source_file,
-      output,
-      args,
-      target,
-    } => {
-      compile_command(flags, source_file, output, args, target).boxed_local()
+    DenoSubcommand::Eval(eval_flags) => {
+      eval_command(flags, eval_flags).boxed_local()
     }
-    DenoSubcommand::Coverage {
-      files,
-      ignore,
-      include,
-      exclude,
-      lcov,
-    } => coverage_command(flags, files, ignore, include, exclude, lcov)
-      .boxed_local(),
-    DenoSubcommand::Fmt {
-      check,
-      files,
-      ignore,
-      ext,
-    } => format_command(flags, files, ignore, check, ext).boxed_local(),
-    DenoSubcommand::Info { file, json } => {
-      info_command(flags, file, json).boxed_local()
+    DenoSubcommand::Cache(cache_flags) => {
+      cache_command(flags, cache_flags).boxed_local()
     }
-    DenoSubcommand::Install {
-      module_url,
-      args,
-      name,
-      root,
-      force,
-    } => {
-      install_command(flags, module_url, args, name, root, force).boxed_local()
+    DenoSubcommand::Compile(compile_flags) => {
+      compile_command(flags, compile_flags).boxed_local()
+    }
+    DenoSubcommand::Coverage(coverage_flags) => {
+      coverage_command(flags, coverage_flags).boxed_local()
+    }
+    DenoSubcommand::Fmt(fmt_flags) => {
+      format_command(flags, fmt_flags).boxed_local()
+    }
+    DenoSubcommand::Info(info_flags) => {
+      info_command(flags, info_flags).boxed_local()
+    }
+    DenoSubcommand::Install(install_flags) => {
+      install_command(flags, install_flags).boxed_local()
     }
     DenoSubcommand::Lsp => lsp_command().boxed_local(),
-    DenoSubcommand::Lint {
-      files,
-      rules,
-      rules_tags,
-      rules_include,
-      rules_exclude,
-      ignore,
-      json,
-    } => lint_command(
-      flags,
-      files,
-      rules,
-      rules_tags,
-      rules_include,
-      rules_exclude,
-      ignore,
-      json,
-    )
-    .boxed_local(),
-    DenoSubcommand::Repl { eval } => run_repl(flags, eval).boxed_local(),
-    DenoSubcommand::Run { script } => run_command(flags, script).boxed_local(),
-    DenoSubcommand::Test {
-      no_run,
-      doc,
-      fail_fast,
-      ignore,
-      include,
-      allow_none,
-      filter,
-      shuffle,
-      concurrent_jobs,
-    } => test_command(
-      flags,
-      include,
-      ignore,
-      no_run,
-      doc,
-      fail_fast,
-      allow_none,
-      filter,
-      shuffle,
-      concurrent_jobs,
-    )
-    .boxed_local(),
-    DenoSubcommand::Completions { buf } => {
+    DenoSubcommand::Lint(lint_flags) => {
+      lint_command(flags, lint_flags).boxed_local()
+    }
+    DenoSubcommand::Repl(repl_flags) => {
+      run_repl(flags, repl_flags).boxed_local()
+    }
+    DenoSubcommand::Run(run_flags) => {
+      run_command(flags, run_flags).boxed_local()
+    }
+    DenoSubcommand::Test(test_flags) => {
+      test_command(flags, test_flags).boxed_local()
+    }
+    DenoSubcommand::Completions(CompletionsFlags { buf }) => {
       if let Err(e) = write_to_stdout_ignore_sigpipe(&buf) {
         eprintln!("{}", e);
         std::process::exit(1);
@@ -1260,17 +1210,20 @@ fn get_subcommand(
       }
       std::process::exit(0);
     }
-    DenoSubcommand::Upgrade {
-      force,
-      dry_run,
-      canary,
-      version,
-      output,
-      ca_file,
-    } => tools::upgrade::upgrade_command(
-      dry_run, force, canary, version, output, ca_file,
-    )
-    .boxed_local(),
+    DenoSubcommand::Upgrade(upgrade_flags) => {
+      let UpgradeFlags {
+        force,
+        dry_run,
+        canary,
+        version,
+        output,
+        ca_file,
+      } = upgrade_flags;
+      tools::upgrade::upgrade_command(
+        dry_run, force, canary, version, output, ca_file,
+      )
+      .boxed_local()
+    }
   }
 }
 
