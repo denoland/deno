@@ -213,19 +213,19 @@ const PRETTY_LINE_SEPERATOR: &str = "|";
 
 impl CoverageReporter for PrettyCoverageReporter {
   fn report_result(&mut self, result: &CoverageResult, source: &str) {
-    // Collect a vector of enumerated lines:
-    // These are all the lines that were seen by the runtime during coverage collection.
     let enumerated_lines = result
       .lines
       .iter()
       .enumerate()
-      .filter(|(_, coverage)| coverage.ranges.len() > 0)
       .collect::<Vec<(usize, &LineCoverage)>>();
 
-    // Collect a vector of missed lines:
-    // These are all the lines that were seen by the runtime but not executed
-    // which is reported by a zero count in a range.
-    let missed_lines = enumerated_lines
+    let found_lines = enumerated_lines
+      .iter()
+      .filter(|(_, coverage)| coverage.ranges.len() > 0)
+      .cloned()
+      .collect::<Vec<(usize, &LineCoverage)>>();
+
+    let missed_lines = found_lines
       .iter()
       .filter(|(_, coverage)| {
         coverage.ranges.iter().any(|range| range.count == 0)
@@ -233,12 +233,13 @@ impl CoverageReporter for PrettyCoverageReporter {
       .cloned()
       .collect::<Vec<(usize, &LineCoverage)>>();
 
-    let line_ratio = (enumerated_lines.len() - missed_lines.len()) as f32 / enumerated_lines.len() as f32;
+    let line_ratio = (found_lines.len() - missed_lines.len()) as f32
+      / found_lines.len() as f32;
     let line_coverage = format!(
       "{:.3}% ({}/{})",
       line_ratio * 100.0,
-      enumerated_lines.len() - missed_lines.len(),
-      enumerated_lines.len()
+      found_lines.len() - missed_lines.len(),
+      found_lines.len()
     );
 
     if line_ratio >= 0.9 {
@@ -269,6 +270,11 @@ impl CoverageReporter for PrettyCoverageReporter {
         colors::red(&line),
         width = PRETTY_LINE_WIDTH,
       );
+
+      for range in &coverage.ranges {
+          let slice = &source[range.start_offset..range.end_offset];
+          println!("slice: '{}'", slice);
+      }
 
       maybe_last_index = Some(index);
     }
@@ -352,26 +358,143 @@ fn filter_script_coverages(
     .collect::<Vec<ScriptCoverage>>()
 }
 
+fn offset_to_line_col(source: &str, offset: usize) -> Option<(u32, u32)> {
+  println!("lookup {}", offset);
+  println!("len {}", source.len());
+  let mut line = 0;
+  let mut col = 0;
+
+  if let Some(slice) = source.get(0..offset) {
+    for ch in slice.bytes() {
+      if ch == b'\n' {
+        line += 1;
+        col = 0;
+      } else {
+        col += 1;
+      }
+    }
+
+    return Some((line, col));
+  }
+
+  None
+}
+
+fn line_col_to_offset(source: &str, line: u32, col: u32) -> Option<usize> {
+  let mut current_col = 0;
+  let mut current_line = 0;
+
+  for (i, ch) in source.bytes().enumerate() {
+    if current_line == line && current_col == col {
+      println!("found {}:{} at {}", line, col, i);
+      return Some(i);
+    }
+
+    if ch == b'\n' {
+      current_line += 1;
+      current_col = 0;
+    } else {
+      current_col += 1;
+    }
+  }
+
+  None
+}
+
 async fn cover_script(
   program_state: Arc<ProgramState>,
   script: ScriptCoverage,
 ) -> Result<CoverageResult, AnyError> {
+  let module_specifier = resolve_url_or_path(&script.url)?;
   let file = program_state
     .file_fetcher
-    .fetch(
-      &resolve_url_or_path(&script.url).unwrap(),
-      &mut Permissions::allow_all(),
-    )
+    .fetch(&module_specifier, &mut Permissions::allow_all())
     .await?;
 
-  // TODO(caspervonb): remap input coverage
+  let source = file.source.as_str();
+
+  let maybe_raw_source_map = program_state.get_source_map(&script.url);
+  let functions = if let Some(raw_source_map) = maybe_raw_source_map {
+    program_state
+      .prepare_module_load(
+        module_specifier.clone(),
+        TypeLib::UnstableDenoWindow,
+        Permissions::allow_all(),
+        Permissions::allow_all(),
+        false,
+        program_state.maybe_import_map.clone(),
+      )
+      .await?;
+
+    let module = program_state.load(module_specifier.clone(), None)?;
+
+    let source_map = SourceMap::from_slice(&raw_source_map)?;
+
+    script
+      .functions
+      .iter()
+      .map(|function| {
+        let ranges = function
+          .ranges
+          .iter()
+          .map(|function_range| {
+            println!("function_range {:?}", function_range);
+            let (start_line, start_col) =
+              offset_to_line_col(&module.code, function_range.start_offset)
+                .unwrap();
+            let start_token =
+              source_map.lookup_token(start_line, start_col).unwrap();
+
+            println!("start_token: {}", start_token);
+
+            let start_offset = line_col_to_offset(
+              &source,
+              start_token.get_src_line(),
+              start_token.get_src_col(),
+            )
+            .unwrap();
+
+            let (end_line, end_col) =
+              offset_to_line_col(&module.code, function_range.end_offset)
+                .unwrap();
+
+            let end_token = source_map.lookup_token(end_line, end_col).unwrap();
+            println!("end_token: {}", end_token);
+
+            let end_offset = line_col_to_offset(
+              &source,
+              end_token.get_src_line(),
+              end_token.get_src_col(),
+            )
+            .unwrap();
+
+            CoverageRange {
+              start_offset,
+              end_offset,
+              count: function_range.count,
+            }
+          })
+          .collect();
+
+        FunctionCoverage {
+          ranges,
+          is_block_coverage: function.is_block_coverage,
+          function_name: function.function_name.clone(),
+        }
+      })
+      .collect()
+  } else {
+    script.functions.clone()
+  };
+
+
   let line_offsets = {
     let mut line_offsets: Vec<(usize, usize)> = Vec::new();
     let mut offset = 0;
 
-    for line in file.source.split_inclusive('\n') {
+    for line in source.split('\n') {
       line_offsets.push((offset, offset + line.len()));
-      offset += line.len();
+      offset += line.len() + 1;
     }
 
     line_offsets
@@ -380,14 +503,21 @@ async fn cover_script(
   let lines = line_offsets
     .iter()
     .map(|(start_offset, end_offset)| {
+      let line = &source[*start_offset..*end_offset];
+      if line == "\n" {
+        return LineCoverage { ranges: Vec::new() };
+      }
+
       let ranges = script
         .functions
         .iter()
         .map(|function| {
           function.ranges.iter().filter_map(|function_range| {
-            // If the line starts after the function ends:
-            // there is no overlap and this range is applicable.
-            if start_offset > &function_range.end_offset {
+            if &function_range.start_offset > end_offset {
+              return None;
+            }
+
+            if &function_range.end_offset < start_offset {
               return None;
             }
 
@@ -396,10 +526,7 @@ async fn cover_script(
                 *start_offset,
                 function_range.start_offset,
               ),
-              end_offset: cmp::min(
-                  *end_offset,
-                  function_range.end_offset
-              ),
+              end_offset: cmp::min(*end_offset, function_range.end_offset),
               count: function_range.count,
             })
           })
@@ -410,8 +537,6 @@ async fn cover_script(
       LineCoverage { ranges }
     })
     .collect();
-
-  let functions = script.functions.clone();
 
   Ok(CoverageResult { lines, functions })
 }
@@ -437,6 +562,7 @@ pub async fn cover_scripts(
   for script_coverage in script_coverages {
     let result =
       cover_script(program_state.clone(), script_coverage.clone()).await?;
+
     let file = program_state
       .file_fetcher
       .fetch(
