@@ -1177,6 +1177,11 @@ itest!(worker_close_race {
   output: "worker_close_race.js.out",
 });
 
+itest!(worker_message_before_close {
+  args: "run --quiet --reload --allow-read worker_message_before_close.js",
+  output: "worker_message_before_close.js.out",
+});
+
 #[test]
 fn no_validate_asm() {
   let output = util::deno_cmd()
