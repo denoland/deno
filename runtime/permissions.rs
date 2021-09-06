@@ -1187,13 +1187,6 @@ fn resolved_and_display_path(path: &Path) -> (PathBuf, PathBuf) {
   (resolved_path, display_path)
 }
 
-/// For security reasons we must consume everything in stdin so that previously
-/// buffered data cannot effect the prompt.
-fn clear_stdin() {
-  let r = unsafe { libc::tcflush(0, libc::TCIOFLUSH) };
-  assert_eq!(r, 0);
-}
-
 /// Shows the permission prompt and returns the answer according to the user input.
 /// This loops until the user gives the proper input.
 #[cfg(not(test))]
@@ -1202,7 +1195,10 @@ fn permission_prompt(message: &str) -> bool {
     return false;
   };
 
-  clear_stdin();
+  // For security reasons we must consume everything in stdin so that previously
+  // buffered data cannot effect the prompt.
+  let r = unsafe { libc::tcflush(0, libc::TCIOFLUSH) };
+  assert_eq!(r, 0);
 
   let opts = "[y/n (y = yes allow, n = no deny)] ";
   let msg = format!(

@@ -1828,17 +1828,17 @@ fn issue9750() {
     assert!(read_str(&mut master).contains("Enter 'yy':"));
 
     master.write_all(b"yy\n").unwrap();
-    assert!(read_str(&mut master).contains("yy"));
+    assert!(read_str(&mut master).starts_with("yy"));
 
     assert!(read_str(&mut master).contains("Allow"));
 
     master.write_all(b"n\n").unwrap();
-    assert!(read_str(&mut master).contains("n"));
+    assert!(read_str(&mut master).starts_with('n'));
 
     assert!(read_str(&mut master).contains("Allow"));
 
     master.write_all(b"n\n").unwrap();
-    assert!(read_str(&mut master).contains("n"));
+    assert!(read_str(&mut master).starts_with('n'));
 
     fork.wait().unwrap();
   } else {
