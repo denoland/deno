@@ -8,11 +8,12 @@
 //! the same functions as ops available in JS runtime.
 use crate::ast;
 use crate::colors;
+use crate::config_file::LintConfig;
 use crate::fmt_errors;
 use crate::fs_util::{collect_files, is_supported_ext};
 use crate::media_type::MediaType;
 use crate::tools::fmt::run_parallelized;
-use deno_core::error::{generic_error, AnyError, JsStackFrame};
+use deno_core::error::{anyhow, generic_error, AnyError, JsStackFrame};
 use deno_core::serde_json;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::Linter;
@@ -42,21 +43,60 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
 }
 
 pub async fn lint_files(
+  maybe_lint_config: Option<LintConfig>,
+  rules_tags: Vec<String>,
+  rules_include: Vec<String>,
+  rules_exclude: Vec<String>,
   args: Vec<PathBuf>,
   ignore: Vec<PathBuf>,
   json: bool,
 ) -> Result<(), AnyError> {
   if args.len() == 1 && args[0].to_string_lossy() == "-" {
-    return lint_stdin(json);
+    return lint_stdin(
+      json,
+      maybe_lint_config.as_ref(),
+      rules_tags,
+      rules_include,
+      rules_exclude,
+    );
   }
+
+  // Collect included and ignored files. CLI flags take precendence
+  // over config file, ie. if there's `files.ignore` in config file
+  // and `--ignore` CLI flag, only the flag value is taken into account.
+  let mut include_files = args;
+  let mut exclude_files = ignore;
+
+  if let Some(lint_config) = maybe_lint_config.as_ref() {
+    if include_files.is_empty() {
+      include_files = lint_config
+        .files
+        .include
+        .iter()
+        .map(PathBuf::from)
+        .collect::<Vec<PathBuf>>();
+    }
+
+    if exclude_files.is_empty() {
+      exclude_files = lint_config
+        .files
+        .exclude
+        .iter()
+        .map(PathBuf::from)
+        .collect::<Vec<PathBuf>>();
+    }
+  }
+
   let target_files =
-    collect_files(&args, &ignore, is_supported_ext).and_then(|files| {
-      if files.is_empty() {
-        Err(generic_error("No target files found."))
-      } else {
-        Ok(files)
-      }
-    })?;
+    collect_files(&include_files, &exclude_files, is_supported_ext).and_then(
+      |files| {
+        if files.is_empty() {
+          Err(generic_error("No target files found."))
+        } else {
+          Ok(files)
+        }
+      },
+    )?;
   debug!("Found {} files", target_files.len());
   let target_files_len = target_files.len();
 
@@ -69,11 +109,29 @@ pub async fn lint_files(
   };
   let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
 
+  // Try to get configured rules. CLI flags take precendence
+  // over config file, ie. if there's `rules.include` in config file
+  // and `--rules-include` CLI flag, only the flag value is taken into account.
+  // TODO(bartlomieju): this is done multiple times for each file because
+  // Vec<Box<dyn LintRule>> is not clonable, this should be optimized.
+  get_configured_rules(
+    maybe_lint_config.as_ref(),
+    rules_tags.clone(),
+    rules_include.clone(),
+    rules_exclude.clone(),
+  )?;
+
   run_parallelized(target_files, {
     let reporter_lock = reporter_lock.clone();
     let has_error = has_error.clone();
     move |file_path| {
-      let r = lint_file(file_path.clone());
+      let r = lint_file(
+        file_path.clone(),
+        maybe_lint_config.as_ref(),
+        rules_tags.clone(),
+        rules_include.clone(),
+        rules_exclude.clone(),
+      );
       let mut reporter = reporter_lock.lock().unwrap();
 
       match r {
@@ -144,13 +202,24 @@ pub fn create_linter(syntax: Syntax, rules: Vec<Box<dyn LintRule>>) -> Linter {
 
 fn lint_file(
   file_path: PathBuf,
+  maybe_lint_config: Option<&LintConfig>,
+  rules_tags: Vec<String>,
+  rules_include: Vec<String>,
+  rules_exclude: Vec<String>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
   let source_code = fs::read_to_string(&file_path)?;
   let media_type = MediaType::from(&file_path);
   let syntax = ast::get_syntax(&media_type);
 
-  let lint_rules = rules::get_recommended_rules();
+  // Obtaining rules from config is infallible at this point.
+  let lint_rules = get_configured_rules(
+    maybe_lint_config,
+    rules_tags,
+    rules_include,
+    rules_exclude,
+  )
+  .unwrap();
   let linter = create_linter(syntax, lint_rules);
 
   let (_, file_diagnostics) = linter.lint(file_name, source_code.clone())?;
@@ -161,7 +230,13 @@ fn lint_file(
 /// Lint stdin and write result to stdout.
 /// Treats input as TypeScript.
 /// Compatible with `--json` flag.
-fn lint_stdin(json: bool) -> Result<(), AnyError> {
+fn lint_stdin(
+  json: bool,
+  maybe_lint_config: Option<&LintConfig>,
+  rules_tags: Vec<String>,
+  rules_include: Vec<String>,
+  rules_exclude: Vec<String>,
+) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
     return Err(generic_error("Failed to read from stdin"));
@@ -173,7 +248,12 @@ fn lint_stdin(json: bool) -> Result<(), AnyError> {
     LintReporterKind::Pretty
   };
   let mut reporter = create_reporter(reporter_kind);
-  let lint_rules = rules::get_recommended_rules();
+  let lint_rules = get_configured_rules(
+    maybe_lint_config,
+    rules_tags,
+    rules_include,
+    rules_exclude,
+  )?;
   let syntax = ast::get_syntax(&MediaType::TypeScript);
   let linter = create_linter(syntax, lint_rules);
   let mut has_error = false;
@@ -239,8 +319,9 @@ impl LintReporter for PrettyLintReporter {
       d.hint.as_ref(),
       &fmt_errors::format_location(&JsStackFrame::from_location(
         Some(d.filename.clone()),
-        Some(d.range.start.line as i64),
-        Some(d.range.start.col as i64),
+        Some(d.range.start.line_index as i64 + 1), // 1-indexed
+        // todo(#11111): make 1-indexed as well
+        Some(d.range.start.column_index as i64),
       )),
     );
 
@@ -277,24 +358,32 @@ pub fn format_diagnostic(
 ) -> String {
   let mut lines = vec![];
 
-  for i in range.start.line..=range.end.line {
-    lines.push(source_lines[i - 1].to_string());
-    if range.start.line == range.end.line {
+  for (i, line) in source_lines
+    .iter()
+    .enumerate()
+    .take(range.end.line_index + 1)
+    .skip(range.start.line_index)
+  {
+    lines.push(line.to_string());
+    if range.start.line_index == range.end.line_index {
       lines.push(format!(
         "{}{}",
-        " ".repeat(range.start.col),
-        colors::red(&"^".repeat(range.end.col - range.start.col))
+        " ".repeat(range.start.column_index),
+        colors::red(
+          &"^".repeat(range.end.column_index - range.start.column_index)
+        )
       ));
     } else {
-      let line_len = source_lines[i - 1].len();
-      if range.start.line == i {
+      let line_len = line.len();
+      if range.start.line_index == i {
         lines.push(format!(
           "{}{}",
-          " ".repeat(range.start.col),
-          colors::red(&"^".repeat(line_len - range.start.col))
+          " ".repeat(range.start.column_index),
+          colors::red(&"^".repeat(line_len - range.start.column_index))
         ));
-      } else if range.end.line == i {
-        lines.push(colors::red(&"^".repeat(range.end.col)).to_string());
+      } else if range.end.line_index == i {
+        lines
+          .push(colors::red(&"^".repeat(range.end.column_index)).to_string());
       } else if line_len != 0 {
         lines.push(colors::red(&"^".repeat(line_len)).to_string());
       }
@@ -363,13 +452,72 @@ fn sort_diagnostics(diagnostics: &mut Vec<LintDiagnostic>) {
     let file_order = a.filename.cmp(&b.filename);
     match file_order {
       Ordering::Equal => {
-        let line_order = a.range.start.line.cmp(&b.range.start.line);
+        let line_order =
+          a.range.start.line_index.cmp(&b.range.start.line_index);
         match line_order {
-          Ordering::Equal => a.range.start.col.cmp(&b.range.start.col),
+          Ordering::Equal => {
+            a.range.start.column_index.cmp(&b.range.start.column_index)
+          }
           _ => line_order,
         }
       }
       _ => file_order,
     }
   });
+}
+
+fn get_configured_rules(
+  maybe_lint_config: Option<&LintConfig>,
+  rules_tags: Vec<String>,
+  rules_include: Vec<String>,
+  rules_exclude: Vec<String>,
+) -> Result<Vec<Box<dyn LintRule>>, AnyError> {
+  if maybe_lint_config.is_none()
+    && rules_tags.is_empty()
+    && rules_include.is_empty()
+    && rules_exclude.is_empty()
+  {
+    return Ok(rules::get_recommended_rules());
+  }
+
+  let (config_file_tags, config_file_include, config_file_exclude) =
+    if let Some(lint_config) = maybe_lint_config.as_ref() {
+      (
+        lint_config.rules.tags.clone(),
+        lint_config.rules.include.clone(),
+        lint_config.rules.exclude.clone(),
+      )
+    } else {
+      (None, None, None)
+    };
+
+  let maybe_configured_include = if !rules_include.is_empty() {
+    Some(rules_include)
+  } else {
+    config_file_include
+  };
+
+  let maybe_configured_exclude = if !rules_exclude.is_empty() {
+    Some(rules_exclude)
+  } else {
+    config_file_exclude
+  };
+
+  let configured_tags = if !rules_tags.is_empty() {
+    rules_tags
+  } else {
+    config_file_tags.unwrap_or_else(Vec::new)
+  };
+
+  let configured_rules = rules::get_filtered_rules(
+    Some(configured_tags),
+    maybe_configured_exclude,
+    maybe_configured_include,
+  );
+
+  if configured_rules.is_empty() {
+    anyhow!("No rules have been configured");
+  }
+
+  Ok(configured_rules)
 }

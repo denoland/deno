@@ -19,7 +19,7 @@ deno_tls = { version = "0.3.0", path = "../tls" }
 
 lazy_static = "1.4.0"
 log = "0.4.14"
-serde = { version = "1.0.126", features = ["derive"] }
-tokio = { version = "1.8.1", features = ["full"] }
+serde = { version = "1.0.129", features = ["derive"] }
+tokio = { version = "1.10.1", features = ["full"] }
 trust-dns-proto = "0.20.3"
 trust-dns-resolver = { version = "0.20.3", features = ["tokio-runtime", "serde-config"] }
