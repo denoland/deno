@@ -1987,7 +1987,7 @@ declare namespace Deno {
      * Send a signal to process. This functionality currently only works on
      * Linux and Mac OS.
      */
-    kill(signo: string): void;
+    kill(signo: string): void; // TODO(ry): Use Signal type here once made stable.
   }
 
   export type ProcessStatus =
