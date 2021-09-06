@@ -49,7 +49,7 @@ jobs:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full
       RUSTC_FORCE_INCREMENTAL: 1
-      RUSTFLAGS_FASTCI: "-C codegen-units=256 -C incremental=true -C debuginfo=0 -C opt-level=0"
+      RUSTFLAGS_FASTCI: "-C codegen-units=256 -C debuginfo=0 -C opt-level=0"
 
     steps:
       - name: Configure git
@@ -146,11 +146,11 @@ jobs:
       - name: Error on warning
         # TODO(piscisaureus): enable this on Windows again.
         if: "!matrix.use_sysroot && !startsWith(matrix.os, 'windows')"
-        run: echo "RUSTFLAGS=$RUSTFLAGS -D warnings" >> $GITHUB_ENV
+        run: echo "RUSTFLAGS=${{ env.RUSTFLAGS }} -D warnings" >> $GITHUB_ENV
       
       - name: Fast CI Rust flags
         if: "matrix.fast_ci"
-        run: echo "RUSTFLAGS=$RUSTFLAGS ${{ env.RUSTFLAGS_FASTCI }}" >> $GITHUB_ENV
+        run: echo "RUSTFLAGS=${{ env.RUSTFLAGS }} ${{ env.RUSTFLAGS_FASTCI }}" >> $GITHUB_ENV
 
       - name: Configure canary build
         if: |
