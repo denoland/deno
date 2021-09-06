@@ -326,8 +326,10 @@ impl DocumentCache {
   }
 
   pub fn line_index(&self, specifier: &ModuleSpecifier) -> Option<LineIndex> {
-    let doc = self.docs.get(specifier)?;
-    Some(doc.source().line_index().clone())
+    self
+      .docs
+      .get(specifier)
+      .map(|d| d.source().line_index().clone())
   }
 
   pub fn open(
