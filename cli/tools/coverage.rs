@@ -259,7 +259,6 @@ impl CoverageReporter for PrettyCoverageReporter {
         }
       }
 
-      println!("{} {:?}", index, coverage);
       let range = &coverage.ranges[0];
       let line = &source[range.start_offset..range.end_offset];
 
@@ -271,9 +270,10 @@ impl CoverageReporter for PrettyCoverageReporter {
         width = PRETTY_LINE_WIDTH,
       );
 
+      // Debugging, remove me.
       for range in &coverage.ranges {
-          let slice = &source[range.start_offset..range.end_offset];
-          println!("slice: '{}'", slice);
+        let slice = &source[range.start_offset..range.end_offset];
+        println!("slice: '{}'", slice);
       }
 
       maybe_last_index = Some(index);
@@ -359,8 +359,6 @@ fn filter_script_coverages(
 }
 
 fn offset_to_line_col(source: &str, offset: usize) -> Option<(u32, u32)> {
-  println!("lookup {}", offset);
-  println!("len {}", source.len());
   let mut line = 0;
   let mut col = 0;
 
@@ -386,7 +384,6 @@ fn line_col_to_offset(source: &str, line: u32, col: u32) -> Option<usize> {
 
   for (i, ch) in source.bytes().enumerate() {
     if current_line == line && current_col == col {
-      println!("found {}:{} at {}", line, col, i);
       return Some(i);
     }
 
@@ -413,6 +410,8 @@ async fn cover_script(
 
   let source = file.source.as_str();
 
+  // TODO(caspervonb): source mapping is still a bit of a mess and we should try look into avoiding
+  // doing any loads at this stage.
   let maybe_raw_source_map = program_state.get_source_map(&script.url);
   let functions = if let Some(raw_source_map) = maybe_raw_source_map {
     program_state
@@ -427,10 +426,19 @@ async fn cover_script(
       .await?;
 
     let module = program_state.load(module_specifier.clone(), None)?;
-
     let source_map = SourceMap::from_slice(&raw_source_map)?;
 
-    script
+    // Debugging, remove me.
+    for function in &script.functions {
+      for range in &function.ranges {
+        println!(
+          "original_range: '{}'",
+          &module.code[range.start_offset..range.end_offset]
+        );
+      }
+    }
+
+    let functions = script
       .functions
       .iter()
       .map(|function| {
@@ -438,14 +446,11 @@ async fn cover_script(
           .ranges
           .iter()
           .map(|function_range| {
-            println!("function_range {:?}", function_range);
             let (start_line, start_col) =
               offset_to_line_col(&module.code, function_range.start_offset)
                 .unwrap();
             let start_token =
               source_map.lookup_token(start_line, start_col).unwrap();
-
-            println!("start_token: {}", start_token);
 
             let start_offset = line_col_to_offset(
               &source,
@@ -459,7 +464,6 @@ async fn cover_script(
                 .unwrap();
 
             let end_token = source_map.lookup_token(end_line, end_col).unwrap();
-            println!("end_token: {}", end_token);
 
             let end_offset = line_col_to_offset(
               &source,
@@ -482,11 +486,21 @@ async fn cover_script(
           function_name: function.function_name.clone(),
         }
       })
-      .collect()
+      .collect::<Vec<FunctionCoverage>>();
+
+    // Debugging, remove me.
+    for function in &functions {
+      for range in &function.ranges {
+        println!(
+          "mapped_range: '{}'",
+          &source[range.start_offset..range.end_offset]
+        );
+      }
+    }
+    functions
   } else {
     script.functions.clone()
   };
-
 
   let line_offsets = {
     let mut line_offsets: Vec<(usize, usize)> = Vec::new();
