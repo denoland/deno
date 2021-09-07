@@ -19,7 +19,7 @@
 
           for (const arg of args) {
             if (
-              arg && arg.buffer instanceof ArrayBuffer &&
+              arg?.buffer instanceof ArrayBuffer &&
               arg.byteLength !== undefined
             ) {
               parameters.push(buffers.length);
