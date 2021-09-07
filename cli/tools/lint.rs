@@ -29,6 +29,8 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+static STDIN_FILE_NAME: &str = "_stdin.ts";
+
 pub enum LintReporterKind {
   Pretty,
   Json,
@@ -98,9 +100,14 @@ pub async fn lint_files(
 
   let no_of_files_linted =
     if args.len() == 1 && args[0].to_string_lossy() == "-" {
-      let r = lint_stdin(json, lint_rules);
+      let r = lint_stdin(lint_rules);
 
-      handle_lint_result(r, reporter_lock.clone(), has_error.clone());
+      handle_lint_result(
+        STDIN_FILE_NAME,
+        r,
+        reporter_lock.clone(),
+        has_error.clone(),
+      );
 
       1
     } else {
@@ -121,7 +128,12 @@ pub async fn lint_files(
         let has_error = has_error.clone();
         move |file_path| {
           let r = lint_file(file_path.clone(), lint_rules.clone());
-          handle_lint_result(r, reporter_lock, has_error);
+          handle_lint_result(
+            &file_path.to_string_lossy(),
+            r,
+            reporter_lock,
+            has_error,
+          );
           Ok(())
         }
       })
@@ -149,7 +161,7 @@ fn rule_to_json(rule: Box<dyn LintRule>) -> serde_json::Value {
 }
 
 pub fn print_rules_list(json: bool) {
-  let lint_rules = rules::get_recommended_rules();
+  let lint_rules = Arc::try_unwrap(rules::get_recommended_rules()).unwrap();
 
   if json {
     let json_rules: Vec<serde_json::Value> =
@@ -200,7 +212,6 @@ fn lint_file(
 /// Treats input as TypeScript.
 /// Compatible with `--json` flag.
 fn lint_stdin(
-  json: bool,
   lint_rules: Arc<Vec<Box<dyn LintRule>>>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let mut source_code = String::new();
@@ -208,17 +219,17 @@ fn lint_stdin(
     return Err(generic_error("Failed to read from stdin"));
   }
 
-  let file_name = "_stdin.ts".to_string();
-  let syntax = ast::get_syntax(MediaType::TypeScript);
+  let syntax = deno_ast::get_syntax(MediaType::TypeScript);
   let linter = create_linter(syntax, lint_rules);
 
   let (_, file_diagnostics) =
-    linter.lint(file_name.to_string(), source_code.clone())?;
+    linter.lint(STDIN_FILE_NAME.to_string(), source_code.clone())?;
 
   Ok((file_diagnostics, source_code))
 }
 
 fn handle_lint_result(
+  file_path: &str,
   result: Result<(Vec<LintDiagnostic>, String), AnyError>,
   reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
   has_error: Arc<AtomicBool>,
@@ -235,7 +246,7 @@ fn handle_lint_result(
     }
     Err(err) => {
       has_error.store(true, Ordering::Relaxed);
-      reporter.visit_error(&file_path.to_string_lossy().to_string(), &err);
+      reporter.visit_error(file_path, &err);
     }
   }
 }
