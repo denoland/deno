@@ -95,8 +95,8 @@ fn signal_str_to_int(s: &str) -> Option<libc::c_int> {
 }
 
 #[cfg(target_os = "macos")]
-fn signal_str_to_int(s: &str) -> Option<libc::c_int> {
-  match s {
+fn signal_str_to_int(s: &str) -> Result<Option<libc::c_int>, AnyError> {
+  Ok(match s {
     "SIGHUP" => Some(1),
     "SIGINT" => Some(2),
     "SIGQUIT" => Some(3),
@@ -129,16 +129,16 @@ fn signal_str_to_int(s: &str) -> Option<libc::c_int> {
     "SIGUSR1" => Some(30),
     "SIGUSR2" => Some(31),
     _ => None,
-  }
+  })
 }
 
 #[cfg(target_os = "windows")]
-fn signal_str_to_int(_s: &str) -> Option<libc::c_int> {
-  unimplemented!()
+fn signal_str_to_int(_s: &str) -> Result<Option<libc::c_int>, AnyError> {
+  Err(generic_error("not implemented"))
 }
 
 pub fn signal_str_to_int_unwrap(s: &str) -> Result<libc::c_int, AnyError> {
-  signal_str_to_int(s)
+  signal_str_to_int(s)?
     .ok_or_else(|| type_error(format!("Invalid signal : {}", s)))
 }
 
