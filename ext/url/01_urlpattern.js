@@ -20,6 +20,7 @@
     RegExpPrototypeExec,
     RegExpPrototypeTest,
     Symbol,
+    SymbolFor,
     TypeError,
   } = window.__bootstrap.primordials;
 
@@ -221,6 +222,21 @@
       }
 
       return result;
+    }
+
+    [SymbolFor("Deno.customInspect")](inspect) {
+      return `URLPattern ${
+        inspect({
+          protocol: this.protocol,
+          username: this.username,
+          password: this.password,
+          hostname: this.hostname,
+          port: this.port,
+          pathname: this.pathname,
+          search: this.search,
+          hash: this.hash,
+        })
+      }`;
     }
   }
 
