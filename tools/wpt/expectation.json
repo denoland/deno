@@ -13959,7 +13959,8 @@
           "response.blob() rejects if already aborted",
           "response.formData() rejects if already aborted",
           "response.json() rejects if already aborted",
-          "response.text() rejects if already aborted"
+          "response.text() rejects if already aborted",
+          "Call text() twice on aborted response"
         ]
       }
     },
