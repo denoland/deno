@@ -41,6 +41,7 @@ delete Object.prototype.__proto__;
   const performance = window.__bootstrap.performance;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
+  const urlPattern = window.__bootstrap.urlPattern;
   const headers = window.__bootstrap.headers;
   const streams = window.__bootstrap.streams;
   const fileReader = window.__bootstrap.fileReader;
@@ -431,8 +432,9 @@ delete Object.prototype.__proto__;
   };
 
   const unstableWindowOrWorkerGlobalScope = {
-    WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
     BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
+    URLPattern: util.nonEnumerable(urlPattern.URLPattern),
+    WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
 
     GPU: util.nonEnumerable(webgpu.GPU),
     GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
