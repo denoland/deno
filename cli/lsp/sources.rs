@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis;
+use super::document_source::DocumentSource;
 use super::text::LineIndex;
 use super::tsc;
 use super::urls::INVALID_SPECIFIER;
@@ -13,12 +14,12 @@ use crate::flags::Flags;
 use crate::http_cache;
 use crate::http_cache::HttpCache;
 use crate::import_map::ImportMap;
-use crate::media_type::MediaType;
 use crate::module_graph::GraphBuilder;
 use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
 use crate::text_encoding;
 
+use deno_ast::MediaType;
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -118,12 +119,11 @@ fn resolve_specifier(
 struct Metadata {
   dependencies: Option<HashMap<String, analysis::Dependency>>,
   length_utf16: usize,
-  line_index: LineIndex,
   maybe_navigation_tree: Option<tsc::NavigationTree>,
   maybe_types: Option<analysis::ResolvedDependency>,
   maybe_warning: Option<String>,
   media_type: MediaType,
-  source: String,
+  source: DocumentSource,
   specifier: ModuleSpecifier,
   version: String,
 }
@@ -133,12 +133,16 @@ impl Default for Metadata {
     Self {
       dependencies: None,
       length_utf16: 0,
-      line_index: LineIndex::default(),
       maybe_navigation_tree: None,
       maybe_types: None,
       maybe_warning: None,
       media_type: MediaType::default(),
-      source: String::default(),
+      source: DocumentSource::new(
+        &INVALID_SPECIFIER,
+        MediaType::default(),
+        Arc::new(String::default()),
+        LineIndex::default(),
+      ),
       specifier: INVALID_SPECIFIER.clone(),
       version: String::default(),
     }
@@ -148,55 +152,58 @@ impl Default for Metadata {
 impl Metadata {
   fn new(
     specifier: &ModuleSpecifier,
-    source: &str,
+    source: Arc<String>,
     version: &str,
-    media_type: &MediaType,
+    media_type: MediaType,
     maybe_warning: Option<String>,
     maybe_import_map: &Option<ImportMap>,
   ) -> Self {
-    let (dependencies, maybe_types) = if let Ok(parsed_module) =
-      analysis::parse_module(specifier, source, media_type)
-    {
-      let (deps, maybe_types) = analysis::analyze_dependencies(
-        specifier,
-        media_type,
-        &parsed_module,
-        maybe_import_map,
-      );
-      (Some(deps), maybe_types)
-    } else {
-      (None, None)
-    };
-    let line_index = LineIndex::new(source);
+    let line_index = LineIndex::new(&source);
+    let document_source =
+      DocumentSource::new(specifier, media_type, source, line_index);
+    let (dependencies, maybe_types) =
+      if let Some(Ok(parsed_module)) = document_source.module() {
+        let (deps, maybe_types) = analysis::analyze_dependencies(
+          specifier,
+          media_type,
+          parsed_module,
+          maybe_import_map,
+        );
+        (Some(deps), maybe_types)
+      } else {
+        (None, None)
+      };
 
     Self {
       dependencies,
-      length_utf16: source.encode_utf16().count(),
-      line_index,
+      length_utf16: document_source
+        .text_info()
+        .text_str()
+        .encode_utf16()
+        .count(),
       maybe_navigation_tree: None,
       maybe_types,
       maybe_warning,
       media_type: media_type.to_owned(),
-      source: source.to_string(),
+      source: document_source,
       specifier: specifier.clone(),
       version: version.to_string(),
     }
   }
 
   fn refresh(&mut self, maybe_import_map: &Option<ImportMap>) {
-    let (dependencies, maybe_types) = if let Ok(parsed_module) =
-      analysis::parse_module(&self.specifier, &self.source, &self.media_type)
-    {
-      let (deps, maybe_types) = analysis::analyze_dependencies(
-        &self.specifier,
-        &self.media_type,
-        &parsed_module,
-        maybe_import_map,
-      );
-      (Some(deps), maybe_types)
-    } else {
-      (None, None)
-    };
+    let (dependencies, maybe_types) =
+      if let Some(Ok(parsed_module)) = self.source.module() {
+        let (deps, maybe_types) = analysis::analyze_dependencies(
+          &self.specifier,
+          self.media_type,
+          parsed_module,
+          maybe_import_map,
+        );
+        (Some(deps), maybe_types)
+      } else {
+        (None, None)
+      };
     self.dependencies = dependencies;
     self.maybe_types = maybe_types;
   }
@@ -265,7 +272,7 @@ impl Sources {
     self.0.lock().get_script_version(specifier)
   }
 
-  pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<String> {
+  pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<Arc<String>> {
     self.0.lock().get_source(specifier)
   }
 
@@ -344,7 +351,7 @@ impl Inner {
     let specifier =
       resolve_specifier(specifier, &mut self.redirects, &self.http_cache)?;
     let metadata = self.get_metadata(&specifier)?;
-    Some(metadata.line_index)
+    Some(metadata.source.line_index().clone())
   }
 
   fn get_maybe_types(
@@ -406,9 +413,9 @@ impl Inner {
     };
     let mut metadata = Metadata::new(
       specifier,
-      &source,
+      Arc::new(source),
       &version,
-      &media_type,
+      media_type,
       maybe_warning,
       &self.maybe_import_map,
     );
@@ -455,11 +462,11 @@ impl Inner {
     Some(metadata.version)
   }
 
-  fn get_source(&mut self, specifier: &ModuleSpecifier) -> Option<String> {
+  fn get_source(&mut self, specifier: &ModuleSpecifier) -> Option<Arc<String>> {
     let specifier =
       resolve_specifier(specifier, &mut self.redirects, &self.http_cache)?;
     let metadata = self.get_metadata(&specifier)?;
-    Some(metadata.source)
+    Some(metadata.source.text_info().text())
   }
 
   fn resolution_result(
@@ -602,7 +609,7 @@ mod tests {
       resolve_path(&tests.join("001_hello.js").to_string_lossy()).unwrap();
     let actual = sources.get_source(&specifier);
     assert!(actual.is_some());
-    let actual = actual.unwrap();
+    let actual = actual.unwrap().to_string();
     assert_eq!(actual, "console.log(\"Hello World\");\n");
   }
 

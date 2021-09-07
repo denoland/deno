@@ -1,10 +1,9 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 use crate::ast;
-use crate::ast::parse;
+use crate::ast::transpile;
 use crate::ast::transpile_module;
 use crate::ast::BundleHook;
 use crate::ast::Location;
-use crate::ast::ParsedModule;
 use crate::checksum;
 use crate::colors;
 use crate::config_file::CompilerOptions;
@@ -16,7 +15,6 @@ use crate::import_map::ImportMap;
 use crate::import_map::ImportMapError;
 use crate::info;
 use crate::lockfile::Lockfile;
-use crate::media_type::MediaType;
 use crate::specifier_handler::CachedModule;
 use crate::specifier_handler::Dependency;
 use crate::specifier_handler::DependencyMap;
@@ -25,6 +23,12 @@ use crate::specifier_handler::FetchFuture;
 use crate::specifier_handler::SpecifierHandler;
 use crate::tsc;
 use crate::version;
+use deno_ast::swc::common::comments::Comment;
+use deno_ast::swc::common::BytePos;
+use deno_ast::swc::common::Span;
+use deno_ast::MediaType;
+use deno_ast::ParsedSource;
+use deno_ast::SourceTextInfo;
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::get_custom_error_class;
@@ -46,6 +50,7 @@ use deno_core::url::Url;
 use deno_core::ModuleResolutionError;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
+use deno_graph::analyze_dependencies;
 use log::debug;
 use regex::Regex;
 use std::collections::HashMap;
@@ -57,9 +62,6 @@ use std::rc::Rc;
 use std::result;
 use std::sync::Arc;
 use std::time::Instant;
-use swc_common::comments::Comment;
-use swc_common::BytePos;
-use swc_common::Span;
 
 lazy_static::lazy_static! {
   /// Matched the `@deno-types` pragma.
@@ -128,9 +130,9 @@ impl Error for GraphError {}
 /// A structure for handling bundle loading, which is implemented here, to
 /// avoid a circular dependency with `ast`.
 struct BundleLoader<'a> {
-  cm: Rc<swc_common::SourceMap>,
+  cm: Rc<deno_ast::swc::common::SourceMap>,
   emit_options: &'a ast::EmitOptions,
-  globals: &'a swc_common::Globals,
+  globals: &'a deno_ast::swc::common::Globals,
   graph: &'a Graph,
 }
 
@@ -138,8 +140,8 @@ impl<'a> BundleLoader<'a> {
   pub fn new(
     graph: &'a Graph,
     emit_options: &'a ast::EmitOptions,
-    globals: &'a swc_common::Globals,
-    cm: Rc<swc_common::SourceMap>,
+    globals: &'a deno_ast::swc::common::Globals,
+    cm: Rc<deno_ast::swc::common::SourceMap>,
   ) -> Self {
     BundleLoader {
       cm,
@@ -150,13 +152,13 @@ impl<'a> BundleLoader<'a> {
   }
 }
 
-impl swc_bundler::Load for BundleLoader<'_> {
+impl deno_ast::swc::bundler::Load for BundleLoader<'_> {
   fn load(
     &self,
-    file: &swc_common::FileName,
-  ) -> Result<swc_bundler::ModuleData, AnyError> {
+    file: &deno_ast::swc::common::FileName,
+  ) -> Result<deno_ast::swc::bundler::ModuleData, AnyError> {
     match file {
-      swc_common::FileName::Custom(filename) => {
+      deno_ast::swc::common::FileName::Custom(filename) => {
         let specifier = resolve_url_or_path(filename)
           .context("Failed to convert swc FileName to ModuleSpecifier.")?;
         if let Some(src) = self.graph.get_source(&specifier) {
@@ -167,12 +169,12 @@ impl swc_bundler::Load for BundleLoader<'_> {
           let (source_file, module) = transpile_module(
             filename,
             &src,
-            &media_type,
+            media_type,
             self.emit_options,
             self.globals,
             self.cm.clone(),
           )?;
-          Ok(swc_bundler::ModuleData {
+          Ok(deno_ast::swc::bundler::ModuleData {
             fm: source_file,
             module,
             helpers: Default::default(),
@@ -261,7 +263,7 @@ pub struct Module {
   maybe_version: Option<String>,
   media_type: MediaType,
   specifier: ModuleSpecifier,
-  source: String,
+  text_info: SourceTextInfo,
   source_path: PathBuf,
 }
 
@@ -278,7 +280,7 @@ impl Default for Module {
       maybe_version: None,
       media_type: MediaType::Unknown,
       specifier: deno_core::resolve_url("file:///example.js").unwrap(),
-      source: "".to_string(),
+      text_info: SourceTextInfo::from_string("".to_string()),
       source_path: PathBuf::new(),
     }
   }
@@ -305,7 +307,7 @@ impl Module {
       specifier: cached_module.specifier,
       maybe_import_map,
       media_type,
-      source: cached_module.source,
+      text_info: SourceTextInfo::new(BytePos(0), cached_module.source),
       source_path: cached_module.source_path,
       maybe_emit: cached_module.maybe_emit,
       maybe_emit_path: cached_module.maybe_emit_path,
@@ -334,7 +336,8 @@ impl Module {
   /// version.
   pub fn is_emit_valid(&self, config: &[u8]) -> bool {
     if let Some(version) = self.maybe_version.clone() {
-      version == get_version(&self.source, &version::deno(), config)
+      version
+        == get_version(self.text_info.text_str(), &version::deno(), config)
     } else {
       false
     }
@@ -342,14 +345,19 @@ impl Module {
 
   /// Parse a module, populating the structure with data retrieved from the
   /// source of the module.
-  pub fn parse(&mut self) -> Result<ParsedModule, AnyError> {
-    let parsed_module =
-      parse(self.specifier.as_str(), &self.source, &self.media_type)?;
+  pub fn parse(&mut self) -> Result<ParsedSource, AnyError> {
+    let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
+      specifier: self.specifier.as_str().to_string(),
+      source: self.text_info.clone(),
+      media_type: self.media_type,
+      capture_tokens: false,
+      maybe_syntax: None,
+    })?;
 
     // parse out any triple slash references
     for comment in parsed_module.get_leading_comments().iter() {
       if let Some((ts_reference, _)) = parse_ts_reference(comment) {
-        let location = parsed_module.get_location(comment.span.lo);
+        let location = Location::from_pos(&parsed_module, comment.span.lo);
         match ts_reference {
           TypeScriptReference::Path(import) => {
             let specifier =
@@ -382,11 +390,11 @@ impl Module {
     }
 
     // Parse out all the syntactical dependencies for a module
-    let dependencies = parsed_module.analyze_dependencies();
+    let dependencies = analyze_dependencies(&parsed_module);
     for desc in dependencies.iter().filter(|desc| {
-      desc.kind != swc_ecmascript::dep_graph::DependencyKind::Require
+      desc.kind != deno_ast::swc::dep_graph::DependencyKind::Require
     }) {
-      let location = parsed_module.get_location(desc.span.lo);
+      let location = Location::from_pos(&parsed_module, desc.span.lo);
 
       // In situations where there is a potential issue with resolving the
       // import specifier, that ends up being a module resolution error for a
@@ -495,12 +503,15 @@ impl Module {
 
   /// Calculate the hashed version of the module and update the `maybe_version`.
   pub fn set_version(&mut self, config: &[u8]) {
-    self.maybe_version =
-      Some(get_version(&self.source, &version::deno(), config))
+    self.maybe_version = Some(get_version(
+      self.text_info.text_str(),
+      &version::deno(),
+      config,
+    ))
   }
 
   pub fn size(&self) -> usize {
-    self.source.as_bytes().len()
+    self.text_info.text_str().len()
   }
 }
 
@@ -736,7 +747,7 @@ fn to_module_result(
       } else {
         match module.media_type {
           MediaType::JavaScript | MediaType::Unknown => Ok(ModuleSource {
-            code: module.source.clone(),
+            code: module.text_info.text_str().to_string(),
             module_url_found: module.specifier.to_string(),
             module_url_specified: specifier.to_string(),
           }),
@@ -1128,11 +1139,13 @@ impl Graph {
                 || module.media_type == MediaType::Tsx
                 || module.media_type == MediaType::TypeScript)
               {
-                emitted_files
-                  .insert(module.specifier.to_string(), module.source.clone());
+                emitted_files.insert(
+                  module.specifier.to_string(),
+                  module.text_info.text_str().to_string(),
+                );
               }
               let parsed_module = module.parse()?;
-              let (code, maybe_map) = parsed_module.transpile(&emit_options)?;
+              let (code, maybe_map) = transpile(&parsed_module, &emit_options)?;
               emit_count += 1;
               emitted_files.insert(format!("{}.js", module.specifier), code);
               if let Some(map) = maybe_map {
@@ -1170,23 +1183,23 @@ impl Graph {
     emit_options: &ast::EmitOptions,
     bundle_type: &BundleType,
   ) -> Result<(String, Option<String>), AnyError> {
-    let cm = Rc::new(swc_common::SourceMap::new(
-      swc_common::FilePathMapping::empty(),
+    let cm = Rc::new(deno_ast::swc::common::SourceMap::new(
+      deno_ast::swc::common::FilePathMapping::empty(),
     ));
-    let globals = swc_common::Globals::new();
+    let globals = deno_ast::swc::common::Globals::new();
     let loader = BundleLoader::new(self, emit_options, &globals, cm.clone());
     let hook = Box::new(BundleHook);
     let module = match bundle_type {
-      BundleType::Module => swc_bundler::ModuleType::Es,
-      BundleType::Classic => swc_bundler::ModuleType::Iife,
+      BundleType::Module => deno_ast::swc::bundler::ModuleType::Es,
+      BundleType::Classic => deno_ast::swc::bundler::ModuleType::Iife,
       _ => unreachable!("invalid bundle type"),
     };
-    let bundler = swc_bundler::Bundler::new(
+    let bundler = deno_ast::swc::bundler::Bundler::new(
       &globals,
       cm.clone(),
       loader,
       self,
-      swc_bundler::Config {
+      deno_ast::swc::bundler::Config {
         module,
         ..Default::default()
       },
@@ -1195,7 +1208,7 @@ impl Graph {
     let mut entries = HashMap::new();
     entries.insert(
       "bundle".to_string(),
-      swc_common::FileName::Custom(specifier.to_string()),
+      deno_ast::swc::common::FileName::Custom(specifier.to_string()),
     );
     let output = bundler
       .bundle(entries)
@@ -1203,11 +1216,11 @@ impl Graph {
     let mut buf = Vec::new();
     let mut src_map_buf = Vec::new();
     {
-      let mut emitter = swc_ecmascript::codegen::Emitter {
-        cfg: swc_ecmascript::codegen::Config { minify: false },
+      let mut emitter = deno_ast::swc::codegen::Emitter {
+        cfg: deno_ast::swc::codegen::Config { minify: false },
         cm: cm.clone(),
         comments: None,
-        wr: Box::new(swc_ecmascript::codegen::text_writer::JsWriter::new(
+        wr: Box::new(deno_ast::swc::codegen::text_writer::JsWriter::new(
           cm.clone(),
           "\n",
           &mut buf,
@@ -1421,9 +1434,9 @@ impl Graph {
 
   /// Get the source for a given module specifier.  If the module is not part
   /// of the graph, the result will be `None`.
-  pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<String> {
+  pub fn get_source(&self, specifier: &ModuleSpecifier) -> Option<Arc<String>> {
     if let ModuleSlot::Module(module) = self.get_module(specifier) {
-      Some(module.source.clone())
+      Some(module.text_info.text())
     } else {
       None
     }
@@ -1482,7 +1495,10 @@ impl Graph {
             size: Some(module.size()),
             media_type: Some(module.media_type),
             local: Some(module.source_path.clone()),
-            checksum: Some(checksum::gen(&[module.source.as_bytes()])),
+            checksum: Some(checksum::gen(&[module
+              .text_info
+              .text_str()
+              .as_bytes()])),
             emit,
             map,
             ..Default::default()
@@ -1547,7 +1563,8 @@ impl Graph {
       for (ms, module_slot) in self.modules.iter() {
         if let ModuleSlot::Module(module) = module_slot {
           let specifier = module.specifier.to_string();
-          let valid = lockfile.check_or_insert(&specifier, &module.source);
+          let valid =
+            lockfile.check_or_insert(&specifier, module.text_info.text_str());
           if !valid {
             eprintln!(
               "{}",
@@ -1739,7 +1756,7 @@ impl Graph {
           continue;
         }
         let parsed_module = module.parse()?;
-        let emit = parsed_module.transpile(&emit_options)?;
+        let emit = transpile(&parsed_module, &emit_options)?;
         emit_count += 1;
         module.maybe_emit = Some(Emit::Cli(emit));
         module.set_version(&config);
@@ -1810,24 +1827,27 @@ impl Graph {
   }
 }
 
-impl swc_bundler::Resolve for Graph {
+impl deno_ast::swc::bundler::Resolve for Graph {
   fn resolve(
     &self,
-    referrer: &swc_common::FileName,
+    referrer: &deno_ast::swc::common::FileName,
     specifier: &str,
-  ) -> Result<swc_common::FileName, AnyError> {
-    let referrer = if let swc_common::FileName::Custom(referrer) = referrer {
-      resolve_url_or_path(referrer)
-        .context("Cannot resolve swc FileName to a module specifier")?
-    } else {
-      unreachable!(
-        "An unexpected referrer was passed when bundling: {:?}",
-        referrer
-      )
-    };
+  ) -> Result<deno_ast::swc::common::FileName, AnyError> {
+    let referrer =
+      if let deno_ast::swc::common::FileName::Custom(referrer) = referrer {
+        resolve_url_or_path(referrer)
+          .context("Cannot resolve swc FileName to a module specifier")?
+      } else {
+        unreachable!(
+          "An unexpected referrer was passed when bundling: {:?}",
+          referrer
+        )
+      };
     let specifier = self.resolve(specifier, &referrer, false)?;
 
-    Ok(swc_common::FileName::Custom(specifier.to_string()))
+    Ok(deno_ast::swc::common::FileName::Custom(
+      specifier.to_string(),
+    ))
   }
 }
 
@@ -2114,8 +2134,10 @@ pub mod tests {
         .replace("/", "-");
       let source_path = self.fixtures.join(specifier_text);
       let media_type = MediaType::from(&source_path);
-      let source = fs::read_to_string(&source_path)
-        .map_err(|err| (specifier.clone(), err.into()))?;
+      let source = Arc::new(
+        fs::read_to_string(&source_path)
+          .map_err(|err| (specifier.clone(), err.into()))?,
+      );
       let is_remote = specifier.scheme() != "file";
 
       Ok(CachedModule {
@@ -2211,9 +2233,9 @@ pub mod tests {
     specifier: ModuleSpecifier,
     sources: HashMap<&str, &str>,
   ) -> Graph {
-    let sources: HashMap<String, String> = sources
+    let sources: HashMap<String, Arc<String>> = sources
       .iter()
-      .map(|(k, v)| (k.to_string(), v.to_string()))
+      .map(|(k, v)| (k.to_string(), Arc::new(v.to_string())))
       .collect();
     let handler = Arc::new(Mutex::new(MemoryHandler::new(sources)));
     let mut builder = GraphBuilder::new(handler.clone(), None, None);
@@ -2248,37 +2270,37 @@ pub mod tests {
 
   #[test]
   fn test_module_emit_valid() {
-    let source = "console.log(42);".to_string();
-    let maybe_version = Some(get_version(&source, &version::deno(), b""));
+    let source = "console.log(42);";
+    let maybe_version = Some(get_version(source, &version::deno(), b""));
     let module = Module {
       maybe_version,
-      source,
+      text_info: SourceTextInfo::from_string(source.to_string()),
       ..Module::default()
     };
     assert!(module.is_emit_valid(b""));
 
-    let source = "console.log(42);".to_string();
+    let source = "console.log(42);";
     let old_source = "console.log(43);";
     let maybe_version = Some(get_version(old_source, &version::deno(), b""));
     let module = Module {
       maybe_version,
-      source,
+      text_info: SourceTextInfo::from_string(source.to_string()),
       ..Module::default()
     };
     assert!(!module.is_emit_valid(b""));
 
-    let source = "console.log(42);".to_string();
-    let maybe_version = Some(get_version(&source, "0.0.0", b""));
+    let source = "console.log(42);";
+    let maybe_version = Some(get_version(source, "0.0.0", b""));
     let module = Module {
       maybe_version,
-      source,
+      text_info: SourceTextInfo::from_string(source.to_string()),
       ..Module::default()
     };
     assert!(!module.is_emit_valid(b""));
 
-    let source = "console.log(42);".to_string();
+    let source = "console.log(42);";
     let module = Module {
-      source,
+      text_info: SourceTextInfo::from_string(source.to_string()),
       ..Module::default()
     };
     assert!(!module.is_emit_valid(b""));
@@ -2286,10 +2308,10 @@ pub mod tests {
 
   #[test]
   fn test_module_set_version() {
-    let source = "console.log(42);".to_string();
-    let expected = Some(get_version(&source, &version::deno(), b""));
+    let source = "console.log(42);";
+    let expected = Some(get_version(source, &version::deno(), b""));
     let mut module = Module {
-      source,
+      text_info: SourceTextInfo::from_string(source.to_string()),
       ..Module::default()
     };
     assert!(module.maybe_version.is_none());

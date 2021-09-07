@@ -403,10 +403,11 @@ mod tests {
   use crate::lsp::documents::DocumentCache;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::sources::Sources;
-  use crate::media_type::MediaType;
+  use deno_ast::MediaType;
   use deno_core::resolve_url;
   use std::collections::HashMap;
   use std::path::Path;
+  use std::sync::Arc;
   use tempfile::TempDir;
 
   fn mock_state_snapshot(
@@ -418,17 +419,28 @@ mod tests {
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      documents.open(specifier.clone(), *version, language_id.clone(), source);
+      documents.open(
+        specifier.clone(),
+        *version,
+        *language_id,
+        Arc::new(source.to_string()),
+      );
       let media_type = MediaType::from(&specifier);
-      let parsed_module =
-        analysis::parse_module(&specifier, source, &media_type).unwrap();
+      let parsed_module = documents
+        .get(&specifier)
+        .unwrap()
+        .source()
+        .module()
+        .map(|r| r.as_ref())
+        .unwrap()
+        .unwrap();
       let (deps, _) = analysis::analyze_dependencies(
         &specifier,
-        &media_type,
-        &parsed_module,
+        media_type,
+        parsed_module,
         &None,
       );
-      let dep_ranges = analysis::analyze_dependency_ranges(&parsed_module).ok();
+      let dep_ranges = analysis::analyze_dependency_ranges(parsed_module).ok();
       documents
         .set_dependencies(&specifier, Some(deps), dep_ranges)
         .unwrap();

@@ -1,15 +1,18 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+use deno_ast::swc::bundler::Hook;
+use deno_ast::swc::bundler::ModuleRecord;
+use deno_ast::swc::common::Span;
 use deno_core::error::AnyError;
 
 pub struct BundleHook;
 
-impl swc_bundler::Hook for BundleHook {
+impl Hook for BundleHook {
   fn get_import_meta_props(
     &self,
-    span: swc_common::Span,
-    module_record: &swc_bundler::ModuleRecord,
-  ) -> Result<Vec<swc_ecmascript::ast::KeyValueProp>, AnyError> {
-    use swc_ecmascript::ast;
+    span: Span,
+    module_record: &ModuleRecord,
+  ) -> Result<Vec<deno_ast::swc::ast::KeyValueProp>, AnyError> {
+    use deno_ast::swc::ast;
 
     // we use custom file names, and swc "wraps" these in `<` and `>` so, we
     // want to strip those back out.
