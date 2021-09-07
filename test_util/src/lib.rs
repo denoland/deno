@@ -1581,7 +1581,7 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
               let _n = buf_reader.read(&mut buf).unwrap();
               let buf_str = std::str::from_utf8(&buf)
                 .unwrap()
-                .trim_matches(char::from(0));
+                .trim_end_matches(char::from(0));
               line += buf_str;
               assert!(s.starts_with(&line));
             }
@@ -1590,6 +1590,7 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
           assert_eq!(line, s);
         }
       }
+      std::thread::sleep(std::time::Duration::from_millis(100));
     }
 
     fork.wait().unwrap();
