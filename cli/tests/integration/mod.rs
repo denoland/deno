@@ -1084,7 +1084,7 @@ fn basic_auth_tokens() {
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
-    .arg("http://127.0.0.1:4553/001_hello.js")
+    .arg("http://127.0.0.1:4554/001_hello.js")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
@@ -1101,14 +1101,14 @@ fn basic_auth_tokens() {
   eprintln!("{}", stderr_str);
 
   assert!(stderr_str.contains(
-    "Import 'http://127.0.0.1:4553/001_hello.js' failed: 404 Not Found"
+    "Import 'http://127.0.0.1:4554/001_hello.js' failed: 404 Not Found"
   ));
 
   let output = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("run")
-    .arg("http://127.0.0.1:4553/001_hello.js")
-    .env("DENO_AUTH_TOKENS", "testuser123:testpassabc@127.0.0.1:4553")
+    .arg("http://127.0.0.1:4554/001_hello.js")
+    .env("DENO_AUTH_TOKENS", "testuser123:testpassabc@127.0.0.1:4554")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
