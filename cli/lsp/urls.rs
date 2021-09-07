@@ -20,7 +20,7 @@ lazy_static::lazy_static! {
 /// Matches the `encodeURIComponent()` encoding from JavaScript, which matches
 /// the component percent encoding set.
 ///
-/// See: https://url.spec.whatwg.org/#component-percent-encode-set
+/// See: <https://url.spec.whatwg.org/#component-percent-encode-set>
 ///
 // TODO(@kitsonk) - refactor when #9934 is landed.
 const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS

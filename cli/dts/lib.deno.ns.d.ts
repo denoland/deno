@@ -1982,13 +1982,12 @@ declare namespace Deno {
     stderrOutput(): Promise<Uint8Array>;
     close(): void;
 
-    /** **UNSTABLE**: The `signo` argument may change to require the Deno.Signal
-     * enum.
+    /** **UNSTABLE**
      *
      * Send a signal to process. This functionality currently only works on
      * Linux and Mac OS.
      */
-    kill(signo: number): void;
+    kill(signo: string): void; // TODO(ry): Use Signal type here once made stable.
   }
 
   export type ProcessStatus =

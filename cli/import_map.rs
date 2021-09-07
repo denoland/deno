@@ -160,7 +160,7 @@ impl ImportMap {
 
   /// Parse provided key as import map specifier.
   ///
-  /// Specifiers must be valid URLs (eg. "https://deno.land/x/std/testing/asserts.ts")
+  /// Specifiers must be valid URLs (eg. "`https://deno.land/x/std/testing/asserts.ts`")
   /// or "bare" specifiers (eg. "moment").
   fn normalize_specifier_key(
     specifier_key: &str,

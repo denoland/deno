@@ -11,6 +11,7 @@ use crate::flags::Flags;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
+use crate::located_script_name;
 use crate::media_type::MediaType;
 use crate::module_graph;
 use crate::module_graph::GraphBuilder;
@@ -264,21 +265,6 @@ async fn test_specifier(
     test_source.push_str(&format!("import \"{}\";\n", specifier));
   }
 
-  test_source
-    .push_str("await new Promise(resolve => setTimeout(resolve, 0));\n");
-
-  test_source.push_str("window.dispatchEvent(new Event('load'));\n");
-
-  test_source.push_str(&format!(
-    "await Deno[Deno.internal].runTests({});\n",
-    json!({
-      "filter": filter,
-      "shuffle": shuffle,
-    }),
-  ));
-
-  test_source.push_str("window.dispatchEvent(new Event('unload'));\n");
-
   let test_file = File {
     local: test_specifier.to_file_path().unwrap(),
     maybe_types: None,
@@ -323,9 +309,28 @@ async fn test_specifier(
 
   worker.execute_module(&test_specifier).await?;
 
-  worker
-    .run_event_loop(maybe_coverage_collector.is_none())
-    .await?;
+  worker.js_runtime.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('load'));",
+  )?;
+
+  let test_result = worker.js_runtime.execute_script(
+    &located_script_name!(),
+    &format!(
+      r#"Deno[Deno.internal].runTests({})"#,
+      json!({
+        "filter": filter,
+        "shuffle": shuffle,
+      }),
+    ),
+  )?;
+
+  worker.js_runtime.resolve_value(test_result).await?;
+
+  worker.js_runtime.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('unload'));",
+  )?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     worker
