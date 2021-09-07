@@ -474,25 +474,20 @@ unitTest(
       cmd: [Deno.execPath(), "eval", "setTimeout(() => {}, 10000)"],
     });
 
-    if (Deno.build.os === "windows") {
-      // currently not implemented
-      assertThrows(() => {
+    try {
+      if (Deno.build.os === "windows") {
+        // currently not implemented
+        assertThrows(() => {
+          Deno.kill(p.pid, "SIGINT");
+        }, Error);
+      } else {
         Deno.kill(p.pid, "SIGINT");
-      }, Error);
-      p.close();
-    } else {
-      Deno.kill(p.pid, "SIGINT");
-      const status = await p.status();
+        const status = await p.status();
 
-      assertEquals(status.success, false);
-      try {
+        assertEquals(status.success, false);
         assertEquals(status.signal, "SIGINT");
-      } catch {
-        // TODO(nayeemrmn): On Windows sometimes the following values are given
-        // instead. Investigate and remove this catch when fixed.
-        assertEquals(status.code, 130);
-        assertEquals(status.signal, 2);
       }
+    } finally {
       p.close();
     }
   },
