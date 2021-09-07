@@ -1203,12 +1203,14 @@ fn permission_prompt(message: &str) -> bool {
 
   #[cfg(not(unix))]
   fn clear_stdin() {
-    let stdin = winapi::um::processenv::GetStdHandle(
-      winapi::um::winbase::STD_INPUT_HANDLE,
-    );
-    let flags =
-      winapi::um::winbase::PURGE_TXCLEAR | winapi::um::winbase::PURGE_RXCLEAR;
-    winapi::um::commapi::PurgeComm(stdin, flags);
+    unsafe {
+      let stdin = winapi::um::processenv::GetStdHandle(
+        winapi::um::winbase::STD_INPUT_HANDLE,
+      );
+      let flags =
+        winapi::um::winbase::PURGE_TXCLEAR | winapi::um::winbase::PURGE_RXCLEAR;
+      winapi::um::commapi::PurgeComm(stdin, flags);
+    }
   }
 
   // For security reasons we must consume everything in stdin so that previously
