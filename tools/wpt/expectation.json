@@ -14527,60 +14527,16 @@
   },
   "urlpattern": {
     "urlpattern.any.html": [
-      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
-      "Pattern: [{\"pathname\":\"foo/bar\"}] Inputs: [\"https://example.com/foo/bar\"]",
-      "Pattern: [{\"pathname\":\":name.html\",\"baseURL\":\"https://example.com\"}] Inputs: [\"https://example.com/foo.html\"]",
-      "Pattern: [{\"pathname\":\"/(\\\\m)\"}] Inputs: undefined",
-      "Pattern: [{\"pathname\":\"var x = 1;\"}] Inputs: [{\"protocol\":\"javascript\",\"pathname\":\"var x = 1;\"}]",
-      "Pattern: [{\"protocol\":\"(https|javascript)\",\"pathname\":\"var x = 1;\"}] Inputs: [{\"protocol\":\"javascript\",\"pathname\":\"var x = 1;\"}]",
-      "Pattern: [{\"pathname\":\"var x = 1;\"}] Inputs: [{\"pathname\":\"var x = 1;\"}]",
-      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]",
-      "Pattern: [\"https://example.com/*?foo\"] Inputs: [\"https://example.com/?foo\"]",
-      "Pattern: [\"https://example.com/:name?foo\"] Inputs: [\"https://example.com/bar?foo\"]",
-      "Pattern: [\"https://example.com/(bar)?foo\"] Inputs: [\"https://example.com/bar?foo\"]",
-      "Pattern: [\"https://example.com/{bar}?foo\"] Inputs: [\"https://example.com/bar?foo\"]"
+      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]"
     ],
     "urlpattern.any.worker.html": [
-      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
-      "Pattern: [{\"pathname\":\"foo/bar\"}] Inputs: [\"https://example.com/foo/bar\"]",
-      "Pattern: [{\"pathname\":\":name.html\",\"baseURL\":\"https://example.com\"}] Inputs: [\"https://example.com/foo.html\"]",
-      "Pattern: [{\"pathname\":\"/(\\\\m)\"}] Inputs: undefined",
-      "Pattern: [{\"pathname\":\"var x = 1;\"}] Inputs: [{\"protocol\":\"javascript\",\"pathname\":\"var x = 1;\"}]",
-      "Pattern: [{\"protocol\":\"(https|javascript)\",\"pathname\":\"var x = 1;\"}] Inputs: [{\"protocol\":\"javascript\",\"pathname\":\"var x = 1;\"}]",
-      "Pattern: [{\"pathname\":\"var x = 1;\"}] Inputs: [{\"pathname\":\"var x = 1;\"}]",
-      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]",
-      "Pattern: [\"https://example.com/*?foo\"] Inputs: [\"https://example.com/?foo\"]",
-      "Pattern: [\"https://example.com/:name?foo\"] Inputs: [\"https://example.com/bar?foo\"]",
-      "Pattern: [\"https://example.com/(bar)?foo\"] Inputs: [\"https://example.com/bar?foo\"]",
-      "Pattern: [\"https://example.com/{bar}?foo\"] Inputs: [\"https://example.com/bar?foo\"]"
+      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]"
     ],
     "urlpattern.https.any.html": [
-      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
-      "Pattern: [{\"pathname\":\"foo/bar\"}] Inputs: [\"https://example.com/foo/bar\"]",
-      "Pattern: [{\"pathname\":\":name.html\",\"baseURL\":\"https://example.com\"}] Inputs: [\"https://example.com/foo.html\"]",
-      "Pattern: [{\"pathname\":\"/(\\\\m)\"}] Inputs: undefined",
-      "Pattern: [{\"pathname\":\"var x = 1;\"}] Inputs: [{\"protocol\":\"javascript\",\"pathname\":\"var x = 1;\"}]",
-      "Pattern: [{\"protocol\":\"(https|javascript)\",\"pathname\":\"var x = 1;\"}] Inputs: [{\"protocol\":\"javascript\",\"pathname\":\"var x = 1;\"}]",
-      "Pattern: [{\"pathname\":\"var x = 1;\"}] Inputs: [{\"pathname\":\"var x = 1;\"}]",
-      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]",
-      "Pattern: [\"https://example.com/*?foo\"] Inputs: [\"https://example.com/?foo\"]",
-      "Pattern: [\"https://example.com/:name?foo\"] Inputs: [\"https://example.com/bar?foo\"]",
-      "Pattern: [\"https://example.com/(bar)?foo\"] Inputs: [\"https://example.com/bar?foo\"]",
-      "Pattern: [\"https://example.com/{bar}?foo\"] Inputs: [\"https://example.com/bar?foo\"]"
+      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]"
     ],
     "urlpattern.https.any.worker.html": [
-      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [{\"pathname\":\"foo/bar\"}]",
-      "Pattern: [{\"pathname\":\"foo/bar\"}] Inputs: [\"https://example.com/foo/bar\"]",
-      "Pattern: [{\"pathname\":\":name.html\",\"baseURL\":\"https://example.com\"}] Inputs: [\"https://example.com/foo.html\"]",
-      "Pattern: [{\"pathname\":\"/(\\\\m)\"}] Inputs: undefined",
-      "Pattern: [{\"pathname\":\"var x = 1;\"}] Inputs: [{\"protocol\":\"javascript\",\"pathname\":\"var x = 1;\"}]",
-      "Pattern: [{\"protocol\":\"(https|javascript)\",\"pathname\":\"var x = 1;\"}] Inputs: [{\"protocol\":\"javascript\",\"pathname\":\"var x = 1;\"}]",
-      "Pattern: [{\"pathname\":\"var x = 1;\"}] Inputs: [{\"pathname\":\"var x = 1;\"}]",
-      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]",
-      "Pattern: [\"https://example.com/*?foo\"] Inputs: [\"https://example.com/?foo\"]",
-      "Pattern: [\"https://example.com/:name?foo\"] Inputs: [\"https://example.com/bar?foo\"]",
-      "Pattern: [\"https://example.com/(bar)?foo\"] Inputs: [\"https://example.com/bar?foo\"]",
-      "Pattern: [\"https://example.com/{bar}?foo\"] Inputs: [\"https://example.com/bar?foo\"]"
+      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]"
     ]
   }
 }

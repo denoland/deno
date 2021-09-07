@@ -71,7 +71,10 @@
 
       for (const key of ObjectKeys(components)) {
         try {
-          components[key].regexp = new RegExp(components[key].regexpString);
+          components[key].regexp = new RegExp(
+            components[key].regexpString,
+            "u",
+          );
         } catch (e) {
           throw new TypeError(`${prefix}: ${key} is invalid; ${e.message}`);
         }
