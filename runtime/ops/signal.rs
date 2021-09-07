@@ -57,8 +57,8 @@ impl Resource for SignalStreamResource {
 }
 
 #[cfg(target_os = "linux")]
-fn signal_str_to_int(s: &str) -> Option<libc::c_int> {
-  match s {
+fn signal_str_to_int(s: &str) -> Result<Option<libc::c_int>, AnyError> {
+  Ok(match s {
     "SIGHUP" => Some(1),
     "SIGINT" => Some(2),
     "SIGQUIT" => Some(3),
@@ -91,7 +91,7 @@ fn signal_str_to_int(s: &str) -> Option<libc::c_int> {
     "SIGPWR" => Some(30),
     "SIGSYS" => Some(31),
     _ => None,
-  }
+  })
 }
 
 #[cfg(target_os = "macos")]
