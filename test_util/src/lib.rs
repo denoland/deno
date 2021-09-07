@@ -1572,13 +1572,10 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
         }
         PtyData::Output(s) => {
           use std::io::BufRead;
+          let mut line = String::new();
           if s.ends_with('\n') {
-            let mut line = String::new();
             buf_reader.read_line(&mut line).unwrap();
-            println!("OUTPUT {}", line.escape_debug());
-            assert_eq!(line, s);
           } else {
-            let mut line = String::new();
             while s != line {
               let mut buf = [0; 64 * 1024];
               let _n = buf_reader.read(&mut buf).unwrap();
@@ -1588,9 +1585,9 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
               line += buf_str;
               assert!(s.starts_with(&line));
             }
-            println!("OUTPUT {}", line.escape_debug());
-            assert_eq!(line, s);
           }
+          println!("OUTPUT {}", line.escape_debug());
+          assert_eq!(line, s);
         }
       }
     }
