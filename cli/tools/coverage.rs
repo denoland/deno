@@ -262,6 +262,7 @@ impl CoverageReporter for PrettyCoverageReporter {
       let range = &coverage.ranges[0];
       let line = &source[range.start_offset..range.end_offset];
 
+      println!("{:?}", coverage);
       println!(
         "{:width$} {} {}",
         index + 1,
@@ -269,12 +270,6 @@ impl CoverageReporter for PrettyCoverageReporter {
         colors::red(&line),
         width = PRETTY_LINE_WIDTH,
       );
-
-      // Debugging, remove me.
-      for range in &coverage.ranges {
-        let slice = &source[range.start_offset..range.end_offset];
-        println!("slice: '{}'", slice);
-      }
 
       maybe_last_index = Some(index);
     }
@@ -410,10 +405,30 @@ async fn cover_script(
 
   let source = file.source.as_str();
 
+  let line_offsets = {
+    let mut line_offsets: Vec<(usize, usize)> = Vec::new();
+    let mut offset = 0;
+
+    for line in source.split('\n') {
+      line_offsets.push((offset, offset + line.len()));
+      offset += line.len() + 1;
+    }
+
+    line_offsets
+  };
+
   // TODO(caspervonb): source mapping is still a bit of a mess and we should try look into avoiding
   // doing any loads at this stage.
   let maybe_raw_source_map = program_state.get_source_map(&script.url);
-  let functions = if let Some(raw_source_map) = maybe_raw_source_map {
+
+  // Sharing code between the source mapped and non mapped path turned out to be error prone so we
+  // branch off completely and return early to do source mapping.
+  //
+  // TODO(caspervonb): split (or merge, depending on where we end up) these two paths into
+  // functions so that it's clear at a glance.
+  if let Some(raw_source_map) = maybe_raw_source_map {
+    let source_map = SourceMap::from_slice(&raw_source_map)?;
+
     program_state
       .prepare_module_load(
         module_specifier.clone(),
@@ -425,18 +440,129 @@ async fn cover_script(
       )
       .await?;
 
-    let module = program_state.load(module_specifier.clone(), None)?;
-    let source_map = SourceMap::from_slice(&raw_source_map)?;
+    let compiled_source =
+      program_state.load(module_specifier.clone(), None)?.code;
 
-    // Debugging, remove me.
-    for function in &script.functions {
-      for range in &function.ranges {
-        println!(
-          "original_range: '{}'",
-          &module.code[range.start_offset..range.end_offset]
-        );
+    // To avoid false positives we base our line ranges on the ranges of the compiled lines 
+    let compiled_line_offsets = {
+      let mut line_offsets: Vec<(usize, usize)> = Vec::new();
+      let mut offset = 0;
+
+      for line in compiled_source.split('\n') {
+        line_offsets.push((offset, offset + line.len()));
+        offset += line.len() + 1;
       }
-    }
+
+      line_offsets
+    };
+
+    // First we get the adjusted ranges of these lines
+    let compiled_line_ranges = compiled_line_offsets
+      .iter()
+      .filter_map(|(start_offset, end_offset)| {
+        let line = &compiled_source[*start_offset..*end_offset];
+        if line == "\n" {
+            return None
+        }
+
+        let ranges = script
+          .functions
+          .iter()
+          .map(|function| {
+            function.ranges.iter().filter_map(|function_range| {
+              if &function_range.start_offset > end_offset {
+                return None;
+              }
+
+              if &function_range.end_offset < start_offset {
+                return None;
+              }
+
+              Some(CoverageRange {
+                start_offset: cmp::max(
+                  *start_offset,
+                  function_range.start_offset,
+                ),
+                end_offset: cmp::min(*end_offset, function_range.end_offset),
+                count: function_range.count,
+              })
+            })
+          })
+          .flatten()
+          .collect::<Vec<CoverageRange>>();
+
+          Some(ranges)
+      })
+      .flatten()
+      .collect::<Vec<CoverageRange>>();
+
+    // Then we map those adjusted ranges from their closest tokens to their source locations.
+    let mapped_line_ranges = compiled_line_ranges
+      .iter()
+      .map(|line_range| {
+        let (start_line, start_col) =
+          offset_to_line_col(&compiled_source, line_range.start_offset)
+            .unwrap();
+
+        let start_token =
+          source_map.lookup_token(start_line, start_col).unwrap();
+
+        let (end_line, end_col) =
+          offset_to_line_col(&compiled_source, line_range.end_offset).unwrap();
+
+        let end_token = source_map.lookup_token(end_line, end_col).unwrap();
+
+        let mapped_start_offset = line_col_to_offset(
+          &source,
+          start_token.get_src_line(),
+          start_token.get_src_col(),
+        )
+        .unwrap();
+
+        let mapped_end_offset = line_col_to_offset(
+          &source,
+          end_token.get_src_line(),
+          end_token.get_src_col(),
+        )
+        .unwrap();
+
+        CoverageRange {
+          start_offset: mapped_start_offset,
+          end_offset: mapped_end_offset,
+          count: line_range.count,
+        }
+      })
+      .collect::<Vec<CoverageRange>>();
+
+    println!("line offsets: {}", line_offsets.len());
+
+    // Then we go through the source lines and grab any ranges that apply to any given line
+    // adjusting them as we go.
+    let lines = line_offsets
+      .iter()
+      .map(|(start_offset, end_offset)| {
+        let ranges = mapped_line_ranges
+          .iter()
+          .filter_map(|line_range| {
+            if &line_range.start_offset > end_offset {
+              return None;
+            }
+
+            if &line_range.end_offset < start_offset {
+              return None;
+            }
+
+            Some(CoverageRange {
+              start_offset: cmp::max(*start_offset, line_range.start_offset),
+              end_offset: cmp::min(*end_offset, line_range.end_offset),
+              count: line_range.count,
+            })
+          })
+          .collect();
+
+        LineCoverage { ranges }
+      })
+      .collect();
 
     let functions = script
       .functions
@@ -447,12 +573,13 @@ async fn cover_script(
           .iter()
           .map(|function_range| {
             let (start_line, start_col) =
-              offset_to_line_col(&module.code, function_range.start_offset)
+              offset_to_line_col(&compiled_source, function_range.start_offset)
                 .unwrap();
+
             let start_token =
               source_map.lookup_token(start_line, start_col).unwrap();
 
-            let start_offset = line_col_to_offset(
+            let mapped_start_offset = line_col_to_offset(
               &source,
               start_token.get_src_line(),
               start_token.get_src_col(),
@@ -460,12 +587,12 @@ async fn cover_script(
             .unwrap();
 
             let (end_line, end_col) =
-              offset_to_line_col(&module.code, function_range.end_offset)
+              offset_to_line_col(&compiled_source, function_range.end_offset)
                 .unwrap();
 
             let end_token = source_map.lookup_token(end_line, end_col).unwrap();
 
-            let end_offset = line_col_to_offset(
+            let mapped_end_offset = line_col_to_offset(
               &source,
               end_token.get_src_line(),
               end_token.get_src_col(),
@@ -473,8 +600,8 @@ async fn cover_script(
             .unwrap();
 
             CoverageRange {
-              start_offset,
-              end_offset,
+              start_offset: mapped_start_offset,
+              end_offset: mapped_end_offset,
               count: function_range.count,
             }
           })
@@ -488,31 +615,10 @@ async fn cover_script(
       })
       .collect::<Vec<FunctionCoverage>>();
 
-    // Debugging, remove me.
-    for function in &functions {
-      for range in &function.ranges {
-        println!(
-          "mapped_range: '{}'",
-          &source[range.start_offset..range.end_offset]
-        );
-      }
-    }
-    functions
-  } else {
-    script.functions.clone()
-  };
+    return Ok(CoverageResult { lines, functions });
+  }
 
-  let line_offsets = {
-    let mut line_offsets: Vec<(usize, usize)> = Vec::new();
-    let mut offset = 0;
-
-    for line in source.split('\n') {
-      line_offsets.push((offset, offset + line.len()));
-      offset += line.len() + 1;
-    }
-
-    line_offsets
-  };
+  let functions = script.functions.clone();
 
   let lines = line_offsets
     .iter()
