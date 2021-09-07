@@ -13490,6 +13490,14 @@
         ],
         "toString.tentative.any.html": false,
         "type.tentative.any.html": false
+      },
+      "function": {
+        "call.tentative.any.html": false,
+        "constructor.tentative.any.html": [
+          "construct with JS function"
+        ],
+        "table.tentative.any.html": false,
+        "type.tentative.any.html": false
       }
     },
     "serialization": {
