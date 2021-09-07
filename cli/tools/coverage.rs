@@ -418,14 +418,8 @@ async fn cover_script(
   };
 
   // TODO(caspervonb): source mapping is still a bit of a mess and we should try look into avoiding
-  // doing any loads at this stage.
+  // doing any loads at this stage of execution but it'll do for now.
   let maybe_raw_source_map = program_state.get_source_map(&script.url);
-
-  // Sharing code between the source mapped and non mapped path turned out to be error prone so we
-  // branch off completely and return early to do source mapping.
-  //
-  // TODO(caspervonb): split (or merge, depending on where we end up) these two paths into
-  // functions so that it's clear at a glance.
   if let Some(raw_source_map) = maybe_raw_source_map {
     let source_map = SourceMap::from_slice(&raw_source_map)?;
 
