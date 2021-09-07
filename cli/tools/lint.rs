@@ -84,9 +84,9 @@ pub async fn lint_files(
   // and `--rules-include` CLI flag, only the flag value is taken into account.
   let lint_rules = get_configured_rules(
     maybe_lint_config.as_ref(),
-    rules_tags.clone(),
-    rules_include.clone(),
-    rules_exclude.clone(),
+    rules_tags,
+    rules_include,
+    rules_exclude,
   )?;
 
   let has_error = Arc::new(AtomicBool::new(false));
