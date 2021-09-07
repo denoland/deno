@@ -1543,27 +1543,67 @@ pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
   t.1.is_empty()
 }
 
-/// Kind of reflects `itest!()`. Note that the pty's output (which also contains
-/// stdin content) is compared against the content of the `output` path.
+pub enum PtyData {
+  Input(&'static str),
+  Output(&'static str),
+}
+
 #[cfg(unix)]
-pub fn test_pty(args: &str, output_path: &str, input: &[u8]) {
+pub fn test_pty2(args: &str, data: Vec<PtyData>) {
   use pty::fork::Fork;
 
   let tests_path = testdata_path();
   let fork = Fork::from_ptmx().unwrap();
   if let Ok(mut master) = fork.is_parent() {
-    let mut output_actual = String::new();
-    master.write_all(input).unwrap();
-    master.read_to_string(&mut output_actual).unwrap();
-    fork.wait().unwrap();
+    let mut buf_reader = std::io::BufReader::new(master);
+    for d in data {
+      match d {
+        PtyData::Input(s) => {
+          println!("INPUT {}", s.escape_debug());
+          buf_reader.get_mut().write_all(s.as_bytes()).unwrap();
 
-    let output_expected =
-      std::fs::read_to_string(tests_path.join(output_path)).unwrap();
-    if !wildcard_match(&output_expected, &output_actual) {
-      println!("OUTPUT\n{}\nOUTPUT", output_actual);
-      println!("EXPECTED\n{}\nEXPECTED", output_expected);
-      panic!("pattern match failed");
+          // Because of tty echo, we should be able to read the same string back.
+          let mut buf = [0; 1024];
+          let _n = master.read(&mut buf).unwrap();
+          let echo = std::str::from_utf8(&buf)
+            .unwrap()
+            .trim_matches(char::from(0));
+          assert!(echo.starts_with(&s.trim()));
+        }
+        PtyData::Output(s) => {
+          use std::io::BufRead;
+          if s.ends_with('\n') {
+            let mut line = String::new();
+            buf_reader.read_line(&mut line).unwrap();
+            println!("OUTPUT {}", line.escape_debug());
+            assert_eq!(line, s);
+          } else {
+            let mut buf = [0; 1024];
+            buf_reader.read(&mut buf).unwrap();
+            //let buf = buf_reader.fill_buf().unwrap();
+            let buf_str = std::str::from_utf8(&buf)
+              .unwrap()
+              .trim_matches(char::from(0));
+            println!("OUTPUT {}", buf_str.escape_debug());
+            assert_eq!(buf_str, s);
+          }
+          //master = buf_reader.into_inner();
+          //let _n = master.read(&mut buf).unwrap();
+          //let buf_str = std::str::from_utf8(&buf)
+          //  .unwrap()
+          //  .trim_matches(char::from(0));
+          //println!("OUTPUT {}", line.escape_debug());
+          //assert_eq!(line, s);
+        }
+      }
     }
+
+    //let mut output_actual = String::new();
+    //master.read_to_string(&mut output_actual).unwrap();
+    //println!("last bit <<{}>>", output_actual);
+    //assert!(output_actual.len() == 0);
+
+    fork.wait().unwrap();
   } else {
     deno_cmd()
       .current_dir(tests_path)

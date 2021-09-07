@@ -1197,7 +1197,7 @@ fn permission_prompt(message: &str) -> bool {
 
   #[cfg(unix)]
   fn clear_stdin() {
-    let r = unsafe { libc::tcflush(0, libc::TCIOFLUSH) };
+    let r = unsafe { libc::tcflush(0, libc::TCOFLUSH) };
     assert_eq!(r, 0);
   }
 
