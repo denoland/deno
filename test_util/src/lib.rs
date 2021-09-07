@@ -1578,13 +1578,18 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
             println!("OUTPUT {}", line.escape_debug());
             assert_eq!(line, s);
           } else {
-            let mut buf = [0; 1024];
-            let _n = buf_reader.read(&mut buf).unwrap();
-            let buf_str = std::str::from_utf8(&buf)
-              .unwrap()
-              .trim_matches(char::from(0));
-            println!("OUTPUT {}", buf_str.escape_debug());
-            assert_eq!(buf_str, s);
+            let mut line = String::new();
+            while s != line {
+              let mut buf = [0; 64 * 1024];
+              let _n = buf_reader.read(&mut buf).unwrap();
+              let buf_str = std::str::from_utf8(&buf)
+                .unwrap()
+                .trim_matches(char::from(0));
+              line += buf_str;
+              assert!(s.starts_with(&line));
+            }
+            println!("OUTPUT {}", line.escape_debug());
+            assert_eq!(line, s);
           }
         }
       }
