@@ -1,7 +1,7 @@
-use swc_common::DUMMY_SP;
-use swc_ecmascript::ast as swc_ast;
-use swc_ecmascript::visit::noop_fold_type;
-use swc_ecmascript::visit::Fold;
+use deno_ast::swc::ast as swc_ast;
+use deno_ast::swc::common::DUMMY_SP;
+use deno_ast::swc::visit::noop_fold_type;
+use deno_ast::swc::visit::Fold;
 
 /// Transforms import declarations to variable declarations
 /// with a dynamic import. This is used to provide import
@@ -15,7 +15,7 @@ impl Fold for DownlevelImportsFolder {
     &mut self,
     module_item: swc_ast::ModuleItem,
   ) -> swc_ast::ModuleItem {
-    use swc_ecmascript::ast::*;
+    use deno_ast::swc::ast::*;
 
     match &module_item {
       ModuleItem::ModuleDecl(ModuleDecl::Import(import_decl)) => {
@@ -117,7 +117,7 @@ impl Fold for StripExportsFolder {
     &mut self,
     module_item: swc_ast::ModuleItem,
   ) -> swc_ast::ModuleItem {
-    use swc_ecmascript::ast::*;
+    use deno_ast::swc::ast::*;
 
     match module_item {
       ModuleItem::ModuleDecl(ModuleDecl::ExportAll(export_all)) => {
@@ -249,18 +249,18 @@ fn create_assignment(key: String) -> swc_ast::ObjectPatProp {
 
 #[cfg(test)]
 mod test {
+  use deno_ast::swc::ast::Module;
+  use deno_ast::swc::codegen::text_writer::JsWriter;
+  use deno_ast::swc::codegen::Node;
+  use deno_ast::swc::common::FileName;
+  use deno_ast::swc::common::SourceMap;
+  use deno_ast::swc::parser::Parser;
+  use deno_ast::swc::parser::StringInput;
+  use deno_ast::swc::parser::Syntax;
+  use deno_ast::swc::parser::TsConfig;
+  use deno_ast::swc::visit::Fold;
+  use deno_ast::swc::visit::FoldWith;
   use std::rc::Rc;
-  use swc_common::FileName;
-  use swc_common::SourceMap;
-  use swc_ecmascript::ast::Module;
-  use swc_ecmascript::codegen::text_writer::JsWriter;
-  use swc_ecmascript::codegen::Node;
-  use swc_ecmascript::parser::Parser;
-  use swc_ecmascript::parser::StringInput;
-  use swc_ecmascript::parser::Syntax;
-  use swc_ecmascript::parser::TsConfig;
-  use swc_ecmascript::visit::Fold;
-  use swc_ecmascript::visit::FoldWith;
 
   use super::*;
 
@@ -450,8 +450,8 @@ mod test {
     {
       let writer =
         Box::new(JsWriter::new(source_map.clone(), "\n", &mut buf, None));
-      let config = swc_ecmascript::codegen::Config { minify: false };
-      let mut emitter = swc_ecmascript::codegen::Emitter {
+      let config = deno_ast::swc::codegen::Config { minify: false };
+      let mut emitter = deno_ast::swc::codegen::Emitter {
         cfg: config,
         comments: None,
         cm: source_map,

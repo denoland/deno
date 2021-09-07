@@ -1,18 +1,18 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-//! This module provides file formatting utilities using
+//! This module provides file linting utilities using
 //! [`deno_lint`](https://github.com/denoland/deno_lint).
 //!
 //! At the moment it is only consumed using CLI but in
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
-use crate::ast;
 use crate::colors;
 use crate::config_file::LintConfig;
 use crate::fmt_errors;
 use crate::fs_util::{collect_files, is_supported_ext};
-use crate::media_type::MediaType;
 use crate::tools::fmt::run_parallelized;
+use deno_ast::swc::parser::Syntax;
+use deno_ast::MediaType;
 use deno_core::error::{anyhow, generic_error, AnyError, JsStackFrame};
 use deno_core::serde_json;
 use deno_lint::diagnostic::LintDiagnostic;
@@ -28,7 +28,6 @@ use std::io::{stdin, Read};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use swc_ecmascript::parser::Syntax;
 
 pub enum LintReporterKind {
   Pretty,
@@ -210,7 +209,7 @@ fn lint_file(
   let file_name = file_path.to_string_lossy().to_string();
   let source_code = fs::read_to_string(&file_path)?;
   let media_type = MediaType::from(&file_path);
-  let syntax = ast::get_syntax(&media_type);
+  let syntax = deno_ast::get_syntax(media_type);
 
   // Obtaining rules from config is infallible at this point.
   let lint_rules = get_configured_rules(
@@ -254,7 +253,7 @@ fn lint_stdin(
     rules_include,
     rules_exclude,
   )?;
-  let syntax = ast::get_syntax(&MediaType::TypeScript);
+  let syntax = deno_ast::get_syntax(MediaType::TypeScript);
   let linter = create_linter(syntax, lint_rules);
   let mut has_error = false;
   let pseudo_file_name = "_stdin.ts";
