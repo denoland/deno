@@ -17,8 +17,8 @@ path = "lib.rs"
 deno_core = { version = "0.98.0", path = "../../core" }
 deno_tls = { version = "0.3.0", path = "../tls" }
 http = "0.2.4"
-hyper = { version = "0.14.9" }
-serde = { version = "1.0.126", features = ["derive"] }
-tokio = { version = "1.8.1", features = ["full"] }
+hyper = { version = "0.14.12" }
+serde = { version = "1.0.129", features = ["derive"] }
+tokio = { version = "1.10.1", features = ["full"] }
 tokio-rustls = "0.22.0"
 tokio-tungstenite = { version = "0.14.0", features = ["rustls-tls"] }

@@ -41,8 +41,8 @@ pub type ModuleLoadId = i32;
 ///
 /// Found module URL might be different from specified URL
 /// used for loading due to redirections (like HTTP 303).
-/// Eg. Both "https://example.com/a.ts" and
-/// "https://example.com/b.ts" may point to "https://example.com/c.ts"
+/// Eg. Both "`https://example.com/a.ts`" and
+/// "`https://example.com/b.ts`" may point to "`https://example.com/c.ts`"
 /// By keeping track of specified and found URL we can alias modules and avoid
 /// recompiling the same code 3 times.
 // TODO(bartlomieju): I have a strong opinion we should store all redirects
@@ -65,7 +65,7 @@ pub trait ModuleLoader {
   /// Returns an absolute URL.
   /// When implementing an spec-complaint VM, this should be exactly the
   /// algorithm described here:
-  /// https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier
+  /// <https://html.spec.whatwg.org/multipage/webappapis.html#resolve-a-module-specifier>
   ///
   /// `is_main` can be used to resolve from current working directory or
   /// apply import map for child imports.

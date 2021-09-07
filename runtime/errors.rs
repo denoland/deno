@@ -138,19 +138,16 @@ fn get_hyper_error_class(_error: &hyper::Error) -> &'static str {
 
 #[cfg(unix)]
 fn get_nix_error_class(error: &nix::Error) -> &'static str {
-  use nix::errno::Errno::*;
   match error {
-    nix::Error::Sys(ECHILD) => "NotFound",
-    nix::Error::Sys(EINVAL) => "TypeError",
-    nix::Error::Sys(ENOENT) => "NotFound",
-    nix::Error::Sys(ENOTTY) => "BadResource",
-    nix::Error::Sys(EPERM) => "PermissionDenied",
-    nix::Error::Sys(ESRCH) => "NotFound",
-    nix::Error::Sys(UnknownErrno) => "Error",
-    nix::Error::Sys(_) => "Error",
-    nix::Error::InvalidPath => "TypeError",
-    nix::Error::InvalidUtf8 => "InvalidData",
-    nix::Error::UnsupportedOperation => unreachable!(),
+    nix::Error::ECHILD => "NotFound",
+    nix::Error::EINVAL => "TypeError",
+    nix::Error::ENOENT => "NotFound",
+    nix::Error::ENOTTY => "BadResource",
+    nix::Error::EPERM => "PermissionDenied",
+    nix::Error::ESRCH => "NotFound",
+    nix::Error::UnknownErrno => "Error",
+    &nix::Error::ENOTSUP => unreachable!(),
+    _ => "Error",
   }
 }
 
