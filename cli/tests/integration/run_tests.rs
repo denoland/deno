@@ -1866,11 +1866,11 @@ fn issue9750() {
 
     fn read_str(master: &mut Master) -> String {
       use std::io::Read;
-      let mut buf = [0; 128];
+      let mut buf = [0; 1024];
       let _n = master.read(&mut buf).unwrap();
       let buf_str = std::str::from_utf8(&buf).unwrap();
-      assert!(!buf_str.contains("secret"));
       println!("buf_str {}", buf_str);
+      assert!(!buf_str.contains("secret"));
       buf_str.to_string()
     }
 
