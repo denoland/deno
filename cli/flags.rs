@@ -815,6 +815,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
 
   // deno-fmt-ignore-file",
     )
+    .arg(config_arg())
     .arg(
       Arg::with_name("check")
         .long("check")
@@ -1733,6 +1734,7 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
 }
 
 fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+  config_arg_parse(flags, matches);
   flags.watch = matches.is_present("watch");
   let files = match matches.values_of("files") {
     Some(f) => f.map(PathBuf::from).collect(),
@@ -2531,6 +2533,44 @@ mod tests {
           files: vec![PathBuf::from("foo.ts")],
           ext: "ts".to_string(),
         }),
+        watch: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "fmt", "--config", "deno.jsonc"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Fmt(FmtFlags {
+          ignore: vec![],
+          check: false,
+          files: vec![],
+          ext: "ts".to_string()
+        }),
+        config_path: Some("deno.jsonc".to_string()),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "fmt",
+      "--config",
+      "deno.jsonc",
+      "--watch",
+      "foo.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Fmt(FmtFlags {
+          ignore: vec![],
+          check: false,
+          files: vec![PathBuf::from("foo.ts")],
+          ext: "ts".to_string()
+        }),
+        config_path: Some("deno.jsonc".to_string()),
         watch: true,
         ..Flags::default()
       }

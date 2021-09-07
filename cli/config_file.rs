@@ -276,7 +276,7 @@ pub struct LintRulesConfig {
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct LintFilesConfig {
+pub struct FilesConfig {
   pub include: Vec<String>,
   pub exclude: Vec<String>,
 }
@@ -285,7 +285,20 @@ pub struct LintFilesConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct LintConfig {
   pub rules: LintRulesConfig,
-  pub files: LintFilesConfig,
+  pub files: FilesConfig,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+pub struct FmtRulesConfig {
+  pub use_tabs: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct FmtConfig {
+  pub rules: FmtRulesConfig,
+  pub files: FilesConfig,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -293,6 +306,7 @@ pub struct LintConfig {
 pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
   pub lint: Option<Value>,
+  pub fmt: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -373,6 +387,16 @@ impl ConfigFile {
       Ok(None)
     }
   }
+
+  pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
+    if let Some(config) = self.json.fmt.clone() {
+      let fmt_config: FmtConfig = serde_json::from_value(config)
+        .context("Failed to parse \"fmt\" configuration")?;
+      Ok(Some(fmt_config))
+    } else {
+      Ok(None)
+    }
+  }
 }
 
 #[cfg(test)]
@@ -440,6 +464,15 @@ mod tests {
           "tags": ["recommended"],
           "include": ["ban-untagged-todo"]
         }
+      },
+      "fmt": {
+        "files": {
+          "include": ["src/"],
+          "exclude": ["src/testdata/"]
+        },
+        "rules": {
+          "useTabs": true
+        }
       }
     }"#;
     let config_path = PathBuf::from("/deno/tsconfig.json");
@@ -473,6 +506,14 @@ mod tests {
       Some(vec!["recommended".to_string()])
     );
     assert!(lint_config.rules.exclude.is_none());
+
+    let fmt_config = config_file
+      .to_fmt_config()
+      .expect("error parsing fmt object")
+      .expect("fmt object should be defined");
+    assert_eq!(fmt_config.files.include, vec!["src/"]);
+    assert_eq!(fmt_config.files.exclude, vec!["src/testdata/"]);
+    assert!(fmt_config.rules.use_tabs);
   }
 
   #[test]

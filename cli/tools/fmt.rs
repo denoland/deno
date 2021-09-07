@@ -8,6 +8,7 @@
 //! the same functions as ops available in JS runtime.
 
 use crate::colors;
+use crate::config_file::FmtConfig;
 use crate::diff::diff;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
@@ -34,6 +35,7 @@ pub async fn format(
   ignore: Vec<PathBuf>,
   check: bool,
   watch: bool,
+  _maybe_fmt_config: Option<FmtConfig>,
 ) -> Result<(), AnyError> {
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();

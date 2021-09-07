@@ -811,11 +811,20 @@ async fn format_command(
     return tools::fmt::format_stdin(fmt_flags.check, fmt_flags.ext);
   }
 
+  let program_state = ProgramState::build(flags.clone()).await?;
+  let maybe_fmt_config =
+    if let Some(config_file) = &program_state.maybe_config_file {
+      config_file.to_fmt_config()?
+    } else {
+      None
+    };
+
   tools::fmt::format(
     fmt_flags.files,
     fmt_flags.ignore,
     fmt_flags.check,
     flags.watch,
+    maybe_fmt_config,
   )
   .await?;
   Ok(())
