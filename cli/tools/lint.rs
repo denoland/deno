@@ -152,7 +152,7 @@ pub async fn lint_files(
   Ok(())
 }
 
-fn rule_to_json(rule: Box<dyn LintRule>) -> serde_json::Value {
+fn rule_to_json(rule: &Box<dyn LintRule>) -> serde_json::Value {
   serde_json::json!({
     "code": rule.code(),
     "tags": rule.tags(),
@@ -161,18 +161,18 @@ fn rule_to_json(rule: Box<dyn LintRule>) -> serde_json::Value {
 }
 
 pub fn print_rules_list(json: bool) {
-  let lint_rules = Arc::try_unwrap(rules::get_recommended_rules()).unwrap();
+  let lint_rules = rules::get_recommended_rules();
 
   if json {
     let json_rules: Vec<serde_json::Value> =
-      lint_rules.into_iter().map(rule_to_json).collect();
+      lint_rules.iter().map(rule_to_json).collect();
     let json_str = serde_json::to_string_pretty(&json_rules).unwrap();
     println!("{}", json_str);
   } else {
     // The rules should still be printed even if `--quiet` option is enabled,
     // so use `println!` here instead of `info!`.
     println!("Available rules:");
-    for rule in lint_rules.into_iter() {
+    for rule in lint_rules.iter() {
       println!(" - {}", rule.code());
       println!("   help: https://lint.deno.land/#{}", rule.code());
       println!();
