@@ -19,6 +19,8 @@
     RegExp,
     RegExpPrototypeExec,
     RegExpPrototypeTest,
+    Symbol,
+    TypeError,
   } = window.__bootstrap.primordials;
 
   const _components = Symbol("components");

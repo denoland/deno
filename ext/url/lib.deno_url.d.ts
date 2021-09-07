@@ -205,7 +205,6 @@ declare interface URLPatternResult {
   hash: URLPatternComponentResult;
 }
 
-
 declare class URLPattern {
   constructor(input: URLPatternInput, baseURL?: string);
 
