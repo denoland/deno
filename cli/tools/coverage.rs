@@ -262,7 +262,6 @@ impl CoverageReporter for PrettyCoverageReporter {
       let range = &coverage.ranges[0];
       let line = &source[range.start_offset..range.end_offset];
 
-      println!("{:?}", coverage);
       println!(
         "{:width$} {} {}",
         index + 1,
@@ -454,6 +453,8 @@ async fn cover_script(
     let compiled_line_ranges = compiled_line_offsets
       .iter()
       .filter_map(|(start_offset, end_offset)| {
+        // We completely ignore empty lines, they just cause trouble and can't map to anything
+        // meaningful.
         let line = &compiled_source[*start_offset..*end_offset];
         if line == "\n" {
             return None
@@ -527,8 +528,6 @@ async fn cover_script(
         }
       })
       .collect::<Vec<CoverageRange>>();
-
-    println!("line offsets: {}", line_offsets.len());
 
     // Then we go through the source lines and grab any ranges that apply to any given line
     // adjusting them as we go.
