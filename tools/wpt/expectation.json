@@ -13495,7 +13495,8 @@
     "serialization": {
       "module": {
         "serialization-via-idb.any.html": false,
-        "serialization-via-notifications-api.any.html": false
+        "serialization-via-notifications-api.any.html": false,
+        "nested-worker-success.any.worker.html": false
       },
       "arraybuffer": {
         "transfer.window.html": false
@@ -13519,7 +13520,8 @@
       ],
       "rejected-arg.any.html": true,
       "status.any.html": true
-    }
+    },
+    "create_multiple_memory.worker.html": true
   },
   "WebIDL": {
     "ecmascript-binding": {
