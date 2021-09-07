@@ -1,6 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 #[cfg(not(unix))]
 use deno_core::error::generic_error;
+#[cfg(not(target_os = "windows"))]
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op_async_unref;
@@ -57,89 +58,84 @@ impl Resource for SignalStreamResource {
 }
 
 #[cfg(target_os = "linux")]
-fn signal_str_to_int(s: &str) -> Option<libc::c_int> {
+pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
   match s {
-    "SIGHUP" => Some(1),
-    "SIGINT" => Some(2),
-    "SIGQUIT" => Some(3),
-    "SIGILL" => Some(4),
-    "SIGTRAP" => Some(5),
-    "SIGABRT" => Some(6),
-    "SIGBUS" => Some(7),
-    "SIGFPE" => Some(8),
-    "SIGKILL" => Some(9),
-    "SIGUSR1" => Some(10),
-    "SIGSEGV" => Some(11),
-    "SIGUSR2" => Some(12),
-    "SIGPIPE" => Some(13),
-    "SIGALRM" => Some(14),
-    "SIGTERM" => Some(15),
-    "SIGSTKFLT" => Some(16),
-    "SIGCHLD" => Some(17),
-    "SIGCONT" => Some(18),
-    "SIGSTOP" => Some(19),
-    "SIGTSTP" => Some(20),
-    "SIGTTIN" => Some(21),
-    "SIGTTOU" => Some(22),
-    "SIGURG" => Some(23),
-    "SIGXCPU" => Some(24),
-    "SIGXFSZ" => Some(25),
-    "SIGVTALRM" => Some(26),
-    "SIGPROF" => Some(27),
-    "SIGWINCH" => Some(28),
-    "SIGIO" => Some(29),
-    "SIGPWR" => Some(30),
-    "SIGSYS" => Some(31),
-    _ => None,
+    "SIGHUP" => Ok(1),
+    "SIGINT" => Ok(2),
+    "SIGQUIT" => Ok(3),
+    "SIGILL" => Ok(4),
+    "SIGTRAP" => Ok(5),
+    "SIGABRT" => Ok(6),
+    "SIGBUS" => Ok(7),
+    "SIGFPE" => Ok(8),
+    "SIGKILL" => Ok(9),
+    "SIGUSR1" => Ok(10),
+    "SIGSEGV" => Ok(11),
+    "SIGUSR2" => Ok(12),
+    "SIGPIPE" => Ok(13),
+    "SIGALRM" => Ok(14),
+    "SIGTERM" => Ok(15),
+    "SIGSTKFLT" => Ok(16),
+    "SIGCHLD" => Ok(17),
+    "SIGCONT" => Ok(18),
+    "SIGSTOP" => Ok(19),
+    "SIGTSTP" => Ok(20),
+    "SIGTTIN" => Ok(21),
+    "SIGTTOU" => Ok(22),
+    "SIGURG" => Ok(23),
+    "SIGXCPU" => Ok(24),
+    "SIGXFSZ" => Ok(25),
+    "SIGVTALRM" => Ok(26),
+    "SIGPROF" => Ok(27),
+    "SIGWINCH" => Ok(28),
+    "SIGIO" => Ok(29),
+    "SIGPWR" => Ok(30),
+    "SIGSYS" => Ok(31),
+    _ => Err(type_error(format!("Invalid signal : {}", s))),
   }
 }
 
 #[cfg(target_os = "macos")]
-fn signal_str_to_int(s: &str) -> Option<libc::c_int> {
+pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
   match s {
-    "SIGHUP" => Some(1),
-    "SIGINT" => Some(2),
-    "SIGQUIT" => Some(3),
-    "SIGILL" => Some(4),
-    "SIGTRAP" => Some(5),
-    "SIGABRT" => Some(6),
-    "SIGEMT" => Some(7),
-    "SIGFPE" => Some(8),
-    "SIGKILL" => Some(9),
-    "SIGBUS" => Some(10),
-    "SIGSEGV" => Some(11),
-    "SIGSYS" => Some(12),
-    "SIGPIPE" => Some(13),
-    "SIGALRM" => Some(14),
-    "SIGTERM" => Some(15),
-    "SIGURG" => Some(16),
-    "SIGSTOP" => Some(17),
-    "SIGTSTP" => Some(18),
-    "SIGCONT" => Some(19),
-    "SIGCHLD" => Some(20),
-    "SIGTTIN" => Some(21),
-    "SIGTTOU" => Some(22),
-    "SIGIO" => Some(23),
-    "SIGXCPU" => Some(24),
-    "SIGXFSZ" => Some(25),
-    "SIGVTALRM" => Some(26),
-    "SIGPROF" => Some(27),
-    "SIGWINCH" => Some(28),
-    "SIGINFO" => Some(29),
-    "SIGUSR1" => Some(30),
-    "SIGUSR2" => Some(31),
-    _ => None,
+    "SIGHUP" => Ok(1),
+    "SIGINT" => Ok(2),
+    "SIGQUIT" => Ok(3),
+    "SIGILL" => Ok(4),
+    "SIGTRAP" => Ok(5),
+    "SIGABRT" => Ok(6),
+    "SIGEMT" => Ok(7),
+    "SIGFPE" => Ok(8),
+    "SIGKILL" => Ok(9),
+    "SIGBUS" => Ok(10),
+    "SIGSEGV" => Ok(11),
+    "SIGSYS" => Ok(12),
+    "SIGPIPE" => Ok(13),
+    "SIGALRM" => Ok(14),
+    "SIGTERM" => Ok(15),
+    "SIGURG" => Ok(16),
+    "SIGSTOP" => Ok(17),
+    "SIGTSTP" => Ok(18),
+    "SIGCONT" => Ok(19),
+    "SIGCHLD" => Ok(20),
+    "SIGTTIN" => Ok(21),
+    "SIGTTOU" => Ok(22),
+    "SIGIO" => Ok(23),
+    "SIGXCPU" => Ok(24),
+    "SIGXFSZ" => Ok(25),
+    "SIGVTALRM" => Ok(26),
+    "SIGPROF" => Ok(27),
+    "SIGWINCH" => Ok(28),
+    "SIGINFO" => Ok(29),
+    "SIGUSR1" => Ok(30),
+    "SIGUSR2" => Ok(31),
+    _ => Err(type_error(format!("Invalid signal : {}", s))),
   }
 }
 
 #[cfg(target_os = "windows")]
-fn signal_str_to_int(_s: &str) -> Option<libc::c_int> {
-  unimplemented!()
-}
-
-pub fn signal_str_to_int_unwrap(s: &str) -> Result<libc::c_int, AnyError> {
-  signal_str_to_int(s)
-    .ok_or_else(|| type_error(format!("Invalid signal : {}", s)))
+pub fn signal_str_to_int(_s: &str) -> Result<libc::c_int, AnyError> {
+  Err(generic_error("not implemented"))
 }
 
 #[cfg(unix)]
@@ -149,7 +145,7 @@ fn op_signal_bind(
   _: (),
 ) -> Result<ResourceId, AnyError> {
   super::check_unstable(state, "Deno.signal");
-  let signo = signal_str_to_int_unwrap(&sig)?;
+  let signo = signal_str_to_int(&sig)?;
   let resource = SignalStreamResource {
     signal: AsyncRefCell::new(signal(SignalKind::from_raw(signo)).unwrap()),
     cancel: Default::default(),
