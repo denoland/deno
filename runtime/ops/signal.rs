@@ -1,4 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+#[cfg(not(unix))]
+use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op_async_unref;
@@ -131,7 +133,7 @@ fn signal_str_to_int(s: &str) -> Option<libc::c_int> {
 }
 
 #[cfg(target_os = "windows")]
-fn signal_str_to_int(s: &str) -> Option<libc::c_int> {
+fn signal_str_to_int(_s: &str) -> Option<libc::c_int> {
   unimplemented!()
 }
 
@@ -194,7 +196,7 @@ pub fn op_signal_bind(
   _args: (),
   _: (),
 ) -> Result<(), AnyError> {
-  unimplemented!();
+  Err(generic_error("not implemented"))
 }
 
 #[cfg(not(unix))]
@@ -203,7 +205,7 @@ fn op_signal_unbind(
   _args: (),
   _: (),
 ) -> Result<(), AnyError> {
-  unimplemented!();
+  Err(generic_error("not implemented"))
 }
 
 #[cfg(not(unix))]
@@ -212,5 +214,5 @@ async fn op_signal_poll(
   _args: (),
   _: (),
 ) -> Result<(), AnyError> {
-  unimplemented!();
+  Err(generic_error("not implemented"))
 }
