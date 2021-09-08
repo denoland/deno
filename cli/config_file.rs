@@ -289,16 +289,26 @@ pub struct LintConfig {
   pub files: FilesConfig,
 }
 
+// enum TestWrap {
+//   Always,
+//   Never,
+//   Preserve,
+// }
+
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
-pub struct FmtRulesConfig {
-  pub use_tabs: bool,
+pub struct FmtOptionsConfig {
+  pub use_tabs: Option<bool>,
+  pub line_width: Option<u32>,
+  pub indent_width: Option<u32>,
+  pub single_quote: Option<bool>,
+  // pub text_wrap:
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct FmtConfig {
-  pub rules: FmtRulesConfig,
+  pub options: FmtOptionsConfig,
   pub files: FilesConfig,
 }
 
@@ -471,8 +481,11 @@ mod tests {
           "include": ["src/"],
           "exclude": ["src/testdata/"]
         },
-        "rules": {
-          "useTabs": true
+        "options": {
+          "useTabs": true,
+          "lineWidth": 80,
+          "indentWidth": 4,
+          "singleQuote": true
         }
       }
     }"#;
@@ -514,7 +527,10 @@ mod tests {
       .expect("fmt object should be defined");
     assert_eq!(fmt_config.files.include, vec!["src/"]);
     assert_eq!(fmt_config.files.exclude, vec!["src/testdata/"]);
-    assert!(fmt_config.rules.use_tabs);
+    assert_eq!(fmt_config.options.use_tabs, Some(true));
+    assert_eq!(fmt_config.options.line_width, Some(80));
+    assert_eq!(fmt_config.options.indent_width, Some(4));
+    assert_eq!(fmt_config.options.single_quote, Some(true));
   }
 
   #[test]
