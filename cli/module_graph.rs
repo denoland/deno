@@ -1846,7 +1846,7 @@ impl deno_ast::swc::bundler::Resolve for Graph {
           referrer
         )
       };
-    let specifier = self.resolve(specifier, &referrer, false)?;
+    let specifier = self.resolve(specifier, referrer, false)?;
 
     Ok(deno_ast::swc::common::FileName::Url(specifier))
   }
