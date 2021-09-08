@@ -1592,10 +1592,11 @@ pub enum PtyData {
 #[cfg(unix)]
 pub fn test_pty2(args: &str, data: Vec<PtyData>) {
   use pty::fork::Fork;
+  use std::io::BufRead;
 
   let tests_path = testdata_path();
   let fork = Fork::from_ptmx().unwrap();
-  if let Ok(mut master) = fork.is_parent() {
+  if let Ok(master) = fork.is_parent() {
     let mut buf_reader = std::io::BufReader::new(master);
     for d in data {
       match d {
@@ -1604,18 +1605,19 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
           buf_reader.get_mut().write_all(s.as_bytes()).unwrap();
 
           // Because of tty echo, we should be able to read the same string back.
-          let mut buf = [0; 1024];
-          let _n = master.read(&mut buf).unwrap();
-          let echo = std::str::from_utf8(&buf)
-            .unwrap()
-            .trim_matches(char::from(0));
+          assert!(s.ends_with('\n'));
+          let mut echo = String::new();
+          buf_reader.read_line(&mut echo).unwrap();
+          println!("echo: {}", echo);
           assert!(echo.starts_with(&s.trim()));
         }
         PtyData::Output(s) => {
-          use std::io::BufRead;
           let mut line = String::new();
           if s.ends_with('\n') {
             buf_reader.read_line(&mut line).unwrap();
+            if line.is_empty() {
+              println!("line empty {}", line);
+            }
           } else {
             while s != line {
               let mut buf = [0; 64 * 1024];
@@ -1631,7 +1633,7 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
           assert_eq!(line, s);
         }
       }
-      std::thread::sleep(std::time::Duration::from_millis(1000));
+      // std::thread::sleep(std::time::Duration::from_millis(1000));
     }
 
     fork.wait().unwrap();
