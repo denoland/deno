@@ -1,14 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::ast;
-use crate::ast::TokenOrComment;
 use crate::colors;
 use crate::flags::Flags;
 use crate::fs_util::collect_files;
-use crate::media_type::MediaType;
 use crate::module_graph::TypeLib;
 use crate::program_state::ProgramState;
 use crate::source_maps::SourceMapGetter;
+use deno_ast::swc::common::Span;
+use deno_ast::MediaType;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
@@ -26,7 +25,6 @@ use std::io::BufWriter;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
-use swc_common::Span;
 use uuid::Uuid;
 
 // TODO(caspervonb) These structs are specific to the inspector protocol and should be refactored
@@ -200,7 +198,7 @@ trait CoverageReporter {
   fn report_result(&mut self, result: &CoverageResult, source: &str);
 }
 
-struct PrettyCoverageReporter {}
+pub struct PrettyCoverageReporter {}
 
 impl PrettyCoverageReporter {
   pub fn new() -> PrettyCoverageReporter {
@@ -210,7 +208,6 @@ impl PrettyCoverageReporter {
 
 const PRETTY_LINE_WIDTH: usize = 4;
 const PRETTY_LINE_SEPERATOR: &str = "|";
-
 impl CoverageReporter for PrettyCoverageReporter {
   fn report_result(&mut self, result: &CoverageResult, source: &str) {
     let enumerated_lines = result

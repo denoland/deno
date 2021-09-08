@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::ast;
 use crate::ast::Location;
 use crate::colors;
 use crate::create_main_worker;
@@ -11,7 +10,7 @@ use crate::flags::Flags;
 use crate::fs_util::collect_specifiers;
 use crate::fs_util::is_supported_test_ext;
 use crate::fs_util::is_supported_test_path;
-use crate::media_type::MediaType;
+use crate::located_script_name;
 use crate::module_graph;
 use crate::module_graph::GraphBuilder;
 use crate::module_graph::Module;
@@ -21,6 +20,8 @@ use crate::program_state::ProgramState;
 use crate::tokio_util;
 use crate::tools::coverage::CoverageCollector;
 use crate::FetchHandler;
+use deno_ast::swc::common::comments::CommentKind;
+use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
@@ -46,7 +47,6 @@ use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
-use swc_common::comments::CommentKind;
 use uuid::Uuid;
 
 /// The test mode is used to determine how a specifier is to be tested.
@@ -66,6 +66,13 @@ enum TestMode {
 pub struct TestDescription {
   pub origin: String,
   pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TestOutput {
+  // TODO(caspervonb): add stdout and stderr redirection.
+  Console(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -90,6 +97,7 @@ pub struct TestPlan {
 pub enum TestEvent {
   Plan(TestPlan),
   Wait(TestDescription),
+  Output(TestOutput),
   Result(TestDescription, TestResult, u64),
 }
 
@@ -129,6 +137,7 @@ impl TestSummary {
 trait TestReporter {
   fn report_plan(&mut self, plan: &TestPlan);
   fn report_wait(&mut self, description: &TestDescription);
+  fn report_output(&mut self, output: &TestOutput);
   fn report_result(
     &mut self,
     description: &TestDescription,
@@ -140,11 +149,15 @@ trait TestReporter {
 
 struct PrettyTestReporter {
   concurrent: bool,
+  echo_output: bool,
 }
 
 impl PrettyTestReporter {
-  fn new(concurrent: bool) -> PrettyTestReporter {
-    PrettyTestReporter { concurrent }
+  fn new(concurrent: bool, echo_output: bool) -> PrettyTestReporter {
+    PrettyTestReporter {
+      concurrent,
+      echo_output,
+    }
   }
 }
 
@@ -157,6 +170,14 @@ impl TestReporter for PrettyTestReporter {
   fn report_wait(&mut self, description: &TestDescription) {
     if !self.concurrent {
       print!("test {} ...", description.name);
+    }
+  }
+
+  fn report_output(&mut self, output: &TestOutput) {
+    if self.echo_output {
+      match output {
+        TestOutput::Console(line) => println!("{}", line),
+      }
     }
   }
 
@@ -217,8 +238,11 @@ impl TestReporter for PrettyTestReporter {
   }
 }
 
-fn create_reporter(concurrent: bool) -> Box<dyn TestReporter + Send> {
-  Box::new(PrettyTestReporter::new(concurrent))
+fn create_reporter(
+  concurrent: bool,
+  echo_output: bool,
+) -> Box<dyn TestReporter + Send> {
+  Box::new(PrettyTestReporter::new(concurrent, echo_output))
 }
 
 /// Test a single specifier as documentation containing test programs, an executable test module or
@@ -240,28 +264,13 @@ async fn test_specifier(
     test_source.push_str(&format!("import \"{}\";\n", specifier));
   }
 
-  test_source
-    .push_str("await new Promise(resolve => setTimeout(resolve, 0));\n");
-
-  test_source.push_str("window.dispatchEvent(new Event('load'));\n");
-
-  test_source.push_str(&format!(
-    "await Deno[Deno.internal].runTests({});\n",
-    json!({
-      "disableLog": program_state.flags.log_level == Some(Level::Error),
-      "filter": filter,
-      "shuffle": shuffle,
-    }),
-  ));
-
-  test_source.push_str("window.dispatchEvent(new Event('unload'));\n");
-
   let test_file = File {
     local: test_specifier.to_file_path().unwrap(),
     maybe_types: None,
     media_type: MediaType::JavaScript,
-    source: test_source.clone(),
+    source: Arc::new(test_source),
     specifier: test_specifier.clone(),
+    maybe_headers: None,
   };
 
   program_state.file_fetcher.insert_cached(test_file);
@@ -299,9 +308,28 @@ async fn test_specifier(
 
   worker.execute_module(&test_specifier).await?;
 
-  worker
-    .run_event_loop(maybe_coverage_collector.is_none())
-    .await?;
+  worker.js_runtime.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('load'));",
+  )?;
+
+  let test_result = worker.js_runtime.execute_script(
+    &located_script_name!(),
+    &format!(
+      r#"Deno[Deno.internal].runTests({})"#,
+      json!({
+        "filter": filter,
+        "shuffle": shuffle,
+      }),
+    ),
+  )?;
+
+  worker.js_runtime.resolve_value(test_result).await?;
+
+  worker.js_runtime.execute_script(
+    &located_script_name!(),
+    "window.dispatchEvent(new Event('unload'));",
+  )?;
 
   if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
     worker
@@ -315,7 +343,7 @@ async fn test_specifier(
 fn extract_files_from_regex_blocks(
   location: &Location,
   source: &str,
-  media_type: &MediaType,
+  media_type: MediaType,
   blocks_regex: &Regex,
   lines_regex: &Regex,
 ) -> Result<Vec<File>, AnyError> {
@@ -336,11 +364,11 @@ fn extract_files_from_regex_blocks(
           Some(&"jsx") => MediaType::Jsx,
           Some(&"ts") => MediaType::TypeScript,
           Some(&"tsx") => MediaType::Tsx,
-          Some(&"") => *media_type,
+          Some(&"") => media_type,
           _ => MediaType::Unknown,
         }
       } else {
-        *media_type
+        media_type
       };
 
       if file_media_type == MediaType::Unknown {
@@ -379,8 +407,9 @@ fn extract_files_from_regex_blocks(
         local: file_specifier.to_file_path().unwrap(),
         maybe_types: None,
         media_type: file_media_type,
-        source: file_source,
+        source: Arc::new(file_source),
         specifier: file_specifier,
+        maybe_headers: None,
       })
     })
     .collect();
@@ -390,11 +419,20 @@ fn extract_files_from_regex_blocks(
 
 fn extract_files_from_source_comments(
   specifier: &ModuleSpecifier,
-  source: &str,
-  media_type: &MediaType,
+  source: Arc<String>,
+  media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
-  let parsed_module = ast::parse(specifier.as_str(), source, media_type)?;
-  let comments = parsed_module.get_comments();
+  let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
+    specifier: specifier.as_str().to_string(),
+    source: deno_ast::SourceTextInfo::new(
+      deno_ast::swc::common::BytePos(0),
+      source,
+    ),
+    media_type,
+    capture_tokens: false,
+    maybe_syntax: None,
+  })?;
+  let comments = parsed_source.comments().get_vec();
   let blocks_regex = Regex::new(r"```([^\n]*)\n([\S\s]*?)```")?;
   let lines_regex = Regex::new(r"(?:\* ?)(?:\# ?)?(.*)")?;
 
@@ -408,7 +446,7 @@ fn extract_files_from_source_comments(
       true
     })
     .flat_map(|comment| {
-      let location = parsed_module.get_location(comment.span.lo);
+      let location = Location::from_pos(&parsed_source, comment.span.lo);
 
       extract_files_from_regex_blocks(
         &location,
@@ -427,7 +465,7 @@ fn extract_files_from_source_comments(
 fn extract_files_from_fenced_blocks(
   specifier: &ModuleSpecifier,
   source: &str,
-  media_type: &MediaType,
+  media_type: MediaType,
 ) -> Result<Vec<File>, AnyError> {
   let location = Location {
     specifier: specifier.to_string(),
@@ -463,13 +501,13 @@ async fn fetch_inline_files(
       extract_files_from_fenced_blocks(
         &file.specifier,
         &file.source,
-        &file.media_type,
+        file.media_type,
       )
     } else {
       extract_files_from_source_comments(
         &file.specifier,
-        &file.source,
-        &file.media_type,
+        file.source.clone(),
+        file.media_type,
       )
     };
 
@@ -556,6 +594,7 @@ async fn test_specifiers(
   shuffle: Option<u64>,
   concurrent_jobs: NonZeroUsize,
 ) -> Result<(), AnyError> {
+  let log_level = program_state.flags.log_level;
   let specifiers_with_mode = if let Some(seed) = shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut specifiers_with_mode = specifiers_with_mode.clone();
@@ -600,7 +639,9 @@ async fn test_specifiers(
     .buffer_unordered(concurrent_jobs.get())
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
-  let mut reporter = create_reporter(concurrent_jobs.get() > 1);
+  let mut reporter =
+    create_reporter(concurrent_jobs.get() > 1, log_level != Some(Level::Error));
+
   let handler = {
     tokio::task::spawn_blocking(move || {
       let earlier = Instant::now();
@@ -622,6 +663,10 @@ async fn test_specifiers(
 
           TestEvent::Wait(description) => {
             reporter.report_wait(&description);
+          }
+
+          TestEvent::Output(output) => {
+            reporter.report_output(&output);
           }
 
           TestEvent::Result(description, result, elapsed) => {

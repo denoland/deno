@@ -13490,12 +13490,21 @@
         ],
         "toString.tentative.any.html": false,
         "type.tentative.any.html": false
+      },
+      "function": {
+        "call.tentative.any.html": false,
+        "constructor.tentative.any.html": [
+          "construct with JS function"
+        ],
+        "table.tentative.any.html": false,
+        "type.tentative.any.html": false
       }
     },
     "serialization": {
       "module": {
         "serialization-via-idb.any.html": false,
-        "serialization-via-notifications-api.any.html": false
+        "serialization-via-notifications-api.any.html": false,
+        "nested-worker-success.any.worker.html": false
       },
       "arraybuffer": {
         "transfer.window.html": false
@@ -13519,7 +13528,8 @@
       ],
       "rejected-arg.any.html": true,
       "status.any.html": true
-    }
+    },
+    "create_multiple_memory.worker.html": true
   },
   "WebIDL": {
     "ecmascript-binding": {
@@ -13957,7 +13967,8 @@
           "response.blob() rejects if already aborted",
           "response.formData() rejects if already aborted",
           "response.json() rejects if already aborted",
-          "response.text() rejects if already aborted"
+          "response.text() rejects if already aborted",
+          "Call text() twice on aborted response"
         ]
       }
     },
@@ -13987,9 +13998,7 @@
     "fileReader.any.html": true,
     "url": {
       "url-format.any.html": true,
-      "url-with-fetch.any.html": [
-        "Revoke blob URL after creating Request, will fetch"
-      ]
+      "url-with-fetch.any.html": true
     },
     "reading-data-section": {
       "Determining-Encoding.any.html": true,
@@ -14523,6 +14532,20 @@
       "Resource timing seems to work in workers",
       "performance.clearResourceTimings in workers",
       "performance.setResourceTimingBufferSize in workers"
+    ]
+  },
+  "urlpattern": {
+    "urlpattern.any.html": [
+      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]"
+    ],
+    "urlpattern.any.worker.html": [
+      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]"
+    ],
+    "urlpattern.https.any.html": [
+      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]"
+    ],
+    "urlpattern.https.any.worker.html": [
+      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]"
     ]
   }
 }

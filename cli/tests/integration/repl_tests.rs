@@ -488,7 +488,7 @@ fn syntax_error() {
     Some(vec![("NO_COLOR".to_owned(), "1".to_owned())]),
     false,
   );
-  assert!(out.ends_with("parse error: Expected ';', '}' or <eof> at 1:7\n2\n"));
+  assert!(out.ends_with("parse error: Expected ';', '}' or <eof> at 1:8\n2\n"));
   assert!(err.is_empty());
 }
 

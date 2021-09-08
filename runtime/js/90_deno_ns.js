@@ -106,7 +106,6 @@
 
   __bootstrap.denoNsUnstable = {
     signal: __bootstrap.signals.signal,
-    signals: __bootstrap.signals.signals,
     Signal: __bootstrap.signals.Signal,
     SignalStream: __bootstrap.signals.SignalStream,
     emit: __bootstrap.compilerApi.emit,

@@ -17,4 +17,4 @@ path = "lib.rs"
 deno_core = { version = "0.98.0", path = "../../core" }
 dlopen = "0.1.8"
 libffi = { version = "=0.0.7", package = "deno-libffi" }
-serde = { version = "1.0.125", features = ["derive"] }
+serde = { version = "1.0.129", features = ["derive"] }

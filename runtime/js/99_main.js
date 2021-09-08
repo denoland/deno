@@ -37,11 +37,11 @@ delete Object.prototype.__proto__;
   const encoding = window.__bootstrap.encoding;
   const Console = window.__bootstrap.console.Console;
   const worker = window.__bootstrap.worker;
-  const signals = window.__bootstrap.signals;
   const internals = window.__bootstrap.internals;
   const performance = window.__bootstrap.performance;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
+  const urlPattern = window.__bootstrap.urlPattern;
   const headers = window.__bootstrap.headers;
   const streams = window.__bootstrap.streams;
   const fileReader = window.__bootstrap.fileReader;
@@ -432,8 +432,9 @@ delete Object.prototype.__proto__;
   };
 
   const unstableWindowOrWorkerGlobalScope = {
-    WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
     BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
+    URLPattern: util.nonEnumerable(urlPattern.URLPattern),
+    WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
 
     GPU: util.nonEnumerable(webgpu.GPU),
     GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
@@ -609,7 +610,6 @@ delete Object.prototype.__proto__;
     // `Deno` with `Deno` namespace from "./deno.ts".
     ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
     ObjectFreeze(globalThis.Deno.core);
-    signals.setSignals();
 
     util.log("args", args);
   }
@@ -697,7 +697,6 @@ delete Object.prototype.__proto__;
       // existing global `Deno` with `Deno` namespace from "./deno.ts".
       ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
       ObjectFreeze(globalThis.Deno.core);
-      signals.setSignals();
     } else {
       delete globalThis.Deno;
       util.assert(globalThis.Deno === undefined);

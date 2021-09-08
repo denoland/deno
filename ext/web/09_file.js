@@ -167,11 +167,12 @@
     return bag;
   }
 
+  const _type = Symbol("Type");
   const _size = Symbol("Size");
   const _parts = Symbol("Parts");
 
   class Blob {
-    #type = "";
+    [_type] = "";
     [_size] = 0;
     [_parts];
 
@@ -199,7 +200,7 @@
 
       this[_parts] = parts;
       this[_size] = size;
-      this.#type = normalizeType(options.type);
+      this[_type] = normalizeType(options.type);
     }
 
     /** @returns {number} */
@@ -211,7 +212,7 @@
     /** @returns {string} */
     get type() {
       webidl.assertBranded(this, Blob);
-      return this.#type;
+      return this[_type];
     }
 
     /**
@@ -561,7 +562,44 @@
     }
   }
 
+  /**
+   * Construct a new Blob object from an object URL.
+   *
+   * This new object will not duplicate data in memory with the original Blob
+   * object from which this URL was created or with other Blob objects created
+   * from the same URL, but they will be different objects.
+   *
+   * The object returned from this function will not be a File object, even if
+   * the original object from which the object URL was constructed was one. This
+   * means that the `name` and `lastModified` properties are lost.
+   *
+   * @param {string} url
+   * @returns {Blob | null}
+   */
+  function blobFromObjectUrl(url) {
+    const blobData = core.opSync("op_blob_from_object_url", url);
+    if (blobData === null) {
+      return null;
+    }
+
+    /** @type {BlobReference[]} */
+    const parts = [];
+    let totalSize = 0;
+
+    for (const { uuid, size } of blobData.parts) {
+      ArrayPrototypePush(parts, new BlobReference(uuid, size));
+      totalSize += size;
+    }
+
+    const blob = webidl.createBranded(Blob);
+    blob[_type] = blobData.media_type;
+    blob[_size] = totalSize;
+    blob[_parts] = parts;
+    return blob;
+  }
+
   window.__bootstrap.file = {
+    blobFromObjectUrl,
     getParts,
     Blob,
     File,

@@ -13,18 +13,18 @@ description = "A secure JavaScript/TypeScript runtime built with V8, Rust, and T
 path = "lib.rs"
 
 [dependencies]
-anyhow = "1.0.41"
-futures = "0.3.15"
+anyhow = "1.0.43"
+futures = "0.3.16"
 # TODO(lucacasonato): unlock when https://github.com/tkaitchuck/aHash/issues/95 is resolved
 indexmap = "=1.6.2"
 lazy_static = "1.4.0"
-libc = "0.2.98"
+libc = "0.2.101"
 log = "0.4.14"
 parking_lot = "0.11.1"
 pin-project = "1.0.7"
 rusty_v8 = "0.27.0"
-serde = { version = "1.0.126", features = ["derive"] }
-serde_json = { version = "1.0.64", features = ["preserve_order"] }
+serde = { version = "1.0.129", features = ["derive"] }
+serde_json = { version = "1.0.66", features = ["preserve_order"] }
 serde_v8 = { version = "0.10.0" }
 url = { version = "2.2.2", features = ["serde"] }
 
@@ -34,4 +34,4 @@ path = "examples/http_bench_json_ops.rs"
 
 # These dependencies are only used for the 'http_bench_*_ops' examples.
 [dev-dependencies]
-tokio = { version = "1.8.1", features = ["full"] }
+tokio = { version = "1.10.1", features = ["full"] }
