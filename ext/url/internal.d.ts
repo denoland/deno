@@ -10,5 +10,9 @@ declare namespace globalThis {
       URLSearchParams: typeof URLSearchParams;
       parseUrlEncoded(bytes: Uint8Array): [string, string][];
     };
+
+    declare var urlPattern: {
+      URLPattern: typeof URLPattern;
+    };
   }
 }

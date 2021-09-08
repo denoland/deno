@@ -117,6 +117,19 @@
   webidl.converters.EcKeyGenParams = webidl
     .createDictionaryConverter("EcKeyGenParams", dictEcKeyGenParams);
 
+  const dictAesKeyGenParams = [
+    ...dictAlgorithm,
+    {
+      key: "length",
+      converter: (V, opts) =>
+        webidl.converters["unsigned short"](V, { ...opts, enforceRange: true }),
+      required: true,
+    },
+  ];
+
+  webidl.converters.AesKeyGenParams = webidl
+    .createDictionaryConverter("AesKeyGenParams", dictAesKeyGenParams);
+
   const dictHmacKeyGenParams = [
     ...dictAlgorithm,
     {

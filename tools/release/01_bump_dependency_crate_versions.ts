@@ -7,3 +7,5 @@ const workspace = await DenoWorkspace.load();
 for (const crate of workspace.getDependencyCrates()) {
   await crate.increment("minor");
 }
+
+await workspace.updateLockFile();

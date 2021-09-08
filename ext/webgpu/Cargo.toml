@@ -15,7 +15,7 @@ path = "lib.rs"
 
 [dependencies]
 deno_core = { version = "0.98.0", path = "../../core" }
-serde = { version = "1.0.126", features = ["derive"] }
-tokio = { version = "1.8.1", features = ["full"] }
-wgpu-core = { version = "0.10.0", features = ["trace"] }
+serde = { version = "1.0.129", features = ["derive"] }
+tokio = { version = "1.10.1", features = ["full"] }
+wgpu-core = { version = "0.10.1", features = ["trace"] }
 wgpu-types = "0.10.0"

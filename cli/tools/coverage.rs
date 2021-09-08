@@ -1,14 +1,13 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::ast;
-use crate::ast::TokenOrComment;
 use crate::colors;
 use crate::flags::Flags;
 use crate::fs_util::collect_files;
-use crate::media_type::MediaType;
 use crate::module_graph::TypeLib;
 use crate::program_state::ProgramState;
 use crate::source_maps::SourceMapGetter;
+use deno_ast::swc::common::Span;
+use deno_ast::MediaType;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
@@ -23,7 +22,7 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::io::Write;
 use std::path::PathBuf;
-use swc_common::Span;
+use std::sync::Arc;
 use uuid::Uuid;
 
 // TODO(caspervonb) all of these structs can and should be made private, possibly moved to
@@ -190,7 +189,7 @@ pub trait CoverageReporter {
     script_coverage: &ScriptCoverage,
     script_source: &str,
     maybe_source_map: Option<Vec<u8>>,
-    maybe_original_source: Option<String>,
+    maybe_original_source: Option<Arc<String>>,
   );
 
   fn done(&mut self);
@@ -210,7 +209,7 @@ impl CoverageReporter for LcovCoverageReporter {
     script_coverage: &ScriptCoverage,
     script_source: &str,
     maybe_source_map: Option<Vec<u8>>,
-    _maybe_original_source: Option<String>,
+    _maybe_original_source: Option<Arc<String>>,
   ) {
     // TODO(caspervonb) cleanup and reduce duplication between reporters, pre-compute line coverage
     // elsewhere.
@@ -426,14 +425,14 @@ impl CoverageReporter for PrettyCoverageReporter {
     script_coverage: &ScriptCoverage,
     script_source: &str,
     maybe_source_map: Option<Vec<u8>>,
-    maybe_original_source: Option<String>,
+    maybe_original_source: Option<Arc<String>>,
   ) {
     let maybe_source_map = maybe_source_map
       .map(|source_map| SourceMap::from_slice(&source_map).unwrap());
 
     let mut ignored_spans: Vec<Span> = Vec::new();
-    for item in ast::lex(script_source, &MediaType::JavaScript) {
-      if let TokenOrComment::Token(_) = item.inner {
+    for item in deno_ast::lex(script_source, MediaType::JavaScript) {
+      if let deno_ast::TokenOrComment::Token(_) = item.inner {
         continue;
       }
 
