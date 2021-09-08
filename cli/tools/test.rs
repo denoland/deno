@@ -715,28 +715,12 @@ async fn test_specifiers(
 
   let (join_results, result) = future::join(join_stream, handler).await;
 
-  let mut join_errors = join_results.into_iter().filter_map(|join_result| {
-    join_result
-      .ok()
-      .map(|handle_result| handle_result.err())
-      .flatten()
-  });
-
-  if let Some(e) = join_errors.next() {
-    return Err(e);
+  // propagate any errors
+  for join_result in join_results {
+    join_result??;
   }
 
-  match result {
-    Ok(result) => {
-      if let Some(err) = result.err() {
-        return Err(err);
-      }
-    }
-
-    Err(err) => {
-      return Err(err.into());
-    }
-  }
+  result??;
 
   Ok(())
 }
