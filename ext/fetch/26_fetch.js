@@ -35,6 +35,7 @@
     Promise,
     PromisePrototypeThen,
     PromisePrototypeCatch,
+    String,
     StringPrototypeToLowerCase,
     TypedArrayPrototypeSubarray,
     TypeError,
@@ -172,6 +173,33 @@
    * @returns {Promise<InnerResponse>}
    */
   async function mainFetch(req, recursive, terminator) {
+    if (req.blobUrlEntry !== null) {
+      if (req.method !== "GET") {
+        throw new TypeError("Blob URL fetch only supports GET method.");
+      }
+
+      const body = new InnerBody(req.blobUrlEntry.stream());
+      terminator[abortSignal.add](() =>
+        body.error(new DOMException("Ongoing fetch was aborted.", "AbortError"))
+      );
+
+      return {
+        headerList: [
+          ["content-length", String(req.blobUrlEntry.size)],
+          ["content-type", req.blobUrlEntry.type],
+        ],
+        status: 200,
+        statusMessage: "OK",
+        body,
+        type: "basic",
+        url() {
+          if (this.urlList.length == 0) return null;
+          return this.urlList[this.urlList.length - 1];
+        },
+        urlList: recursive ? [] : [...req.urlList],
+      };
+    }
+
     /** @type {ReadableStream<Uint8Array> | Uint8Array | null} */
     let reqBody = null;
 

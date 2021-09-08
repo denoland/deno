@@ -14,6 +14,7 @@ path = "src/test_server.rs"
 [dependencies]
 anyhow = "1.0.43"
 async-stream = "0.3.2"
+base64 = "0.13.0"
 bytes = "1.1.0"
 futures = "0.3.16"
 hyper = { version = "0.14.12", features = ["server", "http1", "runtime"] }

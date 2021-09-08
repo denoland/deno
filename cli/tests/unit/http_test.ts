@@ -882,3 +882,45 @@ unitTest(
     clientConn.close();
   },
 );
+
+// https://github.com/denoland/deno/issues/11926
+unitTest(
+  { perms: { net: true } },
+  async function httpServerDoesntLeakResources2() {
+    let listener: Deno.Listener;
+    let httpConn: Deno.HttpConn;
+
+    const promise = (async () => {
+      listener = Deno.listen({ port: 4502 });
+      for await (const conn of listener) {
+        httpConn = Deno.serveHttp(conn);
+        for await (const { request, respondWith } of httpConn) {
+          assertEquals(new URL(request.url).href, "http://127.0.0.1:4502/");
+          // not reading request body on purpose
+          respondWith(new Response("ok"));
+        }
+      }
+    })();
+
+    const resourcesBefore = Deno.resources();
+    const response = await fetch("http://127.0.0.1:4502", {
+      method: "POST",
+      body: "hello world",
+    });
+    await response.text();
+    const resourcesAfter = Deno.resources();
+    // verify that the only new resource is "httpConnection", to make
+    // sure "request" resource is closed even if its body was not read
+    // by server handler
+
+    for (const rid of Object.keys(resourcesBefore)) {
+      delete resourcesAfter[Number(rid)];
+    }
+
+    assertEquals(Object.keys(resourcesAfter).length, 1);
+
+    listener!.close();
+    httpConn!.close();
+    await promise;
+  },
+);
