@@ -2,12 +2,7 @@
 
 import * as path from "https://deno.land/std@0.105.0/path/mod.ts";
 import * as semver from "https://deno.land/x/semver@v1.4.0/mod.ts";
-import {
-  CargoMetadata,
-  CargoPackageMetadata,
-  getMetadata,
-  publishCrate,
-} from "./cargo.ts";
+import * as cargo from "./cargo.ts";
 import { getCratesIoMetadata } from "./crates_io.ts";
 import { withRetries } from "./helpers.ts";
 
@@ -21,10 +16,12 @@ export class DenoWorkspace {
   }
 
   static async load(): Promise<DenoWorkspace> {
-    return new DenoWorkspace(await getMetadata(DenoWorkspace.rootDirPath));
+    return new DenoWorkspace(
+      await cargo.getMetadata(DenoWorkspace.rootDirPath),
+    );
   }
 
-  private constructor(metadata: CargoMetadata) {
+  private constructor(metadata: cargo.CargoMetadata) {
     const crates = [];
     for (const memberId of metadata.workspace_members) {
       const pkg = metadata.packages.find((pkg) => pkg.id === memberId);
@@ -82,14 +79,22 @@ export class DenoWorkspace {
     }
     return crate;
   }
+
+  build() {
+    return cargo.build(DenoWorkspace.rootDirPath);
+  }
+
+  updateLockFile() {
+    return cargo.check(DenoWorkspace.rootDirPath);
+  }
 }
 
 export class DenoWorkspaceCrate {
   #workspace: DenoWorkspace;
-  #pkg: CargoPackageMetadata;
+  #pkg: cargo.CargoPackageMetadata;
   #isUpdatingManifest = false;
 
-  constructor(workspace: DenoWorkspace, pkg: CargoPackageMetadata) {
+  constructor(workspace: DenoWorkspace, pkg: cargo.CargoPackageMetadata) {
     this.#workspace = workspace;
     this.#pkg = pkg;
   }
@@ -141,12 +146,20 @@ export class DenoWorkspaceCrate {
     // times before failing hard.
     return await withRetries({
       action: async () => {
-        await publishCrate(this.directoryPath);
+        await cargo.publishCrate(this.directoryPath);
         return true;
       },
       retryCount: 3,
       retryDelaySeconds: 10,
     });
+  }
+
+  build() {
+    return cargo.build(this.directoryPath);
+  }
+
+  updateLockFile() {
+    return cargo.check(this.directoryPath);
   }
 
   increment(part: "major" | "minor" | "patch") {

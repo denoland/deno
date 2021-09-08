@@ -12,7 +12,7 @@
   const core = window.Deno.core;
   const webidl = window.__bootstrap.webidl;
   const { DOMException } = window.__bootstrap.domException;
-  const { atob } = window.__bootstrap.base64;
+  const { atob, btoa } = window.__bootstrap.base64;
 
   const {
     ArrayPrototypeFind,
@@ -77,6 +77,10 @@
       "RSA-PSS": "RsaHashedKeyGenParams",
       "RSA-OAEP": "RsaHashedKeyGenParams",
       "ECDSA": "EcKeyGenParams",
+      "AES-CTR": "AesKeyGenParams",
+      "AES-CBC": "AesKeyGenParams",
+      "AES-GCM": "AesKeyGenParams",
+      "AES-KW": "AesKeyGenParams",
       "HMAC": "HmacKeyGenParams",
     },
     "sign": {
@@ -121,6 +125,13 @@
       keyBytes[i] = StringPrototypeCharCodeAt(decodedKey, i);
     }
     return keyBytes;
+  }
+
+  function unpaddedBase64(bytes) {
+    const binaryString = core.decode(bytes);
+    const base64String = btoa(binaryString);
+
+    return StringPrototypeReplace(base64String, /=/g, "");
   }
 
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
@@ -934,10 +945,10 @@
     }
 
     /**
-    * @param {string} format
-    * @param {CryptoKey} key
-    * @returns {Promise<any>}
-    */
+     * @param {string} format
+     * @param {CryptoKey} key
+     * @returns {Promise<any>}
+     */
     // deno-lint-ignore require-await
     async exportKey(format, key) {
       webidl.assertBranded(this, SubtleCrypto);
@@ -971,10 +982,48 @@
               // 4-5.
               return bits.buffer;
             }
-            // TODO(@littledivy): jwk
+            case "jwk": {
+              // 1-3.
+              const jwk = {
+                kty: "oct",
+                k: unpaddedBase64(innerKey.data),
+              };
+              // 4.
+              const algorithm = key[_algorithm];
+              // 5.
+              const hash = algorithm.hash;
+              // 6.
+              switch (hash.name) {
+                case "SHA-1":
+                  jwk.alg = "HS1";
+                  break;
+                case "SHA-256":
+                  jwk.alg = "HS256";
+                  break;
+                case "SHA-384":
+                  jwk.alg = "HS384";
+                  break;
+                case "SHA-512":
+                  jwk.alg = "HS512";
+                  break;
+                default:
+                  throw new DOMException(
+                    "Hash algorithm not supported",
+                    "NotSupportedError",
+                  );
+              }
+              // 7.
+              jwk.key_ops = key.usages;
+              // 8.
+              jwk.ext = key[_extractable];
+              // 9.
+              return jwk;
+            }
             default:
               throw new DOMException("Not implemented", "NotSupportedError");
           }
+          // TODO(@littledivy): Redundant break but deno_lint complains without it
+          break;
         }
         // TODO(@littledivy): RSASSA-PKCS1-v1_5
         // TODO(@littledivy): RSA-PSS
@@ -985,11 +1034,11 @@
     }
 
     /**
-    * @param {AlgorithmIdentifier} algorithm
-    * @param {CryptoKey} baseKey
-    * @param {number} length
-    * @returns {Promise<ArrayBuffer>}
-    */
+     * @param {AlgorithmIdentifier} algorithm
+     * @param {CryptoKey} baseKey
+     * @param {number} length
+     * @returns {Promise<ArrayBuffer>}
+     */
     async deriveBits(algorithm, baseKey, length) {
       webidl.assertBranded(this, SubtleCrypto);
       const prefix = "Failed to execute 'deriveBits' on 'SubtleCrypto'";
@@ -1390,10 +1439,40 @@
         return { publicKey, privateKey };
       }
       // TODO(lucacasonato): ECDH
-      // TODO(lucacasonato): AES-CTR
-      // TODO(lucacasonato): AES-CBC
-      // TODO(lucacasonato): AES-GCM
-      // TODO(lucacasonato): AES-KW
+      case "AES-CTR":
+      case "AES-CBC":
+      case "AES-GCM": {
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            usages,
+            (u) =>
+              !ArrayPrototypeIncludes([
+                "encrypt",
+                "decrypt",
+                "wrapKey",
+                "unwrapKey",
+              ], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        return generateKeyAES(normalizedAlgorithm, extractable, usages);
+      }
+      case "AES-KW": {
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            usages,
+            (u) => !ArrayPrototypeIncludes(["wrapKey", "unwrapKey"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        return generateKeyAES(normalizedAlgorithm, extractable, usages);
+      }
       case "HMAC": {
         // 1.
         if (
@@ -1446,6 +1525,42 @@
         return key;
       }
     }
+  }
+
+  async function generateKeyAES(normalizedAlgorithm, extractable, usages) {
+    // 2.
+    if (!ArrayPrototypeIncludes([128, 192, 256], normalizedAlgorithm.length)) {
+      throw new DOMException("Invalid key length", "OperationError");
+    }
+
+    // 3.
+    const keyData = await core.opAsync("op_crypto_generate_key", {
+      name: normalizedAlgorithm.name,
+      length: normalizedAlgorithm.length,
+    });
+    const handle = {};
+    WeakMapPrototypeSet(KEY_STORE, handle, {
+      type: "raw",
+      data: keyData,
+    });
+
+    // 6-8.
+    const algorithm = {
+      name: normalizedAlgorithm.name,
+      length: normalizedAlgorithm.length,
+    };
+
+    // 9-11.
+    const key = constructKey(
+      "secret",
+      extractable,
+      usages,
+      algorithm,
+      handle,
+    );
+
+    // 12.
+    return key;
   }
 
   async function deriveBits(normalizedAlgorithm, baseKey, length) {
