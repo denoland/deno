@@ -158,16 +158,14 @@ impl deno_ast::swc::bundler::Load for BundleLoader<'_> {
     file: &deno_ast::swc::common::FileName,
   ) -> Result<deno_ast::swc::bundler::ModuleData, AnyError> {
     match file {
-      deno_ast::swc::common::FileName::Custom(filename) => {
-        let specifier = resolve_url_or_path(filename)
-          .context("Failed to convert swc FileName to ModuleSpecifier.")?;
-        if let Some(src) = self.graph.get_source(&specifier) {
+      deno_ast::swc::common::FileName::Url(specifier) => {
+        if let Some(src) = self.graph.get_source(specifier) {
           let media_type = self
             .graph
-            .get_media_type(&specifier)
+            .get_media_type(specifier)
             .context("Looking up media type during bundling.")?;
           let (source_file, module) = transpile_module(
-            filename,
+            specifier,
             &src,
             media_type,
             self.emit_options,
@@ -181,8 +179,11 @@ impl deno_ast::swc::bundler::Load for BundleLoader<'_> {
           })
         } else {
           Err(
-            GraphError::MissingDependency(specifier, "<bundle>".to_string())
-              .into(),
+            GraphError::MissingDependency(
+              specifier.clone(),
+              "<bundle>".to_string(),
+            )
+            .into(),
           )
         }
       }
@@ -803,6 +804,7 @@ impl Graph {
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
       "inlineSourceMap": false,
+      "inlineSources": false,
       "sourceMap": false,
       "jsx": "react",
       "jsxFactory": "React.createElement",
@@ -852,6 +854,7 @@ impl Graph {
         "emitDecoratorMetadata": false,
         "importsNotUsedAsValues": "remove",
         "inlineSourceMap": true,
+        "inlineSources": true,
         "outDir": "deno://",
         "removeComments": true,
       }));
@@ -994,6 +997,7 @@ impl Graph {
       "experimentalDecorators": true,
       "importsNotUsedAsValues": "remove",
       "inlineSourceMap": false,
+      "inlineSources": false,
       "sourceMap": false,
       "isolatedModules": true,
       "jsx": "react",
@@ -1208,7 +1212,7 @@ impl Graph {
     let mut entries = HashMap::new();
     entries.insert(
       "bundle".to_string(),
-      deno_ast::swc::common::FileName::Custom(specifier.to_string()),
+      deno_ast::swc::common::FileName::Url(specifier.clone()),
     );
     let output = bundler
       .bundle(entries)
@@ -1716,6 +1720,8 @@ impl Graph {
       "emitDecoratorMetadata": false,
       "importsNotUsedAsValues": "remove",
       "inlineSourceMap": true,
+      // TODO(@kitsonk) make this actually work when https://github.com/swc-project/swc/issues/2218 addressed.
+      "inlineSources": true,
       "sourceMap": false,
       "jsx": "react",
       "jsxFactory": "React.createElement",
@@ -1834,20 +1840,17 @@ impl deno_ast::swc::bundler::Resolve for Graph {
     specifier: &str,
   ) -> Result<deno_ast::swc::common::FileName, AnyError> {
     let referrer =
-      if let deno_ast::swc::common::FileName::Custom(referrer) = referrer {
-        resolve_url_or_path(referrer)
-          .context("Cannot resolve swc FileName to a module specifier")?
+      if let deno_ast::swc::common::FileName::Url(referrer) = referrer {
+        referrer
       } else {
         unreachable!(
           "An unexpected referrer was passed when bundling: {:?}",
           referrer
         )
       };
-    let specifier = self.resolve(specifier, &referrer, false)?;
+    let specifier = self.resolve(specifier, referrer, false)?;
 
-    Ok(deno_ast::swc::common::FileName::Custom(
-      specifier.to_string(),
-    ))
+    Ok(deno_ast::swc::common::FileName::Url(specifier))
   }
 }
 
