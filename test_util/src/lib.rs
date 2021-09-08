@@ -51,6 +51,8 @@ pub mod lsp;
 
 const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
+const TEST_BASIC_AUTH_USERNAME: &str = "testuser123";
+const TEST_BASIC_AUTH_PASSWORD: &str = "testpassabc";
 const REDIRECT_PORT: u16 = 4546;
 const ANOTHER_REDIRECT_PORT: u16 = 4547;
 const DOUBLE_REDIRECTS_PORT: u16 = 4548;
@@ -58,6 +60,7 @@ const INF_REDIRECTS_PORT: u16 = 4549;
 const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
 const AUTH_REDIRECT_PORT: u16 = 4551;
 const TLS_CLIENT_AUTH_PORT: u16 = 4552;
+const BASIC_AUTH_REDIRECT_PORT: u16 = 4554;
 const HTTPS_PORT: u16 = 5545;
 const HTTPS_CLIENT_AUTH_PORT: u16 = 5552;
 const WS_PORT: u16 = 4242;
@@ -217,6 +220,29 @@ async fn auth_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
     .map(|v| v.to_str().unwrap())
   {
     if auth.to_lowercase() == format!("bearer {}", TEST_AUTH_TOKEN) {
+      let p = req.uri().path();
+      assert_eq!(&p[0..1], "/");
+      let url = format!("http://localhost:{}{}", PORT, p);
+      return Ok(redirect_resp(url));
+    }
+  }
+
+  let mut resp = Response::new(Body::empty());
+  *resp.status_mut() = StatusCode::NOT_FOUND;
+  Ok(resp)
+}
+
+async fn basic_auth_redirect(
+  req: Request<Body>,
+) -> hyper::Result<Response<Body>> {
+  if let Some(auth) = req
+    .headers()
+    .get("authorization")
+    .map(|v| v.to_str().unwrap())
+  {
+    let credentials =
+      format!("{}:{}", TEST_BASIC_AUTH_USERNAME, TEST_BASIC_AUTH_PASSWORD);
+    if auth == format!("Basic {}", base64::encode(credentials)) {
       let p = req.uri().path();
       assert_eq!(&p[0..1], "/");
       let url = format!("http://localhost:{}{}", PORT, p);
@@ -837,6 +863,19 @@ async fn wrap_auth_redirect_server() {
   }
 }
 
+async fn wrap_basic_auth_redirect_server() {
+  let basic_auth_redirect_svc = make_service_fn(|_| async {
+    Ok::<_, Infallible>(service_fn(basic_auth_redirect))
+  });
+  let basic_auth_redirect_addr =
+    SocketAddr::from(([127, 0, 0, 1], BASIC_AUTH_REDIRECT_PORT));
+  let basic_auth_redirect_server =
+    Server::bind(&basic_auth_redirect_addr).serve(basic_auth_redirect_svc);
+  if let Err(e) = basic_auth_redirect_server.await {
+    eprintln!("Basic auth redirect error: {:?}", e);
+  }
+}
+
 async fn wrap_abs_redirect_server() {
   let abs_redirect_svc = make_service_fn(|_| async {
     Ok::<_, Infallible>(service_fn(absolute_redirect))
@@ -969,6 +1008,7 @@ pub async fn run_all_servers() {
   let inf_redirects_server_fut = wrap_inf_redirect_server();
   let another_redirect_server_fut = wrap_another_redirect_server();
   let auth_redirect_server_fut = wrap_auth_redirect_server();
+  let basic_auth_redirect_server_fut = wrap_basic_auth_redirect_server();
   let abs_redirect_server_fut = wrap_abs_redirect_server();
 
   let ws_addr = SocketAddr::from(([127, 0, 0, 1], WS_PORT));
@@ -992,6 +1032,7 @@ pub async fn run_all_servers() {
       ws_close_server_fut,
       another_redirect_server_fut,
       auth_redirect_server_fut,
+      basic_auth_redirect_server_fut,
       inf_redirects_server_fut,
       double_redirects_server_fut,
       abs_redirect_server_fut,

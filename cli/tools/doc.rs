@@ -1,15 +1,14 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::ast;
 use crate::colors;
 use crate::file_fetcher::File;
 use crate::flags::Flags;
 use crate::get_types;
 use crate::import_map::ImportMap;
-use crate::media_type::MediaType;
 use crate::program_state::ProgramState;
 use crate::write_json_to_stdout;
 use crate::write_to_stdout_ignore_sigpipe;
+use deno_ast::MediaType;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::future::FutureExt;
@@ -81,7 +80,7 @@ impl Loader for DocLoader {
         .map(|file| {
           Some(LoadResponse {
             specifier: specifier.clone(),
-            content: Arc::new(file.source),
+            content: file.source.clone(),
             maybe_headers: file.maybe_headers,
           })
         });
@@ -100,6 +99,7 @@ pub async fn print_docs(
 ) -> Result<(), AnyError> {
   let program_state = ProgramState::build(flags.clone()).await?;
   let source_file = source_file.unwrap_or_else(|| "--builtin".to_string());
+  let source_parser = deno_graph::DefaultSourceParser::new();
 
   let parse_result = if source_file == "--builtin" {
     let mut loader = StubDocLoader;
@@ -113,12 +113,11 @@ pub async fn print_docs(
       None,
     )
     .await;
-    let doc_parser = doc::DocParser::new(graph, private);
-    let syntax = ast::get_syntax(&MediaType::Dts);
+    let doc_parser = doc::DocParser::new(graph, private, &source_parser);
     doc_parser.parse_source(
       &source_file_specifier,
-      syntax,
-      get_types(flags.unstable).as_str(),
+      MediaType::Dts,
+      Arc::new(get_types(flags.unstable)),
     )
   } else {
     let module_specifier = resolve_url_or_path(&source_file)?;
@@ -130,7 +129,7 @@ pub async fn print_docs(
       local: PathBuf::from("./$deno$doc.ts"),
       maybe_types: None,
       media_type: MediaType::TypeScript,
-      source: format!("export * from \"{}\";", module_specifier),
+      source: Arc::new(format!("export * from \"{}\";", module_specifier)),
       specifier: root_specifier.clone(),
       maybe_headers: None,
     };
@@ -152,7 +151,7 @@ pub async fn print_docs(
       None,
     )
     .await;
-    let doc_parser = doc::DocParser::new(graph, private);
+    let doc_parser = doc::DocParser::new(graph, private, &source_parser);
     doc_parser.parse_with_reexports(&root_specifier)
   };
 

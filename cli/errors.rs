@@ -9,8 +9,8 @@
 //!   Diagnostics are compile-time type errors, whereas JsErrors are runtime
 //!   exceptions.
 
-use crate::ast::Diagnostic;
 use crate::import_map::ImportMapError;
+use deno_ast::Diagnostic;
 use deno_core::error::AnyError;
 
 fn get_import_map_error_class(_: &ImportMapError) -> &'static str {

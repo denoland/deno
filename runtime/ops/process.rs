@@ -295,7 +295,7 @@ fn op_kill(state: &mut OpState, args: KillArgs, _: ()) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.kill");
   state.borrow_mut::<Permissions>().run.check_all()?;
 
-  let signo = super::signal::signal_str_to_int_unwrap(&args.signo)?;
+  let signo = super::signal::signal_str_to_int(&args.signo)?;
   kill(args.pid, signo)?;
   Ok(())
 }
