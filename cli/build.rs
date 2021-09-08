@@ -69,10 +69,6 @@ fn create_compiler_snapshot(
     deno_broadcast_channel::get_declaration(),
   );
   op_crate_libs.insert("deno.net", deno_net::get_declaration());
-  op_crate_libs
-    .insert("deno.net_unstable", deno_net::get_unstable_declaration());
-  op_crate_libs
-    .insert("deno.http_unstable", deno_http::get_unstable_declaration());
 
   // ensure we invalidate the build properly.
   for (_, path) in op_crate_libs.iter() {
@@ -133,9 +129,7 @@ fn create_compiler_snapshot(
     "esnext.error",
     "esnext.intl",
     "esnext.object",
-    "esnext.promise",
     "esnext.string",
-    "esnext.weakref",
   ];
 
   let path_dts = cwd.join("dts");
@@ -321,14 +315,6 @@ fn main() {
   println!(
     "cargo:rustc-env=DENO_NET_LIB_PATH={}",
     deno_net::get_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_NET_UNSTABLE_LIB_PATH={}",
-    deno_net::get_unstable_declaration().display()
-  );
-  println!(
-    "cargo:rustc-env=DENO_HTTP_UNSTABLE_LIB_PATH={}",
-    deno_http::get_unstable_declaration().display()
   );
 
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());

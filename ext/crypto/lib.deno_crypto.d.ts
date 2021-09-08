@@ -25,8 +25,36 @@ type KeyUsage =
   | "unwrapKey"
   | "verify"
   | "wrapKey";
-
+type KeyFormat = "jwk" | "pkcs8" | "raw" | "spki";
 type NamedCurve = string;
+
+interface RsaOtherPrimesInfo {
+  d?: string;
+  r?: string;
+  t?: string;
+}
+
+interface JsonWebKey {
+  alg?: string;
+  crv?: string;
+  d?: string;
+  dp?: string;
+  dq?: string;
+  e?: string;
+  ext?: boolean;
+  k?: string;
+  // deno-lint-ignore camelcase
+  key_ops?: string[];
+  kty?: string;
+  n?: string;
+  oth?: RsaOtherPrimesInfo[];
+  p?: string;
+  q?: string;
+  qi?: string;
+  use?: string;
+  x?: string;
+  y?: string;
+}
 
 interface HmacKeyGenParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
@@ -123,13 +151,24 @@ interface SubtleCrypto {
     keyUsages: KeyUsage[],
   ): Promise<CryptoKeyPair | CryptoKey>;
   importKey(
+    format: "jwk",
+    keyData: JsonWebKey,
+    algorithm: AlgorithmIdentifier | HmacImportParams,
+    extractable: boolean,
+    keyUsages: KeyUsage[],
+  ): Promise<CryptoKey>;
+  importKey(
     format: "raw",
     keyData: BufferSource,
     algorithm: AlgorithmIdentifier | HmacImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
-  exportKey(format: "raw", key: CryptoKey): Promise<ArrayBuffer>;
+  exportKey(format: "jwk", key: CryptoKey): Promise<JsonWebKey>;
+  exportKey(
+    format: Exclude<KeyFormat, "jwk">,
+    key: CryptoKey,
+  ): Promise<ArrayBuffer>;
   sign(
     algorithm: AlgorithmIdentifier | RsaPssParams | EcdsaParams,
     key: CryptoKey,
