@@ -8,12 +8,15 @@
   const { EventTarget } = window;
   const {
     Symbol,
+    SymbolToStringTag,
     TypeError,
   } = window.__bootstrap.primordials;
 
   const illegalConstructorKey = Symbol("illegalConstructorKey");
 
   class Window extends EventTarget {
+    [SymbolToStringTag] = "Window";
+
     constructor(key = null) {
       if (key !== illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
@@ -23,6 +26,8 @@
   }
 
   class WorkerGlobalScope extends EventTarget {
+    [SymbolToStringTag] = "WorkerGlobalScope";
+
     constructor(key = null) {
       if (key != illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
@@ -32,6 +37,8 @@
   }
 
   class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
+    [SymbolToStringTag] = "DedicatedWorkerGlobalScope";
+
     constructor(key = null) {
       if (key != illegalConstructorKey) {
         throw new TypeError("Illegal constructor.");
