@@ -13490,6 +13490,14 @@
         ],
         "toString.tentative.any.html": false,
         "type.tentative.any.html": false
+      },
+      "function": {
+        "call.tentative.any.html": false,
+        "constructor.tentative.any.html": [
+          "construct with JS function"
+        ],
+        "table.tentative.any.html": false,
+        "type.tentative.any.html": false
       }
     },
     "serialization": {
@@ -14526,6 +14534,20 @@
       "Resource timing seems to work in workers",
       "performance.clearResourceTimings in workers",
       "performance.setResourceTimingBufferSize in workers"
+    ]
+  },
+  "urlpattern": {
+    "urlpattern.any.html": [
+      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]"
+    ],
+    "urlpattern.any.worker.html": [
+      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]"
+    ],
+    "urlpattern.https.any.html": [
+      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]"
+    ],
+    "urlpattern.https.any.worker.html": [
+      "Pattern: [{\"pathname\":\"/foo/bar\"}] Inputs: [\"./foo/bar\",\"https://example.com\"]"
     ]
   }
 }
