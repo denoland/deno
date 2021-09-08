@@ -914,7 +914,7 @@ unitTest(
     // by server handler
 
     for (const rid of Object.keys(resourcesBefore)) {
-      delete resourcesAfter[rid];
+      delete resourcesAfter[Number(rid)];
     }
 
     assertEquals(Object.keys(resourcesAfter).length, 1);
