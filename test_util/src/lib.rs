@@ -1590,7 +1590,7 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
           assert_eq!(line, s);
         }
       }
-      std::thread::sleep(std::time::Duration::from_millis(100));
+      std::thread::sleep(std::time::Duration::from_millis(1000));
     }
 
     fork.wait().unwrap();
