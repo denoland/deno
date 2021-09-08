@@ -152,20 +152,20 @@ pub async fn lint_files(
   Ok(())
 }
 
-fn rule_to_json(rule: &Box<dyn LintRule>) -> serde_json::Value {
-  serde_json::json!({
-    "code": rule.code(),
-    "tags": rule.tags(),
-    "docs": rule.docs(),
-  })
-}
-
 pub fn print_rules_list(json: bool) {
   let lint_rules = rules::get_recommended_rules();
 
   if json {
-    let json_rules: Vec<serde_json::Value> =
-      lint_rules.iter().map(rule_to_json).collect();
+    let json_rules: Vec<serde_json::Value> = lint_rules
+      .iter()
+      .map(|rule| {
+        serde_json::json!({
+          "code": rule.code(),
+          "tags": rule.tags(),
+          "docs": rule.docs(),
+        })
+      })
+      .collect();
     let json_str = serde_json::to_string_pretty(&json_rules).unwrap();
     println!("{}", json_str);
   } else {
