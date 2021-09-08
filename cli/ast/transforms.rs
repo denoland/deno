@@ -260,6 +260,7 @@ mod test {
   use deno_ast::swc::parser::TsConfig;
   use deno_ast::swc::visit::Fold;
   use deno_ast::swc::visit::FoldWith;
+  use deno_ast::ModuleSpecifier;
   use std::rc::Rc;
 
   use super::*;
@@ -434,7 +435,7 @@ mod test {
   fn parse(src: &str) -> (Rc<SourceMap>, Module) {
     let source_map = Rc::new(SourceMap::default());
     let source_file = source_map.new_source_file(
-      FileName::Custom("file.ts".to_string()),
+      FileName::Url(ModuleSpecifier::parse("file:///test.ts").unwrap()),
       src.to_string(),
     );
     let input = StringInput::from(&*source_file);
