@@ -19,6 +19,7 @@
   const { mixinBody, extractBody } = window.__bootstrap.fetchBody;
   const { getLocationHref } = window.__bootstrap.location;
   const mimesniff = window.__bootstrap.mimesniff;
+  const { blobFromObjectUrl } = window.__bootstrap.file;
   const {
     headersFromHeaderList,
     headerListFromHeaders,
@@ -59,6 +60,7 @@
    * @property {number} redirectCount
    * @property {string[]} urlList
    * @property {number | null} clientRid NOTE: non standard extension for `Deno.HttpClient`.
+   * @property {Blob | null} blobUrlEntry
    */
 
   const defaultInnerRequest = {
@@ -81,11 +83,16 @@
    * @returns
    */
   function newInnerRequest(method, url, headerList = [], body = null) {
+    let blobUrlEntry = null;
+    if (url.startsWith("blob:")) {
+      blobUrlEntry = blobFromObjectUrl(url);
+    }
     return {
       method: method,
       headerList,
       body,
       urlList: [url],
+      blobUrlEntry,
       ...defaultInnerRequest,
     };
   }
@@ -118,6 +125,7 @@
       redirectCount: request.redirectCount,
       urlList: request.urlList,
       clientRid: request.clientRid,
+      blobUrlEntry: request.blobUrlEntry,
     };
   }
 

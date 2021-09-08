@@ -13998,9 +13998,7 @@
     "fileReader.any.html": true,
     "url": {
       "url-format.any.html": true,
-      "url-with-fetch.any.html": [
-        "Revoke blob URL after creating Request, will fetch"
-      ]
+      "url-with-fetch.any.html": true
     },
     "reading-data-section": {
       "Determining-Encoding.any.html": true,
