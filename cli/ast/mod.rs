@@ -74,6 +74,7 @@ impl From<deno_ast::swc::common::Loc> for Location {
     let filename = match &swc_loc.file.name {
       Real(path_buf) => path_buf.to_string_lossy().to_string(),
       Custom(str_) => str_.to_string(),
+      Url(url) => url.to_string(),
       _ => panic!("invalid filename"),
     };
 
@@ -117,6 +118,8 @@ pub struct EmitOptions {
   /// Should the source map be inlined in the emitted code file, or provided
   /// as a separate file.  Defaults to `true`.
   pub inline_source_map: bool,
+  /// Should the sources be inlined in the source map.  Defaults to `true`.
+  pub inline_sources: bool,
   // Should a corresponding .map file be created for the output. This should be
   // false if inline_source_map is true. Defaults to `false`.
   pub source_map: bool,
@@ -139,6 +142,7 @@ impl Default for EmitOptions {
       emit_metadata: false,
       imports_not_used_as_values: ImportsNotUsedAsValues::Remove,
       inline_source_map: true,
+      inline_sources: true,
       source_map: false,
       jsx_factory: "React.createElement".into(),
       jsx_fragment_factory: "React.Fragment".into(),
@@ -162,6 +166,7 @@ impl From<config_file::TsConfig> for EmitOptions {
       emit_metadata: options.emit_decorator_metadata,
       imports_not_used_as_values,
       inline_source_map: options.inline_source_map,
+      inline_sources: options.inline_sources,
       source_map: options.source_map,
       jsx_factory: options.jsx_factory,
       jsx_fragment_factory: options.jsx_fragment_factory,
@@ -204,7 +209,8 @@ pub fn transpile(
 ) -> Result<(String, Option<String>), AnyError> {
   let program: Program = (*parsed_source.program()).clone();
   let source_map = Rc::new(SourceMap::default());
-  let file_name = FileName::Custom(parsed_source.specifier().to_string());
+  let specifier = resolve_url_or_path(parsed_source.specifier())?;
+  let file_name = FileName::Url(specifier);
   source_map
     .new_source_file(file_name, parsed_source.source().text().to_string());
   let comments = parsed_source.comments().as_single_threaded(); // needs to be mutable
@@ -284,7 +290,7 @@ pub fn transpile(
 /// A low level function which transpiles a source module into an swc
 /// SourceFile.
 pub fn transpile_module(
-  specifier: &str,
+  specifier: &ModuleSpecifier,
   source: &str,
   media_type: MediaType,
   emit_options: &EmitOptions,
@@ -292,10 +298,8 @@ pub fn transpile_module(
   cm: Rc<SourceMap>,
 ) -> Result<(Rc<deno_ast::swc::common::SourceFile>, Module), AnyError> {
   let source = strip_bom(source);
-  let source_file = cm.new_source_file(
-    FileName::Custom(specifier.to_string()),
-    source.to_string(),
-  );
+  let source_file =
+    cm.new_source_file(FileName::Url(specifier.clone()), source.to_string());
   let input = StringInput::from(&*source_file);
   let comments = SingleThreadedComments::default();
   let syntax = get_syntax(media_type);

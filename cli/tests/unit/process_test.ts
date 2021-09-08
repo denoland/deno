@@ -448,11 +448,9 @@ unitTest(
 
     assert(
       error instanceof Deno.errors.NotFound ||
-        // On Windows, the underlying Windows API may return
-        // `ERROR_ACCESS_DENIED` when the process has exited, but hasn't been
-        // completely cleaned up yet and its `pid` is still valid.
+        // This is not yet implemented on Windows
         (Deno.build.os === "windows" &&
-          error instanceof Deno.errors.PermissionDenied),
+          error instanceof Error && error.message === "not implemented"),
     );
 
     p.close();
@@ -476,19 +474,23 @@ unitTest(
       cmd: [Deno.execPath(), "eval", "setTimeout(() => {}, 10000)"],
     });
 
-    Deno.kill(p.pid, "SIGINT");
-    const status = await p.status();
-
-    assertEquals(status.success, false);
     try {
-      assertEquals(status.signal, "SIGINT");
-    } catch {
-      // TODO(nayeemrmn): On Windows sometimes the following values are given
-      // instead. Investigate and remove this catch when fixed.
-      assertEquals(status.code, 130);
-      assertEquals(status.signal, 2);
+      if (Deno.build.os === "windows") {
+        // currently not implemented
+        assertThrows(() => {
+          Deno.kill(p.pid, "SIGINT");
+        }, Error);
+      } else {
+        Deno.kill(p.pid, "SIGINT");
+        const status = await p.status();
+
+        assertEquals(status.success, false);
+        assertEquals(status.code, 130);
+        assertEquals(status.signal, 2);
+      }
+    } finally {
+      p.close();
     }
-    p.close();
   },
 );
 
@@ -499,10 +501,11 @@ unitTest({ perms: { run: true, read: true } }, function killFailed() {
   assert(!p.stdin);
   assert(!p.stdout);
 
+  // windows is currently not implemented so it throws a regular Error saying so
   assertThrows(() => {
     // @ts-expect-error testing runtime error of bad signal
     Deno.kill(p.pid, "foobar");
-  }, TypeError);
+  }, Deno.build.os === "windows" ? Error : TypeError);
 
   p.close();
 });
