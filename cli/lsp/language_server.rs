@@ -58,9 +58,8 @@ use crate::deno_dir;
 use crate::fs_util;
 use crate::import_map::ImportMap;
 use crate::logger;
-use crate::media_type::MediaType;
 use crate::tools::fmt::format_file;
-use crate::tools::fmt::get_typescript_config;
+use crate::tools::fmt::format_parsed_module;
 
 pub const REGISTRIES_PATH: &str = "registries";
 const SOURCES_PATH: &str = "deps";
@@ -165,19 +164,17 @@ impl Inner {
 
   /// Analyzes dependencies of a document that has been opened in the editor and
   /// sets the dependencies property on the document.
-  fn analyze_dependencies(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    media_type: &MediaType,
-    source: &str,
-  ) {
-    if let Ok(parsed_module) =
-      analysis::parse_module(specifier, source, media_type)
+  fn analyze_dependencies(&mut self, specifier: &ModuleSpecifier) {
+    if let Some(Ok(parsed_module)) = self
+      .documents
+      .get(specifier)
+      .map(|d| d.source().module())
+      .flatten()
     {
       let (mut deps, _) = analysis::analyze_dependencies(
         specifier,
-        media_type,
-        &parsed_module,
+        parsed_module.media_type(),
+        parsed_module,
         &self.maybe_import_map,
       );
       for (_, dep) in deps.iter_mut() {
@@ -188,7 +185,7 @@ impl Inner {
           }
         }
       }
-      let dep_ranges = analysis::analyze_dependency_ranges(&parsed_module).ok();
+      let dep_ranges = analysis::analyze_dependency_ranges(parsed_module).ok();
       if let Err(err) =
         self
           .documents
@@ -202,18 +199,14 @@ impl Inner {
   /// Analyzes all dependencies for all documents that have been opened in the
   /// editor and sets the dependencies property on the documents.
   fn analyze_dependencies_all(&mut self) {
-    let docs: Vec<(ModuleSpecifier, String, MediaType)> = self
+    let specifiers = self
       .documents
       .docs
-      .iter()
-      .filter_map(|(s, doc)| {
-        let source = doc.content().ok().flatten()?;
-        let media_type = MediaType::from(&doc.language_id);
-        Some((s.clone(), source, media_type))
-      })
-      .collect();
-    for (specifier, source, media_type) in docs {
-      self.analyze_dependencies(&specifier, &media_type, &source);
+      .keys()
+      .map(ToOwned::to_owned)
+      .collect::<Vec<_>>();
+    for specifier in specifiers {
+      self.analyze_dependencies(&specifier);
     }
   }
 
@@ -281,27 +274,16 @@ impl Inner {
   pub(crate) fn get_text_content(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Option<String> {
+  ) -> Option<Arc<String>> {
     if specifier.scheme() == "asset" {
       self
         .assets
         .get(specifier)
         .map(|o| o.clone().map(|a| a.text))?
     } else if self.documents.contains_key(specifier) {
-      self.documents.content(specifier).unwrap()
+      self.documents.content(specifier)
     } else {
       self.sources.get_source(specifier)
-    }
-  }
-
-  pub(crate) fn get_media_type(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<MediaType> {
-    if specifier.scheme() == "asset" || self.documents.contains_key(specifier) {
-      Some(MediaType::from(specifier))
-    } else {
-      self.sources.get_media_type(specifier)
     }
   }
 
@@ -789,20 +771,15 @@ impl Inner {
         params.text_document.language_id, params.text_document.uri
       );
     }
-    let media_type = MediaType::from(&language_id);
     self.documents.open(
       specifier.clone(),
       params.text_document.version,
       language_id,
-      &params.text_document.text,
+      Arc::new(params.text_document.text),
     );
 
     if self.documents.is_diagnosable(&specifier) {
-      self.analyze_dependencies(
-        &specifier,
-        &media_type,
-        &params.text_document.text,
-      );
+      self.analyze_dependencies(&specifier);
       self
         .diagnostics_server
         .invalidate(self.documents.dependents(&specifier))
@@ -822,12 +799,9 @@ impl Inner {
       params.text_document.version,
       params.content_changes,
     ) {
-      Ok(Some(source)) => {
+      Ok(()) => {
         if self.documents.is_diagnosable(&specifier) {
-          let media_type = MediaType::from(
-            &self.documents.get_language_id(&specifier).unwrap(),
-          );
-          self.analyze_dependencies(&specifier, &media_type, &source);
+          self.analyze_dependencies(&specifier);
           self
             .diagnostics_server
             .invalidate(self.documents.dependents(&specifier))
@@ -837,7 +811,6 @@ impl Inner {
           }
         }
       }
-      Ok(_) => error!("No content returned from change."),
       Err(err) => error!("{}", err),
     }
     self.performance.measure(mark);
@@ -1021,16 +994,11 @@ impl Inner {
       return Ok(None);
     }
     let mark = self.performance.mark("formatting", Some(&params));
-    let file_text = self
-      .documents
-      .content(&specifier)
-      .map_err(|_| {
-        LspError::invalid_params(
-          "The specified file could not be found in memory.",
-        )
-      })?
-      .unwrap();
-    let line_index = self.documents.line_index(&specifier);
+    let document_data = self.documents.get(&specifier).ok_or_else(|| {
+      LspError::invalid_params(
+        "The specified file could not be found in memory.",
+      )
+    })?;
     let file_path =
       if let Ok(file_path) = params.text_document.uri.to_file_path() {
         file_path
@@ -1038,14 +1006,28 @@ impl Inner {
         PathBuf::from(params.text_document.uri.path())
       };
 
-    // TODO(lucacasonato): handle error properly
+    let source = document_data.source().clone();
     let text_edits = tokio::task::spawn_blocking(move || {
-      let config = get_typescript_config();
-      match format_file(&file_path, &file_text, config) {
+      let format_result = match source.module() {
+        Some(Ok(parsed_module)) => Ok(format_parsed_module(parsed_module)),
+        Some(Err(err)) => Err(err.to_string()),
+        None => {
+          // it's not a js/ts file, so attempt to format its contents
+          format_file(&file_path, source.text_info().text_str())
+        }
+      };
+
+      match format_result {
         Ok(new_text) => {
-          Some(text::get_edits(&file_text, &new_text, line_index))
+          let line_index = source.line_index();
+          Some(text::get_edits(
+            source.text_info().text_str(),
+            &new_text,
+            line_index,
+          ))
         }
         Err(err) => {
+          // TODO(lucacasonato): handle error properly
           warn!("Format error: {}", err);
           None
         }
@@ -1257,7 +1239,7 @@ impl Inner {
           Some("deno-lint") => code_actions
             .add_deno_lint_ignore_action(
               &specifier,
-              self.documents.docs.get(&specifier),
+              self.documents.get(&specifier),
               diagnostic,
             )
             .map_err(|err| {
@@ -1436,11 +1418,37 @@ impl Inner {
     }
 
     let mark = self.performance.mark("code_lens", Some(&params));
-    let code_lenses =
-      code_lens::collect(&specifier, self).await.map_err(|err| {
+    let navigation_tree =
+      self.get_navigation_tree(&specifier).await.map_err(|err| {
         error!("Error getting code lenses for \"{}\": {}", specifier, err);
         LspError::internal_error()
       })?;
+    let parsed_module = self
+      .documents
+      .get(&specifier)
+      .map(|d| d.source().module())
+      .flatten()
+      .map(|m| m.as_ref().ok())
+      .flatten();
+    let line_index = self.get_line_index_sync(&specifier).ok_or_else(|| {
+      error!(
+        "Error getting code lenses for \"{}\": Missing line index",
+        specifier
+      );
+      LspError::internal_error()
+    })?;
+    let code_lenses = code_lens::collect(
+      &specifier,
+      parsed_module,
+      &self.config,
+      &line_index,
+      &navigation_tree,
+    )
+    .await
+    .map_err(|err| {
+      error!("Error getting code lenses for \"{}\": {}", specifier, err);
+      LspError::internal_error()
+    })?;
     self.performance.measure(mark);
 
     Ok(Some(code_lenses))
@@ -2606,11 +2614,7 @@ impl Inner {
     // now that we have dependencies loaded, we need to re-analyze them and
     // invalidate some diagnostics
     if self.documents.contains_key(&referrer) {
-      if let Some(source) = self.documents.content(&referrer).unwrap() {
-        let media_type =
-          MediaType::from(&self.documents.get_language_id(&referrer).unwrap());
-        self.analyze_dependencies(&referrer, &media_type, &source);
-      }
+      self.analyze_dependencies(&referrer);
       self.diagnostics_server.invalidate(vec![referrer]).await;
     }
 
@@ -2728,7 +2732,7 @@ impl Inner {
             .await
             .map_err(|_| LspError::internal_error())?
           {
-            Some(asset.text)
+            Some(asset.text.to_string())
           } else {
             error!("Missing asset: {}", specifier);
             None
@@ -2736,7 +2740,7 @@ impl Inner {
         }
         _ => {
           if let Some(source) = self.sources.get_source(&specifier) {
-            Some(source)
+            Some(source.to_string())
           } else {
             error!("The cached source was not found: {}", specifier);
             None
