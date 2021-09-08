@@ -1858,49 +1858,19 @@ itest!(byte_order_mark {
 #[cfg(unix)]
 #[test]
 fn issue9750() {
-  use util::pty::fork::*;
-  let deno_exe = util::deno_exe_path();
-  let fork = Fork::from_ptmx().unwrap();
-  if let Ok(mut master) = fork.is_parent() {
-    use std::io::Write;
-
-    fn read_str(master: &mut Master) -> String {
-      use std::io::Read;
-      let mut buf = [0; 1024];
-      let _n = master.read(&mut buf).unwrap();
-      let buf_str = std::str::from_utf8(&buf).unwrap();
-      println!("buf_str {}", buf_str);
-      assert!(!buf_str.contains("secret"));
-      buf_str.to_string()
-    }
-
-    assert!(read_str(&mut master).contains("Enter 'yy':"));
-
-    master.write_all(b"yy\n").unwrap();
-    assert!(read_str(&mut master).starts_with("yy"));
-
-    assert!(read_str(&mut master).contains("Allow"));
-
-    master.write_all(b"n\n").unwrap();
-    assert!(read_str(&mut master).starts_with('n'));
-
-    assert!(read_str(&mut master).contains("Allow"));
-
-    master.write_all(b"n\n").unwrap();
-    assert!(read_str(&mut master).starts_with('n'));
-
-    fork.wait().unwrap();
-  } else {
-    std::env::set_var("SECRET", "secret");
-    std::env::set_current_dir(util::testdata_path()).unwrap();
-    let err = exec::Command::new(deno_exe)
-      .arg("run")
-      .arg("--prompt")
-      .arg("issue9750.js")
-      .exec();
-    println!("err {}", err);
-    unreachable!()
-  }
+  use util::PtyData::*;
+  util::test_pty2(
+    "run --prompt issue9750.js",
+    vec![
+      Output("Enter 'yy':\r\n"),
+      Input("yy\n"),
+      Output("⚠️  ️Deno requests env access. Allow? [y/n (y = yes allow, n = no deny)] "),
+      Input("n\n"),
+      Output("⚠️  ️Deno requests env access to \"SECRET\". Allow? [y/n (y = yes allow, n = no deny)] "),
+      Input("n\n"),
+      Output("error: Uncaught (in promise) PermissionDenied: Requires env access to \"SECRET\", run again with the --allow-env flag\r\n"),
+    ],
+  );
 }
 
 // Regression test for https://github.com/denoland/deno/issues/11451.

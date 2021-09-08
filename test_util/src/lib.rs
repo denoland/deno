@@ -1608,16 +1608,13 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
           assert!(s.ends_with('\n'));
           let mut echo = String::new();
           buf_reader.read_line(&mut echo).unwrap();
-          println!("echo: {}", echo);
+          println!("ECHO: {}", echo.escape_debug());
           assert!(echo.starts_with(&s.trim()));
         }
         PtyData::Output(s) => {
           let mut line = String::new();
           if s.ends_with('\n') {
             buf_reader.read_line(&mut line).unwrap();
-            if line.is_empty() {
-              println!("line empty {}", line);
-            }
           } else {
             while s != line {
               let mut buf = [0; 64 * 1024];
@@ -1633,7 +1630,6 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
           assert_eq!(line, s);
         }
       }
-      // std::thread::sleep(std::time::Duration::from_millis(1000));
     }
 
     fork.wait().unwrap();
