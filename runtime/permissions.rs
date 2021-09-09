@@ -23,6 +23,8 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
 const PERMISSION_EMOJI: &str = "⚠️";
+#[cfg(not(test))]
+const PROMPT_OPTS_TEXT: &str = "[y/n (y = yes allow, n = no deny)] ";
 
 /// Tri-state value for storing permission state
 #[derive(PartialEq, Debug, Clone, Copy, Deserialize, PartialOrd)]
@@ -1216,7 +1218,8 @@ fn permission_prompt(message: &str) -> bool {
         'n' => return false,
         _ => {
           // If we don't get a recognized option try again.
-          let msg_again = format!("Unrecognized option '{}' {}", ch, opts);
+          let msg_again =
+            format!("Unrecognized option '{}' {}", ch, PROMPT_OPTS_TEXT);
           eprint!("{}", colors::bold(&msg_again));
         }
       };
@@ -1266,10 +1269,9 @@ fn permission_prompt(message: &str) -> bool {
     }
   }
 
-  let opts = "[y/n (y = yes allow, n = no deny)] ";
   let msg = format!(
     "{}  ️Deno requests {}. Allow? {}",
-    PERMISSION_EMOJI, message, opts
+    PERMISSION_EMOJI, message, PROMPT_OPTS_TEXT
   );
   // print to stderr so that if deno is > to a file this is still displayed.
   eprint!("{}", colors::bold(&msg));
