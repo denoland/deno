@@ -3,7 +3,6 @@
 use deno_core::error::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
-use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
@@ -473,9 +472,13 @@ impl Inner {
     };
     if let Some(import_map_str) = &maybe_import_map {
       info!("Setting import map from: \"{}\"", import_map_str);
-      let import_map_url = if let Ok(url) = resolve_url_or_path(import_map_str)
+      let import_map_url = if let Ok(url) = Url::from_file_path(import_map_str)
       {
         Ok(url)
+      } else if import_map_str.starts_with("data:") {
+        Url::parse(import_map_str).map_err(|_| {
+          anyhow!("Bad data url for import map: {:?}", import_map_str)
+        })
       } else if let Some(root_uri) = &maybe_root_uri {
         let root_path = root_uri
           .to_file_path()
