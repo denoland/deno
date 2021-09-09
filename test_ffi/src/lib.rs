@@ -6,6 +6,7 @@ pub extern "C" fn print_something() {
   println!("something");
 }
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
 pub extern "C" fn print_string(ptr: *const c_char) {
   let cstr = unsafe { CStr::from_ptr(ptr) };
@@ -13,6 +14,7 @@ pub extern "C" fn print_string(ptr: *const c_char) {
   println!("{}", name);
 }
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
 pub extern "C" fn print_buffer(ptr: *const u8, len: usize) {
   let buf = unsafe { std::slice::from_raw_parts(ptr, len) };

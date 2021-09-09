@@ -3,8 +3,10 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const __bootstrap = window.__bootstrap;
-
+  const util = window.__bootstrap.util;
+  const {
+    ArrayBuffer,
+  } = window.__bootstrap.primordials;
   class DynamicLibrary {
     #rid;
     symbols = {};
@@ -46,7 +48,7 @@
 
   function dlopen(path, symbols) {
     // URL support is progressively enhanced by util in `runtime/js`.
-    const pathFromURL = __bootstrap.util.pathFromURL ?? ((p) => p);
+    const pathFromURL = util.pathFromURL ?? ((p) => p);
     return new DynamicLibrary(pathFromURL(path), symbols);
   }
 
