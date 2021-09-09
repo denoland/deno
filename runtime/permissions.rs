@@ -16,8 +16,6 @@ use log::debug;
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::Hash;
-#[cfg(not(test))]
-use std::io;
 use std::path::{Path, PathBuf};
 #[cfg(test)]
 use std::sync::atomic::AtomicBool;
@@ -1196,26 +1194,77 @@ fn permission_prompt(message: &str) -> bool {
   };
 
   #[cfg(unix)]
-  fn clear_stdin() {
+  fn confirm_prompt() -> bool {
+    // For security reasons we must consume everything in stdin so that previously
+    // buffered data cannot affect the prompt.
     let r = unsafe { libc::tcflush(0, libc::TCIFLUSH) };
     assert_eq!(r, 0);
+
+    loop {
+      let mut input = String::new();
+      let stdin = std::io::stdin();
+      let result = stdin.read_line(&mut input);
+      if result.is_err() {
+        return false;
+      };
+      let ch = match input.chars().next() {
+        None => return false,
+        Some(v) => v,
+      };
+      match ch.to_ascii_lowercase() {
+        'y' => return true,
+        'n' => return false,
+        _ => {
+          // If we don't get a recognized option try again.
+          let msg_again = format!("Unrecognized option '{}' {}", ch, opts);
+          eprint!("{}", colors::bold(&msg_again));
+        }
+      };
+    }
   }
 
   #[cfg(not(unix))]
-  fn clear_stdin() {
+  fn confirm_prompt() -> bool {
+    use winapi::um::consoleapi::ReadConsoleInputW;
+    use winapi::um::wincon::FlushConsoleInputBuffer;
+    use winapi::um::wincontypes::KEY_EVENT;
+
     unsafe {
       let stdin = winapi::um::processenv::GetStdHandle(
         winapi::um::winbase::STD_INPUT_HANDLE,
       );
-      let flags =
-        winapi::um::winbase::PURGE_TXCLEAR | winapi::um::winbase::PURGE_RXCLEAR;
-      winapi::um::commapi::PurgeComm(stdin, flags);
+
+      // For security reasons we must consume everything in stdin so that
+      // previously buffered data cannot affect the prompt.
+      assert_eq!(FlushConsoleInputBuffer(stdin), 1);
+
+      // At this point, we can't read anything from std::io::std or even
+      // winapi's `ReadConsole` because it will still contain characters
+      // flushed from the input buffer. There doesn't seem to be a way to
+      // flush this other buffer or read from ReadConsole without potentially
+      // blocking, so instead we deal with the lower level input API, and
+      // listen for key events.
+      loop {
+        let mut events_read = 0;
+        let mut input_record = std::mem::zeroed();
+        assert_eq!(
+          ReadConsoleInputW(stdin, &mut input_record, 1, &mut events_read),
+          1
+        );
+        if input_record.EventType == KEY_EVENT {
+          let key_event = input_record.Event.KeyEvent();
+          let char = *key_event.uChar.UnicodeChar();
+          if char == 'y' as u16 {
+            eprintln!("y");
+            return true;
+          } else if char == 'n' as u16 {
+            eprintln!("n");
+            return false;
+          }
+        }
+      }
     }
   }
-
-  // For security reasons we must consume everything in stdin so that previously
-  // buffered data cannot effect the prompt.
-  clear_stdin();
 
   let opts = "[y/n (y = yes allow, n = no deny)] ";
   let msg = format!(
@@ -1224,27 +1273,8 @@ fn permission_prompt(message: &str) -> bool {
   );
   // print to stderr so that if deno is > to a file this is still displayed.
   eprint!("{}", colors::bold(&msg));
-  loop {
-    let mut input = String::new();
-    let stdin = io::stdin();
-    let result = stdin.read_line(&mut input);
-    if result.is_err() {
-      return false;
-    };
-    let ch = match input.chars().next() {
-      None => return false,
-      Some(v) => v,
-    };
-    match ch.to_ascii_lowercase() {
-      'y' => return true,
-      'n' => return false,
-      _ => {
-        // If we don't get a recognized option try again.
-        let msg_again = format!("Unrecognized option '{}' {}", ch, opts);
-        eprint!("{}", colors::bold(&msg_again));
-      }
-    };
-  }
+
+  confirm_prompt()
 }
 
 // When testing, permission prompt returns the value of STUB_PROMPT_VALUE
