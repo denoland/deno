@@ -1239,7 +1239,10 @@ fn permission_prompt(message: &str) -> bool {
 
       // For security reasons we must consume everything in stdin so that
       // previously buffered data cannot affect the prompt.
-      assert_eq!(FlushConsoleInputBuffer(stdin), 1);
+      assert_eq!(
+        FlushConsoleInputBuffer(stdin),
+        winapi::shared::minwindef::TRUE
+      );
 
       // At this point, we can't read anything from std::io::std or even
       // winapi's `ReadConsole` because it will still contain characters
@@ -1252,8 +1255,9 @@ fn permission_prompt(message: &str) -> bool {
         let mut input_record = std::mem::zeroed();
         assert_eq!(
           ReadConsoleInputW(stdin, &mut input_record, 1, &mut events_read),
-          1
+          winapi::shared::minwindef::TRUE
         );
+        assert_eq!(events_read, 1);
         if input_record.EventType == KEY_EVENT {
           let key_event = input_record.Event.KeyEvent();
           let char = *key_event.uChar.UnicodeChar();
