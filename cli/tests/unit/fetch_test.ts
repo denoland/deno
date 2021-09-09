@@ -1302,7 +1302,7 @@ unitTest(
         {
           method: "POST",
           body: new ReadableStream({
-            async pull(controller) {
+            pull(controller) {
               abortController.abort();
               controller.enqueue(new Uint8Array([1, 2, 3, 4]));
             },
