@@ -289,10 +289,33 @@ pub struct LintConfig {
   pub files: FilesConfig,
 }
 
-// enum TestWrap {
-//   Always,
-//   Never,
-//   Preserve,
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub enum TextWrap {
+  Always,
+  Never,
+  Preserve,
+}
+
+// impl std::str::FromStr for TextWrap {
+//   type Err = &str;
+
+//   fn from_str(s: &str) -> Result<Self, Self::Err> {
+//       match s {
+//           "always" => Ok(TextWrap::Always),
+//           "never" => Ok(TextWrap::Always),
+//           "preserver" => Ok(TextWrap::Always),
+//           _ => Err(ParseConfigurationError(String::from(s))),
+//       }
+//   }
+// }
+
+// impl std::string::ToString for $enum_name {
+//   fn to_string(&self) -> String {
+//       match self {
+//           $($enum_name::$member_name => String::from($string_value)),*,
+//       }
+//   }
 // }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -302,7 +325,7 @@ pub struct FmtOptionsConfig {
   pub line_width: Option<u32>,
   pub indent_width: Option<u32>,
   pub single_quote: Option<bool>,
-  // pub text_wrap:
+  pub text_wrap: Option<TextWrap>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -485,7 +508,8 @@ mod tests {
           "useTabs": true,
           "lineWidth": 80,
           "indentWidth": 4,
-          "singleQuote": true
+          "singleQuote": true,
+          "textWrap": "preserve"
         }
       }
     }"#;
