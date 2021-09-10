@@ -617,7 +617,6 @@ delete Object.prototype.__proto__;
   function bootstrapWorkerRuntime(
     runtimeOptions,
     name,
-    useDenoNamespace,
     internalName,
   ) {
     if (hasBootstrapped) {
@@ -684,23 +683,20 @@ delete Object.prototype.__proto__;
       close: core.close,
       ...denoNs,
     };
-    if (useDenoNamespace) {
-      if (unstableFlag) {
-        ObjectAssign(finalDenoNs, denoNsUnstable);
-      }
-      ObjectDefineProperties(finalDenoNs, {
-        pid: util.readOnly(pid),
-        noColor: util.readOnly(noColor),
-        args: util.readOnly(ObjectFreeze(args)),
-      });
-      // Setup `Deno` global - we're actually overriding already
-      // existing global `Deno` with `Deno` namespace from "./deno.ts".
-      ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
-      ObjectFreeze(globalThis.Deno.core);
-    } else {
-      delete globalThis.Deno;
-      util.assert(globalThis.Deno === undefined);
+    ObjectDefineProperties(finalDenoNs, {
+      pid: util.readOnly(pid),
+      noColor: util.readOnly(noColor),
+      args: util.readOnly(ObjectFreeze(args)),
+    });
+
+    if (unstableFlag) {
+      ObjectAssign(finalDenoNs, denoNsUnstable);
     }
+
+    // Setup `Deno` global - we're actually overriding already
+    // existing global `Deno` with `Deno` namespace from "./deno.ts".
+    ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
+    ObjectFreeze(globalThis.Deno.core);
   }
 
   ObjectDefineProperties(globalThis, {

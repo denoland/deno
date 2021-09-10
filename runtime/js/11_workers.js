@@ -5,6 +5,7 @@
   const core = window.Deno.core;
   const {
     ArrayIsArray,
+    ArrayPrototypeIncludes,
     ArrayPrototypeMap,
     Error,
     StringPrototypeStartsWith,
@@ -24,7 +25,6 @@
     specifier,
     hasSourceCode,
     sourceCode,
-    useDenoNamespace,
     permissions,
     name,
     workerType,
@@ -35,7 +35,6 @@
       permissions,
       sourceCode,
       specifier,
-      useDenoNamespace,
       workerType,
     });
   }
@@ -57,83 +56,69 @@
   }
 
   /**
-   * @param {string} permission
    * @return {boolean}
    */
-  function parseUnitPermission(
-    value,
-    permission,
-  ) {
-    if (value !== "inherit" && typeof value !== "boolean") {
-      throw new Error(
-        `Expected 'boolean' for ${permission} permission, ${typeof value} received`,
-      );
-    }
+  function normalizeUnitPermission(value) {
     return value === "inherit" ? undefined : value;
   }
 
   /**
-   * @param {string} permission
+   * @param {string} permName
    * @return {(boolean | string[])}
    */
-  function parseArrayPermission(
-    value,
-    permission,
-  ) {
-    if (typeof value === "string") {
-      if (value !== "inherit") {
-        throw new Error(
-          `Expected 'array' or 'boolean' for ${permission} permission, "${value}" received`,
-        );
-      }
-    } else if (!ArrayIsArray(value) && typeof value !== "boolean") {
-      throw new Error(
-        `Expected 'array' or 'boolean' for ${permission} permission, ${typeof value} received`,
-      );
-      //Casts URLs to absolute routes
+  function normalizeUnaryPermission(value, permName) {
+    if (value === "inherit") {
+      return undefined;
     } else if (ArrayIsArray(value)) {
-      value = ArrayPrototypeMap(value, (route) => {
+      return ArrayPrototypeMap(value, (route) => {
         if (route instanceof URL) {
-          if (permission === "net") {
-            throw new Error(
-              `Expected 'string' for net permission, received 'URL'`,
-            );
-          } else if (permission === "env") {
-            throw new Error(
-              `Expected 'string' for env permission, received 'URL'`,
-            );
-          } else {
+          if (ArrayPrototypeIncludes(["read", "write", "run"], permName)) {
             route = pathFromURL(route);
           }
         }
         return route;
       });
+    } else {
+      return value;
     }
-
-    return value === "inherit" ? undefined : value;
   }
 
   /**
-   * Normalizes data, runs checks on parameters and deletes inherited permissions
+   * Normalizes permissions options for deserializing in Rust:
+   * - Changes `"none"` to `{ <all perms>: false }`.
+   * - Changes any `"inherit"` to `undefined`.
+   * - Converts all file URLs in FS allowlists to paths.
    */
-  function parsePermissions({
-    env = "inherit",
-    hrtime = "inherit",
-    net = "inherit",
-    ffi = "inherit",
-    read = "inherit",
-    run = "inherit",
-    write = "inherit",
-  }) {
-    return {
-      env: parseUnitPermission(env, "env"),
-      hrtime: parseUnitPermission(hrtime, "hrtime"),
-      net: parseArrayPermission(net, "net"),
-      ffi: parseUnitPermission(ffi, "ffi"),
-      read: parseArrayPermission(read, "read"),
-      run: parseUnitPermission(run, "run"),
-      write: parseArrayPermission(write, "write"),
-    };
+  function normalizePermissions(permissions) {
+    if (permissions == null || permissions === "inherit") {
+      return undefined;
+    } else if (permissions === "none") {
+      return {
+        env: false,
+        hrtime: false,
+        net: false,
+        ffi: false,
+        read: false,
+        run: false,
+        write: false,
+      };
+    } else if (typeof permissions == "object") {
+      return {
+        env: normalizeUnitPermission(permissions.env ?? "inherit"),
+        hrtime: normalizeUnitPermission(permissions.hrtime ?? "inherit"),
+        net: normalizeUnaryPermission(permissions.net ?? "inherit", "net"),
+        ffi: normalizeUnitPermission(permissions.ffi ?? "inherit"),
+        read: normalizeUnaryPermission(permissions.read ?? "inherit", "read"),
+        run: normalizeUnaryPermission(permissions.run ?? "inherit", "run"),
+        write: normalizeUnaryPermission(
+          permissions.write ?? "inherit",
+          "write",
+        ),
+      };
+    } else {
+      // This should be a deserializing error in Rust.
+      return permissions;
+    }
   }
 
   class Worker extends EventTarget {
@@ -151,44 +136,12 @@
       super();
       specifier = String(specifier);
       const {
-        deno = {},
+        deno: {
+          permissions = "inherit",
+        } = {},
         name = "unknown",
         type = "classic",
       } = options;
-
-      // TODO(Soremwar)
-      // `deno: boolean` is kept for backwards compatibility with the previous
-      // worker options implementation. Remove for 2.0
-      let workerDenoAttributes;
-      if (typeof deno == "boolean") {
-        workerDenoAttributes = {
-          // Change this to enable the Deno namespace by default
-          namespace: deno,
-          permissions: null,
-        };
-      } else {
-        workerDenoAttributes = {
-          // Change this to enable the Deno namespace by default
-          namespace: !!(deno?.namespace ?? false),
-          permissions: (deno?.permissions ?? "inherit") === "inherit"
-            ? null
-            : deno?.permissions,
-        };
-
-        // If the permission option is set to "none", all permissions
-        // must be removed from the worker
-        if (workerDenoAttributes.permissions === "none") {
-          workerDenoAttributes.permissions = {
-            env: false,
-            hrtime: false,
-            net: false,
-            ffi: false,
-            read: false,
-            run: false,
-            write: false,
-          };
-        }
-      }
 
       const workerType = webidl.converters["WorkerType"](type);
 
@@ -217,10 +170,7 @@
         specifier,
         hasSourceCode,
         sourceCode,
-        workerDenoAttributes.namespace,
-        workerDenoAttributes.permissions === null
-          ? null
-          : parsePermissions(workerDenoAttributes.permissions),
+        normalizePermissions(permissions),
         options?.name,
         workerType,
       );
@@ -228,6 +178,7 @@
       this.#pollControl();
       this.#pollMessages();
     }
+
     #handleError(e) {
       const event = new ErrorEvent("error", {
         cancelable: true,
@@ -363,7 +314,7 @@
   ]);
 
   window.__bootstrap.worker = {
-    parsePermissions,
+    normalizePermissions,
     Worker,
   };
 })(this);

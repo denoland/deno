@@ -286,46 +286,6 @@ Deno.test({
 });
 
 Deno.test({
-  name: "worker with Deno namespace",
-  fn: async function () {
-    const promise = deferred();
-    const promise2 = deferred();
-
-    const regularWorker = new Worker(
-      new URL("non_deno_worker.js", import.meta.url),
-      { type: "module" },
-    );
-    const denoWorker = new Worker(
-      new URL("deno_worker.ts", import.meta.url),
-      {
-        type: "module",
-        deno: {
-          namespace: true,
-          permissions: "inherit",
-        },
-      },
-    );
-
-    regularWorker.onmessage = (e) => {
-      assertEquals(e.data, "Hello World");
-      regularWorker.terminate();
-      promise.resolve();
-    };
-
-    denoWorker.onmessage = (e) => {
-      assertEquals(e.data, "Hello World");
-      denoWorker.terminate();
-      promise2.resolve();
-    };
-
-    regularWorker.postMessage("Hello World");
-    await promise;
-    denoWorker.postMessage("Hello World");
-    await promise2;
-  },
-});
-
-Deno.test({
   name: "worker with crypto in scope",
   fn: async function () {
     const promise = deferred();
@@ -415,7 +375,6 @@ Deno.test("Worker inherits permissions", async function () {
     {
       type: "module",
       deno: {
-        namespace: true,
         permissions: "inherit",
       },
     },
@@ -439,7 +398,6 @@ Deno.test("Worker limit children permissions", async function () {
     {
       type: "module",
       deno: {
-        namespace: true,
         permissions: {
           read: false,
         },
@@ -465,7 +423,6 @@ Deno.test("Worker limit children permissions granularly", async function () {
     {
       type: "module",
       deno: {
-        namespace: true,
         permissions: {
           read: [
             new URL("./read_check_worker.js", import.meta.url),
@@ -519,7 +476,6 @@ Deno.test("Nested worker limit children permissions", async function () {
     {
       type: "module",
       deno: {
-        namespace: true,
         permissions: "inherit",
       },
     },
@@ -547,7 +503,6 @@ Deno.test("Nested worker limit children permissions granularly", async function 
     {
       type: "module",
       deno: {
-        namespace: true,
         permissions: {
           read: [
             new URL("./read_check_granular_worker.js", import.meta.url),
@@ -610,7 +565,6 @@ Deno.test("Worker initialization throws on worker permissions greater than paren
         {
           type: "module",
           deno: {
-            namespace: true,
             permissions: {
               env: true,
             },
@@ -632,7 +586,6 @@ Deno.test("Worker with disabled permissions", async function () {
     {
       type: "module",
       deno: {
-        namespace: true,
         permissions: "none",
       },
     },
@@ -718,7 +671,6 @@ Deno.test({
       {
         type: "module",
         deno: {
-          namespace: true,
           permissions: "inherit",
         },
       },

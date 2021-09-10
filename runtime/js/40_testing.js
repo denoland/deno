@@ -3,7 +3,7 @@
 
 ((window) => {
   const core = window.Deno.core;
-  const { parsePermissions } = window.__bootstrap.worker;
+  const { normalizePermissions } = window.__bootstrap.worker;
   const { setExitHandler } = window.__bootstrap.os;
   const { Console, inspectArgs } = window.__bootstrap.console;
   const { metrics } = window.__bootstrap.metrics;
@@ -109,7 +109,7 @@ finishing test case.`;
     function pledgePermissions(permissions) {
       return core.opSync(
         "op_pledge_test_permissions",
-        parsePermissions(permissions),
+        normalizePermissions(permissions),
       );
     }
 
@@ -179,7 +179,7 @@ finishing test case.`;
     if (testDef.permissions) {
       testDef.fn = withPermissions(
         testDef.fn,
-        parsePermissions(testDef.permissions),
+        normalizePermissions(testDef.permissions),
       );
     }
 

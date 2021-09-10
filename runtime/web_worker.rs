@@ -253,7 +253,6 @@ pub struct WebWorker {
   pub js_runtime: JsRuntime,
   pub name: String,
   internal_handle: WebWorkerInternalHandle,
-  pub use_deno_namespace: bool,
   pub worker_type: WebWorkerType,
   pub main_module: ModuleSpecifier,
 }
@@ -271,7 +270,6 @@ pub struct WebWorkerOptions {
   pub module_loader: Rc<dyn ModuleLoader>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub js_error_create_fn: Option<Rc<JsErrorCreateFn>>,
-  pub use_deno_namespace: bool,
   pub worker_type: WebWorkerType,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub apply_source_maps: bool,
@@ -308,7 +306,7 @@ impl WebWorker {
       })
       .build();
 
-    let mut extensions: Vec<Extension> = vec![
+    let extensions: Vec<Extension> = vec![
       // Web APIs
       deno_webidl::init(),
       deno_console::init(),
@@ -340,43 +338,27 @@ impl WebWorker {
       metrics::init(),
       // Permissions ext (worker specific state)
       perm_ext,
-    ];
-
-    // Runtime ops that are always initialized for WebWorkers
-    let runtime_exts = vec![
       ops::web_worker::init(),
       ops::runtime::init(main_module.clone()),
       ops::worker_host::init(options.create_web_worker_cb.clone()),
       ops::io::init(),
+      ops::fs_events::init(),
+      ops::fs::init(),
+      deno_tls::init(),
+      deno_net::init::<Permissions>(
+        options.root_cert_store.clone(),
+        options.unstable,
+        options.unsafely_ignore_certificate_errors.clone(),
+      ),
+      ops::os::init(),
+      ops::permissions::init(),
+      ops::process::init(),
+      ops::signal::init(),
+      ops::tty::init(),
+      deno_http::init(),
+      ops::http::init(),
+      ops::io::init_stdio(),
     ];
-
-    // Extensions providing Deno.* features
-    let deno_ns_exts = if options.use_deno_namespace {
-      vec![
-        ops::fs_events::init(),
-        ops::fs::init(),
-        deno_tls::init(),
-        deno_net::init::<Permissions>(
-          options.root_cert_store.clone(),
-          options.unstable,
-          options.unsafely_ignore_certificate_errors.clone(),
-        ),
-        ops::os::init(),
-        ops::permissions::init(),
-        ops::process::init(),
-        ops::signal::init(),
-        ops::tty::init(),
-        deno_http::init(),
-        ops::http::init(),
-        ops::io::init_stdio(),
-      ]
-    } else {
-      vec![]
-    };
-
-    // Append exts
-    extensions.extend(runtime_exts);
-    extensions.extend(deno_ns_exts); // May be empty
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
@@ -408,7 +390,6 @@ impl WebWorker {
         js_runtime,
         name,
         internal_handle,
-        use_deno_namespace: options.use_deno_namespace,
         worker_type: options.worker_type,
         main_module,
       },
@@ -440,8 +421,8 @@ impl WebWorker {
     // Instead of using name for log we use `worker-${id}` because
     // WebWorkers can have empty string as name.
     let script = format!(
-      "bootstrap.workerRuntime({}, \"{}\", {}, \"{}\")",
-      runtime_options_str, self.name, options.use_deno_namespace, self.id
+      "bootstrap.workerRuntime({}, \"{}\", \"{}\")",
+      runtime_options_str, self.name, self.id
     );
     self
       .execute_script(&located_script_name!(), &script)

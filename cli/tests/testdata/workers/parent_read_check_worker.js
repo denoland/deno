@@ -8,7 +8,6 @@ onmessage = async () => {
     {
       type: "module",
       deno: {
-        namespace: true,
         permissions: {
           read: false,
         },

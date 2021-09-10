@@ -3,7 +3,6 @@ const worker = new Worker(
   {
     type: "module",
     deno: {
-      namespace: true,
       permissions: {
         read: [],
       },

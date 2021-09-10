@@ -1311,9 +1311,6 @@ declare function fetch(
 declare interface WorkerOptions {
   /** UNSTABLE: New API.
    *
-   * Set deno.namespace to `true` to make `Deno` namespace and all of its
-   * methods available to the worker environment. Defaults to `false`.
-   *
    * Configure deno.permissions options to change the level of access the worker will
    * have. By default it will inherit the permissions of its parent thread. The permissions
    * of a worker can't be extended beyond its parent's permissions reach.
@@ -1330,7 +1327,6 @@ declare interface WorkerOptions {
    *   new URL("deno_worker.ts", import.meta.url).href, {
    *     type: "module",
    *     deno: {
-   *       namespace: true,
    *       permissions: {
    *         read: true,
    *       },
@@ -1339,11 +1335,7 @@ declare interface WorkerOptions {
    * );
    * ```
    */
-  // TODO(Soremwar)
-  // `deno: boolean` is kept for backwards compatibility with the previous
-  // worker options implementation. Remove for 2.0.
-  deno?: boolean | {
-    namespace?: boolean;
+  deno?: {
     /** Set to `"none"` to disable all the permissions in the worker. */
     permissions?: "inherit" | "none" | {
       env?: "inherit" | boolean | string[];
