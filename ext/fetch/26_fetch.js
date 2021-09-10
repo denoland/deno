@@ -219,7 +219,9 @@
 
     function onAbort() {
       core.tryClose(cancelHandleRid);
-      core.tryClose(requestBodyRid);
+      if (requestBodyRid !== null) {
+        core.tryClose(requestBodyRid);
+      }
     }
     terminator[abortSignal.add](onAbort);
 
