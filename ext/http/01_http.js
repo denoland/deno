@@ -297,13 +297,12 @@
 
           ws[_eventLoop]();
         }
-      } else {
+      } else if (typeof requestRid === "number") {
         // Try to close "request" resource. It might have been already consumed,
-        // but if it hasn't been we need to close it here to avoid resource leak.
-        try {
-          SetPrototypeDelete(httpConn.managedResources, requestRid);
-          core.close(requestRid);
-        } catch { /* pass */ }
+        // but if it hasn't been we need to close it here to avoid resource
+        // leak.
+        SetPrototypeDelete(httpConn.managedResources, requestRid);
+        core.tryClose(requestRid);
       }
     };
   }
