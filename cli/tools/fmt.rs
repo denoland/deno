@@ -9,6 +9,8 @@
 
 use crate::colors;
 use crate::config_file::FmtConfig;
+use crate::config_file::FmtOptionsConfig;
+use crate::config_file::TextWrap;
 use crate::diff::diff;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
@@ -65,6 +67,8 @@ pub async fn format(
     }
   }
 
+  let fmt_options = maybe_fmt_config.map(|c| c.options).unwrap_or_default();
+
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
     let result =
@@ -78,7 +82,7 @@ pub async fn format(
           } else {
             files
           };
-          (collected_files, maybe_fmt_config.clone())
+          (collected_files, fmt_options.clone())
         },
       );
     let paths_to_watch = include_files.clone();
@@ -95,26 +99,25 @@ pub async fn format(
       }
     }
   };
-  let operation =
-    |(paths, maybe_fmt_config): (Vec<PathBuf>, Option<FmtConfig>)| async move {
-      if check {
-        check_source_files(paths, maybe_fmt_config).await?;
-      } else {
-        format_source_files(paths, maybe_fmt_config).await?;
-      }
-      Ok(())
-    };
+  let operation = |(paths, fmt_options): (Vec<PathBuf>, FmtOptionsConfig)| async move {
+    if check {
+      check_source_files(paths, fmt_options).await?;
+    } else {
+      format_source_files(paths, fmt_options).await?;
+    }
+    Ok(())
+  };
 
   if watch {
     file_watcher::watch_func(resolver, operation, "Fmt").await?;
   } else {
-    let (files, maybe_fmt_config) =
+    let (files, fmt_options) =
       if let ResolutionResult::Restart { result, .. } = resolver(None).await {
         result?
       } else {
         return Err(generic_error("No target files found."));
       };
-    operation((files, maybe_fmt_config)).await?;
+    operation((files, fmt_options)).await?;
   }
 
   Ok(())
@@ -122,10 +125,14 @@ pub async fn format(
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks
 /// (ts/tsx, js/jsx).
-fn format_markdown(file_text: &str) -> Result<String, String> {
+fn format_markdown(
+  file_text: &str,
+  fmt_options: &FmtOptionsConfig,
+) -> Result<String, String> {
+  let markdown_config = get_resolved_markdown_config(fmt_options);
   dprint_plugin_markdown::format_text(
     file_text,
-    &MARKDOWN_CONFIG,
+    &markdown_config,
     move |tag, text, line_width| {
       let tag = tag.to_lowercase();
       if matches!(
@@ -148,13 +155,14 @@ fn format_markdown(file_text: &str) -> Result<String, String> {
         };
 
         if matches!(extension, "json" | "jsonc") {
-          let mut json_config = JSON_CONFIG.clone();
+          let mut json_config = get_resolved_json_config(fmt_options);
           json_config.line_width = line_width;
           dprint_plugin_json::format_text(text, &json_config)
         } else {
           let fake_filename =
             PathBuf::from(format!("deno_fmt_stdin.{}", extension));
-          let mut codeblock_config = TYPESCRIPT_CONFIG.clone();
+          let mut codeblock_config =
+            get_resolved_typescript_config(fmt_options);
           codeblock_config.line_width = line_width;
           dprint_plugin_typescript::format_text(
             &fake_filename,
@@ -173,29 +181,29 @@ fn format_markdown(file_text: &str) -> Result<String, String> {
 /// Formats JSON and JSONC using the rules provided by .deno()
 /// of configuration builder of <https://github.com/dprint/dprint-plugin-json>.
 /// See <https://git.io/Jt4ht> for configuration.
-fn format_json(file_text: &str) -> Result<String, String> {
-  dprint_plugin_json::format_text(file_text, &JSON_CONFIG)
-    .map_err(|e| e.to_string())
+fn format_json(
+  file_text: &str,
+  fmt_options: &FmtOptionsConfig,
+) -> Result<String, String> {
+  let config = get_resolved_json_config(fmt_options);
+  dprint_plugin_json::format_text(file_text, &config).map_err(|e| e.to_string())
 }
 
 /// Formats a single TS, TSX, JS, JSX, JSONC, JSON, or MD file.
 pub fn format_file(
   file_path: &Path,
   file_text: &str,
-  _maybe_fmt_config: Option<FmtConfig>,
+  fmt_options: FmtOptionsConfig,
 ) -> Result<String, String> {
   let ext = get_extension(file_path).unwrap_or_else(String::new);
   if ext == "md" {
-    format_markdown(file_text)
+    format_markdown(file_text, &fmt_options)
   } else if matches!(ext.as_str(), "json" | "jsonc") {
-    format_json(file_text)
+    format_json(file_text, &fmt_options)
   } else {
-    dprint_plugin_typescript::format_text(
-      file_path,
-      file_text,
-      &TYPESCRIPT_CONFIG,
-    )
-    .map_err(|e| e.to_string())
+    let config = get_resolved_typescript_config(&fmt_options);
+    dprint_plugin_typescript::format_text(file_path, file_text, &config)
+      .map_err(|e| e.to_string())
   }
 }
 
@@ -212,13 +220,14 @@ pub fn format_parsed_module(parsed_source: &ParsedSource) -> String {
       module: parsed_source.module(),
       tokens: parsed_source.tokens(),
     },
-    &TYPESCRIPT_CONFIG,
+    // TODO(bartlomieju): should use `FmtOptionsConfig` from LSP
+    &get_resolved_typescript_config(&FmtOptionsConfig::default()),
   )
 }
 
 async fn check_source_files(
   paths: Vec<PathBuf>,
-  maybe_fmt_config: Option<FmtConfig>,
+  fmt_options: FmtOptionsConfig,
 ) -> Result<(), AnyError> {
   let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
   let checked_files_count = Arc::new(AtomicUsize::new(0));
@@ -233,7 +242,7 @@ async fn check_source_files(
       checked_files_count.fetch_add(1, Ordering::Relaxed);
       let file_text = read_file_contents(&file_path)?.text;
 
-      match format_file(&file_path, &file_text, maybe_fmt_config.clone()) {
+      match format_file(&file_path, &file_text, fmt_options.clone()) {
         Ok(formatted_text) => {
           if formatted_text != file_text {
             not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
@@ -274,7 +283,7 @@ async fn check_source_files(
 
 async fn format_source_files(
   paths: Vec<PathBuf>,
-  maybe_fmt_config: Option<FmtConfig>,
+  fmt_options: FmtOptionsConfig,
 ) -> Result<(), AnyError> {
   let formatted_files_count = Arc::new(AtomicUsize::new(0));
   let checked_files_count = Arc::new(AtomicUsize::new(0));
@@ -287,11 +296,7 @@ async fn format_source_files(
       checked_files_count.fetch_add(1, Ordering::Relaxed);
       let file_contents = read_file_contents(&file_path)?;
 
-      match format_file(
-        &file_path,
-        &file_contents.text,
-        maybe_fmt_config.clone(),
-      ) {
+      match format_file(&file_path, &file_contents.text, fmt_options.clone()) {
         Ok(formatted_text) => {
           if formatted_text != file_contents.text {
             write_file_contents(
@@ -340,7 +345,7 @@ async fn format_source_files(
 pub fn format_stdin(
   check: bool,
   ext: String,
-  maybe_fmt_config: Option<FmtConfig>,
+  fmt_options: FmtOptionsConfig,
 ) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
@@ -348,7 +353,7 @@ pub fn format_stdin(
   }
   let file_path = PathBuf::from(format!("_stdin.{}", ext));
 
-  match format_file(&file_path, &source, maybe_fmt_config) {
+  match format_file(&file_path, &source, fmt_options) {
     Ok(formatted_text) => {
       if check {
         if formatted_text != source {
@@ -373,18 +378,84 @@ fn files_str(len: usize) -> &'static str {
   }
 }
 
-lazy_static::lazy_static! {
-  static ref TYPESCRIPT_CONFIG: dprint_plugin_typescript::configuration::Configuration = dprint_plugin_typescript::configuration::ConfigurationBuilder::new()
-    .deno()
-    .build();
+fn get_resolved_typescript_config(
+  options: &FmtOptionsConfig,
+) -> dprint_plugin_typescript::configuration::Configuration {
+  let mut builder =
+    dprint_plugin_typescript::configuration::ConfigurationBuilder::new();
+  builder.deno();
 
-  static ref MARKDOWN_CONFIG: dprint_plugin_markdown::configuration::Configuration = dprint_plugin_markdown::configuration::ConfigurationBuilder::new()
-    .deno()
-    .build();
+  if let Some(use_tabs) = options.use_tabs {
+    builder.use_tabs(use_tabs);
+  }
 
-  static ref JSON_CONFIG: dprint_plugin_json::configuration::Configuration = dprint_plugin_json::configuration::ConfigurationBuilder::new()
-    .deno()
-    .build();
+  if let Some(line_width) = options.line_width {
+    builder.line_width(line_width);
+  }
+
+  if let Some(indent_width) = options.indent_width {
+    builder.indent_width(indent_width);
+  }
+
+  if let Some(single_quote) = options.single_quote {
+    if single_quote {
+      builder.quote_style(
+        dprint_plugin_typescript::configuration::QuoteStyle::AlwaysSingle,
+      );
+    }
+  }
+
+  builder.build()
+}
+
+fn get_resolved_markdown_config(
+  options: &FmtOptionsConfig,
+) -> dprint_plugin_markdown::configuration::Configuration {
+  let mut builder =
+    dprint_plugin_markdown::configuration::ConfigurationBuilder::new();
+
+  builder.deno();
+
+  if let Some(line_width) = options.line_width {
+    builder.line_width(line_width);
+  }
+
+  if let Some(text_wrap) = &options.text_wrap {
+    builder.text_wrap(match text_wrap {
+      TextWrap::Always => {
+        dprint_plugin_markdown::configuration::TextWrap::Always
+      }
+      TextWrap::Never => dprint_plugin_markdown::configuration::TextWrap::Never,
+      TextWrap::Preserve => {
+        dprint_plugin_markdown::configuration::TextWrap::Maintain
+      }
+    });
+  }
+
+  builder.build()
+}
+
+fn get_resolved_json_config(
+  options: &FmtOptionsConfig,
+) -> dprint_plugin_json::configuration::Configuration {
+  let mut builder =
+    dprint_plugin_json::configuration::ConfigurationBuilder::new();
+
+  builder.deno();
+
+  if let Some(use_tabs) = options.use_tabs {
+    builder.use_tabs(use_tabs);
+  }
+
+  if let Some(line_width) = options.line_width {
+    builder.line_width(line_width);
+  }
+
+  if let Some(indent_width) = options.indent_width {
+    builder.indent_width(indent_width);
+  }
+
+  builder.build()
 }
 
 struct FileContents {

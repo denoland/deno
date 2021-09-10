@@ -289,7 +289,7 @@ pub struct LintConfig {
   pub files: FilesConfig,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub enum TextWrap {
   Always,
@@ -302,7 +302,7 @@ pub enum TextWrap {
 pub struct FmtOptionsConfig {
   pub use_tabs: Option<bool>,
   pub line_width: Option<u32>,
-  pub indent_width: Option<u32>,
+  pub indent_width: Option<u8>,
   pub single_quote: Option<bool>,
   pub text_wrap: Option<TextWrap>,
 }

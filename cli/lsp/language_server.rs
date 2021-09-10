@@ -1015,7 +1015,11 @@ impl Inner {
         None => {
           // it's not a js/ts file, so attempt to format its contents
           // TODO(bartlomieju): add support for `fmt_config` from config file
-          format_file(&file_path, source.text_info().text_str(), None)
+          format_file(
+            &file_path,
+            source.text_info().text_str(),
+            Default::default(),
+          )
         }
       };
 

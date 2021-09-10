@@ -818,7 +818,7 @@ async fn format_command(
     return tools::fmt::format_stdin(
       fmt_flags.check,
       fmt_flags.ext,
-      maybe_fmt_config,
+      maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
     );
   }
 
