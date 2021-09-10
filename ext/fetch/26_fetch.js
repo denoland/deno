@@ -218,7 +218,9 @@
     }, reqBody instanceof Uint8Array ? reqBody : null);
 
     function onAbort() {
-      core.tryClose(cancelHandleRid);
+      if (cancelHandleRid !== null) {
+        core.tryClose(cancelHandleRid);
+      }
       if (requestBodyRid !== null) {
         core.tryClose(requestBodyRid);
       }
@@ -269,7 +271,9 @@
         throw err;
       });
     } finally {
-      core.tryClose(cancelHandleRid);
+      if (cancelHandleRid !== null) {
+        core.tryClose(cancelHandleRid);
+      }
     }
     if (terminator.aborted) return abortedNetworkError();
 
