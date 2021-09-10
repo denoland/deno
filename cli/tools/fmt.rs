@@ -36,25 +36,55 @@ pub async fn format(
   ignore: Vec<PathBuf>,
   check: bool,
   watch: bool,
-  _maybe_fmt_config: Option<FmtConfig>,
+  maybe_fmt_config: Option<FmtConfig>,
 ) -> Result<(), AnyError> {
+  // First, prepare final configuration.
+  // Collect included and ignored files. CLI flags take precendence
+  // over config file, ie. if there's `files.ignore` in config file
+  // and `--ignore` CLI flag, only the flag value is taken into account.
+  let mut include_files = args.clone();
+  let mut exclude_files = ignore;
+
+  if let Some(fmt_config) = maybe_fmt_config.as_ref() {
+    if include_files.is_empty() {
+      include_files = fmt_config
+        .files
+        .include
+        .iter()
+        .map(PathBuf::from)
+        .collect::<Vec<PathBuf>>();
+    }
+
+    if exclude_files.is_empty() {
+      exclude_files = fmt_config
+        .files
+        .exclude
+        .iter()
+        .map(PathBuf::from)
+        .collect::<Vec<PathBuf>>();
+    }
+  }
+
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
     let result =
-      collect_files(&args, &ignore, is_supported_ext_fmt).map(|files| {
-        if let Some(paths) = changed {
-          files
-            .into_iter()
-            .filter(|path| paths.contains(path))
-            .collect::<Vec<_>>()
-        } else {
-          files
-        }
-      });
-    let paths_to_watch = args.clone();
+      collect_files(&include_files, &exclude_files, is_supported_ext_fmt).map(
+        |files| {
+          let collected_files = if let Some(paths) = changed {
+            files
+              .into_iter()
+              .filter(|path| paths.contains(path))
+              .collect::<Vec<_>>()
+          } else {
+            files
+          };
+          (collected_files, maybe_fmt_config.clone())
+        },
+      );
+    let paths_to_watch = include_files.clone();
     async move {
       if (files_changed || !watch)
-        && matches!(result, Ok(ref files) if files.is_empty())
+        && matches!(result, Ok((ref files, _)) if files.is_empty())
       {
         ResolutionResult::Ignore
       } else {
@@ -65,25 +95,26 @@ pub async fn format(
       }
     }
   };
-  let operation = |paths: Vec<PathBuf>| async move {
-    if check {
-      check_source_files(paths).await?;
-    } else {
-      format_source_files(paths).await?;
-    }
-    Ok(())
-  };
+  let operation =
+    |(paths, maybe_fmt_config): (Vec<PathBuf>, Option<FmtConfig>)| async move {
+      if check {
+        check_source_files(paths, maybe_fmt_config).await?;
+      } else {
+        format_source_files(paths, maybe_fmt_config).await?;
+      }
+      Ok(())
+    };
 
   if watch {
     file_watcher::watch_func(resolver, operation, "Fmt").await?;
   } else {
-    let files =
+    let (files, maybe_fmt_config) =
       if let ResolutionResult::Restart { result, .. } = resolver(None).await {
         result?
       } else {
         return Err(generic_error("No target files found."));
       };
-    operation(files).await?;
+    operation((files, maybe_fmt_config)).await?;
   }
 
   Ok(())
@@ -151,6 +182,7 @@ fn format_json(file_text: &str) -> Result<String, String> {
 pub fn format_file(
   file_path: &Path,
   file_text: &str,
+  _maybe_fmt_config: Option<FmtConfig>,
 ) -> Result<String, String> {
   let ext = get_extension(file_path).unwrap_or_else(String::new);
   if ext == "md" {
@@ -184,7 +216,10 @@ pub fn format_parsed_module(parsed_source: &ParsedSource) -> String {
   )
 }
 
-async fn check_source_files(paths: Vec<PathBuf>) -> Result<(), AnyError> {
+async fn check_source_files(
+  paths: Vec<PathBuf>,
+  maybe_fmt_config: Option<FmtConfig>,
+) -> Result<(), AnyError> {
   let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
   let checked_files_count = Arc::new(AtomicUsize::new(0));
 
@@ -198,7 +233,7 @@ async fn check_source_files(paths: Vec<PathBuf>) -> Result<(), AnyError> {
       checked_files_count.fetch_add(1, Ordering::Relaxed);
       let file_text = read_file_contents(&file_path)?.text;
 
-      match format_file(&file_path, &file_text) {
+      match format_file(&file_path, &file_text, maybe_fmt_config.clone()) {
         Ok(formatted_text) => {
           if formatted_text != file_text {
             not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
@@ -237,7 +272,10 @@ async fn check_source_files(paths: Vec<PathBuf>) -> Result<(), AnyError> {
   }
 }
 
-async fn format_source_files(paths: Vec<PathBuf>) -> Result<(), AnyError> {
+async fn format_source_files(
+  paths: Vec<PathBuf>,
+  maybe_fmt_config: Option<FmtConfig>,
+) -> Result<(), AnyError> {
   let formatted_files_count = Arc::new(AtomicUsize::new(0));
   let checked_files_count = Arc::new(AtomicUsize::new(0));
   let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
@@ -249,7 +287,11 @@ async fn format_source_files(paths: Vec<PathBuf>) -> Result<(), AnyError> {
       checked_files_count.fetch_add(1, Ordering::Relaxed);
       let file_contents = read_file_contents(&file_path)?;
 
-      match format_file(&file_path, &file_contents.text) {
+      match format_file(
+        &file_path,
+        &file_contents.text,
+        maybe_fmt_config.clone(),
+      ) {
         Ok(formatted_text) => {
           if formatted_text != file_contents.text {
             write_file_contents(
@@ -295,14 +337,18 @@ async fn format_source_files(paths: Vec<PathBuf>) -> Result<(), AnyError> {
 /// Format stdin and write result to stdout.
 /// Treats input as TypeScript or as set by `--ext` flag.
 /// Compatible with `--check` flag.
-pub fn format_stdin(check: bool, ext: String) -> Result<(), AnyError> {
+pub fn format_stdin(
+  check: bool,
+  ext: String,
+  maybe_fmt_config: Option<FmtConfig>,
+) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
     return Err(generic_error("Failed to read from stdin"));
   }
   let file_path = PathBuf::from(format!("_stdin.{}", ext));
 
-  match format_file(&file_path, &source) {
+  match format_file(&file_path, &source, maybe_fmt_config) {
     Ok(formatted_text) => {
       if check {
         if formatted_text != source {

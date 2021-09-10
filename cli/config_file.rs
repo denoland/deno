@@ -297,27 +297,6 @@ pub enum TextWrap {
   Preserve,
 }
 
-// impl std::str::FromStr for TextWrap {
-//   type Err = &str;
-
-//   fn from_str(s: &str) -> Result<Self, Self::Err> {
-//       match s {
-//           "always" => Ok(TextWrap::Always),
-//           "never" => Ok(TextWrap::Always),
-//           "preserver" => Ok(TextWrap::Always),
-//           _ => Err(ParseConfigurationError(String::from(s))),
-//       }
-//   }
-// }
-
-// impl std::string::ToString for $enum_name {
-//   fn to_string(&self) -> String {
-//       match self {
-//           $($enum_name::$member_name => String::from($string_value)),*,
-//       }
-//   }
-// }
-
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct FmtOptionsConfig {

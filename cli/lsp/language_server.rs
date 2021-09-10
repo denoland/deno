@@ -1009,11 +1009,13 @@ impl Inner {
     let source = document_data.source().clone();
     let text_edits = tokio::task::spawn_blocking(move || {
       let format_result = match source.module() {
+        // TODO(bartlomieju): add support for `fmt_config` from config file
         Some(Ok(parsed_module)) => Ok(format_parsed_module(parsed_module)),
         Some(Err(err)) => Err(err.to_string()),
         None => {
           // it's not a js/ts file, so attempt to format its contents
-          format_file(&file_path, source.text_info().text_str())
+          // TODO(bartlomieju): add support for `fmt_config` from config file
+          format_file(&file_path, source.text_info().text_str(), None)
         }
       };
 
