@@ -10,7 +10,6 @@ use crate::module_graph::parse_deno_types;
 use crate::module_graph::parse_ts_reference;
 use crate::module_graph::TypeScriptReference;
 use crate::tools::lint::create_linter;
-use import_map::ImportMap;
 
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::common::DUMMY_SP;
@@ -30,6 +29,7 @@ use deno_core::url;
 use deno_core::ModuleResolutionError;
 use deno_core::ModuleSpecifier;
 use deno_lint::rules;
+use import_map::ImportMap;
 use lspower::lsp;
 use lspower::lsp::Position;
 use lspower::lsp::Range;

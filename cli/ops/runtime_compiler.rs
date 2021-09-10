@@ -7,7 +7,6 @@ use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
 use crate::specifier_handler::MemoryHandler;
 use crate::specifier_handler::SpecifierHandler;
-use import_map::ImportMap;
 
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
@@ -20,6 +19,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_runtime::permissions::Permissions;
+use import_map::ImportMap;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
