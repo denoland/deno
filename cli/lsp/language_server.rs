@@ -56,10 +56,10 @@ use crate::config_file::ConfigFile;
 use crate::config_file::TsConfig;
 use crate::deno_dir;
 use crate::fs_util;
-use crate::import_map::ImportMap;
 use crate::logger;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_module;
+use import_map::ImportMap;
 
 pub const REGISTRIES_PATH: &str = "registries";
 const SOURCES_PATH: &str = "deps";

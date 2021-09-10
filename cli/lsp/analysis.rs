@@ -5,12 +5,12 @@ use super::tsc;
 
 use crate::ast;
 use crate::ast::Location;
-use crate::import_map::ImportMap;
 use crate::lsp::documents::DocumentData;
 use crate::module_graph::parse_deno_types;
 use crate::module_graph::parse_ts_reference;
 use crate::module_graph::TypeScriptReference;
 use crate::tools::lint::create_linter;
+use import_map::ImportMap;
 
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::common::DUMMY_SP;

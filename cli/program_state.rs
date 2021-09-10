@@ -7,7 +7,6 @@ use crate::file_fetcher::CacheSetting;
 use crate::file_fetcher::FileFetcher;
 use crate::flags;
 use crate::http_cache;
-use crate::import_map::ImportMap;
 use crate::lockfile::Lockfile;
 use crate::module_graph::CheckOptions;
 use crate::module_graph::GraphBuilder;
@@ -21,6 +20,7 @@ use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::Permissions;
+use import_map::ImportMap;
 
 use deno_core::error::anyhow;
 use deno_core::error::get_custom_error_class;

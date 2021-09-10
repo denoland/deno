@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::import_map::ImportMap;
 use crate::module_graph::BundleType;
 use crate::module_graph::EmitOptions;
 use crate::module_graph::GraphBuilder;
@@ -8,6 +7,7 @@ use crate::program_state::ProgramState;
 use crate::specifier_handler::FetchHandler;
 use crate::specifier_handler::MemoryHandler;
 use crate::specifier_handler::SpecifierHandler;
+use import_map::ImportMap;
 
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
