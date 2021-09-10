@@ -207,7 +207,10 @@ pub fn format_file(
   }
 }
 
-pub fn format_parsed_module(parsed_source: &ParsedSource) -> String {
+pub fn format_parsed_module(
+  parsed_source: &ParsedSource,
+  fmt_options: FmtOptionsConfig,
+) -> String {
   dprint_plugin_typescript::format_parsed_file(
     &dprint_plugin_typescript::SourceFileInfo {
       is_jsx: matches!(
@@ -220,8 +223,7 @@ pub fn format_parsed_module(parsed_source: &ParsedSource) -> String {
       module: parsed_source.module(),
       tokens: parsed_source.tokens(),
     },
-    // TODO(bartlomieju): should use `FmtOptionsConfig` from LSP
-    &get_resolved_typescript_config(&FmtOptionsConfig::default()),
+    &get_resolved_typescript_config(&fmt_options),
   )
 }
 
@@ -420,7 +422,7 @@ fn get_resolved_markdown_config(
     builder.line_width(line_width);
   }
 
-  if let Some(text_wrap) = &options.text_wrap {
+  if let Some(text_wrap) = options.text_wrap {
     builder.text_wrap(match text_wrap {
       TextWrap::Always => {
         dprint_plugin_markdown::configuration::TextWrap::Always
