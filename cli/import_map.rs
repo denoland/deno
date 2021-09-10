@@ -197,12 +197,28 @@ impl ImportMap {
     // the url since it contains what looks to be a uri scheme. To work around
     // this, we append the specifier to the path segments of the base url when
     // the specifier is not relative or absolute.
+    let mut maybe_query_string = None;
     if !is_relative_or_absolute_specifier && base.path_segments_mut().is_ok() {
       {
         let mut segments = base.path_segments_mut().unwrap();
         segments.pop_if_empty();
-        segments.extend(specifier.split('/'));
+
+        // Handle query string first, otherwise it would be percent-encoded
+        // by `extend()`
+        let mut parts: Vec<&str> = specifier.split('?').collect();
+        assert!(parts.len() == 1 || parts.len() == 2);
+        if parts.len() == 2 {
+          maybe_query_string = parts.pop();
+        }
+
+        segments.extend(parts[0].split('/'));
       }
+
+      // Append query string back, if it exists
+      if let Some(query_string) = maybe_query_string {
+        base.set_query(Some(query_string));
+      }
+
       Ok(base)
     } else {
       Ok(base.join(specifier)?)
@@ -803,6 +819,24 @@ mod tests {
     assert_eq!(
       resolved_specifier.as_str(),
       "http://localhost/C:/folder/file.ts"
+    );
+  }
+
+  #[test]
+  fn querystring() {
+    let json_map = r#"{
+      "imports": {
+        "npm/": "https://esm.sh/"
+      }
+    }"#;
+    let import_map =
+      ImportMap::from_json("https://deno.land", json_map).unwrap();
+    let resolved = import_map
+      .resolve("npm/postcss-modules@4.2.2?no-check", "https://deno.land")
+      .unwrap();
+    assert_eq!(
+      resolved.as_str(),
+      "https://esm.sh/postcss-modules@4.2.2?no-check"
     );
   }
 }
