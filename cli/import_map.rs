@@ -197,29 +197,29 @@ impl ImportMap {
     // the url since it contains what looks to be a uri scheme. To work around
     // this, we append the specifier to the path segments of the base url when
     // the specifier is not relative or absolute.
-    let mut maybe_query_string = None;
+    let mut maybe_query_string_and_fragment = None;
     if !is_relative_or_absolute_specifier && base.path_segments_mut().is_ok() {
       {
         let mut segments = base.path_segments_mut().unwrap();
         segments.pop_if_empty();
 
-        // Handle query string first, otherwise it would be percent-encoded
+        // Handle query-string and fragment first, otherwise they would be percent-encoded
         // by `extend()`
-        let mut parts: Vec<&str> = specifier.split('?').collect();
-        assert!(parts.len() == 1 || parts.len() == 2);
-        if parts.len() == 2 {
-          maybe_query_string = parts.pop();
-        }
-
-        segments.extend(parts[0].split('/'));
+        let prefix = match specifier.find(&['?', '#'][..]) {
+          Some(idx) => {
+            maybe_query_string_and_fragment = Some(&specifier[idx..]);
+            &specifier[..idx]
+          }
+          None => specifier,
+        };
+        segments.extend(prefix.split('/'));
       }
 
-      // Append query string back, if it exists
-      if let Some(query_string) = maybe_query_string {
-        base.set_query(Some(query_string));
+      if let Some(query_string_and_fragment) = maybe_query_string_and_fragment {
+        Ok(base.join(query_string_and_fragment)?)
+      } else {
+        Ok(base)
       }
-
-      Ok(base)
     } else {
       Ok(base.join(specifier)?)
     }
@@ -831,12 +831,37 @@ mod tests {
     }"#;
     let import_map =
       ImportMap::from_json("https://deno.land", json_map).unwrap();
+
     let resolved = import_map
       .resolve("npm/postcss-modules@4.2.2?no-check", "https://deno.land")
       .unwrap();
     assert_eq!(
       resolved.as_str(),
       "https://esm.sh/postcss-modules@4.2.2?no-check"
+    );
+
+    let resolved = import_map
+      .resolve("npm/key/a?b?c", "https://deno.land")
+      .unwrap();
+    assert_eq!(resolved.as_str(), "https://esm.sh/key/a?b?c");
+
+    let resolved = import_map
+      .resolve(
+        "npm/postcss-modules@4.2.2?no-check#fragment",
+        "https://deno.land",
+      )
+      .unwrap();
+    assert_eq!(
+      resolved.as_str(),
+      "https://esm.sh/postcss-modules@4.2.2?no-check#fragment"
+    );
+
+    let resolved = import_map
+      .resolve("npm/postcss-modules@4.2.2#fragment", "https://deno.land")
+      .unwrap();
+    assert_eq!(
+      resolved.as_str(),
+      "https://esm.sh/postcss-modules@4.2.2#fragment"
     );
   }
 }
