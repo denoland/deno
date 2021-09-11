@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::import_map::ImportMap;
 use crate::module_graph::TypeLib;
 use crate::program_state::ProgramState;
 use deno_core::error::AnyError;
@@ -11,6 +10,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::permissions::Permissions;
+use import_map::ImportMap;
 use std::cell::RefCell;
 use std::pin::Pin;
 use std::rc::Rc;

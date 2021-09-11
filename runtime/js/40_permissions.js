@@ -111,7 +111,6 @@
   const statusCache = new Map();
 
   /**
-   *
    * @param {Deno.PermissionDescriptor} desc
    * @param {Deno.PermissionState} state
    * @returns {PermissionStatus}

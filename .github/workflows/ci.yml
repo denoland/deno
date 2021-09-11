@@ -78,7 +78,7 @@ jobs:
       - name: Install Rust
         uses: hecrj/setup-rust-action@v1
         with:
-          rust-version: 1.54.0
+          rust-version: 1.55.0
 
       - name: Install clippy and rustfmt
         if: matrix.job == 'lint'
@@ -89,7 +89,7 @@ jobs:
       - name: Install Deno
         if: matrix.job == 'lint'
         run: |
-          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.11.3
+          curl -fsSL https://deno.land/x/install/install.sh | sh -s v1.13.2
           echo "$HOME/.deno/bin" >> $GITHUB_PATH
 
       - name: Install Python

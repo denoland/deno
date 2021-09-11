@@ -11,6 +11,8 @@
 
 ((window) => {
   const {
+    ArrayPrototypeSlice,
+    Error,
     ErrorPrototype,
     ObjectDefineProperty,
     ObjectEntries,
@@ -94,6 +96,16 @@
         context: "Argument 2",
       });
       this.#code = nameToCodeMapping[this.#name] ?? 0;
+
+      // `DOMException` does not have `.stack`, so `Error.prepareStackTrace()`
+      // is not called on it, meaning our structured stack trace hack doesn't
+      // apply. This patches it in.
+      const error = new Error();
+      error.stack;
+      ObjectDefineProperty(this, "__callSiteEvals", {
+        value: ArrayPrototypeSlice(error.__callSiteEvals, 1),
+        configurable: true,
+      });
     }
 
     get message() {

@@ -61,6 +61,11 @@
     RsaPssParams: {},
     EcdsaParams: { hash: "HashAlgorithmIdentifier" },
     HmacImportParams: { hash: "HashAlgorithmIdentifier" },
+    HkdfParams: {
+      hash: "HashAlgorithmIdentifier",
+      salt: "BufferSource",
+      info: "BufferSource",
+    },
     Pbkdf2Params: { hash: "HashAlgorithmIdentifier", salt: "BufferSource" },
     RsaOaepParams: { label: "BufferSource" },
   };
@@ -77,6 +82,10 @@
       "RSA-PSS": "RsaHashedKeyGenParams",
       "RSA-OAEP": "RsaHashedKeyGenParams",
       "ECDSA": "EcKeyGenParams",
+      "AES-CTR": "AesKeyGenParams",
+      "AES-CBC": "AesKeyGenParams",
+      "AES-GCM": "AesKeyGenParams",
+      "AES-KW": "AesKeyGenParams",
       "HMAC": "HmacKeyGenParams",
     },
     "sign": {
@@ -88,13 +97,16 @@
     "verify": {
       "RSASSA-PKCS1-v1_5": null,
       "RSA-PSS": "RsaPssParams",
+      "ECDSA": "EcdsaParams",
       "HMAC": null,
     },
     "importKey": {
       "HMAC": "HmacImportParams",
+      "HKDF": null,
       "PBKDF2": null,
     },
     "deriveBits": {
+      "HKDF": "HkdfParams",
       "PBKDF2": "Pbkdf2Params",
     },
     "encrypt": {
@@ -888,6 +900,51 @@
         // TODO(@littledivy): RSASSA-PKCS1-v1_5
         // TODO(@littledivy): RSA-PSS
         // TODO(@littledivy): ECDSA
+        case "HKDF": {
+          if (format !== "raw") {
+            throw new DOMException("Format not supported", "NotSupportedError");
+          }
+
+          // 1.
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+
+          // 2.
+          if (extractable !== false) {
+            throw new DOMException(
+              "Key must not be extractable",
+              "SyntaxError",
+            );
+          }
+
+          // 3.
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, {
+            type: "raw",
+            data: keyData,
+          });
+
+          // 4-8.
+          const algorithm = {
+            name: "HKDF",
+          };
+          const key = constructKey(
+            "secret",
+            false,
+            usageIntersection(keyUsages, recognisedUsages),
+            algorithm,
+            handle,
+          );
+
+          // 9.
+          return key;
+        }
         case "PBKDF2": {
           // 1.
           if (format !== "raw") {
@@ -940,10 +997,10 @@
     }
 
     /**
-    * @param {string} format
-    * @param {CryptoKey} key
-    * @returns {Promise<any>}
-    */
+     * @param {string} format
+     * @param {CryptoKey} key
+     * @returns {Promise<any>}
+     */
     // deno-lint-ignore require-await
     async exportKey(format, key) {
       webidl.assertBranded(this, SubtleCrypto);
@@ -1029,11 +1086,11 @@
     }
 
     /**
-    * @param {AlgorithmIdentifier} algorithm
-    * @param {CryptoKey} baseKey
-    * @param {number} length
-    * @returns {Promise<ArrayBuffer>}
-    */
+     * @param {AlgorithmIdentifier} algorithm
+     * @param {CryptoKey} baseKey
+     * @param {number} length
+     * @returns {Promise<ArrayBuffer>}
+     */
     async deriveBits(algorithm, baseKey, length) {
       webidl.assertBranded(this, SubtleCrypto);
       const prefix = "Failed to execute 'deriveBits' on 'SubtleCrypto'";
@@ -1179,6 +1236,25 @@
             algorithm: "HMAC",
             hash,
             signature,
+          }, data);
+        }
+        case "ECDSA": {
+          // 1.
+          if (key[_type] !== "public") {
+            throw new DOMException(
+              "Key type not supported",
+              "InvalidAccessError",
+            );
+          }
+          // 2.
+          const hash = normalizedAlgorithm.hash.name;
+          // 3-8.
+          return await core.opAsync("op_crypto_verify_key", {
+            key: keyData,
+            algorithm: "ECDSA",
+            hash,
+            signature,
+            namedCurve: key[_algorithm].namedCurve,
           }, data);
         }
       }
@@ -1415,10 +1491,40 @@
         return { publicKey, privateKey };
       }
       // TODO(lucacasonato): ECDH
-      // TODO(lucacasonato): AES-CTR
-      // TODO(lucacasonato): AES-CBC
-      // TODO(lucacasonato): AES-GCM
-      // TODO(lucacasonato): AES-KW
+      case "AES-CTR":
+      case "AES-CBC":
+      case "AES-GCM": {
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            usages,
+            (u) =>
+              !ArrayPrototypeIncludes([
+                "encrypt",
+                "decrypt",
+                "wrapKey",
+                "unwrapKey",
+              ], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        return generateKeyAES(normalizedAlgorithm, extractable, usages);
+      }
+      case "AES-KW": {
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            usages,
+            (u) => !ArrayPrototypeIncludes(["wrapKey", "unwrapKey"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        return generateKeyAES(normalizedAlgorithm, extractable, usages);
+      }
       case "HMAC": {
         // 1.
         if (
@@ -1473,6 +1579,42 @@
     }
   }
 
+  async function generateKeyAES(normalizedAlgorithm, extractable, usages) {
+    // 2.
+    if (!ArrayPrototypeIncludes([128, 192, 256], normalizedAlgorithm.length)) {
+      throw new DOMException("Invalid key length", "OperationError");
+    }
+
+    // 3.
+    const keyData = await core.opAsync("op_crypto_generate_key", {
+      name: normalizedAlgorithm.name,
+      length: normalizedAlgorithm.length,
+    });
+    const handle = {};
+    WeakMapPrototypeSet(KEY_STORE, handle, {
+      type: "raw",
+      data: keyData,
+    });
+
+    // 6-8.
+    const algorithm = {
+      name: normalizedAlgorithm.name,
+      length: normalizedAlgorithm.length,
+    };
+
+    // 9-11.
+    const key = constructKey(
+      "secret",
+      extractable,
+      usages,
+      algorithm,
+      handle,
+    );
+
+    // 12.
+    return key;
+  }
+
   async function deriveBits(normalizedAlgorithm, baseKey, length) {
     switch (normalizedAlgorithm.name) {
       case "PBKDF2": {
@@ -1509,6 +1651,51 @@
           algorithm: "PBKDF2",
           hash: normalizedAlgorithm.hash.name,
           iterations: normalizedAlgorithm.iterations,
+          length,
+        }, normalizedAlgorithm.salt);
+
+        return buf.buffer;
+      }
+      case "HKDF": {
+        // 1.
+        if (length === null || length === 0 || length % 8 !== 0) {
+          throw new DOMException("Invalid length", "OperationError");
+        }
+
+        const handle = baseKey[_handle];
+        const keyDerivationKey = WeakMapPrototypeGet(KEY_STORE, handle);
+
+        if (ArrayBufferIsView(normalizedAlgorithm.salt)) {
+          normalizedAlgorithm.salt = new Uint8Array(
+            normalizedAlgorithm.salt.buffer,
+            normalizedAlgorithm.salt.byteOffset,
+            normalizedAlgorithm.salt.byteLength,
+          );
+        } else {
+          normalizedAlgorithm.salt = new Uint8Array(normalizedAlgorithm.salt);
+        }
+        normalizedAlgorithm.salt = TypedArrayPrototypeSlice(
+          normalizedAlgorithm.salt,
+        );
+
+        if (ArrayBufferIsView(normalizedAlgorithm.info)) {
+          normalizedAlgorithm.info = new Uint8Array(
+            normalizedAlgorithm.info.buffer,
+            normalizedAlgorithm.info.byteOffset,
+            normalizedAlgorithm.info.byteLength,
+          );
+        } else {
+          normalizedAlgorithm.info = new Uint8Array(normalizedAlgorithm.info);
+        }
+        normalizedAlgorithm.info = TypedArrayPrototypeSlice(
+          normalizedAlgorithm.info,
+        );
+
+        const buf = await core.opAsync("op_crypto_derive_bits", {
+          key: keyDerivationKey,
+          algorithm: "HKDF",
+          hash: normalizedAlgorithm.hash.name,
+          info: normalizedAlgorithm.info,
           length,
         }, normalizedAlgorithm.salt);
 
