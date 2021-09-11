@@ -514,7 +514,7 @@ async fn lint_command(
     lint_flags.files,
     lint_flags.ignore,
     lint_flags.json,
-    flags.watch
+    flags.watch,
   )
   .await
 }
