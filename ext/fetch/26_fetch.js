@@ -488,8 +488,8 @@
    *
    * @param {any} source The source parameter that the WebAssembly
    * streaming API was called with.
-   * @param {number} rid An rid that can be used with
-   * `Deno.core.wasmStreamingFeed`.
+   * @param {number} rid An rid that represents the wasm streaming
+   * resource.
    */
   function handleWasmStreaming(source, rid) {
     // This implements part of
