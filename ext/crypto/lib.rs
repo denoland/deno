@@ -15,6 +15,7 @@ use serde::Deserialize;
 
 use std::cell::RefCell;
 use std::convert::TryInto;
+use std::num::NonZeroU32;
 use std::rc::Rc;
 
 use lazy_static::lazy_static;
@@ -25,12 +26,16 @@ use rand::thread_rng;
 use rand::Rng;
 use rand::SeedableRng;
 use ring::digest;
+use ring::hkdf;
 use ring::hmac::Algorithm as HmacAlgorithm;
 use ring::hmac::Key as HmacKey;
+use ring::pbkdf2;
 use ring::rand as RingRand;
 use ring::rand::SecureRandom;
 use ring::signature::EcdsaKeyPair;
 use ring::signature::EcdsaSigningAlgorithm;
+use ring::signature::EcdsaVerificationAlgorithm;
+use ring::signature::KeyPair;
 use rsa::padding::PaddingScheme;
 use rsa::pkcs8::FromPrivateKey;
 use rsa::pkcs8::ToPrivateKey;
@@ -52,6 +57,7 @@ mod key;
 use crate::key::Algorithm;
 use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
+use crate::key::HkdfOutput;
 
 // Allowlist for RSA public exponents.
 lazy_static! {
@@ -74,6 +80,7 @@ pub fn init(maybe_seed: Option<u64>) -> Extension {
       ("op_crypto_generate_key", op_async(op_crypto_generate_key)),
       ("op_crypto_sign_key", op_async(op_crypto_sign_key)),
       ("op_crypto_verify_key", op_async(op_crypto_verify_key)),
+      ("op_crypto_derive_bits", op_async(op_crypto_derive_bits)),
       ("op_crypto_encrypt_key", op_async(op_crypto_encrypt_key)),
       ("op_crypto_decrypt_key", op_async(op_crypto_decrypt_key)),
       ("op_crypto_subtle_digest", op_async(op_crypto_subtle_digest)),
@@ -176,6 +183,18 @@ pub async fn op_crypto_generate_key(
       })?;
 
       private_key
+    }
+    Algorithm::AesCtr
+    | Algorithm::AesCbc
+    | Algorithm::AesGcm
+    | Algorithm::AesKw => {
+      let length = args.length.ok_or_else(not_supported)?;
+      let mut key_data = vec![0u8; length];
+      let rng = RingRand::SystemRandom::new();
+      rng.fill(&mut key_data).map_err(|_| {
+        custom_error("DOMExceptionOperationError", "Key generation failed")
+      })?;
+      key_data
     }
     Algorithm::Hmac => {
       let hash: HmacAlgorithm = args.hash.ok_or_else(not_supported)?.into();
@@ -392,6 +411,7 @@ pub struct VerifyArg {
   salt_length: Option<u32>,
   hash: Option<CryptoHash>,
   signature: ZeroCopyBuf,
+  named_curve: Option<CryptoNamedCurve>,
 }
 
 pub async fn op_crypto_verify_key(
@@ -513,10 +533,92 @@ pub async fn op_crypto_verify_key(
       let key = HmacKey::new(hash, &*args.key.data);
       ring::hmac::verify(&key, data, &*args.signature).is_ok()
     }
+    Algorithm::Ecdsa => {
+      let signing_alg: &EcdsaSigningAlgorithm =
+        args.named_curve.ok_or_else(not_supported)?.try_into()?;
+      let verify_alg: &EcdsaVerificationAlgorithm =
+        args.named_curve.ok_or_else(not_supported)?.try_into()?;
+
+      let private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &*args.key.data)?;
+      let public_key_bytes = private_key.public_key().as_ref();
+      let public_key =
+        ring::signature::UnparsedPublicKey::new(verify_alg, public_key_bytes);
+
+      public_key.verify(data, &*args.signature).is_ok()
+    }
     _ => return Err(type_error("Unsupported algorithm".to_string())),
   };
 
   Ok(verification)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeriveKeyArg {
+  key: KeyData,
+  algorithm: Algorithm,
+  hash: Option<CryptoHash>,
+  length: usize,
+  iterations: Option<u32>,
+  info: Option<ZeroCopyBuf>,
+}
+
+pub async fn op_crypto_derive_bits(
+  _state: Rc<RefCell<OpState>>,
+  args: DeriveKeyArg,
+  zero_copy: Option<ZeroCopyBuf>,
+) -> Result<ZeroCopyBuf, AnyError> {
+  let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
+  let salt = &*zero_copy;
+  let algorithm = args.algorithm;
+  match algorithm {
+    Algorithm::Pbkdf2 => {
+      // The caller must validate these cases.
+      assert!(args.length > 0);
+      assert!(args.length % 8 == 0);
+
+      let algorithm = match args.hash.ok_or_else(not_supported)? {
+        CryptoHash::Sha1 => pbkdf2::PBKDF2_HMAC_SHA1,
+        CryptoHash::Sha256 => pbkdf2::PBKDF2_HMAC_SHA256,
+        CryptoHash::Sha384 => pbkdf2::PBKDF2_HMAC_SHA384,
+        CryptoHash::Sha512 => pbkdf2::PBKDF2_HMAC_SHA512,
+      };
+
+      // This will never panic. We have already checked length earlier.
+      let iterations =
+        NonZeroU32::new(args.iterations.ok_or_else(not_supported)?).unwrap();
+      let secret = args.key.data;
+      let mut out = vec![0; args.length / 8];
+      pbkdf2::derive(algorithm, iterations, salt, &secret, &mut out);
+      Ok(out.into())
+    }
+    Algorithm::Hkdf => {
+      let algorithm = match args.hash.ok_or_else(not_supported)? {
+        CryptoHash::Sha1 => hkdf::HKDF_SHA1_FOR_LEGACY_USE_ONLY,
+        CryptoHash::Sha256 => hkdf::HKDF_SHA256,
+        CryptoHash::Sha384 => hkdf::HKDF_SHA384,
+        CryptoHash::Sha512 => hkdf::HKDF_SHA512,
+      };
+
+      let info = args
+        .info
+        .ok_or_else(|| type_error("Missing argument info".to_string()))?;
+      // IKM
+      let secret = args.key.data;
+      // L
+      let length = args.length / 8;
+
+      let salt = hkdf::Salt::new(algorithm, salt);
+      let prk = salt.extract(&secret);
+      let info = &[&*info];
+      let okm = prk.expand(info, HkdfOutput(length))?;
+      let mut r = vec![0u8; length];
+      okm.fill(&mut r)?;
+
+      Ok(r.into())
+    }
+    _ => Err(type_error("Unsupported algorithm".to_string())),
+  }
 }
 
 #[derive(Deserialize)]

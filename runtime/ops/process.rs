@@ -211,7 +211,7 @@ fn op_run(
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct RunStatus {
+struct ProcessStatus {
   got_signal: bool,
   exit_code: i32,
   exit_signal: i32,
@@ -221,7 +221,7 @@ async fn op_run_status(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   _: (),
-) -> Result<RunStatus, AnyError> {
+) -> Result<ProcessStatus, AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -240,7 +240,7 @@ async fn op_run_status(
     .expect("Should have either an exit code or a signal.");
   let got_signal = signal.is_some();
 
-  Ok(RunStatus {
+  Ok(ProcessStatus {
     got_signal,
     exit_code: code.unwrap_or(-1),
     exit_signal: signal.unwrap_or(-1),
@@ -301,13 +301,14 @@ pub fn kill(pid: i32, signal: i32) -> Result<(), AnyError> {
 #[derive(Deserialize)]
 struct KillArgs {
   pid: i32,
-  signo: i32,
+  signo: String,
 }
 
 fn op_kill(state: &mut OpState, args: KillArgs, _: ()) -> Result<(), AnyError> {
   super::check_unstable(state, "Deno.kill");
   state.borrow_mut::<Permissions>().run.check_all()?;
 
-  kill(args.pid, args.signo)?;
+  let signo = super::signal::signal_str_to_int(&args.signo)?;
+  kill(args.pid, signo)?;
   Ok(())
 }

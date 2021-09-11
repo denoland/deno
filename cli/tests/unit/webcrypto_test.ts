@@ -189,7 +189,7 @@ unitTest(async function testGenerateHMACKey() {
   assert(key.usages.includes("sign"));
 });
 
-unitTest(async function testSignECDSA() {
+unitTest(async function testECDSASignVerify() {
   const key = await window.crypto.subtle.generateKey(
     {
       name: "ECDSA",
@@ -208,6 +208,56 @@ unitTest(async function testSignECDSA() {
   );
 
   assert(signature);
+  assert(signature instanceof ArrayBuffer);
+
+  const verified = await window.crypto.subtle.verify(
+    { hash: { name: "SHA-384" }, name: "ECDSA" },
+    key.publicKey,
+    signature,
+    encoded,
+  );
+  assert(verified);
+});
+
+// Tests the "bad paths" as a temporary replacement for sign_verify/ecdsa WPT.
+unitTest(async function testECDSASignVerifyFail() {
+  const key = await window.crypto.subtle.generateKey(
+    {
+      name: "ECDSA",
+      namedCurve: "P-384",
+    },
+    true,
+    ["sign", "verify"],
+  );
+
+  const encoded = new Uint8Array([1]);
+  // Signing with a public key (InvalidAccessError)
+  await assertThrowsAsync(async () => {
+    await window.crypto.subtle.sign(
+      { name: "ECDSA", hash: "SHA-384" },
+      key.publicKey,
+      new Uint8Array([1]),
+    );
+    throw new TypeError("unreachable");
+  }, DOMException);
+
+  // Do a valid sign for later verifying.
+  const signature = await window.crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-384" },
+    key.privateKey,
+    encoded,
+  );
+
+  // Verifying with a private key (InvalidAccessError)
+  await assertThrowsAsync(async () => {
+    await window.crypto.subtle.verify(
+      { hash: { name: "SHA-384" }, name: "ECDSA" },
+      key.privateKey,
+      signature,
+      encoded,
+    );
+    throw new TypeError("unreachable");
+  }, DOMException);
 });
 
 // https://github.com/denoland/deno/issues/11313
@@ -243,22 +293,45 @@ unitTest(async function testSignRSASSAKey() {
   assert(signature);
 });
 
+// deno-fmt-ignore
+const rawKey = new Uint8Array([
+  1, 2, 3, 4, 5, 6, 7, 8,
+  9, 10, 11, 12, 13, 14, 15, 16
+]);
+
+const jwk: JsonWebKey = {
+  kty: "oct",
+  // unpadded base64 for rawKey.
+  k: "AQIDBAUGBwgJCgsMDQ4PEA",
+  alg: "HS256",
+  ext: true,
+  "key_ops": ["sign"],
+};
+
 unitTest(async function subtleCryptoHmacImportExport() {
-  // deno-fmt-ignore
-  const rawKey = new Uint8Array([
-    1, 2, 3, 4, 5, 6, 7, 8,
-    9, 10, 11, 12, 13, 14, 15, 16
-  ]);
-  const key = await crypto.subtle.importKey(
+  const key1 = await crypto.subtle.importKey(
     "raw",
     rawKey,
     { name: "HMAC", hash: "SHA-256" },
     true,
     ["sign"],
   );
-  const actual = await crypto.subtle.sign(
+  const key2 = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    { name: "HMAC", hash: "SHA-256" },
+    true,
+    ["sign"],
+  );
+  const actual1 = await crypto.subtle.sign(
     { name: "HMAC" },
-    key,
+    key1,
+    new Uint8Array([1, 2, 3, 4]),
+  );
+
+  const actual2 = await crypto.subtle.sign(
+    { name: "HMAC" },
+    key2,
     new Uint8Array([1, 2, 3, 4]),
   );
   // deno-fmt-ignore
@@ -269,10 +342,17 @@ unitTest(async function subtleCryptoHmacImportExport() {
     23, 122, 222, 1, 146, 46, 182, 87,
   ]);
   assertEquals(
-    new Uint8Array(actual),
+    new Uint8Array(actual1),
+    expected,
+  );
+  assertEquals(
+    new Uint8Array(actual2),
     expected,
   );
 
-  const exportedKey = await crypto.subtle.exportKey("raw", key);
-  assertEquals(new Uint8Array(exportedKey), rawKey);
+  const exportedKey1 = await crypto.subtle.exportKey("raw", key1);
+  assertEquals(new Uint8Array(exportedKey1), rawKey);
+
+  const exportedKey2 = await crypto.subtle.exportKey("jwk", key2);
+  assertEquals(exportedKey2, jwk);
 });

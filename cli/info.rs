@@ -1,9 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
-use crate::media_type::serialize_media_type;
-use crate::media_type::MediaType;
 
+use deno_ast::MediaType;
 use deno_core::resolve_url;
 use deno_core::serde::Serialize;
 use deno_core::ModuleSpecifier;
@@ -77,10 +76,7 @@ pub struct ModuleGraphInfoMod {
   pub maybe_type_dependency: Option<ModuleGraphInfoDep>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub size: Option<usize>,
-  #[serde(
-    skip_serializing_if = "Option::is_none",
-    serialize_with = "serialize_media_type"
-  )]
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub media_type: Option<MediaType>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub local: Option<PathBuf>,

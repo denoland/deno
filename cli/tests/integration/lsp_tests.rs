@@ -2430,7 +2430,7 @@ fn lsp_completions_optional() {
         {
           "label": "b?",
           "kind": 5,
-          "sortText": "1",
+          "sortText": "11",
           "filterText": "b",
           "insertText": "b",
           "data": {
@@ -2935,7 +2935,7 @@ fn lsp_diagnostics_refresh_dependents() {
     if queue_len - i <= 3 {
       assert!(maybe_params.is_some());
       let params = maybe_params.unwrap();
-      assert!(params.diagnostics.is_empty());
+      assert_eq!(params.diagnostics, Vec::with_capacity(0));
     }
   }
   assert!(client.queue_is_empty());
