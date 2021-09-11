@@ -526,15 +526,15 @@
           while (true) {
             const { value: chunk, done } = await reader.read();
             if (done) break;
-            core.wasmStreamingFeed(rid, "bytes", chunk);
+            core.opSync("op_wasm_streaming_feed", rid, chunk);
           }
         }
 
         // 2.7.
-        core.wasmStreamingFeed(rid, "finish");
+        core.close(rid);
       } catch (err) {
         // 2.8 and 3
-        core.wasmStreamingFeed(rid, "abort", err);
+        core.opSync("op_wasm_streaming_abort", rid, err);
       }
     })();
   }
