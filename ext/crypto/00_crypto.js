@@ -92,6 +92,7 @@
     "verify": {
       "RSASSA-PKCS1-v1_5": null,
       "RSA-PSS": "RsaPssParams",
+      "ECDSA": "EcdsaParams",
       "HMAC": null,
     },
     "importKey": {
@@ -1183,6 +1184,25 @@
             algorithm: "HMAC",
             hash,
             signature,
+          }, data);
+        }
+        case "ECDSA": {
+          // 1.
+          if (key[_type] !== "public") {
+            throw new DOMException(
+              "Key type not supported",
+              "InvalidAccessError",
+            );
+          }
+          // 2.
+          const hash = normalizedAlgorithm.hash.name;
+          // 3-8.
+          return await core.opAsync("op_crypto_verify_key", {
+            key: keyData,
+            algorithm: "ECDSA",
+            hash,
+            signature,
+            namedCurve: key[_algorithm].namedCurve,
           }, data);
         }
       }

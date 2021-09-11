@@ -33,6 +33,8 @@ use ring::rand as RingRand;
 use ring::rand::SecureRandom;
 use ring::signature::EcdsaKeyPair;
 use ring::signature::EcdsaSigningAlgorithm;
+use ring::signature::EcdsaVerificationAlgorithm;
+use ring::signature::KeyPair;
 use rsa::padding::PaddingScheme;
 use rsa::pkcs8::FromPrivateKey;
 use rsa::pkcs8::ToPrivateKey;
@@ -407,6 +409,7 @@ pub struct VerifyArg {
   salt_length: Option<u32>,
   hash: Option<CryptoHash>,
   signature: ZeroCopyBuf,
+  named_curve: Option<CryptoNamedCurve>,
 }
 
 pub async fn op_crypto_verify_key(
@@ -527,6 +530,19 @@ pub async fn op_crypto_verify_key(
       let hash: HmacAlgorithm = args.hash.ok_or_else(not_supported)?.into();
       let key = HmacKey::new(hash, &*args.key.data);
       ring::hmac::verify(&key, data, &*args.signature).is_ok()
+    }
+    Algorithm::Ecdsa => {
+      let signing_alg: &EcdsaSigningAlgorithm =
+        args.named_curve.ok_or_else(not_supported)?.try_into()?;
+      let verify_alg: &EcdsaVerificationAlgorithm =
+        args.named_curve.ok_or_else(not_supported)?.try_into()?;
+
+      let private_key = EcdsaKeyPair::from_pkcs8(signing_alg, &*args.key.data)?;
+      let public_key_bytes = private_key.public_key().as_ref();
+      let public_key =
+        ring::signature::UnparsedPublicKey::new(verify_alg, public_key_bytes);
+
+      public_key.verify(data, &*args.signature).is_ok()
     }
     _ => return Err(type_error("Unsupported algorithm".to_string())),
   };
