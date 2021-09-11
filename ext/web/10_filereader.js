@@ -472,6 +472,7 @@
   function makeEventHandlerGetter(name) {
     return function () {
       webidl.assertBranded(this, FileReader);
+
       const maybeMap = this[handlerSymbol];
       if (!maybeMap) return null;
 
@@ -480,6 +481,8 @@
   }
   function makeEventHandlerSetter(name) {
     return function (value) {
+      webidl.assertBranded(this, FileReader);
+
       if (!this[handlerSymbol]) {
         this[handlerSymbol] = new Map();
       }
@@ -490,6 +493,7 @@
         handlerWrapper = makeWrappedHandler(value);
         this.addEventListener(name, handlerWrapper);
       }
+
       MapPrototypeSet(this[handlerSymbol], name, handlerWrapper);
     };
   }
