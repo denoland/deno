@@ -2,6 +2,7 @@
 
 use ring::agreement::Algorithm as RingAlgorithm;
 use ring::digest;
+use ring::hkdf;
 use ring::hmac::Algorithm as HmacAlgorithm;
 use ring::signature::EcdsaSigningAlgorithm;
 use ring::signature::EcdsaVerificationAlgorithm;
@@ -89,6 +90,14 @@ impl From<CryptoHash> for &'static digest::Algorithm {
   }
 }
 
+pub struct HkdfOutput<T>(pub T);
+
+impl hkdf::KeyType for HkdfOutput<usize> {
+  fn len(&self) -> usize {
+    self.0
+  }
+}
+
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum KeyUsage {
@@ -126,4 +135,6 @@ pub enum Algorithm {
   Hmac,
   #[serde(rename = "PBKDF2")]
   Pbkdf2,
+  #[serde(rename = "HKDF")]
+  Hkdf,
 }
