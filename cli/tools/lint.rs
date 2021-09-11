@@ -8,6 +8,7 @@
 //! the same functions as ops available in JS runtime.
 use crate::config_file::LintConfig;
 use crate::file_watcher::ResolutionResult;
+use crate::flags::LintFlags;
 use crate::fmt_errors;
 use crate::fs_util::{collect_files, is_supported_ext};
 use crate::tools::fmt::run_parallelized;
@@ -46,14 +47,18 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
 
 pub async fn lint(
   maybe_lint_config: Option<LintConfig>,
-  rules_tags: Vec<String>,
-  rules_include: Vec<String>,
-  rules_exclude: Vec<String>,
-  args: Vec<PathBuf>,
-  ignore: Vec<PathBuf>,
-  json: bool,
+  lint_flags: LintFlags,
   watch: bool,
 ) -> Result<(), AnyError> {
+  let LintFlags {
+    rules_tags,
+    rules_include,
+    rules_exclude,
+    files: args,
+    ignore,
+    json,
+    ..
+  } = lint_flags;
   // First, prepare final configuration.
   // Collect included and ignored files. CLI flags take precendence
   // over config file, ie. if there's `files.ignore` in config file
@@ -131,6 +136,7 @@ pub async fn lint(
   };
 
   let operation = |paths: Vec<PathBuf>| async {
+    let target_files_len = paths.len();
     run_parallelized(paths, {
       let reporter_lock = reporter_lock.clone();
       let has_error = has_error.clone();
@@ -140,13 +146,15 @@ pub async fn lint(
         handle_lint_result(
           &file_path.to_string_lossy(),
           r,
-          reporter_lock.clone(),
-          has_error.clone(),
+          reporter_lock,
+          has_error,
         );
         Ok(())
       }
     })
     .await?;
+    reporter_lock.lock().unwrap().close(target_files_len);
+
     Ok(())
   };
 

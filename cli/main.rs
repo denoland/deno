@@ -506,17 +506,7 @@ async fn lint_command(
     None
   };
 
-  tools::lint::lint(
-    maybe_lint_config,
-    lint_flags.rules_tags,
-    lint_flags.rules_include,
-    lint_flags.rules_exclude,
-    lint_flags.files,
-    lint_flags.ignore,
-    lint_flags.json,
-    flags.watch,
-  )
-  .await
+  tools::lint::lint(maybe_lint_config, lint_flags, flags.watch).await
 }
 
 async fn cache_command(
