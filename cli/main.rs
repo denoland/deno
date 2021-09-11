@@ -506,7 +506,7 @@ async fn lint_command(
     None
   };
 
-  tools::lint::lint_files(
+  tools::lint::lint(
     maybe_lint_config,
     lint_flags.rules_tags,
     lint_flags.rules_include,
@@ -514,6 +514,7 @@ async fn lint_command(
     lint_flags.files,
     lint_flags.ignore,
     lint_flags.json,
+    flags.watch
   )
   .await
 }
