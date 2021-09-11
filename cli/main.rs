@@ -18,7 +18,6 @@ mod fmt_errors;
 mod fs_util;
 mod http_cache;
 mod http_util;
-mod import_map;
 mod info;
 mod lockfile;
 mod logger;

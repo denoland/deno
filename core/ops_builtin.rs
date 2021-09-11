@@ -17,6 +17,7 @@ pub(crate) fn init_builtins() -> Extension {
     ))
     .ops(vec![
       ("op_close", op_sync(op_close)),
+      ("op_try_close", op_sync(op_try_close)),
       ("op_print", op_sync(op_print)),
       ("op_resources", op_sync(op_resources)),
     ])
@@ -44,10 +45,24 @@ pub fn op_close(
   rid: Option<ResourceId>,
   _: (),
 ) -> Result<(), AnyError> {
-  // TODO(@AaronO): drop Option after improving type-strictness balance in serde_v8
+  // TODO(@AaronO): drop Option after improving type-strictness balance in
+  // serde_v8
   let rid = rid.ok_or_else(|| type_error("missing or invalid `rid`"))?;
   state.resource_table.close(rid)?;
+  Ok(())
+}
 
+/// Try to remove a resource from the resource table. If there is no resource
+/// with the specified `rid`, this is a no-op.
+pub fn op_try_close(
+  state: &mut OpState,
+  rid: Option<ResourceId>,
+  _: (),
+) -> Result<(), AnyError> {
+  // TODO(@AaronO): drop Option after improving type-strictness balance in
+  // serde_v8.
+  let rid = rid.ok_or_else(|| type_error("missing or invalid `rid`"))?;
+  let _ = state.resource_table.close(rid);
   Ok(())
 }
 

@@ -309,6 +309,28 @@
     dictJsonWebKey,
   );
 
+  const dictHkdfParams = [
+    ...dictAlgorithm,
+    {
+      key: "hash",
+      converter: webidl.converters.HashAlgorithmIdentifier,
+      required: true,
+    },
+    {
+      key: "salt",
+      converter: webidl.converters["BufferSource"],
+      required: true,
+    },
+    {
+      key: "info",
+      converter: webidl.converters["BufferSource"],
+      required: true,
+    },
+  ];
+
+  webidl.converters.HkdfParams = webidl
+    .createDictionaryConverter("HkdfParams", dictHkdfParams);
+
   const dictPbkdf2Params = [
     ...dictAlgorithm,
     {

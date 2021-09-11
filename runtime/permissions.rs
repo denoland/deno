@@ -1194,6 +1194,29 @@ fn permission_prompt(message: &str) -> bool {
   if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
     return false;
   };
+
+  #[cfg(unix)]
+  fn clear_stdin() {
+    let r = unsafe { libc::tcflush(0, libc::TCIFLUSH) };
+    assert_eq!(r, 0);
+  }
+
+  #[cfg(not(unix))]
+  fn clear_stdin() {
+    unsafe {
+      let stdin = winapi::um::processenv::GetStdHandle(
+        winapi::um::winbase::STD_INPUT_HANDLE,
+      );
+      let flags =
+        winapi::um::winbase::PURGE_TXCLEAR | winapi::um::winbase::PURGE_RXCLEAR;
+      winapi::um::commapi::PurgeComm(stdin, flags);
+    }
+  }
+
+  // For security reasons we must consume everything in stdin so that previously
+  // buffered data cannot effect the prompt.
+  clear_stdin();
+
   let opts = "[y/n (y = yes allow, n = no deny)] ";
   let msg = format!(
     "{}  ️Deno requests {}. Allow? {}",
