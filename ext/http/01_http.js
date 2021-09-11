@@ -120,11 +120,7 @@
     /** @returns {void} */
     close() {
       for (const rid of SetPrototypeValues(this.managedResources)) {
-        try {
-          core.close(rid);
-        } catch (_e) {
-          // pass, might have already been closed
-        }
+        core.tryClose(rid);
       }
       core.close(this.#rid);
     }
@@ -284,12 +280,7 @@
           const event = new CloseEvent("close");
           ws.dispatchEvent(event);
 
-          try {
-            core.close(wsRid);
-          } catch (err) {
-            // Ignore error if the socket has already been closed.
-            if (!(err instanceof Deno.errors.BadResource)) throw err;
-          }
+          core.tryClose(wsRid);
         } else {
           ws[_readyState] = WebSocket.OPEN;
           const event = new Event("open");
