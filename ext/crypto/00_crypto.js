@@ -61,6 +61,11 @@
     RsaPssParams: {},
     EcdsaParams: { hash: "HashAlgorithmIdentifier" },
     HmacImportParams: { hash: "HashAlgorithmIdentifier" },
+    HkdfParams: {
+      hash: "HashAlgorithmIdentifier",
+      salt: "BufferSource",
+      info: "BufferSource",
+    },
     Pbkdf2Params: { hash: "HashAlgorithmIdentifier", salt: "BufferSource" },
     RsaOaepParams: { label: "BufferSource" },
   };
@@ -92,13 +97,16 @@
     "verify": {
       "RSASSA-PKCS1-v1_5": null,
       "RSA-PSS": "RsaPssParams",
+      "ECDSA": "EcdsaParams",
       "HMAC": null,
     },
     "importKey": {
       "HMAC": "HmacImportParams",
+      "HKDF": null,
       "PBKDF2": null,
     },
     "deriveBits": {
+      "HKDF": "HkdfParams",
       "PBKDF2": "Pbkdf2Params",
     },
     "encrypt": {
@@ -892,6 +900,51 @@
         // TODO(@littledivy): RSASSA-PKCS1-v1_5
         // TODO(@littledivy): RSA-PSS
         // TODO(@littledivy): ECDSA
+        case "HKDF": {
+          if (format !== "raw") {
+            throw new DOMException("Format not supported", "NotSupportedError");
+          }
+
+          // 1.
+          if (
+            ArrayPrototypeFind(
+              keyUsages,
+              (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
+            ) !== undefined
+          ) {
+            throw new DOMException("Invalid key usages", "SyntaxError");
+          }
+
+          // 2.
+          if (extractable !== false) {
+            throw new DOMException(
+              "Key must not be extractable",
+              "SyntaxError",
+            );
+          }
+
+          // 3.
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, {
+            type: "raw",
+            data: keyData,
+          });
+
+          // 4-8.
+          const algorithm = {
+            name: "HKDF",
+          };
+          const key = constructKey(
+            "secret",
+            false,
+            usageIntersection(keyUsages, recognisedUsages),
+            algorithm,
+            handle,
+          );
+
+          // 9.
+          return key;
+        }
         case "PBKDF2": {
           // 1.
           if (format !== "raw") {
@@ -1183,6 +1236,25 @@
             algorithm: "HMAC",
             hash,
             signature,
+          }, data);
+        }
+        case "ECDSA": {
+          // 1.
+          if (key[_type] !== "public") {
+            throw new DOMException(
+              "Key type not supported",
+              "InvalidAccessError",
+            );
+          }
+          // 2.
+          const hash = normalizedAlgorithm.hash.name;
+          // 3-8.
+          return await core.opAsync("op_crypto_verify_key", {
+            key: keyData,
+            algorithm: "ECDSA",
+            hash,
+            signature,
+            namedCurve: key[_algorithm].namedCurve,
           }, data);
         }
       }
@@ -1579,6 +1651,51 @@
           algorithm: "PBKDF2",
           hash: normalizedAlgorithm.hash.name,
           iterations: normalizedAlgorithm.iterations,
+          length,
+        }, normalizedAlgorithm.salt);
+
+        return buf.buffer;
+      }
+      case "HKDF": {
+        // 1.
+        if (length === null || length === 0 || length % 8 !== 0) {
+          throw new DOMException("Invalid length", "OperationError");
+        }
+
+        const handle = baseKey[_handle];
+        const keyDerivationKey = WeakMapPrototypeGet(KEY_STORE, handle);
+
+        if (ArrayBufferIsView(normalizedAlgorithm.salt)) {
+          normalizedAlgorithm.salt = new Uint8Array(
+            normalizedAlgorithm.salt.buffer,
+            normalizedAlgorithm.salt.byteOffset,
+            normalizedAlgorithm.salt.byteLength,
+          );
+        } else {
+          normalizedAlgorithm.salt = new Uint8Array(normalizedAlgorithm.salt);
+        }
+        normalizedAlgorithm.salt = TypedArrayPrototypeSlice(
+          normalizedAlgorithm.salt,
+        );
+
+        if (ArrayBufferIsView(normalizedAlgorithm.info)) {
+          normalizedAlgorithm.info = new Uint8Array(
+            normalizedAlgorithm.info.buffer,
+            normalizedAlgorithm.info.byteOffset,
+            normalizedAlgorithm.info.byteLength,
+          );
+        } else {
+          normalizedAlgorithm.info = new Uint8Array(normalizedAlgorithm.info);
+        }
+        normalizedAlgorithm.info = TypedArrayPrototypeSlice(
+          normalizedAlgorithm.info,
+        );
+
+        const buf = await core.opAsync("op_crypto_derive_bits", {
+          key: keyDerivationKey,
+          algorithm: "HKDF",
+          hash: normalizedAlgorithm.hash.name,
+          info: normalizedAlgorithm.info,
           length,
         }, normalizedAlgorithm.salt);
 

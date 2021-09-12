@@ -65,6 +65,7 @@ env_logger = "0.8.4"
 fancy-regex = "0.7.1"
 filetime = "0.2.14"
 http = "0.2.4"
+import_map = "0.3.0"
 # TODO(lucacasonato): unlock when https://github.com/tkaitchuck/aHash/issues/95 is resolved
 indexmap = { version = "=1.6.2", features = ["serde"] }
 jsonc-parser = { version = "0.17.0", features = ["serde"] }

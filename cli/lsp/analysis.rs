@@ -5,7 +5,6 @@ use super::tsc;
 
 use crate::ast;
 use crate::ast::Location;
-use crate::import_map::ImportMap;
 use crate::lsp::documents::DocumentData;
 use crate::module_graph::parse_deno_types;
 use crate::module_graph::parse_ts_reference;
@@ -30,6 +29,7 @@ use deno_core::url;
 use deno_core::ModuleResolutionError;
 use deno_core::ModuleSpecifier;
 use deno_lint::rules;
+use import_map::ImportMap;
 use lspower::lsp;
 use lspower::lsp::Position;
 use lspower::lsp::Range;

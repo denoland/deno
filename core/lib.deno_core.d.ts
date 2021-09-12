@@ -33,8 +33,17 @@ declare namespace Deno {
      */
     function resources(): Record<string, string>;
 
-    /** Close the resource with the specified op id. */
+    /**
+     * Close the resource with the specified op id. Throws `BadResource` error
+     * if resource doesn't exist in resource table.
+     */
     function close(rid: number): void;
+
+    /**
+     * Try close the resource with the specified op id; if resource with given
+     * id doesn't exist do nothing.
+     */
+    function tryClose(rid: number): void;
 
     /** Get heap stats for current isolate/worker */
     function heapStats(): Record<string, number>;

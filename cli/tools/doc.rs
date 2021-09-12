@@ -4,7 +4,6 @@ use crate::colors;
 use crate::file_fetcher::File;
 use crate::flags::Flags;
 use crate::get_types;
-use crate::import_map::ImportMap;
 use crate::program_state::ProgramState;
 use crate::write_json_to_stdout;
 use crate::write_to_stdout_ignore_sigpipe;
@@ -21,6 +20,7 @@ use deno_graph::source::Loader;
 use deno_graph::source::Resolver;
 use deno_graph::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
+use import_map::ImportMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
