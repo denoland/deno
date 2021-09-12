@@ -421,9 +421,9 @@ impl Error for Diagnostics {}
 #[cfg(test)]
 mod tests {
   use super::*;
-  use colors::strip_ansi_codes;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
+  use test_util::strip_ansi_codes;
 
   #[test]
   fn test_de_diagnostics() {

@@ -613,7 +613,6 @@ dependencies = [
  "shell-escape",
  "sourcemap",
  "tempfile",
- "termcolor",
  "test_util",
  "text-size",
  "tokio",
