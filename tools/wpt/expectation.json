@@ -13761,13 +13761,7 @@
       "FileList interface: existence and properties of interface prototype object's \"constructor\" property",
       "FileList interface: existence and properties of interface prototype object's @@unscopables property",
       "FileList interface: operation item(unsigned long)",
-      "FileList interface: attribute length",
-      "FileReader interface: attribute onloadstart",
-      "FileReader interface: attribute onprogress",
-      "FileReader interface: attribute onload",
-      "FileReader interface: attribute onabort",
-      "FileReader interface: attribute onerror",
-      "FileReader interface: attribute onloadend"
+      "FileList interface: attribute length"
     ]
   },
   "html": {
