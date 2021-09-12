@@ -41,6 +41,7 @@
   const result = Symbol("[[result]]");
   const error = Symbol("[[error]]");
   const aborted = Symbol("[[aborted]]");
+  const handlerSymbol = Symbol("eventHandlers");
 
   class FileReader extends EventTarget {
     get [SymbolToStringTag]() {
@@ -263,6 +264,32 @@
       })();
     }
 
+    #getEventHandlerFor(name) {
+      webidl.assertBranded(this, FileReader);
+
+      const maybeMap = this[handlerSymbol];
+      if (!maybeMap) return null;
+
+      return MapPrototypeGet(maybeMap, name)?.handler ?? null;
+    }
+
+    #setEventHandlerFor(name, value) {
+      webidl.assertBranded(this, FileReader);
+
+      if (!this[handlerSymbol]) {
+        this[handlerSymbol] = new Map();
+      }
+      let handlerWrapper = MapPrototypeGet(this[handlerSymbol], name);
+      if (handlerWrapper) {
+        handlerWrapper.handler = value;
+      } else {
+        handlerWrapper = makeWrappedHandler(value);
+        this.addEventListener(name, handlerWrapper);
+      }
+
+      MapPrototypeSet(this[handlerSymbol], name, handlerWrapper);
+    }
+
     constructor() {
       super();
       this[webidl.brand] = webidl.brand;
@@ -370,51 +397,45 @@
     }
 
     get onerror() {
-      return FunctionPrototypeCall(makeEventHandlerGetter("error"), this);
+      return this.#getEventHandlerFor("error");
     }
-
     set onerror(value) {
-      FunctionPrototypeCall(makeEventHandlerSetter("error"), this, value);
+      this.#setEventHandlerFor("error", value);
     }
 
     get onloadstart() {
-      return FunctionPrototypeCall(makeEventHandlerGetter("loadstart"), this);
+      return this.#getEventHandlerFor("loadstart");
     }
-
     set onloadstart(value) {
-      FunctionPrototypeCall(makeEventHandlerSetter("loadstart"), this, value);
+      this.#setEventHandlerFor("loadstart", value);
     }
 
     get onload() {
-      return FunctionPrototypeCall(makeEventHandlerGetter("load"), this);
+      return this.#getEventHandlerFor("load");
     }
-
     set onload(value) {
-      FunctionPrototypeCall(makeEventHandlerSetter("load"), this, value);
+      this.#setEventHandlerFor("load", value);
     }
 
     get onloadend() {
-      return FunctionPrototypeCall(makeEventHandlerGetter("loadend"), this);
+      return this.#getEventHandlerFor("loadend");
     }
-
     set onloadend(value) {
-      FunctionPrototypeCall(makeEventHandlerSetter("loadend"), this, value);
+      this.#setEventHandlerFor("loadend", value);
     }
 
     get onprogress() {
-      return FunctionPrototypeCall(makeEventHandlerGetter("progress"), this);
+      return this.#getEventHandlerFor("progress");
     }
-
     set onprogress(value) {
-      FunctionPrototypeCall(makeEventHandlerSetter("progress"), this, value);
+      this.#setEventHandlerFor("progress", value);
     }
 
     get onabort() {
-      return FunctionPrototypeCall(makeEventHandlerGetter("abort"), this);
+      return this.#getEventHandlerFor("abort");
     }
-
     set onabort(value) {
-      FunctionPrototypeCall(makeEventHandlerSetter("abort"), this, value);
+      this.#setEventHandlerFor("abort", value);
     }
   }
 
@@ -457,8 +478,6 @@
     value: 2,
   });
 
-  const handlerSymbol = Symbol("eventHandlers");
-
   function makeWrappedHandler(handler) {
     function wrappedHandler(...args) {
       if (typeof wrappedHandler.handler !== "function") {
@@ -468,34 +487,6 @@
     }
     wrappedHandler.handler = handler;
     return wrappedHandler;
-  }
-  function makeEventHandlerGetter(name) {
-    return function () {
-      webidl.assertBranded(this, FileReader);
-
-      const maybeMap = this[handlerSymbol];
-      if (!maybeMap) return null;
-
-      return MapPrototypeGet(maybeMap, name)?.handler ?? null;
-    };
-  }
-  function makeEventHandlerSetter(name) {
-    return function (value) {
-      webidl.assertBranded(this, FileReader);
-
-      if (!this[handlerSymbol]) {
-        this[handlerSymbol] = new Map();
-      }
-      let handlerWrapper = MapPrototypeGet(this[handlerSymbol], name);
-      if (handlerWrapper) {
-        handlerWrapper.handler = value;
-      } else {
-        handlerWrapper = makeWrappedHandler(value);
-        this.addEventListener(name, handlerWrapper);
-      }
-
-      MapPrototypeSet(this[handlerSymbol], name, handlerWrapper);
-    };
   }
 
   window.__bootstrap.fileReader = {
