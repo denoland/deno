@@ -5,11 +5,12 @@ for (let i = 0; i < 4; i++) {
   );
 
   worker.addEventListener("message", (message) => {
-    // Only print responses after all reception logs.
+    // Only print responses in order after all reception logs.
     setTimeout(() => {
       console.log("response from worker %d received", message.data);
-    }, 500);
+    }, 500 * (i + 1));
   });
+
   worker.postMessage(i);
 }
 
