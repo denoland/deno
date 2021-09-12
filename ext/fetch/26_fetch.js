@@ -270,16 +270,8 @@
             break;
           }
         }
-<<<<<<< HEAD
         WeakMapPrototypeDelete(requestBodyReaders, req);
-        try {
-          core.close(requestBodyRid);
-        } catch (_) {
-          // might have already been closed
-        }
-=======
         core.tryClose(requestBodyRid);
->>>>>>> main
       })();
     }
 
