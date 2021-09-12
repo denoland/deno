@@ -18,12 +18,10 @@ mod fmt_errors;
 mod fs_util;
 mod http_cache;
 mod http_util;
-mod import_map;
 mod info;
 mod lockfile;
 mod logger;
 mod lsp;
-mod media_type;
 mod module_graph;
 mod module_loader;
 mod ops;
@@ -58,12 +56,12 @@ use crate::flags::RunFlags;
 use crate::flags::TestFlags;
 use crate::flags::UpgradeFlags;
 use crate::fmt_errors::PrettyJsError;
-use crate::media_type::MediaType;
 use crate::module_loader::CliModuleLoader;
 use crate::program_state::ProgramState;
 use crate::source_maps::apply_source_map;
 use crate::specifier_handler::FetchHandler;
 use crate::tools::installer::infer_name_from_url;
+use deno_ast::MediaType;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
@@ -597,7 +595,7 @@ async fn eval_command(
     } else {
       MediaType::Jsx
     },
-    source: String::from_utf8(source_code)?,
+    source: Arc::new(String::from_utf8(source_code)?),
     specifier: main_module.clone(),
     maybe_headers: None,
   };
@@ -850,7 +848,7 @@ async fn run_from_stdin(flags: Flags) -> Result<(), AnyError> {
     local: main_module.clone().to_file_path().unwrap(),
     maybe_types: None,
     media_type: MediaType::TypeScript,
-    source: String::from_utf8(source)?,
+    source: Arc::new(String::from_utf8(source)?),
     specifier: main_module.clone(),
     maybe_headers: None,
   };
@@ -1227,6 +1225,16 @@ fn get_subcommand(
   }
 }
 
+fn setup_exit_process_panic_hook() {
+  // tokio does not exit the process when a task panics, so we
+  // define a custom panic hook to implement this behaviour
+  let orig_hook = std::panic::take_hook();
+  std::panic::set_hook(Box::new(move |panic_info| {
+    orig_hook(panic_info);
+    std::process::exit(1);
+  }));
+}
+
 fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
@@ -1238,6 +1246,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 }
 
 pub fn main() {
+  setup_exit_process_panic_hook();
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
   unix_util::raise_fd_limit();

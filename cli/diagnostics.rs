@@ -57,6 +57,7 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "resolveDns",
   "setRaw",
   "shutdown",
+  "Signal",
   "signal",
   "signals",
   "sleepSync",
