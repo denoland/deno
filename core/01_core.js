@@ -148,6 +148,10 @@
     opSync("op_close", rid);
   }
 
+  function tryClose(rid) {
+    opSync("op_try_close", rid);
+  }
+
   function print(str, isErr = false) {
     opSync("op_print", str, isErr);
   }
@@ -175,6 +179,7 @@
     opSync,
     ops,
     close,
+    tryClose,
     print,
     resources,
     registerErrorBuilder,

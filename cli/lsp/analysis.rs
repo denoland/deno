@@ -5,7 +5,6 @@ use super::tsc;
 
 use crate::ast;
 use crate::ast::Location;
-use crate::import_map::ImportMap;
 use crate::lsp::documents::DocumentData;
 use crate::module_graph::parse_deno_types;
 use crate::module_graph::parse_ts_reference;
@@ -30,6 +29,7 @@ use deno_core::url;
 use deno_core::ModuleResolutionError;
 use deno_core::ModuleSpecifier;
 use deno_lint::rules;
+use import_map::ImportMap;
 use lspower::lsp;
 use lspower::lsp::Position;
 use lspower::lsp::Range;
@@ -139,7 +139,11 @@ pub fn get_lint_references(
   let syntax = deno_ast::get_syntax(parsed_source.media_type());
   let lint_rules = rules::get_recommended_rules();
   let linter = create_linter(syntax, lint_rules);
-  let lint_diagnostics = linter.lint_with_ast(parsed_source);
+  // TODO(dsherret): do not re-parse here again
+  let (_, lint_diagnostics) = linter.lint(
+    parsed_source.specifier().to_string(),
+    parsed_source.source().text_str().to_string(),
+  )?;
 
   Ok(
     lint_diagnostics

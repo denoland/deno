@@ -86,11 +86,7 @@
 
   // A finalization registry to clean up underlying fetch resources that are GC'ed.
   const RESOURCE_REGISTRY = new FinalizationRegistry((rid) => {
-    try {
-      core.close(rid);
-    } catch {
-      // might have already been closed
-    }
+    core.tryClose(rid);
   });
 
   /**
@@ -106,11 +102,7 @@
           new DOMException("Ongoing fetch was aborted.", "AbortError"),
         );
       }
-      try {
-        core.close(responseBodyRid);
-      } catch (_) {
-        // might have already been closed
-      }
+      core.tryClose(responseBodyRid);
     }
     // TODO(lucacasonato): clean up registration
     terminator[abortSignal.add](onAbort);
@@ -132,11 +124,7 @@
             RESOURCE_REGISTRY.unregister(readable);
             // We have reached the end of the body, so we close the stream.
             controller.close();
-            try {
-              core.close(responseBodyRid);
-            } catch (_) {
-              // might have already been closed
-            }
+            core.tryClose(responseBodyRid);
           }
         } catch (err) {
           RESOURCE_REGISTRY.unregister(readable);
@@ -149,11 +137,7 @@
             // error.
             controller.error(err);
           }
-          try {
-            core.close(responseBodyRid);
-          } catch (_) {
-            // might have already been closed
-          }
+          core.tryClose(responseBodyRid);
         }
       },
       cancel() {
@@ -234,15 +218,11 @@
     }, reqBody instanceof Uint8Array ? reqBody : null);
 
     function onAbort() {
-      try {
-        core.close(cancelHandleRid);
-      } catch (_) {
-        // might have already been closed
+      if (cancelHandleRid !== null) {
+        core.tryClose(cancelHandleRid);
       }
-      try {
-        core.close(requestBodyRid);
-      } catch (_) {
-        // might have already been closed
+      if (requestBodyRid !== null) {
+        core.tryClose(requestBodyRid);
       }
     }
     terminator[abortSignal.add](onAbort);
@@ -280,11 +260,7 @@
             break;
           }
         }
-        try {
-          core.close(requestBodyRid);
-        } catch (_) {
-          // might have already been closed
-        }
+        core.tryClose(requestBodyRid);
       })();
     }
 
@@ -295,10 +271,8 @@
         throw err;
       });
     } finally {
-      try {
-        core.close(cancelHandleRid);
-      } catch (_) {
-        // might have already been closed
+      if (cancelHandleRid !== null) {
+        core.tryClose(cancelHandleRid);
       }
     }
     if (terminator.aborted) return abortedNetworkError();
