@@ -1,4 +1,0 @@
-[WILDCARD][Function: Location]
-Location {}
-error: Uncaught ReferenceError: Access to "location", run again with --location <href>.
-[WILDCARD]

@@ -1,3 +1,0 @@
-const $ = {};
-
-export default $;

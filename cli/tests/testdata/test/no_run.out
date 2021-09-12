@@ -1,5 +1,0 @@
-Check [WILDCARD]/test/no_run.ts
-error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
-const _value: string = 1;
-      ~~~~~~
-    at [WILDCARD]/test/no_run.ts:1:7
