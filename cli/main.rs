@@ -3,7 +3,6 @@
 mod ast;
 mod auth_tokens;
 mod checksum;
-mod colors;
 mod config_file;
 mod deno_dir;
 mod diagnostics;
@@ -74,6 +73,7 @@ use deno_core::serde_json::json;
 use deno_core::v8_set_flags;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
+use deno_runtime::colors;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::web_worker::WebWorker;
