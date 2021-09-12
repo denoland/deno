@@ -356,3 +356,27 @@ unitTest(async function subtleCryptoHmacImportExport() {
   const exportedKey2 = await crypto.subtle.exportKey("jwk", key2);
   assertEquals(exportedKey2, jwk);
 });
+
+unitTest(async function testHkdfDeriveBits() {
+  const rawKey = await crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey(
+    "raw",
+    rawKey,
+    { name: "HKDF", hash: "SHA-256" },
+    false,
+    ["deriveBits"],
+  );
+  const salt = await crypto.getRandomValues(new Uint8Array(16));
+  const info = await crypto.getRandomValues(new Uint8Array(16));
+  const result = await crypto.subtle.deriveBits(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: salt,
+      info: info,
+    },
+    key,
+    128,
+  );
+  assertEquals(result.byteLength, 128 / 8);
+});

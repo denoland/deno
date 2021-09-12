@@ -109,6 +109,18 @@ interface RsaKeyAlgorithm extends KeyAlgorithm {
   publicExponent: Uint8Array;
 }
 
+interface HkdfParams extends Algorithm {
+  hash: HashAlgorithmIdentifier;
+  info: BufferSource;
+  salt: BufferSource;
+}
+
+interface Pbkdf2Params extends Algorithm {
+  hash: HashAlgorithmIdentifier;
+  iterations: number;
+  salt: BufferSource;
+}
+
 /** The CryptoKey dictionary of the Web Crypto API represents a cryptographic key. */
 interface CryptoKey {
   readonly algorithm: KeyAlgorithm;
@@ -193,6 +205,11 @@ interface SubtleCrypto {
     algorithm: AlgorithmIdentifier | RsaOaepParams,
     key: CryptoKey,
     data: BufferSource,
+  ): Promise<ArrayBuffer>;
+  deriveBits(
+    algorithm: AlgorithmIdentifier | HkdfParams | Pbkdf2Params,
+    baseKey: CryptoKey,
+    length: number,
   ): Promise<ArrayBuffer>;
 }
 
