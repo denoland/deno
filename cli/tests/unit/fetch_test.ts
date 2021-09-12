@@ -1294,7 +1294,7 @@ unitTest(
 
 unitTest(
   { perms: { net: true } },
-  async function fetchAbortWhileStreaming(): Promise<void> {
+  async function fetchAbortWhileUploadStreaming(): Promise<void> {
     const abortController = new AbortController();
     try {
       await fetch(
