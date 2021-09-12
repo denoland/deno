@@ -246,7 +246,7 @@ impl Error for PrettyJsError {}
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::colors::strip_ansi_codes;
+  use test_util::strip_ansi_codes;
 
   #[test]
   fn test_format_none_source_line() {
