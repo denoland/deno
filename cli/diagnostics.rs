@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::colors;
+use deno_runtime::colors;
 
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
