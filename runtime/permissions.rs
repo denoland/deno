@@ -1208,6 +1208,7 @@ fn permission_prompt(message: &str) -> bool {
     use winapi::um::processenv::GetStdHandle;
     use winapi::um::winbase::STD_INPUT_HANDLE;
     use winapi::um::wincon::FlushConsoleInputBuffer;
+    use winapi::um::wincon::PeekConsoleInputW;
     use winapi::um::wincon::WriteConsoleInputW;
     use winapi::um::wincontypes::INPUT_RECORD;
     use winapi::um::wincontypes::KEY_EVENT;
@@ -1222,14 +1223,20 @@ fn permission_prompt(message: &str) -> bool {
       emulate_enter_key_press(stdin);
       // read the buffered line or enter key press
       read_stdin_line();
-      // flush the input buffer in the case of there being a buffered line
-      // and our emulated enter key press is still in the input buffer
-      flush_input_buffer(stdin);
+      // check if our emulated key press was executed
+      if is_input_buffer_empty(stdin) {
+        // if so, move the cursor up to prevent a blank line
+        move_cursor_up();
+      } else {
+        // the emulated key press is still pending, so a buffered line was read
+        // and we can flush the emulated key press
+        flush_input_buffer(stdin);
+      }
     }
 
     unsafe fn flush_input_buffer(stdin: HANDLE) {
-      let result = FlushConsoleInputBuffer(stdin);
-      if result != TRUE {
+      let success = FlushConsoleInputBuffer(stdin);
+      if success != TRUE {
         panic!(
           "Error flushing console input buffer: {}",
           std::io::Error::last_os_error().to_string()
@@ -1250,14 +1257,33 @@ fn permission_prompt(message: &str) -> bool {
         '\r' as WCHAR;
 
       let mut record_written = 0;
-      let result =
+      let success =
         WriteConsoleInputW(stdin, &input_record, 1, &mut record_written);
-      if result != TRUE {
+      if success != TRUE {
         panic!(
           "Error emulating enter key press: {}",
           std::io::Error::last_os_error().to_string()
         )
       }
+    }
+
+    unsafe fn is_input_buffer_empty(stdin: HANDLE) -> bool {
+      let mut buffer = Vec::with_capacity(1);
+      let mut events_read = 0;
+      let success =
+        PeekConsoleInputW(stdin, buffer.as_mut_ptr(), 1, &mut events_read);
+      if success != TRUE {
+        panic!(
+          "Error peeking console input buffer: {}",
+          std::io::Error::last_os_error().to_string()
+        )
+      }
+      events_read == 0
+    }
+
+    fn move_cursor_up() {
+      use std::io::Write;
+      write!(std::io::stderr(), "\x1B[1A").expect("expected to move cursor up");
     }
 
     fn read_stdin_line() {
