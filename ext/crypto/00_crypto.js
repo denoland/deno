@@ -34,6 +34,7 @@
     Int8Array,
     Uint8Array,
     TypedArrayPrototypeSlice,
+    TypedArrayFrom,
     Int16Array,
     Uint16Array,
     Int32Array,
@@ -151,7 +152,7 @@
   }
 
   function concatBytes(...bytes) {
-    return Uint8Array.from(
+    return TypedArrayFrom(Uint8Array,
       bytes.reduce(
         (a, val) =>
           (isArrayOrArrayBufferView(val)) ? [...a, ...val] : [...a, val],
