@@ -5,7 +5,11 @@ use crate::op_sync;
 use crate::resources::ResourceId;
 use crate::Extension;
 use crate::OpState;
+use crate::Resource;
+use crate::ZeroCopyBuf;
+use std::cell::RefCell;
 use std::io::{stderr, stdout, Write};
+use std::rc::Rc;
 
 pub(crate) fn init_builtins() -> Extension {
   Extension::builder()
@@ -20,6 +24,8 @@ pub(crate) fn init_builtins() -> Extension {
       ("op_try_close", op_sync(op_try_close)),
       ("op_print", op_sync(op_print)),
       ("op_resources", op_sync(op_resources)),
+      ("op_wasm_streaming_feed", op_sync(op_wasm_streaming_feed)),
+      ("op_wasm_streaming_abort", op_sync(op_wasm_streaming_abort)),
     ])
     .build()
 }
@@ -79,5 +85,55 @@ pub fn op_print(
     stdout().write_all(msg.as_bytes())?;
     stdout().flush().unwrap();
   }
+  Ok(())
+}
+
+pub struct WasmStreamingResource(pub(crate) RefCell<rusty_v8::WasmStreaming>);
+
+impl Resource for WasmStreamingResource {
+  fn close(self: Rc<Self>) {
+    // At this point there are no clones of Rc<WasmStreamingResource> on the
+    // resource table, and no one should own a reference outside of the stack.
+    // Therefore, we can be sure `self` is the only reference.
+    if let Ok(wsr) = Rc::try_unwrap(self) {
+      wsr.0.into_inner().finish();
+    } else {
+      panic!("Couldn't consume WasmStreamingResource.");
+    }
+  }
+}
+
+/// Feed bytes to WasmStreamingResource.
+pub fn op_wasm_streaming_feed(
+  state: &mut OpState,
+  rid: ResourceId,
+  bytes: ZeroCopyBuf,
+) -> Result<(), AnyError> {
+  let wasm_streaming =
+    state.resource_table.get::<WasmStreamingResource>(rid)?;
+
+  wasm_streaming.0.borrow_mut().on_bytes_received(&bytes);
+
+  Ok(())
+}
+
+/// Abort a WasmStreamingResource.
+pub fn op_wasm_streaming_abort(
+  state: &mut OpState,
+  rid: ResourceId,
+  exception: serde_v8::Value,
+) -> Result<(), AnyError> {
+  let wasm_streaming =
+    state.resource_table.take::<WasmStreamingResource>(rid)?;
+
+  // At this point there are no clones of Rc<WasmStreamingResource> on the
+  // resource table, and no one should own a reference because we're never
+  // cloning them. So we can be sure `wasm_streaming` is the only reference.
+  if let Ok(wsr) = Rc::try_unwrap(wasm_streaming) {
+    wsr.0.into_inner().abort(Some(exception.v8_value));
+  } else {
+    panic!("Couldn't consume WasmStreamingResource.");
+  }
+
   Ok(())
 }

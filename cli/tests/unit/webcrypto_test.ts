@@ -356,3 +356,71 @@ unitTest(async function subtleCryptoHmacImportExport() {
   const exportedKey2 = await crypto.subtle.exportKey("jwk", key2);
   assertEquals(exportedKey2, jwk);
 });
+
+// deno-fmt-ignore
+const asn1AlgorithmIdentifier = new Uint8Array([
+  0x02, 0x01, 0x00, // INTEGER
+  0x30, 0x0d, // SEQUENCE (2 elements)
+  0x06, 0x09, // OBJECT IDENTIFIER
+  0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, // 1.2.840.113549.1.1.1 (rsaEncryption)
+  0x05, 0x00, // NULL
+]);
+
+unitTest(async function rsaExportPkcs8() {
+  for (const algorithm of ["RSASSA-PKCS1-v1_5", "RSA-PSS", "RSA-OAEP"]) {
+    const keyPair = await crypto.subtle.generateKey(
+      {
+        name: algorithm,
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([1, 0, 1]),
+        hash: "SHA-256",
+      },
+      true,
+      algorithm !== "RSA-OAEP" ? ["sign", "verify"] : ["encrypt", "decrypt"],
+    );
+
+    assert(keyPair.privateKey);
+    assert(keyPair.publicKey);
+    assertEquals(keyPair.privateKey.extractable, true);
+
+    const exportedKey = await crypto.subtle.exportKey(
+      "pkcs8",
+      keyPair.privateKey,
+    );
+
+    assert(exportedKey);
+    assert(exportedKey instanceof ArrayBuffer);
+
+    const pkcs8 = new Uint8Array(exportedKey);
+    assert(pkcs8.length > 0);
+
+    assertEquals(
+      pkcs8.slice(4, asn1AlgorithmIdentifier.byteLength + 4),
+      asn1AlgorithmIdentifier,
+    );
+  }
+});
+
+unitTest(async function testHkdfDeriveBits() {
+  const rawKey = await crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey(
+    "raw",
+    rawKey,
+    { name: "HKDF", hash: "SHA-256" },
+    false,
+    ["deriveBits"],
+  );
+  const salt = await crypto.getRandomValues(new Uint8Array(16));
+  const info = await crypto.getRandomValues(new Uint8Array(16));
+  const result = await crypto.subtle.deriveBits(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: salt,
+      info: info,
+    },
+    key,
+    128,
+  );
+  assertEquals(result.byteLength, 128 / 8);
+});

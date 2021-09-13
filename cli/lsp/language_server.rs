@@ -56,6 +56,7 @@ use super::urls;
 use crate::config_file::ConfigFile;
 use crate::config_file::TsConfig;
 use crate::deno_dir;
+use crate::file_fetcher::get_source_from_data_url;
 use crate::fs_util;
 use crate::logger;
 use crate::tools::fmt::format_file;
@@ -474,6 +475,10 @@ impl Inner {
       let import_map_url = if let Ok(url) = Url::from_file_path(import_map_str)
       {
         Ok(url)
+      } else if import_map_str.starts_with("data:") {
+        Url::parse(import_map_str).map_err(|_| {
+          anyhow!("Bad data url for import map: {:?}", import_map_str)
+        })
       } else if let Some(root_uri) = &maybe_root_uri {
         let root_path = root_uri
           .to_file_path()
@@ -488,21 +493,25 @@ impl Inner {
           import_map_str
         ))
       }?;
-      let import_map_path = import_map_url.to_file_path().map_err(|_| {
-        anyhow!("Cannot convert \"{}\" into a file path.", import_map_url)
-      })?;
-      info!(
-        "  Resolved import map: \"{}\"",
-        import_map_path.to_string_lossy()
-      );
-      let import_map_json =
+
+      let import_map_json = if import_map_url.scheme() == "data" {
+        get_source_from_data_url(&import_map_url)?.0
+      } else {
+        let import_map_path = import_map_url.to_file_path().map_err(|_| {
+          anyhow!("Cannot convert \"{}\" into a file path.", import_map_url)
+        })?;
+        info!(
+          "  Resolved import map: \"{}\"",
+          import_map_path.to_string_lossy()
+        );
         fs::read_to_string(import_map_path).await.map_err(|err| {
           anyhow!(
             "Failed to load the import map at: {}. [{}]",
             import_map_url,
             err
           )
-        })?;
+        })?
+      };
       let import_map =
         ImportMap::from_json(&import_map_url.to_string(), &import_map_json)?;
       self.maybe_import_map_uri = Some(import_map_url);

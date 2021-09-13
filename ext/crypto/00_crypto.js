@@ -82,6 +82,7 @@
       "RSA-PSS": "RsaHashedKeyGenParams",
       "RSA-OAEP": "RsaHashedKeyGenParams",
       "ECDSA": "EcKeyGenParams",
+      "ECDH": "EcKeyGenParams",
       "AES-CTR": "AesKeyGenParams",
       "AES-CBC": "AesKeyGenParams",
       "AES-GCM": "AesKeyGenParams",
@@ -1001,7 +1002,6 @@
      * @param {CryptoKey} key
      * @returns {Promise<any>}
      */
-    // deno-lint-ignore require-await
     async exportKey(format, key) {
       webidl.assertBranded(this, SubtleCrypto);
       const prefix = "Failed to execute 'exportKey' on 'SubtleCrypto'";
@@ -1077,8 +1077,92 @@
           // TODO(@littledivy): Redundant break but deno_lint complains without it
           break;
         }
-        // TODO(@littledivy): RSASSA-PKCS1-v1_5
-        // TODO(@littledivy): RSA-PSS
+        case "RSASSA-PKCS1-v1_5": {
+          switch (format) {
+            case "pkcs8": {
+              // 1.
+              if (key[_type] !== "private") {
+                throw new DOMException(
+                  "Key is not a private key",
+                  "InvalidAccessError",
+                );
+              }
+
+              // 2.
+              const data = await core.opAsync(
+                "op_crypto_export_key",
+                {
+                  key: innerKey,
+                  format: "pkcs8",
+                  algorithm: "RSASSA-PKCS1-v1_5",
+                },
+              );
+
+              // 3.
+              return data.buffer;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
+        case "RSA-PSS": {
+          switch (format) {
+            case "pkcs8": {
+              // 1.
+              if (key[_type] !== "private") {
+                throw new DOMException(
+                  "Key is not a private key",
+                  "InvalidAccessError",
+                );
+              }
+
+              // 2.
+              const data = await core.opAsync(
+                "op_crypto_export_key",
+                {
+                  key: innerKey,
+                  format: "pkcs8",
+                  algorithm: "RSA-PSS",
+                  hash: key[_algorithm].hash.name,
+                },
+              );
+
+              // 3.
+              return data.buffer;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
+        case "RSA-OAEP": {
+          switch (format) {
+            case "pkcs8": {
+              // 1.
+              if (key[_type] !== "private") {
+                throw new DOMException(
+                  "Key is not a private key",
+                  "InvalidAccessError",
+                );
+              }
+
+              // 2.
+              const data = await core.opAsync(
+                "op_crypto_export_key",
+                {
+                  key: innerKey,
+                  format: "pkcs8",
+                  algorithm: "RSA-PSS",
+                  hash: key[_algorithm].hash.name,
+                },
+              );
+
+              // 3.
+              return data.buffer;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
         // TODO(@littledivy): ECDSA
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
@@ -1339,7 +1423,8 @@
         );
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, {
-          type: "pkcs8",
+          // PKCS#1 for RSA
+          type: "raw",
           data: keyData,
         });
 
@@ -1399,7 +1484,8 @@
         );
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, {
-          type: "pkcs8",
+          // PKCS#1 for RSA
+          type: "raw",
           data: keyData,
         });
 
@@ -1490,7 +1576,64 @@
         // 17-20.
         return { publicKey, privateKey };
       }
-      // TODO(lucacasonato): ECDH
+      case "ECDH": {
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            usages,
+            (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        // 2-3.
+        const handle = {};
+        if (
+          ArrayPrototypeIncludes(
+            supportedNamedCurves,
+            normalizedAlgorithm.namedCurve,
+          )
+        ) {
+          const keyData = await core.opAsync("op_crypto_generate_key", {
+            name: "ECDH",
+            namedCurve: normalizedAlgorithm.namedCurve,
+          });
+          WeakMapPrototypeSet(KEY_STORE, handle, {
+            type: "pkcs8",
+            data: keyData,
+          });
+        } else {
+          throw new DOMException("Curve not supported", "NotSupportedError");
+        }
+
+        // 4-6.
+        const algorithm = {
+          name: "ECDH",
+          namedCurve: normalizedAlgorithm.namedCurve,
+        };
+
+        // 7-11.
+        const publicKey = constructKey(
+          "public",
+          true,
+          usageIntersection(usages, []),
+          algorithm,
+          handle,
+        );
+
+        // 12-16.
+        const privateKey = constructKey(
+          "private",
+          extractable,
+          usageIntersection(usages, ["deriveKey", "deriveBits"]),
+          algorithm,
+          handle,
+        );
+
+        // 17-20.
+        return { publicKey, privateKey };
+      }
       case "AES-CTR":
       case "AES-CBC":
       case "AES-GCM": {

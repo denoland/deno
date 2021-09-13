@@ -860,9 +860,8 @@ The following information is shown:
 
 local: Local path of the file.
 type: JavaScript, TypeScript, or JSON.
-compiled: Local path of compiled source code. (TypeScript only.)
-map: Local path of source map. (TypeScript only.)
-deps: Dependency tree of the source file.
+emit: Local path of compiled source code. (TypeScript only.)
+dependencies: Dependency tree of the source file.
 
 Without any additional arguments, 'deno info' shows:
 

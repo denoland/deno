@@ -56,25 +56,18 @@ declare namespace Deno {
      * (`WebAssembly.compileStreaming` and `WebAssembly.instantiateStreaming`)
      * are called in order to feed the source's bytes to the wasm compiler.
      * The callback is called with the source argument passed to the streaming
-     * APIs and an rid to use with `Deno.core.wasmStreamingFeed`.
+     * APIs and an rid to use with the wasm streaming ops.
+     *
+     * The callback should eventually invoke the following ops:
+     *   - `op_wasm_streaming_feed`. Feeds bytes from the wasm resource to the
+     *     compiler. Takes the rid and a `Uint8Array`.
+     *   - `op_wasm_streaming_abort`. Aborts the wasm compilation. Takes the rid
+     *     and an exception. Invalidates the resource.
+     *   - To indicate the end of the resource, use `Deno.core.close()` with the
+     *     rid.
      */
     function setWasmStreamingCallback(
       cb: (source: any, rid: number) => void,
     ): void;
-
-    /**
-     * Affect the state of the WebAssembly streaming compiler, by either passing
-     * it bytes, aborting it, or indicating that all bytes were received.
-     * `rid` must be a resource ID that was passed to the callback set with
-     * `Deno.core.setWasmStreamingCallback`. Calling this function with `type`
-     * set to either "abort" or "finish" invalidates the rid.
-     */
-    function wasmStreamingFeed(
-      rid: number,
-      type: "bytes",
-      bytes: Uint8Array,
-    ): void;
-    function wasmStreamingFeed(rid: number, type: "abort", error: any): void;
-    function wasmStreamingFeed(rid: number, type: "finish"): void;
   }
 }

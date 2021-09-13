@@ -139,7 +139,11 @@ pub fn get_lint_references(
   let syntax = deno_ast::get_syntax(parsed_source.media_type());
   let lint_rules = rules::get_recommended_rules();
   let linter = create_linter(syntax, lint_rules);
-  let lint_diagnostics = linter.lint_with_ast(parsed_source);
+  // TODO(dsherret): do not re-parse here again
+  let (_, lint_diagnostics) = linter.lint(
+    parsed_source.specifier().to_string(),
+    parsed_source.source().text_str().to_string(),
+  )?;
 
   Ok(
     lint_diagnostics
