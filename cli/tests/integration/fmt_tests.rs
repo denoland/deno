@@ -181,3 +181,15 @@ itest!(fmt_stdin_check_not_formatted {
   input: Some("const a = 1\n"),
   output_str: Some("Not formatted stdin\n"),
 });
+
+itest!(fmt_with_malformed_config {
+  args: "fmt --config fmt/Deno.malformed.jsonc",
+  output: "fmt/fmt_with_malformed_config.out",
+  exit_code: 1,
+});
+
+itest!(fmt_with_malformed_config2 {
+  args: "fmt --config fmt/Deno.malformed2.jsonc",
+  output: "fmt/fmt_with_malformed_config2.out",
+  exit_code: 1,
+});
