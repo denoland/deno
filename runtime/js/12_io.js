@@ -96,10 +96,7 @@
     return nread === 0 ? null : nread;
   }
 
-  async function read(
-    rid,
-    buffer,
-  ) {
+  async function read(rid, buffer) {
     if (buffer.length === 0) {
       return 0;
     }
@@ -117,10 +114,10 @@
     return await core.opAsync("op_write_async", rid, data);
   }
 
-  const READ_PER_ITER = 32 * 1024;
+  const READ_PER_ITER = 16 * 1024; // 16kb, see https://github.com/denoland/deno/issues/10157
 
   async function readAll(r) {
-    return await readAllInner(r);
+    return readAllInner(r);
   }
   async function readAllInner(r, options) {
     const buffers = [];
@@ -138,6 +135,26 @@
       throw new DOMException("The read operation was aborted.", "AbortError");
     }
 
+    return concatBuffers(buffers);
+  }
+
+  function readAllSync(r) {
+    const buffers = [];
+
+    while (true) {
+      const buf = new Uint8Array(READ_PER_ITER);
+      const read = r.readSync(buf);
+      if (typeof read == "number") {
+        ArrayPrototypePush(buffers, buf.subarray(0, read));
+      } else {
+        break;
+      }
+    }
+
+    return concatBuffers(buffers);
+  }
+
+  function concatBuffers(buffers) {
     let totalLen = 0;
     for (const buf of buffers) {
       totalLen += buf.byteLength;
@@ -154,33 +171,42 @@
     return contents;
   }
 
-  function readAllSync(r) {
-    const buffers = [];
+  function readAllSyncSized(r, size) {
+    const buf = new Uint8Array(size);
+    let cursor = 0;
 
-    while (true) {
-      const buf = new Uint8Array(READ_PER_ITER);
-      const read = r.readSync(buf);
+    while (cursor < size) {
+      const sliceEnd = Math.min(size, cursor + READ_PER_ITER);
+      const slice = buf.subarray(cursor, sliceEnd);
+      const read = r.readSync(slice);
       if (typeof read == "number") {
-        ArrayPrototypePush(buffers, new Uint8Array(buf.buffer, 0, read));
+        cursor += read;
       } else {
         break;
       }
     }
 
-    let totalLen = 0;
-    for (const buf of buffers) {
-      totalLen += buf.byteLength;
+    return buf;
+  }
+
+  async function readAllInnerSized(r, size, options) {
+    const buf = new Uint8Array(size);
+    let cursor = 0;
+    const signal = options?.signal ?? null;
+    while (!signal?.aborted && cursor < size) {
+      const sliceEnd = Math.min(size, cursor + READ_PER_ITER);
+      const slice = buf.subarray(cursor, sliceEnd);
+      const read = await r.read(slice);
+      if (typeof read == "number") {
+        cursor += read;
+      } else {
+        break;
+      }
     }
-
-    const contents = new Uint8Array(totalLen);
-
-    let n = 0;
-    for (const buf of buffers) {
-      TypedArrayPrototypeSet(contents, buf, n);
-      n += buf.byteLength;
+    if (signal?.aborted) {
+      throw new DOMException("The read operation was aborted.", "AbortError");
     }
-
-    return contents;
+    return buf;
   }
 
   window.__bootstrap.io = {
@@ -195,5 +221,7 @@
     readAll,
     readAllInner,
     readAllSync,
+    readAllSyncSized,
+    readAllInnerSized,
   };
 })(this);
