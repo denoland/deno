@@ -168,7 +168,7 @@ pub async fn op_crypto_generate_key(
 
       private_key.to_pkcs1_der()?.as_ref().to_vec()
     }
-    Algorithm::Ecdsa => {
+    Algorithm::Ecdsa | Algorithm::Ecdh => {
       let curve: &EcdsaSigningAlgorithm =
         args.named_curve.ok_or_else(not_supported)?.into();
       let rng = RingRand::SystemRandom::new();

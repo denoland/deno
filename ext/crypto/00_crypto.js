@@ -82,6 +82,7 @@
       "RSA-PSS": "RsaHashedKeyGenParams",
       "RSA-OAEP": "RsaHashedKeyGenParams",
       "ECDSA": "EcKeyGenParams",
+      "ECDH": "EcKeyGenParams",
       "AES-CTR": "AesKeyGenParams",
       "AES-CBC": "AesKeyGenParams",
       "AES-GCM": "AesKeyGenParams",
@@ -1575,7 +1576,64 @@
         // 17-20.
         return { publicKey, privateKey };
       }
-      // TODO(lucacasonato): ECDH
+      case "ECDH": {
+        // 1.
+        if (
+          ArrayPrototypeFind(
+            usages,
+            (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usages", "SyntaxError");
+        }
+
+        // 2-3.
+        const handle = {};
+        if (
+          ArrayPrototypeIncludes(
+            supportedNamedCurves,
+            normalizedAlgorithm.namedCurve,
+          )
+        ) {
+          const keyData = await core.opAsync("op_crypto_generate_key", {
+            name: "ECDH",
+            namedCurve: normalizedAlgorithm.namedCurve,
+          });
+          WeakMapPrototypeSet(KEY_STORE, handle, {
+            type: "pkcs8",
+            data: keyData,
+          });
+        } else {
+          throw new DOMException("Curve not supported", "NotSupportedError");
+        }
+
+        // 4-6.
+        const algorithm = {
+          name: "ECDH",
+          namedCurve: normalizedAlgorithm.namedCurve,
+        };
+
+        // 7-11.
+        const publicKey = constructKey(
+          "public",
+          true,
+          usageIntersection(usages, []),
+          algorithm,
+          handle,
+        );
+
+        // 12-16.
+        const privateKey = constructKey(
+          "private",
+          extractable,
+          usageIntersection(usages, ["deriveKey", "deriveBits"]),
+          algorithm,
+          handle,
+        );
+
+        // 17-20.
+        return { publicKey, privateKey };
+      }
       case "AES-CTR":
       case "AES-CBC":
       case "AES-GCM": {
