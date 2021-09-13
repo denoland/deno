@@ -13,6 +13,8 @@ use deno_runtime::permissions::PermissionsOptions;
 use log::debug;
 use log::Level;
 use std::net::SocketAddr;
+use std::num::NonZeroU32;
+use std::num::NonZeroU8;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -86,6 +88,11 @@ pub struct FmtFlags {
   pub files: Vec<PathBuf>,
   pub ignore: Vec<PathBuf>,
   pub ext: String,
+  pub use_tabs: Option<bool>,
+  pub line_width: Option<NonZeroU32>,
+  pub indent_width: Option<NonZeroU8>,
+  pub single_quote: Option<bool>,
+  pub prose_wrap: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -845,6 +852,47 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .required(false),
     )
     .arg(watch_arg())
+    .arg(
+      Arg::with_name("options-use-tabs")
+        .long("options-use-tabs")
+        .help("Use tabs instead of spaces for indentation. Defaults to false."),
+    )
+    .arg(
+      Arg::with_name("options-line-width")
+        .long("options-line-width")
+        .help("Define maximum line width. Defaults to 80.")
+        .takes_value(true)
+        .validator(|val: String| match val.parse::<NonZeroUsize>() {
+          Ok(_) => Ok(()),
+          Err(_) => {
+            Err("options-line-width should be a non zero integer".to_string())
+          }
+        }),
+    )
+    .arg(
+      Arg::with_name("options-indent-width")
+        .long("options-indent-width")
+        .help("Define indentation width. Defaults to 2.")
+        .takes_value(true)
+        .validator(|val: String| match val.parse::<NonZeroUsize>() {
+          Ok(_) => Ok(()),
+          Err(_) => {
+            Err("options-indent-width should be a non zero integer".to_string())
+          }
+        }),
+    )
+    .arg(
+      Arg::with_name("options-single-quote")
+        .long("options-single-quote")
+        .help("Use single quotes. Defaults to false."),
+    )
+    .arg(
+      Arg::with_name("options-prose-wrap")
+        .long("options-prose-wrap")
+        .takes_value(true)
+        .possible_values(&["always", "never", "preserve"])
+        .help("Define how prose should be wrapped. Defaults to always."),
+    )
 }
 
 fn info_subcommand<'a, 'b>() -> App<'a, 'b> {
@@ -1745,11 +1793,54 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   };
   let ext = matches.value_of("ext").unwrap().to_string();
 
+  let use_tabs = if matches.is_present("options-use-tabs") {
+    Some(true)
+  } else {
+    None
+  };
+  let line_width = if matches.is_present("options-line-width") {
+    Some(
+      matches
+        .value_of("options-line-width")
+        .unwrap()
+        .parse()
+        .unwrap(),
+    )
+  } else {
+    None
+  };
+  let indent_width = if matches.is_present("options-indent-width") {
+    Some(
+      matches
+        .value_of("options-indent-width")
+        .unwrap()
+        .parse()
+        .unwrap(),
+    )
+  } else {
+    None
+  };
+  let single_quote = if matches.is_present("options-single-quote") {
+    Some(true)
+  } else {
+    None
+  };
+  let prose_wrap = if matches.is_present("options-prose-wrap") {
+    Some(matches.value_of("options-prose-wrap").unwrap().to_string())
+  } else {
+    None
+  };
+
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.is_present("check"),
     ext,
     files,
     ignore,
+    use_tabs,
+    line_width,
+    indent_width,
+    single_quote,
+    prose_wrap,
   });
 }
 
@@ -2466,7 +2557,12 @@ mod tests {
             PathBuf::from("script_1.ts"),
             PathBuf::from("script_2.ts")
           ],
-          ext: "ts".to_string()
+          ext: "ts".to_string(),
+          use_tabs: None,
+          line_width: None,
+          indent_width: None,
+          single_quote: None,
+          prose_wrap: None,
         }),
         ..Flags::default()
       }
@@ -2481,6 +2577,11 @@ mod tests {
           check: true,
           files: vec![],
           ext: "ts".to_string(),
+          use_tabs: None,
+          line_width: None,
+          indent_width: None,
+          single_quote: None,
+          prose_wrap: None,
         }),
         ..Flags::default()
       }
@@ -2495,6 +2596,11 @@ mod tests {
           check: false,
           files: vec![],
           ext: "ts".to_string(),
+          use_tabs: None,
+          line_width: None,
+          indent_width: None,
+          single_quote: None,
+          prose_wrap: None,
         }),
         ..Flags::default()
       }
@@ -2509,6 +2615,11 @@ mod tests {
           check: false,
           files: vec![],
           ext: "ts".to_string(),
+          use_tabs: None,
+          line_width: None,
+          indent_width: None,
+          single_quote: None,
+          prose_wrap: None,
         }),
         watch: true,
         ..Flags::default()
@@ -2531,6 +2642,11 @@ mod tests {
           check: true,
           files: vec![PathBuf::from("foo.ts")],
           ext: "ts".to_string(),
+          use_tabs: None,
+          line_width: None,
+          indent_width: None,
+          single_quote: None,
+          prose_wrap: None,
         }),
         watch: true,
         ..Flags::default()
@@ -2545,7 +2661,12 @@ mod tests {
           ignore: vec![],
           check: false,
           files: vec![],
-          ext: "ts".to_string()
+          ext: "ts".to_string(),
+          use_tabs: None,
+          line_width: None,
+          indent_width: None,
+          single_quote: None,
+          prose_wrap: None,
         }),
         config_path: Some("deno.jsonc".to_string()),
         ..Flags::default()
@@ -2567,10 +2688,45 @@ mod tests {
           ignore: vec![],
           check: false,
           files: vec![PathBuf::from("foo.ts")],
-          ext: "ts".to_string()
+          ext: "ts".to_string(),
+          use_tabs: None,
+          line_width: None,
+          indent_width: None,
+          single_quote: None,
+          prose_wrap: None,
         }),
         config_path: Some("deno.jsonc".to_string()),
         watch: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "fmt",
+      "--options-use-tabs",
+      "--options-line-width",
+      "60",
+      "--options-indent-width",
+      "4",
+      "--options-single-quote",
+      "--options-prose-wrap",
+      "never"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Fmt(FmtFlags {
+          ignore: vec![],
+          check: false,
+          files: vec![],
+          ext: "ts".to_string(),
+          use_tabs: Some(true),
+          line_width: Some(NonZeroU32::new(60).unwrap()),
+          indent_width: Some(NonZeroU8::new(4).unwrap()),
+          single_quote: Some(true),
+          prose_wrap: Some("never".to_string()),
+        }),
         ..Flags::default()
       }
     );
