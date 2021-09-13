@@ -10,7 +10,7 @@
 use crate::colors;
 use crate::config_file::FmtConfig;
 use crate::config_file::FmtOptionsConfig;
-use crate::config_file::TextWrap;
+use crate::config_file::ProseWrap;
 use crate::diff::diff;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
@@ -422,13 +422,15 @@ fn get_resolved_markdown_config(
     builder.line_width(line_width);
   }
 
-  if let Some(text_wrap) = options.text_wrap {
-    builder.text_wrap(match text_wrap {
-      TextWrap::Always => {
+  if let Some(prose_wrap) = options.prose_wrap {
+    builder.text_wrap(match prose_wrap {
+      ProseWrap::Always => {
         dprint_plugin_markdown::configuration::TextWrap::Always
       }
-      TextWrap::Never => dprint_plugin_markdown::configuration::TextWrap::Never,
-      TextWrap::Preserve => {
+      ProseWrap::Never => {
+        dprint_plugin_markdown::configuration::TextWrap::Never
+      }
+      ProseWrap::Preserve => {
         dprint_plugin_markdown::configuration::TextWrap::Maintain
       }
     });

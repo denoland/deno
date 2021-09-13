@@ -291,7 +291,7 @@ pub struct LintConfig {
 
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub enum TextWrap {
+pub enum ProseWrap {
   Always,
   Never,
   Preserve,
@@ -304,7 +304,7 @@ pub struct FmtOptionsConfig {
   pub line_width: Option<u32>,
   pub indent_width: Option<u8>,
   pub single_quote: Option<bool>,
-  pub text_wrap: Option<TextWrap>,
+  pub prose_wrap: Option<ProseWrap>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -488,7 +488,7 @@ mod tests {
           "lineWidth": 80,
           "indentWidth": 4,
           "singleQuote": true,
-          "textWrap": "preserve"
+          "proseWrap": "preserve"
         }
       }
     }"#;

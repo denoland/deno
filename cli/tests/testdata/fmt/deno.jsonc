@@ -9,7 +9,7 @@
       "lineWidth": 40,
       "indentWidth": 8,
       "singleQuote": true,
-      "textWrap": "always"
+      "proseWrap": "always"
     }
   }
 }
