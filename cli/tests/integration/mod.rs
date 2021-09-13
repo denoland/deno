@@ -691,6 +691,7 @@ fn websocket_server_multi_field_connection_header() {
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
   let mut child = util::deno_cmd()
     .arg("run")
+    .arg("--unstable")
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
