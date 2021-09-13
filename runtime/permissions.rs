@@ -23,8 +23,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
 const PERMISSION_EMOJI: &str = "⚠️";
-#[cfg(not(test))]
-const PROMPT_OPTS_TEXT: &str = "[y/n (y = yes allow, n = no deny)] ";
 
 /// Tri-state value for storing permission state
 #[derive(PartialEq, Debug, Clone, Copy, Deserialize, PartialOrd)]
@@ -1196,91 +1194,112 @@ fn permission_prompt(message: &str) -> bool {
   };
 
   #[cfg(unix)]
-  fn confirm_prompt() -> bool {
-    // For security reasons we must consume everything in stdin so that previously
-    // buffered data cannot affect the prompt.
+  fn clear_stdin() {
     let r = unsafe { libc::tcflush(0, libc::TCIFLUSH) };
     assert_eq!(r, 0);
-
-    loop {
-      let mut input = String::new();
-      let stdin = std::io::stdin();
-      let result = stdin.read_line(&mut input);
-      if result.is_err() {
-        return false;
-      };
-      let ch = match input.chars().next() {
-        None => return false,
-        Some(v) => v,
-      };
-      match ch.to_ascii_lowercase() {
-        'y' => return true,
-        'n' => return false,
-        _ => {
-          // If we don't get a recognized option try again.
-          let msg_again =
-            format!("Unrecognized option '{}' {}", ch, PROMPT_OPTS_TEXT);
-          eprint!("{}", colors::bold(&msg_again));
-        }
-      };
-    }
   }
 
   #[cfg(not(unix))]
-  fn confirm_prompt() -> bool {
-    use winapi::um::consoleapi::ReadConsoleInputW;
+  fn clear_stdin() {
+    use winapi::shared::minwindef::TRUE;
+    use winapi::shared::minwindef::UINT;
+    use winapi::shared::minwindef::WORD;
+    use winapi::shared::ntdef::WCHAR;
+    use winapi::um::processenv::GetStdHandle;
+    use winapi::um::winbase::STD_INPUT_HANDLE;
     use winapi::um::wincon::FlushConsoleInputBuffer;
+    use winapi::um::wincon::WriteConsoleInputW;
+    use winapi::um::wincontypes::INPUT_RECORD;
     use winapi::um::wincontypes::KEY_EVENT;
+    use winapi::um::winnt::HANDLE;
+    use winapi::um::winuser::MapVirtualKeyW;
+    use winapi::um::winuser::MAPVK_VK_TO_VSC;
+    use winapi::um::winuser::VK_RETURN;
 
     unsafe {
-      let stdin = winapi::um::processenv::GetStdHandle(
-        winapi::um::winbase::STD_INPUT_HANDLE,
-      );
+      let stdin = GetStdHandle(STD_INPUT_HANDLE);
+      // emulate an enter key press to clear any line buffered console characters
+      emulate_enter_key_press(stdin);
+      // read the buffered line or enter key press
+      read_stdin_line();
+      // flush the input buffer in the case of there being a buffered line
+      // and our emulated enter key press is still in the input buffer
+      flush_input_buffer(stdin);
+    }
 
-      // For security reasons we must consume everything in stdin so that
-      // previously buffered data cannot affect the prompt.
-      assert_eq!(
-        FlushConsoleInputBuffer(stdin),
-        winapi::shared::minwindef::TRUE
-      );
-
-      // At this point, we can't read anything from std::io::std or even
-      // winapi's `ReadConsole` because it will still contain characters
-      // flushed from the input buffer. There doesn't seem to be a way to
-      // flush this other buffer or read from ReadConsole without potentially
-      // blocking, so instead we deal with the lower level input API, and
-      // listen for key events.
-      loop {
-        let mut events_read = 0;
-        let mut input_record = std::mem::zeroed();
-        assert_eq!(
-          ReadConsoleInputW(stdin, &mut input_record, 1, &mut events_read),
-          winapi::shared::minwindef::TRUE
-        );
-        assert_eq!(events_read, 1);
-        if input_record.EventType == KEY_EVENT {
-          let key_event = input_record.Event.KeyEvent();
-          let char = *key_event.uChar.UnicodeChar();
-          if char == 'y' as u16 {
-            eprintln!("y");
-            return true;
-          } else if char == 'n' as u16 {
-            eprintln!("n");
-            return false;
-          }
-        }
+    unsafe fn flush_input_buffer(stdin: HANDLE) {
+      // flush the input buffer again
+      let result = FlushConsoleInputBuffer(stdin);
+      if result != TRUE {
+        panic!(
+          "Error flushing console input buffer: {}",
+          std::io::Error::last_os_error().to_string()
+        )
       }
+    }
+
+    unsafe fn emulate_enter_key_press(stdin: HANDLE) {
+      // https://github.com/libuv/libuv/blob/a39009a5a9252a566ca0704d02df8dabc4ce328f/src/win/tty.c#L1121-L1131
+      let mut input_record: INPUT_RECORD = std::mem::zeroed();
+      input_record.EventType = KEY_EVENT;
+      input_record.Event.KeyEvent_mut().bKeyDown = TRUE;
+      input_record.Event.KeyEvent_mut().wRepeatCount = 1;
+      input_record.Event.KeyEvent_mut().wVirtualKeyCode = VK_RETURN as WORD;
+      input_record.Event.KeyEvent_mut().wVirtualScanCode =
+        MapVirtualKeyW(VK_RETURN as UINT, MAPVK_VK_TO_VSC) as WORD;
+      *input_record.Event.KeyEvent_mut().uChar.UnicodeChar_mut() =
+        '\r' as WCHAR;
+
+      let mut record_written = 0;
+      let result =
+        WriteConsoleInputW(stdin, &input_record, 1, &mut record_written);
+      if result != TRUE {
+        panic!(
+          "Error emulating enter key press: {}",
+          std::io::Error::last_os_error().to_string()
+        )
+      }
+    }
+
+    fn read_stdin_line() {
+      let mut input = String::new();
+      let stdin = std::io::stdin();
+      stdin.read_line(&mut input).expect("expected to read line");
     }
   }
 
+  // For security reasons we must consume everything in stdin so that previously
+  // buffered data cannot effect the prompt.
+  clear_stdin();
+
+  let opts = "[y/n (y = yes allow, n = no deny)] ";
   let msg = format!(
     "{}  ️Deno requests {}. Allow? {}",
-    PERMISSION_EMOJI, message, PROMPT_OPTS_TEXT
+    PERMISSION_EMOJI, message, opts
   );
   // print to stderr so that if deno is > to a file this is still displayed.
   eprint!("{}", colors::bold(&msg));
-
-  confirm_prompt()
+  loop {
+    let mut input = String::new();
+    let stdin = std::io::stdin();
+    let result = stdin.read_line(&mut input);
+    if result.is_err() {
+      return false;
+    };
+    let ch = match input.chars().next() {
+      None => return false,
+      Some(v) => v,
+    };
+    match ch.to_ascii_lowercase() {
+      'y' => return true,
+      'n' => return false,
+      _ => {
+        // If we don't get a recognized option try again.
+        let msg_again = format!("Unrecognized option '{}' {}", ch, opts);
+        eprint!("{}", colors::bold(&msg_again));
+      }
+    };
+  }
 }
 
 // When testing, permission prompt returns the value of STUB_PROMPT_VALUE
