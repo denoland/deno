@@ -43,11 +43,11 @@ winapi = "0.3.9"
 winres = "0.1.11"
 
 [dependencies]
-deno_ast = { version = "0.1.6", features = ["bundler", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
+deno_ast = { version = "0.2.0", features = ["bundler", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_core = { version = "0.98.0", path = "../core" }
-deno_doc = "0.13.0"
-deno_graph = "0.4.0"
-deno_lint = { version = "0.15.1", features = ["docs"] }
+deno_doc = "0.14.0"
+deno_graph = "0.5.0"
+deno_lint = { version = "0.16.0", features = ["docs"] }
 deno_runtime = { version = "0.24.0", path = "../runtime" }
 deno_tls = { version = "0.3.0", path = "../ext/tls" }
 
@@ -88,7 +88,6 @@ serde = { version = "1.0.129", features = ["derive"] }
 shell-escape = "0.1.5"
 sourcemap = "6.0.1"
 tempfile = "3.2.0"
-termcolor = "1.1.2"
 text-size = "1.1.0"
 tokio = { version = "1.10.1", features = ["full"] }
 tokio-rustls = "0.22.0"

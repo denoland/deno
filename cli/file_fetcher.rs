@@ -143,6 +143,24 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
   })
 }
 
+/// Returns the decoded body and content-type of a provided
+/// data URL.
+pub fn get_source_from_data_url(
+  specifier: &ModuleSpecifier,
+) -> Result<(String, String), AnyError> {
+  let data_url = DataUrl::process(specifier.as_str())
+    .map_err(|e| uri_error(format!("{:?}", e)))?;
+  let mime = data_url.mime_type();
+  let charset = mime.get_parameter("charset").map(|v| v.to_string());
+  let (bytes, _) = data_url
+    .decode_to_vec()
+    .map_err(|e| uri_error(format!("{:?}", e)))?;
+  Ok((
+    strip_shebang(get_source_from_bytes(bytes, charset)?),
+    format!("{}", mime),
+  ))
+}
+
 /// Given a vector of bytes and optionally a charset, decode the bytes to a
 /// string.
 pub fn get_source_from_bytes(
@@ -340,15 +358,7 @@ impl FileFetcher {
       ));
     }
 
-    let data_url = DataUrl::process(specifier.as_str())
-      .map_err(|e| uri_error(format!("{:?}", e)))?;
-    let mime = data_url.mime_type();
-    let charset = mime.get_parameter("charset").map(|v| v.to_string());
-    let (bytes, _) = data_url
-      .decode_to_vec()
-      .map_err(|e| uri_error(format!("{:?}", e)))?;
-    let source = strip_shebang(get_source_from_bytes(bytes, charset)?);
-    let content_type = format!("{}", mime);
+    let (source, content_type) = get_source_from_data_url(specifier)?;
     let (media_type, _) =
       map_content_type(specifier, Some(content_type.clone()));
 

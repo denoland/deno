@@ -410,7 +410,7 @@ mod test {
   fn text_module_graph_info_display() {
     let fixture = get_fixture();
     let text = fixture.to_string();
-    let actual = colors::strip_ansi_codes(&text);
+    let actual = test_util::strip_ansi_codes(&text);
     let expected = r#"local: /cache/deps/https/deno.land/x/a.ts
 type: TypeScript
 emit: /cache/emit/https/deno.land/x/a.js

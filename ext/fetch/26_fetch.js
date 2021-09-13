@@ -40,6 +40,11 @@
     TypedArrayPrototypeSubarray,
     TypeError,
     Uint8Array,
+    WeakMap,
+    WeakMapPrototypeDelete,
+    WeakMapPrototypeGet,
+    WeakMapPrototypeHas,
+    WeakMapPrototypeSet,
   } = window.__bootstrap.primordials;
 
   const REQUEST_BODY_HEADER_NAMES = [
@@ -48,6 +53,8 @@
     "content-location",
     "content-type",
   ];
+
+  const requestBodyReaders = new WeakMap();
 
   /**
    * @param {{ method: string, url: string, headers: [string, string][], clientRid: number | null, hasBody: boolean }} args
@@ -193,6 +200,7 @@
           reqBody = req.body.stream;
         } else {
           const reader = req.body.stream.getReader();
+          WeakMapPrototypeSet(requestBodyReaders, req, reader);
           const r1 = await reader.read();
           if (r1.done) {
             reqBody = new Uint8Array(0);
@@ -201,6 +209,7 @@
             const r2 = await reader.read();
             if (!r2.done) throw new TypeError("Unreachable");
           }
+          WeakMapPrototypeDelete(requestBodyReaders, req);
         }
       } else {
         req.body.streamOrStatic.consumed = true;
@@ -232,6 +241,7 @@
         throw new TypeError("Unreachable");
       }
       const reader = reqBody.getReader();
+      WeakMapPrototypeSet(requestBodyReaders, req, reader);
       (async () => {
         while (true) {
           const { value, done } = await PromisePrototypeCatch(
@@ -260,6 +270,7 @@
             break;
           }
         }
+        WeakMapPrototypeDelete(requestBodyReaders, req);
         core.tryClose(requestBodyRid);
       })();
     }
@@ -473,7 +484,13 @@
 
   function abortFetch(request, responseObject) {
     const error = new DOMException("Ongoing fetch was aborted.", "AbortError");
-    if (request.body !== null) request.body.cancel(error);
+    if (request.body !== null) {
+      if (WeakMapPrototypeHas(requestBodyReaders, request)) {
+        WeakMapPrototypeGet(requestBodyReaders, request).cancel(error);
+      } else {
+        request.body.cancel(error);
+      }
+    }
     if (responseObject !== null) {
       const response = toInnerResponse(responseObject);
       if (response.body !== null) response.body.error(error);
