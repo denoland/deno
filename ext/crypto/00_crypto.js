@@ -245,48 +245,113 @@
         return null;
       }
 
-      const tlv = {
-        tag,
-        isConstructed: false,
-        value: TypedArrayPrototypeSlice(bytes, off, len),
-      };
+      const value = TypedArrayPrototypeSlice(bytes, off, off + len);
 
       if (tag & 0x20) {
-        const innerTLV = parseTLV(val);
+        const innerTLV = parseTLV(value);
         if (!innerTLV) {
-          return innerTLV;
+          return null;
         }
-        tlv.isConstructed = true;
-        tlv.value = innerTLV;
-      }
 
-      tlvs.push(tlv);
+        tlvs.push({
+          tag,
+          isConstructed: true,
+          value: innerTLV,
+        });
+      } else {
+        tlvs.push({
+          tag,
+          isConstructed: false,
+          value,
+        });
+      }
 
       off += len;
     }
 
-    if (off != der.length) {
+    if (off != bytes.length) {
       return null;
     }
 
-    return tlv;
+    return tlvs;
+  }
+
+  function assertTLV(ok) {
+    if (!ok) {
+      throw new DOMException(
+        `Invalid DER data`,
+        "DataError",
+      );
+    }
+  }
+
+  function getASN1Integer(tlv) {
+    assertTLV(tlv.tag == 0x02);
+
+    return (tlv.value.length > 1 && tlv.value[0] == 0x00)
+      ? TypedArrayPrototypeSlice(tlv.value, 1)
+      : tlv.value;
+  }
+
+  function getASN1Sequence(tlv,expectedLen) {
+    assertTLV(tlv.tag == 0x30);
+
+    if (expectedLen != undefined)
+      assertTLV(tlv.value.length == expectedLen);
+
+    return tlv.value;
   }
 
   function parseRsaPkcs(der, type) {
-    const prefix = `Invalid DER data in ${type}`;
+    const ret = {};
 
-    const tlv = parseTLV(der);
-    if (!tlv) {
-      throw new Error(prefix);
-    }
+    let tlv = parseTLV(der);
+    assertTLV(tlv && tlv.length == 1);
 
     if (type == "pkcs8") {
-      //TODO(@SeanWykes) - validate pkcs8 structure
+      const inner = getASN1Sequence(tlv[0], 3);
+
+      assertTLV(getASN1Integer(inner[0])[0] == 0x00);
+
+      const algo = getASN1Sequence(inner[1]);
+      assertTLV(algo[0].tag == 0x06);
+      ret.algoIdentifier = algo[0].value;
+
+      assertTLV(inner[2].tag == 0x04); // OctetString
+
+      const privateKey = parseTLV(inner[2].value);
+      assertTLV(privateKey.length == 1);
+
+      const privateKeyComps = getASN1Sequence(privateKey[0]);
+
+      const keyCompNames = ["", "n", "e", "d", "p", "q", "dp", "dq", "qi"];
+      for (let i = 0; i < keyCompNames.length; ++i) {
+        const val = getASN1Integer(privateKeyComps[i]);
+        if (i == 0) {
+          assertTLV(val[0] == 0x00);
+        } else {
+          ret[keyCompNames[i]] = val;
+        }
+      }
     } else {
-      //TODO(@SeanWykes) - validate spki structure
+      const inner = getASN1Sequence(tlv[0], 2);
+
+      const algo = getASN1Sequence(inner[0]);
+      assertTLV(algo[0].tag == 0x06);
+      ret.algoIdentifier = algo[0].value;
+
+      assertTLV(inner[1].tag == 0x03); // BitString
+
+      const publicKey = parseTLV(TypedArrayPrototypeSlice(inner[1].value, 1));
+      assertTLV(publicKey.length == 1);
+
+      const publicKeyComps = getASN1Sequence(publicKey[0],2);
+
+      ret.n = getASN1Integer(publicKeyComps[0]);
+      ret.e = getASN1Integer(publicKeyComps[1]);
     }
 
-    return tlv;
+    return ret;
   }
 
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
@@ -1235,7 +1300,7 @@
               //8.
               //const publicKey = keyData;
               //9.
-              modulusLength = 2048;
+              modulusLength = keyInfo.n.length * 8;
               //10.
               type = "public";
               data = keyData;
@@ -1246,7 +1311,7 @@
               if (
                 ArrayPrototypeFind(
                   keyUsages,
-                  (u) => !ArrayPrototypeIncludes(["verify"], u),
+                  (u) => !ArrayPrototypeIncludes(["sign"], u),
                 ) !== undefined
               ) {
                 throw new DOMException("Invalid key usages", "SyntaxError");
@@ -1278,7 +1343,7 @@
               //8.
               //const privateKey = keyData;
               //9.
-              modulusLength = 2048;
+              modulusLength = keyInfo.n.length * 8;
               //10.
               type = "private";
               data = keyData;

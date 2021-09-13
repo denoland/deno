@@ -91,6 +91,10 @@ interface HmacImportParams extends Algorithm {
   length?: number;
 }
 
+interface RsaHashedImportParams extends Algorithm {
+  hash: HashAlgorithmIdentifier;
+}
+
 interface EcKeyAlgorithm extends KeyAlgorithm {
   namedCurve: NamedCurve;
 }
@@ -173,6 +177,20 @@ interface SubtleCrypto {
     format: "raw",
     keyData: BufferSource,
     algorithm: AlgorithmIdentifier | HmacImportParams,
+    extractable: boolean,
+    keyUsages: KeyUsage[],
+  ): Promise<CryptoKey>;
+  importKey(
+    format: "spki",
+    keyData: BufferSource,
+    algorithm: RsaHashedImportParams,
+    extractable: boolean,
+    keyUsages: KeyUsage[],
+  ): Promise<CryptoKey>;
+  importKey(
+    format: "pkcs8",
+    keyData: BufferSource,
+    algorithm: RsaHashedImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
