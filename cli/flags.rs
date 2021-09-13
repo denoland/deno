@@ -1629,7 +1629,17 @@ fn config_arg<'a, 'b>() -> Arg<'a, 'b> {
     .short("c")
     .long("config")
     .value_name("FILE")
-    .help("Load tsconfig.json configuration file")
+    .help("Load configuration file")
+    .long_help(
+      "Load configuration file.
+Before 1.14 Deno only supported loading tsconfig.json that allowed
+to customise TypeScript compiler settings. 
+
+Starting with 1.14 configuration file can be used to configure different 
+subcommands like `deno lint` or `deno fmt`. 
+
+It's recommended to use `deno.json` or `deno.jsonc` as a filename.",
+    )
     .takes_value(true)
 }
 
