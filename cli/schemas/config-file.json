@@ -1,0 +1,143 @@
+{
+  "$id": "https://deno.land/schemas/config-file.json",
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "description": "A JSON representation of a Deno configuration file.",
+  "required": [],
+  "title": "Deno configuration file Schema",
+  "type": "object",
+  "properties": {
+    "compilerOptions": {
+      "description": "The root specifier for the graph.",
+      "examples": [
+        "https://deno.land/x/mod.ts"
+      ],
+      "type": "string"
+    },
+    "lint": {
+      "description": "Configuration for linter",
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "object",
+          "properties": {
+            "include": {
+              "type": "array",
+              "description": "List of files or directories that will be linted.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "exclude": {
+              "type": "array",
+              "description": "List of files or directories that will not be linted.",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "rules": {
+          "type": "object",
+          "properties": {
+            "tags": {
+              "type": "array",
+              "description": "List of tag names that will be run. Empty list disables all tags and will only use rules from `iclude`.",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 0,
+              "uniqueItems": true
+            },
+            "exclude": {
+              "type": "array",
+              "description": "List of rule names that will be excluded from configured tag sets. If the same rule is in `include` it be run.",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 0,
+              "uniqueItems": true
+            },
+            "include": {
+              "type": "array",
+              "description": "List of rule names that will be run. Even if the same rule is in `exclude` it will be run.",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 0,
+              "uniqueItems": true
+            }
+          }
+        }
+      }
+    },
+    "fmt": {
+      "description": "Configuration for formatter",
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "object",
+          "properties": {
+            "include": {
+              "type": "array",
+              "description": "List of files or directories that will be formatted.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "exclude": {
+              "type": "array",
+              "description": "List of files or directories that will not be formatted.",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "options": {
+          "type": "object",
+          "properties": {
+            "useTabs": {
+              "description": "Whether to use tabs (true) or spaces (false) for indentation.",
+              "type": "boolean",
+              "default": false
+            },
+            "lineWidth": {
+              "description": "The width of a line the printer will try to stay under. Note that the printer may exceed this width in certain cases.",
+              "type": "number",
+              "default": 80
+            },
+            "indentWidth": {
+              "description": "The number of characters for an indent.",
+              "type": "number",
+              "default": 2
+            },
+            "singleQuote": {
+              "type": "boolean",
+              "description": "Whether to use tabs (true) or spaces (false) for quotation.",
+              "default": false
+            },
+            "proseWrap": {
+              "type": "string",
+              "description": "Define how prose should be wrapped.",
+              "default": "always",
+              "oneOf": [
+                {
+                  "const": "always",
+                  "description": "For each file, uses the newline kind found at the end of the last line."
+                },
+                {
+                  "const": "never",
+                  "description": "Uses carriage return, line feed."
+                },
+                {
+                  "const": "preserve",
+                  "description": "Uses line feed."
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}
