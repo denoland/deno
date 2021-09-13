@@ -3205,6 +3205,7 @@ fn lsp_format_with_config() {
     )
     .unwrap();
 
+  // The options below should be ignored in favor of configuration from config file.
   let (maybe_res, maybe_err) = client
     .write_request::<_, _, Value>(
       "textDocument/formatting",
@@ -3212,31 +3213,122 @@ fn lsp_format_with_config() {
         "textDocument": {
           "uri": "file:///a/file.ts"
         },
-        "options": {}
+        "options": {
+          "tabSize": 2,
+          "insertSpaces": true
+        }
       }),
     )
     .unwrap();
 
-  eprintln!("{:#?}", maybe_err);
   assert!(maybe_err.is_none());
   assert_eq!(
     maybe_res,
-    Some(json!([
-      {
+    Some(json!([{
         "range": {
-          "start": { "line": 0, "character": 1 },
-          "end": { "line": 0, "character": 3 }
+          "start": {
+            "line": 1,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
         },
-        "newText": ""
+        "newText": "\t"
       },
       {
         "range": {
-          "start": { "line": 0, "character": 15 },
-          "end": { "line": 0, "character": 15 }
+          "start": {
+            "line": 1,
+            "character": 23
+          },
+          "end": {
+            "line": 1,
+            "character": 24
+          }
+        },
+        "newText": "\n\t\t'"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 73
+          },
+          "end": {
+            "line": 1,
+            "character": 74
+          }
+        },
+        "newText": "',\n\t"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 2,
+            "character": 0
+          },
+          "end": {
+            "line": 2,
+            "character": 0
+          }
+        },
+        "newText": "\t"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 0
+          }
+        },
+        "newText": "\t"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 12
+          },
+          "end": {
+            "line": 3,
+            "character": 13
+          }
+        },
+        "newText": "'"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 22
+          },
+          "end": {
+            "line": 3,
+            "character": 24
+          }
+        },
+        "newText": "');"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 4,
+            "character": 1
+          },
+          "end": {
+            "line": 4,
+            "character": 1
+          }
         },
         "newText": "\n"
-      }
-    ]))
+      }]
+    ))
   );
   shutdown(&mut client);
 }
