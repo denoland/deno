@@ -317,6 +317,32 @@ fn lsp_import_map() {
 }
 
 #[test]
+fn lsp_import_map_data_url() {
+  let mut client = init("initialize_params_import_map.json");
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import example from \"example\";\n"
+      }
+    }),
+  );
+
+  let mut diagnostics = diagnostics.into_iter().flat_map(|x| x.diagnostics);
+  // This indicates that the import map from initialize_params_import_map.json
+  // is applied correctly.
+  assert!(diagnostics.any(|diagnostic| diagnostic.code
+    == Some(lsp::NumberOrString::String("no-cache".to_string()))
+    && diagnostic
+      .message
+      .contains("https://deno.land/x/example/mod.ts")));
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_hover() {
   let mut client = init("initialize_params.json");
   did_open(
