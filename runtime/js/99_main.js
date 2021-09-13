@@ -418,7 +418,7 @@ delete Object.prototype.__proto__;
     btoa: util.writable(base64.btoa),
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
-    console: util.writable(
+    console: util.nonEnumerable(
       new Console((msg, level) => core.print(msg, level > 1)),
     ),
     crypto: util.readOnly(crypto.crypto),
@@ -467,11 +467,6 @@ delete Object.prototype.__proto__;
     GPUOutOfMemoryError: util.nonEnumerable(webgpu.GPUOutOfMemoryError),
     GPUValidationError: util.nonEnumerable(webgpu.GPUValidationError),
   };
-
-  // The console seems to be the only one that should be writable and non-enumerable
-  // thus we don't have a unique helper for it. If other properties follow the same
-  // structure, it might be worth it to define a helper in `util`
-  windowOrWorkerGlobalScope.console.enumerable = false;
 
   const mainRuntimeGlobalProperties = {
     Location: location.locationConstructorDescriptor,

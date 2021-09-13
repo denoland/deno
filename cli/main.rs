@@ -3,7 +3,6 @@
 mod ast;
 mod auth_tokens;
 mod checksum;
-mod colors;
 mod config_file;
 mod deno_dir;
 mod diagnostics;
@@ -18,7 +17,6 @@ mod fmt_errors;
 mod fs_util;
 mod http_cache;
 mod http_util;
-mod import_map;
 mod info;
 mod lockfile;
 mod logger;
@@ -75,6 +73,7 @@ use deno_core::serde_json::json;
 use deno_core::v8_set_flags;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
+use deno_runtime::colors;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::web_worker::WebWorker;
@@ -806,17 +805,22 @@ async fn format_command(
   flags: Flags,
   fmt_flags: FmtFlags,
 ) -> Result<(), AnyError> {
+  let program_state = ProgramState::build(flags.clone()).await?;
+  let maybe_fmt_config =
+    if let Some(config_file) = &program_state.maybe_config_file {
+      config_file.to_fmt_config()?
+    } else {
+      None
+    };
+
   if fmt_flags.files.len() == 1 && fmt_flags.files[0].to_string_lossy() == "-" {
-    return tools::fmt::format_stdin(fmt_flags.check, fmt_flags.ext);
+    return tools::fmt::format_stdin(
+      fmt_flags,
+      maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
+    );
   }
 
-  tools::fmt::format(
-    fmt_flags.files,
-    fmt_flags.ignore,
-    fmt_flags.check,
-    flags.watch,
-  )
-  .await?;
+  tools::fmt::format(fmt_flags, flags.watch, maybe_fmt_config).await?;
   Ok(())
 }
 

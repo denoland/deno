@@ -1,6 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-use crate::import_map::ImportMap;
 use crate::module_graph::BundleType;
 use crate::module_graph::EmitOptions;
 use crate::module_graph::GraphBuilder;
@@ -20,6 +19,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::OpState;
 use deno_runtime::permissions::Permissions;
+use import_map::ImportMap;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashMap;

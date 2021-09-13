@@ -2034,6 +2034,12 @@ declare namespace Deno {
    * Environmental variables for subprocess can be specified using `opt.env`
    * mapping.
    *
+   * `opt.uid` sets the child process’s user ID. This translates to a setuid call
+   * in the child process. Failure in the setuid call will cause the spawn to fail.
+   *
+   * `opt.gid` is similar to `opt.uid`, but sets the group ID of the child process.
+   * This has the same semantics as the uid field.
+   *
    * By default subprocess inherits stdio of parent process. To change that
    * `opt.stdout`, `opt.stderr` and `opt.stdin` can be specified independently -
    * they can be set to either an rid of open file or set to "inherit" "piped"
@@ -2454,4 +2460,50 @@ declare namespace Deno {
    * ```
    */
   export function serveHttp(conn: Conn): HttpConn;
+
+  export interface WebSocketUpgrade {
+    response: Response;
+    socket: WebSocket;
+  }
+
+  export interface UpgradeWebSocketOptions {
+    protocol?: string;
+  }
+
+  /**
+   * Used to upgrade an incoming HTTP request to a WebSocket.
+   *
+   * Given a request, returns a pair of WebSocket and Response. The original
+   * request must be responded to with the returned response for the websocket
+   * upgrade to be successful.
+   *
+   * ```ts
+   * const conn = await Deno.connect({ port: 80, hostname: "127.0.0.1" });
+   * const httpConn = Deno.serveHttp(conn);
+   * const e = await httpConn.nextRequest();
+   * if (e) {
+   *   const { socket, response } = Deno.upgradeWebSocket(e.request);
+   *   socket.onopen = () => {
+   *     socket.send("Hello World!");
+   *   };
+   *   socket.onmessage = (e) => {
+   *     console.log(e.data);
+   *     socket.close();
+   *   };
+   *   socket.onclose = () => console.log("WebSocket has been closed.");
+   *   socket.onerror = (e) => console.error("WebSocket error:", e);
+   *   e.respondWith(response);
+   * }
+   * ```
+   *
+   * If the request body is disturbed (read from) before the upgrade is
+   * completed, upgrading fails.
+   *
+   * This operation does not yet consume the request or open the websocket. This
+   * only happens once the returned response has been passed to `respondWith`.
+   */
+  export function upgradeWebSocket(
+    request: Request,
+    options?: UpgradeWebSocketOptions,
+  ): WebSocketUpgrade;
 }

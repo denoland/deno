@@ -120,11 +120,7 @@
     /** @returns {void} */
     close() {
       for (const rid of SetPrototypeValues(this.managedResources)) {
-        try {
-          core.close(rid);
-        } catch (_e) {
-          // pass, might have already been closed
-        }
+        core.tryClose(rid);
       }
       core.close(this.#rid);
     }
@@ -284,12 +280,7 @@
           const event = new CloseEvent("close");
           ws.dispatchEvent(event);
 
-          try {
-            core.close(wsRid);
-          } catch (err) {
-            // Ignore error if the socket has already been closed.
-            if (!(err instanceof Deno.errors.BadResource)) throw err;
-          }
+          core.tryClose(wsRid);
         } else {
           ws[_readyState] = WebSocket.OPEN;
           const event = new Event("open");
@@ -297,13 +288,12 @@
 
           ws[_eventLoop]();
         }
-      } else {
+      } else if (typeof requestRid === "number") {
         // Try to close "request" resource. It might have been already consumed,
-        // but if it hasn't been we need to close it here to avoid resource leak.
-        try {
-          SetPrototypeDelete(httpConn.managedResources, requestRid);
-          core.close(requestRid);
-        } catch { /* pass */ }
+        // but if it hasn't been we need to close it here to avoid resource
+        // leak.
+        SetPrototypeDelete(httpConn.managedResources, requestRid);
+        core.tryClose(requestRid);
       }
     };
   }
