@@ -3,7 +3,7 @@
 use deno_core::error::AnyError;
 use deno_core::error::Context;
 pub use deno_core::normalize_path;
-use std::env::current_dir;
+use std::cell::RefCell;
 use std::io::Error;
 use std::path::{Path, PathBuf};
 
@@ -21,12 +21,31 @@ pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
   Ok(canonicalized_path)
 }
 
+thread_local!(static CACHED_CWD: RefCell<Option<PathBuf>> = Default::default());
+
+pub fn cached_cwd() -> Result<PathBuf, AnyError> {
+  CACHED_CWD.with(|cached| {
+    if let Some(cached) = &*cached.borrow() {
+      return Ok(cached.clone());
+    }
+    let cwd = std::env::current_dir()?;
+    cached.borrow_mut().replace(cwd.clone());
+    Ok(cwd)
+  })
+}
+
+pub fn cached_chdir(cwd: &PathBuf) -> Result<(), AnyError> {
+  std::env::set_current_dir(cwd)?;
+  CACHED_CWD.with(|cached| cached.take());
+  Ok(())
+}
+
 pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
   let resolved_path = if path.is_absolute() {
     path.to_owned()
   } else {
     let cwd =
-      current_dir().context("Failed to get current working directory")?;
+      cached_cwd().context("Failed to get current working directory")?;
     cwd.join(path)
   };
 

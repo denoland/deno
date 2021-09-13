@@ -71,6 +71,18 @@ function benchRead128k() {
   );
 }
 
+function benchRead128kSync() {
+  return benchAsync(
+    "read_128k_sync",
+    5e4,
+    () => Deno.readFileSync("./cli/bench/fixtures/128k.bin"),
+  );
+}
+
+function benchCwd() {
+  return benchSync("cwd", 5e4, () => Deno.cwd());
+}
+
 async function main() {
   // v8 builtin that's close to the upper bound non-NOPs
   benchDateNow();
@@ -82,6 +94,8 @@ async function main() {
   // IO ops
   benchReadZero();
   benchWriteNull();
+  benchCwd();
+  benchRead128kSync();
   await benchRead128k();
 }
 await main();

@@ -2,7 +2,7 @@
 // Some deserializer fields are only used on Unix and Windows build fails without it
 use super::io::StdFileResource;
 use super::utils::into_string;
-use crate::fs_util::canonicalize_path;
+use crate::fs_util::{cached_chdir, cached_cwd, canonicalize_path};
 use crate::permissions::Permissions;
 use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
@@ -21,7 +21,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::cell::RefCell;
 use std::convert::From;
-use std::env::{current_dir, set_current_dir, temp_dir};
+use std::env::temp_dir;
 use std::io;
 use std::io::{Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -503,7 +503,7 @@ fn op_chdir(
 ) -> Result<(), AnyError> {
   let d = PathBuf::from(&directory);
   state.borrow_mut::<Permissions>().read.check(&d)?;
-  set_current_dir(&d)?;
+  cached_chdir(&d)?;
   Ok(())
 }
 
@@ -1000,7 +1000,7 @@ fn op_realpath_sync(
   let permissions = state.borrow_mut::<Permissions>();
   permissions.read.check(&path)?;
   if path.is_relative() {
-    permissions.read.check_blind(&current_dir()?, "CWD")?;
+    permissions.read.check_blind(&cached_cwd()?, "CWD")?;
   }
 
   debug!("op_realpath_sync {}", path.display());
@@ -1023,7 +1023,7 @@ async fn op_realpath_async(
     let permissions = state.borrow_mut::<Permissions>();
     permissions.read.check(&path)?;
     if path.is_relative() {
-      permissions.read.check_blind(&current_dir()?, "CWD")?;
+      permissions.read.check_blind(&cached_cwd()?, "CWD")?;
     }
   }
 
@@ -1770,11 +1770,10 @@ async fn op_utime_async(
 }
 
 fn op_cwd(state: &mut OpState, _args: (), _: ()) -> Result<String, AnyError> {
-  let path = current_dir()?;
+  let path = cached_cwd()?;
   state
     .borrow_mut::<Permissions>()
     .read
     .check_blind(&path, "CWD")?;
-  let path_str = into_string(path.into_os_string())?;
-  Ok(path_str)
+  into_string(path.into_os_string())
 }
