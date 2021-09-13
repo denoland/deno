@@ -15,6 +15,7 @@
   const { atob, btoa } = window.__bootstrap.base64;
 
   const {
+    ArrayIsArray,
     ArrayPrototypeFind,
     ArrayPrototypeEvery,
     ArrayPrototypeIncludes,
@@ -61,6 +62,7 @@
     RsaPssParams: {},
     EcdsaParams: { hash: "HashAlgorithmIdentifier" },
     HmacImportParams: { hash: "HashAlgorithmIdentifier" },
+    RsaHashedImportParams: { hash: "HashAlgorithmIdentifier" },
     HkdfParams: {
       hash: "HashAlgorithmIdentifier",
       salt: "BufferSource",
@@ -104,6 +106,9 @@
       "HMAC": "HmacImportParams",
       "HKDF": null,
       "PBKDF2": null,
+      //"RSASSA-PKCS1-v1_5": "RsaHashedImportParams",
+      "RSA-PSS": "RsaHashedImportParams",
+      //"RSA-OAEP": "RsaHashedImportParams",
     },
     "deriveBits": {
       "HKDF": "HkdfParams",
@@ -139,6 +144,149 @@
     const base64String = btoa(binaryString);
 
     return StringPrototypeReplace(base64String, /=/g, "");
+  }
+
+  function isArrayOrArrayBufferView(obj) {
+    return ArrayIsArray(obj) || ArrayBufferIsView(obj);
+  }
+
+  function concatBytes(...bytes) {
+    return Uint8Array.from(
+      bytes.reduce(
+        (a, val) =>
+          (isArrayOrArrayBufferView(val)) ? [...a, ...val] : [...a, val],
+        [],
+      ),
+    );
+  }
+
+  function buildTLV(tag, value) {
+    if (isArrayOrArrayBufferView(value)) {
+      value = concatBytes(...value);
+    }
+    const len = value.length;
+    const lenBytes = [];
+
+    if (len <= 127) {
+      lenBytes.push(len);
+    } else if (len < 256) {
+      lenBytes.push(0x81);
+      lenBytes.push(len);
+    } else if (len < 65536) {
+      lenBytes.push(0x82);
+      lenBytes.push(len >> 8);
+      lenBytes.push(len & 0xff);
+    }
+
+    return concatBytes(tag, lenBytes, value);
+  }
+
+  function buildIntegerTLV(val) {
+    return buildTLV(0x02, (val[0] & 0x80) ? [0x00, ...val] : val);
+  }
+
+  function buildRsaPkcs(key, type) {
+    const algo = buildTLV(0x30, [
+      buildTLV(0x06, [0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01]),
+      buildTLV(0x05, []),
+    ]);
+
+    const modExp = concatBytes(buildIntegerTLV(key.n), buildIntegerTLV(key.e));
+
+    if (type == "pkcs8") {
+      let keyData = concatBytes(
+        buildIntegerTLV([0x00]),
+        modExp,
+        buildIntegerTLV(key.d),
+      );
+
+      if (key.p) {
+        keyData = concatBytes(
+          keyData,
+          buildIntegerTLV(key.p),
+          buildIntegerTLV(key.q),
+          buildIntegerTLV(key.dp),
+          buildIntegerTLV(key.dq),
+          buildIntegerTLV(key.qi),
+        );
+      }
+
+      return buildTLV(0x30, [
+        buildTLV(0x02, [0x00]), // version
+        algo,
+        buildTLV(0x04, buildTLV(0x30, keyData)),
+      ]);
+    } else {
+      return buildTLV(0x30, [
+        algo,
+        buildTLV(0x03, concatBytes(0x00, buildTLV(0x30, modExp))),
+      ]);
+    }
+  }
+
+  function parseTLV(bytes) {
+    const tlvs = [];
+    let off = 0;
+
+    while (off < bytes.length) {
+      const tag = bytes[off++];
+      let len = bytes[off++];
+      if (len & 0x80) {
+        let realLen = 0;
+        while (len > 0x80) {
+          realLen = (realLen << 8) + bytes[off++];
+          --len;
+        }
+
+        len = realLen;
+      }
+
+      if (off + len > bytes.length) {
+        return null;
+      }
+
+      const tlv = {
+        tag,
+        isConstructed: false,
+        value: TypedArrayPrototypeSlice(bytes, off, len),
+      };
+
+      if (tag & 0x20) {
+        const innerTLV = parseTLV(val);
+        if (!innerTLV) {
+          return innerTLV;
+        }
+        tlv.isConstructed = true;
+        tlv.value = innerTLV;
+      }
+
+      tlvs.push(tlv);
+
+      off += len;
+    }
+
+    if (off != der.length) {
+      return null;
+    }
+
+    return tlv;
+  }
+
+  function parseRsaPkcs(der, type) {
+    const prefix = `Invalid DER data in ${type}`;
+
+    const tlv = parseTLV(der);
+    if (!tlv) {
+      throw new Error(prefix);
+    }
+
+    if (type == "pkcs8") {
+      //TODO(@SeanWykes) - validate pkcs8 structure
+    } else {
+      //TODO(@SeanWykes) - validate spki structure
+    }
+
+    return tlv;
   }
 
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
@@ -898,7 +1046,274 @@
           return key;
         }
         // TODO(@littledivy): RSASSA-PKCS1-v1_5
+        // TODO(@littledivy): RSASSA-PKCS1-v1_5
         // TODO(@littledivy): RSA-PSS
+        case "RSA-PSS": {
+          // 2. https://w3c.github.io/webcrypto/#rss-pss-operations
+          let modulusLength;
+          let hash;
+          let data;
+          let type;
+
+          switch (format) {
+            case "jwk": {
+              // TODO(@littledivy): Why does the spec validate JWK twice?
+              const jwk = keyData;
+              // 2.
+              if (
+                ArrayPrototypeFind(
+                  keyUsages,
+                  (u) =>
+                    !ArrayPrototypeIncludes([jwk.d ? "sign" : "verify"], u),
+                ) !== undefined
+              ) {
+                throw new DOMException("Invalid key usages", "SyntaxError");
+              }
+              // 3.
+              if (jwk.kty !== "RSA") {
+                throw new DOMException(
+                  "`kty` member of JsonWebKey must be `RSA`",
+                  "DataError",
+                );
+              }
+
+              // 4.
+              if (keyUsages.length > 0 && jwk.use && jwk.use !== "sign") {
+                throw new DOMException(
+                  "`use` member of JsonWebKey must be `sign`",
+                  "DataError",
+                );
+              }
+
+              // 5.
+              // Section 4.3 of RFC7517
+              if (jwk.key_ops) {
+                if (
+                  ArrayPrototypeFind(
+                    jwk.key_ops,
+                    (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+                  ) !== undefined
+                ) {
+                  throw new DOMException(
+                    "`key_ops` member of JsonWebKey is invalid",
+                    "DataError",
+                  );
+                }
+
+                if (
+                  !ArrayPrototypeEvery(
+                    jwk.key_ops,
+                    (u) => ArrayPrototypeIncludes(keyUsages, u),
+                  )
+                ) {
+                  throw new DOMException(
+                    "`key_ops` member of JsonWebKey is invalid",
+                    "DataError",
+                  );
+                }
+              }
+
+              // 6.
+              if (jwk.ext === false && extractable == true) {
+                throw new DOMException(
+                  "`ext` member of JsonWebKey is invalid",
+                  "DataError",
+                );
+              }
+
+              // 7.
+              if (jwk.alg) {
+                switch (jwk.alg) {
+                  case "PS1": {
+                    hash = "SHA-1";
+                    break;
+                  }
+                  case "PS256": {
+                    hash = "SHA-256";
+                    break;
+                  }
+                  case "PS384": {
+                    hash = "SHA-384";
+                    break;
+                  }
+                  case "PS512": {
+                    hash = "SHA-512";
+                    break;
+                  }
+                  default:
+                    throw new TypeError("unreachable");
+                }
+              }
+
+              //8.
+              if (hash) {
+                const normalizedHash = normalizeAlgorithm(hash, "digest");
+
+                if (normalizedHash.name !== normalizedAlgorithm.hash.name) {
+                  throw new DOMException(
+                    "Mismatched hash algorithm for JWK.alg",
+                    "DataError",
+                  );
+                }
+              }
+
+              modulusLength = decodeSymmetricKey(jwk.n).length * 8;
+
+              //9.
+              if (jwk.d) {
+                // Section 6.3.2 of RFC7518
+                if (!jwk.e || !jwk.n) {
+                  throw new DOMException(
+                    "Missing n or e components in RSA key",
+                    "DataError",
+                  );
+                }
+
+                type = "private";
+                data = buildRsaPkcs({
+                  n: decodeSymmetricKey(jwk.n),
+                  e: decodeSymmetricKey(jwk.e),
+                  d: decodeSymmetricKey(jwk.d),
+                  p: decodeSymmetricKey(jwk.p),
+                  q: decodeSymmetricKey(jwk.q),
+                  dp: decodeSymmetricKey(jwk.dp),
+                  dq: decodeSymmetricKey(jwk.dq),
+                  qi: decodeSymmetricKey(jwk.qi),
+                }, "pkcs8");
+              } else {
+                // Section 6.3.1 of RFC7518
+                if (!jwk.e || !jwk.n) {
+                  throw new DOMException(
+                    "Missing n or e components in RSA key",
+                    "DataError",
+                  );
+                }
+
+                type = "public";
+                data = buildRsaPkcs({
+                  n: decodeSymmetricKey(jwk.n),
+                  e: decodeSymmetricKey(jwk.e),
+                }, "spki");
+              }
+
+              break;
+            }
+            case "spki": {
+              // 1.
+              if (
+                ArrayPrototypeFind(
+                  keyUsages,
+                  (u) => !ArrayPrototypeIncludes(["verify"], u),
+                ) !== undefined
+              ) {
+                throw new DOMException("Invalid key usages", "SyntaxError");
+              }
+              //2.
+              const keyInfo = parseRsaPkcs(keyData, "spki");
+              //3.
+              if (!keyInfo) {
+                throw new DOMException("Invalid spki data", "DataError");
+              }
+              //4.
+              let hash;
+              //5.
+              //const alg = keyInfo.algorithm;
+              //hash = match { OID }
+              //6.
+              // TODO(@SeanWykes): Check alg==rsaEncryptionOID
+              //7.
+              if (hash) {
+                const normalizedHash = normalizeAlgorithm(hash, "digest");
+
+                if (normalizedHash.name !== normalizedAlgorithm.hash) {
+                  throw new DOMException(
+                    "Mismatched Hash algorithm and spki algorithmIdentifier",
+                    "DataError",
+                  );
+                }
+              }
+              //8.
+              //const publicKey = keyData;
+              //9.
+              modulusLength = 2048;
+              //10.
+              type = "public";
+              data = keyData;
+              break;
+            }
+            case "pkcs8": {
+              // 1.
+              if (
+                ArrayPrototypeFind(
+                  keyUsages,
+                  (u) => !ArrayPrototypeIncludes(["verify"], u),
+                ) !== undefined
+              ) {
+                throw new DOMException("Invalid key usages", "SyntaxError");
+              }
+              //2.
+              const keyInfo = parseRsaPkcs(keyData, "pkcs8");
+              //3.
+              if (!keyInfo) {
+                throw new DOMException("Invalid pkcs8 data", "DataError");
+              }
+              //4.
+              let hash;
+              //5.
+              //const alg = keyInfo.algorithm;
+              //hash = match { OID }
+              //6.
+              // TODO(@SeanWykes): Check alg==rsaEncryptionOID
+              //7.
+              if (hash) {
+                const normalizedHash = normalizeAlgorithm(hash, "digest");
+
+                if (normalizedHash.name !== normalizedAlgorithm.hash) {
+                  throw new DOMException(
+                    "Mismatched Hash algorithm and PKCS8 algorithmIdentifier",
+                    "DataError",
+                  );
+                }
+              }
+              //8.
+              //const privateKey = keyData;
+              //9.
+              modulusLength = 2048;
+              //10.
+              type = "private";
+              data = keyData;
+              break;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+
+          if (keyUsages.length == 0) {
+            throw new DOMException("Key usage is empty", "SyntaxError");
+          }
+
+          const handle = {};
+          WeakMapPrototypeSet(KEY_STORE, handle, {
+            type: (type == "private") ? "pkcs8" : "spki",
+            data,
+          });
+
+          const algorithm = {
+            name: "RSA-PSS",
+            modulusLength,
+            hash: normalizedAlgorithm.hash,
+          };
+
+          const key = constructKey(
+            type,
+            extractable,
+            usageIntersection(keyUsages, recognisedUsages),
+            algorithm,
+            handle,
+          );
+
+          return key;
+        }
         // TODO(@littledivy): ECDSA
         case "HKDF": {
           if (format !== "raw") {
