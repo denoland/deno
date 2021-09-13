@@ -34,7 +34,7 @@ pub fn cached_cwd() -> Result<PathBuf, AnyError> {
   })
 }
 
-pub fn cached_chdir(cwd: &PathBuf) -> Result<(), AnyError> {
+pub fn cached_chdir(cwd: &Path) -> Result<(), AnyError> {
   std::env::set_current_dir(cwd)?;
   CACHED_CWD.with(|cached| cached.take());
   Ok(())
@@ -55,6 +55,7 @@ pub fn resolve_from_cwd(path: &Path) -> Result<PathBuf, AnyError> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use std::env::current_dir;
 
   #[test]
   fn resolve_from_cwd_child() {
