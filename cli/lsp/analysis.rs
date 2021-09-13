@@ -750,17 +750,8 @@ impl CodeActionCollection {
       .push(CodeActionKind::DenoLint(ignore_error_action));
 
     // Disable a lint error for the entire file.
-    let parsed_source = document_source.and_then(|d| {
-      d.module().and_then(
-        |result| {
-          if let Ok(ps) = result {
-            Some(ps)
-          } else {
-            None
-          }
-        },
-      )
-    });
+    let parsed_source =
+      document_source.and_then(|d| d.module().and_then(|r| r.as_ref().ok()));
     let maybe_ignore_comment = parsed_source.and_then(|ps| {
       ps.get_leading_comments().iter().find_map(|c| {
         let comment_text = c.text.trim();
