@@ -293,11 +293,12 @@
       : tlv.value;
   }
 
-  function getASN1Sequence(tlv,expectedLen) {
+  function getASN1Sequence(tlv, expectedLen) {
     assertTLV(tlv.tag == 0x30);
 
-    if (expectedLen != undefined)
+    if (expectedLen != undefined) {
       assertTLV(tlv.value.length == expectedLen);
+    }
 
     return tlv.value;
   }
@@ -305,7 +306,7 @@
   function parseRsaPkcs(der, type) {
     const ret = {};
 
-    let tlv = parseTLV(der);
+    const tlv = parseTLV(der);
     assertTLV(tlv && tlv.length == 1);
 
     if (type == "pkcs8") {
@@ -345,7 +346,7 @@
       const publicKey = parseTLV(TypedArrayPrototypeSlice(inner[1].value, 1));
       assertTLV(publicKey.length == 1);
 
-      const publicKeyComps = getASN1Sequence(publicKey[0],2);
+      const publicKeyComps = getASN1Sequence(publicKey[0], 2);
 
       ret.n = getASN1Integer(publicKeyComps[0]);
       ret.e = getASN1Integer(publicKeyComps[1]);
