@@ -3197,6 +3197,169 @@ fn lsp_format_markdown() {
 }
 
 #[test]
+fn lsp_format_with_config() {
+  let temp_dir = TempDir::new().expect("could not create temp dir");
+  let mut params: lsp::InitializeParams =
+    serde_json::from_value(load_fixture("initialize_params.json")).unwrap();
+  let deno_fmt_jsonc =
+    serde_json::to_vec_pretty(&load_fixture("deno.fmt.jsonc")).unwrap();
+  fs::write(temp_dir.path().join("deno.fmt.jsonc"), deno_fmt_jsonc).unwrap();
+
+  params.root_uri = Some(Url::from_file_path(temp_dir.path()).unwrap());
+  if let Some(Value::Object(mut map)) = params.initialization_options {
+    map.insert("config".to_string(), json!("./deno.fmt.jsonc"));
+    params.initialization_options = Some(Value::Object(map));
+  }
+
+  let deno_exe = deno_exe_path();
+  let mut client = LspClient::new(&deno_exe).unwrap();
+  client
+    .write_request::<_, _, Value>("initialize", params)
+    .unwrap();
+
+  client
+    .write_notification(
+      "textDocument/didOpen",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts",
+          "languageId": "typescript",
+          "version": 1,
+          "text": "export async function someVeryLongFunctionName() {\nconst response = fetch(\"http://localhost:4545/some/non/existent/path.json\");\nconsole.log(response.text());\nconsole.log(\"finished!\")\n}"
+        }
+      }),
+    )
+    .unwrap();
+
+  // The options below should be ignored in favor of configuration from config file.
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/formatting",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "options": {
+          "tabSize": 2,
+          "insertSpaces": true
+        }
+      }),
+    )
+    .unwrap();
+
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!([{
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "newText": "\t"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 23
+          },
+          "end": {
+            "line": 1,
+            "character": 24
+          }
+        },
+        "newText": "\n\t\t'"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 1,
+            "character": 73
+          },
+          "end": {
+            "line": 1,
+            "character": 74
+          }
+        },
+        "newText": "',\n\t"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 2,
+            "character": 0
+          },
+          "end": {
+            "line": 2,
+            "character": 0
+          }
+        },
+        "newText": "\t"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 0
+          },
+          "end": {
+            "line": 3,
+            "character": 0
+          }
+        },
+        "newText": "\t"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 12
+          },
+          "end": {
+            "line": 3,
+            "character": 13
+          }
+        },
+        "newText": "'"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 22
+          },
+          "end": {
+            "line": 3,
+            "character": 24
+          }
+        },
+        "newText": "');"
+      },
+      {
+        "range": {
+          "start": {
+            "line": 4,
+            "character": 1
+          },
+          "end": {
+            "line": 4,
+            "character": 1
+          }
+        },
+        "newText": "\n"
+      }]
+    ))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
 fn lsp_markdown_no_diagnostics() {
   let mut client = init("initialize_params.json");
   client
