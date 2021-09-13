@@ -315,7 +315,7 @@ pub struct FmtConfig {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
   pub lint: Option<Value>,
@@ -458,6 +458,34 @@ mod tests {
         "e": false,
       })
     );
+  }
+
+  #[test]
+  fn test_parse_config_with_unknown_fields() {
+    let config_text = r#"{
+      "compilerOptions": {
+        "build": true,
+        // comments are allowed
+        "strict": true
+      },
+      "lint": {
+        "files": {
+          "include": ["src/"],
+          "exclude": ["src/testdata/"]
+        }
+      },
+      "fmt": {
+        "files": {
+          "include": ["src/"],
+          "exclude": ["src/testdata/"]
+        }
+      },
+      "unknownField": {},
+      "unknownField2": {}
+    }"#;
+    let config_path = PathBuf::from("/deno/deno.json");
+    let config_file_result = ConfigFile::new(config_text, &config_path);
+    assert!(config_file_result.is_err());
   }
 
   #[test]
