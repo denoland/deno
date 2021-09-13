@@ -135,6 +135,13 @@ fn op_run(
     super::check_unstable(state, "Deno.run.uid");
     c.uid(uid);
   }
+  #[cfg(unix)]
+    unsafe {
+      c.pre_exec(|| {
+        libc::setgroups(0, std::ptr::null());
+        Ok(())
+      })
+    }
 
   // TODO: make this work with other resources, eg. sockets
   if !run_args.stdin.is_empty() {

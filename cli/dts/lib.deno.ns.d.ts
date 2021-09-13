@@ -2034,8 +2034,11 @@ declare namespace Deno {
    * Environmental variables for subprocess can be specified using `opt.env`
    * mapping.
    *
-   * On unix `opt.gid` and `opt.uid` can be used to define the gid and uid for
-   * the subprocess.
+   * `opt.uid` sets the child process’s user ID. This translates to a setuid call
+   * in the child process. Failure in the setuid call will cause the spawn to fail.
+   *
+   * `opt.gid` is similar to `opt.uid`, but sets the group ID of the child process.
+   * This has the same semantics as the uid field.
    *
    * By default subprocess inherits stdio of parent process. To change that
    * `opt.stdout`, `opt.stderr` and `opt.stdin` can be specified independently -
