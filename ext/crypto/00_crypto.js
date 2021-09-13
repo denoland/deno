@@ -224,137 +224,6 @@
     }
   }
 
-  function parseTLV(bytes) {
-    const tlvs = [];
-    let off = 0;
-
-    while (off < bytes.length) {
-      const tag = bytes[off++];
-      let len = bytes[off++];
-      if (len & 0x80) {
-        let realLen = 0;
-        while (len > 0x80) {
-          realLen = (realLen << 8) + bytes[off++];
-          --len;
-        }
-
-        len = realLen;
-      }
-
-      if (off + len > bytes.length) {
-        return null;
-      }
-
-      const value = TypedArrayPrototypeSlice(bytes, off, off + len);
-
-      if (tag & 0x20) {
-        const innerTLV = parseTLV(value);
-        if (!innerTLV) {
-          return null;
-        }
-
-        tlvs.push({
-          tag,
-          isConstructed: true,
-          value: innerTLV,
-        });
-      } else {
-        tlvs.push({
-          tag,
-          isConstructed: false,
-          value,
-        });
-      }
-
-      off += len;
-    }
-
-    if (off != bytes.length) {
-      return null;
-    }
-
-    return tlvs;
-  }
-
-  function assertTLV(ok) {
-    if (!ok) {
-      throw new DOMException(
-        `Invalid DER data`,
-        "DataError",
-      );
-    }
-  }
-
-  function getASN1Integer(tlv) {
-    assertTLV(tlv.tag == 0x02);
-
-    return (tlv.value.length > 1 && tlv.value[0] == 0x00)
-      ? TypedArrayPrototypeSlice(tlv.value, 1)
-      : tlv.value;
-  }
-
-  function getASN1Sequence(tlv, expectedLen) {
-    assertTLV(tlv.tag == 0x30);
-
-    if (expectedLen != undefined) {
-      assertTLV(tlv.value.length == expectedLen);
-    }
-
-    return tlv.value;
-  }
-
-  function parseRsaPkcs(der, type) {
-    const ret = {};
-
-    const tlv = parseTLV(der);
-    assertTLV(tlv && tlv.length == 1);
-
-    if (type == "pkcs8") {
-      const inner = getASN1Sequence(tlv[0], 3);
-
-      assertTLV(getASN1Integer(inner[0])[0] == 0x00);
-
-      const algo = getASN1Sequence(inner[1]);
-      assertTLV(algo[0].tag == 0x06);
-      ret.algoIdentifier = algo[0].value;
-
-      assertTLV(inner[2].tag == 0x04); // OctetString
-
-      const privateKey = parseTLV(inner[2].value);
-      assertTLV(privateKey.length == 1);
-
-      const privateKeyComps = getASN1Sequence(privateKey[0]);
-
-      const keyCompNames = ["", "n", "e", "d", "p", "q", "dp", "dq", "qi"];
-      for (let i = 0; i < keyCompNames.length; ++i) {
-        const val = getASN1Integer(privateKeyComps[i]);
-        if (i == 0) {
-          assertTLV(val[0] == 0x00);
-        } else {
-          ret[keyCompNames[i]] = val;
-        }
-      }
-    } else {
-      const inner = getASN1Sequence(tlv[0], 2);
-
-      const algo = getASN1Sequence(inner[0]);
-      assertTLV(algo[0].tag == 0x06);
-      ret.algoIdentifier = algo[0].value;
-
-      assertTLV(inner[1].tag == 0x03); // BitString
-
-      const publicKey = parseTLV(TypedArrayPrototypeSlice(inner[1].value, 1));
-      assertTLV(publicKey.length == 1);
-
-      const publicKeyComps = getASN1Sequence(publicKey[0], 2);
-
-      ret.n = getASN1Integer(publicKeyComps[0]);
-      ret.e = getASN1Integer(publicKeyComps[1]);
-    }
-
-    return ret;
-  }
-
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
   // 18.4.4
   function normalizeAlgorithm(algorithm, op) {
@@ -1207,7 +1076,10 @@
                     break;
                   }
                   default:
-                    throw new TypeError("unreachable");
+                    throw new DOMException(
+                      "`alg` member of JsonWebKey invalid",
+                      "DataError",
+                    );
                 }
               }
 
@@ -1222,8 +1094,6 @@
                   );
                 }
               }
-
-              modulusLength = decodeSymmetricKey(jwk.n).length * 8;
 
               //9.
               if (jwk.d) {
@@ -1262,92 +1132,8 @@
                 }, "spki");
               }
 
-              break;
-            }
-            case "spki": {
-              // 1.
-              if (
-                ArrayPrototypeFind(
-                  keyUsages,
-                  (u) => !ArrayPrototypeIncludes(["verify"], u),
-                ) !== undefined
-              ) {
-                throw new DOMException("Invalid key usages", "SyntaxError");
-              }
-              //2.
-              const keyInfo = parseRsaPkcs(keyData, "spki");
-              //3.
-              if (!keyInfo) {
-                throw new DOMException("Invalid spki data", "DataError");
-              }
-              //4.
-              let hash;
-              //5.
-              //const alg = keyInfo.algorithm;
-              //hash = match { OID }
-              //6.
-              // TODO(@SeanWykes): Check alg==rsaEncryptionOID
-              //7.
-              if (hash) {
-                const normalizedHash = normalizeAlgorithm(hash, "digest");
+              modulusLength = decodeSymmetricKey(jwk.n).length * 8;
 
-                if (normalizedHash.name !== normalizedAlgorithm.hash) {
-                  throw new DOMException(
-                    "Mismatched Hash algorithm and spki algorithmIdentifier",
-                    "DataError",
-                  );
-                }
-              }
-              //8.
-              //const publicKey = keyData;
-              //9.
-              modulusLength = keyInfo.n.length * 8;
-              //10.
-              type = "public";
-              data = keyData;
-              break;
-            }
-            case "pkcs8": {
-              // 1.
-              if (
-                ArrayPrototypeFind(
-                  keyUsages,
-                  (u) => !ArrayPrototypeIncludes(["sign"], u),
-                ) !== undefined
-              ) {
-                throw new DOMException("Invalid key usages", "SyntaxError");
-              }
-              //2.
-              const keyInfo = parseRsaPkcs(keyData, "pkcs8");
-              //3.
-              if (!keyInfo) {
-                throw new DOMException("Invalid pkcs8 data", "DataError");
-              }
-              //4.
-              let hash;
-              //5.
-              //const alg = keyInfo.algorithm;
-              //hash = match { OID }
-              //6.
-              // TODO(@SeanWykes): Check alg==rsaEncryptionOID
-              //7.
-              if (hash) {
-                const normalizedHash = normalizeAlgorithm(hash, "digest");
-
-                if (normalizedHash.name !== normalizedAlgorithm.hash) {
-                  throw new DOMException(
-                    "Mismatched Hash algorithm and PKCS8 algorithmIdentifier",
-                    "DataError",
-                  );
-                }
-              }
-              //8.
-              //const privateKey = keyData;
-              //9.
-              modulusLength = keyInfo.n.length * 8;
-              //10.
-              type = "private";
-              data = keyData;
               break;
             }
             default:
