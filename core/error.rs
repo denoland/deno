@@ -189,7 +189,7 @@ impl JsError {
 
     let msg = v8::Exception::create_message(scope, exception);
 
-    let (message, frames, stack) = if exception.is_native_error() {
+    let (message, frames, stack) = if is_instance_of_error(scope, exception) {
       // The exception is a JS Error object.
       let exception: v8::Local<v8::Object> = exception.try_into().unwrap();
 
@@ -294,6 +294,37 @@ pub(crate) fn attach_handle_to_error(
   handle: v8::Local<v8::Value>,
 ) -> AnyError {
   ErrWithV8Handle::new(scope, err, handle).into()
+}
+
+/// Implements `value instanceof primordials.Error` in JS. Similar to
+/// `Value::is_native_error()` but more closely matches the semantics
+/// of `instanceof`. `Value::is_native_error()` also checks for static class
+/// inheritance rather than just scanning the prototype chain, which doesn't
+/// work with our WebIDL implementation of `DOMException`.
+fn is_instance_of_error<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  value: v8::Local<v8::Value>,
+) -> bool {
+  if !value.is_object() {
+    return false;
+  }
+  let message = v8::String::empty(scope);
+  let error_prototype = v8::Exception::error(scope, message)
+    .to_object(scope)
+    .unwrap()
+    .get_prototype(scope)
+    .unwrap();
+  let mut maybe_prototype =
+    value.to_object(scope).unwrap().get_prototype(scope);
+  while let Some(prototype) = maybe_prototype {
+    if prototype.strict_equals(error_prototype) {
+      return true;
+    }
+    maybe_prototype = prototype
+      .to_object(scope)
+      .and_then(|o| o.get_prototype(scope));
+  }
+  false
 }
 
 // TODO(piscisaureus): rusty_v8 should implement the Error trait on

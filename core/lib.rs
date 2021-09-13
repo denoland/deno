@@ -101,7 +101,7 @@ pub fn v8_version() -> &'static str {
 /// A helper macro that will return a call site in Rust code. Should be
 /// used when executing internal one-line scripts for JsRuntime lifecycle.
 ///
-/// Returns a string in form of: "[deno:<filename>:<line>:<column>]"
+/// Returns a string in form of: "`[deno:<filename>:<line>:<column>]`"
 #[macro_export]
 macro_rules! located_script_name {
   () => {

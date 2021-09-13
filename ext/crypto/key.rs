@@ -2,8 +2,10 @@
 
 use ring::agreement::Algorithm as RingAlgorithm;
 use ring::digest;
+use ring::hkdf;
 use ring::hmac::Algorithm as HmacAlgorithm;
 use ring::signature::EcdsaSigningAlgorithm;
+use ring::signature::EcdsaVerificationAlgorithm;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -57,6 +59,15 @@ impl From<CryptoNamedCurve> for &EcdsaSigningAlgorithm {
   }
 }
 
+impl From<CryptoNamedCurve> for &EcdsaVerificationAlgorithm {
+  fn from(curve: CryptoNamedCurve) -> &'static EcdsaVerificationAlgorithm {
+    match curve {
+      CryptoNamedCurve::P256 => &ring::signature::ECDSA_P256_SHA256_FIXED,
+      CryptoNamedCurve::P384 => &ring::signature::ECDSA_P384_SHA384_FIXED,
+    }
+  }
+}
+
 impl From<CryptoHash> for HmacAlgorithm {
   fn from(hash: CryptoHash) -> HmacAlgorithm {
     match hash {
@@ -76,6 +87,14 @@ impl From<CryptoHash> for &'static digest::Algorithm {
       CryptoHash::Sha384 => &digest::SHA384,
       CryptoHash::Sha512 => &digest::SHA512,
     }
+  }
+}
+
+pub struct HkdfOutput<T>(pub T);
+
+impl hkdf::KeyType for HkdfOutput<usize> {
+  fn len(&self) -> usize {
+    self.0
   }
 }
 
@@ -116,4 +135,6 @@ pub enum Algorithm {
   Hmac,
   #[serde(rename = "PBKDF2")]
   Pbkdf2,
+  #[serde(rename = "HKDF")]
+  Hkdf,
 }

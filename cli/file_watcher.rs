@@ -222,7 +222,7 @@ fn new_watcher(
   let changed_paths = Arc::clone(&debounce.changed_paths);
 
   let mut watcher: RecommendedWatcher =
-    Watcher::new_immediate(move |res: Result<NotifyEvent, NotifyError>| {
+    Watcher::new(move |res: Result<NotifyEvent, NotifyError>| {
       if let Ok(event) = res {
         if matches!(
           event.kind,

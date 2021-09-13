@@ -73,6 +73,7 @@ declare namespace globalThis {
     };
 
     declare var file: {
+      blobFromObjectUrl(url: string): Blob | null;
       getParts(blob: Blob): string[];
       Blob: typeof Blob;
       File: typeof File;
