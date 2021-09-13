@@ -505,8 +505,8 @@
    *
    * @param {any} source The source parameter that the WebAssembly
    * streaming API was called with.
-   * @param {number} rid An rid that can be used with
-   * `Deno.core.wasmStreamingFeed`.
+   * @param {number} rid An rid that represents the wasm streaming
+   * resource.
    */
   function handleWasmStreaming(source, rid) {
     // This implements part of
@@ -543,15 +543,15 @@
           while (true) {
             const { value: chunk, done } = await reader.read();
             if (done) break;
-            core.wasmStreamingFeed(rid, "bytes", chunk);
+            core.opSync("op_wasm_streaming_feed", rid, chunk);
           }
         }
 
         // 2.7.
-        core.wasmStreamingFeed(rid, "finish");
+        core.close(rid);
       } catch (err) {
         // 2.8 and 3
-        core.wasmStreamingFeed(rid, "abort", err);
+        core.opSync("op_wasm_streaming_abort", rid, err);
       }
     })();
   }
