@@ -71,26 +71,17 @@ function benchRead128k() {
   );
 }
 
-function benchRead128kSync() {
-  return benchAsync(
-    "read_128k_sync",
-    5e4,
-    () => Deno.readFileSync("./cli/bench/fixtures/128k.bin"),
-  );
-}
-
 async function main() {
   // v8 builtin that's close to the upper bound non-NOPs
-  // benchDateNow();
-  // // A very lightweight op, that should be highly optimizable
-  // benchPerfNow();
-  // // A common "language feature", that should be fast
-  // // also a decent representation of a non-trivial JSON-op
-  // benchUrlParse();
-  // // IO ops
-  // benchReadZero();
-  // benchWriteNull();
-  benchRead128kSync();
+  benchDateNow();
+  // A very lightweight op, that should be highly optimizable
+  benchPerfNow();
+  // A common "language feature", that should be fast
+  // also a decent representation of a non-trivial JSON-op
+  benchUrlParse();
+  // IO ops
+  benchReadZero();
+  benchWriteNull();
   await benchRead128k();
 }
 await main();
