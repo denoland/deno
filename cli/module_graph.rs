@@ -308,7 +308,7 @@ impl Module {
       specifier: cached_module.specifier,
       maybe_import_map,
       media_type,
-      text_info: SourceTextInfo::new(BytePos(0), cached_module.source),
+      text_info: SourceTextInfo::new(cached_module.source),
       source_path: cached_module.source_path,
       maybe_emit: cached_module.maybe_emit,
       maybe_emit_path: cached_module.maybe_emit_path,
