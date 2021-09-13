@@ -136,12 +136,12 @@ fn op_run(
     c.uid(uid);
   }
   #[cfg(unix)]
-    unsafe {
-      c.pre_exec(|| {
-        libc::setgroups(0, std::ptr::null());
-        Ok(())
-      })
-    }
+  unsafe {
+    c.pre_exec(|| {
+      libc::setgroups(0, std::ptr::null());
+      Ok(())
+    });
+  }
 
   // TODO: make this work with other resources, eg. sockets
   if !run_args.stdin.is_empty() {
