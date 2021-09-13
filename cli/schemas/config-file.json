@@ -10,26 +10,32 @@
       "type": "object",
       "description": "Instructs the TypeScript compiler how to compile .ts files.",
       "properties": {
-        "declarationDir": {
-          "description": "Specify the output directory for generated declaration files.",
-          "type": ["string", "null"],
-          "markdownDescription": "Specify the output directory for generated declaration files.\n\nSee more: https://www.typescriptlang.org/tsconfig#declarationDir"
-        },
-        "disableReferencedProjectLoad": {
-          "description": "Reduce the number of projects loaded automatically by TypeScript.",
-          "type": "boolean",
-          "markdownDescription": "Reduce the number of projects loaded automatically by TypeScript.\n\nSee more: https://www.typescriptlang.org/tsconfig#disableReferencedProjectLoad"
-        },
-        "noPropertyAccessFromIndexSignature": {
-          "description": "Enforces using indexed accessors for keys declared using an indexed type",
-          "type": "boolean",
-          "markdownDescription": "Enforces using indexed accessors for keys declared using an indexed type\n\nSee more: https://www.typescriptlang.org/tsconfig#noPropertyAccessFromIndexSignature"
-        },
-        "exactOptionalPropertyTypes": {
-          "description": "Differentiate between undefined and not present when type checking",
+        "allowJs": {
+          "description": "Allow JavaScript files to be a part of your program. Use the `checkJS` option to get errors from these files.",
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Differentiate between undefined and not present when type checking\n\nSee more: https://www.typescriptlang.org/tsconfig#exactOptionalPropertyTypes"
+          "markdownDescription": "Allow JavaScript files to be a part of your program. Use the `checkJS` option to get errors from these files.\n\nSee more: https://www.typescriptlang.org/tsconfig#allowJs"
+        },
+        "allowUnreachableCode": {
+          "description": "Disable error reporting for unreachable code.",
+          "type": "boolean",
+          "markdownDescription": "Disable error reporting for unreachable code.\n\nSee more: https://www.typescriptlang.org/tsconfig#allowUnreachableCode"
+        },
+        "allowUnusedLabels": {
+          "description": "Disable error reporting for unused labels.",
+          "type": "boolean",
+          "markdownDescription": "Disable error reporting for unused labels.\n\nSee more: https://www.typescriptlang.org/tsconfig#allowUnusedLabels"
+        },
+        "checkJs": {
+          "description": "Enable error reporting in type-checked JavaScript files.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable error reporting in type-checked JavaScript files.\n\nSee more: https://www.typescriptlang.org/tsconfig#checkJs"
+        },
+        "experimentalDecorators": {
+          "description": "Enable experimental support for TC39 stage 2 draft decorators.",
+          "type": "boolean",
+          "markdownDescription": "Enable experimental support for TC39 stage 2 draft decorators.\n\nSee more: https://www.typescriptlang.org/tsconfig#experimentalDecorators"
         },
         "jsx": {
           "description": "Specify what JSX code is generated.",
@@ -53,181 +59,11 @@
           "default": "React.Fragment",
           "markdownDescription": "Specify the JSX Fragment reference used for fragments when targeting React JSX emit e.g. 'React.Fragment' or 'Fragment'.\n\nSee more: https://www.typescriptlang.org/tsconfig#jsxFragmentFactory"
         },
-        "jsxImportSource": {
-          "description": "Specify module specifier used to import the JSX factory functions when using `jsx: react-jsx*`.`",
-          "type": "string",
-          "default": "react",
-          "markdownDescription": "Specify module specifier used to import the JSX factory functions when using `jsx: react-jsx*`.`\n\nSee more: https://www.typescriptlang.org/tsconfig#jsxImportSource"
-        },
-        "noImplicitAny": {
-          "description": "Enable error reporting for expressions and declarations with an implied `any` type..",
-          "type": "boolean",
-          "markdownDescription": "Enable error reporting for expressions and declarations with an implied `any` type..\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitAny"
-        },
-        "noImplicitThis": {
-          "description": "Enable error reporting when `this` is given the type `any`.",
-          "type": "boolean",
-          "markdownDescription": "Enable error reporting when `this` is given the type `any`.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitThis"
-        },
-        "noUnusedLocals": {
-          "description": "Enable error reporting when a local variables aren't read.",
+        "keyofStringsOnly": {
+          "description": "Make keyof only return strings instead of string, numbers or symbols. Legacy option.",
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Enable error reporting when a local variables aren't read.\n\nSee more: https://www.typescriptlang.org/tsconfig#noUnusedLocals"
-        },
-        "noUnusedParameters": {
-          "description": "Raise an error when a function parameter isn't read",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Raise an error when a function parameter isn't read\n\nSee more: https://www.typescriptlang.org/tsconfig#noUnusedParameters"
-        },
-        "noStrictGenericChecks": {
-          "description": "Disable strict checking of generic signatures in function types.",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Disable strict checking of generic signatures in function types.\n\nSee more: https://www.typescriptlang.org/tsconfig#noStrictGenericChecks"
-        },
-        "removeComments": {
-          "description": "Disable emitting comments.",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Disable emitting comments.\n\nSee more: https://www.typescriptlang.org/tsconfig#removeComments"
-        },
-        "suppressExcessPropertyErrors": {
-          "description": "Disable reporting of excess property errors during the creation of object literals.",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Disable reporting of excess property errors during the creation of object literals.\n\nSee more: https://www.typescriptlang.org/tsconfig#suppressExcessPropertyErrors"
-        },
-        "suppressImplicitAnyIndexErrors": {
-          "description": "Suppress `noImplicitAny` errors when indexing objects that lack index signatures.",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Suppress `noImplicitAny` errors when indexing objects that lack index signatures.\n\nSee more: https://www.typescriptlang.org/tsconfig#suppressImplicitAnyIndexErrors"
-        },
-        "useUnknownInCatchVariables": {
-          "description": "Default catch clause variables as `unknown` instead of `any`.",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Default catch clause variables as `unknown` instead of `any`.\n\nSee more: https://www.typescriptlang.org/tsconfig#useUnknownInCatchVariables"
-        },
-        "fallbackPolling": {
-          "description": "Specify the polling strategy to use when the system runs out of or doesn't support native file watchers. Requires TypeScript version 3.8 or later.",
-          "enum": [
-            "fixedPollingInterval",
-            "priorityPollingInterval",
-            "dynamicPriorityPolling",
-            "fixedInterval",
-            "priorityInterval",
-            "dynamicPriority",
-            "fixedChunkSize"
-          ]
-        },
-        "watchDirectory": {
-          "description": "Specify the strategy for watching directories under systems that lack recursive file-watching functionality. Requires TypeScript version 3.8 or later.",
-          "enum": [
-            "useFsEvents",
-            "fixedPollingInterval",
-            "dynamicPriorityPolling",
-            "fixedChunkSizePolling"
-          ],
-          "default": "useFsEvents"
-        },
-        "watchFile": {
-          "description": "Specify the strategy for watching individual files. Requires TypeScript version 3.8 or later.",
-          "enum": [
-            "fixedPollingInterval",
-            "priorityPollingInterval",
-            "dynamicPriorityPolling",
-            "useFsEvents",
-            "useFsEventsOnParentDirectory",
-            "fixedChunkSizePolling"
-          ],
-          "default": "useFsEvents"
-        },
-        "experimentalDecorators": {
-          "description": "Enable experimental support for TC39 stage 2 draft decorators.",
-          "type": "boolean",
-          "markdownDescription": "Enable experimental support for TC39 stage 2 draft decorators.\n\nSee more: https://www.typescriptlang.org/tsconfig#experimentalDecorators"
-        },
-        "emitDecoratorMetadata": {
-          "description": "Emit design-type metadata for decorated declarations in source files.",
-          "type": "boolean",
-          "markdownDescription": "Emit design-type metadata for decorated declarations in source files.\n\nSee more: https://www.typescriptlang.org/tsconfig#emitDecoratorMetadata"
-        },
-        "allowUnusedLabels": {
-          "description": "Disable error reporting for unused labels.",
-          "type": "boolean",
-          "markdownDescription": "Disable error reporting for unused labels.\n\nSee more: https://www.typescriptlang.org/tsconfig#allowUnusedLabels"
-        },
-        "noImplicitReturns": {
-          "description": "Enable error reporting for codepaths that do not explicitly return in a function.",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Enable error reporting for codepaths that do not explicitly return in a function.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitReturns"
-        },
-        "noUncheckedIndexedAccess": {
-          "description": "Add `undefined` to a type when accessed using an index.",
-          "type": "boolean",
-          "markdownDescription": "Add `undefined` to a type when accessed using an index.\n\nSee more: https://www.typescriptlang.org/tsconfig#noUncheckedIndexedAccess"
-        },
-        "noFallthroughCasesInSwitch": {
-          "description": "Enable error reporting for fallthrough cases in switch statements.",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Enable error reporting for fallthrough cases in switch statements.\n\nSee more: https://www.typescriptlang.org/tsconfig#noFallthroughCasesInSwitch"
-        },
-        "noImplicitOverride": {
-          "description": "Ensure overriding members in derived classes are marked with an override modifier.",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Ensure overriding members in derived classes are marked with an override modifier.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitOverride"
-        },
-        "allowUnreachableCode": {
-          "description": "Disable error reporting for unreachable code.",
-          "type": "boolean",
-          "markdownDescription": "Disable error reporting for unreachable code.\n\nSee more: https://www.typescriptlang.org/tsconfig#allowUnreachableCode"
-        },
-        "plugins": {
-          "description": "Specify a list of language service plugins to include.",
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "description": "Plugin name.",
-                "type": "string"
-              }
-            }
-          },
-          "markdownDescription": "Specify a list of language service plugins to include.\n\nSee more: https://www.typescriptlang.org/tsconfig#plugins"
-        },
-        "types": {
-          "description": "Specify type package names to be included without being referenced in a source file.",
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string"
-          },
-          "markdownDescription": "Specify type package names to be included without being referenced in a source file.\n\nSee more: https://www.typescriptlang.org/tsconfig#types"
-        },
-        "allowJs": {
-          "description": "Allow JavaScript files to be a part of your program. Use the `checkJS` option to get errors from these files.",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Allow JavaScript files to be a part of your program. Use the `checkJS` option to get errors from these files.\n\nSee more: https://www.typescriptlang.org/tsconfig#allowJs"
-        },
-        "noImplicitUseStrict": {
-          "description": "Disable adding 'use strict' directives in emitted JavaScript files.",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Disable adding 'use strict' directives in emitted JavaScript files.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitUseStrict"
-        },
-        "disableSizeLimit": {
-          "description": "Remove the 20mb cap on total source code size for JavaScript files in the TypeScript language server.",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Remove the 20mb cap on total source code size for JavaScript files in the TypeScript language server.\n\nSee more: https://www.typescriptlang.org/tsconfig#disableSizeLimit"
+          "markdownDescription": "Make keyof only return strings instead of string, numbers or symbols. Legacy option.\n\nSee more: https://www.typescriptlang.org/tsconfig#keyofStringsOnly"
         },
         "lib": {
           "description": "Specify a set of bundled library declaration files that describe the target runtime environment.",
@@ -338,27 +174,56 @@
           },
           "markdownDescription": "Specify a set of bundled library declaration files that describe the target runtime environment.\n\nSee more: https://www.typescriptlang.org/tsconfig#lib"
         },
-        "strictNullChecks": {
-          "description": "When type checking, take into account `null` and `undefined`.",
+        "noFallthroughCasesInSwitch": {
+          "description": "Enable error reporting for fallthrough cases in switch statements.",
           "type": "boolean",
           "default": false,
-          "markdownDescription": "When type checking, take into account `null` and `undefined`.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictNullChecks"
+          "markdownDescription": "Enable error reporting for fallthrough cases in switch statements.\n\nSee more: https://www.typescriptlang.org/tsconfig#noFallthroughCasesInSwitch"
         },
-        "maxNodeModuleJsDepth": {
-          "description": "Specify the maximum folder depth used for checking JavaScript files from `node_modules`. Only applicable with `allowJs`.",
-          "type": "number",
-          "default": 0,
-          "markdownDescription": "Specify the maximum folder depth used for checking JavaScript files from `node_modules`. Only applicable with `allowJs`.\n\nSee more: https://www.typescriptlang.org/tsconfig#maxNodeModuleJsDepth"
-        },
-        "importsNotUsedAsValues": {
-          "description": "Specify emit/checking behavior for imports that are only used for types.",
-          "default": "remove",
-          "enum": ["remove", "preserve", "error"]
-        },
-        "alwaysStrict": {
-          "description": "Ensure 'use strict' is always emitted.",
+        "noImplicitAny": {
+          "description": "Enable error reporting for expressions and declarations with an implied `any` type..",
           "type": "boolean",
-          "markdownDescription": "Ensure 'use strict' is always emitted.\n\nSee more: https://www.typescriptlang.org/tsconfig#alwaysStrict"
+          "markdownDescription": "Enable error reporting for expressions and declarations with an implied `any` type..\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitAny"
+        },
+        "noImplicitReturns": {
+          "description": "Enable error reporting for codepaths that do not explicitly return in a function.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable error reporting for codepaths that do not explicitly return in a function.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitReturns"
+        },
+        "noImplicitThis": {
+          "description": "Enable error reporting when `this` is given the type `any`.",
+          "type": "boolean",
+          "markdownDescription": "Enable error reporting when `this` is given the type `any`.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitThis"
+        },
+        "noImplicitUseStrict": {
+          "description": "Disable adding 'use strict' directives in emitted JavaScript files.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Disable adding 'use strict' directives in emitted JavaScript files.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitUseStrict"
+        },
+        "noStrictGenericChecks": {
+          "description": "Disable strict checking of generic signatures in function types.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Disable strict checking of generic signatures in function types.\n\nSee more: https://www.typescriptlang.org/tsconfig#noStrictGenericChecks"
+        },
+        "noUnusedLocals": {
+          "description": "Enable error reporting when a local variables aren't read.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable error reporting when a local variables aren't read.\n\nSee more: https://www.typescriptlang.org/tsconfig#noUnusedLocals"
+        },
+        "noUnusedParameters": {
+          "description": "Raise an error when a function parameter isn't read",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Raise an error when a function parameter isn't read\n\nSee more: https://www.typescriptlang.org/tsconfig#noUnusedParameters"
+        },
+        "noUncheckedIndexedAccess": {
+          "description": "Add `undefined` to a type when accessed using an index.",
+          "type": "boolean",
+          "markdownDescription": "Add `undefined` to a type when accessed using an index.\n\nSee more: https://www.typescriptlang.org/tsconfig#noUncheckedIndexedAccess"
         },
         "strict": {
           "description": "Enable all strict type checking options.",
@@ -372,12 +237,6 @@
           "default": false,
           "markdownDescription": "Check that the arguments for `bind`, `call`, and `apply` methods match the original function.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictBindCallApply"
         },
-        "checkJs": {
-          "description": "Enable error reporting in type-checked JavaScript files.",
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Enable error reporting in type-checked JavaScript files.\n\nSee more: https://www.typescriptlang.org/tsconfig#checkJs"
-        },
         "strictFunctionTypes": {
           "description": "When assigning functions, check to ensure parameters and the return values are subtype-compatible.",
           "type": "boolean",
@@ -390,25 +249,23 @@
           "default": false,
           "markdownDescription": "Check for class properties that are declared but not set in the constructor.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictPropertyInitialization"
         },
-        "keyofStringsOnly": {
-          "description": "Make keyof only return strings instead of string, numbers or symbols. Legacy option.",
+        "strictNullChecks": {
+          "description": "When type checking, take into account `null` and `undefined`.",
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Make keyof only return strings instead of string, numbers or symbols. Legacy option.\n\nSee more: https://www.typescriptlang.org/tsconfig#keyofStringsOnly"
+          "markdownDescription": "When type checking, take into account `null` and `undefined`.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictNullChecks"
         },
-        "listFilesOnly": {
-          "description": "Print names of files that are part of the compilation and then stop processing.",
-          "type": "boolean"
-        },
-        "disableSourceOfProjectReferenceRedirect": {
-          "description": "Disable preferring source files instead of declaration files when referencing composite projects",
+        "suppressExcessPropertyErrors": {
+          "description": "Disable reporting of excess property errors during the creation of object literals.",
           "type": "boolean",
-          "markdownDescription": "Disable preferring source files instead of declaration files when referencing composite projects\n\nSee more: https://www.typescriptlang.org/tsconfig#disableSourceOfProjectReferenceRedirect"
+          "default": false,
+          "markdownDescription": "Disable reporting of excess property errors during the creation of object literals.\n\nSee more: https://www.typescriptlang.org/tsconfig#suppressExcessPropertyErrors"
         },
-        "disableSolutionSearching": {
-          "description": "Opt a project out of multi-project reference checking when editing.",
+        "suppressImplicitAnyIndexErrors": {
+          "description": "Suppress `noImplicitAny` errors when indexing objects that lack index signatures.",
           "type": "boolean",
-          "markdownDescription": "Opt a project out of multi-project reference checking when editing.\n\nSee more: https://www.typescriptlang.org/tsconfig#disableSolutionSearching"
+          "default": false,
+          "markdownDescription": "Suppress `noImplicitAny` errors when indexing objects that lack index signatures.\n\nSee more: https://www.typescriptlang.org/tsconfig#suppressImplicitAnyIndexErrors"
         }
       }
     },
