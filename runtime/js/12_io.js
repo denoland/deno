@@ -11,6 +11,7 @@
   const {
     Uint8Array,
     ArrayPrototypePush,
+    MathMin,
     TypedArrayPrototypeSubarray,
     TypedArrayPrototypeSet,
   } = window.__bootstrap.primordials;
@@ -116,7 +117,7 @@
 
   const READ_PER_ITER = 16 * 1024; // 16kb, see https://github.com/denoland/deno/issues/10157
 
-  async function readAll(r) {
+  function readAll(r) {
     return readAllInner(r);
   }
   async function readAllInner(r, options) {
@@ -176,7 +177,7 @@
     let cursor = 0;
 
     while (cursor < size) {
-      const sliceEnd = Math.min(size, cursor + READ_PER_ITER);
+      const sliceEnd = MathMin(size, cursor + READ_PER_ITER);
       const slice = buf.subarray(cursor, sliceEnd);
       const read = r.readSync(slice);
       if (typeof read == "number") {
@@ -194,7 +195,7 @@
     let cursor = 0;
     const signal = options?.signal ?? null;
     while (!signal?.aborted && cursor < size) {
-      const sliceEnd = Math.min(size, cursor + READ_PER_ITER);
+      const sliceEnd = MathMin(size, cursor + READ_PER_ITER);
       const slice = buf.subarray(cursor, sliceEnd);
       const read = await r.read(slice);
       if (typeof read == "number") {

@@ -4,8 +4,7 @@
 ((window) => {
   const core = window.Deno.core;
   const { open, openSync } = window.__bootstrap.files;
-  const { readAllInner, readAllSync, readAllSyncSized, readAllInnerSized } =
-    window.__bootstrap.io;
+  const { readAllSyncSized, readAllInnerSized } = window.__bootstrap.io;
 
   function readFileSync(path) {
     const file = openSync(path);
