@@ -713,8 +713,12 @@ declare namespace Deno {
   export function run<
     T extends RunOptions & {
       clearEnv?: boolean;
+      gid?: number;
+      uid?: number;
     } = RunOptions & {
       clearEnv?: boolean;
+      gid?: number;
+      uid?: number;
     },
   >(opt: T): Process<T>;
 

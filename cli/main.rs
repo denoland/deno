@@ -805,8 +805,20 @@ async fn format_command(
   flags: Flags,
   fmt_flags: FmtFlags,
 ) -> Result<(), AnyError> {
+  let program_state = ProgramState::build(flags.clone()).await?;
+  let maybe_fmt_config =
+    if let Some(config_file) = &program_state.maybe_config_file {
+      config_file.to_fmt_config()?
+    } else {
+      None
+    };
+
   if fmt_flags.files.len() == 1 && fmt_flags.files[0].to_string_lossy() == "-" {
-    return tools::fmt::format_stdin(fmt_flags.check, fmt_flags.ext);
+    return tools::fmt::format_stdin(
+      fmt_flags.check,
+      fmt_flags.ext,
+      maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
+    );
   }
 
   tools::fmt::format(
@@ -814,6 +826,7 @@ async fn format_command(
     fmt_flags.ignore,
     fmt_flags.check,
     flags.watch,
+    maybe_fmt_config,
   )
   .await?;
   Ok(())

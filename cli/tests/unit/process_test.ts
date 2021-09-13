@@ -537,3 +537,59 @@ unitTest(
     p.close();
   },
 );
+
+unitTest(
+  { perms: { run: true, read: true }, ignore: Deno.build.os === "windows" },
+  async function uid(): Promise<void> {
+    const p = Deno.run({
+      cmd: [
+        "id",
+        "-u",
+      ],
+      stdout: "piped",
+    });
+
+    const currentUid = new TextDecoder().decode(await p.output());
+    p.close();
+
+    if (currentUid !== "0") {
+      assertThrows(() => {
+        Deno.run({
+          cmd: [
+            "echo",
+            "fhqwhgads",
+          ],
+          uid: 0,
+        });
+      }, Deno.errors.PermissionDenied);
+    }
+  },
+);
+
+unitTest(
+  { perms: { run: true, read: true }, ignore: Deno.build.os === "windows" },
+  async function gid(): Promise<void> {
+    const p = Deno.run({
+      cmd: [
+        "id",
+        "-g",
+      ],
+      stdout: "piped",
+    });
+
+    const currentGid = new TextDecoder().decode(await p.output());
+    p.close();
+
+    if (currentGid !== "0") {
+      assertThrows(() => {
+        Deno.run({
+          cmd: [
+            "echo",
+            "fhqwhgads",
+          ],
+          gid: 0,
+        });
+      }, Deno.errors.PermissionDenied);
+    }
+  },
+);
