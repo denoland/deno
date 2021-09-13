@@ -188,10 +188,10 @@
     return buildTLV(0x02, (val[0] & 0x80) ? [0x00, ...val] : val);
   }
 
-  function buildRsaPkcs(key, type) {
+  function buildRsaPkcs1(key, type) {
     const modExp = concatBytes(buildIntegerTLV(key.n), buildIntegerTLV(key.e));
 
-    if (type == "pkcs1") {
+    if (type == "private") {
       let keyData = concatBytes(
         buildIntegerTLV([0x00]),
         modExp,
@@ -211,15 +211,7 @@
 
       return buildTLV(0x30, keyData);
     } else {
-      const algo = buildTLV(0x30, [
-        buildTLV(0x06, [0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01]),
-        buildTLV(0x05, []),
-      ]);
-
-      return buildTLV(0x30, [
-        algo,
-        buildTLV(0x03, concatBytes(0x00, buildTLV(0x30, modExp))),
-      ]);
+      return buildTLV(0x30, modExp);
     }
   }
 
@@ -960,6 +952,7 @@
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "raw",
+            key_type: "secret",
             data,
           });
 
@@ -1105,7 +1098,7 @@
                 }
 
                 type = "private";
-                data = buildRsaPkcs({
+                data = buildRsaPkcs1({
                   n: decodeSymmetricKey(jwk.n),
                   e: decodeSymmetricKey(jwk.e),
                   d: decodeSymmetricKey(jwk.d),
@@ -1114,7 +1107,7 @@
                   dp: decodeSymmetricKey(jwk.dp),
                   dq: decodeSymmetricKey(jwk.dq),
                   qi: decodeSymmetricKey(jwk.qi),
-                }, "pkcs1");
+                }, "private");
               } else {
                 // Section 6.3.1 of RFC7518
                 if (!jwk.e || !jwk.n) {
@@ -1125,10 +1118,10 @@
                 }
 
                 type = "public";
-                data = buildRsaPkcs({
+                data = buildRsaPkcs1({
                   n: decodeSymmetricKey(jwk.n),
                   e: decodeSymmetricKey(jwk.e),
-                }, "spki");
+                }, "public");
               }
 
               modulusLength = decodeSymmetricKey(jwk.n).length * 8;
@@ -1145,7 +1138,8 @@
 
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
-            type: (type == "private") ? "raw" : "spki",
+            type: "raw",
+            key_type: type,
             data,
           });
 
@@ -1193,6 +1187,7 @@
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "raw",
+            key_type: "secret",
             data: keyData,
           });
 
@@ -1239,6 +1234,7 @@
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "raw",
+            key_type: "secret",
             data: keyData,
           });
 
@@ -1690,6 +1686,7 @@
         WeakMapPrototypeSet(KEY_STORE, handle, {
           // PKCS#1 for RSA
           type: "raw",
+          key_type: "private",
           data: keyData,
         });
 
@@ -1751,6 +1748,7 @@
         WeakMapPrototypeSet(KEY_STORE, handle, {
           // PKCS#1 for RSA
           type: "raw",
+          key_type: "private",
           data: keyData,
         });
 
@@ -1808,6 +1806,7 @@
           });
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "pkcs8",
+            key_type: "private",
             data: keyData,
           });
         } else {
@@ -1866,6 +1865,7 @@
           });
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "pkcs8",
+            key_type: "private",
             data: keyData,
           });
         } else {
@@ -1961,7 +1961,11 @@
           length,
         });
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, { type: "raw", data: keyData });
+        WeakMapPrototypeSet(KEY_STORE, handle, {
+          type: "raw",
+          key_type: "secret",
+          data: keyData,
+        });
 
         // 6-10.
         const algorithm = {
@@ -2001,6 +2005,7 @@
     const handle = {};
     WeakMapPrototypeSet(KEY_STORE, handle, {
       type: "raw",
+      key_type: "secret",
       data: keyData,
     });
 

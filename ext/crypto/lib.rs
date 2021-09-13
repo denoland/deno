@@ -38,8 +38,8 @@ use ring::signature::EcdsaVerificationAlgorithm;
 use ring::signature::KeyPair;
 use rsa::padding::PaddingScheme;
 use rsa::pkcs1::FromRsaPrivateKey;
+use rsa::pkcs1::FromRsaPublicKey;
 use rsa::pkcs1::ToRsaPrivateKey;
-use rsa::pkcs8::FromPublicKey;
 use rsa::pkcs8::der::asn1;
 use rsa::BigUint;
 use rsa::PublicKey;
@@ -241,7 +241,14 @@ pub async fn op_crypto_generate_key(
 pub enum KeyFormat {
   Raw,
   Pkcs8,
-  Spki,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum KeyType {
+  Private,
+  Public,
+  Secret,
 }
 
 #[derive(Deserialize)]
@@ -250,6 +257,7 @@ pub struct KeyData {
   // TODO(littledivy): Kept here to be used to `importKey`() in future.
   #[allow(dead_code)]
   r#type: KeyFormat,
+  key_type: KeyType,
   data: ZeroCopyBuf,
 }
 
@@ -429,12 +437,12 @@ pub async fn op_crypto_verify_key(
 
   let verification = match algorithm {
     Algorithm::RsassaPkcs1v15 => {
-      let public_key: RsaPublicKey = match args.key.r#type {
-        KeyFormat::Raw => {
+      let public_key: RsaPublicKey = match args.key.key_type {
+        KeyType::Private => {
           RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
         }
-        KeyFormat::Spki => {
-          RsaPublicKey::from_public_key_der(&*args.key.data).unwrap()
+        KeyType::Public => {
+          RsaPublicKey::from_pkcs1_der(&*args.key.data).unwrap()
         }
         _ => return Err(type_error("Invalid Key format".to_string())),
       };
@@ -493,12 +501,12 @@ pub async fn op_crypto_verify_key(
         .salt_length
         .ok_or_else(|| type_error("Missing argument saltLength".to_string()))?
         as usize;
-      let public_key: RsaPublicKey = match args.key.r#type {
-        KeyFormat::Raw => {
+      let public_key: RsaPublicKey = match args.key.key_type {
+        KeyType::Private => {
           RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
         }
-        KeyFormat::Spki => {
-          RsaPublicKey::from_public_key_der(&*args.key.data).unwrap()
+        KeyType::Public => {
+          RsaPublicKey::from_pkcs1_der(&*args.key.data).unwrap()
         }
         _ => return Err(type_error("Invalid Key format".to_string())),
       };
@@ -789,12 +797,12 @@ pub async fn op_crypto_encrypt_key(
 
   match algorithm {
     Algorithm::RsaOaep => {
-      let public_key: RsaPublicKey = match args.key.r#type {
-        KeyFormat::Raw => {
+      let public_key: RsaPublicKey = match args.key.key_type {
+        KeyType::Private => {
           RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
         }
-        KeyFormat::Spki => {
-          RsaPublicKey::from_public_key_der(&*args.key.data).unwrap()
+        KeyType::Public => {
+          RsaPublicKey::from_pkcs1_der(&*args.key.data).unwrap()
         }
         _ => return Err(type_error("Invalid Key format".to_string())),
       };
