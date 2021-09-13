@@ -153,7 +153,8 @@
   }
 
   function concatBytes(...bytes) {
-    return TypedArrayFrom(Uint8Array,
+    return TypedArrayFrom(
+      Uint8Array,
       bytes.reduce(
         (a, val) =>
           (isArrayOrArrayBufferView(val)) ? [...a, ...val] : [...a, val],
@@ -188,14 +189,9 @@
   }
 
   function buildRsaPkcs(key, type) {
-    const algo = buildTLV(0x30, [
-      buildTLV(0x06, [0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01]),
-      buildTLV(0x05, []),
-    ]);
-
     const modExp = concatBytes(buildIntegerTLV(key.n), buildIntegerTLV(key.e));
 
-    if (type == "pkcs8") {
+    if (type == "pkcs1") {
       let keyData = concatBytes(
         buildIntegerTLV([0x00]),
         modExp,
@@ -213,12 +209,13 @@
         );
       }
 
-      return buildTLV(0x30, [
-        buildTLV(0x02, [0x00]), // version
-        algo,
-        buildTLV(0x04, buildTLV(0x30, keyData)),
-      ]);
+      return buildTLV(0x30, keyData);
     } else {
+      const algo = buildTLV(0x30, [
+        buildTLV(0x06, [0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01]),
+        buildTLV(0x05, []),
+      ]);
+
       return buildTLV(0x30, [
         algo,
         buildTLV(0x03, concatBytes(0x00, buildTLV(0x30, modExp))),
@@ -1117,7 +1114,7 @@
                   dp: decodeSymmetricKey(jwk.dp),
                   dq: decodeSymmetricKey(jwk.dq),
                   qi: decodeSymmetricKey(jwk.qi),
-                }, "pkcs8");
+                }, "pkcs1");
               } else {
                 // Section 6.3.1 of RFC7518
                 if (!jwk.e || !jwk.n) {
@@ -1148,7 +1145,7 @@
 
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
-            type: (type == "private") ? "pkcs8" : "spki",
+            type: (type == "private") ? "raw" : "spki",
             data,
           });
 

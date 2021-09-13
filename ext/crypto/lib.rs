@@ -39,6 +39,7 @@ use ring::signature::KeyPair;
 use rsa::padding::PaddingScheme;
 use rsa::pkcs1::FromRsaPrivateKey;
 use rsa::pkcs1::ToRsaPrivateKey;
+use rsa::pkcs8::FromPublicKey;
 use rsa::pkcs8::der::asn1;
 use rsa::BigUint;
 use rsa::PublicKey;
