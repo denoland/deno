@@ -7,11 +7,410 @@
   "type": "object",
   "properties": {
     "compilerOptions": {
-      "description": "The root specifier for the graph.",
-      "examples": [
-        "https://deno.land/x/mod.ts"
-      ],
-      "type": "string"
+      "type": "object",
+      "description": "Instructs the TypeScript compiler how to compile .ts files.",
+      "properties": {
+        "declarationDir": {
+          "description": "Specify the output directory for generated declaration files.",
+          "type": ["string", "null"],
+          "markdownDescription": "Specify the output directory for generated declaration files.\n\nSee more: https://www.typescriptlang.org/tsconfig#declarationDir"
+        },
+        "disableReferencedProjectLoad": {
+          "description": "Reduce the number of projects loaded automatically by TypeScript.",
+          "type": "boolean",
+          "markdownDescription": "Reduce the number of projects loaded automatically by TypeScript.\n\nSee more: https://www.typescriptlang.org/tsconfig#disableReferencedProjectLoad"
+        },
+        "noPropertyAccessFromIndexSignature": {
+          "description": "Enforces using indexed accessors for keys declared using an indexed type",
+          "type": "boolean",
+          "markdownDescription": "Enforces using indexed accessors for keys declared using an indexed type\n\nSee more: https://www.typescriptlang.org/tsconfig#noPropertyAccessFromIndexSignature"
+        },
+        "exactOptionalPropertyTypes": {
+          "description": "Differentiate between undefined and not present when type checking",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Differentiate between undefined and not present when type checking\n\nSee more: https://www.typescriptlang.org/tsconfig#exactOptionalPropertyTypes"
+        },
+        "jsx": {
+          "description": "Specify what JSX code is generated.",
+          "enum": [
+            "preserve",
+            "react",
+            "react-jsx",
+            "react-jsxdev",
+            "react-native"
+          ]
+        },
+        "jsxFactory": {
+          "description": "Specify the JSX factory function used when targeting React JSX emit, e.g. 'React.createElement' or 'h'",
+          "type": "string",
+          "default": "React.createElement",
+          "markdownDescription": "Specify the JSX factory function used when targeting React JSX emit, e.g. 'React.createElement' or 'h'\n\nSee more: https://www.typescriptlang.org/tsconfig#jsxFactory"
+        },
+        "jsxFragmentFactory": {
+          "description": "Specify the JSX Fragment reference used for fragments when targeting React JSX emit e.g. 'React.Fragment' or 'Fragment'.",
+          "type": "string",
+          "default": "React.Fragment",
+          "markdownDescription": "Specify the JSX Fragment reference used for fragments when targeting React JSX emit e.g. 'React.Fragment' or 'Fragment'.\n\nSee more: https://www.typescriptlang.org/tsconfig#jsxFragmentFactory"
+        },
+        "jsxImportSource": {
+          "description": "Specify module specifier used to import the JSX factory functions when using `jsx: react-jsx*`.`",
+          "type": "string",
+          "default": "react",
+          "markdownDescription": "Specify module specifier used to import the JSX factory functions when using `jsx: react-jsx*`.`\n\nSee more: https://www.typescriptlang.org/tsconfig#jsxImportSource"
+        },
+        "noImplicitAny": {
+          "description": "Enable error reporting for expressions and declarations with an implied `any` type..",
+          "type": "boolean",
+          "markdownDescription": "Enable error reporting for expressions and declarations with an implied `any` type..\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitAny"
+        },
+        "noImplicitThis": {
+          "description": "Enable error reporting when `this` is given the type `any`.",
+          "type": "boolean",
+          "markdownDescription": "Enable error reporting when `this` is given the type `any`.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitThis"
+        },
+        "noUnusedLocals": {
+          "description": "Enable error reporting when a local variables aren't read.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable error reporting when a local variables aren't read.\n\nSee more: https://www.typescriptlang.org/tsconfig#noUnusedLocals"
+        },
+        "noUnusedParameters": {
+          "description": "Raise an error when a function parameter isn't read",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Raise an error when a function parameter isn't read\n\nSee more: https://www.typescriptlang.org/tsconfig#noUnusedParameters"
+        },
+        "noStrictGenericChecks": {
+          "description": "Disable strict checking of generic signatures in function types.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Disable strict checking of generic signatures in function types.\n\nSee more: https://www.typescriptlang.org/tsconfig#noStrictGenericChecks"
+        },
+        "removeComments": {
+          "description": "Disable emitting comments.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Disable emitting comments.\n\nSee more: https://www.typescriptlang.org/tsconfig#removeComments"
+        },
+        "suppressExcessPropertyErrors": {
+          "description": "Disable reporting of excess property errors during the creation of object literals.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Disable reporting of excess property errors during the creation of object literals.\n\nSee more: https://www.typescriptlang.org/tsconfig#suppressExcessPropertyErrors"
+        },
+        "suppressImplicitAnyIndexErrors": {
+          "description": "Suppress `noImplicitAny` errors when indexing objects that lack index signatures.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Suppress `noImplicitAny` errors when indexing objects that lack index signatures.\n\nSee more: https://www.typescriptlang.org/tsconfig#suppressImplicitAnyIndexErrors"
+        },
+        "useUnknownInCatchVariables": {
+          "description": "Default catch clause variables as `unknown` instead of `any`.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Default catch clause variables as `unknown` instead of `any`.\n\nSee more: https://www.typescriptlang.org/tsconfig#useUnknownInCatchVariables"
+        },
+        "fallbackPolling": {
+          "description": "Specify the polling strategy to use when the system runs out of or doesn't support native file watchers. Requires TypeScript version 3.8 or later.",
+          "enum": [
+            "fixedPollingInterval",
+            "priorityPollingInterval",
+            "dynamicPriorityPolling",
+            "fixedInterval",
+            "priorityInterval",
+            "dynamicPriority",
+            "fixedChunkSize"
+          ]
+        },
+        "watchDirectory": {
+          "description": "Specify the strategy for watching directories under systems that lack recursive file-watching functionality. Requires TypeScript version 3.8 or later.",
+          "enum": [
+            "useFsEvents",
+            "fixedPollingInterval",
+            "dynamicPriorityPolling",
+            "fixedChunkSizePolling"
+          ],
+          "default": "useFsEvents"
+        },
+        "watchFile": {
+          "description": "Specify the strategy for watching individual files. Requires TypeScript version 3.8 or later.",
+          "enum": [
+            "fixedPollingInterval",
+            "priorityPollingInterval",
+            "dynamicPriorityPolling",
+            "useFsEvents",
+            "useFsEventsOnParentDirectory",
+            "fixedChunkSizePolling"
+          ],
+          "default": "useFsEvents"
+        },
+        "experimentalDecorators": {
+          "description": "Enable experimental support for TC39 stage 2 draft decorators.",
+          "type": "boolean",
+          "markdownDescription": "Enable experimental support for TC39 stage 2 draft decorators.\n\nSee more: https://www.typescriptlang.org/tsconfig#experimentalDecorators"
+        },
+        "emitDecoratorMetadata": {
+          "description": "Emit design-type metadata for decorated declarations in source files.",
+          "type": "boolean",
+          "markdownDescription": "Emit design-type metadata for decorated declarations in source files.\n\nSee more: https://www.typescriptlang.org/tsconfig#emitDecoratorMetadata"
+        },
+        "allowUnusedLabels": {
+          "description": "Disable error reporting for unused labels.",
+          "type": "boolean",
+          "markdownDescription": "Disable error reporting for unused labels.\n\nSee more: https://www.typescriptlang.org/tsconfig#allowUnusedLabels"
+        },
+        "noImplicitReturns": {
+          "description": "Enable error reporting for codepaths that do not explicitly return in a function.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable error reporting for codepaths that do not explicitly return in a function.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitReturns"
+        },
+        "noUncheckedIndexedAccess": {
+          "description": "Add `undefined` to a type when accessed using an index.",
+          "type": "boolean",
+          "markdownDescription": "Add `undefined` to a type when accessed using an index.\n\nSee more: https://www.typescriptlang.org/tsconfig#noUncheckedIndexedAccess"
+        },
+        "noFallthroughCasesInSwitch": {
+          "description": "Enable error reporting for fallthrough cases in switch statements.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable error reporting for fallthrough cases in switch statements.\n\nSee more: https://www.typescriptlang.org/tsconfig#noFallthroughCasesInSwitch"
+        },
+        "noImplicitOverride": {
+          "description": "Ensure overriding members in derived classes are marked with an override modifier.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Ensure overriding members in derived classes are marked with an override modifier.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitOverride"
+        },
+        "allowUnreachableCode": {
+          "description": "Disable error reporting for unreachable code.",
+          "type": "boolean",
+          "markdownDescription": "Disable error reporting for unreachable code.\n\nSee more: https://www.typescriptlang.org/tsconfig#allowUnreachableCode"
+        },
+        "plugins": {
+          "description": "Specify a list of language service plugins to include.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "description": "Plugin name.",
+                "type": "string"
+              }
+            }
+          },
+          "markdownDescription": "Specify a list of language service plugins to include.\n\nSee more: https://www.typescriptlang.org/tsconfig#plugins"
+        },
+        "types": {
+          "description": "Specify type package names to be included without being referenced in a source file.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "Specify type package names to be included without being referenced in a source file.\n\nSee more: https://www.typescriptlang.org/tsconfig#types"
+        },
+        "allowJs": {
+          "description": "Allow JavaScript files to be a part of your program. Use the `checkJS` option to get errors from these files.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Allow JavaScript files to be a part of your program. Use the `checkJS` option to get errors from these files.\n\nSee more: https://www.typescriptlang.org/tsconfig#allowJs"
+        },
+        "noImplicitUseStrict": {
+          "description": "Disable adding 'use strict' directives in emitted JavaScript files.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Disable adding 'use strict' directives in emitted JavaScript files.\n\nSee more: https://www.typescriptlang.org/tsconfig#noImplicitUseStrict"
+        },
+        "disableSizeLimit": {
+          "description": "Remove the 20mb cap on total source code size for JavaScript files in the TypeScript language server.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Remove the 20mb cap on total source code size for JavaScript files in the TypeScript language server.\n\nSee more: https://www.typescriptlang.org/tsconfig#disableSizeLimit"
+        },
+        "lib": {
+          "description": "Specify a set of bundled library declaration files that describe the target runtime environment.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "anyOf": [
+              {
+                "enum": [
+                  "ES5",
+                  "ES6",
+                  "ES2015",
+                  "ES2015.Collection",
+                  "ES2015.Core",
+                  "ES2015.Generator",
+                  "ES2015.Iterable",
+                  "ES2015.Promise",
+                  "ES2015.Proxy",
+                  "ES2015.Reflect",
+                  "ES2015.Symbol.WellKnown",
+                  "ES2015.Symbol",
+                  "ES2016",
+                  "ES2016.Array.Include",
+                  "ES2017",
+                  "ES2017.Intl",
+                  "ES2017.Object",
+                  "ES2017.SharedMemory",
+                  "ES2017.String",
+                  "ES2017.TypedArrays",
+                  "ES2018",
+                  "ES2018.AsyncGenerator",
+                  "ES2018.AsyncIterable",
+                  "ES2018.Intl",
+                  "ES2018.Promise",
+                  "ES2018.Regexp",
+                  "ES2019",
+                  "ES2019.Array",
+                  "ES2019.Object",
+                  "ES2019.String",
+                  "ES2019.Symbol",
+                  "ES2020",
+                  "ES2020.BigInt",
+                  "ES2020.Promise",
+                  "ES2020.String",
+                  "ES2020.Symbol.WellKnown",
+                  "ESNext",
+                  "ESNext.Array",
+                  "ESNext.AsyncIterable",
+                  "ESNext.BigInt",
+                  "ESNext.Intl",
+                  "ESNext.Promise",
+                  "ESNext.String",
+                  "ESNext.Symbol",
+                  "DOM",
+                  "DOM.Iterable",
+                  "ScriptHost",
+                  "WebWorker",
+                  "WebWorker.ImportScripts",
+                  "Webworker.Iterable",
+                  "ES7",
+                  "ES2021",
+                  "ES2020.SharedMemory",
+                  "ES2020.Intl",
+                  "ES2021.Promise",
+                  "ES2021.String",
+                  "ES2021.WeakRef",
+                  "ESNext.WeakRef"
+                ]
+              },
+              {
+                "pattern": "^[Ee][Ss]5|[Ee][Ss]6|[Ee][Ss]7$"
+              },
+              {
+                "pattern": "^[Ee][Ss]2015(\\.([Cc][Oo][Ll][Ll][Ee][Cc][Tt][Ii][Oo][Nn]|[Cc][Oo][Rr][Ee]|[Gg][Ee][Nn][Ee][Rr][Aa][Tt][Oo][Rr]|[Ii][Tt][Ee][Rr][Aa][Bb][Ll][Ee]|[Pp][Rr][Oo][Mm][Ii][Ss][Ee]|[Pp][Rr][Oo][Xx][Yy]|[Rr][Ee][Ff][Ll][Ee][Cc][Tt]|[Ss][Yy][Mm][Bb][Oo][Ll].[Ww][Ee][Ll][Ll][Kk][Nn][Oo][Ww][Nn]|[Ss][Yy][Mm][Bb][Oo][Ll]))?$"
+              },
+              {
+                "pattern": "^[Ee][Ss]2016(\\.[Aa][Rr][Rr][Aa][Yy].[Ii][Nn][Cc][Ll][Uu][Dd][Ee])?$"
+              },
+              {
+                "pattern": "^[Ee][Ss]2017(\\.([Ii][Nn][Tt][Ll]|[Oo][Bb][Jj][Ee][Cc][Tt]|[Ss][Hh][Aa][Rr][Ee][Dd][Mm][Ee][Mm][Oo][Rr][Yy]|[Ss][Tt][Rr][Ii][Nn][Gg]|[Tt][Yy][Pp][Ee][Dd][Aa][Rr][Rr][Aa][Yy][Ss]))?$"
+              },
+              {
+                "pattern": "^[Ee][Ss]2018(\\.([Aa][Ss][Yy][Nn][Cc][Ii][Tt][Ee][Rr][Aa][Bb][Ll][Ee]|[Ii][Nn][Tt][Ll]|[Pp][Rr][Oo][Mm][Ii][Ss][Ee]|[Rr][Ee][Gg][Ee][Xx][Pp]))?$"
+              },
+              {
+                "pattern": "^[Ee][Ss]2019(\\.([Aa][Rr][Rr][Aa][Yy]|[Oo][Bb][Jj][Ee][Cc][Tt]|[Ss][Tt][Rr][Ii][Nn][Gg]|[Ss][Yy][Mm][Bb][Oo][Ll]))?$"
+              },
+              {
+                "pattern": "^[Ee][Ss]2020(\\.([Bb][Ii][Gg][Ii][Nn][Tt]|[Pp][Rr][Oo][Mm][Ii][Ss][Ee]|[Ss][Tt][Rr][Ii][Nn][Gg]|[Ss][Yy][Mm][Bb][Oo][Ll].[Ww][Ee][Ll][Ll][Kk][Nn][Oo][Ww][Nn]))?$"
+              },
+              {
+                "pattern": "^[Ee][Ss]2021(\\.([Ii][Nn][Tt][Ll]|[Pp][Rr][Oo][Mm][Ii][Ss][Ee]|[Ss][Tt][Rr][Ii][Nn][Gg]|[Ww][Ee][Aa][Kk][Rr][Ee][Ff]))?$"
+              },
+              {
+                "pattern": "^[Ee][Ss][Nn][Ee][Xx][Tt](\\.([Aa][Rr][Rr][Aa][Yy]|[Aa][Ss][Yy][Nn][Cc][Ii][Tt][Ee][Rr][Aa][Bb][Ll][Ee]|[Bb][Ii][Gg][Ii][Nn][Tt]|[Ii][Nn][Tt][Ll]|[Pp][Rr][Oo][Mm][Ii][Ss][Ee]|[Ss][Tt][Rr][Ii][Nn][Gg]|[Ss][Yy][Mm][Bb][Oo][Ll]|[Ww][Ee][Aa][Kk][Rr][Ee][Ff]))?$"
+              },
+              {
+                "pattern": "^[Dd][Oo][Mm](\\.[Ii][Tt][Ee][Rr][Aa][Bb][Ll][Ee])?$"
+              },
+              {
+                "pattern": "^[Ss][Cc][Rr][Ii][Pp][Tt][Hh][Oo][Ss][Tt]$"
+              },
+              {
+                "pattern": "^[Ww][Ee][Bb][Ww][Oo][Rr][Kk][Ee][Rr](\\.[Ii][Mm][Pp][Oo][Rr][Tt][Ss][Cc][Rr][Ii][Pp][Tt][Ss])?$"
+              }
+            ]
+          },
+          "markdownDescription": "Specify a set of bundled library declaration files that describe the target runtime environment.\n\nSee more: https://www.typescriptlang.org/tsconfig#lib"
+        },
+        "strictNullChecks": {
+          "description": "When type checking, take into account `null` and `undefined`.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "When type checking, take into account `null` and `undefined`.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictNullChecks"
+        },
+        "maxNodeModuleJsDepth": {
+          "description": "Specify the maximum folder depth used for checking JavaScript files from `node_modules`. Only applicable with `allowJs`.",
+          "type": "number",
+          "default": 0,
+          "markdownDescription": "Specify the maximum folder depth used for checking JavaScript files from `node_modules`. Only applicable with `allowJs`.\n\nSee more: https://www.typescriptlang.org/tsconfig#maxNodeModuleJsDepth"
+        },
+        "importsNotUsedAsValues": {
+          "description": "Specify emit/checking behavior for imports that are only used for types.",
+          "default": "remove",
+          "enum": ["remove", "preserve", "error"]
+        },
+        "alwaysStrict": {
+          "description": "Ensure 'use strict' is always emitted.",
+          "type": "boolean",
+          "markdownDescription": "Ensure 'use strict' is always emitted.\n\nSee more: https://www.typescriptlang.org/tsconfig#alwaysStrict"
+        },
+        "strict": {
+          "description": "Enable all strict type checking options.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable all strict type checking options.\n\nSee more: https://www.typescriptlang.org/tsconfig#strict"
+        },
+        "strictBindCallApply": {
+          "description": "Check that the arguments for `bind`, `call`, and `apply` methods match the original function.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Check that the arguments for `bind`, `call`, and `apply` methods match the original function.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictBindCallApply"
+        },
+        "checkJs": {
+          "description": "Enable error reporting in type-checked JavaScript files.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable error reporting in type-checked JavaScript files.\n\nSee more: https://www.typescriptlang.org/tsconfig#checkJs"
+        },
+        "strictFunctionTypes": {
+          "description": "When assigning functions, check to ensure parameters and the return values are subtype-compatible.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "When assigning functions, check to ensure parameters and the return values are subtype-compatible.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictFunctionTypes"
+        },
+        "strictPropertyInitialization": {
+          "description": "Check for class properties that are declared but not set in the constructor.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Check for class properties that are declared but not set in the constructor.\n\nSee more: https://www.typescriptlang.org/tsconfig#strictPropertyInitialization"
+        },
+        "keyofStringsOnly": {
+          "description": "Make keyof only return strings instead of string, numbers or symbols. Legacy option.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Make keyof only return strings instead of string, numbers or symbols. Legacy option.\n\nSee more: https://www.typescriptlang.org/tsconfig#keyofStringsOnly"
+        },
+        "listFilesOnly": {
+          "description": "Print names of files that are part of the compilation and then stop processing.",
+          "type": "boolean"
+        },
+        "disableSourceOfProjectReferenceRedirect": {
+          "description": "Disable preferring source files instead of declaration files when referencing composite projects",
+          "type": "boolean",
+          "markdownDescription": "Disable preferring source files instead of declaration files when referencing composite projects\n\nSee more: https://www.typescriptlang.org/tsconfig#disableSourceOfProjectReferenceRedirect"
+        },
+        "disableSolutionSearching": {
+          "description": "Opt a project out of multi-project reference checking when editing.",
+          "type": "boolean",
+          "markdownDescription": "Opt a project out of multi-project reference checking when editing.\n\nSee more: https://www.typescriptlang.org/tsconfig#disableSolutionSearching"
+        }
+      }
     },
     "lint": {
       "description": "Configuration for linter",
