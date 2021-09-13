@@ -14,6 +14,7 @@ use crate::config_file::ProseWrap;
 use crate::diff::diff;
 use crate::file_watcher;
 use crate::file_watcher::ResolutionResult;
+use crate::flags::FmtFlags;
 use crate::fs_util::{collect_files, get_extension, is_supported_ext_fmt};
 use crate::text_encoding;
 use deno_ast::ParsedSource;
@@ -34,17 +35,22 @@ use std::sync::{Arc, Mutex};
 
 /// Format JavaScript/TypeScript files.
 pub async fn format(
-  args: Vec<PathBuf>,
-  ignore: Vec<PathBuf>,
-  check: bool,
+  fmt_flags: FmtFlags,
   watch: bool,
   maybe_fmt_config: Option<FmtConfig>,
 ) -> Result<(), AnyError> {
+  let FmtFlags {
+    files,
+    ignore,
+    check,
+    ..
+  } = fmt_flags.clone();
+
   // First, prepare final configuration.
   // Collect included and ignored files. CLI flags take precendence
   // over config file, ie. if there's `files.ignore` in config file
   // and `--ignore` CLI flag, only the flag value is taken into account.
-  let mut include_files = args.clone();
+  let mut include_files = files.clone();
   let mut exclude_files = ignore;
 
   if let Some(fmt_config) = maybe_fmt_config.as_ref() {
@@ -67,7 +73,11 @@ pub async fn format(
     }
   }
 
-  let fmt_options = maybe_fmt_config.map(|c| c.options).unwrap_or_default();
+  // Now do the same for options
+  let fmt_options = resolve_fmt_options(
+    &fmt_flags,
+    maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
+  );
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let files_changed = changed.is_some();
@@ -345,19 +355,19 @@ async fn format_source_files(
 /// Treats input as TypeScript or as set by `--ext` flag.
 /// Compatible with `--check` flag.
 pub fn format_stdin(
-  check: bool,
-  ext: String,
+  fmt_flags: FmtFlags,
   fmt_options: FmtOptionsConfig,
 ) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
     return Err(generic_error("Failed to read from stdin"));
   }
-  let file_path = PathBuf::from(format!("_stdin.{}", ext));
+  let file_path = PathBuf::from(format!("_stdin.{}", fmt_flags.ext));
+  let fmt_options = resolve_fmt_options(&fmt_flags, fmt_options);
 
   match format_file(&file_path, &source, fmt_options) {
     Ok(formatted_text) => {
-      if check {
+      if fmt_flags.check {
         if formatted_text != source {
           println!("Not formatted stdin");
         }
@@ -378,6 +388,41 @@ fn files_str(len: usize) -> &'static str {
   } else {
     "files"
   }
+}
+
+fn resolve_fmt_options(
+  fmt_flags: &FmtFlags,
+  options: FmtOptionsConfig,
+) -> FmtOptionsConfig {
+  let mut options = options;
+
+  if let Some(use_tabs) = fmt_flags.use_tabs {
+    options.use_tabs = Some(use_tabs);
+  }
+
+  if let Some(line_width) = fmt_flags.line_width {
+    options.line_width = Some(line_width.get());
+  }
+
+  if let Some(indent_width) = fmt_flags.indent_width {
+    options.indent_width = Some(indent_width.get());
+  }
+
+  if let Some(single_quote) = fmt_flags.single_quote {
+    options.single_quote = Some(single_quote);
+  }
+
+  if let Some(prose_wrap) = &fmt_flags.prose_wrap {
+    options.prose_wrap = Some(match prose_wrap.as_str() {
+      "always" => ProseWrap::Always,
+      "never" => ProseWrap::Never,
+      "preserve" => ProseWrap::Preserve,
+      // validators in `flags.rs` makes other values unreachable
+      _ => unreachable!(),
+    });
+  }
+
+  options
 }
 
 fn get_resolved_typescript_config(

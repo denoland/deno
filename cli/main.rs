@@ -815,20 +815,12 @@ async fn format_command(
 
   if fmt_flags.files.len() == 1 && fmt_flags.files[0].to_string_lossy() == "-" {
     return tools::fmt::format_stdin(
-      fmt_flags.check,
-      fmt_flags.ext,
+      fmt_flags,
       maybe_fmt_config.map(|c| c.options).unwrap_or_default(),
     );
   }
 
-  tools::fmt::format(
-    fmt_flags.files,
-    fmt_flags.ignore,
-    fmt_flags.check,
-    flags.watch,
-    maybe_fmt_config,
-  )
-  .await?;
+  tools::fmt::format(fmt_flags, flags.watch, maybe_fmt_config).await?;
   Ok(())
 }
 
