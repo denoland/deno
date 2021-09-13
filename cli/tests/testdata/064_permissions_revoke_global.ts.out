@@ -1,3 +1,0 @@
-[WILDCARD]PermissionStatus { state: "prompt", onchange: null }
-PermissionStatus { state: "prompt", onchange: null }
-PermissionStatus { state: "prompt", onchange: null }

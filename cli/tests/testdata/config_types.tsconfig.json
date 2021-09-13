@@ -1,7 +1,0 @@
-{
-  "compilerOptions": {
-    "types": [
-      "./subdir/types.d.ts"
-    ]
-  }
-}

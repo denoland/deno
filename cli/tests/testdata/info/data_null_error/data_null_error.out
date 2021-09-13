@@ -1,6 +1,0 @@
-local: [WILDCARD]mod.ts
-type: TypeScript
-dependencies: 1 unique (total [WILDCARD])
-
-file://[WILDCARD]/mod.ts ([WILDCARD])
-└── file://[WILDCARD]/types.d.ts ([WILDCARD])

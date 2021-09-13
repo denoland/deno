@@ -1,5 +1,0 @@
-{
-  "$var": { "a": 123, "b": [1, 2, 3], "c": null },
-  "with space": "invalid variable name",
-  "function": "reserved word"
-}
