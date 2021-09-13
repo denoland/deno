@@ -1228,7 +1228,6 @@ fn permission_prompt(message: &str) -> bool {
     }
 
     unsafe fn flush_input_buffer(stdin: HANDLE) {
-      // flush the input buffer again
       let result = FlushConsoleInputBuffer(stdin);
       if result != TRUE {
         panic!(
