@@ -182,14 +182,25 @@ itest!(fmt_stdin_check_not_formatted {
   output_str: Some("Not formatted stdin\n"),
 });
 
+itest!(fmt_with_config {
+  args: "fmt --config fmt/deno.jsonc fmt/fmt_with_config/",
+  output: "fmt/fmt_with_config.out",
+});
+
+// Check if CLI flags take precedence
+itest!(fmt_with_config_and_flags {
+  args: "fmt --config fmt/deno.jsonc --ignore=fmt/fmt_with_config/a.ts,fmt/fmt_with_config/b.ts",
+  output: "fmt/fmt_with_config_and_flags.out",
+});
+
 itest!(fmt_with_malformed_config {
-  args: "fmt --config fmt/Deno.malformed.jsonc",
+  args: "fmt --config fmt/deno.malformed.jsonc",
   output: "fmt/fmt_with_malformed_config.out",
   exit_code: 1,
 });
 
 itest!(fmt_with_malformed_config2 {
-  args: "fmt --config fmt/Deno.malformed2.jsonc",
+  args: "fmt --config fmt/deno.malformed2.jsonc",
   output: "fmt/fmt_with_malformed_config2.out",
   exit_code: 1,
 });
