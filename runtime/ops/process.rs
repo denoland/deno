@@ -63,6 +63,8 @@ pub struct RunArgs {
   cwd: Option<String>,
   clear_env: bool,
   env: Vec<(String, String)>,
+  gid: Option<u32>,
+  uid: Option<u32>,
   stdin: String,
   stdout: String,
   stderr: String,
@@ -121,6 +123,24 @@ fn op_run(
   }
   for (key, value) in &env {
     c.env(key, value);
+  }
+
+  #[cfg(unix)]
+  if let Some(gid) = run_args.gid {
+    super::check_unstable(state, "Deno.run.gid");
+    c.gid(gid);
+  }
+  #[cfg(unix)]
+  if let Some(uid) = run_args.uid {
+    super::check_unstable(state, "Deno.run.uid");
+    c.uid(uid);
+  }
+  #[cfg(unix)]
+  unsafe {
+    c.pre_exec(|| {
+      libc::setgroups(0, std::ptr::null());
+      Ok(())
+    });
   }
 
   // TODO: make this work with other resources, eg. sockets
