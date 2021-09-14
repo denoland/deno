@@ -69,6 +69,10 @@ interface EcdsaParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
 }
 
+interface RsaHashedImportParams extends Algorithm {
+  hash: HashAlgorithmIdentifier;
+}
+
 interface RsaHashedKeyGenParams extends RsaKeyGenParams {
   hash: HashAlgorithmIdentifier;
 }
