@@ -205,7 +205,7 @@
           "properties": {
             "tags": {
               "type": "array",
-              "description": "List of tag names that will be run. Empty list disables all tags and will only use rules from `iclude`.",
+              "description": "List of tag names that will be run. Empty list disables all tags and will only use rules from `include`.",
               "items": {
                 "type": "string"
               },
