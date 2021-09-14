@@ -3526,3 +3526,37 @@ fn lsp_code_actions_ignore_lint() {
   );
   shutdown(&mut client);
 }
+
+/// This test exercises updating an existing deno-lint-ignore-file comment.
+#[test]
+fn lsp_code_actions_update_ignore_lint() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text":
+"#!/usr/bin/env -S deno run
+// deno-lint-ignore-file camelcase
+let snake_case = 'Hello, Deno!';
+console.log(snake_case);
+",
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request(
+      "textDocument/codeAction",
+      load_fixture("code_action_update_ignore_lint_params.json"),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(load_fixture("code_action_update_ignore_lint_response.json"))
+  );
+  shutdown(&mut client);
+}

@@ -69,6 +69,10 @@ interface EcdsaParams extends Algorithm {
   hash: HashAlgorithmIdentifier;
 }
 
+interface RsaHashedImportParams extends Algorithm {
+  hash: HashAlgorithmIdentifier;
+}
+
 interface RsaHashedKeyGenParams extends RsaKeyGenParams {
   hash: HashAlgorithmIdentifier;
 }
@@ -174,23 +178,9 @@ interface SubtleCrypto {
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
   importKey(
-    format: "raw",
+    format: Exclude<KeyFormat, "jwk">,
     keyData: BufferSource,
-    algorithm: AlgorithmIdentifier | HmacImportParams,
-    extractable: boolean,
-    keyUsages: KeyUsage[],
-  ): Promise<CryptoKey>;
-  importKey(
-    format: "spki",
-    keyData: BufferSource,
-    algorithm: RsaHashedImportParams,
-    extractable: boolean,
-    keyUsages: KeyUsage[],
-  ): Promise<CryptoKey>;
-  importKey(
-    format: "pkcs8",
-    keyData: BufferSource,
-    algorithm: RsaHashedImportParams,
+    algorithm: AlgorithmIdentifier | HmacImportParams | RsaHashedImportParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
