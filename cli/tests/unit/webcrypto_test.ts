@@ -392,10 +392,11 @@ unitTest({ perms: { read: true } }, async function importRsaPkcs8() {
     assertEquals(key.type, "private");
     assertEquals(key.extractable, true);
     assertEquals(key.usages, ["sign"]);
-    assertEquals(key.algorithm.name, "RSA-PSS");
-    assertEquals(key.algorithm.hash.name, "SHA-256");
-    assertEquals(key.algorithm.modulusLength, 2048);
-    assertEquals(key.algorithm.publicExponent, new Uint8Array([1, 0, 1]));
+    const algorithm = key.algorithm as RsaHashedKeyAlgorithm;
+    assertEquals(algorithm.name, "RSA-PSS");
+    assertEquals(algorithm.hash.name, "SHA-256");
+    assertEquals(algorithm.modulusLength, 2048);
+    assertEquals(algorithm.publicExponent, new Uint8Array([1, 0, 1]));
   }
 });
 
