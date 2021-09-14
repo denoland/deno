@@ -707,9 +707,10 @@ impl CodeActionCollection {
       })
       .unwrap();
 
-    let line_content = document.map(|d| {
-      d.source()
-        .text_info()
+    let document_source = document.map(|d| d.source());
+
+    let line_content = document_source.map(|d| {
+      d.text_info()
         .line_text(diagnostic.range.start.line as usize)
         .to_string()
     });
@@ -751,6 +752,73 @@ impl CodeActionCollection {
     self
       .actions
       .push(CodeActionKind::DenoLint(ignore_error_action));
+
+    // Disable a lint error for the entire file.
+    let parsed_source =
+      document_source.and_then(|d| d.module().and_then(|r| r.as_ref().ok()));
+    let maybe_ignore_comment = parsed_source.and_then(|ps| {
+      // Note: we can use ps.get_leading_comments() but it doesn't
+      // work when shebang is present at the top of the file.
+      ps.comments().get_vec().iter().find_map(|c| {
+        let comment_text = c.text.trim();
+        comment_text.split_whitespace().next().and_then(|prefix| {
+          if prefix == "deno-lint-ignore-file" {
+            Some(c.clone())
+          } else {
+            None
+          }
+        })
+      })
+    });
+
+    let mut new_text = format!("// deno-lint-ignore-file {}\n", code);
+    let mut range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 0,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 0,
+      },
+    };
+    // If ignore file comment already exists, append the lint code
+    // to the existing comment.
+    if let Some(ignore_comment) = maybe_ignore_comment {
+      new_text = format!(" {}", code);
+      // Get the end position of the comment.
+      let line = parsed_source
+        .unwrap()
+        .source()
+        .line_and_column_index(ignore_comment.span.hi());
+      let position = lsp::Position {
+        line: line.line_index as u32,
+        character: line.column_index as u32,
+      };
+      // Set the edit range to the end of the comment.
+      range.start = position;
+      range.end = position;
+    }
+
+    let mut changes = HashMap::new();
+    changes.insert(specifier.clone(), vec![lsp::TextEdit { new_text, range }]);
+    let ignore_file_action = lsp::CodeAction {
+      title: format!("Disable {} for the entire file", code),
+      kind: Some(lsp::CodeActionKind::QUICKFIX),
+      diagnostics: Some(vec![diagnostic.clone()]),
+      command: None,
+      is_preferred: None,
+      disabled: None,
+      data: None,
+      edit: Some(lsp::WorkspaceEdit {
+        changes: Some(changes),
+        change_annotations: None,
+        document_changes: None,
+      }),
+    };
+    self
+      .actions
+      .push(CodeActionKind::DenoLint(ignore_file_action));
 
     let mut changes = HashMap::new();
     changes.insert(
