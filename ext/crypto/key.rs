@@ -17,7 +17,7 @@ pub enum KeyType {
   Secret,
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone)]
+#[derive(Serialize, Deserialize, Copy, Clone, PartialEq)]
 pub enum CryptoHash {
   #[serde(rename = "SHA-1")]
   Sha1,

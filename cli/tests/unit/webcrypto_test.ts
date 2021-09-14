@@ -357,6 +357,49 @@ unitTest(async function subtleCryptoHmacImportExport() {
   assertEquals(exportedKey2, jwk);
 });
 
+// 2048-bits publicExponent=65537
+const pkcs8TestVectors = [
+  // rsaEncryption
+  "cli/tests/testdata/webcrypto/id_rsaEncryption.pem",
+  // id-RSASSA-PSS
+  "cli/tests/testdata/webcrypto/id_rsassaPss.pem",
+];
+
+unitTest({ perms: { read: true } }, async function importRsaPkcs8() {
+  const pemHeader = "-----BEGIN PRIVATE KEY-----";
+  const pemFooter = "-----END PRIVATE KEY-----";
+  for (const keyFile of pkcs8TestVectors) {
+    const pem = await Deno.readTextFile(keyFile);
+    const pemContents = pem.substring(
+      pemHeader.length,
+      pem.length - pemFooter.length,
+    );
+    const binaryDerString = atob(pemContents);
+    const binaryDer = new Uint8Array(binaryDerString.length);
+    for (let i = 0; i < binaryDerString.length; i++) {
+      binaryDer[i] = binaryDerString.charCodeAt(i);
+    }
+
+    const key = await crypto.subtle.importKey(
+      "pkcs8",
+      binaryDer,
+      { name: "RSA-PSS", hash: "SHA-256" },
+      true,
+      ["sign"],
+    );
+
+    assert(key);
+    assertEquals(key.type, "private");
+    assertEquals(key.extractable, true);
+    assertEquals(key.usages, ["sign"]);
+    const algorithm = key.algorithm as RsaHashedKeyAlgorithm;
+    assertEquals(algorithm.name, "RSA-PSS");
+    assertEquals(algorithm.hash.name, "SHA-256");
+    assertEquals(algorithm.modulusLength, 2048);
+    assertEquals(algorithm.publicExponent, new Uint8Array([1, 0, 1]));
+  }
+});
+
 // deno-fmt-ignore
 const asn1AlgorithmIdentifier = new Uint8Array([
   0x02, 0x01, 0x00, // INTEGER

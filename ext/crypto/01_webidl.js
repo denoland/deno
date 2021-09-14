@@ -103,6 +103,19 @@
     dictRsaHashedKeyGenParams,
   );
 
+  const dictRsaHashedImportParams = [
+    ...dictAlgorithm,
+    {
+      key: "hash",
+      converter: webidl.converters.HashAlgorithmIdentifier,
+      required: true,
+    },
+  ];
+
+  webidl.converters.RsaHashedImportParams = webidl.createDictionaryConverter(
+    "RsaHashedImportParams",
+    dictRsaHashedImportParams,
+  );
   webidl.converters.NamedCurve = webidl.converters.DOMString;
 
   const dictEcKeyGenParams = [
