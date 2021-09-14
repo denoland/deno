@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-  use std::io::Read;
+use std::io::Read;
 
 use test_util as util;
 
@@ -151,28 +151,13 @@ fn pty_ignore_symbols() {
   });
 }
 
-#[cfg(unix)]
-fn run_pty_test(mut run: impl FnMut(&mut util::pty::fork::Master)) {
-  use util::pty::fork::*;
-  let deno_exe = util::deno_exe_path();
-  let fork = Fork::from_ptmx().unwrap();
-  if let Ok(mut master) = fork.is_parent() {
-    run(&mut master);
-    fork.wait().unwrap();
-  } else {
-    std::env::set_var("NO_COLOR", "1");
-    let err = exec::Command::new(deno_exe).arg("repl").exec();
-    println!("err {}", err);
-    unreachable!()
-  }
-}
-
 fn run_pty_test(mut run: impl FnMut(Box<dyn util::pty::Pty>)) {
   let deno_exe = util::deno_exe_path();
   let mut env_vars = std::collections::HashMap::new();
   env_vars.insert("NO_COLOR".to_string(), "1".to_string());
   let pty = util::pty::create_pty(
-    &format!("{} repl", deno_exe.display()),
+    &deno_exe.display().to_string(),
+    &["repl"],
     Some(env_vars),
   );
 

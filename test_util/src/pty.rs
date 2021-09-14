@@ -7,12 +7,63 @@ pub trait Pty: Read {
   fn write_text(&mut self, text: &str);
 }
 
+#[cfg(unix)]
+pub fn create_pty(
+  program: &str,
+  args: &[&str],
+  env_vars: Option<HashMap<String, String>>,
+) -> Box<dyn Pty> {
+  let deno_exe = util::deno_exe_path();
+  let fork = pty::fork::Fork::from_ptmx().unwrap();
+  if let Ok(mut master) = fork.is_parent() {
+    Box::new(unix::UnixPty { fork })
+  } else {
+    if let Some(env_vars) = env_vars {
+      for (key, value) in env_vars {
+        std::env::set_var(key.to_string(), value.to_string());
+      }
+    }
+    let err = exec::Command::new(program).args(args).exec();
+    println!("err {}", err);
+    unreachable!()
+  }
+}
+
+#[cfg(unix)]
+mod unix {
+  pub struct UnixPty {
+    fork: pty::fork::Fork,
+  }
+
+  impl Drop for UnixPty {
+    fn drop(self: &mut self) {
+      self.fork.wait().unwrap();
+    }
+  }
+
+  impl Pty for UnixPty {
+    fn write_text(&mut self, text: &str) {
+      let master = self.fork.is_parent().unwrap();
+      master.write_all(text.as_bytes()).unwrap();
+    }
+  }
+
+  impl Read for UnixPty {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+      let master = self.fork.is_parent().unwrap();
+      master.read(buf)
+    }
+  }
+}
+
 #[cfg(target_os = "windows")]
 pub fn create_pty(
-  command: &str,
-  environment_variables: Option<HashMap<String, String>>,
+  program: &str,
+  args: &[&str],
+  env_vars: Option<HashMap<String, String>>,
 ) -> Box<dyn Pty> {
-  let pty = windows::WinPseudoConsole::new(command, environment_variables);
+  let command = format!("{} {}", program, args.join(" ")).trim().to_string();
+  let pty = windows::WinPseudoConsole::new(&command, env_vars);
   Box::new(pty)
 }
 
@@ -75,7 +126,7 @@ mod windows {
   impl WinPseudoConsole {
     pub fn new(
       command_text: &str,
-      maybe_environment_variables: Option<HashMap<String, String>>,
+      maybe_env_vars: Option<HashMap<String, String>>,
     ) -> Self {
       // https://docs.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session
       unsafe {
@@ -96,7 +147,7 @@ mod windows {
         assert_eq!(result, S_OK);
 
         let mut environment_vars =
-          maybe_environment_variables.map(|v| get_env_vars(v));
+          maybe_env_vars.map(|v| get_env_vars(v));
         let mut attribute_list = ProcThreadAttributeList::new(console_handle);
         let mut startup_info: STARTUPINFOEXW = std::mem::zeroed();
         startup_info.StartupInfo.cb =
@@ -135,7 +186,7 @@ mod windows {
           // wait for the reading thread to catch up
           std::thread::sleep(Duration::from_millis(200));
           // now close stdout and the console handle
-          close_handle(owned_stdout_read_handle.as_raw());
+          drop(owned_stdout_read_handle);
           ClosePseudoConsole(owned_console_handle.as_raw());
         });
 
