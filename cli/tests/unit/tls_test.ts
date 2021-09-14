@@ -989,6 +989,54 @@ unitTest(
 
 unitTest(
   { perms: { read: true, net: true } },
+  async function startTlsUnknownIssuer() {
+    const hostname = "localhost";
+    const port = getPort();
+
+    const listener = await Deno.listenTls({
+      hostname,
+      port,
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
+    });
+
+    async function serve() {
+      const conn = await listener.accept();
+
+      try {
+        await conn.read(new Uint8Array(1));
+      } catch {
+        // Ignore.
+      }
+
+      conn.close();
+    }
+
+    async function connect() {
+      const conn = await Deno.connect({ hostname, port });
+
+      // `Deno.startTls()` should fail because the server presents a self-signed
+      // certificate.
+      await assertThrowsAsync(
+        async () => void await Deno.startTls(conn, { hostname }),
+        Deno.errors.InvalidData,
+        "UnknownIssuer",
+      );
+
+      // `conn.close()` is not necessary here, since `startTls()` consumes the
+      // TCP stream in some error cases, including the one above. This behavior
+      // existed before #10146 was landed, however it remains strange and
+      // unusual.
+    }
+
+    await Promise.all([serve(), connect()]);
+
+    listener.close();
+  },
+);
+
+unitTest(
+  { perms: { read: true, net: true } },
   async function connectTLSBadClientCertPrivateKey(): Promise<void> {
     await assertThrowsAsync(async () => {
       await Deno.connectTls({

@@ -728,8 +728,10 @@ where
     ca_data,
     unsafely_ignore_certificate_errors,
   )?);
-  let tls_stream =
+  let mut tls_stream =
     TlsStream::new_client_side(tcp_stream, &tls_config, hostname_dns);
+
+  tls_stream.handshake().await?;
 
   let rid = {
     let mut state_ = state.borrow_mut();
