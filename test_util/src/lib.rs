@@ -44,10 +44,11 @@ use tokio_rustls::rustls::{self, Session};
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
 
-#[cfg(unix)]
-pub use pty;
+//#[cfg(unix)]
+//pub use pty;
 
 pub mod lsp;
+pub mod pty;
 
 const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";

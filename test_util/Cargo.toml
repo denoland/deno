@@ -30,3 +30,6 @@ tokio-tungstenite = "0.14.0"
 
 [target.'cfg(unix)'.dependencies]
 pty = "0.2.2"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3.9", features = ["consoleapi", "handleapi", "namedpipeapi", "winbase", "winerror"] }

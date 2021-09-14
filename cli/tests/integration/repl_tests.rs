@@ -1,5 +1,7 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use std::io::BufRead;
+
 use test_util as util;
 
 #[cfg(unix)]
@@ -180,6 +182,32 @@ fn run_pty_test(mut run: impl FnMut(&mut util::pty::fork::Master)) {
     println!("err {}", err);
     unreachable!()
   }
+}
+
+#[test]
+fn pty_ignore_symbols() {
+  use std::io::{Read, Write};
+  run_pty_test(|mut master| {
+    master.write_all(b"Array.Symbol\t\r\n").unwrap();
+    master.write_all(b"close();\r\n").unwrap();
+
+    let mut reader = std::io::BufReader::new(master.reader());
+    let mut output = String::new();
+    reader.read_to_string(&mut output).unwrap();
+    assert!(output.contains("undefined"));
+    assert!(
+      !output.contains("Uncaught TypeError: Array.Symbol is not a function")
+    );
+  });
+}
+
+fn run_pty_test(mut run: impl FnMut(Box<dyn util::pty::Pty>)) {
+  let deno_exe = util::deno_exe_path();
+  let mut env_vars = std::collections::HashMap::new();
+  env_vars.insert("NO_COLOR".to_string(), "1".to_string());
+  let pty = util::pty::create_pty(&format!("{} repl", deno_exe.display()), Some(env_vars));
+
+  run(pty);
 }
 
 #[test]

@@ -3866,6 +3866,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite",
+ "winapi 0.3.9",
 ]
 
 [[package]]
