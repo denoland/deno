@@ -374,7 +374,7 @@ unitTest({ perms: { read: true } }, async function importRsaPkcs8() {
       pemHeader.length,
       pem.length - pemFooter.length,
     );
-    const binaryDerString = window.atob(pemContents);
+    const binaryDerString = atob(pemContents);
     const binaryDer = new Uint8Array(binaryDerString.length);
     for (let i = 0; i < binaryDerString.length; i++) {
       binaryDer[i] = binaryDerString.charCodeAt(i);
