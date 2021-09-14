@@ -384,7 +384,7 @@ impl ModuleRegistry {
   ) -> Result<Vec<RegistryConfiguration>, AnyError> {
     let file = self
       .file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(specifier, &mut Permissions::allow_all())
       .await?;
     let config: RegistryConfigurationJson = serde_json::from_str(&file.source)?;
     validate_config(&config)?;
