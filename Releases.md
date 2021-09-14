@@ -73,6 +73,9 @@ https://github.com/denoland/deno_install
 - fix: worker_message_before_close was flaky (#12019)
 - perf(ext/http): optimize auto cleanup of request resource (#11978)
 
+Release notes for std version 0.107.0:
+https://github.com/denoland/deno_std/releases/tag/0.107.0
+
 ### 1.13.2 / 2021.08.23
 
 - fix(cli/flags): require a non zero usize for concurrent jobs (#11802)
@@ -88,6 +91,9 @@ https://github.com/denoland/deno_install
 - perf(ext/url): use DOMString instead of USVString as webidl converter for URL
   parsing (#11775)
 - perf(url): build with opt-level 3 (#11779)
+
+Release notes for std version 0.106.0:
+https://github.com/denoland/deno_std/releases/tag/0.106.0
 
 ### 1.13.1 / 2021.08.16
 
@@ -118,6 +124,9 @@ https://github.com/denoland/deno_install
 - perf: improve localStorage throughput (#11709)
 - perf(ext/http): faster req_url string assembly (#11711)
 - perf(wpt/crypto): optimize num-bigint-dig for debug builds (#11681)
+
+Release notes for std version 0.105.0:
+https://github.com/denoland/deno_std/releases/tag/0.105.0
 
 ### 1.13.0 / 2021.08.10
 
