@@ -753,7 +753,9 @@ impl CodeActionCollection {
     let parsed_source =
       document_source.and_then(|d| d.module().and_then(|r| r.as_ref().ok()));
     let maybe_ignore_comment = parsed_source.and_then(|ps| {
-      ps.get_leading_comments().iter().find_map(|c| {
+      // Note: we can use ps.get_leading_comments() but it doesn't
+      // work when shebang is present at the top of the file.
+      ps.comments().get_vec().iter().find_map(|c| {
         let comment_text = c.text.trim();
         comment_text.split_whitespace().next().and_then(|prefix| {
           if prefix == "deno-lint-ignore-file" {
