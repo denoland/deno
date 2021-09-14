@@ -1291,3 +1291,30 @@ unitTest(
     client.close();
   },
 );
+
+unitTest(
+  { perms: { net: true } },
+  async function fetchAbortWhileUploadStreaming(): Promise<void> {
+    const abortController = new AbortController();
+    try {
+      await fetch(
+        "http://localhost:5552/echo_server",
+        {
+          method: "POST",
+          body: new ReadableStream({
+            pull(controller) {
+              abortController.abort();
+              controller.enqueue(new Uint8Array([1, 2, 3, 4]));
+            },
+          }),
+          signal: abortController.signal,
+        },
+      );
+      fail("Fetch didn't reject.");
+    } catch (error) {
+      assert(error instanceof DOMException);
+      assertEquals(error.name, "AbortError");
+      assertEquals(error.message, "Ongoing fetch was aborted.");
+    }
+  },
+);

@@ -72,7 +72,11 @@ fn base_url(url: &Url) -> String {
 #[derive(Debug)]
 enum CompletorType {
   Literal(String),
-  Key(Key, Option<String>),
+  Key {
+    key: Key,
+    prefix: Option<String>,
+    index: usize,
+  },
 }
 
 /// Determine if a completion at a given offset is a string literal or a key/
@@ -83,7 +87,7 @@ fn get_completor_type(
   match_result: &MatchResult,
 ) -> Option<CompletorType> {
   let mut len = 0_usize;
-  for token in tokens {
+  for (index, token) in tokens.iter().enumerate() {
     match token {
       Token::String(s) => {
         len += s.chars().count();
@@ -95,7 +99,11 @@ fn get_completor_type(
         if let Some(prefix) = &k.prefix {
           len += prefix.chars().count();
           if offset < len {
-            return Some(CompletorType::Key(k.clone(), Some(prefix.clone())));
+            return Some(CompletorType::Key {
+              key: k.clone(),
+              prefix: Some(prefix.clone()),
+              index,
+            });
           }
         }
         if offset < len {
@@ -108,7 +116,11 @@ fn get_completor_type(
             .unwrap_or_default();
           len += value.chars().count();
           if offset <= len {
-            return Some(CompletorType::Key(k.clone(), None));
+            return Some(CompletorType::Key {
+              key: k.clone(),
+              prefix: None,
+              index,
+            });
           }
         }
         if let Some(suffix) = &k.suffix {
@@ -234,6 +246,18 @@ pub(crate) struct RegistryConfiguration {
   variables: Vec<RegistryConfigurationVariable>,
 }
 
+impl RegistryConfiguration {
+  fn get_url_for_key(&self, key: &Key) -> Option<&str> {
+    self.variables.iter().find_map(|v| {
+      if key.name == StringOrNumber::String(v.key.clone()) {
+        Some(v.url.as_str())
+      } else {
+        None
+      }
+    })
+  }
+}
+
 /// A structure that represents the configuration of an origin and its module
 /// registries.
 #[derive(Debug, Deserialize)]
@@ -341,16 +365,26 @@ impl ModuleRegistry {
     Ok(())
   }
 
-  /// Attempt to fetch the configuration for a specific origin.
-  pub(crate) async fn fetch_config(
+  /// Check to see if the given origin has a registry configuration.
+  pub(crate) async fn check_origin(
     &self,
     origin: &str,
-  ) -> Result<Vec<RegistryConfiguration>, AnyError> {
+  ) -> Result<(), AnyError> {
     let origin_url = Url::parse(origin)?;
     let specifier = origin_url.join(CONFIG_PATH)?;
+    self.fetch_config(&specifier).await?;
+    Ok(())
+  }
+
+  /// Fetch and validate the specifier to a registry configuration, resolving
+  /// with the configuration if valid.
+  async fn fetch_config(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<Vec<RegistryConfiguration>, AnyError> {
     let file = self
       .file_fetcher
-      .fetch(&specifier, &mut Permissions::allow_all())
+      .fetch(specifier, &mut Permissions::allow_all())
       .await?;
     let config: RegistryConfigurationJson = serde_json::from_str(&file.source)?;
     validate_config(&config)?;
@@ -360,11 +394,28 @@ impl ModuleRegistry {
   /// Enable a registry by attempting to retrieve its configuration and
   /// validating it.
   pub async fn enable(&mut self, origin: &str) -> Result<(), AnyError> {
-    let origin = base_url(&Url::parse(origin)?);
+    let origin_url = Url::parse(origin)?;
+    let origin = base_url(&origin_url);
     #[allow(clippy::map_entry)]
     // we can't use entry().or_insert_with() because we can't use async closures
     if !self.origins.contains_key(&origin) {
-      let configs = self.fetch_config(&origin).await?;
+      let specifier = origin_url.join(CONFIG_PATH)?;
+      let configs = self.fetch_config(&specifier).await?;
+      self.origins.insert(origin, configs);
+    }
+
+    Ok(())
+  }
+
+  #[cfg(test)]
+  /// This is only used during testing, as it directly provides the full URL
+  /// for obtaining the registry configuration, versus "guessing" at it.
+  async fn enable_custom(&mut self, specifier: &str) -> Result<(), AnyError> {
+    let specifier = Url::parse(specifier)?;
+    let origin = base_url(&specifier);
+    #[allow(clippy::map_entry)]
+    if !self.origins.contains_key(&origin) {
+      let configs = self.fetch_config(&specifier).await?;
       self.origins.insert(origin, configs);
     }
 
@@ -432,46 +483,34 @@ impl ModuleRegistry {
                     offset,
                     range,
                   ),
-                  Some(CompletorType::Key(k, p)) => {
-                    let maybe_url = registry.variables.iter().find_map(|v| {
-                      if k.name == StringOrNumber::String(v.key.clone()) {
-                        Some(v.url.as_str())
-                      } else {
-                        None
-                      }
-                    });
+                  Some(CompletorType::Key { key, prefix, index }) => {
+                    let maybe_url = registry.get_url_for_key(&key);
                     if let Some(url) = maybe_url {
                       if let Some(items) = self
                         .get_variable_items(url, &tokens, &match_result)
                         .await
                       {
-                        let end = if p.is_some() { i + 1 } else { i };
-                        let end = if end > tokens.len() {
-                          tokens.len()
-                        } else {
-                          end
-                        };
-                        let compiler = Compiler::new(&tokens[..end], None);
+                        let compiler = Compiler::new(&tokens[..=index], None);
+                        let base = Url::parse(&origin).ok()?;
                         for (idx, item) in items.into_iter().enumerate() {
-                          let label = if let Some(p) = &p {
+                          let label = if let Some(p) = &prefix {
                             format!("{}{}", p, item)
                           } else {
                             item.clone()
                           };
-                          let kind = if k.name == last_key_name {
+                          let kind = if key.name == last_key_name {
                             Some(lsp::CompletionItemKind::File)
                           } else {
                             Some(lsp::CompletionItemKind::Folder)
                           };
                           let mut params = match_result.params.clone();
                           params.insert(
-                            k.name.clone(),
-                            StringOrVec::from_str(&item, &k),
+                            key.name.clone(),
+                            StringOrVec::from_str(&item, &key),
                           );
                           let path =
                             compiler.to_path(&params).unwrap_or_default();
-                          let mut item_specifier = Url::parse(&origin).ok()?;
-                          item_specifier.set_path(&path);
+                          let item_specifier = base.join(&path).ok()?;
                           let full_text = item_specifier.as_str();
                           let text_edit = Some(lsp::CompletionTextEdit::Edit(
                             lsp::TextEdit {
@@ -479,7 +518,7 @@ impl ModuleRegistry {
                               new_text: full_text.to_string(),
                             },
                           ));
-                          let command = if k.name == last_key_name
+                          let command = if key.name == last_key_name
                             && !state_snapshot
                               .sources
                               .contains_key(&item_specifier)
@@ -492,7 +531,7 @@ impl ModuleRegistry {
                           } else {
                             None
                           };
-                          let detail = Some(format!("({})", k.name));
+                          let detail = Some(format!("({})", key.name));
                           let filter_text = Some(full_text.to_string());
                           let sort_text = Some(format!("{:0>10}", idx + 1));
                           completions.insert(
@@ -518,33 +557,90 @@ impl ModuleRegistry {
               }
               i -= 1;
               // If we have fallen though to the first token, and we still
-              // didn't get a match, but the first token is a string literal, we
-              // need to suggest the string literal.
+              // didn't get a match
               if i == 0 {
-                if let Token::String(s) = &tokens[i] {
-                  if s.starts_with(path) {
-                    let label = s.to_string();
-                    let kind = Some(lsp::CompletionItemKind::Folder);
-                    let mut url = specifier.clone();
-                    url.set_path(s);
-                    let full_text = url.as_str();
-                    let text_edit =
-                      Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-                        range: *range,
-                        new_text: full_text.to_string(),
-                      }));
-                    let filter_text = Some(full_text.to_string());
-                    completions.insert(
-                      s.to_string(),
-                      lsp::CompletionItem {
-                        label,
-                        kind,
-                        filter_text,
-                        sort_text: Some("1".to_string()),
-                        text_edit,
-                        ..Default::default()
-                      },
-                    );
+                match &tokens[i] {
+                  // so if the first token is a string literal, we will return
+                  // that as a suggestion
+                  Token::String(s) => {
+                    if s.starts_with(path) {
+                      let label = s.to_string();
+                      let kind = Some(lsp::CompletionItemKind::Folder);
+                      let mut url = specifier.clone();
+                      url.set_path(s);
+                      let full_text = url.as_str();
+                      let text_edit =
+                        Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+                          range: *range,
+                          new_text: full_text.to_string(),
+                        }));
+                      let filter_text = Some(full_text.to_string());
+                      completions.insert(
+                        s.to_string(),
+                        lsp::CompletionItem {
+                          label,
+                          kind,
+                          filter_text,
+                          sort_text: Some("1".to_string()),
+                          text_edit,
+                          ..Default::default()
+                        },
+                      );
+                    }
+                  }
+                  // if the token though is a key, and the key has a prefix, and
+                  // the path matches the prefix, we will go and get the items
+                  // for that first key and return them.
+                  Token::Key(k) => {
+                    if let Some(prefix) = &k.prefix {
+                      let maybe_url = registry.get_url_for_key(k);
+                      if let Some(url) = maybe_url {
+                        if let Some(items) = self.get_items(url).await {
+                          let base = Url::parse(&origin).ok()?;
+                          for (idx, item) in items.into_iter().enumerate() {
+                            let path = format!("{}{}", prefix, item);
+                            let kind = Some(lsp::CompletionItemKind::Folder);
+                            let item_specifier = base.join(&path).ok()?;
+                            let full_text = item_specifier.as_str();
+                            let text_edit = Some(
+                              lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+                                range: *range,
+                                new_text: full_text.to_string(),
+                              }),
+                            );
+                            let command = if k.name == last_key_name
+                              && !state_snapshot
+                                .sources
+                                .contains_key(&item_specifier)
+                            {
+                              Some(lsp::Command {
+                                title: "".to_string(),
+                                command: "deno.cache".to_string(),
+                                arguments: Some(vec![json!([item_specifier])]),
+                              })
+                            } else {
+                              None
+                            };
+                            let detail = Some(format!("({})", k.name));
+                            let filter_text = Some(full_text.to_string());
+                            let sort_text = Some(format!("{:0>10}", idx + 1));
+                            completions.insert(
+                              item.clone(),
+                              lsp::CompletionItem {
+                                label: item,
+                                kind,
+                                detail,
+                                sort_text,
+                                filter_text,
+                                text_edit,
+                                command,
+                                ..Default::default()
+                              },
+                            );
+                          }
+                        }
+                      }
+                    }
                   }
                 }
                 break;
@@ -602,6 +698,30 @@ impl ModuleRegistry {
     } else {
       None
     }
+  }
+
+  async fn get_items(&self, url: &str) -> Option<Vec<String>> {
+    let specifier = ModuleSpecifier::parse(url).ok()?;
+    let file = self
+      .file_fetcher
+      .fetch(&specifier, &mut Permissions::allow_all())
+      .await
+      .map_err(|err| {
+        error!(
+          "Internal error fetching endpoint \"{}\". {}",
+          specifier, err
+        );
+      })
+      .ok()?;
+    let items: Vec<String> = serde_json::from_str(&file.source)
+      .map_err(|err| {
+        error!(
+          "Error parsing response from endpoint \"{}\". {}",
+          specifier, err
+        );
+      })
+      .ok()?;
+    Some(items)
   }
 
   async fn get_variable_items(
@@ -959,6 +1079,122 @@ mod tests {
     assert_eq!(completions[1].detail, Some("(path)".to_string()));
     assert_eq!(completions[0].kind, Some(lsp::CompletionItemKind::File));
     assert!(completions[1].command.is_some());
+  }
+
+  #[tokio::test]
+  async fn test_registry_completions_key_first() {
+    let _g = test_util::http_server();
+    let temp_dir = TempDir::new().expect("could not create tmp");
+    let location = temp_dir.path().join("registries");
+    let mut module_registry = ModuleRegistry::new(&location);
+    module_registry
+      .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-key-first.json")
+      .await
+      .expect("could not enable");
+    let state_snapshot = setup(&[]);
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 20,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 42,
+      },
+    };
+    let completions = module_registry
+      .get_completions("http://localhost:4545/", 22, &range, &state_snapshot)
+      .await;
+    assert!(completions.is_some());
+    let completions = completions.unwrap();
+    assert_eq!(completions.len(), 3);
+    for completion in completions {
+      assert!(completion.text_edit.is_some());
+      if let lsp::CompletionTextEdit::Edit(edit) = completion.text_edit.unwrap()
+      {
+        assert_eq!(
+          edit.new_text,
+          format!("http://localhost:4545/{}", completion.label)
+        );
+      } else {
+        unreachable!("unexpected text edit");
+      }
+    }
+
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 20,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 46,
+      },
+    };
+    let completions = module_registry
+      .get_completions(
+        "http://localhost:4545/cde@",
+        26,
+        &range,
+        &state_snapshot,
+      )
+      .await;
+    assert!(completions.is_some());
+    let completions = completions.unwrap();
+    assert_eq!(completions.len(), 2);
+    for completion in completions {
+      assert!(completion.text_edit.is_some());
+      if let lsp::CompletionTextEdit::Edit(edit) = completion.text_edit.unwrap()
+      {
+        assert_eq!(
+          edit.new_text,
+          format!("http://localhost:4545/cde@{}", completion.label)
+        );
+      } else {
+        unreachable!("unexpected text edit");
+      }
+    }
+  }
+
+  #[tokio::test]
+  async fn test_registry_completions_complex() {
+    let _g = test_util::http_server();
+    let temp_dir = TempDir::new().expect("could not create tmp");
+    let location = temp_dir.path().join("registries");
+    let mut module_registry = ModuleRegistry::new(&location);
+    module_registry
+      .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-complex.json")
+      .await
+      .expect("could not enable");
+    let state_snapshot = setup(&[]);
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 20,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 42,
+      },
+    };
+    let completions = module_registry
+      .get_completions("http://localhost:4545/", 22, &range, &state_snapshot)
+      .await;
+    assert!(completions.is_some());
+    let completions = completions.unwrap();
+    assert_eq!(completions.len(), 3);
+    for completion in completions {
+      assert!(completion.text_edit.is_some());
+      if let lsp::CompletionTextEdit::Edit(edit) = completion.text_edit.unwrap()
+      {
+        assert_eq!(
+          edit.new_text,
+          format!("http://localhost:4545/{}", completion.label)
+        );
+      } else {
+        unreachable!("unexpected text edit");
+      }
+    }
   }
 
   #[test]

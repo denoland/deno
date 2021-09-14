@@ -37,11 +37,11 @@ delete Object.prototype.__proto__;
   const encoding = window.__bootstrap.encoding;
   const Console = window.__bootstrap.console.Console;
   const worker = window.__bootstrap.worker;
-  const signals = window.__bootstrap.signals;
   const internals = window.__bootstrap.internals;
   const performance = window.__bootstrap.performance;
   const crypto = window.__bootstrap.crypto;
   const url = window.__bootstrap.url;
+  const urlPattern = window.__bootstrap.urlPattern;
   const headers = window.__bootstrap.headers;
   const streams = window.__bootstrap.streams;
   const fileReader = window.__bootstrap.fileReader;
@@ -418,7 +418,7 @@ delete Object.prototype.__proto__;
     btoa: util.writable(base64.btoa),
     clearInterval: util.writable(timers.clearInterval),
     clearTimeout: util.writable(timers.clearTimeout),
-    console: util.writable(
+    console: util.nonEnumerable(
       new Console((msg, level) => core.print(msg, level > 1)),
     ),
     crypto: util.readOnly(crypto.crypto),
@@ -432,8 +432,9 @@ delete Object.prototype.__proto__;
   };
 
   const unstableWindowOrWorkerGlobalScope = {
-    WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
     BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
+    URLPattern: util.nonEnumerable(urlPattern.URLPattern),
+    WebSocketStream: util.nonEnumerable(webSocket.WebSocketStream),
 
     GPU: util.nonEnumerable(webgpu.GPU),
     GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
@@ -466,11 +467,6 @@ delete Object.prototype.__proto__;
     GPUOutOfMemoryError: util.nonEnumerable(webgpu.GPUOutOfMemoryError),
     GPUValidationError: util.nonEnumerable(webgpu.GPUValidationError),
   };
-
-  // The console seems to be the only one that should be writable and non-enumerable
-  // thus we don't have a unique helper for it. If other properties follow the same
-  // structure, it might be worth it to define a helper in `util`
-  windowOrWorkerGlobalScope.console.enumerable = false;
 
   const mainRuntimeGlobalProperties = {
     Location: location.locationConstructorDescriptor,
@@ -609,7 +605,6 @@ delete Object.prototype.__proto__;
     // `Deno` with `Deno` namespace from "./deno.ts".
     ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
     ObjectFreeze(globalThis.Deno.core);
-    signals.setSignals();
 
     util.log("args", args);
   }
@@ -695,10 +690,8 @@ delete Object.prototype.__proto__;
       });
       // Setup `Deno` global - we're actually overriding already
       // existing global `Deno` with `Deno` namespace from "./deno.ts".
-      util.immutableDefine(globalThis, "Deno", finalDenoNs);
-      ObjectFreeze(globalThis.Deno);
+      ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
       ObjectFreeze(globalThis.Deno.core);
-      signals.setSignals();
     } else {
       delete globalThis.Deno;
       util.assert(globalThis.Deno === undefined);

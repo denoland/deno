@@ -3,7 +3,7 @@ use deno_core::error::type_error;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::ZeroCopyBuf;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -259,4 +259,47 @@ pub fn op_blob_revoke_object_url(
   let blob_store = state.borrow::<BlobStore>();
   blob_store.remove_object_url(&url);
   Ok(())
+}
+
+#[derive(Serialize)]
+pub struct ReturnBlob {
+  pub media_type: String,
+  pub parts: Vec<ReturnBlobPart>,
+}
+
+#[derive(Serialize)]
+pub struct ReturnBlobPart {
+  pub uuid: Uuid,
+  pub size: usize,
+}
+
+pub fn op_blob_from_object_url(
+  state: &mut deno_core::OpState,
+  url: String,
+  _: (),
+) -> Result<Option<ReturnBlob>, AnyError> {
+  let url = Url::parse(&url)?;
+  if url.scheme() != "blob" {
+    return Ok(None);
+  }
+
+  let blob_store = state.try_borrow::<BlobStore>().ok_or_else(|| {
+    type_error("Blob URLs are not supported in this context.")
+  })?;
+  if let Some(blob) = blob_store.get_object_url(url)? {
+    let parts = blob
+      .parts
+      .iter()
+      .map(|part| ReturnBlobPart {
+        uuid: blob_store.insert_part(part.clone()),
+        size: part.size(),
+      })
+      .collect();
+    Ok(Some(ReturnBlob {
+      media_type: blob.media_type.clone(),
+      parts,
+    }))
+  } else {
+    Ok(None)
+  }
 }

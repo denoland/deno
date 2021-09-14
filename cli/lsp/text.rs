@@ -210,21 +210,12 @@ impl LineIndex {
 
 /// Compare two strings and return a vector of text edit records which are
 /// supported by the Language Server Protocol.
-pub fn get_edits(
-  a: &str,
-  b: &str,
-  maybe_line_index: Option<LineIndex>,
-) -> Vec<TextEdit> {
+pub fn get_edits(a: &str, b: &str, line_index: &LineIndex) -> Vec<TextEdit> {
   if a == b {
     return vec![];
   }
   let chunks = diff(a, b);
   let mut text_edits = Vec::<TextEdit>::new();
-  let line_index = if let Some(line_index) = maybe_line_index {
-    line_index
-  } else {
-    LineIndex::new(a)
-  };
   let mut iter = chunks.iter().peekable();
   let mut a_pos = TextSize::from(0);
   loop {
@@ -575,7 +566,7 @@ const C: char = \"メ メ\";
   fn test_get_edits() {
     let a = "abcdefg";
     let b = "a\nb\nchije\nfg\n";
-    let actual = get_edits(a, b, None);
+    let actual = get_edits(a, b, &LineIndex::new(a));
     assert_eq!(
       actual,
       vec![
@@ -613,7 +604,7 @@ const C: char = \"メ メ\";
   fn test_get_edits_mbc() {
     let a = "const bar = \"👍🇺🇸😃\";\nconsole.log('hello deno')\n";
     let b = "const bar = \"👍🇺🇸😃\";\nconsole.log(\"hello deno\");\n";
-    let actual = get_edits(a, b, None);
+    let actual = get_edits(a, b, &LineIndex::new(a));
     assert_eq!(
       actual,
       vec![
