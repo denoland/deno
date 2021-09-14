@@ -1122,14 +1122,6 @@ unitTest(
   },
 );
 
-// TODO(piscisaureus): use `TlsConn.handhake()` instead, once this is added to
-// the public API in Deno 1.16.
-function tlsHandshake(conn: Deno.Conn): Promise<void> {
-  // deno-lint-ignore no-explicit-any
-  const opAsync = (Deno as any).core.opAsync;
-  return opAsync("op_tls_handshake", conn.rid);
-}
-
 unitTest(
   { permissions: { read: true, net: true } },
   async function tlsHandshakeSuccess() {
@@ -1151,7 +1143,7 @@ unitTest(
     const [conn1, conn2] = await Promise.all([acceptPromise, connectPromise]);
     listener.close();
 
-    await Promise.all([tlsHandshake(conn1), tlsHandshake(conn2)]);
+    await Promise.all([conn1.handshake(), conn2.handshake()]);
 
     // Begin sending a 10mb blob over the TLS connection.
     const whole = new Uint8Array(10 << 20); // 10mb.
@@ -1162,28 +1154,28 @@ unitTest(
     const half = new Uint8Array(whole.byteLength / 2);
     const receivePromise = readFull(conn2, half);
 
-    await tlsHandshake(conn1);
-    await tlsHandshake(conn2);
+    await conn1.handshake();
+    await conn2.handshake();
 
     // Finish receiving the first 5mb.
     assertEquals(await receivePromise, half.length);
 
     // See that we can call `handshake()` in the middle of large reads and writes.
-    await tlsHandshake(conn1);
-    await tlsHandshake(conn2);
+    await conn1.handshake();
+    await conn2.handshake();
 
     // Receive second half of large blob. Wait for the send promise and check it.
     assertEquals(await readFull(conn2, half), half.length);
     assertEquals(await sendPromise, whole.length);
 
-    await tlsHandshake(conn1);
-    await tlsHandshake(conn2);
+    await conn1.handshake();
+    await conn2.handshake();
 
     await conn1.closeWrite();
     await conn2.closeWrite();
 
-    await tlsHandshake(conn1);
-    await tlsHandshake(conn2);
+    await conn1.handshake();
+    await conn2.handshake();
 
     conn1.close();
     conn2.close();
@@ -1216,7 +1208,7 @@ unitTest(
         for (let i = 0; i < 10; i++) {
           // Handshake fails because the client rejects the server certificate.
           await assertRejects(
-            () => tlsHandshake(conn),
+            () => conn.handshake(),
             Deno.errors.InvalidData,
             "BadCertificate",
           );
@@ -1230,7 +1222,7 @@ unitTest(
       const conn = await Deno.connectTls({ hostname, port });
       // Handshake fails because the server presents a self-signed certificate.
       await assertRejects(
-        () => tlsHandshake(conn),
+        () => conn.handshake(),
         Deno.errors.InvalidData,
         "UnknownIssuer",
       );
@@ -1247,7 +1239,7 @@ unitTest(
       });
       // Handshake fails because hostname doesn't match the certificate.
       await assertRejects(
-        () => tlsHandshake(tlsConn),
+        () => tlsConn.handshake(),
         Deno.errors.InvalidData,
         "CertNotValidForName",
       );
