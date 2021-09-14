@@ -3366,7 +3366,7 @@ console.log(snake_case);
     .unwrap();
   assert!(maybe_err.is_none());
   assert_eq!(
-    maybe_res.clone(),
+    maybe_res,
     Some(load_fixture("code_action_update_ignore_lint_response.json"))
   );
   shutdown(&mut client);
