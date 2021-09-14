@@ -365,8 +365,38 @@ const pkcs8TestVectors = [
   "cli/tests/testdata/webcrypto/id_rsassaPss.pem",
 ];
 
-unitTest(async function importRsaPkcs8() {
-  // TODO
+unitTest({ perms: { read: true } }, async function importRsaPkcs8() {
+  const pemHeader = "-----BEGIN PRIVATE KEY-----";
+  const pemFooter = "-----END PRIVATE KEY-----";
+  for (const keyFile of pkcs8TestVectors) {
+    const pem = await Deno.readTextFile(keyFile);
+    const pemContents = pem.substring(
+      pemHeader.length,
+      pem.length - pemFooter.length,
+    );
+    const binaryDerString = window.atob(pemContents);
+    const binaryDer = new Uint8Array(binaryDerString.length);
+    for (let i = 0; i < binaryDerString.length; i++) {
+      binaryDer[i] = binaryDerString.charCodeAt(i);
+    }
+
+    const key = await crypto.subtle.importKey(
+      "pkcs8",
+      binaryDer,
+      { name: "RSA-PSS", hash: "SHA-256" },
+      true,
+      ["sign"],
+    );
+
+    assert(key);
+    assertEquals(key.type, "private");
+    assertEquals(key.extractable, true);
+    assertEquals(key.usages, ["sign"]);
+    assertEquals(key.algorithm.name, "RSA-PSS");
+    assertEquals(key.algorithm.hash.name, "SHA-256");
+    assertEquals(key.algorithm.modulusLength, 2048);
+    assertEquals(key.algorithm.publicExponent, new Uint8Array([1, 0, 1]));
+  }
 });
 
 // deno-fmt-ignore

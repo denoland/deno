@@ -862,6 +862,18 @@ pub struct PssPrivateKeyParameters<'a> {
   pub salt_length: u32,
 }
 
+// Context-specific tag number for hashAlgorithm.
+const HASH_ALGORITHM_TAG: rsa::pkcs8::der::TagNumber =
+  rsa::pkcs8::der::TagNumber::new(0);
+
+// Context-specific tag number for maskGenAlgorithm.
+const MASK_GEN_ALGORITHM_TAG: rsa::pkcs8::der::TagNumber =
+  rsa::pkcs8::der::TagNumber::new(1);
+
+// Context-specific tag number for saltLength.
+const SALT_LENGTH_TAG: rsa::pkcs8::der::TagNumber =
+  rsa::pkcs8::der::TagNumber::new(2);
+
 impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
   for PssPrivateKeyParameters<'a>
 {
@@ -871,9 +883,24 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::Any<'a>>
     any: rsa::pkcs8::der::asn1::Any<'a>,
   ) -> rsa::pkcs8::der::Result<PssPrivateKeyParameters> {
     any.sequence(|decoder| {
-      let hash_algorithm = decoder.decode()?;
-      let mask_gen_algorithm = decoder.decode()?;
-      let salt_length = decoder.decode()?;
+      let hash_algorithm = decoder
+        .context_specific(HASH_ALGORITHM_TAG)?
+        .map(TryInto::try_into)
+        .transpose()?
+        .unwrap();
+
+      let mask_gen_algorithm = decoder
+        .context_specific(MASK_GEN_ALGORITHM_TAG)?
+        .map(TryInto::try_into)
+        .transpose()?
+        .unwrap();
+
+      let salt_length = decoder
+        .context_specific(SALT_LENGTH_TAG)?
+        .map(TryInto::try_into)
+        .transpose()?
+        .unwrap_or(20);
+
       Ok(Self {
         hash_algorithm,
         mask_gen_algorithm,
