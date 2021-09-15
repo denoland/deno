@@ -7,6 +7,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use lspower::lsp;
+use pretty_assertions::assert_eq;
 use std::fs;
 use tempfile::TempDir;
 use test_util::deno_exe_path;
