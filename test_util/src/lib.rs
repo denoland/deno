@@ -1628,9 +1628,14 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
           while normalize_text(&line).len() < normalize_text(s).len() {
             let mut buf = [0; 64 * 1024];
             let _n = buf_reader.read(&mut buf).unwrap();
+            println!("Reading pty...");
             let buf_str = std::str::from_utf8(&buf)
               .unwrap()
               .trim_end_matches(char::from(0));
+            println!("    s: {:?}", s);
+            println!("   sn: {:?}", normalize_text(s));
+            println!(" line: {:?}", line);
+            println!("linen: {:?}", normalize_text(&line));
             line += buf_str;
           }
         }

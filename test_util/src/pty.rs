@@ -148,7 +148,6 @@ mod windows {
       maybe_env_vars: Option<HashMap<String, String>>,
     ) -> Self {
       // https://docs.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session
-      println!("Creating PseudoConsole...");
       unsafe {
         let mut size: COORD = std::mem::zeroed();
         size.X = 800;
@@ -209,19 +208,15 @@ mod windows {
         // start a thread that will close the pseudoconsole stdout on process exit
         let thread_handle = WinHandle::new(proc_info.hThread);
         std::thread::spawn({
-          let stdout_read_handle = stdout_read_handle.duplicate();
           let thread_handle = thread_handle.duplicate();
           let console_handle = WinHandle::new(console_handle);
           move || {
-            println!("Created wait thread...");
             WaitForSingleObject(thread_handle.as_raw(), INFINITE);
             // wait for the reading thread to catch up
             std::thread::sleep(Duration::from_millis(200));
-            // close stdout and the console handle in order to close the
-            // pipe for the reader
-            drop(stdout_read_handle);
+            // close the console handle which will close the
+            // stdout pipe for the reader
             ClosePseudoConsole(console_handle.take());
-            println!("Exiting wait thread...");
           }
         });
 
