@@ -63,7 +63,9 @@ pub struct RunArgs {
   cwd: Option<String>,
   clear_env: bool,
   env: Vec<(String, String)>,
+  #[cfg(unix)]
   gid: Option<u32>,
+  #[cfg(unix)]
   uid: Option<u32>,
   stdin: String,
   stdout: String,
