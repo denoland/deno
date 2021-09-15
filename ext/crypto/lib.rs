@@ -44,6 +44,7 @@ use rsa::pkcs1::der::Encodable;
 use rsa::pkcs1::FromRsaPrivateKey;
 use rsa::pkcs1::ToRsaPrivateKey;
 use rsa::pkcs8::der::asn1;
+use rsa::pkcs8::FromPrivateKey;
 use rsa::BigUint;
 use rsa::PublicKey;
 use rsa::RsaPrivateKey;
@@ -787,6 +788,8 @@ pub async fn op_crypto_derive_bits(
       }
     }
     Algorithm::Hkdf => {
+      let zero_copy = zero_copy.ok_or_else(null_opbuf)?;
+      let salt = &*zero_copy;
       let algorithm = match args.hash.ok_or_else(not_supported)? {
         CryptoHash::Sha1 => hkdf::HKDF_SHA1_FOR_LEGACY_USE_ONLY,
         CryptoHash::Sha256 => hkdf::HKDF_SHA256,
