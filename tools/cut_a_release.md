@@ -27,29 +27,30 @@ cut.**
 4. Run `./tools/release/02_publish_dependency_crates.ts` to publish these bumped
    crates to `crates.io`
 
-**Make sure that `cargo` is logged on with a user that has permissions to
-publish those crates.**
+   **Make sure that `cargo` is logged on with a user that has permissions to
+   publish those crates.**
 
-If there are any problems when you publish, that require you to change the code,
-then after applying the fixes they should be committed and pushed to the PR.
+   If there are any problems when you publish, that require you to change the
+   code, then after applying the fixes they should be committed and pushed to
+   the PR.
 
-4. Once all crates are published merge the PR.
+5. Once all crates are published merge the PR.
 
-5. Run `./tools/release/03_bump_cli_version.ts` to bump the CLI version.
+6. Run `./tools/release/03_bump_cli_version.ts` to bump the CLI version.
 
-6. Use the output of the above command to update `Releases.md`
+7. Use the output of the above command to update `Releases.md`
 
-7. Create a PR for these changes.
+8. Create a PR for these changes.
 
-8. Make sure CI pipeline passes.
+9. Make sure CI pipeline passes.
 
-9. Publish `cli` crate to `crates.io`
+10. Publish `cli` crate to `crates.io`
 
-10. Merge the PR.
+11. Merge the PR.
 
-11. Create a tag with the version number (with `v` prefix).
+12. Create a tag with the version number (with `v` prefix).
 
-12. Wait for CI pipeline on the created tag branch to pass.
+13. Wait for CI pipeline on the created tag branch to pass.
 
 The CI pipeline will create a release draft on GitHub
 (https://github.com/denoland/deno/releases).
