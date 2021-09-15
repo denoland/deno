@@ -26,7 +26,7 @@ pub fn create_pty(
     std::process::Command::new(program.as_ref())
       .current_dir(cwd)
       .args(args)
-      .envs(env_vars.unwrap_or(HashMap::new()))
+      .envs(env_vars.unwrap_or_default())
       .spawn()
       .unwrap()
       .wait()
@@ -47,7 +47,7 @@ mod unix {
   }
 
   impl Drop for UnixPty {
-    fn drop(self: &mut Self) {
+    fn drop(&mut self) {
       self.fork.wait().unwrap();
     }
   }
