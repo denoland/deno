@@ -1626,9 +1626,10 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
         } else {
           // assumes the buffer won't have overlapping virtual terminal sequences
           while normalize_text(&line).len() < normalize_text(s).len() {
-            let mut buf = [0; 64 * 1024];
-            let _n = buf_reader.read(&mut buf).unwrap();
             println!("Reading pty...");
+            let mut buf = [0; 64 * 1024];
+            let bytes_read = buf_reader.read(&mut buf).unwrap();
+            assert!(bytes_read > 0);
             let buf_str = std::str::from_utf8(&buf)
               .unwrap()
               .trim_end_matches(char::from(0));
