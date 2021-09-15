@@ -1695,11 +1695,11 @@ impl CompletionEntry {
         return None;
       }
       if insert_text.starts_with('[') {
-        let value = BRACKET_ACCESSOR_RE
-          .replace(insert_text, |caps: &Captures| format!(".{}", &caps[1]))
-          .to_string();
-        log::info!("value: {}", value);
-        return Some(value);
+        return Some(
+          BRACKET_ACCESSOR_RE
+            .replace(insert_text, |caps: &Captures| format!(".{}", &caps[1]))
+            .to_string(),
+        );
       }
     }
 
