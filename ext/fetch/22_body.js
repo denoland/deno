@@ -393,7 +393,7 @@
         return webidl.converters["ArrayBufferView"](V, opts);
       }
     }
-    return webidl.converters["USVString"](V, opts);
+    return webidl.converters["DOMString"](V, opts);
   };
   webidl.converters["BodyInit?"] = webidl.createNullableConverter(
     webidl.converters["BodyInit"],
