@@ -1,21 +1,26 @@
 use std::collections::HashMap;
 use std::io::Read;
+use std::path::Path;
 
 pub trait Pty: Read {
   // The `Write` trait is not implemented in order to do
   // platform specific processing on the text
   fn write_text(&mut self, text: &str);
+
+  fn write_line(&mut self, text: &str) {
+    self.write_text(&format!("{}\n", text));
+  }
 }
 
 #[cfg(unix)]
 pub fn create_pty(
-  program: &str,
+  program: impl AsRef<Path>,
   args: &[&str],
+  cwd: impl AsRef<Path>,
   env_vars: Option<HashMap<String, String>>,
 ) -> Box<dyn Pty> {
-  let deno_exe = util::deno_exe_path();
   let fork = pty::fork::Fork::from_ptmx().unwrap();
-  if let Ok(mut master) = fork.is_parent() {
+  if fork.is_parent().is_ok() {
     Box::new(unix::UnixPty { fork })
   } else {
     if let Some(env_vars) = env_vars {
@@ -23,7 +28,9 @@ pub fn create_pty(
         std::env::set_var(key.to_string(), value.to_string());
       }
     }
-    let err = exec::Command::new(program).args(args).exec();
+    std::env::set_current_dir(cwd).unwrap();
+    let err = exec::Command::new(program.as_ref())
+    .args(args).exec();
     println!("err {}", err);
     unreachable!()
   }
@@ -31,26 +38,31 @@ pub fn create_pty(
 
 #[cfg(unix)]
 mod unix {
+  use std::io::Read;
+  use std::io::Write;
+
+  use super::Pty;
+
   pub struct UnixPty {
-    fork: pty::fork::Fork,
+    pub fork: pty::fork::Fork,
   }
 
   impl Drop for UnixPty {
-    fn drop(self: &mut self) {
+    fn drop(self: &mut Self) {
       self.fork.wait().unwrap();
     }
   }
 
   impl Pty for UnixPty {
     fn write_text(&mut self, text: &str) {
-      let master = self.fork.is_parent().unwrap();
+      let mut master = self.fork.is_parent().unwrap();
       master.write_all(text.as_bytes()).unwrap();
     }
   }
 
   impl Read for UnixPty {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-      let master = self.fork.is_parent().unwrap();
+      let mut master = self.fork.is_parent().unwrap();
       master.read(buf)
     }
   }
@@ -58,11 +70,12 @@ mod unix {
 
 #[cfg(target_os = "windows")]
 pub fn create_pty(
-  program: &str,
+  program: impl AsRef<Path>,
   args: &[&str],
+  cwd: impl AsRef<Path>,
   env_vars: Option<HashMap<String, String>>,
 ) -> Box<dyn Pty> {
-  let command = format!("{} {}", program, args.join(" ")).trim().to_string();
+  let command = format!("{} {}", program.as_ref().display(), args.join(" ")).trim().to_string();
   let pty = windows::WinPseudoConsole::new(&command, env_vars);
   Box::new(pty)
 }
@@ -126,6 +139,7 @@ mod windows {
   impl WinPseudoConsole {
     pub fn new(
       command_text: &str,
+      cwd: &str,
       maybe_env_vars: Option<HashMap<String, String>>,
     ) -> Self {
       // https://docs.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session

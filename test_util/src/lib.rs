@@ -1590,59 +1590,47 @@ pub enum PtyData {
   Output(&'static str),
 }
 
-#[cfg(unix)]
 pub fn test_pty2(args: &str, data: Vec<PtyData>) {
-  use pty::fork::Fork;
   use std::io::BufRead;
+  use crate::pty::create_pty;
 
-  let tests_path = testdata_path();
-  let fork = Fork::from_ptmx().unwrap();
-  if let Ok(master) = fork.is_parent() {
-    let mut buf_reader = std::io::BufReader::new(master);
-    for d in data {
-      match d {
-        PtyData::Input(s) => {
-          println!("INPUT {}", s.escape_debug());
-          buf_reader.get_mut().write_all(s.as_bytes()).unwrap();
+  let mut env_vars = HashMap::new();
+  env_vars.insert("NO_COLOR".to_string(), "1".to_string());
+  let console = create_pty(deno_exe_path(), &args.split_whitespace().collect::<Vec<_>>(), testdata_path(), Some(env_vars));
 
-          // Because of tty echo, we should be able to read the same string back.
-          assert!(s.ends_with('\n'));
-          let mut echo = String::new();
-          buf_reader.read_line(&mut echo).unwrap();
-          println!("ECHO: {}", echo.escape_debug());
-          assert!(echo.starts_with(&s.trim()));
-        }
-        PtyData::Output(s) => {
-          let mut line = String::new();
-          if s.ends_with('\n') {
-            buf_reader.read_line(&mut line).unwrap();
-          } else {
-            while s != line {
-              let mut buf = [0; 64 * 1024];
-              let _n = buf_reader.read(&mut buf).unwrap();
-              let buf_str = std::str::from_utf8(&buf)
-                .unwrap()
-                .trim_end_matches(char::from(0));
-              line += buf_str;
-              assert!(s.starts_with(&line));
-            }
+  let mut buf_reader = std::io::BufReader::new(console);
+  for d in data {
+    match d {
+      PtyData::Input(s) => {
+        println!("INPUT {}", s.escape_debug());
+        buf_reader.get_mut().write_text(s);
+
+        // Because of tty echo, we should be able to read the same string back.
+        assert!(s.ends_with('\n'));
+        let mut echo = String::new();
+        buf_reader.read_line(&mut echo).unwrap();
+        println!("ECHO: {}", echo.escape_debug());
+        assert!(echo.starts_with(&s.trim()));
+      }
+      PtyData::Output(s) => {
+        let mut line = String::new();
+        if s.ends_with('\n') {
+          buf_reader.read_line(&mut line).unwrap();
+        } else {
+          while s != line {
+            let mut buf = [0; 64 * 1024];
+            let _n = buf_reader.read(&mut buf).unwrap();
+            let buf_str = std::str::from_utf8(&buf)
+              .unwrap()
+              .trim_end_matches(char::from(0));
+            line += buf_str;
+            assert!(s.starts_with(&line));
           }
-          println!("OUTPUT {}", line.escape_debug());
-          assert_eq!(line, s);
         }
+        println!("OUTPUT {}", line.escape_debug());
+        assert_eq!(line, s);
       }
     }
-
-    fork.wait().unwrap();
-  } else {
-    deno_cmd()
-      .current_dir(tests_path)
-      .env("NO_COLOR", "1")
-      .args(args.split_whitespace())
-      .spawn()
-      .unwrap()
-      .wait()
-      .unwrap();
   }
 }
 

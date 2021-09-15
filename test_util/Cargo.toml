@@ -29,6 +29,7 @@ tokio-rustls = "0.22.0"
 tokio-tungstenite = "0.14.0"
 
 [target.'cfg(unix)'.dependencies]
+exec = "0.3.1"
 pty = "0.2.2"
 
 [target.'cfg(windows)'.dependencies]

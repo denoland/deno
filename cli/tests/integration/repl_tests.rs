@@ -7,18 +7,18 @@ use test_util as util;
 #[test]
 fn pty_multiline() {
   run_pty_test(|mut console| {
-    console.write_text("(\n1 + 2\n)\n");
-    console.write_text("{\nfoo: \"foo\"\n}\n");
-    console.write_text("`\nfoo\n`\n");
-    console.write_text("`\n\\`\n`\n");
-    console.write_text("'{'\n");
-    console.write_text("'('\n");
-    console.write_text("'['\n");
-    console.write_text("/{/\n");
-    console.write_text("/\\(/\n");
-    console.write_text("/\\[/\n");
-    console.write_text("console.log(\"{test1} abc {test2} def {{test3}}\".match(/{([^{].+?)}/));\n");
-    console.write_text("close();\n");
+    console.write_line("(\n1 + 2\n)");
+    console.write_line("{\nfoo: \"foo\"\n}");
+    console.write_line("`\nfoo\n`");
+    console.write_line("`\n\\`\n`");
+    console.write_line("'{'");
+    console.write_line("'('");
+    console.write_line("'['");
+    console.write_line("/{/");
+    console.write_line("/\\(/");
+    console.write_line("/\\[/");
+    console.write_line("console.log(\"{test1} abc {test2} def {{test3}}\".match(/{([^{].+?)}/));");
+    console.write_line("close();");
 
     let mut output = String::new();
     console.read_to_string(&mut output).unwrap();
@@ -40,10 +40,10 @@ fn pty_multiline() {
 #[test]
 fn pty_unpaired_braces() {
   run_pty_test(|mut console| {
-    console.write_text(")\n");
-    console.write_text("]\n");
-    console.write_text("}\n");
-    console.write_text("close();\n");
+    console.write_line(")");
+    console.write_line("]");
+    console.write_line("}");
+    console.write_line("close();");
 
     let mut output = String::new();
     console.read_to_string(&mut output).unwrap();
@@ -70,9 +70,9 @@ fn pty_bad_input() {
 #[test]
 fn pty_syntax_error_input() {
   run_pty_test(|mut console| {
-    console.write_text("('\\u')\n");
-    console.write_text("('\n");
-    console.write_text("close();\n");
+    console.write_line("('\\u')");
+    console.write_line("('");
+    console.write_line("close();");
 
     let mut output = String::new();
     console.read_to_string(&mut output).unwrap();
@@ -85,8 +85,8 @@ fn pty_syntax_error_input() {
 #[test]
 fn pty_complete_symbol() {
   run_pty_test(|mut console| {
-    console.write_text("Symbol.it\t\n");
-    console.write_text("close();\n");
+    console.write_line("Symbol.it\t");
+    console.write_line("close();");
 
     let mut output = String::new();
     console.read_to_string(&mut output).unwrap();
@@ -98,11 +98,11 @@ fn pty_complete_symbol() {
 #[test]
 fn pty_complete_declarations() {
   run_pty_test(|mut console| {
-    console.write_text("class MyClass {}\n");
-    console.write_text("My\t\n");
-    console.write_text("let myVar;\n");
-    console.write_text("myV\t\n");
-    console.write_text("close();\n");
+    console.write_line("class MyClass {}");
+    console.write_line("My\t");
+    console.write_line("let myVar;");
+    console.write_line("myV\t");
+    console.write_line("close();");
 
     let mut output = String::new();
     console.read_to_string(&mut output).unwrap();
@@ -115,15 +115,15 @@ fn pty_complete_declarations() {
 #[test]
 fn pty_complete_primitives() {
   run_pty_test(|mut console| {
-    console.write_text("let func = function test(){}\n");
-    console.write_text("func.appl\t\n");
-    console.write_text("let str = ''\n");
-    console.write_text("str.leng\t\n");
-    console.write_text("false.valueO\t\n");
-    console.write_text("5n.valueO\t\n");
-    console.write_text("let num = 5\n");
-    console.write_text("num.toStrin\t\n");
-    console.write_text("close();\n");
+    console.write_line("let func = function test(){}");
+    console.write_line("func.appl\t");
+    console.write_line("let str = ''");
+    console.write_line("str.leng\t");
+    console.write_line("false.valueO\t");
+    console.write_line("5n.valueO\t");
+    console.write_line("let num = 5");
+    console.write_line("num.toStrin\t");
+    console.write_line("close();");
 
     let mut output = String::new();
     console.read_to_string(&mut output).unwrap();
@@ -139,8 +139,8 @@ fn pty_complete_primitives() {
 #[test]
 fn pty_ignore_symbols() {
   run_pty_test(|mut console| {
-    console.write_text("Array.Symbol\t\n");
-    console.write_text("close();\n");
+    console.write_line("Array.Symbol\t");
+    console.write_line("close();");
 
     let mut output = String::new();
     console.read_to_string(&mut output).unwrap();
@@ -158,6 +158,7 @@ fn run_pty_test(mut run: impl FnMut(Box<dyn util::pty::Pty>)) {
   let pty = util::pty::create_pty(
     &deno_exe.display().to_string(),
     &["repl"],
+    util::testdata_path(),
     Some(env_vars),
   );
 
