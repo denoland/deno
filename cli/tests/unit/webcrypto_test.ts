@@ -491,27 +491,11 @@ const jwtRSAKeys = {
       q: "5HqMHLzb4IgXhUl4pLz7E4kjY8PH2YGzaQfK805zJMbOXzmlZK0hizKo34Qqd2nB9xos7QgzOYQrNfSWheARwVsSQzAE0vGvw3zHIPP_lTtChBlCTPctQcURjw4dXcnK1oQ-IT321FNOW3EO-YTsyGcypJqJujlZrLbxYjOjQE8",
       qi:
         "OQXzi9gypDnpdHatIi0FaUGP8LSzfVH0AUugURJXs4BTJpvA9y4hcpBQLrcl7H_vq6kbGmvC49V-9I5HNVX_AuxGIXKuLZr5WOxPq8gLTqHV7X5ZJDtWIP_nq2NNgCQQyNNRrxebiWlwGK9GnX_unewT6jopI_oFhwp0Q13rBR0",
-    }
-  }
+    },
+  },
 };
 
-/*const pkcs8RsaPrivatePss =
-  "308204bd020100300d06092a864886f70d0101010500048204a7308204a30201000282010100d3d795c00853f523c1c5d10dfbbe0105e1003466951b0a87f9882521ce1557b8df851d9bcb98afcd5abc342790d7f0020c89530d8f024cc4391357354845e6a3f4fbabce175065dff14f66c7ab91838eac57b7c5fa1930251f3404556cbd6c69e1a84f9552588ffffde1fb7bac856f7216f9b726a53a3ad81422681674a0abe8b7663534e9cb08f579cee6494836e703fd0ab4bd484edb7fc075dd87498a118da6fc62224947f12d86cecfaba1c77764525e6c18a797e8467c1ed3f53be5799eb075832652541d86f0099a3490ff46f20e106ee73053e31234191938edb1d99b5935ec691ddd138640136e7365a551bfcf600634e469fd57b7ae55f0ac62175f0203010001028201001f8c5ba0dd9ca3454ff645cbef51bc95438ce440e2b3c43dbbcbaabbfe14ef9b78ae3a5a995783d6f14c55f80e7a1a2433f9bf84a567924726b8daa3f4bf7439b6a24453cce50c46ed8905a576c794f00a7a85c3d61b2a305d15420ff6c1bf0385b7ab2271c0feb100fe4695847bdabd02eeed77b3e3981fd5dfc9e08e3ddf5be394207a72ea5b2cbd07e611ecc5b32c5ffe679e600974bfd4de00fe53b65d4217943e10c1251d8a786cef9d39b72952a93a7c27fb509de39314e3e28374fd05701544b81b12aec4079624da72206091bca3fff05a9e03e3dde743c5391bf9f2a412f8645d18c0a09b358b1b7c9df4860dc7bd70cfc6a805fd5c66f8b364240102818100ed5c06b7fb497001501eb983c3974cd4406bbba7e274ce39343bfa5553846f12ae0f94a1d847c01df9b973aa28b80d6066ac2f287d2c9ff5e907536cc98c87110777b0155d2b4cd18d3a3e13d9913fed6cf8b31de580d756ae87137dfd9f1a57b263b6e6c950105eb306b8f56d234d5c115cedf8039e5abe1c87a578cbec63f102818100e47a8c1cbcdbe08817854978a4bcfb13892363c3c7d981b36907caf34e7324c6ce5f39a564ad218b32a8df842a7769c1f71a2ced083339842b35f49685e011c15b12433004d2f1afc37cc720f3ff953b428419424cf72d41c5118f0e1d5dc9cad6843e213df6d4534e5b710ef984ecc86732a49a89ba3959acb6f16233a3404f0281810098cf36441c331b38bd2c0aa319b8be6da74bb474510681fdb1f32b26e3adcf14679b004571c83f970cbea808544ea9cdf64bc3d07d45cd75b3a053c525bca2f803a6ba6606a569bf3efcd01a57677b908f274da961a7a0fadd4178fb13dcea48ab4026f04d8a8dff69a25a512702233bb2b1f1424a9218396c84a7b32d15f30102818066533802fad62295f0aac1ffe50fba06c2c975b9cdfc6ca91425e84fd5579e25e77120592160a48039dd05d5a44b3cb320deb936231105f65a7fdc9db93163e24bce3f06f7721dc9d0ec46264d00af2e0e192952d73370325f7700b19a975173a5652e8a26bd2fd46b686a97014af5dcbed3208311a1b463a4057ecfb33eaee30281803905f38bd832a439e97476ad222d0569418ff0b4b37d51f4014ba0511257b38053269bc0f72e217290502eb725ec7fefaba91b1a6bc2e3d57ef48e473555ff02ec462172ae2d9af958ec4fabc80b4ea1d5ed7e59243b5620ffe7ab634d802410c8d351af179b89697018af469d7fee9dec13ea3a2923fa05870a74435deb051d";
-
-const spkiRsaPssPublic =
-  "30820122300d06092a864886f70d01010105000382010f003082010a0282010100d3d795c00853f523c1c5d10dfbbe0105e1003466951b0a87f9882521ce1557b8df851d9bcb98afcd5abc342790d7f0020c89530d8f024cc4391357354845e6a3f4fbabce175065dff14f66c7ab91838eac57b7c5fa1930251f3404556cbd6c69e1a84f9552588ffffde1fb7bac856f7216f9b726a53a3ad81422681674a0abe8b7663534e9cb08f579cee6494836e703fd0ab4bd484edb7fc075dd87498a118da6fc62224947f12d86cecfaba1c77764525e6c18a797e8467c1ed3f53be5799eb075832652541d86f0099a3490ff46f20e106ee73053e31234191938edb1d99b5935ec691ddd138640136e7365a551bfcf600634e469fd57b7ae55f0ac62175f0203010001";
-
-function hexToUint8Array(hex: string) {
-  if (!(/[0-9A-Fa-f]{1,2}/g).test(hex)) {
-    throw new Error("Invalid hexadecimal");
-  }
-
-  return Uint8Array.from(
-    hex.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) ?? [],
-  );
-}*/
-
-unitTest(async function subtleCryptoRsaJwkImport() {
+unitTest(async function testImportRsaJwk() {
   const subtle = window.crypto.subtle;
   assert(subtle);
 
@@ -519,103 +503,122 @@ unitTest(async function subtleCryptoRsaJwkImport() {
     const [_key, jwkData] of Object.entries(jwtRSAKeys)
   ) {
     const { size, publicJWK, privateJWK } = jwkData;
-    if ( size != 2048 )
+    if (size != 2048) {
       continue;
+    }
 
     // 1. Test import PSS
-    const privateKeyPSS = await crypto.subtle.importKey(
-      "jwk",
-      {
-        alg: "PS256",
-        ...privateJWK,
-        ext: true,
-        "key_ops": ["sign"],
-      },
-      { name: "RSA-PSS", hash: "SHA-256" },
-      true,
-      ["sign"],
-    );
+    for (const hash of ["SHA-1", "SHA-256", "SHA-384", "SHA-512"]) {
+      const hashMapPSS: Record<string, string> = {
+        "SHA-1": "PS1",
+        "SHA-256": "PS256",
+        "SHA-384": "PS384",
+        "SHA-512": "PS512",
+      };
 
-    const publicKeyPSS = await crypto.subtle.importKey(
-      "jwk",
-      {
-        alg: "PS256",
-        ...publicJWK,
-        ext: true,
-        "key_ops": ["verify"],
-      },
-      { name: "RSA-PSS", hash: "SHA-256" },
-      true,
-      ["verify"],
-    );
+      const privateKeyPSS = await crypto.subtle.importKey(
+        "jwk",
+        {
+          alg: hashMapPSS[hash],
+          ...privateJWK,
+          ext: true,
+          "key_ops": ["sign"],
+        },
+        { name: "RSA-PSS", hash },
+        true,
+        ["sign"],
+      );
 
-    const signaturePSS = await crypto.subtle.sign(
-      { name: "RSA-PSS", saltLength: 32 },
-      privateKeyPSS,
-      new Uint8Array([1, 2, 3, 4]),
-    );
+      const publicKeyPSS = await crypto.subtle.importKey(
+        "jwk",
+        {
+          alg: hashMapPSS[hash],
+          ...publicJWK,
+          ext: true,
+          "key_ops": ["verify"],
+        },
+        { name: "RSA-PSS", hash },
+        true,
+        ["verify"],
+      );
 
-    const verifyPSS = await crypto.subtle.verify(
-      { name: "RSA-PSS", saltLength: 32 },
-      publicKeyPSS,
-      signaturePSS,
-      new Uint8Array([1, 2, 3, 4]),
-    );
-    assert(verifyPSS);
+      const signaturePSS = await crypto.subtle.sign(
+        { name: "RSA-PSS", saltLength: 32 },
+        privateKeyPSS,
+        new Uint8Array([1, 2, 3, 4]),
+      );
+
+      const verifyPSS = await crypto.subtle.verify(
+        { name: "RSA-PSS", saltLength: 32 },
+        publicKeyPSS,
+        signaturePSS,
+        new Uint8Array([1, 2, 3, 4]),
+      );
+      assert(verifyPSS);
+    }
 
     // 2. Test import PKCS1
-    const privateKeyPKCS1 = await crypto.subtle.importKey(
-      "jwk",
-      {
-        alg: "RS256",
-        ...privateJWK,
-        ext: true,
-        "key_ops": ["sign"],
-      },
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-      true,
-      ["sign"],
-    );
+    for (const hash of ["SHA-1", "SHA-256", "SHA-384", "SHA-512"]) {
+      const hashMapPKCS1: Record<string, string> = {
+        "SHA-1": "RS1",
+        "SHA-256": "RS256",
+        "SHA-384": "RS384",
+        "SHA-512": "RS512",
+      };
 
-    const publicKeyPKCS1 = await crypto.subtle.importKey(
-      "jwk",
-      {
-        alg: "RS256",
-        ...publicJWK,
-        ext: true,
-        "key_ops": ["verify"],
-      },
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-      true,
-      ["verify"],
-    );
+      const privateKeyPKCS1 = await crypto.subtle.importKey(
+        "jwk",
+        {
+          alg: hashMapPKCS1[hash],
+          ...privateJWK,
+          ext: true,
+          "key_ops": ["sign"],
+        },
+        { name: "RSASSA-PKCS1-v1_5", hash },
+        true,
+        ["sign"],
+      );
 
-    const signaturePKCS1 = await crypto.subtle.sign(
-      { name: "RSASSA-PKCS1-v1_5", saltLength: 32 },
-      privateKeyPKCS1,
-      new Uint8Array([1, 2, 3, 4]),
-    );
+      const publicKeyPKCS1 = await crypto.subtle.importKey(
+        "jwk",
+        {
+          alg: hashMapPKCS1[hash],
+          ...publicJWK,
+          ext: true,
+          "key_ops": ["verify"],
+        },
+        { name: "RSASSA-PKCS1-v1_5", hash },
+        true,
+        ["verify"],
+      );
 
-    const verifyPKCS1 = await crypto.subtle.verify(
-      { name: "RSASSA-PKCS1-v1_5", saltLength: 32 },
-      publicKeyPKCS1,
-      signaturePKCS1,
-      new Uint8Array([1, 2, 3, 4]),
-    );
-    assert(verifyPKCS1);
+      const signaturePKCS1 = await crypto.subtle.sign(
+        { name: "RSASSA-PKCS1-v1_5", saltLength: 32 },
+        privateKeyPKCS1,
+        new Uint8Array([1, 2, 3, 4]),
+      );
 
+      const verifyPKCS1 = await crypto.subtle.verify(
+        { name: "RSASSA-PKCS1-v1_5", saltLength: 32 },
+        publicKeyPKCS1,
+        signaturePKCS1,
+        new Uint8Array([1, 2, 3, 4]),
+      );
+      assert(verifyPKCS1);
+    }
 
+    // 3. Test import OAEP
     for (
       const { hash, plainText } of hashPlainTextVector
     ) {
       const encryptAlgorithm = { name: "RSA-OAEP" };
 
-      const hashMapOAEP: Record<string,string>={
+      const hashMapOAEP: Record<string, string> = {
         "SHA-1": "RSA-OAEP",
         "SHA-256": "RSA-OAEP-256",
         "SHA-384": "RSA-OAEP-384",
         "SHA-512": "RSA-OAEP-512",
-      }
+      };
 
       const privateKeyOAEP = await crypto.subtle.importKey(
         "jwk",
@@ -663,51 +666,4 @@ unitTest(async function subtleCryptoRsaJwkImport() {
       assertEquals(new Uint8Array(decrypted), plainText);
     }
   }
-  /* Cross-tests against same keys as pkcs8 and spki. Waiting on #11891
-
-    const keyPriv2 = await crypto.subtle.importKey(
-    "pkcs8",
-    hexToUint8Array(pkcs8RsaPrivatePss),
-    { name: "RSA-PSS", hash: "SHA-256" },
-    true,
-    ["sign"],
-  );
-
-  const keyPub2 = await crypto.subtle.importKey(
-    "spki",
-    hexToUint8Array(spkiRsaPssPublic),
-    { name: "RSA-PSS", hash: "SHA-256" },
-    true,
-    ["verify"],
-  );
-
-  verifyOK = await crypto.subtle.verify(
-    { name: "RSA-PSS", saltLength: 32 },
-    keyPub2,
-    signature1,
-    new Uint8Array([1, 2, 3, 4]),
-  );
-  assert(verifyOK);
-
-  const signature2 = await crypto.subtle.sign(
-    { name: "RSA-PSS", saltLength: 32 },
-    keyPriv2,
-    new Uint8Array([1, 2, 3, 4]),
-  );
-
-  verifyOK = await crypto.subtle.verify(
-    { name: "RSA-PSS", saltLength: 32 },
-    keyPub2,
-    signature2,
-    new Uint8Array([1, 2, 3, 4]),
-  );
-  assert(verifyOK);
-
-  verifyOK = await crypto.subtle.verify(
-    { name: "RSA-PSS", saltLength: 32 },
-    publicKeyPSS,
-    signature2,
-    new Uint8Array([1, 2, 3, 4]),
-  );
-  assert(verifyOK);*/
 });
