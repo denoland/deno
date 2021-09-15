@@ -1588,12 +1588,17 @@ pub enum PtyData {
 }
 
 pub fn test_pty2(args: &str, data: Vec<PtyData>) {
-  use std::io::BufRead;
   use crate::pty::create_pty;
+  use std::io::BufRead;
 
   let mut env_vars = HashMap::new();
   env_vars.insert("NO_COLOR".to_string(), "1".to_string());
-  let console = create_pty(deno_exe_path(), &args.split_whitespace().collect::<Vec<_>>(), testdata_path(), Some(env_vars));
+  let console = create_pty(
+    deno_exe_path(),
+    &args.split_whitespace().collect::<Vec<_>>(),
+    testdata_path(),
+    Some(env_vars),
+  );
 
   let mut buf_reader = std::io::BufReader::new(console);
   for d in data {
@@ -1640,11 +1645,17 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
   fn normalize_text(text: &str) -> String {
     let move_cursor_right_re = Regex::new(r"\x1b\[1C").unwrap();
     let text = move_cursor_right_re.replace_all(text, " ");
-    let found_sequences_re = Regex::new(r"(\x1b\]0;[^\x07]*\x07)*(\x08)*(\x1b\[\d+X)*").unwrap();
-    let text = STRIP_ANSI_RE.replace_all(&found_sequences_re.replace_all(&text, ""), "").replace("\r\n", "\n");
+    let found_sequences_re =
+      Regex::new(r"(\x1b\]0;[^\x07]*\x07)*(\x08)*(\x1b\[\d+X)*").unwrap();
+    let text = STRIP_ANSI_RE
+      .replace_all(&found_sequences_re.replace_all(&text, ""), "")
+      .replace("\r\n", "\n");
     // get rid of any text that is overwritten with only a carriage return
     let carriage_return_re = Regex::new(r"[^\n]*\r([^\n])").unwrap();
-    carriage_return_re.replace_all(&text, "$1").trim().to_string()
+    carriage_return_re
+      .replace_all(&text, "$1")
+      .trim()
+      .to_string()
   }
 }
 

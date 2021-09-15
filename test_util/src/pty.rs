@@ -29,8 +29,7 @@ pub fn create_pty(
       }
     }
     std::env::set_current_dir(cwd).unwrap();
-    let err = exec::Command::new(program.as_ref())
-    .args(args).exec();
+    let err = exec::Command::new(program.as_ref()).args(args).exec();
     println!("err {}", err);
     unreachable!()
   }
@@ -75,7 +74,12 @@ pub fn create_pty(
   cwd: impl AsRef<Path>,
   env_vars: Option<HashMap<String, String>>,
 ) -> Box<dyn Pty> {
-  let pty = windows::WinPseudoConsole::new(program, args, &cwd.as_ref().to_string_lossy().to_string(), env_vars);
+  let pty = windows::WinPseudoConsole::new(
+    program,
+    args,
+    &cwd.as_ref().to_string_lossy().to_string(),
+    env_vars,
+  );
   Box::new(pty)
 }
 
@@ -161,8 +165,7 @@ mod windows {
         );
         assert_eq!(result, S_OK);
 
-        let mut environment_vars =
-          maybe_env_vars.map(|v| get_env_vars(v));
+        let mut environment_vars = maybe_env_vars.map(|v| get_env_vars(v));
         let mut attribute_list = ProcThreadAttributeList::new(console_handle);
         let mut startup_info: STARTUPINFOEXW = std::mem::zeroed();
         startup_info.StartupInfo.cb =
@@ -170,8 +173,15 @@ mod windows {
         startup_info.lpAttributeList = attribute_list.as_mut_ptr();
 
         let mut proc_info: PROCESS_INFORMATION = std::mem::zeroed();
-        let command = format!("\"{}\" {}", program.as_ref().to_string_lossy(), args.join(" ")).trim().to_string();
-        let mut application_str = to_windows_str(&program.as_ref().to_string_lossy());
+        let command = format!(
+          "\"{}\" {}",
+          program.as_ref().to_string_lossy(),
+          args.join(" ")
+        )
+        .trim()
+        .to_string();
+        let mut application_str =
+          to_windows_str(&program.as_ref().to_string_lossy());
         let mut command_str = to_windows_str(&command);
         let mut cwd = to_windows_str(cwd);
 
@@ -245,7 +255,9 @@ mod windows {
     fn write_text(&mut self, text: &str) {
       // windows psuedo console requires a \r\n to do a newline
       let newline_re = regex::Regex::new("\r?\n").unwrap();
-      self.write_all(newline_re.replace_all(text, "\r\n").as_bytes()).unwrap();
+      self
+        .write_all(newline_re.replace_all(text, "\r\n").as_bytes())
+        .unwrap();
     }
   }
 
@@ -277,7 +289,10 @@ mod windows {
 
   impl WinHandle {
     pub fn new(handle: HANDLE) -> Self {
-      WinHandle { inner: handle, close_on_drop: true }
+      WinHandle {
+        inner: handle,
+        close_on_drop: true,
+      }
     }
 
     pub fn duplicate(&self) -> WinHandle {
