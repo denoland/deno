@@ -3,8 +3,8 @@ use std::io::Read;
 use std::path::Path;
 
 pub trait Pty: Read {
-  // The `Write` trait is not implemented in order to do
-  // platform specific processing on the text
+  // The `Write` trait is not implemented in order to more easily
+  // do platform specific processing on the text
   fn write_text(&mut self, text: &str);
 
   fn write_line(&mut self, text: &str) {
@@ -148,6 +148,7 @@ mod windows {
       maybe_env_vars: Option<HashMap<String, String>>,
     ) -> Self {
       // https://docs.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session
+      println!("Creating PseudoConsole...");
       unsafe {
         let mut size: COORD = std::mem::zeroed();
         size.X = 800;
@@ -212,6 +213,7 @@ mod windows {
           let thread_handle = thread_handle.duplicate();
           let console_handle = WinHandle::new(console_handle);
           move || {
+            println!("Created wait thread...");
             WaitForSingleObject(thread_handle.as_raw(), INFINITE);
             // wait for the reading thread to catch up
             std::thread::sleep(Duration::from_millis(200));
@@ -219,6 +221,7 @@ mod windows {
             // pipe for the reader
             drop(stdout_read_handle);
             ClosePseudoConsole(console_handle.take());
+            println!("Exiting wait thread...");
           }
         });
 
@@ -426,15 +429,16 @@ mod windows {
 
   fn get_env_vars(env_vars: HashMap<String, String>) -> Vec<u16> {
     // each environment variable is in the form `name=value\0`
-    // and then entire block is then terminated by a NULL (\0)
-    let text = format!(
+    // and then entire block is then terminated by NULL (\0)
+    format!(
       "{}\0",
       env_vars
         .into_iter()
         .map(|(key, value)| format!("{}={}\0", key, value))
         .collect::<Vec<_>>()
         .join("")
-    );
-    text.encode_utf16().collect::<Vec<_>>()
+    )
+    .encode_utf16()
+    .collect::<Vec<_>>()
   }
 }
