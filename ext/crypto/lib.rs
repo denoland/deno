@@ -725,7 +725,7 @@ pub struct DeriveKeyArg {
   length: usize,
   iterations: Option<u32>,
   // ECDH
-  public_key: Option<ZeroCopyBuf>,
+  public_key: Option<KeyData>,
   named_curve: Option<CryptoNamedCurve>,
   // HKDF
   info: Option<ZeroCopyBuf>,
@@ -773,7 +773,7 @@ pub async fn op_crypto_derive_bits(
         CryptoNamedCurve::P256 => {
           let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)?;
           let public_key =
-            p256::SecretKey::from_pkcs8_der(&public_key)?.public_key();
+            p256::SecretKey::from_pkcs8_der(&public_key.data)?.public_key();
 
           let shared_secret = p256::elliptic_curve::ecdh::diffie_hellman(
             secret_key.to_secret_scalar(),

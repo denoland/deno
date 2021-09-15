@@ -389,7 +389,7 @@
   const dictEcdhKeyDeriveParams = [
     ...dictAlgorithm,
     {
-      key: "hash",
+      key: "public",
       converter: webidl.converters.CryptoKey,
       required: true,
     },
