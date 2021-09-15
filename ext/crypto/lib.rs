@@ -64,6 +64,7 @@ use crate::key::Algorithm;
 use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
 use crate::key::HkdfOutput;
+use crate::key::KeyType;
 
 // Allowlist for RSA public exponents.
 lazy_static! {
@@ -274,15 +275,7 @@ pub enum KeyFormat {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum KeyType {
-  Private,
-  Public,
-  Secret,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "camelCase")]
 pub struct KeyData {
   // TODO(littledivy): Kept here to be used to `importKey`() in future.
   #[allow(dead_code)]

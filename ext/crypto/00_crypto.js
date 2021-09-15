@@ -215,6 +215,45 @@
     }
   }
 
+  function convertJwkRsaKey(jwk) {
+    // Section 6.3.2 of RFC7518
+    if (!jwk.e || !jwk.n) {
+      throw new DOMException(
+        "Missing n or e components in RSA key",
+        "DataError",
+      );
+    }
+
+    const publicKeyComps = {
+      n: decodeSymmetricKey(jwk.n),
+      e: decodeSymmetricKey(jwk.e),
+    };
+
+    const modulusLength = publicKeyComps.n.length * 8;
+
+    if (jwk.d) {
+      return {
+        type: "private",
+        pkcs1: buildRsaPkcs1({
+          ...publicKeyComps,
+          d: decodeSymmetricKey(jwk.d),
+          p: decodeSymmetricKey(jwk.p),
+          q: decodeSymmetricKey(jwk.q),
+          dp: decodeSymmetricKey(jwk.dp),
+          dq: decodeSymmetricKey(jwk.dq),
+          qi: decodeSymmetricKey(jwk.qi),
+        }, "private"),
+        modulusLength,
+      };
+    } else {
+      return {
+        type: "public",
+        pkcs1: buildRsaPkcs1(publicKeyComps, "public"),
+        modulusLength,
+      };
+    }
+  }
+
   // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
   // 18.4.4
   function normalizeAlgorithm(algorithm, op) {
@@ -875,7 +914,7 @@
               }
 
               // 7.
-              if (keyUsages.length > 0 && jwk.use && jwk.use !== "sign") {
+              if (keyUsages.length > 0 && jwk.use && jwk.use !== "sig") {
                 throw new DOMException(
                   "`use` member of JsonWebKey must be `sign`",
                   "DataError",
@@ -951,7 +990,7 @@
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "raw",
-            key_type: "secret",
+            keyType: "secret",
             data,
           });
 
@@ -1005,6 +1044,7 @@
               WeakMapPrototypeSet(KEY_STORE, handle, {
                 // PKCS#1 for RSA
                 type: "raw",
+                keyType: "private",
                 data,
               });
 
@@ -1025,9 +1065,147 @@
 
               return key;
             }
+            case "jwk": {
+              // 2. https://w3c.github.io/webcrypto/#rsassa-pkcs1-operations
+              let hash;
+
+              const jwk = keyData;
+              // 2.
+              if (
+                ArrayPrototypeFind(
+                  keyUsages,
+                  (u) =>
+                    !ArrayPrototypeIncludes([jwk.d ? "sign" : "verify"], u),
+                ) !== undefined
+              ) {
+                throw new DOMException("Invalid key usages", "SyntaxError");
+              }
+              // 3.
+              if (jwk.kty !== "RSA") {
+                throw new DOMException(
+                  "`kty` member of JsonWebKey must be `RSA`",
+                  "DataError",
+                );
+              }
+
+              // 4.
+              if (keyUsages.length > 0 && jwk.use && jwk.use !== "sig") {
+                throw new DOMException(
+                  "`use` member of JsonWebKey must be `sig`",
+                  "DataError",
+                );
+              }
+
+              // 5.
+              // Section 4.3 of RFC7517
+              if (jwk.key_ops) {
+                if (
+                  ArrayPrototypeFind(
+                    jwk.key_ops,
+                    (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+                  ) !== undefined
+                ) {
+                  throw new DOMException(
+                    "`key_ops` member of JsonWebKey is invalid",
+                    "DataError",
+                  );
+                }
+
+                if (
+                  !ArrayPrototypeEvery(
+                    jwk.key_ops,
+                    (u) => ArrayPrototypeIncludes(keyUsages, u),
+                  )
+                ) {
+                  throw new DOMException(
+                    "`key_ops` member of JsonWebKey is invalid",
+                    "DataError",
+                  );
+                }
+              }
+
+              // 6.
+              if (jwk.ext === false && extractable == true) {
+                throw new DOMException(
+                  "`ext` member of JsonWebKey is invalid",
+                  "DataError",
+                );
+              }
+
+              // 7.
+              if (jwk.alg) {
+                switch (jwk.alg) {
+                  case "RS1": {
+                    hash = "SHA-1";
+                    break;
+                  }
+                  case "RS256": {
+                    hash = "SHA-256";
+                    break;
+                  }
+                  case "RS384": {
+                    hash = "SHA-384";
+                    break;
+                  }
+                  case "RS512": {
+                    hash = "SHA-512";
+                    break;
+                  }
+                  default:
+                    throw new DOMException(
+                      "`alg` member of JsonWebKey invalid",
+                      "DataError",
+                    );
+                }
+              }
+
+              //8.
+              if (hash) {
+                const normalizedHash = normalizeAlgorithm(hash, "digest");
+
+                if (normalizedHash.name !== normalizedAlgorithm.hash.name) {
+                  throw new DOMException(
+                    "Mismatched hash algorithm for JWK.alg",
+                    "DataError",
+                  );
+                }
+              }
+
+              //9.
+              const keyInfo = convertJwkRsaKey(jwk);
+
+              if (keyUsages.length == 0) {
+                throw new DOMException("Key usage is empty", "SyntaxError");
+              }
+
+              const handle = {};
+              WeakMapPrototypeSet(KEY_STORE, handle, {
+                type: "raw",
+                keyType: keyInfo.type,
+                data: keyInfo.pkcs1,
+              });
+
+              const algorithm = {
+                name: "RSASSA-PKCS1-v1_5",
+                modulusLength: keyInfo.modulusLength,
+                hash: normalizedAlgorithm.hash,
+              };
+
+              const key = constructKey(
+                keyInfo.type,
+                extractable,
+                usageIntersection(keyUsages, recognisedUsages),
+                algorithm,
+                handle,
+              );
+
+              return key;
+            }
             default:
               throw new DOMException("Not implemented", "NotSupportedError");
           }
+          /* Redundant break but deno_lint complains without it*/
+          break;
         }
         case "RSA-PSS": {
           switch (format) {
@@ -1063,7 +1241,7 @@
               WeakMapPrototypeSet(KEY_STORE, handle, {
                 // PKCS#1 for RSA
                 type: "raw",
-                key_type: "private",
+                keyType: "private",
                 data,
               });
 
@@ -1087,10 +1265,9 @@
             case "jwk": {
               // 2. https://w3c.github.io/webcrypto/#rss-pss-operations
               let hash;
-              let data;
-              let type;
 
               const jwk = keyData;
+
               // 2.
               if (
                 ArrayPrototypeFind(
@@ -1108,15 +1285,13 @@
                   "DataError",
                 );
               }
-
               // 4.
-              if (keyUsages.length > 0 && jwk.use && jwk.use !== "sign") {
+              if (keyUsages.length > 0 && jwk.use && jwk.use !== "sig") {
                 throw new DOMException(
                   "`use` member of JsonWebKey must be `sign`",
                   "DataError",
                 );
               }
-
               // 5.
               // Section 4.3 of RFC7517
               if (jwk.key_ops) {
@@ -1193,43 +1368,7 @@
               }
 
               //9.
-              if (jwk.d) {
-                // Section 6.3.2 of RFC7518
-                if (!jwk.e || !jwk.n) {
-                  throw new DOMException(
-                    "Missing n or e components in RSA key",
-                    "DataError",
-                  );
-                }
-
-                type = "private";
-                data = buildRsaPkcs1({
-                  n: decodeSymmetricKey(jwk.n),
-                  e: decodeSymmetricKey(jwk.e),
-                  d: decodeSymmetricKey(jwk.d),
-                  p: decodeSymmetricKey(jwk.p),
-                  q: decodeSymmetricKey(jwk.q),
-                  dp: decodeSymmetricKey(jwk.dp),
-                  dq: decodeSymmetricKey(jwk.dq),
-                  qi: decodeSymmetricKey(jwk.qi),
-                }, "private");
-              } else {
-                // Section 6.3.1 of RFC7518
-                if (!jwk.e || !jwk.n) {
-                  throw new DOMException(
-                    "Missing n or e components in RSA key",
-                    "DataError",
-                  );
-                }
-
-                type = "public";
-                data = buildRsaPkcs1({
-                  n: decodeSymmetricKey(jwk.n),
-                  e: decodeSymmetricKey(jwk.e),
-                }, "public");
-              }
-
-              const modulusLength = decodeSymmetricKey(jwk.n).length * 8;
+              const keyInfo = convertJwkRsaKey(jwk);
 
               if (keyUsages.length == 0) {
                 throw new DOMException("Key usage is empty", "SyntaxError");
@@ -1238,18 +1377,18 @@
               const handle = {};
               WeakMapPrototypeSet(KEY_STORE, handle, {
                 type: "raw",
-                key_type: type,
-                data,
+                keyType: keyInfo.type,
+                data: keyInfo.pkcs1,
               });
 
               const algorithm = {
                 name: "RSA-PSS",
-                modulusLength,
+                modulusLength: keyInfo.modulusLength,
                 hash: normalizedAlgorithm.hash,
               };
 
               const key = constructKey(
-                type,
+                keyInfo.type,
                 extractable,
                 usageIntersection(keyUsages, recognisedUsages),
                 algorithm,
@@ -1261,7 +1400,7 @@
             default:
               throw new DOMException("Not implemented", "NotSupportedError");
           }
-          /* lint requires break;*/
+          /* Redundant break but deno_lint complains without it*/
           break;
         }
         case "RSA-OAEP": {
@@ -1298,7 +1437,7 @@
               WeakMapPrototypeSet(KEY_STORE, handle, {
                 // PKCS#1 for RSA
                 type: "raw",
-                key_type: "",
+                keyType: "private",
                 data,
               });
 
@@ -1319,9 +1458,150 @@
 
               return key;
             }
+            case "jwk": {
+              // 2. https://w3c.github.io/webcrypto/#rss-oaep-operations
+              let hash;
+
+              const jwk = keyData;
+              // 2-3.
+              if (
+                ArrayPrototypeFind(
+                  keyUsages,
+                  (u) =>
+                    !ArrayPrototypeIncludes(
+                      jwk.d ? ["decrypt"] : ["encrypt"],
+                      u,
+                    ),
+                ) !== undefined
+              ) {
+                throw new DOMException("Invalid key usages", "SyntaxError");
+              }
+              // 4.
+              if (jwk.kty !== "RSA") {
+                throw new DOMException(
+                  "`kty` member of JsonWebKey must be `RSA`",
+                  "DataError",
+                );
+              }
+
+              // 5.
+              if (keyUsages.length > 0 && jwk.use && jwk.use !== "enc") {
+                throw new DOMException(
+                  "`use` member of JsonWebKey must be `enc`",
+                  "DataError",
+                );
+              }
+
+              // 6.
+              // Section 4.3 of RFC7517
+              if (jwk.key_ops) {
+                if (
+                  ArrayPrototypeFind(
+                    jwk.key_ops,
+                    (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+                  ) !== undefined
+                ) {
+                  throw new DOMException(
+                    "`key_ops` member of JsonWebKey is invalid",
+                    "DataError",
+                  );
+                }
+
+                if (
+                  !ArrayPrototypeEvery(
+                    jwk.key_ops,
+                    (u) => ArrayPrototypeIncludes(keyUsages, u),
+                  )
+                ) {
+                  throw new DOMException(
+                    "`key_ops` member of JsonWebKey is invalid",
+                    "DataError",
+                  );
+                }
+              }
+
+              // 7.
+              if (jwk.ext === false && extractable == true) {
+                throw new DOMException(
+                  "`ext` member of JsonWebKey is invalid",
+                  "DataError",
+                );
+              }
+
+              // 8.
+              if (jwk.alg) {
+                switch (jwk.alg) {
+                  case "RSA-OAEP": {
+                    hash = "SHA-1";
+                    break;
+                  }
+                  case "RSA-OAEP-256": {
+                    hash = "SHA-256";
+                    break;
+                  }
+                  case "RSA-OAEP-384": {
+                    hash = "SHA-384";
+                    break;
+                  }
+                  case "RSA-OAEP-512": {
+                    hash = "SHA-512";
+                    break;
+                  }
+                  default:
+                    throw new DOMException(
+                      "`alg` member of JsonWebKey invalid",
+                      "DataError",
+                    );
+                }
+              }
+
+              //9.
+              if (hash) {
+                const normalizedHash = normalizeAlgorithm(hash, "digest");
+
+                if (normalizedHash.name !== normalizedAlgorithm.hash.name) {
+                  throw new DOMException(
+                    "Mismatched hash algorithm for JWK.alg",
+                    "DataError",
+                  );
+                }
+              }
+
+              //10.
+              const keyInfo = convertJwkRsaKey(jwk);
+
+              if (keyUsages.length == 0) {
+                throw new DOMException("Key usage is empty", "SyntaxError");
+              }
+
+              const handle = {};
+              WeakMapPrototypeSet(KEY_STORE, handle, {
+                type: "raw",
+                keyType: keyInfo.type,
+                data: keyInfo.pkcs1,
+              });
+
+              const algorithm = {
+                name: "RSA-OEAP",
+                modulusLength: keyInfo.modulusLength,
+                hash: normalizedAlgorithm.hash,
+              };
+
+              const key = constructKey(
+                keyInfo.type,
+                extractable,
+                usageIntersection(keyUsages, recognisedUsages),
+                algorithm,
+                handle,
+              );
+
+              return key;
+            }
             default:
               throw new DOMException("Not implemented", "NotSupportedError");
           }
+          /* Redundant break but deno_lint complains without it*/
+          break;
         }
         // TODO(@littledivy): ECDSA
         case "HKDF": {
@@ -1351,7 +1631,7 @@
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "raw",
-            key_type: "secret",
+            keyType: "secret",
             data: keyData,
           });
 
@@ -1398,7 +1678,7 @@
           const handle = {};
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "raw",
-            key_type: "secret",
+            keyType: "secret",
             data: keyData,
           });
 
@@ -1850,7 +2130,7 @@
         WeakMapPrototypeSet(KEY_STORE, handle, {
           // PKCS#1 for RSA
           type: "raw",
-          key_type: "private",
+          keyType: "private",
           data: keyData,
         });
 
@@ -1912,7 +2192,7 @@
         WeakMapPrototypeSet(KEY_STORE, handle, {
           // PKCS#1 for RSA
           type: "raw",
-          key_type: "private",
+          keyType: "private",
           data: keyData,
         });
 
@@ -1970,7 +2250,7 @@
           });
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "pkcs8",
-            key_type: "private",
+            keyType: "private",
             data: keyData,
           });
         } else {
@@ -2029,7 +2309,7 @@
           });
           WeakMapPrototypeSet(KEY_STORE, handle, {
             type: "pkcs8",
-            key_type: "private",
+            keyType: "private",
             data: keyData,
           });
         } else {
@@ -2127,7 +2407,7 @@
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, {
           type: "raw",
-          key_type: "secret",
+          keyType: "secret",
           data: keyData,
         });
 
@@ -2169,7 +2449,7 @@
     const handle = {};
     WeakMapPrototypeSet(KEY_STORE, handle, {
       type: "raw",
-      key_type: "secret",
+      keyType: "secret",
       data: keyData,
     });
 
