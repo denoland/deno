@@ -165,7 +165,7 @@ mod windows {
         );
         assert_eq!(result, S_OK);
 
-        let mut environment_vars = maybe_env_vars.map(|v| get_env_vars(v));
+        let mut environment_vars = maybe_env_vars.map(get_env_vars);
         let mut attribute_list = ProcThreadAttributeList::new(console_handle);
         let mut startup_info: STARTUPINFOEXW = std::mem::zeroed();
         startup_info.StartupInfo.cb =

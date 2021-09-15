@@ -1617,13 +1617,14 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
         let mut echo = String::new();
         buf_reader.read_line(&mut echo).unwrap();
         println!("ECHO: {}", echo.escape_debug());
-        assert_ends_with_normalized(&echo, &s);
+        assert_ends_with_normalized(&echo, s);
       }
       PtyData::Output(s) => {
         let mut line = String::new();
         if s.ends_with('\n') {
           buf_reader.read_line(&mut line).unwrap();
         } else {
+          // assumes the buffer won't have overlapping virtual terminal sequences
           while normalize_text(&line).len() < normalize_text(s).len() {
             let mut buf = [0; 64 * 1024];
             let _n = buf_reader.read(&mut buf).unwrap();
@@ -1648,8 +1649,10 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
   }
 
   fn normalize_text(text: &str) -> String {
-    let move_cursor_right_re = Regex::new(r"\x1b\[1C").unwrap();
-    let text = move_cursor_right_re.replace_all(text, " ");
+    // This normalization function is not comprehensive and
+    // you will need to update as necessary
+    let move_cursor_right_one_re = Regex::new(r"\x1b\[1C").unwrap();
+    let text = move_cursor_right_one_re.replace_all(text, " ");
     let found_sequences_re =
       Regex::new(r"(\x1b\]0;[^\x07]*\x07)*(\x08)*(\x1b\[\d+X)*").unwrap();
     let text = STRIP_ANSI_RE
