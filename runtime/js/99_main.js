@@ -291,7 +291,7 @@ delete Object.prototype.__proto__;
     );
     core.registerErrorBuilder(
       "DOMExceptionDataError",
-      function DOMExceptionInvalidCharacterError(msg) {
+      function DOMExceptionDataError(msg) {
         return new domException.DOMException(msg, "DataError");
       },
     );
