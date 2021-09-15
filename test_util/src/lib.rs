@@ -44,9 +44,6 @@ use tokio_rustls::rustls::{self, Session};
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::accept_async;
 
-//#[cfg(unix)]
-//pub use pty;
-
 pub mod lsp;
 pub mod pty;
 
@@ -1610,27 +1607,44 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
         let mut echo = String::new();
         buf_reader.read_line(&mut echo).unwrap();
         println!("ECHO: {}", echo.escape_debug());
-        assert!(echo.starts_with(&s.trim()));
+        assert_ends_with_normalized(&echo, &s);
       }
       PtyData::Output(s) => {
         let mut line = String::new();
         if s.ends_with('\n') {
           buf_reader.read_line(&mut line).unwrap();
         } else {
-          while s != line {
+          while normalize_text(&line).len() < normalize_text(s).len() {
             let mut buf = [0; 64 * 1024];
             let _n = buf_reader.read(&mut buf).unwrap();
             let buf_str = std::str::from_utf8(&buf)
               .unwrap()
               .trim_end_matches(char::from(0));
             line += buf_str;
-            assert!(s.starts_with(&line));
           }
         }
         println!("OUTPUT {}", line.escape_debug());
-        assert_eq!(line, s);
+        assert_eq!(normalize_text(&line), normalize_text(s));
       }
     }
+  }
+
+  fn assert_ends_with_normalized(a: &str, b: &str) {
+    let a = normalize_text(a);
+    let b = normalize_text(b);
+    if !a.ends_with(&b) {
+      panic!("assert ends with failed.\nLeft:  {}\nRight: {}", a, b)
+    }
+  }
+
+  fn normalize_text(text: &str) -> String {
+    let move_cursor_right_re = Regex::new(r"\x1b\[1C").unwrap();
+    let text = move_cursor_right_re.replace_all(text, " ");
+    let found_sequences_re = Regex::new(r"(\x1b\]0;[^\x07]*\x07)*(\x08)*(\x1b\[\d+X)*").unwrap();
+    let text = STRIP_ANSI_RE.replace_all(&found_sequences_re.replace_all(&text, ""), "").replace("\r\n", "\n");
+    // get rid of any text that is overwritten with only a carriage return
+    let carriage_return_re = Regex::new(r"[^\n]*\r([^\n])").unwrap();
+    carriage_return_re.replace_all(&text, "$1").trim().to_string()
   }
 }
 

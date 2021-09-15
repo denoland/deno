@@ -75,8 +75,7 @@ pub fn create_pty(
   cwd: impl AsRef<Path>,
   env_vars: Option<HashMap<String, String>>,
 ) -> Box<dyn Pty> {
-  let command = format!("{} {}", program.as_ref().display(), args.join(" ")).trim().to_string();
-  let pty = windows::WinPseudoConsole::new(&command, env_vars);
+  let pty = windows::WinPseudoConsole::new(program, args, &cwd.as_ref().to_string_lossy().to_string(), env_vars);
   Box::new(pty)
 }
 
@@ -85,6 +84,7 @@ mod windows {
   use std::collections::HashMap;
   use std::io::Read;
   use std::io::Write;
+  use std::path::Path;
   use std::ptr;
   use std::time::Duration;
 
@@ -128,17 +128,18 @@ mod windows {
   }
 
   pub struct WinPseudoConsole {
-    stdin_write_handle: HANDLE,
-    stdout_read_handle: HANDLE,
-    process_handle: HANDLE,
-    thread_handle: HANDLE,
-    console_handle: HPCON,
+    stdin_write_handle: WinHandle,
+    stdout_read_handle: WinHandle,
+    // keep these alive for the duration of the pseudo console
+    _process_handle: WinHandle,
+    _thread_handle: WinHandle,
     _attribute_list: ProcThreadAttributeList,
   }
 
   impl WinPseudoConsole {
     pub fn new(
-      command_text: &str,
+      program: impl AsRef<Path>,
+      args: &[&str],
       cwd: &str,
       maybe_env_vars: Option<HashMap<String, String>>,
     ) -> Self {
@@ -153,8 +154,8 @@ mod windows {
 
         let result = CreatePseudoConsole(
           size,
-          stdin_read_handle,
-          stdout_write_handle,
+          stdin_read_handle.as_raw(),
+          stdout_write_handle.as_raw(),
           0,
           &mut console_handle,
         );
@@ -169,9 +170,13 @@ mod windows {
         startup_info.lpAttributeList = attribute_list.as_mut_ptr();
 
         let mut proc_info: PROCESS_INFORMATION = std::mem::zeroed();
-        let mut command_str = to_windows_str(command_text);
+        let command = format!("\"{}\" {}", program.as_ref().to_string_lossy(), args.join(" ")).trim().to_string();
+        let mut application_str = to_windows_str(&program.as_ref().to_string_lossy());
+        let mut command_str = to_windows_str(&command);
+        let mut cwd = to_windows_str(cwd);
+
         assert_win_success!(CreateProcessW(
-          ptr::null(),
+          application_str.as_mut_ptr(),
           command_str.as_mut_ptr(),
           ptr::null_mut(),
           ptr::null_mut(),
@@ -181,35 +186,37 @@ mod windows {
             .as_mut()
             .map(|v| v.as_mut_ptr() as LPVOID)
             .unwrap_or(ptr::null_mut()),
-          ptr::null(),
+          cwd.as_mut_ptr(),
           &mut startup_info.StartupInfo,
           &mut proc_info,
         ));
 
         // close the handles that the pseudoconsole now has
-        close_handle(stdin_read_handle);
-        close_handle(stdout_write_handle);
+        drop(stdin_read_handle);
+        drop(stdout_write_handle);
 
         // start a thread that will close the pseudoconsole stdout on process exit
-        let owned_stdout_read_handle =
-          OwnedHandle::new_duplicate(stdout_read_handle);
-        let owned_thread_handle = OwnedHandle::new_duplicate(proc_info.hThread);
-        let owned_console_handle = OwnedHandle::new(console_handle);
-        std::thread::spawn(move || {
-          WaitForSingleObject(owned_thread_handle.as_raw(), INFINITE);
-          // wait for the reading thread to catch up
-          std::thread::sleep(Duration::from_millis(200));
-          // now close stdout and the console handle
-          drop(owned_stdout_read_handle);
-          ClosePseudoConsole(owned_console_handle.as_raw());
+        let thread_handle = WinHandle::new(proc_info.hThread);
+        std::thread::spawn({
+          let stdout_read_handle = stdout_read_handle.duplicate();
+          let thread_handle = thread_handle.duplicate();
+          let console_handle = WinHandle::new(console_handle);
+          move || {
+            WaitForSingleObject(thread_handle.as_raw(), INFINITE);
+            // wait for the reading thread to catch up
+            std::thread::sleep(Duration::from_millis(200));
+            // close stdout and the console handle in order to close the
+            // pipe for the reader
+            drop(stdout_read_handle);
+            ClosePseudoConsole(console_handle.take());
+          }
         });
 
         Self {
           stdin_write_handle,
           stdout_read_handle,
-          console_handle,
-          process_handle: proc_info.hProcess,
-          thread_handle: proc_info.hThread,
+          _process_handle: WinHandle::new(proc_info.hProcess),
+          _thread_handle: thread_handle,
           _attribute_list: attribute_list,
         }
       }
@@ -220,8 +227,10 @@ mod windows {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
       unsafe {
         let mut bytes_read = 0;
+        // don't bother checking the result of this call as it will be false
+        // when the stdout pipe is closed and bytes_read will be 0 in that case
         ReadFile(
-          self.stdout_read_handle,
+          self.stdout_read_handle.as_raw(),
           buf.as_mut_ptr() as _,
           buf.len() as u32,
           &mut bytes_read,
@@ -230,7 +239,7 @@ mod windows {
         Ok(bytes_read as usize)
       }
     }
-}
+  }
 
   impl Pty for WinPseudoConsole {
     fn write_text(&mut self, text: &str) {
@@ -245,7 +254,7 @@ mod windows {
       unsafe {
         let mut bytes_written = 0;
         assert_win_success!(WriteFile(
-          self.stdin_write_handle,
+          self.stdin_write_handle.as_raw(),
           buffer.as_ptr() as *const _,
           buffer.len() as u32,
           &mut bytes_written,
@@ -261,57 +270,55 @@ mod windows {
     }
   }
 
-  impl Drop for WinPseudoConsole {
-    fn drop(self: &mut WinPseudoConsole) {
-      unsafe {
-        close_handle(self.thread_handle);
-        close_handle(self.process_handle);
-        close_handle(self.stdin_write_handle);
-        close_handle(self.stdout_read_handle);
-        ClosePseudoConsole(self.console_handle);
-      }
-    }
-  }
-
-  struct OwnedHandle {
+  struct WinHandle {
     inner: HANDLE,
+    close_on_drop: bool,
   }
 
-  impl OwnedHandle {
+  impl WinHandle {
     pub fn new(handle: HANDLE) -> Self {
-      OwnedHandle { inner: handle }
+      WinHandle { inner: handle, close_on_drop: true }
     }
 
-    pub fn new_duplicate(handle: HANDLE) -> Self {
+    pub fn duplicate(&self) -> WinHandle {
       unsafe {
         let process_handle = GetCurrentProcess();
-        let mut new_handle = ptr::null_mut();
+        let mut duplicate_handle = ptr::null_mut();
         assert_win_success!(DuplicateHandle(
           process_handle,
-          handle,
+          self.inner,
           process_handle,
-          &mut new_handle,
+          &mut duplicate_handle,
           0,
           0,
           DUPLICATE_SAME_ACCESS,
         ));
 
-        OwnedHandle { inner: new_handle }
+        WinHandle::new(duplicate_handle)
       }
     }
 
     pub fn as_raw(&self) -> HANDLE {
       self.inner
     }
+
+    pub fn take(mut self) -> HANDLE {
+      self.close_on_drop = false;
+      self.inner
+    }
   }
 
-  unsafe impl Send for OwnedHandle {}
-  unsafe impl Sync for OwnedHandle {}
+  unsafe impl Send for WinHandle {}
+  unsafe impl Sync for WinHandle {}
 
-  impl Drop for OwnedHandle {
+  impl Drop for WinHandle {
     fn drop(&mut self) {
-      unsafe {
-        close_handle(self.inner);
+      if self.close_on_drop {
+        unsafe {
+          if !self.inner.is_null() && self.inner != INVALID_HANDLE_VALUE {
+            winapi::um::handleapi::CloseHandle(self.inner);
+          }
+        }
       }
     }
   }
@@ -378,7 +385,7 @@ mod windows {
     }
   }
 
-  fn create_pipe() -> (HANDLE, HANDLE) {
+  fn create_pipe() -> (WinHandle, WinHandle) {
     unsafe {
       let mut read_handle = std::ptr::null_mut();
       let mut write_handle = std::ptr::null_mut();
@@ -390,7 +397,7 @@ mod windows {
         0
       ));
 
-      (read_handle, write_handle)
+      (WinHandle::new(read_handle), WinHandle::new(write_handle))
     }
   }
 
@@ -414,11 +421,5 @@ mod windows {
         .join("")
     );
     text.encode_utf16().collect::<Vec<_>>()
-  }
-
-  unsafe fn close_handle(handle: HANDLE) {
-    if !handle.is_null() && handle != INVALID_HANDLE_VALUE {
-      winapi::um::handleapi::CloseHandle(handle);
-    }
   }
 }
