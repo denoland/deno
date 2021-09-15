@@ -23,15 +23,15 @@ pub fn create_pty(
   if fork.is_parent().is_ok() {
     Box::new(unix::UnixPty { fork })
   } else {
-    if let Some(env_vars) = env_vars {
-      for (key, value) in env_vars {
-        std::env::set_var(key.to_string(), value.to_string());
-      }
-    }
-    std::env::set_current_dir(cwd).unwrap();
-    let err = exec::Command::new(program.as_ref()).args(args).exec();
-    println!("err {}", err);
-    unreachable!()
+    std::process::Command::new(program.as_ref())
+      .current_dir(cwd)
+      .args(args)
+      .envs(env_vars.unwrap_or(HashMap::new()))
+      .spawn()
+      .unwrap()
+      .wait()
+      .unwrap();
+    unreachable!();
   }
 }
 

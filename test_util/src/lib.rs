@@ -1591,8 +1591,13 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
   use crate::pty::create_pty;
   use std::io::BufRead;
 
+  let deno_dir = new_deno_dir();
   let mut env_vars = HashMap::new();
   env_vars.insert("NO_COLOR".to_string(), "1".to_string());
+  env_vars.insert(
+    "DENO_DIR".to_string(),
+    deno_dir.path().to_string_lossy().to_string(),
+  );
   let console = create_pty(
     deno_exe_path(),
     &args.split_whitespace().collect::<Vec<_>>(),
