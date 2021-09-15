@@ -362,7 +362,7 @@ unitTest(async function generateImportHmacJwk() {
   const key = await crypto.subtle.generateKey(
     {
       name: "HMAC",
-      hash: "SHA-256",
+      hash: "SHA-512",
     },
     true,
     ["sign"],
@@ -374,10 +374,10 @@ unitTest(async function generateImportHmacJwk() {
 
   const exportedKey = await crypto.subtle.exportKey("jwk", key);
   assertEquals(exportedKey.kty, "oct");
-  assertEquals(exportedKey.alg, "HS256");
+  assertEquals(exportedKey.alg, "HS512");
   assertEquals(exportedKey.key_ops, ["sign"]);
   assertEquals(exportedKey.ext, true);
-  assertEquals(typeof exportedKey.k == "string");
+  assert(typeof exportedKey.k == "string");
   assertEquals(exportedKey.k.length, 171);
 });
 
