@@ -68,6 +68,7 @@
     },
     Pbkdf2Params: { hash: "HashAlgorithmIdentifier", salt: "BufferSource" },
     RsaOaepParams: { label: "BufferSource" },
+    RsaHashedImportParams: { hash: "HashAlgorithmIdentifier" },
   };
 
   const supportedAlgorithms = {
@@ -102,6 +103,9 @@
       "HMAC": null,
     },
     "importKey": {
+      "RSASSA-PKCS1-v1_5": "RsaHashedImportParams",
+      "RSA-PSS": "RsaHashedImportParams",
+      "RSA-OAEP": "RsaHashedImportParams",
       "HMAC": "HmacImportParams",
       "HKDF": null,
       "PBKDF2": null,
@@ -664,7 +668,6 @@
      * @param {KeyUsages[]} keyUsages
      * @returns {Promise<any>}
      */
-    // deno-lint-ignore require-await
     async importKey(format, keyData, algorithm, extractable, keyUsages) {
       webidl.assertBranded(this, SubtleCrypto);
       const prefix = "Failed to execute 'importKey' on 'SubtleCrypto'";
@@ -898,8 +901,180 @@
 
           return key;
         }
-        // TODO(@littledivy): RSASSA-PKCS1-v1_5
-        // TODO(@littledivy): RSA-PSS
+        case "RSASSA-PKCS1-v1_5": {
+          switch (format) {
+            case "pkcs8": {
+              // 1.
+              if (
+                ArrayPrototypeFind(
+                  keyUsages,
+                  (u) => !ArrayPrototypeIncludes(["sign"], u),
+                ) !== undefined
+              ) {
+                throw new DOMException("Invalid key usages", "SyntaxError");
+              }
+
+              if (keyUsages.length == 0) {
+                throw new DOMException("Key usage is empty", "SyntaxError");
+              }
+
+              // 2-9.
+              const { modulusLength, publicExponent, data } = await core
+                .opAsync(
+                  "op_crypto_import_key",
+                  {
+                    algorithm: "RSASSA-PKCS1-v1_5",
+                    format: "pkcs8",
+                    // Needed to perform step 7 without normalization.
+                    hash: normalizedAlgorithm.hash.name,
+                  },
+                  keyData,
+                );
+
+              const handle = {};
+              WeakMapPrototypeSet(KEY_STORE, handle, {
+                // PKCS#1 for RSA
+                type: "raw",
+                data,
+              });
+
+              const algorithm = {
+                name: "RSASSA-PKCS1-v1_5",
+                modulusLength,
+                publicExponent,
+                hash: normalizedAlgorithm.hash,
+              };
+
+              const key = constructKey(
+                "private",
+                extractable,
+                usageIntersection(keyUsages, recognisedUsages),
+                algorithm,
+                handle,
+              );
+
+              return key;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
+        case "RSA-PSS": {
+          switch (format) {
+            case "pkcs8": {
+              // 1.
+              if (
+                ArrayPrototypeFind(
+                  keyUsages,
+                  (u) => !ArrayPrototypeIncludes(["sign"], u),
+                ) !== undefined
+              ) {
+                throw new DOMException("Invalid key usages", "SyntaxError");
+              }
+
+              if (keyUsages.length == 0) {
+                throw new DOMException("Key usage is empty", "SyntaxError");
+              }
+
+              // 2-9.
+              const { modulusLength, publicExponent, data } = await core
+                .opAsync(
+                  "op_crypto_import_key",
+                  {
+                    algorithm: "RSA-PSS",
+                    format: "pkcs8",
+                    // Needed to perform step 7 without normalization.
+                    hash: normalizedAlgorithm.hash.name,
+                  },
+                  keyData,
+                );
+
+              const handle = {};
+              WeakMapPrototypeSet(KEY_STORE, handle, {
+                // PKCS#1 for RSA
+                type: "raw",
+                data,
+              });
+
+              const algorithm = {
+                name: "RSA-PSS",
+                modulusLength,
+                publicExponent,
+                hash: normalizedAlgorithm.hash,
+              };
+
+              const key = constructKey(
+                "private",
+                extractable,
+                usageIntersection(keyUsages, recognisedUsages),
+                algorithm,
+                handle,
+              );
+
+              return key;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
+        case "RSA-OAEP": {
+          switch (format) {
+            case "pkcs8": {
+              // 1.
+              if (
+                ArrayPrototypeFind(
+                  keyUsages,
+                  (u) => !ArrayPrototypeIncludes(["decrypt", "unwrapKey"], u),
+                ) !== undefined
+              ) {
+                throw new DOMException("Invalid key usages", "SyntaxError");
+              }
+
+              if (keyUsages.length == 0) {
+                throw new DOMException("Key usage is empty", "SyntaxError");
+              }
+
+              // 2-9.
+              const { modulusLength, publicExponent, data } = await core
+                .opAsync(
+                  "op_crypto_import_key",
+                  {
+                    algorithm: "RSA-OAEP",
+                    format: "pkcs8",
+                    // Needed to perform step 7 without normalization.
+                    hash: normalizedAlgorithm.hash.name,
+                  },
+                  keyData,
+                );
+
+              const handle = {};
+              WeakMapPrototypeSet(KEY_STORE, handle, {
+                // PKCS#1 for RSA
+                type: "raw",
+                data,
+              });
+
+              const algorithm = {
+                name: "RSA-OAEP",
+                modulusLength,
+                publicExponent,
+                hash: normalizedAlgorithm.hash,
+              };
+
+              const key = constructKey(
+                "private",
+                extractable,
+                usageIntersection(keyUsages, recognisedUsages),
+                algorithm,
+                handle,
+              );
+
+              return key;
+            }
+            default:
+              throw new DOMException("Not implemented", "NotSupportedError");
+          }
+        }
         // TODO(@littledivy): ECDSA
         case "HKDF": {
           if (format !== "raw") {
