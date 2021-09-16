@@ -173,11 +173,11 @@
   }
 
   function readAllSyncSized(r, size) {
-    const buf = new Uint8Array(size);
+    const buf = new Uint8Array(size + 1); // 1B to detect extended files
     let cursor = 0;
 
     while (cursor < size) {
-      const sliceEnd = MathMin(size, cursor + READ_PER_ITER);
+      const sliceEnd = MathMin(size + 1, cursor + READ_PER_ITER);
       const slice = buf.subarray(cursor, sliceEnd);
       const read = r.readSync(slice);
       if (typeof read == "number") {
@@ -186,16 +186,24 @@
         break;
       }
     }
-
-    return buf;
+    
+    // Handle truncated or extended files during read
+    if (cursor > size) {
+      // Read remaining and concat
+      return concatBuffers([buf, readAllSync(r)]);
+    } else if(cursor < size) {
+      return buf.subarray(0, cursor);
+    } else { // cursor == size
+      return buf;
+    }
   }
 
   async function readAllInnerSized(r, size, options) {
-    const buf = new Uint8Array(size);
+    const buf = new Uint8Array(size + 1); // 1B to detect extended files
     let cursor = 0;
     const signal = options?.signal ?? null;
     while (!signal?.aborted && cursor < size) {
-      const sliceEnd = MathMin(size, cursor + READ_PER_ITER);
+      const sliceEnd = MathMin(size + 1, cursor + READ_PER_ITER);
       const slice = buf.subarray(cursor, sliceEnd);
       const read = await r.read(slice);
       if (typeof read == "number") {
@@ -207,7 +215,16 @@
     if (signal?.aborted) {
       throw new DOMException("The read operation was aborted.", "AbortError");
     }
-    return buf;
+    
+    // Handle truncated or extended files during read
+    if (cursor > size) {
+      // Read remaining and concat
+      return concatBuffers([buf, await readAllInner(r, options)]);
+    } else if(cursor < size) {
+      return buf.subarray(0, cursor);
+    } else { // cursor == size
+      return buf;
+    }
   }
 
   window.__bootstrap.io = {
