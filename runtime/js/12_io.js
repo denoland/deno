@@ -186,12 +186,12 @@
         break;
       }
     }
-    
+
     // Handle truncated or extended files during read
     if (cursor > size) {
       // Read remaining and concat
       return concatBuffers([buf, readAllSync(r)]);
-    } else if(cursor < size) {
+    } else if (cursor < size) {
       return buf.subarray(0, cursor);
     } else { // cursor == size
       return buf;
@@ -215,12 +215,12 @@
     if (signal?.aborted) {
       throw new DOMException("The read operation was aborted.", "AbortError");
     }
-    
+
     // Handle truncated or extended files during read
     if (cursor > size) {
       // Read remaining and concat
       return concatBuffers([buf, await readAllInner(r, options)]);
-    } else if(cursor < size) {
+    } else if (cursor < size) {
       return buf.subarray(0, cursor);
     } else { // cursor == size
       return buf;
