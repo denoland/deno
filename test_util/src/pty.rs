@@ -3,12 +3,17 @@ use std::io::Read;
 use std::path::Path;
 
 pub trait Pty: Read {
-  // The `Write` trait is not implemented in order to more easily
-  // do platform specific processing on the text
   fn write_text(&mut self, text: &str);
 
   fn write_line(&mut self, text: &str) {
     self.write_text(&format!("{}\n", text));
+  }
+
+  /// Reads the output to the EOF.
+  fn read_all_output(&mut self) -> String {
+    let mut text = String::new();
+    self.read_to_string(&mut text).unwrap();
+    text
   }
 }
 
@@ -205,7 +210,7 @@ mod windows {
         drop(stdin_read_handle);
         drop(stdout_write_handle);
 
-        // start a thread that will close the pseudoconsole stdout on process exit
+        // start a thread that will close the pseudoconsole on process exit
         let thread_handle = WinHandle::new(proc_info.hThread);
         std::thread::spawn({
           let thread_handle = thread_handle.duplicate();
@@ -270,7 +275,6 @@ mod windows {
           &mut bytes_written,
           ptr::null_mut(),
         ));
-
         Ok(bytes_written as usize)
       }
     }

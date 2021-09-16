@@ -1603,7 +1603,9 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
           let mut echo = String::new();
           buf_reader.read_line(&mut echo).unwrap();
           println!("ECHO: {}", echo.escape_debug());
-          assert_ends_with_normalized(&echo, s);
+
+          // Windows may also echo the previous line, so only check the end
+          assert!(normalize_text(&echo).ends_with(&normalize_text(s)));
         }
         PtyData::Output(s) => {
           let mut line = String::new();
@@ -1628,30 +1630,28 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
     }
   });
 
-  fn assert_ends_with_normalized(a: &str, b: &str) {
-    let a = normalize_text(a);
-    let b = normalize_text(b);
-    if !a.ends_with(&b) {
-      panic!("assert ends with failed.\nLeft:  {}\nRight: {}", a, b)
-    }
-  }
-
+  // This normalization function is not comprehensive
+  // and may need to updated as new scenarios emerge.
   fn normalize_text(text: &str) -> String {
-    // This normalization function is not comprehensive and
-    // may need to updated as new scenarios emerge
-    let move_cursor_right_one_re = Regex::new(r"\x1b\[1C").unwrap();
-    let text = move_cursor_right_one_re.replace_all(text, " ");
-    let found_sequences_re =
-      Regex::new(r"(\x1b\]0;[^\x07]*\x07)*(\x08)*(\x1b\[\d+X)*").unwrap();
-    let text = STRIP_ANSI_RE
-      .replace_all(&found_sequences_re.replace_all(&text, ""), "")
-      .replace("\r\n", "\n");
+    lazy_static! {
+      static ref MOVE_CURSOR_RIGHT_ONE_RE: Regex =
+        Regex::new(r"\x1b\[1C").unwrap();
+      static ref FOUND_SEQUENCES_RE: Regex =
+        Regex::new(r"(\x1b\]0;[^\x07]*\x07)*(\x08)*(\x1b\[\d+X)*").unwrap();
+      static ref CARRIAGE_RETURN_RE: Regex =
+        Regex::new(r"[^\n]*\r([^\n])").unwrap();
+    }
+
+    // any "move cursor right" sequences should just be a space
+    let text = MOVE_CURSOR_RIGHT_ONE_RE.replace_all(text, " ");
+    // replace additional virtual terminal sequences that strip ansi codes doesn't catch
+    let text = FOUND_SEQUENCES_RE.replace_all(&text, "");
+    // strip any ansi codes, which also strips more terminal sequences
+    let text = strip_ansi_codes(&text);
     // get rid of any text that is overwritten with only a carriage return
-    let carriage_return_re = Regex::new(r"[^\n]*\r([^\n])").unwrap();
-    carriage_return_re
-      .replace_all(&text, "$1")
-      .trim()
-      .to_string()
+    let text = CARRIAGE_RETURN_RE.replace_all(&text, "$1");
+    // finally, trim surrounding whitespace
+    text.trim().to_string()
   }
 }
 
