@@ -56,8 +56,8 @@ fn pty_unpaired_braces() {
 #[test]
 fn pty_bad_input() {
   util::with_pty(&["repl"], |mut console| {
-    console.write_text("'\\u{1f3b5}'[0]\n");
-    console.write_text("close();\n");
+    console.write_line("'\\u{1f3b5}'[0]");
+    console.write_line("close();");
 
     let mut output = String::new();
     console.read_to_string(&mut output).unwrap();

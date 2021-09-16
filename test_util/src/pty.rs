@@ -359,29 +359,23 @@ mod windows {
         let mut buffer = vec![0u8; size];
         let attribute_list_ptr = buffer.as_mut_ptr() as _;
 
-        assert_eq!(
-          InitializeProcThreadAttributeList(
-            attribute_list_ptr,
-            attribute_count,
-            0,
-            &mut size,
-          ),
-          TRUE
-        );
+        assert_win_success!(InitializeProcThreadAttributeList(
+          attribute_list_ptr,
+          attribute_count,
+          0,
+          &mut size,
+        ));
 
         const PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE: usize = 0x00020016;
-        assert_eq!(
-          UpdateProcThreadAttribute(
-            attribute_list_ptr,
-            0,
-            PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
-            console_handle,
-            std::mem::size_of::<HPCON>(),
-            ptr::null_mut(),
-            ptr::null_mut(),
-          ),
-          TRUE
-        );
+        assert_win_success!(UpdateProcThreadAttribute(
+          attribute_list_ptr,
+          0,
+          PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
+          console_handle,
+          std::mem::size_of::<HPCON>(),
+          ptr::null_mut(),
+          ptr::null_mut(),
+        ));
 
         ProcThreadAttributeList { buffer }
       }
@@ -424,7 +418,7 @@ mod windows {
 
   fn get_env_vars(env_vars: HashMap<String, String>) -> Vec<u16> {
     // each environment variable is in the form `name=value\0`
-    // and then entire block is then terminated by NULL (\0)
+    // and the entire block is then terminated by NULL (\0)
     format!(
       "{}\0",
       env_vars

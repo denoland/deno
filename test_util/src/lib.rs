@@ -1638,7 +1638,7 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
 
   fn normalize_text(text: &str) -> String {
     // This normalization function is not comprehensive and
-    // you will need to update as necessary
+    // may need to updated as new scenarios emerge
     let move_cursor_right_one_re = Regex::new(r"\x1b\[1C").unwrap();
     let text = move_cursor_right_one_re.replace_all(text, " ");
     let found_sequences_re =
