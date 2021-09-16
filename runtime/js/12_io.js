@@ -191,10 +191,8 @@
     if (cursor > size) {
       // Read remaining and concat
       return concatBuffers([buf, readAllSync(r)]);
-    } else if (cursor < size) {
-      return buf.subarray(0, cursor);
     } else { // cursor == size
-      return buf;
+      return buf.subarray(0, cursor);
     }
   }
 
@@ -220,10 +218,8 @@
     if (cursor > size) {
       // Read remaining and concat
       return concatBuffers([buf, await readAllInner(r, options)]);
-    } else if (cursor < size) {
+    } else {
       return buf.subarray(0, cursor);
-    } else { // cursor == size
-      return buf;
     }
   }
 
