@@ -53,6 +53,17 @@ use text_size::{TextRange, TextSize};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
+lazy_static::lazy_static! {
+  static ref BRACKET_ACCESSOR_RE: Regex = Regex::new(r#"^\[['"](.+)[\['"]\]$"#).unwrap();
+  static ref CAPTION_RE: Regex = Regex::new(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)").unwrap();
+  static ref CODEBLOCK_RE: Regex = Regex::new(r"^\s*[~`]{3}").unwrap();
+  static ref EMAIL_MATCH_RE: Regex = Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap();
+  static ref JSDOC_LINKS_RE: Regex = Regex::new(r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}").unwrap();
+  static ref PART_KIND_MODIFIER_RE: Regex = Regex::new(r",|\s+").unwrap();
+  static ref PART_RE: Regex = Regex::new(r"^(\S+)\s*-?\s*").unwrap();
+  static ref SCOPE_RE: Regex = Regex::new(r"scope_(\d)").unwrap();
+}
+
 const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
   &[".d.ts", ".ts", ".tsx", ".js", ".jsx", ".json"];
 
@@ -219,10 +230,8 @@ fn get_tag_body_text(tag: &JsDocTagInfo) -> Option<String> {
     let text = display_parts_to_string(display_parts);
     match tag.name.as_str() {
       "example" => {
-        let caption_regex =
-          Regex::new(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)").unwrap();
-        if caption_regex.is_match(&text) {
-          caption_regex
+        if CAPTION_RE.is_match(&text) {
+          CAPTION_RE
             .replace(&text, |c: &Captures| {
               format!("{}\n\n{}", &c[1], make_codeblock(&c[2]))
             })
@@ -231,13 +240,9 @@ fn get_tag_body_text(tag: &JsDocTagInfo) -> Option<String> {
           make_codeblock(&text)
         }
       }
-      "author" => {
-        let email_match_regex =
-          Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap();
-        email_match_regex
-          .replace(&text, |c: &Captures| format!("{} {}", &c[1], &c[2]))
-          .to_string()
-      }
+      "author" => EMAIL_MATCH_RE
+        .replace(&text, |c: &Captures| format!("{} {}", &c[1], &c[2]))
+        .to_string(),
       "default" => make_codeblock(&text),
       _ => replace_links(&text),
     }
@@ -248,11 +253,10 @@ fn get_tag_documentation(tag: &JsDocTagInfo) -> String {
   match tag.name.as_str() {
     "augments" | "extends" | "param" | "template" => {
       if let Some(display_parts) = &tag.text {
-        let part_regex = Regex::new(r"^(\S+)\s*-?\s*").unwrap();
         // TODO(@kitsonk) check logic in vscode about handling this API change
         // in tsserver
         let text = display_parts_to_string(display_parts);
-        let body: Vec<&str> = part_regex.split(&text).collect();
+        let body: Vec<&str> = PART_RE.split(&text).collect();
         if body.len() == 3 {
           let param = body[1];
           let doc = body[2];
@@ -284,8 +288,7 @@ fn get_tag_documentation(tag: &JsDocTagInfo) -> String {
 }
 
 fn make_codeblock(text: &str) -> String {
-  let codeblock_regex = Regex::new(r"^\s*[~`]{3}").unwrap();
-  if codeblock_regex.is_match(text) {
+  if CODEBLOCK_RE.is_match(text) {
     text.to_string()
   } else {
     format!("```\n{}\n```", text)
@@ -294,8 +297,7 @@ fn make_codeblock(text: &str) -> String {
 
 /// Replace JSDoc like links (`{@link http://example.com}`) with markdown links
 fn replace_links(text: &str) -> String {
-  let jsdoc_links_regex = Regex::new(r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}").unwrap();
-  jsdoc_links_regex
+  JSDOC_LINKS_RE
     .replace_all(text, |c: &Captures| match &c[1] {
       "linkcode" => format!(
         "[`{}`]({})",
@@ -320,8 +322,7 @@ fn replace_links(text: &str) -> String {
 }
 
 fn parse_kind_modifier(kind_modifiers: &str) -> HashSet<&str> {
-  let re = Regex::new(r",|\s+").unwrap();
-  re.split(kind_modifiers).collect()
+  PART_KIND_MODIFIER_RE.split(kind_modifiers).collect()
 }
 
 #[derive(Debug, Deserialize)]
@@ -1130,8 +1131,7 @@ impl RefactorActionInfo {
   pub fn is_preferred(&self, all_actions: &[RefactorActionInfo]) -> bool {
     if EXTRACT_CONSTANT.matches(&self.name) {
       let get_scope = |name: &str| -> Option<u32> {
-        let scope_regex = Regex::new(r"scope_(\d)").unwrap();
-        if let Some(captures) = scope_regex.captures(name) {
+        if let Some(captures) = SCOPE_RE.captures(name) {
           captures[1].parse::<u32>().ok()
         } else {
           None
@@ -1678,10 +1678,16 @@ impl CompletionEntry {
   }
 
   fn get_filter_text(&self) -> Option<String> {
-    // TODO(@kitsonk) this is actually quite a bit more complex.
-    // See `MyCompletionItem.getFilterText` in vscode completion.ts.
-    if self.name.starts_with('#') && self.insert_text.is_none() {
-      return Some(self.name.clone());
+    if self.name.starts_with('#') {
+      if let Some(insert_text) = &self.insert_text {
+        if insert_text.starts_with("this.#") {
+          return Some(insert_text.replace("this.#", ""));
+        } else {
+          return Some(insert_text.clone());
+        }
+      } else {
+        return Some(self.name.replace("#", ""));
+      }
     }
 
     if let Some(insert_text) = &self.insert_text {
@@ -1689,9 +1695,11 @@ impl CompletionEntry {
         return None;
       }
       if insert_text.starts_with('[') {
-        let re = Regex::new(r#"^\[['"](.+)['"]\]$"#).unwrap();
-        let insert_text = re.replace(insert_text, ".$1").to_string();
-        return Some(insert_text);
+        return Some(
+          BRACKET_ACCESSOR_RE
+            .replace(insert_text, |caps: &Captures| format!(".{}", &caps[1]))
+            .to_string(),
+        );
       }
     }
 
@@ -2518,9 +2526,15 @@ pub struct UserPreferences {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub include_completions_for_module_exports: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_completions_for_import_statements: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_completions_with_snippet_text: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub include_automatic_optional_chain_completions: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub include_completions_with_insert_text: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub allow_incomplete_completions: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub import_module_specifier_preference:
     Option<ImportModuleSpecifierPreference>,
@@ -3453,6 +3467,23 @@ mod tests {
     };
     let actual = fixture.get_filter_text();
     assert_eq!(actual, Some(".foo".to_string()));
+
+    let fixture = CompletionEntry {
+      kind: ScriptElementKind::MemberVariableElement,
+      name: "#abc".to_string(),
+      ..Default::default()
+    };
+    let actual = fixture.get_filter_text();
+    assert_eq!(actual, Some("abc".to_string()));
+
+    let fixture = CompletionEntry {
+      kind: ScriptElementKind::MemberVariableElement,
+      name: "#abc".to_string(),
+      insert_text: Some("this.#abc".to_string()),
+      ..Default::default()
+    };
+    let actual = fixture.get_filter_text();
+    assert_eq!(actual, Some("abc".to_string()));
   }
 
   #[test]

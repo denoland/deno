@@ -1030,8 +1030,10 @@ pub async fn op_crypto_import_key(
           // 7.
           if let Some(pk_hash) = pk_hash {
             if pk_hash != hash {
-              // TODO(@littledivy): DataError
-              return Err(type_error("Hash mismatch".to_string()));
+              return Err(custom_error(
+                "DOMExceptionDataError",
+                "Hash mismatch".to_string(),
+              ));
             }
           }
 
@@ -1042,15 +1044,16 @@ pub async fn op_crypto_import_key(
             )?;
 
           let bytes_consumed = private_key.encoded_len().map_err(|e| {
-            // TODO(@littledivy): DataError
-            custom_error("DOMExceptionOperationError", e.to_string())
+            custom_error("DOMExceptionDataError", e.to_string())
           })?;
 
           if bytes_consumed
             != rsa::pkcs1::der::Length::new(pk_info.private_key.len() as u16)
           {
-            // TODO(@littledivy): DataError
-            return Err(type_error("Some bytes were not consumed".to_string()));
+            return Err(custom_error(
+              "DOMExceptionDataError",
+              "Some bytes were not consumed".to_string(),
+            ));
           }
 
           Ok(ImportKeyResult {
@@ -1106,9 +1109,9 @@ pub async fn op_crypto_import_key(
                 ID_SHA384_OID => Some(CryptoHash::Sha384),
                 // id-sha256
                 ID_SHA512_OID => Some(CryptoHash::Sha512),
-                // TODO(@littledivy): DataError
                 _ => {
-                  return Err(type_error(
+                  return Err(custom_error(
+                    "DOMExceptionDataError",
                     "Unsupported hash algorithm".to_string(),
                   ))
                 }
@@ -1123,15 +1126,21 @@ pub async fn op_crypto_import_key(
 
               hash
             }
-            // TODO(@littledivy): DataError
-            _ => return Err(type_error("Unsupported algorithm".to_string())),
+            _ => {
+              return Err(custom_error(
+                "DOMExceptionDataError",
+                "Unsupported algorithm".to_string(),
+              ))
+            }
           };
 
           // 7.
           if let Some(pk_hash) = pk_hash {
             if pk_hash != hash {
-              // TODO(@littledivy): DataError
-              return Err(type_error("Hash mismatch".to_string()));
+              return Err(custom_error(
+                "DOMExceptionDataError",
+                "Hash mismatch".to_string(),
+              ));
             }
           }
 
@@ -1141,16 +1150,17 @@ pub async fn op_crypto_import_key(
               |e| custom_error("DOMExceptionOperationError", e.to_string()),
             )?;
 
-          let bytes_consumed = private_key.encoded_len().map_err(|e| {
-            // TODO(@littledivy): DataError
-            custom_error("DOMExceptionOperationError", e.to_string())
-          })?;
+          let bytes_consumed = private_key
+            .encoded_len()
+            .map_err(|e| custom_error("DataError", e.to_string()))?;
 
           if bytes_consumed
             != rsa::pkcs1::der::Length::new(pk_info.private_key.len() as u16)
           {
-            // TODO(@littledivy): DataError
-            return Err(type_error("Some bytes were not consumed".to_string()));
+            return Err(custom_error(
+              "DOMExceptionDataError",
+              "Some bytes were not consumed".to_string(),
+            ));
           }
 
           Ok(ImportKeyResult {
@@ -1206,9 +1216,9 @@ pub async fn op_crypto_import_key(
                 ID_SHA384_OID => Some(CryptoHash::Sha384),
                 // id-sha256
                 ID_SHA512_OID => Some(CryptoHash::Sha512),
-                // TODO(@littledivy): DataError
                 _ => {
-                  return Err(type_error(
+                  return Err(custom_error(
+                    "DOMExceptionDataError",
                     "Unsupported hash algorithm".to_string(),
                   ))
                 }
@@ -1223,15 +1233,21 @@ pub async fn op_crypto_import_key(
 
               hash
             }
-            // TODO(@littledivy): DataError
-            _ => return Err(type_error("Unsupported algorithm".to_string())),
+            _ => {
+              return Err(custom_error(
+                "DOMExceptionDataError",
+                "Unsupported algorithm".to_string(),
+              ))
+            }
           };
 
           // 7.
           if let Some(pk_hash) = pk_hash {
             if pk_hash != hash {
-              // TODO(@littledivy): DataError
-              return Err(type_error("Hash mismatch".to_string()));
+              return Err(custom_error(
+                "DOMExceptionDataError",
+                "Hash mismatch".to_string(),
+              ));
             }
           }
 
@@ -1242,15 +1258,16 @@ pub async fn op_crypto_import_key(
             )?;
 
           let bytes_consumed = private_key.encoded_len().map_err(|e| {
-            // TODO(@littledivy): DataError
-            custom_error("DOMExceptionOperationError", e.to_string())
+            custom_error("DOMExceptionDataError", e.to_string())
           })?;
 
           if bytes_consumed
             != rsa::pkcs1::der::Length::new(pk_info.private_key.len() as u16)
           {
-            // TODO(@littledivy): DataError
-            return Err(type_error("Some bytes were not consumed".to_string()));
+            return Err(custom_error(
+              "DOMExceptionDataError",
+              "Some bytes were not consumed".to_string(),
+            ));
           }
 
           Ok(ImportKeyResult {
