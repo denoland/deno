@@ -1,5 +1,5 @@
 {
-  "$id": "https://deno.land/schemas/config-file.v1.json",
+  "$id": "https://deno.land/x/deno/cli/schemas/config-file.v1.json",
   "$schema": "http://json-schema.org/draft-07/schema",
   "description": "A JSON representation of a Deno configuration file.",
   "required": [],
@@ -205,7 +205,7 @@
           "properties": {
             "tags": {
               "type": "array",
-              "description": "List of tag names that will be run. Empty list disables all tags and will only use rules from `iclude`.",
+              "description": "List of tag names that will be run. Empty list disables all tags and will only use rules from `include`.",
               "items": {
                 "type": "string"
               },
