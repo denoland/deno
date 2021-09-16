@@ -62,7 +62,7 @@ async function checkFirstBlocksSecond(opts: {
 }) {
   const firstProcess = runFlockTestProcess({
     exclusive: opts.firstExclusive,
-    sync: true,
+    sync: opts.sync,
   });
   const secondProcess = runFlockTestProcess({
     exclusive: opts.secondExclusive,
