@@ -464,9 +464,7 @@ pub async fn op_crypto_verify_key(
         KeyType::Private => {
           RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
         }
-        KeyType::Public => {
-          RsaPublicKey::from_pkcs1_der(&*args.key.data)?
-        }
+        KeyType::Public => RsaPublicKey::from_pkcs1_der(&*args.key.data)?,
         _ => return Err(type_error("Invalid Key format".to_string())),
       };
       let (padding, hashed) = match args
@@ -528,9 +526,7 @@ pub async fn op_crypto_verify_key(
         KeyType::Private => {
           RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
         }
-        KeyType::Public => {
-          RsaPublicKey::from_pkcs1_der(&*args.key.data)?
-        }
+        KeyType::Public => RsaPublicKey::from_pkcs1_der(&*args.key.data)?,
         _ => return Err(type_error("Invalid Key format".to_string())),
       };
       let rng = OsRng;
@@ -824,9 +820,7 @@ pub async fn op_crypto_encrypt_key(
         KeyType::Private => {
           RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
         }
-        KeyType::Public => {
-          RsaPublicKey::from_pkcs1_der(&*args.key.data)?
-        }
+        KeyType::Public => RsaPublicKey::from_pkcs1_der(&*args.key.data)?,
         _ => return Err(type_error("Invalid Key format".to_string())),
       };
       let label = args.label.map(|l| String::from_utf8_lossy(&*l).to_string());
