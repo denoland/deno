@@ -5,7 +5,7 @@ use test_util as util;
 
 #[test]
 fn pty_multiline() {
-  run_pty_test(|mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("(\n1 + 2\n)");
     console.write_line("{\nfoo: \"foo\"\n}");
     console.write_line("`\nfoo\n`");
@@ -38,7 +38,7 @@ fn pty_multiline() {
 
 #[test]
 fn pty_unpaired_braces() {
-  run_pty_test(|mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line(")");
     console.write_line("]");
     console.write_line("}");
@@ -55,7 +55,7 @@ fn pty_unpaired_braces() {
 
 #[test]
 fn pty_bad_input() {
-  run_pty_test(|mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_text("'\\u{1f3b5}'[0]\n");
     console.write_text("close();\n");
 
@@ -68,7 +68,7 @@ fn pty_bad_input() {
 
 #[test]
 fn pty_syntax_error_input() {
-  run_pty_test(|mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("('\\u')");
     console.write_line("('");
     console.write_line("close();");
@@ -83,7 +83,7 @@ fn pty_syntax_error_input() {
 
 #[test]
 fn pty_complete_symbol() {
-  run_pty_test(|mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("Symbol.it\t");
     console.write_line("close();");
 
@@ -96,7 +96,7 @@ fn pty_complete_symbol() {
 
 #[test]
 fn pty_complete_declarations() {
-  run_pty_test(|mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("class MyClass {}");
     console.write_line("My\t");
     console.write_line("let myVar;");
@@ -113,7 +113,7 @@ fn pty_complete_declarations() {
 
 #[test]
 fn pty_complete_primitives() {
-  run_pty_test(|mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("let func = function test(){}");
     console.write_line("func.appl\t");
     console.write_line("let str = ''");
@@ -137,7 +137,7 @@ fn pty_complete_primitives() {
 
 #[test]
 fn pty_ignore_symbols() {
-  run_pty_test(|mut console| {
+  util::with_pty(&["repl"], |mut console| {
     console.write_line("Array.Symbol\t");
     console.write_line("close();");
 
@@ -148,20 +148,6 @@ fn pty_ignore_symbols() {
       !output.contains("Uncaught TypeError: Array.Symbol is not a function")
     );
   });
-}
-
-fn run_pty_test(mut run: impl FnMut(Box<dyn util::pty::Pty>)) {
-  let deno_exe = util::deno_exe_path();
-  let mut env_vars = std::collections::HashMap::new();
-  env_vars.insert("NO_COLOR".to_string(), "1".to_string());
-  let pty = util::pty::create_pty(
-    &deno_exe.display().to_string(),
-    &["repl"],
-    util::testdata_path(),
-    Some(env_vars),
-  );
-
-  run(pty);
 }
 
 #[test]

@@ -1588,58 +1588,45 @@ pub enum PtyData {
 }
 
 pub fn test_pty2(args: &str, data: Vec<PtyData>) {
-  use crate::pty::create_pty;
   use std::io::BufRead;
 
-  let deno_dir = new_deno_dir();
-  let mut env_vars = HashMap::new();
-  env_vars.insert("NO_COLOR".to_string(), "1".to_string());
-  env_vars.insert(
-    "DENO_DIR".to_string(),
-    deno_dir.path().to_string_lossy().to_string(),
-  );
-  let console = create_pty(
-    deno_exe_path(),
-    &args.split_whitespace().collect::<Vec<_>>(),
-    testdata_path(),
-    Some(env_vars),
-  );
+  with_pty(&args.split_whitespace().collect::<Vec<_>>(), |console| {
+    let mut buf_reader = std::io::BufReader::new(console);
+    for d in data.iter() {
+      match d {
+        PtyData::Input(s) => {
+          println!("INPUT {}", s.escape_debug());
+          buf_reader.get_mut().write_text(s);
 
-  let mut buf_reader = std::io::BufReader::new(console);
-  for d in data {
-    match d {
-      PtyData::Input(s) => {
-        println!("INPUT {}", s.escape_debug());
-        buf_reader.get_mut().write_text(s);
-
-        // Because of tty echo, we should be able to read the same string back.
-        assert!(s.ends_with('\n'));
-        let mut echo = String::new();
-        buf_reader.read_line(&mut echo).unwrap();
-        println!("ECHO: {}", echo.escape_debug());
-        assert_ends_with_normalized(&echo, s);
-      }
-      PtyData::Output(s) => {
-        let mut line = String::new();
-        if s.ends_with('\n') {
-          buf_reader.read_line(&mut line).unwrap();
-        } else {
-          // assumes the buffer won't have overlapping virtual terminal sequences
-          while normalize_text(&line).len() < normalize_text(s).len() {
-            let mut buf = [0; 64 * 1024];
-            let bytes_read = buf_reader.read(&mut buf).unwrap();
-            assert!(bytes_read > 0);
-            let buf_str = std::str::from_utf8(&buf)
-              .unwrap()
-              .trim_end_matches(char::from(0));
-            line += buf_str;
-          }
+          // Because of tty echo, we should be able to read the same string back.
+          assert!(s.ends_with('\n'));
+          let mut echo = String::new();
+          buf_reader.read_line(&mut echo).unwrap();
+          println!("ECHO: {}", echo.escape_debug());
+          assert_ends_with_normalized(&echo, s);
         }
-        println!("OUTPUT {}", line.escape_debug());
-        assert_eq!(normalize_text(&line), normalize_text(s));
+        PtyData::Output(s) => {
+          let mut line = String::new();
+          if s.ends_with('\n') {
+            buf_reader.read_line(&mut line).unwrap();
+          } else {
+            // assumes the buffer won't have overlapping virtual terminal sequences
+            while normalize_text(&line).len() < normalize_text(s).len() {
+              let mut buf = [0; 64 * 1024];
+              let bytes_read = buf_reader.read(&mut buf).unwrap();
+              assert!(bytes_read > 0);
+              let buf_str = std::str::from_utf8(&buf)
+                .unwrap()
+                .trim_end_matches(char::from(0));
+              line += buf_str;
+            }
+          }
+          println!("OUTPUT {}", line.escape_debug());
+          assert_eq!(normalize_text(&line), normalize_text(s));
+        }
       }
     }
-  }
+  });
 
   fn assert_ends_with_normalized(a: &str, b: &str) {
     let a = normalize_text(a);
@@ -1666,6 +1653,29 @@ pub fn test_pty2(args: &str, data: Vec<PtyData>) {
       .trim()
       .to_string()
   }
+}
+
+pub fn with_pty(deno_args: &[&str], mut action: impl FnMut(Box<dyn pty::Pty>)) {
+  if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
+    eprintln!("Ignoring non-tty environment.");
+    return;
+  }
+
+  let deno_dir = new_deno_dir();
+  let mut env_vars = std::collections::HashMap::new();
+  env_vars.insert("NO_COLOR".to_string(), "1".to_string());
+  env_vars.insert(
+    "DENO_DIR".to_string(),
+    deno_dir.path().to_string_lossy().to_string(),
+  );
+  let pty = pty::create_pty(
+    &deno_exe_path().to_string_lossy().to_string(),
+    deno_args,
+    testdata_path(),
+    Some(env_vars),
+  );
+
+  action(pty);
 }
 
 pub struct WrkOutput {
