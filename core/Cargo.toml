@@ -7,7 +7,7 @@ edition = "2018"
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/denoland/deno"
-description = "A secure JavaScript/TypeScript runtime built with V8, Rust, and Tokio"
+description = "A modern JavaScript/TypeScript runtime built with V8, Rust, and Tokio"
 
 [lib]
 path = "lib.rs"
