@@ -70,19 +70,20 @@ async function checkFirstBlocksSecond(opts: {
   });
   try {
     const sleep = (time: number) => new Promise((r) => setTimeout(r, time));
+
     // wait for both processes to signal that they're ready
     await Promise.all([firstProcess.waitSignal(), secondProcess.waitSignal()]);
 
     // signal to the first process to enter the lock
     await firstProcess.signal();
     await sleep(20);
-    // now signal the second
+    // signal the second to enter the lock
     await secondProcess.signal();
     await sleep(20);
-    // now signal to the first process to exit the lock
+    // signal to the first to exit the lock
     await firstProcess.signal();
     await sleep(20);
-    // and now the second
+    // signal to the second to exit the lock
     await secondProcess.signal();
     // collect the remaining JSON output of both processes
     const firstPsTimes = await firstProcess.getTimes();
@@ -114,12 +115,15 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
 
     // wait for exit lock signal
     await Deno.stdin.read(new Uint8Array(1));
-    const exitTime = new Date().getTime();
 
-    // wait a little bit before releasing the lock so that
-    // the enter time of the next process doesn't occur at the
-    // same time (do double the windows clock resolution)
+    // record the exit time and wait a little bit before releasing
+    // the lock so that the enter time of the next process doesn't
+    // occur at the same time as this exit time (do double the
+    // windows clock resolution)
+    const exitTime = new Date().getTime();
     await new Promise((resolve) => setTimeout(resolve, 30));
+
+    // release the lock
     Deno.funlockSync(rid);
 
     // output the enter and exit time
