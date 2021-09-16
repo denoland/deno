@@ -1156,7 +1156,7 @@
                   }
                   default:
                     throw new DOMException(
-                      "`alg` member of JsonWebKey invalid",
+                      "Hash algorithm not supported",
                       "DataError",
                     );
                 }
@@ -1352,7 +1352,7 @@
                   }
                   default:
                     throw new DOMException(
-                      "`alg` member of JsonWebKey invalid",
+                      "Hash algorithm not supported",
                       "DataError",
                     );
                 }
@@ -1472,7 +1472,7 @@
                   keyUsages,
                   (u) =>
                     !ArrayPrototypeIncludes(
-                      jwk.d ? ["decrypt"] : ["encrypt"],
+                      jwk.d ? ["decrypt", "unwrapKey"] : ["encrypt", "wrapKey"],
                       u,
                     ),
                 ) !== undefined
@@ -1552,7 +1552,7 @@
                   }
                   default:
                     throw new DOMException(
-                      "`alg` member of JsonWebKey invalid",
+                      "Hash algorithm not supported",
                       "DataError",
                     );
                 }
