@@ -18,7 +18,6 @@ futures = "0.3.16"
 # TODO(lucacasonato): unlock when https://github.com/tkaitchuck/aHash/issues/95 is resolved
 indexmap = "=1.6.2"
 lazy_static = "1.4.0"
-libc = "0.2.101"
 log = "0.4.14"
 parking_lot = "0.11.1"
 pin-project = "1.0.7"
