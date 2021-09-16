@@ -1189,11 +1189,9 @@ fn resolved_and_display_path(path: &Path) -> (PathBuf, PathBuf) {
 /// This loops until the user gives the proper input.
 #[cfg(not(test))]
 fn permission_prompt(message: &str) -> bool {
-  println!("Entering permission prompt...");
-  /*if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
-    println!("PERMISSION PROMPT RETURNED FALSE");
+  if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
     return false;
-  };*/
+  };
 
   #[cfg(unix)]
   fn clear_stdin() {
