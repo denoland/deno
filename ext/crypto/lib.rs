@@ -465,7 +465,7 @@ pub async fn op_crypto_verify_key(
           RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
         }
         KeyType::Public => {
-          RsaPublicKey::from_pkcs1_der(&*args.key.data).unwrap()
+          RsaPublicKey::from_pkcs1_der(&*args.key.data)?
         }
         _ => return Err(type_error("Invalid Key format".to_string())),
       };
@@ -529,7 +529,7 @@ pub async fn op_crypto_verify_key(
           RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
         }
         KeyType::Public => {
-          RsaPublicKey::from_pkcs1_der(&*args.key.data).unwrap()
+          RsaPublicKey::from_pkcs1_der(&*args.key.data)?
         }
         _ => return Err(type_error("Invalid Key format".to_string())),
       };
@@ -825,7 +825,7 @@ pub async fn op_crypto_encrypt_key(
           RsaPrivateKey::from_pkcs1_der(&*args.key.data)?.to_public_key()
         }
         KeyType::Public => {
-          RsaPublicKey::from_pkcs1_der(&*args.key.data).unwrap()
+          RsaPublicKey::from_pkcs1_der(&*args.key.data)?
         }
         _ => return Err(type_error("Invalid Key format".to_string())),
       };
