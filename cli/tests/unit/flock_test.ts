@@ -124,7 +124,7 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
     await new Promise((resolve) => setTimeout(resolve, 30));
 
     // release the lock
-    Deno.funlockSync(rid);
+    ${opts.sync ? "Deno.funlockSync(rid);" : "await Deno.funlock(rid)"}
 
     // output the enter and exit time
     console.log(JSON.stringify({ enterTime, exitTime }));
