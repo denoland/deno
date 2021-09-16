@@ -76,14 +76,18 @@ async function checkFirstBlocksSecond(opts: {
 
     // signal to the first process to enter the lock
     await firstProcess.signal();
+    await firstProcess.waitSignal(); // entering signal
+    await firstProcess.waitSignal(); // entered signal
     await sleep(20);
     // signal the second to enter the lock
     await secondProcess.signal();
+    await secondProcess.waitSignal(); // entering signal
     await sleep(20);
     // signal to the first to exit the lock
     await firstProcess.signal();
     await sleep(20);
     // signal to the second to exit the lock
+    await secondProcess.waitSignal(); // entered signal
     await secondProcess.signal();
     // collect the remaining JSON output of both processes
     const firstPsTimes = await firstProcess.getTimes();
@@ -101,10 +105,12 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
     const { rid } = Deno.openSync("${path}");
 
     // ready signal
-    await Deno.stdout.write(new Uint8Array(1));
+    Deno.stdout.writeSync(new Uint8Array(1));
     // wait for enter lock signal
-    await Deno.stdin.read(new Uint8Array(1));
+    Deno.stdin.readSync(new Uint8Array(1));
 
+    // entering signal
+    Deno.stdout.writeSync(new Uint8Array(1));
     // lock and record the entry time
     ${
     opts.sync
@@ -112,9 +118,11 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
       : `await Deno.flock(rid, ${opts.exclusive ? "true" : "false"});`
   }
     const enterTime = new Date().getTime();
+    // entered signal
+    Deno.stdout.writeSync(new Uint8Array(1));
 
     // wait for exit lock signal
-    await Deno.stdin.read(new Uint8Array(1));
+    Deno.stdin.readSync(new Uint8Array(1));
 
     // record the exit time and wait a little bit before releasing
     // the lock so that the enter time of the next process doesn't
@@ -124,7 +132,7 @@ function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
     await new Promise((resolve) => setTimeout(resolve, 30));
 
     // release the lock
-    ${opts.sync ? "Deno.funlockSync(rid);" : "await Deno.funlock(rid)"}
+    ${opts.sync ? "Deno.funlockSync(rid);" : "await Deno.funlock(rid);"}
 
     // output the enter and exit time
     console.log(JSON.stringify({ enterTime, exitTime }));
