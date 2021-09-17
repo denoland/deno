@@ -106,7 +106,7 @@ fn create_command(
     command.uid(uid);
   }
   #[cfg(unix)]
-    unsafe {
+  unsafe {
     command.pre_exec(|| {
       libc::setgroups(0, std::ptr::null());
       Ok(())
