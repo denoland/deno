@@ -64,6 +64,10 @@ pub struct CommandArgs {
   cwd: Option<String>,
   clear_env: bool,
   env: Vec<(String, String)>,
+  #[cfg(unix)]
+  gid: Option<u32>,
+  #[cfg(unix)]
+  uid: Option<u32>,
   stdin: Option<String>,
   stdout: Option<String>,
   stderr: Option<String>,
@@ -90,6 +94,24 @@ fn create_command(
     command.env_clear();
   }
   command.envs(command_args.env);
+
+  #[cfg(unix)]
+  if let Some(gid) = command_args.gid {
+    super::check_unstable(state, "Deno.run.gid");
+    command.gid(gid);
+  }
+  #[cfg(unix)]
+  if let Some(uid) = command_args.uid {
+    super::check_unstable(state, "Deno.run.uid");
+    command.uid(uid);
+  }
+  #[cfg(unix)]
+    unsafe {
+    command.pre_exec(|| {
+      libc::setgroups(0, std::ptr::null());
+      Ok(())
+    });
+  }
 
   if let Some(stdin) = &command_args.stdin {
     command.stdin(subprocess_stdio_map(stdin)?);

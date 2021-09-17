@@ -103,6 +103,19 @@
     dictRsaHashedKeyGenParams,
   );
 
+  const dictRsaHashedImportParams = [
+    ...dictAlgorithm,
+    {
+      key: "hash",
+      converter: webidl.converters.HashAlgorithmIdentifier,
+      required: true,
+    },
+  ];
+
+  webidl.converters.RsaHashedImportParams = webidl.createDictionaryConverter(
+    "RsaHashedImportParams",
+    dictRsaHashedImportParams,
+  );
   webidl.converters.NamedCurve = webidl.converters.DOMString;
 
   const dictEcKeyGenParams = [
@@ -116,6 +129,19 @@
 
   webidl.converters.EcKeyGenParams = webidl
     .createDictionaryConverter("EcKeyGenParams", dictEcKeyGenParams);
+
+  const dictAesKeyGenParams = [
+    ...dictAlgorithm,
+    {
+      key: "length",
+      converter: (V, opts) =>
+        webidl.converters["unsigned short"](V, { ...opts, enforceRange: true }),
+      required: true,
+    },
+  ];
+
+  webidl.converters.AesKeyGenParams = webidl
+    .createDictionaryConverter("AesKeyGenParams", dictAesKeyGenParams);
 
   const dictHmacKeyGenParams = [
     ...dictAlgorithm,
@@ -295,6 +321,28 @@
     "JsonWebKey",
     dictJsonWebKey,
   );
+
+  const dictHkdfParams = [
+    ...dictAlgorithm,
+    {
+      key: "hash",
+      converter: webidl.converters.HashAlgorithmIdentifier,
+      required: true,
+    },
+    {
+      key: "salt",
+      converter: webidl.converters["BufferSource"],
+      required: true,
+    },
+    {
+      key: "info",
+      converter: webidl.converters["BufferSource"],
+      required: true,
+    },
+  ];
+
+  webidl.converters.HkdfParams = webidl
+    .createDictionaryConverter("HkdfParams", dictHkdfParams);
 
   const dictPbkdf2Params = [
     ...dictAlgorithm,

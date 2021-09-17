@@ -29,6 +29,7 @@ use std::usize;
 
 use crate::blob::op_blob_create_object_url;
 use crate::blob::op_blob_create_part;
+use crate::blob::op_blob_from_object_url;
 use crate::blob::op_blob_read_part;
 use crate::blob::op_blob_remove_part;
 use crate::blob::op_blob_revoke_object_url;
@@ -88,6 +89,7 @@ pub fn init(blob_store: BlobStore, maybe_location: Option<Url>) -> Extension {
         "op_blob_revoke_object_url",
         op_sync(op_blob_revoke_object_url),
       ),
+      ("op_blob_from_object_url", op_sync(op_blob_from_object_url)),
       (
         "op_message_port_create_entangled",
         op_sync(op_message_port_create_entangled),

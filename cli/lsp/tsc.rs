@@ -18,11 +18,11 @@ use super::text::LineIndex;
 use super::urls::INVALID_SPECIFIER;
 
 use crate::config_file::TsConfig;
-use crate::media_type::MediaType;
 use crate::tokio_util::create_basic_runtime;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
 
+use deno_ast::MediaType;
 use deno_core::error::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -45,12 +45,24 @@ use lspower::lsp;
 use regex::Captures;
 use regex::Regex;
 use std::collections::HashSet;
+use std::sync::Arc;
 use std::thread;
 use std::{borrow::Cow, cmp};
 use std::{collections::HashMap, path::Path};
 use text_size::{TextRange, TextSize};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+
+lazy_static::lazy_static! {
+  static ref BRACKET_ACCESSOR_RE: Regex = Regex::new(r#"^\[['"](.+)[\['"]\]$"#).unwrap();
+  static ref CAPTION_RE: Regex = Regex::new(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)").unwrap();
+  static ref CODEBLOCK_RE: Regex = Regex::new(r"^\s*[~`]{3}").unwrap();
+  static ref EMAIL_MATCH_RE: Regex = Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap();
+  static ref JSDOC_LINKS_RE: Regex = Regex::new(r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}").unwrap();
+  static ref PART_KIND_MODIFIER_RE: Regex = Regex::new(r",|\s+").unwrap();
+  static ref PART_RE: Regex = Regex::new(r"^(\S+)\s*-?\s*").unwrap();
+  static ref SCOPE_RE: Regex = Regex::new(r"scope_(\d)").unwrap();
+}
 
 const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
   &[".d.ts", ".ts", ".tsx", ".js", ".jsx", ".json"];
@@ -111,7 +123,7 @@ impl TsServer {
 /// from static assets built into Rust, or static assets built into tsc.
 #[derive(Debug, Clone)]
 pub struct AssetDocument {
-  pub text: String,
+  pub text: Arc<String>,
   pub length: usize,
   pub line_index: LineIndex,
   pub maybe_navigation_tree: Option<NavigationTree>,
@@ -121,7 +133,7 @@ impl AssetDocument {
   pub fn new<T: AsRef<str>>(text: T) -> Self {
     let text = text.as_ref();
     Self {
-      text: text.to_string(),
+      text: Arc::new(text.to_string()),
       length: text.encode_utf16().count(),
       line_index: LineIndex::new(text),
       maybe_navigation_tree: None,
@@ -218,10 +230,8 @@ fn get_tag_body_text(tag: &JsDocTagInfo) -> Option<String> {
     let text = display_parts_to_string(display_parts);
     match tag.name.as_str() {
       "example" => {
-        let caption_regex =
-          Regex::new(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)").unwrap();
-        if caption_regex.is_match(&text) {
-          caption_regex
+        if CAPTION_RE.is_match(&text) {
+          CAPTION_RE
             .replace(&text, |c: &Captures| {
               format!("{}\n\n{}", &c[1], make_codeblock(&c[2]))
             })
@@ -230,13 +240,9 @@ fn get_tag_body_text(tag: &JsDocTagInfo) -> Option<String> {
           make_codeblock(&text)
         }
       }
-      "author" => {
-        let email_match_regex =
-          Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap();
-        email_match_regex
-          .replace(&text, |c: &Captures| format!("{} {}", &c[1], &c[2]))
-          .to_string()
-      }
+      "author" => EMAIL_MATCH_RE
+        .replace(&text, |c: &Captures| format!("{} {}", &c[1], &c[2]))
+        .to_string(),
       "default" => make_codeblock(&text),
       _ => replace_links(&text),
     }
@@ -247,11 +253,10 @@ fn get_tag_documentation(tag: &JsDocTagInfo) -> String {
   match tag.name.as_str() {
     "augments" | "extends" | "param" | "template" => {
       if let Some(display_parts) = &tag.text {
-        let part_regex = Regex::new(r"^(\S+)\s*-?\s*").unwrap();
         // TODO(@kitsonk) check logic in vscode about handling this API change
         // in tsserver
         let text = display_parts_to_string(display_parts);
-        let body: Vec<&str> = part_regex.split(&text).collect();
+        let body: Vec<&str> = PART_RE.split(&text).collect();
         if body.len() == 3 {
           let param = body[1];
           let doc = body[2];
@@ -283,8 +288,7 @@ fn get_tag_documentation(tag: &JsDocTagInfo) -> String {
 }
 
 fn make_codeblock(text: &str) -> String {
-  let codeblock_regex = Regex::new(r"^\s*[~`]{3}").unwrap();
-  if codeblock_regex.is_match(text) {
+  if CODEBLOCK_RE.is_match(text) {
     text.to_string()
   } else {
     format!("```\n{}\n```", text)
@@ -293,8 +297,7 @@ fn make_codeblock(text: &str) -> String {
 
 /// Replace JSDoc like links (`{@link http://example.com}`) with markdown links
 fn replace_links(text: &str) -> String {
-  let jsdoc_links_regex = Regex::new(r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}").unwrap();
-  jsdoc_links_regex
+  JSDOC_LINKS_RE
     .replace_all(text, |c: &Captures| match &c[1] {
       "linkcode" => format!(
         "[`{}`]({})",
@@ -319,8 +322,7 @@ fn replace_links(text: &str) -> String {
 }
 
 fn parse_kind_modifier(kind_modifiers: &str) -> HashSet<&str> {
-  let re = Regex::new(r",|\s+").unwrap();
-  re.split(kind_modifiers).collect()
+  PART_KIND_MODIFIER_RE.split(kind_modifiers).collect()
 }
 
 #[derive(Debug, Deserialize)]
@@ -1129,8 +1131,7 @@ impl RefactorActionInfo {
   pub fn is_preferred(&self, all_actions: &[RefactorActionInfo]) -> bool {
     if EXTRACT_CONSTANT.matches(&self.name) {
       let get_scope = |name: &str| -> Option<u32> {
-        let scope_regex = Regex::new(r"scope_(\d)").unwrap();
-        if let Some(captures) = scope_regex.captures(name) {
+        if let Some(captures) = SCOPE_RE.captures(name) {
           captures[1].parse::<u32>().ok()
         } else {
           None
@@ -1677,10 +1678,16 @@ impl CompletionEntry {
   }
 
   fn get_filter_text(&self) -> Option<String> {
-    // TODO(@kitsonk) this is actually quite a bit more complex.
-    // See `MyCompletionItem.getFilterText` in vscode completion.ts.
-    if self.name.starts_with('#') && self.insert_text.is_none() {
-      return Some(self.name.clone());
+    if self.name.starts_with('#') {
+      if let Some(insert_text) = &self.insert_text {
+        if insert_text.starts_with("this.#") {
+          return Some(insert_text.replace("this.#", ""));
+        } else {
+          return Some(insert_text.clone());
+        }
+      } else {
+        return Some(self.name.replace("#", ""));
+      }
     }
 
     if let Some(insert_text) = &self.insert_text {
@@ -1688,9 +1695,11 @@ impl CompletionEntry {
         return None;
       }
       if insert_text.starts_with('[') {
-        let re = Regex::new(r#"^\[['"](.+)['"]\]$"#).unwrap();
-        let insert_text = re.replace(insert_text, ".$1").to_string();
-        return Some(insert_text);
+        return Some(
+          BRACKET_ACCESSOR_RE
+            .replace(insert_text, |caps: &Captures| format!(".{}", &caps[1]))
+            .to_string(),
+        );
       }
     }
 
@@ -2057,7 +2066,7 @@ fn cache_snapshot(
       state
         .state_snapshot
         .documents
-        .content(specifier)?
+        .content(specifier)
         .ok_or_else(|| {
           anyhow!("Specifier unexpectedly doesn't have content: {}", specifier)
         })?
@@ -2068,7 +2077,7 @@ fn cache_snapshot(
     };
     state
       .snapshots
-      .insert((specifier.clone(), version.into()), content);
+      .insert((specifier.clone(), version.into()), content.to_string());
   }
   Ok(())
 }
@@ -2235,17 +2244,16 @@ fn op_get_text(
   let specifier = state.normalize_specifier(args.specifier)?;
   let content =
     if let Some(Some(content)) = state.state_snapshot.assets.get(&specifier) {
-      content.text.clone()
+      content.text.as_str()
     } else {
       cache_snapshot(state, &specifier, args.version.clone())?;
       state
         .snapshots
         .get(&(specifier, args.version.into()))
         .unwrap()
-        .clone()
     };
   state.state_snapshot.performance.measure(mark);
-  Ok(text::slice(&content, args.start..args.end).to_string())
+  Ok(text::slice(content, args.start..args.end).to_string())
 }
 
 fn op_load(
@@ -2259,7 +2267,7 @@ fn op_load(
   let specifier = state.normalize_specifier(args.specifier)?;
   let result = state.state_snapshot.sources.get_source(&specifier);
   state.state_snapshot.performance.measure(mark);
-  Ok(result)
+  Ok(result.map(|t| t.to_string()))
 }
 
 fn op_resolve(
@@ -2518,9 +2526,15 @@ pub struct UserPreferences {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub include_completions_for_module_exports: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_completions_for_import_statements: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub include_completions_with_snippet_text: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub include_automatic_optional_chain_completions: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub include_completions_with_insert_text: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub allow_incomplete_completions: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub import_module_specifier_preference:
     Option<ImportModuleSpecifierPreference>,
@@ -2908,19 +2922,24 @@ mod tests {
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      documents.open(specifier.clone(), *version, language_id.clone(), source);
+      documents.open(
+        specifier.clone(),
+        *version,
+        *language_id,
+        Arc::new(source.to_string()),
+      );
       let media_type = MediaType::from(&specifier);
-      if let Ok(parsed_module) =
-        analysis::parse_module(&specifier, source, &media_type)
+      if let Some(Ok(parsed_module)) =
+        documents.get(&specifier).unwrap().source().module()
       {
         let (deps, _) = analysis::analyze_dependencies(
           &specifier,
-          &media_type,
-          &parsed_module,
+          media_type,
+          parsed_module,
           &None,
         );
         let dep_ranges =
-          analysis::analyze_dependency_ranges(&parsed_module).ok();
+          analysis::analyze_dependency_ranges(parsed_module).ok();
         documents
           .set_dependencies(&specifier, Some(deps), dep_ranges)
           .unwrap();
@@ -3448,6 +3467,23 @@ mod tests {
     };
     let actual = fixture.get_filter_text();
     assert_eq!(actual, Some(".foo".to_string()));
+
+    let fixture = CompletionEntry {
+      kind: ScriptElementKind::MemberVariableElement,
+      name: "#abc".to_string(),
+      ..Default::default()
+    };
+    let actual = fixture.get_filter_text();
+    assert_eq!(actual, Some("abc".to_string()));
+
+    let fixture = CompletionEntry {
+      kind: ScriptElementKind::MemberVariableElement,
+      name: "#abc".to_string(),
+      insert_text: Some("this.#abc".to_string()),
+      ..Default::default()
+    };
+    let actual = fixture.get_filter_text();
+    assert_eq!(actual, Some("abc".to_string()));
   }
 
   #[test]

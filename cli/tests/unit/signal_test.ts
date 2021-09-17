@@ -13,84 +13,84 @@ unitTest(
   function signalsNotImplemented() {
     assertThrows(
       () => {
-        Deno.signal(1);
+        Deno.signal("SIGINT");
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signals.alarm(); // for SIGALRM
+        Deno.signal("SIGALRM");
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signals.child(); // for SIGCHLD
+        Deno.signal("SIGCHLD");
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signals.hungup(); // for SIGHUP
+        Deno.signal("SIGHUP");
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signals.interrupt(); // for SIGINT
+        Deno.signal("SIGINT");
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signals.io(); // for SIGIO
+        Deno.signal("SIGIO");
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signals.pipe(); // for SIGPIPE
+        Deno.signal("SIGPIPE");
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signals.quit(); // for SIGQUIT
+        Deno.signal("SIGQUIT");
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signals.terminate(); // for SIGTERM
+        Deno.signal("SIGTERM");
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signals.userDefined1(); // for SIGUSR1
+        Deno.signal("SIGUSR1");
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signals.userDefined2(); // for SIGURS2
+        Deno.signal("SIGUSR2");
       },
       Error,
       "not implemented",
     );
     assertThrows(
       () => {
-        Deno.signals.windowChange(); // for SIGWINCH
+        Deno.signal("SIGWINCH");
       },
       Error,
       "not implemented",
@@ -106,12 +106,12 @@ unitTest(
     const t = setInterval(() => {}, 1000);
 
     let c = 0;
-    const sig = Deno.signal(Deno.Signal.SIGUSR1);
+    const sig = Deno.signal("SIGUSR1");
     setTimeout(async () => {
       await delay(20);
       for (const _ of Array(3)) {
         // Sends SIGUSR1 3 times.
-        Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
+        Deno.kill(Deno.pid, "SIGUSR1");
         await delay(20);
       }
       sig.dispose();
@@ -138,7 +138,7 @@ unitTest(
         Deno.execPath(),
         "eval",
         "--unstable",
-        "(async () => { for await (const _ of Deno.signals.io()) {} })()",
+        "(async () => { for await (const _ of Deno.signal('SIGIO')) {} })()",
       ],
     });
     const res = await p.status();
@@ -154,9 +154,9 @@ unitTest(
     // This prevents the program from exiting.
     const t = setInterval(() => {}, 1000);
 
-    const sig = Deno.signal(Deno.Signal.SIGUSR1);
+    const sig = Deno.signal("SIGUSR1");
     setTimeout(() => {
-      Deno.kill(Deno.pid, Deno.Signal.SIGUSR1);
+      Deno.kill(Deno.pid, "SIGUSR1");
       resolvable.resolve();
     }, 20);
     await sig;
@@ -176,7 +176,7 @@ unitTest(
     const t = setInterval(() => {}, 1000);
 
     let called = false;
-    const sig = Deno.signal(Deno.Signal.SIGUSR1);
+    const sig = Deno.signal("SIGUSR1");
     sig.then(() => {
       called = true;
     });
@@ -200,37 +200,37 @@ unitTest(
   { ignore: Deno.build.os === "windows", perms: { run: true } },
   function signalShorthandsTest() {
     let s: Deno.SignalStream;
-    s = Deno.signals.alarm(); // for SIGALRM
+    s = Deno.signal("SIGALRM");
     assert(s instanceof Deno.SignalStream);
     s.dispose();
-    s = Deno.signals.child(); // for SIGCHLD
+    s = Deno.signal("SIGCHLD");
     assert(s instanceof Deno.SignalStream);
     s.dispose();
-    s = Deno.signals.hungup(); // for SIGHUP
+    s = Deno.signal("SIGHUP");
     assert(s instanceof Deno.SignalStream);
     s.dispose();
-    s = Deno.signals.interrupt(); // for SIGINT
+    s = Deno.signal("SIGINT");
     assert(s instanceof Deno.SignalStream);
     s.dispose();
-    s = Deno.signals.io(); // for SIGIO
+    s = Deno.signal("SIGIO");
     assert(s instanceof Deno.SignalStream);
     s.dispose();
-    s = Deno.signals.pipe(); // for SIGPIPE
+    s = Deno.signal("SIGPIPE");
     assert(s instanceof Deno.SignalStream);
     s.dispose();
-    s = Deno.signals.quit(); // for SIGQUIT
+    s = Deno.signal("SIGQUIT");
     assert(s instanceof Deno.SignalStream);
     s.dispose();
-    s = Deno.signals.terminate(); // for SIGTERM
+    s = Deno.signal("SIGTERM");
     assert(s instanceof Deno.SignalStream);
     s.dispose();
-    s = Deno.signals.userDefined1(); // for SIGUSR1
+    s = Deno.signal("SIGUSR1");
     assert(s instanceof Deno.SignalStream);
     s.dispose();
-    s = Deno.signals.userDefined2(); // for SIGURS2
+    s = Deno.signal("SIGUSR2");
     assert(s instanceof Deno.SignalStream);
     s.dispose();
-    s = Deno.signals.windowChange(); // for SIGWINCH
+    s = Deno.signal("SIGWINCH");
     assert(s instanceof Deno.SignalStream);
     s.dispose();
   },
