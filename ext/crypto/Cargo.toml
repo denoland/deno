@@ -26,3 +26,4 @@ sha-1 = "0.9.7"
 sha2 = "0.9.5"
 tokio = { version = "1.10.1", features = ["full"] }
 uuid = { version = "0.8.2", features = ["v4"] }
+spki = "0.4.1"
