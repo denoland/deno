@@ -1885,3 +1885,9 @@ itest!(dom_exception_formatting {
   output: "dom_exception_formatting.ts.out",
   exit_code: 1,
 });
+
+itest!(long_data_url_formatting {
+  args: "run long_data_url_formatting.ts",
+  output: "long_data_url_formatting.ts.out",
+  exit_code: 1,
+});
