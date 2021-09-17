@@ -1,5 +1,5 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, unitTest } from "./test_util.ts";
+import { assert, assertEquals, unitTest } from "./test_util.ts";
 import { readAllSync } from "../../../test_util/std/io/util.ts";
 
 unitTest(
@@ -30,16 +30,7 @@ async function runFlockTests(opts: { sync: boolean }) {
     });
     try {
       await fileLock.waitEnterLock();
-      assertEquals(
-        checkFileCanRead(filePath),
-        false,
-        "exclusive cannot read",
-      );
-      assertEquals(
-        checkFileCanWrite(filePath),
-        false,
-        "exclusive cannot write",
-      );
+      await assertHasExclusiveLock(filePath, fileLock.pid, true);
     } finally {
       await fileLock.close();
     }
@@ -62,19 +53,47 @@ async function runFlockTests(opts: { sync: boolean }) {
       await fileLock1.waitEnterLock();
       await fileLock2.waitEnterLock();
 
-      assertEquals(
-        checkFileCanRead(filePath),
-        true,
-        "non-exclusive lock can read",
-      );
-      assertEquals(
-        checkFileCanWrite(filePath),
-        false,
-        "non-exclusive lock cannot write",
-      );
+      await assertHasExclusiveLock(filePath, fileLock1.pid, false);
+      await assertHasExclusiveLock(filePath, fileLock2.pid, false);
     } finally {
       fileLock1.close();
       fileLock2.close();
+    }
+  }
+}
+
+async function assertHasExclusiveLock(
+  filePath: string,
+  pid: number,
+  exclusive: boolean,
+) {
+  if (Deno.build.os === "windows") {
+    assertEquals(
+      checkFileCanRead(filePath),
+      !exclusive,
+      exclusive ? "exclusive cannot read" : "non-exclusive can read",
+    );
+    assertEquals(
+      checkFileCanWrite(filePath),
+      false,
+      "cannot write",
+    );
+  } else {
+    const process = await Deno.run({
+      cmd: ["lsof", "-p", pid.toString()],
+      "stdout": "piped",
+    });
+    try {
+      const output = new TextDecoder().decode(await process.output());
+      const line = output.split("\n").find((l) => l.includes(filePath));
+      assert(line != null, "should find lsof line for process");
+      if (exclusive) {
+        assert(/\b[0-9]+rW\b/.test(line), "should have exclusive read");
+      } else {
+        assert(/\b[0-9]+rR\b/.test(line), "should have non-exclusive read");
+      }
+    } finally {
+      process.close();
     }
   }
 }
@@ -135,6 +154,9 @@ function createFileLock(opts: {
   });
 
   return {
+    get pid() {
+      return process.pid;
+    },
     async waitEnterLock() {
       await process.stdout.read(new Uint8Array(1));
     },
