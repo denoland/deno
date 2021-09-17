@@ -1343,6 +1343,7 @@
                   key: innerKey,
                   format: "spki",
                   algorithm: "RSA-PSS",
+                  hash: key[_algorithm].hash.name,
                 },
               );
 
@@ -1394,6 +1395,7 @@
                   key: innerKey,
                   format: "spki",
                   algorithm: "RSA-OAEP",
+                  hash: key[_algorithm].hash.name,
                 },
               );
 
