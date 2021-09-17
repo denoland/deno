@@ -1530,6 +1530,98 @@
      * @param {KeyUsage[]} keyUsages
      * @returns {Promise<any>}
      */
+    async wrapKey(format, key, wrappingKey, wrapAlgorithm) {
+      webidl.assertBranded(this, SubtleCrypto);
+      const prefix = "Failed to execute 'wrapKey' on 'SubtleCrypto'";
+      webidl.requiredArguments(arguments.length, 4, { prefix });
+      format = webidl.converters.KeyFormat(format, {
+        prefix,
+        context: "Argument 1",
+      });
+      key = webidl.converters.CryptoKey(key, {
+        prefix,
+        context: "Argument 2",
+      });
+      wrappingKey = webidl.converters.CryptoKey(wrappingKey, {
+        prefix,
+        context: "Argument 3",
+      });
+      wrapAlgorithm = webidl.converters.AlgorithmIdentifier(wrapAlgorithm, {
+        prefix,
+        context: "Argument 4",
+      });
+
+      let normalizedAlgorithm;
+
+      try {
+        // 2.
+        normalizedAlgorithm = normalizeAlgorithm(wrapAlgorithm, "wrapKey");
+      } catch (_) {
+        // 3.
+        normalizedAlgorithm = normalizeAlgorithm(wrapAlgorithm, "encrypt");
+      }
+
+      // 8.
+      if (normalizedAlgorithm.name !== wrappingKey[_algorithm].name) {
+        throw new DOMException(
+          "Wrapping algorithm doesn't match key algorithm.",
+          "InvalidAccessError",
+        );
+      }
+
+      // 9.
+      if (!ArrayPrototypeIncludes(wrappingKey[_usages], "wrapKey")) {
+        throw new DOMException(
+          "Key does not support the 'wrapKey' operation.",
+          "InvalidAccessError",
+        );
+      }
+
+      // 10. NotSupportedError will be thrown in step 12.
+      // 11.
+      if (key[_extractable] === false) {
+        throw new DOMException(
+          "Key is not extractable",
+          "InvalidAccessError",
+        );
+      }
+
+      // 12.
+      const exportedKey = await this.exportKey(format, key);
+
+      let bytes;
+      // 13.
+      if (format !== "jwk") {
+        bytes = exportedKey;
+      } else {
+        // TODO(@littledivy): Implement JWK.
+        throw new TypeError("not implemented.");
+      }
+
+      // 14-15.
+      if (
+        supportedAlgorithms["wrapKey"][normalizedAlgorithm.name] !== undefined
+      ) {
+        // TODO(@littledivy): Implement this for AES-KW.
+        throw new TypeError("not implemented.");
+      } else if (
+        supportedAlgorithms["encrypt"][normalizedAlgorithm.name] !== undefined
+      ) {
+        return this.encrypt(normalizedAlgorithm, wrappingKey, bytes);
+      } else {
+        throw new DOMException(
+          "Algorithm not supported",
+          "NotSupportedError",
+        );
+      }
+    }
+
+    /**
+     * @param {string} algorithm
+     * @param {boolean} extractable
+     * @param {KeyUsage[]} keyUsages
+     * @returns {Promise<any>}
+     */
     async generateKey(algorithm, extractable, keyUsages) {
       webidl.assertBranded(this, SubtleCrypto);
       const prefix = "Failed to execute 'generateKey' on 'SubtleCrypto'";
