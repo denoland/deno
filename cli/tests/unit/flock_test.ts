@@ -1,6 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, unitTest } from "./test_util.ts";
-import { readAllSync } from "../../../test_util/std/io/util.ts";
+import { assertEquals, unitTest } from "./test_util.ts";
+import { readAll } from "../../../test_util/std/io/util.ts";
 
 unitTest(
   { perms: { read: true, run: true, hrtime: true } },
@@ -17,134 +17,122 @@ unitTest(
 );
 
 async function runFlockTests(opts: { sync: boolean }) {
-  const filePath = "cli/tests/testdata/fixture.json";
-
-  await checkExclusiveLock();
-  await checkNonExclusiveLock();
-
-  async function checkExclusiveLock() {
-    const fileLock = createFileLock({
-      filePath,
-      exclusive: true,
+  assertEquals(
+    await checkFirstBlocksSecond({
+      firstExclusive: true,
+      secondExclusive: false,
       sync: opts.sync,
-    });
-    try {
-      await fileLock.waitEnterLock();
-      await assertHasExclusiveLock(filePath, fileLock.pid, true);
-    } finally {
-      await fileLock.close();
-    }
-  }
-
-  async function checkNonExclusiveLock() {
-    const fileLock1 = createFileLock({
-      filePath,
-      exclusive: false,
+    }),
+    true,
+    "exclusive blocks shared",
+  );
+  assertEquals(
+    await checkFirstBlocksSecond({
+      firstExclusive: false,
+      secondExclusive: true,
       sync: opts.sync,
-    });
-    const fileLock2 = createFileLock({
-      filePath,
-      exclusive: false,
+    }),
+    true,
+    "shared blocks exclusive",
+  );
+  assertEquals(
+    await checkFirstBlocksSecond({
+      firstExclusive: true,
+      secondExclusive: true,
       sync: opts.sync,
-    });
-
-    try {
-      // both should enter
-      await fileLock1.waitEnterLock();
-      await fileLock2.waitEnterLock();
-
-      await assertHasExclusiveLock(filePath, fileLock1.pid, false);
-      await assertHasExclusiveLock(filePath, fileLock2.pid, false);
-    } finally {
-      fileLock1.close();
-      fileLock2.close();
-    }
-  }
+    }),
+    true,
+    "exclusive blocks exclusive",
+  );
+  assertEquals(
+    await checkFirstBlocksSecond({
+      firstExclusive: false,
+      secondExclusive: false,
+      sync: opts.sync,
+    }),
+    false,
+    "shared does not block shared",
+  );
 }
 
-async function assertHasExclusiveLock(
-  filePath: string,
-  pid: number,
-  exclusive: boolean,
-) {
-  if (Deno.build.os === "windows") {
-    assertEquals(
-      checkFileCanRead(filePath),
-      !exclusive,
-      exclusive ? "exclusive cannot read" : "non-exclusive can read",
-    );
-    assertEquals(
-      checkFileCanWrite(filePath),
-      false,
-      "cannot write",
-    );
-  } else {
-    const process = await Deno.run({
-      cmd: ["lsof", "-p", pid.toString()],
-      "stdout": "piped",
-    });
-    try {
-      const output = new TextDecoder().decode(await process.output());
-      const line = output.split("\n").find((l) => l.includes(filePath));
-      assert(line != null, "should find lsof line for process");
-      if (exclusive) {
-        assert(/\b[0-9]+rW\b/.test(line), "should have exclusive read");
-      } else {
-        assert(/\b[0-9]+rR\b/.test(line), "should have non-exclusive read");
-      }
-    } finally {
-      process.close();
-    }
-  }
-}
-
-function checkFileCanRead(filePath: string) {
-  try {
-    const file = Deno.openSync(filePath, { read: true });
-    try {
-      readAllSync(file);
-    } finally {
-      file.close();
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function checkFileCanWrite(filePath: string) {
-  try {
-    Deno.openSync(filePath, { write: true }).close();
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function createFileLock(opts: {
-  filePath: string;
-  exclusive: boolean;
+async function checkFirstBlocksSecond(opts: {
+  firstExclusive: boolean;
+  secondExclusive: boolean;
   sync: boolean;
 }) {
-  const scriptText = `
-    const { rid } = Deno.openSync("${opts.filePath}");
+  const firstProcess = runFlockTestProcess({
+    exclusive: opts.firstExclusive,
+    sync: opts.sync,
+  });
+  const secondProcess = runFlockTestProcess({
+    exclusive: opts.secondExclusive,
+    sync: opts.sync,
+  });
+  try {
+    const sleep = (time: number) => new Promise((r) => setTimeout(r, time));
 
+    // wait for both processes to signal that they're ready
+    await Promise.all([firstProcess.waitSignal(), secondProcess.waitSignal()]);
+
+    // signal to the first process to enter the lock
+    await firstProcess.signal();
+    await firstProcess.waitSignal(); // entering signal
+    await firstProcess.waitSignal(); // entered signal
+    // signal the second to enter the lock
+    await secondProcess.signal();
+    await secondProcess.waitSignal(); // entering signal
+    await sleep(100);
+    // signal to the first to exit the lock
+    await firstProcess.signal();
+    // collect the final output so we know it's exited the lock
+    const firstPsTimes = await firstProcess.getTimes();
+    // signal to the second to exit the lock
+    await secondProcess.waitSignal(); // entered signal
+    await secondProcess.signal();
+    const secondPsTimes = await secondProcess.getTimes();
+    return firstPsTimes.exitTime < secondPsTimes.enterTime;
+  } finally {
+    firstProcess.close();
+    secondProcess.close();
+  }
+}
+
+function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
+  const path = "cli/tests/testdata/fixture.json";
+  const scriptText = `
+    const { rid } = Deno.openSync("${path}");
+
+    // ready signal
+    Deno.stdout.writeSync(new Uint8Array(1));
+    // wait for enter lock signal
+    Deno.stdin.readSync(new Uint8Array(1));
+
+    // entering signal
+    Deno.stdout.writeSync(new Uint8Array(1));
+    // lock and record the entry time
     ${
     opts.sync
       ? `Deno.flockSync(rid, ${opts.exclusive ? "true" : "false"});`
       : `await Deno.flock(rid, ${opts.exclusive ? "true" : "false"});`
   }
-    // signal that we've entered the lock
+    const enterTime = new Date().getTime();
+    // entered signal
     Deno.stdout.writeSync(new Uint8Array(1));
 
     // wait for exit lock signal
     Deno.stdin.readSync(new Uint8Array(1));
 
+    // record the exit time and wait a little bit before releasing
+    // the lock so that the enter time of the next process doesn't
+    // occur at the same time as this exit time
+    const exitTime = new Date().getTime();
+    Deno.sleepSync(100);
+
     // release the lock
     ${opts.sync ? "Deno.funlockSync(rid);" : "await Deno.funlock(rid);"}
 
-    // signal that we've released the lock
-    Deno.stdout.writeSync(new Uint8Array(1));
+    // output the enter and exit time
+    console.log(JSON.stringify({ enterTime, exitTime }));
 `;
 
   const process = Deno.run({
@@ -154,24 +142,17 @@ function createFileLock(opts: {
   });
 
   return {
-    get pid() {
-      return process.pid;
+    waitSignal: () => process.stdout.read(new Uint8Array(1)),
+    signal: () => process.stdin.write(new Uint8Array(1)),
+    getTimes: async () => {
+      const outputBytes = await readAll(process.stdout);
+      const text = new TextDecoder().decode(outputBytes);
+      return JSON.parse(text) as {
+        enterTime: number;
+        exitTime: number;
+      };
     },
-    async waitEnterLock() {
-      await process.stdout.read(new Uint8Array(1));
-    },
-    async exitLock() {
-      await process.stdin.write(new Uint8Array(1));
-    },
-    async waitExitLock() {
-      await process.stdout.read(new Uint8Array(1));
-    },
-    async close() {
-      try {
-        await this.exitLock();
-      } catch {
-        // ignore if already closed
-      }
+    close: () => {
       process.stdout.close();
       process.stdin.close();
       process.close();
