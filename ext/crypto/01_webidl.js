@@ -385,6 +385,18 @@
   webidl.converters.AesCtrParams = webidl
     .createDictionaryConverter("AesCtrParams", dictAesCtrParams);
 
+  const dictAesCbcParams = [
+    ...dictAlgorithm,
+    {
+      key: "iv",
+      converter: webidl.converters["BufferSource"],
+      required: true,
+    },
+  ];
+
+  webidl.converters.AesCbcParams = webidl
+    .createDictionaryConverter("AesCbcParams", dictAesCbcParams);
+
   webidl.converters.CryptoKey = webidl.createInterfaceConverter(
     "CryptoKey",
     CryptoKey,

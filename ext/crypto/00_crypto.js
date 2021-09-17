@@ -484,6 +484,41 @@
           // 4.
           return cipherText.buffer;
         }
+        case "AES-CBC": {
+          if (ArrayBufferIsView(normalizedAlgorithm.iv)) {
+            normalizedAlgorithm.iv = new Uint8Array(
+              normalizedAlgorithm.iv.buffer,
+              normalizedAlgorithm.iv.byteOffset,
+              normalizedAlgorithm.iv.byteLength,
+            );
+          } else {
+            normalizedAlgorithm.iv = new Uint8Array(
+              normalizedAlgorithm.iv,
+            );
+          }
+          normalizedAlgorithm.iv = TypedArrayPrototypeSlice(
+            normalizedAlgorithm.iv,
+          );
+
+          // 1.
+          if (normalizedAlgorithm.iv.byteLength !== 16) {
+            throw new DOMException(
+              "Counter must be 16 bytes",
+              "OperationError",
+            );
+          }
+
+          // 2.
+          const cipherText = await core.opAsync("op_crypto_encrypt_key", {
+            key: keyData,
+            algorithm: "AES-CBC",
+            length: key[_algorithm].length,
+            iv: normalizedAlgorithm.iv,
+          }, data);
+
+          // 4.
+          return cipherText.buffer;
+        }
         default:
           throw new DOMException("Not implemented", "NotSupportedError");
       }
