@@ -357,6 +357,30 @@ unitTest(async function subtleCryptoHmacImportExport() {
   assertEquals(exportedKey2, jwk);
 });
 
+// https://github.com/denoland/deno/issues/12085
+unitTest(async function generateImportHmacJwk() {
+  const key = await crypto.subtle.generateKey(
+    {
+      name: "HMAC",
+      hash: "SHA-512",
+    },
+    true,
+    ["sign"],
+  );
+  assert(key);
+  assertEquals(key.type, "secret");
+  assertEquals(key.extractable, true);
+  assertEquals(key.usages, ["sign"]);
+
+  const exportedKey = await crypto.subtle.exportKey("jwk", key);
+  assertEquals(exportedKey.kty, "oct");
+  assertEquals(exportedKey.alg, "HS512");
+  assertEquals(exportedKey.key_ops, ["sign"]);
+  assertEquals(exportedKey.ext, true);
+  assert(typeof exportedKey.k == "string");
+  assertEquals(exportedKey.k.length, 171);
+});
+
 // 2048-bits publicExponent=65537
 const pkcs8TestVectors = [
   // rsaEncryption
