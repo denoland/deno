@@ -120,6 +120,14 @@
     "decrypt": {
       "RSA-OAEP": "RsaOaepParams",
     },
+    "get key length": {
+      "AES-CBC": "AesDerivedKeyParams",
+      "AES-GCM": "AesDerivedKeyParams",
+      "AES-KW": "AesDerivedKeyParams",
+      "HMAC": "HmacImportParams",
+      "HKDF": null,
+      "PBKDF2": null,
+    },
   };
 
   // Decodes the unpadded base64 to the octet sequence containing key value `k` defined in RFC7518 Section 6.4
@@ -1383,6 +1391,102 @@
         );
       }
       // 9-10.
+      return result;
+    }
+
+    /**
+     * @param {AlgorithmIdentifier} algorithm
+     * @param {CryptoKey} baseKey
+     * @param {number} length
+     * @returns {Promise<ArrayBuffer>}
+     */
+    async deriveKey(
+      algorithm,
+      baseKey,
+      derivedKeyType,
+      extractable,
+      keyUsages,
+    ) {
+      webidl.assertBranded(this, SubtleCrypto);
+      const prefix = "Failed to execute 'deriveKey' on 'SubtleCrypto'";
+      webidl.requiredArguments(arguments.length, 5, { prefix });
+      algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+        prefix,
+        context: "Argument 1",
+      });
+      baseKey = webidl.converters.CryptoKey(baseKey, {
+        prefix,
+        context: "Argument 2",
+      });
+      derivedKeyType = webidl.converters.AlgorithmIdentifier(derivedKeyType, {
+        prefix,
+        context: "Argument 3",
+      });
+      extractable = webidl.converters["boolean"](extractable, {
+        prefix,
+        context: "Argument 4",
+      });
+      keyUsages = webidl.converters["sequence<KeyUsage>"](keyUsages, {
+        prefix,
+        context: "Argument 5",
+      });
+
+      // 2-3.
+      const normalizedAlgorithm = normalizeAlgorithm(algorithm, "deriveBits");
+
+      // 4-5.
+      const normalizedDerivedKeyAlgorithmImport = normalizeAlgorithm(
+        derivedKeyType,
+        "importKey",
+      );
+
+      // 6-7.
+      const normalizedDerivedKeyAlgorithmLength = normalizeAlgorithm(
+        derivedKeyType,
+        "get key length",
+      );
+
+      // 8-10.
+      normalizedDerivedKeyAlgorithmLength;
+      // 11.
+      if (normalizedAlgorithm.name !== baseKey[_algorithm]) {
+        throw new DOMException(
+          "InvalidAccessError",
+          "Invalid algorithm name",
+        );
+      }
+
+      // 12.
+      if (!ArrayPrototypeIncludes(baseKey[_usages], "deriveKey")) {
+        throw new DOMException(
+          "InvalidAccessError",
+          "baseKey usages does not contain `deriveKey`",
+        );
+      }
+
+      // 13-14.
+      const secret = await this.deriveBits(
+        normalizedAlgorithm,
+        baseKey,
+        normalizedDerivedKeyAlgorithmLength,
+      );
+
+      // 15.
+      const result = await this.importKey(
+        "raw",
+        secret,
+        normalizedDerivedKeyAlgorithmImport,
+        extractable,
+        keyUsages,
+      );
+      // 16.
+      if (
+        result[_type] == "secret" ||
+        result[_type] == "private" && keyUsages.length == 0
+      ) {
+        throw new SyntaxError("Invalid key usages");
+      }
+      // 17.
       return result;
     }
 
