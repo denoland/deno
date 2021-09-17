@@ -571,7 +571,6 @@ version = "1.14.0"
 dependencies = [
  "atty",
  "base64 0.13.0",
- "byteorder",
  "chrono",
  "clap",
  "data-url",
@@ -582,18 +581,14 @@ dependencies = [
  "deno_crypto",
  "deno_doc",
  "deno_fetch",
- "deno_ffi",
  "deno_graph",
- "deno_http",
  "deno_lint",
  "deno_net",
  "deno_runtime",
- "deno_timers",
  "deno_tls",
  "deno_url",
  "deno_web",
  "deno_webgpu",
- "deno_webidl",
  "deno_websocket",
  "deno_webstorage",
  "dissimilar",
@@ -604,12 +599,10 @@ dependencies = [
  "env_logger",
  "exec",
  "fancy-regex",
- "filetime",
  "flaky_test",
  "fwdansi",
  "http",
  "import_map",
- "indexmap",
  "jsonc-parser",
  "lazy_static",
  "libc",
@@ -636,8 +629,6 @@ dependencies = [
  "test_util",
  "text-size",
  "tokio",
- "tokio-rustls",
- "tower-test",
  "trust-dns-client",
  "trust-dns-server",
  "uuid",
@@ -718,7 +709,6 @@ dependencies = [
  "futures",
  "indexmap",
  "lazy_static",
- "libc",
  "log",
  "parking_lot",
  "pin-project",
@@ -773,9 +763,7 @@ dependencies = [
  "data-url",
  "deno_core",
  "deno_tls",
- "deno_web",
  "http",
- "lazy_static",
  "reqwest",
  "serde",
  "tokio",
@@ -851,7 +839,6 @@ version = "0.8.0"
 dependencies = [
  "deno_core",
  "deno_tls",
- "lazy_static",
  "log",
  "serde",
  "tokio",
@@ -887,13 +874,11 @@ dependencies = [
  "fwdansi",
  "http",
  "hyper",
- "indexmap",
  "lazy_static",
  "libc",
  "log",
  "nix",
  "notify",
- "percent-encoding",
  "regex",
  "ring",
  "serde",
@@ -939,8 +924,6 @@ dependencies = [
  "deno_bench_util",
  "deno_core",
  "deno_webidl",
- "idna",
- "percent-encoding",
  "serde",
  "serde_repr",
  "urlpattern",
@@ -954,7 +937,6 @@ dependencies = [
  "base64 0.13.0",
  "deno_core",
  "encoding_rs",
- "futures",
  "serde",
  "tokio",
  "uuid",
@@ -3900,7 +3882,6 @@ dependencies = [
  "anyhow",
  "async-stream",
  "base64 0.13.0",
- "bytes",
  "futures",
  "hyper",
  "lazy_static",
@@ -4039,19 +4020,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tokio-test"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53474327ae5e166530d17f2d956afcb4f8a004de581b3cae10f12006bc8163e3"
-dependencies = [
- "async-stream",
- "bytes",
- "futures-core",
- "tokio",
- "tokio-stream",
-]
-
-[[package]]
 name = "tokio-tungstenite"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4092,30 +4060,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "tower-layer"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "343bc9466d3fe6b0f960ef45960509f84480bf4fd96f92901afe7ff3df9d3a62"
-
-[[package]]
 name = "tower-service"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "360dfd1d6d30e05fda32ace2c8c70e9c0a9da713275777f5a4dbb8a1893930c6"
-
-[[package]]
-name = "tower-test"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4546773ffeab9e4ea02b8872faa49bb616a80a7da66afc2f32688943f97efa7"
-dependencies = [
- "futures-util",
- "pin-project",
- "tokio",
- "tokio-test",
- "tower-layer",
- "tower-service",
-]
 
 [[package]]
 name = "tracing"

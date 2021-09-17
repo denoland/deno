@@ -21,6 +21,3 @@ encoding_rs = "0.8.28"
 serde = "1.0.129"
 tokio = { version = "1.10.1", features = ["full"] }
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
-
-[dev-dependencies]
-futures = "0.3.15"
