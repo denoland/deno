@@ -148,9 +148,6 @@ delete Object.prototype.__proto__;
     // when that file is a module, but this file has no imports or exports.
     // Consider adding an empty 'export {}' to make this file a module.
     1375,
-    // TS1103: 'for-await-of' statement is only allowed within an async function
-    // or async generator.
-    1103,
     // TS2306: File 'file:///Users/rld/src/deno/cli/tests/testdata/subdir/amd_like.js' is
     // not a module.
     2306,
